@@ -66,7 +66,7 @@ ne porte aucun montant. Les montants réels vivent dans Stripe (réversibles san
 **Décision** : À définir (staging actuel exposé directement sur `portal.ng-itconsulting.com`).
 
 ## OQ-10 — Worker(s) : intégré vs séparé
-**Statut** : Ouvert (rouvert — workers async requis pour F-05 Textract PDF / F-06 ingestion)
+**Statut** : Tranchée par défaut pour F-05 le 2026-07-01 (réversible) — reste à confirmer pour la charge d'ingestion F-06.
 **Impact** : Architecture de déploiement (pods), scaling de l'ingestion.
 **Options** : Traitement asynchrone intra-backend (scheduler/threadpool) en V1 ; workers dédiés (pods séparés + file) en V2.
-**Décision** : À définir.
+**Décision** : **Worker intra-backend `@Scheduled`** (V1) retenu pour le polling OCR asynchrone F-05 (`OcrPollingWorker`, désactivable par config). Choix **réversible** : l'abstraction `OcrProvider` + le polling par état en base permettent d'extraire un worker dédié + file (SQS/…) en V2 sans réécrire le domaine. À réévaluer selon la charge d'ingestion F-06.

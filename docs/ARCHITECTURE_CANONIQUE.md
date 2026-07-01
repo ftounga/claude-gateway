@@ -168,7 +168,23 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - **Note** : la table `messages` du schéma initial `001-init-schema` (issue de l'ancien `spec.md`, jamais câblée à une entité, `user_id text`, sans `model`/FK) a été **remplacée** en `006` par la table V1 conforme ci-dessus (typage `uuid`, FK cascade, colonne `model`).
 - **uploaded_files** — métadonnées d'un fichier téléversé puis transmis au fournisseur (F-04, migration `007`). **Aucun contenu binaire stocké** (relais pur, PROJECT.md §11.6).
   - `uploaded_files` : `id (uuid)`, `user_id (uuid)`, `provider_file_id (interne, jamais exposé)`, `filename`, `media_type`, `size_bytes`, `created_at`. Index `user_id`.
-- **documents** (1) → (N) **chunks** — scaffolding V2 dormant (OCR/RAG), non câblé en V1.
+- **documents** — document soumis au pipeline OCR (F-05, migration `010`). Isolé par `user_id`.
+  - `documents` : `id (uuid)`, `user_id (uuid)`, `filename`, `media_type`, `size_bytes`,
+    `status (UPLOADED|PROCESSING|EXTRACTED|FAILED ; INDEXED ajouté par F-06)`,
+    `ocr_mode (SYNC|ASYNC)`, `provider_job_id (interne, nullable, jamais exposé)`,
+    `extracted_text (nullable)`, `textract_raw (brut fournisseur, nullable, jamais exposé)`,
+    `error_message (neutre, nullable)`, `created_at`, `updated_at`. Index `user_id`.
+  - OCR via l'interface abstraite **`OcrProvider`** (Provider Independence) : impl AWS Textract
+    (`TextractOcrProvider`, SDK confiné au package provider) ou `StubOcrProvider` (dev/tests).
+    Images → sync `DetectDocumentText` ; PDF/TIFF → async `StartDocumentTextDetection` +
+    worker de polling intra-backend (`OcrPollingWorker`, `@Scheduled` ; OQ-10). Secrets AWS via
+    IRSA, jamais loggés.
+  - **Note** : la table `documents` du schéma initial `001-init-schema` (placeholder legacy `spec.md`,
+    `uploaded_by text`, sans `user_id`) a été **remplacée** en `010` par la table V1 conforme
+    ci-dessus (même stratégie que `006-messages`/`008-subscriptions`).
+- **chunks** — (N) chunks d'un **documents** (OCR → RAG). Scaffolding V2 (F-06) : la FK
+  `chunks→documents` a été détachée en `010` (sera reconstruite par F-06 vers la nouvelle `documents`) ;
+  la colonne pgvector `chunks.embedding` (migration `002`, Postgres) reste intacte.
 - **subscriptions** — abonnement d'un utilisateur (F-09, migration `008`). **Un seul par `user_id`** (unique).
   - `subscriptions` : `id (uuid)`, `user_id (uuid, unique)`, `status (TRIALING|ACTIVE|PAST_DUE|CANCELED|INCOMPLETE)`,
     `plan_code (nullable ; SOLO|PRO|DAILY)`, `trial_ends_at (nullable)`, `current_period_end (nullable)`,
@@ -190,8 +206,8 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 
 Règle d'isolation des données :
-Tout accès aux données filtre obligatoirement sur **`user_id`** (documents via `uploaded_by`,
-messages/subscriptions/uploaded_files/usage_counters via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur.
+Tout accès aux données filtre obligatoirement sur **`user_id`**
+(documents/messages/subscriptions/uploaded_files/usage_counters via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur.
 
 ---
 
