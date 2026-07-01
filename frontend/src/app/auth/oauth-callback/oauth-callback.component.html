@@ -1,0 +1,25 @@
+<main class="auth-shell">
+  <mat-card class="auth-card">
+    <div class="auth-card__brand">
+      <span class="auth-card__logo">&gt;_</span>
+      <span>claude-gateway</span>
+    </div>
+
+    @if (failed()) {
+      <h1>Connexion Google échouée</h1>
+      <div class="auth-feedback auth-feedback--error">
+        <mat-icon>error</mat-icon>
+        <span>Impossible de finaliser la connexion. Réessayez.</span>
+      </div>
+      <div class="auth-actions">
+        <button mat-stroked-button routerLink="/login">Retour à la connexion</button>
+      </div>
+    } @else {
+      <h1>Connexion en cours…</h1>
+      <div class="auth-feedback">
+        <mat-icon>hourglass_empty</mat-icon>
+        <span>Finalisation de votre connexion.</span>
+      </div>
+    }
+  </mat-card>
+</main>

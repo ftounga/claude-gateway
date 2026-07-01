@@ -96,3 +96,77 @@ code, pre { font-family: var(--cg-font-mono); }
   background-color: var(--cg-error) !important;
   color: #fff !important;
 }
+
+// ---- Layout partagé des écrans d'authentification (SF-01-07) ----
+.auth-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--cg-space-4);
+  background: var(--cg-bg);
+}
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+}
+.auth-card__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  margin-bottom: var(--cg-space-3);
+}
+.auth-card__logo {
+  font-family: var(--cg-font-mono);
+  font-weight: 600;
+  color: var(--cg-primary);
+  font-size: 20px;
+}
+.auth-card h1 { font-size: 24px; margin: 0 0 var(--cg-space-1); }
+.auth-card__subtitle {
+  color: var(--cg-text-secondary);
+  margin: 0 0 var(--cg-space-4);
+  font-size: 14px;
+}
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-2);
+}
+.auth-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-2);
+  margin-top: var(--cg-space-3);
+}
+.auth-actions button { width: 100%; }
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+  margin: var(--cg-space-3) 0;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--cg-divider);
+}
+.auth-footer {
+  margin-top: var(--cg-space-4);
+  text-align: center;
+  font-size: 14px;
+  color: var(--cg-text-secondary);
+}
+.auth-footer a { color: var(--cg-primary); text-decoration: none; }
+.auth-feedback {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  margin-top: var(--cg-space-3);
+}
+.auth-feedback--success { color: var(--cg-success); }
+.auth-feedback--error { color: var(--cg-error); }
