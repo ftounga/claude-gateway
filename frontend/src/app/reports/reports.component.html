@@ -1,0 +1,89 @@
+<section class="reports">
+  <header class="reports__header">
+    <div>
+      <h1>Rapports d'usage & coût</h1>
+      <p class="reports__subtitle">
+        Consommation de tokens et coût estimé de votre compte, mois par mois. Le coût est une
+        estimation au tarif de la plateforme, pas un montant facturé.
+      </p>
+    </div>
+  </header>
+
+  @if (loading()) {
+    <div class="reports__loading">
+      <mat-spinner diameter="32"></mat-spinner>
+    </div>
+  } @else if (isEmpty()) {
+    <mat-card class="reports__empty">
+      <mat-icon>insights</mat-icon>
+      <p>Aucune consommation enregistrée pour le moment.</p>
+    </mat-card>
+  } @else {
+    <div class="reports__summary">
+      <mat-card class="reports__stat">
+        <span class="reports__stat-label">Total tokens</span>
+        <span class="reports__stat-value">{{ formatTokens(report()!.totalTokens) }}</span>
+      </mat-card>
+      <mat-card class="reports__stat">
+        <span class="reports__stat-label">Coût estimé total</span>
+        <span class="reports__stat-value">{{ formatCost(report()!.totalEstimatedCost) }}</span>
+      </mat-card>
+      <mat-card class="reports__stat">
+        <span class="reports__stat-label">Mois en cours</span>
+        @if (currentPeriod(); as cur) {
+          <span class="reports__stat-value">{{ formatTokens(cur.totalTokens) }}</span>
+          <span class="reports__stat-hint">{{ formatCost(cur.estimatedCost) }} estimés</span>
+        } @else {
+          <span class="reports__stat-value">0</span>
+          <span class="reports__stat-hint">Aucune consommation ce mois</span>
+        }
+      </mat-card>
+    </div>
+
+    <mat-card class="reports__list">
+      <h2 class="reports__list-title">Historique mensuel</h2>
+      <table mat-table [dataSource]="dataSource" class="reports__table">
+        <ng-container matColumnDef="period">
+          <th mat-header-cell *matHeaderCellDef>Période</th>
+          <td mat-cell *matCellDef="let p">
+            <div class="reports__period">
+              <span class="reports__period-label">
+                {{ periodLabel(p.periodStart) }}
+                @if (p.current) {
+                  <span class="badge badge--info">En cours</span>
+                }
+              </span>
+              <span class="reports__bar" aria-hidden="true">
+                <span class="reports__bar-fill" [style.width.%]="barWidth(p.totalTokens)"></span>
+              </span>
+            </div>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="inputTokens">
+          <th mat-header-cell *matHeaderCellDef>Entrée</th>
+          <td mat-cell *matCellDef="let p" class="reports__num">{{ formatTokens(p.inputTokens) }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="outputTokens">
+          <th mat-header-cell *matHeaderCellDef>Sortie</th>
+          <td mat-cell *matCellDef="let p" class="reports__num">{{ formatTokens(p.outputTokens) }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="totalTokens">
+          <th mat-header-cell *matHeaderCellDef>Total</th>
+          <td mat-cell *matCellDef="let p" class="reports__num">{{ formatTokens(p.totalTokens) }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="cost">
+          <th mat-header-cell *matHeaderCellDef>Coût estimé</th>
+          <td mat-cell *matCellDef="let p" class="reports__num">{{ formatCost(p.estimatedCost) }}</td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+      </table>
+      <mat-paginator [pageSizeOptions]="[6, 12, 24]" [pageSize]="12"></mat-paginator>
+    </mat-card>
+  }
+</section>
