@@ -54,8 +54,11 @@ public class AnthropicProvider implements AIProvider {
 
     @Override
     public ChatCompletionResult complete(ChatCompletionRequest request) {
-        if (!properties.isConfigured()) {
-            // Aucune clé => fournisseur dormant. On ne journalise jamais la clé (ici, elle est absente).
+        // Clé à utiliser : celle de l'utilisateur (BYOK) si fournie, sinon la clé plateforme (Hosted).
+        // Provider-neutre : la Gateway ne couple pas le domaine à Anthropic ; la clé n'est jamais loggée.
+        String apiKey = resolveApiKey(request.apiKey());
+        if (apiKey == null || apiKey.isBlank()) {
+            // Aucune clé (ni BYOK ni plateforme) => fournisseur dormant. La clé n'est jamais journalisée.
             throw new AIProviderUnavailableException("Le fournisseur IA n'est pas configuré.");
         }
 
@@ -67,7 +70,7 @@ public class AnthropicProvider implements AIProvider {
         try {
             RestClient.RequestBodySpec spec = restClient.post()
                     .uri("/v1/messages")
-                    .header("x-api-key", properties.apiKey())
+                    .header("x-api-key", apiKey)
                     .header("anthropic-version", properties.version())
                     .contentType(MediaType.APPLICATION_JSON);
             // Les références de fichiers ({type:file}) nécessitent l'en-tête beta Files API.
@@ -124,6 +127,14 @@ public class AnthropicProvider implements AIProvider {
             log.warn("Transmission de fichier au fournisseur IA en échec (type={})", upload.mediaType());
             throw new AIProviderException("Échec de la transmission du fichier au fournisseur IA.", ex);
         }
+    }
+
+    /** Clé BYOK de l'appel si fournie (non vide), sinon la clé plateforme (mode Hosted). */
+    private String resolveApiKey(String overrideApiKey) {
+        if (overrideApiKey != null && !overrideApiKey.isBlank()) {
+            return overrideApiKey;
+        }
+        return properties.apiKey();
     }
 
     private static org.springframework.http.HttpHeaders fileHeaders(String mediaType) {

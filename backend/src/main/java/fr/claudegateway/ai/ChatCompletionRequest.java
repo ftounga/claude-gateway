@@ -10,8 +10,11 @@ import java.util.List;
  * @param model       identifiant du modèle (ex. {@code claude-opus-4-8})
  * @param messages    historique ordonné (du plus ancien au plus récent), se terminant par le message utilisateur
  * @param attachments fichiers rattachés au dernier message utilisateur (jamais {@code null} ; vide par défaut)
+ * @param apiKey      clé fournisseur à utiliser pour CET appel (mode BYOK, F-03) ; {@code null} => clé
+ *                    plateforme (mode Hosted). Provider-neutre : jamais journalisée, jamais persistée.
  */
-public record ChatCompletionRequest(String model, List<ChatMessage> messages, List<ProviderAttachment> attachments) {
+public record ChatCompletionRequest(String model, List<ChatMessage> messages,
+        List<ProviderAttachment> attachments, String apiKey) {
 
     public ChatCompletionRequest {
         if (attachments == null) {
@@ -19,8 +22,13 @@ public record ChatCompletionRequest(String model, List<ChatMessage> messages, Li
         }
     }
 
-    /** Complétion sans pièce jointe. */
+    /** Complétion avec la clé plateforme (mode Hosted). */
+    public ChatCompletionRequest(String model, List<ChatMessage> messages, List<ProviderAttachment> attachments) {
+        this(model, messages, attachments, null);
+    }
+
+    /** Complétion sans pièce jointe, clé plateforme. */
     public ChatCompletionRequest(String model, List<ChatMessage> messages) {
-        this(model, messages, List.of());
+        this(model, messages, List.of(), null);
     }
 }

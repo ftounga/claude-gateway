@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      Table `user_api_keys` (F-03 / SF-03-02). Clé API Anthropic personnelle (BYOK) chiffrée au repos
+      (envelope encryption AWS KMS, SF-03-01). AUCUNE clé en clair n'est stockée : seuls le blob
+      chiffré (encrypted_data_key, cipher_iv, ciphertext, base64) et les 4 derniers caractères
+      (key_last4) sont persistés. `user_id` unique => une seule clé par utilisateur (isolation
+      multi-tenant). `active` pilote la bascule Hosted/BYOK (SF-03-03). Ids générés côté application
+      (Hibernate @UuidGenerator). Changesets Postgres et H2 en parallèle.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="030-user-api-keys-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="user_api_keys">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_user_api_keys_user_id"/>
+            </column>
+            <column name="provider" type="varchar(16)" defaultValue="ANTHROPIC">
+                <constraints nullable="false"/>
+            </column>
+            <column name="encrypted_data_key" type="varchar(1024)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cipher_iv" type="varchar(1024)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ciphertext" type="varchar(1024)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="key_last4" type="varchar(4)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="active" type="boolean" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+            <column name="validated_at" type="timestamptz"/>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="user_api_keys" indexName="idx_user_api_keys_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="030-user-api-keys-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="user_api_keys">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_user_api_keys_user_id"/>
+            </column>
+            <column name="provider" type="varchar(16)" defaultValue="ANTHROPIC">
+                <constraints nullable="false"/>
+            </column>
+            <column name="encrypted_data_key" type="varchar(1024)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cipher_iv" type="varchar(1024)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ciphertext" type="varchar(1024)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="key_last4" type="varchar(4)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="active" type="boolean" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+            <column name="validated_at" type="timestamp with time zone"/>
+            <column name="created_at" type="timestamp with time zone" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp with time zone" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="user_api_keys" indexName="idx_user_api_keys_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>
