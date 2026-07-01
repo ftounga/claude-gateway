@@ -58,10 +58,13 @@ class AccountServiceTest {
     private UploadedFileRepository uploadedFileRepository;
     @Mock
     private fr.claudegateway.byok.UserApiKeyRepository userApiKeyRepository;
+    @Mock
+    private fr.claudegateway.template.TemplateRepository templateRepository;
 
     private AccountService service() {
         return new AccountService(userService, subscriptionRepository, usageCounterRepository,
-                conversationRepository, messageRepository, uploadedFileRepository, userApiKeyRepository);
+                conversationRepository, messageRepository, uploadedFileRepository, userApiKeyRepository,
+                templateRepository);
     }
 
     private User user(UUID id) {
@@ -88,10 +91,15 @@ class AccountServiceTest {
         when(uploadedFileRepository.findByUserId(userId)).thenReturn(List.of(
                 UploadedFile.builder().userId(userId).providerFileId("file_x").filename("c.pdf")
                         .mediaType("application/pdf").sizeBytes(2048L).build()));
+        when(templateRepository.findByUserIdOrderByUpdatedAtDesc(userId)).thenReturn(List.of(
+                fr.claudegateway.template.PromptTemplate.builder().userId(userId).name("Audit")
+                        .category(fr.claudegateway.template.TemplateCategory.AUDIT).content("Analyse…").build()));
 
         AccountExport export = service().export(userId);
 
         assertThat(export.account().email()).isEqualTo("alice@example.com");
+        assertThat(export.templates()).singleElement()
+                .satisfies(t -> assertThat(t.name()).isEqualTo("Audit"));
         assertThat(export.subscription().status()).isEqualTo(SubscriptionStatus.TRIALING);
         assertThat(export.subscription().planCode()).isEqualTo(PlanCode.SOLO);
         assertThat(export.usage()).singleElement()
@@ -114,11 +122,13 @@ class AccountServiceTest {
         when(usageCounterRepository.findByUserId(userId)).thenReturn(List.of());
         when(conversationRepository.findByUserIdOrderByUpdatedAtDesc(userId)).thenReturn(List.of());
         when(uploadedFileRepository.findByUserId(userId)).thenReturn(List.of());
+        when(templateRepository.findByUserIdOrderByUpdatedAtDesc(userId)).thenReturn(List.of());
 
         AccountExport export = service().export(userId);
 
         assertThat(export.subscription()).isNull();
         assertThat(export.conversations()).isEmpty();
+        assertThat(export.templates()).isEmpty();
     }
 
     @Test
@@ -129,13 +139,15 @@ class AccountServiceTest {
         service().deleteAccount(userId);
 
         InOrder order = inOrder(messageRepository, conversationRepository, uploadedFileRepository,
-                usageCounterRepository, subscriptionRepository, userApiKeyRepository, userService);
+                usageCounterRepository, subscriptionRepository, userApiKeyRepository, templateRepository,
+                userService);
         order.verify(messageRepository).deleteByUserId(userId);
         order.verify(conversationRepository).deleteByUserId(userId);
         order.verify(uploadedFileRepository).deleteByUserId(userId);
         order.verify(usageCounterRepository).deleteByUserId(userId);
         order.verify(subscriptionRepository).deleteByUserId(userId);
         order.verify(userApiKeyRepository).deleteByUserId(userId);
+        order.verify(templateRepository).deleteByUserId(userId);
         order.verify(userService).deleteById(userId);
         verify(userService).findByIdOrThrow(any());
     }

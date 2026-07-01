@@ -8,6 +8,7 @@ import java.util.UUID;
 import fr.claudegateway.billing.PlanCode;
 import fr.claudegateway.billing.SubscriptionStatus;
 import fr.claudegateway.chat.MessageRole;
+import fr.claudegateway.template.TemplateCategory;
 import fr.claudegateway.user.AuthProvider;
 import fr.claudegateway.user.UserRole;
 
@@ -24,7 +25,8 @@ public record AccountExport(
         SubscriptionExport subscription,
         List<UsageExport> usage,
         List<ConversationExport> conversations,
-        List<UploadedFileExport> uploadedFiles) {
+        List<UploadedFileExport> uploadedFiles,
+        List<TemplateExport> templates) {
 
     /** Récapitulatif du compte. */
     public record Account(
@@ -74,5 +76,14 @@ public record AccountExport(
             String mediaType,
             long sizeBytes,
             OffsetDateTime createdAt) {
+    }
+
+    /** Modèle de prompt réutilisable (F-13). */
+    public record TemplateExport(
+            String name,
+            TemplateCategory category,
+            String content,
+            OffsetDateTime createdAt,
+            OffsetDateTime updatedAt) {
     }
 }

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      Table `prompt_templates` (F-13 / SF-13-01) — modèles de prompts réutilisables, isolés par
+      `user_id`. Donnée purement relationnelle : AUCUNE colonne vectorielle (F-13 n'est pas du RAG).
+      Ids générés côté application (Hibernate @UuidGenerator). Numéro de migration au-dessus du
+      dernier mergé (030-user-api-keys). Changesets séparés postgresql/h2 pour le type timestamp
+      (timestamptz vs timestamp with time zone), à l'image de 010-documents.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="031-prompt-templates-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="prompt_templates">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="name" type="varchar(120)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="category" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="content" type="varchar(10000)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="prompt_templates" indexName="idx_prompt_templates_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="031-prompt-templates-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="prompt_templates">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="name" type="varchar(120)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="category" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="content" type="varchar(10000)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp with time zone" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp with time zone" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="prompt_templates" indexName="idx_prompt_templates_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

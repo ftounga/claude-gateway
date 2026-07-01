@@ -16,6 +16,7 @@ import fr.claudegateway.chat.ConversationRepository;
 import fr.claudegateway.chat.Message;
 import fr.claudegateway.chat.MessageRepository;
 import fr.claudegateway.quota.UsageCounterRepository;
+import fr.claudegateway.template.TemplateRepository;
 import fr.claudegateway.upload.UploadedFileRepository;
 import fr.claudegateway.user.User;
 import fr.claudegateway.user.UserService;
@@ -38,6 +39,7 @@ public class AccountService {
     private final MessageRepository messageRepository;
     private final UploadedFileRepository uploadedFileRepository;
     private final UserApiKeyRepository userApiKeyRepository;
+    private final TemplateRepository templateRepository;
 
     public AccountService(
             UserService userService,
@@ -46,7 +48,8 @@ public class AccountService {
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
             UploadedFileRepository uploadedFileRepository,
-            UserApiKeyRepository userApiKeyRepository) {
+            UserApiKeyRepository userApiKeyRepository,
+            TemplateRepository templateRepository) {
         this.userService = userService;
         this.subscriptionRepository = subscriptionRepository;
         this.usageCounterRepository = usageCounterRepository;
@@ -54,6 +57,7 @@ public class AccountService {
         this.messageRepository = messageRepository;
         this.uploadedFileRepository = uploadedFileRepository;
         this.userApiKeyRepository = userApiKeyRepository;
+        this.templateRepository = templateRepository;
     }
 
     /**
@@ -87,7 +91,15 @@ public class AccountService {
                         file.getFilename(), file.getMediaType(), file.getSizeBytes(), file.getCreatedAt()))
                 .toList();
 
-        return new AccountExport(OffsetDateTime.now(), account, subscription, usage, conversations, files);
+        List<AccountExport.TemplateExport> templates =
+                templateRepository.findByUserIdOrderByUpdatedAtDesc(userId).stream()
+                        .map(t -> new AccountExport.TemplateExport(
+                                t.getName(), t.getCategory(), t.getContent(),
+                                t.getCreatedAt(), t.getUpdatedAt()))
+                        .toList();
+
+        return new AccountExport(
+                OffsetDateTime.now(), account, subscription, usage, conversations, files, templates);
     }
 
     /**
@@ -107,6 +119,7 @@ public class AccountService {
         usageCounterRepository.deleteByUserId(userId);
         subscriptionRepository.deleteByUserId(userId);
         userApiKeyRepository.deleteByUserId(userId);
+        templateRepository.deleteByUserId(userId);
 
         userService.deleteById(user.getId());
     }
