@@ -53,6 +53,9 @@ class ChatServiceTest {
     @Mock
     private QuotaService quotaService;
 
+    @Mock
+    private fr.claudegateway.byok.ByokKeyService byokKeyService;
+
     private ChatService chatService;
 
     private final UUID alice = UUID.randomUUID();
@@ -71,7 +74,7 @@ class ChatServiceTest {
             }
         };
         chatService = new ChatService(conversationRepository, messageRepository, uploadedFileRepository,
-                aiProvider, modelCatalog, quotaService);
+                aiProvider, modelCatalog, quotaService, byokKeyService);
     }
 
     /** Persiste le message avec un id simulé et renvoie l'entité (comportement JpaRepository.save). */
@@ -120,6 +123,51 @@ class ChatServiceTest {
         assertThat(saved.get(1).getModel()).isEqualTo("claude-opus-4-8");
 
         assertThat(result.assistantMessage().getContent()).isEqualTo("Bonjour !");
+    }
+
+    @Test
+    void usesActiveByokKeyForProviderCallWhenPresent() {
+        stubMessageSaveEchoesWithId();
+        when(conversationRepository.save(any(Conversation.class))).thenAnswer(invocation -> {
+            Conversation c = invocation.getArgument(0);
+            if (c.getId() == null) {
+                c.setId(UUID.randomUUID());
+            }
+            return c;
+        });
+        when(messageRepository.findByConversationIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
+        // Clé BYOK active de l'utilisateur (déchiffrée par ByokKeyService).
+        when(byokKeyService.resolveActiveApiKey(alice)).thenReturn(Optional.of("sk-ant-user-key"));
+        when(aiProvider.complete(any(ChatCompletionRequest.class)))
+                .thenReturn(new ChatCompletionResult("ok", "claude-opus-4-8", 1, 1));
+
+        chatService.reply(alice, null, "Salut", null, null);
+
+        ArgumentCaptor<ChatCompletionRequest> captor = ArgumentCaptor.forClass(ChatCompletionRequest.class);
+        verify(aiProvider).complete(captor.capture());
+        assertThat(captor.getValue().apiKey()).isEqualTo("sk-ant-user-key");
+    }
+
+    @Test
+    void usesPlatformKeyWhenNoActiveByokKey() {
+        stubMessageSaveEchoesWithId();
+        when(conversationRepository.save(any(Conversation.class))).thenAnswer(invocation -> {
+            Conversation c = invocation.getArgument(0);
+            if (c.getId() == null) {
+                c.setId(UUID.randomUUID());
+            }
+            return c;
+        });
+        when(messageRepository.findByConversationIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
+        // Aucune clé BYOK active (Optional.empty par défaut) => clé plateforme (apiKey null).
+        when(aiProvider.complete(any(ChatCompletionRequest.class)))
+                .thenReturn(new ChatCompletionResult("ok", "claude-opus-4-8", 1, 1));
+
+        chatService.reply(alice, null, "Salut", null, null);
+
+        ArgumentCaptor<ChatCompletionRequest> captor = ArgumentCaptor.forClass(ChatCompletionRequest.class);
+        verify(aiProvider).complete(captor.capture());
+        assertThat(captor.getValue().apiKey()).isNull();
     }
 
     @Test

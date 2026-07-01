@@ -131,4 +131,69 @@ class ByokKeyServiceTest {
         assertThat(captor.getValue().apiKey()).isEqualTo("sk-ant-key-ABCD");
         assertThat(captor.getValue().messages()).hasSize(1);
     }
+
+    @Test
+    void resolveActiveApiKeyDecryptsWhenActive() {
+        UserApiKey key = UserApiKey.builder().userId(userId).active(true)
+                .provider(ByokProvider.ANTHROPIC).keyLast4("AB12")
+                .encryptedDataKey("edk").cipherIv("iv").ciphertext("ct").build();
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(key));
+        when(cipher.decrypt(new EncryptedKey("edk", "iv", "ct"))).thenReturn("sk-ant-decrypted");
+
+        assertThat(service().resolveActiveApiKey(userId)).contains("sk-ant-decrypted");
+    }
+
+    @Test
+    void resolveActiveApiKeyEmptyWhenInactive() {
+        UserApiKey key = UserApiKey.builder().userId(userId).active(false)
+                .provider(ByokProvider.ANTHROPIC).keyLast4("AB12")
+                .encryptedDataKey("edk").cipherIv("iv").ciphertext("ct").build();
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(key));
+
+        assertThat(service().resolveActiveApiKey(userId)).isEmpty();
+        verify(cipher, never()).decrypt(any());
+    }
+
+    @Test
+    void resolveActiveApiKeyEmptyWhenAbsent() {
+        when(repository.findByUserId(userId)).thenReturn(Optional.empty());
+
+        assertThat(service().resolveActiveApiKey(userId)).isEmpty();
+    }
+
+    @Test
+    void setModeByokActivatesExistingKey() {
+        UserApiKey key = UserApiKey.builder().userId(userId).active(false)
+                .provider(ByokProvider.ANTHROPIC).keyLast4("AB12")
+                .encryptedDataKey("edk").cipherIv("iv").ciphertext("ct").build();
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(key));
+        when(repository.save(any(UserApiKey.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ApiKeyStatusResponse status = service().setMode(userId, "BYOK");
+
+        assertThat(key.isActive()).isTrue();
+        assertThat(status.mode()).isEqualTo("BYOK");
+    }
+
+    @Test
+    void setModeHostedDeactivatesExistingKey() {
+        UserApiKey key = UserApiKey.builder().userId(userId).active(true)
+                .provider(ByokProvider.ANTHROPIC).keyLast4("AB12")
+                .encryptedDataKey("edk").cipherIv("iv").ciphertext("ct").build();
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(key));
+        when(repository.save(any(UserApiKey.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ApiKeyStatusResponse status = service().setMode(userId, "HOSTED");
+
+        assertThat(key.isActive()).isFalse();
+        assertThat(status.mode()).isEqualTo("HOSTED");
+    }
+
+    @Test
+    void setModeByokWithoutKeyThrows() {
+        when(repository.findByUserId(userId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service().setMode(userId, "BYOK"))
+                .isInstanceOf(ByokModeException.class);
+    }
 }

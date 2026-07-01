@@ -5,6 +5,7 @@ import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -237,6 +238,73 @@ class ByokKeyApiIntegrationTest {
     }
 
     @Test
+    void togglesModeBetweenHostedAndByok() throws Exception {
+        mockMvc.perform(post("/api/user/api-key").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body("sk-ant-secret-GH78")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mode", is("BYOK")));
+
+        // Bascule vers HOSTED : la clé est conservée mais inactive.
+        mockMvc.perform(put("/api/user/api-key/mode").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"mode\":\"HOSTED\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.present", is(true)))
+                .andExpect(jsonPath("$.mode", is("HOSTED")));
+        assertThat(userApiKeyRepository.findByUserId(alice.getId()).orElseThrow().isActive()).isFalse();
+
+        // Retour à BYOK.
+        mockMvc.perform(put("/api/user/api-key/mode").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"mode\":\"BYOK\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mode", is("BYOK")));
+        assertThat(userApiKeyRepository.findByUserId(alice.getId()).orElseThrow().isActive()).isTrue();
+    }
+
+    @Test
+    void modeByokWithoutKeyReturnsConflict() throws Exception {
+        mockMvc.perform(put("/api/user/api-key/mode").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"mode\":\"BYOK\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error", is("byok_mode_conflict")));
+    }
+
+    @Test
+    void modeInvalidValueReturnsValidationError() throws Exception {
+        mockMvc.perform(put("/api/user/api-key/mode").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"mode\":\"OTHER\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", is("validation_error")));
+    }
+
+    @Test
+    void modeToggleIsolatedBetweenUsers() throws Exception {
+        // Alice enregistre une clé (BYOK actif).
+        mockMvc.perform(post("/api/user/api-key").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body("sk-ant-alice-AAAA")))
+                .andExpect(status().isOk());
+
+        // Bob (sans clé) tente BYOK => 409, sans affecter Alice.
+        mockMvc.perform(put("/api/user/api-key/mode").contextPath("/api")
+                        .header("Authorization", "Bearer " + bobToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"mode\":\"BYOK\"}"))
+                .andExpect(status().isConflict());
+        assertThat(userApiKeyRepository.findByUserId(alice.getId()).orElseThrow().isActive()).isTrue();
+    }
+
+    @Test
     void rejectsUnauthenticatedOnAllRoutes() throws Exception {
         mockMvc.perform(get("/api/user/api-key").contextPath("/api"))
                 .andExpect(status().isUnauthorized());
@@ -244,6 +312,9 @@ class ByokKeyApiIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON).content(body("sk-ant-x")))
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(delete("/api/user/api-key").contextPath("/api"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(put("/api/user/api-key/mode").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"mode\":\"HOSTED\"}"))
                 .andExpect(status().isUnauthorized());
     }
 }

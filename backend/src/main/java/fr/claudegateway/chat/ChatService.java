@@ -14,6 +14,7 @@ import fr.claudegateway.ai.ChatMessage;
 import fr.claudegateway.ai.ChatRole;
 import fr.claudegateway.ai.ModelCatalog;
 import fr.claudegateway.ai.ProviderAttachment;
+import fr.claudegateway.byok.ByokKeyService;
 import fr.claudegateway.quota.QuotaService;
 import fr.claudegateway.upload.UploadedFile;
 import fr.claudegateway.upload.UploadedFileRepository;
@@ -37,6 +38,7 @@ public class ChatService {
     private final AIProvider aiProvider;
     private final ModelCatalog modelCatalog;
     private final QuotaService quotaService;
+    private final ByokKeyService byokKeyService;
 
     public ChatService(
             ConversationRepository conversationRepository,
@@ -44,13 +46,15 @@ public class ChatService {
             UploadedFileRepository uploadedFileRepository,
             AIProvider aiProvider,
             ModelCatalog modelCatalog,
-            QuotaService quotaService) {
+            QuotaService quotaService,
+            ByokKeyService byokKeyService) {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.uploadedFileRepository = uploadedFileRepository;
         this.aiProvider = aiProvider;
         this.modelCatalog = modelCatalog;
         this.quotaService = quotaService;
+        this.byokKeyService = byokKeyService;
     }
 
     /**
@@ -90,8 +94,12 @@ public class ChatService {
 
         // Historique complet (incluant le message tout juste persisté) transmis au fournisseur.
         List<Message> history = messageRepository.findByConversationIdOrderByCreatedAtAsc(conversation.getId());
+        // Mode fournisseur par utilisateur : clé BYOK active si présente (déchiffrée à la volée, jamais
+        // persistée ni journalisée), sinon clé plateforme (Hosted). Provider-neutre : la clé n'est
+        // qu'un paramètre de la requête.
+        String byokApiKey = byokKeyService.resolveActiveApiKey(userId).orElse(null);
         ChatCompletionResult completion = aiProvider.complete(
-                new ChatCompletionRequest(conversation.getModel(), toProviderMessages(history), attachments));
+                new ChatCompletionRequest(conversation.getModel(), toProviderMessages(history), attachments, byokApiKey));
 
         // Persistance de la réponse assistant.
         Message assistantMessage = messageRepository.save(Message.builder()
