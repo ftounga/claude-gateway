@@ -162,11 +162,15 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
 
 # 6 — Modèle de données (entités principales)
 
-- **documents** (1) → (N) **chunks** — un document produit N chunks (`chunk_index`, `text`, `page_number`, `embedding vector`).
-- **messages** — reliés par `conversation_id`, appartenant à un `user_id`.
-- **subscriptions** — abonnement Stripe par `user_id` (`plan`, `status`, `stripe_*`).
+- **users** — compte (F-01). Racine de l'isolation multi-tenant (`user_id = users.id`).
+- **conversations** (1) → (N) **messages** — fil d'échange (F-02, migrations `005`/`006`).
+  - `conversations` : `id (uuid)`, `user_id (uuid)`, `title`, `model`, `created_at`, `updated_at`. Index `user_id`.
+  - `messages` : `id (uuid)`, `conversation_id (uuid, FK cascade)`, `user_id (uuid)`, `role (USER|ASSISTANT)`, `content`, `model (nullable)`, `created_at`. Index `conversation_id`, `user_id`.
+  - **Note** : la table `messages` du schéma initial `001-init-schema` (issue de l'ancien `spec.md`, jamais câblée à une entité, `user_id text`, sans `model`/FK) a été **remplacée** en `006` par la table V1 conforme ci-dessus (typage `uuid`, FK cascade, colonne `model`).
+- **documents** (1) → (N) **chunks** — scaffolding V2 dormant (OCR/RAG), non câblé en V1.
+- **subscriptions** — abonnement Stripe par `user_id` (`plan`, `status`, `stripe_*`) — cible F-09.
 
-Voir `docs/spec.md` §4 pour le DDL complet.
+Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`** (documents via `uploaded_by`,
