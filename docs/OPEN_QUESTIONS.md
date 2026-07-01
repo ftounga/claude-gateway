@@ -40,7 +40,7 @@ Questions non tranchées ayant un impact produit ou technique. À mettre à jour
 **Décision** : **Les deux modes** — OAuth2/OIDC (Google) **et** compte email/mot de passe (inscription, reset, vérification email), authentification par **JWT**. Microsoft/autres providers → V2.
 
 ## OQ-06 — Stockage & chiffrement des clés BYOK
-**Statut** : Ouvert
+**Statut** : Tranchée (2026-07-01) — **implémentée et livrée** en F-03 (SF-03-01→04, PR #46/#48/#49/#50)
 **Impact** : F-03, conformité. Où et comment chiffrer la clé utilisateur.
 **Options** : Chiffrement applicatif via AWS KMS ; Vault. Rotation, suppression sur demande.
 **Décision (2026-07-01)** : **AWS KMS envelope encryption**. Clé customer-managed dédiée (rotation activée, alias `alias/claude-gateway-staging-byok`), rôle IRSA backend autorisé `GenerateDataKey/Encrypt/Decrypt` sur cette seule clé (moindre privilège). La clé API BYOK est chiffrée côté application via une data key KMS ; jamais stockée ni loggée en clair, jamais exposée au frontend. Alias injecté par `APP_BYOK_KMS_KEY_ID`. Débloque F-03.
