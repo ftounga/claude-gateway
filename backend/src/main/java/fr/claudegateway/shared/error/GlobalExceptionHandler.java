@@ -28,6 +28,7 @@ import fr.claudegateway.auth.InvalidVerificationTokenException;
 import fr.claudegateway.chat.AttachmentNotFoundException;
 import fr.claudegateway.chat.ConversationNotFoundException;
 import fr.claudegateway.chat.UnsupportedModelException;
+import fr.claudegateway.export.UnsupportedExportFormatException;
 import fr.claudegateway.ocr.DocumentNotFoundException;
 import fr.claudegateway.quota.QuotaExceededException;
 import fr.claudegateway.rag.provider.EmbeddingProviderException;
@@ -142,6 +143,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(UnsupportedModelException.class)
     public ResponseEntity<ErrorResponse> handleUnsupportedModel(UnsupportedModelException ex) {
         log.debug("Modèle non supporté demandé");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("validation_error", ex.getMessage()));
+    }
+
+    @ExceptionHandler(UnsupportedExportFormatException.class)
+    public ResponseEntity<ErrorResponse> handleUnsupportedExportFormat(UnsupportedExportFormatException ex) {
+        log.debug("Format d'export non supporté demandé");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ErrorResponse("validation_error", ex.getMessage()));
     }
