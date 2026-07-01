@@ -49,6 +49,14 @@ public class UserService {
         return userRepository.save(user);
     }
 
+    /** Remplace le hash de mot de passe d'un utilisateur (BCrypt déjà calculé par l'appelant). */
+    @Transactional
+    public User updatePassword(UUID userId, String passwordHash) {
+        User user = findByIdOrThrow(userId);
+        user.setPasswordHash(passwordHash);
+        return userRepository.save(user);
+    }
+
     /**
      * Charge l'utilisateur courant / demandé par son identifiant.
      *

@@ -10,8 +10,11 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.auth.dto.AuthResponse;
+import fr.claudegateway.auth.dto.ForgotPasswordRequest;
 import fr.claudegateway.auth.dto.LoginRequest;
+import fr.claudegateway.auth.dto.MessageResponse;
 import fr.claudegateway.auth.dto.RegisterRequest;
+import fr.claudegateway.auth.dto.ResetPasswordRequest;
 import fr.claudegateway.auth.dto.VerifyEmailResponse;
 import fr.claudegateway.user.User;
 import jakarta.validation.Valid;
@@ -28,10 +31,15 @@ public class AuthController {
 
     private final AuthService authService;
     private final EmailVerificationService emailVerificationService;
+    private final PasswordResetService passwordResetService;
 
-    public AuthController(AuthService authService, EmailVerificationService emailVerificationService) {
+    public AuthController(
+            AuthService authService,
+            EmailVerificationService emailVerificationService,
+            PasswordResetService passwordResetService) {
         this.authService = authService;
         this.emailVerificationService = emailVerificationService;
+        this.passwordResetService = passwordResetService;
     }
 
     @PostMapping("/register")
@@ -49,5 +57,18 @@ public class AuthController {
     public VerifyEmailResponse verify(@RequestParam("token") String token) {
         User user = emailVerificationService.verify(token);
         return new VerifyEmailResponse(true, user.getEmail());
+    }
+
+    @PostMapping("/password/forgot")
+    public MessageResponse forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        // Réponse volontairement identique que le compte existe ou non (anti-énumération).
+        passwordResetService.requestReset(request.email());
+        return new MessageResponse("Si un compte existe pour cet e-mail, un lien de réinitialisation a été envoyé.");
+    }
+
+    @PostMapping("/password/reset")
+    public MessageResponse resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        passwordResetService.reset(request.token(), request.password());
+        return new MessageResponse("Mot de passe réinitialisé.");
     }
 }

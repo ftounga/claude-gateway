@@ -27,3 +27,6 @@ app:
   verification:
     # Durée de validité d'un token de vérification d'e-mail (ISO-8601). Défaut : 24h.
     token-ttl: ${APP_VERIFICATION_TOKEN_TTL:PT24H}
+  password-reset:
+    # Durée de validité d'un token de réinitialisation de mot de passe (ISO-8601). Défaut : 1h.
+    token-ttl: ${APP_PASSWORD_RESET_TOKEN_TTL:PT1H}
