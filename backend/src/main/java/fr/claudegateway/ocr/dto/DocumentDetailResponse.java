@@ -15,6 +15,7 @@ public record DocumentDetailResponse(
         String mediaType,
         long sizeBytes,
         String status,
+        int chunkCount,
         String extractedText,
         String errorMessage,
         OffsetDateTime createdAt) {
@@ -26,6 +27,7 @@ public record DocumentDetailResponse(
                 document.getMediaType(),
                 document.getSizeBytes(),
                 document.getStatus().name(),
+                document.getChunkCount(),
                 document.getExtractedText(),
                 document.getErrorMessage(),
                 document.getCreatedAt());

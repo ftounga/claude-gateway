@@ -1,18 +1,19 @@
 package fr.claudegateway.ocr;
 
 /**
- * Cycle de vie d'un document dans le pipeline OCR (F-05).
- *
- * <p>{@code INDEXED} (post-OCR, indexation RAG) sera ajouté par F-06 : l'énumération est ouverte à
- * l'extension sans casser F-05.</p>
+ * Cycle de vie d'un document dans le pipeline documentaire (OCR F-05 → ingestion RAG F-06).
  */
 public enum DocumentStatus {
     /** Créé, avant traitement OCR. */
     UPLOADED,
     /** Job OCR asynchrone soumis, en attente de complétion (worker de polling, SF-05-02). */
     PROCESSING,
-    /** Texte extrait avec succès (OCR terminé). */
+    /** Texte extrait avec succès (OCR terminé) ; prêt pour l'ingestion RAG (F-06). */
     EXTRACTED,
-    /** Échec de l'extraction OCR. */
+    /** Ingestion RAG en cours (chunking + embeddings), F-06 / SF-06-01. */
+    INDEXING,
+    /** Document indexé (chunks vectorisés persistés), F-06. */
+    INDEXED,
+    /** Échec de l'extraction OCR ou de l'indexation RAG (message d'erreur neutre porté par le document). */
     FAILED
 }

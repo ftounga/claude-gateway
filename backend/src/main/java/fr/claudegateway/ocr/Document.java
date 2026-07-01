@@ -73,9 +73,13 @@ public class Document {
     @Column(name = "textract_raw", columnDefinition = "text")
     private String textractRaw;
 
-    /** Message d'erreur métier neutre en cas d'échec OCR (jamais un détail brut fournisseur). */
+    /** Message d'erreur métier neutre en cas d'échec OCR/indexation (jamais un détail brut fournisseur). */
     @Column(name = "error_message", length = 255)
     private String errorMessage;
+
+    /** Nombre de chunks indexés (F-06). 0 tant que le document n'est pas {@code INDEXED}. */
+    @Column(name = "chunk_count", nullable = false)
+    private int chunkCount;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

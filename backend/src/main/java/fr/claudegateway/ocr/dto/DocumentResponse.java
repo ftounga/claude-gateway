@@ -14,6 +14,7 @@ public record DocumentResponse(
         String mediaType,
         long sizeBytes,
         String status,
+        int chunkCount,
         OffsetDateTime createdAt) {
 
     public static DocumentResponse from(Document document) {
@@ -23,6 +24,7 @@ public record DocumentResponse(
                 document.getMediaType(),
                 document.getSizeBytes(),
                 document.getStatus().name(),
+                document.getChunkCount(),
                 document.getCreatedAt());
     }
 }
