@@ -1,0 +1,69 @@
+<main class="landing">
+  <header class="landing__nav">
+    <div class="landing__brand">
+      <span class="landing__logo">&gt;_</span>
+      <span class="landing__brand-name">claude-gateway</span>
+    </div>
+    @if (isAuthenticated()) {
+      <a mat-stroked-button routerLink="/chat">Ouvrir le chat</a>
+    } @else {
+      <a mat-button routerLink="/login">Se connecter</a>
+    }
+  </header>
+
+  <section class="landing__hero">
+    <h1 class="landing__title">La meilleure façon professionnelle d'utiliser Claude</h1>
+    <p class="landing__subtitle">
+      claude-gateway est la passerelle sécurisée qui redonne aux consultants l'accès à Claude,
+      partout en mission — sans installer, sans exposer vos clés, avec l'expérience Claude native.
+    </p>
+
+    <div class="landing__cta">
+      @if (isAuthenticated()) {
+        <a mat-flat-button color="primary" class="landing__cta-main" routerLink="/chat">
+          <mat-icon>chat</mat-icon>
+          Ouvrir le chat
+        </a>
+      } @else {
+        <a mat-flat-button color="primary" class="landing__cta-main" routerLink="/register">
+          <mat-icon>rocket_launch</mat-icon>
+          Démarrer l'essai gratuit
+        </a>
+        <a mat-stroked-button routerLink="/login">Se connecter</a>
+      }
+    </div>
+    <p class="landing__cta-note">14 jours d'essai — aucune carte requise pour commencer.</p>
+  </section>
+
+  <section class="landing__benefits" aria-label="Bénéfices">
+    @for (benefit of benefits; track benefit.title) {
+      <article class="landing__benefit">
+        <span class="landing__benefit-icon"><mat-icon>{{ benefit.icon }}</mat-icon></span>
+        <h3>{{ benefit.title }}</h3>
+        <p>{{ benefit.text }}</p>
+      </article>
+    }
+  </section>
+
+  <section class="landing__steps" aria-label="Comment ça marche">
+    <h2 class="landing__section-title">Comment ça marche</h2>
+    <ol class="landing__steps-list">
+      @for (step of steps; track step.index) {
+        <li class="landing__step">
+          <span class="landing__step-index">{{ step.index }}</span>
+          <div>
+            <h4>{{ step.title }}</h4>
+            <p>{{ step.text }}</p>
+          </div>
+        </li>
+      }
+    </ol>
+  </section>
+
+  <footer class="landing__footer">
+    @if (!isAuthenticated()) {
+      <a mat-flat-button color="primary" routerLink="/register">Démarrer l'essai gratuit</a>
+    }
+    <p class="landing__footer-legal">claude-gateway — passerelle professionnelle vers Claude.</p>
+  </footer>
+</main>
