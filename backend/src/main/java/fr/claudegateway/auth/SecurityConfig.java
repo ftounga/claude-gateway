@@ -11,6 +11,8 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.AuthorizationRequestRepository;
+import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
@@ -79,7 +81,14 @@ public class SecurityConfig {
                 clientRegistrationRepositoryProvider.getIfAvailable();
         if (clientRegistrationRepository != null) {
             OAuth2LoginSuccessHandler successHandler = oauth2LoginSuccessHandlerProvider.getObject();
-            http.oauth2Login(oauth -> oauth.successHandler(successHandler));
+            // Handshake auto-porteur : l'authorization request est stockée en cookie, jamais en
+            // HttpSession — indispensable en STATELESS + réplicas (pas de session collante).
+            AuthorizationRequestRepository<OAuth2AuthorizationRequest> authorizationRequestRepository =
+                    new HttpCookieOAuth2AuthorizationRequestRepository();
+            http.oauth2Login(oauth -> oauth
+                    .authorizationEndpoint(authorization -> authorization
+                            .authorizationRequestRepository(authorizationRequestRepository))
+                    .successHandler(successHandler));
         }
 
         return http.build();

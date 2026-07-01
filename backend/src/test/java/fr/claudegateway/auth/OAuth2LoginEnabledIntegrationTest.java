@@ -1,5 +1,6 @@
 package fr.claudegateway.auth;
 
+import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -55,6 +56,17 @@ class OAuth2LoginEnabledIntegrationTest {
         mockMvc.perform(get("/api/oauth2/authorization/google").contextPath("/api"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(header().string("Location", containsString("accounts.google.com")));
+    }
+
+    @Test
+    void authorizationEndpointStoresAuthorizationRequestInCookie() throws Exception {
+        // Handshake stateless : l'authorization request est portée par un cookie HttpOnly,
+        // pas par une HttpSession (SF-01-08).
+        mockMvc.perform(get("/api/oauth2/authorization/google").contextPath("/api"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(header().string("Set-Cookie", allOf(
+                        containsString("oauth2_auth_request="),
+                        containsString("HttpOnly"))));
     }
 
     @Test
