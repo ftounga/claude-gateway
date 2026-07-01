@@ -59,6 +59,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers("/auth/**").permitAll()
+                        // Webhook Stripe (F-09) : public, authentifié par signature (pas de JWT).
+                        .requestMatchers(HttpMethod.POST, "/webhook/**").permitAll()
                         // Endpoints du flux OAuth2 login (actifs seulement si Google est configuré).
                         .requestMatchers("/oauth2/**", "/login/**").permitAll()
                         .requestMatchers("/hello").permitAll()

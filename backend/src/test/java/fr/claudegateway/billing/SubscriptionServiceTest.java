@@ -27,7 +27,7 @@ class SubscriptionServiceTest {
     @BeforeEach
     void setUp() {
         repository = org.mockito.Mockito.mock(SubscriptionRepository.class);
-        service = new SubscriptionService(repository, new BillingProperties(14));
+        service = new SubscriptionService(repository, new BillingProperties(14, null));
     }
 
     @Test
@@ -65,7 +65,7 @@ class SubscriptionServiceTest {
     @Test
     void usesConfiguredTrialDuration() {
         UUID userId = UUID.randomUUID();
-        SubscriptionService sevenDayService = new SubscriptionService(repository, new BillingProperties(7));
+        SubscriptionService sevenDayService = new SubscriptionService(repository, new BillingProperties(7, null));
         when(repository.findByUserId(userId)).thenReturn(Optional.empty());
         when(repository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -78,8 +78,8 @@ class SubscriptionServiceTest {
 
     @Test
     void defaultsTrialDaysWhenPropertyInvalid() {
-        assertThat(new BillingProperties(null).trialDays()).isEqualTo(14);
-        assertThat(new BillingProperties(0).trialDays()).isEqualTo(14);
-        assertThat(new BillingProperties(-3).trialDays()).isEqualTo(14);
+        assertThat(new BillingProperties(null, null).trialDays()).isEqualTo(14);
+        assertThat(new BillingProperties(0, null).trialDays()).isEqualTo(14);
+        assertThat(new BillingProperties(-3, null).trialDays()).isEqualTo(14);
     }
 }

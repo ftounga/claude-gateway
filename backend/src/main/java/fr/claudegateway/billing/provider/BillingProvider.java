@@ -1,0 +1,32 @@
+package fr.claudegateway.billing.provider;
+
+/**
+ * Abstraction du fournisseur de paiement (F-09). Le code métier (checkout, webhook) dépend
+ * <b>uniquement</b> de cette interface, jamais de Stripe en direct — parallèle de {@code AIProvider}
+ * côté IA (PROJECT.md §14.6, Provider Independence). Permet de tester sans réseau et de préparer un
+ * futur fournisseur de paiement.
+ */
+public interface BillingProvider {
+
+    /** Vrai si le fournisseur est configuré (secret présent) et donc réellement appelable. */
+    boolean isConfigured();
+
+    /**
+     * Crée une session de paiement hébergée pour la commande donnée.
+     *
+     * @throws BillingProviderUnavailableException si le fournisseur n'est pas configuré
+     * @throws BillingProviderException            en cas d'échec d'appel au fournisseur
+     */
+    CheckoutSession createCheckoutSession(CheckoutCommand command);
+
+    /**
+     * Vérifie la signature d'un webhook et traduit l'événement brut en événement normalisé.
+     *
+     * @param payload         corps brut de la requête (signé)
+     * @param signatureHeader en-tête de signature du fournisseur
+     * @return événement normalisé (éventuellement {@link BillingEvent#unhandled()})
+     * @throws WebhookVerificationException        si la signature est invalide
+     * @throws BillingProviderUnavailableException si le secret de webhook n'est pas configuré
+     */
+    BillingEvent parseWebhookEvent(String payload, String signatureHeader);
+}
