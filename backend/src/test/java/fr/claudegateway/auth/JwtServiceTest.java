@@ -45,7 +45,18 @@ class JwtServiceTest {
         assertThat(claims.getSubject()).isEqualTo(user.getId().toString());
         assertThat(claims.get(JwtService.CLAIM_EMAIL, String.class)).isEqualTo("alice@example.com");
         assertThat(claims.get(JwtService.CLAIM_ROLE, String.class)).isEqualTo("USER");
+        assertThat(claims.get(JwtService.CLAIM_TOKEN_VERSION, Integer.class)).isZero();
         assertThat(claims.getExpiration()).isAfter(claims.getIssuedAt());
+    }
+
+    @Test
+    void includesCurrentTokenVersionClaim() {
+        User user = sampleUser();
+        user.setTokenVersion(3);
+
+        Claims claims = jwtService.parseClaims(jwtService.generateToken(user));
+
+        assertThat(claims.get(JwtService.CLAIM_TOKEN_VERSION, Integer.class)).isEqualTo(3);
     }
 
     @Test

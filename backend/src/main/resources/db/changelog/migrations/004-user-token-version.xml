@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      Ajout de `users.token_version` (SF-01-06). Compteur incrémenté au « logout de toutes les
+      sessions » : injecté comme claim `tv` dans le JWT et vérifié par le filtre. Défaut 0.
+      addColumn est portable Postgres/H2 ; on garde néanmoins un changeset par SGBD par cohérence
+      avec 001/002/003.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="004-user-token-version-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="users">
+            <column name="token_version" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="004-user-token-version-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="users">
+            <column name="token_version" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

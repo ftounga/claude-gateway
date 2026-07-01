@@ -58,6 +58,26 @@ public class UserService {
     }
 
     /**
+     * Met à jour l'e-mail d'un utilisateur et repasse son adresse en « non vérifiée ».
+     * L'e-mail est supposé déjà normalisé et son unicité vérifiée par l'appelant.
+     */
+    @Transactional
+    public User updateEmail(UUID userId, String newEmail) {
+        User user = findByIdOrThrow(userId);
+        user.setEmail(newEmail);
+        user.setEmailVerified(false);
+        return userRepository.save(user);
+    }
+
+    /** Incrémente le {@code token_version} : invalide tous les JWT émis précédemment. */
+    @Transactional
+    public User incrementTokenVersion(UUID userId) {
+        User user = findByIdOrThrow(userId);
+        user.setTokenVersion(user.getTokenVersion() + 1);
+        return userRepository.save(user);
+    }
+
+    /**
      * Fédère une identité Google vers un compte plateforme. Si un compte existe déjà pour cet
      * e-mail (identité pivot), il est réutilisé ; sinon un compte {@code GOOGLE} vérifié est créé.
      * L'e-mail est supposé déjà normalisé (minuscule).
