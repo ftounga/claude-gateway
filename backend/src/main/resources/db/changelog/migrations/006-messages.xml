@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      Table `messages` (SF-02-01). Message d'une conversation (USER|ASSISTANT).
+      FK conversation_id -> conversations(id) ON DELETE CASCADE (suppression conversation => messages).
+      `user_id` dénormalisé pour l'isolation multi-tenant. Id générés côté application.
+
+      NOTE (arbitrage réversible) : `001-init-schema` avait créé une table `messages` « placeholder »
+      issue de l'ancien schéma (spec.md legacy) — jamais câblée à une entité, `user_id text`, sans
+      `model` ni FK. Elle est remplacée ici par la table V1 conforme (typage uuid, FK cascade, colonne
+      model). Les tables scaffolding dormantes (documents/chunks/subscriptions) sont laissées en l'état.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="006-messages-postgresql" author="claude-gateway" dbms="postgresql">
+        <dropTable tableName="messages"/>
+        <createTable tableName="messages">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="conversation_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="role" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="content" type="text">
+                <constraints nullable="false"/>
+            </column>
+            <column name="model" type="varchar(64)"/>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint
+                baseTableName="messages" baseColumnNames="conversation_id"
+                referencedTableName="conversations" referencedColumnNames="id"
+                constraintName="fk_messages_conversation" onDelete="CASCADE"/>
+        <createIndex tableName="messages" indexName="idx_messages_conversation_id">
+            <column name="conversation_id"/>
+        </createIndex>
+        <createIndex tableName="messages" indexName="idx_messages_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="006-messages-h2" author="claude-gateway" dbms="h2">
+        <dropTable tableName="messages"/>
+        <createTable tableName="messages">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="conversation_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="role" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <!-- VARCHAR non borné (JDBC VARCHAR) pour concorder avec l'entité (columnDefinition="text"
+                 -> Types#VARCHAR), à l'image du type `text` de Postgres. -->
+            <column name="content" type="varchar(1000000)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="model" type="varchar(64)"/>
+            <column name="created_at" type="timestamp with time zone" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint
+                baseTableName="messages" baseColumnNames="conversation_id"
+                referencedTableName="conversations" referencedColumnNames="id"
+                constraintName="fk_messages_conversation" onDelete="CASCADE"/>
+        <createIndex tableName="messages" indexName="idx_messages_conversation_id">
+            <column name="conversation_id"/>
+        </createIndex>
+        <createIndex tableName="messages" indexName="idx_messages_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

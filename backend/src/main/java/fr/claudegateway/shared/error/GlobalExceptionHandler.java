@@ -9,10 +9,14 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import fr.claudegateway.ai.AIProviderException;
+import fr.claudegateway.ai.AIProviderUnavailableException;
 import fr.claudegateway.auth.EmailAlreadyUsedException;
 import fr.claudegateway.auth.InvalidCredentialsException;
 import fr.claudegateway.auth.InvalidPasswordResetTokenException;
 import fr.claudegateway.auth.InvalidVerificationTokenException;
+import fr.claudegateway.chat.ConversationNotFoundException;
+import fr.claudegateway.chat.UnsupportedModelException;
 import fr.claudegateway.user.UserNotFoundException;
 
 /**
@@ -77,6 +81,38 @@ public class GlobalExceptionHandler {
         log.debug("Connexion refusée : identifiants invalides");
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(new ErrorResponse("invalid_credentials", ex.getMessage()));
+    }
+
+    @ExceptionHandler(ConversationNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleConversationNotFound(ConversationNotFoundException ex) {
+        log.debug("Conversation introuvable ou non possédée");
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("not_found", ex.getMessage()));
+    }
+
+    @ExceptionHandler(UnsupportedModelException.class)
+    public ResponseEntity<ErrorResponse> handleUnsupportedModel(UnsupportedModelException ex) {
+        log.debug("Modèle non supporté demandé");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("validation_error", ex.getMessage()));
+    }
+
+    @ExceptionHandler(AIProviderUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleProviderUnavailable(AIProviderUnavailableException ex) {
+        // Aucune clé ni détail fournisseur n'est journalisé : message métier neutre uniquement.
+        log.warn("Fournisseur IA non disponible");
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ErrorResponse("provider_unavailable",
+                        "Le service de chat est momentanément indisponible."));
+    }
+
+    @ExceptionHandler(AIProviderException.class)
+    public ResponseEntity<ErrorResponse> handleProviderError(AIProviderException ex) {
+        // On journalise l'échec sans exposer la réponse brute du fournisseur au client.
+        log.warn("Échec de l'appel au fournisseur IA");
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new ErrorResponse("provider_error",
+                        "Le fournisseur d'IA a rencontré une erreur. Veuillez réessayer."));
     }
 
     @ExceptionHandler(Exception.class)
