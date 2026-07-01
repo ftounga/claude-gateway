@@ -76,6 +76,11 @@ export const routes: Routes = [
       import('./templates/templates.component').then((m) => m.TemplatesComponent),
   },
   {
+    path: 'reports',
+    canActivate: [authGuard],
+    loadComponent: () => import('./reports/reports.component').then((m) => m.ReportsComponent),
+  },
+  {
     path: 'billing',
     canActivate: [authGuard],
     loadComponent: () => import('./billing/billing.component').then((m) => m.BillingComponent),
