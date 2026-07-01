@@ -170,10 +170,11 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - `uploaded_files` : `id (uuid)`, `user_id (uuid)`, `provider_file_id (interne, jamais exposé)`, `filename`, `media_type`, `size_bytes`, `created_at`. Index `user_id`.
 - **documents** — document soumis au pipeline OCR (F-05, migration `010`). Isolé par `user_id`.
   - `documents` : `id (uuid)`, `user_id (uuid)`, `filename`, `media_type`, `size_bytes`,
-    `status (UPLOADED|PROCESSING|EXTRACTED|FAILED ; INDEXED ajouté par F-06)`,
+    `status (UPLOADED|PROCESSING|EXTRACTED|INDEXING|INDEXED|FAILED)`,
     `ocr_mode (SYNC|ASYNC)`, `provider_job_id (interne, nullable, jamais exposé)`,
     `extracted_text (nullable)`, `textract_raw (brut fournisseur, nullable, jamais exposé)`,
-    `error_message (neutre, nullable)`, `created_at`, `updated_at`. Index `user_id`.
+    `error_message (neutre, nullable)`, `chunk_count (int, F-06, migration 011)`,
+    `created_at`, `updated_at`. Index `user_id`.
   - OCR via l'interface abstraite **`OcrProvider`** (Provider Independence) : impl AWS Textract
     (`TextractOcrProvider`, SDK confiné au package provider) ou `StubOcrProvider` (dev/tests).
     Images → sync `DetectDocumentText` ; PDF/TIFF → async `StartDocumentTextDetection` +
@@ -182,9 +183,19 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - **Note** : la table `documents` du schéma initial `001-init-schema` (placeholder legacy `spec.md`,
     `uploaded_by text`, sans `user_id`) a été **remplacée** en `010` par la table V1 conforme
     ci-dessus (même stratégie que `006-messages`/`008-subscriptions`).
-- **chunks** — (N) chunks d'un **documents** (OCR → RAG). Scaffolding V2 (F-06) : la FK
-  `chunks→documents` a été détachée en `010` (sera reconstruite par F-06 vers la nouvelle `documents`) ;
-  la colonne pgvector `chunks.embedding` (migration `002`, Postgres) reste intacte.
+- **chunks** — (N) fragments d'un **documents** issus de l'ingestion RAG (F-06, migration `011`).
+  Isolé par `user_id` (filtre direct pour la recherche vectorielle F-07). Reconstruite en `011` :
+  `id (uuid)`, `document_id (uuid, FK→documents CASCADE)`, `user_id (uuid)`, `chunk_index (int)`,
+  `text`, `char_start`/`char_end (offsets, nullable)`, `page_number (nullable, non dérivé en F-06)`,
+  `created_at`. Index `document_id`, `user_id`.
+  - Colonne pgvector **`embedding vector(1536)`** (OQ-01) + index **ivfflat `lists=100`** (OQ-03) :
+    **Postgres uniquement** (DDL isolé `dbms=postgresql`). L'entité JPA `Chunk` ne mappe pas `embedding` ;
+    sa persistance passe par l'abstraction **`EmbeddingStore`** (`PgVectorEmbeddingStore` SQL natif /
+    `NoopEmbeddingStore` par défaut → tests H2 verts sans type vectoriel).
+  - Embeddings via l'interface abstraite **`EmbeddingProvider`** (Provider Independence) : impl
+    `StubEmbeddingProvider` (défaut, déterministe) ou `ApiEmbeddingProvider` (HTTP OpenAI-compatible,
+    clé env jamais loggée). Ingestion asynchrone via `IngestionWorker` (`@Scheduled`, intra-backend ;
+    OQ-10) — hors thread HTTP. Idempotente (suppression + recréation des chunks, isolée `user_id`).
 - **subscriptions** — abonnement d'un utilisateur (F-09, migration `008`). **Un seul par `user_id`** (unique).
   - `subscriptions` : `id (uuid)`, `user_id (uuid, unique)`, `status (TRIALING|ACTIVE|PAST_DUE|CANCELED|INCOMPLETE)`,
     `plan_code (nullable ; SOLO|PRO|DAILY)`, `trial_ends_at (nullable)`, `current_period_end (nullable)`,
@@ -229,6 +240,8 @@ Les sujets non encore tranchés sont listés dans `docs/OPEN_QUESTIONS.md`.
 
 Décisions impactant l'architecture actuelle :
 
-- OQ-01 : Dimension d'embedding définitive (provider 1536 vs local 384) — impacte le schéma `chunks.embedding`.
-- OQ-02 : Version Postgres RDS et modalités d'activation de pgvector sur l'instance partagée.
+- OQ-01 : **Tranchée (F-06)** — dimension d'embedding **1536** (`chunks.embedding vector(1536)`), réversible via `app.rag.embedding.dimension`.
+- OQ-02 : **Exploitée (F-06)** — pgvector activé (`002`) et utilisé (`011`), DDL vectoriel isolé `dbms=postgresql`.
+- OQ-03 : **Tranchée (F-06)** — index **IVFFlat `lists=100`** (HNSW = évolution ultérieure).
+- OQ-10 : **Tranchée (F-05/F-06)** — workers intra-backend `@Scheduled` (`OcrPollingWorker`, `IngestionWorker`), réversible vers workers dédiés + file en V2.
 - OQ-05 : Fournisseur(s) OAuth et modèle de session/token.

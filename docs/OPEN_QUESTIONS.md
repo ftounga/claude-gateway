@@ -3,29 +3,30 @@
 Questions non tranchées ayant un impact produit ou technique. À mettre à jour au fil des décisions.
 
 > **MàJ 2026-07-01 (amendement)** — Le traitement documentaire est **entré dans le périmètre** (amendement
-> `PROJECT.md`, ADR-011). Les questions RAG/pgvector (**OQ-01, OQ-02, OQ-03, OQ-10**) sont **rouvertes** —
-> à trancher pour F-05→08. **OQ-05 (auth)** reste tranchée (OAuth + email/mot de passe JWT). **OQ-06 (chiffrement
-> clés BYOK)** est **bloquante pour F-03** (parké 🔴) — à trancher + security-review crypto.
+> `PROJECT.md`, ADR-011). Les questions RAG/pgvector **OQ-01, OQ-02, OQ-03, OQ-10** sont désormais
+> **tranchées** (F-06 livrée : 1536 / pgvector exploité / IVFFlat lists=100 / workers intra-backend,
+> toutes réversibles). **OQ-05 (auth)** tranchée (OAuth + email/mot de passe JWT). **OQ-06 (chiffrement
+> clés BYOK)** tranchée (AWS KMS, débloque F-03).
 
 ---
 
 ## OQ-01 — Dimension d'embedding
-**Statut** : Ouvert (rouvert — requis pour F-06)
+**Statut** : **Tranchée (2026-07-01, F-06 / SF-06-01)**
 **Impact** : Définit le type de `chunks.embedding` (`vector(N)`) et l'index pgvector. Un changement après ingestion impose une ré-indexation complète.
 **Options** : 1536 (embeddings via API fournisseur OpenAI/Anthropic, défaut actuel du schéma) ; 384 (modèle local all-MiniLM, cible V2) ; autre selon modèle.
-**Décision** : À définir (défaut provisoire : 1536).
+**Décision** : **1536** (`chunks.embedding vector(1536)`, migrations `002`/`011`). Réversible via `app.rag.embedding.dimension` (une nouvelle dimension imposerait une ré-indexation + une migration du type de colonne). Modèle local 384 → F-15 (embeddings locaux).
 
 ## OQ-02 — Version Postgres RDS & activation pgvector
-**Statut** : Ouvert (rouvert) — pgvector déjà activé sur `claudegatewaydb` (dormant → à exploiter en F-06)
+**Statut** : **Exploitée (2026-07-01, F-06)** — pgvector activé (`002-pgvector`) et utilisé (`011`)
 **Impact** : L'instance RDS est partagée avec legalcase. Il faut confirmer la version PG et que l'extension `vector` est disponible/activable sur cette instance.
 **Options** : Activer pgvector sur la base `claudegatewaydb` (extension par base) ; vérifier la version PG (≥ 15 recommandé pour HNSW).
-**Décision** : À définir (activation via migration `002-pgvector.xml`).
+**Décision** : Extension `vector` activée par base via `002-pgvector.xml` ; colonne + index créés en `011` (DDL isolé `dbms=postgresql`). Les tests H2 restent verts via l'abstraction `EmbeddingStore` (store no-op par défaut, colonne vectorielle non mappée par l'entité).
 
 ## OQ-03 — Index vectoriel : IVFFlat vs HNSW
-**Statut** : Ouvert (rouvert — requis pour F-06/F-07)
+**Statut** : **Tranchée (2026-07-01, F-06 / SF-06-01)**
 **Impact** : Qualité/latence de la recherche sémantique.
 **Options** : IVFFlat (défaut actuel, `lists=100`) ; HNSW (meilleur rappel, plus coûteux en écriture, requiert pgvector récent).
-**Décision** : À définir selon version pgvector et charge.
+**Décision** : **IVFFlat `lists=100`** (déjà provisionné `002`, recréé en `011`). HNSW reste une **évolution ultérieure** (à réévaluer selon le rappel/charge en F-07), réversible via migration d'index.
 
 ## OQ-04 — Modèles Claude disponibles sur le compte
 **Statut** : Ouvert
@@ -66,7 +67,7 @@ ne porte aucun montant. Les montants réels vivent dans Stripe (réversibles san
 **Décision** : À définir (staging actuel exposé directement sur `portal.ng-itconsulting.com`).
 
 ## OQ-10 — Worker(s) : intégré vs séparé
-**Statut** : Tranchée par défaut pour F-05 le 2026-07-01 (réversible) — reste à confirmer pour la charge d'ingestion F-06.
+**Statut** : **Tranchée (2026-07-01, F-05 + F-06, réversible)**
 **Impact** : Architecture de déploiement (pods), scaling de l'ingestion.
 **Options** : Traitement asynchrone intra-backend (scheduler/threadpool) en V1 ; workers dédiés (pods séparés + file) en V2.
-**Décision** : **Worker intra-backend `@Scheduled`** (V1) retenu pour le polling OCR asynchrone F-05 (`OcrPollingWorker`, désactivable par config). Choix **réversible** : l'abstraction `OcrProvider` + le polling par état en base permettent d'extraire un worker dédié + file (SQS/…) en V2 sans réécrire le domaine. À réévaluer selon la charge d'ingestion F-06.
+**Décision** : **Workers intra-backend `@Scheduled`** retenus — `OcrPollingWorker` (F-05) et `IngestionWorker` (F-06 / SF-06-02), désactivables par config. Choix **réversible** : les abstractions (`OcrProvider`, `EmbeddingProvider`/`EmbeddingStore`) + le pilotage par état en base (`documents.status`) permettent d'extraire des workers dédiés + file (SQS/…) en V2 sans réécrire le domaine. À réévaluer selon la charge d'ingestion réelle.
