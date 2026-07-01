@@ -14,6 +14,11 @@ spring:
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.xml
 app:
+  # Worker de polling OCR désactivé en tests : la logique est testée en appelant
+  # DocumentService.pollPendingJobs() directement (déterminisme total, pas de scheduler concurrent).
+  ocr:
+    polling:
+      enabled: false
   jwt:
     secret: test-only-jwt-secret-please-override-in-every-real-environment-0123456789
     expiration: PT24H
