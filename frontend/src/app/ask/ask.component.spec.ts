@@ -1,18 +1,20 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
-import { HttpErrorResponse } from '@angular/common/http';
+import { HttpErrorResponse, HttpResponse } from '@angular/common/http';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, throwError } from 'rxjs';
 
 import { AskComponent } from './ask.component';
 import { AskService } from '../core/services/ask.service';
+import { ExportService } from '../core/services/export.service';
 import { AskResponse } from '../core/models/ask.models';
 
 describe('AskComponent', () => {
   let fixture: ComponentFixture<AskComponent>;
   let component: AskComponent;
   let service: jasmine.SpyObj<AskService>;
+  let exportService: jasmine.SpyObj<ExportService>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
 
   const grounded: AskResponse = {
@@ -32,6 +34,10 @@ describe('AskComponent', () => {
 
   function setup(): void {
     service = jasmine.createSpyObj<AskService>('AskService', ['ask']);
+    exportService = jasmine.createSpyObj<ExportService>('ExportService', [
+      'exportAnswer',
+      'triggerDownload',
+    ]);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
 
     TestBed.configureTestingModule({
@@ -40,6 +46,7 @@ describe('AskComponent', () => {
         provideNoopAnimations(),
         provideRouter([]),
         { provide: AskService, useValue: service },
+        { provide: ExportService, useValue: exportService },
         { provide: MatSnackBar, useValue: snackBar },
       ],
     });
@@ -105,5 +112,45 @@ describe('AskComponent', () => {
 
     expect(snackBar.open).toHaveBeenCalled();
     expect(component.loading()).toBeFalse();
+  });
+
+  it('exports the displayed answer with the asked question and triggers a download', () => {
+    setup();
+    service.ask.and.returnValue(of(grounded));
+    const response = new HttpResponse<Blob>({ body: new Blob(['%PDF-']) });
+    exportService.exportAnswer.and.returnValue(of(response));
+    component.question.set('Quelle confidentialité ?');
+    component.submit();
+
+    component.exportAnswer('pdf');
+
+    expect(exportService.exportAnswer).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        question: 'Quelle confidentialité ?',
+        answer: grounded.answer,
+        model: grounded.model,
+        grounded: true,
+      }),
+      'pdf',
+    );
+    expect(exportService.triggerDownload).toHaveBeenCalledWith(response, 'reponse.pdf');
+  });
+
+  it('does not export when no answer is displayed', () => {
+    setup();
+    component.exportAnswer('markdown');
+    expect(exportService.exportAnswer).not.toHaveBeenCalled();
+  });
+
+  it('notifies via snackbar when the answer export fails', () => {
+    setup();
+    service.ask.and.returnValue(of(grounded));
+    exportService.exportAnswer.and.returnValue(throwError(() => new Error('boom')));
+    component.question.set('Quelle confidentialité ?');
+    component.submit();
+
+    component.exportAnswer('markdown');
+
+    expect(snackBar.open).toHaveBeenCalled();
   });
 });

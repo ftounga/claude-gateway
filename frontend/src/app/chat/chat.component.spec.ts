@@ -1,9 +1,11 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideHttpClient } from '@angular/common/http';
+import { HttpResponse, provideHttpClient } from '@angular/common/http';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { of, throwError } from 'rxjs';
 
 import { ChatComponent } from './chat.component';
+import { ExportService } from '../core/services/export.service';
 import { ChatResponse } from '../core/models/chat.models';
 
 describe('ChatComponent', () => {
@@ -175,5 +177,48 @@ describe('ChatComponent', () => {
       },
     });
     httpMock.expectOne('/api/conversations').flush([]);
+  });
+
+  it('exports the active conversation and triggers a download', () => {
+    fixture.detectChanges();
+    flushInit();
+
+    const exportService = TestBed.inject(ExportService);
+    const response = new HttpResponse<Blob>({ body: new Blob(['# md']) });
+    const exportSpy = spyOn(exportService, 'exportConversation').and.returnValue(of(response));
+    const downloadSpy = spyOn(exportService, 'triggerDownload');
+
+    component.activeConversationId.set('c-1');
+    component.exportConversation('markdown');
+
+    expect(exportSpy).toHaveBeenCalledWith('c-1', 'markdown');
+    expect(downloadSpy).toHaveBeenCalledWith(response, 'conversation-c-1.md');
+  });
+
+  it('does nothing when exporting without an active conversation', () => {
+    fixture.detectChanges();
+    flushInit();
+
+    const exportService = TestBed.inject(ExportService);
+    const exportSpy = spyOn(exportService, 'exportConversation');
+
+    component.activeConversationId.set(null);
+    component.exportConversation('pdf');
+
+    expect(exportSpy).not.toHaveBeenCalled();
+  });
+
+  it('notifies via snackbar when the conversation export fails', () => {
+    fixture.detectChanges();
+    flushInit();
+
+    const exportService = TestBed.inject(ExportService);
+    spyOn(exportService, 'exportConversation').and.returnValue(throwError(() => new Error('boom')));
+    const snackSpy = spyOn(component['snackBar'], 'open');
+
+    component.activeConversationId.set('c-1');
+    component.exportConversation('pdf');
+
+    expect(snackSpy).toHaveBeenCalled();
   });
 });

@@ -7,6 +7,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatListModule } from '@angular/material/list';
+import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
@@ -15,8 +16,10 @@ import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { ChatService } from '../core/services/chat.service';
+import { ExportService } from '../core/services/export.service';
 import { UploadService } from '../core/services/upload.service';
 import { ChatMessage, ConversationSummary } from '../core/models/chat.models';
+import { ExportFormat } from '../core/models/export.models';
 
 /** Pièce jointe en cours de préparation dans le composer (état local avant envoi). */
 export interface ComposerAttachment {
@@ -48,6 +51,7 @@ import {
     MatButtonModule,
     MatChipsModule,
     MatIconModule,
+    MatMenuModule,
     MatProgressBarModule,
     MatProgressSpinnerModule,
     MatTooltipModule,
@@ -58,6 +62,7 @@ import {
 })
 export class ChatComponent implements OnInit {
   private readonly chatService = inject(ChatService);
+  private readonly exportService = inject(ExportService);
   private readonly uploadService = inject(UploadService);
   private readonly fb = inject(FormBuilder);
   private readonly snackBar = inject(MatSnackBar);
@@ -248,6 +253,19 @@ export class ChatComponent implements OnInit {
         this.snackBar.open('Conversation supprimée.', 'Fermer', { duration: 3000 });
       },
       error: () => this.notifyError('La suppression a échoué.'),
+    });
+  }
+
+  /** Exporte la conversation active au format demandé et déclenche le téléchargement (F-14). */
+  exportConversation(format: ExportFormat): void {
+    const id = this.activeConversationId();
+    if (!id) {
+      return;
+    }
+    this.exportService.exportConversation(id, format).subscribe({
+      next: (response) =>
+        this.exportService.triggerDownload(response, `conversation-${id}.${format === 'pdf' ? 'pdf' : 'md'}`),
+      error: () => this.notifyError('L’export a échoué. Veuillez réessayer.'),
     });
   }
 
