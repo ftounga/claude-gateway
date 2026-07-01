@@ -17,6 +17,7 @@ import fr.claudegateway.billing.UnknownPlanException;
 import fr.claudegateway.billing.provider.BillingProviderException;
 import fr.claudegateway.billing.provider.BillingProviderUnavailableException;
 import fr.claudegateway.billing.provider.WebhookVerificationException;
+import fr.claudegateway.byok.ByokDisabledException;
 import fr.claudegateway.auth.EmailAlreadyUsedException;
 import fr.claudegateway.auth.InvalidCredentialsException;
 import fr.claudegateway.auth.InvalidPasswordResetTokenException;
@@ -175,6 +176,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(new ErrorResponse("provider_error",
                         "Le fournisseur d'IA a rencontré une erreur. Veuillez réessayer."));
+    }
+
+    @ExceptionHandler(ByokDisabledException.class)
+    public ResponseEntity<ErrorResponse> handleByokDisabled(ByokDisabledException ex) {
+        // Aucune clé ni détail de configuration n'est journalisé : message métier neutre.
+        log.warn("BYOK indisponible : chiffrement des clés utilisateur non configuré");
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ErrorResponse("byok_unavailable",
+                        "La gestion de clé API personnelle est momentanément indisponible."));
     }
 
     @ExceptionHandler(UnknownPlanException.class)

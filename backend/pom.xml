@@ -111,6 +111,12 @@
 			<groupId>software.amazon.awssdk</groupId>
 			<artifactId>s3</artifactId>
 		</dependency>
+		<!-- AWS KMS : envelope encryption des clés API BYOK (F-03, OQ-06). Confiné à
+		     fr.claudegateway.byok.KmsEnvelopeCipher (le domaine ne dépend jamais du SDK). -->
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>kms</artifactId>
+		</dependency>
 
 		<dependency>
 			<groupId>com.h2database</groupId>

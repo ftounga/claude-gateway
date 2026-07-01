@@ -27,6 +27,9 @@ app:
   jwt:
     secret: test-only-jwt-secret-please-override-in-every-real-environment-0123456789
     expiration: PT24H
+  byok:
+    # Chiffrement BYOK LOCAL en tests (pas de KMS) : clé maître AES-256 de test uniquement.
+    local-key: Ynlvay1sb2NhbC10ZXN0LW1hc3Rlci1rZXktMzJieXQ=
 logging:
   level:
     fr.claudegateway: DEBUG

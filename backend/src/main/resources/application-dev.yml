@@ -15,6 +15,11 @@ spring:
     open-in-view: false
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.xml
+app:
+  byok:
+    # Chiffrement BYOK LOCAL en dev (H2, pas de KMS) : clé maître AES-256 de dev uniquement.
+    # Permet de tester l'ajout/usage d'une clé BYOK sans AWS. Jamais utilisée en production.
+    local-key: ${APP_BYOK_LOCAL_KEY:Ynlvay1sb2NhbC10ZXN0LW1hc3Rlci1rZXktMzJieXQ=}
 logging:
   level:
     fr.claudegateway: DEBUG
