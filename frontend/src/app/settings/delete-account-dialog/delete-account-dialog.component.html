@@ -1,0 +1,36 @@
+<h2 mat-dialog-title>Supprimer définitivement mon compte</h2>
+
+<mat-dialog-content>
+  <p>
+    Cette action est <strong>irréversible</strong>. Votre compte et toutes vos données
+    (conversations, messages, fichiers, abonnement, consommation) seront supprimés définitivement.
+  </p>
+  <p>
+    Pour confirmer, saisissez votre e-mail : <strong>{{ data.email }}</strong>
+  </p>
+
+  <mat-form-field appearance="outline" class="delete-account__field">
+    <mat-label>Votre e-mail</mat-label>
+    <input
+      matInput
+      type="email"
+      autocomplete="off"
+      [ngModel]="confirmation()"
+      (ngModelChange)="confirmation.set($event)"
+      (keyup.enter)="confirm()"
+    />
+  </mat-form-field>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-stroked-button type="button" (click)="cancel()">Annuler</button>
+  <button
+    mat-flat-button
+    color="warn"
+    type="button"
+    [disabled]="!matches()"
+    (click)="confirm()"
+  >
+    Supprimer mon compte
+  </button>
+</mat-dialog-actions>
