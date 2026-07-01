@@ -114,5 +114,18 @@ Ce document enregistre les décisions architecturales majeures de Claude Gateway
 
 ---
 
+## ADR-011 — Extension du périmètre au traitement documentaire (supersède ADR-004)
+**Status** : Accepted (2026-07-01) — **supersède ADR-004**
+
+**Context** — ADR-004 excluait de la V1 l'OCR, le RAG, les embeddings et les bases vectorielles pour livrer vite une passerelle pure. La passerelle (F-01→F-12) étant livrée, le PO décide d'intégrer le traitement documentaire au produit.
+
+**Decision** — Le traitement documentaire **entre dans le périmètre** via **F-05 (OCR Textract), F-06 (Ingestion RAG : chunking + embeddings + pgvector), F-07 (Q&A documenté), F-08 (Statut documents)**, plus **F-13 (Templates), F-14 (Export), F-15 (Embeddings locaux), F-16 (Rapports d'usage)**. Restent hors périmètre : V3 (F-17 équipes, F-18 on-prem).
+
+**Contraintes conservées** — Gateway-First (le backend orchestre, ne devient pas un LLM) ; Provider Independence (interface `AIProvider`) ; isolation `user_id` ; traitements lourds asynchrones (workers) ; secrets hors code. pgvector et l'IRSA Textract, provisionnés puis laissés dormants, sont réactivés.
+
+**Consequences** — Complexité et coûts en hausse (pgvector, Textract, workers async) assumés pour la valeur documentaire. `PROJECT.md` amendé en conséquence (§Amendement).
+
+---
+
 ## Maintaining ADRs
 Chaque décision architecturale significative est documentée avant l'implémentation. Les décisions historiques ne sont jamais supprimées : de nouveaux ADR supersèdent les précédents tout en préservant l'historique du projet. La connaissance architecturale fait partie du logiciel lui-même.

@@ -20,8 +20,8 @@ Chapeaute `feature-autonome.md` (autonomie intra-feature) et `parallel-frontback
 | Dimension | claude-gateway |
 |---|---|
 | Branche par défaut | **`main`** (merge en squash) |
-| Périmètre | **V1 = passerelle pure** (`PROJECT.md`). OCR/RAG/pgvector/Textract/embeddings = **V2, hors scope** |
-| Features V1 « À faire » | F-01, F-02, F-03, F-04, F-09, F-10, F-11, F-12 (F-05/06/07/08 → V2) |
+| Périmètre | Passerelle **puis** traitement documentaire — dans le périmètre (amendement `PROJECT.md`, ADR-011). Gateway-First + Provider Independence obligatoires. **Hors scope : V3** (F-17/F-18) + multi-LLM runtime. |
+| Features à construire | Passerelle : F-01→F-12 (F-01/02/04/09/10/11/12 livrées ; **F-03 BYOK parké 🔴** OQ-06). Documentaire : F-05→08, F-13, F-14, F-15, F-16. |
 | Staging | `https://portal.ng-itconsulting.com` — deploy via CI `gh workflow run backend.yml --ref main` + `frontend.yml` |
 | CI docs-coupling | **Aucun** : `backend.yml` se déclenche sur `backend/** .github/** k8s/**`, **pas `docs/**`** → commiter des docs ne redéploie pas. Pas besoin de grouper les docs pour raison CI (on groupe quand même pour la lisibilité). |
 | AWS | profil `legalcase-terraform`, cluster EKS `legalcase-shared`, ns `claude-gateway-staging` |
@@ -43,7 +43,7 @@ Chapeaute `feature-autonome.md` (autonomie intra-feature) et `parallel-frontback
 > La vélocité vient du parallélisme et de la suppression des pauses — **pas** du contournement des gates.
 
 Aucune feature inventée. **REFUS** si une candidate n'est pas dans `PRODUCT_SPEC.md`.
-**REFUS** si une candidate relève du traitement documentaire (hors V1).
+**REFUS** si une candidate relève de V3 (F-17/F-18) ou du multi-LLM runtime (hors périmètre actuel).
 
 ---
 
@@ -84,7 +84,7 @@ Features livrées (PR + CI verts) ; liste des ARBITRAGES (quoi/pourquoi/alternat
 | ❌ | ✅ |
 |---|---|
 | Inventer une feature absente de PRODUCT_SPEC | Consommer la spec uniquement |
-| Livrer une capacité déjà fournie par Claude (OCR/RAG…) | Provider-First : hors V1, parker |
+| Réimplémenter une capacité native de Claude sans valeur ajoutée | Provider-First : relayer/orchestrer, ne pas cloner le LLM |
 | Code métier couplé à Anthropic | Interface `AIProvider` |
 | Réduire silencieusement la file | Lister les N, livrer ou justifier chacune |
 | Pause de confirmation entre features | Enchaîner ; récap unique à la fin |
