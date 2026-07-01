@@ -6,6 +6,7 @@ import {
   tick,
 } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { provideRouter } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
 
@@ -46,6 +47,7 @@ describe('DocumentsComponent', () => {
       imports: [DocumentsComponent],
       providers: [
         provideNoopAnimations(),
+        provideRouter([]),
         { provide: DocumentsService, useValue: service },
       ],
     });

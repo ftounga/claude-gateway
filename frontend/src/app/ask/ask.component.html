@@ -1,0 +1,68 @@
+<section class="ask">
+  <header class="ask__header">
+    <h1>Poser une question</h1>
+    <p class="ask__subtitle">
+      Interrogez vos documents indexés : la réponse cite les extraits utilisés.
+      <a routerLink="/documents">Gérer mes documents</a>
+    </p>
+  </header>
+
+  <mat-card class="ask__form">
+    <mat-form-field appearance="outline" class="ask__field">
+      <mat-label>Votre question</mat-label>
+      <textarea
+        matInput
+        rows="3"
+        [ngModel]="question()"
+        (ngModelChange)="question.set($event)"
+        placeholder="Ex. Quelles sont les obligations de confidentialité ?"
+      ></textarea>
+    </mat-form-field>
+    <div class="ask__actions">
+      <button
+        mat-flat-button
+        color="primary"
+        type="button"
+        [disabled]="isBlank() || loading()"
+        (click)="submit()"
+      >
+        <mat-icon>send</mat-icon>
+        Poser la question
+      </button>
+    </div>
+  </mat-card>
+
+  @if (loading()) {
+    <div class="ask__loading">
+      <mat-spinner diameter="32"></mat-spinner>
+    </div>
+  }
+
+  @if (answer(); as result) {
+    <mat-card class="ask__answer">
+      @if (!result.grounded) {
+        <p class="ask__ungrounded">
+          <mat-icon>info</mat-icon>
+          Réponse non fondée sur vos documents indexés (aucun extrait pertinent trouvé).
+        </p>
+      }
+      <p class="ask__answer-text">{{ result.answer }}</p>
+
+      @if (result.citations.length > 0) {
+        <h3 class="ask__citations-title">Sources</h3>
+        <ul class="ask__citations">
+          @for (citation of result.citations; track citation.documentId + '-' + citation.chunkIndex) {
+            <li class="ask__citation">
+              <span class="badge badge--info">
+                {{ citation.filename }}@if (citation.page !== null) {
+                  · p.{{ citation.page }}
+                } · #{{ citation.chunkIndex }}
+              </span>
+              <span class="ask__snippet">{{ citation.snippet }}</span>
+            </li>
+          }
+        </ul>
+      }
+    </mat-card>
+  }
+</section>
