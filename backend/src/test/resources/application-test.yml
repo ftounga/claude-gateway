@@ -1,0 +1,23 @@
+# Profil de test : H2 en mémoire + secret JWT fixe.
+# Le secret est un secret DE TEST uniquement (jamais utilisé hors tests).
+spring:
+  datasource:
+    url: jdbc:h2:mem:claudegatewaydb_test;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.xml
+app:
+  jwt:
+    secret: test-only-jwt-secret-please-override-in-every-real-environment-0123456789
+    expiration: PT24H
+logging:
+  level:
+    fr.claudegateway: DEBUG
+    liquibase: INFO
