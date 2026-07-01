@@ -38,7 +38,8 @@ public class ChatController {
     @PostMapping
     public ChatResponse chat(@Valid @RequestBody ChatRequest request) {
         UUID userId = currentUser.requireId();
-        ChatResult result = chatService.reply(userId, request.conversationId(), request.message(), request.model());
+        ChatResult result = chatService.reply(userId, request.conversationId(), request.message(),
+                request.model(), request.attachmentIds());
         return new ChatResponse(
                 result.conversation().getId(),
                 MessageResponse.from(result.assistantMessage()),

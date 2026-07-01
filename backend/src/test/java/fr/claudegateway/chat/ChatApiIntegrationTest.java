@@ -95,6 +95,9 @@ class ChatApiIntegrationTest {
     private ConversationRepository conversationRepository;
 
     @Autowired
+    private fr.claudegateway.upload.UploadedFileRepository uploadedFileRepository;
+
+    @Autowired
     private JwtService jwtService;
 
     @Autowired
@@ -107,6 +110,7 @@ class ChatApiIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        uploadedFileRepository.deleteAll();
         conversationRepository.deleteAll();
         userRepository.deleteAll();
         stubAIProvider.reset();
@@ -168,6 +172,39 @@ class ChatApiIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"Salut\"}"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void attachesOwnedFileAndForwardsToProvider() throws Exception {
+        fr.claudegateway.upload.UploadedFile file = uploadedFileRepository.save(
+                fr.claudegateway.upload.UploadedFile.builder()
+                        .userId(alice.getId()).providerFileId("file_alice")
+                        .filename("doc.pdf").mediaType("application/pdf").sizeBytes(4).build());
+
+        mockMvc.perform(post("/api/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"Analyse\",\"attachmentIds\":[\"" + file.getId() + "\"]}"))
+                .andExpect(status().isOk());
+
+        org.assertj.core.api.Assertions.assertThat(stubAIProvider.lastRequest.attachments()).hasSize(1);
+        org.assertj.core.api.Assertions.assertThat(
+                stubAIProvider.lastRequest.attachments().get(0).providerFileId()).isEqualTo("file_alice");
+    }
+
+    @Test
+    void cannotAttachAnotherUsersFile() throws Exception {
+        fr.claudegateway.upload.UploadedFile bobFile = uploadedFileRepository.save(
+                fr.claudegateway.upload.UploadedFile.builder()
+                        .userId(bob.getId()).providerFileId("file_bob")
+                        .filename("secret.pdf").mediaType("application/pdf").sizeBytes(4).build());
+
+        mockMvc.perform(post("/api/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"Analyse\",\"attachmentIds\":[\"" + bobFile.getId() + "\"]}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error", is("attachment_not_found")));
     }
 
     @Test
