@@ -25,4 +25,15 @@ class AnthropicProviderTest {
                         List.of(new ChatMessage(ChatRole.USER, "Salut")))))
                 .isInstanceOf(AIProviderUnavailableException.class);
     }
+
+    @Test
+    void uploadFileThrowsUnavailableWhenApiKeyMissing() {
+        AnthropicProperties properties = new AnthropicProperties(
+                "", null, null, null, null, null, Duration.ofSeconds(1));
+        AnthropicProvider provider = new AnthropicProvider(properties, RestClient.builder());
+
+        assertThatThrownBy(() -> provider.uploadFile(
+                new ProviderFileUpload("doc.pdf", "application/pdf", new byte[] {1, 2, 3})))
+                .isInstanceOf(AIProviderUnavailableException.class);
+    }
 }

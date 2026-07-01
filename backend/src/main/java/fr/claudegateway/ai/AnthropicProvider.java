@@ -6,10 +6,14 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpEntity;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.util.MultiValueMap;
+import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -25,6 +29,9 @@ import org.springframework.web.client.RestClientException;
 public class AnthropicProvider implements AIProvider {
 
     private static final Logger log = LoggerFactory.getLogger(AnthropicProvider.class);
+
+    /** En-tête beta requis par la Files API d'Anthropic (valeur documentée, non secrète). */
+    private static final String FILES_API_BETA = "files-api-2025-04-14";
 
     private final AnthropicProperties properties;
     private final RestClient restClient;
@@ -73,6 +80,50 @@ public class AnthropicProvider implements AIProvider {
             log.warn("Appel au fournisseur IA en échec (modèle={})", request.model());
             throw new AIProviderException("Échec de l'appel au fournisseur IA.", ex);
         }
+    }
+
+    @Override
+    public ProviderFileReference uploadFile(ProviderFileUpload upload) {
+        if (!properties.isConfigured()) {
+            throw new AIProviderUnavailableException("Le fournisseur IA n'est pas configuré.");
+        }
+
+        // Part "file" du multipart : ByteArrayResource nommé pour porter le filename dans la requête.
+        ByteArrayResource fileResource = new ByteArrayResource(upload.content()) {
+            @Override
+            public String getFilename() {
+                return upload.filename();
+            }
+        };
+        MultiValueMap<String, Object> parts = new LinkedMultiValueMap<>();
+        parts.add("file", new HttpEntity<>(fileResource, fileHeaders(upload.mediaType())));
+
+        try {
+            AnthropicFileResponse response = restClient.post()
+                    .uri("/v1/files")
+                    .header("x-api-key", properties.apiKey())
+                    .header("anthropic-version", properties.version())
+                    .header("anthropic-beta", FILES_API_BETA)
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(parts)
+                    .retrieve()
+                    .body(AnthropicFileResponse.class);
+
+            if (response == null || response.id() == null || response.id().isBlank()) {
+                throw new AIProviderException("Réponse sans identifiant de fichier du fournisseur IA.");
+            }
+            return new ProviderFileReference(response.id());
+        } catch (RestClientException ex) {
+            // Message neutre : ni la clé, ni la réponse brute du fournisseur ne remontent au client.
+            log.warn("Transmission de fichier au fournisseur IA en échec (type={})", upload.mediaType());
+            throw new AIProviderException("Échec de la transmission du fichier au fournisseur IA.", ex);
+        }
+    }
+
+    private static org.springframework.http.HttpHeaders fileHeaders(String mediaType) {
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType(mediaType));
+        return headers;
     }
 
     private List<Map<String, String>> toApiMessages(List<ChatMessage> messages) {

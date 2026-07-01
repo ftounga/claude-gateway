@@ -8,6 +8,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 import fr.claudegateway.ai.AIProviderException;
 import fr.claudegateway.ai.AIProviderUnavailableException;
@@ -17,6 +19,9 @@ import fr.claudegateway.auth.InvalidPasswordResetTokenException;
 import fr.claudegateway.auth.InvalidVerificationTokenException;
 import fr.claudegateway.chat.ConversationNotFoundException;
 import fr.claudegateway.chat.UnsupportedModelException;
+import fr.claudegateway.upload.EmptyFileException;
+import fr.claudegateway.upload.FileTooLargeException;
+import fr.claudegateway.upload.UnsupportedFileTypeException;
 import fr.claudegateway.user.UserNotFoundException;
 
 /**
@@ -95,6 +100,35 @@ public class GlobalExceptionHandler {
         log.debug("Modèle non supporté demandé");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ErrorResponse("validation_error", ex.getMessage()));
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ErrorResponse> handleMissingPart(MissingServletRequestPartException ex) {
+        log.debug("Requête invalide : partie multipart '{}' manquante", ex.getRequestPartName());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("validation_error",
+                        "Requête invalide : le fichier '" + ex.getRequestPartName() + "' est requis."));
+    }
+
+    @ExceptionHandler(EmptyFileException.class)
+    public ResponseEntity<ErrorResponse> handleEmptyFile(EmptyFileException ex) {
+        log.debug("Upload refusé : fichier absent ou vide");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("validation_error", ex.getMessage()));
+    }
+
+    @ExceptionHandler(UnsupportedFileTypeException.class)
+    public ResponseEntity<ErrorResponse> handleUnsupportedFileType(UnsupportedFileTypeException ex) {
+        log.debug("Upload refusé : type de fichier non supporté");
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
+                .body(new ErrorResponse("unsupported_file_type", ex.getMessage()));
+    }
+
+    @ExceptionHandler({ FileTooLargeException.class, MaxUploadSizeExceededException.class })
+    public ResponseEntity<ErrorResponse> handleFileTooLarge(Exception ex) {
+        log.debug("Upload refusé : fichier trop volumineux");
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(new ErrorResponse("file_too_large", "Fichier trop volumineux."));
     }
 
     @ExceptionHandler(AIProviderUnavailableException.class)

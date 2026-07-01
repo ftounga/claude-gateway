@@ -22,4 +22,14 @@ public interface AIProvider {
      * @throws AIProviderException            en cas d'échec de l'appel amont
      */
     ChatCompletionResult complete(ChatCompletionRequest request);
+
+    /**
+     * Transmet un fichier au fournisseur IA (relais, sans traitement documentaire côté Gateway).
+     *
+     * @param upload nom, type MIME et contenu du fichier à relayer
+     * @return la référence neutre du fichier chez le fournisseur
+     * @throws AIProviderUnavailableException si le fournisseur n'est pas configuré/disponible
+     * @throws AIProviderException            en cas d'échec de l'appel amont
+     */
+    ProviderFileReference uploadFile(ProviderFileUpload upload);
 }
