@@ -29,6 +29,8 @@ import fr.claudegateway.chat.ConversationNotFoundException;
 import fr.claudegateway.chat.UnsupportedModelException;
 import fr.claudegateway.ocr.DocumentNotFoundException;
 import fr.claudegateway.quota.QuotaExceededException;
+import fr.claudegateway.rag.provider.EmbeddingProviderException;
+import fr.claudegateway.rag.provider.EmbeddingProviderUnavailableException;
 import fr.claudegateway.upload.EmptyFileException;
 import fr.claudegateway.upload.FileTooLargeException;
 import fr.claudegateway.upload.UnsupportedFileTypeException;
@@ -202,6 +204,24 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(new ErrorResponse("byok_unavailable",
                         "La gestion de clé API personnelle est momentanément indisponible."));
+    }
+
+    @ExceptionHandler(EmbeddingProviderUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleEmbeddingUnavailable(EmbeddingProviderUnavailableException ex) {
+        // Aucune clé ni détail fournisseur n'est journalisé : message métier neutre (F-07 /ask).
+        log.warn("Fournisseur d'embeddings non disponible");
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ErrorResponse("provider_unavailable",
+                        "Le service de recherche documentaire est momentanément indisponible."));
+    }
+
+    @ExceptionHandler(EmbeddingProviderException.class)
+    public ResponseEntity<ErrorResponse> handleEmbeddingError(EmbeddingProviderException ex) {
+        // On journalise l'échec sans exposer la réponse brute du fournisseur au client.
+        log.warn("Échec de l'appel au fournisseur d'embeddings");
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new ErrorResponse("provider_error",
+                        "Le service de recherche documentaire a rencontré une erreur. Veuillez réessayer."));
     }
 
     @ExceptionHandler(UnknownPlanException.class)

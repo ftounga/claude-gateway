@@ -62,6 +62,11 @@ app:
       # Décision par défaut OQ-10 (réversible : workers dédiés + file en V2), aligné sur OcrPollingWorker.
       enabled: ${APP_RAG_INGESTION_ENABLED:true}
       interval: ${APP_RAG_INGESTION_INTERVAL:20000}
+    ask:
+      # Q&A documentaire (F-07). Nombre de chunks de contexte récupérés par défaut (borné [1,20]) et
+      # taille des extraits de citation. Décisions réversibles, ajustables sans changement de code.
+      top-k: ${APP_RAG_ASK_TOP_K:5}
+      snippet-max-chars: ${APP_RAG_ASK_SNIPPET_MAX_CHARS:240}
     embedding:
       # Fournisseur d'embeddings `stub` par défaut (déterministe, sans réseau) ; `api` pour un
       # fournisseur HTTP OpenAI-compatible. La clé provient EXCLUSIVEMENT de l'environnement, jamais
