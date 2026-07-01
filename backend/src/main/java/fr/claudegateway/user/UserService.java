@@ -58,6 +58,22 @@ public class UserService {
     }
 
     /**
+     * Fédère une identité Google vers un compte plateforme. Si un compte existe déjà pour cet
+     * e-mail (identité pivot), il est réutilisé ; sinon un compte {@code GOOGLE} vérifié est créé.
+     * L'e-mail est supposé déjà normalisé (minuscule).
+     */
+    @Transactional
+    public User findOrCreateGoogleUser(String email) {
+        return userRepository.findByEmail(email)
+                .orElseGet(() -> userRepository.save(User.builder()
+                        .email(email)
+                        .emailVerified(true)
+                        .provider(AuthProvider.GOOGLE)
+                        .role(UserRole.USER)
+                        .build()));
+    }
+
+    /**
      * Charge l'utilisateur courant / demandé par son identifiant.
      *
      * @throws UserNotFoundException si aucun utilisateur ne correspond

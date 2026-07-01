@@ -1,5 +1,6 @@
 package fr.claudegateway.auth;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -9,6 +10,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
@@ -33,12 +35,18 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final RestAuthenticationEntryPoint authenticationEntryPoint;
+    private final ObjectProvider<ClientRegistrationRepository> clientRegistrationRepositoryProvider;
+    private final ObjectProvider<OAuth2LoginSuccessHandler> oauth2LoginSuccessHandlerProvider;
 
     public SecurityConfig(
             JwtAuthenticationFilter jwtAuthenticationFilter,
-            RestAuthenticationEntryPoint authenticationEntryPoint) {
+            RestAuthenticationEntryPoint authenticationEntryPoint,
+            ObjectProvider<ClientRegistrationRepository> clientRegistrationRepositoryProvider,
+            ObjectProvider<OAuth2LoginSuccessHandler> oauth2LoginSuccessHandlerProvider) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.authenticationEntryPoint = authenticationEntryPoint;
+        this.clientRegistrationRepositoryProvider = clientRegistrationRepositoryProvider;
+        this.oauth2LoginSuccessHandlerProvider = oauth2LoginSuccessHandlerProvider;
     }
 
     @Bean
@@ -51,13 +59,26 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers("/auth/**").permitAll()
+                        // Endpoints du flux OAuth2 login (actifs seulement si Google est configuré).
+                        .requestMatchers("/oauth2/**", "/login/**").permitAll()
                         .requestMatchers("/hello").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         .anyRequest().authenticated())
                 // La console H2 (dev) est servie dans une frame de même origine.
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
+                // Entry point 401 JSON conservé : notre configuration explicite prévaut sur le
+                // default d'oauth2Login (qui redirigerait vers une page de login).
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(authenticationEntryPoint))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
+        // Activation conditionnelle : oauth2Login n'est branché que si Google est configuré
+        // (bean ClientRegistrationRepository présent). Sinon, chaîne strictement inchangée.
+        ClientRegistrationRepository clientRegistrationRepository =
+                clientRegistrationRepositoryProvider.getIfAvailable();
+        if (clientRegistrationRepository != null) {
+            OAuth2LoginSuccessHandler successHandler = oauth2LoginSuccessHandlerProvider.getObject();
+            http.oauth2Login(oauth -> oauth.successHandler(successHandler));
+        }
 
         return http.build();
     }
