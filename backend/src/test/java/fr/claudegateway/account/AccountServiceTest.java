@@ -56,10 +56,12 @@ class AccountServiceTest {
     private MessageRepository messageRepository;
     @Mock
     private UploadedFileRepository uploadedFileRepository;
+    @Mock
+    private fr.claudegateway.byok.UserApiKeyRepository userApiKeyRepository;
 
     private AccountService service() {
         return new AccountService(userService, subscriptionRepository, usageCounterRepository,
-                conversationRepository, messageRepository, uploadedFileRepository);
+                conversationRepository, messageRepository, uploadedFileRepository, userApiKeyRepository);
     }
 
     private User user(UUID id) {
@@ -127,12 +129,13 @@ class AccountServiceTest {
         service().deleteAccount(userId);
 
         InOrder order = inOrder(messageRepository, conversationRepository, uploadedFileRepository,
-                usageCounterRepository, subscriptionRepository, userService);
+                usageCounterRepository, subscriptionRepository, userApiKeyRepository, userService);
         order.verify(messageRepository).deleteByUserId(userId);
         order.verify(conversationRepository).deleteByUserId(userId);
         order.verify(uploadedFileRepository).deleteByUserId(userId);
         order.verify(usageCounterRepository).deleteByUserId(userId);
         order.verify(subscriptionRepository).deleteByUserId(userId);
+        order.verify(userApiKeyRepository).deleteByUserId(userId);
         order.verify(userService).deleteById(userId);
         verify(userService).findByIdOrThrow(any());
     }

@@ -18,6 +18,7 @@ import fr.claudegateway.billing.provider.BillingProviderException;
 import fr.claudegateway.billing.provider.BillingProviderUnavailableException;
 import fr.claudegateway.billing.provider.WebhookVerificationException;
 import fr.claudegateway.byok.ByokDisabledException;
+import fr.claudegateway.byok.InvalidApiKeyException;
 import fr.claudegateway.auth.EmailAlreadyUsedException;
 import fr.claudegateway.auth.InvalidCredentialsException;
 import fr.claudegateway.auth.InvalidPasswordResetTokenException;
@@ -176,6 +177,14 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(new ErrorResponse("provider_error",
                         "Le fournisseur d'IA a rencontré une erreur. Veuillez réessayer."));
+    }
+
+    @ExceptionHandler(InvalidApiKeyException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidApiKey(InvalidApiKeyException ex) {
+        // La clé n'est jamais journalisée : message métier neutre uniquement.
+        log.debug("Clé API BYOK refusée : format invalide ou non validée par le fournisseur");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("invalid_api_key", ex.getMessage()));
     }
 
     @ExceptionHandler(ByokDisabledException.class)

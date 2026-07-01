@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import fr.claudegateway.account.dto.AccountExport;
 import fr.claudegateway.billing.Subscription;
 import fr.claudegateway.billing.SubscriptionRepository;
+import fr.claudegateway.byok.UserApiKeyRepository;
 import fr.claudegateway.chat.Conversation;
 import fr.claudegateway.chat.ConversationRepository;
 import fr.claudegateway.chat.Message;
@@ -36,6 +37,7 @@ public class AccountService {
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
     private final UploadedFileRepository uploadedFileRepository;
+    private final UserApiKeyRepository userApiKeyRepository;
 
     public AccountService(
             UserService userService,
@@ -43,13 +45,15 @@ public class AccountService {
             UsageCounterRepository usageCounterRepository,
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
-            UploadedFileRepository uploadedFileRepository) {
+            UploadedFileRepository uploadedFileRepository,
+            UserApiKeyRepository userApiKeyRepository) {
         this.userService = userService;
         this.subscriptionRepository = subscriptionRepository;
         this.usageCounterRepository = usageCounterRepository;
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.uploadedFileRepository = uploadedFileRepository;
+        this.userApiKeyRepository = userApiKeyRepository;
     }
 
     /**
@@ -102,6 +106,7 @@ public class AccountService {
         uploadedFileRepository.deleteByUserId(userId);
         usageCounterRepository.deleteByUserId(userId);
         subscriptionRepository.deleteByUserId(userId);
+        userApiKeyRepository.deleteByUserId(userId);
 
         userService.deleteById(user.getId());
     }
