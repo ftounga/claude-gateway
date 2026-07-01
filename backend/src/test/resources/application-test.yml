@@ -19,6 +19,11 @@ app:
   ocr:
     polling:
       enabled: false
+  rag:
+    # Worker d'ingestion RAG désactivé en tests : la logique est testée en appelant
+    # IngestionService.ingestPending()/ingest() directement (déterminisme, pas de scheduler concurrent).
+    ingestion:
+      enabled: false
   jwt:
     secret: test-only-jwt-secret-please-override-in-every-real-environment-0123456789
     expiration: PT24H

@@ -57,6 +57,11 @@ app:
       # Découpage : ~400 « tokens » (mots approximés) / overlap 50 (mini-spec F-06). Réversible.
       max-tokens: ${APP_RAG_CHUNK_MAX_TOKENS:400}
       overlap-tokens: ${APP_RAG_CHUNK_OVERLAP_TOKENS:50}
+    ingestion:
+      # Worker intra-backend d'auto-indexation des documents EXTRACTED — SF-06-02.
+      # Décision par défaut OQ-10 (réversible : workers dédiés + file en V2), aligné sur OcrPollingWorker.
+      enabled: ${APP_RAG_INGESTION_ENABLED:true}
+      interval: ${APP_RAG_INGESTION_INTERVAL:20000}
     embedding:
       # Fournisseur d'embeddings `stub` par défaut (déterministe, sans réseau) ; `api` pour un
       # fournisseur HTTP OpenAI-compatible. La clé provient EXCLUSIVEMENT de l'environnement, jamais

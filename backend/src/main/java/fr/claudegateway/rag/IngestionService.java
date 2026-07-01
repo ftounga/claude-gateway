@@ -54,6 +54,33 @@ public class IngestionService {
     }
 
     /**
+     * Auto-indexe les documents en attente (SF-06-02) : sélectionne les documents {@code EXTRACTED},
+     * les réclame ({@code INDEXING}) puis les ingère. Un échec sur un document (capturé) n'interrompt
+     * pas le lot. Exécuté hors thread HTTP (worker planifié). Aucun secret ni contenu journalisé.
+     *
+     * @return le nombre de documents passés à {@code INDEXED} ce cycle
+     */
+    public int ingestPending() {
+        List<Document> pending = documentRepository.findByStatus(DocumentStatus.EXTRACTED);
+        int indexed = 0;
+        for (Document document : pending) {
+            try {
+                // Réclamation : rend l'état visible (badge INDEXING) et matérialise la prise en charge.
+                document.setStatus(DocumentStatus.INDEXING);
+                documentRepository.save(document);
+                ingest(document);
+                if (document.getStatus() == DocumentStatus.INDEXED) {
+                    indexed++;
+                }
+            } catch (RuntimeException ex) {
+                // Robustesse : un document en erreur inattendue ne bloque pas les suivants. Message neutre.
+                log.warn("Ingestion RAG interrompue pour un document (id={}) — lot poursuivi", document.getId());
+            }
+        }
+        return indexed;
+    }
+
+    /**
      * Ingère un document OCR extrait : découpe, vectorise, persiste les chunks et indexe.
      *
      * <p>Idempotent et sûr à ré-exécuter. N'agit que sur un document {@code EXTRACTED} ou déjà
