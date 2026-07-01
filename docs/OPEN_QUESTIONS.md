@@ -26,7 +26,7 @@ Questions non tranchées ayant un impact produit ou technique. À mettre à jour
 **Statut** : **Tranchée (2026-07-01, F-06 / SF-06-01)**
 **Impact** : Qualité/latence de la recherche sémantique.
 **Options** : IVFFlat (défaut actuel, `lists=100`) ; HNSW (meilleur rappel, plus coûteux en écriture, requiert pgvector récent).
-**Décision** : **IVFFlat `lists=100`** (déjà provisionné `002`, recréé en `011`). HNSW reste une **évolution ultérieure** (à réévaluer selon le rappel/charge en F-07), réversible via migration d'index.
+**Décision** : **IVFFlat `lists=100`** (déjà provisionné `002`, recréé en `011`). **F-07 (`/ask`) livrée** exploite cet index via la recherche plus-proches-voisins `<->` L2 (isolée `user_id`) et le **conserve**. HNSW reste une **évolution ultérieure** (à réévaluer selon le rappel/charge réels), réversible via migration d'index.
 
 ## OQ-04 — Modèles Claude disponibles sur le compte
 **Statut** : Ouvert
