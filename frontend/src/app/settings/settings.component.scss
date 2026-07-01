@@ -56,6 +56,23 @@
     margin-top: var(--cg-space-3);
   }
 
+  &__mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  &__toggle {
+    margin-top: var(--cg-space-3);
+  }
+
+  &__key-form {
+    margin-top: var(--cg-space-3);
+  }
+
+  &__key-field {
+    width: 100%;
+    max-width: 480px;
+  }
+
   &__danger {
     display: flex;
     flex-wrap: wrap;

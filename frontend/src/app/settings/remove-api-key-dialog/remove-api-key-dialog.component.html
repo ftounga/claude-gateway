@@ -1,0 +1,11 @@
+<h2 mat-dialog-title>Supprimer la clé API</h2>
+<mat-dialog-content>
+  <p>
+    Votre clé API personnelle sera supprimée et vos prochaines conversations utiliseront la clé
+    plateforme (mode Hosted). Vous pourrez enregistrer une nouvelle clé à tout moment.
+  </p>
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+  <button mat-stroked-button (click)="cancel()">Annuler</button>
+  <button mat-flat-button color="warn" (click)="confirm()">Supprimer la clé</button>
+</mat-dialog-actions>
