@@ -1,4 +1,10 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import {
+  ComponentFixture,
+  TestBed,
+  discardPeriodicTasks,
+  fakeAsync,
+  tick,
+} from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { HttpErrorResponse } from '@angular/common/http';
 import { of, throwError } from 'rxjs';
@@ -18,6 +24,17 @@ describe('DocumentsComponent', () => {
     mediaType: 'image/png',
     sizeBytes: 4,
     status: 'EXTRACTED',
+    chunkCount: 0,
+    createdAt: '2026-07-01T00:00:00Z',
+  };
+
+  const indexingDoc: DocumentResponse = {
+    id: 'd-2',
+    filename: 'contrat.pdf',
+    mediaType: 'application/pdf',
+    sizeBytes: 10,
+    status: 'INDEXING',
+    chunkCount: 0,
     createdAt: '2026-07-01T00:00:00Z',
   };
 
@@ -51,6 +68,39 @@ describe('DocumentsComponent', () => {
     expect(component.statusDisplay('PROCESSING').badgeClass).toBe('badge--warning');
     expect(component.statusDisplay('FAILED').badgeClass).toBe('badge--error');
     expect(component.statusDisplay('UPLOADED').badgeClass).toBe('badge--neutral');
+    expect(component.statusDisplay('INDEXING').badgeClass).toBe('badge--warning');
+    expect(component.statusDisplay('INDEXING').label).toBe('Indexation…');
+    expect(component.statusDisplay('INDEXED').badgeClass).toBe('badge--success');
+    expect(component.statusDisplay('INDEXED').label).toBe('Indexé');
+  });
+
+  it('keeps refreshing while a document is INDEXING', fakeAsync(() => {
+    setup([indexingDoc]);
+    service.list.calls.reset();
+    // Un document INDEXING est « en cours » : le rafraîchissement périodique doit être actif.
+    tick(5000);
+    expect(service.list).toHaveBeenCalledTimes(1);
+    // Nettoyage du timer pour finir le test sans intervalle en attente.
+    fixture.destroy();
+    discardPeriodicTasks();
+  }));
+
+  it('shows the extracted text and chunk count for an INDEXED document', () => {
+    setup();
+    const detail: DocumentDetailResponse = {
+      ...indexingDoc,
+      status: 'INDEXED',
+      chunkCount: 5,
+      extractedText: 'Contenu indexé',
+      errorMessage: null,
+    };
+    service.get.and.returnValue(of(detail));
+
+    component.view(indexingDoc);
+
+    expect(component.selected()?.status).toBe('INDEXED');
+    expect(component.selected()?.chunkCount).toBe(5);
+    expect(component.selected()?.extractedText).toBe('Contenu indexé');
   });
 
   it('submits the selected file and refreshes the list', () => {

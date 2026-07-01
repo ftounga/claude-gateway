@@ -27,6 +27,7 @@ describe('DocumentsService', () => {
       mediaType: 'image/png',
       sizeBytes: 4,
       status: 'EXTRACTED',
+      chunkCount: 0,
       createdAt: '2026-07-01T00:00:00Z',
     };
 
@@ -58,7 +59,8 @@ describe('DocumentsService', () => {
       filename: 'contrat.pdf',
       mediaType: 'application/pdf',
       sizeBytes: 10,
-      status: 'EXTRACTED',
+      status: 'INDEXED',
+      chunkCount: 3,
       createdAt: '2026-07-01T00:00:00Z',
       extractedText: 'Texte extrait',
       errorMessage: null,
