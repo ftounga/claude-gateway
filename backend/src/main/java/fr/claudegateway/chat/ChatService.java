@@ -13,6 +13,9 @@ import fr.claudegateway.ai.ChatCompletionResult;
 import fr.claudegateway.ai.ChatMessage;
 import fr.claudegateway.ai.ChatRole;
 import fr.claudegateway.ai.ModelCatalog;
+import fr.claudegateway.ai.ProviderAttachment;
+import fr.claudegateway.upload.UploadedFile;
+import fr.claudegateway.upload.UploadedFileRepository;
 
 /**
  * Cœur du proxy de chat Hosted : valide la demande, résout/crée la conversation de l'utilisateur,
@@ -29,16 +32,19 @@ public class ChatService {
 
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
+    private final UploadedFileRepository uploadedFileRepository;
     private final AIProvider aiProvider;
     private final ModelCatalog modelCatalog;
 
     public ChatService(
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
+            UploadedFileRepository uploadedFileRepository,
             AIProvider aiProvider,
             ModelCatalog modelCatalog) {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
+        this.uploadedFileRepository = uploadedFileRepository;
         this.aiProvider = aiProvider;
         this.modelCatalog = modelCatalog;
     }
@@ -50,15 +56,21 @@ public class ChatService {
      * @param conversationId conversation existante ou null pour en créer une
      * @param rawMessage     message utilisateur (déjà validé non vide côté controller)
      * @param requestedModel modèle souhaité ou null
+     * @param attachmentIds  identifiants de fichiers téléversés à rattacher (null/vide = aucun)
      * @return le message assistant persisté et la conversation ciblée
      * @throws UnsupportedModelException     si le modèle demandé n'est pas dans la liste blanche
      * @throws ConversationNotFoundException si la conversation ne appartient pas à l'utilisateur
+     * @throws AttachmentNotFoundException   si un fichier attaché n'appartient pas à l'utilisateur
      */
     @Transactional
-    public ChatResult reply(UUID userId, UUID conversationId, String rawMessage, String requestedModel) {
+    public ChatResult reply(UUID userId, UUID conversationId, String rawMessage, String requestedModel,
+            List<UUID> attachmentIds) {
         String content = rawMessage.trim();
         // Rejette tout modèle explicite hors liste blanche, même sur une conversation existante.
         validateRequestedModel(requestedModel);
+        // Résolution des pièces jointes AVANT toute écriture : un id d'un autre utilisateur => 404,
+        // sans persister de message ni appeler le fournisseur (isolation user_id).
+        List<ProviderAttachment> attachments = resolveAttachments(userId, attachmentIds);
         Conversation conversation = resolveConversation(userId, conversationId, requestedModel, content);
 
         // Persistance du message utilisateur.
@@ -72,7 +84,7 @@ public class ChatService {
         // Historique complet (incluant le message tout juste persisté) transmis au fournisseur.
         List<Message> history = messageRepository.findByConversationIdOrderByCreatedAtAsc(conversation.getId());
         ChatCompletionResult completion = aiProvider.complete(
-                new ChatCompletionRequest(conversation.getModel(), toProviderMessages(history)));
+                new ChatCompletionRequest(conversation.getModel(), toProviderMessages(history), attachments));
 
         // Persistance de la réponse assistant.
         Message assistantMessage = messageRepository.save(Message.builder()
@@ -129,6 +141,25 @@ public class ChatService {
             return singleLine;
         }
         return singleLine.substring(0, TITLE_MAX_LENGTH).trim() + "…";
+    }
+
+    /**
+     * Résout les pièces jointes en références fournisseur, en vérifiant que chaque fichier
+     * appartient à l'utilisateur courant (isolation multi-tenant).
+     *
+     * @throws AttachmentNotFoundException si un id est inconnu ou appartient à un autre utilisateur
+     */
+    private List<ProviderAttachment> resolveAttachments(UUID userId, List<UUID> attachmentIds) {
+        if (attachmentIds == null || attachmentIds.isEmpty()) {
+            return List.of();
+        }
+        List<ProviderAttachment> attachments = new ArrayList<>(attachmentIds.size());
+        for (UUID id : attachmentIds) {
+            UploadedFile file = uploadedFileRepository.findByIdAndUserId(id, userId)
+                    .orElseThrow(AttachmentNotFoundException::new);
+            attachments.add(new ProviderAttachment(file.getProviderFileId(), file.getMediaType()));
+        }
+        return attachments;
     }
 
     private List<ChatMessage> toProviderMessages(List<Message> history) {

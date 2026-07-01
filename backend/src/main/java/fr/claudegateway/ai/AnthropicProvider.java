@@ -62,14 +62,20 @@ public class AnthropicProvider implements AIProvider {
         Map<String, Object> body = Map.of(
                 "model", request.model(),
                 "max_tokens", properties.maxTokens(),
-                "messages", toApiMessages(request.messages()));
+                "messages", toApiMessages(request.messages(), request.attachments()));
 
         try {
-            AnthropicResponse response = restClient.post()
+            RestClient.RequestBodySpec spec = restClient.post()
                     .uri("/v1/messages")
                     .header("x-api-key", properties.apiKey())
                     .header("anthropic-version", properties.version())
-                    .contentType(MediaType.APPLICATION_JSON)
+                    .contentType(MediaType.APPLICATION_JSON);
+            // Les références de fichiers ({type:file}) nécessitent l'en-tête beta Files API.
+            if (!request.attachments().isEmpty()) {
+                spec = spec.header("anthropic-beta", FILES_API_BETA);
+            }
+
+            AnthropicResponse response = spec
                     .body(body)
                     .retrieve()
                     .body(AnthropicResponse.class);
@@ -126,14 +132,35 @@ public class AnthropicProvider implements AIProvider {
         return headers;
     }
 
-    private List<Map<String, String>> toApiMessages(List<ChatMessage> messages) {
-        List<Map<String, String>> apiMessages = new ArrayList<>(messages.size());
-        for (ChatMessage message : messages) {
-            apiMessages.add(Map.of(
-                    "role", message.role() == ChatRole.ASSISTANT ? "assistant" : "user",
-                    "content", message.content()));
+    private List<Map<String, Object>> toApiMessages(List<ChatMessage> messages, List<ProviderAttachment> attachments) {
+        List<Map<String, Object>> apiMessages = new ArrayList<>(messages.size());
+        int lastIndex = messages.size() - 1;
+        for (int i = 0; i < messages.size(); i++) {
+            ChatMessage message = messages.get(i);
+            String role = message.role() == ChatRole.ASSISTANT ? "assistant" : "user";
+            // Les pièces jointes sont rattachées au dernier message (le tour utilisateur courant).
+            boolean attachHere = i == lastIndex && message.role() != ChatRole.ASSISTANT && !attachments.isEmpty();
+            Object content = attachHere
+                    ? toContentBlocks(message.content(), attachments)
+                    : message.content();
+            apiMessages.add(Map.of("role", role, "content", content));
         }
         return apiMessages;
+    }
+
+    /** Construit le contenu multi-blocs : le texte utilisateur suivi des blocs fichier. */
+    private static List<Map<String, Object>> toContentBlocks(String text, List<ProviderAttachment> attachments) {
+        List<Map<String, Object>> blocks = new ArrayList<>(attachments.size() + 1);
+        blocks.add(Map.of("type", "text", "text", text));
+        for (ProviderAttachment attachment : attachments) {
+            String blockType = attachment.mediaType() != null
+                    && attachment.mediaType().toLowerCase().startsWith("image/")
+                    ? "image" : "document";
+            blocks.add(Map.of(
+                    "type", blockType,
+                    "source", Map.of("type", "file", "file_id", attachment.providerFileId())));
+        }
+        return blocks;
     }
 
     private ChatCompletionResult toResult(AnthropicResponse response, String requestedModel) {

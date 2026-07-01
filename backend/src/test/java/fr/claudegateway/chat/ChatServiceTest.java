@@ -24,7 +24,10 @@ import fr.claudegateway.ai.AIProviderUnavailableException;
 import fr.claudegateway.ai.ChatCompletionRequest;
 import fr.claudegateway.ai.ChatCompletionResult;
 import fr.claudegateway.ai.ModelCatalog;
+import fr.claudegateway.ai.ProviderAttachment;
 import fr.claudegateway.chat.ChatService.ChatResult;
+import fr.claudegateway.upload.UploadedFile;
+import fr.claudegateway.upload.UploadedFileRepository;
 
 /**
  * Tests unitaires du cœur du proxy de chat : création de conversation, persistance USER/ASSISTANT,
@@ -38,6 +41,9 @@ class ChatServiceTest {
 
     @Mock
     private MessageRepository messageRepository;
+
+    @Mock
+    private UploadedFileRepository uploadedFileRepository;
 
     @Mock
     private AIProvider aiProvider;
@@ -59,7 +65,8 @@ class ChatServiceTest {
                 return List.of("claude-opus-4-8", "claude-sonnet-5");
             }
         };
-        chatService = new ChatService(conversationRepository, messageRepository, aiProvider, modelCatalog);
+        chatService = new ChatService(conversationRepository, messageRepository, uploadedFileRepository,
+                aiProvider, modelCatalog);
     }
 
     /** Persiste le message avec un id simulé et renvoie l'entité (comportement JpaRepository.save). */
@@ -86,7 +93,7 @@ class ChatServiceTest {
         when(aiProvider.complete(any(ChatCompletionRequest.class)))
                 .thenReturn(new ChatCompletionResult("Bonjour !", "claude-opus-4-8", 10, 5));
 
-        ChatResult result = chatService.reply(alice, null, "  Salut Claude  ", null);
+        ChatResult result = chatService.reply(alice, null, "  Salut Claude  ", null, null);
 
         // Conversation créée pour Alice, modèle par défaut, titre dérivé du message (trim).
         ArgumentCaptor<Conversation> convCaptor = ArgumentCaptor.forClass(Conversation.class);
@@ -112,7 +119,7 @@ class ChatServiceTest {
 
     @Test
     void rejectsUnknownModel() {
-        assertThatThrownBy(() -> chatService.reply(alice, null, "Salut", "gpt-4o"))
+        assertThatThrownBy(() -> chatService.reply(alice, null, "Salut", "gpt-4o", null))
                 .isInstanceOf(UnsupportedModelException.class);
         verify(conversationRepository, never()).save(any());
         verify(aiProvider, never()).complete(any());
@@ -123,7 +130,7 @@ class ChatServiceTest {
         UUID conversationId = UUID.randomUUID();
         when(conversationRepository.findByIdAndUserId(conversationId, alice)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> chatService.reply(alice, conversationId, "Coucou", null))
+        assertThatThrownBy(() -> chatService.reply(alice, conversationId, "Coucou", null, null))
                 .isInstanceOf(ConversationNotFoundException.class);
         verify(aiProvider, never()).complete(any());
     }
@@ -133,7 +140,7 @@ class ChatServiceTest {
         prepareExistingConversation();
         when(aiProvider.complete(any())).thenThrow(new AIProviderUnavailableException("dormant"));
 
-        assertThatThrownBy(() -> chatService.reply(alice, UUID.randomUUID(), "Coucou", null))
+        assertThatThrownBy(() -> chatService.reply(alice, UUID.randomUUID(), "Coucou", null, null))
                 .isInstanceOf(AIProviderUnavailableException.class);
     }
 
@@ -142,8 +149,42 @@ class ChatServiceTest {
         prepareExistingConversation();
         when(aiProvider.complete(any())).thenThrow(new AIProviderException("boom"));
 
-        assertThatThrownBy(() -> chatService.reply(alice, UUID.randomUUID(), "Coucou", null))
+        assertThatThrownBy(() -> chatService.reply(alice, UUID.randomUUID(), "Coucou", null, null))
                 .isInstanceOf(AIProviderException.class);
+    }
+
+    @Test
+    void resolvesAttachmentsAndPassesThemToProvider() {
+        prepareExistingConversation();
+        UUID fileId = UUID.randomUUID();
+        UploadedFile file = UploadedFile.builder()
+                .id(fileId).userId(alice).providerFileId("file_abc")
+                .filename("rapport.pdf").mediaType("application/pdf").sizeBytes(4).build();
+        when(uploadedFileRepository.findByIdAndUserId(fileId, alice)).thenReturn(Optional.of(file));
+        when(aiProvider.complete(any(ChatCompletionRequest.class)))
+                .thenReturn(new ChatCompletionResult("Reçu", "claude-opus-4-8", 1, 1));
+
+        chatService.reply(alice, UUID.randomUUID(), "Analyse ce doc", null, List.of(fileId));
+
+        ArgumentCaptor<ChatCompletionRequest> reqCaptor = ArgumentCaptor.forClass(ChatCompletionRequest.class);
+        verify(aiProvider).complete(reqCaptor.capture());
+        List<ProviderAttachment> attachments = reqCaptor.getValue().attachments();
+        assertThat(attachments).hasSize(1);
+        assertThat(attachments.get(0).providerFileId()).isEqualTo("file_abc");
+        assertThat(attachments.get(0).mediaType()).isEqualTo("application/pdf");
+    }
+
+    @Test
+    void rejectsAttachmentOwnedByAnotherUser() {
+        UUID conversationId = UUID.randomUUID();
+        UUID fileId = UUID.randomUUID();
+        when(uploadedFileRepository.findByIdAndUserId(fileId, alice)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> chatService.reply(alice, conversationId, "Coucou", null, List.of(fileId)))
+                .isInstanceOf(AttachmentNotFoundException.class);
+        // Aucune écriture ni appel fournisseur : la résolution échoue avant tout effet de bord.
+        verify(aiProvider, never()).complete(any());
+        verify(messageRepository, never()).save(any());
     }
 
     private void prepareExistingConversation() {

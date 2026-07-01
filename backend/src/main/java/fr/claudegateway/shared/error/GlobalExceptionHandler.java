@@ -17,6 +17,7 @@ import fr.claudegateway.auth.EmailAlreadyUsedException;
 import fr.claudegateway.auth.InvalidCredentialsException;
 import fr.claudegateway.auth.InvalidPasswordResetTokenException;
 import fr.claudegateway.auth.InvalidVerificationTokenException;
+import fr.claudegateway.chat.AttachmentNotFoundException;
 import fr.claudegateway.chat.ConversationNotFoundException;
 import fr.claudegateway.chat.UnsupportedModelException;
 import fr.claudegateway.upload.EmptyFileException;
@@ -93,6 +94,13 @@ public class GlobalExceptionHandler {
         log.debug("Conversation introuvable ou non possédée");
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ErrorResponse("not_found", ex.getMessage()));
+    }
+
+    @ExceptionHandler(AttachmentNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleAttachmentNotFound(AttachmentNotFoundException ex) {
+        log.debug("Pièce jointe introuvable ou non possédée");
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("attachment_not_found", ex.getMessage()));
     }
 
     @ExceptionHandler(UnsupportedModelException.class)
