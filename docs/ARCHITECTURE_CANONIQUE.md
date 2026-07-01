@@ -213,12 +213,22 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     à la limite) et `GET /usage`. Le quota mensuel par plan/essai est **dérivé de `subscriptions`** via la
     configuration `app.quota` (jamais en dur, réversible). V1 = **blocage à la limite** (overage non
     monétisé, OQ-08 ; variante payante ouverte).
+- **user_api_keys** — clé API personnelle BYOK chiffrée au repos (F-03, migration `030`, OQ-06 : AWS KMS
+  envelope encryption). **Une seule clé par utilisateur** (`user_id` unique). **Aucune clé en clair** : seuls
+  le blob chiffré et les 4 derniers caractères sont persistés.
+  - `user_api_keys` : `id (uuid)`, `user_id (uuid, unique)`, `provider (ANTHROPIC)`, `encrypted_data_key`,
+    `cipher_iv`, `ciphertext` (base64 chiffré), `key_last4`, `active (bascule Hosted/BYOK)`, `validated_at`,
+    `created_at`, `updated_at`. Index `user_id`.
+  - Le chiffrement est confiné à `fr.claudegateway.byok` (`ByokKeyCipher` : `KmsEnvelopeCipher` en cluster,
+    impl locale dev/tests, impl dormante si non configuré → 503). `ChatService` déchiffre la clé active à la
+    volée pour l'appel fournisseur (jamais persistée ni journalisée), sinon utilise la clé plateforme (Hosted).
+    La clé est passée à `AIProvider` en paramètre neutre (Provider Independence).
 
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur.
+(documents/messages/subscriptions/uploaded_files/usage_counters/user_api_keys via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur.
 
 ---
 
