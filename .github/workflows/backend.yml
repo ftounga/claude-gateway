@@ -1,12 +1,9 @@
 name: Backend CI/CD
 
+# Auto-trigger sur push désactivé pendant la vague de dev V1 : le CI recrée backend-secrets
+# depuis des GitHub Secrets non encore configurés (dont APP_JWT_SECRET). Déploiement staging
+# manuel (kustomize) en fin de vague. Réactiver le bloc push: une fois les GitHub Secrets en place.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'backend/**'
-      - '.github/workflows/backend.yml'
-      - 'k8s/**'
   workflow_dispatch:
 
 concurrency:
