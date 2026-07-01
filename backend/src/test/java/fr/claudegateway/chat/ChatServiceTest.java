@@ -26,6 +26,8 @@ import fr.claudegateway.ai.ChatCompletionResult;
 import fr.claudegateway.ai.ModelCatalog;
 import fr.claudegateway.ai.ProviderAttachment;
 import fr.claudegateway.chat.ChatService.ChatResult;
+import fr.claudegateway.quota.QuotaExceededException;
+import fr.claudegateway.quota.QuotaService;
 import fr.claudegateway.upload.UploadedFile;
 import fr.claudegateway.upload.UploadedFileRepository;
 
@@ -48,6 +50,9 @@ class ChatServiceTest {
     @Mock
     private AIProvider aiProvider;
 
+    @Mock
+    private QuotaService quotaService;
+
     private ChatService chatService;
 
     private final UUID alice = UUID.randomUUID();
@@ -66,7 +71,7 @@ class ChatServiceTest {
             }
         };
         chatService = new ChatService(conversationRepository, messageRepository, uploadedFileRepository,
-                aiProvider, modelCatalog);
+                aiProvider, modelCatalog, quotaService);
     }
 
     /** Persiste le message avec un id simulé et renvoie l'entité (comportement JpaRepository.save). */
@@ -185,6 +190,34 @@ class ChatServiceTest {
         // Aucune écriture ni appel fournisseur : la résolution échoue avant tout effet de bord.
         verify(aiProvider, never()).complete(any());
         verify(messageRepository, never()).save(any());
+    }
+
+    @Test
+    void recordsTokenUsageAfterSuccessfulReply() {
+        prepareExistingConversation();
+        when(aiProvider.complete(any(ChatCompletionRequest.class)))
+                .thenReturn(new ChatCompletionResult("Reçu", "claude-opus-4-8", 42, 17));
+
+        chatService.reply(alice, UUID.randomUUID(), "Bonjour", null, null);
+
+        // Le quota est vérifié avant l'appel et la consommation exacte est enregistrée après.
+        verify(quotaService).assertWithinQuota(alice);
+        verify(quotaService).recordUsage(alice, 42, 17);
+    }
+
+    @Test
+    void blocksWhenQuotaExceededWithoutCallingProviderOrPersisting() {
+        org.mockito.Mockito.doThrow(new QuotaExceededException("quota atteint"))
+                .when(quotaService).assertWithinQuota(alice);
+
+        assertThatThrownBy(() -> chatService.reply(alice, UUID.randomUUID(), "Bonjour", null, null))
+                .isInstanceOf(QuotaExceededException.class);
+
+        // Aucun effet de bord : ni message persisté, ni appel fournisseur, ni enregistrement d'usage.
+        verify(messageRepository, never()).save(any());
+        verify(aiProvider, never()).complete(any());
+        org.mockito.Mockito.verify(quotaService, never()).recordUsage(any(UUID.class),
+                org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt());
     }
 
     private void prepareExistingConversation() {

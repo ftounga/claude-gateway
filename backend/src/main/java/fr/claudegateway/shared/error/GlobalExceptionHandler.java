@@ -24,6 +24,7 @@ import fr.claudegateway.auth.InvalidVerificationTokenException;
 import fr.claudegateway.chat.AttachmentNotFoundException;
 import fr.claudegateway.chat.ConversationNotFoundException;
 import fr.claudegateway.chat.UnsupportedModelException;
+import fr.claudegateway.quota.QuotaExceededException;
 import fr.claudegateway.upload.EmptyFileException;
 import fr.claudegateway.upload.FileTooLargeException;
 import fr.claudegateway.upload.UnsupportedFileTypeException;
@@ -112,6 +113,13 @@ public class GlobalExceptionHandler {
         log.debug("Modèle non supporté demandé");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ErrorResponse("validation_error", ex.getMessage()));
+    }
+
+    @ExceptionHandler(QuotaExceededException.class)
+    public ResponseEntity<ErrorResponse> handleQuotaExceeded(QuotaExceededException ex) {
+        log.debug("Appel refusé : quota de consommation atteint");
+        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED)
+                .body(new ErrorResponse("quota_exceeded", ex.getMessage()));
     }
 
     @ExceptionHandler(MissingServletRequestPartException.class)

@@ -58,6 +58,15 @@ app:
       # URLs de retour Checkout (frontend). Surchargées par environnement.
       success-url: ${STRIPE_SUCCESS_URL:http://localhost:4200/billing?checkout=success}
       cancel-url: ${STRIPE_CANCEL_URL:http://localhost:4200/billing?checkout=cancel}
+  quota:
+    # Quotas d'entitlement (F-10) : allocation mensuelle de tokens par état d'abonnement/plan.
+    # Valeurs commerciales réversibles, ajustables par environnement sans changement de code.
+    # V1 = blocage à la limite (pas d'overage monétisé — OQ-08 ouverte pour la variante payante).
+    trial-tokens: ${APP_QUOTA_TRIAL_TOKENS:200000}
+    plans:
+      SOLO: ${APP_QUOTA_SOLO_TOKENS:1000000}
+      PRO: ${APP_QUOTA_PRO_TOKENS:5000000}
+      DAILY: ${APP_QUOTA_DAILY_TOKENS:500000}
   oauth2:
     google:
       # Identifiants OAuth2/OIDC Google. Fournis exclusivement par l'environnement.
