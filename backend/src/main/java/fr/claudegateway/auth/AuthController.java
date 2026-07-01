@@ -1,15 +1,19 @@
 package fr.claudegateway.auth;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.auth.dto.AuthResponse;
 import fr.claudegateway.auth.dto.LoginRequest;
 import fr.claudegateway.auth.dto.RegisterRequest;
+import fr.claudegateway.auth.dto.VerifyEmailResponse;
+import fr.claudegateway.user.User;
 import jakarta.validation.Valid;
 
 /**
@@ -23,9 +27,11 @@ import jakarta.validation.Valid;
 public class AuthController {
 
     private final AuthService authService;
+    private final EmailVerificationService emailVerificationService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, EmailVerificationService emailVerificationService) {
         this.authService = authService;
+        this.emailVerificationService = emailVerificationService;
     }
 
     @PostMapping("/register")
@@ -37,5 +43,11 @@ public class AuthController {
     @PostMapping("/login")
     public AuthResponse login(@Valid @RequestBody LoginRequest request) {
         return authService.login(request.email(), request.password());
+    }
+
+    @GetMapping("/verify")
+    public VerifyEmailResponse verify(@RequestParam("token") String token) {
+        User user = emailVerificationService.verify(token);
+        return new VerifyEmailResponse(true, user.getEmail());
     }
 }

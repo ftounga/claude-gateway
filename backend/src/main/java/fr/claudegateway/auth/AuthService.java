@@ -21,11 +21,17 @@ public class AuthService {
     private final UserService userService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final EmailVerificationService emailVerificationService;
 
-    public AuthService(UserService userService, PasswordEncoder passwordEncoder, JwtService jwtService) {
+    public AuthService(
+            UserService userService,
+            PasswordEncoder passwordEncoder,
+            JwtService jwtService,
+            EmailVerificationService emailVerificationService) {
         this.userService = userService;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.emailVerificationService = emailVerificationService;
     }
 
     /**
@@ -41,6 +47,7 @@ public class AuthService {
         }
         String passwordHash = passwordEncoder.encode(rawPassword);
         User user = userService.createLocalUser(email, passwordHash);
+        emailVerificationService.createAndSend(user);
         return MeResponse.from(user);
     }
 
