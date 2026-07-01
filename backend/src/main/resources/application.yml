@@ -84,6 +84,14 @@ app:
       models: ${ANTHROPIC_MODELS:claude-opus-4-8,claude-sonnet-5,claude-haiku-4-5}
       max-tokens: ${ANTHROPIC_MAX_TOKENS:4096}
       timeout: ${ANTHROPIC_TIMEOUT:PT120S}
+  byok:
+    # Chiffrement des clés API utilisateur (F-03, OQ-06 : AWS KMS envelope encryption).
+    # kms-key-id vide => BYOK dormant (l'ajout de clé renvoie 503), sauf si local-key est fourni.
+    # Fournis EXCLUSIVEMENT par l'environnement, jamais commités ni journalisés.
+    kms-key-id: ${APP_BYOK_KMS_KEY_ID:}
+    region: ${APP_BYOK_REGION:eu-west-3}
+    # Clé maître LOCALE base64 (AES 256 bits) réservée au dev/tests, jamais en production.
+    local-key: ${APP_BYOK_LOCAL_KEY:}
   billing:
     # Durée de l'essai gratuit en jours (F-09). Décision réversible : ajustable sans changement de code.
     trial-days: ${APP_BILLING_TRIAL_DAYS:14}
