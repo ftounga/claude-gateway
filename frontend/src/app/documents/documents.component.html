@@ -1,0 +1,100 @@
+<section class="documents">
+  <header class="documents__header">
+    <h1>Documents</h1>
+    <p class="documents__subtitle">
+      Soumettez un document (image ou PDF) pour en extraire le texte par OCR.
+    </p>
+  </header>
+
+  <mat-card class="documents__submit">
+    <input
+      #fileInput
+      type="file"
+      class="documents__file-input"
+      accept="application/pdf,image/png,image/jpeg,image/tiff"
+      (change)="onFileSelected($event)"
+    />
+    <div class="documents__submit-row">
+      <button mat-stroked-button type="button" (click)="fileInput.click()">
+        <mat-icon>attach_file</mat-icon>
+        Choisir un fichier
+      </button>
+      <span class="documents__filename" [class.documents__filename--empty]="!selectedFile()">
+        {{ selectedFile()?.name || 'Aucun fichier sélectionné' }}
+      </span>
+      <button
+        mat-flat-button
+        color="primary"
+        type="button"
+        [disabled]="!selectedFile() || submitting()"
+        (click)="submit()"
+      >
+        <mat-icon>document_scanner</mat-icon>
+        Lancer l'OCR
+      </button>
+    </div>
+  </mat-card>
+
+  <mat-card class="documents__list">
+    @if (loading()) {
+      <div class="documents__loading">
+        <mat-spinner diameter="32"></mat-spinner>
+      </div>
+    } @else if (dataSource.data.length === 0) {
+      <p class="documents__empty">Aucun document pour le moment.</p>
+    } @else {
+      <table mat-table [dataSource]="dataSource" class="documents__table">
+        <ng-container matColumnDef="filename">
+          <th mat-header-cell *matHeaderCellDef>Nom</th>
+          <td mat-cell *matCellDef="let doc">{{ doc.filename }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="mediaType">
+          <th mat-header-cell *matHeaderCellDef>Type</th>
+          <td mat-cell *matCellDef="let doc">{{ doc.mediaType }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="status">
+          <th mat-header-cell *matHeaderCellDef>Statut</th>
+          <td mat-cell *matCellDef="let doc">
+            <span class="badge" [class]="statusDisplay(doc.status).badgeClass">
+              {{ statusDisplay(doc.status).label }}
+            </span>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="createdAt">
+          <th mat-header-cell *matHeaderCellDef>Ajouté le</th>
+          <td mat-cell *matCellDef="let doc">{{ doc.createdAt | date: 'short' }}</td>
+        </ng-container>
+
+        <ng-container matColumnDef="actions">
+          <th mat-header-cell *matHeaderCellDef></th>
+          <td mat-cell *matCellDef="let doc">
+            <button mat-button color="primary" type="button" (click)="view(doc)">Voir</button>
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: displayedColumns"></tr>
+      </table>
+      <mat-paginator [pageSizeOptions]="[5, 10, 25]" [pageSize]="10"></mat-paginator>
+    }
+  </mat-card>
+
+  @if (selected(); as detail) {
+    <mat-card class="documents__detail">
+      <h3>{{ detail.filename }}</h3>
+      <span class="badge" [class]="statusDisplay(detail.status).badgeClass">
+        {{ statusDisplay(detail.status).label }}
+      </span>
+      @if (detail.status === 'EXTRACTED') {
+        <pre class="documents__text">{{ detail.extractedText }}</pre>
+      } @else if (detail.status === 'FAILED') {
+        <p class="documents__error">{{ detail.errorMessage || 'Échec de l’extraction OCR.' }}</p>
+      } @else {
+        <p class="documents__pending">Extraction en cours…</p>
+      }
+    </mat-card>
+  }
+</section>
