@@ -31,6 +31,7 @@
 		<jjwt.version>0.12.5</jjwt.version>
 		<stripe.version>26.3.0</stripe.version>
 		<aws.sdk.version>2.29.29</aws.sdk.version>
+		<openpdf.version>1.3.43</openpdf.version>
 	</properties>
 	<dependencyManagement>
 		<dependencies>
@@ -91,6 +92,14 @@
 			<artifactId>jjwt-jackson</artifactId>
 			<version>${jjwt.version}</version>
 			<scope>runtime</scope>
+		</dependency>
+
+		<!-- OpenPDF (export F-14) : génération PDF pure Java, sans dépendance native.
+		     Confinée à fr.claudegateway.export.PdfExporter (le domaine n'en dépend jamais). -->
+		<dependency>
+			<groupId>com.github.librepdf</groupId>
+			<artifactId>openpdf</artifactId>
+			<version>${openpdf.version}</version>
 		</dependency>
 
 		<!-- Stripe (billing F-09) : SDK officiel — checkout + vérification de signature webhook -->
