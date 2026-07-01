@@ -70,6 +70,12 @@ export const routes: Routes = [
     loadComponent: () => import('./ask/ask.component').then((m) => m.AskComponent),
   },
   {
+    path: 'templates',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./templates/templates.component').then((m) => m.TemplatesComponent),
+  },
+  {
     path: 'billing',
     canActivate: [authGuard],
     loadComponent: () => import('./billing/billing.component').then((m) => m.BillingComponent),
