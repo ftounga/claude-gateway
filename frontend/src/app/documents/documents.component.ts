@@ -34,8 +34,13 @@ const STATUS_DISPLAY: Record<DocumentStatus, StatusDisplay> = {
   UPLOADED: { label: 'Reçu', badgeClass: 'badge--neutral' },
   PROCESSING: { label: 'En cours', badgeClass: 'badge--warning' },
   EXTRACTED: { label: 'Extrait', badgeClass: 'badge--success' },
+  INDEXING: { label: 'Indexation…', badgeClass: 'badge--warning' },
+  INDEXED: { label: 'Indexé', badgeClass: 'badge--success' },
   FAILED: { label: 'Échec', badgeClass: 'badge--error' },
 };
+
+/** États « en cours » pour lesquels un rafraîchissement périodique est utile. */
+const IN_PROGRESS_STATUSES: readonly DocumentStatus[] = ['PROCESSING', 'INDEXING'];
 
 /**
  * Écran documents F-05 : soumission d'un document à l'OCR, suivi des statuts et consultation du
@@ -60,7 +65,7 @@ export class DocumentsComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly documentsService = inject(DocumentsService);
   private readonly snackBar = inject(MatSnackBar);
 
-  readonly displayedColumns = ['filename', 'mediaType', 'status', 'createdAt', 'actions'];
+  readonly displayedColumns = ['filename', 'mediaType', 'status', 'chunks', 'createdAt', 'actions'];
   readonly dataSource = new MatTableDataSource<DocumentResponse>([]);
   readonly loading = signal(true);
   readonly submitting = signal(false);
@@ -137,9 +142,9 @@ export class DocumentsComponent implements OnInit, AfterViewInit, OnDestroy {
     return STATUS_DISPLAY[status];
   }
 
-  /** (Re)démarre ou arrête le rafraîchissement selon la présence de documents `PROCESSING`. */
+  /** (Re)démarre ou arrête le rafraîchissement selon la présence de documents « en cours ». */
   private syncPolling(documents: DocumentResponse[]): void {
-    const hasPending = documents.some((d) => d.status === 'PROCESSING');
+    const hasPending = documents.some((d) => IN_PROGRESS_STATUSES.includes(d.status));
     if (hasPending && !this.pollHandle) {
       this.pollHandle = setInterval(() => this.refresh(), 5000);
     } else if (!hasPending) {

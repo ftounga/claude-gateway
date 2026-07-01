@@ -1,7 +1,16 @@
-/** Contrat DTO de l'API OCR documents (F-05). Figé par le backend (SF-05-01/02). */
+/** Contrat DTO de l'API documents (OCR F-05 + ingestion RAG F-06). Figé par le backend. */
 
-/** Cycle de vie OCR d'un document. `INDEXED` sera ajouté par F-06 (post-OCR). */
-export type DocumentStatus = 'UPLOADED' | 'PROCESSING' | 'EXTRACTED' | 'FAILED';
+/**
+ * Cycle de vie d'un document : OCR (F-05) puis ingestion RAG (F-06).
+ * `INDEXING`/`INDEXED` ajoutés par F-06 (SF-06-01).
+ */
+export type DocumentStatus =
+  | 'UPLOADED'
+  | 'PROCESSING'
+  | 'EXTRACTED'
+  | 'INDEXING'
+  | 'INDEXED'
+  | 'FAILED';
 
 /** Réponse de POST /api/documents et éléments de GET /api/documents. */
 export interface DocumentResponse {
@@ -10,6 +19,8 @@ export interface DocumentResponse {
   mediaType: string;
   sizeBytes: number;
   status: DocumentStatus;
+  /** Nombre de chunks indexés (F-06). 0 tant que le document n'est pas `INDEXED`. */
+  chunkCount: number;
   createdAt: string;
 }
 
