@@ -178,12 +178,21 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - **Note** : la table `subscriptions` du schéma initial `001-init-schema` (placeholder legacy `spec.md`,
     `user_id text`, `plan`, sans statut typé ni unicité) a été **remplacée** en `008` par la table V1 conforme
     ci-dessus (même stratégie que `006-messages`).
+- **usage_counters** — compteur de consommation de tokens (F-10, migration `009`). **Une ligne par
+  (`user_id`, période)** (unique).
+  - `usage_counters` : `id (uuid)`, `user_id (uuid)`, `period_start (date ; 1er du mois calendaire UTC)`,
+    `input_tokens (bigint)`, `output_tokens (bigint)`, `created_at`, `updated_at`. Unique
+    `(user_id, period_start)`, index `user_id`.
+  - Alimente la vérification de quota **avant** l'appel fournisseur (`ChatService` → `402 quota_exceeded`
+    à la limite) et `GET /usage`. Le quota mensuel par plan/essai est **dérivé de `subscriptions`** via la
+    configuration `app.quota` (jamais en dur, réversible). V1 = **blocage à la limite** (overage non
+    monétisé, OQ-08 ; variante payante ouverte).
 
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`** (documents via `uploaded_by`,
-messages/subscriptions/uploaded_files via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur.
+messages/subscriptions/uploaded_files/usage_counters via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur.
 
 ---
 
