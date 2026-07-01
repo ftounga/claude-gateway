@@ -53,10 +53,10 @@ ne porte aucun montant. Les montants réels vivent dans Stripe (réversibles san
 **Stripe Tax reste désactivé en V1** (option de configuration à activer ultérieurement) : point encore ouvert.
 
 ## OQ-08 — Facturation de l'overage
-**Statut** : Ouvert
+**Statut** : Partiellement tranchée (2026-07-01) — **V1 = blocage à la limite** ; variante monétisée reste ouverte
 **Impact** : F-10, monétisation au-delà du quota.
 **Options** : Prix par token (ex. 0,002 €/token) ; par tranche ; blocage à la limite.
-**Décision** : À définir.
+**Décision** : **V1 = blocage à la limite** (option non monétaire, réversible) — F-10/SF-10-01 : à quota atteint, `POST /chat` renvoie `402 quota_exceeded` sans appeler le fournisseur. La **variante monétisée** (facturation au token / à la tranche au-delà du quota) reste **ouverte** et relève d'une évolution ultérieure (touche à la facturation → décision explicite requise avant implémentation).
 
 ## OQ-09 — Domaine staging vs production
 **Statut** : Ouvert
