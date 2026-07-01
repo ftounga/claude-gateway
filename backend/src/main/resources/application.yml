@@ -30,6 +30,19 @@ app:
     # Décision réversible : ajustable sans changement de code.
     allowed-types: ${APP_UPLOAD_ALLOWED_TYPES:application/pdf,image/png,image/jpeg,image/gif,image/webp,text/plain,text/markdown,text/csv}
     max-size: ${APP_UPLOAD_MAX_SIZE:32MB}
+  ocr:
+    # Pipeline OCR (F-05). Fournisseur `stub` par défaut (dev/tests, sans AWS) ; `textract` en cluster.
+    # Liste blanche MIME, plafond de taille et routage sync/async : décisions réversibles (config).
+    provider: ${APP_OCR_PROVIDER:stub}
+    max-size: ${APP_OCR_MAX_SIZE:20MB}
+    allowed-types: ${APP_OCR_ALLOWED_TYPES:application/pdf,image/png,image/jpeg,image/tiff}
+    sync-types: ${APP_OCR_SYNC_TYPES:image/png,image/jpeg}
+    textract:
+      # Accès AWS via chaîne de credentials par défaut (IRSA) — aucun secret en dur ni journalisé.
+      # Le bucket S3 est requis pour l'OCR asynchrone (PDF/TIFF) ; absent => async indisponible.
+      region: ${APP_OCR_TEXTRACT_REGION:eu-west-3}
+      s3-bucket: ${APP_OCR_TEXTRACT_S3_BUCKET:}
+      s3-prefix: ${APP_OCR_TEXTRACT_S3_PREFIX:ocr-inbound/}
   ai:
     anthropic:
       # Clé plateforme (mode Hosted). Fournie EXCLUSIVEMENT par l'environnement, jamais commitée

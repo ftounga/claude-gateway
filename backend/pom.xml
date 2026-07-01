@@ -30,7 +30,20 @@
 		<java.version>21</java.version>
 		<jjwt.version>0.12.5</jjwt.version>
 		<stripe.version>26.3.0</stripe.version>
+		<aws.sdk.version>2.29.29</aws.sdk.version>
 	</properties>
+	<dependencyManagement>
+		<dependencies>
+			<!-- AWS SDK v2 BOM : aligne les versions des modules AWS (Textract, S3) — OCR F-05. -->
+			<dependency>
+				<groupId>software.amazon.awssdk</groupId>
+				<artifactId>bom</artifactId>
+				<version>${aws.sdk.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
 	<dependencies>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -85,6 +98,18 @@
 			<groupId>com.stripe</groupId>
 			<artifactId>stripe-java</artifactId>
 			<version>${stripe.version}</version>
+		</dependency>
+
+		<!-- AWS Textract + S3 (OCR F-05) : implémentation du provider OCR uniquement.
+		     Le domaine ne dépend jamais de ces SDK (Provider Independence) ; ils sont
+		     confinés à fr.claudegateway.ocr.provider.TextractOcrProvider. -->
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>textract</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>s3</artifactId>
 		</dependency>
 
 		<dependency>

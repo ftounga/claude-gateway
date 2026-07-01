@@ -24,6 +24,7 @@ import fr.claudegateway.auth.InvalidVerificationTokenException;
 import fr.claudegateway.chat.AttachmentNotFoundException;
 import fr.claudegateway.chat.ConversationNotFoundException;
 import fr.claudegateway.chat.UnsupportedModelException;
+import fr.claudegateway.ocr.DocumentNotFoundException;
 import fr.claudegateway.quota.QuotaExceededException;
 import fr.claudegateway.upload.EmptyFileException;
 import fr.claudegateway.upload.FileTooLargeException;
@@ -97,6 +98,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ConversationNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleConversationNotFound(ConversationNotFoundException ex) {
         log.debug("Conversation introuvable ou non possédée");
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("not_found", ex.getMessage()));
+    }
+
+    @ExceptionHandler(DocumentNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleDocumentNotFound(DocumentNotFoundException ex) {
+        log.debug("Document introuvable ou non possédé");
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ErrorResponse("not_found", ex.getMessage()));
     }
