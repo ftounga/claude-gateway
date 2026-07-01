@@ -48,6 +48,12 @@ export const routes: Routes = [
       import('./auth/profile/profile.component').then((m) => m.ProfileComponent),
   },
   {
+    path: 'onboarding',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./onboarding/onboarding.component').then((m) => m.OnboardingComponent),
+  },
+  {
     path: 'chat',
     canActivate: [authGuard],
     loadComponent: () => import('./chat/chat.component').then((m) => m.ChatComponent),
