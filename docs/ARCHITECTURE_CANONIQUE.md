@@ -167,6 +167,8 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - `conversations` : `id (uuid)`, `user_id (uuid)`, `title`, `model`, `created_at`, `updated_at`. Index `user_id`.
   - `messages` : `id (uuid)`, `conversation_id (uuid, FK cascade)`, `user_id (uuid)`, `role (USER|ASSISTANT)`, `content`, `model (nullable)`, `created_at`. Index `conversation_id`, `user_id`.
   - **Note** : la table `messages` du schéma initial `001-init-schema` (issue de l'ancien `spec.md`, jamais câblée à une entité, `user_id text`, sans `model`/FK) a été **remplacée** en `006` par la table V1 conforme ci-dessus (typage `uuid`, FK cascade, colonne `model`).
+- **uploaded_files** — métadonnées d'un fichier téléversé puis transmis au fournisseur (F-04, migration `007`). **Aucun contenu binaire stocké** (relais pur, PROJECT.md §11.6).
+  - `uploaded_files` : `id (uuid)`, `user_id (uuid)`, `provider_file_id (interne, jamais exposé)`, `filename`, `media_type`, `size_bytes`, `created_at`. Index `user_id`.
 - **documents** (1) → (N) **chunks** — scaffolding V2 dormant (OCR/RAG), non câblé en V1.
 - **subscriptions** — abonnement Stripe par `user_id` (`plan`, `status`, `stripe_*`) — cible F-09.
 
@@ -174,7 +176,7 @@ Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 rée
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`** (documents via `uploaded_by`,
-messages/subscriptions via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur.
+messages/subscriptions/uploaded_files via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur.
 
 ---
 
