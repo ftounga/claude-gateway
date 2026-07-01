@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Primary;
  * rendre le calcul de période testable.
  */
 @Configuration
-@EnableConfigurationProperties(QuotaProperties.class)
+@EnableConfigurationProperties({QuotaProperties.class, UsageReportProperties.class})
 public class QuotaConfig {
 
     /** Horloge par défaut de la plateforme (UTC), surchargée dans les tests si besoin. */

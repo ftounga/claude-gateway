@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.auth.CurrentUser;
+import fr.claudegateway.quota.dto.UsageReportResponse;
 import fr.claudegateway.quota.dto.UsageResponse;
 
 /**
@@ -19,10 +20,15 @@ import fr.claudegateway.quota.dto.UsageResponse;
 public class UsageController {
 
     private final QuotaService quotaService;
+    private final UsageReportService usageReportService;
     private final CurrentUser currentUser;
 
-    public UsageController(QuotaService quotaService, CurrentUser currentUser) {
+    public UsageController(
+            QuotaService quotaService,
+            UsageReportService usageReportService,
+            CurrentUser currentUser) {
         this.quotaService = quotaService;
+        this.usageReportService = usageReportService;
         this.currentUser = currentUser;
     }
 
@@ -31,5 +37,15 @@ public class UsageController {
     public UsageResponse usage() {
         UUID userId = currentUser.requireId();
         return UsageResponse.from(quotaService.currentUsage(userId));
+    }
+
+    /**
+     * Rapport d'usage &amp; coût (F-16) : historique mensuel de consommation et coût estimé de
+     * l'utilisateur courant, plus les totaux sur la fenêtre. Lecture seule, isolation {@code user_id}.
+     */
+    @GetMapping("/report")
+    public UsageReportResponse report() {
+        UUID userId = currentUser.requireId();
+        return UsageReportResponse.from(usageReportService.buildReport(userId));
     }
 }

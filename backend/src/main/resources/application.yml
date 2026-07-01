@@ -123,6 +123,16 @@ app:
       SOLO: ${APP_QUOTA_SOLO_TOKENS:1000000}
       PRO: ${APP_QUOTA_PRO_TOKENS:5000000}
       DAILY: ${APP_QUOTA_DAILY_TOKENS:500000}
+  usage:
+    report:
+      # Rapport d'usage & coût (F-16) : devise, fenêtre d'historique et tarifs estimés.
+      # Valeurs commerciales réversibles, ajustables par environnement sans changement de code.
+      # Le coût est une ESTIMATION au tarif blended (les compteurs F-10 n'ont pas de ventilation
+      # par modèle). Aucun secret. Prix exprimés par million de tokens.
+      currency: ${APP_USAGE_CURRENCY:EUR}
+      max-months: ${APP_USAGE_MAX_MONTHS:12}
+      input-cost-per-million-tokens: ${APP_USAGE_INPUT_COST_PER_M:3.00}
+      output-cost-per-million-tokens: ${APP_USAGE_OUTPUT_COST_PER_M:15.00}
   oauth2:
     google:
       # Identifiants OAuth2/OIDC Google. Fournis exclusivement par l'environnement.
