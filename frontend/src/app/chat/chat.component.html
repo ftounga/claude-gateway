@@ -80,7 +80,50 @@
       }
     </div>
 
+    @if (attachments().length > 0) {
+      <mat-chip-set class="composer-attachments" aria-label="Pièces jointes">
+        @for (attachment of attachments(); track attachment.localId) {
+          <mat-chip
+            [class.attachment-error]="attachment.status === 'error'"
+            (removed)="removeAttachment(attachment.localId)"
+          >
+            @if (attachment.status === 'uploading') {
+              <mat-progress-spinner
+                matChipAvatar
+                mode="indeterminate"
+                [diameter]="16"
+              ></mat-progress-spinner>
+            } @else {
+              <mat-icon matChipAvatar>
+                {{ attachment.status === 'error' ? 'error_outline' : 'description' }}
+              </mat-icon>
+            }
+            {{ attachment.filename }}
+            <button matChipRemove type="button" aria-label="Retirer la pièce jointe">
+              <mat-icon>cancel</mat-icon>
+            </button>
+          </mat-chip>
+        }
+      </mat-chip-set>
+    }
+
     <form class="composer" [formGroup]="form" (ngSubmit)="send()">
+      <input
+        #fileInput
+        type="file"
+        class="file-input"
+        hidden
+        (change)="onFilesPicked($event)"
+      />
+      <button
+        mat-icon-button
+        type="button"
+        aria-label="Joindre un fichier"
+        matTooltip="Joindre un fichier"
+        (click)="fileInput.click()"
+      >
+        <mat-icon>attach_file</mat-icon>
+      </button>
       <mat-form-field appearance="outline" class="composer-field" subscriptSizing="dynamic">
         <mat-label>Votre message</mat-label>
         <textarea
@@ -95,7 +138,7 @@
         mat-flat-button
         color="primary"
         type="submit"
-        [disabled]="form.invalid || submitting()"
+        [disabled]="form.invalid || submitting() || uploading()"
       >
         <mat-icon>send</mat-icon>
         Envoyer

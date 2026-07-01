@@ -1,18 +1,31 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatChipsModule } from '@angular/material/chips';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatListModule } from '@angular/material/list';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { ChatService } from '../core/services/chat.service';
+import { UploadService } from '../core/services/upload.service';
 import { ChatMessage, ConversationSummary } from '../core/models/chat.models';
+
+/** Pièce jointe en cours de préparation dans le composer (état local avant envoi). */
+export interface ComposerAttachment {
+  localId: string;
+  filename: string;
+  sizeBytes: number;
+  serverId?: string;
+  status: 'uploading' | 'ready' | 'error';
+}
 import {
   ConfirmDialogComponent,
   ConfirmDialogData,
@@ -33,8 +46,11 @@ import {
     MatInputModule,
     MatSelectModule,
     MatButtonModule,
+    MatChipsModule,
     MatIconModule,
     MatProgressBarModule,
+    MatProgressSpinnerModule,
+    MatTooltipModule,
     MatDialogModule,
   ],
   templateUrl: './chat.component.html',
@@ -42,6 +58,7 @@ import {
 })
 export class ChatComponent implements OnInit {
   private readonly chatService = inject(ChatService);
+  private readonly uploadService = inject(UploadService);
   private readonly fb = inject(FormBuilder);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
@@ -52,6 +69,10 @@ export class ChatComponent implements OnInit {
   readonly selectedModel = signal<string>('');
   readonly activeConversationId = signal<string | null>(null);
   readonly submitting = signal(false);
+  readonly attachments = signal<ComposerAttachment[]>([]);
+
+  /** Vrai tant qu'au moins une pièce jointe est en cours de téléversement (bloque l'envoi). */
+  readonly uploading = computed(() => this.attachments().some((a) => a.status === 'uploading'));
 
   readonly activeTitle = computed(() => {
     const id = this.activeConversationId();
@@ -85,6 +106,7 @@ export class ChatComponent implements OnInit {
   startNewConversation(): void {
     this.activeConversationId.set(null);
     this.messages.set([]);
+    this.attachments.set([]);
   }
 
   /** Charge le détail d'une conversation existante. */
@@ -97,15 +119,58 @@ export class ChatComponent implements OnInit {
     });
   }
 
+  /**
+   * Téléverse les fichiers sélectionnés via {@link UploadService} (mock en test). Chaque fichier
+   * apparaît immédiatement comme puce « en cours », puis « prête » ou « en erreur ».
+   */
+  onFilesPicked(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const files = input.files;
+    if (!files || files.length === 0) {
+      return;
+    }
+    for (const file of Array.from(files)) {
+      const localId = `att-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      this.attachments.update((list) => [
+        ...list,
+        { localId, filename: file.name, sizeBytes: file.size, status: 'uploading' },
+      ]);
+      this.uploadService.uploadFile(file).subscribe({
+        next: (res) =>
+          this.attachments.update((list) =>
+            list.map((a) =>
+              a.localId === localId ? { ...a, serverId: res.id, status: 'ready' } : a,
+            ),
+          ),
+        error: () => {
+          this.attachments.update((list) =>
+            list.map((a) => (a.localId === localId ? { ...a, status: 'error' } : a)),
+          );
+          this.notifyError(`Le fichier « ${file.name} » n’a pas pu être téléversé.`);
+        },
+      });
+    }
+    // Réinitialise l'input pour permettre de re-sélectionner le même fichier.
+    input.value = '';
+  }
+
+  /** Retire une pièce jointe du composer (avant envoi). */
+  removeAttachment(localId: string): void {
+    this.attachments.update((list) => list.filter((a) => a.localId !== localId));
+  }
+
   /** Envoie le message courant et affiche la réponse assistant. */
   send(): void {
-    if (this.form.invalid || this.submitting()) {
+    if (this.form.invalid || this.submitting() || this.uploading()) {
       return;
     }
     const content = this.form.getRawValue().message.trim();
     if (content.length === 0) {
       return;
     }
+    const attachmentIds = this.attachments()
+      .filter((a) => a.status === 'ready' && a.serverId)
+      .map((a) => a.serverId as string);
 
     const conversationId = this.activeConversationId();
     // Affichage optimiste du message utilisateur.
@@ -125,10 +190,12 @@ export class ChatComponent implements OnInit {
         conversationId,
         message: content,
         model: this.selectedModel() || null,
+        ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
       })
       .subscribe({
         next: (response) => {
           this.submitting.set(false);
+          this.attachments.set([]);
           this.messages.update((current) => [...current, response.message]);
           const isNew = conversationId === null;
           this.activeConversationId.set(response.conversationId);
