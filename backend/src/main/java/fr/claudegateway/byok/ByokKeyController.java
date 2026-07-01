@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.byok.dto.ApiKeyStatusResponse;
 import fr.claudegateway.byok.dto.SaveApiKeyRequest;
+import fr.claudegateway.byok.dto.SetModeRequest;
 import jakarta.validation.Valid;
 
 /**
@@ -41,6 +43,11 @@ public class ByokKeyController {
     @PostMapping
     public ApiKeyStatusResponse save(@Valid @RequestBody SaveApiKeyRequest request) {
         return byokKeyService.saveKey(currentUser.requireId(), request.apiKey());
+    }
+
+    @PutMapping("/mode")
+    public ApiKeyStatusResponse setMode(@Valid @RequestBody SetModeRequest request) {
+        return byokKeyService.setMode(currentUser.requireId(), request.mode());
     }
 
     @DeleteMapping

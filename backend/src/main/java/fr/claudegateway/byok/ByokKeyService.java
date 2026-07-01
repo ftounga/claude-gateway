@@ -2,6 +2,7 @@ package fr.claudegateway.byok;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -84,6 +85,44 @@ public class ByokKeyService {
         UserApiKey saved = repository.save(entity);
         log.info("Clé BYOK enregistrée pour l'utilisateur {} (mode BYOK actif)", userId);
         return toStatus(saved);
+    }
+
+    /**
+     * Bascule le mode fournisseur de l'utilisateur (F-03 / SF-03-03).
+     *
+     * @param mode {@code BYOK} (requiert une clé) ou {@code HOSTED}
+     * @throws ByokModeException si {@code BYOK} est demandé sans clé enregistrée
+     */
+    @Transactional
+    public ApiKeyStatusResponse setMode(UUID userId, String mode) {
+        boolean enableByok = "BYOK".equalsIgnoreCase(mode);
+        UserApiKey key = repository.findByUserId(userId).orElse(null);
+        if (enableByok) {
+            if (key == null) {
+                throw new ByokModeException("Aucune clé BYOK enregistrée : ajoutez une clé avant d'activer le mode BYOK.");
+            }
+            key.setActive(true);
+            return toStatus(repository.save(key));
+        }
+        // HOSTED : la clé (si présente) est conservée mais désactivée.
+        if (key == null) {
+            return ApiKeyStatusResponse.absent();
+        }
+        key.setActive(false);
+        return toStatus(repository.save(key));
+    }
+
+    /**
+     * Résout la clé BYOK <b>active</b> de l'utilisateur pour un appel fournisseur : la clé est
+     * déchiffrée à la volée (jamais persistée ni journalisée). Vide si aucune clé active
+     * (l'appelant retombe alors sur la clé plateforme, mode Hosted). Isolation {@code user_id}.
+     */
+    @Transactional(readOnly = true)
+    public Optional<String> resolveActiveApiKey(UUID userId) {
+        return repository.findByUserId(userId)
+                .filter(UserApiKey::isActive)
+                .map(key -> cipher.decrypt(new EncryptedKey(
+                        key.getEncryptedDataKey(), key.getCipherIv(), key.getCiphertext())));
     }
 
     /** Supprime la clé de l'utilisateur (idempotent). */

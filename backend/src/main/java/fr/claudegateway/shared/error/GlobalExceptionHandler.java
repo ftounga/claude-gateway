@@ -18,6 +18,7 @@ import fr.claudegateway.billing.provider.BillingProviderException;
 import fr.claudegateway.billing.provider.BillingProviderUnavailableException;
 import fr.claudegateway.billing.provider.WebhookVerificationException;
 import fr.claudegateway.byok.ByokDisabledException;
+import fr.claudegateway.byok.ByokModeException;
 import fr.claudegateway.byok.InvalidApiKeyException;
 import fr.claudegateway.auth.EmailAlreadyUsedException;
 import fr.claudegateway.auth.InvalidCredentialsException;
@@ -185,6 +186,13 @@ public class GlobalExceptionHandler {
         log.debug("Clé API BYOK refusée : format invalide ou non validée par le fournisseur");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ErrorResponse("invalid_api_key", ex.getMessage()));
+    }
+
+    @ExceptionHandler(ByokModeException.class)
+    public ResponseEntity<ErrorResponse> handleByokMode(ByokModeException ex) {
+        log.debug("Bascule mode BYOK refusée : aucune clé enregistrée");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("byok_mode_conflict", ex.getMessage()));
     }
 
     @ExceptionHandler(ByokDisabledException.class)

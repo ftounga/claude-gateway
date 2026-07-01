@@ -103,6 +103,12 @@ class ChatApiIntegrationTest {
     @Autowired
     private StubAIProvider stubAIProvider;
 
+    @Autowired
+    private fr.claudegateway.byok.ByokKeyService byokKeyService;
+
+    @Autowired
+    private fr.claudegateway.byok.UserApiKeyRepository userApiKeyRepository;
+
     private User alice;
     private String aliceToken;
     private User bob;
@@ -110,6 +116,7 @@ class ChatApiIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        userApiKeyRepository.deleteAll();
         uploadedFileRepository.deleteAll();
         conversationRepository.deleteAll();
         userRepository.deleteAll();
@@ -144,6 +151,35 @@ class ChatApiIntegrationTest {
                 .andExpect(jsonPath("$.message.role", is("ASSISTANT")))
                 .andExpect(jsonPath("$.message.content", is("Bonjour, je suis l'assistant.")))
                 .andExpect(jsonPath("$.message.model", is("claude-opus-4-8")));
+    }
+
+    @Test
+    void usesByokKeyForProviderCallWhenActive() throws Exception {
+        // Alice enregistre une clé BYOK (validée par le stub, chiffrée par le cipher local) => mode BYOK.
+        byokKeyService.saveKey(alice.getId(), "sk-ant-alice-personal-KEY9");
+        stubAIProvider.reset();
+
+        mockMvc.perform(post("/api/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"Bonjour\"}"))
+                .andExpect(status().isOk());
+
+        // L'appel fournisseur a porté la clé déchiffrée de l'utilisateur (mode BYOK).
+        org.assertj.core.api.Assertions.assertThat(stubAIProvider.lastRequest.apiKey())
+                .isEqualTo("sk-ant-alice-personal-KEY9");
+    }
+
+    @Test
+    void usesPlatformKeyWhenUserHasNoByokKey() throws Exception {
+        // Bob n'a pas de clé => mode Hosted (apiKey null sur la requête fournisseur).
+        mockMvc.perform(post("/api/chat").contextPath("/api")
+                        .header("Authorization", bearer(bobToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"Bonjour\"}"))
+                .andExpect(status().isOk());
+
+        org.assertj.core.api.Assertions.assertThat(stubAIProvider.lastRequest.apiKey()).isNull();
     }
 
     @Test
