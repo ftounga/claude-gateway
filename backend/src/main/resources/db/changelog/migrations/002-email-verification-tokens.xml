@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      Table `email_verification_tokens` (SF-01-03). Token à usage unique et expirant, rattaché
+      à un utilisateur (user_id -> users.id). Types uuid / timestamptz dépendants du SGBD :
+      un changeset Postgres (staging/prod) et un changeset H2 (dev/tests) en parallèle, comme 001.
+      L'identifiant est généré côté application (Hibernate @UuidGenerator).
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="002-email-verification-tokens-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="email_verification_tokens">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_email_verification_user"
+                             references="users(id)" deleteCascade="true"/>
+            </column>
+            <column name="token" type="varchar(255)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uk_email_verification_token"/>
+            </column>
+            <column name="expires_at" type="timestamptz">
+                <constraints nullable="false"/>
+            </column>
+            <column name="used_at" type="timestamptz"/>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="email_verification_tokens" indexName="idx_email_verification_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="002-email-verification-tokens-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="email_verification_tokens">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_email_verification_user"
+                             references="users(id)" deleteCascade="true"/>
+            </column>
+            <column name="token" type="varchar(255)">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uk_email_verification_token"/>
+            </column>
+            <column name="expires_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="used_at" type="timestamp with time zone"/>
+            <column name="created_at" type="timestamp with time zone" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="email_verification_tokens" indexName="idx_email_verification_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

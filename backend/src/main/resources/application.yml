@@ -16,9 +16,14 @@ management:
     health:
       show-details: always
 app:
+  # URL du frontend, utilisée pour construire les liens d'e-mail (vérification, reset).
+  frontend-url: ${APP_FRONTEND_URL:http://localhost:4200}
   jwt:
     # Secret de signature HS256. Fourni exclusivement par l'environnement (aucun défaut en dur).
     # L'application refuse de démarrer si absent ou trop court (< 256 bits) — voir JwtService.
     secret: ${APP_JWT_SECRET:}
     # Durée de validité des tokens (format ISO-8601, ex. PT24H). Défaut : 24h.
     expiration: ${APP_JWT_EXPIRATION:PT24H}
+  verification:
+    # Durée de validité d'un token de vérification d'e-mail (ISO-8601). Défaut : 24h.
+    token-ttl: ${APP_VERIFICATION_TOKEN_TTL:PT24H}

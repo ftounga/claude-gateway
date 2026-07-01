@@ -37,6 +37,8 @@ class AuthServiceTest {
     private PasswordEncoder passwordEncoder;
     @Mock
     private JwtService jwtService;
+    @Mock
+    private EmailVerificationService emailVerificationService;
 
     @InjectMocks
     private AuthService authService;
@@ -65,6 +67,8 @@ class AuthServiceTest {
         assertThat(response.provider()).isEqualTo(AuthProvider.LOCAL);
         assertThat(response.emailVerified()).isFalse();
         verify(userService).createLocalUser("alice@example.com", "HASH");
+        // L'inscription déclenche l'envoi du mail de vérification.
+        verify(emailVerificationService).createAndSend(any(User.class));
     }
 
     @Test

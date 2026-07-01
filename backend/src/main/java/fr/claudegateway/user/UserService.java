@@ -41,6 +41,14 @@ public class UserService {
         return userRepository.save(user);
     }
 
+    /** Marque l'e-mail de l'utilisateur comme vérifié (idempotent). */
+    @Transactional
+    public User markEmailVerified(UUID userId) {
+        User user = findByIdOrThrow(userId);
+        user.setEmailVerified(true);
+        return userRepository.save(user);
+    }
+
     /**
      * Charge l'utilisateur courant / demandé par son identifiant.
      *
