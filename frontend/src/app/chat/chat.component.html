@@ -58,6 +58,28 @@
           }
         </mat-select>
       </mat-form-field>
+      @if (activeConversationId() !== null) {
+        <button
+          mat-icon-button
+          type="button"
+          class="export-trigger"
+          [matMenuTriggerFor]="exportMenu"
+          matTooltip="Exporter la conversation"
+          aria-label="Exporter la conversation"
+        >
+          <mat-icon>download</mat-icon>
+        </button>
+        <mat-menu #exportMenu="matMenu">
+          <button mat-menu-item type="button" (click)="exportConversation('markdown')">
+            <mat-icon>description</mat-icon>
+            <span>Markdown</span>
+          </button>
+          <button mat-menu-item type="button" (click)="exportConversation('pdf')">
+            <mat-icon>picture_as_pdf</mat-icon>
+            <span>PDF</span>
+          </button>
+        </mat-menu>
+      }
     </mat-toolbar>
 
     @if (submitting()) {

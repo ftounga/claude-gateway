@@ -7,11 +7,14 @@ import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
+import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { AskService } from '../core/services/ask.service';
+import { ExportService } from '../core/services/export.service';
 import { AskResponse } from '../core/models/ask.models';
+import { AnswerExportRequest, ExportFormat } from '../core/models/export.models';
 
 /**
  * Écran Q&A documentaire (F-07 / SF-07-02) : l'utilisateur pose une question sur ses documents
@@ -28,6 +31,7 @@ import { AskResponse } from '../core/models/ask.models';
     MatFormFieldModule,
     MatIconModule,
     MatInputModule,
+    MatMenuModule,
     MatProgressSpinnerModule,
   ],
   templateUrl: './ask.component.html',
@@ -35,11 +39,14 @@ import { AskResponse } from '../core/models/ask.models';
 })
 export class AskComponent {
   private readonly askService = inject(AskService);
+  private readonly exportService = inject(ExportService);
   private readonly snackBar = inject(MatSnackBar);
 
   readonly question = signal('');
   readonly loading = signal(false);
   readonly answer = signal<AskResponse | null>(null);
+  /** Question effectivement posée pour la réponse affichée (figée à la soumission, pour l'export). */
+  readonly askedQuestion = signal('');
 
   /** Vrai si la question courante est vide (après trim) : bouton désactivé. */
   isBlank(): boolean {
@@ -56,12 +63,39 @@ export class AskComponent {
     this.askService.ask({ question }).subscribe({
       next: (response) => {
         this.answer.set(response);
+        this.askedQuestion.set(question);
         this.loading.set(false);
       },
       error: (error: HttpErrorResponse) => {
         this.loading.set(false);
         this.notify(this.errorMessage(error));
       },
+    });
+  }
+
+  /** Exporte la réponse citée courante au format demandé et déclenche le téléchargement (F-14). */
+  exportAnswer(format: ExportFormat): void {
+    const result = this.answer();
+    if (!result) {
+      return;
+    }
+    const body: AnswerExportRequest = {
+      question: this.askedQuestion(),
+      answer: result.answer,
+      model: result.model,
+      grounded: result.grounded,
+      citations: result.citations.map((citation) => ({
+        documentId: citation.documentId,
+        filename: citation.filename,
+        page: citation.page,
+        chunkIndex: citation.chunkIndex,
+        snippet: citation.snippet,
+      })),
+    };
+    this.exportService.exportAnswer(body, format).subscribe({
+      next: (response) =>
+        this.exportService.triggerDownload(response, `reponse.${format === 'pdf' ? 'pdf' : 'md'}`),
+      error: () => this.notify('L’export a échoué. Veuillez réessayer.'),
     });
   }
 
