@@ -49,8 +49,8 @@ Documents de support (subordonnés à `PROJECT.md`) :
 - **Gateway-First** : le backend est une Gateway. Il orchestre, sécurise, facture, journalise, supervise. Il ne devient **jamais** un moteur d'IA ni un clone de Claude.
 - **Provider-First** : avant d'implémenter, se demander « Claude fournit-il déjà cette capacité ? ». Si oui → la **relayer**, ne pas la réimplémenter.
 - **Provider Independence** : le code métier dépend d'une interface abstraite `AIProvider`, jamais directement d'Anthropic (préparer OpenAI/Gemini/… sans réécriture).
-- **Périmètre V1 = passerelle uniquement.** Exclus de V1 (→ V2) : OCR, Textract, embeddings, pgvector, RAG, chunking, recherche/indexation vectorielle, bibliothèque documentaire, mémoire permanente, connecteurs, support multi-LLM.
-- **Fichiers V1** : upload + validation + transmission au fournisseur. **Aucun traitement du contenu, aucune indexation.**
+- **Périmètre (amendé 2026-07-01, `PROJECT.md` §Amendement + ADR-011)** : d'abord la **passerelle** (F-01→F-12), **puis** le **traitement documentaire** — désormais **dans le périmètre** via F-05→08 (OCR/RAG/ask/statut) + F-13/14/15/16. Restent hors périmètre : **V3** (F-17 espaces d'équipe, F-18 on-prem) et le support multi-LLM runtime. Traitements lourds (Textract PDF, ingestion/embeddings) **asynchrones** (workers).
+- **Fichiers** : en dehors du pipeline documentaire (F-05+), l'upload simple (F-04) reste transmission au fournisseur sans traitement. Le pipeline OCR/RAG (F-05→08) traite et indexe explicitement.
 - Multi-tenant : chaque client est un utilisateur isolé — filtre `user_id` obligatoire sur tout accès aux données
 - Les traitements lourds sont asynchrones
 - **Auth (tranché 2026-07-01)** : supporter **les deux** — OAuth2/OIDC (Google) **et** compte email/mot de passe (inscription, reset, vérification email) avec **JWT**. Spring Security. Isolation `user_id` quel que soit le mode.
@@ -64,7 +64,7 @@ L'ajout de `PROJECT.md` (source de vérité) a créé des divergences avec l'exi
 
 | # | Conflit | Décision |
 |---|---------|----------|
-| C1 | **Périmètre V1 : OCR/RAG/pgvector/Textract** | **V1 = passerelle pure.** OCR/RAG/pgvector/embeddings/Textract → **V2** (re-scope `PRODUCT_SPEC` F-05/06/07/08). **Infra laissée en l'état** : IRSA Textract + `pgvector` restent en place mais **dormants** (pas de nettoyage maintenant). |
+| C1 | **Périmètre : OCR/RAG/pgvector/Textract** | ~~V1 = passerelle pure~~ → **AMENDÉ le 2026-07-01 (ADR-011)** : après la passerelle V1 (livrée), le traitement documentaire **entre dans le périmètre** (F-05→08 + F-13/14/15/16). IRSA Textract + `pgvector` (dormants) **réactivés**. Seul V3 (F-17/F-18) reste hors scope. |
 | C2 | **Authentification** | **Les deux** : OAuth2/OIDC (Google) **+** email/mot de passe (reset, vérif email) via **JWT**. |
 | C3 | **Monitoring / logging** | **V1 = CloudWatch + Fluent Bit** (infra legalcase réutilisée). Prometheus/Grafana/Loki (`TECH_STACK`) = **cible V2+**. |
 | C4 | **Sources de vérité** | `PROJECT.md` prévaut ; `ARCHITECTURE_CANONIQUE`/`PRODUCT_SPEC` subordonnés et réconciliés. |
@@ -176,7 +176,7 @@ Ces situations déclenchent un refus immédiat. Répondre avec le format de refu
 | Feature non référencée dans `PRODUCT_SPEC.md` | REFUS — ajouter la feature au PRODUCT_SPEC avant tout dev |
 | Traitement lourd demandé de façon synchrone | REFUS — rappeler la règle async |
 | Accès données sans filtre `user_id` | REFUS — rappeler la règle d'isolation |
-| Fonctionnalité de traitement documentaire en V1 (OCR, Textract, embeddings, pgvector, RAG, chunking, recherche vectorielle, indexation) | REFUS — hors périmètre V1 (`PROJECT.md` §1.6/§11.15) → V2 |
+| Feature V3 demandée (F-17 espaces d'équipe / organisation, F-18 on-prem) ou support multi-LLM runtime | REFUS — hors périmètre actuel (ADR-011 conserve V3 hors scope) |
 | Réimplémentation d'une capacité déjà fournie par Claude (analyse PDF/image, Q&A document, contexte) | REFUS — règle Provider-First (`PROJECT.md` §3.3) : relayer, ne pas réimplémenter |
 | Code métier dépendant directement d'Anthropic (pas d'interface `AIProvider`) | BLOCAGE — Provider Independence (`ARCHITECTURE.md` Principle 2) |
 | Le backend implémente une logique de « moteur IA » / clone de Claude | BLOCAGE — Gateway-First (`PROJECT.md` §3.2) |

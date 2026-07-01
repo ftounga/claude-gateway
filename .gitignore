@@ -8,3 +8,4 @@ frontend/.angular/
 .DS_Store
 .env
 *.log
+.claude/worktrees/

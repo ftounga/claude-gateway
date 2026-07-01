@@ -1,14 +1,13 @@
 # ARCHITECTURE_CANONIQUE.md
 claude-gateway — Architecture produit et technique de référence
 
-> ⚠️ **DOCUMENT SUBORDONNÉ À `docs/PROJECT.md`** (source de vérité produit, 2026-07-01).
-> Ce fichier est **antérieur** à `PROJECT.md`. Là où il décrit le **périmètre V1**, il est **obsolète** :
-> **OCR (Textract), RAG, chunking, embeddings, pgvector, recherche vectorielle, indexation
-> documentaire NE FONT PAS PARTIE DE LA V1** — ils sont repoussés en **V2** (voir `PROJECT.md` §1.6/§11.15,
-> ADR-004, `PRODUCT_SPEC.md` F-05→F-08). **La V1 est une passerelle pure vers Claude** ; les fichiers
-> sont uniquement transmis au fournisseur, sans traitement de contenu. Auth V1 = OAuth2/OIDC **+**
-> email/mot de passe (JWT). En cas de conflit, `PROJECT.md` prévaut. Les sections ci-dessous décrivant
-> le pipeline documentaire décrivent la **cible V2**, pas la V1.
+> ⚠️ **DOCUMENT SUBORDONNÉ À `docs/PROJECT.md`** (source de vérité produit).
+> **Séquence de livraison** : la **passerelle** (F-01→F-12) d'abord, **puis** le **traitement documentaire**
+> (OCR/Textract, RAG, chunking, embeddings, pgvector, recherche vectorielle, indexation) — désormais
+> **dans le périmètre** (amendement `PROJECT.md` du 2026-07-01, **ADR-011** superséde ADR-004,
+> `PRODUCT_SPEC.md` F-05→08 + F-13/14/15/16). Les sections ci-dessous décrivant le pipeline documentaire
+> sont donc **valides** (à construire). Auth = OAuth2/OIDC **+** email/mot de passe (JWT). Restent hors
+> périmètre : V3 (F-17 équipes, F-18 on-prem). En cas de conflit, `PROJECT.md` prévaut.
 
 Ce document constitue la référence architecturale technique du projet claude-gateway.
 Toute implémentation technique, toute proposition d'évolution ou toute génération

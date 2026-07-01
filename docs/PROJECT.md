@@ -11,6 +11,14 @@
 
 ---
 
+## Amendement 2026-07-01 — Extension du périmètre au traitement documentaire
+
+> **Décision PO (2026-07-01)** : le traitement documentaire **entre dans le périmètre produit**. Les clauses de ce document qui excluaient l'OCR, le RAG, les embeddings, pgvector, le chunking, la recherche vectorielle et l'indexation documentaire de la V1 (§1.6, §4.2, §11.6, §11.15, §13.6, §13.14, Anti-Goals §10.7 relatifs au RAG/OCR) **sont amendées** : ces capacités deviennent des **features approuvées et à construire**, via les features **F-05 (OCR), F-06 (Ingestion RAG), F-07 (Q&A documenté), F-08 (Statut documents)**, ainsi que **F-13 (Templates), F-14 (Export), F-15 (Embeddings locaux), F-16 (Rapports d'usage)** (voir `PRODUCT_SPEC.md`). Cet amendement **supersède ADR-004** (voir `ADR.md` ADR-011).
+>
+> Ce qui **reste inchangé** : la philosophie Gateway-First (le backend orchestre, ne devient pas un LLM), Provider Independence (interface `AIProvider`), Simplicity, isolation `user_id`, et l'exclusion des V3 (F-17 espaces d'équipe, F-18 on-prem). La priorité de livraison reste : d'abord la passerelle (F-01→F-12), puis le traitement documentaire.
+
+---
+
 ## 1. Executive Summary
 
 ### 1.1 Vision

@@ -67,11 +67,12 @@ const plan = await agent(
       Pour une branche suspecte, teste le CONTENU : git cherry origin/main feat/SF-X (vide = déjà dans main). -> inProgress.
    3) Lis MEMORY.md + les mémoires projet pertinentes (déploiement staging, pivot V1, git-flow-autonomy).
    4) ${EXPLICIT ? `File IMPOSÉE par le PO : ${JSON.stringify(EXPLICIT)}. Ordonne-la par dépendances.`
-        : `Construis la file des ${WAVE_SIZE} features V1 prioritaires statut "À faire"/"À spécifier" de
-           docs/PRODUCT_SPEC.md (features V1 uniquement : F-01,02,03,04,09,10,11,12 ; JAMAIS les V2 F-05/06/07/08).
-           Ordonne par dépendances → valeur → effort. F-01 (auth) conditionne tout : en premier.`}
-   5) PÉRIMÈTRE V1 = PASSERELLE PURE. Toute feature/subfeature impliquant OCR, Textract, embeddings,
-      pgvector, RAG, chunking, recherche vectorielle, indexation documentaire → HORS SCOPE (risk='red', reason).
+        : `Construis la file des ${WAVE_SIZE} features prioritaires statut "À faire"/"À spécifier" de
+           docs/PRODUCT_SPEC.md. Ordonne par dépendances → valeur → effort.`}
+   5) PÉRIMÈTRE (amendement 2026-07-01, cf. PROJECT.md §Amendement + ADR-011) : le traitement documentaire
+      (OCR/Textract, RAG, embeddings, pgvector, chunking, recherche vectorielle, indexation) est **dans le
+      périmètre** via F-05→08 + F-13/14/15/16. Reste hors périmètre : V3 (F-17 équipes, F-18 on-prem) → risk='red'.
+      Gateway-First et Provider Independence (interface AIProvider) restent obligatoires.
    6) Classe CHAQUE feature 🟢 green / 🟠 orange / 🔴 red (cf. skill Phase 2) avec reason, et pour chacune
       liste ses subfeatures prévues (SF-XX-YY) et si elle est parallélisable back/front.
    NE CRÉE AUCUNE feature absente de PRODUCT_SPEC.md. Retourne le JSON QUEUE_SCHEMA.`,

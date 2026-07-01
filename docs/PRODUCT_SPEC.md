@@ -65,18 +65,25 @@ sécurisent la monétisation ; settings et landing finalisent l'expérience. Le 
 
 ---
 
-## Features hors V1 (backlog)
+## Features V2 — approuvées, à construire (amendement 2026-07-01)
+
+> Le traitement documentaire est **entré dans le périmètre** (amendement `PROJECT.md`, ADR-011). À construire après la passerelle V1. pgvector + IRSA Textract déjà provisionnés (dormants → réactivés).
+
+| ID | Feature | Description | Statut |
+|----|---------|-------------|--------|
+| F-05 | OCR (Textract) | Extraction texte : images (`DetectDocumentText` sync), PDF (`StartDocumentTextDetection` async + worker de polling), stockage `textract_raw` | À spécifier |
+| F-06 | Ingestion RAG | Chunking (400 tokens / overlap 50), embeddings via API fournisseur, stockage `chunks.embedding` (pgvector), auto-index | À spécifier |
+| F-07 | Q&A documentaire (ask) | `POST /ask` : embedding question → recherche top-K pgvector → prompt cité `[filename:page:chunk]` → Claude ; fallback si non indexé | À spécifier |
+| F-08 | Statut des documents | `GET /documents/{id}/status`, liste des documents, états UPLOADED/PROCESSING/INDEXED/FAILED, suppression (RGPD) | À spécifier |
+| F-13 | Templates métier | Modèles de prompts (audit, rapport) réutilisables | À spécifier |
+| F-14 | Export conversations/réponses | Export PDF/Markdown des échanges et réponses citées | À spécifier |
+| F-15 | Embeddings locaux | Migration vers modèle local (all-MiniLM), suppression dépendance provider | À spécifier |
+| F-16 | Rapports d'usage & coût in-app | Tableaux de bord consommation/coût par utilisateur | À spécifier |
+
+## Features V3 (backlog — hors périmètre actuel)
 
 | ID | Feature | Description | Cible |
 |----|---------|-------------|-------|
-| F-05 | OCR (Textract) | Extraction texte : images (`DetectDocumentText` sync), PDF (`StartDocumentTextDetection` async + worker de polling), stockage `textract_raw` | V2 |
-| F-06 | Ingestion RAG | Chunking (400 tokens / overlap 50), embeddings via API fournisseur, stockage `chunks.embedding` (pgvector), auto-index | V2 |
-| F-07 | Q&A documentaire (ask) | `POST /ask` : embedding question → recherche top-K pgvector → prompt cité `[filename:page:chunk]` → Claude ; fallback si non indexé | V2 |
-| F-08 | Statut des documents | `GET /documents/{id}/status`, liste des documents, états UPLOADED/PROCESSING/INDEXED/FAILED, suppression (RGPD) | V2 |
-| F-13 | Templates métier | Modèles de prompts (audit, rapport) réutilisables | V2 |
-| F-14 | Export conversations/réponses | Export PDF/Markdown des échanges et réponses citées | V2 |
-| F-15 | Embeddings locaux | Migration vers modèle local (all-MiniLM), suppression dépendance provider | V2 |
-| F-16 | Rapports d'usage & coût in-app | Tableaux de bord consommation/coût par utilisateur | V2 |
 | F-17 | Espaces d'équipe (cabinets) | Partage/collaboration multi-utilisateurs (introduit une notion d'organisation) | V3 |
 | F-18 | On-prem / allowlist | Déploiement privé + procédure d'allowlist DSI | V3 |
 
@@ -109,3 +116,5 @@ sécurisent la monétisation ; settings et landing finalisent l'expérience. Le 
 | 2026-07-01 | **F-12 SF-12-01 — Landing consultants** (PR #32) : route `/` → `LandingComponent` (hero de valeur, 3 bénéfices consultants, parcours « comment ça marche », CTA « Démarrer l'essai gratuit » → `/register`, CTA contextuel `/chat` si authentifié). Page 100 % statique (aucun appel réseau). Remplace et supprime l'ancien placeholder `HomeComponent`/`HomeService` (carte de statut backend, artefact de dev). Conforme DESIGN_SYSTEM. Feature 100 % frontend, aucune table. | Delivery agent |
 | 2026-07-01 | **F-12 SF-12-02 — Onboarding 2 étapes** (PR #33) : route `/onboarding` (lazy, `authGuard`), `mat-stepper` (compte via `GET /api/me` + rappel de vérification ; choix Hosted → `/chat`, BYOK → `/billing` avec note « clé dans les Réglages » (F-03), « passer » → HOSTED + `/chat`). `OnboardingService` mémorise l'état en `localStorage` (**mode fournisseur non persisté côté serveur** : aucun endpoint V1 ne l'expose ; arbitrage réversible). **Transversal navigation** : `login` + `oauth-callback` redirigent via `postLoginPath()` (`/onboarding` si non terminé, sinon `/profile`), non-régression testée. Aucune table. | Delivery agent |
 | 2026-07-01 | **F-12 Landing & onboarding terminée** (SF-12-01→02). Page produit consultants + onboarding 2 étapes (inscription puis choix Hosted/BYOK). Feature 100 % frontend consommant F-01/F-02/F-09 existants ; aucune capacité IA réimplémentée (Provider-First) ; aucune nouvelle table ni migration. | Delivery agent |
+| 2026-07-01 | **Fin de vague V1** : F-02, F-04, F-09, F-10, F-11, F-12 livrées (20 PR, 168 tests backend verts). **F-03 BYOK parké 🔴** (OQ-06 chiffrement des clés user à trancher + security-review crypto). | Delivery wave |
+| 2026-07-01 | **Amendement périmètre** : le traitement documentaire entre dans le périmètre (amendement `PROJECT.md`, ADR-011). F-05→08 (OCR/RAG/ask/statut) + F-13/14/15/16 promues « À spécifier » (features V2 à construire). F-17/F-18 restent V3. Réouverture OQ-01/02/03. | Product owner |
