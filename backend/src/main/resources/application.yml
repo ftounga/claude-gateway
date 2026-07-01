@@ -19,6 +19,18 @@ app:
   # URL du frontend, utilisée pour construire les liens d'e-mail (vérification, reset) et
   # la redirection post-connexion OAuth.
   frontend-url: ${APP_FRONTEND_URL:http://localhost:4200}
+  ai:
+    anthropic:
+      # Clé plateforme (mode Hosted). Fournie EXCLUSIVEMENT par l'environnement, jamais commitée
+      # ni journalisée. Si vide, le proxy de chat renvoie 503 (fournisseur dormant).
+      api-key: ${ANTHROPIC_API_KEY:}
+      base-url: ${ANTHROPIC_BASE_URL:https://api.anthropic.com}
+      version: ${ANTHROPIC_VERSION:2023-06-01}
+      # Modèle par défaut + liste blanche des modèles sélectionnables (OQ-04 contournée par config).
+      default-model: ${ANTHROPIC_DEFAULT_MODEL:claude-opus-4-8}
+      models: ${ANTHROPIC_MODELS:claude-opus-4-8,claude-sonnet-5,claude-haiku-4-5}
+      max-tokens: ${ANTHROPIC_MAX_TOKENS:4096}
+      timeout: ${ANTHROPIC_TIMEOUT:PT120S}
   oauth2:
     google:
       # Identifiants OAuth2/OIDC Google. Fournis exclusivement par l'environnement.
