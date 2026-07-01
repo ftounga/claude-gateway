@@ -36,7 +36,7 @@ Aucune feature ne peut être implémentée si elle n'est pas référencée dans 
 
 | ID | Feature | Description | Statut |
 |----|---------|-------------|--------|
-| F-01 | Authentification | OAuth2/OIDC (Google) **+** email/mot de passe (inscription, reset, vérif email) via JWT ; gestion de session, 401 → /login, profil utilisateur | À spécifier |
+| F-01 | Authentification | OAuth2/OIDC (Google) **+** email/mot de passe (inscription, reset, vérif email) via JWT ; gestion de session, 401 → /login, profil utilisateur | **Terminée** (SF-01-01→07) |
 | F-02 | Chat proxy Claude | Interface de chat ; `POST /chat` relaie vers Claude (Hosted), stockage optionnel des messages/conversations, sélection du modèle | À spécifier |
 | F-03 | BYOK (clé utilisateur) | Ajout/suppression d'une clé API Claude chiffrée (`POST /user/api-key`), validation par appel test, bascule Hosted/BYOK | À spécifier |
 | F-04 | Upload & transmission fichiers | `POST /upload` multipart (types supportés par Claude) → **transmission au fournisseur**. Stockage temporaire si nécessaire au relais. **Aucun OCR, aucune indexation, aucune persistance documentaire** (PROJECT.md §11.6) | À spécifier |
@@ -88,3 +88,4 @@ sécurisent la monétisation ; settings et landing finalisent l'expérience. Le 
 |------|-------------|------------|
 | 2026-07-01 | Création initiale (dérivée de docs/spec.md) | Product owner |
 | 2026-07-01 | Recentrage V1 = passerelle pure (PROJECT.md source de vérité). F-05/06/07/08 (OCR/RAG/pgvector/ask) → V2. F-04 redéfini (upload+transmission, sans OCR/index). F-01 = OAuth + email/mot de passe (JWT). | Product owner |
+| 2026-07-01 | **F-01 Authentification terminée** (SF-01-01 socle JWT/User → SF-01-07 écrans Angular). Backend : register/login BCrypt, vérif email, reset mot de passe, OAuth Google, profil + logout-all (`token_version`). Nouvelles tables : `users`, `email_verification_tokens`, `password_reset_tokens`. Front : écrans `auth/`. | Delivery agent |
