@@ -101,4 +101,79 @@ describe('ChatComponent', () => {
     expect(component.messages().length).toBe(0);
     expect(component.submitting()).toBeFalse();
   });
+
+  /** Simule la sélection d'un fichier dans l'input caché. */
+  function pickFile(file: File): void {
+    const event = { target: { files: [file], value: '' } } as unknown as Event;
+    component.onFilesPicked(event);
+  }
+
+  it('uploads a picked file and includes its id in attachmentIds on send', () => {
+    fixture.detectChanges();
+    flushInit();
+
+    const file = new File(['data'], 'rapport.pdf', { type: 'application/pdf' });
+    pickFile(file);
+
+    // Puce en cours, puis prête après la réponse de /api/upload.
+    expect(component.attachments().length).toBe(1);
+    expect(component.attachments()[0].status).toBe('uploading');
+    httpMock
+      .expectOne('/api/upload')
+      .flush({ id: 'f-1', filename: 'rapport.pdf', mediaType: 'application/pdf', sizeBytes: 4 });
+    expect(component.attachments()[0].status).toBe('ready');
+    expect(component.attachments()[0].serverId).toBe('f-1');
+
+    component.form.setValue({ message: 'Analyse ce doc' });
+    component.send();
+
+    const chatReq = httpMock.expectOne('/api/chat');
+    expect(chatReq.request.body.attachmentIds).toEqual(['f-1']);
+    chatReq.flush({
+      conversationId: 'c-1',
+      model: 'claude-opus-4-8',
+      message: {
+        id: 'm-a',
+        role: 'ASSISTANT',
+        content: 'Reçu.',
+        model: 'claude-opus-4-8',
+        createdAt: '2026-07-01T00:00:00Z',
+      },
+    });
+    httpMock.expectOne('/api/conversations').flush([]);
+
+    // Les pièces jointes sont réinitialisées après un envoi réussi.
+    expect(component.attachments().length).toBe(0);
+  });
+
+  it('marks the attachment as errored and sends no attachmentIds when upload fails', () => {
+    fixture.detectChanges();
+    flushInit();
+
+    pickFile(new File(['x'], 'bad.exe', { type: 'application/x-msdownload' }));
+    httpMock.expectOne('/api/upload').flush(
+      { error: 'unsupported_file_type', message: 'non' },
+      { status: 415, statusText: 'Unsupported Media Type' },
+    );
+    expect(component.attachments()[0].status).toBe('error');
+    expect(component.attachments()[0].serverId).toBeUndefined();
+
+    component.form.setValue({ message: 'Message sans pièce valide' });
+    component.send();
+
+    const chatReq = httpMock.expectOne('/api/chat');
+    expect(chatReq.request.body.attachmentIds).toBeUndefined();
+    chatReq.flush({
+      conversationId: 'c-2',
+      model: 'claude-opus-4-8',
+      message: {
+        id: 'm-b',
+        role: 'ASSISTANT',
+        content: 'Ok.',
+        model: 'claude-opus-4-8',
+        createdAt: '2026-07-01T00:00:00Z',
+      },
+    });
+    httpMock.expectOne('/api/conversations').flush([]);
+  });
 });

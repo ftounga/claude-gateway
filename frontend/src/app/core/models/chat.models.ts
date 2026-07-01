@@ -16,6 +16,8 @@ export interface ChatRequest {
   conversationId?: string | null;
   message: string;
   model?: string | null;
+  /** Identifiants de fichiers téléversés à rattacher (F-04 ; contrat importé de SF-04-02). */
+  attachmentIds?: string[];
 }
 
 /** Réponse de POST /api/chat. */
