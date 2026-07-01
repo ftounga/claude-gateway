@@ -94,6 +94,21 @@ public class UserService {
     }
 
     /**
+     * Supprime définitivement un compte (droit à l'effacement RGPD). La suppression de la ligne
+     * {@code users} fait tomber en cascade (contraintes FK) les jetons de vérification d'e-mail et
+     * de réinitialisation de mot de passe. Les autres données rattachées (conversations, messages,
+     * fichiers, compteurs d'usage, abonnement) sont supprimées explicitement par l'appelant, ces
+     * tables n'ayant pas de FK vers {@code users}.
+     *
+     * @throws UserNotFoundException si aucun utilisateur ne correspond
+     */
+    @Transactional
+    public void deleteById(UUID userId) {
+        User user = findByIdOrThrow(userId);
+        userRepository.delete(user);
+    }
+
+    /**
      * Charge l'utilisateur courant / demandé par son identifiant.
      *
      * @throws UserNotFoundException si aucun utilisateur ne correspond

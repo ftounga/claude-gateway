@@ -18,4 +18,7 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
     Optional<Subscription> findByStripeSubscriptionId(String stripeSubscriptionId);
 
     Optional<Subscription> findByStripeCustomerId(String stripeCustomerId);
+
+    /** Suppression RGPD : l'abonnement d'un utilisateur (isolation {@code user_id}). */
+    void deleteByUserId(UUID userId);
 }

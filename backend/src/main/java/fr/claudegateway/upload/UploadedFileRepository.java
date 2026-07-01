@@ -1,5 +1,6 @@
 package fr.claudegateway.upload;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -14,4 +15,10 @@ import org.springframework.stereotype.Repository;
 public interface UploadedFileRepository extends JpaRepository<UploadedFile, UUID> {
 
     Optional<UploadedFile> findByIdAndUserId(UUID id, UUID userId);
+
+    /** Export RGPD : toutes les métadonnées de fichiers d'un utilisateur (isolation {@code user_id}). */
+    List<UploadedFile> findByUserId(UUID userId);
+
+    /** Suppression RGPD : toutes les métadonnées de fichiers d'un utilisateur. */
+    void deleteByUserId(UUID userId);
 }

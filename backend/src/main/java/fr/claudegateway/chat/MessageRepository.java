@@ -14,4 +14,7 @@ import org.springframework.stereotype.Repository;
 public interface MessageRepository extends JpaRepository<Message, UUID> {
 
     List<Message> findByConversationIdOrderByCreatedAtAsc(UUID conversationId);
+
+    /** Suppression RGPD : tous les messages d'un utilisateur (isolation {@code user_id}). */
+    void deleteByUserId(UUID userId);
 }

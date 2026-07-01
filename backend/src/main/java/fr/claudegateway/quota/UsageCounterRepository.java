@@ -1,6 +1,7 @@
 package fr.claudegateway.quota;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -15,4 +16,10 @@ import org.springframework.stereotype.Repository;
 public interface UsageCounterRepository extends JpaRepository<UsageCounter, UUID> {
 
     Optional<UsageCounter> findByUserIdAndPeriodStart(UUID userId, LocalDate periodStart);
+
+    /** Export RGPD : tous les compteurs d'usage d'un utilisateur (isolation {@code user_id}). */
+    List<UsageCounter> findByUserId(UUID userId);
+
+    /** Suppression RGPD : tous les compteurs d'usage d'un utilisateur. */
+    void deleteByUserId(UUID userId);
 }
