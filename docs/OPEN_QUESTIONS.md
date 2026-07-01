@@ -44,10 +44,13 @@ Questions non tranchées ayant un impact produit ou technique. À mettre à jour
 **Décision** : À définir (hypothèse : KMS).
 
 ## OQ-07 — Réglages Stripe (TVA/taxes, produits, price IDs)
-**Statut** : Ouvert
+**Statut** : Contournée en V1 (F-09 livrée) — TVA/Stripe Tax reste à trancher
 **Impact** : F-09, facturation conforme (TVA UE), mapping plans → price IDs.
 **Options** : Stripe Tax activé ; price IDs par plan (Hosted/BYOK × Solo/Pro/Daily) staging + prod.
-**Décision** : À définir.
+**Décision (2026-07-01, F-09)** : Les **price IDs** sont **externalisés en configuration d'environnement**
+(`app.billing.stripe.prices.{SOLO,PRO,DAILY}`, `STRIPE_PRICE_*`), jamais en dur — le catalogue de code
+ne porte aucun montant. Les montants réels vivent dans Stripe (réversibles sans redéploiement).
+**Stripe Tax reste désactivé en V1** (option de configuration à activer ultérieurement) : point encore ouvert.
 
 ## OQ-08 — Facturation de l'overage
 **Statut** : Ouvert

@@ -170,7 +170,14 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
 - **uploaded_files** — métadonnées d'un fichier téléversé puis transmis au fournisseur (F-04, migration `007`). **Aucun contenu binaire stocké** (relais pur, PROJECT.md §11.6).
   - `uploaded_files` : `id (uuid)`, `user_id (uuid)`, `provider_file_id (interne, jamais exposé)`, `filename`, `media_type`, `size_bytes`, `created_at`. Index `user_id`.
 - **documents** (1) → (N) **chunks** — scaffolding V2 dormant (OCR/RAG), non câblé en V1.
-- **subscriptions** — abonnement Stripe par `user_id` (`plan`, `status`, `stripe_*`) — cible F-09.
+- **subscriptions** — abonnement d'un utilisateur (F-09, migration `008`). **Un seul par `user_id`** (unique).
+  - `subscriptions` : `id (uuid)`, `user_id (uuid, unique)`, `status (TRIALING|ACTIVE|PAST_DUE|CANCELED|INCOMPLETE)`,
+    `plan_code (nullable ; SOLO|PRO|DAILY)`, `trial_ends_at (nullable)`, `current_period_end (nullable)`,
+    `stripe_customer_id (interne, nullable, jamais exposé)`, `stripe_subscription_id (interne, nullable, jamais exposé)`,
+    `created_at`, `updated_at`. Index `user_id`, `stripe_subscription_id`.
+  - **Note** : la table `subscriptions` du schéma initial `001-init-schema` (placeholder legacy `spec.md`,
+    `user_id text`, `plan`, sans statut typé ni unicité) a été **remplacée** en `008` par la table V1 conforme
+    ci-dessus (même stratégie que `006-messages`).
 
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 
