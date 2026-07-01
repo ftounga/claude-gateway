@@ -16,8 +16,15 @@ management:
     health:
       show-details: always
 app:
-  # URL du frontend, utilisée pour construire les liens d'e-mail (vérification, reset).
+  # URL du frontend, utilisée pour construire les liens d'e-mail (vérification, reset) et
+  # la redirection post-connexion OAuth.
   frontend-url: ${APP_FRONTEND_URL:http://localhost:4200}
+  oauth2:
+    google:
+      # Identifiants OAuth2/OIDC Google. Fournis exclusivement par l'environnement.
+      # Si client-id est vide, OAuth reste dormant (aucun bean, démarrage normal) — voir OAuth2ClientConfig.
+      client-id: ${GOOGLE_CLIENT_ID:}
+      client-secret: ${GOOGLE_CLIENT_SECRET:}
   jwt:
     # Secret de signature HS256. Fourni exclusivement par l'environnement (aucun défaut en dur).
     # L'application refuse de démarrer si absent ou trop court (< 256 bits) — voir JwtService.
