@@ -7,7 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Logique métier autour des utilisateurs. Point d'accès unique pour lire un compte
+ * Logique métier autour des utilisateurs. Point d'accès unique pour lire et écrire un compte
  * (les couches supérieures ne dépendent jamais directement du {@link UserRepository}).
  */
 @Service
@@ -18,6 +18,27 @@ public class UserService {
 
     public UserService(UserRepository userRepository) {
         this.userRepository = userRepository;
+    }
+
+    /** Vrai si un compte existe déjà pour cet email (email supposé déjà normalisé). */
+    public boolean emailExists(String email) {
+        return userRepository.existsByEmail(email);
+    }
+
+    /**
+     * Crée et persiste un compte local (email / mot de passe). Le mot de passe est déjà haché
+     * (BCrypt) par l'appelant : cette couche ne manipule jamais de mot de passe en clair.
+     */
+    @Transactional
+    public User createLocalUser(String email, String passwordHash) {
+        User user = User.builder()
+                .email(email)
+                .passwordHash(passwordHash)
+                .emailVerified(false)
+                .provider(AuthProvider.LOCAL)
+                .role(UserRole.USER)
+                .build();
+        return userRepository.save(user);
     }
 
     /**
