@@ -1,0 +1,42 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# SQUELETTE — production non encore activée (voir OQ-09 pour le domaine définitif).
+# Le domaine reste portal.ng-itconsulting.com dans la base ; à spécialiser ici
+# (ingress-patch) le jour où staging et production coexistent.
+
+namespace: claude-gateway-production
+
+resources:
+  - namespace.yaml
+  - ../../base
+
+configMapGenerator:
+  - name: backend-config
+    behavior: merge
+    literals:
+      - SPRING_PROFILES_ACTIVE=prod
+      - APP_FRONTEND_URL=https://portal.ng-itconsulting.com
+
+patches:
+  - path: service-account-patch.yaml
+    target:
+      kind: ServiceAccount
+      name: claude-gateway-backend
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+    target:
+      kind: Deployment
+      name: claude-gateway-backend
+  - patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 2
+    target:
+      kind: Deployment
+      name: claude-gateway-frontend
+
+commonLabels:
+  environment: production

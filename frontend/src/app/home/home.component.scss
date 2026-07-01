@@ -1,0 +1,64 @@
+.home {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(1200px 600px at 50% -10%, rgba(67, 56, 202, 0.10), transparent),
+    var(--cg-bg);
+
+  &__card {
+    max-width: 520px;
+    width: 100%;
+    padding: 48px 40px;
+    text-align: center;
+    border-radius: 16px;
+  }
+
+  &__brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 8px;
+
+    h1 {
+      margin: 0;
+      font-size: 32px;
+    }
+  }
+
+  &__logo {
+    font-family: var(--cg-font-mono);
+    font-weight: 600;
+    font-size: 28px;
+    color: #fff;
+    background: linear-gradient(135deg, var(--cg-primary), var(--cg-accent));
+    border-radius: 10px;
+    padding: 4px 12px;
+    line-height: 1.2;
+  }
+
+  &__tagline {
+    color: var(--cg-text-secondary);
+    margin: 0 0 32px;
+    font-size: 16px;
+  }
+
+  &__status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px;
+    border-radius: 999px;
+    font-weight: 500;
+    font-size: 14px;
+
+    &--checking { background: #fff8e1; color: #f9a825; }
+    &--up { background: #e8f5e9; color: var(--cg-success); }
+    &--down { background: #ffebee; color: var(--cg-error); }
+
+    mat-icon { font-size: 20px; width: 20px; height: 20px; }
+  }
+}

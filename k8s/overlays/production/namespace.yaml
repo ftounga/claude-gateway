@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: claude-gateway-production
+  labels:
+    app: claude-gateway
+    environment: production

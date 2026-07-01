@@ -1,0 +1,98 @@
+// Design System claude-gateway — thème "Indigo Tech"
+// Voir docs/DESIGN_SYSTEM.md (source de vérité).
+@use '@angular/material' as mat;
+
+html {
+  @include mat.theme((
+    color: (
+      theme-type: light,
+      primary: mat.$violet-palette,   // indigo/violet — proche de #4338CA
+      tertiary: mat.$cyan-palette,    // accent cyan — proche de #06B6D4
+    ),
+    typography: (
+      plain-family: 'Inter',
+      brand-family: 'Space Grotesk',
+    ),
+    density: 0,
+  ));
+}
+
+// ---- Variables du design system ----
+:root {
+  --cg-primary: #4338CA;
+  --cg-accent: #06B6D4;
+  --cg-bg: #F8FAFC;
+  --cg-surface: #FFFFFF;
+  --cg-error: #DC2626;
+  --cg-success: #16A34A;
+  --cg-text-primary: #0F172A;
+  --cg-text-secondary: #64748B;
+  --cg-divider: #E2E8F0;
+
+  --cg-font-heading: 'Space Grotesk', 'Inter', sans-serif;
+  --cg-font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --cg-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  // Espacements (multiples de 4)
+  --cg-space-1: 4px;
+  --cg-space-2: 8px;
+  --cg-space-3: 16px;
+  --cg-space-4: 24px;
+  --cg-space-5: 32px;
+  --cg-space-6: 48px;
+  --cg-space-7: 64px;
+}
+
+// ---- Reset ----
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--cg-font-body);
+  color: var(--cg-text-primary);
+  background: var(--cg-bg);
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--cg-font-heading);
+  color: var(--cg-text-primary);
+}
+h1 { font-weight: 700; }
+h2 { font-weight: 700; }
+h3 { font-weight: 600; }
+h4 { font-weight: 600; }
+
+code, pre { font-family: var(--cg-font-mono); }
+
+// ---- Badges / statuts ----
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.6;
+
+  &--success { background: #E8F5E9; color: var(--cg-success); }
+  &--warning { background: #FFF8E1; color: #F9A825; }
+  &--error   { background: #FFEBEE; color: var(--cg-error); }
+  &--neutral { background: #F5F5F5; color: var(--cg-text-secondary); }
+}
+
+// ---- Surcharges Material ----
+.mat-mdc-card {
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+}
+.mat-mdc-form-field { width: 100%; }
+
+// ---- Snackbars globaux (panelClass au niveau global) ----
+.snack-success .mdc-snackbar__surface {
+  background-color: var(--cg-success) !important;
+  color: #fff !important;
+}
+.snack-error .mdc-snackbar__surface {
+  background-color: var(--cg-error) !important;
+  color: #fff !important;
+}

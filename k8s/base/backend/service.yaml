@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: claude-gateway-backend
+spec:
+  selector:
+    app: claude-gateway-backend
+  ports:
+    - port: 8080
+      targetPort: 8080
+  type: ClusterIP

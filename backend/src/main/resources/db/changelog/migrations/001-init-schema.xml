@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      Schéma initial claude-gateway. Types JSON et timestamptz dépendants du SGBD :
+      un changeset Postgres (staging/prod) et un changeset H2 (dev/tests) en parallèle.
+      La colonne vectorielle chunks.embedding est ajoutée en 002 (Postgres + pgvector).
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="001-init-schema-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="documents">
+            <column name="id" type="uuid" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="filename" type="text"><constraints nullable="false"/></column>
+            <column name="s3_key" type="text"/>
+            <column name="uploaded_by" type="text"/>
+            <column name="uploaded_at" type="timestamptz" defaultValueComputed="now()"/>
+            <column name="status" type="text"/>
+            <column name="metadata" type="jsonb"/>
+            <column name="textract_raw" type="jsonb"/>
+        </createTable>
+
+        <createTable tableName="chunks">
+            <column name="id" type="uuid" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="document_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_chunks_document"
+                             references="documents(id)" deleteCascade="true"/>
+            </column>
+            <column name="chunk_index" type="int"/>
+            <column name="text" type="text"/>
+            <column name="char_start" type="int"/>
+            <column name="char_end" type="int"/>
+            <column name="page_number" type="int"/>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()"/>
+        </createTable>
+        <createIndex tableName="chunks" indexName="idx_chunks_document_id">
+            <column name="document_id"/>
+        </createIndex>
+
+        <createTable tableName="messages">
+            <column name="id" type="uuid" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="conversation_id" type="uuid"/>
+            <column name="user_id" type="text"/>
+            <column name="role" type="text"/>
+            <column name="content" type="text"/>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()"/>
+        </createTable>
+        <createIndex tableName="messages" indexName="idx_messages_user_id">
+            <column name="user_id"/>
+        </createIndex>
+        <createIndex tableName="messages" indexName="idx_messages_conversation_id">
+            <column name="conversation_id"/>
+        </createIndex>
+
+        <createTable tableName="subscriptions">
+            <column name="id" type="uuid" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="text"/>
+            <column name="plan" type="text"/>
+            <column name="stripe_customer_id" type="text"/>
+            <column name="stripe_subscription_id" type="text"/>
+            <column name="started_at" type="timestamptz"/>
+            <column name="status" type="text"/>
+        </createTable>
+        <createIndex tableName="subscriptions" indexName="idx_subscriptions_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="001-init-schema-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="documents">
+            <column name="id" type="uuid" defaultValueComputed="RANDOM_UUID()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="filename" type="varchar(1024)"><constraints nullable="false"/></column>
+            <column name="s3_key" type="varchar(2048)"/>
+            <column name="uploaded_by" type="varchar(255)"/>
+            <column name="uploaded_at" type="timestamp with time zone" defaultValueComputed="now()"/>
+            <column name="status" type="varchar(32)"/>
+            <column name="metadata" type="clob"/>
+            <column name="textract_raw" type="clob"/>
+        </createTable>
+
+        <createTable tableName="chunks">
+            <column name="id" type="uuid" defaultValueComputed="RANDOM_UUID()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="document_id" type="uuid">
+                <constraints nullable="false" foreignKeyName="fk_chunks_document"
+                             references="documents(id)" deleteCascade="true"/>
+            </column>
+            <column name="chunk_index" type="int"/>
+            <column name="text" type="clob"/>
+            <column name="char_start" type="int"/>
+            <column name="char_end" type="int"/>
+            <column name="page_number" type="int"/>
+            <column name="created_at" type="timestamp with time zone" defaultValueComputed="now()"/>
+        </createTable>
+        <createIndex tableName="chunks" indexName="idx_chunks_document_id">
+            <column name="document_id"/>
+        </createIndex>
+
+        <createTable tableName="messages">
+            <column name="id" type="uuid" defaultValueComputed="RANDOM_UUID()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="conversation_id" type="uuid"/>
+            <column name="user_id" type="varchar(255)"/>
+            <column name="role" type="varchar(32)"/>
+            <column name="content" type="clob"/>
+            <column name="created_at" type="timestamp with time zone" defaultValueComputed="now()"/>
+        </createTable>
+        <createIndex tableName="messages" indexName="idx_messages_user_id">
+            <column name="user_id"/>
+        </createIndex>
+        <createIndex tableName="messages" indexName="idx_messages_conversation_id">
+            <column name="conversation_id"/>
+        </createIndex>
+
+        <createTable tableName="subscriptions">
+            <column name="id" type="uuid" defaultValueComputed="RANDOM_UUID()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="varchar(255)"/>
+            <column name="plan" type="varchar(64)"/>
+            <column name="stripe_customer_id" type="varchar(255)"/>
+            <column name="stripe_subscription_id" type="varchar(255)"/>
+            <column name="started_at" type="timestamp with time zone"/>
+            <column name="status" type="varchar(32)"/>
+        </createTable>
+        <createIndex tableName="subscriptions" indexName="idx_subscriptions_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

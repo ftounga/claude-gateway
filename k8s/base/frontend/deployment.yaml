@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: claude-gateway-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: claude-gateway-frontend
+  template:
+    metadata:
+      labels:
+        app: claude-gateway-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: REGISTRY_PLACEHOLDER/claude-gateway-frontend:FRONTEND_IMAGE_TAG
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          env:
+            - name: BACKEND_URL
+              value: "http://claude-gateway-backend:8080"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi

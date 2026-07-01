@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: claude-gateway-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: claude-gateway-backend
+  template:
+    metadata:
+      labels:
+        app: claude-gateway-backend
+      annotations:
+        # Hash des secrets K8s injecté par le workflow CI/CD : change quand
+        # `backend-secrets` change, ce qui force le rollout du pod.
+        secrets-hash: SECRETS_HASH_PLACEHOLDER
+    spec:
+      serviceAccountName: claude-gateway-backend
+      containers:
+        - name: backend
+          image: REGISTRY_PLACEHOLDER/claude-gateway-backend:BACKEND_IMAGE_TAG
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - secretRef:
+                name: backend-secrets
+          startupProbe:
+            httpGet:
+              path: /api/actuator/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /api/actuator/health
+              port: 8080
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/actuator/health
+              port: 8080
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: claude-gateway-backend
+  annotations:
+    eks.amazonaws.com/role-arn: IRSA_ROLE_ARN_PLACEHOLDER

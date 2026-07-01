@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+data:
+  SPRING_PROFILES_ACTIVE: "staging"
+  SERVER_PORT: "8080"
+  S3_REGION: "eu-west-3"
+  S3_PATH_STYLE_ACCESS: "false"
+  APP_FRONTEND_URL: "https://portal.ng-itconsulting.com"

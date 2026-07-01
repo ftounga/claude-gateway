@@ -1,0 +1,180 @@
+# ARCHITECTURE_CANONIQUE.md
+claude-gateway — Architecture produit et technique de référence
+
+Ce document constitue la source de vérité architecturale du projet claude-gateway.
+Toute implémentation technique, toute proposition d'évolution ou toute génération
+de code doit rester cohérente avec ce document.
+
+Toute divergence doit être explicitement signalée.
+
+> Voir aussi `docs/spec.md` (spécification technique détaillée) et `docs/marketing.md`.
+
+---
+
+# 1 — Vision du produit
+
+claude-gateway est une application de chat LLM hébergée (proxy Claude), accessible par navigateur,
+destinée principalement aux **consultants en mission** dont l'accès direct aux LLM est bloqué par
+les proxys/DSI.
+
+Objectif principal :
+
+Fournir un accès simple, sécurisé et traçable aux meilleurs LLM (Claude) depuis le navigateur,
+avec en option l'analyse documentaire (OCR + RAG), en modèle **Hosted** (clé et facturation gérées
+par la plateforme) ou **BYOK** (l'utilisateur fournit sa propre clé), le tout monétisé par
+abonnement (Stripe).
+
+Le système :
+
+1. Authentifie l'utilisateur et vérifie son entitlement/quota.
+2. Reçoit un message et le relaie (proxy) vers l'API Claude, en Hosted ou BYOK.
+3. Permet d'uploader des documents (pdf, docx, txt, png, jpg — max 20 Mo) stockés sur S3.
+4. Extrait le texte (OCR AWS Textract pour images/PDF scannés), le découpe (chunking) et l'indexe (embeddings + pgvector) — indexation opt-in.
+5. Répond à des questions ancrées sur les documents indexés (RAG : recherche sémantique top-K → prompt cité → Claude).
+6. Gère les abonnements et la facturation via Stripe (webhooks → entitlements).
+
+---
+
+# 2 — Positionnement produit
+
+## Domaine initial (V1)
+
+Chat proxy vers Claude + analyse documentaire optionnelle, pour consultants (freelances, cabinets
+boutique, développeurs freelance). L'accent V1 : proxy fiable, upload/OCR/RAG, BYOK/Hosted, billing.
+
+Cas d'usage principaux :
+
+- Poser des questions à Claude depuis le navigateur en mission, sans accès direct.
+- Uploader un document client et interroger son contenu (RAG cité).
+- Utiliser sa propre clé API (BYOK) pour maîtriser sa facturation.
+- Souscrire un abonnement (Solo/Pro/Daily) ou un daily pass.
+
+Documents ou entités typiques manipulés :
+
+- Documents (pdf, docx, txt, images), chunks de texte + embeddings, messages/conversations, abonnements.
+
+## Extension progressive
+
+- **V1** : chat proxy, upload + OCR + RAG, BYOK/Hosted, billing Stripe, quotas.
+- **V2** : templates métier (audit, rapport), export, embeddings locaux (all-MiniLM), rapports d'usage/coût in-app.
+- **V3** : espaces d'équipe (cabinets), on-prem/allowlist, connecteurs, multimodal étendu.
+
+---
+
+# 3 — Modèle SaaS
+
+claude-gateway est un SaaS **multi-tenant par utilisateur** (B2C/B2B individuel) : chaque utilisateur
+est son propre périmètre d'isolation. Il n'y a pas (en V1) de notion d'organisation/workspace
+partagé ; la colonne d'isolation est **`user_id`**.
+
+## Concepts fondamentaux
+
+### Conversation
+Fil d'échange entre un utilisateur et Claude (`messages.conversation_id`). Les messages appartiennent
+à un `user_id`. Sert d'historique et de contexte.
+
+### Document indexé
+Fichier uploadé (`documents`) → texte extrait (OCR si besoin) → chunks (`chunks`) → embeddings
+(pgvector) permettant la recherche sémantique et le RAG cité. Indexation opt-in.
+
+### Utilisateur
+Personne physique (consultant) accédant à la plateforme. Porte son historique, ses documents, sa
+clé BYOK (chiffrée) et son abonnement. Toute donnée est isolée par `user_id`.
+
+---
+
+# 4 — Stack technique
+
+La stack est volontairement simple et maîtrisée.
+
+Frontend
+Angular 19 (Angular Material)
+
+Backend
+Spring Boot 3.5 / Java 21
+
+Base de données
+PostgreSQL (production, extension **pgvector**) — H2 en mémoire (dev/test)
+
+Migrations de schéma
+Liquibase (XML, versionné dans `db/changelog/migrations/`). Colonnes JSON/vector spécifiques Postgres
+isolées en changesets `dbms="postgresql"`.
+
+Authentification
+Spring Security + OAuth2/OIDC (Google en V1). Session/token côté backend ; le frontend gère 401 → /login.
+(À confirmer : voir OPEN_QUESTIONS OQ-05.)
+
+Stockage fichiers
+Object storage S3 (AWS), SSE-KMS. En local : conteneur compatible (MinIO/localstack) ou S3 de dev.
+
+Intégration IA
+- Proxy vers l'API Claude (Anthropic) — Hosted (clé plateforme) ou BYOK (clé utilisateur chiffrée).
+- OCR : AWS Textract (sync images, async PDF avec polling).
+- Embeddings : via API fournisseur (Anthropic/OpenAI) en V1, migration possible vers local.
+Tous les traitements longs (Textract PDF, ingestion embeddings) sont **asynchrones** (workers).
+
+---
+
+# 5 — Architecture système
+
+Architecture logique :
+
+Frontend Angular
+→ interface utilisateur (Chat, Upload, Documents, Settings, Billing)
+
+Backend Spring Boot
+→ API métier, orchestration, proxy Claude, contrôle du pipeline d'ingestion
+
+PostgreSQL (pgvector)
+→ persistance (documents, chunks+embeddings, messages, subscriptions)
+
+Composants supplémentaires :
+- **Claude API** (Anthropic) — proxy des messages, Hosted/BYOK.
+- **AWS S3** — stockage des uploads (SSE-KMS).
+- **AWS Textract** — OCR (accès via IRSA).
+- **Embedding API** (provider) — génération des vecteurs.
+- **Worker(s) Kubernetes** — ingestion/Textract polling/embeddings (asynchrone).
+- **Stripe** — abonnements + webhooks.
+- **Secrets** : Kubernetes Secrets ; clés BYOK chiffrées (KMS). Accès AWS via IRSA.
+
+Déploiement : cluster EKS partagé `legalcase-shared` (eu-west-3), workspace dédié
+(namespace `claude-gateway-staging`), exposé sur `portal.ng-itconsulting.com` (nginx-ingress +
+cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegatewaydb`.
+
+---
+
+# 6 — Modèle de données (entités principales)
+
+- **documents** (1) → (N) **chunks** — un document produit N chunks (`chunk_index`, `text`, `page_number`, `embedding vector`).
+- **messages** — reliés par `conversation_id`, appartenant à un `user_id`.
+- **subscriptions** — abonnement Stripe par `user_id` (`plan`, `status`, `stripe_*`).
+
+Voir `docs/spec.md` §4 pour le DDL complet.
+
+Règle d'isolation des données :
+Tout accès aux données filtre obligatoirement sur **`user_id`** (documents via `uploaded_by`,
+messages/subscriptions via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur.
+
+---
+
+# 7 — Règles d'architecture non négociables
+
+- **Layering strict** : Controller → Service → Repository. Pas de logique métier dans les controllers, pas d'accès repository depuis un controller.
+- **Isolation des données** : tout accès filtre sur `user_id`. Jamais de requête sans filtre tenant.
+- **Traitements longs asynchrones** : OCR PDF (Textract polling) et ingestion embeddings passent par des workers, jamais dans le thread HTTP.
+- **Proxy LLM sécurisé** : la clé (plateforme ou BYOK) n'est jamais exposée au client. Clés BYOK stockées chiffrées.
+- **Migrations via Liquibase uniquement** : jamais de DDL manuel hors changelog. `ddl-auto: validate`.
+- **Auth obligatoire** : tous les endpoints métier sont authentifiés ; gestion 401 → /login côté frontend.
+- **Secrets hors du code** : via K8s Secrets / variables d'environnement, jamais commités.
+
+---
+
+# 8 — Questions ouvertes
+
+Les sujets non encore tranchés sont listés dans `docs/OPEN_QUESTIONS.md`.
+
+Décisions impactant l'architecture actuelle :
+
+- OQ-01 : Dimension d'embedding définitive (provider 1536 vs local 384) — impacte le schéma `chunks.embedding`.
+- OQ-02 : Version Postgres RDS et modalités d'activation de pgvector sur l'instance partagée.
+- OQ-05 : Fournisseur(s) OAuth et modèle de session/token.
