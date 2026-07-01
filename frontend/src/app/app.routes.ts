@@ -65,6 +65,11 @@ export const routes: Routes = [
       import('./documents/documents.component').then((m) => m.DocumentsComponent),
   },
   {
+    path: 'ask',
+    canActivate: [authGuard],
+    loadComponent: () => import('./ask/ask.component').then((m) => m.AskComponent),
+  },
+  {
     path: 'billing',
     canActivate: [authGuard],
     loadComponent: () => import('./billing/billing.component').then((m) => m.BillingComponent),

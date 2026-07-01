@@ -9,6 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
+import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -51,6 +52,7 @@ const IN_PROGRESS_STATUSES: readonly DocumentStatus[] = ['PROCESSING', 'INDEXING
   selector: 'app-documents',
   imports: [
     DatePipe,
+    RouterLink,
     MatTableModule,
     MatPaginatorModule,
     MatButtonModule,
