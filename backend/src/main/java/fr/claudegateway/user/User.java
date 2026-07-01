@@ -60,6 +60,13 @@ public class User {
     @Column(name = "role", nullable = false, length = 16)
     private UserRole role;
 
+    /**
+     * Version de token : incrémentée lors d'une déconnexion « toutes sessions ». Injectée dans le
+     * JWT (claim {@code tv}) et comparée par le filtre pour invalider les tokens antérieurs.
+     */
+    @Column(name = "token_version", nullable = false)
+    private int tokenVersion;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

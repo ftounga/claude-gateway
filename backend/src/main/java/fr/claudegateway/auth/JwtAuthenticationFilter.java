@@ -65,12 +65,27 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             UUID userId = UUID.fromString(claims.getSubject());
 
             userService.findById(userId).ifPresentOrElse(
-                    user -> setAuthentication(user, request),
+                    user -> authenticateIfTokenVersionMatches(user, claims, request),
                     () -> log.debug("JWT valide mais utilisateur {} introuvable — accès refusé", userId));
         } catch (JwtException | IllegalArgumentException ex) {
             // Token malformé, signature invalide, expiré, ou sub non-UUID : contexte laissé vide.
             log.debug("Rejet du JWT présenté : {}", ex.getClass().getSimpleName());
         }
+    }
+
+    /**
+     * N'authentifie que si le claim {@code tv} du token correspond au {@code token_version} courant
+     * de l'utilisateur. Après un « logout de toutes les sessions », les tokens antérieurs (ancien
+     * {@code tv}) sont ainsi rejetés. Un token sans claim {@code tv} est traité comme {@code tv=0}.
+     */
+    private void authenticateIfTokenVersionMatches(User user, Claims claims, HttpServletRequest request) {
+        Integer tokenVersion = claims.get(JwtService.CLAIM_TOKEN_VERSION, Integer.class);
+        int presentedVersion = tokenVersion == null ? 0 : tokenVersion;
+        if (presentedVersion != user.getTokenVersion()) {
+            log.debug("JWT rejeté : version de token périmée (logout-all) pour l'utilisateur {}", user.getId());
+            return;
+        }
+        setAuthentication(user, request);
     }
 
     private void setAuthentication(User user, HttpServletRequest request) {

@@ -32,6 +32,7 @@ public class JwtService {
 
     static final String CLAIM_EMAIL = "email";
     static final String CLAIM_ROLE = "role";
+    static final String CLAIM_TOKEN_VERSION = "tv";
 
     private final SecretKey signingKey;
     private final Duration expiration;
@@ -55,6 +56,7 @@ public class JwtService {
                 .subject(user.getId().toString())
                 .claim(CLAIM_EMAIL, user.getEmail())
                 .claim(CLAIM_ROLE, user.getRole().name())
+                .claim(CLAIM_TOKEN_VERSION, user.getTokenVersion())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plus(expiration)))
                 .signWith(signingKey)
