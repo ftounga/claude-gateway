@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      Ingestion RAG (F-06 / SF-06-01). Reconstruit la table `chunks` (placeholder legacy de
+      001-init-schema, jamais câblée) en table V1 conforme : typage uuid, `user_id` (isolation
+      multi-tenant, filtre direct pour la recherche vectorielle F-07), FK `chunks -> documents`
+      (rétablie après le détachement de 010) avec suppression en cascade (RGPD F-08).
+
+      La colonne vectorielle `embedding vector(1536)` et l'index ivfflat sont Postgres uniquement :
+      DDL isolé en changeset dbms="postgresql" (dimension 1536 = OQ-01, défaut du schéma 002-pgvector ;
+      IVFFlat lists=100 = OQ-03, conservé). L'entité JPA `Chunk` ne mappe PAS `embedding` — la
+      persistance du vecteur passe par `EmbeddingStore` (SQL natif Postgres / no-op ailleurs), ce qui
+      laisse les tests H2 verts. `documents.chunk_count` est db-agnostique (compteur de chunks indexés).
+      Numéros de changeset au-dessus de 010 (dernier mergé sur origin/main).
+    -->
+
+    <!-- ===================== chunks : reconstruction (POSTGRESQL) ===================== -->
+    <changeSet id="011-chunks-rebuild-postgresql" author="claude-gateway" dbms="postgresql">
+        <dropTable tableName="chunks"/>
+        <createTable tableName="chunks">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="document_id" type="uuid">
+                <constraints nullable="false"
+                             foreignKeyName="fk_chunks_document"
+                             referencedTableName="documents" referencedColumnNames="id"
+                             deleteCascade="true"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="chunk_index" type="int">
+                <constraints nullable="false"/>
+            </column>
+            <column name="text" type="text">
+                <constraints nullable="false"/>
+            </column>
+            <column name="char_start" type="int"/>
+            <column name="char_end" type="int"/>
+            <column name="page_number" type="int"/>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="chunks" indexName="idx_chunks_document_id">
+            <column name="document_id"/>
+        </createIndex>
+        <createIndex tableName="chunks" indexName="idx_chunks_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ===================== chunks : reconstruction (H2) ===================== -->
+    <changeSet id="011-chunks-rebuild-h2" author="claude-gateway" dbms="h2">
+        <dropTable tableName="chunks"/>
+        <createTable tableName="chunks">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="document_id" type="uuid">
+                <constraints nullable="false"
+                             foreignKeyName="fk_chunks_document"
+                             referencedTableName="documents" referencedColumnNames="id"
+                             deleteCascade="true"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="chunk_index" type="int">
+                <constraints nullable="false"/>
+            </column>
+            <!-- VARCHAR large (JDBC VARCHAR) pour concorder avec l'entité (columnDefinition="text").
+                 Cf. documents.extracted_text (010) et 006-messages. -->
+            <column name="text" type="varchar(1000000)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="char_start" type="int"/>
+            <column name="char_end" type="int"/>
+            <column name="page_number" type="int"/>
+            <column name="created_at" type="timestamp with time zone" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="chunks" indexName="idx_chunks_document_id">
+            <column name="document_id"/>
+        </createIndex>
+        <createIndex tableName="chunks" indexName="idx_chunks_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ============ colonne vectorielle + index (POSTGRESQL uniquement) ============ -->
+    <changeSet id="011-chunks-embedding-postgresql" author="claude-gateway" dbms="postgresql">
+        <sql>ALTER TABLE chunks ADD COLUMN embedding vector(1536);</sql>
+        <sql>CREATE INDEX IF NOT EXISTS chunks_embedding_idx
+             ON chunks USING ivfflat (embedding vector_l2_ops) WITH (lists = 100);</sql>
+    </changeSet>
+
+    <!-- ============ documents.chunk_count (db-agnostique) ============ -->
+    <changeSet id="011-documents-chunk-count" author="claude-gateway">
+        <addColumn tableName="documents">
+            <column name="chunk_count" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>
