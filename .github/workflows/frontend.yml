@@ -1,11 +1,8 @@
 name: Frontend CI/CD
 
+# Auto-trigger sur push désactivé pendant la vague de dev V1 (déploiement staging manuel).
+# Réactiver le bloc push: une fois les GitHub Secrets CI configurés.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/frontend.yml'
   workflow_dispatch:
 
 concurrency:

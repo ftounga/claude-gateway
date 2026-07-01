@@ -130,7 +130,9 @@ if (merged.length) {
      Features mergées: ${merged.map(m => m.featureId).join(', ')}.
      1) UN commit docs/wave-${DATE}-complete : statuts "Terminée" dans docs/PRODUCT_SPEC.md,
         1 entrée historique PAR SF, MAJ docs/ARCHITECTURE_CANONIQUE.md si nouvelles tables.
-     2) Déploiement staging UNIQUE : gh workflow run backend.yml --ref main ; front via frontend.yml ;
+     2) Déploiement staging UNIQUE et MANUEL (le CI backend.yml est désactivé, cf. mémoire
+        ci-deploy-not-configured) : suivre docs/DEPLOYMENT.md (build+push images ECR → maj du secret
+        K8s backend-secrets en incluant APP_JWT_SECRET → kubectl apply -k k8s/overlays/staging) puis
         healthcheck https://portal.ng-itconsulting.com/api/actuator/health (background).
      Un seul redeploy, après tous les merges.`,
     { label: 'docs+staging', phase: 'Docs+Staging' }
