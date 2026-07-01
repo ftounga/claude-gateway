@@ -42,6 +42,9 @@ app:
       models: ${ANTHROPIC_MODELS:claude-opus-4-8,claude-sonnet-5,claude-haiku-4-5}
       max-tokens: ${ANTHROPIC_MAX_TOKENS:4096}
       timeout: ${ANTHROPIC_TIMEOUT:PT120S}
+  billing:
+    # Durée de l'essai gratuit en jours (F-09). Décision réversible : ajustable sans changement de code.
+    trial-days: ${APP_BILLING_TRIAL_DAYS:14}
   oauth2:
     google:
       # Identifiants OAuth2/OIDC Google. Fournis exclusivement par l'environnement.

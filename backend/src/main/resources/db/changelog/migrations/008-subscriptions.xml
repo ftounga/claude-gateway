@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      Table `subscriptions` (F-09 / SF-09-01). Un abonnement par utilisateur (unique user_id),
+      racine de l'isolation multi-tenant. Les colonnes Stripe (customer/subscription id) et
+      current_period_end sont nullable : elles ne sont peuplées qu'après paiement (SF-09-02, webhook).
+      Aucune donnée de carte n'est jamais stockée (PROJECT.md §11.10). Id générés côté application
+      (Hibernate @UuidGenerator). Changesets Postgres et H2 en parallèle.
+
+      NOTE (arbitrage réversible) : `001-init-schema` avait créé une table `subscriptions`
+      « placeholder » issue de l'ancien schéma legacy (spec.md) — jamais câblée à une entité
+      (`user_id text`, `plan`, sans statut typé ni unicité). Elle est remplacée ici par la table V1
+      conforme (typage uuid, unique user_id, statut enum, colonnes trial/period). Même stratégie que
+      `006-messages` qui a remplacé la table `messages` placeholder.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="008-subscriptions-postgresql" author="claude-gateway" dbms="postgresql">
+        <dropTable tableName="subscriptions"/>
+        <createTable tableName="subscriptions">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_subscriptions_user_id"/>
+            </column>
+            <column name="status" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="plan_code" type="varchar(32)"/>
+            <column name="trial_ends_at" type="timestamptz"/>
+            <column name="current_period_end" type="timestamptz"/>
+            <column name="stripe_customer_id" type="varchar(64)"/>
+            <column name="stripe_subscription_id" type="varchar(64)"/>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="subscriptions" indexName="idx_subscriptions_user_id">
+            <column name="user_id"/>
+        </createIndex>
+        <createIndex tableName="subscriptions" indexName="idx_subscriptions_stripe_subscription_id">
+            <column name="stripe_subscription_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="008-subscriptions-h2" author="claude-gateway" dbms="h2">
+        <dropTable tableName="subscriptions"/>
+        <createTable tableName="subscriptions">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false" unique="true" uniqueConstraintName="uq_subscriptions_user_id"/>
+            </column>
+            <column name="status" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="plan_code" type="varchar(32)"/>
+            <column name="trial_ends_at" type="timestamp with time zone"/>
+            <column name="current_period_end" type="timestamp with time zone"/>
+            <column name="stripe_customer_id" type="varchar(64)"/>
+            <column name="stripe_subscription_id" type="varchar(64)"/>
+            <column name="created_at" type="timestamp with time zone" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp with time zone" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="subscriptions" indexName="idx_subscriptions_user_id">
+            <column name="user_id"/>
+        </createIndex>
+        <createIndex tableName="subscriptions" indexName="idx_subscriptions_stripe_subscription_id">
+            <column name="stripe_subscription_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>
