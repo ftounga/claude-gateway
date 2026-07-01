@@ -2,7 +2,11 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { DocumentDetailResponse, DocumentResponse } from '../models/documents.models';
+import {
+  DocumentDetailResponse,
+  DocumentResponse,
+  DocumentStatusResponse,
+} from '../models/documents.models';
 
 /**
  * Accès à l'API OCR documents (F-05). Le frontend ne communique qu'avec Claude Gateway
@@ -28,5 +32,18 @@ export class DocumentsService {
   /** Détail d'un document (texte extrait inclus). */
   get(id: string): Observable<DocumentDetailResponse> {
     return this.http.get<DocumentDetailResponse>(`/api/documents/${id}`);
+  }
+
+  /** État léger d'un document (F-08), dédié au suivi/polling. Disponible au contrat SF-08-01. */
+  status(id: string): Observable<DocumentStatusResponse> {
+    return this.http.get<DocumentStatusResponse>(`/api/documents/${id}/status`);
+  }
+
+  /**
+   * Suppression définitive d'un document et de ses données dérivées (droit à l'effacement RGPD,
+   * F-08). Renvoie `204 No Content`. L'isolation `user_id` est garantie côté backend via le JWT.
+   */
+  delete(id: string): Observable<void> {
+    return this.http.delete<void>(`/api/documents/${id}`);
   }
 }

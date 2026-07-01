@@ -29,3 +29,14 @@ export interface DocumentDetailResponse extends DocumentResponse {
   extractedText: string | null;
   errorMessage: string | null;
 }
+
+/**
+ * Réponse de GET /api/documents/{id}/status (F-08 / SF-08-01) : vue légère pour le suivi/polling,
+ * sans le texte extrait ni le brut fournisseur.
+ */
+export interface DocumentStatusResponse {
+  id: string;
+  status: DocumentStatus;
+  chunkCount: number;
+  errorMessage: string | null;
+}

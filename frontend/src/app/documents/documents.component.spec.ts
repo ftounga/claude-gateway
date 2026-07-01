@@ -8,6 +8,7 @@ import {
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
+import { MatDialog } from '@angular/material/dialog';
 import { of, throwError } from 'rxjs';
 
 import { DocumentsComponent } from './documents.component';
@@ -18,6 +19,14 @@ describe('DocumentsComponent', () => {
   let fixture: ComponentFixture<DocumentsComponent>;
   let component: DocumentsComponent;
   let service: jasmine.SpyObj<DocumentsService>;
+  let dialog: jasmine.SpyObj<MatDialog>;
+
+  /** Ouvre un `MatDialogRef` factice dont `afterClosed()` renvoie `result`. */
+  function stubDialog(result: boolean): void {
+    dialog.open.and.returnValue({
+      afterClosed: () => of(result),
+    } as ReturnType<typeof dialog.open>);
+  }
 
   const extractedDoc: DocumentResponse = {
     id: 'd-1',
@@ -40,8 +49,14 @@ describe('DocumentsComponent', () => {
   };
 
   function setup(list: DocumentResponse[] = [extractedDoc]): void {
-    service = jasmine.createSpyObj<DocumentsService>('DocumentsService', ['submit', 'list', 'get']);
+    service = jasmine.createSpyObj<DocumentsService>('DocumentsService', [
+      'submit',
+      'list',
+      'get',
+      'delete',
+    ]);
     service.list.and.returnValue(of(list));
+    dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
 
     TestBed.configureTestingModule({
       imports: [DocumentsComponent],
@@ -49,6 +64,7 @@ describe('DocumentsComponent', () => {
         provideNoopAnimations(),
         provideRouter([]),
         { provide: DocumentsService, useValue: service },
+        { provide: MatDialog, useValue: dialog },
       ],
     });
 
@@ -152,5 +168,58 @@ describe('DocumentsComponent', () => {
 
     expect(service.get).toHaveBeenCalledWith('d-1');
     expect(component.selected()?.extractedText).toBe('Bonjour');
+  });
+
+  it('deletes a document after confirmation and refreshes the list', () => {
+    setup();
+    stubDialog(true);
+    service.delete.and.returnValue(of(void 0));
+    service.list.calls.reset();
+
+    component.remove(extractedDoc);
+
+    expect(dialog.open).toHaveBeenCalled();
+    expect(service.delete).toHaveBeenCalledWith('d-1');
+    expect(service.list).toHaveBeenCalled(); // refresh after delete
+  });
+
+  it('does not delete when the confirmation is cancelled', () => {
+    setup();
+    stubDialog(false);
+
+    component.remove(extractedDoc);
+
+    expect(dialog.open).toHaveBeenCalled();
+    expect(service.delete).not.toHaveBeenCalled();
+  });
+
+  it('closes the detail panel when the displayed document is deleted', () => {
+    setup();
+    const detail: DocumentDetailResponse = {
+      ...extractedDoc,
+      extractedText: 'Bonjour',
+      errorMessage: null,
+    };
+    service.get.and.returnValue(of(detail));
+    component.view(extractedDoc);
+    expect(component.selected()?.id).toBe('d-1');
+
+    stubDialog(true);
+    service.delete.and.returnValue(of(void 0));
+    component.remove(extractedDoc);
+
+    expect(component.selected()).toBeNull();
+  });
+
+  it('shows an error snackbar without window.alert when delete fails', () => {
+    setup();
+    stubDialog(true);
+    const alertSpy = spyOn(window, 'alert');
+    service.delete.and.returnValue(throwError(() => new HttpErrorResponse({ status: 404 })));
+
+    component.remove(extractedDoc);
+
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(component.dataSource.data.length).toBe(1); // liste inchangée localement
   });
 });
