@@ -1,0 +1,64 @@
+<main class="settings">
+  <header class="settings__header">
+    <h1>Paramètres du compte</h1>
+    <p class="settings__subtitle">Gérez votre compte et vos données personnelles.</p>
+  </header>
+
+  <mat-card class="settings__card">
+    <h2 class="settings__card-title">Compte</h2>
+    @if (profile(); as user) {
+      <div class="settings__row">
+        <span class="settings__label">E-mail</span>
+        <span class="settings__value">{{ user.email }}</span>
+      </div>
+      <div class="settings__row">
+        <span class="settings__label">Connexion</span>
+        <span class="settings__value">{{ user.provider }}</span>
+      </div>
+      <div class="settings__row">
+        <span class="settings__label">Statut</span>
+        <span class="settings__value">
+          @if (user.emailVerified) {
+            <span class="badge badge--success">E-mail vérifié</span>
+          } @else {
+            <span class="badge badge--warning">E-mail non vérifié</span>
+          }
+        </span>
+      </div>
+      <div class="settings__actions">
+        <a mat-stroked-button routerLink="/profile">
+          <mat-icon>edit</mat-icon>
+          Modifier le profil
+        </a>
+      </div>
+    } @else {
+      <p class="settings__muted">Chargement du compte…</p>
+    }
+  </mat-card>
+
+  <mat-card class="settings__card">
+    <h2 class="settings__card-title">Données personnelles (RGPD)</h2>
+    <p class="settings__muted">
+      Vous pouvez exporter l'intégralité de vos données ou supprimer définitivement votre compte.
+    </p>
+    <div class="settings__actions">
+      <button mat-flat-button color="primary" [disabled]="exporting()" (click)="exportData()">
+        <mat-icon>download</mat-icon>
+        Exporter mes données
+      </button>
+    </div>
+
+    <div class="settings__danger">
+      <div class="settings__danger-text">
+        <h3 class="settings__danger-title">Supprimer mon compte</h3>
+        <p class="settings__muted">
+          Action irréversible : votre compte et toutes vos données seront supprimés définitivement.
+        </p>
+      </div>
+      <button mat-flat-button color="warn" [disabled]="deleting()" (click)="deleteAccount()">
+        <mat-icon>delete_forever</mat-icon>
+        Supprimer mon compte
+      </button>
+    </div>
+  </mat-card>
+</main>
