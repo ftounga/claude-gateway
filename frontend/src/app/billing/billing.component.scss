@@ -82,4 +82,36 @@
     color: var(--cg-text-secondary);
     padding: var(--cg-space-3) 0;
   }
+
+  &__usage {
+    margin-bottom: var(--cg-space-5);
+  }
+
+  &__usage-head {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-3);
+    margin-bottom: var(--cg-space-4);
+  }
+
+  &__usage-title {
+    margin: 0;
+  }
+
+  &__usage-figures {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cg-space-5);
+    margin-bottom: var(--cg-space-3);
+  }
+
+  &__usage-bar {
+    margin: var(--cg-space-2) 0;
+  }
+
+  &__usage-period {
+    color: var(--cg-text-secondary);
+    font-size: 12px;
+    margin: var(--cg-space-2) 0 0;
+  }
 }

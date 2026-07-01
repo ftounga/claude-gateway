@@ -41,6 +41,51 @@
     }
   </mat-card>
 
+  <!-- Consommation (F-10) -->
+  <mat-card class="billing__usage">
+    <div class="billing__usage-head">
+      <h2 class="billing__usage-title">Consommation</h2>
+      @if (usage(); as u) {
+        @if (quotaReached(u)) {
+          <span class="badge badge--warning">Quota atteint</span>
+        }
+      }
+    </div>
+
+    @if (usage(); as u) {
+      <div class="billing__usage-figures">
+        <div>
+          <span class="billing__label">Utilisé</span>
+          <span class="billing__value">{{ u.usedTokens | number }} tokens</span>
+        </div>
+        <div>
+          <span class="billing__label">Quota</span>
+          <span class="billing__value">{{ u.quotaTokens | number }} tokens</span>
+        </div>
+        <div>
+          <span class="billing__label">Restant</span>
+          <span class="billing__value">{{ u.remainingTokens | number }} tokens</span>
+        </div>
+      </div>
+
+      <mat-progress-bar
+        class="billing__usage-bar"
+        mode="determinate"
+        [value]="usagePercent(u)"
+        [attr.aria-label]="'Consommation : ' + usagePercent(u) + ' pour cent du quota'"
+      ></mat-progress-bar>
+
+      <p class="billing__usage-period">
+        Période du {{ u.periodStart | date: 'longDate' }} au {{ u.periodEnd | date: 'longDate' }}
+      </p>
+    } @else {
+      <div class="billing__feedback">
+        <mat-icon>hourglass_empty</mat-icon>
+        <span>Chargement de votre consommation…</span>
+      </div>
+    }
+  </mat-card>
+
   <!-- Catalogue de plans -->
   <h2 class="billing__plans-title">Offres disponibles</h2>
 
