@@ -1,16 +1,19 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
-import { DatePipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { BillingService } from '../core/services/billing.service';
+import { UsageService } from '../core/services/usage.service';
 import { ApiError } from '../core/models/auth.models';
 import { Plan, SubscriptionStatus, SubscriptionView } from '../core/models/billing.models';
+import { UsageView } from '../core/models/usage.models';
 
 /** Métadonnées d'affichage d'un statut d'abonnement (libellé + classe de badge). */
 interface StatusDisplay {
@@ -23,9 +26,11 @@ interface StatusDisplay {
   selector: 'app-billing',
   imports: [
     DatePipe,
+    DecimalPipe,
     MatCardModule,
     MatButtonModule,
     MatIconModule,
+    MatProgressBarModule,
     MatProgressSpinnerModule,
   ],
   templateUrl: './billing.component.html',
@@ -33,11 +38,13 @@ interface StatusDisplay {
 })
 export class BillingComponent implements OnInit {
   private readonly billingService = inject(BillingService);
+  private readonly usageService = inject(UsageService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly route = inject(ActivatedRoute);
 
   readonly subscription = signal<SubscriptionView | null>(null);
   readonly plans = signal<Plan[]>([]);
+  readonly usage = signal<UsageView | null>(null);
   readonly loading = signal(true);
   /** Code du plan dont le checkout est en cours (désactive le bouton correspondant). */
   readonly checkoutInProgress = signal<string | null>(null);
@@ -50,7 +57,15 @@ export class BillingComponent implements OnInit {
       this.notify('Paiement annulé.', 'snack-info');
     }
     this.loadSubscription();
+    this.loadUsage();
     this.loadPlans();
+  }
+
+  loadUsage(): void {
+    this.usageService.getUsage().subscribe({
+      next: (usage) => this.usage.set(usage),
+      error: () => this.notify('Impossible de charger votre consommation.', 'snack-error'),
+    });
   }
 
   loadSubscription(): void {
@@ -116,6 +131,19 @@ export class BillingComponent implements OnInit {
   /** Libellé de périodicité d'un plan. */
   periodLabel(period: string): string {
     return period === 'DAILY' ? 'Pass journée' : 'par mois';
+  }
+
+  /** Part consommée du quota, bornée 0–100 % (quota nul ⇒ 100 % : accès bloqué). */
+  usagePercent(usage: UsageView): number {
+    if (usage.quotaTokens <= 0) {
+      return 100;
+    }
+    return Math.min(100, Math.round((usage.usedTokens / usage.quotaTokens) * 100));
+  }
+
+  /** Vrai quand le quota de la période est atteint ou dépassé. */
+  quotaReached(usage: UsageView): boolean {
+    return usage.usedTokens >= usage.quotaTokens;
   }
 
   private notify(message: string, panelClass: string): void {
