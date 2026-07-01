@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -31,6 +32,7 @@ import fr.claudegateway.ocr.DocumentNotFoundException;
 import fr.claudegateway.quota.QuotaExceededException;
 import fr.claudegateway.rag.provider.EmbeddingProviderException;
 import fr.claudegateway.rag.provider.EmbeddingProviderUnavailableException;
+import fr.claudegateway.template.TemplateNotFoundException;
 import fr.claudegateway.upload.EmptyFileException;
 import fr.claudegateway.upload.FileTooLargeException;
 import fr.claudegateway.upload.UnsupportedFileTypeException;
@@ -112,6 +114,22 @@ public class GlobalExceptionHandler {
         log.debug("Document introuvable ou non possédé");
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ErrorResponse("not_found", ex.getMessage()));
+    }
+
+    @ExceptionHandler(TemplateNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleTemplateNotFound(TemplateNotFoundException ex) {
+        log.debug("Modèle introuvable ou non possédé");
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("not_found", ex.getMessage()));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableBody(HttpMessageNotReadableException ex) {
+        // Corps JSON malformé ou valeur d'énumération invalide : message métier neutre, jamais le
+        // contenu soumis (peut contenir des données utilisateur). Traduit en 400 plutôt que 500.
+        log.debug("Requête invalide : corps JSON illisible ou valeur non conforme");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("validation_error", "Requête invalide : le corps est illisible ou contient une valeur non conforme."));
     }
 
     @ExceptionHandler(AttachmentNotFoundException.class)
