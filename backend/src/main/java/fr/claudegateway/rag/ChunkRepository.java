@@ -1,5 +1,6 @@
 package fr.claudegateway.rag;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -16,6 +17,13 @@ public interface ChunkRepository extends JpaRepository<Chunk, UUID> {
 
     /** Chunks d'un document appartenant à l'utilisateur, dans l'ordre de découpage (isolation). */
     List<Chunk> findByDocumentIdAndUserIdOrderByChunkIndexAsc(UUID documentId, UUID userId);
+
+    /**
+     * Charge un lot de chunks par id en garantissant qu'ils appartiennent à l'utilisateur (isolation
+     * multi-tenant, défense en profondeur au-dessus de la recherche vectorielle déjà filtrée F-07).
+     * L'ordre du retour n'est pas garanti : l'appelant ré-ordonne selon la pertinence.
+     */
+    List<Chunk> findByIdInAndUserId(Collection<UUID> ids, UUID userId);
 
     /** Nombre de chunks d'un document de l'utilisateur (isolation). */
     long countByDocumentIdAndUserId(UUID documentId, UUID userId);
