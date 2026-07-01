@@ -13,6 +13,10 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
 
 import fr.claudegateway.ai.AIProviderException;
 import fr.claudegateway.ai.AIProviderUnavailableException;
+import fr.claudegateway.billing.UnknownPlanException;
+import fr.claudegateway.billing.provider.BillingProviderException;
+import fr.claudegateway.billing.provider.BillingProviderUnavailableException;
+import fr.claudegateway.billing.provider.WebhookVerificationException;
 import fr.claudegateway.auth.EmailAlreadyUsedException;
 import fr.claudegateway.auth.InvalidCredentialsException;
 import fr.claudegateway.auth.InvalidPasswordResetTokenException;
@@ -155,6 +159,38 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(new ErrorResponse("provider_error",
                         "Le fournisseur d'IA a rencontré une erreur. Veuillez réessayer."));
+    }
+
+    @ExceptionHandler(UnknownPlanException.class)
+    public ResponseEntity<ErrorResponse> handleUnknownPlan(UnknownPlanException ex) {
+        log.debug("Checkout refusé : plan inconnu");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("validation_error", ex.getMessage()));
+    }
+
+    @ExceptionHandler(WebhookVerificationException.class)
+    public ResponseEntity<ErrorResponse> handleWebhookVerification(WebhookVerificationException ex) {
+        // Aucune signature ni payload n'est journalisé : message métier neutre.
+        log.warn("Webhook de facturation rejeté : signature invalide");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("invalid_signature", "Signature de webhook invalide."));
+    }
+
+    @ExceptionHandler(BillingProviderUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleBillingUnavailable(BillingProviderUnavailableException ex) {
+        // Aucune clé ni détail fournisseur n'est journalisé.
+        log.warn("Fournisseur de paiement non disponible");
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ErrorResponse("billing_unavailable",
+                        "Le service de facturation est momentanément indisponible."));
+    }
+
+    @ExceptionHandler(BillingProviderException.class)
+    public ResponseEntity<ErrorResponse> handleBillingError(BillingProviderException ex) {
+        log.warn("Échec de l'appel au fournisseur de paiement");
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new ErrorResponse("billing_error",
+                        "Le service de facturation a rencontré une erreur. Veuillez réessayer."));
     }
 
     @ExceptionHandler(Exception.class)

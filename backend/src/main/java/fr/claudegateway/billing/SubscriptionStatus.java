@@ -15,5 +15,25 @@ public enum SubscriptionStatus {
     /** Abonnement annulé (fin de période atteinte ou annulation explicite). */
     CANCELED,
     /** Souscription initiée mais paiement non finalisé. */
-    INCOMPLETE
+    INCOMPLETE;
+
+    /**
+     * Traduit un statut d'abonnement brut Stripe vers le statut interne. Tout statut inconnu est
+     * traité prudemment comme {@link #INCOMPLETE} (accès non ouvert par défaut).
+     *
+     * @param stripeStatus statut Stripe (ex. {@code active}, {@code past_due}), insensible à la casse
+     * @return statut interne correspondant
+     */
+    public static SubscriptionStatus fromStripe(String stripeStatus) {
+        if (stripeStatus == null) {
+            return INCOMPLETE;
+        }
+        return switch (stripeStatus.toLowerCase()) {
+            case "active" -> ACTIVE;
+            case "trialing" -> TRIALING;
+            case "past_due" -> PAST_DUE;
+            case "canceled", "unpaid" -> CANCELED;
+            default -> INCOMPLETE;
+        };
+    }
 }

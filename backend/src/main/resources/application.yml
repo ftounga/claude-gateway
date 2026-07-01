@@ -45,6 +45,19 @@ app:
   billing:
     # Durée de l'essai gratuit en jours (F-09). Décision réversible : ajustable sans changement de code.
     trial-days: ${APP_BILLING_TRIAL_DAYS:14}
+    stripe:
+      # Secrets Stripe (F-09) : fournis EXCLUSIVEMENT par l'environnement, jamais commités ni journalisés.
+      # Si secret-key est vide, le billing est dormant (checkout => 503), comme la clé Anthropic.
+      secret-key: ${STRIPE_SECRET_KEY:}
+      webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+      # Mapping plan -> price ID Stripe (OQ-07 : externalisé, jamais en dur). Par environnement.
+      prices:
+        SOLO: ${STRIPE_PRICE_SOLO:}
+        PRO: ${STRIPE_PRICE_PRO:}
+        DAILY: ${STRIPE_PRICE_DAILY:}
+      # URLs de retour Checkout (frontend). Surchargées par environnement.
+      success-url: ${STRIPE_SUCCESS_URL:http://localhost:4200/billing?checkout=success}
+      cancel-url: ${STRIPE_CANCEL_URL:http://localhost:4200/billing?checkout=cancel}
   oauth2:
     google:
       # Identifiants OAuth2/OIDC Google. Fournis exclusivement par l'environnement.
