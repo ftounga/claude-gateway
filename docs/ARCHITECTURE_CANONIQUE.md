@@ -110,8 +110,16 @@ Liquibase (XML, versionné dans `db/changelog/migrations/`). Colonnes JSON/vecto
 isolées en changesets `dbms="postgresql"`.
 
 Authentification
-Spring Security + OAuth2/OIDC (Google en V1). Session/token côté backend ; le frontend gère 401 → /login.
-(À confirmer : voir OPEN_QUESTIONS OQ-05.)
+Spring Security **stateless** + JWT (HS256, secret plateforme `APP_JWT_SECRET`). Deux modes (OQ-05
+tranchée le 2026-07-01, F-01 livrée) : **email/mot de passe** (BCrypt) et **OAuth2/OIDC Google**
+(fédération par e-mail → même JWT plateforme). Le frontend gère 401 → /login.
+Tables du domaine auth (migrations `001`–`004`) :
+- `users` — compte (`id`, `email`, `password_hash` nullable, `email_verified`, `provider` LOCAL/GOOGLE,
+  `role`, `token_version`, timestamps). Racine de l'isolation `user_id`.
+- `email_verification_tokens` — tokens de vérification d'e-mail (usage unique, expiration).
+- `password_reset_tokens` — tokens de réinitialisation de mot de passe (usage unique, expiration).
+Déconnexion « toutes sessions » via incrément de `users.token_version` (claim `tv` du JWT vérifié
+par le filtre). Pas de session serveur (hors handshake OAuth transitoire).
 
 Stockage fichiers
 Object storage S3 (AWS), SSE-KMS. En local : conteneur compatible (MinIO/localstack) ou S3 de dev.
