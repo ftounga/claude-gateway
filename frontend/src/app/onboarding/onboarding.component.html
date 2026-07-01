@@ -1,0 +1,69 @@
+<main class="onboarding">
+  <div class="onboarding__brand">
+    <span class="onboarding__logo">&gt;_</span>
+    <span>claude-gateway</span>
+  </div>
+
+  <mat-stepper class="onboarding__stepper" [linear]="false" #stepper>
+    <mat-step label="Votre compte">
+      <div class="onboarding__step">
+        <h2>Bienvenue sur claude-gateway</h2>
+        @if (email(); as address) {
+          <p class="onboarding__lead">
+            Votre compte <strong>{{ address }}</strong> est prêt.
+          </p>
+          @if (!emailVerified()) {
+            <div class="onboarding__hint">
+              <mat-icon>mark_email_unread</mat-icon>
+              <span>Pensez à vérifier votre e-mail pour sécuriser votre compte.</span>
+            </div>
+          }
+        } @else {
+          <p class="onboarding__lead">Votre compte est prêt. Configurons votre accès à Claude.</p>
+        }
+        <div class="onboarding__actions">
+          <button mat-flat-button color="primary" matStepperNext>Continuer</button>
+        </div>
+      </div>
+    </mat-step>
+
+    <mat-step label="Votre mode d'accès">
+      <div class="onboarding__step">
+        <h2>Comment souhaitez-vous accéder à Claude ?</h2>
+        <p class="onboarding__lead">Vous pourrez changer d'avis plus tard depuis vos Réglages.</p>
+
+        <div class="onboarding__modes">
+          <button
+            type="button"
+            class="onboarding__mode"
+            [class.onboarding__mode--selected]="selectedMode() === 'HOSTED'"
+            (click)="selectMode('HOSTED')"
+          >
+            <span class="onboarding__mode-icon"><mat-icon>cloud_done</mat-icon></span>
+            <h3>Hosted</h3>
+            <p>Utilisez la clé de la plateforme. Le plus simple pour démarrer immédiatement.</p>
+          </button>
+
+          <button
+            type="button"
+            class="onboarding__mode"
+            [class.onboarding__mode--selected]="selectedMode() === 'BYOK'"
+            (click)="selectMode('BYOK')"
+          >
+            <span class="onboarding__mode-icon"><mat-icon>vpn_key</mat-icon></span>
+            <h3>BYOK</h3>
+            <p>Utilisez votre propre clé Anthropic. La consommation reste sur votre compte.</p>
+          </button>
+        </div>
+
+        <div class="onboarding__actions">
+          <button mat-stroked-button matStepperPrevious>Retour</button>
+          <button mat-button (click)="skip()">Passer pour l'instant</button>
+          <button mat-flat-button color="primary" [disabled]="!selectedMode()" (click)="finish()">
+            Terminer
+          </button>
+        </div>
+      </div>
+    </mat-step>
+  </mat-stepper>
+</main>

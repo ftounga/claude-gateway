@@ -9,6 +9,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { AuthService } from '../../core/services/auth.service';
+import { OnboardingService } from '../../core/services/onboarding.service';
 
 /** Écran de connexion : e-mail/mot de passe (JWT) + bouton « Continuer avec Google ». */
 @Component({
@@ -27,6 +28,7 @@ import { AuthService } from '../../core/services/auth.service';
 export class LoginComponent {
   private readonly fb = inject(FormBuilder);
   private readonly authService = inject(AuthService);
+  private readonly onboarding = inject(OnboardingService);
   private readonly router = inject(Router);
   private readonly snackBar = inject(MatSnackBar);
 
@@ -45,7 +47,7 @@ export class LoginComponent {
     this.authService.login(this.form.getRawValue()).subscribe({
       next: () => {
         this.submitting.set(false);
-        void this.router.navigate(['/profile']);
+        void this.router.navigate([this.onboarding.postLoginPath()]);
       },
       error: () => {
         this.submitting.set(false);

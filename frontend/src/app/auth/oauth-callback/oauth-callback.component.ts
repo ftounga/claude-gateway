@@ -5,6 +5,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 
 import { AuthService } from '../../core/services/auth.service';
+import { OnboardingService } from '../../core/services/onboarding.service';
 
 /**
  * Réception du retour OAuth Google : lit le JWT dans le fragment d'URL (`#token=...`),
@@ -17,6 +18,7 @@ import { AuthService } from '../../core/services/auth.service';
 })
 export class OauthCallbackComponent implements OnInit {
   private readonly authService = inject(AuthService);
+  private readonly onboarding = inject(OnboardingService);
   private readonly router = inject(Router);
 
   readonly failed = signal(false);
@@ -30,7 +32,7 @@ export class OauthCallbackComponent implements OnInit {
 
     if (token) {
       this.authService.storeToken(token);
-      void this.router.navigate(['/profile']);
+      void this.router.navigate([this.onboarding.postLoginPath()]);
       return;
     }
     this.failed.set(true);
