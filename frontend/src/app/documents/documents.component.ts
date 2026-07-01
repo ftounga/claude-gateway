@@ -12,6 +12,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatPaginator, MatPaginatorModule } from '@angular/material/paginator';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -19,6 +20,10 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 
 import { DocumentsService } from '../core/services/documents.service';
+import {
+  ConfirmDialogComponent,
+  ConfirmDialogData,
+} from '../chat/confirm-dialog/confirm-dialog.component';
 import {
   DocumentDetailResponse,
   DocumentResponse,
@@ -66,6 +71,7 @@ const IN_PROGRESS_STATUSES: readonly DocumentStatus[] = ['PROCESSING', 'INDEXING
 export class DocumentsComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly documentsService = inject(DocumentsService);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly dialog = inject(MatDialog);
 
   readonly displayedColumns = ['filename', 'mediaType', 'status', 'chunks', 'createdAt', 'actions'];
   readonly dataSource = new MatTableDataSource<DocumentResponse>([]);
@@ -137,6 +143,40 @@ export class DocumentsComponent implements OnInit, AfterViewInit, OnDestroy {
     this.documentsService.get(document.id).subscribe({
       next: (detail) => this.selected.set(detail),
       error: () => this.notify('Impossible de charger le document.', 'snack-error'),
+    });
+  }
+
+  /**
+   * Suppression définitive d'un document (droit à l'effacement RGPD, F-08). Ouvre une confirmation
+   * destructive (`MatDialog`) ; à confirmation seulement, appelle `DELETE /api/documents/{id}` puis
+   * rafraîchit la liste. Le backend supprime en cascade les chunks/vecteurs dérivés.
+   */
+  remove(document: DocumentResponse): void {
+    const data: ConfirmDialogData = {
+      title: 'Supprimer le document',
+      message: `Supprimer définitivement « ${document.filename} » ? Cette action est irréversible et efface aussi les données dérivées (texte extrait, index).`,
+      confirmLabel: 'Supprimer',
+    };
+    this.dialog
+      .open(ConfirmDialogComponent, { data, width: '420px' })
+      .afterClosed()
+      .subscribe((confirmed) => {
+        if (confirmed) {
+          this.performDelete(document);
+        }
+      });
+  }
+
+  private performDelete(document: DocumentResponse): void {
+    this.documentsService.delete(document.id).subscribe({
+      next: () => {
+        if (this.selected()?.id === document.id) {
+          this.selected.set(null);
+        }
+        this.notify('Document supprimé.', 'snack-success');
+        this.refresh();
+      },
+      error: () => this.notify('Impossible de supprimer le document.', 'snack-error'),
     });
   }
 
