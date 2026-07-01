@@ -42,7 +42,7 @@ Questions non tranchées ayant un impact produit ou technique. À mettre à jour
 **Statut** : Ouvert
 **Impact** : F-03, conformité. Où et comment chiffrer la clé utilisateur.
 **Options** : Chiffrement applicatif via AWS KMS ; Vault. Rotation, suppression sur demande.
-**Décision** : À définir (hypothèse : KMS).
+**Décision (2026-07-01)** : **AWS KMS envelope encryption**. Clé customer-managed dédiée (rotation activée, alias `alias/claude-gateway-staging-byok`), rôle IRSA backend autorisé `GenerateDataKey/Encrypt/Decrypt` sur cette seule clé (moindre privilège). La clé API BYOK est chiffrée côté application via une data key KMS ; jamais stockée ni loggée en clair, jamais exposée au frontend. Alias injecté par `APP_BYOK_KMS_KEY_ID`. Débloque F-03.
 
 ## OQ-07 — Réglages Stripe (TVA/taxes, produits, price IDs)
 **Statut** : Contournée en V1 (F-09 livrée) — TVA/Stripe Tax reste à trancher

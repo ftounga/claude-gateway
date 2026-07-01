@@ -78,6 +78,7 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           APP_JWT_SECRET: ${{ secrets.APP_JWT_SECRET }}
+          APP_BYOK_KMS_KEY_ID: ${{ secrets.APP_BYOK_KMS_KEY_ID }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY_TEST }}
@@ -95,6 +96,7 @@ jobs:
             --namespace=$NAMESPACE \
             --from-literal=ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
             --from-literal=APP_JWT_SECRET="$APP_JWT_SECRET" \
+            --from-literal=APP_BYOK_KMS_KEY_ID="$APP_BYOK_KMS_KEY_ID" \
             --from-literal=GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" \
             --from-literal=GOOGLE_CLIENT_SECRET="$GOOGLE_CLIENT_SECRET" \
             --from-literal=STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
