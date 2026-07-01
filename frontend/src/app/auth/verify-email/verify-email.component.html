@@ -1,0 +1,36 @@
+<main class="auth-shell">
+  <mat-card class="auth-card">
+    <div class="auth-card__brand">
+      <span class="auth-card__logo">&gt;_</span>
+      <span>claude-gateway</span>
+    </div>
+    <h1>Vérification de l'e-mail</h1>
+
+    @switch (state()) {
+      @case ('checking') {
+        <div class="auth-feedback">
+          <mat-icon>hourglass_empty</mat-icon>
+          <span>Vérification en cours…</span>
+        </div>
+      }
+      @case ('success') {
+        <div class="auth-feedback auth-feedback--success">
+          <mat-icon>check_circle</mat-icon>
+          <span>Adresse <strong>{{ email() }}</strong> vérifiée.</span>
+        </div>
+        <div class="auth-actions">
+          <button mat-flat-button color="primary" routerLink="/login">Se connecter</button>
+        </div>
+      }
+      @case ('error') {
+        <div class="auth-feedback auth-feedback--error">
+          <mat-icon>error</mat-icon>
+          <span>Lien de vérification invalide ou expiré.</span>
+        </div>
+        <div class="auth-actions">
+          <button mat-stroked-button routerLink="/login">Retour à la connexion</button>
+        </div>
+      }
+    }
+  </mat-card>
+</main>
