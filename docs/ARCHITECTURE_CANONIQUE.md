@@ -229,12 +229,20 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     impl locale dev/tests, impl dormante si non configuré → 503). `ChatService` déchiffre la clé active à la
     volée pour l'appel fournisseur (jamais persistée ni journalisée), sinon utilise la clé plateforme (Hosted).
     La clé est passée à `AIProvider` en paramètre neutre (Provider Independence).
+- **prompt_templates** — modèle de prompt réutilisable (F-13, migration `031`). Isolé par `user_id`.
+  Donnée purement relationnelle, **sans colonne vectorielle** (F-13 n'est pas du RAG) — le backend
+  reste une Gateway (aucun appel IA attaché à cette entité).
+  - `prompt_templates` : `id (uuid)`, `user_id (uuid)`, `name (varchar 120)`,
+    `category (AUDIT|REPORT|OTHER)`, `content (varchar 10000)`, `created_at`, `updated_at`. Index `user_id`.
+  - Endpoints **`GET/POST /templates`**, **`GET/PUT/DELETE /templates/{id}`** (authentifiés, isolation
+    `user_id` : un modèle d'autrui est indistinct d'un modèle inexistant → 404). Inclus dans l'export et
+    la suppression RGPD (F-11).
 
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/user_api_keys via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur.
+(documents/messages/subscriptions/uploaded_files/usage_counters/user_api_keys/prompt_templates via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur.
 
 ---
 
