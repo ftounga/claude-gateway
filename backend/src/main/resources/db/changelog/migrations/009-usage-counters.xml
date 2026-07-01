@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      Table `usage_counters` (F-10 / SF-10-01). Compteur cumulatif de tokens par utilisateur et par
+      période de facturation (mois calendaire UTC). Une ligne par (user_id, period_start), imposée
+      par une contrainte d'unicité. Racine d'isolation multi-tenant : tout accès filtre sur user_id.
+      Ids générés côté application (Hibernate @UuidGenerator). Changesets Postgres et H2 en parallèle.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="009-usage-counters-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="usage_counters">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="period_start" type="date">
+                <constraints nullable="false"/>
+            </column>
+            <column name="input_tokens" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="output_tokens" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addUniqueConstraint tableName="usage_counters"
+                             columnNames="user_id, period_start"
+                             constraintName="uq_usage_counters_user_period"/>
+        <createIndex tableName="usage_counters" indexName="idx_usage_counters_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="009-usage-counters-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="usage_counters">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="period_start" type="date">
+                <constraints nullable="false"/>
+            </column>
+            <column name="input_tokens" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="output_tokens" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp with time zone" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp with time zone" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addUniqueConstraint tableName="usage_counters"
+                             columnNames="user_id, period_start"
+                             constraintName="uq_usage_counters_user_period"/>
+        <createIndex tableName="usage_counters" indexName="idx_usage_counters_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

@@ -14,6 +14,7 @@ import fr.claudegateway.ai.ChatMessage;
 import fr.claudegateway.ai.ChatRole;
 import fr.claudegateway.ai.ModelCatalog;
 import fr.claudegateway.ai.ProviderAttachment;
+import fr.claudegateway.quota.QuotaService;
 import fr.claudegateway.upload.UploadedFile;
 import fr.claudegateway.upload.UploadedFileRepository;
 
@@ -35,18 +36,21 @@ public class ChatService {
     private final UploadedFileRepository uploadedFileRepository;
     private final AIProvider aiProvider;
     private final ModelCatalog modelCatalog;
+    private final QuotaService quotaService;
 
     public ChatService(
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
             UploadedFileRepository uploadedFileRepository,
             AIProvider aiProvider,
-            ModelCatalog modelCatalog) {
+            ModelCatalog modelCatalog,
+            QuotaService quotaService) {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.uploadedFileRepository = uploadedFileRepository;
         this.aiProvider = aiProvider;
         this.modelCatalog = modelCatalog;
+        this.quotaService = quotaService;
     }
 
     /**
@@ -66,6 +70,9 @@ public class ChatService {
     public ChatResult reply(UUID userId, UUID conversationId, String rawMessage, String requestedModel,
             List<UUID> attachmentIds) {
         String content = rawMessage.trim();
+        // Contrôle de quota AVANT toute écriture ou appel fournisseur (F-10) : un utilisateur ayant
+        // atteint son quota reçoit 402 sans qu'aucun message ne soit persisté ni relayé.
+        quotaService.assertWithinQuota(userId);
         // Rejette tout modèle explicite hors liste blanche, même sur une conversation existante.
         validateRequestedModel(requestedModel);
         // Résolution des pièces jointes AVANT toute écriture : un id d'un autre utilisateur => 404,
@@ -94,6 +101,9 @@ public class ChatService {
                 .content(completion.content())
                 .model(completion.model())
                 .build());
+
+        // Enregistre la consommation de tokens de cet appel sur la période courante (F-10).
+        quotaService.recordUsage(userId, completion.inputTokens(), completion.outputTokens());
 
         // Rafraîchit updated_at pour le tri de la liste latérale.
         conversation.setTitle(conversation.getTitle());
