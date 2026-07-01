@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      Table `documents` (F-05 / SF-05-01) — socle du pipeline documentaire (OCR).
+      Un document soumis pour extraction OCR, isolé par `user_id`. `textract_raw` conserve la
+      réponse brute du fournisseur OCR (audit / reprocessing F-06) ; `extracted_text` le texte
+      concaténé. Id générés côté application (Hibernate @UuidGenerator).
+
+      NOTE (arbitrage réversible) : `001-init-schema` avait créé une table `documents`
+      « placeholder » issue de l'ancien schéma legacy (spec.md) — jamais câblée à une entité,
+      `uploaded_by text`, sans `user_id`. Elle est remplacée ici par la table V1 conforme (typage
+      uuid, `user_id`, statut enum, mode OCR, job fournisseur). Même stratégie que `006-messages`
+      et `008-subscriptions`.
+
+      La table `chunks` (placeholder F-06, portant la colonne pgvector `embedding` ajoutée en
+      `002-pgvector`) est LAISSÉE INTACTE : on détache seulement sa FK vers `documents` pour
+      autoriser le remplacement. F-06 reconstruira `chunks` et sa FK vers la nouvelle `documents`.
+      La colonne vectorielle et l'index ivfflat (Postgres) ne sont pas touchés.
+    -->
+
+    <!-- =================== Détachement FK chunks -> documents =================== -->
+    <changeSet id="010-detach-chunks-fk-postgresql" author="claude-gateway" dbms="postgresql">
+        <dropForeignKeyConstraint baseTableName="chunks" constraintName="fk_chunks_document"/>
+    </changeSet>
+    <changeSet id="010-detach-chunks-fk-h2" author="claude-gateway" dbms="h2">
+        <dropForeignKeyConstraint baseTableName="chunks" constraintName="fk_chunks_document"/>
+    </changeSet>
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="010-documents-postgresql" author="claude-gateway" dbms="postgresql">
+        <dropTable tableName="documents"/>
+        <createTable tableName="documents">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="filename" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="media_type" type="varchar(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="size_bytes" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ocr_mode" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="provider_job_id" type="varchar(128)"/>
+            <column name="extracted_text" type="text"/>
+            <column name="textract_raw" type="text"/>
+            <column name="error_message" type="varchar(255)"/>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="documents" indexName="idx_documents_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="010-documents-h2" author="claude-gateway" dbms="h2">
+        <dropTable tableName="documents"/>
+        <createTable tableName="documents">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="filename" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="media_type" type="varchar(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="size_bytes" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ocr_mode" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="provider_job_id" type="varchar(128)"/>
+            <!-- VARCHAR large (JDBC VARCHAR) pour concorder avec l'entité (columnDefinition="text"
+                 -> Types#VARCHAR), à l'image du type `text` de Postgres. Cf. 006-messages. -->
+            <column name="extracted_text" type="varchar(1000000)"/>
+            <column name="textract_raw" type="varchar(1000000)"/>
+            <column name="error_message" type="varchar(255)"/>
+            <column name="created_at" type="timestamp with time zone" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp with time zone" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="documents" indexName="idx_documents_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>
