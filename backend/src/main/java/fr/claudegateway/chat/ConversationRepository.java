@@ -17,4 +17,7 @@ public interface ConversationRepository extends JpaRepository<Conversation, UUID
     List<Conversation> findByUserIdOrderByUpdatedAtDesc(UUID userId);
 
     Optional<Conversation> findByIdAndUserId(UUID id, UUID userId);
+
+    /** Suppression RGPD : toutes les conversations d'un utilisateur (isolation {@code user_id}). */
+    void deleteByUserId(UUID userId);
 }
