@@ -37,6 +37,11 @@ app:
     max-size: ${APP_OCR_MAX_SIZE:20MB}
     allowed-types: ${APP_OCR_ALLOWED_TYPES:application/pdf,image/png,image/jpeg,image/tiff}
     sync-types: ${APP_OCR_SYNC_TYPES:image/png,image/jpeg}
+    polling:
+      # Worker intra-backend de complétion des jobs OCR asynchrones (PDF/TIFF) — SF-05-02.
+      # Décision par défaut OQ-10 (réversible : workers dédiés + file en V2).
+      enabled: ${APP_OCR_POLLING_ENABLED:true}
+      interval: ${APP_OCR_POLLING_INTERVAL:15000}
     textract:
       # Accès AWS via chaîne de credentials par défaut (IRSA) — aucun secret en dur ni journalisé.
       # Le bucket S3 est requis pour l'OCR asynchrone (PDF/TIFF) ; absent => async indisponible.

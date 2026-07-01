@@ -12,6 +12,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import fr.claudegateway.ocr.provider.OcrDocument;
 import fr.claudegateway.ocr.provider.OcrExtraction;
+import fr.claudegateway.ocr.provider.OcrJobResult;
 import fr.claudegateway.ocr.provider.OcrProvider;
 import fr.claudegateway.ocr.provider.OcrProviderException;
 import fr.claudegateway.ocr.provider.OcrProviderUnavailableException;
@@ -104,6 +105,59 @@ public class DocumentService {
     public Document getById(UUID userId, UUID documentId) {
         return documentRepository.findByIdAndUserId(documentId, userId)
                 .orElseThrow(() -> new DocumentNotFoundException("Document introuvable."));
+    }
+
+    /**
+     * Complète les jobs OCR asynchrones en attente (SF-05-02). Interroge, pour chaque document au
+     * statut {@code PROCESSING}, l'avancement du job via {@link OcrProvider} et met à jour l'état.
+     * Un échec d'interrogation laisse le document {@code PROCESSING} (réessayable au cycle suivant).
+     * Aucun secret ni contenu n'est journalisé. Exécuté hors thread HTTP (worker planifié).
+     *
+     * @return le nombre de documents passés à un état terminal ({@code EXTRACTED}/{@code FAILED}) ce cycle
+     */
+    public int pollPendingJobs() {
+        List<Document> pending = documentRepository.findByStatus(DocumentStatus.PROCESSING);
+        int completed = 0;
+        for (Document document : pending) {
+            if (!StringUtils.hasText(document.getProviderJobId())) {
+                continue; // anomalie : PROCESSING sans job — ignoré (robustesse, pas de NPE).
+            }
+            if (pollAndUpdate(document)) {
+                completed++;
+            }
+        }
+        return completed;
+    }
+
+    private boolean pollAndUpdate(Document document) {
+        try {
+            OcrJobResult result = ocrProvider.pollAsync(document.getProviderJobId());
+            switch (result.status()) {
+                case IN_PROGRESS -> {
+                    return false; // toujours en cours : on réessaiera.
+                }
+                case SUCCEEDED -> {
+                    document.setExtractedText(result.text());
+                    document.setTextractRaw(result.rawJson());
+                    document.setStatus(DocumentStatus.EXTRACTED);
+                    documentRepository.save(document);
+                    return true;
+                }
+                case FAILED -> {
+                    document.setStatus(DocumentStatus.FAILED);
+                    document.setErrorMessage("Échec de l'extraction OCR.");
+                    documentRepository.save(document);
+                    return true;
+                }
+                default -> {
+                    return false;
+                }
+            }
+        } catch (OcrProviderUnavailableException | OcrProviderException ex) {
+            // Échec transitoire : on laisse le document PROCESSING pour réessayer. Aucun secret loggé.
+            log.warn("Polling OCR en échec (document={}) — réessai au prochain cycle", document.getId());
+            return false;
+        }
     }
 
     private void extractSynchronously(Document document, OcrDocument ocrDocument) {
