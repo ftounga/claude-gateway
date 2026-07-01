@@ -15,3 +15,10 @@ management:
   endpoint:
     health:
       show-details: always
+app:
+  jwt:
+    # Secret de signature HS256. Fourni exclusivement par l'environnement (aucun défaut en dur).
+    # L'application refuse de démarrer si absent ou trop court (< 256 bits) — voir JwtService.
+    secret: ${APP_JWT_SECRET:}
+    # Durée de validité des tokens (format ISO-8601, ex. PT24H). Défaut : 24h.
+    expiration: ${APP_JWT_EXPIRATION:PT24H}
