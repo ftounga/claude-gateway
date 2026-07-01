@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      Table `uploaded_files` (SF-04-01). Métadonnées d'un fichier téléversé puis transmis au
+      fournisseur IA. AUCUN contenu binaire n'est stocké (PROJECT.md §11.6). `user_id` porté pour
+      l'isolation multi-tenant. `provider_file_id` = identifiant chez le fournisseur (interne).
+      Id générés côté application (Hibernate @UuidGenerator). Changesets Postgres et H2 en parallèle.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="007-uploaded-files-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="uploaded_files">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="provider_file_id" type="varchar(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="filename" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="media_type" type="varchar(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="size_bytes" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="uploaded_files" indexName="idx_uploaded_files_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="007-uploaded-files-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="uploaded_files">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="provider_file_id" type="varchar(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="filename" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="media_type" type="varchar(128)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="size_bytes" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp with time zone" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="uploaded_files" indexName="idx_uploaded_files_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

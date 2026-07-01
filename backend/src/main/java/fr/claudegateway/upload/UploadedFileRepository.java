@@ -1,0 +1,17 @@
+package fr.claudegateway.upload;
+
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+/**
+ * Persistance des métadonnées de fichiers téléversés. Toute lecture propre à un utilisateur passe
+ * par une méthode filtrant sur {@code user_id} (isolation multi-tenant). Aucune logique métier ici.
+ */
+@Repository
+public interface UploadedFileRepository extends JpaRepository<UploadedFile, UUID> {
+
+    Optional<UploadedFile> findByIdAndUserId(UUID id, UUID userId);
+}

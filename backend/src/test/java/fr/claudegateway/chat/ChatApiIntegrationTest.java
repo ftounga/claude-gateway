@@ -66,6 +66,14 @@ class ChatApiIntegrationTest {
             }
             return new ChatCompletionResult(reply, request.model(), 12, 8);
         }
+
+        @Override
+        public fr.claudegateway.ai.ProviderFileReference uploadFile(fr.claudegateway.ai.ProviderFileUpload upload) {
+            if (toThrow != null) {
+                throw toThrow;
+            }
+            return new fr.claudegateway.ai.ProviderFileReference("file_stub");
+        }
     }
 
     @TestConfiguration
