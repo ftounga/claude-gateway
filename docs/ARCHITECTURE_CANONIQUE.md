@@ -196,6 +196,12 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `StubEmbeddingProvider` (défaut, déterministe) ou `ApiEmbeddingProvider` (HTTP OpenAI-compatible,
     clé env jamais loggée). Ingestion asynchrone via `IngestionWorker` (`@Scheduled`, intra-backend ;
     OQ-10) — hors thread HTTP. Idempotente (suppression + recréation des chunks, isolée `user_id`).
+  - **Recherche vectorielle (F-07, Q&A `/ask`)** : `EmbeddingStore.search(userId, queryVector, topK)`
+    (extension de l'abstraction) — impl `PgVectorEmbeddingStore` (SQL natif plus-proches-voisins `<->`
+    L2, **filtre `user_id`**, index ivfflat de `011`) / `NoopEmbeddingStore` (vide → repli en H2/tests).
+    `AskService` : quota (F-10) → embedding question → recherche isolée → rechargement chunks/documents
+    **filtré `user_id`** → prompt cité `[filename:page:chunkIndex]` → relais Claude (`AIProvider`).
+    Endpoint **`POST /ask`** (authentifié). Aucune nouvelle table (réutilise `chunks.embedding`).
 - **subscriptions** — abonnement d'un utilisateur (F-09, migration `008`). **Un seul par `user_id`** (unique).
   - `subscriptions` : `id (uuid)`, `user_id (uuid, unique)`, `status (TRIALING|ACTIVE|PAST_DUE|CANCELED|INCOMPLETE)`,
     `plan_code (nullable ; SOLO|PRO|DAILY)`, `trial_ends_at (nullable)`, `current_period_end (nullable)`,
@@ -252,6 +258,7 @@ Décisions impactant l'architecture actuelle :
 
 - OQ-01 : **Tranchée (F-06)** — dimension d'embedding **1536** (`chunks.embedding vector(1536)`), réversible via `app.rag.embedding.dimension`.
 - OQ-02 : **Exploitée (F-06)** — pgvector activé (`002`) et utilisé (`011`), DDL vectoriel isolé `dbms=postgresql`.
-- OQ-03 : **Tranchée (F-06)** — index **IVFFlat `lists=100`** (HNSW = évolution ultérieure).
+- OQ-03 : **Tranchée (F-06/F-07)** — index **IVFFlat `lists=100`** (recherche `<->` L2 exploitée par
+  F-07 `/ask` ; HNSW = évolution ultérieure, réversible via migration d'index).
 - OQ-10 : **Tranchée (F-05/F-06)** — workers intra-backend `@Scheduled` (`OcrPollingWorker`, `IngestionWorker`), réversible vers workers dédiés + file en V2.
 - OQ-05 : Fournisseur(s) OAuth et modèle de session/token.
