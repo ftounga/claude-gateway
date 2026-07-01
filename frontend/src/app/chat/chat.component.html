@@ -1,0 +1,105 @@
+<div class="chat-layout">
+  <!-- Sidebar : liste des conversations -->
+  <aside class="chat-sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">Conversations</span>
+      <button
+        mat-flat-button
+        color="primary"
+        type="button"
+        (click)="startNewConversation()"
+      >
+        <mat-icon>add</mat-icon>
+        Nouvelle
+      </button>
+    </div>
+
+    @if (conversations().length === 0) {
+      <p class="sidebar-empty">Aucune conversation pour le moment.</p>
+    } @else {
+      <mat-nav-list class="conversation-list">
+        @for (conversation of conversations(); track conversation.id) {
+          <a
+            mat-list-item
+            [class.active]="conversation.id === activeConversationId()"
+            (click)="selectConversation(conversation)"
+          >
+            <span matListItemTitle class="conversation-title">{{ conversation.title }}</span>
+            <span matListItemLine class="conversation-model">{{ conversation.model }}</span>
+            <button
+              matListItemMeta
+              mat-icon-button
+              type="button"
+              aria-label="Supprimer la conversation"
+              (click)="confirmDelete(conversation, $event)"
+            >
+              <mat-icon>delete_outline</mat-icon>
+            </button>
+          </a>
+        }
+      </mat-nav-list>
+    }
+  </aside>
+
+  <!-- Fil de messages -->
+  <section class="chat-main">
+    <mat-toolbar class="chat-toolbar">
+      <span class="chat-heading">{{ activeTitle() }}</span>
+      <span class="toolbar-spacer"></span>
+      <mat-form-field appearance="outline" class="model-select" subscriptSizing="dynamic">
+        <mat-label>Modèle</mat-label>
+        <mat-select
+          [value]="selectedModel()"
+          (valueChange)="selectedModel.set($event)"
+          [disabled]="activeConversationId() !== null"
+        >
+          @for (model of models(); track model) {
+            <mat-option [value]="model">{{ model }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+    </mat-toolbar>
+
+    @if (submitting()) {
+      <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+    }
+
+    <div class="message-thread">
+      @if (messages().length === 0) {
+        <div class="thread-empty">
+          <mat-icon>chat_bubble_outline</mat-icon>
+          <p>Envoyez un message pour démarrer la conversation.</p>
+        </div>
+      } @else {
+        @for (message of messages(); track message.id) {
+          <article class="message" [class.user]="message.role === 'USER'" [class.assistant]="message.role === 'ASSISTANT'">
+            <div class="message-role">{{ message.role === 'USER' ? 'Vous' : 'Claude' }}</div>
+            <div class="message-content">{{ message.content }}</div>
+          </article>
+        }
+      }
+    </div>
+
+    <form class="composer" [formGroup]="form" (ngSubmit)="send()">
+      <mat-form-field appearance="outline" class="composer-field" subscriptSizing="dynamic">
+        <mat-label>Votre message</mat-label>
+        <textarea
+          matInput
+          formControlName="message"
+          rows="2"
+          placeholder="Écrire à Claude…"
+          (keydown.enter)="$event.preventDefault(); send()"
+        ></textarea>
+      </mat-form-field>
+      <button
+        mat-flat-button
+        color="primary"
+        type="submit"
+        [disabled]="form.invalid || submitting()"
+      >
+        <mat-icon>send</mat-icon>
+        Envoyer
+      </button>
+    </form>
+  </section>
+</div>
