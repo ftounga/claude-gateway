@@ -14,7 +14,7 @@ Questions non tranchées ayant un impact produit ou technique. À mettre à jour
 **Statut** : **Tranchée (2026-07-01, F-06 / SF-06-01)**
 **Impact** : Définit le type de `chunks.embedding` (`vector(N)`) et l'index pgvector. Un changement après ingestion impose une ré-indexation complète.
 **Options** : 1536 (embeddings via API fournisseur OpenAI/Anthropic, défaut actuel du schéma) ; 384 (modèle local all-MiniLM, cible V2) ; autre selon modèle.
-**Décision** : **1536** (`chunks.embedding vector(1536)`, migrations `002`/`011`). Réversible via `app.rag.embedding.dimension` (une nouvelle dimension imposerait une ré-indexation + une migration du type de colonne). Modèle local 384 → F-15 (embeddings locaux).
+**Décision** : **1536** (`chunks.embedding vector(1536)`, migrations `002`/`011`). Réversible via `app.rag.embedding.dimension` (une nouvelle dimension imposerait une ré-indexation + une migration du type de colonne). **F-15 (SF-15-01, 2026-07-02) livre le fournisseur d'embeddings local (`provider=local`) en conservant la dimension 1536** (vectoriseur lexical in-process, aucune migration/ré-indexation). Le modèle local natif **384** (transformer all-MiniLM ONNX) reste un basculement futur réversible sur la même interface `EmbeddingProvider` (impliquerait `dimension=384` + migration `vector(384)` + ré-indexation).
 
 ## OQ-02 — Version Postgres RDS & activation pgvector
 **Statut** : **Exploitée (2026-07-01, F-06)** — pgvector activé (`002-pgvector`) et utilisé (`011`)
