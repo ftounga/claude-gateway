@@ -6,17 +6,40 @@ import { of, throwError } from 'rxjs';
 
 import { SettingsComponent } from './settings.component';
 import { AccountService } from '../core/services/account.service';
+import { ApiKeyService } from '../core/services/api-key.service';
 import { AuthService } from '../core/services/auth.service';
 import { AccountExport } from '../core/models/account.models';
+import { ApiKeyStatus } from '../core/models/api-key.models';
 import { UserProfile } from '../core/models/auth.models';
 
 describe('SettingsComponent', () => {
   let fixture: ComponentFixture<SettingsComponent>;
   let component: SettingsComponent;
   let accountService: jasmine.SpyObj<AccountService>;
+  let apiKeyService: jasmine.SpyObj<ApiKeyService>;
   let authService: jasmine.SpyObj<AuthService>;
   let dialog: jasmine.SpyObj<MatDialog>;
   let router: Router;
+
+  const absentKey: ApiKeyStatus = {
+    present: false,
+    maskedKey: null,
+    last4: null,
+    provider: null,
+    mode: 'HOSTED',
+    validatedAt: null,
+    createdAt: null,
+  };
+
+  const presentKey: ApiKeyStatus = {
+    present: true,
+    maskedKey: 'sk-…AB12',
+    last4: 'AB12',
+    provider: 'ANTHROPIC',
+    mode: 'BYOK',
+    validatedAt: '2026-07-01T12:00:00Z',
+    createdAt: '2026-07-01T12:00:00Z',
+  };
 
   const profile: UserProfile = {
     id: 'u1',
@@ -40,6 +63,13 @@ describe('SettingsComponent', () => {
       'exportData',
       'deleteAccount',
     ]);
+    apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', [
+      'getStatus',
+      'saveKey',
+      'deleteKey',
+      'setMode',
+    ]);
+    apiKeyService.getStatus.and.returnValue(of(absentKey));
     authService = jasmine.createSpyObj<AuthService>('AuthService', ['me', 'clearToken']);
     authService.me.and.returnValue(of(profile));
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
@@ -53,6 +83,7 @@ describe('SettingsComponent', () => {
         provideRouter([]),
         provideNoopAnimations(),
         { provide: AccountService, useValue: accountService },
+        { provide: ApiKeyService, useValue: apiKeyService },
         { provide: AuthService, useValue: authService },
         { provide: MatDialog, useValue: dialog },
       ],
@@ -119,5 +150,66 @@ describe('SettingsComponent', () => {
     expect(dialog.open).toHaveBeenCalled();
     expect(accountService.deleteAccount).not.toHaveBeenCalled();
     expect(authService.clearToken).not.toHaveBeenCalled();
+  });
+
+  // --- BYOK (F-03) ---
+
+  it('loads the api key status on init', () => {
+    setup();
+    expect(apiKeyService.getStatus).toHaveBeenCalled();
+    expect(component.apiKeyStatus()).toEqual(absentKey);
+  });
+
+  it('saves the api key and updates the status', () => {
+    setup();
+    apiKeyService.saveKey.and.returnValue(of(presentKey));
+    component.apiKeyControl.setValue('sk-ant-secret-AB12');
+
+    component.saveApiKey();
+
+    expect(apiKeyService.saveKey).toHaveBeenCalledWith({ apiKey: 'sk-ant-secret-AB12' });
+    expect(component.apiKeyStatus()).toEqual(presentKey);
+    expect(component.apiKeyControl.value).toBe('');
+  });
+
+  it('does not save when the api key field is empty', () => {
+    setup();
+    component.apiKeyControl.setValue('');
+
+    component.saveApiKey();
+
+    expect(apiKeyService.saveKey).not.toHaveBeenCalled();
+    expect(component.apiKeyControl.touched).toBeTrue();
+  });
+
+  it('deletes the api key when confirmed', () => {
+    setup(true);
+    apiKeyService.deleteKey.and.returnValue(of(void 0));
+
+    component.deleteApiKey();
+
+    expect(dialog.open).toHaveBeenCalled();
+    expect(apiKeyService.deleteKey).toHaveBeenCalled();
+    expect(component.apiKeyStatus()?.present).toBeFalse();
+    expect(component.apiKeyStatus()?.mode).toBe('HOSTED');
+  });
+
+  it('does not delete the api key when confirmation is cancelled', () => {
+    setup(false);
+
+    component.deleteApiKey();
+
+    expect(dialog.open).toHaveBeenCalled();
+    expect(apiKeyService.deleteKey).not.toHaveBeenCalled();
+  });
+
+  it('toggles the provider mode', () => {
+    setup();
+    apiKeyService.setMode.and.returnValue(of({ ...presentKey, mode: 'HOSTED' }));
+
+    component.setMode('HOSTED');
+
+    expect(apiKeyService.setMode).toHaveBeenCalledWith({ mode: 'HOSTED' });
+    expect(component.apiKeyStatus()?.mode).toBe('HOSTED');
   });
 });

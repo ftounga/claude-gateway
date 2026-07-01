@@ -41,6 +41,84 @@
   </mat-card>
 
   <mat-card class="settings__card">
+    <h2 class="settings__card-title">Clé API (BYOK)</h2>
+    <p class="settings__muted">
+      Connectez votre propre clé API Anthropic. En mode BYOK, la consommation est facturée sur votre
+      compte Anthropic. Votre clé est chiffrée et n'est jamais affichée en clair.
+    </p>
+
+    @if (apiKeyStatus(); as key) {
+      @if (key.present) {
+        <div class="settings__row">
+          <span class="settings__label">Clé enregistrée</span>
+          <span class="settings__value settings__mono">{{ key.maskedKey }}</span>
+        </div>
+        <div class="settings__row">
+          <span class="settings__label">Validée le</span>
+          <span class="settings__value">{{ key.validatedAt | date: 'short' }}</span>
+        </div>
+        <div class="settings__row">
+          <span class="settings__label">Mode</span>
+          <span class="settings__value">
+            @if (key.mode === 'BYOK') {
+              <span class="badge badge--success">BYOK</span>
+            } @else {
+              <span class="badge badge--neutral">Hosted</span>
+            }
+          </span>
+        </div>
+        <div class="settings__toggle">
+          <mat-slide-toggle
+            [checked]="key.mode === 'BYOK'"
+            [disabled]="togglingMode()"
+            (change)="setMode($event.checked ? 'BYOK' : 'HOSTED')"
+          >
+            Utiliser ma clé personnelle (BYOK)
+          </mat-slide-toggle>
+        </div>
+      } @else {
+        <p class="settings__muted">Aucune clé enregistrée — les conversations utilisent la clé plateforme (Hosted).</p>
+      }
+    } @else {
+      <p class="settings__muted">Chargement de la clé…</p>
+    }
+
+    <form class="settings__key-form" (ngSubmit)="saveApiKey()">
+      <mat-form-field appearance="outline" class="settings__key-field">
+        <mat-label>{{ apiKeyStatus()?.present ? 'Remplacer la clé API' : 'Clé API Anthropic' }}</mat-label>
+        <input
+          matInput
+          type="password"
+          autocomplete="off"
+          placeholder="sk-ant-..."
+          [formControl]="apiKeyControl"
+        />
+        @if (apiKeyControl.hasError('required') && apiKeyControl.touched) {
+          <mat-error>Clé requise.</mat-error>
+        }
+      </mat-form-field>
+      <div class="settings__actions">
+        <button mat-flat-button color="primary" type="submit" [disabled]="savingKey()">
+          <mat-icon>vpn_key</mat-icon>
+          Enregistrer la clé
+        </button>
+        @if (apiKeyStatus()?.present) {
+          <button
+            mat-stroked-button
+            color="warn"
+            type="button"
+            [disabled]="deletingKey()"
+            (click)="deleteApiKey()"
+          >
+            <mat-icon>delete</mat-icon>
+            Supprimer la clé
+          </button>
+        }
+      </div>
+    </form>
+  </mat-card>
+
+  <mat-card class="settings__card">
     <h2 class="settings__card-title">Données personnelles (RGPD)</h2>
     <p class="settings__muted">
       Vous pouvez exporter l'intégralité de vos données ou supprimer définitivement votre compte.
