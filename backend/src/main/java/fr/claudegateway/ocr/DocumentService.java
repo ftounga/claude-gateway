@@ -108,6 +108,26 @@ public class DocumentService {
     }
 
     /**
+     * Supprime définitivement un document de l'utilisateur courant, au titre du droit à l'effacement
+     * (RGPD, F-08 / SF-08-01). La résolution passe par {@link DocumentRepository#findByIdAndUserId}
+     * (isolation {@code user_id} : un utilisateur ne peut jamais supprimer le document d'un autre).
+     *
+     * <p>Les chunks dérivés — et, en Postgres, la colonne vectorielle {@code chunks.embedding} portée
+     * par ces lignes — sont supprimés en cascade au niveau base via la FK
+     * {@code chunks.document_id -> documents.id ON DELETE CASCADE} (migration {@code 011}, définie
+     * pour Postgres et H2). Aucun secret ni contenu documentaire n'est journalisé.</p>
+     *
+     * @param userId     utilisateur authentifié (contexte de sécurité, jamais un paramètre client)
+     * @param documentId identifiant du document à supprimer
+     * @throws DocumentNotFoundException si le document n'existe pas ou appartient à un autre utilisateur
+     */
+    public void delete(UUID userId, UUID documentId) {
+        Document document = documentRepository.findByIdAndUserId(documentId, userId)
+                .orElseThrow(() -> new DocumentNotFoundException("Document introuvable."));
+        documentRepository.delete(document);
+    }
+
+    /**
      * Complète les jobs OCR asynchrones en attente (SF-05-02). Interroge, pour chaque document au
      * statut {@code PROCESSING}, l'avancement du job via {@link OcrProvider} et met à jour l'état.
      * Un échec d'interrogation laisse le document {@code PROCESSING} (réessayable au cycle suivant).

@@ -3,6 +3,7 @@ package fr.claudegateway.ocr;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -18,6 +19,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import fr.claudegateway.auth.JwtService;
+import fr.claudegateway.rag.Chunk;
+import fr.claudegateway.rag.ChunkRepository;
 import fr.claudegateway.user.AuthProvider;
 import fr.claudegateway.user.User;
 import fr.claudegateway.user.UserRepository;
@@ -43,6 +46,9 @@ class DocumentApiIntegrationTest {
     private DocumentRepository documentRepository;
 
     @Autowired
+    private ChunkRepository chunkRepository;
+
+    @Autowired
     private JwtService jwtService;
 
     private User alice;
@@ -52,6 +58,7 @@ class DocumentApiIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        chunkRepository.deleteAll();
         documentRepository.deleteAll();
         userRepository.deleteAll();
 
@@ -162,5 +169,85 @@ class DocumentApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()", is(1)))
                 .andExpect(jsonPath("$[0].filename", is("a.png")));
+    }
+
+    @Test
+    void statusEndpointReturnsLightweightState() throws Exception {
+        Document doc = documentRepository.save(Document.builder()
+                .userId(alice.getId()).filename("scan.png").mediaType("image/png")
+                .sizeBytes(4).status(DocumentStatus.INDEXED).ocrMode(OcrMode.SYNC)
+                .chunkCount(3).extractedText("texte extrait d'Alice").build());
+
+        mockMvc.perform(get("/api/documents/{id}/status", doc.getId()).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is(doc.getId().toString())))
+                .andExpect(jsonPath("$.status", is("INDEXED")))
+                .andExpect(jsonPath("$.chunkCount", is(3)))
+                // Vue légère : ni texte extrait ni brut fournisseur exposés.
+                .andExpect(jsonPath("$.extractedText").doesNotExist());
+    }
+
+    @Test
+    void statusEndpointEnforcesUserIsolation() throws Exception {
+        Document aliceDoc = documentRepository.save(Document.builder()
+                .userId(alice.getId()).filename("scan.png").mediaType("image/png")
+                .sizeBytes(4).status(DocumentStatus.EXTRACTED).ocrMode(OcrMode.SYNC).build());
+
+        mockMvc.perform(get("/api/documents/{id}/status", aliceDoc.getId()).contextPath("/api")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error", is("not_found")));
+    }
+
+    @Test
+    void deleteRemovesDocumentAndCascadesChunks() throws Exception {
+        Document doc = documentRepository.save(Document.builder()
+                .userId(alice.getId()).filename("contrat.pdf").mediaType("application/pdf")
+                .sizeBytes(10).status(DocumentStatus.INDEXED).ocrMode(OcrMode.ASYNC)
+                .chunkCount(2).extractedText("texte").build());
+        chunkRepository.save(Chunk.builder()
+                .documentId(doc.getId()).userId(alice.getId()).chunkIndex(0).text("chunk 0").build());
+        chunkRepository.save(Chunk.builder()
+                .documentId(doc.getId()).userId(alice.getId()).chunkIndex(1).text("chunk 1").build());
+
+        mockMvc.perform(delete("/api/documents/{id}", doc.getId()).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isNoContent());
+
+        assertThat(documentRepository.findById(doc.getId())).isEmpty();
+        // Droit à l'effacement : les chunks dérivés (et leurs vecteurs) sont supprimés en cascade.
+        assertThat(chunkRepository.countByDocumentIdAndUserId(doc.getId(), alice.getId())).isZero();
+
+        // Un accès ultérieur renvoie 404.
+        mockMvc.perform(get("/api/documents/{id}", doc.getId()).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deleteEnforcesUserIsolation() throws Exception {
+        Document aliceDoc = documentRepository.save(Document.builder()
+                .userId(alice.getId()).filename("scan.png").mediaType("image/png")
+                .sizeBytes(4).status(DocumentStatus.EXTRACTED).ocrMode(OcrMode.SYNC).build());
+
+        // Bob ne peut pas supprimer le document d'Alice → 404, document préservé.
+        mockMvc.perform(delete("/api/documents/{id}", aliceDoc.getId()).contextPath("/api")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error", is("not_found")));
+
+        assertThat(documentRepository.findById(aliceDoc.getId())).isPresent();
+    }
+
+    @Test
+    void deleteRejectsUnauthenticated() throws Exception {
+        Document doc = documentRepository.save(Document.builder()
+                .userId(alice.getId()).filename("scan.png").mediaType("image/png")
+                .sizeBytes(4).status(DocumentStatus.EXTRACTED).ocrMode(OcrMode.SYNC).build());
+
+        mockMvc.perform(delete("/api/documents/{id}", doc.getId()).contextPath("/api"))
+                .andExpect(status().isUnauthorized());
+        assertThat(documentRepository.findById(doc.getId())).isPresent();
     }
 }

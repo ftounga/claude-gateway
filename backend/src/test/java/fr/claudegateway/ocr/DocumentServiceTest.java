@@ -144,4 +144,29 @@ class DocumentServiceTest {
         assertThatThrownBy(() -> documentService.getById(bob, documentId))
                 .isInstanceOf(DocumentNotFoundException.class);
     }
+
+    @Test
+    void deleteRemovesOwnedDocument() {
+        UUID documentId = UUID.randomUUID();
+        Document document = Document.builder()
+                .userId(alice).filename("scan.png").mediaType("image/png").sizeBytes(4)
+                .status(DocumentStatus.EXTRACTED).ocrMode(OcrMode.SYNC).build();
+        when(documentRepository.findByIdAndUserId(documentId, alice))
+                .thenReturn(Optional.of(document));
+
+        documentService.delete(alice, documentId);
+
+        verify(documentRepository).delete(document);
+    }
+
+    @Test
+    void deleteEnforcesUserIsolation() {
+        UUID documentId = UUID.randomUUID();
+        // Le document appartient à Alice : la suppression demandée par Bob ne le trouve pas.
+        when(documentRepository.findByIdAndUserId(documentId, bob)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> documentService.delete(bob, documentId))
+                .isInstanceOf(DocumentNotFoundException.class);
+        verify(documentRepository, never()).delete(any(Document.class));
+    }
 }
