@@ -4,10 +4,24 @@
 
 Lire ces documents avant toute réponse impliquant du code, une spec ou une décision technique.
 
-### Architecture
-1. `docs/ARCHITECTURE_CANONIQUE.md` — source de vérité architecture (obligatoire)
-2. `docs/PRODUCT_SPEC.md` — source de vérité fonctionnelle — liste officielle des features (obligatoire)
-3. `docs/OPEN_QUESTIONS.md` — registre des sujets non tranchés (obligatoire)
+### Vision & périmètre produit — SOURCE DE VÉRITÉ ABSOLUE
+0. `docs/PROJECT.md` — **source de vérité produit. Prévaut sur tout autre document en cas de conflit.**
+
+Documents de support (subordonnés à `PROJECT.md`) :
+- `docs/ARCHITECTURE.md` — principes architecturaux (Gateway-First, Provider Independence, Single Responsibility…)
+- `docs/CODING_RULES.md` — standards d'ingénierie
+- `docs/DEVELOPMENT_PLAN.md` — séquence de phases V1 (Foundation → Auth → Conversations → Gateway → Hosted/BYOK → Billing → Admin → Monitoring → Prod)
+- `docs/ADR.md` — décisions architecturales
+- `docs/API_DESIGN.md` — philosophie API
+- `docs/PROJECT_STRUCTURE.md` — organisation du code
+- `docs/AI_CONTEXT.md` — état courant du projet
+- `docs/TECH_STACK.md` — choix technologiques et justifications
+- `docs/AI_PROMPTS.md` — prompts standardisés
+
+### Architecture & fonctionnel (⚠️ À RÉCONCILIER avec PROJECT.md — voir §« Réconciliation »)
+1. `docs/ARCHITECTURE_CANONIQUE.md` — antérieur à `PROJECT.md`. Décrit OCR/RAG/pgvector **en V1** → **contredit** `PROJECT.md` (ces capacités sont V2). **Ne pas suivre son périmètre V1.**
+2. `docs/PRODUCT_SPEC.md` — liste des features. F-04→F-08 (OCR/RAG/pgvector/ask) à re-scoper en V2. Statuts à maintenir.
+3. `docs/OPEN_QUESTIONS.md` — registre des sujets non tranchés (OQ-01/02/03/10, liés au RAG, deviennent sans objet en V1)
 4. `docs/DESIGN_SYSTEM.md` — charte graphique et règles UI (obligatoire pour tout travail frontend)
 
 ### Process
@@ -32,10 +46,30 @@ Lire ces documents avant toute réponse impliquant du code, une spec ou une déc
 
 ### Architecture
 - Backend : Spring Boot 3.5 / Java 21 | Frontend : Angular 19 | Base : PostgreSQL | Stockage : object storage S3-compatible si applicable
-- Auth : Spring Security + OAuth2/OIDC — aucun mot de passe local
+- **Gateway-First** : le backend est une Gateway. Il orchestre, sécurise, facture, journalise, supervise. Il ne devient **jamais** un moteur d'IA ni un clone de Claude.
+- **Provider-First** : avant d'implémenter, se demander « Claude fournit-il déjà cette capacité ? ». Si oui → la **relayer**, ne pas la réimplémenter.
+- **Provider Independence** : le code métier dépend d'une interface abstraite `AIProvider`, jamais directement d'Anthropic (préparer OpenAI/Gemini/… sans réécriture).
+- **Périmètre V1 = passerelle uniquement.** Exclus de V1 (→ V2) : OCR, Textract, embeddings, pgvector, RAG, chunking, recherche/indexation vectorielle, bibliothèque documentaire, mémoire permanente, connecteurs, support multi-LLM.
+- **Fichiers V1** : upload + validation + transmission au fournisseur. **Aucun traitement du contenu, aucune indexation.**
 - Multi-tenant : chaque client est un utilisateur isolé — filtre `user_id` obligatoire sur tout accès aux données
 - Les traitements lourds sont asynchrones
+- **Auth (tranché 2026-07-01)** : supporter **les deux** — OAuth2/OIDC (Google) **et** compte email/mot de passe (inscription, reset, vérification email) avec **JWT**. Spring Security. Isolation `user_id` quel que soit le mode.
 - Ne pas réinventer la stack sans signaler explicitement une variante
+
+---
+
+## Réconciliation `PROJECT.md` ↔ existant (conflits ouverts)
+
+L'ajout de `PROJECT.md` (source de vérité) a créé des divergences avec l'existant et l'infra déployée. **Arbitrées le 2026-07-01** :
+
+| # | Conflit | Décision |
+|---|---------|----------|
+| C1 | **Périmètre V1 : OCR/RAG/pgvector/Textract** | **V1 = passerelle pure.** OCR/RAG/pgvector/embeddings/Textract → **V2** (re-scope `PRODUCT_SPEC` F-05/06/07/08). **Infra laissée en l'état** : IRSA Textract + `pgvector` restent en place mais **dormants** (pas de nettoyage maintenant). |
+| C2 | **Authentification** | **Les deux** : OAuth2/OIDC (Google) **+** email/mot de passe (reset, vérif email) via **JWT**. |
+| C3 | **Monitoring / logging** | **V1 = CloudWatch + Fluent Bit** (infra legalcase réutilisée). Prometheus/Grafana/Loki (`TECH_STACK`) = **cible V2+**. |
+| C4 | **Sources de vérité** | `PROJECT.md` prévaut ; `ARCHITECTURE_CANONIQUE`/`PRODUCT_SPEC` subordonnés et réconciliés. |
+
+**F-04 (Upload)** reste en V1 mais **redéfini** : upload + validation + transmission au fournisseur uniquement. **Pas d'OCR, pas d'indexation, pas de persistance documentaire pour RAG.**
 
 ---
 
@@ -142,6 +176,10 @@ Ces situations déclenchent un refus immédiat. Répondre avec le format de refu
 | Feature non référencée dans `PRODUCT_SPEC.md` | REFUS — ajouter la feature au PRODUCT_SPEC avant tout dev |
 | Traitement lourd demandé de façon synchrone | REFUS — rappeler la règle async |
 | Accès données sans filtre `user_id` | REFUS — rappeler la règle d'isolation |
+| Fonctionnalité de traitement documentaire en V1 (OCR, Textract, embeddings, pgvector, RAG, chunking, recherche vectorielle, indexation) | REFUS — hors périmètre V1 (`PROJECT.md` §1.6/§11.15) → V2 |
+| Réimplémentation d'une capacité déjà fournie par Claude (analyse PDF/image, Q&A document, contexte) | REFUS — règle Provider-First (`PROJECT.md` §3.3) : relayer, ne pas réimplémenter |
+| Code métier dépendant directement d'Anthropic (pas d'interface `AIProvider`) | BLOCAGE — Provider Independence (`ARCHITECTURE.md` Principle 2) |
+| Le backend implémente une logique de « moteur IA » / clone de Claude | BLOCAGE — Gateway-First (`PROJECT.md` §3.2) |
 | Composant frontend utilisant couleurs/polices hors `DESIGN_SYSTEM.md` | BLOCAGE — signaler la divergence |
 | Écran produit sans layout conforme au design system | BLOCAGE — signaler la divergence |
 | Feature avec écran utilisateur marquée `Terminée` sans composant Angular implémenté | REFUS — implémenter les écrans manquants avant de marquer Terminée |

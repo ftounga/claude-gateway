@@ -1,9 +1,18 @@
 # ARCHITECTURE_CANONIQUE.md
 claude-gateway — Architecture produit et technique de référence
 
-Ce document constitue la source de vérité architecturale du projet claude-gateway.
+> ⚠️ **DOCUMENT SUBORDONNÉ À `docs/PROJECT.md`** (source de vérité produit, 2026-07-01).
+> Ce fichier est **antérieur** à `PROJECT.md`. Là où il décrit le **périmètre V1**, il est **obsolète** :
+> **OCR (Textract), RAG, chunking, embeddings, pgvector, recherche vectorielle, indexation
+> documentaire NE FONT PAS PARTIE DE LA V1** — ils sont repoussés en **V2** (voir `PROJECT.md` §1.6/§11.15,
+> ADR-004, `PRODUCT_SPEC.md` F-05→F-08). **La V1 est une passerelle pure vers Claude** ; les fichiers
+> sont uniquement transmis au fournisseur, sans traitement de contenu. Auth V1 = OAuth2/OIDC **+**
+> email/mot de passe (JWT). En cas de conflit, `PROJECT.md` prévaut. Les sections ci-dessous décrivant
+> le pipeline documentaire décrivent la **cible V2**, pas la V1.
+
+Ce document constitue la référence architecturale technique du projet claude-gateway.
 Toute implémentation technique, toute proposition d'évolution ou toute génération
-de code doit rester cohérente avec ce document.
+de code doit rester cohérente avec `PROJECT.md` puis ce document.
 
 Toute divergence doit être explicitement signalée.
 
