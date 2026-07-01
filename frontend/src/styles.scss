@@ -78,6 +78,7 @@ code, pre { font-family: var(--cg-font-mono); }
   &--warning { background: #FFF8E1; color: #F9A825; }
   &--error   { background: #FFEBEE; color: var(--cg-error); }
   &--neutral { background: #F5F5F5; color: var(--cg-text-secondary); }
+  &--info    { background: #EEF2FF; color: var(--cg-primary); }
 }
 
 // ---- Surcharges Material ----
@@ -94,6 +95,10 @@ code, pre { font-family: var(--cg-font-mono); }
 }
 .snack-error .mdc-snackbar__surface {
   background-color: var(--cg-error) !important;
+  color: #fff !important;
+}
+.snack-info .mdc-snackbar__surface {
+  background-color: var(--cg-primary) !important;
   color: #fff !important;
 }
 

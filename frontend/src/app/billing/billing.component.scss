@@ -1,0 +1,85 @@
+// Écran de facturation F-09 — conforme à docs/DESIGN_SYSTEM.md
+// Palette et espacements via variables globales (--cg-*), multiples de 4px uniquement.
+
+.billing {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--cg-space-4);
+  background: var(--cg-bg);
+
+  &__header {
+    margin-bottom: var(--cg-space-4);
+  }
+
+  &__subtitle {
+    color: var(--cg-text-secondary);
+    font-size: 14px;
+    margin: var(--cg-space-1) 0 0;
+  }
+
+  &__current {
+    margin-bottom: var(--cg-space-5);
+  }
+
+  &__current-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cg-space-5);
+  }
+
+  &__label {
+    display: block;
+    color: var(--cg-text-secondary);
+    font-size: 12px;
+    margin-bottom: var(--cg-space-1);
+  }
+
+  &__value {
+    font-size: 16px;
+    font-weight: 500;
+  }
+
+  &__plans-title {
+    margin: 0 0 var(--cg-space-3);
+  }
+
+  &__plans {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: var(--cg-space-4);
+  }
+
+  &__plan {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-3);
+  }
+
+  &__plan-name {
+    margin: 0;
+  }
+
+  &__plan-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+    margin: 0;
+  }
+
+  &__plan-period {
+    color: var(--cg-text-secondary);
+    font-size: 14px;
+  }
+
+  &__plan-cta {
+    margin-top: auto;
+  }
+
+  &__feedback {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+    color: var(--cg-text-secondary);
+    padding: var(--cg-space-3) 0;
+  }
+}
