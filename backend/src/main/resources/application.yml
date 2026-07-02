@@ -25,6 +25,9 @@ app:
   # URL du frontend, utilisée pour construire les liens d'e-mail (vérification, reset) et
   # la redirection post-connexion OAuth.
   frontend-url: ${APP_FRONTEND_URL:http://localhost:4200}
+  admin:
+    # Super-admin (F-20) : cet e-mail est autorisé sur l'API admin et promu ADMIN au démarrage.
+    super-admin-email: ${SUPER_ADMIN_EMAIL:ntounga@gmail.com}
   upload:
     # Liste blanche des types MIME acceptés (types supportés par Claude) et plafond de taille (F-04).
     # Décision réversible : ajustable sans changement de code.
