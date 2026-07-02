@@ -6,7 +6,7 @@ import { of, throwError } from 'rxjs';
 
 import { ChatComponent } from './chat.component';
 import { ExportService } from '../core/services/export.service';
-import { ChatResponse } from '../core/models/chat.models';
+import { ChatService, ChatStreamHandlers } from '../core/services/chat.service';
 
 describe('ChatComponent', () => {
   let fixture: ComponentFixture<ChatComponent>;
@@ -19,6 +19,19 @@ describe('ChatComponent', () => {
       .expectOne('/api/chat/models')
       .flush({ defaultModel: 'claude-opus-4-8', models: ['claude-opus-4-8', 'claude-sonnet-5'] });
     httpMock.expectOne('/api/conversations').flush([]);
+  }
+
+  /**
+   * Remplace le streaming (`ChatService.streamMessage`) par un pilote synchrone : capture le corps
+   * de la requête et invoque les callbacks fournis. Renvoie le spy pour inspecter les arguments.
+   */
+  function stubStream(drive: (handlers: ChatStreamHandlers) => void): jasmine.Spy {
+    return spyOn(TestBed.inject(ChatService), 'streamMessage').and.callFake(
+      (_body, handlers: ChatStreamHandlers) => {
+        drive(handlers);
+        return Promise.resolve();
+      },
+    );
   }
 
   beforeEach(async () => {
@@ -47,27 +60,15 @@ describe('ChatComponent', () => {
     fixture.detectChanges();
     flushInit();
 
+    stubStream((handlers) => {
+      handlers.onToken('Bonjour, je suis Claude.');
+      handlers.onDone({ conversationId: 'c-new', messageId: 'm-assistant', model: 'claude-opus-4-8' });
+    });
+
     component.form.setValue({ message: 'Bonjour Claude' });
     component.send();
 
-    const chatReq = httpMock.expectOne('/api/chat');
-    expect(chatReq.request.method).toBe('POST');
-    expect(chatReq.request.body.message).toBe('Bonjour Claude');
-
-    const response: ChatResponse = {
-      conversationId: 'c-new',
-      model: 'claude-opus-4-8',
-      message: {
-        id: 'm-assistant',
-        role: 'ASSISTANT',
-        content: 'Bonjour, je suis Claude.',
-        model: 'claude-opus-4-8',
-        createdAt: '2026-07-01T00:00:00Z',
-      },
-    };
-    chatReq.flush(response);
-
-    // Après une nouvelle conversation, la liste est rechargée.
+    // onDone (nouvelle conversation) recharge la liste latérale.
     httpMock.expectOne('/api/conversations').flush([
       {
         id: 'c-new',
@@ -88,25 +89,44 @@ describe('ChatComponent', () => {
     expect(component.submitting()).toBeFalse();
   });
 
+  it('renders the assistant reply progressively as tokens stream in (SF-02-05)', () => {
+    fixture.detectChanges();
+    flushInit();
+
+    let captured!: ChatStreamHandlers;
+    spyOn(TestBed.inject(ChatService), 'streamMessage').and.callFake(
+      (_body, handlers: ChatStreamHandlers) => {
+        captured = handlers;
+        return Promise.resolve();
+      },
+    );
+
+    component.form.setValue({ message: 'Salut' });
+    component.send();
+
+    // Deux fragments successifs se concatènent dans le même message assistant.
+    captured.onToken('Bon');
+    expect(component.messages().find((m) => m.role === 'ASSISTANT')?.content).toBe('Bon');
+    captured.onToken('jour');
+    expect(component.messages().find((m) => m.role === 'ASSISTANT')?.content).toBe('Bonjour');
+
+    captured.onDone({ conversationId: 'c-x', messageId: 'm-x', model: 'claude-opus-4-8' });
+    httpMock.expectOne('/api/conversations').flush([]);
+    expect(component.messages().find((m) => m.role === 'ASSISTANT')?.id).toBe('m-x');
+  });
+
   it('renders the assistant reply as Markdown and keeps the user text literal (SF-02-03)', () => {
     fixture.detectChanges();
     flushInit();
 
+    stubStream((handlers) => {
+      handlers.onToken('## Titre\n**gras**');
+      handlers.onDone({ conversationId: 'c-md', messageId: 'm-md', model: 'claude-opus-4-8' });
+    });
+
     component.form.setValue({ message: '**pas gras**' });
     component.send();
 
-    const response: ChatResponse = {
-      conversationId: 'c-md',
-      model: 'claude-opus-4-8',
-      message: {
-        id: 'm-md',
-        role: 'ASSISTANT',
-        content: '## Titre\n**gras**',
-        model: 'claude-opus-4-8',
-        createdAt: '2026-07-01T00:00:00Z',
-      },
-    };
-    httpMock.expectOne('/api/chat').flush(response);
     httpMock.expectOne('/api/conversations').flush([]);
 
     fixture.detectChanges();
@@ -127,14 +147,12 @@ describe('ChatComponent', () => {
     fixture.detectChanges();
     flushInit();
 
+    stubStream((handlers) => handlers.onError('request_failed'));
+
     component.form.setValue({ message: 'Échec attendu' });
     component.send();
 
-    httpMock.expectOne('/api/chat').flush(
-      { error: 'provider_error', message: 'boom' },
-      { status: 502, statusText: 'Bad Gateway' },
-    );
-
+    // Échec avant tout token (pré-vol) : les deux messages optimistes sont retirés.
     expect(component.messages().length).toBe(0);
     expect(component.submitting()).toBeFalse();
   });
@@ -161,22 +179,15 @@ describe('ChatComponent', () => {
     expect(component.attachments()[0].status).toBe('ready');
     expect(component.attachments()[0].serverId).toBe('f-1');
 
+    const streamSpy = stubStream((handlers) => {
+      handlers.onToken('Reçu.');
+      handlers.onDone({ conversationId: 'c-1', messageId: 'm-a', model: 'claude-opus-4-8' });
+    });
+
     component.form.setValue({ message: 'Analyse ce doc' });
     component.send();
 
-    const chatReq = httpMock.expectOne('/api/chat');
-    expect(chatReq.request.body.attachmentIds).toEqual(['f-1']);
-    chatReq.flush({
-      conversationId: 'c-1',
-      model: 'claude-opus-4-8',
-      message: {
-        id: 'm-a',
-        role: 'ASSISTANT',
-        content: 'Reçu.',
-        model: 'claude-opus-4-8',
-        createdAt: '2026-07-01T00:00:00Z',
-      },
-    });
+    expect(streamSpy.calls.mostRecent().args[0].attachmentIds).toEqual(['f-1']);
     httpMock.expectOne('/api/conversations').flush([]);
 
     // Les pièces jointes sont réinitialisées après un envoi réussi.
@@ -195,22 +206,15 @@ describe('ChatComponent', () => {
     expect(component.attachments()[0].status).toBe('error');
     expect(component.attachments()[0].serverId).toBeUndefined();
 
+    const streamSpy = stubStream((handlers) => {
+      handlers.onToken('Ok.');
+      handlers.onDone({ conversationId: 'c-2', messageId: 'm-b', model: 'claude-opus-4-8' });
+    });
+
     component.form.setValue({ message: 'Message sans pièce valide' });
     component.send();
 
-    const chatReq = httpMock.expectOne('/api/chat');
-    expect(chatReq.request.body.attachmentIds).toBeUndefined();
-    chatReq.flush({
-      conversationId: 'c-2',
-      model: 'claude-opus-4-8',
-      message: {
-        id: 'm-b',
-        role: 'ASSISTANT',
-        content: 'Ok.',
-        model: 'claude-opus-4-8',
-        createdAt: '2026-07-01T00:00:00Z',
-      },
-    });
+    expect(streamSpy.calls.mostRecent().args[0].attachmentIds).toBeUndefined();
     httpMock.expectOne('/api/conversations').flush([]);
   });
 
