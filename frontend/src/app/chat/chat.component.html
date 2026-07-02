@@ -96,7 +96,11 @@
         @for (message of messages(); track message.id) {
           <article class="message" [class.user]="message.role === 'USER'" [class.assistant]="message.role === 'ASSISTANT'">
             <div class="message-role">{{ message.role === 'USER' ? 'Vous' : 'Claude' }}</div>
-            <div class="message-content">{{ message.content }}</div>
+            @if (message.role === 'ASSISTANT') {
+              <div class="message-content markdown-body" [innerHTML]="message.content | markdown"></div>
+            } @else {
+              <div class="message-content">{{ message.content }}</div>
+            }
           </article>
         }
       }

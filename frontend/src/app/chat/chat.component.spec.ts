@@ -88,6 +88,41 @@ describe('ChatComponent', () => {
     expect(component.submitting()).toBeFalse();
   });
 
+  it('renders the assistant reply as Markdown and keeps the user text literal (SF-02-03)', () => {
+    fixture.detectChanges();
+    flushInit();
+
+    component.form.setValue({ message: '**pas gras**' });
+    component.send();
+
+    const response: ChatResponse = {
+      conversationId: 'c-md',
+      model: 'claude-opus-4-8',
+      message: {
+        id: 'm-md',
+        role: 'ASSISTANT',
+        content: '## Titre\n**gras**',
+        model: 'claude-opus-4-8',
+        createdAt: '2026-07-01T00:00:00Z',
+      },
+    };
+    httpMock.expectOne('/api/chat').flush(response);
+    httpMock.expectOne('/api/conversations').flush([]);
+
+    fixture.detectChanges();
+    const host: HTMLElement = fixture.nativeElement;
+
+    // Réponse assistant : le Markdown est rendu (h2 + strong), plus de balises littérales.
+    const assistant = host.querySelector('.message.assistant .markdown-body') as HTMLElement;
+    expect(assistant.querySelector('h2')).not.toBeNull();
+    expect(assistant.querySelector('strong')).not.toBeNull();
+
+    // Message utilisateur : le `**` tapé reste littéral (aucun <strong> généré).
+    const user = host.querySelector('.message.user .message-content') as HTMLElement;
+    expect(user.querySelector('strong')).toBeNull();
+    expect(user.textContent).toContain('**pas gras**');
+  });
+
   it('removes the optimistic message when sending fails', () => {
     fixture.detectChanges();
     flushInit();
