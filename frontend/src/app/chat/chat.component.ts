@@ -15,6 +15,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
+import { MarkdownPipe } from '../shared/markdown.pipe';
 import { ChatService } from '../core/services/chat.service';
 import { ExportService } from '../core/services/export.service';
 import { UploadService } from '../core/services/upload.service';
@@ -56,6 +57,7 @@ import {
     MatProgressSpinnerModule,
     MatTooltipModule,
     MatDialogModule,
+    MarkdownPipe,
   ],
   templateUrl: './chat.component.html',
   styleUrl: './chat.component.scss',
