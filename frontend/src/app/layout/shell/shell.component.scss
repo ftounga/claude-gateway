@@ -1,0 +1,43 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app-bar {
+  // Barre fond primary (design system §Header) ; texte blanc.
+  background: var(--cg-primary);
+  color: #ffffff;
+  gap: 8px;
+}
+
+.brand {
+  font-family: var(--cg-font-heading);
+  font-weight: 600;
+  cursor: pointer;
+  margin-right: 16px;
+}
+
+.app-nav {
+  display: flex;
+  gap: 4px;
+
+  a.active {
+    // Section courante mise en évidence.
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  mat-icon {
+    margin-right: 4px;
+  }
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+.app-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}

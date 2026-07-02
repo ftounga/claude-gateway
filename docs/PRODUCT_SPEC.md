@@ -80,6 +80,18 @@ sécurisent la monétisation ; settings et landing finalisent l'expérience. Le 
 | F-15 | Embeddings locaux | Fournisseur d'embeddings **local in-process** (`EmbeddingProvider` impl `local`, hashing lexical signé), sans réseau ni clé API — suppression de la dépendance fournisseur. Dimension 1536 conservée (OQ-01) ; backend transformer (all-MiniLM 384) = évolution future sur la même interface | **Terminée** (SF-15-01) |
 | F-16 | Rapports d'usage & coût in-app | Tableaux de bord consommation/coût par utilisateur | **Terminée** (SF-16-01→02) |
 
+## Améliorations plateforme (validées 2026-07-03 par le product owner)
+
+> Ajouts validés explicitement le 2026-07-03. Alignement fonctionnel avec l'app de référence (legalcase).
+
+| ID | Feature | Description | Statut |
+|----|---------|-------------|--------|
+| F-19 | Coquille & navigation | Barre de navigation persistante (toolbar + menu compte) enveloppant les pages authentifiées ; liens Chat/Documents/Q&A/Templates/Rapports/Facturation/Réglages/Profil + **Déconnexion** | **En cours** (SF-19-01) |
+| F-20 | Console admin & super-admin | Écran d'administration (rôle `ADMIN`) + super-admin (`ntounga@gmail.com`) : liste des utilisateurs, abonnements, consommation | À spécifier |
+| F-21 | Rachat de tokens (top-up) | Achat ponctuel de tokens lorsque le budget mensuel est épuisé (au-delà du quota d'abonnement), via Stripe | À spécifier |
+| F-22 | Canvas / Artifacts | Panneau latéral pour le contenu généré (code, doc, mail) avec copie et aperçu | À spécifier |
+| F-23 | Dossier de fichiers par conversation | Espace listant tous les fichiers uploadés dans une conversation | À spécifier |
+
 ## Features V3 (backlog — hors périmètre actuel)
 
 | ID | Feature | Description | Cible |

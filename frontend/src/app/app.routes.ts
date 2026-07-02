@@ -2,6 +2,7 @@ import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
 
 export const routes: Routes = [
+  // ---- Pages publiques (hors coquille) ----
   {
     path: '',
     loadComponent: () => import('./landing/landing.component').then((m) => m.LandingComponent),
@@ -41,54 +42,60 @@ export const routes: Routes = [
         (m) => m.OauthCallbackComponent,
       ),
   },
-  {
-    path: 'profile',
-    canActivate: [authGuard],
-    loadComponent: () =>
-      import('./auth/profile/profile.component').then((m) => m.ProfileComponent),
-  },
+  // Onboarding : flux authentifié dédié, volontairement hors coquille.
   {
     path: 'onboarding',
     canActivate: [authGuard],
     loadComponent: () =>
       import('./onboarding/onboarding.component').then((m) => m.OnboardingComponent),
   },
+
+  // ---- Zone authentifiée : enveloppée par la coquille de navigation (F-19) ----
+  // Route parente pathless : les URLs des enfants restent inchangées (/chat, /billing, …)
+  // et l'authGuard est centralisé sur le parent.
   {
-    path: 'chat',
+    path: '',
+    loadComponent: () => import('./layout/shell/shell.component').then((m) => m.ShellComponent),
     canActivate: [authGuard],
-    loadComponent: () => import('./chat/chat.component').then((m) => m.ChatComponent),
+    children: [
+      {
+        path: 'chat',
+        loadComponent: () => import('./chat/chat.component').then((m) => m.ChatComponent),
+      },
+      {
+        path: 'documents',
+        loadComponent: () =>
+          import('./documents/documents.component').then((m) => m.DocumentsComponent),
+      },
+      {
+        path: 'ask',
+        loadComponent: () => import('./ask/ask.component').then((m) => m.AskComponent),
+      },
+      {
+        path: 'templates',
+        loadComponent: () =>
+          import('./templates/templates.component').then((m) => m.TemplatesComponent),
+      },
+      {
+        path: 'reports',
+        loadComponent: () => import('./reports/reports.component').then((m) => m.ReportsComponent),
+      },
+      {
+        path: 'billing',
+        loadComponent: () => import('./billing/billing.component').then((m) => m.BillingComponent),
+      },
+      {
+        path: 'settings',
+        loadComponent: () =>
+          import('./settings/settings.component').then((m) => m.SettingsComponent),
+      },
+      {
+        path: 'profile',
+        loadComponent: () =>
+          import('./auth/profile/profile.component').then((m) => m.ProfileComponent),
+      },
+    ],
   },
-  {
-    path: 'documents',
-    canActivate: [authGuard],
-    loadComponent: () =>
-      import('./documents/documents.component').then((m) => m.DocumentsComponent),
-  },
-  {
-    path: 'ask',
-    canActivate: [authGuard],
-    loadComponent: () => import('./ask/ask.component').then((m) => m.AskComponent),
-  },
-  {
-    path: 'templates',
-    canActivate: [authGuard],
-    loadComponent: () =>
-      import('./templates/templates.component').then((m) => m.TemplatesComponent),
-  },
-  {
-    path: 'reports',
-    canActivate: [authGuard],
-    loadComponent: () => import('./reports/reports.component').then((m) => m.ReportsComponent),
-  },
-  {
-    path: 'billing',
-    canActivate: [authGuard],
-    loadComponent: () => import('./billing/billing.component').then((m) => m.BillingComponent),
-  },
-  {
-    path: 'settings',
-    canActivate: [authGuard],
-    loadComponent: () => import('./settings/settings.component').then((m) => m.SettingsComponent),
-  },
+
   { path: '**', redirectTo: '' },
 ];
