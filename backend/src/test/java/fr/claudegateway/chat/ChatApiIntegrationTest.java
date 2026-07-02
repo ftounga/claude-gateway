@@ -8,9 +8,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.UUID;
+import java.util.concurrent.Executor;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,7 +43,7 @@ import fr.claudegateway.user.UserRole;
  * plateforme et mapping des erreurs fournisseur. Le vrai {@link AIProvider} est remplacé par un
  * stub contrôlable pour ne jamais appeler Anthropic pendant les tests.
  */
-@SpringBootTest
+@SpringBootTest(properties = "spring.main.allow-bean-definition-overriding=true")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class ChatApiIntegrationTest {
@@ -82,6 +84,13 @@ class ChatApiIntegrationTest {
         @Primary
         StubAIProvider stubAIProvider() {
             return new StubAIProvider();
+        }
+
+        /** Exécuteur SSE synchrone : le relais s'exécute inline pour des tests déterministes. */
+        @Bean("chatStreamExecutor")
+        @Primary
+        Executor chatStreamExecutor() {
+            return Runnable::run;
         }
     }
 
@@ -151,6 +160,50 @@ class ChatApiIntegrationTest {
                 .andExpect(jsonPath("$.message.role", is("ASSISTANT")))
                 .andExpect(jsonPath("$.message.content", is("Bonjour, je suis l'assistant.")))
                 .andExpect(jsonPath("$.message.model", is("claude-opus-4-8")));
+    }
+
+    // --------------------------------------------------------------- POST /api/chat/stream (SF-02-04)
+
+    @Test
+    void streamsAssistantReplyAsSse() throws Exception {
+        // Exécuteur SSE synchrone (config de test) : le relais s'exécute au retour du contrôleur, la
+        // réponse est donc déjà écrite — on lit le corps directement (pas d'asyncDispatch).
+        var result = mockMvc.perform(post("/api/chat/stream").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("{\"message\":\"Bonjour\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        org.assertj.core.api.Assertions.assertThat(body)
+                .contains("token")                             // événement token (contenu relayé)
+                .contains("Bonjour, je suis l'assistant.")     // texte relayé du fournisseur
+                .contains("done");                             // événement de fin de flux
+        org.assertj.core.api.Assertions.assertThat(result.getResponse().getContentType())
+                .contains("text/event-stream");
+    }
+
+    @Test
+    void streamRejectsUnauthenticatedRequestBeforeOpeningFlux() throws Exception {
+        mockMvc.perform(post("/api/chat/stream").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"Bonjour\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void streamReturns404ForConversationOwnedByAnotherUser() throws Exception {
+        Conversation bobConversation = conversationRepository.save(Conversation.builder()
+                .userId(bob.getId()).title("Privé de Bob").model("claude-opus-4-8").build());
+
+        // Alice tente de streamer sur la conversation de Bob : 404 au pré-vol, aucun flux ouvert.
+        mockMvc.perform(post("/api/chat/stream").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"coucou\",\"conversationId\":\"" + bobConversation.getId() + "\"}"))
+                .andExpect(status().isNotFound());
     }
 
     @Test

@@ -120,6 +120,71 @@ public class ChatService {
         return new ChatResult(conversation, userMessage, assistantMessage);
     }
 
+    /**
+     * Pré-vol synchrone du streaming (SF-02-04) : applique les mêmes garanties que {@link #reply}
+     * (quota, modèle, isolation, résolution/création de conversation, persistance du message USER,
+     * historique, clé BYOK) et renvoie le contexte prêt pour le relais. Exécuté sur le thread requête
+     * pour que toute erreur (402/400/404) devienne une réponse HTTP normale <b>avant</b> l'ouverture du flux.
+     */
+    @Transactional
+    public StreamContext prepareStream(UUID userId, UUID conversationId, String rawMessage,
+            String requestedModel, List<UUID> attachmentIds) {
+        String content = rawMessage.trim();
+        quotaService.assertWithinQuota(userId);
+        validateRequestedModel(requestedModel);
+        List<ProviderAttachment> attachments = resolveAttachments(userId, attachmentIds);
+        Conversation conversation = resolveConversation(userId, conversationId, requestedModel, content);
+
+        Message userMessage = messageRepository.save(Message.builder()
+                .conversationId(conversation.getId())
+                .userId(userId)
+                .role(MessageRole.USER)
+                .content(content)
+                .build());
+
+        List<Message> history = messageRepository.findByConversationIdOrderByCreatedAtAsc(conversation.getId());
+        String byokApiKey = byokKeyService.resolveActiveApiKey(userId).orElse(null);
+        ChatCompletionRequest providerRequest = new ChatCompletionRequest(
+                conversation.getModel(), toProviderMessages(history), attachments, byokApiKey);
+
+        return new StreamContext(userId, conversation, userMessage, providerRequest);
+    }
+
+    /**
+     * Relaie le flux du fournisseur (via {@code onDelta}) puis, <b>à la fin du flux réussi</b>, persiste
+     * le message ASSISTANT (texte = concaténation des deltas) et comptabilise l'usage. Volontairement
+     * <b>non transactionnel</b> : garder une transaction ouverte pendant tout le streaming réseau
+     * bloquerait une connexion ; les écritures finales sont atomiques par appel (repos Spring Data +
+     * {@code QuotaService.recordUsage}). Un flux en échec ({@link fr.claudegateway.ai.AIProviderException})
+     * ne persiste ni message ASSISTANT ni usage.
+     *
+     * @return le message assistant persisté
+     */
+    public Message streamAndPersist(StreamContext context, java.util.function.Consumer<String> onDelta) {
+        ChatCompletionResult completion = aiProvider.streamComplete(context.providerRequest(), onDelta);
+
+        Message assistantMessage = messageRepository.save(Message.builder()
+                .conversationId(context.conversation().getId())
+                .userId(context.userId())
+                .role(MessageRole.ASSISTANT)
+                .content(completion.content())
+                .model(completion.model())
+                .build());
+
+        quotaService.recordUsage(context.userId(), completion.inputTokens(), completion.outputTokens());
+
+        // Rafraîchit updated_at pour le tri de la liste latérale.
+        context.conversation().setTitle(context.conversation().getTitle());
+        conversationRepository.save(context.conversation());
+
+        return assistantMessage;
+    }
+
+    /** Contexte de streaming issu du pré-vol, consommé par {@link #streamAndPersist}. */
+    public record StreamContext(UUID userId, Conversation conversation, Message userMessage,
+            ChatCompletionRequest providerRequest) {
+    }
+
     private Conversation resolveConversation(UUID userId, UUID conversationId, String requestedModel, String firstMessage) {
         if (conversationId != null) {
             return conversationRepository.findByIdAndUserId(conversationId, userId)
