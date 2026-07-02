@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, NgZone, OnInit, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatChipsModule } from '@angular/material/chips';
@@ -69,6 +69,7 @@ export class ChatComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
+  private readonly zone = inject(NgZone);
 
   readonly conversations = signal<ConversationSummary[]>([]);
   readonly messages = signal<ChatMessage[]>([]);
@@ -180,45 +181,74 @@ export class ChatComponent implements OnInit {
       .map((a) => a.serverId as string);
 
     const conversationId = this.activeConversationId();
-    // Affichage optimiste du message utilisateur.
+    const now = new Date().toISOString();
+    // Affichage optimiste : message utilisateur + placeholder assistant rempli au fil du flux.
     const optimistic: ChatMessage = {
       id: `local-${Date.now()}`,
       role: 'USER',
       content,
       model: null,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
     };
-    this.messages.update((current) => [...current, optimistic]);
+    const assistantId = `local-assistant-${Date.now()}`;
+    const assistant: ChatMessage = {
+      id: assistantId,
+      role: 'ASSISTANT',
+      content: '',
+      model: this.selectedModel() || null,
+      createdAt: now,
+    };
+    this.messages.update((current) => [...current, optimistic, assistant]);
     this.form.reset({ message: '' });
     this.submitting.set(true);
+    let streamedAny = false;
 
-    this.chatService
-      .sendMessage({
+    // Streaming SSE : les fragments alimentent le placeholder assistant en temps réel (SF-02-05).
+    // Les callbacks passent par NgZone pour déclencher la détection de changement (fetch hors zone).
+    void this.chatService.streamMessage(
+      {
         conversationId,
         message: content,
         model: this.selectedModel() || null,
         ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
-      })
-      .subscribe({
-        next: (response) => {
-          this.submitting.set(false);
-          this.attachments.set([]);
-          this.messages.update((current) => [...current, response.message]);
-          const isNew = conversationId === null;
-          this.activeConversationId.set(response.conversationId);
-          if (isNew) {
-            this.loadConversations();
-          } else {
-            this.refreshConversationOrder();
-          }
-        },
-        error: () => {
-          this.submitting.set(false);
-          // Retire le message optimiste en cas d'échec pour rester cohérent.
-          this.messages.update((current) => current.filter((m) => m.id !== optimistic.id));
-          this.notifyError('Le message n’a pas pu être envoyé. Veuillez réessayer.');
-        },
-      });
+      },
+      {
+        onToken: (text) =>
+          this.zone.run(() => {
+            streamedAny = true;
+            this.messages.update((current) =>
+              current.map((m) => (m.id === assistantId ? { ...m, content: m.content + text } : m)),
+            );
+          }),
+        onDone: (done) =>
+          this.zone.run(() => {
+            this.submitting.set(false);
+            this.attachments.set([]);
+            this.messages.update((current) =>
+              current.map((m) =>
+                m.id === assistantId ? { ...m, id: done.messageId, model: done.model } : m,
+              ),
+            );
+            const isNew = conversationId === null;
+            this.activeConversationId.set(done.conversationId);
+            if (isNew) {
+              this.loadConversations();
+            } else {
+              this.refreshConversationOrder();
+            }
+          }),
+        onError: () =>
+          this.zone.run(() => {
+            this.submitting.set(false);
+            // Retire le placeholder assistant ; retire aussi le message utilisateur si rien n'a été
+            // streamé (échec de pré-vol : rien n'a été persisté côté serveur).
+            this.messages.update((current) =>
+              current.filter((m) => m.id !== assistantId && (streamedAny || m.id !== optimistic.id)),
+            );
+            this.notifyError('Le message n’a pas pu être envoyé. Veuillez réessayer.');
+          }),
+      },
+    );
   }
 
   private refreshConversationOrder(): void {
