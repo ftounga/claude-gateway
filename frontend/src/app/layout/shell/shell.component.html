@@ -1,0 +1,60 @@
+<mat-toolbar class="app-bar">
+  <span class="brand" routerLink="/chat">claude-gateway</span>
+
+  <nav class="app-nav">
+    <a mat-button routerLink="/chat" routerLinkActive="active">
+      <mat-icon>chat</mat-icon>
+      Chat
+    </a>
+    <a mat-button routerLink="/documents" routerLinkActive="active">
+      <mat-icon>folder</mat-icon>
+      Documents
+    </a>
+    <a mat-button routerLink="/ask" routerLinkActive="active">
+      <mat-icon>help_outline</mat-icon>
+      Q&A
+    </a>
+    <a mat-button routerLink="/templates" routerLinkActive="active">
+      <mat-icon>description</mat-icon>
+      Templates
+    </a>
+  </nav>
+
+  <span class="spacer"></span>
+
+  <button
+    mat-icon-button
+    class="account-trigger"
+    [matMenuTriggerFor]="accountMenu"
+    aria-label="Compte"
+    matTooltip="Compte"
+  >
+    <mat-icon>account_circle</mat-icon>
+  </button>
+  <mat-menu #accountMenu="matMenu">
+    <a mat-menu-item routerLink="/reports">
+      <mat-icon>insights</mat-icon>
+      <span>Rapports d'usage</span>
+    </a>
+    <a mat-menu-item routerLink="/billing">
+      <mat-icon>credit_card</mat-icon>
+      <span>Facturation</span>
+    </a>
+    <a mat-menu-item routerLink="/settings">
+      <mat-icon>settings</mat-icon>
+      <span>Réglages</span>
+    </a>
+    <a mat-menu-item routerLink="/profile">
+      <mat-icon>person</mat-icon>
+      <span>Profil</span>
+    </a>
+    <button mat-menu-item type="button" (click)="logout()">
+      <mat-icon>logout</mat-icon>
+      <span>Déconnexion</span>
+    </button>
+  </mat-menu>
+</mat-toolbar>
+
+<main class="app-content">
+  <router-outlet></router-outlet>
+</main>
