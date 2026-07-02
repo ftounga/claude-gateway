@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
+import fr.claudegateway.admin.AdminForbiddenException;
 import fr.claudegateway.ai.AIProviderException;
 import fr.claudegateway.ai.AIProviderUnavailableException;
 import fr.claudegateway.billing.UnknownPlanException;
@@ -47,6 +48,13 @@ import fr.claudegateway.user.UserNotFoundException;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @ExceptionHandler(AdminForbiddenException.class)
+    public ResponseEntity<ErrorResponse> handleAdminForbidden(AdminForbiddenException ex) {
+        log.debug("Accès admin refusé");
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ErrorResponse("forbidden", ex.getMessage()));
+    }
 
     @ExceptionHandler(UserNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleUserNotFound(UserNotFoundException ex) {
