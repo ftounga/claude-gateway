@@ -1,8 +1,17 @@
 package fr.claudegateway.ai;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,9 +44,12 @@ public class AnthropicProvider implements AIProvider {
 
     private final AnthropicProperties properties;
     private final RestClient restClient;
+    private final ObjectMapper objectMapper;
 
-    public AnthropicProvider(AnthropicProperties properties, RestClient.Builder restClientBuilder) {
+    public AnthropicProvider(AnthropicProperties properties, RestClient.Builder restClientBuilder,
+            ObjectMapper objectMapper) {
         this.properties = properties;
+        this.objectMapper = objectMapper;
         this.restClient = restClientBuilder
                 .baseUrl(properties.baseUrl())
                 .requestFactory(requestFactory(properties))
@@ -88,6 +100,97 @@ public class AnthropicProvider implements AIProvider {
             // Message métier neutre : ni la clé, ni la réponse brute du fournisseur ne remontent.
             log.warn("Appel au fournisseur IA en échec (modèle={})", request.model());
             throw new AIProviderException("Échec de l'appel au fournisseur IA.", ex);
+        }
+    }
+
+    @Override
+    public ChatCompletionResult streamComplete(ChatCompletionRequest request, Consumer<String> onDelta) {
+        String apiKey = resolveApiKey(request.apiKey());
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new AIProviderUnavailableException("Le fournisseur IA n'est pas configuré.");
+        }
+
+        Map<String, Object> body = new HashMap<>();
+        body.put("model", request.model());
+        body.put("max_tokens", properties.maxTokens());
+        body.put("messages", toApiMessages(request.messages(), request.attachments()));
+        body.put("stream", true);
+
+        StringBuilder text = new StringBuilder();
+        // [0] = input tokens (message_start), [1] = output tokens (message_delta).
+        int[] usage = new int[2];
+
+        try {
+            RestClient.RequestBodySpec spec = restClient.post()
+                    .uri("/v1/messages")
+                    .header("x-api-key", apiKey)
+                    .header("anthropic-version", properties.version())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.TEXT_EVENT_STREAM);
+            if (!request.attachments().isEmpty()) {
+                spec = spec.header("anthropic-beta", FILES_API_BETA);
+            }
+
+            spec.body(body).exchange((clientRequest, clientResponse) -> {
+                if (clientResponse.getStatusCode().isError()) {
+                    throw new AIProviderException(
+                            "Échec de l'appel au fournisseur IA (statut "
+                                    + clientResponse.getStatusCode().value() + ").", null);
+                }
+                readSseStream(clientResponse.getBody(), onDelta, text, usage);
+                return null;
+            });
+        } catch (AIProviderException ex) {
+            log.warn("Streaming du fournisseur IA en échec (modèle={})", request.model());
+            throw ex;
+        } catch (RestClientException ex) {
+            log.warn("Streaming du fournisseur IA en échec (modèle={})", request.model());
+            throw new AIProviderException("Échec de l'appel au fournisseur IA.", ex);
+        }
+
+        return new ChatCompletionResult(text.toString(), request.model(), usage[0], usage[1]);
+    }
+
+    /**
+     * Lit le flux SSE d'Anthropic : accumule le texte des {@code text_delta}, relaie chaque fragment
+     * via {@code onDelta} et capture l'usage. Toute erreur de lecture/parse est convertie en
+     * {@link AIProviderException} (message neutre, jamais de contenu brut fournisseur).
+     */
+    private void readSseStream(java.io.InputStream in, Consumer<String> onDelta, StringBuilder text,
+            int[] usage) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (!line.startsWith("data:")) {
+                    continue;
+                }
+                String json = line.substring("data:".length()).trim();
+                if (json.isEmpty() || "[DONE]".equals(json)) {
+                    continue;
+                }
+                JsonNode node = objectMapper.readTree(json);
+                switch (node.path("type").asText()) {
+                    case "content_block_delta" -> {
+                        JsonNode delta = node.path("delta");
+                        if ("text_delta".equals(delta.path("type").asText())) {
+                            String chunk = delta.path("text").asText("");
+                            if (!chunk.isEmpty()) {
+                                text.append(chunk);
+                                onDelta.accept(chunk);
+                            }
+                        }
+                    }
+                    case "message_start" ->
+                        usage[0] = node.path("message").path("usage").path("input_tokens").asInt(usage[0]);
+                    case "message_delta" ->
+                        usage[1] = node.path("usage").path("output_tokens").asInt(usage[1]);
+                    default -> {
+                        // Autres événements (ping, content_block_start/stop, message_stop) : ignorés.
+                    }
+                }
+            }
+        } catch (IOException ex) {
+            throw new AIProviderException("Échec de lecture du flux du fournisseur IA.", ex);
         }
     }
 
