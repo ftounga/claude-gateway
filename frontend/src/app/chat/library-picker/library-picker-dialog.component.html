@@ -1,0 +1,56 @@
+<h2 mat-dialog-title class="picker-title">
+  <mat-icon>library_books</mat-icon>
+  Importer depuis ma bibliothèque
+</h2>
+
+<mat-dialog-content class="picker-content">
+  @if (loading()) {
+    <div class="picker-state">
+      <mat-progress-spinner mode="indeterminate" [diameter]="32"></mat-progress-spinner>
+    </div>
+  } @else if (error()) {
+    <div class="picker-state picker-state--error">
+      <mat-icon>error_outline</mat-icon>
+      <p>Impossible de charger la bibliothèque.</p>
+      <button mat-stroked-button type="button" (click)="load()">Réessayer</button>
+    </div>
+  } @else if (documents().length === 0) {
+    <div class="picker-state">
+      <mat-icon>folder_open</mat-icon>
+      <p>Aucun document exploitable dans votre bibliothèque.</p>
+      <span class="picker-hint">Seuls les documents dont le texte a été extrait peuvent être importés.</span>
+    </div>
+  } @else {
+    <ul class="picker-list">
+      @for (doc of documents(); track doc.id) {
+        <li class="picker-item" [class.selected]="isSelected(doc.id)">
+          <mat-checkbox
+            [checked]="isSelected(doc.id)"
+            (change)="toggle(doc.id)"
+          >
+            <span class="picker-item-body">
+              <span class="picker-item-name" [matTooltip]="doc.filename">{{ doc.filename }}</span>
+              <span class="picker-item-meta">
+                <span class="badge badge--neutral">{{ doc.mediaType }}</span>
+                <span class="picker-item-size">{{ formatFileSize(doc.sizeBytes) }}</span>
+              </span>
+            </span>
+          </mat-checkbox>
+        </li>
+      }
+    </ul>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions class="picker-actions" align="end">
+  <button mat-button type="button" (click)="cancel()">Annuler</button>
+  <button
+    mat-flat-button
+    color="primary"
+    type="button"
+    [disabled]="selected().size === 0"
+    (click)="confirm()"
+  >
+    Importer{{ selected().size > 0 ? ' (' + selected().size + ')' : '' }}
+  </button>
+</mat-dialog-actions>

@@ -274,6 +274,19 @@ a.active {
   padding: 8px 24px 0;
 }
 
+// ---- Documents de bibliothèque importés (F-24) ----
+.composer-library {
+  padding: 8px 24px 0;
+}
+
+.library-chip {
+  --mdc-chip-elevated-container-color: color-mix(in srgb, var(--cg-primary) 10%, transparent);
+
+  mat-icon[matChipAvatar] {
+    color: var(--cg-primary);
+  }
+}
+
 .file-input {
   display: none;
 }

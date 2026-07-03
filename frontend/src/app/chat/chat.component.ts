@@ -18,6 +18,10 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { MarkdownPipe } from '../shared/markdown.pipe';
 import { ArtifactPanelComponent } from './artifact-panel/artifact-panel.component';
+import {
+  LibraryPickerDialogComponent,
+  PickedLibraryDocument,
+} from './library-picker/library-picker-dialog.component';
 import { extractArtifacts, messageHasArtifacts } from '../shared/artifact';
 import { ChatService } from '../core/services/chat.service';
 import { ExportService } from '../core/services/export.service';
@@ -84,6 +88,9 @@ export class ChatComponent implements OnInit {
   readonly submitting = signal(false);
   readonly attachments = signal<ComposerAttachment[]>([]);
 
+  /** Documents de la bibliothèque personnelle sélectionnés pour import comme contexte (F-24). */
+  readonly libraryDocs = signal<PickedLibraryDocument[]>([]);
+
   /** Canvas / Artifacts (F-22) : ouverture du panneau et artefact ciblé. */
   readonly canvasOpen = signal(false);
   readonly focusArtifactId = signal<string | null>(null);
@@ -132,6 +139,7 @@ export class ChatComponent implements OnInit {
     this.activeConversationId.set(null);
     this.messages.set([]);
     this.attachments.set([]);
+    this.libraryDocs.set([]);
     this.canvasOpen.set(false);
     this.focusArtifactId.set(null);
     this.filesPanelOpen.set(false);
@@ -142,6 +150,7 @@ export class ChatComponent implements OnInit {
   selectConversation(conversation: ConversationSummary): void {
     this.activeConversationId.set(conversation.id);
     this.selectedModel.set(conversation.model);
+    this.libraryDocs.set([]);
     this.filesPanelOpen.set(false);
     this.conversationFiles.set([]);
     this.chatService.getConversation(conversation.id).subscribe({
@@ -190,6 +199,30 @@ export class ChatComponent implements OnInit {
     this.attachments.update((list) => list.filter((a) => a.localId !== localId));
   }
 
+  /**
+   * Ouvre le dialogue de sélection de documents de la bibliothèque (F-24). Les documents choisis
+   * sont fusionnés avec la sélection courante (sans doublon) et injectés comme contexte à l'envoi.
+   */
+  openLibraryPicker(): void {
+    this.dialog
+      .open(LibraryPickerDialogComponent, { width: '560px', autoFocus: false })
+      .afterClosed()
+      .subscribe((picked: PickedLibraryDocument[] | undefined) => {
+        if (!picked || picked.length === 0) {
+          return;
+        }
+        this.libraryDocs.update((current) => {
+          const known = new Set(current.map((d) => d.id));
+          return [...current, ...picked.filter((d) => !known.has(d.id))];
+        });
+      });
+  }
+
+  /** Retire un document de bibliothèque de la sélection courante (avant envoi). */
+  removeLibraryDoc(id: string): void {
+    this.libraryDocs.update((list) => list.filter((d) => d.id !== id));
+  }
+
   /** Envoie le message courant et affiche la réponse assistant. */
   send(): void {
     if (this.form.invalid || this.submitting() || this.uploading()) {
@@ -202,6 +235,7 @@ export class ChatComponent implements OnInit {
     const attachmentIds = this.attachments()
       .filter((a) => a.status === 'ready' && a.serverId)
       .map((a) => a.serverId as string);
+    const libraryDocumentIds = this.libraryDocs().map((d) => d.id);
 
     const conversationId = this.activeConversationId();
     const now = new Date().toISOString();
@@ -234,6 +268,7 @@ export class ChatComponent implements OnInit {
         message: content,
         model: this.selectedModel() || null,
         ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
+        ...(libraryDocumentIds.length > 0 ? { libraryDocumentIds } : {}),
       },
       {
         onToken: (text) =>
@@ -247,6 +282,7 @@ export class ChatComponent implements OnInit {
           this.zone.run(() => {
             this.submitting.set(false);
             this.attachments.set([]);
+            this.libraryDocs.set([]);
             this.messages.update((current) =>
               current.map((m) =>
                 m.id === assistantId ? { ...m, id: done.messageId, model: done.model } : m,

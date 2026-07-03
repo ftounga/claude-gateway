@@ -18,6 +18,11 @@ export interface ChatRequest {
   model?: string | null;
   /** Identifiants de fichiers téléversés à rattacher (F-04 ; contrat importé de SF-04-02). */
   attachmentIds?: string[];
+  /**
+   * Identifiants de documents de la bibliothèque personnelle (F-08) dont le texte OCR est injecté
+   * comme contexte de l'échange (F-24 ; contrat figé par SF-24-01 ; max 10).
+   */
+  libraryDocumentIds?: string[];
 }
 
 /** Réponse de POST /api/chat. */

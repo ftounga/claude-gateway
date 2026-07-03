@@ -369,4 +369,109 @@ describe('ChatComponent', () => {
     expect(component.formatFileSize(2048)).toBe('2.0 Ko');
     expect(component.formatFileSize(3 * 1024 * 1024)).toBe('3.0 Mo');
   });
+
+  // ---- Import bibliothèque → conversation (F-24) ----
+
+  /** Stub `MatDialog.open` renvoyant `afterClosed()` avec le résultat fourni. */
+  function stubLibraryDialog(result: unknown): void {
+    spyOn(component['dialog'], 'open').and.returnValue({
+      afterClosed: () => of(result),
+    } as never);
+  }
+
+  it('adds picked library documents to the selection (F-24)', () => {
+    fixture.detectChanges();
+    flushInit();
+
+    stubLibraryDialog([{ id: 'd-1', filename: 'cv.pdf' }]);
+    component.openLibraryPicker();
+
+    expect(component.libraryDocs().length).toBe(1);
+    expect(component.libraryDocs()[0]).toEqual({ id: 'd-1', filename: 'cv.pdf' });
+  });
+
+  it('does not duplicate an already-selected library document (F-24)', () => {
+    fixture.detectChanges();
+    flushInit();
+
+    component.libraryDocs.set([{ id: 'd-1', filename: 'cv.pdf' }]);
+    stubLibraryDialog([
+      { id: 'd-1', filename: 'cv.pdf' },
+      { id: 'd-2', filename: 'lettre.pdf' },
+    ]);
+    component.openLibraryPicker();
+
+    expect(component.libraryDocs().map((d) => d.id)).toEqual(['d-1', 'd-2']);
+  });
+
+  it('ignores a cancelled library picker (F-24)', () => {
+    fixture.detectChanges();
+    flushInit();
+
+    stubLibraryDialog(undefined);
+    component.openLibraryPicker();
+
+    expect(component.libraryDocs()).toEqual([]);
+  });
+
+  it('removes a selected library document (F-24)', () => {
+    fixture.detectChanges();
+    flushInit();
+
+    component.libraryDocs.set([
+      { id: 'd-1', filename: 'a.pdf' },
+      { id: 'd-2', filename: 'b.pdf' },
+    ]);
+    component.removeLibraryDoc('d-1');
+
+    expect(component.libraryDocs().map((d) => d.id)).toEqual(['d-2']);
+  });
+
+  it('sends libraryDocumentIds and clears the selection after a successful send (F-24)', () => {
+    fixture.detectChanges();
+    flushInit();
+
+    component.libraryDocs.set([
+      { id: 'd-1', filename: 'cv.pdf' },
+      { id: 'd-2', filename: 'lettre.pdf' },
+    ]);
+    const streamSpy = stubStream((handlers) => {
+      handlers.onToken('Vu.');
+      handlers.onDone({ conversationId: 'c-1', messageId: 'm-a', model: 'claude-opus-4-8' });
+    });
+
+    component.form.setValue({ message: 'Résume ces documents' });
+    component.send();
+
+    expect(streamSpy.calls.mostRecent().args[0].libraryDocumentIds).toEqual(['d-1', 'd-2']);
+    httpMock.expectOne('/api/conversations').flush([]);
+    // Sélection vidée après un envoi réussi (comme les pièces jointes).
+    expect(component.libraryDocs()).toEqual([]);
+  });
+
+  it('omits libraryDocumentIds when no library document is selected (F-24)', () => {
+    fixture.detectChanges();
+    flushInit();
+
+    const streamSpy = stubStream((handlers) => {
+      handlers.onToken('Ok.');
+      handlers.onDone({ conversationId: 'c-1', messageId: 'm-a', model: 'claude-opus-4-8' });
+    });
+
+    component.form.setValue({ message: 'Bonjour' });
+    component.send();
+
+    expect(streamSpy.calls.mostRecent().args[0].libraryDocumentIds).toBeUndefined();
+    httpMock.expectOne('/api/conversations').flush([]);
+  });
+
+  it('resets the library selection when starting a new conversation (F-24)', () => {
+    fixture.detectChanges();
+    flushInit();
+
+    component.libraryDocs.set([{ id: 'd-1', filename: 'cv.pdf' }]);
+    component.startNewConversation();
+
+    expect(component.libraryDocs()).toEqual([]);
+  });
 });
