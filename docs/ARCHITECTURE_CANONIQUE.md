@@ -166,8 +166,8 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - `conversations` : `id (uuid)`, `user_id (uuid)`, `title`, `model`, `created_at`, `updated_at`. Index `user_id`.
   - `messages` : `id (uuid)`, `conversation_id (uuid, FK cascade)`, `user_id (uuid)`, `role (USER|ASSISTANT)`, `content`, `model (nullable)`, `created_at`. Index `conversation_id`, `user_id`.
   - **Note** : la table `messages` du schéma initial `001-init-schema` (issue de l'ancien `spec.md`, jamais câblée à une entité, `user_id text`, sans `model`/FK) a été **remplacée** en `006` par la table V1 conforme ci-dessus (typage `uuid`, FK cascade, colonne `model`).
-- **uploaded_files** — métadonnées d'un fichier téléversé puis transmis au fournisseur (F-04, migration `007`). **Aucun contenu binaire stocké** (relais pur, PROJECT.md §11.6).
-  - `uploaded_files` : `id (uuid)`, `user_id (uuid)`, `provider_file_id (interne, jamais exposé)`, `filename`, `media_type`, `size_bytes`, `created_at`. Index `user_id`.
+- **uploaded_files** — métadonnées d'un fichier téléversé puis transmis au fournisseur (F-04, migration `007`). **Aucun contenu binaire stocké** (relais pur, PROJECT.md §11.6). Dossier de fichiers par conversation (F-23, migration `033-uploaded-files-conversation`) : colonne `conversation_id` rattachant le fichier à la conversation où il a été joint.
+  - `uploaded_files` : `id (uuid)`, `user_id (uuid)`, `conversation_id (uuid, nullable, FK → conversations(id) ON DELETE SET NULL)`, `provider_file_id (interne, jamais exposé)`, `filename`, `media_type`, `size_bytes`, `created_at`. Index `user_id`, index `conversation_id`. Stampé au premier rattachement à un tour de chat (F-23) ; `GET /api/conversations/{id}/files` liste les fichiers d'une conversation (isolation `user_id`).
 - **documents** — document soumis au pipeline OCR (F-05, migration `010`). Isolé par `user_id`.
   - `documents` : `id (uuid)`, `user_id (uuid)`, `filename`, `media_type`, `size_bytes`,
     `status (UPLOADED|PROCESSING|EXTRACTED|INDEXING|INDEXED|FAILED)`,
