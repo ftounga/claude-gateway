@@ -190,6 +190,25 @@ class ChatApiIntegrationTest {
     }
 
     @Test
+    void internalAsyncDispatchIsNotDeniedBySecurity() throws Exception {
+        // Régression : le re-dispatch ASYNC interne (fin de flux SSE /chat/stream) ne doit pas être
+        // refusé par l'AuthorizationFilter — sinon « response already committed » côté serveur. Le
+        // JwtAuthenticationFilter ne s'exécute pas sur un dispatch ASYNC ; la règle
+        // dispatcherTypeMatchers(ASYNC) le laisse passer (l'autorisation réelle est faite sur REQUEST).
+        int status = mockMvc.perform(get("/api/conversations").contextPath("/api")
+                        .with(req -> {
+                            req.setDispatcherType(jakarta.servlet.DispatcherType.ASYNC);
+                            return req;
+                        }))
+                .andReturn().getResponse().getStatus();
+
+        // La sécurité ne refuse plus le dispatch interne (ni 401 ni 403). Avant le correctif : 403.
+        org.assertj.core.api.Assertions.assertThat(status)
+                .isNotEqualTo(org.springframework.http.HttpStatus.FORBIDDEN.value())
+                .isNotEqualTo(org.springframework.http.HttpStatus.UNAUTHORIZED.value());
+    }
+
+    @Test
     void streamRejectsUnauthenticatedRequestBeforeOpeningFlux() throws Exception {
         mockMvc.perform(post("/api/chat/stream").contextPath("/api")
                         .contentType(MediaType.APPLICATION_JSON)
