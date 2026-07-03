@@ -39,7 +39,7 @@ describe('ShellComponent', () => {
   it('affiche les liens de navigation vers les sections principales', () => {
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('Chat');
-    expect(text).toContain('Documents');
+    expect(text).toContain('Bibliothèque');
     expect(text).toContain('Templates');
   });
 
