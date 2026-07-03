@@ -7,6 +7,7 @@ import {
   ChatRequest,
   ChatResponse,
   ConversationDetail,
+  ConversationFile,
   ConversationSummary,
   ModelsResponse,
   RenameConversationRequest,
@@ -140,5 +141,10 @@ export class ChatService {
   /** Supprime une conversation (et ses messages). */
   deleteConversation(id: string): Observable<void> {
     return this.http.delete<void>(`/api/conversations/${id}`);
+  }
+
+  /** Dossier de fichiers : fichiers téléversés rattachés à la conversation (F-23, SF-23-01). */
+  getConversationFiles(id: string): Observable<ConversationFile[]> {
+    return this.http.get<ConversationFile[]>(`/api/conversations/${id}/files`);
   }
 }

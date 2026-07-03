@@ -51,3 +51,15 @@ export interface ModelsResponse {
   defaultModel: string;
   models: string[];
 }
+
+/**
+ * Fichier téléversé rattaché à une conversation (F-23 ; contrat figé par SF-23-01).
+ * Réponse de `GET /api/conversations/{id}/files`.
+ */
+export interface ConversationFile {
+  id: string;
+  filename: string;
+  mediaType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
