@@ -114,6 +114,9 @@ app:
         SOLO: ${STRIPE_PRICE_SOLO:}
         PRO: ${STRIPE_PRICE_PRO:}
         DAILY: ${STRIPE_PRICE_DAILY:}
+      # Mapping pack de tokens (top-up, F-21) -> price ID Stripe (paiement one-shot). Par environnement.
+      topup-prices:
+        STANDARD: ${STRIPE_PRICE_TOPUP_STANDARD:}
       # URLs de retour Checkout (frontend). Surchargées par environnement.
       success-url: ${STRIPE_SUCCESS_URL:http://localhost:4200/billing?checkout=success}
       cancel-url: ${STRIPE_CANCEL_URL:http://localhost:4200/billing?checkout=cancel}

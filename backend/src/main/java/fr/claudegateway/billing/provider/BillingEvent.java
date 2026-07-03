@@ -17,6 +17,8 @@ import fr.claudegateway.billing.PlanCode;
  * @param planCode             plan concerné, ou {@code null} si non porté par l'événement
  * @param status               statut fournisseur brut (ex. {@code active}, {@code canceled}), ou {@code null}
  * @param currentPeriodEnd     fin de période de facturation, ou {@code null}
+ * @param eventId              identifiant de l'événement fournisseur (idempotence), ou {@code null}
+ * @param topupCode            code du pack de tokens racheté (pour {@code TOPUP_COMPLETED}), ou {@code null}
  */
 public record BillingEvent(
         BillingEventType type,
@@ -25,10 +27,12 @@ public record BillingEvent(
         String stripeSubscriptionId,
         PlanCode planCode,
         String status,
-        OffsetDateTime currentPeriodEnd) {
+        OffsetDateTime currentPeriodEnd,
+        String eventId,
+        String topupCode) {
 
     /** Fabrique un événement non géré (ignoré par le service). */
     public static BillingEvent unhandled() {
-        return new BillingEvent(BillingEventType.UNHANDLED, null, null, null, null, null, null);
+        return new BillingEvent(BillingEventType.UNHANDLED, null, null, null, null, null, null, null, null);
     }
 }

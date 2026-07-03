@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import fr.claudegateway.billing.provider.BillingProviderUnavailableException;
 import fr.claudegateway.billing.provider.CheckoutCommand;
 import fr.claudegateway.billing.provider.StripeBillingProvider;
+import fr.claudegateway.billing.provider.TopUpCheckoutCommand;
 import fr.claudegateway.billing.provider.WebhookVerificationException;
 
 /**
@@ -21,7 +22,8 @@ class StripeBillingProviderTest {
 
     private StripeBillingProvider provider(String secretKey, String webhookSecret) {
         return new StripeBillingProvider(new BillingProperties(14, new BillingProperties.Stripe(
-                secretKey, webhookSecret, Map.of("PRO", "price_pro"), null, null)));
+                secretKey, webhookSecret, Map.of("PRO", "price_pro"),
+                Map.of("STANDARD", "price_topup"), null, null)));
     }
 
     @Test
@@ -40,6 +42,22 @@ class StripeBillingProviderTest {
                 UUID.randomUUID(), "a@b.co", null,
                 new Plan(PlanCode.PRO, "Pro", ProviderMode.HOSTED, BillingPeriod.MONTHLY), "price_pro");
         assertThatThrownBy(() -> provider("", "whsec").createCheckoutSession(cmd))
+                .isInstanceOf(BillingProviderUnavailableException.class);
+    }
+
+    @Test
+    void topUpCheckoutFailsWhenNotConfigured() {
+        TopUpCheckoutCommand cmd = new TopUpCheckoutCommand(
+                UUID.randomUUID(), "a@b.co", null, "STANDARD", "price_topup");
+        assertThatThrownBy(() -> provider("", "whsec").createTopUpCheckoutSession(cmd))
+                .isInstanceOf(BillingProviderUnavailableException.class);
+    }
+
+    @Test
+    void topUpCheckoutFailsWhenPriceIdBlank() {
+        TopUpCheckoutCommand cmd = new TopUpCheckoutCommand(
+                UUID.randomUUID(), "a@b.co", null, "STANDARD", "");
+        assertThatThrownBy(() -> provider("sk_test", "whsec").createTopUpCheckoutSession(cmd))
                 .isInstanceOf(BillingProviderUnavailableException.class);
     }
 

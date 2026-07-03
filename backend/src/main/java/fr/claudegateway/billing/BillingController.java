@@ -14,6 +14,8 @@ import fr.claudegateway.billing.dto.CheckoutRequest;
 import fr.claudegateway.billing.dto.CheckoutResponse;
 import fr.claudegateway.billing.dto.PlansResponse;
 import fr.claudegateway.billing.dto.SubscriptionResponse;
+import fr.claudegateway.billing.dto.TopUpCheckoutRequest;
+import fr.claudegateway.billing.dto.TopUpPacksResponse;
 import jakarta.validation.Valid;
 
 /**
@@ -28,16 +30,22 @@ public class BillingController {
     private final PlanCatalog planCatalog;
     private final SubscriptionService subscriptionService;
     private final CheckoutService checkoutService;
+    private final TopUpCatalog topUpCatalog;
+    private final TopUpService topUpService;
     private final CurrentUser currentUser;
 
     public BillingController(
             PlanCatalog planCatalog,
             SubscriptionService subscriptionService,
             CheckoutService checkoutService,
+            TopUpCatalog topUpCatalog,
+            TopUpService topUpService,
             CurrentUser currentUser) {
         this.planCatalog = planCatalog;
         this.subscriptionService = subscriptionService;
         this.checkoutService = checkoutService;
+        this.topUpCatalog = topUpCatalog;
+        this.topUpService = topUpService;
         this.currentUser = currentUser;
     }
 
@@ -61,5 +69,20 @@ public class BillingController {
                 .orElseThrow(() -> new IllegalStateException("Aucun utilisateur authentifié"));
         return CheckoutResponse.from(
                 checkoutService.createCheckout(user.id(), user.email(), request.planCode()));
+    }
+
+    /** Catalogue des packs de tokens rachetables (top-up, F-21). */
+    @GetMapping("/topups")
+    public TopUpPacksResponse topups() {
+        return TopUpPacksResponse.from(topUpCatalog.packs());
+    }
+
+    /** Crée une session de paiement one-shot pour le rachat d'un pack de tokens (top-up, F-21). */
+    @PostMapping("/topup/checkout")
+    public CheckoutResponse topUpCheckout(@Valid @RequestBody TopUpCheckoutRequest request) {
+        AuthenticatedUser user = currentUser.principal()
+                .orElseThrow(() -> new IllegalStateException("Aucun utilisateur authentifié"));
+        return CheckoutResponse.from(
+                topUpService.createTopUpCheckout(user.id(), user.email(), request.packCode()));
     }
 }

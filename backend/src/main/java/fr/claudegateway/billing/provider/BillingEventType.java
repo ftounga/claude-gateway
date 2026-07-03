@@ -8,6 +8,8 @@ package fr.claudegateway.billing.provider;
 public enum BillingEventType {
     /** Paiement/souscription finalisé après un Checkout. */
     CHECKOUT_COMPLETED,
+    /** Rachat de tokens (top-up, F-21) finalisé après un Checkout one-shot : crédite le quota. */
+    TOPUP_COMPLETED,
     /** Cycle de vie d'un abonnement mis à jour (statut, période, plan). */
     SUBSCRIPTION_UPDATED,
     /** Abonnement supprimé/annulé côté fournisseur. */

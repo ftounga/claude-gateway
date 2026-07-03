@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      Ledger d'idempotence des événements de facturation traités (F-21 / SF-21-02). Chaque événement
+      fournisseur (Stripe) est identifié par son `event_id` (clé primaire) : le crédit de tokens rachetés
+      (top-up) n'est appliqué qu'une seule fois, même si le webhook est rejoué. Pas de donnée utilisateur
+      ni de secret — simple registre technique. Types compatibles H2 + PostgreSQL, un seul changeset.
+    -->
+    <changeSet id="033-processed-billing-events" author="claude-gateway">
+        <createTable tableName="processed_billing_events">
+            <column name="event_id" type="varchar(255)">
+                <constraints primaryKey="true" primaryKeyName="pk_processed_billing_events" nullable="false"/>
+            </column>
+            <column name="processed_at" type="timestamp with time zone" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+</databaseChangeLog>

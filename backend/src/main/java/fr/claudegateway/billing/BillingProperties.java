@@ -23,7 +23,7 @@ public record BillingProperties(
             trialDays = 14;
         }
         if (stripe == null) {
-            stripe = new Stripe(null, null, Map.of(), null, null);
+            stripe = new Stripe(null, null, Map.of(), Map.of(), null, null);
         }
     }
 
@@ -34,6 +34,7 @@ public record BillingProperties(
      * @param secretKey     clé secrète Stripe (env {@code STRIPE_SECRET_KEY}) — vide => fournisseur dormant (503)
      * @param webhookSecret secret de vérification de signature webhook (env {@code STRIPE_WEBHOOK_SECRET})
      * @param prices        code de plan → price ID Stripe
+     * @param topupPrices   code de pack de tokens (top-up, F-21) → price ID Stripe
      * @param successUrl    URL de retour après paiement réussi
      * @param cancelUrl     URL de retour après annulation
      */
@@ -41,12 +42,16 @@ public record BillingProperties(
             String secretKey,
             String webhookSecret,
             Map<String, String> prices,
+            Map<String, String> topupPrices,
             String successUrl,
             String cancelUrl) {
 
         public Stripe {
             if (prices == null) {
                 prices = Map.of();
+            }
+            if (topupPrices == null) {
+                topupPrices = Map.of();
             }
             if (successUrl == null || successUrl.isBlank()) {
                 successUrl = "http://localhost:4200/billing?checkout=success";
@@ -64,6 +69,11 @@ public record BillingProperties(
         /** Price ID Stripe associé au plan, ou {@code null} si non configuré. */
         public String priceId(PlanCode code) {
             return prices == null ? null : prices.get(code.name());
+        }
+
+        /** Price ID Stripe associé à un pack de tokens (top-up), ou {@code null} si non configuré. */
+        public String topupPriceId(String packCode) {
+            return topupPrices == null ? null : topupPrices.get(packCode);
         }
     }
 }

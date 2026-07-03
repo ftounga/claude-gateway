@@ -20,6 +20,16 @@ public interface BillingProvider {
     CheckoutSession createCheckoutSession(CheckoutCommand command);
 
     /**
+     * Crée une session de paiement <b>one-shot</b> hébergée pour un rachat de tokens (top-up, F-21).
+     * La session porte les métadonnées nécessaires ({@code kind=topup}, {@code topupCode}, {@code userId})
+     * pour que le webhook de paiement finalisé puisse créditer le bon pack au bon utilisateur.
+     *
+     * @throws BillingProviderUnavailableException si le fournisseur ou le price ID n'est pas configuré
+     * @throws BillingProviderException            en cas d'échec d'appel au fournisseur
+     */
+    CheckoutSession createTopUpCheckoutSession(TopUpCheckoutCommand command);
+
+    /**
      * Vérifie la signature d'un webhook et traduit l'événement brut en événement normalisé.
      *
      * @param payload         corps brut de la requête (signé)

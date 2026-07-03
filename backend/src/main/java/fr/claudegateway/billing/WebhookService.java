@@ -5,12 +5,14 @@ import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import fr.claudegateway.billing.provider.BillingEvent;
 import fr.claudegateway.billing.provider.BillingProvider;
+import fr.claudegateway.quota.QuotaService;
 
 /**
  * Applique les événements de facturation à l'état des abonnements (F-09 / SF-09-02). Reçoit un
@@ -25,12 +27,21 @@ public class WebhookService {
 
     private final BillingProvider billingProvider;
     private final SubscriptionRepository subscriptionRepository;
+    private final QuotaService quotaService;
+    private final TopUpCatalog topUpCatalog;
+    private final ProcessedBillingEventRepository processedEventRepository;
 
     public WebhookService(
             BillingProvider billingProvider,
-            SubscriptionRepository subscriptionRepository) {
+            SubscriptionRepository subscriptionRepository,
+            QuotaService quotaService,
+            TopUpCatalog topUpCatalog,
+            ProcessedBillingEventRepository processedEventRepository) {
         this.billingProvider = billingProvider;
         this.subscriptionRepository = subscriptionRepository;
+        this.quotaService = quotaService;
+        this.topUpCatalog = topUpCatalog;
+        this.processedEventRepository = processedEventRepository;
     }
 
     /**
@@ -42,10 +53,49 @@ public class WebhookService {
         BillingEvent event = billingProvider.parseWebhookEvent(payload, signatureHeader);
         switch (event.type()) {
             case CHECKOUT_COMPLETED -> applyCheckoutCompleted(event);
+            case TOPUP_COMPLETED -> applyTopUpCompleted(event);
             case SUBSCRIPTION_UPDATED -> applySubscriptionUpdate(event);
             case SUBSCRIPTION_DELETED -> applySubscriptionDeleted(event);
             case UNHANDLED -> log.debug("Événement de facturation non géré, ignoré");
         }
+    }
+
+    /**
+     * Crédite les tokens rachetés (top-up, F-21) sur la période courante de l'utilisateur, de façon
+     * <b>idempotente</b> : le crédit n'est appliqué qu'une seule fois par événement fournisseur
+     * ({@code event_id}), même si le webhook est rejoué. Le montant de tokens est autoritatif côté
+     * serveur (résolu depuis le catalogue via {@code topupCode}), jamais fourni par le payload de montant.
+     * Le marqueur d'idempotence et le crédit vivent dans la même transaction (rollback conjoint).
+     */
+    private void applyTopUpCompleted(BillingEvent event) {
+        if (event.userId() == null) {
+            log.warn("Rachat de tokens sans utilisateur identifié : ignoré");
+            return;
+        }
+        if (!StringUtils.hasText(event.eventId())) {
+            // Sans identifiant d'événement, on ne peut pas garantir l'idempotence : on s'abstient.
+            log.warn("Rachat de tokens sans identifiant d'événement : ignoré");
+            return;
+        }
+        Optional<TopUpPack> pack = topUpCatalog.find(event.topupCode());
+        if (pack.isEmpty()) {
+            log.warn("Rachat de tokens avec pack inconnu : ignoré");
+            return;
+        }
+        // Rejeu séquentiel (cas courant) : déjà traité → on ne recrédite pas.
+        if (processedEventRepository.existsById(event.eventId())) {
+            log.debug("Rachat de tokens déjà traité (rejeu) : ignoré");
+            return;
+        }
+        try {
+            // Gate d'insertion (contrainte PK) contre un rejeu concurrent du même événement.
+            processedEventRepository.saveAndFlush(
+                    new ProcessedBillingEvent(event.eventId(), OffsetDateTime.now()));
+        } catch (DataIntegrityViolationException alreadyProcessed) {
+            log.debug("Rachat de tokens déjà traité (course concurrente) : ignoré");
+            return;
+        }
+        quotaService.creditBonusTokens(event.userId(), pack.get().tokens());
     }
 
     private void applyCheckoutCompleted(BillingEvent event) {
