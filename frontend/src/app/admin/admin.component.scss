@@ -1,0 +1,26 @@
+.admin-page {
+  padding: 24px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.admin-title {
+  font-family: var(--cg-font-heading);
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--cg-text-primary);
+  margin: 0 0 16px;
+}
+
+.admin-card {
+  padding: 8px;
+}
+
+.admin-table {
+  width: 100%;
+}
+
+.admin-empty {
+  padding: 16px;
+  color: var(--cg-text-secondary);
+}

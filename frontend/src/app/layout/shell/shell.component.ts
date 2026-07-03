@@ -32,6 +32,9 @@ export class ShellComponent {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
 
+  /** Affiche l'entrée « Administration » uniquement pour un utilisateur ADMIN (F-20). */
+  protected readonly isAdmin = this.auth.isAdmin;
+
   /** Déconnexion : purge la session serveur puis redirige vers /login (best-effort en cas d'échec réseau). */
   logout(): void {
     this.auth.logout().subscribe({

@@ -3,6 +3,8 @@ import { provideRouter, Router } from '@angular/router';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { of } from 'rxjs';
 
+import { signal } from '@angular/core';
+
 import { ShellComponent } from './shell.component';
 import { AuthService } from '../../core/services/auth.service';
 
@@ -12,7 +14,9 @@ describe('ShellComponent', () => {
   let router: Router;
 
   beforeEach(async () => {
-    authSpy = jasmine.createSpyObj<AuthService>('AuthService', ['logout']);
+    authSpy = jasmine.createSpyObj<AuthService>('AuthService', ['logout'], {
+      isAdmin: signal(false),
+    });
     authSpy.logout.and.returnValue(
       of({ message: 'ok' }) as unknown as ReturnType<AuthService['logout']>,
     );

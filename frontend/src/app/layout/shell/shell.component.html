@@ -48,6 +48,12 @@
       <mat-icon>person</mat-icon>
       <span>Profil</span>
     </a>
+    @if (isAdmin()) {
+      <a mat-menu-item routerLink="/admin">
+        <mat-icon>admin_panel_settings</mat-icon>
+        <span>Administration</span>
+      </a>
+    }
     <button mat-menu-item type="button" (click)="logout()">
       <mat-icon>logout</mat-icon>
       <span>Déconnexion</span>
