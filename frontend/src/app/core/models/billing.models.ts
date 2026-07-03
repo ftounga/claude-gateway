@@ -44,3 +44,20 @@ export interface CheckoutRequest {
 export interface CheckoutResponse {
   checkoutUrl: string;
 }
+
+/** Un pack de tokens rachetable ponctuellement (top-up F-21). Le prix vit côté Stripe. */
+export interface TopUpPack {
+  code: string;
+  label: string;
+  tokens: number;
+}
+
+/** Réponse du catalogue de packs de tokens. */
+export interface TopUpPacksResponse {
+  packs: TopUpPack[];
+}
+
+/** Requête de création d'une session de rachat de tokens. */
+export interface TopUpCheckoutRequest {
+  packCode: string;
+}

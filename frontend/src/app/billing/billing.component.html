@@ -78,6 +78,40 @@
       <p class="billing__usage-period">
         Période du {{ u.periodStart | date: 'longDate' }} au {{ u.periodEnd | date: 'longDate' }}
       </p>
+
+      <!-- Rachat de tokens (top-up F-21) : proposé quand le quota est atteint -->
+      @if (quotaReached(u) && topUpPacks().length > 0) {
+        <section class="billing__topup" aria-label="Racheter des tokens">
+          <h3 class="billing__topup-title">Racheter des tokens</h3>
+          <p class="billing__topup-hint">
+            Votre quota est atteint : rachetez un pack de tokens pour continuer immédiatement.
+          </p>
+          <div class="billing__topup-packs">
+            @for (pack of topUpPacks(); track pack.code) {
+              <div class="billing__topup-pack">
+                <div>
+                  <span class="billing__value">{{ pack.label }}</span>
+                  <span class="billing__topup-tokens">{{ pack.tokens | number }} tokens</span>
+                </div>
+                <button
+                  mat-flat-button
+                  color="primary"
+                  type="button"
+                  class="billing__topup-cta"
+                  [disabled]="topUpInProgress() !== null"
+                  (click)="buyTopUp(pack.code)"
+                >
+                  @if (topUpInProgress() === pack.code) {
+                    Redirection…
+                  } @else {
+                    Racheter des tokens
+                  }
+                </button>
+              </div>
+            }
+          </div>
+        </section>
+      }
     } @else {
       <div class="billing__feedback">
         <mat-icon>hourglass_empty</mat-icon>

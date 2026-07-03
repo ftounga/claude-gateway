@@ -7,7 +7,11 @@ import { of, throwError } from 'rxjs';
 import { BillingComponent } from './billing.component';
 import { BillingService } from '../core/services/billing.service';
 import { UsageService } from '../core/services/usage.service';
-import { PlansResponse, SubscriptionView } from '../core/models/billing.models';
+import {
+  PlansResponse,
+  SubscriptionView,
+  TopUpPacksResponse,
+} from '../core/models/billing.models';
 import { UsageView } from '../core/models/usage.models';
 
 describe('BillingComponent', () => {
@@ -35,15 +39,21 @@ describe('BillingComponent', () => {
     periodStart: '2026-07-01',
     periodEnd: '2026-08-01',
   };
+  const topUps: TopUpPacksResponse = {
+    packs: [{ code: 'STANDARD', label: 'Recharge 1 M tokens', tokens: 1000000 }],
+  };
 
   function setup(queryCheckout: string | null = null, usageFails = false): void {
     billingService = jasmine.createSpyObj<BillingService>('BillingService', [
       'getSubscription',
       'getPlans',
       'startCheckout',
+      'getTopUps',
+      'startTopUpCheckout',
     ]);
     billingService.getSubscription.and.returnValue(of(subscription));
     billingService.getPlans.and.returnValue(of(plans));
+    billingService.getTopUps.and.returnValue(of(topUps));
 
     usageService = jasmine.createSpyObj<UsageService>('UsageService', ['getUsage']);
     usageService.getUsage.and.returnValue(
@@ -148,6 +158,80 @@ describe('BillingComponent', () => {
     // L'échec ne casse pas l'écran : abonnement et plans restent chargés, usage reste vide.
     expect(component.usage()).toBeNull();
     expect(component.subscription()).toEqual(subscription);
+    expect(component.plans().length).toBe(2);
+  });
+
+  // --- Rachat de tokens (top-up, SF-21-03) ---
+
+  it('loads top-up packs on init', () => {
+    setup();
+    expect(billingService.getTopUps).toHaveBeenCalled();
+    expect(component.topUpPacks().length).toBe(1);
+    expect(component.topUpPacks()[0].code).toBe('STANDARD');
+  });
+
+  it('starts a top-up checkout and redirects to the Stripe URL', () => {
+    setup();
+    billingService.startTopUpCheckout.and.returnValue(
+      of({ checkoutUrl: 'https://checkout.stripe/topup' }),
+    );
+
+    component.buyTopUp('STANDARD');
+
+    expect(billingService.startTopUpCheckout).toHaveBeenCalledWith('STANDARD');
+    expect(
+      (component as unknown as { redirect: (u: string) => void }).redirect,
+    ).toHaveBeenCalledWith('https://checkout.stripe/topup');
+  });
+
+  it('does not redirect when top-up checkout fails and resets progress', () => {
+    setup();
+    billingService.startTopUpCheckout.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 503, error: { error: 'billing_unavailable' } })),
+    );
+
+    component.buyTopUp('STANDARD');
+
+    expect(
+      (component as unknown as { redirect: (u: string) => void }).redirect,
+    ).not.toHaveBeenCalled();
+    expect(component.topUpInProgress()).toBeNull();
+  });
+
+  it('keeps top-up packs empty when the catalog fails to load', () => {
+    billingService = jasmine.createSpyObj<BillingService>('BillingService', [
+      'getSubscription',
+      'getPlans',
+      'startCheckout',
+      'getTopUps',
+      'startTopUpCheckout',
+    ]);
+    billingService.getSubscription.and.returnValue(of(subscription));
+    billingService.getPlans.and.returnValue(of(plans));
+    billingService.getTopUps.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+
+    usageService = jasmine.createSpyObj<UsageService>('UsageService', ['getUsage']);
+    usageService.getUsage.and.returnValue(of(usage));
+
+    TestBed.configureTestingModule({
+      imports: [BillingComponent],
+      providers: [
+        provideNoopAnimations(),
+        { provide: BillingService, useValue: billingService },
+        { provide: UsageService, useValue: usageService },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { queryParamMap: convertToParamMap({}) } },
+        },
+      ],
+    });
+    fixture = TestBed.createComponent(BillingComponent);
+    component = fixture.componentInstance;
+    spyOn(component as unknown as { redirect: (u: string) => void }, 'redirect');
+    fixture.detectChanges();
+
+    // Section top-up simplement masquée : l'écran reste chargé.
+    expect(component.topUpPacks().length).toBe(0);
     expect(component.plans().length).toBe(2);
   });
 });
