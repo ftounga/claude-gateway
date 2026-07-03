@@ -28,6 +28,14 @@ export class AuthService {
   /** Vrai si un JWT est présent (validité réelle vérifiée côté backend). */
   readonly isAuthenticated = computed(() => this.tokenSignal() !== null);
 
+  /**
+   * Rôle de l'utilisateur courant, lu depuis le claim `role` du JWT (affichage uniquement — l'accès
+   * réel est toujours contrôlé côté backend). `null` si absent de token.
+   */
+  readonly role = computed(() => this.decodeRole(this.tokenSignal()));
+  /** Vrai si l'utilisateur courant est administrateur (pour l'affichage du lien Admin). */
+  readonly isAdmin = computed(() => this.role() === 'ADMIN');
+
   /** URL de démarrage du flux OAuth Google (redirection pleine page). */
   readonly googleLoginUrl = '/api/oauth2/authorization/google';
 
@@ -90,5 +98,20 @@ export class AuthService {
 
   private readToken(): string | null {
     return localStorage.getItem(TOKEN_STORAGE_KEY);
+  }
+
+  /** Décode le claim `role` du payload JWT (sans vérifier la signature — usage affichage uniquement). */
+  private decodeRole(token: string | null): string | null {
+    if (!token) {
+      return null;
+    }
+    try {
+      const payload = token.split('.')[1];
+      const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
+      const claims = JSON.parse(json) as { role?: string };
+      return claims.role ?? null;
+    } catch {
+      return null;
+    }
   }
 }
