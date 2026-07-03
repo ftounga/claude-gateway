@@ -1,4 +1,4 @@
-<div class="chat-layout">
+<div class="chat-layout" [class.canvas-open]="canvasOpen()">
   <!-- Sidebar : liste des conversations -->
   <aside class="chat-sidebar">
     <div class="sidebar-header">
@@ -58,6 +58,22 @@
           }
         </mat-select>
       </mat-form-field>
+      @if (artifacts().length > 0) {
+        <button
+          mat-icon-button
+          type="button"
+          class="canvas-trigger"
+          [class.active]="canvasOpen()"
+          [matBadge]="artifacts().length"
+          matBadgeColor="accent"
+          matBadgeSize="small"
+          (click)="toggleCanvas()"
+          matTooltip="Canevas (contenu généré)"
+          aria-label="Ouvrir le canevas"
+        >
+          <mat-icon>dashboard</mat-icon>
+        </button>
+      }
       @if (activeConversationId() !== null) {
         <button
           mat-icon-button
@@ -95,7 +111,21 @@
       } @else {
         @for (message of messages(); track message.id) {
           <article class="message" [class.user]="message.role === 'USER'" [class.assistant]="message.role === 'ASSISTANT'">
-            <div class="message-role">{{ message.role === 'USER' ? 'Vous' : 'Claude' }}</div>
+            <div class="message-role">
+              <span>{{ message.role === 'USER' ? 'Vous' : 'Claude' }}</span>
+              @if (hasArtifacts(message)) {
+                <button
+                  mat-button
+                  type="button"
+                  class="open-canvas"
+                  (click)="openCanvasForMessage(message.id)"
+                  matTooltip="Ouvrir dans le canevas"
+                >
+                  <mat-icon>dashboard</mat-icon>
+                  Canevas
+                </button>
+              }
+            </div>
             @if (message.role === 'ASSISTANT') {
               <div class="message-content markdown-body" [innerHTML]="message.content | markdown"></div>
             } @else {
@@ -171,4 +201,14 @@
       </button>
     </form>
   </section>
+
+  <!-- Panneau Canvas / Artifacts (F-22) -->
+  @if (canvasOpen()) {
+    <app-artifact-panel
+      class="chat-canvas"
+      [artifacts]="artifacts()"
+      [focusArtifactId]="focusArtifactId()"
+      (closePanel)="closeCanvas()"
+    ></app-artifact-panel>
+  }
 </div>

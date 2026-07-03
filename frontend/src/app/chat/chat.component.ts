@@ -1,5 +1,6 @@
 import { Component, NgZone, OnInit, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatBadgeModule } from '@angular/material/badge';
 import { MatButtonModule } from '@angular/material/button';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
@@ -16,6 +17,8 @@ import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { MarkdownPipe } from '../shared/markdown.pipe';
+import { ArtifactPanelComponent } from './artifact-panel/artifact-panel.component';
+import { extractArtifacts, messageHasArtifacts } from '../shared/artifact';
 import { ChatService } from '../core/services/chat.service';
 import { ExportService } from '../core/services/export.service';
 import { UploadService } from '../core/services/upload.service';
@@ -57,7 +60,9 @@ import {
     MatProgressSpinnerModule,
     MatTooltipModule,
     MatDialogModule,
+    MatBadgeModule,
     MarkdownPipe,
+    ArtifactPanelComponent,
   ],
   templateUrl: './chat.component.html',
   styleUrl: './chat.component.scss',
@@ -78,6 +83,13 @@ export class ChatComponent implements OnInit {
   readonly activeConversationId = signal<string | null>(null);
   readonly submitting = signal(false);
   readonly attachments = signal<ComposerAttachment[]>([]);
+
+  /** Canvas / Artifacts (F-22) : ouverture du panneau et artefact ciblé. */
+  readonly canvasOpen = signal(false);
+  readonly focusArtifactId = signal<string | null>(null);
+
+  /** Artefacts (code/doc/mail) extraits à la volée des messages assistant de la conversation. */
+  readonly artifacts = computed(() => extractArtifacts(this.messages()));
 
   /** Vrai tant qu'au moins une pièce jointe est en cours de téléversement (bloque l'envoi). */
   readonly uploading = computed(() => this.attachments().some((a) => a.status === 'uploading'));
@@ -115,6 +127,8 @@ export class ChatComponent implements OnInit {
     this.activeConversationId.set(null);
     this.messages.set([]);
     this.attachments.set([]);
+    this.canvasOpen.set(false);
+    this.focusArtifactId.set(null);
   }
 
   /** Charge le détail d'une conversation existante. */
@@ -299,6 +313,32 @@ export class ChatComponent implements OnInit {
         this.exportService.triggerDownload(response, `conversation-${id}.${format === 'pdf' ? 'pdf' : 'md'}`),
       error: () => this.notifyError('L’export a échoué. Veuillez réessayer.'),
     });
+  }
+
+  /** Ouvre/ferme le panneau Canvas (F-22). */
+  toggleCanvas(): void {
+    this.focusArtifactId.set(null);
+    this.canvasOpen.update((open) => !open);
+  }
+
+  /** Ferme le panneau Canvas. */
+  closeCanvas(): void {
+    this.canvasOpen.set(false);
+  }
+
+  /** Ouvre le Canvas en ciblant le premier artefact du message donné. */
+  openCanvasForMessage(messageId: string): void {
+    const first = this.artifacts().find((a) => a.messageId === messageId);
+    if (!first) {
+      return;
+    }
+    this.focusArtifactId.set(first.id);
+    this.canvasOpen.set(true);
+  }
+
+  /** Vrai si le message assistant contient au moins un artefact (bouton « ouvrir dans le canevas »). */
+  hasArtifacts(message: ChatMessage): boolean {
+    return message.role === 'ASSISTANT' && messageHasArtifacts(message);
   }
 
   private notifyError(message: string): void {
