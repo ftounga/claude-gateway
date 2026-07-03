@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      SF-23-01 — Dossier de fichiers par conversation (F-23).
+      Ajoute `uploaded_files.conversation_id` (nullable) : association d'un fichier téléversé (F-04) à
+      la conversation où il a été joint à un tour de chat. FK -> conversations(id) ON DELETE SET NULL :
+      supprimer une conversation détache le fichier sans détruire ses métadonnées (donnée RGPD de
+      l'utilisateur). Index pour la lecture `GET /conversations/{id}/files`. Aucun contenu documentaire
+      n'est stocké (PROJECT.md §11.6). Changesets Postgres et H2 en parallèle. Réversible (rollback auto).
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="033-uploaded-files-conversation-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="uploaded_files">
+            <column name="conversation_id" type="uuid"/>
+        </addColumn>
+        <addForeignKeyConstraint
+                baseTableName="uploaded_files" baseColumnNames="conversation_id"
+                referencedTableName="conversations" referencedColumnNames="id"
+                constraintName="fk_uploaded_files_conversation" onDelete="SET NULL"/>
+        <createIndex tableName="uploaded_files" indexName="idx_uploaded_files_conversation_id">
+            <column name="conversation_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="033-uploaded-files-conversation-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="uploaded_files">
+            <column name="conversation_id" type="uuid"/>
+        </addColumn>
+        <addForeignKeyConstraint
+                baseTableName="uploaded_files" baseColumnNames="conversation_id"
+                referencedTableName="conversations" referencedColumnNames="id"
+                constraintName="fk_uploaded_files_conversation" onDelete="SET NULL"/>
+        <createIndex tableName="uploaded_files" indexName="idx_uploaded_files_conversation_id">
+            <column name="conversation_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

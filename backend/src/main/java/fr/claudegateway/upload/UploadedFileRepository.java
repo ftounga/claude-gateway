@@ -16,6 +16,12 @@ public interface UploadedFileRepository extends JpaRepository<UploadedFile, UUID
 
     Optional<UploadedFile> findByIdAndUserId(UUID id, UUID userId);
 
+    /**
+     * Fichiers rattachés à une conversation, restreints à l'utilisateur propriétaire (F-23,
+     * isolation multi-tenant), du plus récent au plus ancien.
+     */
+    List<UploadedFile> findByConversationIdAndUserIdOrderByCreatedAtDesc(UUID conversationId, UUID userId);
+
     /** Export RGPD : toutes les métadonnées de fichiers d'un utilisateur (isolation {@code user_id}). */
     List<UploadedFile> findByUserId(UUID userId);
 

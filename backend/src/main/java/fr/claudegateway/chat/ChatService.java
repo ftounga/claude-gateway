@@ -83,6 +83,9 @@ public class ChatService {
         // sans persister de message ni appeler le fournisseur (isolation user_id).
         List<ProviderAttachment> attachments = resolveAttachments(userId, attachmentIds);
         Conversation conversation = resolveConversation(userId, conversationId, requestedModel, content);
+        // Rattache les fichiers joints à la conversation (F-23) — après résolution, avant toute écriture
+        // de message, pour que l'ordre « attachement invalide => 404 sans persistance » reste préservé.
+        associateAttachmentsWithConversation(userId, conversation.getId(), attachmentIds);
 
         // Persistance du message utilisateur.
         Message userMessage = messageRepository.save(Message.builder()
@@ -134,6 +137,8 @@ public class ChatService {
         validateRequestedModel(requestedModel);
         List<ProviderAttachment> attachments = resolveAttachments(userId, attachmentIds);
         Conversation conversation = resolveConversation(userId, conversationId, requestedModel, content);
+        // Rattache les fichiers joints à la conversation (F-23), même garantie d'ordre que reply().
+        associateAttachmentsWithConversation(userId, conversation.getId(), attachmentIds);
 
         Message userMessage = messageRepository.save(Message.builder()
                 .conversationId(conversation.getId())
@@ -243,6 +248,25 @@ public class ChatService {
             attachments.add(new ProviderAttachment(file.getProviderFileId(), file.getMediaType()));
         }
         return attachments;
+    }
+
+    /**
+     * Rattache les fichiers joints à la conversation (F-23 : dossier de fichiers par conversation).
+     * Chaque fichier est relu sous double filtre {@code id} + {@code user_id} (isolation multi-tenant) ;
+     * l'association n'est posée que si elle est encore vide (« premier rattachement gagne », immuable).
+     */
+    private void associateAttachmentsWithConversation(UUID userId, UUID conversationId, List<UUID> attachmentIds) {
+        if (attachmentIds == null || attachmentIds.isEmpty()) {
+            return;
+        }
+        for (UUID id : attachmentIds) {
+            uploadedFileRepository.findByIdAndUserId(id, userId).ifPresent(file -> {
+                if (file.getConversationId() == null) {
+                    file.setConversationId(conversationId);
+                    uploadedFileRepository.save(file);
+                }
+            });
+        }
     }
 
     private List<ChatMessage> toProviderMessages(List<Message> history) {

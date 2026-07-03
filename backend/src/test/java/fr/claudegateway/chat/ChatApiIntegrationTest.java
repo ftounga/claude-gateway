@@ -434,6 +434,57 @@ class ChatApiIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
+    // --------------------------------------------------- GET /api/conversations/{id}/files (F-23)
+
+    @Test
+    void listsFilesAttachedToConversation() throws Exception {
+        fr.claudegateway.upload.UploadedFile file = uploadedFileRepository.save(
+                fr.claudegateway.upload.UploadedFile.builder()
+                        .userId(alice.getId()).providerFileId("file_alice")
+                        .filename("rapport.pdf").mediaType("application/pdf").sizeBytes(4).build());
+
+        // Le premier message avec pièce jointe crée la conversation et rattache le fichier (F-23).
+        String body = mockMvc.perform(post("/api/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"Analyse\",\"attachmentIds\":[\"" + file.getId() + "\"]}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        UUID conversationId = UUID.fromString(com.jayway.jsonpath.JsonPath.read(body, "$.conversationId"));
+
+        mockMvc.perform(get("/api/conversations/" + conversationId + "/files").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()", is(1)))
+                .andExpect(jsonPath("$[0].filename", is("rapport.pdf")))
+                .andExpect(jsonPath("$[0].mediaType", is("application/pdf")))
+                .andExpect(jsonPath("$[0].sizeBytes", is(4)))
+                // Ne fuite jamais l'identifiant fournisseur ni le user_id.
+                .andExpect(jsonPath("$[0].providerFileId").doesNotExist())
+                .andExpect(jsonPath("$[0].userId").doesNotExist());
+    }
+
+    @Test
+    void filesReturnsEmptyForConversationWithoutFiles() throws Exception {
+        Conversation conversation = conversationRepository.save(Conversation.builder()
+                .userId(alice.getId()).title("Sans fichier").model("claude-opus-4-8").build());
+
+        mockMvc.perform(get("/api/conversations/" + conversation.getId() + "/files").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()", is(0)));
+    }
+
+    @Test
+    void filesReturns404ForAnotherUsersConversation() throws Exception {
+        Conversation bobConversation = conversationRepository.save(Conversation.builder()
+                .userId(bob.getId()).title("Bob").model("claude-opus-4-8").build());
+
+        mockMvc.perform(get("/api/conversations/" + bobConversation.getId() + "/files").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isNotFound());
+    }
+
     @Test
     void detailContainsPersistedMessages() throws Exception {
         String body = mockMvc.perform(post("/api/chat").contextPath("/api")
