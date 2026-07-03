@@ -17,6 +17,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 import fr.claudegateway.shared.error.RestAuthenticationEntryPoint;
+import jakarta.servlet.DispatcherType;
 
 /**
  * Configuration Spring Security de la plateforme : <b>stateless</b>, sans session serveur,
@@ -58,6 +59,13 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Re-dispatch internes du conteneur (fin de flux SSE /chat/stream, page
+                        // d'erreur) : positionnés par Tomcat, jamais atteignables depuis l'extérieur.
+                        // Le JwtAuthenticationFilter (OncePerRequestFilter) ne s'exécute pas sur ces
+                        // dispatch ASYNC ; sans cette règle, l'AuthorizationFilter refuserait le
+                        // re-dispatch (Access Denied « response already committed »). L'autorisation
+                        // réelle est appliquée sur le dispatch REQUEST initial.
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers("/auth/**").permitAll()
