@@ -36,6 +36,31 @@ describe('ArtifactPanelComponent', () => {
     fixture.detectChanges();
   }
 
+  // navigator.clipboard est un global (souvent porté par le prototype) : on le remplace par une
+  // propriété propre configurable et on la restaure après chaque test pour éviter toute fuite d'état
+  // entre specs (source de flakiness selon l'ordre d'exécution de Karma).
+  let clipboardOwnDescriptor: PropertyDescriptor | undefined | null = null;
+
+  function stubClipboard(value: unknown): void {
+    if (clipboardOwnDescriptor === null) {
+      clipboardOwnDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    }
+    Object.defineProperty(navigator, 'clipboard', { value, configurable: true });
+  }
+
+  afterEach(() => {
+    if (clipboardOwnDescriptor === null) {
+      return; // aucun test n'a touché le presse-papiers
+    }
+    if (clipboardOwnDescriptor) {
+      Object.defineProperty(navigator, 'clipboard', clipboardOwnDescriptor);
+    } else {
+      // L'original vivait sur le prototype : retirer la surcharge propre le rétablit.
+      delete (navigator as unknown as { clipboard?: unknown }).clipboard;
+    }
+    clipboardOwnDescriptor = null;
+  });
+
   it('sélectionne le premier artefact par défaut', () => {
     const a = makeArtifact({ id: 'm1#0' });
     const b = makeArtifact({ id: 'm1#1', title: 'Code (sql)', content: 'SELECT 1' });
@@ -70,7 +95,7 @@ describe('ArtifactPanelComponent', () => {
   it('copie le contenu brut via navigator.clipboard', async () => {
     setArtifacts([makeArtifact({ content: 'const a = 1;' })]);
     const writeText = jasmine.createSpy('writeText').and.returnValue(Promise.resolve());
-    spyOnProperty(navigator, 'clipboard', 'get').and.returnValue({ writeText } as unknown as Clipboard);
+    stubClipboard({ writeText });
 
     component.copy();
 
@@ -79,7 +104,7 @@ describe('ArtifactPanelComponent', () => {
 
   it('affiche une erreur douce si le presse-papiers est indisponible', () => {
     setArtifacts([makeArtifact({})]);
-    spyOnProperty(navigator, 'clipboard', 'get').and.returnValue(undefined as unknown as Clipboard);
+    stubClipboard(undefined);
     const snack = spyOn((component as unknown as { snackBar: { open: () => void } }).snackBar, 'open');
 
     expect(() => component.copy()).not.toThrow();
