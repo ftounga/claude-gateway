@@ -175,3 +175,10 @@ Durée par défaut : 4 secondes. Jamais `window.alert()` ou `window.confirm()`.
 - Tables sans pagination
 - Formulaires sans `mat-error` pour les erreurs de validation
 - Fond coloré sur les cartes
+
+---
+
+## Logo & marque (ajout 2026-07-03)
+
+- **Logo de l'application** : `frontend/public/claude-proxy-logo.png` (« Claude Proxy » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« Claude Proxy »**.
+- **Palette de marque** (dérivée du logo, réservée aux surfaces marketing type landing) : navy profond `#0B1020`, orange `#E07B39`, crème `#F5EFE3`. L'**UI applicative conserve la charte `--cg-*`** (indigo `#4338CA`) ; la palette de marque n'est pas utilisée dans les écrans applicatifs sans décision explicite (évolution possible de la charte).
