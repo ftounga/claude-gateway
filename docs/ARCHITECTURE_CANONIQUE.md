@@ -213,12 +213,12 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
 - **usage_counters** — compteur de consommation de tokens (F-10, migration `009`). **Une ligne par
   (`user_id`, période)** (unique).
   - `usage_counters` : `id (uuid)`, `user_id (uuid)`, `period_start (date ; 1er du mois calendaire UTC)`,
-    `input_tokens (bigint)`, `output_tokens (bigint)`, `created_at`, `updated_at`. Unique
-    `(user_id, period_start)`, index `user_id`.
+    `input_tokens (bigint)`, `output_tokens (bigint)`, `bonus_tokens (bigint, défaut 0 ; tokens rachetés
+    top-up F-21, migration `032`)`, `created_at`, `updated_at`. Unique `(user_id, period_start)`, index `user_id`.
   - Alimente la vérification de quota **avant** l'appel fournisseur (`ChatService` → `402 quota_exceeded`
-    à la limite) et `GET /usage`. Le quota mensuel par plan/essai est **dérivé de `subscriptions`** via la
-    configuration `app.quota` (jamais en dur, réversible). V1 = **blocage à la limite** (overage non
-    monétisé, OQ-08 ; variante payante ouverte).
+    à la limite) et `GET /usage`. Le quota **effectif** = quota mensuel (dérivé de `subscriptions` via la
+    configuration `app.quota`, jamais en dur, réversible) **+ `bonus_tokens`** de la période (rachats top-up,
+    F-21). V1 = **blocage à la limite** (overage non monétisé, OQ-08 ; variante payante ouverte).
 - **user_api_keys** — clé API personnelle BYOK chiffrée au repos (F-03, migration `030`, OQ-06 : AWS KMS
   envelope encryption). **Une seule clé par utilisateur** (`user_id` unique). **Aucune clé en clair** : seuls
   le blob chiffré et les 4 derniers caractères sont persistés.
@@ -237,12 +237,22 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - Endpoints **`GET/POST /templates`**, **`GET/PUT/DELETE /templates/{id}`** (authentifiés, isolation
     `user_id` : un modèle d'autrui est indistinct d'un modèle inexistant → 404). Inclus dans l'export et
     la suppression RGPD (F-11).
+- **processed_billing_events** — registre d'idempotence des événements de facturation traités (F-21 / SF-21-02,
+  migration `033`). Table **purement technique** (aucune donnée utilisateur, aucun secret) : elle n'est **pas**
+  filtrée par `user_id`, sa clé est globale au fournisseur.
+  - `processed_billing_events` : `event_id (varchar, PK ; id d'événement fournisseur, ex. evt_...)`,
+    `processed_at (timestamptz, défaut now())`.
+  - Garantit qu'un rachat de tokens (top-up) n'est crédité **qu'une seule fois** même si le webhook Stripe est
+    rejoué : `WebhookService` insère le marqueur (gate de contrainte PK) puis appelle
+    `QuotaService.creditBonusTokens(userId, tokens)` dans la **même transaction** (montant de tokens autoritatif
+    côté serveur via le catalogue `TopUpCatalog`, jamais depuis le payload). Endpoints top-up : **`GET /billing/topups`**,
+    **`POST /billing/topup/checkout`** (authentifiés) ; crédit appliqué via le webhook signé **`POST /webhook/stripe`**.
 
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/user_api_keys/prompt_templates via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur.
+(documents/messages/subscriptions/uploaded_files/usage_counters/user_api_keys/prompt_templates via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exception documentée : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur.)
 
 ---
 
