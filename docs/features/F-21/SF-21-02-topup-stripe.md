@@ -2,7 +2,7 @@
 
 ## Identifiant — Parente — Statut
 
-`F-21 / SF-21-02` — `F-21` Rachat de tokens (top-up) — `ready`
+`F-21 / SF-21-02` — `F-21` Rachat de tokens (top-up) — `done`
 
 ## Date — Branche
 
