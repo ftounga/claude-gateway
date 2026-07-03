@@ -48,7 +48,7 @@ public class QuotaService {
      */
     @Transactional(readOnly = true)
     public void assertWithinQuota(UUID userId) {
-        long quota = resolveQuota(userId);
+        long quota = effectiveQuota(userId);
         long used = currentPeriodUsage(userId);
         if (used >= quota) {
             throw new QuotaExceededException(
@@ -88,11 +88,41 @@ public class QuotaService {
      */
     @Transactional(readOnly = true)
     public UsageSnapshot currentUsage(UUID userId) {
-        long quota = resolveQuota(userId);
+        long quota = effectiveQuota(userId);
         long used = currentPeriodUsage(userId);
         long remaining = Math.max(0, quota - used);
         LocalDate periodStart = currentPeriodStart();
         return new UsageSnapshot(used, quota, remaining, periodStart, periodStart.plusMonths(1));
+    }
+
+    /**
+     * Crédite des tokens rachetés (top-up, F-21) sur la période courante de l'utilisateur : ils
+     * s'ajoutent au quota d'abonnement. Appelé depuis le traitement d'un paiement de pack de tokens.
+     *
+     * @param userId utilisateur bénéficiaire
+     * @param tokens nombre de tokens à créditer (négatif/zéro ignoré)
+     */
+    @Transactional
+    public void creditBonusTokens(UUID userId, long tokens) {
+        if (tokens <= 0) {
+            return;
+        }
+        LocalDate periodStart = currentPeriodStart();
+        UsageCounter counter = usageCounterRepository.findByUserIdAndPeriodStart(userId, periodStart)
+                .orElseGet(() -> createCounter(userId, periodStart));
+        counter.setBonusTokens(counter.getBonusTokens() + tokens);
+        usageCounterRepository.save(counter);
+    }
+
+    /** Quota effectif de la période : quota d'abonnement + tokens rachetés (bonus) de la période. */
+    private long effectiveQuota(UUID userId) {
+        return resolveQuota(userId) + currentPeriodBonus(userId);
+    }
+
+    private long currentPeriodBonus(UUID userId) {
+        return usageCounterRepository.findByUserIdAndPeriodStart(userId, currentPeriodStart())
+                .map(UsageCounter::getBonusTokens)
+                .orElse(0L);
     }
 
     private long resolveQuota(UUID userId) {

@@ -63,6 +63,11 @@ public class UsageCounter {
     @Builder.Default
     private long outputTokens = 0L;
 
+    /** Tokens rachetés (top-up, F-21) crédités sur la période ; s'ajoutent au quota d'abonnement. */
+    @Column(name = "bonus_tokens", nullable = false)
+    @Builder.Default
+    private long bonusTokens = 0L;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

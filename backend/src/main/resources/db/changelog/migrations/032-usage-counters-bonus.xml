@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      Ajout de `bonus_tokens` à `usage_counters` (F-21 / SF-21-01). Tokens rachetés (top-up) crédités
+      sur la période courante ; le quota effectif = quota d'abonnement + bonus de la période. Colonne
+      BIGINT compatible H2 et PostgreSQL — un seul changeset.
+    -->
+    <changeSet id="032-usage-counters-bonus-tokens" author="claude-gateway">
+        <addColumn tableName="usage_counters">
+            <column name="bonus_tokens" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>
