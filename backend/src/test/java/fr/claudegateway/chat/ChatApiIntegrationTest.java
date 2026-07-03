@@ -107,6 +107,9 @@ class ChatApiIntegrationTest {
     private fr.claudegateway.upload.UploadedFileRepository uploadedFileRepository;
 
     @Autowired
+    private fr.claudegateway.ocr.DocumentRepository documentRepository;
+
+    @Autowired
     private JwtService jwtService;
 
     @Autowired
@@ -127,6 +130,7 @@ class ChatApiIntegrationTest {
     void setUp() {
         userApiKeyRepository.deleteAll();
         uploadedFileRepository.deleteAll();
+        documentRepository.deleteAll();
         conversationRepository.deleteAll();
         userRepository.deleteAll();
         stubAIProvider.reset();
@@ -294,6 +298,58 @@ class ChatApiIntegrationTest {
                         .content("{\"message\":\"Analyse\",\"attachmentIds\":[\"" + bobFile.getId() + "\"]}"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error", is("attachment_not_found")));
+    }
+
+    // ------------------------------------------------- F-24 : import bibliothèque → conversation
+
+    private fr.claudegateway.ocr.Document saveDocument(UUID userId, String filename,
+            fr.claudegateway.ocr.DocumentStatus status, String extractedText) {
+        return documentRepository.save(fr.claudegateway.ocr.Document.builder()
+                .userId(userId).filename(filename).mediaType("application/pdf").sizeBytes(4)
+                .status(status).ocrMode(fr.claudegateway.ocr.OcrMode.SYNC)
+                .extractedText(extractedText).build());
+    }
+
+    @Test
+    void injectsLibraryDocumentTextIntoProviderContext() throws Exception {
+        fr.claudegateway.ocr.Document doc = saveDocument(alice.getId(), "cv.pdf",
+                fr.claudegateway.ocr.DocumentStatus.EXTRACTED, "Jean Dupont, développeur Java senior.");
+
+        mockMvc.perform(post("/api/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"Résume ce CV\",\"libraryDocumentIds\":[\"" + doc.getId() + "\"]}"))
+                .andExpect(status().isOk());
+
+        // Le texte du document est présent dans la requête relayée au fournisseur, en tête (contexte).
+        org.assertj.core.api.Assertions.assertThat(stubAIProvider.lastRequest.messages().get(0).content())
+                .contains("cv.pdf").contains("Jean Dupont, développeur Java senior.");
+    }
+
+    @Test
+    void cannotImportAnotherUsersLibraryDocument() throws Exception {
+        fr.claudegateway.ocr.Document bobDoc = saveDocument(bob.getId(), "secret.pdf",
+                fr.claudegateway.ocr.DocumentStatus.EXTRACTED, "Données confidentielles de Bob.");
+
+        mockMvc.perform(post("/api/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"Résume\",\"libraryDocumentIds\":[\"" + bobDoc.getId() + "\"]}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error", is("not_found")));
+    }
+
+    @Test
+    void rejectsLibraryDocumentNotYetExtracted() throws Exception {
+        fr.claudegateway.ocr.Document doc = saveDocument(alice.getId(), "scan.pdf",
+                fr.claudegateway.ocr.DocumentStatus.PROCESSING, null);
+
+        mockMvc.perform(post("/api/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"Résume\",\"libraryDocumentIds\":[\"" + doc.getId() + "\"]}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error", is("document_not_ready")));
     }
 
     @Test

@@ -48,6 +48,9 @@ class ChatServiceTest {
     private UploadedFileRepository uploadedFileRepository;
 
     @Mock
+    private fr.claudegateway.ocr.DocumentRepository documentRepository;
+
+    @Mock
     private AIProvider aiProvider;
 
     @Mock
@@ -74,7 +77,7 @@ class ChatServiceTest {
             }
         };
         chatService = new ChatService(conversationRepository, messageRepository, uploadedFileRepository,
-                aiProvider, modelCatalog, quotaService, byokKeyService);
+                documentRepository, aiProvider, modelCatalog, quotaService, byokKeyService);
     }
 
     /** Persiste le message avec un id simulé et renvoie l'entité (comportement JpaRepository.save). */
@@ -315,6 +318,68 @@ class ChatServiceTest {
         verify(aiProvider, never()).complete(any());
         org.mockito.Mockito.verify(quotaService, never()).recordUsage(any(UUID.class),
                 org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    // ---- F-24 : import d'un document de la bibliothèque personnelle comme contexte ----
+
+    @Test
+    void injectsLibraryDocumentTextAsLeadingProviderContext() {
+        prepareExistingConversation();
+        UUID docId = UUID.randomUUID();
+        fr.claudegateway.ocr.Document document = fr.claudegateway.ocr.Document.builder()
+                .id(docId).userId(alice).filename("cv.pdf")
+                .status(fr.claudegateway.ocr.DocumentStatus.EXTRACTED)
+                .extractedText("Jean Dupont — développeur Java").build();
+        when(documentRepository.findByIdAndUserId(docId, alice)).thenReturn(Optional.of(document));
+        when(aiProvider.complete(any(ChatCompletionRequest.class)))
+                .thenReturn(new ChatCompletionResult("Vu", "claude-opus-4-8", 1, 1));
+
+        chatService.reply(alice, UUID.randomUUID(), "Résume ce CV", null, null, List.of(docId));
+
+        ArgumentCaptor<ChatCompletionRequest> reqCaptor = ArgumentCaptor.forClass(ChatCompletionRequest.class);
+        verify(aiProvider).complete(reqCaptor.capture());
+        // Le contexte documentaire est injecté en tête (position 0), rôle USER, avec nom + texte.
+        fr.claudegateway.ai.ChatMessage first = reqCaptor.getValue().messages().get(0);
+        assertThat(first.role()).isEqualTo(fr.claudegateway.ai.ChatRole.USER);
+        assertThat(first.content()).contains("cv.pdf").contains("Jean Dupont — développeur Java");
+    }
+
+    @Test
+    void rejectsLibraryDocumentOwnedByAnotherUser() {
+        UUID docId = UUID.randomUUID();
+        when(documentRepository.findByIdAndUserId(docId, alice)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> chatService.reply(alice, UUID.randomUUID(), "Coucou", null, null, List.of(docId)))
+                .isInstanceOf(fr.claudegateway.ocr.DocumentNotFoundException.class);
+        // Isolation : aucune écriture ni appel fournisseur avant la résolution du contexte.
+        verify(aiProvider, never()).complete(any());
+        verify(messageRepository, never()).save(any());
+    }
+
+    @Test
+    void rejectsLibraryDocumentWithoutExtractedText() {
+        UUID docId = UUID.randomUUID();
+        fr.claudegateway.ocr.Document document = fr.claudegateway.ocr.Document.builder()
+                .id(docId).userId(alice).filename("scan.pdf")
+                .status(fr.claudegateway.ocr.DocumentStatus.PROCESSING)
+                .extractedText(null).build();
+        when(documentRepository.findByIdAndUserId(docId, alice)).thenReturn(Optional.of(document));
+
+        assertThatThrownBy(() -> chatService.reply(alice, UUID.randomUUID(), "Résume", null, null, List.of(docId)))
+                .isInstanceOf(DocumentNotReadyException.class);
+        verify(aiProvider, never()).complete(any());
+        verify(messageRepository, never()).save(any());
+    }
+
+    @Test
+    void doesNotTouchDocumentRepositoryWhenNoLibraryDocuments() {
+        prepareExistingConversation();
+        when(aiProvider.complete(any(ChatCompletionRequest.class)))
+                .thenReturn(new ChatCompletionResult("ok", "claude-opus-4-8", 1, 1));
+
+        chatService.reply(alice, UUID.randomUUID(), "Salut", null, null, null);
+
+        verify(documentRepository, never()).findByIdAndUserId(any(), any());
     }
 
     private void prepareExistingConversation() {

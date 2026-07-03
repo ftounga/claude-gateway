@@ -28,6 +28,7 @@ import fr.claudegateway.auth.InvalidPasswordResetTokenException;
 import fr.claudegateway.auth.InvalidVerificationTokenException;
 import fr.claudegateway.chat.AttachmentNotFoundException;
 import fr.claudegateway.chat.ConversationNotFoundException;
+import fr.claudegateway.chat.DocumentNotReadyException;
 import fr.claudegateway.chat.UnsupportedModelException;
 import fr.claudegateway.export.UnsupportedExportFormatException;
 import fr.claudegateway.ocr.DocumentNotFoundException;
@@ -146,6 +147,13 @@ public class GlobalExceptionHandler {
         log.debug("Pièce jointe introuvable ou non possédée");
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ErrorResponse("attachment_not_found", ex.getMessage()));
+    }
+
+    @ExceptionHandler(DocumentNotReadyException.class)
+    public ResponseEntity<ErrorResponse> handleDocumentNotReady(DocumentNotReadyException ex) {
+        log.debug("Document de bibliothèque non prêt : texte non encore extrait");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("document_not_ready", ex.getMessage()));
     }
 
     @ExceptionHandler(UnsupportedModelException.class)
