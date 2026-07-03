@@ -15,6 +15,9 @@ import fr.claudegateway.ai.ChatRole;
 import fr.claudegateway.ai.ModelCatalog;
 import fr.claudegateway.ai.ProviderAttachment;
 import fr.claudegateway.byok.ByokKeyService;
+import fr.claudegateway.ocr.Document;
+import fr.claudegateway.ocr.DocumentNotFoundException;
+import fr.claudegateway.ocr.DocumentRepository;
 import fr.claudegateway.quota.QuotaService;
 import fr.claudegateway.upload.UploadedFile;
 import fr.claudegateway.upload.UploadedFileRepository;
@@ -32,9 +35,13 @@ public class ChatService {
 
     private static final int TITLE_MAX_LENGTH = 60;
 
+    /** Garde-fou : longueur max du texte injecté par document de bibliothèque (F-24). */
+    private static final int LIBRARY_DOCUMENT_TEXT_MAX = 100_000;
+
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
     private final UploadedFileRepository uploadedFileRepository;
+    private final DocumentRepository documentRepository;
     private final AIProvider aiProvider;
     private final ModelCatalog modelCatalog;
     private final QuotaService quotaService;
@@ -44,6 +51,7 @@ public class ChatService {
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
             UploadedFileRepository uploadedFileRepository,
+            DocumentRepository documentRepository,
             AIProvider aiProvider,
             ModelCatalog modelCatalog,
             QuotaService quotaService,
@@ -51,6 +59,7 @@ public class ChatService {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.uploadedFileRepository = uploadedFileRepository;
+        this.documentRepository = documentRepository;
         this.aiProvider = aiProvider;
         this.modelCatalog = modelCatalog;
         this.quotaService = quotaService;
@@ -73,6 +82,21 @@ public class ChatService {
     @Transactional
     public ChatResult reply(UUID userId, UUID conversationId, String rawMessage, String requestedModel,
             List<UUID> attachmentIds) {
+        return reply(userId, conversationId, rawMessage, requestedModel, attachmentIds, null);
+    }
+
+    /**
+     * Variante avec import de documents de la bibliothèque personnelle (F-24) : le texte OCR des
+     * documents désignés par {@code libraryDocumentIds} est injecté comme message de contexte en tête
+     * de la requête fournisseur, sans être persisté dans l'historique de la conversation.
+     *
+     * @param libraryDocumentIds documents de la bibliothèque à injecter (null/vide = aucun ; max 10)
+     * @throws DocumentNotFoundException si un document est inconnu ou appartient à un autre utilisateur
+     * @throws DocumentNotReadyException si un document n'a pas encore de texte exploitable
+     */
+    @Transactional
+    public ChatResult reply(UUID userId, UUID conversationId, String rawMessage, String requestedModel,
+            List<UUID> attachmentIds, List<UUID> libraryDocumentIds) {
         String content = rawMessage.trim();
         // Contrôle de quota AVANT toute écriture ou appel fournisseur (F-10) : un utilisateur ayant
         // atteint son quota reçoit 402 sans qu'aucun message ne soit persisté ni relayé.
@@ -82,6 +106,9 @@ public class ChatService {
         // Résolution des pièces jointes AVANT toute écriture : un id d'un autre utilisateur => 404,
         // sans persister de message ni appeler le fournisseur (isolation user_id).
         List<ProviderAttachment> attachments = resolveAttachments(userId, attachmentIds);
+        // Contexte documentaire de la bibliothèque (F-24), résolu AVANT toute écriture : un id d'un
+        // autre utilisateur => 404, un document non prêt => 409, sans persistance ni appel fournisseur.
+        List<ChatMessage> libraryContext = resolveLibraryContext(userId, libraryDocumentIds);
         Conversation conversation = resolveConversation(userId, conversationId, requestedModel, content);
         // Rattache les fichiers joints à la conversation (F-23) — après résolution, avant toute écriture
         // de message, pour que l'ordre « attachement invalide => 404 sans persistance » reste préservé.
@@ -101,8 +128,8 @@ public class ChatService {
         // persistée ni journalisée), sinon clé plateforme (Hosted). Provider-neutre : la clé n'est
         // qu'un paramètre de la requête.
         String byokApiKey = byokKeyService.resolveActiveApiKey(userId).orElse(null);
-        ChatCompletionResult completion = aiProvider.complete(
-                new ChatCompletionRequest(conversation.getModel(), toProviderMessages(history), attachments, byokApiKey));
+        ChatCompletionResult completion = aiProvider.complete(new ChatCompletionRequest(
+                conversation.getModel(), buildProviderMessages(history, libraryContext), attachments, byokApiKey));
 
         // Persistance de la réponse assistant.
         Message assistantMessage = messageRepository.save(Message.builder()
@@ -132,10 +159,22 @@ public class ChatService {
     @Transactional
     public StreamContext prepareStream(UUID userId, UUID conversationId, String rawMessage,
             String requestedModel, List<UUID> attachmentIds) {
+        return prepareStream(userId, conversationId, rawMessage, requestedModel, attachmentIds, null);
+    }
+
+    /**
+     * Variante streaming avec import de documents de la bibliothèque personnelle (F-24) : cf.
+     * {@link #reply(UUID, UUID, String, String, List, List)}. Le contexte documentaire est résolu
+     * pendant le pré-vol synchrone : ses erreurs (404/409) remontent avant l'ouverture du flux.
+     */
+    @Transactional
+    public StreamContext prepareStream(UUID userId, UUID conversationId, String rawMessage,
+            String requestedModel, List<UUID> attachmentIds, List<UUID> libraryDocumentIds) {
         String content = rawMessage.trim();
         quotaService.assertWithinQuota(userId);
         validateRequestedModel(requestedModel);
         List<ProviderAttachment> attachments = resolveAttachments(userId, attachmentIds);
+        List<ChatMessage> libraryContext = resolveLibraryContext(userId, libraryDocumentIds);
         Conversation conversation = resolveConversation(userId, conversationId, requestedModel, content);
         // Rattache les fichiers joints à la conversation (F-23), même garantie d'ordre que reply().
         associateAttachmentsWithConversation(userId, conversation.getId(), attachmentIds);
@@ -150,7 +189,7 @@ public class ChatService {
         List<Message> history = messageRepository.findByConversationIdOrderByCreatedAtAsc(conversation.getId());
         String byokApiKey = byokKeyService.resolveActiveApiKey(userId).orElse(null);
         ChatCompletionRequest providerRequest = new ChatCompletionRequest(
-                conversation.getModel(), toProviderMessages(history), attachments, byokApiKey);
+                conversation.getModel(), buildProviderMessages(history, libraryContext), attachments, byokApiKey);
 
         return new StreamContext(userId, conversation, userMessage, providerRequest);
     }
@@ -276,6 +315,47 @@ public class ChatService {
             messages.add(new ChatMessage(role, message.getContent()));
         }
         return messages;
+    }
+
+    /**
+     * Construit la liste de messages fournisseur : le contexte documentaire de la bibliothèque (F-24),
+     * s'il existe, est inséré en tête, suivi de l'historique de la conversation.
+     */
+    private List<ChatMessage> buildProviderMessages(List<Message> history, List<ChatMessage> libraryContext) {
+        List<ChatMessage> messages = toProviderMessages(history);
+        messages.addAll(0, libraryContext);
+        return messages;
+    }
+
+    /**
+     * Résout les documents de la bibliothèque personnelle (F-08) désignés en messages de contexte
+     * fournisseur (F-24). Chaque document est relu sous double filtre {@code id} + {@code user_id}
+     * (isolation multi-tenant) ; son texte extrait est injecté tel quel (relais Provider-First, aucun
+     * ré-traitement), tronqué au garde-fou {@link #LIBRARY_DOCUMENT_TEXT_MAX}.
+     *
+     * @throws DocumentNotFoundException si un id est inconnu ou appartient à un autre utilisateur
+     * @throws DocumentNotReadyException si le texte du document n'est pas encore disponible
+     */
+    private List<ChatMessage> resolveLibraryContext(UUID userId, List<UUID> libraryDocumentIds) {
+        if (libraryDocumentIds == null || libraryDocumentIds.isEmpty()) {
+            return List.of();
+        }
+        List<ChatMessage> context = new ArrayList<>(libraryDocumentIds.size());
+        for (UUID id : libraryDocumentIds) {
+            Document document = documentRepository.findByIdAndUserId(id, userId)
+                    .orElseThrow(() -> new DocumentNotFoundException("Document introuvable : " + id));
+            String text = document.getExtractedText();
+            if (text == null || text.isBlank()) {
+                throw new DocumentNotReadyException(
+                        "Le document « " + document.getFilename() + " » n'a pas encore de texte exploitable.");
+            }
+            if (text.length() > LIBRARY_DOCUMENT_TEXT_MAX) {
+                text = text.substring(0, LIBRARY_DOCUMENT_TEXT_MAX);
+            }
+            context.add(new ChatMessage(ChatRole.USER,
+                    "Document de la bibliothèque « " + document.getFilename() + " » :\n\n" + text));
+        }
+        return context;
     }
 
     /** Résultat interne d'un tour de chat. */

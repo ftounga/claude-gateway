@@ -13,6 +13,8 @@ import jakarta.validation.constraints.Size;
  * @param message        message utilisateur (obligatoire, non vide)
  * @param model          modèle souhaité (null => modèle par défaut)
  * @param attachmentIds  identifiants de fichiers téléversés à rattacher (null/vide => aucun ; max 10)
+ * @param libraryDocumentIds identifiants de documents de la bibliothèque personnelle (F-08) dont le
+ *                       texte OCR est injecté comme contexte dans l'appel fournisseur (null/vide => aucun ; max 10)
  */
 public record ChatRequest(
         UUID conversationId,
@@ -22,5 +24,7 @@ public record ChatRequest(
         @Size(max = 64, message = "Modèle invalide.")
         String model,
         @Size(max = 10, message = "Trop de pièces jointes.")
-        List<UUID> attachmentIds) {
+        List<UUID> attachmentIds,
+        @Size(max = 10, message = "Trop de documents de bibliothèque.")
+        List<UUID> libraryDocumentIds) {
 }

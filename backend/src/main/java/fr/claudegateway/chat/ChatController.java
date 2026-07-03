@@ -57,7 +57,7 @@ public class ChatController {
     public ChatResponse chat(@Valid @RequestBody ChatRequest request) {
         UUID userId = currentUser.requireId();
         ChatResult result = chatService.reply(userId, request.conversationId(), request.message(),
-                request.model(), request.attachmentIds());
+                request.model(), request.attachmentIds(), request.libraryDocumentIds());
         return new ChatResponse(
                 result.conversation().getId(),
                 MessageResponse.from(result.assistantMessage()),
@@ -74,7 +74,7 @@ public class ChatController {
     public SseEmitter stream(@Valid @RequestBody ChatRequest request) {
         UUID userId = currentUser.requireId();
         StreamContext context = chatService.prepareStream(userId, request.conversationId(),
-                request.message(), request.model(), request.attachmentIds());
+                request.message(), request.model(), request.attachmentIds(), request.libraryDocumentIds());
 
         SseEmitter emitter = new SseEmitter(STREAM_TIMEOUT_MS);
         chatStreamExecutor.execute(() -> relay(emitter, context));
