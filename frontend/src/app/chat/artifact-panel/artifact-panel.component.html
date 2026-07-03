@@ -1,0 +1,64 @@
+<div class="artifact-panel">
+  <header class="panel-header">
+    <span class="panel-title">
+      <mat-icon>dashboard</mat-icon>
+      Canevas
+    </span>
+    <button
+      mat-icon-button
+      type="button"
+      aria-label="Fermer le canevas"
+      matTooltip="Fermer le canevas"
+      (click)="close()"
+    >
+      <mat-icon>close</mat-icon>
+    </button>
+  </header>
+
+  <mat-nav-list class="artifact-list" aria-label="Artefacts">
+    @for (artifact of artifacts(); track artifact.id) {
+      <a
+        mat-list-item
+        [class.active]="artifact.id === selected()?.id"
+        (click)="select(artifact)"
+      >
+        <mat-icon matListItemIcon>{{ iconFor(artifact.type) }}</mat-icon>
+        <span matListItemTitle class="artifact-item-title">{{ artifact.title }}</span>
+      </a>
+    }
+  </mat-nav-list>
+
+  @if (selected(); as current) {
+    <section class="artifact-viewer">
+      <div class="viewer-toolbar">
+        @if (previewAvailable()) {
+          <mat-button-toggle-group
+            class="view-toggle"
+            [value]="effectiveView()"
+            (change)="setView($event.value)"
+            aria-label="Mode d'affichage"
+          >
+            <mat-button-toggle value="preview">Aperçu</mat-button-toggle>
+            <mat-button-toggle value="source">Source</mat-button-toggle>
+          </mat-button-toggle-group>
+        }
+        <span class="viewer-spacer"></span>
+        <button
+          mat-stroked-button
+          type="button"
+          class="copy-button"
+          (click)="copy()"
+        >
+          <mat-icon>content_copy</mat-icon>
+          Copier
+        </button>
+      </div>
+
+      @if (effectiveView() === 'preview') {
+        <div class="artifact-preview markdown-body" [innerHTML]="current.content | markdown"></div>
+      } @else {
+        <pre class="artifact-source"><code>{{ current.content }}</code></pre>
+      }
+    </section>
+  }
+</div>

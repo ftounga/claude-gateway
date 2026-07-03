@@ -260,4 +260,47 @@ describe('ChatComponent', () => {
 
     expect(snackSpy).toHaveBeenCalled();
   });
+
+  it('exposes artifacts extracted from assistant messages (F-22)', () => {
+    fixture.detectChanges();
+    flushInit();
+
+    component.messages.set([
+      { id: 'u1', role: 'USER', content: '```js\nignored\n```', model: null, createdAt: '' },
+      {
+        id: 'a1',
+        role: 'ASSISTANT',
+        content: 'Voici :\n```typescript\nconst a = 1;\n```',
+        model: 'claude-opus-4-8',
+        createdAt: '',
+      },
+    ]);
+
+    expect(component.artifacts().length).toBe(1);
+    expect(component.artifacts()[0].messageId).toBe('a1');
+    expect(component.hasArtifacts(component.messages()[1])).toBeTrue();
+    expect(component.hasArtifacts(component.messages()[0])).toBeFalse();
+  });
+
+  it('opens and closes the canvas for a given message (F-22)', () => {
+    fixture.detectChanges();
+    flushInit();
+
+    component.messages.set([
+      {
+        id: 'a1',
+        role: 'ASSISTANT',
+        content: '```sql\nSELECT 1\n```',
+        model: 'claude-opus-4-8',
+        createdAt: '',
+      },
+    ]);
+
+    component.openCanvasForMessage('a1');
+    expect(component.canvasOpen()).toBeTrue();
+    expect(component.focusArtifactId()).toBe('a1#0');
+
+    component.closeCanvas();
+    expect(component.canvasOpen()).toBeFalse();
+  });
 });
