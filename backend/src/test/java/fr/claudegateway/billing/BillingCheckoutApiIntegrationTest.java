@@ -3,11 +3,14 @@ package fr.claudegateway.billing;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,7 +31,10 @@ import fr.claudegateway.billing.provider.BillingProvider;
 import fr.claudegateway.billing.provider.BillingProviderUnavailableException;
 import fr.claudegateway.billing.provider.CheckoutCommand;
 import fr.claudegateway.billing.provider.CheckoutSession;
+import fr.claudegateway.billing.provider.TopUpCheckoutCommand;
 import fr.claudegateway.billing.provider.WebhookVerificationException;
+import fr.claudegateway.quota.UsageCounter;
+import fr.claudegateway.quota.UsageCounterRepository;
 import fr.claudegateway.user.AuthProvider;
 import fr.claudegateway.user.User;
 import fr.claudegateway.user.UserRepository;
@@ -48,12 +54,14 @@ class BillingCheckoutApiIntegrationTest {
         volatile CheckoutSession sessionToReturn = new CheckoutSession("https://checkout.stripe/test", "cs_1");
         volatile BillingEvent eventToReturn = BillingEvent.unhandled();
         volatile RuntimeException checkoutToThrow;
+        volatile RuntimeException topUpCheckoutToThrow;
         volatile RuntimeException webhookToThrow;
 
         void reset() {
             sessionToReturn = new CheckoutSession("https://checkout.stripe/test", "cs_1");
             eventToReturn = BillingEvent.unhandled();
             checkoutToThrow = null;
+            topUpCheckoutToThrow = null;
             webhookToThrow = null;
         }
 
@@ -66,6 +74,14 @@ class BillingCheckoutApiIntegrationTest {
         public CheckoutSession createCheckoutSession(CheckoutCommand command) {
             if (checkoutToThrow != null) {
                 throw checkoutToThrow;
+            }
+            return sessionToReturn;
+        }
+
+        @Override
+        public CheckoutSession createTopUpCheckoutSession(TopUpCheckoutCommand command) {
+            if (topUpCheckoutToThrow != null) {
+                throw topUpCheckoutToThrow;
             }
             return sessionToReturn;
         }
@@ -103,11 +119,19 @@ class BillingCheckoutApiIntegrationTest {
     @Autowired
     private StubBillingProvider stubBillingProvider;
 
+    @Autowired
+    private UsageCounterRepository usageCounterRepository;
+
+    @Autowired
+    private ProcessedBillingEventRepository processedBillingEventRepository;
+
     private User alice;
     private String aliceToken;
 
     @BeforeEach
     void setUp() {
+        processedBillingEventRepository.deleteAll();
+        usageCounterRepository.deleteAll();
         subscriptionRepository.deleteAll();
         userRepository.deleteAll();
         stubBillingProvider.reset();
@@ -165,7 +189,7 @@ class BillingCheckoutApiIntegrationTest {
                 .trialEndsAt(OffsetDateTime.now().plusDays(14)).build());
         stubBillingProvider.eventToReturn = new BillingEvent(
                 BillingEventType.CHECKOUT_COMPLETED, alice.getId(), "cus_1", "sub_1",
-                PlanCode.PRO, "active", null);
+                PlanCode.PRO, "active", null, "evt_1", null);
 
         // Pas d'Authorization : l'endpoint est public (authentifié par signature).
         mockMvc.perform(post("/api/webhook/stripe").contextPath("/api")
@@ -189,5 +213,73 @@ class BillingCheckoutApiIntegrationTest {
                         .content("{\"id\":\"evt_1\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error", is("invalid_signature")));
+    }
+
+    // --- Rachat de tokens (top-up, SF-21-02) ---
+
+    @Test
+    void listsTopUpPacks() throws Exception {
+        mockMvc.perform(get("/api/billing/topups").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.packs[0].code", is("STANDARD")))
+                .andExpect(jsonPath("$.packs[0].tokens", is(1000000)));
+    }
+
+    @Test
+    void topUpEndpointsRequireJwt() throws Exception {
+        mockMvc.perform(get("/api/billing/topups").contextPath("/api"))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(post("/api/billing/topup/checkout").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"packCode\":\"STANDARD\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void createsTopUpCheckoutSession() throws Exception {
+        mockMvc.perform(post("/api/billing/topup/checkout").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"packCode\":\"STANDARD\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.checkoutUrl", containsString("checkout.stripe")));
+    }
+
+    @Test
+    void rejectsUnknownTopUpPack() throws Exception {
+        mockMvc.perform(post("/api/billing/topup/checkout").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"packCode\":\"GHOST\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", is("validation_error")));
+    }
+
+    @Test
+    void topUpWebhookCreditsBonusTokensOnceAndIsIsolated() throws Exception {
+        User bob = userRepository.save(User.builder()
+                .email("bob@example.com").emailVerified(true)
+                .provider(AuthProvider.LOCAL).role(UserRole.USER).build());
+
+        stubBillingProvider.eventToReturn = new BillingEvent(
+                BillingEventType.TOPUP_COMPLETED, alice.getId(), "cus_1", null,
+                null, null, null, "evt_topup_1", "STANDARD");
+
+        // Deux livraisons du même événement (rejeu Stripe).
+        for (int i = 0; i < 2; i++) {
+            mockMvc.perform(post("/api/webhook/stripe").contextPath("/api")
+                            .header("Stripe-Signature", "t=1,v1=abc")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"id\":\"evt_topup_1\"}"))
+                    .andExpect(status().isOk());
+        }
+
+        // Alice créditée une seule fois (idempotence) ; Bob non affecté (isolation).
+        LocalDate period = LocalDate.now(ZoneOffset.UTC).withDayOfMonth(1);
+        UsageCounter aliceCounter =
+                usageCounterRepository.findByUserIdAndPeriodStart(alice.getId(), period).orElseThrow();
+        assertThat(aliceCounter.getBonusTokens()).isEqualTo(1_000_000L);
+        assertThat(usageCounterRepository.findByUserIdAndPeriodStart(bob.getId(), period)).isEmpty();
     }
 }

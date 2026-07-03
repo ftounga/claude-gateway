@@ -95,6 +95,50 @@ public class StripeBillingProvider implements BillingProvider {
     }
 
     @Override
+    public CheckoutSession createTopUpCheckoutSession(TopUpCheckoutCommand command) {
+        if (!config.isConfigured()) {
+            throw new BillingProviderUnavailableException("Fournisseur de paiement non configuré.");
+        }
+        if (!StringUtils.hasText(command.priceId())) {
+            throw new BillingProviderUnavailableException(
+                    "Aucun price ID configuré pour le pack " + command.packCode() + ".");
+        }
+
+        // Rachat de tokens = paiement unique (jamais d'abonnement).
+        SessionCreateParams.Builder builder = SessionCreateParams.builder()
+                .setMode(SessionCreateParams.Mode.PAYMENT)
+                .setSuccessUrl(config.successUrl())
+                .setCancelUrl(config.cancelUrl())
+                .setClientReferenceId(command.userId().toString())
+                .putMetadata("userId", command.userId().toString())
+                .putMetadata("kind", "topup")
+                .putMetadata("topupCode", command.packCode())
+                .addLineItem(SessionCreateParams.LineItem.builder()
+                        .setPrice(command.priceId())
+                        .setQuantity(1L)
+                        .build());
+
+        if (StringUtils.hasText(command.existingCustomerId())) {
+            builder.setCustomer(command.existingCustomerId());
+        } else if (StringUtils.hasText(command.customerEmail())) {
+            builder.setCustomerEmail(command.customerEmail());
+        }
+
+        try {
+            RequestOptions options = RequestOptions.builder()
+                    .setApiKey(config.secretKey())
+                    .build();
+            com.stripe.model.checkout.Session session =
+                    com.stripe.model.checkout.Session.create(builder.build(), options);
+            return new CheckoutSession(session.getUrl(), session.getId());
+        } catch (StripeException ex) {
+            // On ne journalise ni la clé ni le détail brut : message métier neutre.
+            log.warn("Échec de création de la session de rachat de tokens Stripe");
+            throw new BillingProviderException("Échec de création de la session de paiement.", ex);
+        }
+    }
+
+    @Override
     public BillingEvent parseWebhookEvent(String payload, String signatureHeader) {
         if (!StringUtils.hasText(config.webhookSecret())) {
             throw new BillingProviderUnavailableException("Secret de webhook non configuré.");
@@ -126,8 +170,25 @@ public class StripeBillingProvider implements BillingProvider {
         if (object.isEmpty() || !(object.get() instanceof com.stripe.model.checkout.Session session)) {
             return BillingEvent.unhandled();
         }
-        UUID userId = parseUserId(session.getClientReferenceId(),
-                session.getMetadata() != null ? session.getMetadata().get("userId") : null);
+        String metaUserId = session.getMetadata() != null ? session.getMetadata().get("userId") : null;
+        UUID userId = parseUserId(session.getClientReferenceId(), metaUserId);
+        String kind = session.getMetadata() != null ? session.getMetadata().get("kind") : null;
+
+        // Rachat de tokens (top-up, F-21) : distingué par la métadonnée kind=topup.
+        if ("topup".equals(kind)) {
+            String topupCode = session.getMetadata().get("topupCode");
+            return new BillingEvent(
+                    BillingEventType.TOPUP_COMPLETED,
+                    userId,
+                    session.getCustomer(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    event.getId(),
+                    topupCode);
+        }
+
         PlanCode planCode = session.getMetadata() != null
                 ? parsePlanCode(session.getMetadata().get("planCode"))
                 : null;
@@ -138,6 +199,8 @@ public class StripeBillingProvider implements BillingProvider {
                 session.getSubscription(),
                 planCode,
                 "active",
+                null,
+                event.getId(),
                 null);
     }
 
@@ -158,7 +221,9 @@ public class StripeBillingProvider implements BillingProvider {
                 subscription.getId(),
                 planCode,
                 subscription.getStatus(),
-                toOffsetDateTime(subscription.getCurrentPeriodEnd()));
+                toOffsetDateTime(subscription.getCurrentPeriodEnd()),
+                event.getId(),
+                null);
     }
 
     private static UUID parseUserId(String clientReferenceId, String metadataUserId) {
