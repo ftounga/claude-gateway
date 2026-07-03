@@ -210,6 +210,20 @@
       </mat-chip-set>
     }
 
+    @if (libraryDocs().length > 0) {
+      <mat-chip-set class="composer-library" aria-label="Documents de la bibliothèque importés">
+        @for (doc of libraryDocs(); track doc.id) {
+          <mat-chip class="library-chip" (removed)="removeLibraryDoc(doc.id)">
+            <mat-icon matChipAvatar>library_books</mat-icon>
+            {{ doc.filename }}
+            <button matChipRemove type="button" aria-label="Retirer le document de bibliothèque">
+              <mat-icon>cancel</mat-icon>
+            </button>
+          </mat-chip>
+        }
+      </mat-chip-set>
+    }
+
     <form class="composer" [formGroup]="form" (ngSubmit)="send()">
       <input
         #fileInput
@@ -226,6 +240,15 @@
         (click)="fileInput.click()"
       >
         <mat-icon>attach_file</mat-icon>
+      </button>
+      <button
+        mat-icon-button
+        type="button"
+        aria-label="Importer depuis ma bibliothèque"
+        matTooltip="Importer depuis ma bibliothèque"
+        (click)="openLibraryPicker()"
+      >
+        <mat-icon>library_books</mat-icon>
       </button>
       <mat-form-field appearance="outline" class="composer-field" subscriptSizing="dynamic">
         <mat-label>Votre message</mat-label>
