@@ -78,6 +78,17 @@
         <button
           mat-icon-button
           type="button"
+          class="files-trigger"
+          [class.active]="filesPanelOpen()"
+          (click)="toggleFilesPanel()"
+          matTooltip="Dossier de fichiers"
+          aria-label="Dossier de fichiers de la conversation"
+        >
+          <mat-icon>folder</mat-icon>
+        </button>
+        <button
+          mat-icon-button
+          type="button"
           class="export-trigger"
           [matMenuTriggerFor]="exportMenu"
           matTooltip="Exporter la conversation"
@@ -100,6 +111,42 @@
 
     @if (submitting()) {
       <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+    }
+
+    <!-- Dossier de fichiers de la conversation (F-23) -->
+    @if (filesPanelOpen() && activeConversationId() !== null) {
+      <section class="files-panel" aria-label="Dossier de fichiers">
+        <header class="files-panel-header">
+          <span class="files-panel-title">
+            <mat-icon>folder</mat-icon>
+            Fichiers du dossier
+          </span>
+          <button
+            mat-icon-button
+            type="button"
+            aria-label="Fermer le dossier de fichiers"
+            (click)="toggleFilesPanel()"
+          >
+            <mat-icon>close</mat-icon>
+          </button>
+        </header>
+        @if (filesLoading()) {
+          <p class="files-empty">Chargement…</p>
+        } @else if (conversationFiles().length === 0) {
+          <p class="files-empty">Aucun fichier dans cette conversation.</p>
+        } @else {
+          <ul class="files-list">
+            @for (file of conversationFiles(); track file.id) {
+              <li class="files-item">
+                <mat-icon class="files-item-icon">description</mat-icon>
+                <span class="files-item-name" [matTooltip]="file.filename">{{ file.filename }}</span>
+                <span class="badge badge--neutral files-item-type">{{ file.mediaType }}</span>
+                <span class="files-item-size">{{ formatFileSize(file.sizeBytes) }}</span>
+              </li>
+            }
+          </ul>
+        }
+      </section>
     }
 
     <div class="message-thread">

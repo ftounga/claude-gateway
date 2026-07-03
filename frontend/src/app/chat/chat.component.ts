@@ -22,7 +22,7 @@ import { extractArtifacts, messageHasArtifacts } from '../shared/artifact';
 import { ChatService } from '../core/services/chat.service';
 import { ExportService } from '../core/services/export.service';
 import { UploadService } from '../core/services/upload.service';
-import { ChatMessage, ConversationSummary } from '../core/models/chat.models';
+import { ChatMessage, ConversationFile, ConversationSummary } from '../core/models/chat.models';
 import { ExportFormat } from '../core/models/export.models';
 
 /** Pièce jointe en cours de préparation dans le composer (état local avant envoi). */
@@ -88,6 +88,11 @@ export class ChatComponent implements OnInit {
   readonly canvasOpen = signal(false);
   readonly focusArtifactId = signal<string | null>(null);
 
+  /** Dossier de fichiers de la conversation (F-23) : ouverture du panneau + fichiers chargés. */
+  readonly filesPanelOpen = signal(false);
+  readonly conversationFiles = signal<ConversationFile[]>([]);
+  readonly filesLoading = signal(false);
+
   /** Artefacts (code/doc/mail) extraits à la volée des messages assistant de la conversation. */
   readonly artifacts = computed(() => extractArtifacts(this.messages()));
 
@@ -129,12 +134,16 @@ export class ChatComponent implements OnInit {
     this.attachments.set([]);
     this.canvasOpen.set(false);
     this.focusArtifactId.set(null);
+    this.filesPanelOpen.set(false);
+    this.conversationFiles.set([]);
   }
 
   /** Charge le détail d'une conversation existante. */
   selectConversation(conversation: ConversationSummary): void {
     this.activeConversationId.set(conversation.id);
     this.selectedModel.set(conversation.model);
+    this.filesPanelOpen.set(false);
+    this.conversationFiles.set([]);
     this.chatService.getConversation(conversation.id).subscribe({
       next: (detail) => this.messages.set(detail.messages),
       error: () => this.notifyError('Impossible de charger la conversation.'),
@@ -250,6 +259,10 @@ export class ChatComponent implements OnInit {
             } else {
               this.refreshConversationOrder();
             }
+            // Si le dossier de fichiers est ouvert, refléter les pièces jointes de ce tour (F-23).
+            if (this.filesPanelOpen()) {
+              this.loadConversationFiles();
+            }
           }),
         onError: () =>
           this.zone.run(() => {
@@ -339,6 +352,45 @@ export class ChatComponent implements OnInit {
   /** Vrai si le message assistant contient au moins un artefact (bouton « ouvrir dans le canevas »). */
   hasArtifacts(message: ChatMessage): boolean {
     return message.role === 'ASSISTANT' && messageHasArtifacts(message);
+  }
+
+  /** Ouvre/ferme le dossier de fichiers de la conversation active (F-23) ; charge au premier affichage. */
+  toggleFilesPanel(): void {
+    const opening = !this.filesPanelOpen();
+    this.filesPanelOpen.set(opening);
+    if (opening) {
+      this.loadConversationFiles();
+    }
+  }
+
+  /** Charge les fichiers rattachés à la conversation active via `GET /api/conversations/{id}/files`. */
+  loadConversationFiles(): void {
+    const id = this.activeConversationId();
+    if (!id) {
+      return;
+    }
+    this.filesLoading.set(true);
+    this.chatService.getConversationFiles(id).subscribe({
+      next: (files) => {
+        this.conversationFiles.set(files);
+        this.filesLoading.set(false);
+      },
+      error: () => {
+        this.filesLoading.set(false);
+        this.notifyError('Impossible de charger les fichiers de la conversation.');
+      },
+    });
+  }
+
+  /** Taille lisible d'un fichier (o / Ko / Mo), sans dépendance de formatage. */
+  formatFileSize(bytes: number): string {
+    if (bytes < 1024) {
+      return `${bytes} o`;
+    }
+    if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(1)} Ko`;
+    }
+    return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
   }
 
   private notifyError(message: string): void {

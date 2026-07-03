@@ -303,4 +303,70 @@ describe('ChatComponent', () => {
     component.closeCanvas();
     expect(component.canvasOpen()).toBeFalse();
   });
+
+  // ---- Dossier de fichiers par conversation (F-23) ----
+
+  it('opens the files panel and loads the conversation files (F-23)', () => {
+    fixture.detectChanges();
+    flushInit();
+    component.activeConversationId.set('c-1');
+
+    component.toggleFilesPanel();
+
+    httpMock.expectOne('/api/conversations/c-1/files').flush([
+      {
+        id: 'f-1',
+        filename: 'rapport.pdf',
+        mediaType: 'application/pdf',
+        sizeBytes: 2048,
+        createdAt: '2026-07-03T10:00:00Z',
+      },
+    ]);
+
+    expect(component.filesPanelOpen()).toBeTrue();
+    expect(component.filesLoading()).toBeFalse();
+    expect(component.conversationFiles().length).toBe(1);
+    expect(component.conversationFiles()[0].filename).toBe('rapport.pdf');
+  });
+
+  it('shows an empty files panel when the conversation has no file (F-23)', () => {
+    fixture.detectChanges();
+    flushInit();
+    component.activeConversationId.set('c-1');
+
+    component.toggleFilesPanel();
+    httpMock.expectOne('/api/conversations/c-1/files').flush([]);
+
+    expect(component.filesPanelOpen()).toBeTrue();
+    expect(component.conversationFiles()).toEqual([]);
+  });
+
+  it('surfaces an error when loading conversation files fails (F-23)', () => {
+    fixture.detectChanges();
+    flushInit();
+    component.activeConversationId.set('c-1');
+
+    component.toggleFilesPanel();
+    httpMock
+      .expectOne('/api/conversations/c-1/files')
+      .flush({}, { status: 500, statusText: 'Server Error' });
+
+    expect(component.filesLoading()).toBeFalse();
+    expect(component.conversationFiles()).toEqual([]);
+  });
+
+  it('does not call the files endpoint without an active conversation (F-23)', () => {
+    fixture.detectChanges();
+    flushInit();
+    component.activeConversationId.set(null);
+
+    component.loadConversationFiles();
+    httpMock.expectNone('/api/conversations/null/files');
+  });
+
+  it('formats file sizes in o / Ko / Mo (F-23)', () => {
+    expect(component.formatFileSize(512)).toBe('512 o');
+    expect(component.formatFileSize(2048)).toBe('2.0 Ko');
+    expect(component.formatFileSize(3 * 1024 * 1024)).toBe('3.0 Mo');
+  });
 });
