@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -15,6 +16,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import fr.claudegateway.upload.UploadedFile;
+import fr.claudegateway.upload.UploadedFileRepository;
 
 /**
  * Tests unitaires de l'isolation {@code user_id} pour la gestion des conversations : détail,
@@ -28,6 +32,9 @@ class ConversationServiceTest {
 
     @Mock
     private MessageRepository messageRepository;
+
+    @Mock
+    private UploadedFileRepository uploadedFileRepository;
 
     @InjectMocks
     private ConversationService conversationService;
@@ -71,6 +78,32 @@ class ConversationServiceTest {
         assertThatThrownBy(() -> conversationService.delete(id, alice))
                 .isInstanceOf(ConversationNotFoundException.class);
         verify(conversationRepository, never()).delete(any());
+    }
+
+    @Test
+    void filesOfReturnsFilesOfOwnedConversationOrderedByRepository() {
+        UUID id = UUID.randomUUID();
+        Conversation conversation = Conversation.builder()
+                .id(id).userId(alice).title("t").model("claude-opus-4-8").build();
+        UploadedFile file = UploadedFile.builder()
+                .id(UUID.randomUUID()).userId(alice).conversationId(id)
+                .providerFileId("file_x").filename("rapport.pdf").mediaType("application/pdf").sizeBytes(10).build();
+        when(conversationRepository.findByIdAndUserId(id, alice)).thenReturn(Optional.of(conversation));
+        when(uploadedFileRepository.findByConversationIdAndUserIdOrderByCreatedAtDesc(id, alice))
+                .thenReturn(List.of(file));
+
+        assertThat(conversationService.filesOf(id, alice)).containsExactly(file);
+    }
+
+    @Test
+    void filesOfThrowsForForeignConversation() {
+        UUID id = UUID.randomUUID();
+        when(conversationRepository.findByIdAndUserId(id, alice)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> conversationService.filesOf(id, alice))
+                .isInstanceOf(ConversationNotFoundException.class);
+        verify(uploadedFileRepository, never())
+                .findByConversationIdAndUserIdOrderByCreatedAtDesc(any(), any());
     }
 
     @Test

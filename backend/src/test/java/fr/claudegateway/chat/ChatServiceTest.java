@@ -228,6 +228,55 @@ class ChatServiceTest {
     }
 
     @Test
+    void stampsConversationOnAttachedFile() {
+        UUID conversationId = UUID.randomUUID();
+        Conversation conversation = Conversation.builder()
+                .id(conversationId).userId(alice).title("t").model("claude-opus-4-8").build();
+        when(conversationRepository.findByIdAndUserId(conversationId, alice))
+                .thenReturn(Optional.of(conversation));
+        stubMessageSaveEchoesWithId();
+        when(messageRepository.findByConversationIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
+        UUID fileId = UUID.randomUUID();
+        UploadedFile file = UploadedFile.builder()
+                .id(fileId).userId(alice).providerFileId("file_abc")
+                .filename("rapport.pdf").mediaType("application/pdf").sizeBytes(4).build();
+        when(uploadedFileRepository.findByIdAndUserId(fileId, alice)).thenReturn(Optional.of(file));
+        when(aiProvider.complete(any(ChatCompletionRequest.class)))
+                .thenReturn(new ChatCompletionResult("Reçu", "claude-opus-4-8", 1, 1));
+
+        chatService.reply(alice, conversationId, "Analyse", null, List.of(fileId));
+
+        ArgumentCaptor<UploadedFile> fileCaptor = ArgumentCaptor.forClass(UploadedFile.class);
+        verify(uploadedFileRepository).save(fileCaptor.capture());
+        assertThat(fileCaptor.getValue().getConversationId()).isEqualTo(conversationId);
+    }
+
+    @Test
+    void doesNotReassignAttachmentAlreadyLinkedToConversation() {
+        UUID conversationId = UUID.randomUUID();
+        UUID otherConversationId = UUID.randomUUID();
+        Conversation conversation = Conversation.builder()
+                .id(conversationId).userId(alice).title("t").model("claude-opus-4-8").build();
+        when(conversationRepository.findByIdAndUserId(conversationId, alice))
+                .thenReturn(Optional.of(conversation));
+        stubMessageSaveEchoesWithId();
+        when(messageRepository.findByConversationIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
+        UUID fileId = UUID.randomUUID();
+        UploadedFile file = UploadedFile.builder()
+                .id(fileId).userId(alice).conversationId(otherConversationId).providerFileId("file_abc")
+                .filename("rapport.pdf").mediaType("application/pdf").sizeBytes(4).build();
+        when(uploadedFileRepository.findByIdAndUserId(fileId, alice)).thenReturn(Optional.of(file));
+        when(aiProvider.complete(any(ChatCompletionRequest.class)))
+                .thenReturn(new ChatCompletionResult("Reçu", "claude-opus-4-8", 1, 1));
+
+        chatService.reply(alice, conversationId, "Analyse", null, List.of(fileId));
+
+        // Association immuable : le fichier déjà rattaché n'est pas ré-enregistré ni déplacé.
+        verify(uploadedFileRepository, never()).save(any());
+        assertThat(file.getConversationId()).isEqualTo(otherConversationId);
+    }
+
+    @Test
     void rejectsAttachmentOwnedByAnotherUser() {
         UUID conversationId = UUID.randomUUID();
         UUID fileId = UUID.randomUUID();

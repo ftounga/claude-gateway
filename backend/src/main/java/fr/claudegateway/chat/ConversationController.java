@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.chat.dto.ConversationDetailResponse;
+import fr.claudegateway.chat.dto.ConversationFileResponse;
 import fr.claudegateway.chat.dto.ConversationSummaryResponse;
 import fr.claudegateway.chat.dto.RenameConversationRequest;
 import jakarta.validation.Valid;
@@ -48,6 +49,18 @@ public class ConversationController {
         Conversation conversation = conversationService.getOwned(id, userId);
         List<Message> messages = conversationService.messagesOf(id, userId);
         return ConversationDetailResponse.from(conversation, messages);
+    }
+
+    /**
+     * Dossier de fichiers de la conversation (F-23) : les fichiers téléversés rattachés à cette
+     * conversation, du plus récent au plus ancien. Isolation {@code user_id} (conversation d'autrui → 404).
+     */
+    @GetMapping("/{id}/files")
+    public List<ConversationFileResponse> files(@PathVariable UUID id) {
+        UUID userId = currentUser.requireId();
+        return conversationService.filesOf(id, userId).stream()
+                .map(ConversationFileResponse::from)
+                .toList();
     }
 
     @PatchMapping("/{id}")

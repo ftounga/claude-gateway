@@ -42,6 +42,15 @@ public class UploadedFile {
     @Column(name = "user_id", nullable = false, updatable = false)
     private UUID userId;
 
+    /**
+     * Conversation à laquelle le fichier a été rattaché lors d'un tour de chat (F-23). {@code null}
+     * tant que le fichier n'a jamais été joint à un message. Stampée au premier rattachement
+     * (« premier rattachement gagne »). FK {@code ON DELETE SET NULL} : supprimer la conversation
+     * détache le fichier sans détruire ses métadonnées.
+     */
+    @Column(name = "conversation_id")
+    private UUID conversationId;
+
     /** Identifiant du fichier chez le fournisseur (interne, jamais exposé au client). */
     @Column(name = "provider_file_id", nullable = false, updatable = false, length = 128)
     private String providerFileId;
