@@ -1,8 +1,18 @@
-# Déploiement — claude-gateway (staging)
+# Déploiement — claude-gateway (production)
+
+> **⚠️ Un seul environnement = la PRODUCTION.** Le namespace s'appelle historiquement
+> `claude-gateway-staging` et l'app tourne sous le profil Spring `staging`, mais **c'est la
+> production de fait** : elle sert le domaine public `portal.ng-itconsulting.com` avec de vrais
+> utilisateurs. Il n'existe **pas** d'environnement de staging distinct. L'overlay
+> `k8s/overlays/production` est un **squelette non déployé** — ne pas l'appliquer en l'état (il
+> pointe vers un profil `prod` inexistant et perdrait la config actuelle). Les identifiants
+> techniques (`claude-gateway-staging`, profil `staging`) sont conservés tels quels : les renommer
+> imposerait de recréer le namespace vivant, pour un bénéfice purement cosmétique (décision : on
+> assume le nom legacy). Voir la mémoire projet `staging-deployment` / `single-env-is-prod`.
 
 Déploiement dans le cluster EKS partagé **`legalcase-shared`** (AWS `504895205419`, eu-west-3),
-workspace dédié (namespace **`claude-gateway-staging`**), exposé sur **`portal.ng-itconsulting.com`**.
-RDS PostgreSQL **partagé avec legalcase**, base dédiée `claudegatewaydb`.
+workspace dédié (namespace **`claude-gateway-staging`** = **production**), exposé sur
+**`portal.ng-itconsulting.com`**. RDS PostgreSQL **partagé avec legalcase**, base dédiée `claudegatewaydb`.
 
 ## Pré-requis
 - `aws-cli` authentifié sur le profil **`legalcase-terraform`** (`aws sts get-caller-identity` OK).
