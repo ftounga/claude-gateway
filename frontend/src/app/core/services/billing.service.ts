@@ -7,6 +7,8 @@ import {
   CheckoutResponse,
   PlansResponse,
   SubscriptionView,
+  TopUpCheckoutRequest,
+  TopUpPacksResponse,
 } from '../models/billing.models';
 
 /**
@@ -32,5 +34,16 @@ export class BillingService {
   startCheckout(planCode: string): Observable<CheckoutResponse> {
     const body: CheckoutRequest = { planCode };
     return this.http.post<CheckoutResponse>('/api/billing/checkout', body);
+  }
+
+  /** Catalogue des packs de tokens rachetables (top-up F-21). */
+  getTopUps(): Observable<TopUpPacksResponse> {
+    return this.http.get<TopUpPacksResponse>('/api/billing/topups');
+  }
+
+  /** Crée une session de paiement one-shot pour le rachat d'un pack de tokens. */
+  startTopUpCheckout(packCode: string): Observable<CheckoutResponse> {
+    const body: TopUpCheckoutRequest = { packCode };
+    return this.http.post<CheckoutResponse>('/api/billing/topup/checkout', body);
   }
 }

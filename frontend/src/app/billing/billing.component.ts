@@ -12,7 +12,12 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { BillingService } from '../core/services/billing.service';
 import { UsageService } from '../core/services/usage.service';
 import { ApiError } from '../core/models/auth.models';
-import { Plan, SubscriptionStatus, SubscriptionView } from '../core/models/billing.models';
+import {
+  Plan,
+  SubscriptionStatus,
+  SubscriptionView,
+  TopUpPack,
+} from '../core/models/billing.models';
 import { UsageView } from '../core/models/usage.models';
 
 /** Métadonnées d'affichage d'un statut d'abonnement (libellé + classe de badge). */
@@ -48,6 +53,10 @@ export class BillingComponent implements OnInit {
   readonly loading = signal(true);
   /** Code du plan dont le checkout est en cours (désactive le bouton correspondant). */
   readonly checkoutInProgress = signal<string | null>(null);
+  /** Packs de tokens rachetables (top-up F-21). */
+  readonly topUpPacks = signal<TopUpPack[]>([]);
+  /** Code du pack dont le rachat est en cours (désactive le bouton correspondant). */
+  readonly topUpInProgress = signal<string | null>(null);
 
   ngOnInit(): void {
     const checkout = this.route.snapshot.queryParamMap.get('checkout');
@@ -59,6 +68,15 @@ export class BillingComponent implements OnInit {
     this.loadSubscription();
     this.loadUsage();
     this.loadPlans();
+    this.loadTopUps();
+  }
+
+  loadTopUps(): void {
+    this.billingService.getTopUps().subscribe({
+      next: (res) => this.topUpPacks.set(res.packs),
+      // Échec non bloquant : la section « Racheter des tokens » reste simplement masquée.
+      error: () => this.topUpPacks.set([]),
+    });
   }
 
   loadUsage(): void {
@@ -102,6 +120,26 @@ export class BillingComponent implements OnInit {
           apiError?.error === 'billing_unavailable'
             ? 'La facturation est momentanément indisponible.'
             : 'Impossible de démarrer le paiement.';
+        this.notify(message, 'snack-error');
+      },
+    });
+  }
+
+  /** Lance le rachat d'un pack de tokens (top-up F-21) et redirige vers le paiement Stripe. */
+  buyTopUp(packCode: string): void {
+    if (this.topUpInProgress()) {
+      return;
+    }
+    this.topUpInProgress.set(packCode);
+    this.billingService.startTopUpCheckout(packCode).subscribe({
+      next: (res) => this.redirect(res.checkoutUrl),
+      error: (error: HttpErrorResponse) => {
+        this.topUpInProgress.set(null);
+        const apiError = error.error as ApiError | undefined;
+        const message =
+          apiError?.error === 'billing_unavailable'
+            ? 'La facturation est momentanément indisponible.'
+            : 'Impossible de démarrer le rachat de tokens.';
         this.notify(message, 'snack-error');
       },
     });
