@@ -2,6 +2,7 @@ package fr.claudegateway.email;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 /**
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Service;
  * Aucun autre secret (mot de passe, hash) n'est journalisé.</p>
  */
 @Service
+@ConditionalOnProperty(prefix = "app.email", name = "provider", havingValue = "logging", matchIfMissing = true)
 public class LoggingEmailService implements EmailService {
 
     private static final Logger log = LoggerFactory.getLogger(LoggingEmailService.class);

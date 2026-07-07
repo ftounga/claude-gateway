@@ -3,6 +3,20 @@ spring:
     name: claude-gateway-backend
   profiles:
     active: dev
+  mail:
+    # SMTP transactionnel (vérification d'adresse, reset mot de passe). Actif seulement si
+    # MAIL_HOST est fourni par l'environnement (secrets legalcase réutilisés) ; sinon aucune
+    # autoconfiguration JavaMailSender et l'e-mail retombe sur le provider `logging` (dev).
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS:true}
   servlet:
     multipart:
       # Plafonds de téléversement (F-04). Alignés sur app.upload.max-size (défaut 32 Mo) ; la marge
@@ -25,6 +39,12 @@ app:
   # URL du frontend, utilisée pour construire les liens d'e-mail (vérification, reset) et
   # la redirection post-connexion OAuth.
   frontend-url: ${APP_FRONTEND_URL:http://localhost:4200}
+  email:
+    # Fournisseur d'e-mail : `logging` par défaut (dev/tests, journalise le lien sans SMTP) ;
+    # `smtp` en prod (SmtpEmailService via JavaMailSender, config spring.mail.* ci-dessus).
+    provider: ${APP_EMAIL_PROVIDER:logging}
+    # Adresse expéditeur (From) des e-mails transactionnels. Réutilise MAIL_FROM (secret legalcase).
+    from: ${MAIL_FROM:no-reply@ng-itconsulting.com}
   admin:
     # Super-admin (F-20) : cet e-mail est autorisé sur l'API admin et promu ADMIN au démarrage.
     super-admin-email: ${SUPER_ADMIN_EMAIL:ntounga@gmail.com}
@@ -49,7 +69,9 @@ app:
       # Accès AWS via chaîne de credentials par défaut (IRSA) — aucun secret en dur ni journalisé.
       # Le bucket S3 est requis pour l'OCR asynchrone (PDF/TIFF) ; absent => async indisponible.
       region: ${APP_OCR_TEXTRACT_REGION:eu-west-3}
-      s3-bucket: ${APP_OCR_TEXTRACT_S3_BUCKET:}
+      # Bucket S3 pour l'OCR asynchrone (PDF/TIFF). Réutilise le bucket applicatif legalcase
+      # (secret S3_BUCKET) si APP_OCR_TEXTRACT_S3_BUCKET n'est pas explicitement fourni.
+      s3-bucket: ${APP_OCR_TEXTRACT_S3_BUCKET:${S3_BUCKET:}}
       s3-prefix: ${APP_OCR_TEXTRACT_S3_PREFIX:ocr-inbound/}
   rag:
     # Ingestion RAG (F-06). Stockage vectoriel `noop` par défaut (dev/tests/H2 : pas de colonne
