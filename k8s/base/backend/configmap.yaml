@@ -8,3 +8,11 @@ data:
   S3_REGION: "eu-west-3"
   S3_PATH_STYLE_ACCESS: "false"
   APP_FRONTEND_URL: "https://portal.ng-itconsulting.com"
+  # Fournisseurs réels activés (retrait des bouchons). OCR via AWS Textract (bucket = secret
+  # S3_BUCKET, droits via IRSA claude-gateway-backend-staging-irsa) ; embeddings RAG `local`
+  # (in-process, sans clé ni réseau) + stockage pgvector (colonne chunks.embedding déjà en base) ;
+  # e-mail SMTP réel (config spring.mail.* depuis les secrets MAIL_*).
+  APP_OCR_PROVIDER: "textract"
+  APP_RAG_EMBEDDING_PROVIDER: "local"
+  APP_RAG_VECTOR_STORE: "pgvector"
+  APP_EMAIL_PROVIDER: "smtp"
