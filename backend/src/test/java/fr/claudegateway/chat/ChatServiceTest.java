@@ -51,6 +51,9 @@ class ChatServiceTest {
     private fr.claudegateway.ocr.DocumentRepository documentRepository;
 
     @Mock
+    private MessageLibraryDocumentRepository messageLibraryDocumentRepository;
+
+    @Mock
     private AIProvider aiProvider;
 
     @Mock
@@ -77,7 +80,8 @@ class ChatServiceTest {
             }
         };
         chatService = new ChatService(conversationRepository, messageRepository, uploadedFileRepository,
-                documentRepository, aiProvider, modelCatalog, quotaService, byokKeyService);
+                documentRepository, messageLibraryDocumentRepository, aiProvider, modelCatalog, quotaService,
+                byokKeyService);
     }
 
     /** Persiste le message avec un id simulé et renvoie l'entité (comportement JpaRepository.save). */
@@ -327,7 +331,7 @@ class ChatServiceTest {
     // ---- F-24 : import d'un document de la bibliothèque personnelle comme contexte ----
 
     @Test
-    void injectsLibraryDocumentTextAsLeadingProviderContext() {
+    void linksImportedLibraryDocumentToMessage() {
         prepareExistingConversation();
         UUID docId = UUID.randomUUID();
         fr.claudegateway.ocr.Document document = fr.claudegateway.ocr.Document.builder()
@@ -340,12 +344,14 @@ class ChatServiceTest {
 
         chatService.reply(alice, UUID.randomUUID(), "Résume ce CV", null, null, List.of(docId));
 
-        ArgumentCaptor<ChatCompletionRequest> reqCaptor = ArgumentCaptor.forClass(ChatCompletionRequest.class);
-        verify(aiProvider).complete(reqCaptor.capture());
-        // Le contexte documentaire est injecté en tête (position 0), rôle USER, avec nom + texte.
-        fr.claudegateway.ai.ChatMessage first = reqCaptor.getValue().messages().get(0);
-        assertThat(first.role()).isEqualTo(fr.claudegateway.ai.ChatRole.USER);
-        assertThat(first.content()).contains("cv.pdf").contains("Jean Dupont — développeur Java");
+        // Le lien message ↔ document est persisté (SF-24-03) : le texte est ré-injecté à chaque tour
+        // depuis ce lien à la reconstruction de l'historique. L'injection bout-en-bout est couverte en
+        // intégration (le stub d'historique ici est vide, donc pas de reconstruction à vérifier en unit).
+        ArgumentCaptor<MessageLibraryDocument> linkCaptor =
+                ArgumentCaptor.forClass(MessageLibraryDocument.class);
+        verify(messageLibraryDocumentRepository).save(linkCaptor.capture());
+        assertThat(linkCaptor.getValue().getDocumentId()).isEqualTo(docId);
+        assertThat(linkCaptor.getValue().getMessageId()).isNotNull();
     }
 
     @Test

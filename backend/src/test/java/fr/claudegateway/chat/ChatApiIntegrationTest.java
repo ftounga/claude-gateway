@@ -110,6 +110,9 @@ class ChatApiIntegrationTest {
     private fr.claudegateway.ocr.DocumentRepository documentRepository;
 
     @Autowired
+    private MessageLibraryDocumentRepository messageLibraryDocumentRepository;
+
+    @Autowired
     private JwtService jwtService;
 
     @Autowired
@@ -129,6 +132,7 @@ class ChatApiIntegrationTest {
     @BeforeEach
     void setUp() {
         userApiKeyRepository.deleteAll();
+        messageLibraryDocumentRepository.deleteAll();
         uploadedFileRepository.deleteAll();
         documentRepository.deleteAll();
         conversationRepository.deleteAll();
@@ -376,9 +380,43 @@ class ChatApiIntegrationTest {
                         .content("{\"message\":\"Résume ce CV\",\"libraryDocumentIds\":[\"" + doc.getId() + "\"]}"))
                 .andExpect(status().isOk());
 
-        // Le texte du document est présent dans la requête relayée au fournisseur, en tête (contexte).
-        org.assertj.core.api.Assertions.assertThat(stubAIProvider.lastRequest.messages().get(0).content())
-                .contains("cv.pdf").contains("Jean Dupont, développeur Java senior.");
+        // Le texte du document est présent dans la requête relayée au fournisseur (préfixé au message
+        // qui l'a importé — SF-24-03).
+        boolean present = stubAIProvider.lastRequest.messages().stream()
+                .anyMatch(m -> m.content().contains("cv.pdf")
+                        && m.content().contains("Jean Dupont, développeur Java senior."));
+        org.assertj.core.api.Assertions.assertThat(present).isTrue();
+    }
+
+    @Test
+    void keepsLibraryDocumentInContextOnLaterTurns() throws Exception {
+        // Cœur de SF-24-03 : un document importé au tour 1 doit rester dans le contexte au tour 2,
+        // même si le second message ne référence aucun document (comportement claude.ai).
+        fr.claudegateway.ocr.Document doc = saveDocument(alice.getId(), "contrat.pdf",
+                fr.claudegateway.ocr.DocumentStatus.EXTRACTED, "Clause de confidentialité article 7.");
+
+        // Tour 1 : import du document -> crée la conversation.
+        String body = mockMvc.perform(post("/api/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"Résume ce contrat\",\"libraryDocumentIds\":[\"" + doc.getId() + "\"]}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        UUID conversationId = UUID.fromString(com.jayway.jsonpath.JsonPath.read(body, "$.conversationId"));
+
+        // Tour 2 : message SANS libraryDocumentIds, dans la même conversation.
+        mockMvc.perform(post("/api/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"conversationId\":\"" + conversationId + "\",\"message\":\"Et l'article 7 ?\"}"))
+                .andExpect(status().isOk());
+
+        // Au tour 2, le texte du document du tour 1 est TOUJOURS présent dans la requête fournisseur.
+        boolean present = stubAIProvider.lastRequest.messages().stream()
+                .anyMatch(m -> m.content().contains("Clause de confidentialité article 7."));
+        org.assertj.core.api.Assertions.assertThat(present)
+                .as("le document importé au tour 1 doit rester dans le contexte au tour 2")
+                .isTrue();
     }
 
     @Test

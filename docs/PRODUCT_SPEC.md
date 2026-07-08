@@ -91,8 +91,8 @@ sécurisent la monétisation ; settings et landing finalisent l'expérience. Le 
 | F-21 | Rachat de tokens (top-up) | Achat ponctuel de tokens lorsque le budget mensuel est épuisé (au-delà du quota d'abonnement), via Stripe | **Terminée** (SF-21-01→03) |
 | F-22 | Canvas / Artifacts | Panneau latéral pour le contenu généré (code, doc, mail) avec copie et aperçu | **Terminée** (SF-22-01) |
 | F-23 | Dossier de fichiers par conversation | Espace listant tous les fichiers uploadés dans une conversation | **Terminée** (SF-23-01→02) |
-| F-24 | Import bibliothèque → conversation | Importer dans une conversation un document déjà présent dans la bibliothèque personnelle (F-08) : son texte OCR est injecté comme contexte dans l'échange (relais Provider-First, aucun re-téléversement) | **Terminée** (SF-24-01→02) |
-| F-25 | Mémoire des pièces jointes dans la conversation | Les fichiers/images joints restent dans le contexte **tout au long** de la conversation (rejoués à chaque tour, comme claude.ai), pas seulement au message où ils sont joints | **En cours** (SF-25-01 backend) |
+| F-24 | Import bibliothèque → conversation | Importer un document de la bibliothèque personnelle (F-08) dans une conversation : son texte OCR reste dans le contexte **tout au long du fil** (lien message↔document persisté, ré-injecté à chaque tour, comme claude.ai) — interrogeable à l'import et plus tard | **Terminée** (SF-24-01→03) |
+| F-25 | Mémoire des pièces jointes dans la conversation | Les fichiers/images joints restent dans le contexte **tout au long** de la conversation (rejoués à chaque tour, comme claude.ai), pas seulement au message où ils sont joints | **Terminée** (SF-25-01) |
 
 ## Features V3 (backlog — hors périmètre actuel)
 

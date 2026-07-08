@@ -2,8 +2,10 @@ package fr.claudegateway.chat;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -44,6 +46,7 @@ public class ChatService {
     private final MessageRepository messageRepository;
     private final UploadedFileRepository uploadedFileRepository;
     private final DocumentRepository documentRepository;
+    private final MessageLibraryDocumentRepository messageLibraryDocumentRepository;
     private final AIProvider aiProvider;
     private final ModelCatalog modelCatalog;
     private final QuotaService quotaService;
@@ -54,6 +57,7 @@ public class ChatService {
             MessageRepository messageRepository,
             UploadedFileRepository uploadedFileRepository,
             DocumentRepository documentRepository,
+            MessageLibraryDocumentRepository messageLibraryDocumentRepository,
             AIProvider aiProvider,
             ModelCatalog modelCatalog,
             QuotaService quotaService,
@@ -62,6 +66,7 @@ public class ChatService {
         this.messageRepository = messageRepository;
         this.uploadedFileRepository = uploadedFileRepository;
         this.documentRepository = documentRepository;
+        this.messageLibraryDocumentRepository = messageLibraryDocumentRepository;
         this.aiProvider = aiProvider;
         this.modelCatalog = modelCatalog;
         this.quotaService = quotaService;
@@ -88,11 +93,11 @@ public class ChatService {
     }
 
     /**
-     * Variante avec import de documents de la bibliothèque personnelle (F-24) : le texte OCR des
-     * documents désignés par {@code libraryDocumentIds} est injecté comme message de contexte en tête
-     * de la requête fournisseur, sans être persisté dans l'historique de la conversation.
+     * Variante avec import de documents de la bibliothèque personnelle (F-24) : le lien message ↔
+     * documents désignés par {@code libraryDocumentIds} est persisté, et le texte OCR de ces documents
+     * est ré-injecté dans le contexte fournisseur à <b>chaque</b> tour (SF-24-03), comme claude.ai.
      *
-     * @param libraryDocumentIds documents de la bibliothèque à injecter (null/vide = aucun ; max 10)
+     * @param libraryDocumentIds documents de la bibliothèque à importer (null/vide = aucun ; max 10)
      * @throws DocumentNotFoundException si un document est inconnu ou appartient à un autre utilisateur
      * @throws DocumentNotReadyException si un document n'a pas encore de texte exploitable
      */
@@ -105,12 +110,11 @@ public class ChatService {
         quotaService.assertWithinQuota(userId);
         // Rejette tout modèle explicite hors liste blanche, même sur une conversation existante.
         validateRequestedModel(requestedModel);
-        // Validation des pièces jointes AVANT toute écriture : un id d'un autre utilisateur => 404,
-        // sans persister de message ni appeler le fournisseur (isolation user_id).
+        // Validation AVANT toute écriture (isolation user_id) : un id de pièce jointe d'un autre
+        // utilisateur => 404 ; un document de bibliothèque inconnu => 404, non prêt => 409. Aucune
+        // persistance ni appel fournisseur si la validation échoue.
         resolveAttachments(userId, attachmentIds);
-        // Contexte documentaire de la bibliothèque (F-24), résolu AVANT toute écriture : un id d'un
-        // autre utilisateur => 404, un document non prêt => 409, sans persistance ni appel fournisseur.
-        List<ChatMessage> libraryContext = resolveLibraryContext(userId, libraryDocumentIds);
+        validateLibraryDocuments(userId, libraryDocumentIds);
         Conversation conversation = resolveConversation(userId, conversationId, requestedModel, content);
 
         // Persistance du message utilisateur.
@@ -120,20 +124,21 @@ public class ChatService {
                 .role(MessageRole.USER)
                 .content(content)
                 .build());
-        // Rattache les fichiers joints à la conversation (F-23) ET à ce message (F-25) — après la
-        // persistance du message (pour disposer de son id). L'ordre « attachement invalide => 404
-        // sans persistance » reste garanti par resolveAttachments ci-dessus.
+        // Rattache les fichiers joints à la conversation (F-23) ET à ce message (F-25), et lie les
+        // documents de bibliothèque importés à ce message (F-24) — après la persistance du message
+        // (pour disposer de son id). Le tout est rejoué à chaque tour à la reconstruction de l'historique.
         linkAttachmentsToMessage(userId, conversation.getId(), userMessage.getId(), attachmentIds);
+        linkLibraryDocumentsToMessage(userMessage.getId(), libraryDocumentIds);
 
-        // Historique complet (incluant le message tout juste persisté, avec ses pièces jointes)
-        // transmis au fournisseur : chaque message ré-embarque ses fichiers (F-25).
+        // Historique complet (incluant le message tout juste persisté) transmis au fournisseur : chaque
+        // message ré-embarque ses pièces jointes (F-25) et le texte de ses documents importés (F-24).
         List<Message> history = messageRepository.findByConversationIdOrderByCreatedAtAsc(conversation.getId());
         // Mode fournisseur par utilisateur : clé BYOK active si présente (déchiffrée à la volée, jamais
         // persistée ni journalisée), sinon clé plateforme (Hosted). Provider-neutre : la clé n'est
         // qu'un paramètre de la requête.
         String byokApiKey = byokKeyService.resolveActiveApiKey(userId).orElse(null);
         ChatCompletionResult completion = aiProvider.complete(new ChatCompletionRequest(
-                conversation.getModel(), buildProviderMessages(history, libraryContext), List.of(), byokApiKey));
+                conversation.getModel(), toProviderMessages(userId, history), List.of(), byokApiKey));
 
         // Persistance de la réponse assistant.
         Message assistantMessage = messageRepository.save(Message.builder()
@@ -178,7 +183,7 @@ public class ChatService {
         quotaService.assertWithinQuota(userId);
         validateRequestedModel(requestedModel);
         resolveAttachments(userId, attachmentIds);
-        List<ChatMessage> libraryContext = resolveLibraryContext(userId, libraryDocumentIds);
+        validateLibraryDocuments(userId, libraryDocumentIds);
         Conversation conversation = resolveConversation(userId, conversationId, requestedModel, content);
 
         Message userMessage = messageRepository.save(Message.builder()
@@ -187,13 +192,14 @@ public class ChatService {
                 .role(MessageRole.USER)
                 .content(content)
                 .build());
-        // Rattache les fichiers joints à la conversation (F-23) ET à ce message (F-25) — cf. reply().
+        // Rattache fichiers (F-23/F-25) et documents de bibliothèque importés (F-24) à ce message — cf. reply().
         linkAttachmentsToMessage(userId, conversation.getId(), userMessage.getId(), attachmentIds);
+        linkLibraryDocumentsToMessage(userMessage.getId(), libraryDocumentIds);
 
         List<Message> history = messageRepository.findByConversationIdOrderByCreatedAtAsc(conversation.getId());
         String byokApiKey = byokKeyService.resolveActiveApiKey(userId).orElse(null);
         ChatCompletionRequest providerRequest = new ChatCompletionRequest(
-                conversation.getModel(), buildProviderMessages(history, libraryContext), List.of(), byokApiKey);
+                conversation.getModel(), toProviderMessages(userId, history), List.of(), byokApiKey);
 
         return new StreamContext(userId, conversation, userMessage, providerRequest);
     }
@@ -324,56 +330,17 @@ public class ChatService {
     }
 
     /**
-     * Convertit l'historique en messages fournisseur. Chaque message ré-embarque <b>ses propres</b>
-     * pièces jointes (F-25) : elles restent donc dans le contexte à tous les tours suivants (comme
-     * claude.ai), et pas seulement au tour où elles ont été jointes. Chargement groupé des fichiers
-     * par message (évite le N+1) ; l'appartenance est déjà garantie par la possession de la conversation.
-     */
-    private List<ChatMessage> toProviderMessages(List<Message> history) {
-        if (history.isEmpty()) {
-            return new ArrayList<>();
-        }
-        List<UUID> messageIds = history.stream().map(Message::getId).toList();
-        Map<UUID, List<ProviderAttachment>> attachmentsByMessage = new HashMap<>();
-        for (UploadedFile file : uploadedFileRepository.findByMessageIdInOrderByCreatedAtAsc(messageIds)) {
-            attachmentsByMessage
-                    .computeIfAbsent(file.getMessageId(), key -> new ArrayList<>())
-                    .add(new ProviderAttachment(file.getProviderFileId(), file.getMediaType()));
-        }
-        List<ChatMessage> messages = new ArrayList<>(history.size());
-        for (Message message : history) {
-            ChatRole role = message.getRole() == MessageRole.ASSISTANT ? ChatRole.ASSISTANT : ChatRole.USER;
-            List<ProviderAttachment> attachments =
-                    attachmentsByMessage.getOrDefault(message.getId(), List.of());
-            messages.add(new ChatMessage(role, message.getContent(), attachments));
-        }
-        return messages;
-    }
-
-    /**
-     * Construit la liste de messages fournisseur : le contexte documentaire de la bibliothèque (F-24),
-     * s'il existe, est inséré en tête, suivi de l'historique de la conversation.
-     */
-    private List<ChatMessage> buildProviderMessages(List<Message> history, List<ChatMessage> libraryContext) {
-        List<ChatMessage> messages = toProviderMessages(history);
-        messages.addAll(0, libraryContext);
-        return messages;
-    }
-
-    /**
-     * Résout les documents de la bibliothèque personnelle (F-08) désignés en messages de contexte
-     * fournisseur (F-24). Chaque document est relu sous double filtre {@code id} + {@code user_id}
-     * (isolation multi-tenant) ; son texte extrait est injecté tel quel (relais Provider-First, aucun
-     * ré-traitement), tronqué au garde-fou {@link #LIBRARY_DOCUMENT_TEXT_MAX}.
+     * Valide les documents de bibliothèque importés (F-24), <b>avant</b> toute écriture : chaque
+     * document est relu sous double filtre {@code id} + {@code user_id} (isolation) et doit disposer
+     * d'un texte extrait exploitable. Ne persiste rien (le lien est posé après la sauvegarde du message).
      *
      * @throws DocumentNotFoundException si un id est inconnu ou appartient à un autre utilisateur
      * @throws DocumentNotReadyException si le texte du document n'est pas encore disponible
      */
-    private List<ChatMessage> resolveLibraryContext(UUID userId, List<UUID> libraryDocumentIds) {
+    private void validateLibraryDocuments(UUID userId, List<UUID> libraryDocumentIds) {
         if (libraryDocumentIds == null || libraryDocumentIds.isEmpty()) {
-            return List.of();
+            return;
         }
-        List<ChatMessage> context = new ArrayList<>(libraryDocumentIds.size());
         for (UUID id : libraryDocumentIds) {
             Document document = documentRepository.findByIdAndUserId(id, userId)
                     .orElseThrow(() -> new DocumentNotFoundException("Document introuvable : " + id));
@@ -382,13 +349,105 @@ public class ChatService {
                 throw new DocumentNotReadyException(
                         "Le document « " + document.getFilename() + " » n'a pas encore de texte exploitable.");
             }
+        }
+    }
+
+    /**
+     * Persiste le lien message ↔ documents de bibliothèque importés (F-24). Ces liens permettent de
+     * ré-injecter le texte des documents à chaque tour (reconstruction de l'historique), comme claude.ai.
+     */
+    private void linkLibraryDocumentsToMessage(UUID messageId, List<UUID> libraryDocumentIds) {
+        if (libraryDocumentIds == null || libraryDocumentIds.isEmpty()) {
+            return;
+        }
+        for (UUID documentId : libraryDocumentIds) {
+            messageLibraryDocumentRepository.save(MessageLibraryDocument.builder()
+                    .messageId(messageId)
+                    .documentId(documentId)
+                    .build());
+        }
+    }
+
+    /**
+     * Convertit l'historique en messages fournisseur. Chaque message ré-embarque <b>ses propres</b>
+     * pièces jointes (F-25) et le texte de <b>ses</b> documents de bibliothèque importés (F-24) : les
+     * deux restent donc dans le contexte à tous les tours suivants (comme claude.ai), pas seulement au
+     * tour où ils ont été ajoutés. Chargements groupés (évitent le N+1). Isolation défensive : seuls
+     * les documents appartenant à l'utilisateur sont ré-injectés.
+     */
+    private List<ChatMessage> toProviderMessages(UUID userId, List<Message> history) {
+        if (history.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<UUID> messageIds = history.stream().map(Message::getId).toList();
+
+        // Pièces jointes par message (F-25).
+        Map<UUID, List<ProviderAttachment>> attachmentsByMessage = new HashMap<>();
+        for (UploadedFile file : uploadedFileRepository.findByMessageIdInOrderByCreatedAtAsc(messageIds)) {
+            attachmentsByMessage
+                    .computeIfAbsent(file.getMessageId(), key -> new ArrayList<>())
+                    .add(new ProviderAttachment(file.getProviderFileId(), file.getMediaType()));
+        }
+
+        // Documents de bibliothèque importés par message (F-24), puis chargement groupé des documents.
+        Map<UUID, List<UUID>> documentIdsByMessage = new HashMap<>();
+        Set<UUID> allDocumentIds = new HashSet<>();
+        for (MessageLibraryDocument link
+                : messageLibraryDocumentRepository.findByMessageIdInOrderByCreatedAtAsc(messageIds)) {
+            documentIdsByMessage
+                    .computeIfAbsent(link.getMessageId(), key -> new ArrayList<>())
+                    .add(link.getDocumentId());
+            allDocumentIds.add(link.getDocumentId());
+        }
+        Map<UUID, Document> documentsById = new HashMap<>();
+        if (!allDocumentIds.isEmpty()) {
+            for (Document document : documentRepository.findAllById(allDocumentIds)) {
+                if (document.getUserId().equals(userId)) {
+                    documentsById.put(document.getId(), document);
+                }
+            }
+        }
+
+        List<ChatMessage> messages = new ArrayList<>(history.size());
+        for (Message message : history) {
+            ChatRole role = message.getRole() == MessageRole.ASSISTANT ? ChatRole.ASSISTANT : ChatRole.USER;
+            List<ProviderAttachment> attachments =
+                    attachmentsByMessage.getOrDefault(message.getId(), List.of());
+            String content = withLibraryContext(
+                    message.getContent(), documentIdsByMessage.get(message.getId()), documentsById);
+            messages.add(new ChatMessage(role, content, attachments));
+        }
+        return messages;
+    }
+
+    /**
+     * Préfixe le contenu d'un message avec le texte OCR des documents de bibliothèque qui y sont liés
+     * (F-24). Relais Provider-First (texte déjà extrait, aucun ré-traitement), tronqué au garde-fou
+     * {@link #LIBRARY_DOCUMENT_TEXT_MAX}. Le message persisté reste inchangé : le préfixe n'existe
+     * qu'au moment de l'appel fournisseur.
+     */
+    private String withLibraryContext(String content, List<UUID> documentIds,
+            Map<UUID, Document> documentsById) {
+        if (documentIds == null || documentIds.isEmpty()) {
+            return content;
+        }
+        StringBuilder prefix = new StringBuilder();
+        for (UUID documentId : documentIds) {
+            Document document = documentsById.get(documentId);
+            if (document == null) {
+                continue;
+            }
+            String text = document.getExtractedText();
+            if (text == null || text.isBlank()) {
+                continue;
+            }
             if (text.length() > LIBRARY_DOCUMENT_TEXT_MAX) {
                 text = text.substring(0, LIBRARY_DOCUMENT_TEXT_MAX);
             }
-            context.add(new ChatMessage(ChatRole.USER,
-                    "Document de la bibliothèque « " + document.getFilename() + " » :\n\n" + text));
+            prefix.append("Document de la bibliothèque « ").append(document.getFilename())
+                    .append(" » :\n\n").append(text).append("\n\n---\n\n");
         }
-        return context;
+        return prefix.length() == 0 ? content : prefix.append(content).toString();
     }
 
     /** Résultat interne d'un tour de chat. */
