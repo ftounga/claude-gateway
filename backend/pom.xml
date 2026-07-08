@@ -124,6 +124,14 @@
 			<groupId>software.amazon.awssdk</groupId>
 			<artifactId>s3</artifactId>
 		</dependency>
+		<!-- AWS STS : requis par la chaîne de credentials par défaut pour échanger le token
+		     web-identity de l'IRSA (AssumeRoleWithWebIdentity) contre des credentials temporaires.
+		     Sans ce module, WebIdentityTokenCredentialsProvider échoue et AUCUN service AWS
+		     (Textract, S3, KMS) ne peut s'authentifier en cluster. -->
+		<dependency>
+			<groupId>software.amazon.awssdk</groupId>
+			<artifactId>sts</artifactId>
+		</dependency>
 		<!-- AWS KMS : envelope encryption des clés API BYOK (F-03, OQ-06). Confiné à
 		     fr.claudegateway.byok.KmsEnvelopeCipher (le domaine ne dépend jamais du SDK). -->
 		<dependency>
