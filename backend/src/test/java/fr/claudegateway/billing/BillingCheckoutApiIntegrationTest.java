@@ -222,8 +222,9 @@ class BillingCheckoutApiIntegrationTest {
         mockMvc.perform(get("/api/billing/topups").contextPath("/api")
                         .header("Authorization", "Bearer " + aliceToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.packs[0].code", is("STANDARD")))
-                .andExpect(jsonPath("$.packs[0].tokens", is(1000000)));
+                // Deux packs disponibles (Pass journée + Recharge), ordre non contraint.
+                .andExpect(jsonPath("$.packs[*].code", org.hamcrest.Matchers.hasItems("DAY", "STANDARD")))
+                .andExpect(jsonPath("$.packs[*].tokens", org.hamcrest.Matchers.hasItems(200000, 1000000)));
     }
 
     @Test

@@ -10,7 +10,7 @@ import org.springframework.boot.context.properties.NestedConfigurationProperty;
  * (clé secrète, secret de webhook) proviennent exclusivement de l'environnement et ne sont jamais
  * journalisés (patron identique à la clé Anthropic).
  *
- * @param trialDays durée de l'essai gratuit en jours (défaut 14, PROJECT.md §11.10)
+ * @param trialDays durée de l'essai gratuit en jours (défaut 5, PROJECT.md §11.10)
  * @param stripe    réglages du fournisseur de paiement Stripe (SF-09-02)
  */
 @ConfigurationProperties(prefix = "app.billing")
@@ -20,7 +20,7 @@ public record BillingProperties(
 
     public BillingProperties {
         if (trialDays == null || trialDays <= 0) {
-            trialDays = 14;
+            trialDays = 5;
         }
         if (stripe == null) {
             stripe = new Stripe(null, null, Map.of(), Map.of(), null, null);

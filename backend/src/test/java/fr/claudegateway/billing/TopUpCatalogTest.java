@@ -17,6 +17,12 @@ class TopUpCatalogTest {
     }
 
     @Test
+    void exposesTheDayPass() {
+        assertThat(catalog.find("DAY")).isPresent();
+        assertThat(catalog.find("DAY").orElseThrow().tokens()).isEqualTo(200_000L);
+    }
+
+    @Test
     void findIsCaseInsensitiveAndTrims() {
         assertThat(catalog.find("  standard  ")).isPresent();
         assertThat(catalog.find("Standard")).isPresent();

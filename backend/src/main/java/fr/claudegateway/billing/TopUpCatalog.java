@@ -19,7 +19,8 @@ import org.springframework.util.StringUtils;
 public class TopUpCatalog {
 
     private static final List<TopUpPack> PACKS = List.of(
-            new TopUpPack("STANDARD", "Recharge 1 M tokens", 1_000_000L));
+            new TopUpPack("DAY", "Pass journée — 200 k tokens", 200_000L),
+            new TopUpPack("STANDARD", "Recharge — 1 M tokens", 1_000_000L));
 
     /** Liste immuable des packs du catalogue. */
     public List<TopUpPack> packs() {
