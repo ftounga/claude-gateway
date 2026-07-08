@@ -299,9 +299,45 @@ class ChatApiIntegrationTest {
                         .content("{\"message\":\"Analyse\",\"attachmentIds\":[\"" + file.getId() + "\"]}"))
                 .andExpect(status().isOk());
 
-        org.assertj.core.api.Assertions.assertThat(stubAIProvider.lastRequest.attachments()).hasSize(1);
-        org.assertj.core.api.Assertions.assertThat(
-                stubAIProvider.lastRequest.attachments().get(0).providerFileId()).isEqualTo("file_alice");
+        // F-25 : la pièce jointe est portée par le message utilisateur (dernier message transmis).
+        var messages = stubAIProvider.lastRequest.messages();
+        var attachments = messages.get(messages.size() - 1).attachments();
+        org.assertj.core.api.Assertions.assertThat(attachments).hasSize(1);
+        org.assertj.core.api.Assertions.assertThat(attachments.get(0).providerFileId()).isEqualTo("file_alice");
+    }
+
+    @Test
+    void keepsAttachmentInContextOnLaterTurns() throws Exception {
+        // Cœur de F-25 : un fichier joint au tour 1 doit rester transmis à Claude au tour 2, même si
+        // le second message n'a aucune pièce jointe (comportement claude.ai).
+        fr.claudegateway.upload.UploadedFile file = uploadedFileRepository.save(
+                fr.claudegateway.upload.UploadedFile.builder()
+                        .userId(alice.getId()).providerFileId("file_logo")
+                        .filename("logo.png").mediaType("image/png").sizeBytes(4).build());
+
+        // Tour 1 : message avec la pièce jointe -> crée la conversation.
+        String body = mockMvc.perform(post("/api/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"Décris cette image\",\"attachmentIds\":[\"" + file.getId() + "\"]}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        UUID conversationId = UUID.fromString(com.jayway.jsonpath.JsonPath.read(body, "$.conversationId"));
+
+        // Tour 2 : nouveau message SANS pièce jointe, dans la même conversation.
+        mockMvc.perform(post("/api/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"conversationId\":\"" + conversationId + "\",\"message\":\"Et sa couleur dominante ?\"}"))
+                .andExpect(status().isOk());
+
+        // Au tour 2, l'image du tour 1 est TOUJOURS présente dans la requête relayée au fournisseur.
+        boolean imagePresent = stubAIProvider.lastRequest.messages().stream()
+                .flatMap(m -> m.attachments().stream())
+                .anyMatch(a -> "file_logo".equals(a.providerFileId()));
+        org.assertj.core.api.Assertions.assertThat(imagePresent)
+                .as("la pièce jointe du tour 1 doit rester dans le contexte au tour 2")
+                .isTrue();
     }
 
     @Test

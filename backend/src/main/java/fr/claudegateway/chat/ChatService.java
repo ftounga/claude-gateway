@@ -1,7 +1,9 @@
 package fr.claudegateway.chat;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
@@ -103,16 +105,13 @@ public class ChatService {
         quotaService.assertWithinQuota(userId);
         // Rejette tout modèle explicite hors liste blanche, même sur une conversation existante.
         validateRequestedModel(requestedModel);
-        // Résolution des pièces jointes AVANT toute écriture : un id d'un autre utilisateur => 404,
+        // Validation des pièces jointes AVANT toute écriture : un id d'un autre utilisateur => 404,
         // sans persister de message ni appeler le fournisseur (isolation user_id).
-        List<ProviderAttachment> attachments = resolveAttachments(userId, attachmentIds);
+        resolveAttachments(userId, attachmentIds);
         // Contexte documentaire de la bibliothèque (F-24), résolu AVANT toute écriture : un id d'un
         // autre utilisateur => 404, un document non prêt => 409, sans persistance ni appel fournisseur.
         List<ChatMessage> libraryContext = resolveLibraryContext(userId, libraryDocumentIds);
         Conversation conversation = resolveConversation(userId, conversationId, requestedModel, content);
-        // Rattache les fichiers joints à la conversation (F-23) — après résolution, avant toute écriture
-        // de message, pour que l'ordre « attachement invalide => 404 sans persistance » reste préservé.
-        associateAttachmentsWithConversation(userId, conversation.getId(), attachmentIds);
 
         // Persistance du message utilisateur.
         Message userMessage = messageRepository.save(Message.builder()
@@ -121,15 +120,20 @@ public class ChatService {
                 .role(MessageRole.USER)
                 .content(content)
                 .build());
+        // Rattache les fichiers joints à la conversation (F-23) ET à ce message (F-25) — après la
+        // persistance du message (pour disposer de son id). L'ordre « attachement invalide => 404
+        // sans persistance » reste garanti par resolveAttachments ci-dessus.
+        linkAttachmentsToMessage(userId, conversation.getId(), userMessage.getId(), attachmentIds);
 
-        // Historique complet (incluant le message tout juste persisté) transmis au fournisseur.
+        // Historique complet (incluant le message tout juste persisté, avec ses pièces jointes)
+        // transmis au fournisseur : chaque message ré-embarque ses fichiers (F-25).
         List<Message> history = messageRepository.findByConversationIdOrderByCreatedAtAsc(conversation.getId());
         // Mode fournisseur par utilisateur : clé BYOK active si présente (déchiffrée à la volée, jamais
         // persistée ni journalisée), sinon clé plateforme (Hosted). Provider-neutre : la clé n'est
         // qu'un paramètre de la requête.
         String byokApiKey = byokKeyService.resolveActiveApiKey(userId).orElse(null);
         ChatCompletionResult completion = aiProvider.complete(new ChatCompletionRequest(
-                conversation.getModel(), buildProviderMessages(history, libraryContext), attachments, byokApiKey));
+                conversation.getModel(), buildProviderMessages(history, libraryContext), List.of(), byokApiKey));
 
         // Persistance de la réponse assistant.
         Message assistantMessage = messageRepository.save(Message.builder()
@@ -173,11 +177,9 @@ public class ChatService {
         String content = rawMessage.trim();
         quotaService.assertWithinQuota(userId);
         validateRequestedModel(requestedModel);
-        List<ProviderAttachment> attachments = resolveAttachments(userId, attachmentIds);
+        resolveAttachments(userId, attachmentIds);
         List<ChatMessage> libraryContext = resolveLibraryContext(userId, libraryDocumentIds);
         Conversation conversation = resolveConversation(userId, conversationId, requestedModel, content);
-        // Rattache les fichiers joints à la conversation (F-23), même garantie d'ordre que reply().
-        associateAttachmentsWithConversation(userId, conversation.getId(), attachmentIds);
 
         Message userMessage = messageRepository.save(Message.builder()
                 .conversationId(conversation.getId())
@@ -185,11 +187,13 @@ public class ChatService {
                 .role(MessageRole.USER)
                 .content(content)
                 .build());
+        // Rattache les fichiers joints à la conversation (F-23) ET à ce message (F-25) — cf. reply().
+        linkAttachmentsToMessage(userId, conversation.getId(), userMessage.getId(), attachmentIds);
 
         List<Message> history = messageRepository.findByConversationIdOrderByCreatedAtAsc(conversation.getId());
         String byokApiKey = byokKeyService.resolveActiveApiKey(userId).orElse(null);
         ChatCompletionRequest providerRequest = new ChatCompletionRequest(
-                conversation.getModel(), buildProviderMessages(history, libraryContext), attachments, byokApiKey);
+                conversation.getModel(), buildProviderMessages(history, libraryContext), List.of(), byokApiKey);
 
         return new StreamContext(userId, conversation, userMessage, providerRequest);
     }
@@ -294,25 +298,54 @@ public class ChatService {
      * Chaque fichier est relu sous double filtre {@code id} + {@code user_id} (isolation multi-tenant) ;
      * l'association n'est posée que si elle est encore vide (« premier rattachement gagne », immuable).
      */
-    private void associateAttachmentsWithConversation(UUID userId, UUID conversationId, List<UUID> attachmentIds) {
+    private void linkAttachmentsToMessage(UUID userId, UUID conversationId, UUID messageId,
+            List<UUID> attachmentIds) {
         if (attachmentIds == null || attachmentIds.isEmpty()) {
             return;
         }
         for (UUID id : attachmentIds) {
             uploadedFileRepository.findByIdAndUserId(id, userId).ifPresent(file -> {
+                boolean dirty = false;
+                // « Premier rattachement gagne » (immuable) : un fichier appartient à la conversation
+                // (F-23) et au message (F-25) où il a été joint, et n'y est pas déplacé ensuite.
                 if (file.getConversationId() == null) {
                     file.setConversationId(conversationId);
+                    dirty = true;
+                }
+                if (file.getMessageId() == null) {
+                    file.setMessageId(messageId);
+                    dirty = true;
+                }
+                if (dirty) {
                     uploadedFileRepository.save(file);
                 }
             });
         }
     }
 
+    /**
+     * Convertit l'historique en messages fournisseur. Chaque message ré-embarque <b>ses propres</b>
+     * pièces jointes (F-25) : elles restent donc dans le contexte à tous les tours suivants (comme
+     * claude.ai), et pas seulement au tour où elles ont été jointes. Chargement groupé des fichiers
+     * par message (évite le N+1) ; l'appartenance est déjà garantie par la possession de la conversation.
+     */
     private List<ChatMessage> toProviderMessages(List<Message> history) {
+        if (history.isEmpty()) {
+            return new ArrayList<>();
+        }
+        List<UUID> messageIds = history.stream().map(Message::getId).toList();
+        Map<UUID, List<ProviderAttachment>> attachmentsByMessage = new HashMap<>();
+        for (UploadedFile file : uploadedFileRepository.findByMessageIdInOrderByCreatedAtAsc(messageIds)) {
+            attachmentsByMessage
+                    .computeIfAbsent(file.getMessageId(), key -> new ArrayList<>())
+                    .add(new ProviderAttachment(file.getProviderFileId(), file.getMediaType()));
+        }
         List<ChatMessage> messages = new ArrayList<>(history.size());
         for (Message message : history) {
             ChatRole role = message.getRole() == MessageRole.ASSISTANT ? ChatRole.ASSISTANT : ChatRole.USER;
-            messages.add(new ChatMessage(role, message.getContent()));
+            List<ProviderAttachment> attachments =
+                    attachmentsByMessage.getOrDefault(message.getId(), List.of());
+            messages.add(new ChatMessage(role, message.getContent(), attachments));
         }
         return messages;
     }

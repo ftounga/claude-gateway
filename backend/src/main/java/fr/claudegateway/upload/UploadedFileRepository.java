@@ -1,5 +1,6 @@
 package fr.claudegateway.upload;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -21,6 +22,13 @@ public interface UploadedFileRepository extends JpaRepository<UploadedFile, UUID
      * isolation multi-tenant), du plus récent au plus ancien.
      */
     List<UploadedFile> findByConversationIdAndUserIdOrderByCreatedAtDesc(UUID conversationId, UUID userId);
+
+    /**
+     * Pièces jointes rattachées à un ensemble de messages (F-25), du plus ancien au plus récent.
+     * Chargement groupé (évite le N+1) lors de la reconstruction de l'historique d'une conversation ;
+     * l'appartenance est déjà garantie par la possession de la conversation en amont.
+     */
+    List<UploadedFile> findByMessageIdInOrderByCreatedAtAsc(Collection<UUID> messageIds);
 
     /** Export RGPD : toutes les métadonnées de fichiers d'un utilisateur (isolation {@code user_id}). */
     List<UploadedFile> findByUserId(UUID userId);
