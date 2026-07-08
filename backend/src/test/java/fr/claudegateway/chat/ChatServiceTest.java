@@ -210,7 +210,7 @@ class ChatServiceTest {
     }
 
     @Test
-    void resolvesAttachmentsAndPassesThemToProvider() {
+    void linksAttachmentToMessageAndConversation() {
         prepareExistingConversation();
         UUID fileId = UUID.randomUUID();
         UploadedFile file = UploadedFile.builder()
@@ -222,12 +222,12 @@ class ChatServiceTest {
 
         chatService.reply(alice, UUID.randomUUID(), "Analyse ce doc", null, List.of(fileId));
 
-        ArgumentCaptor<ChatCompletionRequest> reqCaptor = ArgumentCaptor.forClass(ChatCompletionRequest.class);
-        verify(aiProvider).complete(reqCaptor.capture());
-        List<ProviderAttachment> attachments = reqCaptor.getValue().attachments();
-        assertThat(attachments).hasSize(1);
-        assertThat(attachments.get(0).providerFileId()).isEqualTo("file_abc");
-        assertThat(attachments.get(0).mediaType()).isEqualTo("application/pdf");
+        // F-25 : le fichier est rattaché au message (pour être rejoué à chaque tour) ET à la
+        // conversation (F-23). Le forwarding par message à travers l'historique est couvert en intégration.
+        ArgumentCaptor<UploadedFile> fileCaptor = ArgumentCaptor.forClass(UploadedFile.class);
+        verify(uploadedFileRepository).save(fileCaptor.capture());
+        assertThat(fileCaptor.getValue().getMessageId()).isNotNull();
+        assertThat(fileCaptor.getValue().getConversationId()).isNotNull();
     }
 
     @Test
@@ -265,8 +265,11 @@ class ChatServiceTest {
         stubMessageSaveEchoesWithId();
         when(messageRepository.findByConversationIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
         UUID fileId = UUID.randomUUID();
+        UUID otherMessageId = UUID.randomUUID();
+        // Fichier déjà rattaché à une autre conversation ET un autre message (« premier rattachement gagne »).
         UploadedFile file = UploadedFile.builder()
-                .id(fileId).userId(alice).conversationId(otherConversationId).providerFileId("file_abc")
+                .id(fileId).userId(alice).conversationId(otherConversationId).messageId(otherMessageId)
+                .providerFileId("file_abc")
                 .filename("rapport.pdf").mediaType("application/pdf").sizeBytes(4).build();
         when(uploadedFileRepository.findByIdAndUserId(fileId, alice)).thenReturn(Optional.of(file));
         when(aiProvider.complete(any(ChatCompletionRequest.class)))
@@ -274,9 +277,10 @@ class ChatServiceTest {
 
         chatService.reply(alice, conversationId, "Analyse", null, List.of(fileId));
 
-        // Association immuable : le fichier déjà rattaché n'est pas ré-enregistré ni déplacé.
+        // Association immuable : ni la conversation ni le message ne sont réassignés (aucune écriture).
         verify(uploadedFileRepository, never()).save(any());
         assertThat(file.getConversationId()).isEqualTo(otherConversationId);
+        assertThat(file.getMessageId()).isEqualTo(otherMessageId);
     }
 
     @Test

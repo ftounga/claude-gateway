@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      SF-25-01 — Pièces jointes persistées et rejouées dans le fil (F-25).
+      Ajoute `uploaded_files.message_id` (nullable) : rattache un fichier téléversé (F-04) au message
+      de chat précis auquel il a été joint. Permet de re-transmettre la pièce jointe à Claude à CHAQUE
+      tour (reconstruction de l'historique par message), comme claude.ai — et non plus au seul tour où
+      elle est jointe. FK -> messages(id) ON DELETE SET NULL : supprimer un message détache le fichier
+      sans détruire ses métadonnées (donnée RGPD de l'utilisateur). Index pour la lecture par message.
+      Changesets Postgres et H2 en parallèle. Réversible (rollback auto).
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="034-uploaded-files-message-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="uploaded_files">
+            <column name="message_id" type="uuid"/>
+        </addColumn>
+        <addForeignKeyConstraint
+                baseTableName="uploaded_files" baseColumnNames="message_id"
+                referencedTableName="messages" referencedColumnNames="id"
+                constraintName="fk_uploaded_files_message" onDelete="SET NULL"/>
+        <createIndex tableName="uploaded_files" indexName="idx_uploaded_files_message_id">
+            <column name="message_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="034-uploaded-files-message-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="uploaded_files">
+            <column name="message_id" type="uuid"/>
+        </addColumn>
+        <addForeignKeyConstraint
+                baseTableName="uploaded_files" baseColumnNames="message_id"
+                referencedTableName="messages" referencedColumnNames="id"
+                constraintName="fk_uploaded_files_message" onDelete="SET NULL"/>
+        <createIndex tableName="uploaded_files" indexName="idx_uploaded_files_message_id">
+            <column name="message_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

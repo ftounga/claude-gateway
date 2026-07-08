@@ -51,6 +51,14 @@ public class UploadedFile {
     @Column(name = "conversation_id")
     private UUID conversationId;
 
+    /**
+     * Message de chat auquel le fichier est rattaché (F-25). Permet de re-transmettre la pièce jointe
+     * à Claude à chaque tour (reconstruction de l'historique par message), comme claude.ai. FK
+     * {@code ON DELETE SET NULL} : supprimer le message détache le fichier sans détruire ses métadonnées.
+     */
+    @Column(name = "message_id")
+    private UUID messageId;
+
     /** Identifiant du fichier chez le fournisseur (interne, jamais exposé au client). */
     @Column(name = "provider_file_id", nullable = false, updatable = false, length = 128)
     private String providerFileId;

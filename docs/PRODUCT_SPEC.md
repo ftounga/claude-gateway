@@ -92,6 +92,7 @@ sécurisent la monétisation ; settings et landing finalisent l'expérience. Le 
 | F-22 | Canvas / Artifacts | Panneau latéral pour le contenu généré (code, doc, mail) avec copie et aperçu | **Terminée** (SF-22-01) |
 | F-23 | Dossier de fichiers par conversation | Espace listant tous les fichiers uploadés dans une conversation | **Terminée** (SF-23-01→02) |
 | F-24 | Import bibliothèque → conversation | Importer dans une conversation un document déjà présent dans la bibliothèque personnelle (F-08) : son texte OCR est injecté comme contexte dans l'échange (relais Provider-First, aucun re-téléversement) | **Terminée** (SF-24-01→02) |
+| F-25 | Mémoire des pièces jointes dans la conversation | Les fichiers/images joints restent dans le contexte **tout au long** de la conversation (rejoués à chaque tour, comme claude.ai), pas seulement au message où ils sont joints | **En cours** (SF-25-01 backend) |
 
 ## Features V3 (backlog — hors périmètre actuel)
 
