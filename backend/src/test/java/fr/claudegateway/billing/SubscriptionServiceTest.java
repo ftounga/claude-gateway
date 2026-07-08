@@ -78,8 +78,8 @@ class SubscriptionServiceTest {
 
     @Test
     void defaultsTrialDaysWhenPropertyInvalid() {
-        assertThat(new BillingProperties(null, null).trialDays()).isEqualTo(14);
-        assertThat(new BillingProperties(0, null).trialDays()).isEqualTo(14);
-        assertThat(new BillingProperties(-3, null).trialDays()).isEqualTo(14);
+        assertThat(new BillingProperties(null, null).trialDays()).isEqualTo(5);
+        assertThat(new BillingProperties(0, null).trialDays()).isEqualTo(5);
+        assertThat(new BillingProperties(-3, null).trialDays()).isEqualTo(5);
     }
 }

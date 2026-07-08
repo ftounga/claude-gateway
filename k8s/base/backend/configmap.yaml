@@ -16,3 +16,7 @@ data:
   APP_RAG_EMBEDDING_PROVIDER: "local"
   APP_RAG_VECTOR_STORE: "pgvector"
   APP_EMAIL_PROVIDER: "smtp"
+  # URLs de retour Stripe Checkout (F-09/F-21) : après paiement/annulation, retour sur la prod
+  # (et non localhost). Non secret.
+  STRIPE_SUCCESS_URL: "https://portal.ng-itconsulting.com/billing?checkout=success"
+  STRIPE_CANCEL_URL: "https://portal.ng-itconsulting.com/billing?checkout=cancel"

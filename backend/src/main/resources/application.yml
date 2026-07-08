@@ -125,7 +125,7 @@ app:
     local-key: ${APP_BYOK_LOCAL_KEY:}
   billing:
     # Durée de l'essai gratuit en jours (F-09). Décision réversible : ajustable sans changement de code.
-    trial-days: ${APP_BILLING_TRIAL_DAYS:14}
+    trial-days: ${APP_BILLING_TRIAL_DAYS:5}
     stripe:
       # Secrets Stripe (F-09) : fournis EXCLUSIVEMENT par l'environnement, jamais commités ni journalisés.
       # Si secret-key est vide, le billing est dormant (checkout => 503), comme la clé Anthropic.
@@ -138,6 +138,7 @@ app:
         DAILY: ${STRIPE_PRICE_DAILY:}
       # Mapping pack de tokens (top-up, F-21) -> price ID Stripe (paiement one-shot). Par environnement.
       topup-prices:
+        DAY: ${STRIPE_PRICE_TOPUP_DAY:}
         STANDARD: ${STRIPE_PRICE_TOPUP_STANDARD:}
       # URLs de retour Checkout (frontend). Surchargées par environnement.
       success-url: ${STRIPE_SUCCESS_URL:http://localhost:4200/billing?checkout=success}
