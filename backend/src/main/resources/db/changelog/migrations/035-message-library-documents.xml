@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      SF-24-03 — Import bibliothèque interrogeable dans tout le fil (F-24, sur le mécanisme F-25).
+      Table de liaison message <-> document de la bibliothèque (F-08) : mémorise quel document a été
+      importé dans quel message de chat. Permet de ré-injecter le texte OCR du document à CHAQUE tour
+      (reconstruction de l'historique), comme claude.ai — et non plus au seul tour de l'import.
+      FK ON DELETE CASCADE des deux côtés : supprimer le message ou le document retire le lien.
+      Changesets Postgres et H2 en parallèle. Réversible (rollback auto).
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="035-message-library-documents-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="message_library_documents">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="message_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="document_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint
+                baseTableName="message_library_documents" baseColumnNames="message_id"
+                referencedTableName="messages" referencedColumnNames="id"
+                constraintName="fk_mld_message" onDelete="CASCADE"/>
+        <addForeignKeyConstraint
+                baseTableName="message_library_documents" baseColumnNames="document_id"
+                referencedTableName="documents" referencedColumnNames="id"
+                constraintName="fk_mld_document" onDelete="CASCADE"/>
+        <createIndex tableName="message_library_documents" indexName="idx_mld_message_id">
+            <column name="message_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="035-message-library-documents-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="message_library_documents">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="message_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="document_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp with time zone" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint
+                baseTableName="message_library_documents" baseColumnNames="message_id"
+                referencedTableName="messages" referencedColumnNames="id"
+                constraintName="fk_mld_message" onDelete="CASCADE"/>
+        <addForeignKeyConstraint
+                baseTableName="message_library_documents" baseColumnNames="document_id"
+                referencedTableName="documents" referencedColumnNames="id"
+                constraintName="fk_mld_document" onDelete="CASCADE"/>
+        <createIndex tableName="message_library_documents" indexName="idx_mld_message_id">
+            <column name="message_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

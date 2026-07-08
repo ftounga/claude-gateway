@@ -49,6 +49,8 @@ class ChatServiceStreamTest {
     @Mock
     private fr.claudegateway.ocr.DocumentRepository documentRepository;
     @Mock
+    private MessageLibraryDocumentRepository messageLibraryDocumentRepository;
+    @Mock
     private AIProvider aiProvider;
     @Mock
     private QuotaService quotaService;
@@ -72,7 +74,8 @@ class ChatServiceStreamTest {
             }
         };
         chatService = new ChatService(conversationRepository, messageRepository, uploadedFileRepository,
-                documentRepository, aiProvider, modelCatalog, quotaService, byokKeyService);
+                documentRepository, messageLibraryDocumentRepository, aiProvider, modelCatalog, quotaService,
+                byokKeyService);
     }
 
     private void stubSaveEchoesId() {
