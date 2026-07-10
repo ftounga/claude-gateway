@@ -23,7 +23,7 @@ public record BillingProperties(
             trialDays = 5;
         }
         if (stripe == null) {
-            stripe = new Stripe(null, null, Map.of(), Map.of(), null, null);
+            stripe = new Stripe(null, null, Map.of(), Map.of(), null, null, Map.of());
         }
     }
 
@@ -44,7 +44,8 @@ public record BillingProperties(
             Map<String, String> prices,
             Map<String, String> topupPrices,
             String successUrl,
-            String cancelUrl) {
+            String cancelUrl,
+            Map<String, String> displayPrices) {
 
         public Stripe {
             if (prices == null) {
@@ -52,6 +53,9 @@ public record BillingProperties(
             }
             if (topupPrices == null) {
                 topupPrices = Map.of();
+            }
+            if (displayPrices == null) {
+                displayPrices = Map.of();
             }
             if (successUrl == null || successUrl.isBlank()) {
                 successUrl = "http://localhost:4200/billing?checkout=success";
@@ -74,6 +78,11 @@ public record BillingProperties(
         /** Price ID Stripe associé à un pack de tokens (top-up), ou {@code null} si non configuré. */
         public String topupPriceId(String packCode) {
             return topupPrices == null ? null : topupPrices.get(packCode);
+        }
+
+        /** Montant d'affichage (EUR) du plan pour la page de facturation, ou {@code null} si absent. */
+        public String displayPrice(PlanCode code) {
+            return displayPrices == null ? null : displayPrices.get(code.name());
         }
     }
 }

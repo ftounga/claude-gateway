@@ -57,6 +57,8 @@ export class BillingComponent implements OnInit {
   readonly topUpPacks = signal<TopUpPack[]>([]);
   /** Code du pack dont le rachat est en cours (désactive le bouton correspondant). */
   readonly topUpInProgress = signal<string | null>(null);
+  /** Code du plan dont le changement (upgrade/downgrade) est en cours. */
+  readonly changeInProgress = signal<string | null>(null);
 
   ngOnInit(): void {
     const checkout = this.route.snapshot.queryParamMap.get('checkout');
@@ -143,6 +145,78 @@ export class BillingComponent implements OnInit {
         this.notify(message, 'snack-error');
       },
     });
+  }
+
+  /**
+   * Change le plan de l'abonnement existant (upgrade/downgrade, SF-21-05). Ne redirige pas : Stripe
+   * met à jour l'abonnement avec proratisation ; on rafraîchit l'abonnement affiché.
+   */
+  changePlan(planCode: string): void {
+    if (this.changeInProgress()) {
+      return;
+    }
+    this.changeInProgress.set(planCode);
+    this.billingService.changePlan(planCode).subscribe({
+      next: (sub) => {
+        this.changeInProgress.set(null);
+        this.subscription.set(sub);
+        this.notify('Votre plan a été mis à jour.', 'snack-success');
+      },
+      error: (error: HttpErrorResponse) => {
+        this.changeInProgress.set(null);
+        const apiError = error.error as ApiError | undefined;
+        const message =
+          apiError?.error === 'no_active_subscription'
+            ? "Souscrivez d'abord un abonnement pour pouvoir en changer."
+            : 'Impossible de changer de plan.';
+        this.notify(message, 'snack-error');
+      },
+    });
+  }
+
+  /** Vrai si l'utilisateur a un abonnement payant actif (peut donc upgrader/downgrader). */
+  hasActiveSubscription(): boolean {
+    const sub = this.subscription();
+    return !!sub && !!sub.planCode && (sub.status === 'ACTIVE' || sub.status === 'PAST_DUE');
+  }
+
+  /** Vrai si le plan donné est le plan courant de l'utilisateur. */
+  isCurrentPlan(plan: Plan): boolean {
+    return this.subscription()?.planCode === plan.code;
+  }
+
+  /** Tokens du plan courant (0 si aucun / introuvable), pour comparer upgrade vs downgrade. */
+  private currentPlanTokens(): number {
+    const code = this.subscription()?.planCode;
+    return this.plans().find((p) => p.code === code)?.tokens ?? 0;
+  }
+
+  /** Libellé contextuel du bouton d'une offre selon l'état de l'abonnement. */
+  planActionLabel(plan: Plan): string {
+    if (this.isCurrentPlan(plan)) {
+      return 'Plan actuel';
+    }
+    if (!this.hasActiveSubscription()) {
+      return 'Souscrire';
+    }
+    return plan.tokens > this.currentPlanTokens() ? 'Passer à' : 'Revenir à';
+  }
+
+  /** Action du bouton d'une offre : souscription (nouveau) ou changement de plan (existant). */
+  onPlanAction(plan: Plan): void {
+    if (this.isCurrentPlan(plan)) {
+      return;
+    }
+    if (this.hasActiveSubscription()) {
+      this.changePlan(plan.code);
+    } else {
+      this.subscribe(plan.code);
+    }
+  }
+
+  /** Vrai si une action est en cours pour ce plan (bouton en « Traitement… »). */
+  planBusy(plan: Plan): boolean {
+    return this.checkoutInProgress() === plan.code || this.changeInProgress() === plan.code;
   }
 
   /** Redirection vers l'URL de paiement hébergée Stripe. Isolée pour être testable. */

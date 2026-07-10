@@ -30,6 +30,16 @@ app:
   byok:
     # Chiffrement BYOK LOCAL en tests (pas de KMS) : clé maître AES-256 de test uniquement.
     local-key: Ynlvay1sb2NhbC10ZXN0LW1hc3Rlci1rZXktMzJieXQ=
+  billing:
+    # Prix Stripe de TEST : permettent de couvrir la liste des plans (filtrée sur price configuré)
+    # et le changement de plan (SF-21-05). Le fournisseur réel est remplacé par un stub dans les tests.
+    stripe:
+      prices:
+        SOLO: price_solo_test
+        PRO: price_pro_test
+      display-prices:
+        SOLO: "24"
+        PRO: "99"
 logging:
   level:
     fr.claudegateway: DEBUG

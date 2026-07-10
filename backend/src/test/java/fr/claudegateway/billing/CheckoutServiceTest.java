@@ -31,7 +31,7 @@ class CheckoutServiceTest {
         subscriptionService = mock(SubscriptionService.class);
         billingProvider = mock(BillingProvider.class);
         BillingProperties properties = new BillingProperties(14, new BillingProperties.Stripe(
-                "sk_test", "whsec_test", Map.of("PRO", "price_pro"), Map.of(), null, null));
+                "sk_test", "whsec_test", Map.of("PRO", "price_pro"), Map.of(), null, null, Map.of()));
         service = new CheckoutService(new PlanCatalog(), subscriptionService, billingProvider, properties);
     }
 

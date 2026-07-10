@@ -1,5 +1,6 @@
 package fr.claudegateway.billing;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.web.bind.annotation.GetMapping;
@@ -10,12 +11,15 @@ import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.auth.AuthenticatedUser;
 import fr.claudegateway.auth.CurrentUser;
+import fr.claudegateway.billing.dto.ChangePlanRequest;
 import fr.claudegateway.billing.dto.CheckoutRequest;
 import fr.claudegateway.billing.dto.CheckoutResponse;
+import fr.claudegateway.billing.dto.PlanResponse;
 import fr.claudegateway.billing.dto.PlansResponse;
 import fr.claudegateway.billing.dto.SubscriptionResponse;
 import fr.claudegateway.billing.dto.TopUpCheckoutRequest;
 import fr.claudegateway.billing.dto.TopUpPacksResponse;
+import fr.claudegateway.quota.QuotaProperties;
 import jakarta.validation.Valid;
 
 /**
@@ -33,6 +37,8 @@ public class BillingController {
     private final TopUpCatalog topUpCatalog;
     private final TopUpService topUpService;
     private final CurrentUser currentUser;
+    private final BillingProperties billingProperties;
+    private final QuotaProperties quotaProperties;
 
     public BillingController(
             PlanCatalog planCatalog,
@@ -40,19 +46,34 @@ public class BillingController {
             CheckoutService checkoutService,
             TopUpCatalog topUpCatalog,
             TopUpService topUpService,
-            CurrentUser currentUser) {
+            CurrentUser currentUser,
+            BillingProperties billingProperties,
+            QuotaProperties quotaProperties) {
         this.planCatalog = planCatalog;
         this.subscriptionService = subscriptionService;
         this.checkoutService = checkoutService;
         this.topUpCatalog = topUpCatalog;
         this.topUpService = topUpService;
         this.currentUser = currentUser;
+        this.billingProperties = billingProperties;
+        this.quotaProperties = quotaProperties;
     }
 
-    /** Catalogue des plans proposés (sans prix ni price ID Stripe). */
+    /**
+     * Plans proposés à la souscription : uniquement ceux ayant un price Stripe configuré, enrichis du
+     * quota mensuel et du montant d'affichage (SF-21-05). Le price ID Stripe reste interne.
+     */
     @GetMapping("/plans")
     public PlansResponse plans() {
-        return PlansResponse.from(planCatalog.plans());
+        List<PlanResponse> plans = planCatalog.plans().stream()
+                .filter(plan -> org.springframework.util.StringUtils.hasText(
+                        billingProperties.stripe().priceId(plan.code())))
+                .map(plan -> PlanResponse.of(
+                        plan,
+                        quotaProperties.tokensForPlan(plan.code()),
+                        billingProperties.stripe().displayPrice(plan.code())))
+                .toList();
+        return new PlansResponse(plans);
     }
 
     /** Abonnement de l'utilisateur courant (essai provisionné à la volée si absent). */
@@ -69,6 +90,16 @@ public class BillingController {
                 .orElseThrow(() -> new IllegalStateException("Aucun utilisateur authentifié"));
         return CheckoutResponse.from(
                 checkoutService.createCheckout(user.id(), user.email(), request.planCode()));
+    }
+
+    /**
+     * Change le plan de l'abonnement existant (upgrade/downgrade, SF-21-05). 409 si aucun abonnement
+     * actif (souscrire d'abord) ; 400 si plan inconnu.
+     */
+    @PostMapping("/subscription/change")
+    public SubscriptionResponse changePlan(@Valid @RequestBody ChangePlanRequest request) {
+        UUID userId = currentUser.requireId();
+        return SubscriptionResponse.from(subscriptionService.changePlan(userId, request.planCode()));
     }
 
     /** Catalogue des packs de tokens rachetables (top-up, F-21). */

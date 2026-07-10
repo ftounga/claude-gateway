@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import {
+  ChangePlanRequest,
   CheckoutRequest,
   CheckoutResponse,
   PlansResponse,
@@ -34,6 +35,12 @@ export class BillingService {
   startCheckout(planCode: string): Observable<CheckoutResponse> {
     const body: CheckoutRequest = { planCode };
     return this.http.post<CheckoutResponse>('/api/billing/checkout', body);
+  }
+
+  /** Change le plan de l'abonnement existant (upgrade/downgrade, SF-21-05). */
+  changePlan(planCode: string): Observable<SubscriptionView> {
+    const body: ChangePlanRequest = { planCode };
+    return this.http.post<SubscriptionView>('/api/billing/subscription/change', body);
   }
 
   /** Catalogue des packs de tokens rachetables (top-up F-21). */

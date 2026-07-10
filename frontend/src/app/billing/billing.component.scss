@@ -53,10 +53,40 @@
     display: flex;
     flex-direction: column;
     gap: var(--cg-space-3);
+    position: relative;
+
+    &--current {
+      border: 1px solid var(--cg-primary);
+    }
+  }
+
+  &__plan-flag {
+    position: absolute;
+    top: var(--cg-space-3);
+    right: var(--cg-space-3);
   }
 
   &__plan-name {
     margin: 0;
+  }
+
+  &__plan-price {
+    display: flex;
+    align-items: baseline;
+    gap: var(--cg-space-2);
+    margin: 0;
+  }
+
+  &__plan-amount {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--cg-text-primary);
+  }
+
+  &__plan-tokens {
+    margin: 0;
+    color: var(--cg-text-secondary);
+    font-size: 14px;
   }
 
   &__plan-meta {
