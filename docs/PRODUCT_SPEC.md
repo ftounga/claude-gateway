@@ -88,11 +88,13 @@ sécurisent la monétisation ; settings et landing finalisent l'expérience. Le 
 |----|---------|-------------|--------|
 | F-19 | Coquille & navigation | Barre de navigation persistante (toolbar + menu compte) enveloppant les pages authentifiées ; liens Chat/Documents/Q&A/Templates/Rapports/Facturation/Réglages/Profil + **Déconnexion** | **Terminée** (SF-19-01) |
 | F-20 | Console admin & super-admin | Écran d'administration (rôle `ADMIN`) + super-admin (`ntounga@gmail.com`) : liste des utilisateurs, abonnements, consommation | **Terminée** (SF-20-01→02) |
-| F-21 | Rachat de tokens (top-up) | Achat ponctuel de tokens lorsque le budget mensuel est épuisé (au-delà du quota d'abonnement), via Stripe | **Terminée** (SF-21-01→03) |
-| F-22 | Canvas / Artifacts | Panneau latéral pour le contenu généré (code, doc, mail) avec copie et aperçu | **Terminée** (SF-22-01) |
+| F-21 | Facturation & rachat de tokens | Abonnements (SOLO/PRO), packs de rachat (Pass journée / Recharge), page Billing avec plan courant + upgrade/downgrade proratisé, via Stripe (live) | **Terminée** (SF-21-01→05) |
+| F-22 | Canvas / Artifacts | ~~Panneau latéral pour le contenu généré~~ → **refondu (F-26)** : remplacé par un bouton « Copier » par bloc, façon ChatGPT | **Refondu** (voir F-26) |
 | F-23 | Dossier de fichiers par conversation | Espace listant tous les fichiers uploadés dans une conversation | **Terminée** (SF-23-01→02) |
 | F-24 | Import bibliothèque → conversation | Importer un document de la bibliothèque personnelle (F-08) dans une conversation : son texte OCR reste dans le contexte **tout au long du fil** (lien message↔document persisté, ré-injecté à chaque tour, comme claude.ai) — interrogeable à l'import et plus tard | **Terminée** (SF-24-01→03) |
 | F-25 | Mémoire des pièces jointes dans la conversation | Les fichiers/images joints restent dans le contexte **tout au long** de la conversation (rejoués à chaque tour, comme claude.ai), pas seulement au message où ils sont joints | **Terminée** (SF-25-01) |
+| F-26 | Copie de bloc (façon ChatGPT) | Remplace le panneau Canvas global (F-22) : un bouton **« Copier »** directement sur chaque bloc copiable d'une réponse (code, mail, config, doc…). Fini l'agrégation de toute la conversation. | **À faire** (validé 2026-07-10) |
+| F-27 | Refonte charte graphique | Nouvelle identité visuelle **navy / orange / crème** (marque de la landing) appliquée à toute l'app ; abandon de l'indigo `--cg-primary`. | **À faire** (validé 2026-07-10) |
 
 ## Features V3 (backlog — hors périmètre actuel)
 
