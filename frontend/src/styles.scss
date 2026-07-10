@@ -1,4 +1,5 @@
-// Design System claude-gateway — thème "Indigo Tech"
+// Design System claude-gateway — thème "Claude Proxy" (navy / orange / crème)
+// Refonte F-27 (2026-07-10) : abandon de l'identité "Indigo Tech" (--cg-primary indigo).
 // Voir docs/DESIGN_SYSTEM.md (source de vérité).
 @use '@angular/material' as mat;
 
@@ -6,8 +7,8 @@ html {
   @include mat.theme((
     color: (
       theme-type: light,
-      primary: mat.$violet-palette,   // indigo/violet — proche de #4338CA
-      tertiary: mat.$cyan-palette,    // accent cyan — proche de #06B6D4
+      primary: mat.$orange-palette,   // action de marque — proche de l'orange #E07B39
+      tertiary: mat.$azure-palette,   // teinte structurelle froide (famille navy)
     ),
     typography: (
       plain-family: 'Inter',
@@ -19,9 +20,17 @@ html {
 
 // ---- Variables du design system ----
 :root {
-  --cg-primary: #4338CA;
-  --cg-accent: #06B6D4;
-  --cg-bg: #F8FAFC;
+  // Palette de marque Claude Proxy (dérivée du logo) — voir DESIGN_SYSTEM.md §Palette.
+  --cg-navy: #0B1020;
+  --cg-navy-2: #141D33;
+  --cg-orange: #E07B39;
+  --cg-orange-2: #F0954F;
+  --cg-cream: #F5EFE3;
+
+  // Rôles applicatifs (F-27) : navy = structure, orange = action/état actif, crème = fond.
+  --cg-primary: #0B1020;   // navy — header/toolbar, bulle message utilisateur, snackbar info
+  --cg-accent: #E07B39;    // orange — états actifs, liens, highlights, barres de progression
+  --cg-bg: #F5EFE3;        // crème — fond de page
   --cg-surface: #FFFFFF;
   --cg-error: #DC2626;
   --cg-success: #16A34A;
@@ -78,7 +87,7 @@ code, pre { font-family: var(--cg-font-mono); }
   &--warning { background: #FFF8E1; color: #F9A825; }
   &--error   { background: #FFEBEE; color: var(--cg-error); }
   &--neutral { background: #F5F5F5; color: var(--cg-text-secondary); }
-  &--info    { background: #EEF2FF; color: var(--cg-primary); }
+  &--info    { background: #E7EAF3; color: var(--cg-primary); }
 }
 
 // ---- Surcharges Material ----

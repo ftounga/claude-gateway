@@ -16,24 +16,30 @@ Toute divergence doit être explicitement signalée et validée.
 à des consultants exigeants. Sobriété > effets ; lisibilité > densité.
 
 **Logo** :
-- Monogramme « cg » minimaliste, ou un chevron `>` de prompt formant une porte stylisée (gateway), en dégradé indigo → cyan sur fond clair.
+- Logo « Claude Proxy » (`frontend/public/claude-proxy-logo.png`) : bouclier hexagonal navy, tête + étincelle orange, bulle de chat, orbite.
 - Police du logotype : Space Grotesk
+
+> **Refonte F-27 (2026-07-10)** : l'application adopte l'identité de marque **navy / orange / crème** (issue du logo, auparavant réservée à la landing). L'ancienne charte « Indigo Tech » (`--cg-primary` indigo `#4338CA`, accent cyan `#06B6D4`) est **abandonnée**.
 
 ---
 
 ## 2 — Palette de couleurs
 
-| Rôle | Nom | Hex | Usage |
-|------|-----|-----|-------|
-| **Primary** | Indigo | `#4338CA` | Boutons principaux, header, éléments actifs |
-| **Accent** | Cyan | `#06B6D4` | Accents, badges, highlights |
-| **Background** | Slate clair | `#F8FAFC` | Fond de page |
-| **Surface** | Blanc | `#FFFFFF` | Cartes, modales, formulaires |
-| **Error** | Rouge | `#DC2626` | Erreurs, alertes destructives |
-| **Success** | Vert | `#16A34A` | Validations, statuts positifs |
-| **Text principal** | Slate 900 | `#0F172A` | Corps de texte, titres |
-| **Text secondaire** | Slate 500 | `#64748B` | Labels, sous-titres, placeholders |
-| **Divider** | Gris clair | `#E2E8F0` | Séparateurs, bordures |
+| Rôle | Nom | Hex | Jeton | Usage |
+|------|-----|-----|-------|-------|
+| **Primary (structure)** | Navy | `#0B1020` | `--cg-primary` / `--cg-navy` | Header/toolbar, bulle message utilisateur, snackbar info, surfaces structurelles |
+| Navy clair | Navy 2 | `#141D33` | `--cg-navy-2` | Dégradés (hero, onboarding) |
+| **Accent / Action** | Orange | `#E07B39` | `--cg-accent` / `--cg-orange` | Boutons d'action (`color="primary"`), états actifs, liens, highlights, barres de progression |
+| Orange clair | Orange 2 | `#F0954F` | `--cg-orange-2` | Survols, dégradés |
+| **Background** | Crème | `#F5EFE3` | `--cg-bg` / `--cg-cream` | Fond de page |
+| **Surface** | Blanc | `#FFFFFF` | `--cg-surface` | Cartes, modales, formulaires |
+| **Error** | Rouge | `#DC2626` | `--cg-error` | Erreurs, alertes destructives |
+| **Success** | Vert | `#16A34A` | `--cg-success` | Validations, statuts positifs |
+| **Text principal** | Slate 900 | `#0F172A` | `--cg-text-primary` | Corps de texte, titres |
+| **Text secondaire** | Slate 500 | `#64748B` | `--cg-text-secondary` | Labels, sous-titres, placeholders |
+| **Divider** | Gris clair | `#E2E8F0` | `--cg-divider` | Séparateurs, bordures |
+
+> Thème Angular Material : palette `primary = orange` (boutons d'action de marque), `tertiary = azure`. Le navy structurel est piloté par les jetons CSS `--cg-*` (custom), pas par la palette Material.
 
 ---
 
@@ -80,7 +86,7 @@ Toute divergence doit être explicitement signalée et validée.
 
 ### Header
 - Hauteur : 64px, fixe (position sticky)
-- Fond : `#4338CA` (primary)
+- Fond : `#0B1020` (navy, `--cg-primary`)
 - Logo à gauche, navigation principale, avatar utilisateur à droite
 - Ombre portée : `box-shadow: 0 2px 8px rgba(0,0,0,0.12)`
 
@@ -88,11 +94,11 @@ Toute divergence doit être explicitement signalée et validée.
 - Largeur : 240px déployée / 64px rétractée
 - Fond : `#FFFFFF`
 - Bordure droite : `1px solid #E2E8F0`
-- Item actif : fond clair, texte primary, barre gauche `4px solid #06B6D4`
+- Item actif : fond clair, texte accent, barre gauche `4px solid #E07B39` (orange, `--cg-accent`)
 
 ### Contenu principal
 - Padding : 24px
-- Fond : `#F8FAFC`
+- Fond : `#F5EFE3` (crème, `--cg-bg`)
 - Largeur max : 1280px, centré
 
 ### Footer
@@ -135,7 +141,7 @@ Toute divergence doit être explicitement signalée et validée.
 |-----------|-----------|---------|
 | Succès | `MatSnackBar` | Fond `#16A34A`, texte blanc |
 | Erreur | `MatSnackBar` | Fond `#DC2626`, texte blanc |
-| Info | `MatSnackBar` | Fond `#4338CA`, texte blanc |
+| Info | `MatSnackBar` | Fond `#0B1020` (navy), texte blanc |
 | Confirmation destructive | `MatDialog` | — |
 
 Durée par défaut : 4 secondes. Jamais `window.alert()` ou `window.confirm()`.
@@ -181,4 +187,4 @@ Durée par défaut : 4 secondes. Jamais `window.alert()` ou `window.confirm()`.
 ## Logo & marque (ajout 2026-07-03)
 
 - **Logo de l'application** : `frontend/public/claude-proxy-logo.png` (« Claude Proxy » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« Claude Proxy »**.
-- **Palette de marque** (dérivée du logo, réservée aux surfaces marketing type landing) : navy profond `#0B1020`, orange `#E07B39`, crème `#F5EFE3`. L'**UI applicative conserve la charte `--cg-*`** (indigo `#4338CA`) ; la palette de marque n'est pas utilisée dans les écrans applicatifs sans décision explicite (évolution possible de la charte).
+- **Palette de marque** (dérivée du logo) : navy profond `#0B1020`, orange `#E07B39`, crème `#F5EFE3`. **Depuis F-27 (2026-07-10), cette palette est la charte de toute l'application** (jetons `--cg-*`), et plus seulement de la landing. L'ancien indigo `#4338CA` / cyan `#06B6D4` est abandonné. La landing conserve ses variables SCSS locales (`$brand-navy`/`$brand-orange`/`$brand-cream`), désormais alignées avec la charte globale.
