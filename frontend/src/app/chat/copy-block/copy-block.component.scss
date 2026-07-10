@@ -1,0 +1,56 @@
+// Bloc copiable inline (F-26) — design system claude-gateway (variables --cg-*).
+:host {
+  display: block;
+  margin: var(--cg-space-2) 0;
+}
+
+.copy-block {
+  border: 1px solid var(--cg-divider);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--cg-bg);
+}
+
+.copy-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-1) var(--cg-space-3);
+  background: var(--cg-surface);
+  border-bottom: 1px solid var(--cg-divider);
+}
+
+.copy-block-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cg-text-secondary);
+
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.copy-button {
+  flex: none;
+  font-size: 13px;
+}
+
+.copy-block-content {
+  margin: 0;
+  padding: var(--cg-space-3);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+
+  code {
+    font-family: var(--cg-font-mono);
+    font-size: 14px;
+    color: var(--cg-text-primary);
+  }
+}

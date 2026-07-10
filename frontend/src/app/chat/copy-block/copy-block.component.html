@@ -1,0 +1,20 @@
+<div class="copy-block">
+  <header class="copy-block-header">
+    <span class="copy-block-title">
+      <mat-icon>{{ iconFor(block().type) }}</mat-icon>
+      {{ block().title }}
+    </span>
+    <button
+      mat-button
+      type="button"
+      class="copy-button"
+      (click)="copy()"
+      matTooltip="Copier le bloc"
+      aria-label="Copier le bloc"
+    >
+      <mat-icon>content_copy</mat-icon>
+      Copier
+    </button>
+  </header>
+  <pre class="copy-block-content"><code>{{ block().content }}</code></pre>
+</div>

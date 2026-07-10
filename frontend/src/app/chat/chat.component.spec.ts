@@ -261,12 +261,11 @@ describe('ChatComponent', () => {
     expect(snackSpy).toHaveBeenCalled();
   });
 
-  it('exposes artifacts extracted from assistant messages (F-22)', () => {
+  it('renders a copy block inline for a fenced block in an assistant message (F-26)', () => {
     fixture.detectChanges();
     flushInit();
 
     component.messages.set([
-      { id: 'u1', role: 'USER', content: '```js\nignored\n```', model: null, createdAt: '' },
       {
         id: 'a1',
         role: 'ASSISTANT',
@@ -275,33 +274,29 @@ describe('ChatComponent', () => {
         createdAt: '',
       },
     ]);
+    fixture.detectChanges();
 
-    expect(component.artifacts().length).toBe(1);
-    expect(component.artifacts()[0].messageId).toBe('a1');
-    expect(component.hasArtifacts(component.messages()[1])).toBeTrue();
-    expect(component.hasArtifacts(component.messages()[0])).toBeFalse();
+    const host: HTMLElement = fixture.nativeElement;
+    const block = host.querySelector('.message.assistant app-copy-block');
+    expect(block).not.toBeNull();
+    // La prose autour est rendue en Markdown ; le bloc affiche le contenu brut + un bouton Copier.
+    expect(block?.querySelector('.copy-block-content')?.textContent).toContain('const a = 1;');
+    expect(block?.querySelector('.copy-button')).not.toBeNull();
   });
 
-  it('opens and closes the canvas for a given message (F-22)', () => {
+  it('does not turn a fenced block in a user message into a copy block (F-26)', () => {
     fixture.detectChanges();
     flushInit();
 
     component.messages.set([
-      {
-        id: 'a1',
-        role: 'ASSISTANT',
-        content: '```sql\nSELECT 1\n```',
-        model: 'claude-opus-4-8',
-        createdAt: '',
-      },
+      { id: 'u1', role: 'USER', content: '```js\nalert(1)\n```', model: null, createdAt: '' },
     ]);
+    fixture.detectChanges();
 
-    component.openCanvasForMessage('a1');
-    expect(component.canvasOpen()).toBeTrue();
-    expect(component.focusArtifactId()).toBe('a1#0');
-
-    component.closeCanvas();
-    expect(component.canvasOpen()).toBeFalse();
+    const host: HTMLElement = fixture.nativeElement;
+    expect(host.querySelector('.message.user app-copy-block')).toBeNull();
+    // Le contenu utilisateur reste littéral (les backticks tapés sont affichés tels quels).
+    expect(host.querySelector('.message.user .message-content')?.textContent).toContain('```js');
   });
 
   // ---- Dossier de fichiers par conversation (F-23) ----

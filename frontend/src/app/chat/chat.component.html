@@ -1,4 +1,4 @@
-<div class="chat-layout" [class.canvas-open]="canvasOpen()">
+<div class="chat-layout">
   <!-- Sidebar : liste des conversations -->
   <aside class="chat-sidebar">
     <div class="sidebar-header">
@@ -58,22 +58,6 @@
           }
         </mat-select>
       </mat-form-field>
-      @if (artifacts().length > 0) {
-        <button
-          mat-icon-button
-          type="button"
-          class="canvas-trigger"
-          [class.active]="canvasOpen()"
-          [matBadge]="artifacts().length"
-          matBadgeColor="accent"
-          matBadgeSize="small"
-          (click)="toggleCanvas()"
-          matTooltip="Canevas (contenu généré)"
-          aria-label="Ouvrir le canevas"
-        >
-          <mat-icon>dashboard</mat-icon>
-        </button>
-      }
       @if (activeConversationId() !== null) {
         <button
           mat-icon-button
@@ -160,21 +144,15 @@
           <article class="message" [class.user]="message.role === 'USER'" [class.assistant]="message.role === 'ASSISTANT'">
             <div class="message-role">
               <span>{{ message.role === 'USER' ? 'Vous' : 'Claude' }}</span>
-              @if (hasArtifacts(message)) {
-                <button
-                  mat-button
-                  type="button"
-                  class="open-canvas"
-                  (click)="openCanvasForMessage(message.id)"
-                  matTooltip="Ouvrir dans le canevas"
-                >
-                  <mat-icon>dashboard</mat-icon>
-                  Canevas
-                </button>
-              }
             </div>
             @if (message.role === 'ASSISTANT') {
-              <div class="message-content markdown-body" [innerHTML]="message.content | markdown"></div>
+              @for (segment of message.content | messageSegments; track $index) {
+                @if (segment.kind === 'prose') {
+                  <div class="message-content markdown-body" [innerHTML]="segment.text | markdown"></div>
+                } @else {
+                  <app-copy-block [block]="segment.block"></app-copy-block>
+                }
+              }
             } @else {
               <div class="message-content">{{ message.content }}</div>
             }
@@ -271,14 +249,4 @@
       </button>
     </form>
   </section>
-
-  <!-- Panneau Canvas / Artifacts (F-22) -->
-  @if (canvasOpen()) {
-    <app-artifact-panel
-      class="chat-canvas"
-      [artifacts]="artifacts()"
-      [focusArtifactId]="focusArtifactId()"
-      (closePanel)="closeCanvas()"
-    ></app-artifact-panel>
-  }
 </div>
