@@ -127,5 +127,22 @@ Ce document enregistre les décisions architecturales majeures de Claude Gateway
 
 ---
 
+## ADR-012 — Claude Code Lite (« Atelier ») — offre Gold / premium
+**Status** : Proposed (2026-07-10) — **amende le périmètre V3**
+
+**Context** — Offrir un espace de travail hébergé « façon Claude Code » : l'utilisateur uploade un projet (`.zip`) + `CLAUDE.md` + skills, et fait travailler Claude dessus dans un **flux unique** (fidèle à Claude Code ; panneau Fichiers repliable en bonus). Objectif : différencier une offre **Gold / premium +++**. Principe directeur : **Gateway-First / Provider-First** — on **relaie** la capacité d'Anthropic, on ne construit ni moteur d'agent ni sandbox maison.
+
+**Decision**
+- **Périmètre** : Claude Code Lite entre comme **offre Gold distincte** (au-dessus de V1/V2). Restent hors scope : multi-LLM runtime, on-prem (F-18), espaces d'équipe (F-17).
+- **Clé / fournisseur : les deux modes, BYOK par défaut sur l'Atelier.** L'utilisateur choisit : **BYOK** (sa clé Anthropic → il porte tokens **et** sandbox ; défaut recommandé) ou **Hosted** (clé plateforme, **compté + marqué + plafonné**). Réutilise `AIProvider` + BYOK chiffré KMS (existant).
+- **Tarification (rentabilité garantie)** — 3 briques : (1) **Accès Gold** (abonnement fixe = marge fixe couvrant le socle) ; (2) **Conso Hosted** facturée ~**2× le coût Anthropic** (tokens) + **frais par run / minute de sandbox** ; (3) **BYOK** = accès Gold seul (coût conso nul). Garde-fous obligatoires : **plafond de dépense par user et par tâche**, ceilings tokens/minutes par run, imputation sur le quota F-10 + surcompteur sandbox.
+- **Architecture** : workspace **par user + projet** en **S3 isolé** ; **Phase 1** = tool-runner backend d'**opérations fichiers** (`list/read/write/search`) via tool-use, **sans exécution**, UI flux unique ; **Phase 2** = relais des **Managed Agents / code execution d'Anthropic** (sandbox + boucle hébergés) via une abstraction `AgentProvider` (parallèle d'`AIProvider`).
+- **Sécurité** : protection **zip-slip** + **zip-bomb** + plafonds taille/nb fichiers ; outils Phase 1 = fichiers only (pas de réseau/shell) ; sandbox Phase 2 = celui d'Anthropic ; clés BYOK chiffrées KMS ; isolation `user_id` stricte, workspaces éphémères.
+- **Phasage** : **Phase 1 d'abord** (faisable, sûr, gros ROI) ; **Phase 2** conditionnée à la confirmation, côté compte Anthropic, de la disponibilité Managed Agents / code execution et de la **grille de coût sandbox**.
+
+**Consequences** — Aligné Gateway-First (relais) ; BYOK et quota réutilisés. Variance de coût (agents) maîtrisée par plafonds + markup + BYOK. Dépendance API Anthropic assumée (Provider-First). À lever avant Phase 2 : accès Managed Agents + tarif sandbox. Grille exacte (accès Gold €, markup, prix sandbox) figée au branchement Stripe de l'offre Gold.
+
+---
+
 ## Maintaining ADRs
 Chaque décision architecturale significative est documentée avant l'implémentation. Les décisions historiques ne sont jamais supprimées : de nouveaux ADR supersèdent les précédents tout en préservant l'historique du projet. La connaissance architecturale fait partie du logiciel lui-même.
