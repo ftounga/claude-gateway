@@ -31,7 +31,7 @@ class TopUpServiceTest {
         subscriptionService = mock(SubscriptionService.class);
         billingProvider = mock(BillingProvider.class);
         BillingProperties properties = new BillingProperties(14, new BillingProperties.Stripe(
-                "sk_test", "whsec_test", Map.of(), Map.of("STANDARD", "price_topup"), null, null));
+                "sk_test", "whsec_test", Map.of(), Map.of("STANDARD", "price_topup"), null, null, Map.of()));
         service = new TopUpService(new TopUpCatalog(), subscriptionService, billingProvider, properties);
     }
 

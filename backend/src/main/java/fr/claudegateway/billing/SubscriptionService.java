@@ -6,6 +6,10 @@ import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+
+import fr.claudegateway.billing.provider.BillingProvider;
+import fr.claudegateway.billing.provider.ChangePlanCommand;
 
 /**
  * Logique métier des abonnements (F-09). Point d'entrée d'isolation : toutes les opérations prennent
@@ -21,12 +25,18 @@ public class SubscriptionService {
 
     private final SubscriptionRepository subscriptionRepository;
     private final BillingProperties properties;
+    private final PlanCatalog planCatalog;
+    private final BillingProvider billingProvider;
 
     public SubscriptionService(
             SubscriptionRepository subscriptionRepository,
-            BillingProperties properties) {
+            BillingProperties properties,
+            PlanCatalog planCatalog,
+            BillingProvider billingProvider) {
         this.subscriptionRepository = subscriptionRepository;
         this.properties = properties;
+        this.planCatalog = planCatalog;
+        this.billingProvider = billingProvider;
     }
 
     /**
@@ -41,6 +51,50 @@ public class SubscriptionService {
     public Subscription getOrCreateForUser(UUID userId) {
         return subscriptionRepository.findByUserId(userId)
                 .orElseGet(() -> provisionTrial(userId));
+    }
+
+    /**
+     * Change le plan de l'abonnement <b>existant</b> de l'utilisateur (upgrade/downgrade, SF-21-05).
+     * Met à jour l'abonnement Stripe avec proratisation via le {@link BillingProvider}, puis reflète
+     * le nouveau plan localement (le webhook {@code customer.subscription.updated} confirmera).
+     *
+     * @param userId      utilisateur authentifié (contexte de sécurité — isolation)
+     * @param planCodeRaw code du plan cible fourni par le client
+     * @return l'abonnement mis à jour
+     * @throws UnknownPlanException            plan absent/inconnu ou sans price configuré
+     * @throws NoActiveSubscriptionException   aucun abonnement payant actif (encore en essai)
+     */
+    @Transactional
+    public Subscription changePlan(UUID userId, String planCodeRaw) {
+        PlanCode target = parsePlan(planCodeRaw);
+        if (!planCatalog.contains(target)) {
+            throw new UnknownPlanException("Plan inconnu : " + planCodeRaw);
+        }
+        String newPriceId = properties.stripe().priceId(target);
+        if (!StringUtils.hasText(newPriceId)) {
+            throw new UnknownPlanException("Aucun price configuré pour le plan " + target + ".");
+        }
+        Subscription subscription = getOrCreateForUser(userId);
+        if (!StringUtils.hasText(subscription.getStripeSubscriptionId())) {
+            throw new NoActiveSubscriptionException(
+                    "Aucun abonnement actif : souscrivez un plan avant de le changer.");
+        }
+        billingProvider.changeSubscriptionPlan(
+                new ChangePlanCommand(subscription.getStripeSubscriptionId(), newPriceId));
+        // Reflet local optimiste ; le webhook customer.subscription.updated confirmera l'état Stripe.
+        subscription.setPlanCode(target);
+        return subscriptionRepository.save(subscription);
+    }
+
+    private static PlanCode parsePlan(String planCodeRaw) {
+        if (planCodeRaw == null || planCodeRaw.isBlank()) {
+            throw new UnknownPlanException("Plan non fourni.");
+        }
+        try {
+            return PlanCode.valueOf(planCodeRaw.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new UnknownPlanException("Plan inconnu : " + planCodeRaw);
+        }
     }
 
     private Subscription provisionTrial(UUID userId) {

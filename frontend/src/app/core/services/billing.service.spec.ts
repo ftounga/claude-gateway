@@ -26,7 +26,9 @@ describe('BillingService', () => {
 
   it('GETs the plan catalog from /api/billing/plans', () => {
     const plans: PlansResponse = {
-      plans: [{ code: 'PRO', label: 'Pro', providerMode: 'HOSTED', period: 'MONTHLY' }],
+      plans: [
+        { code: 'PRO', label: 'Pro', providerMode: 'HOSTED', period: 'MONTHLY', tokens: 5000000, priceEur: '99' },
+      ],
     };
     let received: PlansResponse | undefined;
     service.getPlans().subscribe((r) => (received = r));

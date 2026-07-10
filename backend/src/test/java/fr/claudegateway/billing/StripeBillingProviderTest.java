@@ -23,7 +23,7 @@ class StripeBillingProviderTest {
     private StripeBillingProvider provider(String secretKey, String webhookSecret) {
         return new StripeBillingProvider(new BillingProperties(14, new BillingProperties.Stripe(
                 secretKey, webhookSecret, Map.of("PRO", "price_pro"),
-                Map.of("STANDARD", "price_topup"), null, null)));
+                Map.of("STANDARD", "price_topup"), null, null, Map.of())));
     }
 
     @Test

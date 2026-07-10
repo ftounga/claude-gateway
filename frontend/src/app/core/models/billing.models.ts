@@ -14,12 +14,21 @@ export type SubscriptionStatus =
   | 'CANCELED'
   | 'INCOMPLETE';
 
-/** Un plan du catalogue (sans prix : le prix vit côté Stripe). */
+/** Un plan du catalogue, enrichi du quota et d'un prix d'affichage (SF-21-05). */
 export interface Plan {
   code: string;
   label: string;
   providerMode: ProviderMode;
   period: BillingPeriod;
+  /** Allocation mensuelle de tokens du plan. */
+  tokens: number;
+  /** Montant d'affichage en EUR (ex. "24"), ou null si non configuré. */
+  priceEur: string | null;
+}
+
+/** Requête de changement de plan d'un abonnement existant (upgrade/downgrade, SF-21-05). */
+export interface ChangePlanRequest {
+  planCode: string;
 }
 
 /** Réponse du catalogue de plans. */

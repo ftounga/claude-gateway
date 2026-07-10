@@ -15,6 +15,7 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
 import fr.claudegateway.admin.AdminForbiddenException;
 import fr.claudegateway.ai.AIProviderException;
 import fr.claudegateway.ai.AIProviderUnavailableException;
+import fr.claudegateway.billing.NoActiveSubscriptionException;
 import fr.claudegateway.billing.UnknownPlanException;
 import fr.claudegateway.billing.provider.BillingProviderException;
 import fr.claudegateway.billing.provider.BillingProviderUnavailableException;
@@ -264,6 +265,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(new ErrorResponse("provider_error",
                         "Le service de recherche documentaire a rencontré une erreur. Veuillez réessayer."));
+    }
+
+    @ExceptionHandler(NoActiveSubscriptionException.class)
+    public ResponseEntity<ErrorResponse> handleNoActiveSubscription(NoActiveSubscriptionException ex) {
+        log.debug("Changement de plan refusé : aucun abonnement actif");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("no_active_subscription", ex.getMessage()));
     }
 
     @ExceptionHandler(UnknownPlanException.class)

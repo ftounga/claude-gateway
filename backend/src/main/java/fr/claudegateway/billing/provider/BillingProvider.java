@@ -30,6 +30,16 @@ public interface BillingProvider {
     CheckoutSession createTopUpCheckoutSession(TopUpCheckoutCommand command);
 
     /**
+     * Change le plan d'un abonnement existant (upgrade/downgrade, F-21 / SF-21-05) : met à jour
+     * l'item de l'abonnement vers le nouveau price, avec proratisation. Ne crée pas de nouvel
+     * abonnement (à la différence de {@link #createCheckoutSession(CheckoutCommand)}).
+     *
+     * @throws BillingProviderUnavailableException si le fournisseur ou les identifiants ne sont pas configurés
+     * @throws BillingProviderException            en cas d'échec d'appel au fournisseur
+     */
+    void changeSubscriptionPlan(ChangePlanCommand command);
+
+    /**
      * Vérifie la signature d'un webhook et traduit l'événement brut en événement normalisé.
      *
      * @param payload         corps brut de la requête (signé)

@@ -139,6 +139,38 @@ public class StripeBillingProvider implements BillingProvider {
     }
 
     @Override
+    public void changeSubscriptionPlan(ChangePlanCommand command) {
+        if (!config.isConfigured()) {
+            throw new BillingProviderUnavailableException("Fournisseur de paiement non configuré.");
+        }
+        if (!StringUtils.hasText(command.stripeSubscriptionId()) || !StringUtils.hasText(command.newPriceId())) {
+            throw new BillingProviderUnavailableException("Abonnement ou price ID manquant pour le changement de plan.");
+        }
+        try {
+            RequestOptions options = RequestOptions.builder()
+                    .setApiKey(config.secretKey())
+                    .build();
+            com.stripe.model.Subscription subscription =
+                    com.stripe.model.Subscription.retrieve(command.stripeSubscriptionId(), options);
+            // Un abonnement V1 ne porte qu'un seul item (un plan) : on remplace son price par le cible.
+            String itemId = subscription.getItems().getData().get(0).getId();
+            com.stripe.param.SubscriptionUpdateParams params = com.stripe.param.SubscriptionUpdateParams.builder()
+                    .addItem(com.stripe.param.SubscriptionUpdateParams.Item.builder()
+                            .setId(itemId)
+                            .setPrice(command.newPriceId())
+                            .build())
+                    .setProrationBehavior(
+                            com.stripe.param.SubscriptionUpdateParams.ProrationBehavior.CREATE_PRORATIONS)
+                    .build();
+            subscription.update(params, options);
+        } catch (StripeException ex) {
+            // On ne journalise ni la clé ni le détail brut : message métier neutre.
+            log.warn("Échec du changement de plan d'abonnement Stripe");
+            throw new BillingProviderException("Échec du changement de plan.", ex);
+        }
+    }
+
+    @Override
     public BillingEvent parseWebhookEvent(String payload, String signatureHeader) {
         if (!StringUtils.hasText(config.webhookSecret())) {
             throw new BillingProviderUnavailableException("Secret de webhook non configuré.");

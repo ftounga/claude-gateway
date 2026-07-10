@@ -140,6 +140,11 @@ app:
       topup-prices:
         DAY: ${STRIPE_PRICE_TOPUP_DAY:}
         STANDARD: ${STRIPE_PRICE_TOPUP_STANDARD:}
+      # Montants d'affichage (EUR) des plans pour la page de facturation (SF-21-05). Non secret ;
+      # purement cosmétique (le vrai débit est porté par le price Stripe). Ajustable par environnement.
+      display-prices:
+        SOLO: ${STRIPE_DISPLAY_PRICE_SOLO:24}
+        PRO: ${STRIPE_DISPLAY_PRICE_PRO:99}
       # URLs de retour Checkout (frontend). Surchargées par environnement.
       success-url: ${STRIPE_SUCCESS_URL:http://localhost:4200/billing?checkout=success}
       cancel-url: ${STRIPE_CANCEL_URL:http://localhost:4200/billing?checkout=cancel}

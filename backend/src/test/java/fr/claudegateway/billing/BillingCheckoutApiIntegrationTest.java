@@ -56,6 +56,8 @@ class BillingCheckoutApiIntegrationTest {
         volatile RuntimeException checkoutToThrow;
         volatile RuntimeException topUpCheckoutToThrow;
         volatile RuntimeException webhookToThrow;
+        volatile String lastChangedSubId;
+        volatile String lastChangedPriceId;
 
         void reset() {
             sessionToReturn = new CheckoutSession("https://checkout.stripe/test", "cs_1");
@@ -63,6 +65,14 @@ class BillingCheckoutApiIntegrationTest {
             checkoutToThrow = null;
             topUpCheckoutToThrow = null;
             webhookToThrow = null;
+            lastChangedSubId = null;
+            lastChangedPriceId = null;
+        }
+
+        @Override
+        public void changeSubscriptionPlan(fr.claudegateway.billing.provider.ChangePlanCommand command) {
+            lastChangedSubId = command.stripeSubscriptionId();
+            lastChangedPriceId = command.newPriceId();
         }
 
         @Override
@@ -282,5 +292,49 @@ class BillingCheckoutApiIntegrationTest {
                 usageCounterRepository.findByUserIdAndPeriodStart(alice.getId(), period).orElseThrow();
         assertThat(aliceCounter.getBonusTokens()).isEqualTo(1_000_000L);
         assertThat(usageCounterRepository.findByUserIdAndPeriodStart(bob.getId(), period)).isEmpty();
+    }
+
+    // ---- Changement de plan (upgrade/downgrade, SF-21-05) ----
+
+    @Test
+    void listsEnrichedPlansExcludingUnpricedOnes() throws Exception {
+        mockMvc.perform(get("/api/billing/plans").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                // Seuls SOLO/PRO ont un price configuré (test) ; DAILY (Pass journée) est exclu.
+                .andExpect(jsonPath("$.plans[*].code", org.hamcrest.Matchers.hasItems("SOLO", "PRO")))
+                .andExpect(jsonPath("$.plans[*].code",
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("DAILY"))))
+                .andExpect(jsonPath("$.plans[0].tokens", org.hamcrest.Matchers.greaterThan(0)))
+                .andExpect(jsonPath("$.plans[0].priceEur", is(org.hamcrest.Matchers.notNullValue())));
+    }
+
+    @Test
+    void changePlanReturns409WhenStillInTrial() throws Exception {
+        // Alice n'a pas d'abonnement actif (essai provisionné à la volée, sans stripeSubscriptionId).
+        mockMvc.perform(post("/api/billing/subscription/change").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"planCode\":\"PRO\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error", is("no_active_subscription")));
+    }
+
+    @Test
+    void changePlanUpdatesActiveSubscription() throws Exception {
+        subscriptionRepository.save(Subscription.builder()
+                .userId(alice.getId()).status(SubscriptionStatus.ACTIVE).planCode(PlanCode.SOLO)
+                .stripeCustomerId("cus_alice").stripeSubscriptionId("sub_alice").build());
+
+        mockMvc.perform(post("/api/billing/subscription/change").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"planCode\":\"PRO\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.planCode", is("PRO")));
+
+        // Le fournisseur a été appelé avec l'abonnement et le price cible (résolus côté serveur).
+        assertThat(stubBillingProvider.lastChangedSubId).isEqualTo("sub_alice");
+        assertThat(stubBillingProvider.lastChangedPriceId).isEqualTo("price_pro_test");
     }
 }

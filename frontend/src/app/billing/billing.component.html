@@ -131,24 +131,30 @@
   } @else {
     <div class="billing__plans">
       @for (plan of plans(); track plan.code) {
-        <mat-card class="billing__plan">
+        <mat-card class="billing__plan" [class.billing__plan--current]="isCurrentPlan(plan)">
+          @if (isCurrentPlan(plan)) {
+            <span class="badge badge--success billing__plan-flag">Plan actuel</span>
+          }
           <h3 class="billing__plan-name">{{ plan.label }}</h3>
-          <p class="billing__plan-meta">
-            <span class="badge badge--info">{{ plan.providerMode }}</span>
-            <span class="billing__plan-period">{{ periodLabel(plan.period) }}</span>
-          </p>
+          @if (plan.priceEur) {
+            <p class="billing__plan-price">
+              <span class="billing__plan-amount">{{ plan.priceEur }} €</span>
+              <span class="billing__plan-period">{{ periodLabel(plan.period) }}</span>
+            </p>
+          }
+          <p class="billing__plan-tokens">{{ plan.tokens | number }} tokens / mois</p>
           <button
             mat-flat-button
             color="primary"
             type="button"
             class="billing__plan-cta"
-            [disabled]="checkoutInProgress() !== null"
-            (click)="subscribe(plan.code)"
+            [disabled]="isCurrentPlan(plan) || planBusy(plan) || checkoutInProgress() !== null || changeInProgress() !== null"
+            (click)="onPlanAction(plan)"
           >
-            @if (checkoutInProgress() === plan.code) {
-              Redirection…
+            @if (planBusy(plan)) {
+              Traitement…
             } @else {
-              Souscrire
+              {{ planActionLabel(plan) }}
             }
           </button>
         </mat-card>
