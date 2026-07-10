@@ -96,6 +96,14 @@ sécurisent la monétisation ; settings et landing finalisent l'expérience. Le 
 | F-26 | Copie de bloc (façon ChatGPT) | Remplace le panneau Canvas global (F-22) : un bouton **« Copier »** directement sur chaque bloc copiable d'une réponse (code, mail, config, doc…). Fini l'agrégation de toute la conversation. | **Terminée** (SF-26-01) |
 | F-27 | Refonte charte graphique | Nouvelle identité visuelle **navy / orange / crème** (marque de la landing) appliquée à toute l'app ; abandon de l'indigo `--cg-primary`. | **Terminée** (SF-27-01) |
 
+## Offre Gold — Atelier / Claude Code Lite (ADR-012, validé 2026-07-11)
+
+> Offre premium **Gold**. Espace de travail hébergé « façon Claude Code » : upload d'un projet `.zip`, `CLAUDE.md` + skills, Claude travaille sur les fichiers dans un **flux unique**. **Phase 1 = édition de fichiers via tool-use (sans exécution).** Phase 2 (agents/exécution via Managed Agents Anthropic) = ultérieure. Clé : **BYOK par défaut** + Hosted plafonné/marqué. Gateway-First : on relaie la capacité d'Anthropic.
+
+| ID | Feature | Description | Statut |
+|----|---------|-------------|--------|
+| F-28 | Atelier (Claude Code Lite — Phase 1) | Workspace projet isolé (upload zip → S3), arborescence + lecture/écriture de fichiers, et **Atelier** où Claude lit/édite les fichiers via une boucle **tool-use** (sans exécution), `CLAUDE.md` + skills en contexte. UI flux unique + panneau Fichiers repliable. | **En cours** (SF-28-01→03) |
+
 ## Features V3 (backlog — hors périmètre actuel)
 
 | ID | Feature | Description | Cible |
