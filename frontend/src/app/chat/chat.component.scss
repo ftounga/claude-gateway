@@ -11,25 +11,6 @@
   background: var(--cg-bg);
 }
 
-// Troisième colonne quand le panneau Canvas est ouvert (F-22).
-.chat-layout.canvas-open {
-  grid-template-columns: 280px 1fr 400px;
-}
-
-.chat-canvas {
-  min-height: 0;
-  overflow: hidden;
-}
-
-.canvas-trigger.active {
-  color: var(--cg-accent);
-}
-
-.open-canvas {
-  min-width: 0;
-  line-height: 24px;
-}
-
 // ---- Sidebar ----
 .chat-sidebar {
   background: var(--cg-surface);
@@ -161,11 +142,6 @@ a.active {
   font-weight: 500;
   opacity: 0.8;
   margin-bottom: 4px;
-
-  .open-canvas {
-    font-size: 12px;
-    padding: 0 var(--cg-space-2);
-  }
 }
 
 .message-content {
