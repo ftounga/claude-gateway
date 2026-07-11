@@ -144,5 +144,28 @@ Ce document enregistre les décisions architecturales majeures de Claude Gateway
 
 ---
 
+## ADR-013 — Claude Code Lite Phase 2 : exécution via Managed Agents d'Anthropic (précise ADR-012)
+
+**Status** : Proposed (2026-07-11) — **précise la Phase 2 d'ADR-012**. Cadrage détaillé : `docs/features/F-28/PHASE-2-cadrage.md`.
+
+**Context** — La Phase 1 (F-28, SF-28-01→07, livrée) offre un Atelier où Claude lit/édite les fichiers **sans exécution** (boucle tool-use orchestrée par notre backend). La Phase 2 doit apporter l'**exécution réelle** (bash, tests, build, exécution de code) pour faire de l'Atelier un véritable agent de développement (offre Gold premium +++). Deux verrous étaient ouverts dans ADR-012 : disponibilité Managed Agents et grille de coût sandbox.
+
+**Verrous levés** — Managed Agents est **disponible en β sur l'API Anthropic first-party** (notre clé `ANTHROPIC_API_KEY`) et Claude Platform on AWS (❌ Bedrock/Vertex/Foundry — non pertinent). SDK Java officiel (`client.beta().agents()/environments()/sessions()/files()`). Pont fichiers natif (Files API + `resources` montés + `/mnt/session/outputs/`).
+
+**Decision**
+- **Relais, pas de sandbox maison** (Gateway-First/Provider-First) : la boucle d'agent ET le conteneur d'exécution sont **hébergés par Anthropic** (Managed Agents, environment `config.type: "cloud"`). On ne construit ni moteur d'agent ni sandbox.
+- **Abstraction `AgentProvider`** (parallèle d'`AIProvider`) : impl. `AnthropicManagedAgentProvider` via le SDK Java beta (header `managed-agents-2026-04-01`). Le code métier de l'Atelier ne dépend jamais directement d'Anthropic.
+- **Flux Agent→Session** respecté : **Environment** (template cloud, `networking: limited` + `allow_package_managers`) et **Agent** (config versionnée : model, system = `CLAUDE.md`+skills, tools exécution, skills) créés **une fois** au bootstrap ; une **Session éphémère** par tâche, référençant l'agent, avec le workspace S3 **monté** en `resources` et le resync des sorties (`/mnt/session/outputs/`) vers S3.
+- **Streaming** : events de session (SSE Anthropic) relayés au frontend via le patron SSE existant (SF-28-05), avec **reconnexion consolidée** (pas de replay côté Anthropic).
+- **Économie** : 3 briques (accès Gold fixe déjà livré ; Hosted = tokens ~2× coût **+ minutes de sandbox** ; BYOK = accès seul). **Garde-fous obligatoires** : plafonds dépense/utilisateur et /tâche, ceilings minutes+tokens/session, timeout dur, **surcompteur sandbox** distinct du quota tokens.
+- **Sécurité** : sandbox Anthropic éphémère, `networking limited` (deny-by-default), isolation `user_id` (session créée pour un workspace `requireOwned`, fichiers du seul préfixe S3 du user), secrets via **Vaults** (jamais dans le conteneur), tokens Git via git-proxy.
+- **Découpage** : SF-28-08 (`AgentProvider` + bootstrap env/agent) → SF-28-09 (cycle session + pont fichiers) → SF-28-10 (streaming events UI) → SF-28-11 (surcompteur sandbox + plafonds + billing — ZONE ARGENT) → SF-28-12 (bascule Phase 1↔2 par workspace, flag + Gold).
+
+**Verrou bloquant restant** — **Grille de coût sandbox** (tarif par minute/session, absent de la doc API) : à confirmer sur la pricing/console Anthropic **avant** SF-28-11 (sans lui, rentabilité non garantie). Décision owner : valider markup (~2×) + plafonds une fois le coût connu, et confirmer l'accès β Managed Agents **sur le compte mutualisé legalcase**.
+
+**Consequences** — Réutilise BYOK/quota/S3/SSE existants ; l'abstraction `AgentProvider` isole le risque beta. Nouvelle dimension de coût (minutes sandbox) maîtrisée par plafonds + markup + BYOK par défaut. Dépendance API Anthropic assumée (Provider-First). Aucun dev Phase 2 ne démarre avant la levée du verrou coût sandbox.
+
+---
+
 ## Maintaining ADRs
 Chaque décision architecturale significative est documentée avant l'implémentation. Les décisions historiques ne sont jamais supprimées : de nouveaux ADR supersèdent les précédents tout en préservant l'historique du projet. La connaissance architecturale fait partie du logiciel lui-même.
