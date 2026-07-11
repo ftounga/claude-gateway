@@ -19,6 +19,10 @@ data:
   # Atelier / Claude Code Lite (F-28) : stockage des workspaces sur S3 (bucket S3_BUCKET, préfixe
   # atelier/) pour la persistance entre redémarrages. Défaut `in-memory` réservé aux tests.
   APP_ATELIER_STORAGE: "s3"
+  # Phase 2 Atelier (Managed Agents / exécution de code, ADR-013) : activée. L'accès reste gardé
+  # par offre Gold/ADMIN (SF-28-06) et la session est éphémère (runtime borné). ⚠️ Ouvrir aux
+  # abonnés Gold au-delà de l'admin nécessite les plafonds de dépense de SF-28-12.
+  APP_ATELIER_AGENT_ENABLED: "true"
   # Limites d'import ZIP Atelier — profil « généreux » (import de gros monorepos/assets).
   # Chaîne cohérente : ingress 155m >= Spring max-request 155MB >= max-file 150MB ; garde-fous
   # anti-zip-bomb sur le décompressé (total/par-fichier/nb-entrées). Purement configurable (réversible).
