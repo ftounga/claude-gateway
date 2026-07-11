@@ -1,4 +1,4 @@
-# Design System — claude-gateway
+# Design System (charte répliquée de legalcase : navy #1A3A5C / or #C9973A / fond #F5F6FA) — claude-gateway
 
 Source de vérité pour l'identité visuelle et les règles d'interface du projet.
 
@@ -31,7 +31,7 @@ Toute divergence doit être explicitement signalée et validée.
 | Navy clair | Navy 2 | `#141D33` | `--cg-navy-2` | Dégradés (hero, onboarding) |
 | **Accent / Action** | Orange | `#E07B39` | `--cg-accent` / `--cg-orange` | Boutons d'action (`color="primary"`), états actifs, liens, highlights, barres de progression |
 | Orange clair | Orange 2 | `#F0954F` | `--cg-orange-2` | Survols, dégradés |
-| **Background** |  Gris très clair (thème Blanc & Orange, header clair) | `#F8FAFC` | `--cg-bg` | Fond de page (rév. 2026-07-11 : fini le crème, identité claire/pro façon legalcase) |
+| **Background** |  Gris très clair (thème Blanc & Orange, header clair) | `#F5F6FA` | `--cg-bg` | Fond de page (rév. 2026-07-11 : fini le crème, identité claire/pro façon legalcase) |
 | **Surface** | Blanc | `#FFFFFF` | `--cg-surface` | Cartes/surfaces, détachées par l'ombre |
 | **Surface** | Blanc | `#FFFFFF` | `--cg-surface` | Cartes, modales, formulaires |
 | **Error** | Rouge | `#DC2626` | `--cg-error` | Erreurs, alertes destructives |
@@ -99,7 +99,7 @@ Toute divergence doit être explicitement signalée et validée.
 
 ### Contenu principal
 - Padding : 24px
-- Fond : `#F8FAFC` (gris très clair, `--cg-bg`) ; cartes `#FFFFFF` (`--cg-surface`)
+- Fond : `#F5F6FA` (gris très clair, `--cg-bg`) ; cartes `#FFFFFF` (`--cg-surface`)
 - Largeur max : 1280px, centré
 
 ### Footer
@@ -134,7 +134,7 @@ Toute divergence doit être explicitement signalée et validée.
 
 ### Tables
 - Composant : `mat-table` avec `matSort` et `mat-paginator` systématiques
-- Ligne hover : fond `#F8FAFC`
+- Ligne hover : fond `#F5F6FA`
 
 ### Notifications
 
