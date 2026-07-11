@@ -67,10 +67,20 @@ Nouvelle interface backend `AgentProvider` (indépendance fournisseur), impl. `A
 
 Chaque SF suit le cycle de gouvernance habituel (mini-spec → readiness → dev → review → PR → merge).
 
-## 7. Verrou bloquant restant (à trancher AVANT tout dev)
+## 7. Coût sandbox — CONFIRMÉ (grille officielle Anthropic)
 
-- **Grille de coût sandbox Anthropic** : le tarif par **minute/session de conteneur** n'est pas dans la doc API — à confirmer sur la pricing page / console Anthropic. Il conditionne : le markup Hosted, les plafonds, et le prix effectif de la brique (2). **Sans ce chiffre, on ne peut pas garantir la rentabilité → on ne démarre pas SF-28-11.**
-- Décision owner attendue : (a) valider le markup (≈2×) et les plafonds par défaut une fois le coût connu ; (b) confirmer que le **compte Anthropic mutualisé (legalcase)** a accès au beta Managed Agents (dispo générale = ✅ β first-party, mais accès **par compte** à vérifier).
+**Verrou levé.** Tarification officielle des **Claude Managed Agents** (page pricing Anthropic, 2026-07) — 2 dimensions :
+- **Tokens** : tarif standard du modèle (Opus 4.8 = 5 $/M in, 25 $/M out) ; caching applicable ; web search 10 $/1000.
+- **Runtime de session** : **0,08 $ / heure de session**, mesuré à la milliseconde, **facturé uniquement pendant le statut `running`** (idle/attente/reschedule/terminated = non facturés). Ce runtime **remplace** la facturation conteneur du code-execution (pas de double compte).
+- Modifiers **non applicables** aux sessions : remise Batch, Fast mode, multiplicateur data-residency, cloud partenaires.
+
+**Exemple officiel** : session 1 h Opus 4.8, 50k in / 15k out = tokens 0,625 $ + runtime 0,08 $ = **0,705 $**.
+
+**Implication** : le runtime sandbox est **marginal** (~0,08 $/h) ; **les tokens dominent** le coût. La brique « frais sandbox » du modèle est donc minime → l'offre Gold reste **très rentable** ; le surcompteur sandbox sert surtout de **garde-fou** (plafond d'heures), pas de centre de coût majeur.
+
+**Décisions owner restantes (non bloquantes pour SF-28-08→10)** :
+- (a) valider le **markup Hosted** (~2× sur les tokens) et les **plafonds par défaut** (heures de session/jour, dépense/tâche) — à figer avant SF-28-11 ;
+- (b) confirmer que le **compte Anthropic mutualisé (legalcase)** a l'accès **β Managed Agents** activé (dispo générale = ✅ β first-party ; à vérifier **par compte**).
 
 ## 8. Verrous déjà levés
 
