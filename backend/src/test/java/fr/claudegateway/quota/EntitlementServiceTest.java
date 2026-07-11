@@ -25,7 +25,7 @@ class EntitlementServiceTest {
     void setUp() {
         QuotaProperties properties = new QuotaProperties(
                 200_000L,
-                Map.of("SOLO", 1_000_000L, "PRO", 5_000_000L, "DAILY", 500_000L));
+                Map.of("SOLO", 1_000_000L, "PRO", 5_000_000L, "DAILY", 500_000L, "GOLD", 12_000_000L));
         service = new EntitlementService(properties);
     }
 
@@ -63,6 +63,22 @@ class EntitlementServiceTest {
     void expiredTrialResolvesToZero() {
         assertThat(service.resolveMonthlyTokenQuota(
                 subscription(SubscriptionStatus.TRIALING, null, OffsetDateTime.now().minusDays(1))))
+                .isZero();
+    }
+
+    @Test
+    void goldActiveResolvesToGoldQuota() {
+        // SF-28-06 : l'offre Gold active débloque son quota (12 M) sans logique dédiée (générique).
+        assertThat(service.resolveMonthlyTokenQuota(
+                subscription(SubscriptionStatus.ACTIVE, PlanCode.GOLD, null)))
+                .isEqualTo(12_000_000L);
+    }
+
+    @Test
+    void goldCanceledResolvesToZero() {
+        // SF-28-06 : Gold annulé => aucun quota (fail-closed).
+        assertThat(service.resolveMonthlyTokenQuota(
+                subscription(SubscriptionStatus.CANCELED, PlanCode.GOLD, null)))
                 .isZero();
     }
 

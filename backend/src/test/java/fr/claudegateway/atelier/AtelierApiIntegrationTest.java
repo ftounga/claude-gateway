@@ -31,6 +31,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.jayway.jsonpath.JsonPath;
 
 import fr.claudegateway.auth.JwtService;
+import fr.claudegateway.billing.PlanCode;
+import fr.claudegateway.billing.Subscription;
+import fr.claudegateway.billing.SubscriptionRepository;
+import fr.claudegateway.billing.SubscriptionStatus;
 import fr.claudegateway.user.AuthProvider;
 import fr.claudegateway.user.User;
 import fr.claudegateway.user.UserRepository;
@@ -52,6 +56,8 @@ class AtelierApiIntegrationTest {
     @Autowired
     private WorkspaceRepository workspaceRepository;
     @Autowired
+    private SubscriptionRepository subscriptionRepository;
+    @Autowired
     private JwtService jwtService;
 
     private User alice;
@@ -61,13 +67,26 @@ class AtelierApiIntegrationTest {
     @BeforeEach
     void setUp() {
         workspaceRepository.deleteAll();
+        subscriptionRepository.deleteAll();
         userRepository.deleteAll();
+        // Gating SF-28-06 : l'Atelier est réservé à l'offre Gold. Alice et Bob sont abonnés Gold actif
+        // pour exercer les endpoints ; un accès non-Gold est testé séparément (workspaceRequiresGoldAccess).
         alice = userRepository.save(User.builder().email("alice@ex.com").emailVerified(true)
                 .provider(AuthProvider.LOCAL).role(UserRole.USER).build());
+        provisionGold(alice);
         aliceToken = jwtService.generateToken(alice);
         User bob = userRepository.save(User.builder().email("bob@ex.com").emailVerified(true)
                 .provider(AuthProvider.LOCAL).role(UserRole.USER).build());
+        provisionGold(bob);
         bobToken = jwtService.generateToken(bob);
+    }
+
+    private void provisionGold(User user) {
+        subscriptionRepository.save(Subscription.builder()
+                .userId(user.getId())
+                .planCode(PlanCode.GOLD)
+                .status(SubscriptionStatus.ACTIVE)
+                .build());
     }
 
     private String bearer(String token) {
@@ -188,5 +207,19 @@ class AtelierApiIntegrationTest {
     void requiresAuthentication() throws Exception {
         mockMvc.perform(get("/api/workspaces").contextPath("/api"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void workspaceCreationRequiresGoldAccess() throws Exception {
+        // SF-28-06 : un utilisateur non-Gold non-admin (essai lazy) est refusé (403 atelier_forbidden).
+        User charlie = userRepository.save(User.builder().email("charlie@ex.com").emailVerified(true)
+                .provider(AuthProvider.LOCAL).role(UserRole.USER).build());
+        String charlieToken = jwtService.generateToken(charlie);
+
+        mockMvc.perform(multipart("/api/workspaces").file(zipFile(Map.of("a.txt", "x"))).contextPath("/api")
+                        .param("name", "projet")
+                        .header("Authorization", bearer(charlieToken)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error", is("atelier_forbidden")));
     }
 }

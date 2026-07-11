@@ -82,8 +82,15 @@ public class AtelierChatService {
 
     private AtelierChatResult runLoop(UUID userId, UUID workspaceId, String rawMessage,
             AtelierProgressListener listener) {
-        workspaceService.requireOwned(userId, workspaceId); // 404 si non possédé (isolation)
-        quotaService.assertWithinQuota(userId);
+        workspaceService.requireOwned(userId, workspaceId); // 404 si non possédé (isolation) — TOUJOURS en premier
+        // Mode BYOK (clé personnelle active) vs Hosted (clé plateforme) : en BYOK, les tokens sont sur
+        // le compte Anthropic de l'utilisateur => aucun contrôle ni comptage du quota plateforme (F-28 /
+        // SF-28-06). En Hosted, comportement historique : contrôle avant + comptabilisation après.
+        String apiKey = byokKeyService.resolveActiveApiKey(userId).orElse(null);
+        boolean hosted = apiKey == null;
+        if (hosted) {
+            quotaService.assertWithinQuota(userId);
+        }
         String userText = rawMessage.trim();
 
         // Historique de l'atelier (texte) + nouveau message utilisateur.
@@ -99,7 +106,6 @@ public class AtelierChatService {
 
         String system = buildSystemPrompt(userId, workspaceId);
         List<AgentTool> tools = buildTools();
-        String apiKey = byokKeyService.resolveActiveApiKey(userId).orElse(null);
         String model = modelCatalog.defaultModel();
 
         List<AtelierAction> actions = new ArrayList<>();
@@ -152,7 +158,9 @@ public class AtelierChatService {
             }
         }
 
-        quotaService.recordUsage(userId, inputTokens, outputTokens);
+        if (hosted) {
+            quotaService.recordUsage(userId, inputTokens, outputTokens);
+        }
 
         AtelierMessage assistant = messageRepository.save(AtelierMessage.builder()
                 .workspaceId(workspaceId).userId(userId).role("ASSISTANT")

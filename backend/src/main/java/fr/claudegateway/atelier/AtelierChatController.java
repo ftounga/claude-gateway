@@ -45,17 +45,21 @@ public class AtelierChatController {
 
     private final AtelierChatService atelierChatService;
     private final CurrentUser currentUser;
+    private final AtelierAccessService atelierAccess;
     private final Executor chatStreamExecutor;
 
     public AtelierChatController(AtelierChatService atelierChatService, CurrentUser currentUser,
+            AtelierAccessService atelierAccess,
             @Qualifier("chatStreamExecutor") Executor chatStreamExecutor) {
         this.atelierChatService = atelierChatService;
         this.currentUser = currentUser;
+        this.atelierAccess = atelierAccess;
         this.chatStreamExecutor = chatStreamExecutor;
     }
 
     @PostMapping
     public AtelierChatResponse chat(@PathVariable UUID id, @Valid @RequestBody AtelierChatRequest request) {
+        atelierAccess.requireAccess();
         AtelierChatResult result = atelierChatService.chat(currentUser.requireId(), id, request.message());
         return new AtelierChatResponse(result.reply(), result.actions(), result.messageId());
     }
@@ -69,21 +73,30 @@ public class AtelierChatController {
     @PostMapping(path = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(@PathVariable UUID id, @Valid @RequestBody AtelierChatRequest request) {
         UUID userId = currentUser.requireId();
+        // Le gating est résolu ICI (thread de requête) où le SecurityContext est disponible : le relais
+        // s'exécute sur un thread du pool SSE qui n'hérite pas du contexte de sécurité. On capture un
+        // booléen (jamais d'exception synchrone => pas de 406 sur cet endpoint SSE) et l'erreur d'accès
+        // est émise DANS le flux ({@code error: forbidden}), comme les autres erreurs de pré-vol.
+        boolean hasAccess = atelierAccess.hasAccess();
         SseEmitter emitter = new SseEmitter(STREAM_TIMEOUT_MS);
-        chatStreamExecutor.execute(() -> relay(emitter, userId, id, request.message()));
+        chatStreamExecutor.execute(() -> relay(emitter, userId, id, request.message(), hasAccess));
         return emitter;
     }
 
     @GetMapping
     public List<AtelierMessageResponse> history(@PathVariable UUID id) {
+        atelierAccess.requireAccess();
         return atelierChatService.history(currentUser.requireId(), id).stream()
                 .map(AtelierMessageResponse::from)
                 .toList();
     }
 
     /** Exécute la boucle tool-use en relayant chaque étape ; traduit toute erreur en événement SSE. */
-    private void relay(SseEmitter emitter, UUID userId, UUID workspaceId, String message) {
+    private void relay(SseEmitter emitter, UUID userId, UUID workspaceId, String message, boolean hasAccess) {
         try {
+            if (!hasAccess) {
+                throw new AtelierAccessDeniedException();
+            }
             AtelierProgressListener listener = new AtelierProgressListener() {
                 @Override
                 public void onAction(AtelierStepEvent step) {
@@ -99,6 +112,8 @@ public class AtelierChatController {
             emitter.send(SseEmitter.event().name("done")
                     .data(new StreamDone(result.reply(), result.actions(), result.messageId())));
             emitter.complete();
+        } catch (AtelierAccessDeniedException ex) {
+            sendError(emitter, "forbidden");
         } catch (QuotaExceededException ex) {
             sendError(emitter, "quota_exceeded");
         } catch (WorkspaceNotFoundException ex) {

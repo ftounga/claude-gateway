@@ -145,6 +145,7 @@ app:
         SOLO: ${STRIPE_PRICE_SOLO:}
         PRO: ${STRIPE_PRICE_PRO:}
         DAILY: ${STRIPE_PRICE_DAILY:}
+        GOLD: ${STRIPE_PRICE_GOLD:}
       # Mapping pack de tokens (top-up, F-21) -> price ID Stripe (paiement one-shot). Par environnement.
       topup-prices:
         DAY: ${STRIPE_PRICE_TOPUP_DAY:}
@@ -154,6 +155,7 @@ app:
       display-prices:
         SOLO: ${STRIPE_DISPLAY_PRICE_SOLO:24}
         PRO: ${STRIPE_DISPLAY_PRICE_PRO:99}
+        GOLD: ${STRIPE_DISPLAY_PRICE_GOLD:199}
       # URLs de retour Checkout (frontend). Surchargées par environnement.
       success-url: ${STRIPE_SUCCESS_URL:http://localhost:4200/billing?checkout=success}
       cancel-url: ${STRIPE_CANCEL_URL:http://localhost:4200/billing?checkout=cancel}
@@ -166,6 +168,7 @@ app:
       SOLO: ${APP_QUOTA_SOLO_TOKENS:1000000}
       PRO: ${APP_QUOTA_PRO_TOKENS:5000000}
       DAILY: ${APP_QUOTA_DAILY_TOKENS:500000}
+      GOLD: ${APP_QUOTA_GOLD_TOKENS:12000000}
   usage:
     report:
       # Rapport d'usage & coût (F-16) : devise, fenêtre d'historique et tarifs estimés.
