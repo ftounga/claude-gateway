@@ -3,7 +3,11 @@ package fr.claudegateway.atelier.agent;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -105,6 +109,20 @@ public class AtelierSessionService {
         if (paths.size() > max) {
             paths = paths.subList(0, max);
         }
+        // Table basename → chemin d'origine : la Files API renvoie les sorties sous leur seul nom de
+        // base (l'arborescence est perdue). On remappe une sortie vers son chemin de projet quand ce
+        // nom de base est unique dans le workspace, pour réécrire au bon endroit (et non à la racine).
+        Set<String> knownPaths = new HashSet<>(paths);
+        Map<String, String> byBasename = new HashMap<>();
+        Set<String> ambiguous = new HashSet<>();
+        for (String p : paths) {
+            String b = basename(p);
+            if (byBasename.putIfAbsent(b, p) != null) {
+                ambiguous.add(b);
+            }
+        }
+        ambiguous.forEach(byBasename::remove);
+
         List<FileMount> mounts = new ArrayList<>();
         for (String path : paths) {
             String content = workspaceService.readFile(userId, workspaceId, path);
@@ -142,7 +160,7 @@ public class AtelierSessionService {
             run = provider.awaitCompletion(session.id(), properties.sessionTimeout(), properties.maxPolls(), bridge);
             for (OutputFile output : provider.listOutputs(session.id())) {
                 byte[] bytes = provider.downloadFile(output.fileId());
-                String relPath = normalizePath(output.filename());
+                String relPath = resolveOutputPath(normalizePath(output.filename()), knownPaths, byBasename);
                 workspaceService.writeFile(userId, workspaceId, relPath, new String(bytes, UTF_8));
                 changed.add(relPath);
             }
@@ -180,5 +198,24 @@ public class AtelierSessionService {
     static String uploadFilename(String path) {
         String flat = path.replaceAll("[^A-Za-z0-9._-]", "_");
         return flat.isBlank() ? "file" : flat;
+    }
+
+    /** Nom de base d'un chemin (segment après le dernier {@code /}). */
+    static String basename(String path) {
+        int slash = path.lastIndexOf('/');
+        return slash < 0 ? path : path.substring(slash + 1);
+    }
+
+    /**
+     * Résout le chemin de réécriture d'une sortie : chemin exact s'il existe déjà dans le workspace ;
+     * sinon, chemin d'origine si le nom de base est unique dans le projet (la Files API aplatit les
+     * sorties à leur seul nom de base) ; sinon le chemin tel quel (fichier nouveau).
+     */
+    static String resolveOutputPath(String relPath, Set<String> knownPaths, Map<String, String> byBasename) {
+        if (knownPaths.contains(relPath)) {
+            return relPath;
+        }
+        String mapped = byBasename.get(basename(relPath));
+        return mapped != null ? mapped : relPath;
     }
 }
