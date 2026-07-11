@@ -1,0 +1,220 @@
+<div class="atelier-layout">
+  <!-- Sidebar : projets (workspaces) -->
+  <aside class="atelier-sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">Projets</span>
+      <input
+        #zipInput
+        type="file"
+        class="zip-input"
+        accept=".zip,application/zip"
+        hidden
+        (change)="onZipPicked($event)"
+      />
+      <button
+        mat-flat-button
+        color="primary"
+        type="button"
+        [disabled]="creating()"
+        (click)="zipInput.click()"
+      >
+        @if (creating()) {
+          <mat-progress-spinner mode="indeterminate" [diameter]="18"></mat-progress-spinner>
+        } @else {
+          <mat-icon>upload_file</mat-icon>
+        }
+        Nouveau projet
+      </button>
+    </div>
+
+    @if (workspaces().length === 0) {
+      <p class="sidebar-empty">Aucun projet. Importez une archive .zip pour commencer.</p>
+    } @else {
+      <mat-nav-list class="workspace-list">
+        @for (workspace of workspaces(); track workspace.id) {
+          <a
+            mat-list-item
+            [class.active]="workspace.id === activeWorkspaceId()"
+            (click)="selectWorkspace(workspace)"
+          >
+            <mat-icon matListItemIcon>folder_zip</mat-icon>
+            <span matListItemTitle class="workspace-name">{{ workspace.name }}</span>
+          </a>
+        }
+      </mat-nav-list>
+    }
+  </aside>
+
+  <!-- Zone principale : conversation -->
+  <section class="atelier-main">
+    @if (activeWorkspaceId() === null) {
+      <div class="atelier-empty">
+        <mat-icon>terminal</mat-icon>
+        <p>Sélectionnez un projet ou importez une archive .zip pour discuter avec Claude.</p>
+      </div>
+    } @else {
+      <mat-toolbar class="atelier-toolbar">
+        <mat-icon class="toolbar-icon">terminal</mat-icon>
+        <span class="atelier-heading">{{ activeName() }}</span>
+        <span class="toolbar-spacer"></span>
+        <button
+          mat-stroked-button
+          type="button"
+          class="files-trigger"
+          [class.active]="filesPanelOpen()"
+          (click)="toggleFilesPanel()"
+          matTooltip="Panneau Fichiers"
+        >
+          <mat-icon>{{ filesPanelOpen() ? 'chevron_right' : 'folder' }}</mat-icon>
+          Fichiers ({{ tree().length }})
+        </button>
+      </mat-toolbar>
+
+      @if (submitting()) {
+        <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+      }
+
+      <div class="atelier-body">
+        <!-- Flux unique de conversation -->
+        <div class="message-thread">
+          @if (messages().length === 0) {
+            <div class="thread-empty">
+              <mat-icon>chat_bubble_outline</mat-icon>
+              <p>Demandez à Claude de lire ou modifier les fichiers du projet.</p>
+            </div>
+          } @else {
+            @for (message of messages(); track message.id) {
+              <article
+                class="message"
+                [class.user]="message.role === 'USER'"
+                [class.assistant]="message.role === 'ASSISTANT'"
+              >
+                <div class="message-role">
+                  <span>{{ message.role === 'USER' ? 'Vous' : 'Claude' }}</span>
+                </div>
+                @if (message.role === 'ASSISTANT') {
+                  @for (segment of message.content | messageSegments; track $index) {
+                    @if (segment.kind === 'prose') {
+                      <div class="message-content markdown-body" [innerHTML]="segment.text | markdown"></div>
+                    } @else {
+                      <app-copy-block [block]="segment.block"></app-copy-block>
+                    }
+                  }
+                  @if (message.actions.length > 0) {
+                    <ul class="action-list" aria-label="Fichiers lus ou modifiés">
+                      @for (action of message.actions; track $index) {
+                        <li
+                          class="action-item"
+                          [class.write]="action.type === 'write'"
+                          (click)="openFile(action.path)"
+                        >
+                          <mat-icon class="action-icon">{{ actionIcon(action.type) }}</mat-icon>
+                          <span class="action-label">{{ actionLabel(action) }}</span>
+                        </li>
+                      }
+                    </ul>
+                  }
+                } @else {
+                  <div class="message-content">{{ message.content }}</div>
+                }
+              </article>
+            }
+          }
+        </div>
+
+        <!-- Panneau Fichiers repliable -->
+        @if (filesPanelOpen()) {
+          <aside class="files-panel" aria-label="Fichiers du projet">
+            <header class="files-panel-header">
+              <span class="files-panel-title">
+                <mat-icon>folder</mat-icon>
+                Arborescence
+              </span>
+              <button
+                mat-icon-button
+                type="button"
+                aria-label="Replier le panneau Fichiers"
+                (click)="toggleFilesPanel()"
+              >
+                <mat-icon>chevron_right</mat-icon>
+              </button>
+            </header>
+
+            @if (tree().length === 0) {
+              <p class="files-empty">Aucun fichier dans ce projet.</p>
+            } @else {
+              <ul class="tree-list">
+                @for (path of tree(); track path) {
+                  <li
+                    class="tree-item"
+                    [class.selected]="path === selectedFilePath()"
+                    (click)="openFile(path)"
+                  >
+                    <mat-icon class="tree-icon">description</mat-icon>
+                    <span class="tree-path" [matTooltip]="path">{{ path }}</span>
+                  </li>
+                }
+              </ul>
+            }
+
+            @if (selectedFilePath() !== null) {
+              <div class="file-preview">
+                <div class="file-preview-header">
+                  <span class="file-preview-path" [matTooltip]="selectedFilePath() ?? ''">
+                    {{ selectedFilePath() }}
+                  </span>
+                  <button
+                    mat-flat-button
+                    color="primary"
+                    type="button"
+                    [disabled]="fileLoading() || fileSaving()"
+                    (click)="saveFile()"
+                  >
+                    <mat-icon>save</mat-icon>
+                    Enregistrer
+                  </button>
+                </div>
+                @if (fileLoading()) {
+                  <p class="files-empty">Chargement…</p>
+                } @else {
+                  <textarea
+                    class="file-editor"
+                    spellcheck="false"
+                    [ngModel]="fileContent()"
+                    (ngModelChange)="fileContent.set($event)"
+                    aria-label="Contenu du fichier"
+                  ></textarea>
+                }
+              </div>
+            }
+          </aside>
+        }
+      </div>
+
+      <!-- Composer -->
+      <form class="composer" (ngSubmit)="send()">
+        <mat-form-field appearance="outline" class="composer-field" subscriptSizing="dynamic">
+          <mat-label>Votre demande</mat-label>
+          <textarea
+            matInput
+            rows="2"
+            placeholder="Ex : « Ajoute un endpoint /health dans le contrôleur »"
+            [ngModel]="draft()"
+            (ngModelChange)="draft.set($event)"
+            [ngModelOptions]="{ standalone: true }"
+            (keydown.enter)="$event.preventDefault(); send()"
+          ></textarea>
+        </mat-form-field>
+        <button
+          mat-flat-button
+          color="primary"
+          type="submit"
+          [disabled]="submitting() || draft().trim().length === 0"
+        >
+          <mat-icon>send</mat-icon>
+          Envoyer
+        </button>
+      </form>
+    }
+  </section>
+</div>
