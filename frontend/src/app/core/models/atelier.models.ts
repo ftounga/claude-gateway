@@ -63,3 +63,27 @@ export interface AtelierChatResponse {
   actions: AtelierAction[];
   messageId: string;
 }
+
+/**
+ * Étape d'action relayée au fil de l'eau par le flux SSE de `POST /api/workspaces/{id}/chat/stream`
+ * (événement `action`, SF-28-05). `path` est absent pour `list`.
+ */
+export interface AtelierStreamAction {
+  type: 'read' | 'write' | 'list' | 'search';
+  path?: string;
+}
+
+/** Métadonnées de fin de flux d'atelier (événement SSE `done`, SF-28-05). */
+export interface AtelierStreamDone {
+  reply: string;
+  actions: AtelierAction[];
+  messageId: string;
+}
+
+/** Callbacks du streaming de l'atelier (SF-28-05). */
+export interface AtelierStreamHandlers {
+  onAction: (action: AtelierStreamAction) => void;
+  onText: (text: string) => void;
+  onDone: (done: AtelierStreamDone) => void;
+  onError: (code: string) => void;
+}

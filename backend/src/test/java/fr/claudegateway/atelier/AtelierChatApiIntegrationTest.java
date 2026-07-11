@@ -49,6 +49,13 @@ class AtelierChatApiIntegrationTest {
         StubAiAgentProvider stubAiAgentProvider() {
             return new StubAiAgentProvider();
         }
+
+        /** Exécuteur SSE synchrone : le relais s'exécute au retour du contrôleur (corps lisible direct). */
+        @Bean("chatStreamExecutor")
+        @Primary
+        java.util.concurrent.Executor chatStreamExecutor() {
+            return Runnable::run;
+        }
     }
 
     @Autowired private MockMvc mockMvc;
@@ -144,6 +151,55 @@ class AtelierChatApiIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"message\":\"coucou\"}"))
                 .andExpect(status().isNotFound());
+    }
+
+    // ------------------------------------------------ POST /workspaces/{id}/chat/stream (SF-28-05)
+
+    @Test
+    void streamRelaysActionThenDoneAsSse() throws Exception {
+        UUID ws = createWorkspace(alice, "notes.txt", "contenu initial");
+        stub.enqueueToolCall("read_file", "path", "notes.txt");
+        stub.enqueueFinal("J'ai lu notes.txt.");
+
+        var result = mockMvc.perform(post("/api/workspaces/" + ws + "/chat/stream").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("{\"message\":\"lis notes.txt\"}"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.request().asyncStarted())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString();
+        org.assertj.core.api.Assertions.assertThat(body)
+                .contains("event:action")   // étape d'action relayée
+                .contains("read")            // type d'action
+                .contains("notes.txt")       // chemin
+                .contains("event:done")      // fin de flux
+                .contains("J'ai lu notes.txt.");
+        org.assertj.core.api.Assertions.assertThat(result.getResponse().getContentType())
+                .contains("text/event-stream");
+    }
+
+    @Test
+    void streamOnAnotherUsersWorkspaceEmitsErrorInStreamNotHttp406() throws Exception {
+        UUID ws = createWorkspace(alice, "a.txt", "x");
+        stub.enqueueFinal("ne devrait pas être atteint");
+
+        var result = mockMvc.perform(post("/api/workspaces/" + ws + "/chat/stream").contextPath("/api")
+                        .header("Authorization", bearer(bobToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("{\"message\":\"coucou\"}"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.request().asyncStarted())
+                .andReturn();
+
+        // L'isolation est émise DANS le flux (jamais un 406/404 via l'@ExceptionHandler JSON).
+        org.assertj.core.api.Assertions.assertThat(result.getResponse().getStatus()).isEqualTo(200);
+        org.assertj.core.api.Assertions.assertThat(result.getResponse().getContentAsString())
+                .contains("event:error")
+                .contains("workspace_not_found");
+        // Le fournisseur n'a jamais été sollicité (aucun tour joué).
+        org.assertj.core.api.Assertions.assertThat(stub.lastRequest).isNull();
     }
 
     @Test

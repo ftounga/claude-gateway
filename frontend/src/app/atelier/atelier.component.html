@@ -120,6 +120,33 @@
               </article>
             }
           }
+
+          <!-- Tour assistant « en cours » : étapes relayées + commentaire partiel (SF-28-05) -->
+          @if (streaming(); as live) {
+            <article class="message assistant streaming" aria-live="polite">
+              <div class="message-role">
+                <span>Claude</span>
+                <mat-progress-spinner
+                  mode="indeterminate"
+                  [diameter]="16"
+                  aria-label="Réponse en cours"
+                ></mat-progress-spinner>
+              </div>
+              @if (live.steps.length > 0) {
+                <ul class="action-list" aria-label="Étapes en cours">
+                  @for (step of live.steps; track $index) {
+                    <li class="action-item" [class.write]="step.type === 'write'">
+                      <mat-icon class="action-icon">{{ stepIcon(step.type) }}</mat-icon>
+                      <span class="action-label">{{ stepLabel(step) }}</span>
+                    </li>
+                  }
+                </ul>
+              }
+              @if (live.text.length > 0) {
+                <div class="message-content markdown-body" [innerHTML]="live.text | markdown"></div>
+              }
+            </article>
+          }
         </div>
 
         <!-- Panneau Fichiers repliable -->

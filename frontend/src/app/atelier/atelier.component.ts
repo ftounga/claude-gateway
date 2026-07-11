@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, NgZone, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -19,6 +19,7 @@ import { AtelierService } from '../core/services/atelier.service';
 import {
   AtelierAction,
   AtelierRole,
+  AtelierStreamAction,
   WorkspaceSummary,
 } from '../core/models/atelier.models';
 
@@ -28,6 +29,12 @@ export interface AtelierThreadItem {
   role: AtelierRole;
   content: string;
   actions: AtelierAction[];
+}
+
+/** Tour assistant « en cours » pendant le streaming : étapes relayées + commentaire partiel. */
+export interface AtelierStreamingItem {
+  steps: AtelierStreamAction[];
+  text: string;
 }
 
 /**
@@ -61,11 +68,15 @@ export interface AtelierThreadItem {
 export class AtelierComponent implements OnInit {
   private readonly atelier = inject(AtelierService);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly zone = inject(NgZone);
 
   readonly workspaces = signal<WorkspaceSummary[]>([]);
   readonly activeWorkspaceId = signal<string | null>(null);
   readonly tree = signal<string[]>([]);
   readonly messages = signal<AtelierThreadItem[]>([]);
+
+  /** Tour assistant « en cours » (étapes + texte partiel) affiché pendant le streaming (SF-28-05). */
+  readonly streaming = signal<AtelierStreamingItem | null>(null);
 
   /** Saisie du composer (liaison bidirectionnelle simple, façon Claude Code). */
   readonly draft = signal('');
@@ -163,7 +174,11 @@ export class AtelierComponent implements OnInit {
     });
   }
 
-  /** Envoie le message courant ; à la réponse, ajoute le tour et rafraîchit l'arborescence. */
+  /**
+   * Envoie le message courant en **streaming** (SF-28-05) : affiche les étapes (lecture/écriture/…)
+   * et le commentaire au fil de l'eau, puis remplace par la réponse finale et rafraîchit l'arborescence.
+   * Le flux tourne hors zone Angular (fetch) : chaque mise à jour de signal passe par {@link NgZone}.
+   */
   send(): void {
     const id = this.activeWorkspaceId();
     const content = this.draft().trim();
@@ -179,33 +194,65 @@ export class AtelierComponent implements OnInit {
     this.messages.update((current) => [...current, userItem]);
     this.draft.set('');
     this.submitting.set(true);
+    this.streaming.set({ steps: [], text: '' });
 
-    this.atelier.chat(id, content).subscribe({
-      next: (response) => {
-        this.submitting.set(false);
-        this.messages.update((current) => [
-          ...current,
-          {
-            id: response.messageId,
-            role: 'ASSISTANT',
-            content: response.reply,
-            actions: response.actions ?? [],
-          },
-        ]);
-        // Un tour a pu écrire des fichiers : rafraîchir l'arborescence (et l'aperçu ouvert).
-        this.refreshTree(id);
-        const openPath = this.selectedFilePath();
-        if (openPath && (response.actions ?? []).some((a) => a.type === 'write' && a.path === openPath)) {
-          this.openFile(openPath);
-        }
-      },
-      error: (err) => {
-        this.submitting.set(false);
-        // Retire le message utilisateur optimiste : rien n'a été persisté côté serveur.
-        this.messages.update((current) => current.filter((m) => m.id !== userItem.id));
-        this.notifyError(httpErrorMessage(err, "Le message n'a pas pu être envoyé. Veuillez réessayer."));
-      },
+    void this.atelier.streamChat(id, content, {
+      onAction: (action) =>
+        this.zone.run(() => {
+          this.streaming.update((current) =>
+            current ? { ...current, steps: [...current.steps, action] } : current,
+          );
+        }),
+      onText: (text) =>
+        this.zone.run(() => {
+          this.streaming.update((current) =>
+            current ? { ...current, text: current.text + text } : current,
+          );
+        }),
+      onDone: (done) =>
+        this.zone.run(() => {
+          this.submitting.set(false);
+          this.streaming.set(null);
+          this.messages.update((current) => [
+            ...current,
+            {
+              id: done.messageId,
+              role: 'ASSISTANT',
+              content: done.reply,
+              actions: done.actions ?? [],
+            },
+          ]);
+          // Un tour a pu écrire des fichiers : rafraîchir l'arborescence (et l'aperçu ouvert).
+          this.refreshTree(id);
+          const openPath = this.selectedFilePath();
+          if (openPath && (done.actions ?? []).some((a) => a.type === 'write' && a.path === openPath)) {
+            this.openFile(openPath);
+          }
+        }),
+      onError: (code) =>
+        this.zone.run(() => {
+          this.submitting.set(false);
+          this.streaming.set(null);
+          // Retire le message utilisateur optimiste : rien n'a été persisté côté serveur.
+          this.messages.update((current) => current.filter((m) => m.id !== userItem.id));
+          this.notifyError(this.streamErrorMessage(code));
+        }),
     });
+  }
+
+  /** Traduit un code d'erreur de flux en message utilisateur lisible (SF-28-05). */
+  private streamErrorMessage(code: string): string {
+    switch (code) {
+      case 'quota_exceeded':
+        return 'Quota de consommation atteint. Rachetez des tokens ou attendez la prochaine période.';
+      case 'workspace_not_found':
+        return 'Projet introuvable.';
+      case 'provider_unavailable':
+      case 'provider_error':
+        return 'Le service IA est momentanément indisponible.';
+      default:
+        return "Le message n'a pas pu être envoyé. Veuillez réessayer.";
+    }
   }
 
   /** Ouvre/ferme le panneau « Fichiers ». */
@@ -261,6 +308,34 @@ export class AtelierComponent implements OnInit {
   /** Libellé humain d'une action fichier. */
   actionLabel(action: AtelierAction): string {
     return action.type === 'write' ? `${action.path} modifié` : `${action.path} lu`;
+  }
+
+  /** Icône Material d'une étape de streaming (lecture / écriture / liste / recherche). */
+  stepIcon(type: string): string {
+    switch (type) {
+      case 'write':
+        return 'edit';
+      case 'list':
+        return 'folder_open';
+      case 'search':
+        return 'search';
+      default:
+        return 'visibility';
+    }
+  }
+
+  /** Libellé humain d'une étape de streaming en cours. */
+  stepLabel(step: AtelierStreamAction): string {
+    switch (step.type) {
+      case 'write':
+        return `Édition de ${step.path}`;
+      case 'list':
+        return 'Liste des fichiers';
+      case 'search':
+        return `Recherche « ${step.path} »`;
+      default:
+        return `Lecture de ${step.path}`;
+    }
   }
 
   private resetFilePanel(): void {
