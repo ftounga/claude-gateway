@@ -102,7 +102,7 @@ sécurisent la monétisation ; settings et landing finalisent l'expérience. Le 
 
 | ID | Feature | Description | Statut |
 |----|---------|-------------|--------|
-| F-28 | Atelier (Claude Code Lite — Phase 1) | Workspace projet isolé (upload zip → S3), arborescence + lecture/écriture de fichiers, et **Atelier** où Claude lit/édite les fichiers via une boucle **tool-use** (sans exécution), `CLAUDE.md` + skills en contexte. UI flux unique + panneau Fichiers repliable. | **En cours** (SF-28-01→03) |
+| F-28 | Atelier (Claude Code Lite — Phase 1) | Workspace projet isolé (upload zip → S3), arborescence + lecture/écriture de fichiers, et **Atelier** où Claude lit/édite les fichiers via une boucle **tool-use** (sans exécution), `CLAUDE.md` + skills en contexte. UI flux unique + panneau Fichiers repliable. | **Terminée** (SF-28-01→03) |
 
 ## Features V3 (backlog — hors périmètre actuel)
 
