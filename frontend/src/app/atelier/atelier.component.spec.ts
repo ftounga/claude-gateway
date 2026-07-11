@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, throwError } from 'rxjs';
 
@@ -24,6 +25,7 @@ describe('AtelierComponent', () => {
   let service: jasmine.SpyObj<AtelierService>;
   let apiKeyService: jasmine.SpyObj<ApiKeyService>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
+  let dialog: jasmine.SpyObj<MatDialog>;
 
   const hostedStatus: ApiKeyStatus = {
     present: false,
@@ -60,6 +62,7 @@ describe('AtelierComponent', () => {
       'getWorkspace',
       'getFile',
       'writeFile',
+      'importLibrary',
       'chat',
       'streamChat',
       'streamAgent',
@@ -67,6 +70,7 @@ describe('AtelierComponent', () => {
     ]);
     apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
+    dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
 
     // Valeurs par défaut : la liste est chargée à l'init.
     service.listWorkspaces.and.returnValue(of([summary]));
@@ -82,6 +86,7 @@ describe('AtelierComponent', () => {
         { provide: AtelierService, useValue: service },
         { provide: ApiKeyService, useValue: apiKeyService },
         { provide: MatSnackBar, useValue: snackBar },
+        { provide: MatDialog, useValue: dialog },
       ],
     });
 
@@ -103,6 +108,7 @@ describe('AtelierComponent', () => {
       'getWorkspace',
       'getFile',
       'writeFile',
+      'importLibrary',
       'chat',
       'streamChat',
       'getHistory',
@@ -166,6 +172,7 @@ describe('AtelierComponent', () => {
       'getWorkspace',
       'getFile',
       'writeFile',
+      'importLibrary',
       'chat',
       'streamChat',
       'getHistory',
@@ -202,6 +209,7 @@ describe('AtelierComponent', () => {
       'getWorkspace',
       'getFile',
       'writeFile',
+      'importLibrary',
       'chat',
       'streamChat',
       'getHistory',
@@ -570,5 +578,64 @@ describe('AtelierComponent', () => {
     component.saveFile();
 
     expect(snackBar.open).toHaveBeenCalled();
+  });
+
+  it('ajoute un fichier texte du PC via writeFile puis rafraîchit l\'arborescence (SF-28-13)', async () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    service.writeFile.and.returnValue(of(void 0));
+    service.getWorkspace.calls.reset();
+    const file = new File(['export const x = 1;'], 'main.ts', { type: 'text/plain' });
+    const event = { target: { files: [file], value: 'x' } } as unknown as Event;
+
+    await component.onWorkspaceFilePicked(event);
+
+    expect(service.writeFile).toHaveBeenCalledWith('w1', 'main.ts', 'export const x = 1;');
+    expect(service.getWorkspace).toHaveBeenCalledWith('w1');
+    expect(snackBar.open.calls.mostRecent().args[0]).toBe('Fichier ajouté.');
+  });
+
+  it('refuse un fichier binaire (image) du PC sans appeler writeFile (SF-28-13)', async () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    const file = new File(['\x00\x01'], 'photo.png', { type: 'image/png' });
+    const event = { target: { files: [file], value: 'x' } } as unknown as Event;
+
+    await component.onWorkspaceFilePicked(event);
+
+    expect(service.writeFile).not.toHaveBeenCalled();
+    const message = snackBar.open.calls.mostRecent().args[0] as string;
+    expect(message).toContain('bibliothèque');
+  });
+
+  it('importe les documents choisis dans la bibliothèque via importLibrary + refresh (SF-28-13)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    const imported: WorkspaceDetail = {
+      ...detail,
+      files: ['src/main.ts', 'bibliotheque/contrat.pdf.md'],
+    };
+    service.importLibrary.and.returnValue(of(imported));
+    dialog.open.and.returnValue({
+      afterClosed: () => of([{ id: 'd1', filename: 'contrat.pdf' }]),
+    } as MatDialogRef<unknown, unknown>);
+
+    component.openWorkspaceLibraryPicker();
+
+    expect(service.importLibrary).toHaveBeenCalledWith('w1', ['d1']);
+    expect(component.tree()).toEqual(['src/main.ts', 'bibliotheque/contrat.pdf.md']);
+    expect(snackBar.open.calls.mostRecent().args[0]).toBe('Document importé.');
+  });
+
+  it('n\'appelle pas importLibrary si le sélecteur de bibliothèque est fermé sans choix (SF-28-13)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    dialog.open.and.returnValue({
+      afterClosed: () => of(undefined),
+    } as MatDialogRef<unknown, unknown>);
+
+    component.openWorkspaceLibraryPicker();
+
+    expect(service.importLibrary).not.toHaveBeenCalled();
   });
 });

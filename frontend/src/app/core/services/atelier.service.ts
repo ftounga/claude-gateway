@@ -58,6 +58,15 @@ export class AtelierService {
     return this.http.put<void>(`/api/workspaces/${id}/file`, body, { params: { path } });
   }
 
+  /**
+   * Importe le texte de documents de la bibliothèque personnelle (F-08) dans le workspace
+   * (SF-28-13). Chaque document est écrit sous `bibliotheque/<nom>.md` côté backend, qui relit les
+   * documents sous double filtre `user_id` (isolation) et renvoie l'arborescence à jour.
+   */
+  importLibrary(id: string, documentIds: string[]): Observable<WorkspaceDetail> {
+    return this.http.post<WorkspaceDetail>(`/api/workspaces/${id}/import-library`, { documentIds });
+  }
+
   /** Envoie un message ; Claude lit/édite les fichiers via une boucle tool-use côté backend. */
   chat(id: string, message: string): Observable<AtelierChatResponse> {
     const body: AtelierChatRequest = { message };
