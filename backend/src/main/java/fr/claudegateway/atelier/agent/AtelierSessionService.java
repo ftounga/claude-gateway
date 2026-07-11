@@ -108,7 +108,9 @@ public class AtelierSessionService {
         List<FileMount> mounts = new ArrayList<>();
         for (String path : paths) {
             String content = workspaceService.readFile(userId, workspaceId, path);
-            String fileId = provider.uploadFile(path, content.getBytes(UTF_8));
+            // La Files API refuse les caractères interdits dans le nom (dont « / ») : on téléverse sous
+            // un nom aplati, tandis que l'arborescence réelle est portée par le mount_path.
+            String fileId = provider.uploadFile(uploadFilename(path), content.getBytes(UTF_8));
             mounts.add(new FileMount(fileId, WORKSPACE_MOUNT + path));
         }
 
@@ -168,5 +170,15 @@ public class AtelierSessionService {
             path = path.substring(WORKSPACE_MOUNT.length());
         }
         return path;
+    }
+
+    /**
+     * Nom de fichier « plat » accepté par la Files API : tout caractère hors {@code [A-Za-z0-9._-]}
+     * (dont le séparateur de chemin {@code /}) est remplacé par {@code _}. L'arborescence réelle du
+     * projet reste portée par le {@code mount_path} de la ressource, pas par ce nom.
+     */
+    static String uploadFilename(String path) {
+        String flat = path.replaceAll("[^A-Za-z0-9._-]", "_");
+        return flat.isBlank() ? "file" : flat;
     }
 }
