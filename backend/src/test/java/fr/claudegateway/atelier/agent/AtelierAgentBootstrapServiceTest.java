@@ -33,11 +33,13 @@ class AtelierAgentBootstrapServiceTest {
     private AtelierAgentConfigRepository repository;
 
     private AtelierAgentProperties enabledProps() {
-        return new AtelierAgentProperties(true, "env-name", "agent-name", "claude-opus-4-8", true);
+        return new AtelierAgentProperties(true, "env-name", "agent-name", "claude-opus-4-8", true,
+                null, null, null, null);
     }
 
     private AtelierAgentProperties disabledProps() {
-        return new AtelierAgentProperties(false, "env-name", "agent-name", "claude-opus-4-8", true);
+        return new AtelierAgentProperties(false, "env-name", "agent-name", "claude-opus-4-8", true,
+                null, null, null, null);
     }
 
     @Test
