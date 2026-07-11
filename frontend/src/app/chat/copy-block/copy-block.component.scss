@@ -54,3 +54,18 @@
     color: var(--cg-text-primary);
   }
 }
+
+// Document / e-mail rendu formaté (gras, italique, listes…) sur fond blanc.
+.copy-block-rich {
+  padding: var(--cg-space-3) var(--cg-space-4);
+  background: var(--cg-surface);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--cg-text-primary);
+
+  :first-child { margin-top: 0; }
+  :last-child { margin-bottom: 0; }
+
+  p { margin: 0 0 var(--cg-space-2); }
+  ul, ol { margin: 0 0 var(--cg-space-2); padding-left: var(--cg-space-4); }
+}

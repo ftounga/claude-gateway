@@ -5,6 +5,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { CopyBlock } from '../../shared/copy-block.model';
+import { MarkdownPipe, renderMarkdown } from '../../shared/markdown.pipe';
 
 /**
  * Bloc copiable inline façon ChatGPT (F-26). Affiche l'en-tête (icône + libellé du type/langage),
@@ -17,7 +18,7 @@ import { CopyBlock } from '../../shared/copy-block.model';
  */
 @Component({
   selector: 'app-copy-block',
-  imports: [MatButtonModule, MatIconModule, MatTooltipModule],
+  imports: [MatButtonModule, MatIconModule, MatTooltipModule, MarkdownPipe],
   templateUrl: './copy-block.component.html',
   styleUrl: './copy-block.component.scss',
 })
@@ -38,16 +39,40 @@ export class CopyBlockComponent {
     return CopyBlockComponent.TYPE_ICONS[type];
   }
 
-  /** Copie le contenu brut du bloc dans le presse-papiers ; erreur douce si indisponible. */
+  /**
+   * Bloc « riche » (document / e-mail) : rendu en Markdown formaté et copié en <b>texte enrichi</b>
+   * (gras, italique, listes… préservés au collage dans Word, Gmail, etc.). Le code, lui, reste brut.
+   */
+  isRich(): boolean {
+    const type = this.block().type;
+    return type === 'doc' || type === 'mail';
+  }
+
+  /**
+   * Copie le bloc. Pour un document/e-mail : écrit à la fois le HTML (mise en forme préservée) et le
+   * texte brut de repli dans le presse-papiers. Pour du code : texte brut uniquement. Erreur douce si
+   * le presse-papiers est indisponible.
+   */
   copy(): void {
     const clipboard = navigator.clipboard;
     if (!clipboard || typeof clipboard.writeText !== 'function') {
       this.snackBar.open('Copie impossible dans ce contexte.', 'Fermer', { duration: 3000 });
       return;
     }
-    clipboard.writeText(this.block().content).then(
-      () => this.snackBar.open('Contenu copié.', 'Fermer', { duration: 2000 }),
-      () => this.snackBar.open('Copie impossible dans ce contexte.', 'Fermer', { duration: 3000 }),
-    );
+    const content = this.block().content;
+    const ok = () => this.snackBar.open('Contenu copié.', 'Fermer', { duration: 2000 });
+    const ko = () => this.snackBar.open('Copie impossible dans ce contexte.', 'Fermer', { duration: 3000 });
+
+    // Copie enrichie (HTML) pour doc/mail, si l'API le permet ; sinon repli sur le texte brut.
+    if (this.isRich() && typeof clipboard.write === 'function' && typeof ClipboardItem !== 'undefined') {
+      const html = renderMarkdown(content);
+      const item = new ClipboardItem({
+        'text/html': new Blob([html], { type: 'text/html' }),
+        'text/plain': new Blob([content], { type: 'text/plain' }),
+      });
+      clipboard.write([item]).then(ok, () => clipboard.writeText(content).then(ok, ko));
+      return;
+    }
+    clipboard.writeText(content).then(ok, ko);
   }
 }

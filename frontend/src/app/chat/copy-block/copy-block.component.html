@@ -16,5 +16,11 @@
       Copier
     </button>
   </header>
-  <pre class="copy-block-content"><code>{{ block().content }}</code></pre>
+  @if (isRich()) {
+    <!-- Document / e-mail : rendu formaté (gras, italique, listes) — la copie préserve la mise en forme. -->
+    <div class="copy-block-rich markdown-body" [innerHTML]="block().content | markdown"></div>
+  } @else {
+    <!-- Code : source brute, monospace. -->
+    <pre class="copy-block-content"><code>{{ block().content }}</code></pre>
+  }
 </div>

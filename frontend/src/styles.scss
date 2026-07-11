@@ -27,20 +27,19 @@ html {
   --cg-orange-2: #F0954F;
   --cg-cream: #F5EFE3;
 
-  // Rôles applicatifs (F-27 rév. 2026-07-11 — thème « Blanc & Orange », lumineux, choix owner).
-  // Tout est CLAIR : fond très clair, header/cartes blancs, orange = seul accent, encre ardoise
-  // (pas de navy quasi-noir → sensation lumineuse).
-  --cg-primary: #1E293B;   // ardoise foncée — titres/structure (usage sobre ; le header est blanc)
-  --cg-accent: #E07B39;    // orange — CTA, états actifs, liens, highlights (unique accent)
-  --cg-accent-2: #F0954F;  // orange clair — hover/dégradés
-  --cg-bg: #F8FAFC;        // fond de page très clair (lumineux)
+  // Rôles applicatifs (F-27 rév. 2026-07-11 — charte RÉPLIQUÉE de legalcase, couleurs exactes).
+  // Navy-bleu professionnel + or/ambre en accent + fond gris clair + blanc = lumineux et sobre.
+  --cg-primary: #1A3A5C;   // navy-bleu legalcase — titres/structure, marque
+  --cg-accent: #C9973A;    // or/ambre legalcase — CTA, états actifs, liens
+  --cg-accent-2: #D9AE5C;  // or clair — hover
+  --cg-bg: #F5F6FA;        // gris très clair legalcase — fond de page
   --cg-surface: #FFFFFF;   // header, cartes, surfaces — blanc
-  --cg-surface-2: #F4F6FA; // surface secondaire (zones internes, entêtes de bloc)
-  --cg-error: #DC2626;
-  --cg-success: #16A34A;
-  --cg-text-primary: #1E293B;   // encre ardoise (adoucie vs quasi-noir → plus lumineux)
-  --cg-text-secondary: #64748B; // gris ardoise
-  --cg-divider: #E8EDF3;        // filet clair
+  --cg-surface-2: #EEF1F6; // surface secondaire
+  --cg-error: #D32F2F;     // rouge legalcase
+  --cg-success: #27AE60;   // vert legalcase
+  --cg-text-primary: #1C2B3A;   // encre navy legalcase
+  --cg-text-secondary: #6B7A8D; // ardoise legalcase
+  --cg-divider: #E0E4EA;        // filet legalcase
 
   --cg-font-heading: 'Space Grotesk', 'Inter', sans-serif;
   --cg-font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -75,6 +74,16 @@ h3 { font-weight: 600; }
 h4 { font-weight: 600; }
 
 code, pre { font-family: var(--cg-font-mono); }
+
+// ---- CTA de marque : boutons Material pleins en OR legalcase (--cg-accent) ----
+// Le thème Material ne fournit pas l'or ; on force la couleur d'action sur les boutons pleins.
+.mat-mdc-unelevated-button,
+.mat-mdc-raised-button {
+  --mdc-filled-button-container-color: var(--cg-accent);
+  --mdc-filled-button-label-text-color: #ffffff;
+  --mdc-protected-button-container-color: var(--cg-accent);
+  --mdc-protected-button-label-text-color: #ffffff;
+}
 
 // ---- Badges / statuts ----
 .badge {
