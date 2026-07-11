@@ -4,8 +4,9 @@ metadata:
   name: claude-gateway-ingress
   annotations:
     kubernetes.io/ingress.class: nginx
-    # Uploads jusqu'à 20 Mo (spec) + marge multipart
-    nginx.ingress.kubernetes.io/proxy-body-size: "25m"
+    # Uploads : import de projet ZIP Atelier (F-28) jusqu'à ~150 Mo compressé + marge multipart.
+    # Doit rester >= Spring multipart max-request-size (APP_UPLOAD_MAX_REQUEST_SIZE) sinon 413 nginx opaque.
+    nginx.ingress.kubernetes.io/proxy-body-size: "155m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"

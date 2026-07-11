@@ -19,6 +19,14 @@ data:
   # Atelier / Claude Code Lite (F-28) : stockage des workspaces sur S3 (bucket S3_BUCKET, préfixe
   # atelier/) pour la persistance entre redémarrages. Défaut `in-memory` réservé aux tests.
   APP_ATELIER_STORAGE: "s3"
+  # Limites d'import ZIP Atelier — profil « généreux » (import de gros monorepos/assets).
+  # Chaîne cohérente : ingress 155m >= Spring max-request 155MB >= max-file 150MB ; garde-fous
+  # anti-zip-bomb sur le décompressé (total/par-fichier/nb-entrées). Purement configurable (réversible).
+  APP_UPLOAD_MAX_FILE_SIZE: "150MB"
+  APP_UPLOAD_MAX_REQUEST_SIZE: "155MB"
+  APP_ATELIER_MAX_TOTAL_BYTES: "419430400"   # 400 Mo décompressé
+  APP_ATELIER_MAX_FILE_BYTES: "20971520"     # 20 Mo par fichier
+  APP_ATELIER_MAX_ENTRIES: "8000"
   # URLs de retour Stripe Checkout (F-09/F-21) : après paiement/annulation, retour sur la prod
   # (et non localhost). Non secret.
   STRIPE_SUCCESS_URL: "https://portal.ng-itconsulting.com/billing?checkout=success"
