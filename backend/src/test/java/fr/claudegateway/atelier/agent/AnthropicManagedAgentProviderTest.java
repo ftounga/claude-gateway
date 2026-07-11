@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
@@ -46,7 +47,7 @@ class AnthropicManagedAgentProviderTest {
         AtelierAgentProperties agentProperties = new AtelierAgentProperties(
                 false, null, null, null, null, null, null, null, Duration.ZERO);
         RestClient.Builder builder = RestClient.builder();
-        server = MockRestServiceServer.bindTo(builder).build();
+        server = MockRestServiceServer.bindTo(builder).ignoreExpectOrder(true).build();
         provider = new AnthropicManagedAgentProvider(properties, agentProperties, builder);
     }
 
@@ -128,8 +129,9 @@ class AnthropicManagedAgentProviderTest {
         server.expect(requestTo("https://api.anthropic.com/v1/sessions/sess_1/events"))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(header("anthropic-beta", BETA))
-                .andExpect(jsonPath("$.type").value("user.message"))
-                .andExpect(jsonPath("$.content").value("Corrige le bug."))
+                .andExpect(jsonPath("$.events[0].type").value("user.message"))
+                .andExpect(jsonPath("$.events[0].content[0].type").value("text"))
+                .andExpect(jsonPath("$.events[0].content[0].text").value("Corrige le bug."))
                 .andRespond(withSuccess("{\"ok\":true}", MediaType.APPLICATION_JSON));
 
         provider.sendUserMessage("sess_1", "Corrige le bug.");
@@ -231,14 +233,15 @@ class AnthropicManagedAgentProviderTest {
 
     @Test
     void awaitCompletionThrowsTimeoutWhenNeverIdle() {
-        server.expect(requestToUriTemplate(
+        // Chaque tour relit la page 0 (running, jamais idle) puis la page 1 (vide → fin du tour).
+        server.expect(ExpectedCount.manyTimes(), requestToUriTemplate(
                 "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000&page=0"))
                 .andRespond(withSuccess(
-                        "{\"data\":[{\"type\":\"session.status_running\"}]}", MediaType.APPLICATION_JSON));
-        server.expect(requestToUriTemplate(
+                        "{\"data\":[{\"type\":\"session.status_running\",\"id\":\"e1\"}]}",
+                        MediaType.APPLICATION_JSON));
+        server.expect(ExpectedCount.manyTimes(), requestToUriTemplate(
                 "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000&page=1"))
-                .andRespond(withSuccess(
-                        "{\"data\":[{\"type\":\"session.status_running\"}]}", MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess("{\"data\":[]}", MediaType.APPLICATION_JSON));
 
         assertThatThrownBy(() -> provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 2))
                 .isInstanceOf(AgentSessionTimeoutException.class);
