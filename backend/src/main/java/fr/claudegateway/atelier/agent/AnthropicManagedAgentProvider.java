@@ -184,10 +184,10 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
             // déduplication par id garantit qu'aucun event n'est traité/notifié deux fois.
             String stopReason = null;
             boolean idle = false;
+            String cursor = null; // 1re page sans curseur ; ensuite `next_page` de la réponse
             for (int page = 0; page < MAX_EVENT_PAGES; page++) {
-                boolean any = false;
-                for (JsonNode event : events(readEventsPage(sessionId, page))) {
-                    any = true;
+                JsonNode pageNode = readEventsPage(sessionId, cursor);
+                for (JsonNode event : events(pageNode)) {
                     String id = text(event, "id");
                     if (id != null && !seen.add(id)) {
                         continue; // event déjà traité lors d'un tour précédent
@@ -207,8 +207,9 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
                         sink.onStatus("idle");
                     }
                 }
-                if (idle || !any) {
-                    break; // idle terminal atteint, ou page vide : fin des events pour ce tour
+                cursor = text(pageNode, "next_page");
+                if (idle || cursor == null || cursor.isBlank()) {
+                    break; // idle terminal, ou plus de page (fin des events courants)
                 }
             }
             if (idle) {
@@ -290,13 +291,18 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
     }
 
     /** Lit une page d'events (polling) de la session. Extraite pour la testabilité. */
-    private JsonNode readEventsPage(String sessionId, int page) {
+    private JsonNode readEventsPage(String sessionId, String pageCursor) {
         try {
             return restClient.get()
-                    .uri(uriBuilder -> uriBuilder.path("/v1/sessions/" + sessionId + "/events")
-                            .queryParam("limit", 1000)
-                            .queryParam("page", page)
-                            .build())
+                    .uri(uriBuilder -> {
+                        uriBuilder.path("/v1/sessions/" + sessionId + "/events").queryParam("limit", 1000);
+                        // `page` est un curseur opaque (jamais un entier) : absent sur la 1re page,
+                        // puis alimenté par le `next_page` de la réponse précédente.
+                        if (pageCursor != null && !pageCursor.isBlank()) {
+                            uriBuilder.queryParam("page", pageCursor);
+                        }
+                        return uriBuilder.build();
+                    })
                     .header("x-api-key", properties.apiKey())
                     .header("anthropic-version", properties.version())
                     .header("anthropic-beta", MANAGED_AGENTS_BETA)

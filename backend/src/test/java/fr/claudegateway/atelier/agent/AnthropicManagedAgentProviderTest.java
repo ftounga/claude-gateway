@@ -142,18 +142,19 @@ class AnthropicManagedAgentProviderTest {
     @Test
     void awaitCompletionPollsUntilIdleAndAggregatesAgentMessages() {
         server.expect(requestToUriTemplate(
-                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000&page=0"))
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
                 .andExpect(method(HttpMethod.GET))
                 .andExpect(header("anthropic-beta", BETA))
                 .andRespond(withSuccess(
-                        "{\"data\":[{\"type\":\"session.status_running\"}]}", MediaType.APPLICATION_JSON));
+                        "{\"data\":[{\"type\":\"session.status_running\",\"id\":\"e0\"}],\"next_page\":\"c1\"}",
+                        MediaType.APPLICATION_JSON));
         server.expect(requestToUriTemplate(
-                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000&page=1"))
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000&page=c1"))
                 .andExpect(method(HttpMethod.GET))
                 .andRespond(withSuccess(
-                        "{\"data\":[{\"type\":\"agent.message\",\"content\":[{\"type\":\"text\",\"text\":\"Bonjour \"},"
+                        "{\"data\":[{\"type\":\"agent.message\",\"id\":\"e1\",\"content\":[{\"type\":\"text\",\"text\":\"Bonjour \"},"
                                 + "{\"type\":\"text\",\"text\":\"monde\"}]},"
-                                + "{\"type\":\"session.status_idle\",\"stop_reason\":\"end_turn\"}]}",
+                                + "{\"type\":\"session.status_idle\",\"id\":\"e2\",\"stop_reason\":{\"type\":\"end_turn\"}}]}",
                         MediaType.APPLICATION_JSON));
 
         SessionRun run = provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10);
@@ -166,17 +167,18 @@ class AnthropicManagedAgentProviderTest {
     @Test
     void awaitCompletionWithListenerNotifiesTextAndStatusAndAggregatesSameReply() {
         server.expect(requestToUriTemplate(
-                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000&page=0"))
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
                 .andRespond(withSuccess(
-                        "{\"data\":[{\"type\":\"session.status_running\"},"
-                                + "{\"type\":\"agent.tool_use\",\"name\":\"bash\",\"input\":{\"command\":\"ls -la\"}}]}",
+                        "{\"data\":[{\"type\":\"session.status_running\",\"id\":\"e0\"},"
+                                + "{\"type\":\"agent.tool_use\",\"id\":\"e1\",\"name\":\"bash\",\"input\":{\"command\":\"ls -la\"}}],"
+                                + "\"next_page\":\"c1\"}",
                         MediaType.APPLICATION_JSON));
         server.expect(requestToUriTemplate(
-                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000&page=1"))
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000&page=c1"))
                 .andRespond(withSuccess(
-                        "{\"data\":[{\"type\":\"agent.message\",\"content\":[{\"type\":\"text\",\"text\":\"Bonjour \"},"
+                        "{\"data\":[{\"type\":\"agent.message\",\"id\":\"e2\",\"content\":[{\"type\":\"text\",\"text\":\"Bonjour \"},"
                                 + "{\"type\":\"text\",\"text\":\"monde\"}]},"
-                                + "{\"type\":\"session.status_idle\",\"stop_reason\":\"end_turn\"}]}",
+                                + "{\"type\":\"session.status_idle\",\"id\":\"e3\",\"stop_reason\":\"end_turn\"}]}",
                         MediaType.APPLICATION_JSON));
 
         RecordingListener listener = new RecordingListener();
@@ -195,10 +197,10 @@ class AnthropicManagedAgentProviderTest {
     @Test
     void awaitCompletionThreeArgsDelegatesWithNoopListenerNoRegression() {
         server.expect(requestToUriTemplate(
-                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000&page=0"))
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
                 .andRespond(withSuccess(
-                        "{\"data\":[{\"type\":\"agent.message\",\"content\":\"Salut\"},"
-                                + "{\"type\":\"session.status_idle\",\"stop_reason\":\"end_turn\"}]}",
+                        "{\"data\":[{\"type\":\"agent.message\",\"id\":\"e0\",\"content\":\"Salut\"},"
+                                + "{\"type\":\"session.status_idle\",\"id\":\"e1\",\"stop_reason\":\"end_turn\"}]}",
                         MediaType.APPLICATION_JSON));
 
         // La variante 3-args (NOOP) agrège la réponse sans lever malgré l'absence de listener.
@@ -233,15 +235,12 @@ class AnthropicManagedAgentProviderTest {
 
     @Test
     void awaitCompletionThrowsTimeoutWhenNeverIdle() {
-        // Chaque tour relit la page 0 (running, jamais idle) puis la page 1 (vide → fin du tour).
+        // Chaque tour relit depuis la 1re page (running, jamais idle, pas de next_page → fin du tour).
         server.expect(ExpectedCount.manyTimes(), requestToUriTemplate(
-                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000&page=0"))
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
                 .andRespond(withSuccess(
                         "{\"data\":[{\"type\":\"session.status_running\",\"id\":\"e1\"}]}",
                         MediaType.APPLICATION_JSON));
-        server.expect(ExpectedCount.manyTimes(), requestToUriTemplate(
-                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000&page=1"))
-                .andRespond(withSuccess("{\"data\":[]}", MediaType.APPLICATION_JSON));
 
         assertThatThrownBy(() -> provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 2))
                 .isInstanceOf(AgentSessionTimeoutException.class);
