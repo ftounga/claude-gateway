@@ -1,8 +1,11 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, throwError } from 'rxjs';
+
+import { MAX_UPLOAD_BYTES } from '../shared/http-error.util';
 
 import { AtelierComponent } from './atelier.component';
 import { AtelierService } from '../core/services/atelier.service';
@@ -118,6 +121,50 @@ describe('AtelierComponent', () => {
 
     expect(snackBar.open).toHaveBeenCalled();
     expect(component.activeWorkspaceId()).toBeNull();
+  });
+
+  it('rejette côté client une archive trop volumineuse sans appeler le backend', () => {
+    setup();
+    const file = new File(['x'], 'gros.zip', { type: 'application/zip' });
+    Object.defineProperty(file, 'size', { value: MAX_UPLOAD_BYTES + 1 });
+    const event = { target: { files: [file], value: 'x' } } as unknown as Event;
+
+    component.onZipPicked(event);
+
+    expect(service.createWorkspace).not.toHaveBeenCalled();
+    expect(component.creating()).toBeFalse();
+    const message = snackBar.open.calls.mostRecent().args[0] as string;
+    expect(message).toContain('trop volumineuse');
+    expect(message).toContain('node_modules');
+  });
+
+  it('affiche le message backend lorsque la création échoue avec un corps structuré', () => {
+    setup();
+    const error = new HttpErrorResponse({
+      status: 400,
+      error: { error: 'invalid_archive', message: "Un fichier de l'archive est trop volumineux." },
+    });
+    service.createWorkspace.and.returnValue(throwError(() => error));
+    const file = new File(['zip'], 'projet.zip', { type: 'application/zip' });
+    const event = { target: { files: [file], value: 'x' } } as unknown as Event;
+
+    component.onZipPicked(event);
+
+    expect(snackBar.open.calls.mostRecent().args[0]).toBe(
+      "Un fichier de l'archive est trop volumineux.",
+    );
+  });
+
+  it('traduit un 413 ingress en message « trop volumineuse » à l\'import', () => {
+    setup();
+    const error = new HttpErrorResponse({ status: 413, error: '<html>413</html>' });
+    service.createWorkspace.and.returnValue(throwError(() => error));
+    const file = new File(['zip'], 'projet.zip', { type: 'application/zip' });
+    const event = { target: { files: [file], value: 'x' } } as unknown as Event;
+
+    component.onZipPicked(event);
+
+    expect(snackBar.open.calls.mostRecent().args[0]).toContain('trop volumineuse');
   });
 
   it('loads history and tree when a workspace is selected', () => {

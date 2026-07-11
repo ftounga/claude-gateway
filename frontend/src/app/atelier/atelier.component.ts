@@ -13,6 +13,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { MarkdownPipe } from '../shared/markdown.pipe';
 import { MessageSegmentsPipe } from '../shared/message-segments.pipe';
+import { httpErrorMessage, MAX_UPLOAD_BYTES, oversizeMessage } from '../shared/http-error.util';
 import { CopyBlockComponent } from '../chat/copy-block/copy-block.component';
 import { AtelierService } from '../core/services/atelier.service';
 import {
@@ -103,6 +104,12 @@ export class AtelierComponent implements OnInit {
     if (!file) {
       return;
     }
+    // Contrôle client : inutile d'envoyer une archive manifestement hors limite (l'ingress la
+    // couperait avec un 413 opaque). On explique la cause et l'action corrective immédiatement.
+    if (file.size > MAX_UPLOAD_BYTES) {
+      this.notifyError(oversizeMessage(file.size));
+      return;
+    }
     this.creating.set(true);
     this.atelier.createWorkspace(file).subscribe({
       next: (workspace) => {
@@ -117,9 +124,11 @@ export class AtelierComponent implements OnInit {
         this.resetFilePanel();
         this.snackBar.open('Projet importé.', 'Fermer', { duration: 3000 });
       },
-      error: () => {
+      error: (err) => {
         this.creating.set(false);
-        this.notifyError("L'import du projet a échoué. Vérifiez qu'il s'agit d'une archive .zip.");
+        this.notifyError(
+          httpErrorMessage(err, "L'import du projet a échoué. Vérifiez qu'il s'agit d'une archive .zip."),
+        );
       },
     });
   }
@@ -190,11 +199,11 @@ export class AtelierComponent implements OnInit {
           this.openFile(openPath);
         }
       },
-      error: () => {
+      error: (err) => {
         this.submitting.set(false);
         // Retire le message utilisateur optimiste : rien n'a été persisté côté serveur.
         this.messages.update((current) => current.filter((m) => m.id !== userItem.id));
-        this.notifyError("Le message n'a pas pu être envoyé. Veuillez réessayer.");
+        this.notifyError(httpErrorMessage(err, "Le message n'a pas pu être envoyé. Veuillez réessayer."));
       },
     });
   }
