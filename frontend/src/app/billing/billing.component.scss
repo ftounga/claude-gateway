@@ -1,183 +1,107 @@
-// Écran de facturation F-09 — conforme à docs/DESIGN_SYSTEM.md
-// Palette et espacements via variables globales (--cg-*), multiples de 4px uniquement.
+// Écran de facturation — identité claire (fond clair, cartes blanches, navy + orange).
+// Palette et espacements via variables globales (--cg-*).
 
 .billing {
-  max-width: 1280px;
+  max-width: 1080px;
   margin: 0 auto;
-  padding: var(--cg-space-4);
-  background: var(--cg-bg);
+  padding: var(--cg-space-5) var(--cg-space-4) var(--cg-space-7);
 
-  &__header {
-    margin-bottom: var(--cg-space-4);
-  }
+  &__header { margin-bottom: var(--cg-space-5); }
+  &__header h1 { margin: 0; font-size: 26px; letter-spacing: -0.02em; }
+  &__subtitle { color: var(--cg-text-secondary); font-size: 15px; margin: var(--cg-space-1) 0 0; }
 
-  &__subtitle {
-    color: var(--cg-text-secondary);
-    font-size: 14px;
-    margin: var(--cg-space-1) 0 0;
-  }
-
+  // ---- Statut courant ----
   &__current {
-    margin-bottom: var(--cg-space-5);
-  }
-
-  &__current-row {
     display: flex;
     flex-wrap: wrap;
+    justify-content: space-between;
     gap: var(--cg-space-5);
+    background: var(--cg-surface);
+    border: 1px solid var(--cg-divider);
+    border-radius: 16px;
+    padding: var(--cg-space-4) var(--cg-space-5);
+    margin-bottom: var(--cg-space-6);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.05);
+
+    &--trial { border-left: 4px solid var(--cg-accent); }
   }
 
-  &__label {
-    display: block;
-    color: var(--cg-text-secondary);
-    font-size: 12px;
-    margin-bottom: var(--cg-space-1);
-  }
+  &__current-main { min-width: 240px; }
+  &__current-title { margin: var(--cg-space-2) 0 var(--cg-space-1); font-size: 22px; letter-spacing: -0.01em; }
+  &__current-sub { margin: 0; color: var(--cg-text-primary); font-weight: 500; }
+  &__current-hint { margin: var(--cg-space-2) 0 0; color: var(--cg-text-secondary); font-size: 14px; }
 
-  &__value {
-    font-size: 16px;
-    font-weight: 500;
+  &__gauge { min-width: 280px; flex: 1; max-width: 420px; align-self: center; }
+  &__gauge-figures {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--cg-space-2); margin-bottom: var(--cg-space-2); font-size: 14px;
   }
+  &__gauge-figures strong { font-size: 16px; }
+  &__gauge-left { color: var(--cg-text-secondary); }
+  &__gauge-period { color: var(--cg-text-secondary); font-size: 12px; margin: var(--cg-space-2) 0 0; }
 
-  &__plans-title {
-    margin: 0 0 var(--cg-space-3);
-  }
+  // ---- Sections ----
+  &__section { margin-bottom: var(--cg-space-6); }
+  &__section-head { margin-bottom: var(--cg-space-4); }
+  &__section-head h2 { margin: 0; font-size: 19px; letter-spacing: -0.01em; }
+  &__section-head p { margin: var(--cg-space-1) 0 0; color: var(--cg-text-secondary); font-size: 14px; }
 
-  &__plans {
+  &__cards {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
     gap: var(--cg-space-4);
+    &--packs { grid-template-columns: repeat(auto-fit, minmax(220px, 260px)); }
   }
 
-  &__plan {
+  // ---- Cartes offre ----
+  &__card {
     display: flex;
     flex-direction: column;
-    gap: var(--cg-space-3);
+    gap: var(--cg-space-2);
     position: relative;
+    background: var(--cg-surface);
+    border: 1px solid var(--cg-divider);
+    border-radius: 16px;
+    padding: var(--cg-space-4) var(--cg-space-4) var(--cg-space-5);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease;
 
-    &--current {
-      border: 1px solid var(--cg-primary);
+    &:hover { transform: translateY(-3px); box-shadow: 0 14px 32px rgba(15, 23, 42, 0.10); }
+
+    &--reco { border-color: var(--cg-accent); box-shadow: 0 10px 30px rgba(224, 123, 57, 0.16); }
+    &--current { border-color: var(--cg-primary); }
+  }
+
+  &__card-flags { display: flex; gap: var(--cg-space-2); min-height: 22px; flex-wrap: wrap; }
+  &__flag {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 999px;
+    &--reco { color: #ffffff; background: var(--cg-accent); }
+    &--current { color: var(--cg-primary); background: rgba(11, 16, 32, 0.08); }
+  }
+
+  &__card-name { margin: var(--cg-space-1) 0 0; font-size: 18px; }
+  &__card-price { display: flex; align-items: baseline; gap: 6px; margin: var(--cg-space-1) 0 0; }
+  &__card-price .amount { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
+  &__card-price .per { color: var(--cg-text-secondary); font-size: 14px; }
+  &__card-tokens { margin: var(--cg-space-1) 0 var(--cg-space-3); color: var(--cg-text-secondary); font-size: 14px; }
+  &__card-cta {
+    margin-top: auto; width: 100%;
+    &.is-outline {
+      --mdc-outlined-button-label-text-color: var(--cg-primary);
+      --mdc-outlined-button-outline-color: var(--cg-divider);
     }
   }
 
-  &__plan-flag {
-    position: absolute;
-    top: var(--cg-space-3);
-    right: var(--cg-space-3);
-  }
-
-  &__plan-name {
-    margin: 0;
-  }
-
-  &__plan-price {
-    display: flex;
-    align-items: baseline;
-    gap: var(--cg-space-2);
-    margin: 0;
-  }
-
-  &__plan-amount {
-    font-size: 28px;
-    font-weight: 700;
-    color: var(--cg-text-primary);
-  }
-
-  &__plan-tokens {
-    margin: 0;
-    color: var(--cg-text-secondary);
-    font-size: 14px;
-  }
-
-  &__plan-meta {
-    display: flex;
-    align-items: center;
-    gap: var(--cg-space-2);
-    margin: 0;
-  }
-
-  &__plan-period {
-    color: var(--cg-text-secondary);
-    font-size: 14px;
-  }
-
-  &__plan-cta {
-    margin-top: auto;
-  }
+  &__card--pack { padding-bottom: var(--cg-space-4); }
 
   &__feedback {
-    display: flex;
-    align-items: center;
-    gap: var(--cg-space-2);
-    color: var(--cg-text-secondary);
-    padding: var(--cg-space-3) 0;
+    display: flex; align-items: center; gap: var(--cg-space-2);
+    color: var(--cg-text-secondary); padding: var(--cg-space-4) 0;
   }
+}
 
-  &__usage {
-    margin-bottom: var(--cg-space-5);
-  }
-
-  &__usage-head {
-    display: flex;
-    align-items: center;
-    gap: var(--cg-space-3);
-    margin-bottom: var(--cg-space-4);
-  }
-
-  &__usage-title {
-    margin: 0;
-  }
-
-  &__usage-figures {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--cg-space-5);
-    margin-bottom: var(--cg-space-3);
-  }
-
-  &__usage-bar {
-    margin: var(--cg-space-2) 0;
-  }
-
-  &__usage-period {
-    color: var(--cg-text-secondary);
-    font-size: 12px;
-    margin: var(--cg-space-2) 0 0;
-  }
-
-  &__topup {
-    margin-top: var(--cg-space-4);
-    padding-top: var(--cg-space-4);
-    border-top: 1px solid var(--cg-divider);
-  }
-
-  &__topup-title {
-    margin: 0 0 var(--cg-space-1);
-    font-size: 16px;
-  }
-
-  &__topup-hint {
-    color: var(--cg-text-secondary);
-    font-size: 14px;
-    margin: 0 0 var(--cg-space-3);
-  }
-
-  &__topup-packs {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: var(--cg-space-4);
-  }
-
-  &__topup-pack {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cg-space-3);
-  }
-
-  &__topup-tokens {
-    display: block;
-    color: var(--cg-text-secondary);
-    font-size: 12px;
-    margin-top: var(--cg-space-1);
-  }
+@media (max-width: 640px) {
+  .billing__current { flex-direction: column; }
+  .billing__gauge { max-width: none; }
 }

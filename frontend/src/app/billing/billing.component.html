@@ -1,164 +1,128 @@
 <main class="billing">
   <header class="billing__header">
     <h1>Abonnement &amp; facturation</h1>
-    <p class="billing__subtitle">Gérez votre plan Claude Gateway.</p>
+    <p class="billing__subtitle">Gérez votre offre Claude Proxy et vos tokens.</p>
   </header>
 
-  <!-- Abonnement courant -->
-  <mat-card class="billing__current">
-    @if (subscription(); as sub) {
-      <div class="billing__current-row">
-        <div>
-          <span class="billing__label">Statut</span>
-          <span class="badge {{ statusDisplay(sub.status).badgeClass }}">
-            {{ statusDisplay(sub.status).label }}
-          </span>
-        </div>
-        @if (sub.planCode) {
-          <div>
-            <span class="billing__label">Plan</span>
-            <span class="billing__value">{{ sub.planCode }}</span>
-          </div>
-        }
-        @if (sub.status === 'TRIALING' && sub.trialEndsAt) {
-          <div>
-            <span class="billing__label">Fin de l'essai</span>
-            <span class="billing__value">{{ sub.trialEndsAt | date: 'longDate' }}</span>
-          </div>
-        }
-        @if (sub.currentPeriodEnd) {
-          <div>
-            <span class="billing__label">Renouvellement</span>
-            <span class="billing__value">{{ sub.currentPeriodEnd | date: 'longDate' }}</span>
-          </div>
-        }
-      </div>
-    } @else {
-      <div class="billing__feedback">
-        <mat-icon>hourglass_empty</mat-icon>
-        <span>Chargement de votre abonnement…</span>
-      </div>
-    }
-  </mat-card>
+  <!-- ===== Statut courant (mis en avant) ===== -->
+  @if (subscription(); as sub) {
+    <section class="billing__current" [class.billing__current--trial]="trialDaysLeft() !== null">
+      <div class="billing__current-main">
+        <span class="badge {{ statusDisplay(sub.status).badgeClass }}">{{ statusDisplay(sub.status).label }}</span>
 
-  <!-- Consommation (F-10) -->
-  <mat-card class="billing__usage">
-    <div class="billing__usage-head">
-      <h2 class="billing__usage-title">Consommation</h2>
-      @if (usage(); as u) {
-        @if (quotaReached(u)) {
-          <span class="badge badge--warning">Quota atteint</span>
-        }
-      }
-    </div>
-
-    @if (usage(); as u) {
-      <div class="billing__usage-figures">
-        <div>
-          <span class="billing__label">Utilisé</span>
-          <span class="billing__value">{{ u.usedTokens | number }} tokens</span>
-        </div>
-        <div>
-          <span class="billing__label">Quota</span>
-          <span class="billing__value">{{ u.quotaTokens | number }} tokens</span>
-        </div>
-        <div>
-          <span class="billing__label">Restant</span>
-          <span class="billing__value">{{ u.remainingTokens | number }} tokens</span>
-        </div>
-      </div>
-
-      <mat-progress-bar
-        class="billing__usage-bar"
-        mode="determinate"
-        [value]="usagePercent(u)"
-        [attr.aria-label]="'Consommation : ' + usagePercent(u) + ' pour cent du quota'"
-      ></mat-progress-bar>
-
-      <p class="billing__usage-period">
-        Période du {{ u.periodStart | date: 'longDate' }} au {{ u.periodEnd | date: 'longDate' }}
-      </p>
-
-      <!-- Rachat de tokens (top-up F-21) : proposé quand le quota est atteint -->
-      @if (quotaReached(u) && topUpPacks().length > 0) {
-        <section class="billing__topup" aria-label="Racheter des tokens">
-          <h3 class="billing__topup-title">Racheter des tokens</h3>
-          <p class="billing__topup-hint">
-            Votre quota est atteint : rachetez un pack de tokens pour continuer immédiatement.
+        @if (trialDaysLeft() !== null) {
+          <h2 class="billing__current-title">Essai gratuit</h2>
+          <p class="billing__current-sub">
+            {{ trialDaysLeft() }} jour{{ trialDaysLeft() === 1 ? '' : 's' }} restant{{ trialDaysLeft() === 1 ? '' : 's' }}
+            @if (sub.trialEndsAt) { · se termine le {{ sub.trialEndsAt | date: 'longDate' }} }
           </p>
-          <div class="billing__topup-packs">
-            @for (pack of topUpPacks(); track pack.code) {
-              <div class="billing__topup-pack">
-                <div>
-                  <span class="billing__value">{{ pack.label }}</span>
-                  <span class="billing__topup-tokens">{{ pack.tokens | number }} tokens</span>
-                </div>
-                <button
-                  mat-flat-button
-                  color="primary"
-                  type="button"
-                  class="billing__topup-cta"
-                  [disabled]="topUpInProgress() !== null"
-                  (click)="buyTopUp(pack.code)"
-                >
-                  @if (topUpInProgress() === pack.code) {
-                    Redirection…
-                  } @else {
-                    Racheter des tokens
-                  }
-                </button>
-              </div>
+          <p class="billing__current-hint">Choisissez une offre ci-dessous pour continuer sans interruption.</p>
+        } @else if (sub.planCode) {
+          <h2 class="billing__current-title">Offre {{ sub.planCode }}</h2>
+          @if (sub.currentPeriodEnd) {
+            <p class="billing__current-sub">Renouvellement le {{ sub.currentPeriodEnd | date: 'longDate' }}</p>
+          }
+        } @else {
+          <h2 class="billing__current-title">Aucune offre active</h2>
+          <p class="billing__current-hint">Souscrivez une offre ci-dessous pour commencer.</p>
+        }
+      </div>
+
+      @if (usage(); as u) {
+        <div class="billing__gauge">
+          <div class="billing__gauge-figures">
+            <span><strong>{{ u.usedTokens | number }}</strong> / {{ u.quotaTokens | number }} tokens</span>
+            @if (quotaReached(u)) {
+              <span class="badge badge--warning">Quota atteint</span>
+            } @else {
+              <span class="billing__gauge-left">{{ u.remainingTokens | number }} restants</span>
             }
           </div>
-        </section>
+          <mat-progress-bar
+            mode="determinate"
+            [value]="usagePercent(u)"
+            [attr.aria-label]="'Consommation : ' + usagePercent(u) + ' pour cent du quota'"
+          ></mat-progress-bar>
+          <p class="billing__gauge-period">
+            Période du {{ u.periodStart | date: 'mediumDate' }} au {{ u.periodEnd | date: 'mediumDate' }}
+          </p>
+        </div>
       }
+    </section>
+  } @else {
+    <div class="billing__feedback"><mat-spinner diameter="28"></mat-spinner><span>Chargement…</span></div>
+  }
+
+  <!-- ===== Abonnements mensuels ===== -->
+  <section class="billing__section" aria-label="Abonnements mensuels">
+    <div class="billing__section-head">
+      <h2>Abonnements mensuels</h2>
+      <p>Un stock de tokens renouvelé chaque mois. Changez d'offre à tout moment (proratisé).</p>
+    </div>
+
+    @if (loading()) {
+      <div class="billing__feedback"><mat-spinner diameter="28"></mat-spinner><span>Chargement des offres…</span></div>
     } @else {
-      <div class="billing__feedback">
-        <mat-icon>hourglass_empty</mat-icon>
-        <span>Chargement de votre consommation…</span>
+      <div class="billing__cards">
+        @for (plan of plans(); track plan.code) {
+          <article
+            class="billing__card"
+            [class.billing__card--current]="isCurrentPlan(plan)"
+            [class.billing__card--reco]="isRecommended(plan) && !isCurrentPlan(plan)"
+          >
+            <div class="billing__card-flags">
+              @if (isRecommended(plan)) { <span class="billing__flag billing__flag--reco">Recommandé</span> }
+              @if (isCurrentPlan(plan)) { <span class="billing__flag billing__flag--current">Offre actuelle</span> }
+            </div>
+            <h3 class="billing__card-name">{{ plan.label }}</h3>
+            @if (plan.priceEur) {
+              <p class="billing__card-price"><span class="amount">{{ plan.priceEur }} €</span><span class="per">/ mois</span></p>
+            }
+            <p class="billing__card-tokens">{{ plan.tokens | number }} tokens inclus / mois</p>
+            <button
+              mat-flat-button
+              [color]="isRecommended(plan) ? 'primary' : undefined"
+              type="button"
+              class="billing__card-cta"
+              [class.is-outline]="!isRecommended(plan) && !isCurrentPlan(plan)"
+              [disabled]="isCurrentPlan(plan) || planBusy(plan) || checkoutInProgress() !== null || changeInProgress() !== null"
+              (click)="onPlanAction(plan)"
+            >
+              @if (planBusy(plan)) { Traitement… } @else { {{ planActionLabel(plan) }} }
+            </button>
+          </article>
+        }
       </div>
     }
-  </mat-card>
+  </section>
 
-  <!-- Catalogue de plans -->
-  <h2 class="billing__plans-title">Offres disponibles</h2>
-
-  @if (loading()) {
-    <div class="billing__feedback">
-      <mat-spinner diameter="32"></mat-spinner>
-      <span>Chargement des offres…</span>
-    </div>
-  } @else {
-    <div class="billing__plans">
-      @for (plan of plans(); track plan.code) {
-        <mat-card class="billing__plan" [class.billing__plan--current]="isCurrentPlan(plan)">
-          @if (isCurrentPlan(plan)) {
-            <span class="badge badge--success billing__plan-flag">Plan actuel</span>
-          }
-          <h3 class="billing__plan-name">{{ plan.label }}</h3>
-          @if (plan.priceEur) {
-            <p class="billing__plan-price">
-              <span class="billing__plan-amount">{{ plan.priceEur }} €</span>
-              <span class="billing__plan-period">{{ periodLabel(plan.period) }}</span>
-            </p>
-          }
-          <p class="billing__plan-tokens">{{ plan.tokens | number }} tokens / mois</p>
-          <button
-            mat-flat-button
-            color="primary"
-            type="button"
-            class="billing__plan-cta"
-            [disabled]="isCurrentPlan(plan) || planBusy(plan) || checkoutInProgress() !== null || changeInProgress() !== null"
-            (click)="onPlanAction(plan)"
-          >
-            @if (planBusy(plan)) {
-              Traitement…
-            } @else {
-              {{ planActionLabel(plan) }}
+  <!-- ===== Recharges ponctuelles (toujours visibles) ===== -->
+  @if (topUpPacks().length > 0) {
+    <section class="billing__section" aria-label="Recharges ponctuelles">
+      <div class="billing__section-head">
+        <h2>Recharges ponctuelles</h2>
+        <p>Besoin de plus de tokens sans changer d'abonnement ? Achetez un pack à l'unité.</p>
+      </div>
+      <div class="billing__cards billing__cards--packs">
+        @for (pack of topUpPacks(); track pack.code) {
+          <article class="billing__card billing__card--pack">
+            <h3 class="billing__card-name">{{ pack.label }}</h3>
+            @if (packPrice(pack.code); as price) {
+              <p class="billing__card-price"><span class="amount">{{ price }} €</span><span class="per">une fois</span></p>
             }
-          </button>
-        </mat-card>
-      }
-    </div>
+            <p class="billing__card-tokens">+{{ pack.tokens | number }} tokens</p>
+            <button
+              mat-stroked-button
+              type="button"
+              class="billing__card-cta is-outline"
+              [disabled]="topUpInProgress() !== null"
+              (click)="buyTopUp(pack.code)"
+            >
+              @if (topUpInProgress() === pack.code) { Redirection… } @else { Acheter }
+            </button>
+          </article>
+        }
+      </div>
+    </section>
   }
 </main>

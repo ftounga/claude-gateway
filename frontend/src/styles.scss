@@ -27,16 +27,19 @@ html {
   --cg-orange-2: #F0954F;
   --cg-cream: #F5EFE3;
 
-  // Rôles applicatifs (F-27) : navy = structure, orange = action/état actif, crème = fond.
-  --cg-primary: #0B1020;   // navy — header/toolbar, bulle message utilisateur, snackbar info
-  --cg-accent: #E07B39;    // orange — états actifs, liens, highlights, barres de progression
-  --cg-bg: #F5EFE3;        // crème — fond de page
-  --cg-surface: #FFFFFF;
+  // Rôles applicatifs (F-27 rév. 2026-07-11) : identité claire & pro (réf. legalcase).
+  // Fond clair neutre + cartes blanches + navy pour la structure + orange en accent (CTA/actif).
+  --cg-primary: #0B1020;   // navy — header/toolbar, titres de structure
+  --cg-accent: #E07B39;    // orange — CTA, états actifs, liens, highlights
+  --cg-accent-2: #F0954F;  // orange clair — hover/dégradés
+  --cg-bg: #F6F8FB;        // gris très clair (fini le crème) — fond de page
+  --cg-surface: #FFFFFF;   // cartes/surfaces blanches détachées par l'ombre
+  --cg-surface-2: #F1F5F9; // surface secondaire (zones internes, entêtes de bloc)
   --cg-error: #DC2626;
   --cg-success: #16A34A;
-  --cg-text-primary: #0F172A;
-  --cg-text-secondary: #64748B;
-  --cg-divider: #E2E8F0;
+  --cg-text-primary: #0F172A;   // encre navy quasi-noire
+  --cg-text-secondary: #64748B; // gris ardoise
+  --cg-divider: #E6EBF2;        // filet clair
 
   --cg-font-heading: 'Space Grotesk', 'Inter', sans-serif;
   --cg-font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
