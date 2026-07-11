@@ -80,6 +80,22 @@ public interface ManagedAgentProvider {
     SessionRun awaitCompletion(String sessionId, Duration timeout, int maxPolls);
 
     /**
+     * Variante de {@link #awaitCompletion(String, Duration, int)} qui <b>relaie en direct</b> chaque
+     * event de page au {@code listener} (texte d'agent, usage d'outil, transition d'état) en plus
+     * d'agréger la réponse finale. La variante à trois arguments délègue ici avec
+     * {@link ManagedEventListener#NOOP} (aucune régression).
+     *
+     * @param sessionId identifiant de la session
+     * @param timeout   délai maximal d'attente (garde-fou de coût runtime)
+     * @param maxPolls  nombre maximal de tours de polling
+     * @param listener  écouteur notifié pour chaque event relayé (jamais {@code null} ; passer
+     *                  {@link ManagedEventListener#NOOP} pour ne rien relayer)
+     * @return la réponse agrégée + la raison d'arrêt
+     * @throws AgentSessionTimeoutException si l'état idle n'est pas atteint dans les bornes
+     */
+    SessionRun awaitCompletion(String sessionId, Duration timeout, int maxPolls, ManagedEventListener listener);
+
+    /**
      * Liste les fichiers de sortie de la session (Files API, filtrés sur le {@code scope_id}).
      *
      * @param sessionId identifiant de la session

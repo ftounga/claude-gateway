@@ -162,6 +162,74 @@ class AnthropicManagedAgentProviderTest {
     }
 
     @Test
+    void awaitCompletionWithListenerNotifiesTextAndStatusAndAggregatesSameReply() {
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000&page=0"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"session.status_running\"},"
+                                + "{\"type\":\"agent.tool_use\",\"name\":\"bash\",\"input\":{\"command\":\"ls -la\"}}]}",
+                        MediaType.APPLICATION_JSON));
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000&page=1"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"agent.message\",\"content\":[{\"type\":\"text\",\"text\":\"Bonjour \"},"
+                                + "{\"type\":\"text\",\"text\":\"monde\"}]},"
+                                + "{\"type\":\"session.status_idle\",\"stop_reason\":\"end_turn\"}]}",
+                        MediaType.APPLICATION_JSON));
+
+        RecordingListener listener = new RecordingListener();
+        SessionRun run = provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10, listener);
+
+        // Réponse agrégée identique à la variante 3-args.
+        assertThat(run.reply()).isEqualTo("Bonjour monde");
+        assertThat(run.stopReason()).isEqualTo("end_turn");
+        // Le listener a reçu le texte de l'agent, l'action (outil + commande) et les transitions d'état.
+        assertThat(listener.texts).containsExactly("Bonjour monde");
+        assertThat(listener.actions).containsExactly("bash:ls -la");
+        assertThat(listener.states).containsExactly("running", "idle");
+        server.verify();
+    }
+
+    @Test
+    void awaitCompletionThreeArgsDelegatesWithNoopListenerNoRegression() {
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000&page=0"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"agent.message\",\"content\":\"Salut\"},"
+                                + "{\"type\":\"session.status_idle\",\"stop_reason\":\"end_turn\"}]}",
+                        MediaType.APPLICATION_JSON));
+
+        // La variante 3-args (NOOP) agrège la réponse sans lever malgré l'absence de listener.
+        SessionRun run = provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10);
+
+        assertThat(run.reply()).isEqualTo("Salut");
+        assertThat(run.stopReason()).isEqualTo("end_turn");
+        server.verify();
+    }
+
+    /** Écouteur de test enregistrant les notifications reçues pour vérification. */
+    private static final class RecordingListener implements ManagedEventListener {
+        private final List<String> texts = new java.util.ArrayList<>();
+        private final List<String> actions = new java.util.ArrayList<>();
+        private final List<String> states = new java.util.ArrayList<>();
+
+        @Override
+        public void onAgentText(String text) {
+            texts.add(text);
+        }
+
+        @Override
+        public void onAction(String tool, String detail) {
+            actions.add(tool + ":" + detail);
+        }
+
+        @Override
+        public void onStatus(String state) {
+            states.add(state);
+        }
+    }
+
+    @Test
     void awaitCompletionThrowsTimeoutWhenNeverIdle() {
         server.expect(requestToUriTemplate(
                 "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000&page=0"))

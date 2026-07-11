@@ -63,6 +63,29 @@ public class AtelierSessionService {
      * @throws fr.claudegateway.atelier.WorkspaceNotFoundException si le workspace n'est pas possédé
      */
     public AtelierSessionResult runTask(UUID userId, UUID workspaceId, String message) {
+        // Run non-streamé = run streamé avec un écouteur inerte (aucune régression).
+        return runTaskStreaming(userId, workspaceId, message, AtelierAgentListener.NOOP);
+    }
+
+    /**
+     * Variante <b>streaming</b> de {@link #runTask} : exécute le même run (pont fichiers compris) mais
+     * relaie en direct chaque étape (texte de l'agent, usage d'outil, transition d'état) au
+     * {@code listener} pendant l'attente de complétion. Les garde-fous restent identiques : isolation
+     * {@code user_id} d'abord, flag off avant tout appel réseau, terminaison systématique ({@code finally}).
+     *
+     * @param userId      utilisateur propriétaire (isolation)
+     * @param workspaceId workspace cible
+     * @param message     message/instruction à envoyer à l'agent
+     * @param listener    écouteur des étapes du run (jamais {@code null} ; {@link AtelierAgentListener#NOOP}
+     *                    pour ne rien relayer)
+     * @return la réponse finale de l'agent + la liste des fichiers réécrits
+     * @throws AtelierAgentDisabledException si la Phase 2 est désactivée (aucun appel réseau)
+     * @throws fr.claudegateway.atelier.WorkspaceNotFoundException si le workspace n'est pas possédé
+     */
+    public AtelierSessionResult runTaskStreaming(UUID userId, UUID workspaceId, String message,
+            AtelierAgentListener listener) {
+        AtelierAgentListener sink = listener == null ? AtelierAgentListener.NOOP : listener;
+
         // 1. Isolation EN PREMIER : workspace d'un autre user / inexistant ⇒ 404, aucun appel provider.
         workspaceService.requireOwned(userId, workspaceId);
 
@@ -97,7 +120,24 @@ public class AtelierSessionService {
         try {
             // 6. Message + attente de complétion + resynchronisation des sorties vers S3.
             provider.sendUserMessage(session.id(), message);
-            run = provider.awaitCompletion(session.id(), properties.sessionTimeout(), properties.maxPolls());
+            // Pont vers le provider : chaque event relayé est transmis au listener applicatif.
+            ManagedEventListener bridge = new ManagedEventListener() {
+                @Override
+                public void onAgentText(String text) {
+                    sink.onAgentText(text);
+                }
+
+                @Override
+                public void onAction(String tool, String detail) {
+                    sink.onAction(tool, detail);
+                }
+
+                @Override
+                public void onStatus(String state) {
+                    sink.onStatus(state);
+                }
+            };
+            run = provider.awaitCompletion(session.id(), properties.sessionTimeout(), properties.maxPolls(), bridge);
             for (OutputFile output : provider.listOutputs(session.id())) {
                 byte[] bytes = provider.downloadFile(output.fileId());
                 String relPath = normalizePath(output.filename());

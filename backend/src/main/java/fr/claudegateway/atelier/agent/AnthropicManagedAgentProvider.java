@@ -156,6 +156,14 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
 
     @Override
     public SessionRun awaitCompletion(String sessionId, Duration timeout, int maxPolls) {
+        // Délégation à la variante 4-args avec écouteur inerte : comportement historique inchangé.
+        return awaitCompletion(sessionId, timeout, maxPolls, ManagedEventListener.NOOP);
+    }
+
+    @Override
+    public SessionRun awaitCompletion(String sessionId, Duration timeout, int maxPolls,
+            ManagedEventListener listener) {
+        ManagedEventListener sink = listener == null ? ManagedEventListener.NOOP : listener;
         StringBuilder reply = new StringBuilder();
         long deadlineNanos = System.nanoTime() + timeout.toNanos();
         for (int poll = 0; poll < maxPolls; poll++) {
@@ -163,16 +171,25 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
                 throw new AgentSessionTimeoutException(
                         "Délai d'attente dépassé sur la complétion de la session (timeout).");
             }
+            // Chaque tour lit une page distincte (page=poll) : aucun event n'est relu, donc aucun
+            // risque de double notification du même event.
             JsonNode page = readEventsPage(sessionId, poll);
             String stopReason = null;
             boolean idle = false;
             for (JsonNode event : events(page)) {
                 String type = text(event, "type");
                 if ("agent.message".equals(type)) {
-                    reply.append(extractText(event));
+                    String fragment = extractText(event);
+                    reply.append(fragment);
+                    sink.onAgentText(fragment);
+                } else if ("agent.tool_use".equals(type) || "agent.custom_tool_use".equals(type)) {
+                    sink.onAction(toolName(event), toolDetail(event));
+                } else if ("session.status_running".equals(type)) {
+                    sink.onStatus("running");
                 } else if ("session.status_idle".equals(type)) {
                     idle = true;
                     stopReason = text(event, "stop_reason");
+                    sink.onStatus("idle");
                 }
             }
             if (idle) {
@@ -349,6 +366,35 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * Nom de l'outil d'un event {@code agent.tool_use} : champ {@code name} (ou {@code tool_name} en
+     * repli), sinon {@code "tool"} par défaut. Jamais {@code null}.
+     */
+    private static String toolName(JsonNode event) {
+        String name = text(event, "name");
+        if (name == null || name.isBlank()) {
+            name = text(event, "tool_name");
+        }
+        return name == null || name.isBlank() ? "tool" : name;
+    }
+
+    /**
+     * Courte description de l'action d'un event {@code agent.tool_use} : la commande {@code input.command}
+     * (ex. bash) si présente, sinon la représentation compacte de {@code input}, sinon {@code ""}.
+     * Aucun secret ne transite ici (seule l'action de l'agent est relayée).
+     */
+    private static String toolDetail(JsonNode event) {
+        JsonNode input = event.get("input");
+        if (input == null || input.isNull()) {
+            return "";
+        }
+        JsonNode command = input.get("command");
+        if (command != null && !command.isNull()) {
+            return command.isTextual() ? command.asText() : command.toString();
+        }
+        return input.isTextual() ? input.asText() : input.toString();
     }
 
     /** Lit un champ texte non nul de la réponse, ou {@code null} si absent. */
