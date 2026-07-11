@@ -485,6 +485,14 @@ a.active {
   display: none;
 }
 
+.file-input {
+  display: none;
+}
+
+.add-file-button {
+  margin-bottom: var(--cg-space-1);
+}
+
 // ---- Panneau d'upsell (gating Gold, 403 atelier_forbidden) ----
 .atelier-upsell {
   height: 100%;

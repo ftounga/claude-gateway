@@ -319,7 +319,36 @@
       </div>
 
       <!-- Composer -->
+      <input
+        #fileInput
+        type="file"
+        class="file-input"
+        [accept]="workspaceTextAccept"
+        hidden
+        (change)="onWorkspaceFilePicked($event)"
+      />
+      <mat-menu #addFileMenu="matMenu">
+        <button mat-menu-item type="button" (click)="fileInput.click()">
+          <mat-icon>computer</mat-icon>
+          <span>Depuis mon ordinateur</span>
+        </button>
+        <button mat-menu-item type="button" (click)="openWorkspaceLibraryPicker()">
+          <mat-icon>folder_shared</mat-icon>
+          <span>Depuis ma bibliothèque</span>
+        </button>
+      </mat-menu>
       <form class="composer" (ngSubmit)="send()">
+        <button
+          mat-icon-button
+          type="button"
+          class="add-file-button"
+          aria-label="Ajouter un fichier"
+          matTooltip="Ajouter un fichier"
+          [matMenuTriggerFor]="addFileMenu"
+          [disabled]="!activeWorkspaceId()"
+        >
+          <mat-icon>attach_file</mat-icon>
+        </button>
         <mat-form-field appearance="outline" class="composer-field" subscriptSizing="dynamic">
           <mat-label>Votre demande</mat-label>
           <textarea

@@ -4,10 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
+import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatListModule } from '@angular/material/list';
+import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -18,6 +20,10 @@ import { MarkdownPipe } from '../shared/markdown.pipe';
 import { MessageSegmentsPipe } from '../shared/message-segments.pipe';
 import { httpErrorMessage, MAX_UPLOAD_BYTES, oversizeMessage } from '../shared/http-error.util';
 import { CopyBlockComponent } from '../chat/copy-block/copy-block.component';
+import {
+  LibraryPickerDialogComponent,
+  PickedLibraryDocument,
+} from '../chat/library-picker/library-picker-dialog.component';
 import { ApiKeyService } from '../core/services/api-key.service';
 import { AtelierService } from '../core/services/atelier.service';
 import { ProviderMode } from '../core/models/api-key.models';
@@ -31,6 +37,22 @@ import {
 
 /** Mode de l'agent : « Édition » (Phase 1, lecture/écriture) ou « Exécution » (Phase 2, sandbox). */
 export type AtelierAgentMode = 'edit' | 'exec';
+
+/**
+ * Extensions texte/code acceptées à l'ajout d'un fichier depuis le PC (SF-28-13). Le workspace est
+ * textuel (`readFile`/`writeFile` = String) : les binaires (PDF, image) passent par la bibliothèque
+ * après OCR. Sert à la fois d'attribut `accept` et de garde-fou client anti-binaire.
+ */
+export const WORKSPACE_TEXT_EXTENSIONS: readonly string[] = [
+  'txt', 'md', 'markdown', 'js', 'ts', 'tsx', 'jsx', 'java', 'py', 'json', 'html', 'htm', 'css',
+  'scss', 'sass', 'less', 'xml', 'yml', 'yaml', 'sh', 'bash', 'go', 'rb', 'php', 'c', 'cpp', 'cc',
+  'h', 'hpp', 'cs', 'kt', 'kts', 'rs', 'swift', 'sql', 'toml', 'ini', 'cfg', 'conf', 'properties',
+  'env', 'gradle', 'csv', 'tsv', 'vue', 'svelte', 'pl', 'r', 'lua', 'dart', 'scala', 'gql',
+  'graphql', 'proto', 'log', 'text',
+];
+
+/** Attribut `accept` du sélecteur de fichier PC, dérivé de {@link WORKSPACE_TEXT_EXTENSIONS}. */
+export const WORKSPACE_TEXT_ACCEPT = WORKSPACE_TEXT_EXTENSIONS.map((e) => `.${e}`).join(',');
 
 /** Élément du fil de conversation de l'Atelier : un tour (message + éventuelles actions fichier). */
 export interface AtelierThreadItem {
@@ -77,6 +99,7 @@ export interface AtelierExecStreamingItem {
     MatButtonModule,
     MatButtonToggleModule,
     MatIconModule,
+    MatMenuModule,
     MatProgressBarModule,
     MatProgressSpinnerModule,
     MatTooltipModule,
@@ -94,6 +117,10 @@ export class AtelierComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly snackBar = inject(MatSnackBar);
   private readonly zone = inject(NgZone);
+  private readonly dialog = inject(MatDialog);
+
+  /** Attribut `accept` du sélecteur de fichier PC (texte/code uniquement, SF-28-13). */
+  readonly workspaceTextAccept = WORKSPACE_TEXT_ACCEPT;
 
   /**
    * Accès refusé par le backend (403 `atelier_forbidden`, SF-28-06) : l'utilisateur n'est pas Gold.
@@ -228,6 +255,99 @@ export class AtelierComponent implements OnInit {
           httpErrorMessage(err, "L'import du projet a échoué. Vérifiez qu'il s'agit d'une archive .zip."),
         );
       },
+    });
+  }
+
+  /**
+   * Ajoute un fichier **texte/code** du PC au workspace actif (SF-28-13). Les binaires (PDF, image)
+   * sont refusés côté client avec un message orientant vers la bibliothèque : le workspace est
+   * textuel et l'OCR relève de la bibliothèque (F-08), pas de l'Atelier (Provider-First). Lecture
+   * via {@link FileReader#readAsText} puis `writeFile` (endpoint existant `PUT /file`).
+   */
+  async onWorkspaceFilePicked(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    const id = this.activeWorkspaceId();
+    if (!file || !id) {
+      return;
+    }
+    if (this.isBinaryWorkspaceFile(file)) {
+      this.notifyError("Les fichiers binaires (PDF, image) s'ajoutent via la bibliothèque après OCR.");
+      return;
+    }
+    let content: string;
+    try {
+      content = await this.readAsText(file);
+    } catch {
+      this.notifyError('Impossible de lire le fichier sélectionné.');
+      return;
+    }
+    this.atelier.writeFile(id, file.name, content).subscribe({
+      next: () => {
+        this.refreshTree(id);
+        this.snackBar.open('Fichier ajouté.', 'Fermer', { duration: 3000 });
+      },
+      error: (err) => this.notifyError(httpErrorMessage(err, "L'ajout du fichier a échoué.")),
+    });
+  }
+
+  /**
+   * Ouvre le sélecteur de documents de la bibliothèque (réutilise {@link LibraryPickerDialogComponent}
+   * de F-24) et importe le texte des documents choisis dans le workspace actif via `importLibrary`
+   * (SF-28-13). L'isolation (workspace possédé + documents possédés) est garantie côté backend.
+   */
+  openWorkspaceLibraryPicker(): void {
+    const id = this.activeWorkspaceId();
+    if (!id) {
+      return;
+    }
+    this.dialog
+      .open(LibraryPickerDialogComponent, { width: '560px', autoFocus: false })
+      .afterClosed()
+      .subscribe((picked: PickedLibraryDocument[] | undefined) => {
+        if (!picked || picked.length === 0) {
+          return;
+        }
+        this.atelier.importLibrary(id, picked.map((d) => d.id)).subscribe({
+          next: (detail) => {
+            this.tree.set(detail.files);
+            this.snackBar.open(
+              picked.length > 1 ? 'Documents importés.' : 'Document importé.',
+              'Fermer',
+              { duration: 3000 },
+            );
+          },
+          error: (err) => this.notifyError(httpErrorMessage(err, 'Import impossible.')),
+        });
+      });
+  }
+
+  /**
+   * Détecte un fichier binaire (à refuser à l'ajout PC) : type MIME image/audio/vidéo/PDF/archive/
+   * binaire générique, ou extension absente de la liste texte/code autorisée quand le MIME n'est pas
+   * `text/*`. Conservateur : en cas de doute, on oriente vers la bibliothèque.
+   */
+  private isBinaryWorkspaceFile(file: File): boolean {
+    const type = (file.type || '').toLowerCase();
+    if (type.startsWith('image/') || type.startsWith('audio/') || type.startsWith('video/')) {
+      return true;
+    }
+    if (type === 'application/pdf' || type === 'application/zip' || type === 'application/octet-stream') {
+      return true;
+    }
+    const dot = file.name.lastIndexOf('.');
+    const ext = dot >= 0 ? file.name.slice(dot + 1).toLowerCase() : '';
+    return !WORKSPACE_TEXT_EXTENSIONS.includes(ext) && !type.startsWith('text/');
+  }
+
+  /** Lit un fichier en texte (UTF-8) via {@link FileReader}, sous forme de promesse testable. */
+  private readAsText(file: File): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ''));
+      reader.onerror = () => reject(reader.error ?? new Error('read_error'));
+      reader.readAsText(file);
     });
   }
 
