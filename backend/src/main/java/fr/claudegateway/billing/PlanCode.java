@@ -8,5 +8,7 @@ package fr.claudegateway.billing;
 public enum PlanCode {
     SOLO,
     PRO,
-    DAILY
+    DAILY,
+    /** Offre Gold (ADR-012) : plan dédié qui débloque l'accès à l'Atelier (F-28). */
+    GOLD
 }

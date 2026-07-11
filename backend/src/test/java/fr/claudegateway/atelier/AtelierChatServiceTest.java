@@ -160,6 +160,42 @@ class AtelierChatServiceTest {
     }
 
     @Test
+    void hostedModeChecksAndRecordsQuota() {
+        // SF-28-06 : sans clé BYOK (Hosted), la boucle contrôle le quota avant et le comptabilise après.
+        stubHappyPath(); // byokKeyService => Optional.empty()
+        agentProvider.enqueueFinal("Bonjour.");
+
+        service.chat(userId, workspaceId, "salut");
+
+        verify(quotaService).assertWithinQuota(userId);
+        verify(quotaService).recordUsage(eq(userId), anyInt(), anyInt());
+    }
+
+    @Test
+    void byokModeSkipsQuotaCheckAndRecording() {
+        // SF-28-06 : avec une clé BYOK active, les tokens sont sur le compte de l'utilisateur =>
+        // ni contrôle (assertWithinQuota) ni comptabilisation (recordUsage) du quota plateforme.
+        when(modelCatalog.defaultModel()).thenReturn("claude-model");
+        when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.of("sk-ant-user-key"));
+        when(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId))
+                .thenReturn(List.of());
+        when(messageRepository.save(any(AtelierMessage.class))).thenAnswer(invocation -> {
+            AtelierMessage saved = invocation.getArgument(0);
+            if (saved.getId() == null) {
+                saved.setId(UUID.randomUUID());
+            }
+            return saved;
+        });
+        when(workspaceService.readFile(any(), any(), any())).thenReturn("contenu du fichier");
+        agentProvider.enqueueFinal("Bonjour.");
+
+        service.chat(userId, workspaceId, "salut");
+
+        verify(quotaService, never()).assertWithinQuota(any());
+        verify(quotaService, never()).recordUsage(any(), anyInt(), anyInt());
+    }
+
+    @Test
     void otherUsersWorkspaceRaisesBeforeAnyProviderCall() {
         // CA4 : isolation — un workspace non possédé lève avant tout accès fichier/fournisseur.
         org.mockito.Mockito.doThrow(new WorkspaceNotFoundException("introuvable"))

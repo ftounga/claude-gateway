@@ -27,6 +27,7 @@ import fr.claudegateway.auth.EmailAlreadyUsedException;
 import fr.claudegateway.auth.InvalidCredentialsException;
 import fr.claudegateway.auth.InvalidPasswordResetTokenException;
 import fr.claudegateway.auth.InvalidVerificationTokenException;
+import fr.claudegateway.atelier.AtelierAccessDeniedException;
 import fr.claudegateway.atelier.InvalidArchiveException;
 import fr.claudegateway.atelier.InvalidFilePathException;
 import fr.claudegateway.atelier.WorkspaceNotFoundException;
@@ -59,6 +60,13 @@ public class GlobalExceptionHandler {
         log.debug("Accès admin refusé");
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(new ErrorResponse("forbidden", ex.getMessage()));
+    }
+
+    @ExceptionHandler(AtelierAccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAtelierAccessDenied(AtelierAccessDeniedException ex) {
+        log.debug("Accès Atelier refusé : ni admin ni abonné Gold actif");
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ErrorResponse("atelier_forbidden", ex.getMessage()));
     }
 
     @ExceptionHandler(UserNotFoundException.class)

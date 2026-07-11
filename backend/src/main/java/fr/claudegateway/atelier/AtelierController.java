@@ -34,16 +34,20 @@ public class AtelierController {
 
     private final WorkspaceService workspaceService;
     private final CurrentUser currentUser;
+    private final AtelierAccessService atelierAccess;
 
-    public AtelierController(WorkspaceService workspaceService, CurrentUser currentUser) {
+    public AtelierController(WorkspaceService workspaceService, CurrentUser currentUser,
+            AtelierAccessService atelierAccess) {
         this.workspaceService = workspaceService;
         this.currentUser = currentUser;
+        this.atelierAccess = atelierAccess;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public WorkspaceDetailResponse create(
             @RequestParam("file") MultipartFile file,
             @RequestParam(value = "name", required = false) String name) {
+        atelierAccess.requireAccess();
         UUID userId = currentUser.requireId();
         CreatedWorkspace created = workspaceService.create(userId, name, readBytes(file));
         return WorkspaceDetailResponse.from(
@@ -52,6 +56,7 @@ public class AtelierController {
 
     @GetMapping
     public List<WorkspaceSummaryResponse> list() {
+        atelierAccess.requireAccess();
         return workspaceService.list(currentUser.requireId()).stream()
                 .map(WorkspaceSummaryResponse::from)
                 .toList();
@@ -59,6 +64,7 @@ public class AtelierController {
 
     @GetMapping("/{id}")
     public WorkspaceDetailResponse detail(@PathVariable UUID id) {
+        atelierAccess.requireAccess();
         UUID userId = currentUser.requireId();
         return WorkspaceDetailResponse.from(
                 workspaceService.requireOwned(userId, id), workspaceService.tree(userId, id));
@@ -66,6 +72,7 @@ public class AtelierController {
 
     @GetMapping("/{id}/file")
     public FileContentResponse readFile(@PathVariable UUID id, @RequestParam("path") String path) {
+        atelierAccess.requireAccess();
         UUID userId = currentUser.requireId();
         return new FileContentResponse(path, workspaceService.readFile(userId, id, path));
     }
@@ -75,6 +82,7 @@ public class AtelierController {
             @PathVariable UUID id,
             @RequestParam("path") String path,
             @RequestBody WriteFileRequest request) {
+        atelierAccess.requireAccess();
         workspaceService.writeFile(currentUser.requireId(), id, path,
                 request == null ? "" : request.content());
         return ResponseEntity.noContent().build();
@@ -82,6 +90,7 @@ public class AtelierController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
+        atelierAccess.requireAccess();
         workspaceService.delete(currentUser.requireId(), id);
         return ResponseEntity.noContent().build();
     }

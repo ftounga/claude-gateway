@@ -10,10 +10,18 @@ class PlanCatalogTest {
     private final PlanCatalog catalog = new PlanCatalog();
 
     @Test
-    void exposesSoloProAndDailyPlans() {
+    void exposesSoloProDailyAndGoldPlans() {
         assertThat(catalog.plans())
                 .extracting(Plan::code)
-                .containsExactlyInAnyOrder(PlanCode.SOLO, PlanCode.PRO, PlanCode.DAILY);
+                .containsExactlyInAnyOrder(PlanCode.SOLO, PlanCode.PRO, PlanCode.DAILY, PlanCode.GOLD);
+    }
+
+    @Test
+    void goldPlanIsMonthlyHosted() {
+        Plan gold = catalog.plans().stream()
+                .filter(p -> p.code() == PlanCode.GOLD).findFirst().orElseThrow();
+        assertThat(gold.period()).isEqualTo(BillingPeriod.MONTHLY);
+        assertThat(gold.providerMode()).isEqualTo(ProviderMode.HOSTED);
     }
 
     @Test
