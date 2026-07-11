@@ -85,6 +85,7 @@ jobs:
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET_LIVE }}
           STRIPE_PRICE_SOLO: ${{ secrets.STRIPE_PRICE_SOLO }}
           STRIPE_PRICE_PRO: ${{ secrets.STRIPE_PRICE_PRO }}
+          STRIPE_PRICE_GOLD: ${{ secrets.STRIPE_PRICE_GOLD }}
           STRIPE_PRICE_TOPUP_DAY: ${{ secrets.STRIPE_PRICE_TOPUP_DAY }}
           STRIPE_PRICE_TOPUP_STANDARD: ${{ secrets.STRIPE_PRICE_TOPUP_STANDARD }}
           MAIL_HOST: ${{ secrets.MAIL_HOST }}
@@ -107,6 +108,7 @@ jobs:
             --from-literal=STRIPE_WEBHOOK_SECRET="$STRIPE_WEBHOOK_SECRET" \
             --from-literal=STRIPE_PRICE_SOLO="$STRIPE_PRICE_SOLO" \
             --from-literal=STRIPE_PRICE_PRO="$STRIPE_PRICE_PRO" \
+            --from-literal=STRIPE_PRICE_GOLD="$STRIPE_PRICE_GOLD" \
             --from-literal=STRIPE_PRICE_TOPUP_DAY="$STRIPE_PRICE_TOPUP_DAY" \
             --from-literal=STRIPE_PRICE_TOPUP_STANDARD="$STRIPE_PRICE_TOPUP_STANDARD" \
             --from-literal=MAIL_HOST="$MAIL_HOST" \
