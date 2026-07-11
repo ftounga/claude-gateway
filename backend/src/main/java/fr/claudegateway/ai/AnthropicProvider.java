@@ -74,10 +74,13 @@ public class AnthropicProvider implements AIProvider {
             throw new AIProviderUnavailableException("Le fournisseur IA n'est pas configuré.");
         }
 
-        Map<String, Object> body = Map.of(
-                "model", request.model(),
-                "max_tokens", properties.maxTokens(),
-                "messages", toApiMessages(request.messages()));
+        Map<String, Object> body = new HashMap<>();
+        body.put("model", request.model());
+        body.put("max_tokens", properties.maxTokens());
+        body.put("messages", toApiMessages(request.messages()));
+        if (request.system() != null && !request.system().isBlank()) {
+            body.put("system", request.system());
+        }
 
         try {
             RestClient.RequestBodySpec spec = restClient.post()
@@ -114,6 +117,9 @@ public class AnthropicProvider implements AIProvider {
         body.put("model", request.model());
         body.put("max_tokens", properties.maxTokens());
         body.put("messages", toApiMessages(request.messages()));
+        if (request.system() != null && !request.system().isBlank()) {
+            body.put("system", request.system());
+        }
         body.put("stream", true);
 
         StringBuilder text = new StringBuilder();

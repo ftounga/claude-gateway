@@ -42,6 +42,21 @@ public class ChatService {
     /** Garde-fou : longueur max du texte injecté par document de bibliothèque (F-24). */
     private static final int LIBRARY_DOCUMENT_TEXT_MAX = 100_000;
 
+    /**
+     * Consigne système (F-26) : demande à Claude d'emballer chaque <b>livrable autonome</b> dans un
+     * bloc de code Markdown, avec un token de langage reconnu par la copie de bloc côté frontend
+     * (```email → e-mail, ```markdown/```text → document, langage → code). Ainsi chaque mail, courrier,
+     * document, extrait de code ou config s'affiche avec un bouton « Copier », comme sur ChatGPT.
+     */
+    private static final String COPYABLE_DELIVERABLES_SYSTEM_PROMPT = """
+            Quand tu produis un livrable autonome que l'utilisateur voudra probablement copier tel quel \
+            — un e-mail, un courrier, une lettre, un document rédigé, du code, un fichier de configuration — \
+            présente-le TOUJOURS dans un bloc de code Markdown délimité par ``` avec un token de langage adapté : \
+            ```email pour un e-mail, ```markdown (ou ```text) pour un document ou un courrier, et le langage \
+            correspondant pour du code ou une config (```java, ```yaml, ```json, ```bash, …). \
+            Le texte d'explication ou de conversation reste HORS des blocs. \
+            N'emballe pas une réponse conversationnelle normale qui n'a pas vocation à être copiée.""";
+
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
     private final UploadedFileRepository uploadedFileRepository;
@@ -138,7 +153,7 @@ public class ChatService {
         // qu'un paramètre de la requête.
         String byokApiKey = byokKeyService.resolveActiveApiKey(userId).orElse(null);
         ChatCompletionResult completion = aiProvider.complete(new ChatCompletionRequest(
-                conversation.getModel(), toProviderMessages(userId, history), List.of(), byokApiKey));
+                conversation.getModel(), toProviderMessages(userId, history), List.of(), byokApiKey, COPYABLE_DELIVERABLES_SYSTEM_PROMPT));
 
         // Persistance de la réponse assistant.
         Message assistantMessage = messageRepository.save(Message.builder()
@@ -199,7 +214,7 @@ public class ChatService {
         List<Message> history = messageRepository.findByConversationIdOrderByCreatedAtAsc(conversation.getId());
         String byokApiKey = byokKeyService.resolveActiveApiKey(userId).orElse(null);
         ChatCompletionRequest providerRequest = new ChatCompletionRequest(
-                conversation.getModel(), toProviderMessages(userId, history), List.of(), byokApiKey);
+                conversation.getModel(), toProviderMessages(userId, history), List.of(), byokApiKey, COPYABLE_DELIVERABLES_SYSTEM_PROMPT);
 
         return new StreamContext(userId, conversation, userMessage, providerRequest);
     }
