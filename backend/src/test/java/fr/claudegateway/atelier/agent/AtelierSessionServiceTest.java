@@ -262,6 +262,22 @@ class AtelierSessionServiceTest {
     }
 
     @Test
+    void resolveOutputPathRemapsFlattenedBasenameToOriginalPath() {
+        java.util.Set<String> known = java.util.Set.of("src/facture.js", "test.js");
+        java.util.Map<String, String> byBasename =
+                java.util.Map.of("facture.js", "src/facture.js", "test.js", "test.js");
+        // Sortie aplatie « facture.js » (la Files API perd le dossier) → remappée vers « src/facture.js ».
+        assertThat(AtelierSessionService.resolveOutputPath("facture.js", known, byBasename))
+                .isEqualTo("src/facture.js");
+        // Chemin exact déjà connu → conservé tel quel.
+        assertThat(AtelierSessionService.resolveOutputPath("test.js", known, byBasename))
+                .isEqualTo("test.js");
+        // Fichier nouveau et inconnu → écrit tel quel.
+        assertThat(AtelierSessionService.resolveOutputPath("README.md", known, byBasename))
+                .isEqualTo("README.md");
+    }
+
+    @Test
     void uploadFilenameFlattensForbiddenCharacters() {
         // La Files API d'Anthropic rejette « / » (et autres) dans le nom : on aplatit à l'upload.
         assertThat(AtelierSessionService.uploadFilename("src/facture.js")).isEqualTo("src_facture.js");
