@@ -68,7 +68,7 @@ class AtelierSessionServiceTest {
         when(provider.uploadFile(eq("src/a.txt"), any())).thenReturn("file_in");
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList()))
                 .thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_1")).thenReturn(List.of(
                 new OutputFile("out_1", "/workspace/src/a.txt"),
@@ -100,10 +100,108 @@ class AtelierSessionServiceTest {
         order.verify(provider).uploadFile(eq("src/a.txt"), any());
         order.verify(provider).createSession(eq("agent_1"), eq("env_1"), anyList());
         order.verify(provider).sendUserMessage("sess_1", "Corrige le bug.");
-        order.verify(provider).awaitCompletion(eq("sess_1"), any(), anyInt());
+        order.verify(provider).awaitCompletion(eq("sess_1"), any(), anyInt(), any());
         order.verify(provider).listOutputs("sess_1");
         order.verify(provider).downloadFile("out_1");
         order.verify(provider).terminateSession("sess_1");
+    }
+
+    @Test
+    void runTaskStreamingNotifiesListenerThenBridgesFilesAndResultLikeRunTask() {
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("src/a.txt"));
+        when(workspaceService.readFile(USER, WORKSPACE, "src/a.txt")).thenReturn("class A {}");
+        when(provider.uploadFile(eq("src/a.txt"), any())).thenReturn("file_in");
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList()))
+                .thenReturn(new ManagedSession("sess_1"));
+        // Le provider relaie des events au listener passé (bridge) puis renvoie la réponse agrégée.
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(inv -> {
+            ManagedEventListener sink = inv.getArgument(3);
+            sink.onStatus("running");
+            sink.onAgentText("Je corrige.");
+            sink.onAction("bash", "ls -la");
+            sink.onStatus("idle");
+            return new SessionRun("Terminé.", "end_turn");
+        });
+        when(provider.listOutputs("sess_1")).thenReturn(List.of(new OutputFile("out_1", "/workspace/src/a.txt")));
+        when(provider.downloadFile("out_1")).thenReturn("A modifié".getBytes());
+
+        RecordingAgentListener listener = new RecordingAgentListener();
+        AtelierSessionResult result = service(enabled())
+                .runTaskStreaming(USER, WORKSPACE, "Corrige le bug.", listener);
+
+        // Résultat = pont fichiers + réponse, identique à runTask.
+        assertThat(result.reply()).isEqualTo("Terminé.");
+        assertThat(result.changedFiles()).containsExactly("src/a.txt");
+        verify(workspaceService).writeFile(USER, WORKSPACE, "src/a.txt", "A modifié");
+        // Les étapes relayées ont bien été transmises au listener applicatif.
+        assertThat(listener.texts).containsExactly("Je corrige.");
+        assertThat(listener.actions).containsExactly("bash:ls -la");
+        assertThat(listener.states).containsExactly("running", "idle");
+    }
+
+    @Test
+    void runTaskStreamingChecksOwnershipFirstAndNeverCallsProviderWhenNotOwned() {
+        when(workspaceService.requireOwned(USER, WORKSPACE))
+                .thenThrow(new WorkspaceNotFoundException("Workspace introuvable."));
+
+        assertThatThrownBy(() -> service(enabled())
+                .runTaskStreaming(USER, WORKSPACE, "x", AtelierAgentListener.NOOP))
+                .isInstanceOf(WorkspaceNotFoundException.class);
+
+        verifyNoInteractions(provider);
+        verifyNoInteractions(bootstrapService);
+    }
+
+    @Test
+    void runTaskStreamingRefusesWhenFlagOffWithoutAnyProviderCall() {
+        assertThatThrownBy(() -> service(disabled())
+                .runTaskStreaming(USER, WORKSPACE, "x", AtelierAgentListener.NOOP))
+                .isInstanceOf(AtelierAgentDisabledException.class);
+
+        verify(workspaceService).requireOwned(USER, WORKSPACE);
+        verifyNoInteractions(provider);
+        verifyNoInteractions(bootstrapService);
+    }
+
+    @Test
+    void runTaskStreamingTerminatesSessionWhenProviderFailsDuringRun() {
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("a.txt"));
+        when(workspaceService.readFile(USER, WORKSPACE, "a.txt")).thenReturn("x");
+        when(provider.uploadFile(eq("a.txt"), any())).thenReturn("file_in");
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList()))
+                .thenReturn(new ManagedSession("sess_1"));
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+                .thenThrow(new AgentProviderException("boom"));
+
+        assertThatThrownBy(() -> service(enabled())
+                .runTaskStreaming(USER, WORKSPACE, "go", AtelierAgentListener.NOOP))
+                .isInstanceOf(AgentProviderException.class);
+
+        verify(provider).terminateSession("sess_1");
+    }
+
+    /** Écouteur applicatif de test enregistrant les notifications reçues. */
+    private static final class RecordingAgentListener implements AtelierAgentListener {
+        private final List<String> texts = new java.util.ArrayList<>();
+        private final List<String> actions = new java.util.ArrayList<>();
+        private final List<String> states = new java.util.ArrayList<>();
+
+        @Override
+        public void onAgentText(String text) {
+            texts.add(text);
+        }
+
+        @Override
+        public void onAction(String tool, String detail) {
+            actions.add(tool + ":" + detail);
+        }
+
+        @Override
+        public void onStatus(String state) {
+            states.add(state);
+        }
     }
 
     @Test
@@ -137,7 +235,7 @@ class AtelierSessionServiceTest {
         when(provider.uploadFile(eq("a.txt"), any())).thenReturn("file_in");
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList()))
                 .thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
                 .thenThrow(new AgentProviderException("boom"));
 
         assertThatThrownBy(() -> service(enabled()).runTask(USER, WORKSPACE, "go"))
@@ -154,7 +252,7 @@ class AtelierSessionServiceTest {
         when(provider.uploadFile(eq("a.txt"), any())).thenReturn("file_in");
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList()))
                 .thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
                 .thenThrow(new AgentSessionTimeoutException("timeout"));
 
         assertThatThrownBy(() -> service(enabled()).runTask(USER, WORKSPACE, "go"))
