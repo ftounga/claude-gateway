@@ -27,6 +27,9 @@ import fr.claudegateway.auth.EmailAlreadyUsedException;
 import fr.claudegateway.auth.InvalidCredentialsException;
 import fr.claudegateway.auth.InvalidPasswordResetTokenException;
 import fr.claudegateway.auth.InvalidVerificationTokenException;
+import fr.claudegateway.atelier.InvalidArchiveException;
+import fr.claudegateway.atelier.InvalidFilePathException;
+import fr.claudegateway.atelier.WorkspaceNotFoundException;
 import fr.claudegateway.chat.AttachmentNotFoundException;
 import fr.claudegateway.chat.ConversationNotFoundException;
 import fr.claudegateway.chat.DocumentNotReadyException;
@@ -148,6 +151,27 @@ public class GlobalExceptionHandler {
         log.debug("Pièce jointe introuvable ou non possédée");
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ErrorResponse("attachment_not_found", ex.getMessage()));
+    }
+
+    @ExceptionHandler(WorkspaceNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleWorkspaceNotFound(WorkspaceNotFoundException ex) {
+        log.debug("Workspace/fichier Atelier introuvable ou non possédé");
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("not_found", ex.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidArchiveException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidArchive(InvalidArchiveException ex) {
+        log.debug("Archive Atelier rejetée : {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("invalid_archive", ex.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidFilePathException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidFilePath(InvalidFilePathException ex) {
+        log.debug("Chemin de fichier Atelier invalide");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("invalid_file_path", ex.getMessage()));
     }
 
     @ExceptionHandler(DocumentNotReadyException.class)

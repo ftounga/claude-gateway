@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      SF-28-01 — Atelier : workspace projet (F-28 / Claude Code Lite).
+      Table `workspaces` : un projet importé par un utilisateur. Les fichiers vivent dans le stockage
+      objet (S3), jamais en base — seules les métadonnées sont persistées. `user_id` est la racine de
+      l'isolation multi-tenant. Changesets Postgres et H2 en parallèle. Réversible (rollback auto).
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="036-workspaces-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="workspaces">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="name" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="workspaces" indexName="idx_workspaces_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="036-workspaces-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="workspaces">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="name" type="varchar(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp with time zone" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp with time zone" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="workspaces" indexName="idx_workspaces_user_id">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>
