@@ -16,6 +16,9 @@ data:
   APP_RAG_EMBEDDING_PROVIDER: "local"
   APP_RAG_VECTOR_STORE: "pgvector"
   APP_EMAIL_PROVIDER: "smtp"
+  # Atelier / Claude Code Lite (F-28) : stockage des workspaces sur S3 (bucket S3_BUCKET, préfixe
+  # atelier/) pour la persistance entre redémarrages. Défaut `in-memory` réservé aux tests.
+  APP_ATELIER_STORAGE: "s3"
   # URLs de retour Stripe Checkout (F-09/F-21) : après paiement/annulation, retour sur la prod
   # (et non localhost). Non secret.
   STRIPE_SUCCESS_URL: "https://portal.ng-itconsulting.com/billing?checkout=success"
