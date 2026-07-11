@@ -2,8 +2,10 @@ package fr.claudegateway.atelier.agent;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +43,9 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
 
     /** Type d'outil « agent toolset » attendu par l'API Agents (valeur documentée). */
     private static final String AGENT_TOOLSET_TYPE = "agent_toolset_20260401";
+
+    /** Borne de sécurité sur le nombre de pages d'events lues par tour de polling. */
+    private static final int MAX_EVENT_PAGES = 1000;
 
     private final AnthropicProperties properties;
     private final AtelierAgentProperties agentProperties;
@@ -148,9 +153,11 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
 
     @Override
     public void sendUserMessage(String sessionId, String text) {
-        Map<String, Object> body = Map.of(
+        // Forme attendue par l'API : un tableau `events`, chaque event portant un `content` en blocs.
+        Map<String, Object> event = Map.of(
                 "type", "user.message",
-                "content", text == null ? "" : text);
+                "content", List.of(Map.of("type", "text", "text", text == null ? "" : text)));
+        Map<String, Object> body = Map.of("events", List.of(event));
         post("/v1/sessions/" + sessionId + "/events", body, "envoi du message utilisateur");
     }
 
@@ -165,31 +172,43 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
             ManagedEventListener listener) {
         ManagedEventListener sink = listener == null ? ManagedEventListener.NOOP : listener;
         StringBuilder reply = new StringBuilder();
+        Set<String> seen = new HashSet<>();
         long deadlineNanos = System.nanoTime() + timeout.toNanos();
         for (int poll = 0; poll < maxPolls; poll++) {
             if (System.nanoTime() > deadlineNanos) {
                 throw new AgentSessionTimeoutException(
                         "Délai d'attente dépassé sur la complétion de la session (timeout).");
             }
-            // Chaque tour lit une page distincte (page=poll) : aucun event n'est relu, donc aucun
-            // risque de double notification du même event.
-            JsonNode page = readEventsPage(sessionId, poll);
+            // Les nouveaux events apparaissent sur la MÊME page tant que le total < limit : chaque tour
+            // relit depuis la page 0 et avance jusqu'à une page vide (couvre > 1000 events). La
+            // déduplication par id garantit qu'aucun event n'est traité/notifié deux fois.
             String stopReason = null;
             boolean idle = false;
-            for (JsonNode event : events(page)) {
-                String type = text(event, "type");
-                if ("agent.message".equals(type)) {
-                    String fragment = extractText(event);
-                    reply.append(fragment);
-                    sink.onAgentText(fragment);
-                } else if ("agent.tool_use".equals(type) || "agent.custom_tool_use".equals(type)) {
-                    sink.onAction(toolName(event), toolDetail(event));
-                } else if ("session.status_running".equals(type)) {
-                    sink.onStatus("running");
-                } else if ("session.status_idle".equals(type)) {
-                    idle = true;
-                    stopReason = text(event, "stop_reason");
-                    sink.onStatus("idle");
+            for (int page = 0; page < MAX_EVENT_PAGES; page++) {
+                boolean any = false;
+                for (JsonNode event : events(readEventsPage(sessionId, page))) {
+                    any = true;
+                    String id = text(event, "id");
+                    if (id != null && !seen.add(id)) {
+                        continue; // event déjà traité lors d'un tour précédent
+                    }
+                    String type = text(event, "type");
+                    if ("agent.message".equals(type)) {
+                        String fragment = extractText(event);
+                        reply.append(fragment);
+                        sink.onAgentText(fragment);
+                    } else if ("agent.tool_use".equals(type) || "agent.custom_tool_use".equals(type)) {
+                        sink.onAction(toolName(event), toolDetail(event));
+                    } else if ("session.status_running".equals(type)) {
+                        sink.onStatus("running");
+                    } else if ("session.status_idle".equals(type)) {
+                        idle = true;
+                        stopReason = stopReason(event);
+                        sink.onStatus("idle");
+                    }
+                }
+                if (idle || !any) {
+                    break; // idle terminal atteint, ou page vide : fin des events pour ce tour
                 }
             }
             if (idle) {
@@ -199,6 +218,15 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
         }
         throw new AgentSessionTimeoutException(
                 "Nombre maximal de tours de polling atteint sans complétion de la session.");
+    }
+
+    /** Raison d'arrêt d'un {@code session.status_idle} : chaîne, ou objet {@code {type: ...}}. */
+    private static String stopReason(JsonNode event) {
+        JsonNode node = event == null ? null : event.get("stop_reason");
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        return node.isObject() ? node.path("type").asText(null) : node.asText(null);
     }
 
     @Override
