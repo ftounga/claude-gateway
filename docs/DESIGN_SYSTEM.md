@@ -31,7 +31,8 @@ Toute divergence doit être explicitement signalée et validée.
 | Navy clair | Navy 2 | `#141D33` | `--cg-navy-2` | Dégradés (hero, onboarding) |
 | **Accent / Action** | Orange | `#E07B39` | `--cg-accent` / `--cg-orange` | Boutons d'action (`color="primary"`), états actifs, liens, highlights, barres de progression |
 | Orange clair | Orange 2 | `#F0954F` | `--cg-orange-2` | Survols, dégradés |
-| **Background** | Crème | `#F5EFE3` | `--cg-bg` / `--cg-cream` | Fond de page |
+| **Background** | Gris très clair | `#F6F8FB` | `--cg-bg` | Fond de page (rév. 2026-07-11 : fini le crème, identité claire/pro façon legalcase) |
+| **Surface** | Blanc | `#FFFFFF` | `--cg-surface` | Cartes/surfaces, détachées par l'ombre |
 | **Surface** | Blanc | `#FFFFFF` | `--cg-surface` | Cartes, modales, formulaires |
 | **Error** | Rouge | `#DC2626` | `--cg-error` | Erreurs, alertes destructives |
 | **Success** | Vert | `#16A34A` | `--cg-success` | Validations, statuts positifs |
@@ -98,7 +99,7 @@ Toute divergence doit être explicitement signalée et validée.
 
 ### Contenu principal
 - Padding : 24px
-- Fond : `#F5EFE3` (crème, `--cg-bg`)
+- Fond : `#F6F8FB` (gris très clair, `--cg-bg`) ; cartes `#FFFFFF` (`--cg-surface`)
 - Largeur max : 1280px, centré
 
 ### Footer

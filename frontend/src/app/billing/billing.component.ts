@@ -245,6 +245,35 @@ export class BillingComponent implements OnInit {
     return period === 'DAILY' ? 'Pass journée' : 'par mois';
   }
 
+  /** Nombre de jours restants d'essai (null hors essai), pour l'affichage du statut courant. */
+  trialDaysLeft(): number | null {
+    const sub = this.subscription();
+    if (!sub || sub.status !== 'TRIALING' || !sub.trialEndsAt) {
+      return null;
+    }
+    const days = Math.ceil((new Date(sub.trialEndsAt).getTime() - Date.now()) / 86_400_000);
+    return Math.max(0, days);
+  }
+
+  /** Vrai si l'utilisateur n'a aucune offre payante active (essai ou aucun abonnement). */
+  hasNoPaidPlan(): boolean {
+    return !this.subscription()?.planCode;
+  }
+
+  /** Offre mise en avant (« Recommandé »). */
+  isRecommended(plan: Plan): boolean {
+    return plan.code === 'PRO';
+  }
+
+  /**
+   * Prix d'affichage d'un pack de tokens (EUR). Affichage uniquement ; le débit réel reste porté par
+   * le price Stripe côté serveur. TODO : exposer ce prix via l'API (comme `priceEur` des plans).
+   */
+  packPrice(code: string): string | null {
+    const prices: Record<string, string> = { DAY: '4,99', STANDARD: '29' };
+    return prices[code] ?? null;
+  }
+
   /** Part consommée du quota, bornée 0–100 % (quota nul ⇒ 100 % : accès bloqué). */
   usagePercent(usage: UsageView): number {
     if (usage.quotaTokens <= 0) {

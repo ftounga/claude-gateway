@@ -5,30 +5,63 @@
 }
 
 .app-bar {
-  // Barre fond primary (design system §Header) ; texte blanc.
+  // Barre de navigation navy (structure de marque). Texte et icônes forcés en blanc :
+  // les boutons Material n'héritent pas de `color`, d'où l'invisibilité des menus corrigée ici.
   background: var(--cg-primary);
   color: #ffffff;
   gap: 8px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06), 0 2px 12px rgba(11, 16, 32, 0.25);
+  position: relative;
+  z-index: 10;
 }
 
 .brand {
   font-family: var(--cg-font-heading);
   font-weight: 600;
+  color: #ffffff;
   cursor: pointer;
-  margin-right: 16px;
+  margin-right: 20px;
+  letter-spacing: -0.01em;
 }
 
 .app-nav {
   display: flex;
-  gap: 4px;
+  gap: 2px;
 
-  a.active {
-    // Section courante mise en évidence.
-    background: rgba(255, 255, 255, 0.16);
+  a {
+    // Liens de menu lisibles sur le navy (Material n'hérite pas de color).
+    color: rgba(255, 255, 255, 0.82);
+    --mdc-text-button-label-text-color: rgba(255, 255, 255, 0.82);
+    font-weight: 500;
+    border-radius: 8px;
+
+    mat-icon {
+      color: inherit;
+      margin-right: 6px;
+    }
+
+    &:hover {
+      color: #ffffff;
+      --mdc-text-button-label-text-color: #ffffff;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    &.active {
+      // Onglet courant : plein contraste + soulignement orange (accent de marque).
+      color: #ffffff;
+      --mdc-text-button-label-text-color: #ffffff;
+      background: rgba(255, 255, 255, 0.10);
+      box-shadow: inset 0 -2px 0 var(--cg-accent);
+    }
   }
+}
+
+.account-trigger {
+  color: #ffffff;
+  --mat-icon-button-icon-color: #ffffff;
 
   mat-icon {
-    margin-right: 4px;
+    color: #ffffff;
   }
 }
 
@@ -40,4 +73,5 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  background: var(--cg-bg);
 }
