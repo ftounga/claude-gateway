@@ -53,6 +53,15 @@ app:
     # Décision réversible : ajustable sans changement de code.
     allowed-types: ${APP_UPLOAD_ALLOWED_TYPES:application/pdf,image/png,image/jpeg,image/gif,image/webp,text/plain,text/markdown,text/csv}
     max-size: ${APP_UPLOAD_MAX_SIZE:32MB}
+  atelier:
+    # Atelier / Claude Code Lite (F-28). Stockage `in-memory` par défaut (dev/tests, sans S3) ;
+    # `s3` en cluster (bucket applicatif). Garde-fous zip-bomb : total/nb-fichiers/taille-fichier.
+    storage: ${APP_ATELIER_STORAGE:in-memory}
+    bucket: ${S3_BUCKET:}
+    prefix: ${APP_ATELIER_PREFIX:atelier/}
+    max-total-bytes: ${APP_ATELIER_MAX_TOTAL_BYTES:52428800}
+    max-entries: ${APP_ATELIER_MAX_ENTRIES:2000}
+    max-file-bytes: ${APP_ATELIER_MAX_FILE_BYTES:2097152}
   ocr:
     # Pipeline OCR (F-05). Fournisseur `stub` par défaut (dev/tests, sans AWS) ; `textract` en cluster.
     # Liste blanche MIME, plafond de taille et routage sync/async : décisions réversibles (config).
