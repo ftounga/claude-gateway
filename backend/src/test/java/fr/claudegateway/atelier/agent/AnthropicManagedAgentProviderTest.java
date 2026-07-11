@@ -254,8 +254,11 @@ class AnthropicManagedAgentProviderTest {
                 .andExpect(queryParam("scope_id", "sess_1"))
                 // Les DEUX bêtas doivent être présentes sur l'en-tête anthropic-beta.
                 .andExpect(header("anthropic-beta", BETA, FILES_BETA))
+                // Un fichier d'entrée monté (downloadable=false) et une vraie sortie (downloadable=true) :
+                // seul le second doit être retenu.
                 .andRespond(withSuccess(
-                        "{\"data\":[{\"id\":\"file_out\",\"filename\":\"result.txt\"}]}",
+                        "{\"data\":[{\"id\":\"file_in\",\"filename\":\"src.js\",\"downloadable\":false},"
+                                + "{\"id\":\"file_out\",\"filename\":\"result.txt\",\"downloadable\":true}]}",
                         MediaType.APPLICATION_JSON));
 
         List<OutputFile> outputs = provider.listOutputs("sess_1");

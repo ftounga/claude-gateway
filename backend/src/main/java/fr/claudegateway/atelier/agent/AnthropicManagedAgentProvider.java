@@ -246,7 +246,11 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
             for (JsonNode file : dataArray(response)) {
                 String id = text(file, "id");
                 String filename = text(file, "filename");
-                if (id != null && !id.isBlank()) {
+                // Seuls les fichiers réellement téléchargeables sont des sorties : les fichiers d'entrée
+                // montés (téléversés purpose=agent) apparaissent avec downloadable=false et
+                // provoqueraient un échec au téléchargement — on les ignore.
+                boolean downloadable = file.path("downloadable").asBoolean(false);
+                if (downloadable && id != null && !id.isBlank()) {
                     outputs.add(new OutputFile(id, filename));
                 }
             }
