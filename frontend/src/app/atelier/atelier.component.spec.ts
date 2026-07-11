@@ -10,7 +10,6 @@ import { MAX_UPLOAD_BYTES } from '../shared/http-error.util';
 import { AtelierComponent } from './atelier.component';
 import { AtelierService } from '../core/services/atelier.service';
 import {
-  AtelierChatResponse,
   AtelierMessage,
   FileContent,
   WorkspaceDetail,
@@ -40,6 +39,7 @@ describe('AtelierComponent', () => {
       'getFile',
       'writeFile',
       'chat',
+      'streamChat',
       'getHistory',
     ]);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
@@ -78,6 +78,7 @@ describe('AtelierComponent', () => {
       'getFile',
       'writeFile',
       'chat',
+      'streamChat',
       'getHistory',
     ]);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
@@ -182,30 +183,60 @@ describe('AtelierComponent', () => {
     expect(component.tree()).toEqual(['src/main.ts']);
   });
 
-  it('sends a message, appends the user turn and the assistant reply, and refreshes the tree', () => {
+  it('streams a message: relays a step then replaces it with the final reply and refreshes the tree', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    const response: AtelierChatResponse = {
-      reply: 'C\'est fait.',
-      actions: [{ type: 'write', path: 'src/main.ts' }],
-      messageId: 'm-assistant',
-    };
-    service.chat.and.returnValue(of(response));
+    // Le flux relaie une étape « read », un commentaire, puis la réponse finale.
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onAction({ type: 'read', path: 'src/main.ts' });
+      handlers.onText('Je regarde le fichier…');
+      handlers.onDone({
+        reply: "C'est fait.",
+        actions: [{ type: 'write', path: 'src/main.ts' }],
+        messageId: 'm-assistant',
+      });
+      return Promise.resolve();
+    });
     service.getWorkspace.calls.reset();
 
     component.draft.set('Modifie main.ts');
     component.send();
 
-    expect(service.chat).toHaveBeenCalledWith('w1', 'Modifie main.ts');
+    expect(service.streamChat).toHaveBeenCalledWith('w1', 'Modifie main.ts', jasmine.anything());
     const messages = component.messages();
     expect(messages.length).toBe(2);
     expect(messages[0].role).toBe('USER');
     expect(messages[1].role).toBe('ASSISTANT');
-    expect(messages[1].content).toBe('C\'est fait.');
+    expect(messages[1].content).toBe("C'est fait.");
     expect(messages[1].actions.length).toBe(1);
+    // Le tour « en cours » est effacé une fois la réponse finale reçue.
+    expect(component.streaming()).toBeNull();
+    expect(component.submitting()).toBeFalse();
     expect(component.draft()).toBe('');
     // L'arborescence est rafraîchie car un tour a pu écrire des fichiers.
     expect(service.getWorkspace).toHaveBeenCalledWith('w1');
+  });
+
+  it('accumulates streamed steps and partial text on the in-progress turn', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    // Ne termine pas le flux : on inspecte l'état « en cours ».
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onAction({ type: 'read', path: 'a.txt' });
+      handlers.onAction({ type: 'write', path: 'b.txt' });
+      handlers.onText('Voilà ');
+      handlers.onText('ce que je fais.');
+      return Promise.resolve();
+    });
+
+    component.draft.set('Fais un truc');
+    component.send();
+
+    const live = component.streaming();
+    expect(live).not.toBeNull();
+    expect(live!.steps.map((s) => s.type)).toEqual(['read', 'write']);
+    expect(live!.text).toBe('Voilà ce que je fais.');
+    expect(component.submitting()).toBeTrue();
   });
 
   it('does not send when the draft is blank', () => {
@@ -213,19 +244,40 @@ describe('AtelierComponent', () => {
     component.activeWorkspaceId.set('w1');
     component.draft.set('   ');
     component.send();
-    expect(service.chat).not.toHaveBeenCalled();
+    expect(service.streamChat).not.toHaveBeenCalled();
   });
 
-  it('removes the optimistic user turn and notifies when sending fails', () => {
+  it('removes the optimistic user turn and notifies when the stream fails', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    service.chat.and.returnValue(throwError(() => new Error('boom')));
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onError('internal_error');
+      return Promise.resolve();
+    });
 
     component.draft.set('Fais un truc');
     component.send();
 
     expect(component.messages().length).toBe(0);
+    expect(component.streaming()).toBeNull();
+    expect(component.submitting()).toBeFalse();
     expect(snackBar.open).toHaveBeenCalled();
+  });
+
+  it('shows a quota message when the stream reports quota_exceeded', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onError('quota_exceeded');
+      return Promise.resolve();
+    });
+
+    component.draft.set('Fais un truc');
+    component.send();
+
+    const message = snackBar.open.calls.mostRecent().args[0] as string;
+    expect(message).toContain('Quota de consommation atteint');
+    expect(component.messages().length).toBe(0);
   });
 
   it('opens a file into the editable preview', () => {

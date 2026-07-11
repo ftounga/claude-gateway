@@ -2,10 +2,13 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
+import { AuthService } from './auth.service';
 import {
   AtelierChatRequest,
   AtelierChatResponse,
   AtelierMessage,
+  AtelierStreamAction,
+  AtelierStreamHandlers,
   FileContent,
   WorkspaceDetail,
   WorkspaceSummary,
@@ -20,6 +23,7 @@ import {
 @Injectable({ providedIn: 'root' })
 export class AtelierService {
   private readonly http = inject(HttpClient);
+  private readonly auth = inject(AuthService);
 
   /** Crée un workspace à partir d'une archive `.zip` (multipart, champ `file`, `name` optionnel). */
   createWorkspace(file: File, name?: string): Observable<WorkspaceDetail> {
@@ -56,6 +60,88 @@ export class AtelierService {
   chat(id: string, message: string): Observable<AtelierChatResponse> {
     const body: AtelierChatRequest = { message };
     return this.http.post<AtelierChatResponse>(`/api/workspaces/${id}/chat`, body);
+  }
+
+  /**
+   * Envoie un message en **streaming** (SF-28-05) : consomme le flux SSE de
+   * `POST /api/workspaces/{id}/chat/stream` via `fetch` + `ReadableStream` (EventSource ne supporte
+   * pas POST). Relaie chaque étape (`onAction`), le commentaire de tour (`onText`), puis `onDone`
+   * (réponse finale + actions) ; toute erreur (HTTP ou `event:error`) appelle `onError`. Ne lève
+   * jamais : les échecs passent par `onError`.
+   */
+  async streamChat(id: string, message: string, handlers: AtelierStreamHandlers): Promise<void> {
+    try {
+      const token = this.auth.token();
+      const response = await fetch(`/api/workspaces/${id}/chat/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ message }),
+      });
+      if (!response.ok || !response.body) {
+        handlers.onError('request_failed');
+        return;
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        let sep: number;
+        while ((sep = buffer.indexOf('\n\n')) >= 0) {
+          this.dispatchSseEvent(buffer.slice(0, sep), handlers);
+          buffer = buffer.slice(sep + 2);
+        }
+      }
+    } catch {
+      handlers.onError('request_failed');
+    }
+  }
+
+  /** Parse un événement SSE (`event:` + `data:`) et route vers le bon callback. */
+  private dispatchSseEvent(raw: string, handlers: AtelierStreamHandlers): void {
+    let event = 'message';
+    let data = '';
+    for (const line of raw.split('\n')) {
+      if (line.startsWith('event:')) {
+        event = line.slice('event:'.length).trim();
+      } else if (line.startsWith('data:')) {
+        data += line.slice('data:'.length).trim();
+      }
+    }
+    if (!data) {
+      return;
+    }
+    let payload: Partial<AtelierStreamAction> & { text?: string; error?: string } & {
+      reply?: string;
+      actions?: AtelierChatResponse['actions'];
+      messageId?: string;
+    };
+    try {
+      payload = JSON.parse(data);
+    } catch {
+      return;
+    }
+    if (event === 'action') {
+      handlers.onAction({ type: payload.type ?? 'read', path: payload.path });
+    } else if (event === 'text') {
+      handlers.onText(payload.text ?? '');
+    } else if (event === 'done') {
+      handlers.onDone({
+        reply: payload.reply ?? '',
+        actions: payload.actions ?? [],
+        messageId: payload.messageId ?? '',
+      });
+    } else if (event === 'error') {
+      handlers.onError(payload.error ?? 'provider_error');
+    }
   }
 
   /** Historique de conversation du workspace. */

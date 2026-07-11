@@ -66,6 +66,22 @@ public class AtelierChatService {
      * atomiques par appel de repository.</p>
      */
     public AtelierChatResult chat(UUID userId, UUID workspaceId, String rawMessage) {
+        return runLoop(userId, workspaceId, rawMessage, AtelierProgressListener.NOOP);
+    }
+
+    /**
+     * Variante <b>streaming</b> (SF-28-05) : boucle tool-use identique à {@link #chat}, mais notifie
+     * chaque étape (action fichier, commentaire de tour) via le {@code listener} pour un relais SSE au
+     * fil de l'eau. Le résultat final ({@link AtelierChatResult}) et la persistance sont identiques —
+     * seul le retour d'information intermédiaire diffère (zéro régression sur le mode synchrone).
+     */
+    public AtelierChatResult chatStreaming(UUID userId, UUID workspaceId, String rawMessage,
+            AtelierProgressListener listener) {
+        return runLoop(userId, workspaceId, rawMessage, listener);
+    }
+
+    private AtelierChatResult runLoop(UUID userId, UUID workspaceId, String rawMessage,
+            AtelierProgressListener listener) {
         workspaceService.requireOwned(userId, workspaceId); // 404 si non possédé (isolation)
         quotaService.assertWithinQuota(userId);
         String userText = rawMessage.trim();
@@ -102,6 +118,11 @@ public class AtelierChatService {
                 break;
             }
 
+            // Commentaire du tour (le cas échéant) relayé avant l'exécution de ses outils.
+            if (turn.text() != null && !turn.text().isBlank()) {
+                listener.onText(turn.text());
+            }
+
             // Rejoue le message assistant (texte + tool_use) puis exécute chaque outil.
             List<AgentContentBlock> assistantBlocks = new ArrayList<>();
             if (turn.text() != null && !turn.text().isBlank()) {
@@ -110,6 +131,11 @@ public class AtelierChatService {
             List<AgentContentBlock> toolResults = new ArrayList<>();
             for (AgentToolCall call : turn.toolCalls()) {
                 assistantBlocks.add(new AgentContentBlock.ToolUse(call.id(), call.name(), call.input()));
+                // Intention d'étape relayée avant exécution (émise même si l'outil échoue ensuite).
+                AtelierProgressListener.AtelierStepEvent step = stepFor(call);
+                if (step != null) {
+                    listener.onAction(step);
+                }
                 ToolOutcome outcome = executeTool(userId, workspaceId, call);
                 if (outcome.action() != null) {
                     actions.add(outcome.action());
@@ -142,6 +168,26 @@ public class AtelierChatService {
     }
 
     // ----------------------------------------------------------------- outils
+
+    /**
+     * Traduit un appel d'outil en étape de progression pour l'UI (SF-28-05), ou {@code null} si l'outil
+     * n'a pas d'étape visible. Le chemin/terme est extrait des arguments ({@code path} / {@code query}).
+     */
+    private AtelierProgressListener.AtelierStepEvent stepFor(AgentToolCall call) {
+        JsonNode input = call.input();
+        return switch (call.name()) {
+            case "read_file" -> new AtelierProgressListener.AtelierStepEvent("read", arg(input, "path"));
+            case "write_file" -> new AtelierProgressListener.AtelierStepEvent("write", arg(input, "path"));
+            case "list_files" -> new AtelierProgressListener.AtelierStepEvent("list", null);
+            case "search_files" -> new AtelierProgressListener.AtelierStepEvent("search", arg(input, "query"));
+            default -> null;
+        };
+    }
+
+    /** Extrait un argument texte d'un input d'outil (ou {@code null} si absent). */
+    private String arg(JsonNode input, String name) {
+        return input == null ? null : input.path(name).asText(null);
+    }
 
     private ToolOutcome executeTool(UUID userId, UUID workspaceId, AgentToolCall call) {
         try {
