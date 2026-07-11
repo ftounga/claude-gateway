@@ -5,11 +5,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.queryParam;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestToUriTemplate;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import java.time.Duration;
+import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,12 +26,13 @@ import fr.claudegateway.ai.AnthropicProperties;
 
 /**
  * Vérifie {@link AnthropicManagedAgentProvider} contre un serveur simulé ({@link MockRestServiceServer}) :
- * endpoints, en-têtes (dont {@code anthropic-beta}), parsing des identifiants, et traduction des
- * erreurs en {@link AgentProviderException}.
+ * endpoints, en-têtes (dont {@code anthropic-beta}), parsing des identifiants, agrégation du polling,
+ * et traduction des erreurs en {@link AgentProviderException}. Aucune session live ; {@code pollDelay=0}.
  */
 class AnthropicManagedAgentProviderTest {
 
     private static final String BETA = "managed-agents-2026-04-01";
+    private static final String FILES_BETA = "files-api-2025-04-14";
 
     private MockRestServiceServer server;
     private AnthropicManagedAgentProvider provider;
@@ -38,9 +42,12 @@ class AnthropicManagedAgentProviderTest {
         AnthropicProperties properties = new AnthropicProperties(
                 "sk-ant-test-key", "https://api.anthropic.com", "2023-06-01",
                 null, null, null, Duration.ofSeconds(5));
+        // pollDelay = 0 : polling déterministe sans Thread.sleep réel.
+        AtelierAgentProperties agentProperties = new AtelierAgentProperties(
+                false, null, null, null, null, null, null, null, Duration.ZERO);
         RestClient.Builder builder = RestClient.builder();
         server = MockRestServiceServer.bindTo(builder).build();
-        provider = new AnthropicManagedAgentProvider(properties, builder);
+        provider = new AnthropicManagedAgentProvider(properties, agentProperties, builder);
     }
 
     @Test
@@ -80,6 +87,135 @@ class AnthropicManagedAgentProviderTest {
 
         assertThat(agent.id()).isEqualTo("agent_456");
         assertThat(agent.version()).isEqualTo("v1");
+        server.verify();
+    }
+
+    @Test
+    void uploadFilePostsMultipartWithFilesBetaAndParsesFileId() {
+        server.expect(requestTo("https://api.anthropic.com/v1/files"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("anthropic-beta", FILES_BETA))
+                .andExpect(header("Content-Type", org.hamcrest.Matchers.startsWith("multipart/form-data")))
+                .andRespond(withSuccess("{\"id\":\"file_abc\"}", MediaType.APPLICATION_JSON));
+
+        String fileId = provider.uploadFile("src/App.java", "class App {}".getBytes());
+
+        assertThat(fileId).isEqualTo("file_abc");
+        server.verify();
+    }
+
+    @Test
+    void createSessionPostsResourcesInBodyAndParsesId() {
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("anthropic-beta", BETA))
+                .andExpect(jsonPath("$.agent").value("agent_456"))
+                .andExpect(jsonPath("$.environment_id").value("env_123"))
+                .andExpect(jsonPath("$.resources[0].type").value("file"))
+                .andExpect(jsonPath("$.resources[0].file_id").value("file_abc"))
+                .andExpect(jsonPath("$.resources[0].mount_path").value("/workspace/src/App.java"))
+                .andRespond(withSuccess("{\"id\":\"sess_1\"}", MediaType.APPLICATION_JSON));
+
+        ManagedSession session = provider.createSession("agent_456", "env_123",
+                List.of(new FileMount("file_abc", "/workspace/src/App.java")));
+
+        assertThat(session.id()).isEqualTo("sess_1");
+        server.verify();
+    }
+
+    @Test
+    void sendUserMessagePostsUserMessageEvent() {
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions/sess_1/events"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("anthropic-beta", BETA))
+                .andExpect(jsonPath("$.type").value("user.message"))
+                .andExpect(jsonPath("$.content").value("Corrige le bug."))
+                .andRespond(withSuccess("{\"ok\":true}", MediaType.APPLICATION_JSON));
+
+        provider.sendUserMessage("sess_1", "Corrige le bug.");
+
+        server.verify();
+    }
+
+    @Test
+    void awaitCompletionPollsUntilIdleAndAggregatesAgentMessages() {
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000&page=0"))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header("anthropic-beta", BETA))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"session.status_running\"}]}", MediaType.APPLICATION_JSON));
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000&page=1"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"agent.message\",\"content\":[{\"type\":\"text\",\"text\":\"Bonjour \"},"
+                                + "{\"type\":\"text\",\"text\":\"monde\"}]},"
+                                + "{\"type\":\"session.status_idle\",\"stop_reason\":\"end_turn\"}]}",
+                        MediaType.APPLICATION_JSON));
+
+        SessionRun run = provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10);
+
+        assertThat(run.reply()).isEqualTo("Bonjour monde");
+        assertThat(run.stopReason()).isEqualTo("end_turn");
+        server.verify();
+    }
+
+    @Test
+    void awaitCompletionThrowsTimeoutWhenNeverIdle() {
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000&page=0"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"session.status_running\"}]}", MediaType.APPLICATION_JSON));
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000&page=1"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"session.status_running\"}]}", MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 2))
+                .isInstanceOf(AgentSessionTimeoutException.class);
+        server.verify();
+    }
+
+    @Test
+    void listOutputsSendsBothBetaValuesAndParsesFiles() {
+        server.expect(requestTo("https://api.anthropic.com/v1/files?scope_id=sess_1"))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(queryParam("scope_id", "sess_1"))
+                // Les DEUX bêtas doivent être présentes sur l'en-tête anthropic-beta.
+                .andExpect(header("anthropic-beta", BETA, FILES_BETA))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"id\":\"file_out\",\"filename\":\"result.txt\"}]}",
+                        MediaType.APPLICATION_JSON));
+
+        List<OutputFile> outputs = provider.listOutputs("sess_1");
+
+        assertThat(outputs).hasSize(1);
+        assertThat(outputs.get(0).fileId()).isEqualTo("file_out");
+        assertThat(outputs.get(0).filename()).isEqualTo("result.txt");
+        server.verify();
+    }
+
+    @Test
+    void downloadFileReturnsBytesWithFilesBeta() {
+        server.expect(requestTo("https://api.anthropic.com/v1/files/file_out/content"))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header("anthropic-beta", FILES_BETA))
+                .andRespond(withSuccess("contenu-sortie".getBytes(), MediaType.APPLICATION_OCTET_STREAM));
+
+        byte[] bytes = provider.downloadFile("file_out");
+
+        assertThat(new String(bytes)).isEqualTo("contenu-sortie");
+        server.verify();
+    }
+
+    @Test
+    void uploadFileTranslatesClientErrorToAgentProviderException() {
+        server.expect(requestTo("https://api.anthropic.com/v1/files"))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST));
+
+        assertThatThrownBy(() -> provider.uploadFile("a.txt", "x".getBytes()))
+                .isInstanceOf(AgentProviderException.class);
         server.verify();
     }
 

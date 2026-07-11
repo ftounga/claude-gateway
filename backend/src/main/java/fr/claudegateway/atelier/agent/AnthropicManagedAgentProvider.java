@@ -1,12 +1,19 @@
 package fr.claudegateway.atelier.agent;
 
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -17,9 +24,9 @@ import fr.claudegateway.ai.AnthropicProperties;
 /**
  * Implémentation Anthropic de {@link ManagedAgentProvider} (F-28 / Phase 2, ADR-013). Réplique le
  * patron d'{@code AnthropicProvider} : {@link RestClient} sur {@code app.ai.anthropic.base-url}, clé
- * plateforme en en-tête {@code x-api-key}, {@code anthropic-version} + en-tête beta Managed Agents.
- * Le mapping fournisseur est confiné ici ; le domaine ne dépend que de {@link ManagedAgentProvider}.
- * La clé n'est jamais journalisée.
+ * plateforme en en-tête {@code x-api-key}, {@code anthropic-version} + en-tête(s) beta. Le mapping
+ * fournisseur est confiné ici ; le domaine ne dépend que de {@link ManagedAgentProvider}. La clé
+ * n'est jamais journalisée.
  */
 @Component
 public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
@@ -29,14 +36,20 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
     /** En-tête beta requis par l'API Managed Agents d'Anthropic (valeur documentée, non secrète). */
     static final String MANAGED_AGENTS_BETA = "managed-agents-2026-04-01";
 
+    /** En-tête beta requis par la Files API d'Anthropic (valeur documentée, non secrète). */
+    static final String FILES_API_BETA = "files-api-2025-04-14";
+
     /** Type d'outil « agent toolset » attendu par l'API Agents (valeur documentée). */
     private static final String AGENT_TOOLSET_TYPE = "agent_toolset_20260401";
 
     private final AnthropicProperties properties;
+    private final AtelierAgentProperties agentProperties;
     private final RestClient restClient;
 
-    public AnthropicManagedAgentProvider(AnthropicProperties properties, RestClient.Builder restClientBuilder) {
+    public AnthropicManagedAgentProvider(AnthropicProperties properties,
+            AtelierAgentProperties agentProperties, RestClient.Builder restClientBuilder) {
         this.properties = properties;
+        this.agentProperties = agentProperties;
         this.restClient = restClientBuilder.baseUrl(properties.baseUrl()).build();
     }
 
@@ -77,6 +90,193 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
         return new ManagedAgentDefinition(id, version);
     }
 
+    @Override
+    public String uploadFile(String filename, byte[] content) {
+        // Part "file" du multipart : ByteArrayResource nommé pour porter le filename dans la requête.
+        ByteArrayResource fileResource = new ByteArrayResource(content) {
+            @Override
+            public String getFilename() {
+                return filename;
+            }
+        };
+        MultiValueMap<String, Object> parts = new LinkedMultiValueMap<>();
+        parts.add("file", new HttpEntity<>(fileResource, octetStreamHeaders()));
+        parts.add("purpose", "agent");
+
+        try {
+            JsonNode response = restClient.post()
+                    .uri("/v1/files")
+                    .header("x-api-key", properties.apiKey())
+                    .header("anthropic-version", properties.version())
+                    .header("anthropic-beta", FILES_API_BETA)
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(parts)
+                    .retrieve()
+                    .body(JsonNode.class);
+            String id = text(response, "id");
+            if (id == null || id.isBlank()) {
+                throw new AgentProviderException("Réponse sans identifiant de fichier du fournisseur d'agents.");
+            }
+            return id;
+        } catch (RestClientException ex) {
+            log.warn("Téléversement de fichier au fournisseur d'agents en échec.");
+            throw new AgentProviderException("Échec du téléversement de fichier au fournisseur d'agents.", ex);
+        }
+    }
+
+    @Override
+    public ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources) {
+        List<Map<String, Object>> mounts = new ArrayList<>();
+        for (FileMount mount : resources) {
+            mounts.add(Map.of(
+                    "type", "file",
+                    "file_id", mount.fileId(),
+                    "mount_path", mount.mountPath()));
+        }
+        Map<String, Object> body = Map.of(
+                "agent", agentId,
+                "environment_id", environmentId,
+                "resources", mounts);
+
+        JsonNode response = post("/v1/sessions", body, "création de la session");
+        String id = text(response, "id");
+        if (id == null || id.isBlank()) {
+            throw new AgentProviderException("Réponse sans identifiant de session du fournisseur d'agents.");
+        }
+        return new ManagedSession(id);
+    }
+
+    @Override
+    public void sendUserMessage(String sessionId, String text) {
+        Map<String, Object> body = Map.of(
+                "type", "user.message",
+                "content", text == null ? "" : text);
+        post("/v1/sessions/" + sessionId + "/events", body, "envoi du message utilisateur");
+    }
+
+    @Override
+    public SessionRun awaitCompletion(String sessionId, Duration timeout, int maxPolls) {
+        StringBuilder reply = new StringBuilder();
+        long deadlineNanos = System.nanoTime() + timeout.toNanos();
+        for (int poll = 0; poll < maxPolls; poll++) {
+            if (System.nanoTime() > deadlineNanos) {
+                throw new AgentSessionTimeoutException(
+                        "Délai d'attente dépassé sur la complétion de la session (timeout).");
+            }
+            JsonNode page = readEventsPage(sessionId, poll);
+            String stopReason = null;
+            boolean idle = false;
+            for (JsonNode event : events(page)) {
+                String type = text(event, "type");
+                if ("agent.message".equals(type)) {
+                    reply.append(extractText(event));
+                } else if ("session.status_idle".equals(type)) {
+                    idle = true;
+                    stopReason = text(event, "stop_reason");
+                }
+            }
+            if (idle) {
+                return new SessionRun(reply.toString(), stopReason);
+            }
+            sleepBetweenPolls();
+        }
+        throw new AgentSessionTimeoutException(
+                "Nombre maximal de tours de polling atteint sans complétion de la session.");
+    }
+
+    @Override
+    public List<OutputFile> listOutputs(String sessionId) {
+        try {
+            JsonNode response = restClient.get()
+                    .uri(uriBuilder -> uriBuilder.path("/v1/files")
+                            .queryParam("scope_id", sessionId).build())
+                    .header("x-api-key", properties.apiKey())
+                    .header("anthropic-version", properties.version())
+                    // Les deux bêtas sont requises : deux valeurs sur le même en-tête anthropic-beta.
+                    .header("anthropic-beta", MANAGED_AGENTS_BETA, FILES_API_BETA)
+                    .retrieve()
+                    .body(JsonNode.class);
+            List<OutputFile> outputs = new ArrayList<>();
+            for (JsonNode file : dataArray(response)) {
+                String id = text(file, "id");
+                String filename = text(file, "filename");
+                if (id != null && !id.isBlank()) {
+                    outputs.add(new OutputFile(id, filename));
+                }
+            }
+            return outputs;
+        } catch (RestClientException ex) {
+            log.warn("Liste des sorties de session en échec.");
+            throw new AgentProviderException("Échec de la récupération des sorties de la session.", ex);
+        }
+    }
+
+    @Override
+    public byte[] downloadFile(String fileId) {
+        try {
+            byte[] content = restClient.get()
+                    .uri("/v1/files/" + fileId + "/content")
+                    .header("x-api-key", properties.apiKey())
+                    .header("anthropic-version", properties.version())
+                    .header("anthropic-beta", FILES_API_BETA)
+                    .retrieve()
+                    .body(byte[].class);
+            return content == null ? new byte[0] : content;
+        } catch (RestClientException ex) {
+            log.warn("Téléchargement de fichier au fournisseur d'agents en échec.");
+            throw new AgentProviderException("Échec du téléchargement de fichier au fournisseur d'agents.", ex);
+        }
+    }
+
+    @Override
+    public void terminateSession(String sessionId) {
+        // Nettoyage best-effort : ne doit jamais faire échouer le run appelant.
+        try {
+            restClient.delete()
+                    .uri("/v1/sessions/" + sessionId)
+                    .header("x-api-key", properties.apiKey())
+                    .header("anthropic-version", properties.version())
+                    .header("anthropic-beta", MANAGED_AGENTS_BETA)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RuntimeException ex) {
+            log.debug("Terminaison best-effort de la session en échec (ignorée).");
+        }
+    }
+
+    /** Lit une page d'events (polling) de la session. Extraite pour la testabilité. */
+    private JsonNode readEventsPage(String sessionId, int page) {
+        try {
+            return restClient.get()
+                    .uri(uriBuilder -> uriBuilder.path("/v1/sessions/" + sessionId + "/events")
+                            .queryParam("limit", 1000)
+                            .queryParam("page", page)
+                            .build())
+                    .header("x-api-key", properties.apiKey())
+                    .header("anthropic-version", properties.version())
+                    .header("anthropic-beta", MANAGED_AGENTS_BETA)
+                    .retrieve()
+                    .body(JsonNode.class);
+        } catch (RestClientException ex) {
+            log.warn("Lecture des events de session en échec.");
+            throw new AgentProviderException("Échec de la lecture des events de la session.", ex);
+        }
+    }
+
+    /** Attente configurable entre deux tours de polling ({@code 0} en test → aucun sleep réel). */
+    private void sleepBetweenPolls() {
+        Duration delay = agentProperties.pollDelay();
+        if (delay == null || delay.isZero() || delay.isNegative()) {
+            return;
+        }
+        try {
+            Thread.sleep(delay.toMillis());
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new AgentProviderException("Attente de complétion interrompue.", ex);
+        }
+    }
+
     /**
      * Exécute un POST Managed Agents avec les en-têtes d'authentification et beta. Toute erreur
      * {@link RestClientException} (4xx/5xx, réseau) est convertie en {@link AgentProviderException}
@@ -98,6 +298,57 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
             log.warn("Appel au fournisseur d'agents en échec ({})", operation);
             throw new AgentProviderException("Échec de l'appel au fournisseur d'agents.", ex);
         }
+    }
+
+    /** En-têtes de la part fichier du multipart (contenu binaire opaque). */
+    private static HttpHeaders octetStreamHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+        return headers;
+    }
+
+    /** Events d'une page : nœud {@code data} (tableau) ou tableau racine ; sinon vide. */
+    private static Iterable<JsonNode> events(JsonNode page) {
+        if (page == null) {
+            return List.of();
+        }
+        JsonNode data = page.get("data");
+        if (data != null && data.isArray()) {
+            return data;
+        }
+        return page.isArray() ? page : List.<JsonNode>of();
+    }
+
+    /** Éléments d'une réponse liste : nœud {@code data} (tableau) ou tableau racine ; sinon vide. */
+    private static Iterable<JsonNode> dataArray(JsonNode response) {
+        return events(response);
+    }
+
+    /**
+     * Texte d'un event {@code agent.message} : concatène les fragments {@code text} du {@code content}
+     * (tableau de blocs) ; tolère un {@code content} textuel simple et un repli via {@code message}.
+     */
+    private static String extractText(JsonNode event) {
+        JsonNode content = event.get("content");
+        if (content == null && event.get("message") != null) {
+            content = event.get("message").get("content");
+        }
+        if (content == null) {
+            return "";
+        }
+        if (content.isTextual()) {
+            return content.asText();
+        }
+        StringBuilder sb = new StringBuilder();
+        if (content.isArray()) {
+            for (JsonNode block : content) {
+                JsonNode textNode = block.get("text");
+                if (textNode != null && !textNode.isNull()) {
+                    sb.append(textNode.asText());
+                }
+            }
+        }
+        return sb.toString();
     }
 
     /** Lit un champ texte non nul de la réponse, ou {@code null} si absent. */

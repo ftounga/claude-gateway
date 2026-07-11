@@ -70,6 +70,11 @@ app:
       agent-name: ${APP_ATELIER_AGENT_NAME:claude-gateway-atelier}
       model: ${APP_ATELIER_AGENT_MODEL:claude-opus-4-8}
       allow-package-managers: ${APP_ATELIER_AGENT_ALLOW_PKG:true}
+      # Garde-fous des sessions (SF-28-09) : bornent le nb de fichiers montés et le runtime facturé.
+      max-session-files: ${APP_ATELIER_AGENT_MAX_SESSION_FILES:300}
+      session-timeout: ${APP_ATELIER_AGENT_SESSION_TIMEOUT:PT10M}
+      max-polls: ${APP_ATELIER_AGENT_MAX_POLLS:600}
+      poll-delay: ${APP_ATELIER_AGENT_POLL_DELAY:PT1S}
   ocr:
     # Pipeline OCR (F-05). Fournisseur `stub` par défaut (dev/tests, sans AWS) ; `textract` en cluster.
     # Liste blanche MIME, plafond de taille et routage sync/async : décisions réversibles (config).
