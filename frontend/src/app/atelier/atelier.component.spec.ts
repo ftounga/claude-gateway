@@ -9,6 +9,8 @@ import { MAX_UPLOAD_BYTES } from '../shared/http-error.util';
 
 import { AtelierComponent } from './atelier.component';
 import { AtelierService } from '../core/services/atelier.service';
+import { ApiKeyService } from '../core/services/api-key.service';
+import { ApiKeyStatus } from '../core/models/api-key.models';
 import {
   AtelierMessage,
   FileContent,
@@ -20,7 +22,27 @@ describe('AtelierComponent', () => {
   let fixture: ComponentFixture<AtelierComponent>;
   let component: AtelierComponent;
   let service: jasmine.SpyObj<AtelierService>;
+  let apiKeyService: jasmine.SpyObj<ApiKeyService>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
+
+  const hostedStatus: ApiKeyStatus = {
+    present: false,
+    maskedKey: null,
+    last4: null,
+    provider: null,
+    mode: 'HOSTED',
+    validatedAt: null,
+    createdAt: null,
+  };
+  const byokStatus: ApiKeyStatus = {
+    present: true,
+    maskedKey: 'sk-…a1b2',
+    last4: 'a1b2',
+    provider: 'anthropic',
+    mode: 'BYOK',
+    validatedAt: '2026-07-11T00:00:00Z',
+    createdAt: '2026-07-11T00:00:00Z',
+  };
 
   const summary: WorkspaceSummary = { id: 'w1', name: 'projet', createdAt: '2026-07-11T00:00:00Z' };
   const detail: WorkspaceDetail = {
@@ -42,12 +64,14 @@ describe('AtelierComponent', () => {
       'streamChat',
       'getHistory',
     ]);
+    apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
 
     // Valeurs par défaut : la liste est chargée à l'init.
     service.listWorkspaces.and.returnValue(of([summary]));
     service.getWorkspace.and.returnValue(of(detail));
     service.getHistory.and.returnValue(of([]));
+    apiKeyService.getStatus.and.returnValue(of(hostedStatus));
 
     TestBed.configureTestingModule({
       imports: [AtelierComponent],
@@ -55,6 +79,7 @@ describe('AtelierComponent', () => {
         provideNoopAnimations(),
         provideRouter([]),
         { provide: AtelierService, useValue: service },
+        { provide: ApiKeyService, useValue: apiKeyService },
         { provide: MatSnackBar, useValue: snackBar },
       ],
     });
@@ -70,6 +95,105 @@ describe('AtelierComponent', () => {
     expect(component.workspaces()).toEqual([summary]);
   });
 
+  it('affiche le panneau d\'upsell (sans snackbar) sur un 403 atelier_forbidden', () => {
+    service = jasmine.createSpyObj<AtelierService>('AtelierService', [
+      'createWorkspace',
+      'listWorkspaces',
+      'getWorkspace',
+      'getFile',
+      'writeFile',
+      'chat',
+      'streamChat',
+      'getHistory',
+    ]);
+    apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
+    apiKeyService.getStatus.and.returnValue(of(hostedStatus));
+    snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
+    service.listWorkspaces.and.returnValue(
+      throwError(
+        () =>
+          new HttpErrorResponse({
+            status: 403,
+            error: { error: 'atelier_forbidden', message: 'Réservé à l\'offre Gold.' },
+          }),
+      ),
+    );
+
+    TestBed.configureTestingModule({
+      imports: [AtelierComponent],
+      providers: [
+        provideNoopAnimations(),
+        provideRouter([]),
+        { provide: AtelierService, useValue: service },
+        { provide: ApiKeyService, useValue: apiKeyService },
+        { provide: MatSnackBar, useValue: snackBar },
+      ],
+    });
+    fixture = TestBed.createComponent(AtelierComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+
+    expect(component.accessDenied()).toBeTrue();
+    expect(snackBar.open).not.toHaveBeenCalled();
+    // Le statut de clé n'est pas interrogé quand l'accès est refusé.
+    expect(apiKeyService.getStatus).not.toHaveBeenCalled();
+  });
+
+  it('charge le mode d\'exécution après un accès accordé et détecte BYOK', () => {
+    setup();
+    apiKeyService.getStatus.and.returnValue(of(byokStatus));
+    // Recharge explicite pour appliquer le statut BYOK.
+    (component as unknown as { loadProviderMode: () => void }).loadProviderMode();
+
+    expect(component.accessDenied()).toBeFalse();
+    expect(apiKeyService.getStatus).toHaveBeenCalled();
+    expect(component.providerMode()).toBe('BYOK');
+    expect(component.maskedKey()).toBe('sk-…a1b2');
+  });
+
+  it('reste en mode Hosted par défaut quand aucune clé n\'est présente', () => {
+    setup();
+    expect(apiKeyService.getStatus).toHaveBeenCalled();
+    expect(component.providerMode()).toBe('HOSTED');
+    expect(component.maskedKey()).toBeNull();
+  });
+
+  it('sur une 500, montre le message d\'erreur sans passer en upsell', () => {
+    service = jasmine.createSpyObj<AtelierService>('AtelierService', [
+      'createWorkspace',
+      'listWorkspaces',
+      'getWorkspace',
+      'getFile',
+      'writeFile',
+      'chat',
+      'streamChat',
+      'getHistory',
+    ]);
+    apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
+    apiKeyService.getStatus.and.returnValue(of(hostedStatus));
+    snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
+    service.listWorkspaces.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 500 })),
+    );
+
+    TestBed.configureTestingModule({
+      imports: [AtelierComponent],
+      providers: [
+        provideNoopAnimations(),
+        provideRouter([]),
+        { provide: AtelierService, useValue: service },
+        { provide: ApiKeyService, useValue: apiKeyService },
+        { provide: MatSnackBar, useValue: snackBar },
+      ],
+    });
+    fixture = TestBed.createComponent(AtelierComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+
+    expect(component.accessDenied()).toBeFalse();
+    expect(snackBar.open).toHaveBeenCalled();
+  });
+
   it('notifies when the workspace list fails to load', () => {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace',
@@ -81,6 +205,8 @@ describe('AtelierComponent', () => {
       'streamChat',
       'getHistory',
     ]);
+    apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
+    apiKeyService.getStatus.and.returnValue(of(hostedStatus));
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     service.listWorkspaces.and.returnValue(throwError(() => new Error('boom')));
 
@@ -90,6 +216,7 @@ describe('AtelierComponent', () => {
         provideNoopAnimations(),
         provideRouter([]),
         { provide: AtelierService, useValue: service },
+        { provide: ApiKeyService, useValue: apiKeyService },
         { provide: MatSnackBar, useValue: snackBar },
       ],
     });

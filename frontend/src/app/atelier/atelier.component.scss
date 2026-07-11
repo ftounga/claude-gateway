@@ -372,3 +372,65 @@ a.active {
 .zip-input {
   display: none;
 }
+
+// ---- Panneau d'upsell (gating Gold, 403 atelier_forbidden) ----
+.atelier-upsell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--cg-space-3);
+  padding: var(--cg-space-6) var(--cg-space-4);
+  background: var(--cg-bg);
+}
+
+.atelier-upsell-icon {
+  font-size: 56px;
+  width: 56px;
+  height: 56px;
+  color: var(--cg-accent);
+}
+
+.atelier-upsell-title {
+  font-family: var(--cg-font-heading);
+  font-weight: 600;
+  font-size: 22px;
+  color: var(--cg-text-primary);
+  margin: 0;
+  max-width: 520px;
+}
+
+.atelier-upsell-text {
+  color: var(--cg-text-secondary);
+  font-size: 15px;
+  margin: 0 0 var(--cg-space-2);
+  max-width: 460px;
+}
+
+// ---- Indicateur de mode d'exécution (BYOK / Hosted) ----
+.mode-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-bottom: 1px solid var(--cg-divider);
+  background: var(--cg-surface);
+}
+
+.mode-chip-icon {
+  font-size: 14px;
+  width: 14px;
+  height: 14px;
+}
+
+.mode-link {
+  font-size: 13px;
+  color: var(--cg-primary);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}

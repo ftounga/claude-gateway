@@ -1,5 +1,7 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, NgZone, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
@@ -15,7 +17,9 @@ import { MarkdownPipe } from '../shared/markdown.pipe';
 import { MessageSegmentsPipe } from '../shared/message-segments.pipe';
 import { httpErrorMessage, MAX_UPLOAD_BYTES, oversizeMessage } from '../shared/http-error.util';
 import { CopyBlockComponent } from '../chat/copy-block/copy-block.component';
+import { ApiKeyService } from '../core/services/api-key.service';
 import { AtelierService } from '../core/services/atelier.service';
+import { ProviderMode } from '../core/models/api-key.models';
 import {
   AtelierAction,
   AtelierRole,
@@ -58,6 +62,7 @@ export interface AtelierStreamingItem {
     MatProgressBarModule,
     MatProgressSpinnerModule,
     MatTooltipModule,
+    RouterLink,
     MarkdownPipe,
     MessageSegmentsPipe,
     CopyBlockComponent,
@@ -67,8 +72,22 @@ export interface AtelierStreamingItem {
 })
 export class AtelierComponent implements OnInit {
   private readonly atelier = inject(AtelierService);
+  private readonly apiKeyService = inject(ApiKeyService);
+  private readonly router = inject(Router);
   private readonly snackBar = inject(MatSnackBar);
   private readonly zone = inject(NgZone);
+
+  /**
+   * Accès refusé par le backend (403 `atelier_forbidden`, SF-28-06) : l'utilisateur n'est pas Gold.
+   * Déclenche l'affichage du panneau d'upsell au lieu de l'écran Atelier.
+   */
+  readonly accessDenied = signal(false);
+
+  /** Mode d'exécution effectif (indicateur de tête d'écran) : BYOK « vos tokens » vs Hosted « inclus ». */
+  readonly providerMode = signal<ProviderMode>('HOSTED');
+
+  /** Clé masquée (`sk-…last4`) à afficher en mode BYOK, si disponible. */
+  readonly maskedKey = signal<string | null>(null);
 
   readonly workspaces = signal<WorkspaceSummary[]>([]);
   readonly activeWorkspaceId = signal<string | null>(null);
@@ -102,9 +121,50 @@ export class AtelierComponent implements OnInit {
 
   private loadWorkspaces(): void {
     this.atelier.listWorkspaces().subscribe({
-      next: (list) => this.workspaces.set(list),
-      error: () => this.notifyError('Impossible de charger les projets.'),
+      next: (list) => {
+        this.workspaces.set(list);
+        // Accès accordé : charger le mode d'exécution pour l'indicateur de tête d'écran.
+        this.loadProviderMode();
+      },
+      error: (err) => {
+        // 403 `atelier_forbidden` (non-Gold) : upsell silencieux, sans snackbar d'erreur (SF-28-06).
+        if (this.isAtelierForbidden(err)) {
+          this.accessDenied.set(true);
+          return;
+        }
+        this.notifyError('Impossible de charger les projets.');
+      },
     });
+  }
+
+  /** Vrai si l'erreur est le 403 de gating Gold renvoyé par le backend (`atelier_forbidden`). */
+  private isAtelierForbidden(err: unknown): boolean {
+    return (
+      err instanceof HttpErrorResponse &&
+      err.status === 403 &&
+      (err.error as { error?: string } | null)?.error === 'atelier_forbidden'
+    );
+  }
+
+  /**
+   * Charge le statut de clé pour déterminer le mode d'exécution affiché.
+   * BYOK si le mode renvoyé vaut `BYOK` **ou** si une clé est présente (`maskedKey` non-null) : le
+   * backend ne facture pas ces tokens sur le quota Hosted, l'utilisateur doit le voir clairement.
+   * Échec silencieux → repli sur Hosted (non bloquant, l'écran reste utilisable).
+   */
+  private loadProviderMode(): void {
+    this.apiKeyService.getStatus().subscribe({
+      next: (status) => {
+        this.maskedKey.set(status.maskedKey);
+        this.providerMode.set(status.mode === 'BYOK' || status.maskedKey !== null ? 'BYOK' : 'HOSTED');
+      },
+      error: () => this.providerMode.set('HOSTED'),
+    });
+  }
+
+  /** Redirige vers l'écran de facturation pour souscrire l'offre Gold. */
+  goToBilling(): void {
+    this.router.navigate(['/billing']);
   }
 
   /** Téléverse l'archive `.zip` sélectionnée → crée le workspace, l'ouvre et rafraîchit la liste. */
