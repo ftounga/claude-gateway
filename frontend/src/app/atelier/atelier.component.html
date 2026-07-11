@@ -143,6 +143,20 @@
                       }
                     </ul>
                   }
+                  <!-- Fichiers modifiés par une session d'exécution (mode « Exécution », SF-28-11) -->
+                  @if (message.changedFiles && message.changedFiles.length > 0) {
+                    <div class="changed-files" aria-label="Fichiers modifiés par l'exécution">
+                      <span class="changed-files-label">
+                        <mat-icon class="action-icon">difference</mat-icon>
+                        Fichiers modifiés :
+                      </span>
+                      <ul class="changed-files-list">
+                        @for (path of message.changedFiles; track path) {
+                          <li class="changed-file" (click)="openFile(path)">{{ path }}</li>
+                        }
+                      </ul>
+                    </div>
+                  }
                 } @else {
                   <div class="message-content">{{ message.content }}</div>
                 }
@@ -173,6 +187,36 @@
               }
               @if (live.text.length > 0) {
                 <div class="message-content markdown-body" [innerHTML]="live.text | markdown"></div>
+              }
+            </article>
+          }
+
+          <!-- Tour « en cours » du mode Exécution : état + étapes d'outils (bash…) + commentaire (SF-28-11) -->
+          @if (execStreaming(); as exec) {
+            <article class="message assistant streaming" aria-live="polite">
+              <div class="message-role">
+                <span>Claude</span>
+                <mat-progress-spinner
+                  mode="indeterminate"
+                  [diameter]="16"
+                  aria-label="Exécution en cours"
+                ></mat-progress-spinner>
+                @if (exec.status) {
+                  <span class="exec-status">{{ exec.status }}</span>
+                }
+              </div>
+              @if (exec.steps.length > 0) {
+                <ul class="exec-step-list" aria-label="Étapes d'exécution en cours">
+                  @for (step of exec.steps; track $index) {
+                    <li class="exec-step">
+                      <mat-icon class="action-icon">terminal</mat-icon>
+                      <code class="exec-step-cmd">{{ execStepLabel(step) }}</code>
+                    </li>
+                  }
+                </ul>
+              }
+              @if (exec.text.length > 0) {
+                <div class="message-content markdown-body" [innerHTML]="exec.text | markdown"></div>
               }
             </article>
           }
@@ -245,6 +289,33 @@
             }
           </aside>
         }
+      </div>
+
+      <!-- Sélecteur de mode : Édition (Phase 1) ⇄ Exécution (Phase 2, SF-28-11) -->
+      <div class="mode-selector">
+        <mat-button-toggle-group
+          class="mode-toggle"
+          aria-label="Mode de l'agent"
+          [value]="agentMode()"
+          [disabled]="submitting()"
+          (change)="setAgentMode($event.value)"
+        >
+          <mat-button-toggle value="edit">
+            <mat-icon>edit_note</mat-icon>
+            Édition
+          </mat-button-toggle>
+          <mat-button-toggle value="exec">
+            <mat-icon>terminal</mat-icon>
+            Exécution
+          </mat-button-toggle>
+        </mat-button-toggle-group>
+        <span class="mode-hint">
+          @if (agentMode() === 'exec') {
+            Claude exécute réellement (bash, tests, build) dans un sandbox hébergé.
+          } @else {
+            Claude lit et édite les fichiers du projet, sans exécution.
+          }
+        </span>
       </div>
 
       <!-- Composer -->

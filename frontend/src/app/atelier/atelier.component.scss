@@ -355,6 +355,118 @@ a.active {
   min-height: 200px;
 }
 
+// ---- Étapes d'exécution (mode « Exécution », SF-28-11) : commandes en monospace ----
+.exec-step-list {
+  list-style: none;
+  margin: var(--cg-space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-1);
+}
+
+.exec-step {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+
+  .action-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    color: var(--cg-accent);
+    flex-shrink: 0;
+  }
+}
+
+.exec-step-cmd {
+  font-family: var(--cg-font-mono);
+  font-size: 13px;
+  color: var(--cg-text-primary);
+  background: var(--cg-bg);
+  border: 1px solid var(--cg-divider);
+  border-radius: 4px;
+  padding: 2px 8px;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.exec-status {
+  font-family: var(--cg-font-mono);
+  font-size: 11px;
+  color: var(--cg-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+// ---- Fichiers modifiés par une session d'exécution ----
+.changed-files {
+  margin-top: var(--cg-space-2);
+}
+
+.changed-files-label {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cg-text-secondary);
+
+  .action-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    color: var(--cg-accent);
+  }
+}
+
+.changed-files-list {
+  list-style: none;
+  margin: var(--cg-space-1) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-1);
+}
+
+.changed-file {
+  font-family: var(--cg-font-mono);
+  font-size: 13px;
+  color: var(--cg-accent);
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 2px 6px;
+
+  &:hover {
+    background: var(--cg-surface-2);
+    text-decoration: underline;
+  }
+}
+
+// ---- Sélecteur de mode (Édition / Exécution) ----
+.mode-selector {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-3);
+  padding: var(--cg-space-2) var(--cg-space-3) 0;
+  flex-wrap: wrap;
+}
+
+.mode-toggle {
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    margin-right: var(--cg-space-1);
+    vertical-align: middle;
+  }
+}
+
+.mode-hint {
+  font-size: 13px;
+  color: var(--cg-text-secondary);
+}
+
 // ---- Composer ----
 .composer {
   display: flex;

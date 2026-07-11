@@ -3,6 +3,7 @@ import { Component, NgZone, OnInit, computed, inject, signal } from '@angular/co
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
@@ -22,10 +23,14 @@ import { AtelierService } from '../core/services/atelier.service';
 import { ProviderMode } from '../core/models/api-key.models';
 import {
   AtelierAction,
+  AtelierAgentStreamAction,
   AtelierRole,
   AtelierStreamAction,
   WorkspaceSummary,
 } from '../core/models/atelier.models';
+
+/** Mode de l'agent : « Édition » (Phase 1, lecture/écriture) ou « Exécution » (Phase 2, sandbox). */
+export type AtelierAgentMode = 'edit' | 'exec';
 
 /** Élément du fil de conversation de l'Atelier : un tour (message + éventuelles actions fichier). */
 export interface AtelierThreadItem {
@@ -33,11 +38,23 @@ export interface AtelierThreadItem {
   role: AtelierRole;
   content: string;
   actions: AtelierAction[];
+  /** Chemins des fichiers modifiés par une session d'exécution (mode « Exécution », SF-28-11). */
+  changedFiles?: string[];
 }
 
 /** Tour assistant « en cours » pendant le streaming : étapes relayées + commentaire partiel. */
 export interface AtelierStreamingItem {
   steps: AtelierStreamAction[];
+  text: string;
+}
+
+/**
+ * Tour assistant « en cours » du mode « Exécution » (SF-28-11) : état de la session, étapes d'outils
+ * (bash, tests…) relayées au fil de l'eau, et commentaire partiel de l'agent.
+ */
+export interface AtelierExecStreamingItem {
+  status: string;
+  steps: AtelierAgentStreamAction[];
   text: string;
 }
 
@@ -58,6 +75,7 @@ export interface AtelierStreamingItem {
     MatFormFieldModule,
     MatInputModule,
     MatButtonModule,
+    MatButtonToggleModule,
     MatIconModule,
     MatProgressBarModule,
     MatProgressSpinnerModule,
@@ -96,6 +114,15 @@ export class AtelierComponent implements OnInit {
 
   /** Tour assistant « en cours » (étapes + texte partiel) affiché pendant le streaming (SF-28-05). */
   readonly streaming = signal<AtelierStreamingItem | null>(null);
+
+  /**
+   * Mode de l'agent (SF-28-11). « Édition » (défaut, Phase 1) : Claude lit/édite les fichiers.
+   * « Exécution » (Phase 2) : Claude exécute réellement (bash, tests, build) dans un sandbox hébergé.
+   */
+  readonly agentMode = signal<AtelierAgentMode>('edit');
+
+  /** Tour assistant « en cours » du mode « Exécution » (état + étapes d'outils + texte partiel). */
+  readonly execStreaming = signal<AtelierExecStreamingItem | null>(null);
 
   /** Saisie du composer (liaison bidirectionnelle simple, façon Claude Code). */
   readonly draft = signal('');
@@ -254,6 +281,14 @@ export class AtelierComponent implements OnInit {
     this.messages.update((current) => [...current, userItem]);
     this.draft.set('');
     this.submitting.set(true);
+
+    // Mode « Exécution » (Phase 2, SF-28-11) : délègue au flux d'agent (sandbox hébergé). Le mode
+    // « Édition » (défaut, Phase 1) reste strictement inchangé ci-dessous.
+    if (this.agentMode() === 'exec') {
+      this.sendExec(id, content, userItem);
+      return;
+    }
+
     this.streaming.set({ steps: [], text: '' });
 
     void this.atelier.streamChat(id, content, {
@@ -313,6 +348,90 @@ export class AtelierComponent implements OnInit {
       default:
         return "Le message n'a pas pu être envoyé. Veuillez réessayer.";
     }
+  }
+
+  /** Bascule le mode de l'agent (« Édition » ⇄ « Exécution »), sauf pendant un envoi en cours. */
+  setAgentMode(mode: AtelierAgentMode): void {
+    if (this.submitting()) {
+      return;
+    }
+    this.agentMode.set(mode);
+  }
+
+  /**
+   * Envoie le message courant en mode **Exécution** (SF-28-11) : relaie l'état de session, les étapes
+   * d'outils (bash, tests…) et le commentaire au fil de l'eau, puis ajoute la réponse finale et la
+   * liste des fichiers modifiés, et rafraîchit l'arborescence. Le flux tourne hors zone Angular
+   * (fetch) : chaque mise à jour de signal passe par {@link NgZone}. En cas d'erreur, le tour
+   * utilisateur optimiste est retiré (rien n'a été persisté) et un message lisible est affiché.
+   */
+  private sendExec(id: string, content: string, userItem: AtelierThreadItem): void {
+    this.execStreaming.set({ status: '', steps: [], text: '' });
+
+    void this.atelier.streamAgent(id, content, {
+      onStatus: (state) =>
+        this.zone.run(() => {
+          this.execStreaming.update((current) => (current ? { ...current, status: state } : current));
+        }),
+      onAction: (action) =>
+        this.zone.run(() => {
+          this.execStreaming.update((current) =>
+            current ? { ...current, steps: [...current.steps, action] } : current,
+          );
+        }),
+      onAgent: (text) =>
+        this.zone.run(() => {
+          this.execStreaming.update((current) =>
+            current ? { ...current, text: current.text + text } : current,
+          );
+        }),
+      onDone: (done) =>
+        this.zone.run(() => {
+          this.submitting.set(false);
+          this.execStreaming.set(null);
+          this.messages.update((current) => [
+            ...current,
+            {
+              id: `local-assistant-${Date.now()}`,
+              role: 'ASSISTANT',
+              content: done.reply,
+              actions: [],
+              changedFiles: done.changedFiles ?? [],
+            },
+          ]);
+          // La session a pu exécuter du code et modifier des fichiers : rafraîchir l'arborescence.
+          this.refreshTree(id);
+        }),
+      onError: (code) =>
+        this.zone.run(() => {
+          this.submitting.set(false);
+          this.execStreaming.set(null);
+          // Retire le message utilisateur optimiste : rien n'a été persisté côté serveur.
+          this.messages.update((current) => current.filter((m) => m.id !== userItem.id));
+          this.notifyError(this.mapAgentError(code));
+        }),
+    });
+  }
+
+  /** Traduit un code d'erreur du flux d'exécution en message utilisateur lisible (SF-28-11). */
+  private mapAgentError(code: string): string {
+    switch (code) {
+      case 'forbidden':
+        return "L'exécution est réservée à l'offre Gold.";
+      case 'agent_disabled':
+        return 'Le mode Exécution est momentanément indisponible.';
+      case 'workspace_not_found':
+        return 'Projet introuvable.';
+      case 'session_timeout':
+        return 'La session a dépassé le temps imparti. Réessayez sur une tâche plus courte.';
+      default:
+        return "L'exécution a échoué. Veuillez réessayer.";
+    }
+  }
+
+  /** Libellé d'une étape d'exécution en cours (`tool` + `detail`, ex. « bash: npm test »). */
+  execStepLabel(step: AtelierAgentStreamAction): string {
+    return step.detail ? `${step.tool}: ${step.detail}` : step.tool;
   }
 
   /** Ouvre/ferme le panneau « Fichiers ». */
