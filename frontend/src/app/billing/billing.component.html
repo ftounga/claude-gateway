@@ -64,6 +64,25 @@
       <div class="billing__feedback"><mat-spinner diameter="28"></mat-spinner><span>Chargement des offres…</span></div>
     } @else {
       <div class="billing__cards">
+        <!-- Offre gratuite / essai, visible comme une offre à part entière (façon legalcase) -->
+        <article class="billing__card" [class.billing__card--current]="hasNoPaidPlan()">
+          <div class="billing__card-flags">
+            @if (hasNoPaidPlan()) { <span class="billing__flag billing__flag--current">Offre actuelle</span> }
+          </div>
+          <h3 class="billing__card-name">Gratuit</h3>
+          <p class="billing__card-price"><span class="amount">0 €</span><span class="per">essai 5 jours</span></p>
+          <p class="billing__card-tokens">200 000 tokens pour découvrir</p>
+          <button mat-stroked-button type="button" class="billing__card-cta is-outline" [disabled]="true">
+            @if (trialDaysLeft() !== null) {
+              Essai · {{ trialDaysLeft() }} j restant{{ trialDaysLeft() === 1 ? '' : 's' }}
+            } @else if (hasNoPaidPlan()) {
+              Votre offre actuelle
+            } @else {
+              Offre de départ
+            }
+          </button>
+        </article>
+
         @for (plan of plans(); track plan.code) {
           <article
             class="billing__card"

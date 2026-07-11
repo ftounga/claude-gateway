@@ -12,9 +12,10 @@ import java.util.List;
  * @param attachments fichiers rattachés au dernier message utilisateur (jamais {@code null} ; vide par défaut)
  * @param apiKey      clé fournisseur à utiliser pour CET appel (mode BYOK, F-03) ; {@code null} => clé
  *                    plateforme (mode Hosted). Provider-neutre : jamais journalisée, jamais persistée.
+ * @param system      consigne système optionnelle (top-level {@code system} de l'API) ; {@code null} => aucune.
  */
 public record ChatCompletionRequest(String model, List<ChatMessage> messages,
-        List<ProviderAttachment> attachments, String apiKey) {
+        List<ProviderAttachment> attachments, String apiKey, String system) {
 
     public ChatCompletionRequest {
         if (attachments == null) {
@@ -22,13 +23,19 @@ public record ChatCompletionRequest(String model, List<ChatMessage> messages,
         }
     }
 
+    /** Complétion sans consigne système. */
+    public ChatCompletionRequest(String model, List<ChatMessage> messages,
+            List<ProviderAttachment> attachments, String apiKey) {
+        this(model, messages, attachments, apiKey, null);
+    }
+
     /** Complétion avec la clé plateforme (mode Hosted). */
     public ChatCompletionRequest(String model, List<ChatMessage> messages, List<ProviderAttachment> attachments) {
-        this(model, messages, attachments, null);
+        this(model, messages, attachments, null, null);
     }
 
     /** Complétion sans pièce jointe, clé plateforme. */
     public ChatCompletionRequest(String model, List<ChatMessage> messages) {
-        this(model, messages, List.of(), null);
+        this(model, messages, List.of(), null, null);
     }
 }

@@ -5,20 +5,21 @@
 }
 
 .app-bar {
-  // Barre de navigation navy (structure de marque). Texte et icônes forcés en blanc :
-  // les boutons Material n'héritent pas de `color`, d'où l'invisibilité des menus corrigée ici.
-  background: var(--cg-primary);
-  color: #ffffff;
+  // Header CLAIR (thème Blanc & Orange, lumineux) : surface blanche, encre ardoise, accent orange.
+  // Les boutons Material n'héritent pas de `color` → couleurs forcées ci-dessous (bug menus corrigé).
+  background: var(--cg-surface);
+  color: var(--cg-text-primary);
   gap: 8px;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06), 0 2px 12px rgba(11, 16, 32, 0.25);
+  border-bottom: 1px solid var(--cg-divider);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
   position: relative;
   z-index: 10;
 }
 
 .brand {
   font-family: var(--cg-font-heading);
-  font-weight: 600;
-  color: #ffffff;
+  font-weight: 700;
+  color: var(--cg-text-primary);
   cursor: pointer;
   margin-right: 20px;
   letter-spacing: -0.01em;
@@ -29,9 +30,8 @@
   gap: 2px;
 
   a {
-    // Liens de menu lisibles sur le navy (Material n'hérite pas de color).
-    color: rgba(255, 255, 255, 0.82);
-    --mdc-text-button-label-text-color: rgba(255, 255, 255, 0.82);
+    color: var(--cg-text-secondary);
+    --mdc-text-button-label-text-color: var(--cg-text-secondary);
     font-weight: 500;
     border-radius: 8px;
 
@@ -41,27 +41,27 @@
     }
 
     &:hover {
-      color: #ffffff;
-      --mdc-text-button-label-text-color: #ffffff;
-      background: rgba(255, 255, 255, 0.08);
+      color: var(--cg-text-primary);
+      --mdc-text-button-label-text-color: var(--cg-text-primary);
+      background: rgba(15, 23, 42, 0.04);
     }
 
     &.active {
-      // Onglet courant : plein contraste + soulignement orange (accent de marque).
-      color: #ffffff;
-      --mdc-text-button-label-text-color: #ffffff;
-      background: rgba(255, 255, 255, 0.10);
+      // Onglet courant : accent orange (texte + soulignement).
+      color: var(--cg-accent);
+      --mdc-text-button-label-text-color: var(--cg-accent);
+      background: rgba(224, 123, 57, 0.09);
       box-shadow: inset 0 -2px 0 var(--cg-accent);
     }
   }
 }
 
 .account-trigger {
-  color: #ffffff;
-  --mat-icon-button-icon-color: #ffffff;
+  color: var(--cg-text-secondary);
+  --mat-icon-button-icon-color: var(--cg-text-secondary);
 
   mat-icon {
-    color: #ffffff;
+    color: var(--cg-text-secondary);
   }
 }
 
