@@ -49,7 +49,8 @@ class QuotaBonusTest {
 
     @BeforeEach
     void setUp() {
-        quotaService = new QuotaService(usageCounterRepository, subscriptionService, entitlementService, clock);
+        quotaService = new QuotaService(usageCounterRepository, subscriptionService, entitlementService,
+                new QuotaProperties(null, null, null), clock);
     }
 
     private void baseQuota(long quota) {

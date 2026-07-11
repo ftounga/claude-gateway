@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -24,6 +25,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import fr.claudegateway.atelier.WorkspaceNotFoundException;
 import fr.claudegateway.atelier.WorkspaceService;
+import fr.claudegateway.atelier.agent.ManagedAgentProvider.SessionUsage;
+import fr.claudegateway.quota.QuotaExceededException;
+import fr.claudegateway.quota.QuotaService;
+import fr.claudegateway.quota.SandboxLimitExceededException;
 
 /**
  * Vérifie l'orchestration de {@link AtelierSessionService} (F-28 / Phase 2, ADR-013) avec un
@@ -42,6 +47,8 @@ class AtelierSessionServiceTest {
     private WorkspaceService workspaceService;
     @Mock
     private AtelierAgentBootstrapService bootstrapService;
+    @Mock
+    private QuotaService quotaService;
 
     private AtelierAgentProperties enabled() {
         return new AtelierAgentProperties(true, null, null, null, null, null, null, null, null);
@@ -57,7 +64,7 @@ class AtelierSessionServiceTest {
     }
 
     private AtelierSessionService service(AtelierAgentProperties props) {
-        return new AtelierSessionService(provider, workspaceService, bootstrapService, props);
+        return new AtelierSessionService(provider, workspaceService, bootstrapService, props, quotaService);
     }
 
     @Test
@@ -275,6 +282,80 @@ class AtelierSessionServiceTest {
         // Fichier nouveau et inconnu → écrit tel quel.
         assertThat(AtelierSessionService.resolveOutputPath("README.md", known, byBasename))
                 .isEqualTo("README.md");
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Pré-vol quota/plafond et décompte post-run (SF-28-12).
+    // ---------------------------------------------------------------------------------------------
+
+    @Test
+    void runTaskStreamingRefusesWhenQuotaExhaustedBeforeAnyProviderCall() {
+        // Pré-vol quota épuisé : refus AVANT toute création de session (aucun coût).
+        doThrow(new QuotaExceededException("épuisé")).when(quotaService).assertWithinQuota(USER);
+
+        assertThatThrownBy(() -> service(enabled())
+                .runTaskStreaming(USER, WORKSPACE, "x", AtelierAgentListener.NOOP))
+                .isInstanceOf(QuotaExceededException.class);
+
+        verify(workspaceService).requireOwned(USER, WORKSPACE);
+        verifyNoInteractions(provider);
+        verifyNoInteractions(bootstrapService);
+    }
+
+    @Test
+    void runTaskStreamingRefusesWhenSandboxLimitReachedBeforeAnyProviderCall() {
+        // Quota OK (no-op) mais plafond de bac à sable atteint : refus avant toute session.
+        doThrow(new SandboxLimitExceededException("plafond"))
+                .when(quotaService).assertWithinSandboxLimit(USER);
+
+        assertThatThrownBy(() -> service(enabled())
+                .runTaskStreaming(USER, WORKSPACE, "x", AtelierAgentListener.NOOP))
+                .isInstanceOf(SandboxLimitExceededException.class);
+
+        verify(workspaceService).requireOwned(USER, WORKSPACE);
+        verifyNoInteractions(provider);
+        verifyNoInteractions(bootstrapService);
+    }
+
+    @Test
+    void runTaskStreamingRecordsTokensAndSandboxSecondsAfterRun() {
+        stubNominalRun();
+        when(provider.getSessionUsage("sess_1")).thenReturn(new SessionUsage(1_000L, 200L, 8L));
+
+        AtelierSessionResult result = service(enabled())
+                .runTaskStreaming(USER, WORKSPACE, "go", AtelierAgentListener.NOOP);
+
+        assertThat(result.reply()).isEqualTo("Terminé.");
+        // Décompte : tokens sur le quota, secondes de bac à sable sur le plafond.
+        verify(quotaService).recordUsage(USER, 1_000, 200);
+        verify(quotaService).recordSandboxSeconds(USER, 8L);
+    }
+
+    @Test
+    void runTaskStreamingCompletesEvenWhenGetSessionUsageFails() {
+        stubNominalRun();
+        // Échec de récupération d'usage : best-effort, le run est déjà livré (aucune exception).
+        when(provider.getSessionUsage("sess_1"))
+                .thenThrow(new AgentProviderException("usage indisponible"));
+
+        AtelierSessionResult result = service(enabled())
+                .runTaskStreaming(USER, WORKSPACE, "go", AtelierAgentListener.NOOP);
+
+        assertThat(result.reply()).isEqualTo("Terminé.");
+        verify(provider).terminateSession("sess_1");
+    }
+
+    /** Stubs communs d'un run nominal sans sortie (le pont fichiers n'est pas l'objet de ces tests). */
+    private void stubNominalRun() {
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("a.txt"));
+        when(workspaceService.readFile(USER, WORKSPACE, "a.txt")).thenReturn("x");
+        when(provider.uploadFile(eq("a.txt"), any())).thenReturn("file_in");
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList()))
+                .thenReturn(new ManagedSession("sess_1"));
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+                .thenReturn(new SessionRun("Terminé.", "end_turn"));
+        when(provider.listOutputs("sess_1")).thenReturn(List.of());
     }
 
     @Test

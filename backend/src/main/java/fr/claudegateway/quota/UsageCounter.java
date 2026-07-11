@@ -68,6 +68,14 @@ public class UsageCounter {
     @Builder.Default
     private long bonusTokens = 0L;
 
+    /**
+     * Temps de bac à sable Managed Agents cumulé sur la période (secondes, F-28 / SF-28-12). Somme
+     * des {@code active_seconds} facturés des sessions d'exécution ; contrôlé contre un plafond.
+     */
+    @Column(name = "sandbox_seconds", nullable = false)
+    @Builder.Default
+    private long sandboxSeconds = 0L;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

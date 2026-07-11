@@ -49,11 +49,13 @@ class QuotaServiceTest {
     // 2026-07-15 → période attendue : 2026-07-01.
     private final Clock clock = Clock.fixed(Instant.parse("2026-07-15T10:00:00Z"), ZoneOffset.UTC);
     private final LocalDate expectedPeriod = LocalDate.of(2026, 7, 1);
+    // Plafond de bac à sable figé à 100 s pour rendre les tests de gate déterministes.
+    private final QuotaProperties quotaProperties = new QuotaProperties(null, null, 100L);
 
     @BeforeEach
     void setUp() {
         quotaService = new QuotaService(usageCounterRepository, subscriptionService,
-                entitlementService, clock);
+                entitlementService, quotaProperties, clock);
     }
 
     private void stubQuota(long quota) {
@@ -160,5 +162,79 @@ class QuotaServiceTest {
 
         assertThat(snapshot.usedTokens()).isEqualTo(700);
         assertThat(snapshot.remainingTokens()).isZero();
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Bac à sable (SF-28-12) : cumul du temps de session et plafond de garde.
+    // ---------------------------------------------------------------------------------------------
+
+    private UsageCounter counterWithSandbox(long sandboxSeconds) {
+        return UsageCounter.builder()
+                .userId(alice).periodStart(expectedPeriod).sandboxSeconds(sandboxSeconds).build();
+    }
+
+    @Test
+    void recordSandboxSecondsCreatesCounterOnFirstCall() {
+        when(usageCounterRepository.findByUserIdAndPeriodStart(alice, expectedPeriod))
+                .thenReturn(Optional.empty());
+        when(usageCounterRepository.save(any(UsageCounter.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        quotaService.recordSandboxSeconds(alice, 42L);
+
+        ArgumentCaptor<UsageCounter> captor = ArgumentCaptor.forClass(UsageCounter.class);
+        verify(usageCounterRepository, org.mockito.Mockito.atLeastOnce()).save(captor.capture());
+        UsageCounter last = captor.getAllValues().get(captor.getAllValues().size() - 1);
+        assertThat(last.getUserId()).isEqualTo(alice);
+        assertThat(last.getPeriodStart()).isEqualTo(expectedPeriod);
+        assertThat(last.getSandboxSeconds()).isEqualTo(42L);
+    }
+
+    @Test
+    void recordSandboxSecondsIncrementsExistingCounter() {
+        UsageCounter existing = counterWithSandbox(30L);
+        when(usageCounterRepository.findByUserIdAndPeriodStart(alice, expectedPeriod))
+                .thenReturn(Optional.of(existing));
+        when(usageCounterRepository.save(any(UsageCounter.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        quotaService.recordSandboxSeconds(alice, 12L);
+
+        assertThat(existing.getSandboxSeconds()).isEqualTo(42L);
+    }
+
+    @Test
+    void recordSandboxSecondsIgnoresNonPositive() {
+        quotaService.recordSandboxSeconds(alice, 0L);
+        quotaService.recordSandboxSeconds(alice, -5L);
+        verify(usageCounterRepository, never()).save(any());
+    }
+
+    @Test
+    void currentPeriodSandboxSecondsReadsValueAndZeroWhenAbsent() {
+        when(usageCounterRepository.findByUserIdAndPeriodStart(alice, expectedPeriod))
+                .thenReturn(Optional.of(counterWithSandbox(77L)));
+        assertThat(quotaService.currentPeriodSandboxSeconds(alice)).isEqualTo(77L);
+
+        when(usageCounterRepository.findByUserIdAndPeriodStart(alice, expectedPeriod))
+                .thenReturn(Optional.empty());
+        assertThat(quotaService.currentPeriodSandboxSeconds(alice)).isZero();
+    }
+
+    @Test
+    void assertWithinSandboxLimitPassesWhenBelowCap() {
+        // Plafond = 100 s (config figée) ; cumul 99 s → OK.
+        when(usageCounterRepository.findByUserIdAndPeriodStart(alice, expectedPeriod))
+                .thenReturn(Optional.of(counterWithSandbox(99L)));
+
+        assertThatCode(() -> quotaService.assertWithinSandboxLimit(alice)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void assertWithinSandboxLimitThrowsWhenAtCap() {
+        // Cumul 100 s == plafond → refus.
+        when(usageCounterRepository.findByUserIdAndPeriodStart(alice, expectedPeriod))
+                .thenReturn(Optional.of(counterWithSandbox(100L)));
+
+        assertThatThrownBy(() -> quotaService.assertWithinSandboxLimit(alice))
+                .isInstanceOf(SandboxLimitExceededException.class);
     }
 }

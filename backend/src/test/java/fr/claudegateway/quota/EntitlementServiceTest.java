@@ -25,7 +25,8 @@ class EntitlementServiceTest {
     void setUp() {
         QuotaProperties properties = new QuotaProperties(
                 200_000L,
-                Map.of("SOLO", 1_000_000L, "PRO", 5_000_000L, "DAILY", 500_000L, "GOLD", 12_000_000L));
+                Map.of("SOLO", 1_000_000L, "PRO", 5_000_000L, "DAILY", 500_000L, "GOLD", 12_000_000L),
+                null);
         service = new EntitlementService(properties);
     }
 
@@ -98,7 +99,7 @@ class EntitlementServiceTest {
 
     @Test
     void activeWithUnconfiguredPlanFailsClosed() {
-        EntitlementService noPlans = new EntitlementService(new QuotaProperties(200_000L, Map.of()));
+        EntitlementService noPlans = new EntitlementService(new QuotaProperties(200_000L, Map.of(), null));
         assertThat(noPlans.resolveMonthlyTokenQuota(
                 subscription(SubscriptionStatus.ACTIVE, PlanCode.PRO, null)))
                 .isZero();

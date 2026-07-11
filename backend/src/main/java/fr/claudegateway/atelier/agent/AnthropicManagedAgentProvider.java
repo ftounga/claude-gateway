@@ -294,6 +294,36 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
         }
     }
 
+    @Override
+    public SessionUsage getSessionUsage(String sessionId) {
+        try {
+            JsonNode response = restClient.get()
+                    .uri("/v1/sessions/" + sessionId)
+                    .header("x-api-key", properties.apiKey())
+                    .header("anthropic-version", properties.version())
+                    .header("anthropic-beta", MANAGED_AGENTS_BETA)
+                    .retrieve()
+                    .body(JsonNode.class);
+            if (response == null) {
+                throw new AgentProviderException("Réponse vide du fournisseur d'agents (usage de session).");
+            }
+            JsonNode usage = response.path("usage");
+            JsonNode cacheCreation = usage.path("cache_creation");
+            // Tokens d'entrée = entrée directe + lecture de cache + créations de cache (5m + 1h).
+            long inputTokens = usage.path("input_tokens").asLong(0)
+                    + usage.path("cache_read_input_tokens").asLong(0)
+                    + cacheCreation.path("ephemeral_5m_input_tokens").asLong(0)
+                    + cacheCreation.path("ephemeral_1h_input_tokens").asLong(0);
+            long outputTokens = usage.path("output_tokens").asLong(0);
+            // Temps facturé du bac à sable : active_seconds arrondi à la seconde.
+            long activeSeconds = Math.round(response.path("stats").path("active_seconds").asDouble(0));
+            return new SessionUsage(inputTokens, outputTokens, activeSeconds);
+        } catch (RestClientException ex) {
+            log.warn("Récupération de l'usage de session en échec.");
+            throw new AgentProviderException("Échec de la récupération de l'usage de la session.", ex);
+        }
+    }
+
     /** Lit une page d'events (polling) de la session. Extraite pour la testabilité. */
     private JsonNode readEventsPage(String sessionId, String pageCursor) {
         try {

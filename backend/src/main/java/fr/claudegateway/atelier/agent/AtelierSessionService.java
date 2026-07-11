@@ -15,6 +15,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import fr.claudegateway.atelier.WorkspaceService;
+import fr.claudegateway.atelier.agent.ManagedAgentProvider.SessionUsage;
+import fr.claudegateway.quota.QuotaService;
 
 /**
  * Orchestration d'un run d'exécution d'atelier sur une session Managed Agents (F-28 / Phase 2,
@@ -47,13 +49,16 @@ public class AtelierSessionService {
     private final WorkspaceService workspaceService;
     private final AtelierAgentBootstrapService bootstrapService;
     private final AtelierAgentProperties properties;
+    private final QuotaService quotaService;
 
     public AtelierSessionService(ManagedAgentProvider provider, WorkspaceService workspaceService,
-            AtelierAgentBootstrapService bootstrapService, AtelierAgentProperties properties) {
+            AtelierAgentBootstrapService bootstrapService, AtelierAgentProperties properties,
+            QuotaService quotaService) {
         this.provider = provider;
         this.workspaceService = workspaceService;
         this.bootstrapService = bootstrapService;
         this.properties = properties;
+        this.quotaService = quotaService;
     }
 
     /**
@@ -97,6 +102,11 @@ public class AtelierSessionService {
         if (!properties.enabled()) {
             throw new AtelierAgentDisabledException("Atelier Phase 2 désactivé.");
         }
+
+        // 2 bis. Pré-vol quota/plafond (SF-28-12) AVANT toute création de session : un refus ici
+        // n'engage AUCUN coût (aucun upload, aucune session). Le sandbox est décompté comme les tokens.
+        quotaService.assertWithinQuota(userId);
+        quotaService.assertWithinSandboxLimit(userId);
 
         // 3. Config Managed Agents (environment/agent provisionnés une fois).
         AtelierAgentConfig config = bootstrapService.ensureBootstrapped()
@@ -164,6 +174,9 @@ public class AtelierSessionService {
                 workspaceService.writeFile(userId, workspaceId, relPath, new String(bytes, UTF_8));
                 changed.add(relPath);
             }
+            // Décompte de la consommation (SF-28-12) : tokens du quota + temps de bac à sable du plafond.
+            // Best-effort : la réponse et le resync sont déjà livrés — un échec ne doit pas les masquer.
+            recordSessionUsage(userId, session.id());
         } finally {
             // 7. Terminaison systématique (succès, erreur, timeout) : borne le coût runtime.
             provider.terminateSession(session.id());
@@ -171,6 +184,25 @@ public class AtelierSessionService {
 
         log.debug("Run atelier terminé : {} fichier(s) modifié(s).", changed.size());
         return new AtelierSessionResult(run.reply(), changed);
+    }
+
+    /**
+     * Décompte best-effort de la consommation d'une session terminée : récupère l'usage auprès du
+     * fournisseur puis crédite le quota (tokens) et le compteur de bac à sable (secondes). Toute
+     * erreur (récupération d'usage, écriture) est <b>avalée</b> (log debug) : le run a déjà produit sa
+     * réponse et resynchronisé ses fichiers, un comptage manqué est toléré et ne doit rien interrompre.
+     * {@code recordUsage} prend des {@code int} : on borne les totaux à {@link Integer#MAX_VALUE}.
+     */
+    private void recordSessionUsage(UUID userId, String sessionId) {
+        try {
+            SessionUsage usage = provider.getSessionUsage(sessionId);
+            int input = (int) Math.min(usage.inputTokens(), Integer.MAX_VALUE);
+            int output = (int) Math.min(usage.outputTokens(), Integer.MAX_VALUE);
+            quotaService.recordUsage(userId, input, output);
+            quotaService.recordSandboxSeconds(userId, usage.activeSeconds());
+        } catch (RuntimeException ex) {
+            log.debug("Décompte de l'usage de session ignoré (best-effort) : run déjà livré.");
+        }
     }
 
     /**

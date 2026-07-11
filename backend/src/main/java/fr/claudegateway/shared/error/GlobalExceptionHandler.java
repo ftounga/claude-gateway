@@ -38,6 +38,7 @@ import fr.claudegateway.chat.UnsupportedModelException;
 import fr.claudegateway.export.UnsupportedExportFormatException;
 import fr.claudegateway.ocr.DocumentNotFoundException;
 import fr.claudegateway.quota.QuotaExceededException;
+import fr.claudegateway.quota.SandboxLimitExceededException;
 import fr.claudegateway.rag.provider.EmbeddingProviderException;
 import fr.claudegateway.rag.provider.EmbeddingProviderUnavailableException;
 import fr.claudegateway.template.TemplateNotFoundException;
@@ -208,6 +209,13 @@ public class GlobalExceptionHandler {
         log.debug("Appel refusé : quota de consommation atteint");
         return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED)
                 .body(new ErrorResponse("quota_exceeded", ex.getMessage()));
+    }
+
+    @ExceptionHandler(SandboxLimitExceededException.class)
+    public ResponseEntity<ErrorResponse> handleSandboxLimit(SandboxLimitExceededException ex) {
+        log.debug("Exécution refusée : plafond de temps de bac à sable atteint");
+        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED)
+                .body(new ErrorResponse("sandbox_limit", ex.getMessage()));
     }
 
     @ExceptionHandler(MissingServletRequestPartException.class)
