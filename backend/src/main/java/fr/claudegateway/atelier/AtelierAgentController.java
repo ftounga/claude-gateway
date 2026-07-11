@@ -24,6 +24,8 @@ import fr.claudegateway.atelier.agent.AtelierSessionResult;
 import fr.claudegateway.atelier.agent.AtelierSessionService;
 import fr.claudegateway.atelier.dto.AtelierAgentRequest;
 import fr.claudegateway.auth.CurrentUser;
+import fr.claudegateway.quota.QuotaExceededException;
+import fr.claudegateway.quota.SandboxLimitExceededException;
 import jakarta.validation.Valid;
 
 /**
@@ -117,6 +119,12 @@ public class AtelierAgentController {
             emitter.complete();
         } catch (WorkspaceNotFoundException ex) {
             sendError(emitter, "workspace_not_found");
+        } catch (QuotaExceededException ex) {
+            // Pré-vol quota tokens épuisé : aucune session créée (aucun coût), erreur dans le flux.
+            sendError(emitter, "quota_exceeded");
+        } catch (SandboxLimitExceededException ex) {
+            // Pré-vol plafond de bac à sable atteint : aucune session créée, erreur dans le flux.
+            sendError(emitter, "sandbox_limit");
         } catch (AtelierAgentDisabledException ex) {
             sendError(emitter, "agent_disabled");
         } catch (AgentSessionTimeoutException ex) {

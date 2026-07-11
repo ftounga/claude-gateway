@@ -283,6 +283,38 @@ class AnthropicManagedAgentProviderTest {
     }
 
     @Test
+    void getSessionUsageAggregatesInputCacheAndRoundsActiveSeconds() {
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions/sess_1"))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header("anthropic-beta", BETA))
+                .andRespond(withSuccess(
+                        "{\"usage\":{\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,"
+                                + "\"ephemeral_5m_input_tokens\":465},\"cache_read_input_tokens\":14114,"
+                                + "\"input_tokens\":4,\"output_tokens\":353},"
+                                + "\"stats\":{\"active_seconds\":8.455,\"duration_seconds\":2142.2}}",
+                        MediaType.APPLICATION_JSON));
+
+        ManagedAgentProvider.SessionUsage usage = provider.getSessionUsage("sess_1");
+
+        // input = input_tokens + cache_read + cache_creation(5m + 1h) = 4 + 14114 + 465 + 0 = 14583.
+        assertThat(usage.inputTokens()).isEqualTo(14_583L);
+        assertThat(usage.outputTokens()).isEqualTo(353L);
+        // active_seconds 8.455 arrondi → 8.
+        assertThat(usage.activeSeconds()).isEqualTo(8L);
+        server.verify();
+    }
+
+    @Test
+    void getSessionUsageTranslatesErrorToAgentProviderException() {
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions/sess_1"))
+                .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
+
+        assertThatThrownBy(() -> provider.getSessionUsage("sess_1"))
+                .isInstanceOf(AgentProviderException.class);
+        server.verify();
+    }
+
+    @Test
     void uploadFileTranslatesClientErrorToAgentProviderException() {
         server.expect(requestTo("https://api.anthropic.com/v1/files"))
                 .andRespond(withStatus(HttpStatus.BAD_REQUEST));

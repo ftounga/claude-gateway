@@ -182,6 +182,9 @@ app:
       PRO: ${APP_QUOTA_PRO_TOKENS:5000000}
       DAILY: ${APP_QUOTA_DAILY_TOKENS:500000}
       GOLD: ${APP_QUOTA_GOLD_TOKENS:12000000}
+    # Plafond de temps de bac à sable Managed Agents (F-28 / SF-28-12) par période, en secondes.
+    # Défaut 18000 = 5 h. Garde de coût : au-delà, l'exécution Phase 2 est refusée (sandbox_limit).
+    max-sandbox-seconds: ${APP_ATELIER_AGENT_MAX_SANDBOX_SECONDS:18000}
   usage:
     report:
       # Rapport d'usage & coût (F-16) : devise, fenêtre d'historique et tarifs estimés.

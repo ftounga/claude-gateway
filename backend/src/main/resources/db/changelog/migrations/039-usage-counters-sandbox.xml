@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      Ajout de `sandbox_seconds` à `usage_counters` (F-28 / SF-28-12, ADR-013). Cumule le temps de
+      bac à sable Managed Agents (`active_seconds`) consommé par un utilisateur sur la période
+      courante, contrôlé contre un plafond de garde. Colonne BIGINT compatible H2 et PostgreSQL —
+      un seul changeset. Réversible.
+    -->
+    <changeSet id="039-usage-counters-sandbox-seconds" author="claude-gateway">
+        <addColumn tableName="usage_counters">
+            <column name="sandbox_seconds" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

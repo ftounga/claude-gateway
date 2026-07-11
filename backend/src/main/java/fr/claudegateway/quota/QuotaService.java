@@ -27,16 +27,19 @@ public class QuotaService {
     private final UsageCounterRepository usageCounterRepository;
     private final SubscriptionService subscriptionService;
     private final EntitlementService entitlementService;
+    private final QuotaProperties quotaProperties;
     private final Clock clock;
 
     public QuotaService(
             UsageCounterRepository usageCounterRepository,
             SubscriptionService subscriptionService,
             EntitlementService entitlementService,
+            QuotaProperties quotaProperties,
             Clock clock) {
         this.usageCounterRepository = usageCounterRepository;
         this.subscriptionService = subscriptionService;
         this.entitlementService = entitlementService;
+        this.quotaProperties = quotaProperties;
         this.clock = clock;
     }
 
@@ -112,6 +115,57 @@ public class QuotaService {
                 .orElseGet(() -> createCounter(userId, periodStart));
         counter.setBonusTokens(counter.getBonusTokens() + tokens);
         usageCounterRepository.save(counter);
+    }
+
+    /**
+     * Vérifie que l'utilisateur n'a pas atteint le plafond de temps de bac à sable Managed Agents de
+     * la période courante (F-28 / SF-28-12). Pré-contrôle appelé <b>avant</b> toute création de
+     * session : un refus n'engage donc aucun coût runtime.
+     *
+     * @param userId utilisateur authentifié (contexte de sécurité)
+     * @throws SandboxLimitExceededException si le cumul de la période a atteint le plafond configuré
+     */
+    @Transactional(readOnly = true)
+    public void assertWithinSandboxLimit(UUID userId) {
+        long limit = quotaProperties.maxSandboxSeconds();
+        long used = currentPeriodSandboxSeconds(userId);
+        if (used >= limit) {
+            throw new SandboxLimitExceededException(
+                    "Plafond de temps de bac à sable atteint pour la période courante.");
+        }
+    }
+
+    /**
+     * Ajoute du temps de bac à sable (secondes {@code active_seconds} d'une session Managed Agents)
+     * au compteur de la période courante de l'utilisateur (F-28 / SF-28-12). Même patron d'upsert
+     * que {@link #recordUsage} : une seule ligne par ({@code user_id}, période).
+     *
+     * @param userId  utilisateur authentifié
+     * @param seconds secondes de bac à sable à cumuler (négatif/zéro ignoré → aucune écriture)
+     */
+    @Transactional
+    public void recordSandboxSeconds(UUID userId, long seconds) {
+        if (seconds <= 0) {
+            return;
+        }
+        LocalDate periodStart = currentPeriodStart();
+        UsageCounter counter = usageCounterRepository.findByUserIdAndPeriodStart(userId, periodStart)
+                .orElseGet(() -> createCounter(userId, periodStart));
+        counter.setSandboxSeconds(counter.getSandboxSeconds() + seconds);
+        usageCounterRepository.save(counter);
+    }
+
+    /**
+     * Temps de bac à sable cumulé de l'utilisateur sur la période courante (0 si aucune ligne).
+     *
+     * @param userId utilisateur authentifié
+     * @return secondes de bac à sable cumulées de la période
+     */
+    @Transactional(readOnly = true)
+    public long currentPeriodSandboxSeconds(UUID userId) {
+        return usageCounterRepository.findByUserIdAndPeriodStart(userId, currentPeriodStart())
+                .map(UsageCounter::getSandboxSeconds)
+                .orElse(0L);
     }
 
     /** Quota effectif de la période : quota d'abonnement + tokens rachetés (bonus) de la période. */

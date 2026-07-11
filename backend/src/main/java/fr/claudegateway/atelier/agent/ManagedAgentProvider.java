@@ -117,4 +117,26 @@ public interface ManagedAgentProvider {
      * @param sessionId identifiant de la session à terminer
      */
     void terminateSession(String sessionId);
+
+    /**
+     * Récupère la consommation agrégée d'une session (F-28 / SF-28-12) pour la décompter du quota et
+     * du plafond de bac à sable. Les tokens d'entrée agrègent l'ensemble des postes rapportés par le
+     * fournisseur (entrée + lecture/écriture de cache) ; le temps de bac à sable est le temps facturé
+     * ({@code active_seconds} arrondi à la seconde).
+     *
+     * @param sessionId identifiant de la session
+     * @return la consommation agrégée de la session
+     * @throws AgentProviderException en cas d'échec de récupération (l'appelant la traite en best-effort)
+     */
+    SessionUsage getSessionUsage(String sessionId);
+
+    /**
+     * Consommation agrégée d'une session Managed Agents (F-28 / SF-28-12).
+     *
+     * @param inputTokens   tokens d'entrée agrégés (entrée + lecture/création de cache)
+     * @param outputTokens  tokens de sortie
+     * @param activeSeconds temps de bac à sable facturé (secondes, arrondi)
+     */
+    record SessionUsage(long inputTokens, long outputTokens, long activeSeconds) {
+    }
 }
