@@ -62,6 +62,14 @@ app:
     max-total-bytes: ${APP_ATELIER_MAX_TOTAL_BYTES:52428800}
     max-entries: ${APP_ATELIER_MAX_ENTRIES:2000}
     max-file-bytes: ${APP_ATELIER_MAX_FILE_BYTES:2097152}
+    agent:
+      # Managed Agents (F-28 / Phase 2, ADR-013). Flag OFF par défaut : tant que `enabled` est faux
+      # et qu'aucune config n'existe, AUCUN appel réseau ni coût runtime (bootstrap inerte).
+      enabled: ${APP_ATELIER_AGENT_ENABLED:false}
+      environment-name: ${APP_ATELIER_AGENT_ENV_NAME:claude-gateway-atelier}
+      agent-name: ${APP_ATELIER_AGENT_NAME:claude-gateway-atelier}
+      model: ${APP_ATELIER_AGENT_MODEL:claude-opus-4-8}
+      allow-package-managers: ${APP_ATELIER_AGENT_ALLOW_PKG:true}
   ocr:
     # Pipeline OCR (F-05). Fournisseur `stub` par défaut (dev/tests, sans AWS) ; `textract` en cluster.
     # Liste blanche MIME, plafond de taille et routage sync/async : décisions réversibles (config).
