@@ -102,7 +102,7 @@ sécurisent la monétisation ; settings et landing finalisent l'expérience. Le 
 
 | ID | Feature | Description | Statut |
 |----|---------|-------------|--------|
-| F-28 | Atelier (Claude Code Lite — Phase 1) | Workspace projet isolé (upload zip → S3), arborescence + lecture/écriture de fichiers, et **Atelier** où Claude lit/édite les fichiers via une boucle **tool-use** (sans exécution), `CLAUDE.md` + skills en contexte. UI flux unique + panneau Fichiers repliable. | **Terminée** (SF-28-01→03) |
+| F-28 | Atelier (Claude Code Lite — Phase 1) | Workspace projet isolé (upload zip → S3), arborescence + lecture/écriture de fichiers, et **Atelier** où Claude lit/édite les fichiers via une boucle **tool-use** (sans exécution), `CLAUDE.md` + skills en contexte. UI flux unique + panneau Fichiers repliable. **Complétion produit** en cours : erreurs d'import lisibles (SF-28-04), streaming du chat (SF-28-05), offre Gold + BYOK/Hosted (SF-28-06). Phase 2 (Managed Agents) = ADR-012, verrou dispo/coût Anthropic. | **Phase 1 livrée** (SF-28-01→04) |
 
 ## Features V3 (backlog — hors périmètre actuel)
 
@@ -117,6 +117,8 @@ sécurisent la monétisation ; settings et landing finalisent l'expérience. Le 
 
 | Date | Modification | Validé par |
 |------|-------------|------------|
+| 2026-07-11 | **F-28 SF-28-04 — Erreurs d'import Atelier lisibles + contrôle taille client** (PR #105) : l'import d'un `.zip` trop volumineux échouait avec un message générique (le frontend ignorait le corps JSON `{error,message}` du backend, et un `413` ingress renvoie une page HTML non parsable). Nouvel utilitaire pur `shared/http-error.util.ts` (`httpErrorMessage()` : extrait le message backend, traduit le `413` en message métier, parse un corps texte JSON, repli générique ; `oversizeMessage()`/`MAX_UPLOAD_BYTES`=150 Mo aligné ingress). `atelier.component` : contrôle client de la taille **avant envoi** avec guidance d'exclusion (`node_modules/.git/target/dist/build`), handlers import + chat câblés. **100 % frontend** : aucun endpoint, table, migration, auth ni quota touchés (limites serveur déjà traitées côté ops : ingress 155m + multipart/anti-zip-bomb). Tests : `http-error.util.spec` (10 cas) + 3 cas composant ; **222/222 verts**, build OK. | Delivery agent |
+| 2026-07-11 | **Ops F-28 — Limites d'import ZIP Atelier relevées** (commit `aaad8b0`) : profil « généreux » (décision owner) — ingress `proxy-body-size` 25m → **155m**, Spring multipart 150/155 Mo, Atelier total décompressé 400 Mo, par-fichier 20 Mo, 8000 entrées. Corrige un `413` nginx opaque qui bloquait l'import de vrais projets. Purement config (annotation + env), réversible ; garde-fous anti-zip-bomb conservés sur le décompressé. | Delivery agent |
 | 2026-07-01 | Création initiale (dérivée de docs/spec.md) | Product owner |
 | 2026-07-01 | Recentrage V1 = passerelle pure (PROJECT.md source de vérité). F-05/06/07/08 (OCR/RAG/pgvector/ask) → V2. F-04 redéfini (upload+transmission, sans OCR/index). F-01 = OAuth + email/mot de passe (JWT). | Product owner |
 | 2026-07-01 | **F-01 Authentification terminée** (SF-01-01 socle JWT/User → SF-01-07 écrans Angular). Backend : register/login BCrypt, vérif email, reset mot de passe, OAuth Google, profil + logout-all (`token_version`). Nouvelles tables : `users`, `email_verification_tokens`, `password_reset_tokens`. Front : écrans `auth/`. | Delivery agent |
