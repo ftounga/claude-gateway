@@ -63,6 +63,10 @@ export const routes: Routes = [
         loadComponent: () => import('./chat/chat.component').then((m) => m.ChatComponent),
       },
       {
+        path: 'atelier',
+        loadComponent: () => import('./atelier/atelier.component').then((m) => m.AtelierComponent),
+      },
+      {
         path: 'documents',
         loadComponent: () =>
           import('./documents/documents.component').then((m) => m.DocumentsComponent),
