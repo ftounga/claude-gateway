@@ -65,7 +65,7 @@ class AtelierSessionServiceTest {
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("src/a.txt"));
         when(workspaceService.readFile(USER, WORKSPACE, "src/a.txt")).thenReturn("class A {}");
-        when(provider.uploadFile(eq("src/a.txt"), any())).thenReturn("file_in");
+        when(provider.uploadFile(eq("src_a.txt"), any())).thenReturn("file_in");
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList()))
                 .thenReturn(new ManagedSession("sess_1"));
         when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
@@ -97,7 +97,7 @@ class AtelierSessionServiceTest {
         InOrder order = inOrder(workspaceService, provider);
         order.verify(workspaceService).requireOwned(USER, WORKSPACE);
         order.verify(workspaceService).tree(USER, WORKSPACE);
-        order.verify(provider).uploadFile(eq("src/a.txt"), any());
+        order.verify(provider).uploadFile(eq("src_a.txt"), any());
         order.verify(provider).createSession(eq("agent_1"), eq("env_1"), anyList());
         order.verify(provider).sendUserMessage("sess_1", "Corrige le bug.");
         order.verify(provider).awaitCompletion(eq("sess_1"), any(), anyInt(), any());
@@ -111,7 +111,7 @@ class AtelierSessionServiceTest {
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("src/a.txt"));
         when(workspaceService.readFile(USER, WORKSPACE, "src/a.txt")).thenReturn("class A {}");
-        when(provider.uploadFile(eq("src/a.txt"), any())).thenReturn("file_in");
+        when(provider.uploadFile(eq("src_a.txt"), any())).thenReturn("file_in");
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList()))
                 .thenReturn(new ManagedSession("sess_1"));
         // Le provider relaie des events au listener passé (bridge) puis renvoie la réponse agrégée.
@@ -259,5 +259,14 @@ class AtelierSessionServiceTest {
                 .isInstanceOf(AgentSessionTimeoutException.class);
 
         verify(provider).terminateSession("sess_1");
+    }
+
+    @Test
+    void uploadFilenameFlattensForbiddenCharacters() {
+        // La Files API d'Anthropic rejette « / » (et autres) dans le nom : on aplatit à l'upload.
+        assertThat(AtelierSessionService.uploadFilename("src/facture.js")).isEqualTo("src_facture.js");
+        assertThat(AtelierSessionService.uploadFilename("a/b/c.txt")).isEqualTo("a_b_c.txt");
+        assertThat(AtelierSessionService.uploadFilename("plain.txt")).isEqualTo("plain.txt");
+        assertThat(AtelierSessionService.uploadFilename("na me!.md")).isEqualTo("na_me_.md");
     }
 }
