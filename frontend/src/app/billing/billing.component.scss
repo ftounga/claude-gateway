@@ -85,6 +85,10 @@
   &__card-price .amount { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
   &__card-price .per { color: var(--cg-text-secondary); font-size: 14px; }
   &__card-tokens { margin: var(--cg-space-1) 0 var(--cg-space-3); color: var(--cg-text-secondary); font-size: 14px; }
+  &__card-feature {
+    display: flex; align-items: center; gap: var(--cg-space-1);
+    margin: 0 0 var(--cg-space-3); color: var(--cg-accent); font-size: 14px; font-weight: 500;
+  }
   &__card-cta {
     margin-top: auto; width: 100%;
     &.is-outline {

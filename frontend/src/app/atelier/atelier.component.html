@@ -1,3 +1,16 @@
+@if (accessDenied()) {
+  <!-- Gating Gold (403 atelier_forbidden, SF-28-06) : appel à souscrire plutôt qu'une erreur. -->
+  <div class="atelier-upsell">
+    <mat-icon class="atelier-upsell-icon">workspace_premium</mat-icon>
+    <h1 class="atelier-upsell-title">L'Atelier (Claude Code Lite) est réservé à l'offre Gold</h1>
+    <p class="atelier-upsell-text">
+      Débloquez un espace de travail où Claude lit et édite votre projet.
+    </p>
+    <button mat-flat-button color="primary" type="button" (click)="goToBilling()">
+      Voir l'offre Gold
+    </button>
+  </div>
+} @else {
 <div class="atelier-layout">
   <!-- Sidebar : projets (workspaces) -->
   <aside class="atelier-sidebar">
@@ -47,6 +60,22 @@
 
   <!-- Zone principale : conversation -->
   <section class="atelier-main">
+    <!-- Indicateur de mode d'exécution (BYOK vs Hosted), en tête d'écran. -->
+    <div class="mode-bar">
+      @if (providerMode() === 'BYOK') {
+        <span class="badge badge--info mode-chip">
+          <mat-icon class="mode-chip-icon">vpn_key</mat-icon>
+          Mode BYOK — vos tokens@if (maskedKey()) { ({{ maskedKey() }}) }
+        </span>
+      } @else {
+        <span class="badge badge--neutral mode-chip">
+          <mat-icon class="mode-chip-icon">verified</mat-icon>
+          Mode Hosted — tokens inclus
+        </span>
+        <a class="mode-link" routerLink="/settings">Configurer une clé</a>
+      }
+    </div>
+
     @if (activeWorkspaceId() === null) {
       <div class="atelier-empty">
         <mat-icon>terminal</mat-icon>
@@ -245,3 +274,4 @@
     }
   </section>
 </div>
+}

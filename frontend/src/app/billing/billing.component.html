@@ -98,6 +98,9 @@
               <p class="billing__card-price"><span class="amount">{{ plan.priceEur }} €</span><span class="per">/ mois</span></p>
             }
             <p class="billing__card-tokens">{{ plan.tokens | number }} tokens inclus / mois</p>
+            @if (plan.code === 'GOLD') {
+              <p class="billing__card-feature">Atelier (Claude Code Lite) inclus</p>
+            }
             <button
               mat-flat-button
               [color]="isRecommended(plan) ? 'primary' : undefined"

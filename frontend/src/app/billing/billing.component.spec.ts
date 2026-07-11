@@ -278,6 +278,21 @@ describe('BillingComponent', () => {
     expect(component.changeInProgress()).toBeNull();
   });
 
+  it('affiche la mention Atelier sur la carte GOLD uniquement', () => {
+    setup();
+    // Par défaut (SOLO/PRO), aucune carte ne porte la mention Atelier.
+    expect(fixture.nativeElement.textContent).not.toContain('Atelier (Claude Code Lite) inclus');
+
+    // Ajoute une offre GOLD : sa carte doit porter la mention.
+    component.plans.set([
+      ...plans.plans,
+      { code: 'GOLD', label: 'Gold', providerMode: 'HOSTED', period: 'MONTHLY', tokens: 12000000, priceEur: '199' },
+    ]);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Atelier (Claude Code Lite) inclus');
+  });
+
   it('surfaces an error when changing plan fails', () => {
     setup();
     component.subscription.set({
