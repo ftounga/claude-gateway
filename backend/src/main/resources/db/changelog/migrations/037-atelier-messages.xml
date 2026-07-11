@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      SF-28-02 — Conversation « Atelier » (F-28 / Claude Code Lite). Messages d'une session Atelier
+      attachée à un workspace : Claude lit/édite les fichiers via une boucle tool-use. Isolation
+      multi-tenant (`user_id` sur chaque ligne). FK -> workspaces(id) ON DELETE CASCADE (supprimer le
+      workspace supprime sa conversation). Changesets Postgres et H2 en parallèle. Réversible.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="037-atelier-messages-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="atelier_messages">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="role" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="content" type="text"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamptz" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint
+                baseTableName="atelier_messages" baseColumnNames="workspace_id"
+                referencedTableName="workspaces" referencedColumnNames="id"
+                constraintName="fk_atelier_messages_workspace" onDelete="CASCADE"/>
+        <createIndex tableName="atelier_messages" indexName="idx_atelier_messages_workspace">
+            <column name="workspace_id"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="037-atelier-messages-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="atelier_messages">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="role" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="content" type="varchar(1000000)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone" defaultValueComputed="now()">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint
+                baseTableName="atelier_messages" baseColumnNames="workspace_id"
+                referencedTableName="workspaces" referencedColumnNames="id"
+                constraintName="fk_atelier_messages_workspace" onDelete="CASCADE"/>
+        <createIndex tableName="atelier_messages" indexName="idx_atelier_messages_workspace">
+            <column name="workspace_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>
