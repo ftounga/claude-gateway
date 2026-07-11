@@ -4,6 +4,8 @@ import { Observable } from 'rxjs';
 
 import { AuthService } from './auth.service';
 import {
+  AtelierAgentStreamAction,
+  AtelierAgentStreamHandlers,
   AtelierChatRequest,
   AtelierChatResponse,
   AtelierMessage,
@@ -139,6 +141,89 @@ export class AtelierService {
         actions: payload.actions ?? [],
         messageId: payload.messageId ?? '',
       });
+    } else if (event === 'error') {
+      handlers.onError(payload.error ?? 'provider_error');
+    }
+  }
+
+  /**
+   * Envoie un message en mode **Exécution** (Phase 2, SF-28-11) : consomme le flux SSE de
+   * `POST /api/workspaces/{id}/agent/stream` via `fetch` + `ReadableStream`, sur le même modèle que
+   * {@link streamChat}. L'agent Managed d'Anthropic exécute la tâche (bash, tests, build) dans un
+   * sandbox hébergé ; on relaie le commentaire (`onAgent`), chaque étape d'outil (`onAction`), les
+   * changements d'état (`onStatus`), puis `onDone` (réponse finale + fichiers modifiés). Toute erreur
+   * (HTTP ou `event:error`) appelle `onError`. Ne lève jamais : les échecs passent par `onError`.
+   */
+  async streamAgent(id: string, message: string, handlers: AtelierAgentStreamHandlers): Promise<void> {
+    try {
+      const token = this.auth.token();
+      const response = await fetch(`/api/workspaces/${id}/agent/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ message }),
+      });
+      if (!response.ok || !response.body) {
+        handlers.onError('request_failed');
+        return;
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        let sep: number;
+        while ((sep = buffer.indexOf('\n\n')) >= 0) {
+          this.dispatchAgentSseEvent(buffer.slice(0, sep), handlers);
+          buffer = buffer.slice(sep + 2);
+        }
+      }
+    } catch {
+      handlers.onError('request_failed');
+    }
+  }
+
+  /** Parse un événement SSE du mode Exécution (`event:` + `data:`) et route vers le bon callback. */
+  private dispatchAgentSseEvent(raw: string, handlers: AtelierAgentStreamHandlers): void {
+    let event = 'message';
+    let data = '';
+    for (const line of raw.split('\n')) {
+      if (line.startsWith('event:')) {
+        event = line.slice('event:'.length).trim();
+      } else if (line.startsWith('data:')) {
+        data += line.slice('data:'.length).trim();
+      }
+    }
+    if (!data) {
+      return;
+    }
+    let payload: Partial<AtelierAgentStreamAction> & {
+      text?: string;
+      state?: string;
+      reply?: string;
+      changedFiles?: string[];
+      error?: string;
+    };
+    try {
+      payload = JSON.parse(data);
+    } catch {
+      return;
+    }
+    if (event === 'agent') {
+      handlers.onAgent(payload.text ?? '');
+    } else if (event === 'action') {
+      handlers.onAction({ tool: payload.tool ?? '', detail: payload.detail });
+    } else if (event === 'status') {
+      handlers.onStatus(payload.state ?? '');
+    } else if (event === 'done') {
+      handlers.onDone({ reply: payload.reply ?? '', changedFiles: payload.changedFiles ?? [] });
     } else if (event === 'error') {
       handlers.onError(payload.error ?? 'provider_error');
     }

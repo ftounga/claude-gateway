@@ -62,6 +62,7 @@ describe('AtelierComponent', () => {
       'writeFile',
       'chat',
       'streamChat',
+      'streamAgent',
       'getHistory',
     ]);
     apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
@@ -405,6 +406,132 @@ describe('AtelierComponent', () => {
     const message = snackBar.open.calls.mostRecent().args[0] as string;
     expect(message).toContain('Quota de consommation atteint');
     expect(component.messages().length).toBe(0);
+  });
+
+  it('mode Édition (défaut) : send() appelle streamChat, pas streamAgent (non-régression)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onDone({ reply: 'ok', actions: [], messageId: 'm1' });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Lis main.ts');
+    component.send();
+
+    expect(service.streamChat).toHaveBeenCalled();
+    expect(service.streamAgent).not.toHaveBeenCalled();
+    expect(component.agentMode()).toBe('edit');
+  });
+
+  it('mode Exécution : send() appelle streamAgent (pas streamChat) et ajoute la réponse finale', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    // Le flux relaie un état, une commande bash, un commentaire, puis la réponse finale.
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onStatus('running');
+      handlers.onAction({ tool: 'bash', detail: 'npm test' });
+      handlers.onAgent('Je lance les tests…');
+      handlers.onDone({ reply: 'Tests OK.', changedFiles: ['src/main.ts'] });
+      return Promise.resolve();
+    });
+    service.getWorkspace.calls.reset();
+
+    component.draft.set('Lance les tests');
+    component.send();
+
+    expect(service.streamAgent).toHaveBeenCalledWith('w1', 'Lance les tests', jasmine.anything());
+    expect(service.streamChat).not.toHaveBeenCalled();
+    const messages = component.messages();
+    expect(messages.length).toBe(2);
+    expect(messages[0].role).toBe('USER');
+    expect(messages[1].role).toBe('ASSISTANT');
+    expect(messages[1].content).toBe('Tests OK.');
+    expect(messages[1].changedFiles).toEqual(['src/main.ts']);
+    // Le tour « en cours » est effacé et l'arborescence rafraîchie après la session.
+    expect(component.execStreaming()).toBeNull();
+    expect(component.submitting()).toBeFalse();
+    expect(service.getWorkspace).toHaveBeenCalledWith('w1');
+  });
+
+  it('mode Exécution : accumule l\'état, les étapes d\'outil et le texte partiel du tour en cours', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    // Ne termine pas le flux : on inspecte l'état « en cours ».
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onStatus('running');
+      handlers.onAction({ tool: 'bash', detail: 'npm install' });
+      handlers.onAction({ tool: 'bash', detail: 'npm test' });
+      handlers.onAgent('Installation ');
+      handlers.onAgent('puis tests.');
+      return Promise.resolve();
+    });
+
+    component.draft.set('Build le projet');
+    component.send();
+
+    const live = component.execStreaming();
+    expect(live).not.toBeNull();
+    expect(live!.status).toBe('running');
+    expect(live!.steps.map((s) => component.execStepLabel(s))).toEqual([
+      'bash: npm install',
+      'bash: npm test',
+    ]);
+    expect(live!.text).toBe('Installation puis tests.');
+    expect(component.submitting()).toBeTrue();
+  });
+
+  it('mode Exécution : onError(forbidden) affiche le message Gold sans ajouter de message assistant', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onError('forbidden');
+      return Promise.resolve();
+    });
+
+    component.draft.set('Lance les tests');
+    component.send();
+
+    // Le tour utilisateur optimiste est retiré : aucune persistance côté serveur.
+    expect(component.messages().length).toBe(0);
+    expect(component.execStreaming()).toBeNull();
+    expect(component.submitting()).toBeFalse();
+    const message = snackBar.open.calls.mostRecent().args[0] as string;
+    expect(message).toContain('Gold');
+  });
+
+  it('mode Exécution : onError(session_timeout) affiche un message de délai dépassé', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onError('session_timeout');
+      return Promise.resolve();
+    });
+
+    component.draft.set('Tâche longue');
+    component.send();
+
+    const message = snackBar.open.calls.mostRecent().args[0] as string;
+    expect(message).toContain('temps imparti');
+    expect(component.messages().length).toBe(0);
+  });
+
+  it('ne change pas de mode pendant un envoi en cours', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    // Flux qui ne se termine pas : submitting reste vrai.
+    service.streamAgent.and.callFake(() => Promise.resolve());
+    component.draft.set('Tâche');
+    component.send();
+    expect(component.submitting()).toBeTrue();
+
+    component.setAgentMode('edit');
+    expect(component.agentMode()).toBe('exec');
   });
 
   it('opens a file into the editable preview', () => {

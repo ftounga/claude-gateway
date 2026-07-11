@@ -87,3 +87,31 @@ export interface AtelierStreamHandlers {
   onDone: (done: AtelierStreamDone) => void;
   onError: (code: string) => void;
 }
+
+/**
+ * Étape d'exécution relayée au fil de l'eau par le flux SSE du mode « Exécution » (Phase 2,
+ * `POST /api/workspaces/{id}/agent/stream`, événement `action`). `tool` = outil invoqué dans le
+ * sandbox Anthropic (ex. `bash`), `detail` = commande/argument (ex. `npm test`).
+ */
+export interface AtelierAgentStreamAction {
+  tool: string;
+  detail?: string;
+}
+
+/**
+ * Métadonnées de fin du flux d'exécution (événement SSE `done`, Phase 2). `changedFiles` = chemins
+ * relatifs des fichiers réellement modifiés par l'agent pendant la session.
+ */
+export interface AtelierAgentStreamDone {
+  reply: string;
+  changedFiles: string[];
+}
+
+/** Callbacks du streaming du mode « Exécution » (Phase 2, SF-28-11). */
+export interface AtelierAgentStreamHandlers {
+  onAgent: (text: string) => void;
+  onAction: (action: AtelierAgentStreamAction) => void;
+  onStatus: (state: string) => void;
+  onDone: (done: AtelierAgentStreamDone) => void;
+  onError: (code: string) => void;
+}
