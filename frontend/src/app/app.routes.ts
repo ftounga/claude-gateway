@@ -67,6 +67,11 @@ export const routes: Routes = [
         loadComponent: () => import('./atelier/atelier.component').then((m) => m.AtelierComponent),
       },
       {
+        path: 'atelier/:id/fichiers',
+        loadComponent: () =>
+          import('./atelier/files/atelier-files.component').then((m) => m.AtelierFilesComponent),
+      },
+      {
         path: 'documents',
         loadComponent: () =>
           import('./documents/documents.component').then((m) => m.DocumentsComponent),

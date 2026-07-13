@@ -89,6 +89,16 @@
         <button
           mat-stroked-button
           type="button"
+          class="explorer-trigger"
+          (click)="openFileExplorer()"
+          matTooltip="Explorateur de fichiers"
+        >
+          <mat-icon>account_tree</mat-icon>
+          Explorateur
+        </button>
+        <button
+          mat-stroked-button
+          type="button"
           class="files-trigger"
           [class.active]="filesPanelOpen()"
           (click)="toggleFilesPanel()"

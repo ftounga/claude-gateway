@@ -58,6 +58,24 @@ export class AtelierService {
     return this.http.put<void>(`/api/workspaces/${id}/file`, body, { params: { path } });
   }
 
+  /** Supprime un fichier du workspace (RGPD/gestion, SF-28-14). Renvoie 204 (pas de corps). */
+  deleteFile(id: string, path: string): Observable<void> {
+    return this.http.delete<void>(`/api/workspaces/${id}/file`, { params: { path } });
+  }
+
+  /**
+   * Renomme (ou déplace) un fichier du workspace (SF-28-14) : `from` → `to`. Le backend valide les
+   * chemins (`invalid_file_path`) sous double filtre `user_id` et renvoie l'arborescence à jour.
+   */
+  renameFile(id: string, from: string, to: string): Observable<WorkspaceDetail> {
+    return this.http.post<WorkspaceDetail>(`/api/workspaces/${id}/file/rename`, { from, to });
+  }
+
+  /** Exporte tout le workspace en archive `.zip` (SF-28-14) : réponse binaire (`application/zip`). */
+  exportZip(id: string): Observable<Blob> {
+    return this.http.get(`/api/workspaces/${id}/export`, { responseType: 'blob' });
+  }
+
   /**
    * Importe le texte de documents de la bibliothèque personnelle (F-08) dans le workspace
    * (SF-28-13). Chaque document est écrit sous `bibliotheque/<nom>.md` côté backend, qui relit les
