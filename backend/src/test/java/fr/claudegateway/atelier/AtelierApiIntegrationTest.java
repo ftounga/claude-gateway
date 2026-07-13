@@ -6,6 +6,7 @@ import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -16,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -200,6 +202,103 @@ class AtelierApiIntegrationTest {
         mockMvc.perform(delete("/api/workspaces/" + id).contextPath("/api").header("Authorization", bearer(aliceToken)))
                 .andExpect(status().isNoContent());
         mockMvc.perform(get("/api/workspaces/" + id).contextPath("/api").header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void deleteFileRemovesItFromTree() throws Exception {
+        String id = createWorkspace(aliceToken, Map.of("a.txt", "x", "keep.txt", "y"));
+
+        mockMvc.perform(delete("/api/workspaces/" + id + "/file").param("path", "a.txt")
+                        .contextPath("/api").header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/workspaces/" + id).contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.files", org.hamcrest.Matchers.not(hasItem("a.txt"))))
+                .andExpect(jsonPath("$.files", hasItem("keep.txt")));
+    }
+
+    @Test
+    void deleteUnknownFileReturns404() throws Exception {
+        String id = createWorkspace(aliceToken, Map.of("a.txt", "x"));
+        mockMvc.perform(delete("/api/workspaces/" + id + "/file").param("path", "ghost.txt")
+                        .contextPath("/api").header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void renameFileMovesContentAndReturnsTree() throws Exception {
+        String id = createWorkspace(aliceToken, Map.of("a.txt", "hello"));
+
+        mockMvc.perform(post("/api/workspaces/" + id + "/file/rename").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"from\":\"a.txt\",\"to\":\"sub/b.txt\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.files", hasItem("sub/b.txt")))
+                .andExpect(jsonPath("$.files", org.hamcrest.Matchers.not(hasItem("a.txt"))));
+
+        mockMvc.perform(get("/api/workspaces/" + id + "/file").param("path", "sub/b.txt")
+                        .contextPath("/api").header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", is("hello")));
+    }
+
+    @Test
+    void renameFileRejectsInvalidDestination() throws Exception {
+        String id = createWorkspace(aliceToken, Map.of("a.txt", "hello"));
+        mockMvc.perform(post("/api/workspaces/" + id + "/file/rename").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"from\":\"a.txt\",\"to\":\"../x\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", is("invalid_file_path")));
+    }
+
+    @Test
+    void exportReturnsZipAttachment() throws Exception {
+        String id = createWorkspace(aliceToken, Map.of("a.txt", "x"));
+        byte[] zip = mockMvc.perform(get("/api/workspaces/" + id + "/export").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .header().string("Content-Disposition",
+                                org.hamcrest.Matchers.containsString("attachment; filename=")))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .content().contentType("application/zip"))
+                .andReturn().getResponse().getContentAsByteArray();
+
+        // Round-trip : l'archive contient les chemins relatifs attendus.
+        Map<String, String> unzipped = new LinkedHashMap<>();
+        try (ZipInputStream zis = new ZipInputStream(new java.io.ByteArrayInputStream(zip))) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                unzipped.put(entry.getName(), new String(zis.readAllBytes(), StandardCharsets.UTF_8));
+                zis.closeEntry();
+            }
+        }
+        org.assertj.core.api.Assertions.assertThat(unzipped).containsKeys("a.txt", "CLAUDE.md");
+    }
+
+    @Test
+    void cannotMutateAnotherUsersWorkspaceFiles() throws Exception {
+        String bobWs = createWorkspace(bobToken, Map.of("secret.txt", "de Bob"));
+
+        // Suppression cross-user : 404 (isolation user_id).
+        mockMvc.perform(delete("/api/workspaces/" + bobWs + "/file").param("path", "secret.txt")
+                        .contextPath("/api").header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isNotFound());
+        // Renommage cross-user : 404.
+        mockMvc.perform(post("/api/workspaces/" + bobWs + "/file/rename").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"from\":\"secret.txt\",\"to\":\"x.txt\"}"))
+                .andExpect(status().isNotFound());
+        // Export cross-user : 404.
+        mockMvc.perform(get("/api/workspaces/" + bobWs + "/export").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
                 .andExpect(status().isNotFound());
     }
 
