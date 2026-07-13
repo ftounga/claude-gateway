@@ -1,0 +1,333 @@
+// Explorateur de fichiers de l'Atelier (F-28 / SF-28-15) — design system claude-gateway (--cg-*).
+:host {
+  display: block;
+  height: calc(100vh - 64px);
+}
+
+.files-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--cg-bg);
+  overflow: hidden;
+}
+
+// ---- Barre du haut ----
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-3);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  background: var(--cg-primary);
+  color: #ffffff;
+  flex: 0 0 auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  color: #ffffff;
+  text-decoration: none;
+  font-family: var(--cg-font-heading);
+  font-weight: 600;
+
+  mat-icon {
+    color: var(--cg-accent);
+  }
+}
+
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.crumb-project {
+  font-weight: 600;
+}
+
+.crumb-sep {
+  opacity: 0.5;
+}
+
+.crumb-dir {
+  opacity: 0.8;
+  font-family: var(--cg-font-mono);
+}
+
+.crumb-file {
+  font-weight: 600;
+  font-family: var(--cg-font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-spacer {
+  flex: 1;
+}
+
+.search-field {
+  width: 240px;
+
+  ::ng-deep .mat-mdc-text-field-wrapper {
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  ::ng-deep input,
+  ::ng-deep .mat-mdc-form-field-icon-prefix mat-icon {
+    color: #ffffff;
+  }
+
+  ::ng-deep input::placeholder {
+    color: rgba(255, 255, 255, 0.6);
+  }
+}
+
+.back-button {
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+// ---- Barre d'outils ----
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  background: var(--cg-surface);
+  border-bottom: 1px solid var(--cg-divider);
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+
+.toolbar-count {
+  margin-left: auto;
+  color: var(--cg-text-secondary);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+// ---- Corps : arbre + aperçu ----
+.body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.tree-pane {
+  width: 320px;
+  flex: 0 0 320px;
+  background: var(--cg-surface);
+  border-right: 1px solid var(--cg-divider);
+  overflow: auto;
+  padding: var(--cg-space-2);
+}
+
+.tree-pane-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cg-text-secondary);
+  font-weight: 600;
+  padding: var(--cg-space-1) var(--cg-space-2) var(--cg-space-2);
+}
+
+.tree-empty {
+  padding: var(--cg-space-3) var(--cg-space-2);
+  color: var(--cg-text-secondary);
+  font-size: 14px;
+}
+
+.tree-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  height: 32px;
+  padding: 0 var(--cg-space-2);
+  padding-left: calc(var(--cg-space-2) + var(--depth, 0) * 16px);
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--cg-text-primary);
+
+  &:hover {
+    background: var(--cg-surface-2);
+  }
+}
+
+.chev,
+.chev-spacer {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  font-size: 18px;
+}
+
+.chev {
+  color: var(--cg-text-secondary);
+  transition: transform 0.12s ease;
+
+  &.open {
+    transform: rotate(90deg);
+  }
+}
+
+.ficon {
+  width: 18px;
+  height: 18px;
+  font-size: 18px;
+  flex: 0 0 18px;
+}
+
+.folder-icon {
+  color: var(--cg-accent);
+}
+
+.file-icon {
+  color: var(--cg-text-secondary);
+}
+
+.fname {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.ext {
+  font-family: var(--cg-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--cg-text-secondary);
+  background: var(--cg-surface-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+  flex: 0 0 auto;
+}
+
+.row-actions {
+  display: none;
+  align-items: center;
+  gap: 0;
+  flex: 0 0 auto;
+
+  .iconbtn {
+    width: 28px;
+    height: 28px;
+    line-height: 28px;
+    color: var(--cg-text-secondary);
+
+    ::ng-deep mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+    }
+
+    &.danger:hover {
+      color: var(--cg-error);
+    }
+  }
+}
+
+.row:hover .row-actions {
+  display: flex;
+}
+
+.leaf.active > .row {
+  background: color-mix(in srgb, var(--cg-accent) 14%, transparent);
+  box-shadow: inset 3px 0 0 var(--cg-accent);
+
+  .fname {
+    font-weight: 600;
+    color: var(--cg-primary);
+  }
+}
+
+// ---- Aperçu / édition ----
+.viewer {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--cg-surface);
+}
+
+.viewer-head {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-3);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-bottom: 1px solid var(--cg-divider);
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+}
+
+.viewer-path {
+  font-family: var(--cg-font-mono);
+  font-size: 13px;
+  color: var(--cg-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.viewer-dir {
+  color: var(--cg-text-secondary);
+}
+
+.viewer-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+
+  .danger {
+    color: var(--cg-error);
+  }
+}
+
+.viewer-empty {
+  padding: var(--cg-space-4);
+  color: var(--cg-text-secondary);
+}
+
+.viewer-placeholder {
+  margin: auto;
+  text-align: center;
+
+  mat-icon {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    color: var(--cg-divider);
+  }
+}
+
+.viewer-editor {
+  flex: 1;
+  margin: 0;
+  padding: var(--cg-space-3);
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: var(--cg-font-mono);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--cg-text-primary);
+  background: var(--cg-surface);
+  white-space: pre;
+  tab-size: 2;
+}

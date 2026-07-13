@@ -1,0 +1,22 @@
+<h2 mat-dialog-title>{{ data.title }}</h2>
+<mat-dialog-content>
+  <mat-form-field appearance="outline" class="prompt-field" subscriptSizing="dynamic">
+    <mat-label>{{ data.label }}</mat-label>
+    <input
+      matInput
+      cdkFocusInitial
+      [ngModel]="value()"
+      (ngModelChange)="value.set($event)"
+      (keydown.enter)="confirm()"
+    />
+    @if (data.hint) {
+      <mat-hint>{{ data.hint }}</mat-hint>
+    }
+  </mat-form-field>
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+  <button mat-stroked-button (click)="cancel()">Annuler</button>
+  <button mat-flat-button color="primary" [disabled]="value().trim().length === 0" (click)="confirm()">
+    {{ data.confirmLabel }}
+  </button>
+</mat-dialog-actions>

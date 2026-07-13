@@ -1,0 +1,234 @@
+<div class="files-page">
+  <!-- Barre du haut : marque + fil d'Ariane + recherche + retour -->
+  <header class="topbar">
+    <a class="brand" routerLink="/atelier" matTooltip="Retour à l'Atelier">
+      <mat-icon>terminal</mat-icon>
+      <span class="brand-name">Atelier</span>
+    </a>
+    <nav class="crumbs" aria-label="Fil d'Ariane">
+      <span class="crumb-project">{{ workspaceName() || 'Projet' }}</span>
+      @if (selectedPath(); as sel) {
+        @for (dir of breadcrumbDirs(sel); track $index) {
+          <span class="crumb-sep">/</span>
+          <span class="crumb-dir">{{ dir }}</span>
+        }
+        <span class="crumb-sep">/</span>
+        <span class="crumb-file">{{ baseName(sel) }}</span>
+      }
+    </nav>
+    <span class="topbar-spacer"></span>
+    <mat-form-field appearance="outline" class="search-field" subscriptSizing="dynamic">
+      <mat-icon matPrefix>search</mat-icon>
+      <input
+        matInput
+        type="search"
+        placeholder="Rechercher un fichier…"
+        [ngModel]="search()"
+        (ngModelChange)="search.set($event)"
+        aria-label="Rechercher un fichier"
+      />
+    </mat-form-field>
+    <a mat-stroked-button routerLink="/atelier" class="back-button">
+      <mat-icon>arrow_back</mat-icon>
+      Retour à l'Atelier
+    </a>
+  </header>
+
+  <!-- Barre d'outils : ajout / nouveau dossier / export -->
+  <div class="toolbar">
+    <input
+      #fileInput
+      type="file"
+      class="hidden-input"
+      [accept]="workspaceTextAccept"
+      hidden
+      (change)="onFilePicked($event)"
+    />
+    <mat-menu #addMenu="matMenu">
+      <button mat-menu-item type="button" (click)="fileInput.click()">
+        <mat-icon>computer</mat-icon>
+        <span>Depuis mon ordinateur</span>
+      </button>
+      <button mat-menu-item type="button" (click)="openLibraryPicker()">
+        <mat-icon>folder_shared</mat-icon>
+        <span>Depuis ma bibliothèque</span>
+      </button>
+    </mat-menu>
+    <button mat-flat-button color="primary" type="button" [matMenuTriggerFor]="addMenu">
+      <mat-icon>add</mat-icon>
+      Ajouter un fichier
+      <mat-icon iconPositionEnd>arrow_drop_down</mat-icon>
+    </button>
+    <button mat-stroked-button type="button" (click)="newFolder()">
+      <mat-icon>create_new_folder</mat-icon>
+      Nouveau dossier
+    </button>
+    <button mat-stroked-button type="button" (click)="exportZip()">
+      <mat-icon>download</mat-icon>
+      Exporter
+    </button>
+    <span class="toolbar-count">{{ fileCount() }} fichier(s)</span>
+  </div>
+
+  @if (loading()) {
+    <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+  }
+
+  <!-- Corps : arbre à gauche, aperçu à droite -->
+  <div class="body">
+    <aside class="tree-pane" aria-label="Arborescence du projet">
+      <div class="tree-pane-label">Fichiers du projet</div>
+      @if (nodes().length === 0) {
+        <p class="tree-empty">
+          @if (notFound()) {
+            Projet introuvable.
+          } @else if (search().trim().length > 0) {
+            Aucun fichier ne correspond à « {{ search() }} ».
+          } @else {
+            Aucun fichier dans ce projet.
+          }
+        </p>
+      } @else {
+        <ul class="tree-list">
+          @for (node of nodes(); track node.path) {
+            <ng-container
+              *ngTemplateOutlet="nodeTpl; context: { $implicit: node, depth: 0 }"
+            ></ng-container>
+          }
+        </ul>
+      }
+    </aside>
+
+    <main class="viewer">
+      @if (selectedPath(); as sel) {
+        <div class="viewer-head">
+          <span class="viewer-path">
+            @if (breadcrumbDirs(sel).length > 0) {
+              <span class="viewer-dir">{{ breadcrumbDirs(sel).join('/') }}/</span>
+            }{{ baseName(sel) }}
+          </span>
+          <span class="viewer-actions">
+            <button mat-stroked-button type="button" (click)="renameFile(sel)">
+              <mat-icon>drive_file_rename_outline</mat-icon>
+              Renommer
+            </button>
+            <button
+              mat-icon-button
+              type="button"
+              matTooltip="Télécharger"
+              aria-label="Télécharger le fichier"
+              (click)="downloadFile(sel)"
+            >
+              <mat-icon>download</mat-icon>
+            </button>
+            <button
+              mat-icon-button
+              type="button"
+              class="danger"
+              matTooltip="Supprimer"
+              aria-label="Supprimer le fichier"
+              (click)="deleteFile(sel)"
+            >
+              <mat-icon>delete_outline</mat-icon>
+            </button>
+            <button
+              mat-flat-button
+              color="primary"
+              type="button"
+              [disabled]="fileLoading() || fileSaving()"
+              (click)="saveFile()"
+            >
+              <mat-icon>save</mat-icon>
+              Enregistrer
+            </button>
+          </span>
+        </div>
+        @if (fileLoading()) {
+          <p class="viewer-empty">Chargement…</p>
+        } @else {
+          <textarea
+            class="viewer-editor"
+            spellcheck="false"
+            [ngModel]="fileContent()"
+            (ngModelChange)="fileContent.set($event)"
+            aria-label="Contenu du fichier"
+          ></textarea>
+        }
+      } @else {
+        <div class="viewer-empty viewer-placeholder">
+          <mat-icon>description</mat-icon>
+          <p>Sélectionnez un fichier dans l'arborescence pour l'afficher.</p>
+        </div>
+      }
+    </main>
+  </div>
+</div>
+
+<!-- Rendu récursif d'un nœud (dossier repliable ou fichier cliquable) -->
+<ng-template #nodeTpl let-node let-depth="depth">
+  @if (node.type === 'folder') {
+    <li class="node folder">
+      <div
+        class="row"
+        [style.--depth]="depth"
+        (click)="toggleFolder(node.path)"
+      >
+        <mat-icon class="chev" [class.open]="isExpanded(node.path)">chevron_right</mat-icon>
+        <mat-icon class="ficon folder-icon">folder</mat-icon>
+        <span class="fname">{{ node.name }}</span>
+      </div>
+      @if (isExpanded(node.path) && node.children) {
+        <ul class="tree-list">
+          @for (child of node.children; track child.path) {
+            <ng-container
+              *ngTemplateOutlet="nodeTpl; context: { $implicit: child, depth: depth + 1 }"
+            ></ng-container>
+          }
+        </ul>
+      }
+    </li>
+  } @else {
+    <li class="node leaf" [class.active]="node.path === selectedPath()">
+      <div class="row" [style.--depth]="depth" (click)="openFile(node.path)">
+        <span class="chev-spacer"></span>
+        <mat-icon class="ficon file-icon">description</mat-icon>
+        <span class="fname">{{ node.name }}</span>
+        @if (fileExtension(node.name)) {
+          <span class="ext">{{ fileExtension(node.name) }}</span>
+        }
+        <span class="row-actions">
+          <button
+            mat-icon-button
+            type="button"
+            class="iconbtn"
+            matTooltip="Renommer"
+            aria-label="Renommer"
+            (click)="renameFile(node.path, $event)"
+          >
+            <mat-icon>drive_file_rename_outline</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            type="button"
+            class="iconbtn"
+            matTooltip="Télécharger"
+            aria-label="Télécharger"
+            (click)="downloadFile(node.path, $event)"
+          >
+            <mat-icon>download</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            type="button"
+            class="iconbtn danger"
+            matTooltip="Supprimer"
+            aria-label="Supprimer"
+            (click)="deleteFile(node.path, $event)"
+          >
+            <mat-icon>delete_outline</mat-icon>
+          </button>
+        </span>
+      </div>
+    </li>
+  }
+</ng-template>

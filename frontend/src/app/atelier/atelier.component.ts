@@ -559,6 +559,15 @@ export class AtelierComponent implements OnInit {
     this.filesPanelOpen.update((open) => !open);
   }
 
+  /** Ouvre la page « Explorateur de fichiers » du workspace actif (SF-28-15). */
+  openFileExplorer(): void {
+    const id = this.activeWorkspaceId();
+    if (!id) {
+      return;
+    }
+    this.router.navigate(['/atelier', id, 'fichiers']);
+  }
+
   /** Charge le contenu d'un fichier dans l'aperçu éditable. */
   openFile(path: string): void {
     const id = this.activeWorkspaceId();
