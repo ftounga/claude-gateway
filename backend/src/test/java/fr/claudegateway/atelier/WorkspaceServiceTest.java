@@ -151,4 +151,96 @@ class WorkspaceServiceTest {
         assertThatThrownBy(() -> service().requireOwned(alice, workspaceId))
                 .isInstanceOf(WorkspaceNotFoundException.class);
     }
+
+    @Test
+    void deleteFileRemovesItFromTree() throws IOException {
+        givenSaveAssignsId();
+        service().create(alice, "P", zip(Map.of("a.txt", "x", "keep.txt", "y")));
+        givenOwned();
+
+        service().deleteFile(alice, workspaceId, "a.txt");
+
+        assertThat(service().tree(alice, workspaceId)).doesNotContain("a.txt").contains("keep.txt");
+    }
+
+    @Test
+    void deleteFileRejectsUnknownFile() throws IOException {
+        givenSaveAssignsId();
+        service().create(alice, "P", zip(Map.of("a.txt", "x")));
+        givenOwned();
+
+        assertThatThrownBy(() -> service().deleteFile(alice, workspaceId, "nope.txt"))
+                .isInstanceOf(WorkspaceNotFoundException.class);
+    }
+
+    @Test
+    void deleteFileRejectsWorkspaceOfAnotherUser() {
+        when(workspaceRepository.findByIdAndUserId(workspaceId, alice)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service().deleteFile(alice, workspaceId, "a.txt"))
+                .isInstanceOf(WorkspaceNotFoundException.class);
+    }
+
+    @Test
+    void renameFileMovesContentAndDropsOriginal() throws IOException {
+        givenSaveAssignsId();
+        service().create(alice, "P", zip(Map.of("a.txt", "hello")));
+        givenOwned();
+
+        service().renameFile(alice, workspaceId, "a.txt", "sub/b.txt");
+
+        assertThat(service().readFile(alice, workspaceId, "sub/b.txt")).isEqualTo("hello");
+        assertThat(service().tree(alice, workspaceId)).contains("sub/b.txt").doesNotContain("a.txt");
+        assertThatThrownBy(() -> service().readFile(alice, workspaceId, "a.txt"))
+                .isInstanceOf(WorkspaceNotFoundException.class);
+    }
+
+    @Test
+    void renameFileRejectsInvalidDestination() throws IOException {
+        givenSaveAssignsId();
+        service().create(alice, "P", zip(Map.of("a.txt", "hello")));
+        givenOwned();
+
+        assertThatThrownBy(() -> service().renameFile(alice, workspaceId, "a.txt", "../x"))
+                .isInstanceOf(InvalidFilePathException.class);
+        // La source reste intacte après un renommage refusé.
+        assertThat(service().readFile(alice, workspaceId, "a.txt")).isEqualTo("hello");
+    }
+
+    @Test
+    void renameFileRejectsUnknownSource() throws IOException {
+        givenSaveAssignsId();
+        service().create(alice, "P", zip(Map.of("a.txt", "hello")));
+        givenOwned();
+
+        assertThatThrownBy(() -> service().renameFile(alice, workspaceId, "ghost.txt", "b.txt"))
+                .isInstanceOf(WorkspaceNotFoundException.class);
+    }
+
+    @Test
+    void exportZipRoundTripsRelativePaths() throws IOException {
+        givenSaveAssignsId();
+        service().create(alice, "P", zip(Map.of("src/App.java", "class App {}", "README.md", "hi")));
+        givenOwned();
+
+        byte[] archive = service().exportZip(alice, workspaceId);
+
+        assertThat(archive).isNotEmpty();
+        Map<String, String> unzipped = unzip(archive);
+        // Round-trip : mêmes chemins relatifs (sans préfixe de stockage), CLAUDE.md inclus.
+        assertThat(unzipped).containsKeys("src/App.java", "README.md", "CLAUDE.md");
+        assertThat(unzipped.get("src/App.java")).isEqualTo("class App {}");
+    }
+
+    private static Map<String, String> unzip(byte[] archive) throws IOException {
+        Map<String, String> out = new LinkedHashMap<>();
+        try (java.util.zip.ZipInputStream zis =
+                new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(archive))) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                out.put(entry.getName(), new String(zis.readAllBytes(), StandardCharsets.UTF_8));
+                zis.closeEntry();
+            }
+        }
+        return out;
+    }
 }

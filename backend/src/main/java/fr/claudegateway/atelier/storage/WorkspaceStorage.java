@@ -20,6 +20,13 @@ public interface WorkspaceStorage {
     /** Liste des clés existantes sous le préfixe donné. */
     List<String> listKeys(String prefix);
 
+    /**
+     * Supprime la clé <b>exacte</b> donnée (aucun effet si elle n'existe pas). À ne pas confondre
+     * avec {@link #deletePrefix(String)} : cette méthode ne touche jamais une clé voisine partageant
+     * le même préfixe (ex. {@code x.js} vs {@code x.js.bak}).
+     */
+    void deleteFile(String key);
+
     /** Supprime toutes les clés sous le préfixe donné. */
     void deletePrefix(String prefix);
 }

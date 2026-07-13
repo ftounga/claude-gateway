@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -112,6 +113,64 @@ public class WorkspaceService {
         Workspace workspace = requireOwned(userId, id);
         storage.deletePrefix(prefixOf(userId, id));
         workspaceRepository.delete(workspace);
+    }
+
+    /**
+     * Supprime un fichier du workspace. Isolation d'abord ({@code user_id}), puis mêmes garde-fous de
+     * chemin que la lecture/écriture. Un fichier inexistant lève la même exception « fichier
+     * introuvable » que {@link #readFile}.
+     */
+    @Transactional
+    public void deleteFile(UUID userId, UUID id, String path) {
+        Workspace workspace = requireOwned(userId, id);
+        String rel = normalizeRelPath(path);
+        String key = prefixOf(userId, id) + rel;
+        if (storage.getFile(key).isEmpty()) {
+            throw new WorkspaceNotFoundException("Fichier introuvable : " + rel);
+        }
+        storage.deleteFile(key);
+        workspaceRepository.save(workspace); // rafraîchit updated_at
+    }
+
+    /**
+     * Renomme (déplace) un fichier du workspace : lit {@code from} (404 si absent), écrit son contenu
+     * sous {@code to} (validé par les garde-fous d'écriture), puis supprime {@code from}. Réutilise la
+     * logique interne ({@link #readFile}/{@link #writeFile}/{@link #deleteFile}) — aucun garde-fou
+     * dupliqué. Un renommage vers la même destination est un no-op sûr (pas d'auto-suppression).
+     */
+    @Transactional
+    public void renameFile(UUID userId, UUID id, String from, String to) {
+        requireOwned(userId, id);
+        String fromRel = normalizeRelPath(from);
+        String toRel = normalizeRelPath(to);
+        String content = readFile(userId, id, from);
+        writeFile(userId, id, to, content);
+        if (!fromRel.equals(toRel)) {
+            deleteFile(userId, id, from);
+        }
+    }
+
+    /**
+     * Exporte le workspace entier en archive {@code .zip} (en mémoire). Chaque fichier devient une
+     * entrée dont le nom est son chemin relatif (sans le préfixe de stockage) : round-trip cohérent
+     * avec {@link #extract} (une réimportation redonne les mêmes chemins).
+     */
+    public byte[] exportZip(UUID userId, UUID id) {
+        requireOwned(userId, id);
+        String prefix = prefixOf(userId, id);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (ZipOutputStream zos = new ZipOutputStream(out)) {
+            for (String key : storage.listKeys(prefix)) {
+                String rel = key.substring(prefix.length());
+                byte[] content = storage.getFile(key).orElse(new byte[0]);
+                zos.putNextEntry(new ZipEntry(rel));
+                zos.write(content);
+                zos.closeEntry();
+            }
+        } catch (IOException ex) {
+            throw new InvalidArchiveException("Export de l'archive impossible.");
+        }
+        return out.toByteArray();
     }
 
     // ---------------------------------------------------------------- helpers

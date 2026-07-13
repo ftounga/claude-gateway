@@ -43,6 +43,11 @@ public class InMemoryWorkspaceStorage implements WorkspaceStorage {
     }
 
     @Override
+    public void deleteFile(String key) {
+        store.remove(key);
+    }
+
+    @Override
     public void deletePrefix(String prefix) {
         store.keySet().removeIf(key -> key.startsWith(prefix));
     }

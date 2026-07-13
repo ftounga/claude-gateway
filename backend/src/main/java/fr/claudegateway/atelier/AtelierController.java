@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -20,6 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 import fr.claudegateway.atelier.WorkspaceService.CreatedWorkspace;
 import fr.claudegateway.atelier.dto.AtelierImportLibraryRequest;
 import fr.claudegateway.atelier.dto.FileContentResponse;
+import fr.claudegateway.atelier.dto.RenameFileRequest;
 import fr.claudegateway.atelier.dto.WorkspaceDetailResponse;
 import fr.claudegateway.atelier.dto.WorkspaceSummaryResponse;
 import fr.claudegateway.atelier.dto.WriteFileRequest;
@@ -111,6 +113,44 @@ public class AtelierController {
         atelierAccess.requireAccess();
         workspaceService.delete(currentUser.requireId(), id);
         return ResponseEntity.noContent().build();
+    }
+
+    /** Supprime un fichier du workspace (204). Fichier inexistant => 404. */
+    @DeleteMapping("/{id}/file")
+    public ResponseEntity<Void> deleteFile(@PathVariable UUID id, @RequestParam("path") String path) {
+        atelierAccess.requireAccess();
+        workspaceService.deleteFile(currentUser.requireId(), id, path);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Renomme (déplace) un fichier du workspace et renvoie l'arborescence à jour. */
+    @PostMapping("/{id}/file/rename")
+    public WorkspaceDetailResponse rename(
+            @PathVariable UUID id, @Valid @RequestBody RenameFileRequest request) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        workspaceService.renameFile(userId, id, request.from(), request.to());
+        return WorkspaceDetailResponse.from(
+                workspaceService.requireOwned(userId, id), workspaceService.tree(userId, id));
+    }
+
+    /** Exporte le workspace entier en archive {@code .zip} téléchargeable. */
+    @GetMapping("/{id}/export")
+    public ResponseEntity<byte[]> export(@PathVariable UUID id) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        String filename = sanitizeFilename(workspaceService.requireOwned(userId, id).getName()) + ".zip";
+        byte[] zip = workspaceService.exportZip(userId, id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(MediaType.parseMediaType("application/zip"))
+                .body(zip);
+    }
+
+    /** Assainit le nom de workspace pour un nom de fichier sûr ({@code [^A-Za-z0-9._-] -> _}). */
+    private String sanitizeFilename(String name) {
+        String base = (name == null || name.isBlank()) ? "workspace" : name.trim();
+        return base.replaceAll("[^A-Za-z0-9._-]", "_");
     }
 
     /** Lit les octets du fichier multipart ; un flux illisible => archive invalide (400). */
