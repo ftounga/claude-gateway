@@ -221,16 +221,26 @@ class ChatApiIntegrationTest {
     }
 
     @Test
-    void streamReturns404ForConversationOwnedByAnotherUser() throws Exception {
+    void streamEmitsSseErrorForConversationOwnedByAnotherUser() throws Exception {
         Conversation bobConversation = conversationRepository.save(Conversation.builder()
                 .userId(bob.getId()).title("Privé de Bob").model("claude-opus-4-8").build());
 
-        // Alice tente de streamer sur la conversation de Bob : 404 au pré-vol, aucun flux ouvert.
-        mockMvc.perform(post("/api/chat/stream").contextPath("/api")
+        // Alice tente de streamer sur la conversation de Bob : l'erreur d'isolation (pré-vol) est
+        // émise DANS le flux SSE (event error:not_found, statut 200), jamais en 4xx/406 — l'endpoint
+        // produit du text/event-stream, donc l'@ExceptionHandler JSON déclencherait un 406.
+        var result = mockMvc.perform(post("/api/chat/stream").contextPath("/api")
                         .header("Authorization", bearer(aliceToken))
                         .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
                         .content("{\"message\":\"coucou\",\"conversationId\":\"" + bobConversation.getId() + "\"}"))
-                .andExpect(status().isNotFound());
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        org.assertj.core.api.Assertions.assertThat(result.getResponse().getStatus()).isEqualTo(200);
+        org.assertj.core.api.Assertions.assertThat(result.getResponse().getContentType())
+                .contains("text/event-stream");
+        org.assertj.core.api.Assertions.assertThat(result.getResponse().getContentAsString())
+                .contains("error").contains("not_found");
     }
 
     @Test

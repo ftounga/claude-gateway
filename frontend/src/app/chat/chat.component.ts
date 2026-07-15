@@ -290,7 +290,7 @@ export class ChatComponent implements OnInit {
               this.loadConversationFiles();
             }
           }),
-        onError: () =>
+        onError: (code) =>
           this.zone.run(() => {
             this.submitting.set(false);
             // Retire le placeholder assistant ; retire aussi le message utilisateur si rien n'a été
@@ -298,10 +298,29 @@ export class ChatComponent implements OnInit {
             this.messages.update((current) =>
               current.filter((m) => m.id !== assistantId && (streamedAny || m.id !== optimistic.id)),
             );
-            this.notifyError('Le message n’a pas pu être envoyé. Veuillez réessayer.');
+            this.notifyError(this.mapStreamError(code));
           }),
       },
     );
+  }
+
+  /** Traduit un code d'erreur du flux SSE de chat en message utilisateur lisible. */
+  private mapStreamError(code: string): string {
+    switch (code) {
+      case 'quota_exceeded':
+        return 'Quota de consommation atteint. Rachetez des tokens ou attendez la prochaine période.';
+      case 'unsupported_model':
+        return 'Le modèle sélectionné n’est pas disponible.';
+      case 'document_not_ready':
+        return 'Un document importé est encore en cours de traitement. Réessayez dans un instant.';
+      case 'not_found':
+        return 'Conversation ou pièce jointe introuvable.';
+      case 'provider_unavailable':
+      case 'provider_error':
+        return 'Le service IA est momentanément indisponible. Veuillez réessayer.';
+      default:
+        return 'Le message n’a pas pu être envoyé. Veuillez réessayer.';
+    }
   }
 
   private refreshConversationOrder(): void {
