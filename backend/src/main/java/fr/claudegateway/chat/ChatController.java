@@ -25,6 +25,8 @@ import fr.claudegateway.chat.dto.ChatRequest;
 import fr.claudegateway.chat.dto.ChatResponse;
 import fr.claudegateway.chat.dto.MessageResponse;
 import fr.claudegateway.chat.dto.ModelsResponse;
+import fr.claudegateway.ocr.DocumentNotFoundException;
+import fr.claudegateway.quota.QuotaExceededException;
 import jakarta.validation.Valid;
 
 /**
@@ -73,12 +75,38 @@ public class ChatController {
     @PostMapping(path = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter stream(@Valid @RequestBody ChatRequest request) {
         UUID userId = currentUser.requireId();
-        StreamContext context = chatService.prepareStream(userId, request.conversationId(),
-                request.message(), request.model(), request.attachmentIds(), request.libraryDocumentIds());
-
         SseEmitter emitter = new SseEmitter(STREAM_TIMEOUT_MS);
-        chatStreamExecutor.execute(() -> relay(emitter, context));
+        // Pré-vol ET relais sur le thread SSE : une erreur de pré-vol (quota, modèle, isolation…) est
+        // émise DANS le flux (événement {@code error}), jamais via l'@ExceptionHandler JSON — qui
+        // produirait un 406 (HttpMediaTypeNotAcceptable) sur cet endpoint produces=text/event-stream.
+        chatStreamExecutor.execute(() -> prepareAndRelay(emitter, userId, request));
         return emitter;
+    }
+
+    /** Pré-vol de la conversation puis relais du flux ; traduit toute erreur de pré-vol en SSE. */
+    private void prepareAndRelay(SseEmitter emitter, UUID userId, ChatRequest request) {
+        StreamContext context;
+        try {
+            context = chatService.prepareStream(userId, request.conversationId(), request.message(),
+                    request.model(), request.attachmentIds(), request.libraryDocumentIds());
+        } catch (QuotaExceededException ex) {
+            sendError(emitter, "quota_exceeded");
+            return;
+        } catch (UnsupportedModelException ex) {
+            sendError(emitter, "unsupported_model");
+            return;
+        } catch (ConversationNotFoundException | AttachmentNotFoundException | DocumentNotFoundException ex) {
+            sendError(emitter, "not_found");
+            return;
+        } catch (DocumentNotReadyException ex) {
+            sendError(emitter, "document_not_ready");
+            return;
+        } catch (RuntimeException ex) {
+            log.warn("Échec du pré-vol SSE de chat");
+            sendError(emitter, "internal_error");
+            return;
+        }
+        relay(emitter, context);
     }
 
     private void relay(SseEmitter emitter, StreamContext context) {

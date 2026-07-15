@@ -157,6 +157,20 @@ describe('ChatComponent', () => {
     expect(component.submitting()).toBeFalse();
   });
 
+  it('affiche un message spécifique selon le code d’erreur du flux (quota)', () => {
+    fixture.detectChanges();
+    flushInit();
+    const snackSpy = spyOn(component['snackBar'], 'open');
+
+    stubStream((handlers) => handlers.onError('quota_exceeded'));
+    component.form.setValue({ message: 'Trop de tokens' });
+    component.send();
+
+    expect(snackSpy).toHaveBeenCalled();
+    expect(snackSpy.calls.mostRecent().args[0] as string).toContain('Quota');
+    expect(component.messages().length).toBe(0);
+  });
+
   /** Simule la sélection d'un fichier dans l'input caché. */
   function pickFile(file: File): void {
     const event = { target: { files: [file], value: '' } } as unknown as Event;
