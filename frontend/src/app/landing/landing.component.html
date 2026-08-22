@@ -1,7 +1,7 @@
 <main class="landing">
   <header class="landing__nav">
-    <a class="landing__brand" routerLink="/" aria-label="Claude Proxy — accueil">
-      <img src="claude-proxy-logo.png" alt="Claude Proxy" class="landing__brand-logo" />
+    <a class="landing__brand" routerLink="/" aria-label="Claude Portal — accueil">
+      <img src="claude-portal-logo.png" alt="Claude Portal" class="landing__brand-logo" />
     </a>
     @if (isAuthenticated()) {
       <a mat-flat-button class="landing__nav-cta" routerLink="/chat">Ouvrir le chat</a>
@@ -13,12 +13,12 @@
   <section class="landing__hero">
     <div class="landing__hero-inner">
       <div class="landing__hero-text">
-        <p class="landing__eyebrow">Unrestricted AI. No limits.</p>
+        <p class="landing__eyebrow">L'accès professionnel à Claude, en mission.</p>
         <h1 class="landing__title">
           La façon <span class="landing__accent">professionnelle</span> d'utiliser Claude
         </h1>
         <p class="landing__subtitle">
-          Claude Proxy est la passerelle sécurisée qui redonne aux consultants l'accès à Claude,
+          Claude Portal est la passerelle sécurisée qui donne aux consultants l'accès à Claude,
           partout en mission — sans installation, sans exposer vos clés, avec l'expérience Claude
           native&nbsp;: chat en streaming, Markdown, code et pièces jointes.
         </p>
@@ -41,7 +41,7 @@
       </div>
 
       <div class="landing__hero-art">
-        <img src="claude-proxy-logo.png" alt="Claude Proxy" class="landing__hero-logo" />
+        <img src="claude-portal-logo.png" alt="Claude Portal" class="landing__hero-logo" />
       </div>
     </div>
   </section>
@@ -72,10 +72,10 @@
   </section>
 
   <footer class="landing__footer">
-    <img src="claude-proxy-logo.png" alt="Claude Proxy" class="landing__footer-logo" />
+    <img src="claude-portal-logo.png" alt="Claude Portal" class="landing__footer-logo" />
     @if (!isAuthenticated()) {
       <a mat-flat-button class="landing__cta-main" routerLink="/register">Démarrer l'essai gratuit</a>
     }
-    <p class="landing__footer-legal">Claude Proxy — passerelle professionnelle vers Claude.</p>
+    <p class="landing__footer-legal">Claude Portal — passerelle professionnelle vers Claude.</p>
   </footer>
 </main>

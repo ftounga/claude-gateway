@@ -53,4 +53,35 @@ describe('LandingComponent', () => {
     const cards = (fixture.nativeElement as HTMLElement).querySelectorAll('.landing__benefit');
     expect(cards.length).toBe(3);
   });
+
+  // ---- F-29 SF-29-01 : garde-fous anti-régression sur l'identité publique ----
+  // Le terme « Proxy » et le registre lexical du contournement font classer le domaine
+  // en catégorie « anonymizer / proxy avoidance » par les filtres d'entreprise.
+
+  it("ne contient nulle part le terme « Proxy » (classification anonymizer)", () => {
+    setup(false);
+    const markup = (fixture.nativeElement as HTMLElement).innerHTML;
+    expect(markup).not.toMatch(/proxy/i);
+  });
+
+  it("n'emploie pas le registre lexical du contournement", () => {
+    setup(false);
+    const markup = (fixture.nativeElement as HTMLElement).innerHTML;
+    expect(markup).not.toMatch(/unrestricted|no limits|bypass|unblock|anonymous/i);
+  });
+
+  it('référence le logo sous son nouveau nom de fichier', () => {
+    setup(false);
+    const logos = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('img'),
+    ).map((img) => img.getAttribute('src'));
+    expect(logos.length).toBeGreaterThan(0);
+    logos.forEach((src) => expect(src).toBe('claude-portal-logo.png'));
+  });
+
+  it('affiche le nom de marque « Claude Portal »', () => {
+    setup(false);
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Claude Portal');
+  });
 });
