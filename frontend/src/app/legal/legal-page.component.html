@@ -1,0 +1,22 @@
+<div class="legal">
+  <header class="legal__nav">
+    <a mat-button class="legal__back" routerLink="/">
+      <mat-icon>arrow_back</mat-icon>
+      Retour à l'accueil
+    </a>
+    <span class="legal__brand">{{ serviceName }}</span>
+  </header>
+
+  <main class="legal__content">
+    <h1 class="legal__title">{{ heading() }}</h1>
+    <ng-content />
+    <p class="legal__updated">Dernière mise à jour : {{ lastUpdate }}.</p>
+  </main>
+
+  <footer class="legal__footer">
+    <a routerLink="/mentions-legales">Mentions légales</a>
+    <a routerLink="/confidentialite">Politique de confidentialité</a>
+    <a routerLink="/cgu">Conditions générales d'utilisation</a>
+    <a routerLink="/contact">Contact</a>
+  </footer>
+</div>

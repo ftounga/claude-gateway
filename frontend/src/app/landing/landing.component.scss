@@ -304,3 +304,23 @@ $muted: #64748b;
     grid-template-columns: 1fr;
   }
 }
+
+// F-29 SF-29-03 — liens légaux du pied de page.
+.landing__footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--cg-space-3);
+  margin-top: var(--cg-space-2);
+
+  a {
+    color: var(--cg-text-secondary);
+    font-size: 13px;
+    text-decoration: none;
+
+    &:hover {
+      color: var(--cg-accent);
+      text-decoration: underline;
+    }
+  }
+}

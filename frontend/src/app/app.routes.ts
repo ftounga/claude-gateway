@@ -42,6 +42,29 @@ export const routes: Routes = [
         (m) => m.OauthCallbackComponent,
       ),
   },
+  // ---- Pages légales publiques (F-29 SF-29-03) ----
+  // Déclarées AVANT la route parente pathless authentifiée : Angular résout dans l'ordre
+  // de déclaration, et une déclaration après ce parent les ferait passer par l'authGuard.
+  // Une page légale accessible seulement aux utilisateurs connectés ne remplit pas son rôle.
+  {
+    path: 'mentions-legales',
+    loadComponent: () =>
+      import('./legal/mentions-legales.component').then((m) => m.MentionsLegalesComponent),
+  },
+  {
+    path: 'confidentialite',
+    loadComponent: () =>
+      import('./legal/confidentialite.component').then((m) => m.ConfidentialiteComponent),
+  },
+  {
+    path: 'cgu',
+    loadComponent: () => import('./legal/cgu.component').then((m) => m.CguComponent),
+  },
+  {
+    path: 'contact',
+    loadComponent: () => import('./legal/contact.component').then((m) => m.ContactComponent),
+  },
+
   // Onboarding : flux authentifié dédié, volontairement hors coquille.
   {
     path: 'onboarding',
