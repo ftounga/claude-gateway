@@ -6,7 +6,9 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "verify:public": "node scripts/verify-public-metadata.mjs",
+    "verify:public:dist": "node scripts/verify-public-metadata.mjs dist/frontend/browser"
   },
   "private": true,
   "dependencies": {
