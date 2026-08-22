@@ -1,0 +1,171 @@
+<app-legal-page heading="Politique de confidentialité">
+  <section class="legal-section">
+    <h2>Responsable du traitement</h2>
+    <p>
+      Les données personnelles collectées dans le cadre du service {{ serviceName }} sont traitées
+      par <strong>{{ company.name }}</strong>, {{ company.address }}, immatriculée au R.C.S. de
+      {{ company.rcsCity }} sous le numéro SIREN {{ company.siren }}.
+    </p>
+    <p>
+      Pour toute question relative à vos données&nbsp;:
+      <a href="mailto:{{ company.contactEmail }}">{{ company.contactEmail }}</a>.
+    </p>
+  </section>
+
+  <section class="legal-section">
+    <h2>Données collectées</h2>
+    <h3>Données de compte</h3>
+    <p>
+      Adresse électronique, mot de passe (conservé sous forme de condensat, jamais en clair) ou
+      identifiant du fournisseur d'identité si vous vous connectez via un compte Google, date de
+      création du compte et rôle.
+    </p>
+    <h3>Contenus que vous soumettez</h3>
+    <p>
+      Messages échangés avec l'assistant, conversations conservées, fichiers et documents
+      téléversés ainsi que le texte qui en est extrait, et espaces de travail que vous créez.
+    </p>
+    <h3>Données d'usage et de facturation</h3>
+    <p>
+      Volumes consommés (jetons), offre souscrite, état de l'abonnement et historique des
+      paiements. <strong>Aucune donnée de carte bancaire n'est collectée ni conservée par
+      {{ company.name }}</strong>&nbsp;: les paiements sont traités directement par notre
+      prestataire, sur ses propres pages sécurisées.
+    </p>
+    <h3>Données techniques</h3>
+    <p>
+      Journaux d'accès et d'erreur, comprenant l'adresse IP, l'horodatage et les opérations
+      effectuées, conservés à des fins de sécurité et de diagnostic.
+    </p>
+  </section>
+
+  <section class="legal-section">
+    <h2>Finalités et bases légales</h2>
+    <ul>
+      <li>
+        <strong>Fourniture du service</strong> (création de compte, traitement des requêtes,
+        conservation de vos conversations et documents) — exécution du contrat&nbsp;;
+      </li>
+      <li>
+        <strong>Facturation et gestion des abonnements</strong> — exécution du contrat et
+        obligation légale comptable&nbsp;;
+      </li>
+      <li>
+        <strong>Sécurité, prévention des abus et supervision technique</strong> — intérêt
+        légitime de l'éditeur à préserver l'intégrité du service&nbsp;;
+      </li>
+      <li>
+        <strong>Réponse à vos demandes</strong> — exécution du contrat ou intérêt légitime.
+      </li>
+    </ul>
+    <p>
+      Vos contenus ne sont ni revendus, ni cédés à des tiers à des fins publicitaires, ni utilisés
+      par {{ company.name }} pour entraîner des modèles.
+    </p>
+  </section>
+
+  <section class="legal-section">
+    <h2>Destinataires et sous-traitants</h2>
+    <p>
+      Les données sont accessibles au personnel habilité de {{ company.name }} et aux prestataires
+      strictement nécessaires au fonctionnement du service&nbsp;:
+    </p>
+    <ul>
+      <li>
+        <strong>Anthropic PBC</strong> (États-Unis) — traitement des requêtes adressées à
+        l'assistant. Les contenus que vous soumettez lui sont transmis pour produire une réponse.
+      </li>
+      <li>
+        <strong>{{ host.name }}</strong> — hébergement de l'application et des données
+        ({{ host.region }}), ainsi que les services d'extraction de texte associés.
+      </li>
+      <li>
+        <strong>Stripe</strong> — traitement des paiements et gestion des abonnements.
+      </li>
+      <li>
+        <strong>Un prestataire d'envoi de courriers électroniques transactionnels</strong> —
+        vérification d'adresse et réinitialisation de mot de passe.
+      </li>
+    </ul>
+  </section>
+
+  <section class="legal-section">
+    <h2>Transferts hors Union européenne</h2>
+    <p>
+      L'hébergement de l'application et des données est situé en <strong>France</strong>
+      ({{ host.region }}).
+    </p>
+    <p>
+      En revanche, le traitement de vos requêtes par l'assistant implique une transmission à
+      <strong>Anthropic PBC, établie aux États-Unis</strong>. Le traitement des paiements par
+      Stripe peut également donner lieu à un transfert hors Union européenne. Ces transferts sont
+      encadrés par les garanties appropriées prévues par le chapitre V du règlement général sur la
+      protection des données, notamment les clauses contractuelles types de la Commission
+      européenne.
+    </p>
+    <p>
+      Si vous ne souhaitez pas que certains contenus soient transmis hors de l'Union européenne,
+      ne les soumettez pas à l'assistant.
+    </p>
+  </section>
+
+  <section class="legal-section">
+    <h2>Durées de conservation</h2>
+    <ul>
+      <li><strong>Compte</strong> — jusqu'à sa suppression par vous ou à votre demande&nbsp;;</li>
+      <li>
+        <strong>Conversations, fichiers et documents</strong> — jusqu'à leur suppression par vous,
+        ou jusqu'à la suppression du compte&nbsp;;
+      </li>
+      <li>
+        <strong>Pièces comptables et factures</strong> — dix ans, conformément à l'obligation
+        légale de conservation&nbsp;;
+      </li>
+      <li>
+        <strong>Journaux techniques</strong> — durée limitée, proportionnée aux besoins de
+        sécurité et de diagnostic.
+      </li>
+    </ul>
+  </section>
+
+  <section class="legal-section">
+    <h2>Vos droits</h2>
+    <p>
+      Vous disposez des droits d'accès, de rectification, d'effacement, de limitation, de
+      portabilité et d'opposition sur vos données, ainsi que du droit de définir des directives
+      relatives à leur sort après votre décès.
+    </p>
+    <p>
+      Le service met à votre disposition, depuis vos réglages, des fonctions
+      d'<strong>export</strong> et de <strong>suppression</strong> de vos données. Vous pouvez
+      également exercer vos droits en écrivant à
+      <a href="mailto:{{ company.contactEmail }}">{{ company.contactEmail }}</a>&nbsp;; une réponse
+      vous sera apportée dans le délai d'un mois.
+    </p>
+    <p>
+      Si vous estimez, après nous avoir contactés, que vos droits ne sont pas respectés, vous
+      pouvez adresser une réclamation à la Commission nationale de l'informatique et des libertés
+      (CNIL), 3 place de Fontenoy, TSA 80715, 75334 Paris CEDEX 07.
+    </p>
+  </section>
+
+  <section class="legal-section">
+    <h2>Traceurs et stockage local</h2>
+    <p>
+      Le service n'utilise <strong>ni cookie publicitaire, ni traceur de mesure d'audience</strong>.
+      Il conserve dans le stockage local de votre navigateur les seules informations nécessaires à
+      votre authentification et à votre confort de navigation. Ce stockage strictement technique
+      est exempté du recueil préalable de consentement. Se déconnecter en efface le contenu.
+    </p>
+  </section>
+
+  <section class="legal-section">
+    <h2>Sécurité</h2>
+    <p>
+      Les échanges sont chiffrés en transit. Les mots de passe sont conservés sous forme de
+      condensat. Les clés d'interface de programmation que vous confiez au service sont chiffrées
+      avant stockage. Chaque compte est cloisonné&nbsp;: vos conversations et documents ne sont
+      accessibles qu'à vous.
+    </p>
+  </section>
+</app-legal-page>

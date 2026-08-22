@@ -1,0 +1,85 @@
+<app-legal-page heading="Mentions légales">
+  <section class="legal-section">
+    <h2>Éditeur du service</h2>
+    <p>
+      Le service {{ serviceName }}, accessible à l'adresse
+      <strong>portal.ng-itconsulting.com</strong>, est édité par&nbsp;:
+    </p>
+    <dl>
+      <dt>Raison sociale</dt>
+      <dd>{{ company.name }}</dd>
+      <dt>Forme juridique</dt>
+      <dd>{{ company.legalForm }}</dd>
+      <dt>Capital social</dt>
+      <dd>{{ company.capital }}</dd>
+      <dt>Immatriculation</dt>
+      <dd>
+        R.C.S. {{ company.rcsCity }} — SIREN {{ company.siren }}, immatriculée le
+        {{ company.registeredAt }}
+      </dd>
+      <dt>Siège social</dt>
+      <dd>{{ company.address }}</dd>
+      <dt>Activité</dt>
+      <dd>{{ company.activity }}</dd>
+      <dt>Président</dt>
+      <dd>{{ company.president }}</dd>
+      <dt>Directeur de la publication</dt>
+      <dd>{{ company.publicationDirector }}</dd>
+      <dt>Contact</dt>
+      <dd><a href="mailto:{{ company.contactEmail }}">{{ company.contactEmail }}</a></dd>
+    </dl>
+  </section>
+
+  <section class="legal-section">
+    <h2>Hébergement</h2>
+    <p>Le service est hébergé par&nbsp;:</p>
+    <dl>
+      <dt>Hébergeur</dt>
+      <dd>{{ host.name }}</dd>
+      <dt>Adresse</dt>
+      <dd>{{ host.address }}</dd>
+      <dt>Localisation des serveurs</dt>
+      <dd>{{ host.region }}</dd>
+    </dl>
+  </section>
+
+  <section class="legal-section">
+    <h2>Nature du service</h2>
+    <p>
+      {{ serviceName }} est une application professionnelle qui fournit un accès authentifié à
+      l'assistant conversationnel Claude, édité par Anthropic PBC. Le service relaie les requêtes
+      de ses utilisateurs vers l'interface de programmation d'Anthropic, en assurant
+      l'authentification, la gestion des accès, le suivi de consommation et la facturation.
+    </p>
+    <p>
+      Le service ne permet pas de naviguer anonymement sur Internet, de masquer une adresse IP,
+      ni de contourner un dispositif de filtrage réseau. Il n'est ni un service d'anonymisation,
+      ni un relais de trafic généraliste&nbsp;: chaque compte est nominatif et l'ensemble des
+      échanges est rattaché à son titulaire.
+    </p>
+  </section>
+
+  <section class="legal-section">
+    <h2>Propriété intellectuelle</h2>
+    <p>
+      L'ensemble des éléments composant le service — code, interface, identité visuelle,
+      documentation — est la propriété de {{ company.name }}, à l'exception des marques,
+      technologies et contenus appartenant à leurs titulaires respectifs, notamment la marque
+      Claude et les modèles associés, propriété d'Anthropic PBC.
+    </p>
+    <p>
+      Les contenus soumis par un utilisateur au service, ainsi que les réponses générées à sa
+      demande, restent la propriété de cet utilisateur, dans les limites prévues par les
+      conditions applicables au fournisseur du modèle.
+    </p>
+  </section>
+
+  <section class="legal-section">
+    <h2>Signalement</h2>
+    <p>
+      Tout contenu ou usage susceptible de contrevenir à la loi ou aux conditions générales
+      d'utilisation peut être signalé à l'adresse
+      <a href="mailto:{{ company.contactEmail }}">{{ company.contactEmail }}</a>.
+    </p>
+  </section>
+</app-legal-page>

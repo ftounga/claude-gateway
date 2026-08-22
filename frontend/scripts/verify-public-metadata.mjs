@@ -23,7 +23,10 @@ const PRIVATE_ROUTES = [
   '/chat', '/atelier', '/documents', '/ask', '/templates',
   '/billing', '/reports', '/settings', '/profile', '/admin', '/onboarding', '/auth/',
 ];
-const PUBLIC_URLS = ['/', '/login', '/register'];
+const PUBLIC_URLS = [
+  '/', '/login', '/register',
+  '/mentions-legales', '/confidentialite', '/cgu', '/contact',
+];
 // Lexique qui fait classer le domaine en « anonymizer / proxy avoidance ».
 const FORBIDDEN = /proxy|unrestricted|no limits|bypass|unblock|anonymous/i;
 
