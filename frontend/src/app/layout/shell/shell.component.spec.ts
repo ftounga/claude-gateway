@@ -49,4 +49,11 @@ describe('ShellComponent', () => {
     expect(authSpy.logout).toHaveBeenCalled();
     expect(router.navigate).toHaveBeenCalledWith(['/login']);
   });
+
+  // ---- F-29 SF-29-01 : garde-fou anti-régression sur la marque de la coquille ----
+  it('affiche la marque « Claude Portal » sans le terme « Proxy »', () => {
+    const brand = (fixture.nativeElement as HTMLElement).querySelector('.brand');
+    expect(brand?.textContent?.trim()).toBe('Claude Portal');
+    expect((fixture.nativeElement as HTMLElement).innerHTML).not.toMatch(/proxy/i);
+  });
 });

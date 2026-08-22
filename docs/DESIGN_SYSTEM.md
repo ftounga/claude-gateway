@@ -16,7 +16,7 @@ Toute divergence doit être explicitement signalée et validée.
 à des consultants exigeants. Sobriété > effets ; lisibilité > densité.
 
 **Logo** :
-- Logo « Claude Proxy » (`frontend/public/claude-proxy-logo.png`) : bouclier hexagonal navy, tête + étincelle orange, bulle de chat, orbite.
+- Logo « Claude Portal » (`frontend/public/claude-portal-logo.png`) : bouclier hexagonal navy, tête + étincelle orange, bulle de chat, orbite.
 - Police du logotype : Space Grotesk
 
 > **Refonte F-27 (2026-07-10)** : l'application adopte l'identité de marque **navy / orange / crème** (issue du logo, auparavant réservée à la landing). L'ancienne charte « Indigo Tech » (`--cg-primary` indigo `#4338CA`, accent cyan `#06B6D4`) est **abandonnée**.
@@ -187,5 +187,5 @@ Durée par défaut : 4 secondes. Jamais `window.alert()` ou `window.confirm()`.
 
 ## Logo & marque (ajout 2026-07-03)
 
-- **Logo de l'application** : `frontend/public/claude-proxy-logo.png` (« Claude Proxy » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« Claude Proxy »**.
+- **Logo de l'application** : `frontend/public/claude-portal-logo.png` (« Claude Portal » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« Claude Portal »** (renommé en F-29 SF-29-01 : le terme « Proxy » faisait classer le domaine en catégorie « anonymizer » par les filtres d'entreprise).
 - **Palette de marque** (dérivée du logo) : navy profond `#0B1020`, orange `#E07B39`, crème `#F5EFE3`. **Depuis F-27 (2026-07-10), cette palette est la charte de toute l'application** (jetons `--cg-*`), et plus seulement de la landing. L'ancien indigo `#4338CA` / cyan `#06B6D4` est abandonné. La landing conserve ses variables SCSS locales (`$brand-navy`/`$brand-orange`/`$brand-cream`), désormais alignées avec la charte globale.

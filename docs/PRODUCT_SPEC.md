@@ -104,6 +104,14 @@ sécurisent la monétisation ; settings et landing finalisent l'expérience. Le 
 |----|---------|-------------|--------|
 | F-28 | Atelier (Claude Code Lite — Phase 1) | Workspace projet isolé (upload zip → S3), arborescence + lecture/écriture de fichiers, et **Atelier** où Claude lit/édite les fichiers via une boucle **tool-use** (sans exécution), `CLAUDE.md` + skills en contexte. UI flux unique + panneau Fichiers repliable. **Complétion produit** : erreurs d'import lisibles (SF-28-04 ✅), streaming du chat façon Claude Code (SF-28-05 ✅), **offre Gold** 199 €/12 M + gating + BYOK/Hosted (SF-28-06 backend ✅ + SF-28-07 frontend ✅). Phase 2 (Managed Agents / code-exec) **cadrée** (`docs/features/F-28/PHASE-2-cadrage.md` + **ADR-013**) ; dispo β + coût sandbox (0,08 $/h) confirmés ; **Phase 2 COMPLÈTE** (SF-28-08→12) : exécution réelle via Managed Agents (sandbox Anthropic), validée end-to-end en prod, mode « Exécution » dans l'UI, comptage tokens de session + plafond sandbox. Gating Gold/ADMIN, flag activé. | **Livrée** (Phase 1 + Gold + Phase 2, SF-28-01→12) |
 
+## Identité publique & conformité web (validé 2026-08-21)
+
+> Ajouté suite au constat de **filtrage du domaine `portal.ng-itconsulting.com` par les proxys d'entreprise**, classé en catégorie « anonymizer / proxy avoidance ». Causes diagnostiquées : le terme « Proxy » dans le `<title>` et la marque, une SPA sans aucun contenu indexable (`<app-root>` vide, ni `meta description` ni Open Graph), l'absence de `robots.txt`/`sitemap.xml` (fallback SPA), et l'absence de pages légales identifiant l'éditeur.
+
+| ID | Feature | Description | Statut |
+|----|---------|-------------|--------|
+| F-29 | Identité publique & conformité web | Suppression du terme « Proxy » de l'identité produit (→ **« Claude Portal »**) ; signaux d'indexation destinés aux crawlers et moteurs de classification (`meta description`, Open Graph, `<h1>` + `<noscript>` statiques, `robots.txt`, `sitemap.xml`) ; pages légales publiques (mentions légales, CGU, politique de confidentialité, contact). **Objectif** : sortir le domaine de la catégorie « anonymizer / proxy avoidance » des filtres d'entreprise (Zscaler, Netskope, FortiGuard, Symantec/BlueCoat, Cisco Umbrella) qui bloquent aujourd'hui l'accès au produit. **100 % frontend** — aucun endpoint, aucune table, aucune migration. | **À faire** (SF-29-01→03) |
+
 ## Features V3 (backlog — hors périmètre actuel)
 
 | ID | Feature | Description | Cible |

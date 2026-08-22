@@ -1,4 +1,4 @@
-// Design System claude-gateway — thème "Claude Proxy" (navy / orange / crème)
+// Design System claude-gateway — thème "Claude Portal" (navy / orange / crème)
 // Refonte F-27 (2026-07-10) : abandon de l'identité "Indigo Tech" (--cg-primary indigo).
 // Voir docs/DESIGN_SYSTEM.md (source de vérité).
 @use '@angular/material' as mat;
@@ -20,7 +20,7 @@ html {
 
 // ---- Variables du design system ----
 :root {
-  // Palette de marque Claude Proxy (dérivée du logo) — voir DESIGN_SYSTEM.md §Palette.
+  // Palette de marque Claude Portal (dérivée du logo) — voir DESIGN_SYSTEM.md §Palette.
   --cg-navy: #0B1020;
   --cg-navy-2: #141D33;
   --cg-orange: #E07B39;
