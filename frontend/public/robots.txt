@@ -1,0 +1,27 @@
+# Claude Portal — portal.ng-itconsulting.com
+# Passerelle professionnelle vers Claude, à accès authentifié.
+# Les pages publiques sont indexables ; les espaces authentifiés ne le sont pas.
+# Note : ce fichier exprime une intention d'indexation, ce n'est pas un
+# mécanisme de contrôle d'accès (l'autorisation est appliquée côté serveur).
+
+User-agent: *
+Allow: /
+Allow: /login
+Allow: /register
+
+# Espaces authentifiés — hors indexation
+Disallow: /chat
+Disallow: /atelier
+Disallow: /documents
+Disallow: /ask
+Disallow: /templates
+Disallow: /billing
+Disallow: /reports
+Disallow: /settings
+Disallow: /profile
+Disallow: /admin
+Disallow: /onboarding
+Disallow: /auth/
+Disallow: /api/
+
+Sitemap: https://portal.ng-itconsulting.com/sitemap.xml

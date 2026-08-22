@@ -5,13 +5,96 @@
   <title>Claude Portal — passerelle professionnelle vers Claude</title>
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- F-29 SF-29-02 — Signaux d'indexation.
+       L'application est une SPA : sans ces métadonnées et sans le contenu de repli
+       placé dans <app-root>, un crawler ne reçoit qu'un document vide et les moteurs
+       de classification se rabattent sur des heuristiques de domaine. -->
+  <meta name="description" content="Claude Portal : la passerelle professionnelle qui donne aux consultants un accès sécurisé à Claude, sans installation et sans exposer leurs clés API.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://portal.ng-itconsulting.com/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Claude Portal">
+  <meta property="og:title" content="Claude Portal — passerelle professionnelle vers Claude">
+  <meta property="og:description" content="La passerelle professionnelle qui donne aux consultants un accès sécurisé à Claude : chat en streaming, documents, gestion des clés et suivi de consommation.">
+  <meta property="og:url" content="https://portal.ng-itconsulting.com/">
+  <meta property="og:image" content="https://portal.ng-itconsulting.com/claude-portal-logo.png">
+  <meta property="og:locale" content="fr_FR">
+
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Claude Portal — passerelle professionnelle vers Claude">
+  <meta name="twitter:description" content="Accès professionnel et sécurisé à Claude pour les consultants en mission.">
+  <meta name="twitter:image" content="https://portal.ng-itconsulting.com/claude-portal-logo.png">
+
   <link rel="icon" type="image/png" href="claude-portal-logo.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons|Material+Icons+Outlined" rel="stylesheet">
+
+  <style>
+    /* Contenu de repli : visible le temps du démarrage d'Angular, puis remplacé.
+       Volontairement non masqué en CSS — du texte caché est un signal négatif
+       pour les moteurs de classification. Palette DESIGN_SYSTEM (navy / crème / orange). */
+    .app-fallback {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 48px 24px;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #1C2B3A;
+      background: #F5F6FA;
+    }
+    .app-fallback h1 {
+      font-family: "Space Grotesk", "Inter", sans-serif;
+      font-size: 28px;
+      line-height: 36px;
+      color: #0B1020;
+      margin: 0 0 16px;
+    }
+    .app-fallback p { margin: 0 0 16px; line-height: 24px; }
+    .app-fallback ul { margin: 0 0 16px; padding-left: 24px; line-height: 24px; }
+    .app-fallback__editor { color: #6B7A8D; font-size: 14px; }
+    .app-fallback__accent { color: #E07B39; }
+  </style>
 </head>
 <body class="mat-typography">
-  <app-root></app-root>
+  <app-root>
+    <!-- Remplacé par l'application au démarrage d'Angular. Sert de contenu lisible
+         aux crawlers et aux moteurs de classification, qui n'exécutent pas de JS. -->
+    <div class="app-fallback">
+      <h1>Claude <span class="app-fallback__accent">Portal</span></h1>
+      <p>
+        <strong>Claude Portal</strong> est la passerelle professionnelle qui donne aux
+        consultants et aux indépendants un accès sécurisé à l'assistant Claude d'Anthropic,
+        depuis leur navigateur, sans installation et sans exposer leurs clés API.
+      </p>
+      <p>Le service couvre&nbsp;:</p>
+      <ul>
+        <li>un espace de conversation avec réponses en continu, Markdown et code&nbsp;;</li>
+        <li>le dépôt de documents professionnels et leur exploitation dans les échanges&nbsp;;</li>
+        <li>la gestion des clés API et le choix entre offre hébergée et clé personnelle&nbsp;;</li>
+        <li>le suivi de la consommation, la facturation et l'administration du compte.</li>
+      </ul>
+      <p>
+        L'accès nécessite un compte utilisateur. Chaque compte est isolé&nbsp;: les conversations
+        et les documents ne sont accessibles qu'à leur propriétaire.
+      </p>
+      <p class="app-fallback__editor">
+        Service professionnel à accès authentifié. Chargement de l'application en cours…
+      </p>
+    </div>
+  </app-root>
+
+  <noscript>
+    <div class="app-fallback">
+      <h1>JavaScript est nécessaire</h1>
+      <p>
+        Claude Portal est une application web qui requiert JavaScript pour fonctionner.
+        Activez JavaScript dans votre navigateur, puis rechargez la page.
+      </p>
+      <p class="app-fallback__editor">Service professionnel à accès authentifié.</p>
+    </div>
+  </noscript>
 </body>
 </html>
