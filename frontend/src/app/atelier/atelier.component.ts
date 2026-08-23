@@ -37,7 +37,10 @@ import {
   WorkspaceSummary,
 } from '../core/models/atelier.models';
 
-/** Mode de l'agent : « Édition » (Phase 1, lecture/écriture) ou « Exécution » (Phase 2, sandbox). */
+/**
+ * Mode de l'agent. Valeurs techniques inchangées (F-30 SF-30-03) : `edit` = mode **Assistant**
+ * (Phase 1, lecture/écriture), `exec` = mode **Terminal** (Phase 2, sandbox hébergé).
+ */
 export type AtelierAgentMode = 'edit' | 'exec';
 
 /**
@@ -62,7 +65,7 @@ export interface AtelierThreadItem {
   role: AtelierRole;
   content: string;
   actions: AtelierAction[];
-  /** Chemins des fichiers modifiés par une session d'exécution (mode « Exécution », SF-28-11). */
+  /** Chemins des fichiers modifiés par une session d'exécution (mode « Terminal », SF-28-11). */
   changedFiles?: string[];
   /**
    * Transcription terminal du tour d'exécution (F-30 SF-30-02) : commandes et sorties, conservées
@@ -78,7 +81,7 @@ export interface AtelierStreamingItem {
 }
 
 /**
- * Tour assistant « en cours » du mode « Exécution » (SF-28-11) : état de la session, transcription
+ * Tour assistant « en cours » du mode « Terminal » (SF-28-11) : état de la session, transcription
  * terminal (commande + sortie, F-30 SF-30-02) relayée au fil de l'eau, et commentaire partiel.
  */
 export interface AtelierExecStreamingItem {
@@ -153,12 +156,12 @@ export class AtelierComponent implements OnInit, OnDestroy {
   readonly streaming = signal<AtelierStreamingItem | null>(null);
 
   /**
-   * Mode de l'agent (SF-28-11). « Édition » (défaut, Phase 1) : Claude lit/édite les fichiers.
-   * « Exécution » (Phase 2) : Claude exécute réellement (bash, tests, build) dans un sandbox hébergé.
+   * Mode de l'agent (SF-28-11). « Assistant » (défaut, Phase 1) : Claude lit/édite les fichiers.
+   * « Terminal » (Phase 2) : Claude exécute réellement (bash, tests, build) dans un sandbox hébergé.
    */
   readonly agentMode = signal<AtelierAgentMode>('edit');
 
-  /** Tour assistant « en cours » du mode « Exécution » (état + transcription terminal + texte). */
+  /** Tour assistant « en cours » du mode « Terminal » (état + transcription + texte partiel). */
   readonly execStreaming = signal<AtelierExecStreamingItem | null>(null);
 
   /** Durée écoulée du run d'exécution en secondes (F-30 SF-30-02) : seul repère de progression. */
@@ -418,8 +421,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.draft.set('');
     this.submitting.set(true);
 
-    // Mode « Exécution » (Phase 2, SF-28-11) : délègue au flux d'agent (sandbox hébergé). Le mode
-    // « Édition » (défaut, Phase 1) reste strictement inchangé ci-dessous.
+    // Mode « Terminal » (Phase 2, SF-28-11) : délègue au flux d'agent (sandbox hébergé). Le mode
+    // « Assistant » (défaut, Phase 1) reste strictement inchangé ci-dessous.
     if (this.agentMode() === 'exec') {
       this.sendExec(id, content, userItem);
       return;
@@ -486,7 +489,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Bascule le mode de l'agent (« Édition » ⇄ « Exécution »), sauf pendant un envoi en cours. */
+  /** Bascule le mode de l'agent (« Assistant » ⇄ « Terminal »), sauf pendant un envoi en cours. */
   setAgentMode(mode: AtelierAgentMode): void {
     if (this.submitting()) {
       return;
@@ -495,7 +498,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Envoie le message courant en mode **Exécution** (SF-28-11) : relaie l'état de session, les étapes
+   * Envoie le message courant en mode **Terminal** (SF-28-11) : relaie l'état de session, les étapes
    * d'outils (bash, tests…) et le commentaire au fil de l'eau, puis ajoute la réponse finale et la
    * liste des fichiers modifiés, et rafraîchit l'arborescence. Le flux tourne hors zone Angular
    * (fetch) : chaque mise à jour de signal passe par {@link NgZone}. En cas d'erreur, le tour
@@ -562,13 +565,13 @@ export class AtelierComponent implements OnInit, OnDestroy {
     });
   }
 
-  /** Traduit un code d'erreur du flux d'exécution en message utilisateur lisible (SF-28-11). */
+  /** Traduit un code d'erreur du flux Terminal en message utilisateur lisible (SF-28-11). */
   private mapAgentError(code: string): string {
     switch (code) {
       case 'forbidden':
-        return "L'exécution est réservée à l'offre Gold.";
+        return "Le mode Terminal est réservé à l'offre Gold.";
       case 'agent_disabled':
-        return 'Le mode Exécution est momentanément indisponible.';
+        return 'Le mode Terminal est momentanément indisponible.';
       case 'workspace_not_found':
         return 'Projet introuvable.';
       case 'session_timeout':

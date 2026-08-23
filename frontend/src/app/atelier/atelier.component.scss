@@ -408,6 +408,19 @@ a.active {
   color: var(--cg-orange-2);
 }
 
+// Badge « Gold » du mode Terminal (F-30 SF-30-03) : informatif, il n'ajoute aucun gate.
+.mode-badge {
+  margin-left: var(--cg-space-1);
+  padding: 1px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--cg-accent);
+  color: var(--cg-accent);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .exec-elapsed {
   font-family: var(--cg-font-mono);
   font-size: 11px;

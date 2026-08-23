@@ -185,7 +185,7 @@
                       }
                     </div>
                   }
-                  <!-- Fichiers modifiés par une session d'exécution (mode « Exécution », SF-28-11) -->
+                  <!-- Fichiers modifiés par une session d'exécution (mode « Terminal », SF-28-11) -->
                   @if (message.changedFiles && message.changedFiles.length > 0) {
                     <div class="changed-files" aria-label="Fichiers modifiés par l'exécution">
                       <span class="changed-files-label">
@@ -233,7 +233,7 @@
             </article>
           }
 
-          <!-- Tour « en cours » du mode Exécution : état + étapes d'outils (bash…) + commentaire (SF-28-11) -->
+          <!-- Tour « en cours » du mode Terminal : état + transcription + commentaire (F-30 SF-30-02) -->
           @if (execStreaming(); as exec) {
             <article class="message assistant streaming" aria-live="polite">
               <div class="message-role">
@@ -241,7 +241,7 @@
                 <mat-progress-spinner
                   mode="indeterminate"
                   [diameter]="16"
-                  aria-label="Exécution en cours"
+                  aria-label="Terminal en cours d'exécution"
                 ></mat-progress-spinner>
                 @if (exec.status) {
                   <span class="exec-status">{{ exec.status }}</span>
@@ -357,7 +357,7 @@
         }
       </div>
 
-      <!-- Sélecteur de mode : Édition (Phase 1) ⇄ Exécution (Phase 2, SF-28-11) -->
+      <!-- Sélecteur de mode : Assistant (Phase 1) ⇄ Terminal (Phase 2, F-30 SF-30-03) -->
       <div class="mode-selector">
         <mat-button-toggle-group
           class="mode-toggle"
@@ -368,18 +368,20 @@
         >
           <mat-button-toggle value="edit">
             <mat-icon>edit_note</mat-icon>
-            Édition
+            Assistant
           </mat-button-toggle>
           <mat-button-toggle value="exec">
             <mat-icon>terminal</mat-icon>
-            Exécution
+            Terminal
+            <!-- Badge informatif : signale la capacité qui justifie l'offre, n'ajoute aucun gate -->
+            <span class="mode-badge">Gold</span>
           </mat-button-toggle>
         </mat-button-toggle-group>
         <span class="mode-hint">
           @if (agentMode() === 'exec') {
-            Claude exécute réellement (bash, tests, build) dans un sandbox hébergé.
+            Claude exécute réellement vos commandes (bash, tests, build) dans un sandbox hébergé.
           } @else {
-            Claude lit et édite les fichiers du projet, sans exécution.
+            Claude lit et édite les fichiers du projet, sans rien exécuter.
           }
         </span>
       </div>

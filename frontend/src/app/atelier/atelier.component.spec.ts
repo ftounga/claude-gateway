@@ -416,7 +416,7 @@ describe('AtelierComponent', () => {
     expect(component.messages().length).toBe(0);
   });
 
-  it('mode Édition (défaut) : send() appelle streamChat, pas streamAgent (non-régression)', () => {
+  it('mode Assistant (défaut) : send() appelle streamChat, pas streamAgent (non-régression)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
     service.streamChat.and.callFake((_id, _message, handlers) => {
@@ -432,7 +432,7 @@ describe('AtelierComponent', () => {
     expect(component.agentMode()).toBe('edit');
   });
 
-  it('mode Exécution : send() appelle streamAgent (pas streamChat) et ajoute la réponse finale', () => {
+  it('mode Terminal : send() appelle streamAgent (pas streamChat) et ajoute la réponse finale', () => {
     setup();
     component.activeWorkspaceId.set('w1');
     component.setAgentMode('exec');
@@ -463,7 +463,7 @@ describe('AtelierComponent', () => {
     expect(service.getWorkspace).toHaveBeenCalledWith('w1');
   });
 
-  it('mode Exécution : accumule l\'état, les étapes d\'outil et le texte partiel du tour en cours', () => {
+  it('mode Terminal : accumule l\'état, les étapes d\'outil et le texte partiel du tour en cours', () => {
     setup();
     component.activeWorkspaceId.set('w1');
     component.setAgentMode('exec');
@@ -488,7 +488,7 @@ describe('AtelierComponent', () => {
     expect(component.submitting()).toBeTrue();
   });
 
-  it('mode Exécution : onError(forbidden) affiche le message Gold sans ajouter de message assistant', () => {
+  it('mode Terminal : onError(forbidden) affiche le message Gold sans ajouter de message assistant', () => {
     setup();
     component.activeWorkspaceId.set('w1');
     component.setAgentMode('exec');
@@ -508,7 +508,7 @@ describe('AtelierComponent', () => {
     expect(message).toContain('Gold');
   });
 
-  it('mode Exécution : onError(session_timeout) affiche un message de délai dépassé', () => {
+  it('mode Terminal : onError(session_timeout) affiche un message de délai dépassé', () => {
     setup();
     component.activeWorkspaceId.set('w1');
     component.setAgentMode('exec');
@@ -637,7 +637,7 @@ describe('AtelierComponent', () => {
   });
   // ---- F-30 SF-30-02 : rendu terminal (commande + sortie) ----
 
-  it('mode Exécution : apparie la sortie à sa commande par toolUseId (F-30)', () => {
+  it('mode Terminal : apparie la sortie à sa commande par toolUseId (F-30)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
     component.setAgentMode('exec');
@@ -659,7 +659,7 @@ describe('AtelierComponent', () => {
     expect(blocks[1].output).toBe('build ok');
   });
 
-  it('mode Exécution : sans toolUseId, la sortie va à la dernière commande sans sortie (F-30)', () => {
+  it('mode Terminal : sans toolUseId, la sortie va à la dernière commande sans sortie (F-30)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
     component.setAgentMode('exec');
@@ -678,7 +678,7 @@ describe('AtelierComponent', () => {
     expect(blocks[0].hasOutput).toBeTrue();
   });
 
-  it('mode Exécution : une sortie sans commande connue crée un bloc orphelin (jamais perdue, F-30)', () => {
+  it('mode Terminal : une sortie sans commande connue crée un bloc orphelin (jamais perdue, F-30)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
     component.setAgentMode('exec');
@@ -696,7 +696,7 @@ describe('AtelierComponent', () => {
     expect(blocks[0].output).toBe('orpheline');
   });
 
-  it('mode Exécution : une sortie en échec marque le bloc en erreur (F-30)', () => {
+  it('mode Terminal : une sortie en échec marque le bloc en erreur (F-30)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
     component.setAgentMode('exec');
@@ -717,7 +717,7 @@ describe('AtelierComponent', () => {
     expect(component.execStreaming()!.blocks[0].error).toBeTrue();
   });
 
-  it('mode Exécution : une sortie longue est repliée puis dépliable (F-30)', () => {
+  it('mode Terminal : une sortie longue est repliée puis dépliable (F-30)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
     component.setAgentMode('exec');
@@ -740,7 +740,7 @@ describe('AtelierComponent', () => {
     expect(component.visibleOutput(block)).toBe(long);
   });
 
-  it('mode Exécution : la transcription reste dans le fil après la fin du run (F-30)', () => {
+  it('mode Terminal : la transcription reste dans le fil après la fin du run (F-30)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
     component.setAgentMode('exec');
@@ -760,5 +760,69 @@ describe('AtelierComponent', () => {
     expect(last.terminal!.length).toBe(1);
     expect(last.terminal![0].output).toBe('12 passing');
     expect(component.blockLabel(last.terminal![0])).toBe('npm test');
+  });
+  // ---- F-30 SF-30-03 : modes « Assistant » et « Terminal » ----
+
+  it('affiche les modes « Assistant » et « Terminal », plus « Édition » / « Exécution » (F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    fixture.detectChanges();
+
+    const selector: HTMLElement = fixture.nativeElement.querySelector('.mode-selector');
+    expect(selector.textContent).toContain('Assistant');
+    expect(selector.textContent).toContain('Terminal');
+    expect(selector.textContent).not.toContain('Édition');
+    expect(selector.textContent).not.toContain('Exécution');
+  });
+
+  it('signale le mode Terminal comme capacité Gold par un badge (F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    fixture.detectChanges();
+
+    const badge: HTMLElement = fixture.nativeElement.querySelector('.mode-badge');
+    expect(badge).not.toBeNull();
+    expect(badge.textContent!.trim()).toBe('Gold');
+  });
+
+  it('les messages d\'erreur du flux reprennent le nom « Terminal » (F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onError('agent_disabled');
+      return Promise.resolve();
+    });
+
+    component.draft.set('Teste');
+    component.send();
+
+    expect(snackBar.open.calls.mostRecent().args[0]).toBe(
+      'Le mode Terminal est momentanément indisponible.',
+    );
+  });
+
+  it('le mode Terminal refusé (non-Gold) renvoie vers l\'offre Gold (F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onError('forbidden');
+      return Promise.resolve();
+    });
+
+    component.draft.set('Teste');
+    component.send();
+
+    expect(snackBar.open.calls.mostRecent().args[0]).toBe(
+      "Le mode Terminal est réservé à l'offre Gold.",
+    );
+  });
+
+  it('les valeurs techniques de mode restent inchangées (non-régression F-30)', () => {
+    setup();
+    expect(component.agentMode()).toBe('edit');
+    component.setAgentMode('exec');
+    expect(component.agentMode()).toBe('exec');
   });
 });
