@@ -139,4 +139,83 @@ describe('AtelierService', () => {
 
     expect(received).toEqual(history);
   });
+  // ---- F-30 SF-30-02 : routage de l'événement SSE `action_result` ----
+
+  /** Flux SSE factice : `fetch` renvoyant les événements fournis, sans réseau. */
+  function fakeSseFetch(events: string[]): jasmine.Spy {
+    const body = events.map((e) => `${e}\n\n`).join('');
+    const chunk = new TextEncoder().encode(body);
+    let sent = false;
+    const response = {
+      ok: true,
+      body: {
+        getReader: () => ({
+          read: () =>
+            Promise.resolve(sent ? { value: undefined, done: true } : ((sent = true), { value: chunk, done: false })),
+        }),
+      },
+    };
+    return spyOn(window, 'fetch').and.returnValue(Promise.resolve(response as unknown as Response));
+  }
+
+  it('route event:action_result vers onActionResult (F-30 SF-30-02)', async () => {
+    fakeSseFetch([
+      'event:action\ndata:{"tool":"bash","toolUseId":"tu_1","detail":"npm test"}',
+      'event:action_result\ndata:{"tool":"bash","toolUseId":"tu_1","output":"12 passing","error":false}',
+      'event:action_result\ndata:{"tool":"bash","toolUseId":"tu_2","output":"boom","error":true}',
+    ]);
+    const actions: unknown[] = [];
+    const results: unknown[] = [];
+
+    await service.streamAgent('w1', 'lance les tests', {
+      onAgent: () => undefined,
+      onAction: (a) => actions.push(a),
+      onActionResult: (r) => results.push(r),
+      onStatus: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+    });
+
+    expect(actions).toEqual([{ tool: 'bash', detail: 'npm test', toolUseId: 'tu_1' }]);
+    expect(results).toEqual([
+      { tool: 'bash', toolUseId: 'tu_1', output: '12 passing', error: false },
+      { tool: 'bash', toolUseId: 'tu_2', output: 'boom', error: true },
+    ]);
+  });
+
+  it('laisse les événements du flux d\'exécution préexistants inchangés (non-régression F-30)', async () => {
+    fakeSseFetch([
+      'event:status\ndata:{"state":"running"}',
+      'event:agent\ndata:{"text":"Je lance les tests."}',
+      'event:done\ndata:{"reply":"Terminé.","changedFiles":["src/a.ts"]}',
+    ]);
+    const seen: string[] = [];
+
+    await service.streamAgent('w1', 'go', {
+      onAgent: (t) => seen.push(`agent:${t}`),
+      onAction: () => seen.push('action'),
+      onActionResult: () => seen.push('action_result'),
+      onStatus: (s) => seen.push(`status:${s}`),
+      onDone: (d) => seen.push(`done:${d.reply}:${d.changedFiles.join(',')}`),
+      onError: (c) => seen.push(`error:${c}`),
+    });
+
+    expect(seen).toEqual(['status:running', 'agent:Je lance les tests.', 'done:Terminé.:src/a.ts']);
+  });
+
+  it('event:error du flux d\'exécution reste routé vers onError (F-30)', async () => {
+    fakeSseFetch(['event:error\ndata:{"error":"forbidden"}']);
+    let code = '';
+
+    await service.streamAgent('w1', 'go', {
+      onAgent: () => undefined,
+      onAction: () => undefined,
+      onActionResult: () => undefined,
+      onStatus: () => undefined,
+      onDone: () => undefined,
+      onError: (c) => (code = c),
+    });
+
+    expect(code).toBe('forbidden');
+  });
 });

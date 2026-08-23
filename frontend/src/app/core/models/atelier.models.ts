@@ -96,6 +96,8 @@ export interface AtelierStreamHandlers {
 export interface AtelierAgentStreamAction {
   tool: string;
   detail?: string;
+  /** Identifiant de l'appel d'outil, qui apparie la commande à sa sortie (F-30). `null` si absent. */
+  toolUseId?: string | null;
 }
 
 /**
@@ -107,11 +109,41 @@ export interface AtelierAgentStreamDone {
   changedFiles: string[];
 }
 
-/** Callbacks du streaming du mode « Exécution » (Phase 2, SF-28-11). */
+/**
+ * Sortie d'une commande relayée par le flux d'exécution (événement SSE `action_result`, F-30 SF-30-01).
+ * `toolUseId` apparie la sortie à la commande correspondante ; il peut être absent, auquel cas le
+ * rattachement se fait à la dernière commande sans sortie. `output` est déjà tronqué côté backend.
+ */
+export interface AtelierAgentStreamActionResult {
+  tool: string;
+  toolUseId: string | null;
+  output: string;
+  error: boolean;
+}
+
+/** Callbacks du streaming du mode « Exécution » (Phase 2, SF-28-11 ; `onActionResult` F-30 SF-30-02). */
 export interface AtelierAgentStreamHandlers {
   onAgent: (text: string) => void;
   onAction: (action: AtelierAgentStreamAction) => void;
+  onActionResult: (result: AtelierAgentStreamActionResult) => void;
   onStatus: (state: string) => void;
   onDone: (done: AtelierAgentStreamDone) => void;
   onError: (code: string) => void;
+}
+
+/**
+ * Bloc de transcription du rendu terminal (F-30 SF-30-02) : une commande et la sortie qu'elle a
+ * produite. `command` est absent pour un bloc « orphelin » — une sortie qu'aucune commande connue
+ * ne réclame : mieux vaut l'afficher sans en-tête que la perdre.
+ */
+export interface AtelierTerminalBlock {
+  tool: string;
+  command?: string;
+  toolUseId: string | null;
+  output: string;
+  /** Vrai dès qu'une sortie a été reçue : distingue « pas encore de sortie » de « sortie vide ». */
+  hasOutput: boolean;
+  error: boolean;
+  /** Repli de l'affichage des sorties longues (piloté par l'utilisateur). */
+  expanded: boolean;
 }

@@ -33,6 +33,14 @@ public interface AtelierAgentListener {
     }
 
     /**
+     * Variante portant l'identifiant de l'appel d'outil (F-30 SF-30-02) ; délègue par défaut à
+     * {@link #onAction(String, String)}, donc sans effet sur les implémentations existantes.
+     */
+    default void onAction(String tool, String toolUseId, String detail) {
+        onAction(tool, detail);
+    }
+
+    /**
      * Notifie une transition d'état de la session.
      *
      * @param state état atteint ({@code running} / {@code idle})

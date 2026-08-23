@@ -153,6 +153,38 @@
                       }
                     </ul>
                   }
+                  <!-- Transcription terminal conservée après la fin du run (F-30 SF-30-02) -->
+                  @if (message.terminal && message.terminal.length > 0) {
+                    <div class="terminal" aria-label="Sortie du terminal">
+                      @for (block of message.terminal; track $index) {
+                        <div class="terminal-block" [class.failed]="block.error">
+                          @if (block.command || block.tool) {
+                            <div class="terminal-command">
+                              <span class="terminal-prompt" aria-hidden="true">$</span>
+                              <code>{{ blockLabel(block) }}</code>
+                            </div>
+                          }
+                          @if (block.hasOutput && block.output.length > 0) {
+                            <pre class="terminal-output">{{ visibleOutput(block) }}</pre>
+                            @if (hiddenLineCount(block) > 0) {
+                              <button
+                                mat-button
+                                type="button"
+                                class="terminal-toggle"
+                                (click)="toggleBlock(block)"
+                              >
+                                @if (block.expanded) {
+                                  Replier
+                                } @else {
+                                  Afficher tout ({{ hiddenLineCount(block) }} lignes masquées)
+                                }
+                              </button>
+                            }
+                          }
+                        </div>
+                      }
+                    </div>
+                  }
                   <!-- Fichiers modifiés par une session d'exécution (mode « Exécution », SF-28-11) -->
                   @if (message.changedFiles && message.changedFiles.length > 0) {
                     <div class="changed-files" aria-label="Fichiers modifiés par l'exécution">
@@ -214,16 +246,40 @@
                 @if (exec.status) {
                   <span class="exec-status">{{ exec.status }}</span>
                 }
+                <!-- Seul repère de progression sur une tâche longue (F-30 SF-30-02) -->
+                <span class="exec-elapsed">{{ execElapsedLabel() }}</span>
               </div>
-              @if (exec.steps.length > 0) {
-                <ul class="exec-step-list" aria-label="Étapes d'exécution en cours">
-                  @for (step of exec.steps; track $index) {
-                    <li class="exec-step">
-                      <mat-icon class="action-icon">terminal</mat-icon>
-                      <code class="exec-step-cmd">{{ execStepLabel(step) }}</code>
-                    </li>
+              @if (exec.blocks.length > 0) {
+                <!-- Rendu terminal : commande puis sortie de la commande (F-30 SF-30-02) -->
+                <div class="terminal" aria-label="Sortie du terminal">
+                  @for (block of exec.blocks; track $index) {
+                    <div class="terminal-block" [class.failed]="block.error">
+                      @if (block.command || block.tool) {
+                        <div class="terminal-command">
+                          <span class="terminal-prompt" aria-hidden="true">$</span>
+                          <code>{{ blockLabel(block) }}</code>
+                        </div>
+                      }
+                      @if (block.hasOutput && block.output.length > 0) {
+                        <pre class="terminal-output">{{ visibleOutput(block) }}</pre>
+                        @if (hiddenLineCount(block) > 0) {
+                          <button
+                            mat-button
+                            type="button"
+                            class="terminal-toggle"
+                            (click)="toggleBlock(block)"
+                          >
+                            @if (block.expanded) {
+                              Replier
+                            } @else {
+                              Afficher tout ({{ hiddenLineCount(block) }} lignes masquées)
+                            }
+                          </button>
+                        }
+                      }
+                    </div>
                   }
-                </ul>
+                </div>
               }
               @if (exec.text.length > 0) {
                 <div class="message-content markdown-body" [innerHTML]="exec.text | markdown"></div>

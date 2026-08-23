@@ -163,6 +163,11 @@ public class AtelierSessionService {
                 }
 
                 @Override
+                public void onAction(String tool, String toolUseId, String detail) {
+                    sink.onAction(tool, toolUseId, detail);
+                }
+
+                @Override
                 public void onActionResult(String tool, String toolUseId, String output, boolean error) {
                     sink.onActionResult(tool, toolUseId, output, error);
                 }

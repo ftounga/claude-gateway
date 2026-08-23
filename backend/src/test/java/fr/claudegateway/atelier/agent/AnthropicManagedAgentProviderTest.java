@@ -211,6 +211,28 @@ class AnthropicManagedAgentProviderTest {
         server.verify();
     }
 
+    @Test
+    void awaitCompletionRelaysToolUseIdWithTheCommand() {
+        // F-30 SF-30-02 : sans l'identifiant sur la commande, le frontend ne peut apparier la sortie
+        // que par ordre d'arrivée. Absent de l'event, il vaut null (repli assumé côté affichage).
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"agent.tool_use\",\"id\":\"e0\",\"name\":\"bash\","
+                                + "\"tool_use_id\":\"tu_1\",\"input\":{\"command\":\"npm test\"}},"
+                                + "{\"type\":\"agent.tool_use\",\"id\":\"e1\",\"name\":\"bash\","
+                                + "\"input\":{\"command\":\"npm run build\"}},"
+                                + "{\"type\":\"session.status_idle\",\"id\":\"e2\",\"stop_reason\":\"end_turn\"}]}",
+                        MediaType.APPLICATION_JSON));
+
+        RecordingListener listener = new RecordingListener();
+        provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10, listener);
+
+        assertThat(listener.actions).containsExactly("bash:npm test", "bash:npm run build");
+        assertThat(listener.actionIds).containsExactly("tu_1", "null");
+        server.verify();
+    }
+
     /** Écouteur de test enregistrant les notifications reçues pour vérification. */
     // ---- F-30 SF-30-01 : relais de la sortie des commandes ----
 
@@ -303,6 +325,7 @@ class AnthropicManagedAgentProviderTest {
         private final List<String> actions = new java.util.ArrayList<>();
         private final List<String> states = new java.util.ArrayList<>();
         private final List<String> results = new java.util.ArrayList<>();
+        private final List<String> actionIds = new java.util.ArrayList<>();
 
         @Override
         public void onAgentText(String text) {
@@ -312,6 +335,12 @@ class AnthropicManagedAgentProviderTest {
         @Override
         public void onAction(String tool, String detail) {
             actions.add(tool + ":" + detail);
+        }
+
+        @Override
+        public void onAction(String tool, String toolUseId, String detail) {
+            actions.add(tool + ":" + detail);
+            actionIds.add(String.valueOf(toolUseId));
         }
 
         @Override

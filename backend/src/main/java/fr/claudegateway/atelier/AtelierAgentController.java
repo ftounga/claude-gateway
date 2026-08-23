@@ -105,7 +105,12 @@ public class AtelierAgentController {
 
                 @Override
                 public void onAction(String tool, String detail) {
-                    sendAction(emitter, tool, detail);
+                    sendAction(emitter, tool, null, detail);
+                }
+
+                @Override
+                public void onAction(String tool, String toolUseId, String detail) {
+                    sendAction(emitter, tool, toolUseId, detail);
                 }
 
                 @Override
@@ -155,9 +160,9 @@ public class AtelierAgentController {
     }
 
     /** Émet une action (usage d'outil) ; une déconnexion client interrompt le relais. */
-    private void sendAction(SseEmitter emitter, String tool, String detail) {
+    private void sendAction(SseEmitter emitter, String tool, String toolUseId, String detail) {
         try {
-            emitter.send(SseEmitter.event().name("action").data(new StreamAction(tool, detail)));
+            emitter.send(SseEmitter.event().name("action").data(new StreamAction(tool, toolUseId, detail)));
         } catch (IOException | IllegalStateException ex) {
             throw new StreamAbortedException();
         }
@@ -202,7 +207,7 @@ public class AtelierAgentController {
     record StreamAgent(String text) {
     }
 
-    record StreamAction(String tool, String detail) {
+    record StreamAction(String tool, String toolUseId, String detail) {
     }
 
     record StreamActionResult(String tool, String toolUseId, String output, boolean error) {

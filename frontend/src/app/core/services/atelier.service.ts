@@ -177,8 +177,8 @@ export class AtelierService {
    * Envoie un message en mode **Exécution** (Phase 2, SF-28-11) : consomme le flux SSE de
    * `POST /api/workspaces/{id}/agent/stream` via `fetch` + `ReadableStream`, sur le même modèle que
    * {@link streamChat}. L'agent Managed d'Anthropic exécute la tâche (bash, tests, build) dans un
-   * sandbox hébergé ; on relaie le commentaire (`onAgent`), chaque étape d'outil (`onAction`), les
-   * changements d'état (`onStatus`), puis `onDone` (réponse finale + fichiers modifiés). Toute erreur
+   * sandbox hébergé ; on relaie le commentaire (`onAgent`), chaque étape d'outil (`onAction`), la
+   * **sortie** de chaque commande (`onActionResult`, F-30), les changements d'état (`onStatus`), puis `onDone` (réponse finale + fichiers modifiés). Toute erreur
    * (HTTP ou `event:error`) appelle `onError`. Ne lève jamais : les échecs passent par `onError`.
    */
   async streamAgent(id: string, message: string, handlers: AtelierAgentStreamHandlers): Promise<void> {
@@ -236,7 +236,9 @@ export class AtelierService {
       state?: string;
       reply?: string;
       changedFiles?: string[];
-      error?: string;
+      error?: string | boolean;
+      toolUseId?: string | null;
+      output?: string;
     };
     try {
       payload = JSON.parse(data);
@@ -246,13 +248,25 @@ export class AtelierService {
     if (event === 'agent') {
       handlers.onAgent(payload.text ?? '');
     } else if (event === 'action') {
-      handlers.onAction({ tool: payload.tool ?? '', detail: payload.detail });
+      handlers.onAction({
+        tool: payload.tool ?? '',
+        detail: payload.detail,
+        toolUseId: payload.toolUseId ?? null,
+      });
+    } else if (event === 'action_result') {
+      // Sortie de la commande (F-30) : c'est elle qui fait le rendu terminal.
+      handlers.onActionResult({
+        tool: payload.tool ?? '',
+        toolUseId: payload.toolUseId ?? null,
+        output: payload.output ?? '',
+        error: payload.error === true,
+      });
     } else if (event === 'status') {
       handlers.onStatus(payload.state ?? '');
     } else if (event === 'done') {
       handlers.onDone({ reply: payload.reply ?? '', changedFiles: payload.changedFiles ?? [] });
     } else if (event === 'error') {
-      handlers.onError(payload.error ?? 'provider_error');
+      handlers.onError(typeof payload.error === 'string' ? payload.error : 'provider_error');
     }
   }
 
