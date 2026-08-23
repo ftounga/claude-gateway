@@ -66,6 +66,7 @@ describe('AtelierComponent', () => {
       'chat',
       'streamChat',
       'streamAgent',
+      'resetAgentSession',
       'getHistory',
     ]);
     apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
@@ -824,5 +825,72 @@ describe('AtelierComponent', () => {
     expect(component.agentMode()).toBe('edit');
     component.setAgentMode('exec');
     expect(component.agentMode()).toBe('exec');
+  });
+  // ---- F-30 SF-30-06 : réinitialiser la sandbox ----
+
+  it('réinitialise la sandbox après confirmation (F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    dialog.open.and.returnValue({ afterClosed: () => of(true) } as MatDialogRef<unknown, unknown>);
+    service.resetAgentSession.and.returnValue(of(void 0));
+
+    component.resetSandbox();
+
+    expect(service.resetAgentSession).toHaveBeenCalledWith('w1');
+    expect(snackBar.open.calls.mostRecent().args[0]).toBe('Sandbox réinitialisée.');
+  });
+
+  it('n\'appelle rien si le dialogue est fermé sans confirmer (F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    dialog.open.and.returnValue({ afterClosed: () => of(false) } as MatDialogRef<unknown, unknown>);
+
+    component.resetSandbox();
+
+    expect(service.resetAgentSession).not.toHaveBeenCalled();
+  });
+
+  it('affiche un message lisible si la réinitialisation échoue (F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    dialog.open.and.returnValue({ afterClosed: () => of(true) } as MatDialogRef<unknown, unknown>);
+    service.resetAgentSession.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 500 })),
+    );
+
+    component.resetSandbox();
+
+    expect(snackBar.open.calls.mostRecent().args[0]).toBe(
+      "La sandbox n'a pas pu être réinitialisée. Veuillez réessayer.",
+    );
+  });
+
+  it('traduit un 404 en « Projet introuvable. » (F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    dialog.open.and.returnValue({ afterClosed: () => of(true) } as MatDialogRef<unknown, unknown>);
+    service.resetAgentSession.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 404 })),
+    );
+
+    component.resetSandbox();
+
+    expect(snackBar.open.calls.mostRecent().args[0]).toBe('Projet introuvable.');
+  });
+
+  it('refuse la réinitialisation pendant un envoi en cours (F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    component.submitting.set(true);
+
+    component.resetSandbox();
+
+    expect(dialog.open).not.toHaveBeenCalled();
+    expect(service.resetAgentSession).not.toHaveBeenCalled();
   });
 });

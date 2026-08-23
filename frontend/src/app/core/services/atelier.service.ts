@@ -270,6 +270,14 @@ export class AtelierService {
     }
   }
 
+  /**
+   * Termine la session sandbox du workspace (F-30 SF-30-06) : le message suivant repartira d'un
+   * environnement neuf. Les fichiers du projet ne sont pas touchés.
+   */
+  resetAgentSession(id: string): Observable<void> {
+    return this.http.delete<void>(`/api/workspaces/${id}/agent/session`);
+  }
+
   /** Historique de conversation du workspace. */
   getHistory(id: string): Observable<AtelierMessage[]> {
     return this.http.get<AtelierMessage[]>(`/api/workspaces/${id}/chat`);

@@ -139,6 +139,14 @@ describe('AtelierService', () => {
 
     expect(received).toEqual(history);
   });
+  it('DELETE la session sandbox du workspace (F-30 SF-30-06)', () => {
+    service.resetAgentSession('w1').subscribe();
+
+    const req = httpMock.expectOne('/api/workspaces/w1/agent/session');
+    expect(req.request.method).toBe('DELETE');
+    req.flush(null);
+  });
+
   // ---- F-30 SF-30-02 : routage de l'événement SSE `action_result` ----
 
   /** Flux SSE factice : `fetch` renvoyant les événements fournis, sans réseau. */

@@ -19,6 +19,10 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MarkdownPipe } from '../shared/markdown.pipe';
 import { MessageSegmentsPipe } from '../shared/message-segments.pipe';
 import { httpErrorMessage, MAX_UPLOAD_BYTES, oversizeMessage } from '../shared/http-error.util';
+import {
+  ConfirmDialogComponent,
+  ConfirmDialogData,
+} from '../chat/confirm-dialog/confirm-dialog.component';
 import { CopyBlockComponent } from '../chat/copy-block/copy-block.component';
 import {
   LibraryPickerDialogComponent,
@@ -487,6 +491,42 @@ export class AtelierComponent implements OnInit, OnDestroy {
       default:
         return "Le message n'a pas pu être envoyé. Veuillez réessayer.";
     }
+  }
+
+  /**
+   * Réinitialise la sandbox du workspace (F-30 SF-30-06). L'action ne détruit aucun fichier du
+   * projet, mais elle jette un environnement qui a pu coûter plusieurs minutes d'installation : la
+   * confirmation dit explicitement ce qui est perdu et ce qui est conservé.
+   */
+  resetSandbox(): void {
+    const id = this.activeWorkspaceId();
+    if (!id || this.submitting()) {
+      return;
+    }
+    const data: ConfirmDialogData = {
+      title: 'Réinitialiser la sandbox',
+      message:
+        "L'environnement d'exécution (dépendances installées, état des processus) sera perdu. "
+        + 'Les fichiers de votre projet sont conservés. Le prochain message repartira d\'un '
+        + 'environnement neuf.',
+      confirmLabel: 'Réinitialiser',
+    };
+    this.dialog
+      .open(ConfirmDialogComponent, { data, width: '420px' })
+      .afterClosed()
+      .subscribe((confirmed) => {
+        if (confirmed) {
+          this.atelier.resetAgentSession(id).subscribe({
+            next: () => this.snackBar.open('Sandbox réinitialisée.', 'Fermer', { duration: 4000 }),
+            error: (err: unknown) =>
+              this.notifyError(
+                err instanceof HttpErrorResponse && err.status === 404
+                  ? 'Projet introuvable.'
+                  : "La sandbox n'a pas pu être réinitialisée. Veuillez réessayer.",
+              ),
+          });
+        }
+      });
   }
 
   /** Bascule le mode de l'agent (« Assistant » ⇄ « Terminal »), sauf pendant un envoi en cours. */
