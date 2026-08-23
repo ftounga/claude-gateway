@@ -8,6 +8,8 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -23,7 +25,9 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceNotFoundException;
+import fr.claudegateway.atelier.WorkspaceRepository;
 import fr.claudegateway.atelier.WorkspaceService;
 import fr.claudegateway.atelier.agent.ManagedAgentProvider.SessionUsage;
 import fr.claudegateway.quota.QuotaExceededException;
@@ -33,7 +37,9 @@ import fr.claudegateway.quota.SandboxLimitExceededException;
 /**
  * Vérifie l'orchestration de {@link AtelierSessionService} (F-28 / Phase 2, ADR-013) avec un
  * {@link ManagedAgentProvider} mocké (aucune session live) : ordre du pont fichiers, isolation
- * {@code user_id}, refus flag off, et terminaison systématique de la session ({@code finally}).
+ * {@code user_id}, refus flag off, et — depuis F-30 SF-30-04 (ADR-014) — <b>session persistante</b>
+ * par workspace : réutilisation sans remontage, reprise unique sur session injouable, resync
+ * incrémental et décompte en <b>delta</b>.
  */
 @ExtendWith(MockitoExtension.class)
 class AtelierSessionServiceTest {
@@ -49,6 +55,8 @@ class AtelierSessionServiceTest {
     private AtelierAgentBootstrapService bootstrapService;
     @Mock
     private QuotaService quotaService;
+    @Mock
+    private WorkspaceRepository workspaceRepository;
 
     private AtelierAgentProperties enabled() {
         return new AtelierAgentProperties(true, null, null, null, null, null, null, null, null, null);
@@ -64,11 +72,23 @@ class AtelierSessionServiceTest {
     }
 
     private AtelierSessionService service(AtelierAgentProperties props) {
-        return new AtelierSessionService(provider, workspaceService, bootstrapService, props, quotaService);
+        return new AtelierSessionService(provider, workspaceService, bootstrapService, props, quotaService,
+                workspaceRepository);
+    }
+
+    /** Workspace possédé, portant (ou non) une session sandbox déjà ouverte (F-30 SF-30-04). */
+    private Workspace ws(String sessionId) {
+        Workspace workspace = new Workspace();
+        workspace.setId(WORKSPACE);
+        workspace.setUserId(USER);
+        workspace.setName("projet");
+        workspace.setAgentSessionId(sessionId);
+        return workspace;
     }
 
     @Test
     void runTaskMountsFilesRunsSessionAndSyncsOutputsInOrder() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("src/a.txt"));
         when(workspaceService.readFile(USER, WORKSPACE, "src/a.txt")).thenReturn("class A {}");
@@ -100,7 +120,8 @@ class AtelierSessionServiceTest {
         verify(workspaceService).writeFile(USER, WORKSPACE, "new.txt", "nouveau");
         verify(workspaceService).writeFile(USER, WORKSPACE, "plain.txt", "simple");
 
-        // Ordre : isolation → upload → create → send → await → outputs → download → write → terminate.
+        // Ordre : isolation → upload → create → send → await → outputs → download → write.
+        // Plus de terminaison en fin de run (F-30 SF-30-04) : la session survit, `idle` non facturée.
         InOrder order = inOrder(workspaceService, provider);
         order.verify(workspaceService).requireOwned(USER, WORKSPACE);
         order.verify(workspaceService).tree(USER, WORKSPACE);
@@ -110,11 +131,12 @@ class AtelierSessionServiceTest {
         order.verify(provider).awaitCompletion(eq("sess_1"), any(), anyInt(), any());
         order.verify(provider).listOutputs("sess_1");
         order.verify(provider).downloadFile("out_1");
-        order.verify(provider).terminateSession("sess_1");
+        verify(provider, never()).terminateSession(any());
     }
 
     @Test
     void runTaskStreamingNotifiesListenerThenBridgesFilesAndResultLikeRunTask() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("src/a.txt"));
         when(workspaceService.readFile(USER, WORKSPACE, "src/a.txt")).thenReturn("class A {}");
@@ -172,7 +194,8 @@ class AtelierSessionServiceTest {
     }
 
     @Test
-    void runTaskStreamingTerminatesSessionWhenProviderFailsDuringRun() {
+    void runTaskStreamingKeepsSessionAliveWhenProviderFailsDuringRun() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("a.txt"));
         when(workspaceService.readFile(USER, WORKSPACE, "a.txt")).thenReturn("x");
@@ -186,7 +209,9 @@ class AtelierSessionServiceTest {
                 .runTaskStreaming(USER, WORKSPACE, "go", AtelierAgentListener.NOOP))
                 .isInstanceOf(AgentProviderException.class);
 
-        verify(provider).terminateSession("sess_1");
+        // F-30 SF-30-04 : la session n'est plus détruite sur échec — `idle` n'est pas facturée et
+        // elle reste réutilisable au message suivant. Sa fin de vie est explicite (resetSession).
+        verify(provider, never()).terminateSession(any());
     }
 
     /** Écouteur applicatif de test enregistrant les notifications reçues. */
@@ -235,7 +260,8 @@ class AtelierSessionServiceTest {
     }
 
     @Test
-    void runTaskTerminatesSessionWhenProviderFailsDuringRun() {
+    void runTaskKeepsSessionAliveWhenProviderFailsDuringRun() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("a.txt"));
         when(workspaceService.readFile(USER, WORKSPACE, "a.txt")).thenReturn("x");
@@ -248,11 +274,12 @@ class AtelierSessionServiceTest {
         assertThatThrownBy(() -> service(enabled()).runTask(USER, WORKSPACE, "go"))
                 .isInstanceOf(AgentProviderException.class);
 
-        verify(provider).terminateSession("sess_1");
+        verify(provider, never()).terminateSession(any());
     }
 
     @Test
-    void runTaskPropagatesTimeoutAndStillTerminatesSession() {
+    void runTaskPropagatesTimeoutAndKeepsSessionAlive() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("a.txt"));
         when(workspaceService.readFile(USER, WORKSPACE, "a.txt")).thenReturn("x");
@@ -265,7 +292,7 @@ class AtelierSessionServiceTest {
         assertThatThrownBy(() -> service(enabled()).runTask(USER, WORKSPACE, "go"))
                 .isInstanceOf(AgentSessionTimeoutException.class);
 
-        verify(provider).terminateSession("sess_1");
+        verify(provider, never()).terminateSession(any());
     }
 
     @Test
@@ -342,11 +369,12 @@ class AtelierSessionServiceTest {
                 .runTaskStreaming(USER, WORKSPACE, "go", AtelierAgentListener.NOOP);
 
         assertThat(result.reply()).isEqualTo("Terminé.");
-        verify(provider).terminateSession("sess_1");
+        verify(provider, never()).terminateSession(any());
     }
 
     /** Stubs communs d'un run nominal sans sortie (le pont fichiers n'est pas l'objet de ces tests). */
     private void stubNominalRun() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("a.txt"));
         when(workspaceService.readFile(USER, WORKSPACE, "a.txt")).thenReturn("x");
@@ -365,5 +393,204 @@ class AtelierSessionServiceTest {
         assertThat(AtelierSessionService.uploadFilename("a/b/c.txt")).isEqualTo("a_b_c.txt");
         assertThat(AtelierSessionService.uploadFilename("plain.txt")).isEqualTo("plain.txt");
         assertThat(AtelierSessionService.uploadFilename("na me!.md")).isEqualTo("na_me_.md");
+    }
+    // ---------------------------------------------------------------------------------------------
+    // Session persistante par workspace (F-30 SF-30-04, ADR-014).
+    // ---------------------------------------------------------------------------------------------
+
+    @Test
+    void secondRunReusesTheSessionWithoutRemountingFiles() {
+        // Remonter les fichiers écraserait ce que l'agent a fait au tour précédent : la sandbox porte
+        // désormais l'état de vérité.
+        Workspace workspace = ws(null);
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("a.txt"));
+        when(workspaceService.readFile(USER, WORKSPACE, "a.txt")).thenReturn("x");
+        when(provider.uploadFile(eq("a.txt"), any())).thenReturn("file_in");
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList()))
+                .thenReturn(new ManagedSession("sess_1"));
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+                .thenReturn(new SessionRun("Terminé.", "end_turn"));
+        when(provider.listOutputs("sess_1")).thenReturn(List.of());
+
+        AtelierSessionService service = service(enabled());
+        service.runTask(USER, WORKSPACE, "npm install");
+        service.runTask(USER, WORKSPACE, "npm test");
+
+        // Une seule session ouverte, et aucun remontage au second tour.
+        verify(provider, times(1)).createSession(eq("agent_1"), eq("env_1"), anyList());
+        verify(provider, times(1)).uploadFile(eq("a.txt"), any());
+        verify(provider).sendUserMessage("sess_1", "npm install");
+        verify(provider).sendUserMessage("sess_1", "npm test");
+        assertThat(workspace.getAgentSessionId()).isEqualTo("sess_1");
+    }
+
+    @Test
+    void unusableStoredSessionIsReplacedOnceAndTheMessageIsReplayed() {
+        Workspace workspace = ws("sess_morte");
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("a.txt"));
+        when(workspaceService.readFile(USER, WORKSPACE, "a.txt")).thenReturn("x");
+        when(provider.uploadFile(eq("a.txt"), any())).thenReturn("file_in");
+        // La session persistée n'est plus jouable (expirée / inconnue côté fournisseur).
+        doThrow(new AgentProviderException("session inconnue"))
+                .when(provider).sendUserMessage(eq("sess_morte"), any());
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList()))
+                .thenReturn(new ManagedSession("sess_neuve"));
+        when(provider.awaitCompletion(eq("sess_neuve"), any(), anyInt(), any()))
+                .thenReturn(new SessionRun("Terminé.", "end_turn"));
+        when(provider.listOutputs("sess_neuve")).thenReturn(List.of());
+
+        AtelierSessionResult result = service(enabled()).runTask(USER, WORKSPACE, "go");
+
+        assertThat(result.reply()).isEqualTo("Terminé.");
+        verify(provider).sendUserMessage("sess_neuve", "go");
+        verify(provider, times(1)).createSession(eq("agent_1"), eq("env_1"), anyList());
+        assertThat(workspace.getAgentSessionId()).isEqualTo("sess_neuve");
+    }
+
+    @Test
+    void aFailingRetryPropagatesInsteadOfLoopingForever() {
+        // Boucler au-delà d'une reprise masquerait une panne réelle du fournisseur.
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_morte"));
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList()))
+                .thenReturn(new ManagedSession("sess_neuve"));
+        doThrow(new AgentProviderException("boom")).when(provider).sendUserMessage(any(), any());
+
+        assertThatThrownBy(() -> service(enabled()).runTask(USER, WORKSPACE, "go"))
+                .isInstanceOf(AgentProviderException.class);
+
+        verify(provider, times(1)).createSession(eq("agent_1"), eq("env_1"), anyList());
+    }
+
+    @Test
+    void usageIsRecordedAsDeltaNotAsCumulativeTotal() {
+        // getSessionUsage renvoie un CUMUL : recréditer ce cumul à chaque tour ferait payer
+        // plusieurs fois la même consommation.
+        Workspace workspace = ws(null);
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList()))
+                .thenReturn(new ManagedSession("sess_1"));
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+                .thenReturn(new SessionRun("Terminé.", "end_turn"));
+        when(provider.listOutputs("sess_1")).thenReturn(List.of());
+        when(provider.getSessionUsage("sess_1"))
+                .thenReturn(new SessionUsage(1_000L, 200L, 8L))
+                .thenReturn(new SessionUsage(1_500L, 260L, 20L));
+
+        AtelierSessionService service = service(enabled());
+        service.runTask(USER, WORKSPACE, "un");
+        service.runTask(USER, WORKSPACE, "deux");
+
+        verify(quotaService).recordUsage(USER, 1_000, 200);
+        verify(quotaService).recordSandboxSeconds(USER, 8L);
+        // Second tour : seul l'écart est décompté, pas le cumul.
+        verify(quotaService).recordUsage(USER, 500, 60);
+        verify(quotaService).recordSandboxSeconds(USER, 12L);
+    }
+
+    @Test
+    void usageNeverCreditsNegativeValuesWhenTheCounterGoesBackwards() {
+        Workspace workspace = ws(null);
+        workspace.setAgentInputTokens(5_000L);
+        workspace.setAgentOutputTokens(900L);
+        workspace.setAgentActiveSeconds(60L);
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList()))
+                .thenReturn(new ManagedSession("sess_1"));
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+                .thenReturn(new SessionRun("Terminé.", "end_turn"));
+        when(provider.listOutputs("sess_1")).thenReturn(List.of());
+        // Session neuve : les compteurs repartent à zéro, donc en deçà du dernier relevé.
+        when(provider.getSessionUsage("sess_1")).thenReturn(new SessionUsage(10L, 2L, 1L));
+
+        service(enabled()).runTask(USER, WORKSPACE, "go");
+
+        // Ouvrir une session remet les compteurs à zéro : le delta est le relevé lui-même, jamais négatif.
+        verify(quotaService).recordUsage(USER, 10, 2);
+        verify(quotaService).recordSandboxSeconds(USER, 1L);
+    }
+
+    @Test
+    void alreadySyncedOutputsAreNotRewrittenOnTheNextTurn() {
+        // Une session persistante réexpose toutes ses sorties à chaque tour : sans registre, chaque
+        // tour réécrirait tout le workspace et signalerait des fichiers intacts comme modifiés.
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("a.txt"));
+        when(workspaceService.readFile(USER, WORKSPACE, "a.txt")).thenReturn("x");
+        when(provider.uploadFile(eq("a.txt"), any())).thenReturn("file_in");
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList()))
+                .thenReturn(new ManagedSession("sess_1"));
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+                .thenReturn(new SessionRun("Terminé.", "end_turn"));
+        when(provider.listOutputs("sess_1"))
+                .thenReturn(List.of(new OutputFile("out_1", "a.txt")))
+                .thenReturn(List.of(new OutputFile("out_1", "a.txt"), new OutputFile("out_2", "b.txt")));
+        when(provider.downloadFile("out_1")).thenReturn("v1".getBytes());
+        when(provider.downloadFile("out_2")).thenReturn("v2".getBytes());
+
+        AtelierSessionService service = service(enabled());
+        AtelierSessionResult first = service.runTask(USER, WORKSPACE, "un");
+        AtelierSessionResult second = service.runTask(USER, WORKSPACE, "deux");
+
+        assertThat(first.changedFiles()).containsExactly("a.txt");
+        // Seule la NOUVELLE sortie est rapatriée au second tour.
+        assertThat(second.changedFiles()).containsExactly("b.txt");
+        verify(provider, times(1)).downloadFile("out_1");
+    }
+
+    @Test
+    void resetSessionTerminatesAndClearsTheStoredIdentifier() {
+        Workspace workspace = ws("sess_1");
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
+
+        service(enabled()).resetSession(USER, WORKSPACE);
+
+        verify(provider).terminateSession("sess_1");
+        assertThat(workspace.getAgentSessionId()).isNull();
+        verify(workspaceRepository).save(workspace);
+    }
+
+    @Test
+    void resetSessionClearsTheIdentifierEvenWhenTerminationFails() {
+        // Sinon le workspace resterait collé à une session injouable.
+        Workspace workspace = ws("sess_1");
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
+        doThrow(new AgentProviderException("indisponible")).when(provider).terminateSession("sess_1");
+
+        service(enabled()).resetSession(USER, WORKSPACE);
+
+        assertThat(workspace.getAgentSessionId()).isNull();
+        verify(workspaceRepository).save(workspace);
+    }
+
+    @Test
+    void resetSessionChecksOwnershipFirstAndNeverCallsTheProviderWhenNotOwned() {
+        when(workspaceService.requireOwned(USER, WORKSPACE))
+                .thenThrow(new WorkspaceNotFoundException("Workspace introuvable."));
+
+        assertThatThrownBy(() -> service(enabled()).resetSession(USER, WORKSPACE))
+                .isInstanceOf(WorkspaceNotFoundException.class);
+
+        verifyNoInteractions(provider);
+    }
+
+    @Test
+    void resetSessionIsANoOpWhenNoSessionIsStored() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));
+
+        service(enabled()).resetSession(USER, WORKSPACE);
+
+        verifyNoInteractions(provider);
+        verifyNoInteractions(workspaceRepository);
     }
 }

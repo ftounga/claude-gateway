@@ -1,5 +1,6 @@
 package fr.claudegateway.atelier;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
@@ -203,6 +204,38 @@ class AtelierApiIntegrationTest {
                 .andExpect(status().isNoContent());
         mockMvc.perform(get("/api/workspaces/" + id).contextPath("/api").header("Authorization", bearer(aliceToken)))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void resetSessionReturns204AndClearsTheStoredSession() throws Exception {
+        // F-30 SF-30-04 : fin de vie explicite de la sandbox (contrepartie de la session persistante).
+        String id = createWorkspace(aliceToken, Map.of("a.txt", "x"));
+        Workspace workspace = workspaceRepository.findById(java.util.UUID.fromString(id)).orElseThrow();
+        workspace.setAgentSessionId("sess_1");
+        workspaceRepository.save(workspace);
+
+        mockMvc.perform(delete("/api/workspaces/" + id + "/agent/session").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isNoContent());
+
+        assertThat(workspaceRepository.findById(java.util.UUID.fromString(id)).orElseThrow()
+                .getAgentSessionId()).isNull();
+    }
+
+    @Test
+    void resetSessionOnAnotherUsersWorkspaceReturns404AndLeavesItUntouched() throws Exception {
+        // Isolation `user_id` : la session appartient au workspace, lui-même filtré par propriétaire.
+        String id = createWorkspace(aliceToken, Map.of("a.txt", "x"));
+        Workspace workspace = workspaceRepository.findById(java.util.UUID.fromString(id)).orElseThrow();
+        workspace.setAgentSessionId("sess_1");
+        workspaceRepository.save(workspace);
+
+        mockMvc.perform(delete("/api/workspaces/" + id + "/agent/session").contextPath("/api")
+                        .header("Authorization", bearer(bobToken)))
+                .andExpect(status().isNotFound());
+
+        assertThat(workspaceRepository.findById(java.util.UUID.fromString(id)).orElseThrow()
+                .getAgentSessionId()).isEqualTo("sess_1");
     }
 
     @Test

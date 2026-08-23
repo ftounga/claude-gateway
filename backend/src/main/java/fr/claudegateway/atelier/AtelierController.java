@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import fr.claudegateway.atelier.WorkspaceService.CreatedWorkspace;
+import fr.claudegateway.atelier.agent.AtelierSessionService;
 import fr.claudegateway.atelier.dto.AtelierImportLibraryRequest;
 import fr.claudegateway.atelier.dto.FileContentResponse;
 import fr.claudegateway.atelier.dto.RenameFileRequest;
@@ -36,17 +39,22 @@ import jakarta.validation.Valid;
 @RequestMapping("/workspaces")
 public class AtelierController {
 
+    private static final Logger log = LoggerFactory.getLogger(AtelierController.class);
+
     private final WorkspaceService workspaceService;
     private final CurrentUser currentUser;
     private final AtelierAccessService atelierAccess;
     private final WorkspaceLibraryImportService libraryImportService;
+    private final AtelierSessionService sessionService;
 
     public AtelierController(WorkspaceService workspaceService, CurrentUser currentUser,
-            AtelierAccessService atelierAccess, WorkspaceLibraryImportService libraryImportService) {
+            AtelierAccessService atelierAccess, WorkspaceLibraryImportService libraryImportService,
+            AtelierSessionService sessionService) {
         this.workspaceService = workspaceService;
         this.currentUser = currentUser;
         this.atelierAccess = atelierAccess;
         this.libraryImportService = libraryImportService;
+        this.sessionService = sessionService;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -108,10 +116,24 @@ public class AtelierController {
         return WorkspaceDetailResponse.from(workspaceService.requireOwned(userId, id), tree);
     }
 
+    /**
+     * Supprime le workspace (204). Sa session sandbox est terminée d'abord (F-30 SF-30-04) : sans
+     * cela, supprimer un projet laisserait une sandbox orpheline détenant son état. La terminaison
+     * est <b>best-effort</b> — un fournisseur indisponible ne doit jamais empêcher une suppression
+     * demandée par l'utilisateur.
+     */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         atelierAccess.requireAccess();
-        workspaceService.delete(currentUser.requireId(), id);
+        UUID userId = currentUser.requireId();
+        try {
+            sessionService.resetSession(userId, id);
+        } catch (WorkspaceNotFoundException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            log.debug("Terminaison de session ignorée avant suppression du workspace (best-effort).");
+        }
+        workspaceService.delete(userId, id);
         return ResponseEntity.noContent().build();
     }
 
