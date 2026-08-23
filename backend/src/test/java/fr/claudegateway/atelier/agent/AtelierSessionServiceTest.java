@@ -51,11 +51,11 @@ class AtelierSessionServiceTest {
     private QuotaService quotaService;
 
     private AtelierAgentProperties enabled() {
-        return new AtelierAgentProperties(true, null, null, null, null, null, null, null, null);
+        return new AtelierAgentProperties(true, null, null, null, null, null, null, null, null, null);
     }
 
     private AtelierAgentProperties disabled() {
-        return new AtelierAgentProperties(false, null, null, null, null, null, null, null, null);
+        return new AtelierAgentProperties(false, null, null, null, null, null, null, null, null, null);
     }
 
     private AtelierAgentConfig config() {

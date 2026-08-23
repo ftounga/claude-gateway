@@ -109,6 +109,11 @@ public class AtelierAgentController {
                 }
 
                 @Override
+                public void onActionResult(String tool, String toolUseId, String output, boolean error) {
+                    sendActionResult(emitter, tool, toolUseId, output, error);
+                }
+
+                @Override
                 public void onStatus(String state) {
                     sendStatus(emitter, state);
                 }
@@ -158,6 +163,19 @@ public class AtelierAgentController {
         }
     }
 
+    /**
+     * Émet la sortie d'une commande (F-30 SF-30-01) ; une déconnexion client interrompt le relais.
+     * Événement <b>additif</b> : un client qui l'ignore conserve le comportement antérieur.
+     */
+    private void sendActionResult(SseEmitter emitter, String tool, String toolUseId, String output, boolean error) {
+        try {
+            emitter.send(SseEmitter.event().name("action_result")
+                    .data(new StreamActionResult(tool, toolUseId, output, error)));
+        } catch (IOException | IllegalStateException ex) {
+            throw new StreamAbortedException();
+        }
+    }
+
     /** Émet une transition d'état ; une déconnexion client interrompt le relais. */
     private void sendStatus(SseEmitter emitter, String state) {
         try {
@@ -185,6 +203,9 @@ public class AtelierAgentController {
     }
 
     record StreamAction(String tool, String detail) {
+    }
+
+    record StreamActionResult(String tool, String toolUseId, String output, boolean error) {
     }
 
     record StreamStatus(String state) {

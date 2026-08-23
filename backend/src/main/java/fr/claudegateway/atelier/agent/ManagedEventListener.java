@@ -34,6 +34,22 @@ public interface ManagedEventListener {
     }
 
     /**
+     * Notifie la <b>sortie</b> d'un outil (event {@code agent.tool_result} / {@code agent.mcp_tool_result}),
+     * c'est-à-dire ce que la commande a produit — indispensable au rendu terminal (F-30 / ADR-014).
+     *
+     * <p>La forme exacte de ces events n'est pas documentée : l'extraction est défensive et une forme
+     * inattendue produit une sortie vide plutôt qu'une exception (le run ne doit jamais échouer à cause
+     * de l'affichage). La sortie est déjà tronquée par le provider.</p>
+     *
+     * @param tool      nom de l'outil (ex. {@code bash})
+     * @param toolUseId identifiant de l'appel d'outil correspondant, ou {@code null} si absent
+     * @param output    sortie textuelle (jamais {@code null} ; éventuellement vide ou tronquée)
+     * @param error     vrai si l'outil a échoué (code de retour non nul / {@code is_error})
+     */
+    default void onActionResult(String tool, String toolUseId, String output, boolean error) {
+    }
+
+    /**
      * Notifie une transition d'état de la session (event {@code session.status_running/idle}).
      *
      * @param state état atteint ({@code running} ou {@code idle})

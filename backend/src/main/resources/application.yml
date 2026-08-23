@@ -75,6 +75,9 @@ app:
       session-timeout: ${APP_ATELIER_AGENT_SESSION_TIMEOUT:PT10M}
       max-polls: ${APP_ATELIER_AGENT_MAX_POLLS:600}
       poll-delay: ${APP_ATELIER_AGENT_POLL_DELAY:PT1S}
+      # Borne de la sortie d'outil relayee au frontend (F-30 SF-30-01) : au-dela, troncature avec
+      # mention du volume omis. Un `npm install` saturerait sinon le flux SSE et le navigateur.
+      max-tool-output-chars: ${APP_ATELIER_AGENT_MAX_TOOL_OUTPUT:10000}
   ocr:
     # Pipeline OCR (F-05). Fournisseur `stub` par défaut (dev/tests, sans AWS) ; `textract` en cluster.
     # Liste blanche MIME, plafond de taille et routage sync/async : décisions réversibles (config).

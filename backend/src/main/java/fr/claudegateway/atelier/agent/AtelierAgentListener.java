@@ -39,4 +39,16 @@ public interface AtelierAgentListener {
      */
     default void onStatus(String state) {
     }
+
+    /**
+     * Notifie la sortie d'un outil (miroir applicatif de
+     * {@link ManagedEventListener#onActionResult(String, String, String, boolean)}, F-30 SF-30-01).
+     *
+     * @param tool      nom de l'outil
+     * @param toolUseId identifiant de l'appel correspondant, ou {@code null}
+     * @param output    sortie textuelle (jamais {@code null}, éventuellement tronquée)
+     * @param error     vrai si l'outil a échoué
+     */
+    default void onActionResult(String tool, String toolUseId, String output, boolean error) {
+    }
 }
