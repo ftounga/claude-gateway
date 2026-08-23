@@ -483,10 +483,7 @@ describe('AtelierComponent', () => {
     const live = component.execStreaming();
     expect(live).not.toBeNull();
     expect(live!.status).toBe('running');
-    expect(live!.steps.map((s) => component.execStepLabel(s))).toEqual([
-      'bash: npm install',
-      'bash: npm test',
-    ]);
+    expect(live!.blocks.map((b) => component.blockLabel(b))).toEqual(['npm install', 'npm test']);
     expect(live!.text).toBe('Installation puis tests.');
     expect(component.submitting()).toBeTrue();
   });
@@ -637,5 +634,131 @@ describe('AtelierComponent', () => {
     component.openWorkspaceLibraryPicker();
 
     expect(service.importLibrary).not.toHaveBeenCalled();
+  });
+  // ---- F-30 SF-30-02 : rendu terminal (commande + sortie) ----
+
+  it('mode Exécution : apparie la sortie à sa commande par toolUseId (F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onAction({ tool: 'bash', detail: 'npm test', toolUseId: 'tu_1' });
+      handlers.onAction({ tool: 'bash', detail: 'npm run build', toolUseId: 'tu_2' });
+      // Sorties dans le désordre : seul l'identifiant garantit le bon rattachement.
+      handlers.onActionResult({ tool: 'bash', toolUseId: 'tu_2', output: 'build ok', error: false });
+      handlers.onActionResult({ tool: 'bash', toolUseId: 'tu_1', output: '12 passing', error: false });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Lance tout');
+    component.send();
+
+    const blocks = component.execStreaming()!.blocks;
+    expect(blocks.map((b) => component.blockLabel(b))).toEqual(['npm test', 'npm run build']);
+    expect(blocks[0].output).toBe('12 passing');
+    expect(blocks[1].output).toBe('build ok');
+  });
+
+  it('mode Exécution : sans toolUseId, la sortie va à la dernière commande sans sortie (F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onAction({ tool: 'bash', detail: 'npm test', toolUseId: null });
+      handlers.onActionResult({ tool: 'bash', toolUseId: null, output: '12 passing', error: false });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Teste');
+    component.send();
+
+    const blocks = component.execStreaming()!.blocks;
+    expect(blocks.length).toBe(1);
+    expect(blocks[0].output).toBe('12 passing');
+    expect(blocks[0].hasOutput).toBeTrue();
+  });
+
+  it('mode Exécution : une sortie sans commande connue crée un bloc orphelin (jamais perdue, F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onActionResult({ tool: 'bash', toolUseId: 'inconnu', output: 'orpheline', error: false });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Teste');
+    component.send();
+
+    const blocks = component.execStreaming()!.blocks;
+    expect(blocks.length).toBe(1);
+    expect(blocks[0].command).toBeUndefined();
+    expect(blocks[0].output).toBe('orpheline');
+  });
+
+  it('mode Exécution : une sortie en échec marque le bloc en erreur (F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onAction({ tool: 'bash', detail: 'npm run build', toolUseId: 'tu_1' });
+      handlers.onActionResult({
+        tool: 'bash',
+        toolUseId: 'tu_1',
+        output: 'command not found',
+        error: true,
+      });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Build');
+    component.send();
+
+    expect(component.execStreaming()!.blocks[0].error).toBeTrue();
+  });
+
+  it('mode Exécution : une sortie longue est repliée puis dépliable (F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    const long = Array.from({ length: 30 }, (_, i) => `ligne ${i + 1}`).join('\n');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onAction({ tool: 'bash', detail: 'npm install', toolUseId: 'tu_1' });
+      handlers.onActionResult({ tool: 'bash', toolUseId: 'tu_1', output: long, error: false });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Installe');
+    component.send();
+
+    const block = component.execStreaming()!.blocks[0];
+    expect(component.hiddenLineCount(block)).toBe(10);
+    expect(component.visibleOutput(block).split('\n').length).toBe(20);
+
+    component.toggleBlock(block);
+
+    expect(component.visibleOutput(block)).toBe(long);
+  });
+
+  it('mode Exécution : la transcription reste dans le fil après la fin du run (F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onAction({ tool: 'bash', detail: 'npm test', toolUseId: 'tu_1' });
+      handlers.onActionResult({ tool: 'bash', toolUseId: 'tu_1', output: '12 passing', error: false });
+      handlers.onDone({ reply: 'Tests verts.', changedFiles: [] });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Teste');
+    component.send();
+
+    expect(component.execStreaming()).toBeNull();
+    const last = component.messages()[component.messages().length - 1];
+    expect(last.content).toBe('Tests verts.');
+    expect(last.terminal!.length).toBe(1);
+    expect(last.terminal![0].output).toBe('12 passing');
+    expect(component.blockLabel(last.terminal![0])).toBe('npm test');
   });
 });

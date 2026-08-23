@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, NgZone, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, NgZone, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -30,6 +30,8 @@ import { ProviderMode } from '../core/models/api-key.models';
 import {
   AtelierAction,
   AtelierAgentStreamAction,
+  AtelierAgentStreamActionResult,
+  AtelierTerminalBlock,
   AtelierRole,
   AtelierStreamAction,
   WorkspaceSummary,
@@ -62,6 +64,11 @@ export interface AtelierThreadItem {
   actions: AtelierAction[];
   /** Chemins des fichiers modifiés par une session d'exécution (mode « Exécution », SF-28-11). */
   changedFiles?: string[];
+  /**
+   * Transcription terminal du tour d'exécution (F-30 SF-30-02) : commandes et sorties, conservées
+   * dans le fil après la fin du run — sans quoi tout ce qu'on a vu défiler disparaît.
+   */
+  terminal?: AtelierTerminalBlock[];
 }
 
 /** Tour assistant « en cours » pendant le streaming : étapes relayées + commentaire partiel. */
@@ -71,14 +78,17 @@ export interface AtelierStreamingItem {
 }
 
 /**
- * Tour assistant « en cours » du mode « Exécution » (SF-28-11) : état de la session, étapes d'outils
- * (bash, tests…) relayées au fil de l'eau, et commentaire partiel de l'agent.
+ * Tour assistant « en cours » du mode « Exécution » (SF-28-11) : état de la session, transcription
+ * terminal (commande + sortie, F-30 SF-30-02) relayée au fil de l'eau, et commentaire partiel.
  */
 export interface AtelierExecStreamingItem {
   status: string;
-  steps: AtelierAgentStreamAction[];
+  blocks: AtelierTerminalBlock[];
   text: string;
 }
+
+/** Seuil de repli d'une sortie longue (F-30 SF-30-02) : au-delà, on masque et on laisse déplier. */
+export const TERMINAL_COLLAPSE_LINES = 20;
 
 /**
  * Écran « Atelier » (F-28, Claude Code Lite). L'utilisateur téléverse un projet `.zip` et discute
@@ -111,7 +121,7 @@ export interface AtelierExecStreamingItem {
   templateUrl: './atelier.component.html',
   styleUrl: './atelier.component.scss',
 })
-export class AtelierComponent implements OnInit {
+export class AtelierComponent implements OnInit, OnDestroy {
   private readonly atelier = inject(AtelierService);
   private readonly apiKeyService = inject(ApiKeyService);
   private readonly router = inject(Router);
@@ -148,8 +158,14 @@ export class AtelierComponent implements OnInit {
    */
   readonly agentMode = signal<AtelierAgentMode>('edit');
 
-  /** Tour assistant « en cours » du mode « Exécution » (état + étapes d'outils + texte partiel). */
+  /** Tour assistant « en cours » du mode « Exécution » (état + transcription terminal + texte). */
   readonly execStreaming = signal<AtelierExecStreamingItem | null>(null);
+
+  /** Durée écoulée du run d'exécution en secondes (F-30 SF-30-02) : seul repère de progression. */
+  readonly execElapsedSeconds = signal(0);
+
+  /** Chronomètre du run ; arrêté à `onDone`/`onError` pour ne pas laisser tourner un intervalle. */
+  private execTimer: ReturnType<typeof setInterval> | null = null;
 
   /** Saisie du composer (liaison bidirectionnelle simple, façon Claude Code). */
   readonly draft = signal('');
@@ -486,7 +502,8 @@ export class AtelierComponent implements OnInit {
    * utilisateur optimiste est retiré (rien n'a été persisté) et un message lisible est affiché.
    */
   private sendExec(id: string, content: string, userItem: AtelierThreadItem): void {
-    this.execStreaming.set({ status: '', steps: [], text: '' });
+    this.execStreaming.set({ status: '', blocks: [], text: '' });
+    this.startExecTimer();
 
     void this.atelier.streamAgent(id, content, {
       onStatus: (state) =>
@@ -496,7 +513,13 @@ export class AtelierComponent implements OnInit {
       onAction: (action) =>
         this.zone.run(() => {
           this.execStreaming.update((current) =>
-            current ? { ...current, steps: [...current.steps, action] } : current,
+            current ? { ...current, blocks: [...current.blocks, openBlock(action)] } : current,
+          );
+        }),
+      onActionResult: (result) =>
+        this.zone.run(() => {
+          this.execStreaming.update((current) =>
+            current ? { ...current, blocks: attachOutput(current.blocks, result) } : current,
           );
         }),
       onAgent: (text) =>
@@ -508,6 +531,10 @@ export class AtelierComponent implements OnInit {
       onDone: (done) =>
         this.zone.run(() => {
           this.submitting.set(false);
+          // La transcription est reprise dans le tour final : sans cela, tout ce qui a défilé
+          // pendant le run disparaîtrait de l'écran (F-30 SF-30-02).
+          const transcript = this.execStreaming()?.blocks ?? [];
+          this.stopExecTimer();
           this.execStreaming.set(null);
           this.messages.update((current) => [
             ...current,
@@ -517,6 +544,7 @@ export class AtelierComponent implements OnInit {
               content: done.reply,
               actions: [],
               changedFiles: done.changedFiles ?? [],
+              terminal: transcript,
             },
           ]);
           // La session a pu exécuter du code et modifier des fichiers : rafraîchir l'arborescence.
@@ -525,6 +553,7 @@ export class AtelierComponent implements OnInit {
       onError: (code) =>
         this.zone.run(() => {
           this.submitting.set(false);
+          this.stopExecTimer();
           this.execStreaming.set(null);
           // Retire le message utilisateur optimiste : rien n'a été persisté côté serveur.
           this.messages.update((current) => current.filter((m) => m.id !== userItem.id));
@@ -549,9 +578,66 @@ export class AtelierComponent implements OnInit {
     }
   }
 
-  /** Libellé d'une étape d'exécution en cours (`tool` + `detail`, ex. « bash: npm test »). */
-  execStepLabel(step: AtelierAgentStreamAction): string {
-    return step.detail ? `${step.tool}: ${step.detail}` : step.tool;
+  /** Libellé de l'en-tête d'un bloc terminal : la commande si connue, sinon le nom de l'outil. */
+  blockLabel(block: AtelierTerminalBlock): string {
+    return block.command ?? block.tool;
+  }
+
+  /**
+   * Sortie effectivement affichée : repliée au-delà de {@link TERMINAL_COLLAPSE_LINES} lignes tant
+   * que l'utilisateur ne l'a pas dépliée. La sortie est déjà bornée côté backend (SF-30-01) : ici on
+   * ne perd rien, on masque.
+   */
+  visibleOutput(block: AtelierTerminalBlock): string {
+    if (block.expanded) {
+      return block.output;
+    }
+    const lines = block.output.split('\n');
+    return lines.length <= TERMINAL_COLLAPSE_LINES
+      ? block.output
+      : lines.slice(0, TERMINAL_COLLAPSE_LINES).join('\n');
+  }
+
+  /** Nombre de lignes masquées par le repli ; `0` si la sortie tient sous le seuil. */
+  hiddenLineCount(block: AtelierTerminalBlock): number {
+    const lines = block.output.split('\n');
+    return Math.max(0, lines.length - TERMINAL_COLLAPSE_LINES);
+  }
+
+  /** Déplie/replie la sortie d'un bloc terminal (tour en cours ou tour déjà dans le fil). */
+  toggleBlock(block: AtelierTerminalBlock): void {
+    block.expanded = !block.expanded;
+    this.execStreaming.update((current) => (current ? { ...current } : current));
+    this.messages.update((current) => [...current]);
+  }
+
+  /** Durée écoulée du run, format `m:ss`. */
+  execElapsedLabel(): string {
+    const total = this.execElapsedSeconds();
+    const seconds = total % 60;
+    return `${Math.floor(total / 60)}:${seconds < 10 ? '0' : ''}${seconds}`;
+  }
+
+  /** Démarre le chronomètre du run (hors zone : il ne pilote qu'un signal). */
+  private startExecTimer(): void {
+    this.stopExecTimer();
+    this.execElapsedSeconds.set(0);
+    this.execTimer = setInterval(() => {
+      this.zone.run(() => this.execElapsedSeconds.update((value) => value + 1));
+    }, 1000);
+  }
+
+  /** Arrête le chronomètre ; idempotent (appelé à la fin du run et à la destruction du composant). */
+  private stopExecTimer(): void {
+    if (this.execTimer !== null) {
+      clearInterval(this.execTimer);
+      this.execTimer = null;
+    }
+  }
+
+  /** Quitter l'écran pendant un run ne doit pas laisser le chronomètre tourner. */
+  ngOnDestroy(): void {
+    this.stopExecTimer();
   }
 
   /** Ouvre/ferme le panneau « Fichiers ». */
@@ -655,4 +741,63 @@ export class AtelierComponent implements OnInit {
   private notifyError(message: string): void {
     this.snackBar.open(message, 'Fermer', { duration: 4000, panelClass: 'snack-error' });
   }
+}
+
+
+/** Ouvre un bloc terminal pour une commande relayée (F-30 SF-30-02). */
+function openBlock(action: AtelierAgentStreamAction): AtelierTerminalBlock {
+  return {
+    tool: action.tool,
+    command: action.detail,
+    toolUseId: action.toolUseId ?? null,
+    output: '',
+    hasOutput: false,
+    error: false,
+    expanded: false,
+  };
+}
+
+/**
+ * Rattache une sortie à sa commande (F-30 SF-30-02). Priorité au `toolUseId` ; à défaut, la dernière
+ * commande encore sans sortie. Si aucune ne convient, un bloc **orphelin** est créé : afficher une
+ * sortie sans en-tête vaut mieux que la perdre.
+ */
+function attachOutput(
+  blocks: AtelierTerminalBlock[],
+  result: AtelierAgentStreamActionResult,
+): AtelierTerminalBlock[] {
+  let index = result.toolUseId
+    ? blocks.findIndex((block) => block.toolUseId === result.toolUseId)
+    : -1;
+  if (index < 0) {
+    for (let i = blocks.length - 1; i >= 0; i -= 1) {
+      if (!blocks[i].hasOutput) {
+        index = i;
+        break;
+      }
+    }
+  }
+  if (index < 0) {
+    return [
+      ...blocks,
+      {
+        tool: result.tool,
+        toolUseId: result.toolUseId,
+        output: result.output,
+        hasOutput: true,
+        error: result.error,
+        expanded: false,
+      },
+    ];
+  }
+  const target = blocks[index];
+  const merged: AtelierTerminalBlock = {
+    ...target,
+    toolUseId: target.toolUseId ?? result.toolUseId,
+    // Plusieurs sorties pour une même commande : concaténées dans l'ordre d'arrivée.
+    output: target.hasOutput && target.output ? `${target.output}\n${result.output}` : result.output,
+    hasOutput: true,
+    error: target.error || result.error,
+  };
+  return blocks.map((block, i) => (i === index ? merged : block));
 }

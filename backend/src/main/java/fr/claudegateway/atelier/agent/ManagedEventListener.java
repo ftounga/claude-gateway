@@ -34,6 +34,17 @@ public interface ManagedEventListener {
     }
 
     /**
+     * Variante portant l'identifiant de l'appel d'outil (F-30 SF-30-02), qui permet d'apparier la
+     * commande à sa sortie. Délègue par défaut à {@link #onAction(String, String)} : une
+     * implémentation qui n'a pas besoin de l'identifiant reste inchangée.
+     *
+     * @param toolUseId identifiant de l'appel, ou {@code null} si l'event ne le porte pas
+     */
+    default void onAction(String tool, String toolUseId, String detail) {
+        onAction(tool, detail);
+    }
+
+    /**
      * Notifie la <b>sortie</b> d'un outil (event {@code agent.tool_result} / {@code agent.mcp_tool_result}),
      * c'est-à-dire ce que la commande a produit — indispensable au rendu terminal (F-30 / ADR-014).
      *

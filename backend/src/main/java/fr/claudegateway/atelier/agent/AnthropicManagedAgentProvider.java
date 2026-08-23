@@ -198,7 +198,7 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
                         reply.append(fragment);
                         sink.onAgentText(fragment);
                     } else if ("agent.tool_use".equals(type) || "agent.custom_tool_use".equals(type)) {
-                        sink.onAction(toolName(event), toolDetail(event));
+                        sink.onAction(toolName(event), text(event, "tool_use_id"), toolDetail(event));
                     } else if ("agent.tool_result".equals(type) || "agent.mcp_tool_result".equals(type)) {
                         // Sortie de la commande (F-30 SF-30-01) : c'est elle qui fait le rendu terminal.
                         sink.onActionResult(toolName(event), text(event, "tool_use_id"),
