@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: corporate-site-nginx
+  labels:
+    app: corporate-site
+data:
+  # Configuration nginx du site vitrine (F-29 SF-29-04).
+  # Le bloc `types { }` vide neutralise la table MIME du location pour que `default_type`
+  # s'applique réellement — même motif que frontend/nginx.conf pour robots.txt/sitemap.xml.
+  default.conf: |
+    server {
+        listen 80;
+        server_name _;
+        root /usr/share/nginx/html;
+        index index.html;
+
+        location = /robots.txt {
+            types { }
+            default_type text/plain;
+            try_files $uri =404;
+            add_header Cache-Control "public, max-age=3600";
+        }
+
+        location = /sitemap.xml {
+            types { }
+            default_type application/xml;
+            try_files $uri =404;
+            add_header Cache-Control "public, max-age=3600";
+        }
+
+        location / {
+            try_files $uri $uri/ /index.html;
+            add_header Cache-Control "public, max-age=3600";
+        }
+
+        add_header X-Content-Type-Options "nosniff";
+        add_header X-Frame-Options "SAMEORIGIN";
+        add_header Referrer-Policy "strict-origin-when-cross-origin";
+    }

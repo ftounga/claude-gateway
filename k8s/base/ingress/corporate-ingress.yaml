@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: corporate-site-ingress
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+# Ingress DÉDIÉ au site vitrine (F-29 SF-29-04), volontairement séparé de
+# claude-gateway-ingress : une erreur sur la vitrine ne peut pas invalider la règle qui
+# sert l'application, et les deux certificats restent indépendants (secrets distincts).
+#
+# La règle est nominative par host : elle ne peut pas capter le trafic de
+# portal.ng-itconsulting.com.
+#
+# PRÉREQUIS : l'enregistrement CNAME www.ng-itconsulting.com -> ELB doit exister AVANT
+# le déploiement, sinon cert-manager ne peut pas valider le challenge HTTP-01.
+spec:
+  tls:
+    - hosts:
+        - www.ng-itconsulting.com
+      secretName: corporate-site-tls
+  rules:
+    - host: www.ng-itconsulting.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: corporate-site
+                port:
+                  number: 80
