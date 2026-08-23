@@ -384,6 +384,19 @@
             Claude lit et édite les fichiers du projet, sans rien exécuter.
           }
         </span>
+        <!-- Repartir d'un environnement neuf (F-30 SF-30-06). Sans objet en mode Assistant. -->
+        @if (agentMode() === 'exec') {
+          <button
+            mat-button
+            type="button"
+            class="reset-sandbox"
+            [disabled]="submitting()"
+            (click)="resetSandbox()"
+          >
+            <mat-icon>restart_alt</mat-icon>
+            Réinitialiser la sandbox
+          </button>
+        }
       </div>
 
       <!-- Composer -->

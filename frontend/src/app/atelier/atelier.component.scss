@@ -408,6 +408,13 @@ a.active {
   color: var(--cg-orange-2);
 }
 
+// Action « Réinitialiser la sandbox » (F-30 SF-30-06) : discrète, jamais mise en avant.
+.reset-sandbox {
+  font-size: 12px;
+  color: var(--cg-text-secondary);
+  margin-left: auto;
+}
+
 // Badge « Gold » du mode Terminal (F-30 SF-30-03) : informatif, il n'ajoute aucun gate.
 .mode-badge {
   margin-left: var(--cg-space-1);
