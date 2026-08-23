@@ -9,50 +9,66 @@
 
 ---
 
-## État vérifié en production (2026-08-23)
+## État vérifié en production (2026-08-23, après F-29 complète)
 
-| Signal | Valeur servie |
-|--------|--------------|
+| Élément | État |
+|---------|------|
 | `<title>` | `Claude Portal — passerelle professionnelle vers Claude` |
-| `meta description` | présente (149 car.) |
-| Open Graph | 6 balises + Twitter card |
-| Lien canonique | `https://portal.ng-itconsulting.com/` |
-| Contenu lisible sans JS | **807 caractères** dans `<app-root>` + `<noscript>` |
-| `robots.txt` | HTTP 200, `text/plain` |
-| `sitemap.xml` | HTTP 200, `application/xml` |
-| Occurrences de « proxy » / lexique de contournement | **0** |
-
----
+| Terme « proxy » / lexique de contournement | **0 occurrence** |
+| Contenu lisible sans JavaScript | **807 caractères** dans `<app-root>` + `<noscript>` |
+| Métadonnées | `meta description`, 6 balises Open Graph, Twitter card, lien canonique |
+| `robots.txt` / `sitemap.xml` | 200, `text/plain` / `application/xml`, 7 URL |
+| Pages légales | `/mentions-legales`, `/confidentialite`, `/cgu`, `/contact` — 200 |
+| Éditeur identifié | NG-CONSULTING, SASU, R.C.S. Paris **995 322 450**, directeur de publication nommé |
+| CGU art. 4 | **interdisent explicitement** le contournement de filtrage et le relais de trafic |
+| Domaine racine | `https://www.ng-itconsulting.com/` — **200**, certificat Let's Encrypt valide, site corporate indexable (la page de parking `noindex` a disparu) |
+| Apex `ng-itconsulting.com` | redirection HTTP vers `www` (limite connue : un apex ne peut pas porter de CNAME) |
 
 ## Texte de soumission (anglais — ces formulaires sont anglophones)
 
 > **Domain:** portal.ng-itconsulting.com
 >
-> **Requested category:** Business / Technology (or Software as a Service / Web-based Applications,
-> depending on the vendor's taxonomy)
+> **Requested category:** Business / Technology (or Software as a Service / Web-based
+> Applications, depending on the vendor's taxonomy)
 >
 > **Current category:** Anonymizer / Proxy Avoidance — this is a misclassification.
 >
 > **Comment:**
-> portal.ng-itconsulting.com is a commercial B2B SaaS application that provides authenticated
-> professional access to Anthropic's Claude assistant for consultants and independent workers.
-> It is an application front-end with user accounts, subscription billing and per-user data
-> isolation — not an anonymization, proxy-avoidance or traffic-relaying service. It does not
-> allow users to browse arbitrary third-party websites, hide their IP address, or bypass any
-> network control. All traffic terminates at our own application and, for AI requests, at
-> Anthropic's public API endpoints.
+> portal.ng-itconsulting.com is a commercial B2B SaaS application operated by NG-CONSULTING,
+> a French company registered with the Paris Trade and Companies Register under number
+> 995 322 450. It provides authenticated professional access to Anthropic's Claude assistant
+> for consultants and independent professionals.
 >
-> We believe the previous classification was triggered by the former product name, which
+> It is an application front-end with named user accounts, subscription billing and per-user
+> data isolation. It is NOT an anonymization, proxy-avoidance or traffic-relaying service:
+> users cannot browse arbitrary third-party websites through it, cannot hide their IP address,
+> and cannot bypass any network control. All traffic terminates at our own application and,
+> for AI requests, at Anthropic's public API endpoints. Our terms of service explicitly
+> prohibit using the service to circumvent filtering or security controls, or to relay
+> third-party traffic (section 4).
+>
+> We believe the earlier classification was triggered by our former product name, which
 > contained the word "Proxy", and by the absence of crawlable content on a single-page
-> application. Both have been corrected: the product has been renamed "Claude Portal", the page
-> now serves a full description without JavaScript, and robots.txt and sitemap.xml are published.
+> application. Both have been corrected:
+>   - the product was renamed "Claude Portal" and the word "proxy" no longer appears anywhere;
+>   - the page now serves a full description without JavaScript, with meta description,
+>     Open Graph tags, robots.txt and sitemap.xml;
+>   - legal notices, privacy policy, terms of service and contact pages are published and
+>     identify the publisher;
+>   - our corporate website at https://www.ng-itconsulting.com/ is now online over HTTPS.
+>
+> Verifiable references:
+>   - https://portal.ng-itconsulting.com/mentions-legales (company identification)
+>   - https://portal.ng-itconsulting.com/cgu (acceptable use, section 4)
+>   - https://www.ng-itconsulting.com/ (corporate site)
 >
 > Please re-crawl the domain and update its category.
 
 **Si un champ « catégorie souhaitée » impose un choix unique**, privilégier dans l'ordre :
 `Business` → `Information Technology` → `Software as a Service` → `Computers and Internet`.
 
----
+**Soumettre aussi `www.ng-itconsulting.com`** chez les éditeurs qui classent séparément les
+sous-domaines : le site corporate doit être catégorisé `Business`, ce qui renforce le domaine.
 
 ## Points de soumission
 
