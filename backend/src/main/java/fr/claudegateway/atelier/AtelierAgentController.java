@@ -9,6 +9,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -38,8 +40,11 @@ import jakarta.validation.Valid;
  * Phase 2 <b>résolus sur le thread de requête</b> (le pool SSE n'hérite pas du SecurityContext),
  * passés en booléens au relais ; toutes les erreurs (pré-vol et exécution) sont émises <b>dans le
  * flux</b> (événement {@code error}), jamais via l'{@code @ExceptionHandler} JSON (qui produirait un
- * 406 sur cet endpoint SSE). La session est <b>toujours terminée</b> (coût runtime borné) via le
- * {@code finally} de {@link AtelierSessionService}.</p>
+ * 406 sur cet endpoint SSE).</p>
+ *
+ * <p>Depuis F-30 SF-30-04 (ADR-014), la session est <b>persistante par workspace</b> : elle n'est plus
+ * terminée à la fin de chaque run (une session {@code idle} n'est pas facturée). Sa fin de vie est
+ * explicite, via {@code DELETE /workspaces/{id}/agent/session}.</p>
  */
 @RestController
 @RequestMapping("/workspaces/{id}/agent")
@@ -148,6 +153,21 @@ public class AtelierAgentController {
             log.warn("Échec inattendu du relais SSE d'exécution de l'atelier");
             sendError(emitter, "internal_error");
         }
+    }
+
+    /**
+     * Termine la session sandbox du workspace et efface son identifiant (F-30 SF-30-04) : le message
+     * suivant repartira d'une sandbox neuve. Contrepartie de la session persistante — une sandbox
+     * longue-vie détenant l'état d'un projet doit avoir une fin de vie explicite (ADR-014).
+     *
+     * <p>Endpoint JSON classique (pas SSE) : l'isolation {@code user_id} est appliquée par
+     * {@code requireOwned} <b>avant tout appel au fournisseur</b>, et un workspace non possédé produit
+     * le 404 habituel.</p>
+     */
+    @DeleteMapping("/session")
+    public ResponseEntity<Void> resetSession(@PathVariable UUID id) {
+        sessionService.resetSession(currentUser.requireId(), id);
+        return ResponseEntity.noContent().build();
     }
 
     /** Émet un fragment de texte de l'agent ; une déconnexion client interrompt le relais. */

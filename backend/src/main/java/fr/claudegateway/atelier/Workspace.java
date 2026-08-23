@@ -52,4 +52,30 @@ public class Workspace {
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    /**
+     * Session sandbox en cours pour ce workspace (F-30 SF-30-04, ADR-014), ou {@code null} si aucune.
+     * La sandbox et son système de fichiers survivent d'un message à l'autre : c'est cet identifiant
+     * qui les relie.
+     */
+    @Column(name = "agent_session_id", length = 255)
+    private String agentSessionId;
+
+    /** Ouverture de la session courante (diagnostic ; aucune expiration automatique n'en dépend). */
+    @Column(name = "agent_session_started_at")
+    private OffsetDateTime agentSessionStartedAt;
+
+    /**
+     * Dernier relevé d'usage de la session courante. {@code getSessionUsage} renvoie un <b>cumul</b>
+     * depuis l'ouverture : seul l'écart avec ces valeurs doit être décompté, sans quoi la même
+     * consommation serait facturée à chaque tour, de plus en plus cher.
+     */
+    @Column(name = "agent_input_tokens", nullable = false)
+    private long agentInputTokens;
+
+    @Column(name = "agent_output_tokens", nullable = false)
+    private long agentOutputTokens;
+
+    @Column(name = "agent_active_seconds", nullable = false)
+    private long agentActiveSeconds;
 }

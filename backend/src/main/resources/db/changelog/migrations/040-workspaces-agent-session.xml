@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      SF-30-04 — Atelier : session sandbox persistante par workspace (F-30 / ADR-014).
+      La session Managed Agents n'est plus créée puis détruite à chaque message : son identifiant est
+      porté par le workspace, et la sandbox survit d'un message à l'autre.
+
+      Les compteurs `agent_*_tokens` / `agent_active_seconds` mémorisent le DERNIER relevé d'usage :
+      `getSessionUsage` renvoie un CUMUL depuis le début de la session, et seul le delta doit être
+      décompté — recréditer le cumul à chaque tour surfacturerait l'utilisateur.
+
+      Colonnes nullables ou à valeur par défaut : aucune donnée existante cassée. Réversible.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="040-workspaces-agent-session-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="workspaces">
+            <column name="agent_session_id" type="varchar(255)"/>
+            <column name="agent_session_started_at" type="timestamptz"/>
+            <column name="agent_input_tokens" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="agent_output_tokens" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="agent_active_seconds" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="040-workspaces-agent-session-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="workspaces">
+            <column name="agent_session_id" type="varchar(255)"/>
+            <column name="agent_session_started_at" type="timestamp with time zone"/>
+            <column name="agent_input_tokens" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="agent_output_tokens" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="agent_active_seconds" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>
