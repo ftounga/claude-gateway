@@ -174,7 +174,7 @@ Chaque décision architecturale significative est documentée avant l'implément
 
 ## ADR-014 — Atelier : session persistante et rendu terminal (révise ADR-013)
 
-**Status** : Proposed (2026-08-23) — **révise** ADR-013 §Decision (« Session éphémère par tâche »). ADR-012 §Architecture (dualité de modes) est **confirmé, pas révisé** : les deux modes sont conservés (arbitrage du 2026-08-23).
+**Status** : **Accepted (2026-08-24)** — implémenté et déployé en production via F-30 SF-30-01→04 + SF-30-06 (PR #129, #130, #131, #132, #133). Reste SF-30-05 (tokens dans l'indicateur d'activité). **Révise** ADR-013 §Decision (« Session éphémère par tâche »). ADR-012 §Architecture (dualité de modes) est **confirmé, pas révisé** : les deux modes sont conservés (arbitrage du 2026-08-23).
 
 **Context** — L'objectif énoncé dès l'origine était « Claude Code dans le navigateur ». Ce qui est livré (F-28, SF-28-01→15) fonctionne : l'exécution réelle est active en production, Claude lance bash, tests et build dans une sandbox Anthropic. Mais l'expérience ne ressemble pas à Claude Code, pour trois raisons cumulées, toutes issues de décisions antérieures :
 
