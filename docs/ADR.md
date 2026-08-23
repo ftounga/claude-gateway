@@ -169,3 +169,51 @@ Ce document enregistre les décisions architecturales majeures de Claude Gateway
 
 ## Maintaining ADRs
 Chaque décision architecturale significative est documentée avant l'implémentation. Les décisions historiques ne sont jamais supprimées : de nouveaux ADR supersèdent les précédents tout en préservant l'historique du projet. La connaissance architecturale fait partie du logiciel lui-même.
+
+---
+
+## ADR-014 — Atelier : session persistante et rendu terminal (révise ADR-013)
+
+**Status** : Proposed (2026-08-23) — **révise** ADR-013 §Decision (« Session éphémère par tâche »). ADR-012 §Architecture (dualité de modes) est **confirmé, pas révisé** : les deux modes sont conservés (arbitrage du 2026-08-23).
+
+**Context** — L'objectif énoncé dès l'origine était « Claude Code dans le navigateur ». Ce qui est livré (F-28, SF-28-01→15) fonctionne : l'exécution réelle est active en production, Claude lance bash, tests et build dans une sandbox Anthropic. Mais l'expérience ne ressemble pas à Claude Code, pour trois raisons cumulées, toutes issues de décisions antérieures :
+
+1. **Session éphémère** (ADR-013) : une session Managed Agents est créée **par message**, les fichiers y sont montés, l'exécution a lieu, les sorties sont resynchronisées, puis la session est détruite. Chaque message repart d'une sandbox vierge : `npm install` fait au message *n* est perdu au message *n+1*.
+2. **Nommage et hiérarchie des modes** (ADR-012, phasage Phase 1 / Phase 2) : les libellés « Édition » et « Exécution » décrivent une mécanique interne, pas une promesse utilisateur, et rien ne signale que l'exécution est la capacité premium. La conservation des deux modes est **maintenue** (un mode sans exécution reste utile et accessible hors Gold) ; c'est leur présentation qui change.
+3. **Sorties d'outils non relayées** : `ManagedEventListener` n'expose que `onAgentText`, `onAction` (`agent.tool_use`) et `onStatus`. Les events **`agent.tool_result` ne sont jamais transmis** au frontend. L'UI affiche donc le nom de la commande, jamais son `stdout`/`stderr` — alors que dans Claude Code, voir le retour des commandes *est* l'expérience.
+
+**Fait nouveau qui justifie la révision** — la justification économique de la session éphémère (« une session maintenue ouverte coûte du temps de sandbox facturé ») est **erronée**. La documentation de l'API est explicite :
+
+- le runtime est mesuré en `active_seconds` = *« time with ≥1 thread running »* : une session **`idle` n'est pas facturée** ;
+- une session en pause **conserve son historique et sa sandbox** ;
+- les événements sont acceptés **quand la session est `running` ou `idle`** : on peut continuer à dialoguer dans la même session.
+
+L'éphémère ne fait donc économiser aucun runtime. Il en **coûte** : réinstaller les dépendances à chaque message consomme du temps de sandbox facturé et des tokens.
+
+**Decision**
+
+- **Session persistante par workspace** (révise ADR-013) : une session Managed Agents est ouverte au premier message d'un workspace, son `session_id` est persisté, et les messages suivants sont envoyés **dans cette même session**. La sandbox, l'état du système de fichiers et l'historique survivent d'un message à l'autre. Reprise transparente ; ouverture d'une nouvelle session si l'ancienne est terminée ou irrécupérable.
+- **Deux modes conservés, renommés** (confirme ADR-012) : « Édition » → **« Assistant »** (Claude lit et écrit les fichiers, sans exécution) et « Exécution » → **« Terminal »** (Claude exécute réellement). La boucle tool-use Phase 1 est **conservée** : elle sert le mode Assistant, accessible hors Gold.
+- **Le mode Terminal est mis en valeur comme capacité Gold** : badge « Gold » et accent orange de la charte sur le bouton. Le gating reste inchangé (Gold/ADMIN côté backend) ; seule sa lisibilité commerciale change.
+- **Nommage : pas de reprise de la marque « Claude Code »** dans l'interface. « Terminal » décrit le comportement sans emprunter un nom de produit d'Anthropic — précaution renforcée par l'épisode « Claude Proxy » (F-29).
+- **Rendu terminal** : relais des events `agent.tool_result` en plus de `agent.tool_use`, et affichage de chaque commande **avec son en-tête et sa sortie** (`stdout`/`stderr`, code de retour) dans une présentation de type terminal — fond sombre, police monospace, puce colorée par type d'événement, sortie **tronquée et dépliable** (sans quoi un `npm install` noierait le fil), et indicateur d'activité portant la durée écoulée et les tokens consommés.
+- **Hors périmètre explicite** : les commandes slash (`/init`, `/clear`…), les plugins et les skills natifs de Claude Code. On reproduit le **comportement de terminal**, pas l'écosystème du CLI.
+- **Inchangé** : Gateway-First / Provider-First (la sandbox et la boucle d'agent restent celles d'Anthropic, on ne construit rien), abstraction `AgentProvider`, isolation `user_id`, `networking: limited`, plafonds et surcompteur sandbox.
+
+**Consequences**
+
+- ✅ Enchaîner les tâches sans tout refaire : `npm install` une fois, puis les tests réutilisent l'installation. C'est la boucle de travail réelle de Claude Code.
+- ✅ **Coût en baisse** à usage égal : moins de réinstallations, moins de montages de fichiers, moins de tokens de re-contexte.
+- ✅ Lisibilité commerciale : la capacité premium est nommée et signalée, au lieu d'être un onglet parmi deux.
+- ✅ **Arbitrage commercial tranché le 2026-08-23** : les deux modes sont conservés. Un mode unique avec exécution aurait fait basculer tout l'Atelier sous Gold et privé les non-Gold de l'Atelier. Le mode Assistant reste leur porte d'entrée, et le mode Terminal devient l'argument de conversion, explicitement identifié comme tel.
+- ⚠️ **La durée de vie maximale d'une session n'est pas documentée** dans les sources consultées. À vérifier avant implémentation : si une limite existe, prévoir la reprise sur session expirée (ce que le point « reprise transparente » couvre déjà par conception).
+- ⚠️ Le resync des fichiers ne peut plus se faire « à la fin de la session » puisqu'il n'y a plus de fin : il devient **incrémental**, après chaque tour.
+- ⚠️ Une sandbox longue-vie détenant l'état d'un projet accroît la valeur d'une éventuelle évasion. Atténuation : périmètre inchangé (sandbox Anthropic, `networking: limited`, isolation `user_id`), plus une fin de vie explicite.
+- ℹ️ **Aucun code retiré** : la boucle tool-use Phase 1 reste en service pour le mode Assistant.
+
+**Alternatives écartées**
+
+- *Statu quo* : conserve un produit qui ne tient pas la promesse initiale, pour une économie inexistante.
+- *Terminal interactif réel* (l'utilisateur tape ses commandes) : l'API Managed Agents ne l'expose pas — les seuls événements client sont `user.message`, `user.interrupt`, `user.tool_confirmation`, `user.custom_tool_result`, `user.define_outcome` ; aucun n'exécute une commande arbitraire. Le construire imposerait d'héberger nos propres conteneurs, ce qui contredit frontalement Gateway-First.
+- *Mode unique avec exécution* (envisagé, écarté le 2026-08-23) : ferait basculer tout l'Atelier sous Gold et supprimerait la porte d'entrée des utilisateurs non-Gold.
+- *Reprendre le nom « Claude Code » dans l'interface* : marque d'Anthropic ; risque disproportionné pour un libellé.

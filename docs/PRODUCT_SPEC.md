@@ -112,6 +112,14 @@ sécurisent la monétisation ; settings et landing finalisent l'expérience. Le 
 |----|---------|-------------|--------|
 | F-29 | Identité publique & conformité web | Suppression du terme « Proxy » de l'identité produit (→ **« Claude Portal »**) ; signaux d'indexation destinés aux crawlers et moteurs de classification (`meta description`, Open Graph, `<h1>` + `<noscript>` statiques, `robots.txt`, `sitemap.xml`) ; pages légales publiques (mentions légales, CGU, politique de confidentialité, contact). **Objectif** : sortir le domaine de la catégorie « anonymizer / proxy avoidance » des filtres d'entreprise (Zscaler, Netskope, FortiGuard, Symantec/BlueCoat, Cisco Umbrella) qui bloquent aujourd'hui l'accès au produit. **100 % frontend** — aucun endpoint, aucune table, aucune migration. | **Terminée** (SF-29-01→06, déployées) |
 
+## Atelier — expérience terminal (ADR-014, proposé 2026-08-23)
+
+> Révision de l'Atelier (F-28) pour tenir la promesse initiale : travailler comme dans un terminal. Trois causes l'en empêchent — session éphémère recréée à chaque message (ADR-013), sorties de commandes jamais relayées au frontend, et des libellés de modes qui décrivent une mécanique interne au lieu d'une promesse. **Fait nouveau** : la justification économique de la session éphémère est erronée — une session `idle` n'est pas facturée (`active_seconds` = temps avec ≥1 thread `running`), sa sandbox et son historique sont préservés, et les événements y sont acceptés. L'éphémère ne fait économiser aucun runtime et en coûte (réinstallations à chaque message). **Les deux modes sont conservés** (arbitrage du 2026-08-23) : supprimer le mode sans exécution aurait fait basculer tout l'Atelier sous Gold.
+
+| ID | Feature | Description | Statut |
+|----|---------|-------------|--------|
+| F-30 | Atelier — expérience terminal | **Relais des `agent.tool_result`** en plus des `agent.tool_use` (aujourd'hui la sortie des commandes n'est jamais transmise) ; **rendu terminal** — fond sombre, monospace, puce par type d'événement, en-tête de commande, sortie tronquée et dépliable, indicateur d'activité (durée + tokens) ; **renommage des modes** « Édition » → **Assistant** et « Exécution » → **Terminal**, ce dernier mis en valeur comme capacité **Gold** (badge + accent orange de la charte) ; **session persistante par workspace** — la sandbox, le système de fichiers et l'historique survivent d'un message à l'autre (`npm install` une fois, les tests réutilisent l'installation). **Hors périmètre** : commandes slash, plugins et skills natifs de Claude Code, et toute reprise de cette marque dans l'interface. Gateway-First inchangé : sandbox et boucle d'agent restent celles d'Anthropic. | **À faire** (SF-30-01→04) |
+
 ## Features V3 (backlog — hors périmètre actuel)
 
 | ID | Feature | Description | Cible |
