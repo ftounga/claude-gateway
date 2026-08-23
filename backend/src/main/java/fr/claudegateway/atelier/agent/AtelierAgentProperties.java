@@ -18,6 +18,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param sessionTimeout       délai dur d'attente de complétion (défaut {@code PT10M} — garde-fou coût)
  * @param maxPolls             nombre maximal de tours de polling d'events (défaut {@code 600})
  * @param pollDelay            attente entre deux tours de polling (défaut {@code PT1S} ; {@code 0} en test)
+ * @param maxToolOutputChars   borne de la sortie d'outil relayée au frontend (défaut {@code 10000},
+ *                             F-30 SF-30-01) : un {@code npm install} produit des dizaines de milliers
+ *                             de lignes, qui satureraient le flux SSE et le navigateur
  */
 @ConfigurationProperties(prefix = "app.atelier.agent")
 public record AtelierAgentProperties(
@@ -29,7 +32,8 @@ public record AtelierAgentProperties(
         Integer maxSessionFiles,
         Duration sessionTimeout,
         Integer maxPolls,
-        Duration pollDelay) {
+        Duration pollDelay,
+        Integer maxToolOutputChars) {
 
     public AtelierAgentProperties {
         if (environmentName == null || environmentName.isBlank()) {
@@ -37,6 +41,9 @@ public record AtelierAgentProperties(
         }
         if (agentName == null || agentName.isBlank()) {
             agentName = "claude-gateway-atelier";
+        }
+        if (maxToolOutputChars == null || maxToolOutputChars <= 0) {
+            maxToolOutputChars = 10_000;
         }
         if (model == null || model.isBlank()) {
             model = "claude-opus-4-8";

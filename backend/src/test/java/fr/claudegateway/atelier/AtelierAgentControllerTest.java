@@ -47,7 +47,7 @@ class AtelierAgentControllerTest {
     }
 
     private AtelierAgentProperties props(boolean enabled) {
-        return new AtelierAgentProperties(enabled, null, null, null, null, null, null, null, null);
+        return new AtelierAgentProperties(enabled, null, null, null, null, null, null, null, null, null);
     }
 
     @BeforeEach
@@ -90,6 +90,43 @@ class AtelierAgentControllerTest {
                 .contains("src/a.txt");
         org.assertj.core.api.Assertions.assertThat(result.getResponse().getContentType())
                 .contains("text/event-stream");
+    }
+
+    @Test
+    void streamRelaysToolOutputAsActionResultWithoutChangingExistingEvents() throws Exception {
+        // F-30 SF-30-01 : la sortie des commandes est relayée dans un événement ADDITIF.
+        // Les événements existants doivent rester inchangés (non-régression explicite).
+        when(access.hasAccess()).thenReturn(true);
+        when(sessionService.runTaskStreaming(eq(USER), eq(WORKSPACE), any(), any())).thenAnswer(inv -> {
+            AtelierAgentListener listener = inv.getArgument(3);
+            listener.onStatus("running");
+            listener.onAction("bash", "npm test");
+            listener.onActionResult("bash", "tu_1", "12 passing", false);
+            listener.onAction("bash", "npm run build");
+            listener.onActionResult("bash", "tu_2", "command not found", true);
+            listener.onStatus("idle");
+            return new AtelierSessionResult("Terminé.", List.of());
+        });
+
+        var result = mockMvc(props(true)).perform(post("/workspaces/" + WORKSPACE + "/agent/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("{\"message\":\"lance les tests\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        org.assertj.core.api.Assertions.assertThat(body)
+                .contains("event:action_result")
+                .contains("12 passing")
+                .contains("tu_1")
+                .contains("command not found")
+                .contains("\"error\":true")
+                // Non-régression : les événements préexistants sont toujours émis à l'identique.
+                .contains("event:status")
+                .contains("event:action")
+                .contains("npm test")
+                .contains("event:done");
     }
 
     @Test

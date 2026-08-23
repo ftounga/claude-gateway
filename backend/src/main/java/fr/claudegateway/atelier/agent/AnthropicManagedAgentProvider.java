@@ -199,6 +199,10 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
                         sink.onAgentText(fragment);
                     } else if ("agent.tool_use".equals(type) || "agent.custom_tool_use".equals(type)) {
                         sink.onAction(toolName(event), toolDetail(event));
+                    } else if ("agent.tool_result".equals(type) || "agent.mcp_tool_result".equals(type)) {
+                        // Sortie de la commande (F-30 SF-30-01) : c'est elle qui fait le rendu terminal.
+                        sink.onActionResult(toolName(event), text(event, "tool_use_id"),
+                                truncate(extractToolOutput(event), agentProperties.maxToolOutputChars()), isToolError(event));
                     } else if ("session.status_running".equals(type)) {
                         sink.onStatus("running");
                     } else if ("session.status_idle".equals(type)) {
@@ -407,6 +411,74 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
     /** Éléments d'une réponse liste : nœud {@code data} (tableau) ou tableau racine ; sinon vide. */
     private static Iterable<JsonNode> dataArray(JsonNode response) {
         return events(response);
+    }
+
+    /**
+     * Sortie d'un event {@code agent.tool_result} (F-30 SF-30-01).
+     *
+     * <p>La forme exacte de ces events n'est pas documentée : on cherche successivement les
+     * emplacements plausibles ({@code content} textuel ou en blocs, {@code output}, {@code result},
+     * puis {@code stdout}/{@code stderr}). Une forme inattendue renvoie une chaîne vide — un défaut
+     * d'affichage ne doit jamais faire échouer le run.</p>
+     */
+    private static String extractToolOutput(JsonNode event) {
+        if (event == null) {
+            return "";
+        }
+        String fromContent = extractText(event);
+        if (!fromContent.isBlank()) {
+            return fromContent;
+        }
+        for (String field : List.of("output", "result")) {
+            JsonNode node = event.get(field);
+            if (node != null && !node.isNull()) {
+                if (node.isTextual()) {
+                    return node.asText();
+                }
+                String nested = extractText(node);
+                return nested.isBlank() ? node.toString() : nested;
+            }
+        }
+        StringBuilder sb = new StringBuilder();
+        for (String field : List.of("stdout", "stderr")) {
+            JsonNode node = event.get(field);
+            if (node != null && node.isTextual() && !node.asText().isBlank()) {
+                if (sb.length() > 0) {
+                    sb.append('\n');
+                }
+                sb.append(node.asText());
+            }
+        }
+        return sb.toString();
+    }
+
+    /** Vrai si l'event de résultat signale un échec ({@code is_error} ou code de retour non nul). */
+    private static boolean isToolError(JsonNode event) {
+        if (event == null) {
+            return false;
+        }
+        JsonNode isError = event.get("is_error");
+        if (isError != null && isError.isBoolean() && isError.asBoolean()) {
+            return true;
+        }
+        JsonNode code = event.get("return_code");
+        return code != null && code.isNumber() && code.asInt() != 0;
+    }
+
+    /**
+     * Tronque une sortie trop volumineuse (F-30 SF-30-01). Un {@code npm install} produit des dizaines
+     * de milliers de lignes : les laisser traverser le flux SSE saturerait le navigateur avant même
+     * qu'elles soient affichées. La troncature est donc faite ici, pas seulement au rendu.
+     */
+    private static String truncate(String output, int max) {
+        if (output == null) {
+            return "";
+        }
+        if (max <= 0 || output.length() <= max) {
+            return output;
+        }
+        int omitted = output.length() - max;
+        return output.substring(0, max) + "\n… (" + omitted + " caractères omis)";
     }
 
     /**

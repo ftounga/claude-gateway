@@ -45,7 +45,7 @@ class AnthropicManagedAgentProviderTest {
                 null, null, null, Duration.ofSeconds(5));
         // pollDelay = 0 : polling déterministe sans Thread.sleep réel.
         AtelierAgentProperties agentProperties = new AtelierAgentProperties(
-                false, null, null, null, null, null, null, null, Duration.ZERO);
+                false, null, null, null, null, null, null, null, Duration.ZERO, null);
         RestClient.Builder builder = RestClient.builder();
         server = MockRestServiceServer.bindTo(builder).ignoreExpectOrder(true).build();
         provider = new AnthropicManagedAgentProvider(properties, agentProperties, builder);
@@ -212,10 +212,97 @@ class AnthropicManagedAgentProviderTest {
     }
 
     /** Écouteur de test enregistrant les notifications reçues pour vérification. */
+    // ---- F-30 SF-30-01 : relais de la sortie des commandes ----
+
+    @Test
+    void awaitCompletionRelaysToolOutputWithCommandAndResult() {
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"agent.tool_use\",\"id\":\"e0\",\"name\":\"bash\","
+                                + "\"tool_use_id\":\"tu_1\",\"input\":{\"command\":\"npm test\"}},"
+                                + "{\"type\":\"agent.tool_result\",\"id\":\"e1\",\"name\":\"bash\","
+                                + "\"tool_use_id\":\"tu_1\",\"content\":[{\"type\":\"text\",\"text\":\"12 passing\"}]},"
+                                + "{\"type\":\"session.status_idle\",\"id\":\"e2\",\"stop_reason\":\"end_turn\"}]}",
+                        MediaType.APPLICATION_JSON));
+
+        RecordingListener listener = new RecordingListener();
+        provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10, listener);
+
+        assertThat(listener.actions).containsExactly("bash:npm test");
+        assertThat(listener.results).containsExactly("bash|tu_1|12 passing|false");
+        server.verify();
+    }
+
+    @Test
+    void awaitCompletionMarksFailedToolResultAsError() {
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"agent.tool_result\",\"id\":\"e0\",\"name\":\"bash\","
+                                + "\"is_error\":true,\"content\":\"command not found\"},"
+                                + "{\"type\":\"session.status_idle\",\"id\":\"e1\",\"stop_reason\":\"end_turn\"}]}",
+                        MediaType.APPLICATION_JSON));
+
+        RecordingListener listener = new RecordingListener();
+        provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10, listener);
+
+        assertThat(listener.results).containsExactly("bash|null|command not found|true");
+        server.verify();
+    }
+
+    @Test
+    void awaitCompletionReadsToolOutputFromAlternateFieldsAndNeverThrows() {
+        // La forme exacte de `agent.tool_result` n'est pas documentée : formes alternatives et
+        // event vide doivent être tolérés sans exception (un défaut d'affichage ne casse pas le run).
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"agent.tool_result\",\"id\":\"e0\",\"name\":\"bash\","
+                                + "\"stdout\":\"ok\",\"stderr\":\"warn\"},"
+                                + "{\"type\":\"agent.tool_result\",\"id\":\"e1\",\"name\":\"bash\","
+                                + "\"output\":\"depuis output\"},"
+                                + "{\"type\":\"agent.tool_result\",\"id\":\"e2\"},"
+                                + "{\"type\":\"session.status_idle\",\"id\":\"e3\",\"stop_reason\":\"end_turn\"}]}",
+                        MediaType.APPLICATION_JSON));
+
+        RecordingListener listener = new RecordingListener();
+        provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10, listener);
+
+        assertThat(listener.results).containsExactly(
+                "bash|null|ok\nwarn|false",
+                "bash|null|depuis output|false",
+                "tool|null||false");
+        server.verify();
+    }
+
+    @Test
+    void awaitCompletionTruncatesVeryLargeToolOutput() {
+        // Borne par défaut : 10 000 caractères. Un `npm install` non borné saturerait le flux SSE.
+        String huge = "x".repeat(12_000);
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"agent.tool_result\",\"id\":\"e0\",\"name\":\"bash\","
+                                + "\"content\":\"" + huge + "\"},"
+                                + "{\"type\":\"session.status_idle\",\"id\":\"e1\",\"stop_reason\":\"end_turn\"}]}",
+                        MediaType.APPLICATION_JSON));
+
+        RecordingListener listener = new RecordingListener();
+        provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10, listener);
+
+        assertThat(listener.results).hasSize(1);
+        String output = listener.results.get(0).split("\\|")[2];
+        assertThat(output).startsWith("x".repeat(10_000));
+        assertThat(output).contains("2000 caractères omis");
+        server.verify();
+    }
+
     private static final class RecordingListener implements ManagedEventListener {
         private final List<String> texts = new java.util.ArrayList<>();
         private final List<String> actions = new java.util.ArrayList<>();
         private final List<String> states = new java.util.ArrayList<>();
+        private final List<String> results = new java.util.ArrayList<>();
 
         @Override
         public void onAgentText(String text) {
@@ -225,6 +312,11 @@ class AnthropicManagedAgentProviderTest {
         @Override
         public void onAction(String tool, String detail) {
             actions.add(tool + ":" + detail);
+        }
+
+        @Override
+        public void onActionResult(String tool, String toolUseId, String output, boolean error) {
+            results.add(tool + "|" + toolUseId + "|" + output + "|" + error);
         }
 
         @Override
