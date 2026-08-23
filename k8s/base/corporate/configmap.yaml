@@ -1,0 +1,231 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: corporate-site-content
+  labels:
+    app: corporate-site
+# Contenu du site vitrine de l'éditeur (F-29 SF-29-04).
+#
+# Porté par une ConfigMap et non par une image : corriger un texte ne doit pas imposer
+# un cycle de build et de publication d'image. Les données d'éditeur reproduisent celles
+# de frontend/src/app/legal/legal-info.ts (extrait Kbis du 23/12/2025).
+data:
+  index.html: |
+    <!doctype html>
+    <html lang="fr">
+    <head>
+    <meta charset="utf-8">
+    <title>NG-CONSULTING — Conception et développement de logiciels</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="NG-CONSULTING conçoit, développe et exploite des logiciels et outils informatiques pour les entreprises. Éditeur de Claude Portal, passerelle professionnelle vers l'assistant Claude.">
+    <meta name="author" content="NG-CONSULTING">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://www.ng-itconsulting.com/">
+
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="NG-CONSULTING">
+    <meta property="og:title" content="NG-CONSULTING — Conception et développement de logiciels">
+    <meta property="og:description" content="Société de conception, développement et exploitation de logiciels. Éditeur de Claude Portal.">
+    <meta property="og:url" content="https://www.ng-itconsulting.com/">
+    <meta property="og:locale" content="fr_FR">
+
+    <style>
+      :root{
+        --navy:#0B1020; --navy-2:#141D33; --orange:#E07B39; --orange-2:#F0954F;
+        --cream:#F5EFE3; --bg:#F5F6FA; --surface:#FFFFFF;
+        --text:#1C2B3A; --muted:#6B7A8D; --divider:#E0E4EA;
+        --font-h:"Space Grotesk","Segoe UI",system-ui,sans-serif;
+        --font-b:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+      }
+      *{box-sizing:border-box}
+      body{margin:0;font-family:var(--font-b);color:var(--text);background:var(--bg);line-height:1.6}
+      a{color:var(--orange)}
+      .wrap{max-width:960px;margin:0 auto;padding:0 24px}
+
+      header{background:var(--navy);color:var(--cream);padding:16px 0}
+      header .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+      .brand{font-family:var(--font-h);font-weight:700;font-size:20px;letter-spacing:.5px}
+      .brand span{color:var(--orange)}
+      nav a{color:var(--cream);text-decoration:none;margin-left:24px;font-size:15px}
+      nav a:hover{color:var(--orange-2)}
+
+      .hero{background:linear-gradient(160deg,var(--navy) 0%,var(--navy-2) 100%);color:var(--cream);padding:80px 0}
+      .hero h1{font-family:var(--font-h);font-size:40px;line-height:1.2;margin:0 0 16px;max-width:20ch}
+      .hero h1 em{color:var(--orange);font-style:normal}
+      .hero p{font-size:18px;max-width:60ch;margin:0 0 32px;color:#D8DEE9}
+      .btn{display:inline-block;background:var(--orange);color:#fff;text-decoration:none;
+           padding:14px 28px;border-radius:8px;font-weight:600}
+      .btn:hover{background:var(--orange-2)}
+      .btn-alt{background:transparent;border:1px solid rgba(245,239,227,.4);color:var(--cream);margin-left:12px}
+      .btn-alt:hover{background:rgba(245,239,227,.08)}
+
+      section{padding:64px 0}
+      h2{font-family:var(--font-h);font-size:28px;color:var(--navy);margin:0 0 24px}
+      .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px}
+      .card{background:var(--surface);border:1px solid var(--divider);border-radius:12px;padding:24px}
+      .card h3{font-family:var(--font-h);font-size:18px;color:var(--navy);margin:0 0 8px}
+      .card p{margin:0;color:var(--muted);font-size:15px}
+
+      .product{background:var(--cream)}
+      .product .card{border-color:rgba(224,123,57,.3)}
+      .tag{display:inline-block;background:var(--orange);color:#fff;font-size:12px;font-weight:600;
+           padding:4px 12px;border-radius:999px;margin-bottom:12px;letter-spacing:.5px}
+
+      dl{margin:0;display:grid;grid-template-columns:minmax(180px,auto) 1fr;gap:8px 24px;font-size:15px}
+      dt{font-weight:600;color:var(--navy)}
+      dd{margin:0;color:var(--muted)}
+      @media(max-width:640px){
+        dl{grid-template-columns:1fr;gap:2px 0}
+        dd{margin-bottom:12px}
+        .hero{padding:56px 0}
+        .hero h1{font-size:30px}
+        nav a{margin:0 16px 0 0}
+        .btn-alt{margin:12px 0 0;display:block;text-align:center}
+      }
+
+      footer{background:var(--navy);color:#A9B3C4;padding:40px 0;font-size:14px}
+      footer a{color:var(--cream)}
+    </style>
+    </head>
+    <body>
+
+    <header>
+      <div class="wrap">
+        <div class="brand">NG<span>-</span>CONSULTING</div>
+        <nav>
+          <a href="#expertise">Expertise</a>
+          <a href="#produit">Claude Portal</a>
+          <a href="#contact">Contact</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="hero">
+      <div class="wrap">
+        <h1>Concevoir, développer et <em>exploiter</em> vos logiciels</h1>
+        <p>
+          NG-CONSULTING est une société française de conception et de développement de logiciels
+          et d'outils informatiques. Nous accompagnons les entreprises de la conception à
+          l'exploitation et à la maintenance de leurs applications métier.
+        </p>
+        <a class="btn" href="#contact">Nous contacter</a>
+        <a class="btn btn-alt" href="#produit">Découvrir Claude Portal</a>
+      </div>
+    </div>
+
+    <section id="expertise">
+      <div class="wrap">
+        <h2>Notre activité</h2>
+        <div class="grid">
+          <div class="card">
+            <h3>Conception</h3>
+            <p>Cadrage fonctionnel, architecture applicative et choix technologiques adaptés à vos
+               contraintes métier et réglementaires.</p>
+          </div>
+          <div class="card">
+            <h3>Développement</h3>
+            <p>Réalisation d'applications web et de services back-end, avec une exigence de
+               testabilité, de maintenabilité et de sécurité.</p>
+          </div>
+          <div class="card">
+            <h3>Exploitation &amp; maintenance</h3>
+            <p>Mise en production, supervision et maintien en condition opérationnelle des
+               applications que nous concevons ou reprenons.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="produit" class="product">
+      <div class="wrap">
+        <h2>Notre produit</h2>
+        <div class="card">
+          <span class="tag">CLAUDE PORTAL</span>
+          <h3>La passerelle professionnelle vers l'assistant Claude</h3>
+          <p style="color:var(--text);margin-bottom:16px">
+            Claude Portal donne aux consultants et aux indépendants un accès authentifié et sécurisé
+            à l'assistant conversationnel Claude d'Anthropic, depuis leur navigateur, sans
+            installation et sans exposer leurs clés d'interface de programmation. Chaque compte est
+            nominatif et cloisonné&nbsp;: conversations, documents et consommation sont propres à
+            leur titulaire.
+          </p>
+          <p style="margin-bottom:24px">
+            Le service comprend un espace de conversation, le dépôt et l'exploitation de documents
+            professionnels, la gestion des accès et le suivi de consommation.
+          </p>
+          <a class="btn" href="https://portal.ng-itconsulting.com/">Accéder à Claude Portal</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="contact">
+      <div class="wrap">
+        <h2>Contact</h2>
+        <dl>
+          <dt>Courrier électronique</dt>
+          <dd><a href="mailto:tounga.franck@ng-itconsulting.com">tounga.franck@ng-itconsulting.com</a></dd>
+          <dt>Adresse</dt>
+          <dd>60 rue François 1er, 75008 Paris, France</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section id="mentions" style="border-top:1px solid var(--divider)">
+      <div class="wrap">
+        <h2>Mentions légales</h2>
+        <dl>
+          <dt>Raison sociale</dt>
+          <dd>NG-CONSULTING</dd>
+          <dt>Forme juridique</dt>
+          <dd>Société par actions simplifiée à associé unique (SASU)</dd>
+          <dt>Capital social</dt>
+          <dd>100,00 €</dd>
+          <dt>Immatriculation</dt>
+          <dd>R.C.S. Paris — SIREN 995 322 450, immatriculée le 23 décembre 2025</dd>
+          <dt>Siège social</dt>
+          <dd>60 rue François 1er, 75008 Paris, France</dd>
+          <dt>Activité</dt>
+          <dd>Conception et développement de logiciels et outils informatiques, ainsi que leur
+              exploitation et maintenance</dd>
+          <dt>Président</dt>
+          <dd>NG-ACQUISITIONS, SASU immatriculée au R.C.S. de Paris sous le numéro 993 599 836</dd>
+          <dt>Directeur de la publication</dt>
+          <dd>Franck TOUNGA</dd>
+          <dt>Hébergeur du site</dt>
+          <dd>OVH SAS — 2 rue Kellermann, 59100 Roubaix, France</dd>
+        </dl>
+      </div>
+    </section>
+
+    <footer>
+      <div class="wrap">
+        <p style="margin:0 0 8px">
+          © 2026 NG-CONSULTING — SASU au capital de 100&nbsp;€ — R.C.S. Paris 995&nbsp;322&nbsp;450
+        </p>
+        <p style="margin:0">
+          <a href="https://portal.ng-itconsulting.com/mentions-legales">Mentions légales du service</a>
+          &nbsp;·&nbsp;
+          <a href="https://portal.ng-itconsulting.com/confidentialite">Politique de confidentialité</a>
+          &nbsp;·&nbsp;
+          <a href="mailto:tounga.franck@ng-itconsulting.com">Contact</a>
+        </p>
+      </div>
+    </footer>
+
+    </body>
+    </html>
+  robots.txt: |
+    User-agent: *
+    Allow: /
+
+    Sitemap: https://www.ng-itconsulting.com/sitemap.xml
+  sitemap.xml: |
+    <?xml version="1.0" encoding="UTF-8"?>
+    <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url>
+        <loc>https://www.ng-itconsulting.com/</loc>
+        <lastmod>2026-08-23</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>1.0</priority>
+      </url>
+    </urlset>

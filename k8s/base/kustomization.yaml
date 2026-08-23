@@ -11,3 +11,9 @@ resources:
   - frontend/service.yaml
   - frontend/pdb.yaml
   - ingress/ingress.yaml
+  # Site vitrine de l'éditeur — www.ng-itconsulting.com (F-29 SF-29-04)
+  - corporate/configmap.yaml
+  - corporate/nginx-config.yaml
+  - corporate/deployment.yaml
+  - corporate/service.yaml
+  - ingress/corporate-ingress.yaml
