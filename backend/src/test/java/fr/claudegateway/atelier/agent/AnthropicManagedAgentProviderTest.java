@@ -8,7 +8,10 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.queryParam;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestToUriTemplate;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withBadRequest;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withUnauthorizedRequest;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import java.time.Duration;
@@ -230,6 +233,62 @@ class AnthropicManagedAgentProviderTest {
 
         assertThat(listener.actions).containsExactly("bash:npm test", "bash:npm run build");
         assertThat(listener.actionIds).containsExactly("tu_1", "null");
+        server.verify();
+    }
+
+    // ---- F-30 SF-30-08 : diagnostic des erreurs du fournisseur ----
+
+    @Test
+    void exhaustedCreditIsRecognisedAsItsOwnFailure() {
+        // Le message générique « réessayez » invitait à refaire ce qui ne peut pas aboutir.
+        server.expect(requestToUriTemplate("https://api.anthropic.com/v1/sessions"))
+                .andRespond(withBadRequest().body(
+                        "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\","
+                                + "\"message\":\"Your credit balance is too low to access the Anthropic API.\"}}")
+                        .contentType(MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> provider.createSession("agent_1", "env_1", List.of()))
+                .isInstanceOf(AgentCreditExhaustedException.class);
+        server.verify();
+    }
+
+    @Test
+    void otherBadRequestsStayGenericProviderFailures() {
+        server.expect(requestToUriTemplate("https://api.anthropic.com/v1/sessions"))
+                .andRespond(withBadRequest().body(
+                        "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\","
+                                + "\"message\":\"environment_id: field required\"}}")
+                        .contentType(MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> provider.createSession("agent_1", "env_1", List.of()))
+                .isInstanceOf(AgentProviderException.class)
+                .isNotInstanceOf(AgentCreditExhaustedException.class);
+        server.verify();
+    }
+
+    @Test
+    void unparseableErrorBodyStillFailsCleanly() {
+        // Corps non exploitable : le statut seul oriente, et rien ne doit lever d'exception de parsing.
+        server.expect(requestToUriTemplate("https://api.anthropic.com/v1/sessions"))
+                .andRespond(withServerError().body("<html>502 Bad Gateway</html>"));
+
+        assertThatThrownBy(() -> provider.createSession("agent_1", "env_1", List.of()))
+                .isInstanceOf(AgentProviderException.class)
+                .isNotInstanceOf(AgentCreditExhaustedException.class);
+        server.verify();
+    }
+
+    @Test
+    void authenticationFailuresAreNotMistakenForExhaustedCredit() {
+        server.expect(requestToUriTemplate("https://api.anthropic.com/v1/sessions"))
+                .andRespond(withUnauthorizedRequest().body(
+                        "{\"type\":\"error\",\"error\":{\"type\":\"authentication_error\","
+                                + "\"message\":\"invalid x-api-key\"}}")
+                        .contentType(MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> provider.createSession("agent_1", "env_1", List.of()))
+                .isInstanceOf(AgentProviderException.class)
+                .isNotInstanceOf(AgentCreditExhaustedException.class);
         server.verify();
     }
 

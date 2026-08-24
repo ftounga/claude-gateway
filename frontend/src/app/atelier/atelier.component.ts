@@ -590,6 +590,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
         return 'Le mode Terminal est momentanément indisponible.';
       case 'workspace_not_found':
         return 'Projet introuvable.';
+      case 'credit_exhausted':
+        // Limite de la plateforme, pas du compte utilisateur : réessayer n'y changerait rien.
+        return "Le service d'exécution est indisponible : le crédit du fournisseur est épuisé. "
+          + "Contactez l'administrateur.";
       case 'session_timeout':
         return 'La session a dépassé le temps imparti. Réessayez sur une tâche plus courte.';
       default:

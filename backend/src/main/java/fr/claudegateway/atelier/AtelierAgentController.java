@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import fr.claudegateway.atelier.agent.AgentCreditExhaustedException;
 import fr.claudegateway.atelier.agent.AgentProviderException;
 import fr.claudegateway.atelier.agent.AgentSessionTimeoutException;
 import fr.claudegateway.atelier.agent.AtelierAgentDisabledException;
@@ -145,6 +146,10 @@ public class AtelierAgentController {
             sendError(emitter, "agent_disabled");
         } catch (AgentSessionTimeoutException ex) {
             sendError(emitter, "session_timeout");
+        } catch (AgentCreditExhaustedException ex) {
+            // Crédit de la PLATEFORME épuisé (F-30 SF-30-08) : réessayer ne peut pas aboutir — code
+            // distinct de `provider_error`, pour ne pas inviter l'utilisateur à recommencer en vain.
+            sendError(emitter, "credit_exhausted");
         } catch (AgentProviderException ex) {
             sendError(emitter, "provider_error");
         } catch (StreamAbortedException | IOException ex) {

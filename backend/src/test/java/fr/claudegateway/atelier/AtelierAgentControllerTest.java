@@ -191,4 +191,41 @@ class AtelierAgentControllerTest {
         // Flag off => aucun appel Anthropic (le service n'est jamais sollicité).
         verify(sessionService, never()).runTaskStreaming(any(), any(), any(), any());
     }
+    @Test
+    void exhaustedProviderCreditIsRelayedAsItsOwnErrorCode() throws Exception {
+        // F-30 SF-30-08 : distinct de `provider_error` — réessayer ne peut pas aboutir.
+        when(access.hasAccess()).thenReturn(true);
+        when(sessionService.runTaskStreaming(eq(USER), eq(WORKSPACE), any(), any()))
+                .thenThrow(new fr.claudegateway.atelier.agent.AgentCreditExhaustedException("épuisé", null));
+
+        var result = mockMvc(props(true)).perform(post("/workspaces/" + WORKSPACE + "/agent/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("{\"message\":\"go\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        org.assertj.core.api.Assertions.assertThat(body).contains("credit_exhausted");
+    }
+
+    @Test
+    void otherProviderFailuresKeepTheirExistingCode() throws Exception {
+        // Non-régression : une panne ordinaire reste `provider_error`.
+        when(access.hasAccess()).thenReturn(true);
+        when(sessionService.runTaskStreaming(eq(USER), eq(WORKSPACE), any(), any()))
+                .thenThrow(new fr.claudegateway.atelier.agent.AgentProviderException("boom"));
+
+        var result = mockMvc(props(true)).perform(post("/workspaces/" + WORKSPACE + "/agent/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("{\"message\":\"go\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        org.assertj.core.api.Assertions.assertThat(body)
+                .contains("provider_error")
+                .doesNotContain("credit_exhausted");
+    }
 }
