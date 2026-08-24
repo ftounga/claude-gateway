@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      SF-30-09 — Atelier : transcription des tours du mode Terminal (F-30).
+      Le mode Terminal ne persistait rien : recharger la page vidait l'écran alors que la sandbox,
+      elle, gardait son état. `terminal_json` porte la transcription (commandes, sorties, échec,
+      coût) du tour, en document JSON — donnée d'AFFICHAGE, restituée en bloc et jamais requêtée.
+
+      Colonne nullable : les messages existants (mode Assistant) restent valides tels quels.
+      Réversible (rollback auto).
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="041-atelier-messages-terminal-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="atelier_messages">
+            <column name="terminal_json" type="text"/>
+        </addColumn>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <!-- H2 mappe `text` sur CLOB, que la validation de schéma refuse face au `text` de l'entité :
+         on reprend `varchar(1000000)`, le type déjà utilisé pour `content` (migration 037). -->
+    <changeSet id="041-atelier-messages-terminal-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="atelier_messages">
+            <column name="terminal_json" type="varchar(1000000)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

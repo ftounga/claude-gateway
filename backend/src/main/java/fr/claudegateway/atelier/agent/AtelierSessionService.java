@@ -16,6 +16,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import fr.claudegateway.atelier.AtelierMessage;
+import fr.claudegateway.atelier.AtelierMessageRepository;
 import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceRepository;
 import fr.claudegateway.atelier.WorkspaceService;
@@ -60,6 +62,11 @@ public class AtelierSessionService {
     private final AtelierAgentProperties properties;
     private final QuotaService quotaService;
     private final WorkspaceRepository workspaceRepository;
+    private final AtelierMessageRepository messageRepository;
+
+    /** Sérialisation de la transcription persistée (F-30 SF-30-09) : donnée d'affichage. */
+    private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
 
     /**
      * Sorties déjà rapatriées, par session (F-30 SF-30-04). Une session persistante expose à chaque
@@ -73,13 +80,15 @@ public class AtelierSessionService {
 
     public AtelierSessionService(ManagedAgentProvider provider, WorkspaceService workspaceService,
             AtelierAgentBootstrapService bootstrapService, AtelierAgentProperties properties,
-            QuotaService quotaService, WorkspaceRepository workspaceRepository) {
+            QuotaService quotaService, WorkspaceRepository workspaceRepository,
+            AtelierMessageRepository messageRepository) {
         this.provider = provider;
         this.workspaceService = workspaceService;
         this.bootstrapService = bootstrapService;
         this.properties = properties;
         this.quotaService = quotaService;
         this.workspaceRepository = workspaceRepository;
+        this.messageRepository = messageRepository;
     }
 
     /**
@@ -134,7 +143,10 @@ public class AtelierSessionService {
                 .orElseThrow(() -> new IllegalStateException(
                         "Configuration Managed Agents indisponible (bootstrap requis)."));
 
-        // 4. Pont vers le provider : chaque event relayé est transmis au listener applicatif.
+        // 4. Pont vers le provider : chaque event relayé est transmis au listener applicatif, et
+        // accumulé pour la transcription persistée (F-30 SF-30-09) — reconstruite depuis les events
+        // du fournisseur, jamais depuis ce que déclare le client.
+        TerminalTranscript transcript = new TerminalTranscript();
         ManagedEventListener bridge = new ManagedEventListener() {
             @Override
             public void onAgentText(String text) {
@@ -148,11 +160,13 @@ public class AtelierSessionService {
 
             @Override
             public void onAction(String tool, String toolUseId, String detail) {
+                transcript.addCommand(tool, toolUseId, detail);
                 sink.onAction(tool, toolUseId, detail);
             }
 
             @Override
             public void onActionResult(String tool, String toolUseId, String output, boolean error) {
+                transcript.addOutput(tool, toolUseId, output, error);
                 sink.onActionResult(tool, toolUseId, output, error);
             }
 
@@ -204,9 +218,67 @@ public class AtelierSessionService {
         // fois la même consommation. Best-effort : la réponse et le resync sont déjà livrés.
         TurnUsage usage = recordSessionUsage(userId, workspaceId, sessionId);
 
+        // 8. Historique (F-30 SF-30-09) : le run a abouti, on conserve la demande, la réponse et la
+        // transcription. Un run en échec ne passe jamais ici — cohérent avec l'écran, qui retire le
+        // tour optimiste en annonçant que rien n'a été enregistré.
+        persistTurn(userId, workspaceId, message, run.reply(), transcript, usage);
+
         log.debug("Run atelier terminé : {} fichier(s) modifié(s).", changed.size());
         return new AtelierSessionResult(run.reply(), changed, usage.inputTokens(), usage.outputTokens(),
                 usage.activeSeconds());
+    }
+
+    /**
+     * Conserve le tour dans l'historique (F-30 SF-30-09) : la demande, la réponse, et la transcription
+     * des commandes pour le tour assistant. Le mode Terminal ne persistait rien — recharger la page
+     * vidait l'écran alors que la sandbox, elle, gardait son état.
+     *
+     * <p><b>Best-effort</b> : la réponse et le resync sont déjà livrés à l'écran ; un échec d'écriture
+     * ne doit pas les faire échouer après coup.</p>
+     */
+    private void persistTurn(UUID userId, UUID workspaceId, String message, String reply,
+            TerminalTranscript transcript, TurnUsage usage) {
+        try {
+            messageRepository.save(AtelierMessage.builder()
+                    .workspaceId(workspaceId)
+                    .userId(userId)
+                    .role("USER")
+                    .content(message == null ? "" : message)
+                    .build());
+            messageRepository.save(AtelierMessage.builder()
+                    .workspaceId(workspaceId)
+                    .userId(userId)
+                    .role("ASSISTANT")
+                    .content(reply == null ? "" : reply)
+                    .terminalJson(serializeTranscript(transcript, usage))
+                    .build());
+        } catch (RuntimeException ex) {
+            log.debug("Historisation du tour d'exécution ignorée (best-effort) : run déjà livré.");
+        }
+    }
+
+    /**
+     * Sérialise la transcription et le coût du tour. Bornée par {@code maxTranscriptChars} : un tour
+     * qui installe un projet entier ne doit pas faire gonfler l'historique sans limite, et le nombre
+     * de blocs omis est mentionné explicitement. Renvoie {@code null} si rien n'a été exécuté.
+     */
+    private String serializeTranscript(TerminalTranscript transcript, TurnUsage usage) {
+        if (transcript.isEmpty()) {
+            return null;
+        }
+        TerminalTranscript.Bounded bounded = transcript.bounded(properties.maxTranscriptChars());
+        Map<String, Object> document = new java.util.LinkedHashMap<>();
+        document.put("blocks", bounded.blocks());
+        document.put("omittedBlocks", bounded.omitted());
+        document.put("inputTokens", usage.inputTokens());
+        document.put("outputTokens", usage.outputTokens());
+        document.put("activeSeconds", usage.activeSeconds());
+        try {
+            return MAPPER.writeValueAsString(document);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            log.debug("Transcription non sérialisable : tour historisé sans transcription.");
+            return null;
+        }
     }
 
     /**

@@ -38,12 +38,33 @@ export interface WriteFileRequest {
 /** Rôle d'un message Atelier tel que persisté par le backend. */
 export type AtelierRole = 'USER' | 'ASSISTANT';
 
+/**
+ * Transcription d'un tour Terminal telle que stockée (F-30 SF-30-09) : commandes appariées à leurs
+ * sorties côté backend, coût du tour, et nombre de blocs omis par la borne de persistance.
+ */
+export interface AtelierPersistedTranscript {
+  blocks: {
+    tool: string;
+    command: string | null;
+    toolUseId: string | null;
+    output: string;
+    hasOutput: boolean;
+    error: boolean;
+  }[];
+  omittedBlocks: number;
+  inputTokens: number;
+  outputTokens: number;
+  activeSeconds: number;
+}
+
 /** Message de l'historique. Réponse de `GET /api/workspaces/{id}/chat`. */
 export interface AtelierMessage {
   id: string;
   role: AtelierRole;
   content: string;
   createdAt: string;
+  /** Transcription du tour Terminal (F-30 SF-30-09) ; absente pour les tours du mode Assistant. */
+  terminal?: AtelierPersistedTranscript | null;
 }
 
 /** Action de fichier réalisée par l'agent pendant un tour : `type` = `read` ou `write`. */

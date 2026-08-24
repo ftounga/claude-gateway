@@ -59,6 +59,8 @@ class AtelierApiIntegrationTest {
     @Autowired
     private WorkspaceRepository workspaceRepository;
     @Autowired
+    private AtelierMessageRepository atelierMessageRepository;
+    @Autowired
     private SubscriptionRepository subscriptionRepository;
     @Autowired
     private JwtService jwtService;
@@ -204,6 +206,48 @@ class AtelierApiIntegrationTest {
                 .andExpect(status().isNoContent());
         mockMvc.perform(get("/api/workspaces/" + id).contextPath("/api").header("Authorization", bearer(aliceToken)))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void historyReturnsTheStoredTerminalTranscript() throws Exception {
+        // F-30 SF-30-09 : un tour Terminal restitue ses commandes et sorties après rechargement.
+        String id = createWorkspace(aliceToken, Map.of("a.txt", "x"));
+        atelierMessageRepository.save(fr.claudegateway.atelier.AtelierMessage.builder()
+                .workspaceId(java.util.UUID.fromString(id))
+                .userId(alice.getId())
+                .role("ASSISTANT")
+                .content("Tests verts.")
+                .terminalJson("{\"blocks\":[{\"tool\":\"bash\",\"command\":\"npm test\","
+                        + "\"toolUseId\":\"tu_1\",\"output\":\"12 passing\",\"hasOutput\":true,"
+                        + "\"error\":false}],\"omittedBlocks\":0,\"inputTokens\":1000,"
+                        + "\"outputTokens\":200,\"activeSeconds\":30}")
+                .build());
+
+        mockMvc.perform(get("/api/workspaces/" + id + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].terminal.blocks[0].command", is("npm test")))
+                .andExpect(jsonPath("$[0].terminal.blocks[0].output", is("12 passing")))
+                .andExpect(jsonPath("$[0].terminal.inputTokens", is(1000)));
+    }
+
+    @Test
+    void historyKeepsWorkingWhenAStoredTranscriptIsUnreadable() throws Exception {
+        // Une donnée illisible rend le tour SANS transcription, sans casser tout l'historique.
+        String id = createWorkspace(aliceToken, Map.of("a.txt", "x"));
+        atelierMessageRepository.save(fr.claudegateway.atelier.AtelierMessage.builder()
+                .workspaceId(java.util.UUID.fromString(id))
+                .userId(alice.getId())
+                .role("ASSISTANT")
+                .content("Terminé.")
+                .terminalJson("{ ceci n'est pas du JSON")
+                .build());
+
+        mockMvc.perform(get("/api/workspaces/" + id + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].content", is("Terminé.")))
+                .andExpect(jsonPath("$[0].terminal").doesNotExist());
     }
 
     @Test

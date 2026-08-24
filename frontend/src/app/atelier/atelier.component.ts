@@ -42,6 +42,7 @@ import {
   AtelierAction,
   AtelierAgentStreamAction,
   AtelierAgentStreamActionResult,
+  AtelierMessage,
   AtelierTerminalBlock,
   AtelierRole,
   AtelierStreamAction,
@@ -362,9 +363,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
   private loadHistory(id: string): void {
     this.atelier.getHistory(id).subscribe({
       next: (history) =>
-        this.messages.set(
-          history.map((m) => ({ id: m.id, role: m.role, content: m.content, actions: [] })),
-        ),
+        // Les tours Terminal restituent leur transcription (F-30 SF-30-09) : sans elle, recharger la
+        // page vidait l'écran alors que la sandbox, elle, gardait son état.
+        this.messages.set(history.map((m) => toThreadItem(m))),
       error: () => this.notifyError("Impossible de charger l'historique de conversation."),
     });
   }
@@ -822,4 +823,36 @@ function attachOutput(
     error: target.error || result.error,
   };
   return blocks.map((block, i) => (i === index ? merged : block));
+}
+
+/**
+ * Convertit un message d'historique en tour du fil (F-30 SF-30-09). Une transcription absente ou
+ * illisible produit simplement un tour sans terminal : un défaut d'affichage ne doit jamais empêcher
+ * de relire sa conversation.
+ */
+export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
+  const item: AtelierThreadItem = {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    actions: [],
+  };
+  const stored = message.terminal;
+  if (!stored || !Array.isArray(stored.blocks) || stored.blocks.length === 0) {
+    return item;
+  }
+  item.terminal = stored.blocks.map((block): AtelierTerminalBlock => ({
+    tool: block.tool,
+    command: block.command ?? undefined,
+    toolUseId: block.toolUseId ?? null,
+    output: block.output ?? '',
+    hasOutput: block.hasOutput === true,
+    error: block.error === true,
+    expanded: false,
+  }));
+  const tokens = (stored.inputTokens ?? 0) + (stored.outputTokens ?? 0);
+  if (tokens > 0) {
+    item.cost = { elapsedSeconds: stored.activeSeconds ?? 0, tokens };
+  }
+  return item;
 }
