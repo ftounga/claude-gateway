@@ -57,13 +57,15 @@ class AtelierSessionServiceTest {
     private QuotaService quotaService;
     @Mock
     private WorkspaceRepository workspaceRepository;
+    @Mock
+    private fr.claudegateway.atelier.AtelierMessageRepository messageRepository;
 
     private AtelierAgentProperties enabled() {
-        return new AtelierAgentProperties(true, null, null, null, null, null, null, null, null, null);
+        return new AtelierAgentProperties(true, null, null, null, null, null, null, null, null, null, null);
     }
 
     private AtelierAgentProperties disabled() {
-        return new AtelierAgentProperties(false, null, null, null, null, null, null, null, null, null);
+        return new AtelierAgentProperties(false, null, null, null, null, null, null, null, null, null, null);
     }
 
     private AtelierAgentConfig config() {
@@ -73,7 +75,7 @@ class AtelierSessionServiceTest {
 
     private AtelierSessionService service(AtelierAgentProperties props) {
         return new AtelierSessionService(provider, workspaceService, bootstrapService, props, quotaService,
-                workspaceRepository);
+                workspaceRepository, messageRepository);
     }
 
     /** Workspace possédé, portant (ou non) une session sandbox déjà ouverte (F-30 SF-30-04). */
@@ -638,5 +640,77 @@ class AtelierSessionServiceTest {
         assertThat(result.inputTokens()).isZero();
         assertThat(result.outputTokens()).isZero();
         assertThat(result.activeSeconds()).isZero();
+    }
+    // ---------------------------------------------------------------------------------------------
+    // Historisation des tours du mode Terminal (F-30 SF-30-09).
+    // ---------------------------------------------------------------------------------------------
+
+    @Test
+    void aCompletedRunPersistsTheRequestTheReplyAndItsTranscript() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList()))
+                .thenReturn(new ManagedSession("sess_1"));
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(inv -> {
+            ManagedEventListener sink = inv.getArgument(3);
+            sink.onAction("bash", "tu_1", "npm test");
+            sink.onActionResult("bash", "tu_1", "12 passing", false);
+            return new SessionRun("Tests verts.", "end_turn");
+        });
+        when(provider.listOutputs("sess_1")).thenReturn(List.of());
+
+        service(enabled()).runTask(USER, WORKSPACE, "lance les tests");
+
+        ArgumentCaptor<fr.claudegateway.atelier.AtelierMessage> saved =
+                ArgumentCaptor.forClass(fr.claudegateway.atelier.AtelierMessage.class);
+        verify(messageRepository, times(2)).save(saved.capture());
+        var messages = saved.getAllValues();
+        assertThat(messages.get(0).getRole()).isEqualTo("USER");
+        assertThat(messages.get(0).getContent()).isEqualTo("lance les tests");
+        assertThat(messages.get(0).getUserId()).isEqualTo(USER);
+        assertThat(messages.get(1).getRole()).isEqualTo("ASSISTANT");
+        assertThat(messages.get(1).getContent()).isEqualTo("Tests verts.");
+        // La transcription vient des events du fournisseur, pas d'une déclaration du client.
+        assertThat(messages.get(1).getTerminalJson()).contains("npm test").contains("12 passing");
+    }
+
+    @Test
+    void aFailedRunPersistsNothing() {
+        // L'écran annonce déjà que rien n'a été enregistré : persister le contredirait.
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList()))
+                .thenReturn(new ManagedSession("sess_1"));
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+                .thenThrow(new AgentProviderException("boom"));
+
+        assertThatThrownBy(() -> service(enabled()).runTask(USER, WORKSPACE, "go"))
+                .isInstanceOf(AgentProviderException.class);
+
+        verifyNoInteractions(messageRepository);
+    }
+
+    @Test
+    void aRunWithoutAnyCommandIsPersistedWithoutTranscript() {
+        stubNominalRun();
+
+        service(enabled()).runTask(USER, WORKSPACE, "bonjour");
+
+        ArgumentCaptor<fr.claudegateway.atelier.AtelierMessage> saved =
+                ArgumentCaptor.forClass(fr.claudegateway.atelier.AtelierMessage.class);
+        verify(messageRepository, times(2)).save(saved.capture());
+        assertThat(saved.getAllValues().get(1).getTerminalJson()).isNull();
+    }
+
+    @Test
+    void aFailingHistoryWriteNeverBreaksAnAlreadyDeliveredRun() {
+        stubNominalRun();
+        doThrow(new RuntimeException("base indisponible")).when(messageRepository).save(any());
+
+        AtelierSessionResult result = service(enabled()).runTask(USER, WORKSPACE, "go");
+
+        assertThat(result.reply()).isEqualTo("Terminé.");
     }
 }

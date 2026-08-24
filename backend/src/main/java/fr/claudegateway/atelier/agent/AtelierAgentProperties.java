@@ -18,6 +18,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param sessionTimeout       délai dur d'attente de complétion (défaut {@code PT10M} — garde-fou coût)
  * @param maxPolls             nombre maximal de tours de polling d'events (défaut {@code 600})
  * @param pollDelay            attente entre deux tours de polling (défaut {@code PT1S} ; {@code 0} en test)
+ * @param maxTranscriptChars   borne de la transcription persistée dans l'historique (défaut
+ *                             {@code 100000}, F-30 SF-30-09) : un tour qui installe un projet entier
+ *                             ne doit pas faire gonfler l'historique sans limite
  * @param maxToolOutputChars   borne de la sortie d'outil relayée au frontend (défaut {@code 10000},
  *                             F-30 SF-30-01) : un {@code npm install} produit des dizaines de milliers
  *                             de lignes, qui satureraient le flux SSE et le navigateur
@@ -33,7 +36,8 @@ public record AtelierAgentProperties(
         Duration sessionTimeout,
         Integer maxPolls,
         Duration pollDelay,
-        Integer maxToolOutputChars) {
+        Integer maxToolOutputChars,
+        Integer maxTranscriptChars) {
 
     public AtelierAgentProperties {
         if (environmentName == null || environmentName.isBlank()) {
@@ -44,6 +48,9 @@ public record AtelierAgentProperties(
         }
         if (maxToolOutputChars == null || maxToolOutputChars <= 0) {
             maxToolOutputChars = 10_000;
+        }
+        if (maxTranscriptChars == null || maxTranscriptChars <= 0) {
+            maxTranscriptChars = 100_000;
         }
         if (model == null || model.isBlank()) {
             model = "claude-opus-4-8";

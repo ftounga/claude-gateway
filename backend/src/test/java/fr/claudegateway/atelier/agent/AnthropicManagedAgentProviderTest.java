@@ -48,7 +48,7 @@ class AnthropicManagedAgentProviderTest {
                 null, null, null, Duration.ofSeconds(5));
         // pollDelay = 0 : polling déterministe sans Thread.sleep réel.
         AtelierAgentProperties agentProperties = new AtelierAgentProperties(
-                false, null, null, null, null, null, null, null, Duration.ZERO, null);
+                false, null, null, null, null, null, null, null, Duration.ZERO, null, null);
         RestClient.Builder builder = RestClient.builder();
         server = MockRestServiceServer.bindTo(builder).ignoreExpectOrder(true).build();
         provider = new AnthropicManagedAgentProvider(properties, agentProperties, builder);

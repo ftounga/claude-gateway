@@ -8,7 +8,7 @@ import { of, throwError } from 'rxjs';
 
 import { MAX_UPLOAD_BYTES } from '../shared/http-error.util';
 
-import { AtelierComponent } from './atelier.component';
+import { AtelierComponent, toThreadItem } from './atelier.component';
 import { AtelierService } from '../core/services/atelier.service';
 import { ApiKeyService } from '../core/services/api-key.service';
 import { ApiKeyStatus } from '../core/models/api-key.models';
@@ -1018,5 +1018,84 @@ describe('AtelierComponent', () => {
     const message = snackBar.open.calls.mostRecent().args[0] as string;
     expect(message).toContain('crédit du fournisseur est épuisé');
     expect(message).not.toContain('réessayer');
+  });
+  // ---- F-30 SF-30-09 : persistance des tours Terminal ----
+
+  it('restitue la transcription d\'un tour Terminal depuis l\'historique (F-30)', () => {
+    const item = toThreadItem({
+      id: 'm1',
+      role: 'ASSISTANT',
+      content: 'Tests verts.',
+      createdAt: '2026-08-24T00:00:00Z',
+      terminal: {
+        blocks: [
+          {
+            tool: 'bash',
+            command: 'npm test',
+            toolUseId: 'tu_1',
+            output: '12 passing',
+            hasOutput: true,
+            error: false,
+          },
+        ],
+        omittedBlocks: 0,
+        inputTokens: 1_000,
+        outputTokens: 200,
+        activeSeconds: 30,
+      },
+    });
+
+    expect(item.terminal!.length).toBe(1);
+    expect(item.terminal![0].command).toBe('npm test');
+    expect(item.terminal![0].output).toBe('12 passing');
+    expect(item.terminal![0].expanded).toBeFalse();
+    expect(item.cost!.tokens).toBe(1_200);
+  });
+
+  it('un tour du mode Assistant reste sans transcription (non-régression F-30)', () => {
+    const item = toThreadItem({
+      id: 'm1',
+      role: 'ASSISTANT',
+      content: 'Fichier modifié.',
+      createdAt: '2026-08-24T00:00:00Z',
+    });
+
+    expect(item.terminal).toBeUndefined();
+    expect(item.cost).toBeUndefined();
+    expect(item.content).toBe('Fichier modifié.');
+  });
+
+  it('une transcription illisible n\'empêche pas d\'afficher le tour (F-30)', () => {
+    const item = toThreadItem({
+      id: 'm1',
+      role: 'ASSISTANT',
+      content: 'Terminé.',
+      createdAt: '2026-08-24T00:00:00Z',
+      terminal: { blocks: null } as never,
+    });
+
+    expect(item.terminal).toBeUndefined();
+    expect(item.content).toBe('Terminé.');
+  });
+
+  it('sans consommation connue, le tour restitué ne porte pas de coût (F-30)', () => {
+    const item = toThreadItem({
+      id: 'm1',
+      role: 'ASSISTANT',
+      content: 'Terminé.',
+      createdAt: '2026-08-24T00:00:00Z',
+      terminal: {
+        blocks: [
+          { tool: 'bash', command: 'ls', toolUseId: null, output: 'a', hasOutput: true, error: false },
+        ],
+        omittedBlocks: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        activeSeconds: 0,
+      },
+    });
+
+    expect(item.terminal!.length).toBe(1);
+    expect(item.cost).toBeUndefined();
   });
 });

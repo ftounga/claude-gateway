@@ -52,4 +52,14 @@ public class AtelierMessage {
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
+
+    /**
+     * Transcription du tour en mode Terminal (F-30 SF-30-09) : commandes, sorties, échec et coût,
+     * sérialisés en JSON. {@code null} pour les tours du mode Assistant, qui n'en ont pas.
+     *
+     * <p>Donnée d'<b>affichage</b> : restituée en bloc à l'historique, jamais requêtée — d'où un
+     * document plutôt qu'une table de blocs.</p>
+     */
+    @Column(name = "terminal_json", columnDefinition = "text")
+    private String terminalJson;
 }
