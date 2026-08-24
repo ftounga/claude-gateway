@@ -1003,4 +1003,20 @@ describe('AtelierComponent', () => {
 
     expect(fixture.nativeElement.querySelector('app-atelier-terminal')).toBeNull();
   });
+  it('credit_exhausted affiche un message qui n\'invite pas à réessayer (F-30 SF-30-08)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onError('credit_exhausted');
+      return Promise.resolve();
+    });
+
+    component.draft.set('Teste');
+    component.send();
+
+    const message = snackBar.open.calls.mostRecent().args[0] as string;
+    expect(message).toContain('crédit du fournisseur est épuisé');
+    expect(message).not.toContain('réessayer');
+  });
 });

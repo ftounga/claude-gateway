@@ -18,6 +18,7 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -46,6 +47,10 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
 
     /** Borne de sécurité sur le nombre de pages d'events lues par tour de polling. */
     private static final int MAX_EVENT_PAGES = 1000;
+
+    /** Lecture du corps d'erreur pour le diagnostic (F-30 SF-30-08) : statut et type uniquement. */
+    private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
 
     private final AnthropicProperties properties;
     private final AtelierAgentProperties agentProperties;
@@ -124,8 +129,7 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
             }
             return id;
         } catch (RestClientException ex) {
-            log.warn("Téléversement de fichier au fournisseur d'agents en échec.");
-            throw new AgentProviderException("Échec du téléversement de fichier au fournisseur d'agents.", ex);
+            throw failure("téléversement de fichier", ex);
         }
     }
 
@@ -260,8 +264,7 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
             }
             return outputs;
         } catch (RestClientException ex) {
-            log.warn("Liste des sorties de session en échec.");
-            throw new AgentProviderException("Échec de la récupération des sorties de la session.", ex);
+            throw failure("liste des sorties", ex);
         }
     }
 
@@ -277,8 +280,7 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
                     .body(byte[].class);
             return content == null ? new byte[0] : content;
         } catch (RestClientException ex) {
-            log.warn("Téléchargement de fichier au fournisseur d'agents en échec.");
-            throw new AgentProviderException("Échec du téléchargement de fichier au fournisseur d'agents.", ex);
+            throw failure("téléchargement de fichier", ex);
         }
     }
 
@@ -323,8 +325,7 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
             long activeSeconds = Math.round(response.path("stats").path("active_seconds").asDouble(0));
             return new SessionUsage(inputTokens, outputTokens, activeSeconds);
         } catch (RestClientException ex) {
-            log.warn("Récupération de l'usage de session en échec.");
-            throw new AgentProviderException("Échec de la récupération de l'usage de la session.", ex);
+            throw failure("usage de session", ex);
         }
     }
 
@@ -347,8 +348,7 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
                     .retrieve()
                     .body(JsonNode.class);
         } catch (RestClientException ex) {
-            log.warn("Lecture des events de session en échec.");
-            throw new AgentProviderException("Échec de la lecture des events de la session.", ex);
+            throw failure("lecture des events", ex);
         }
     }
 
@@ -371,6 +371,52 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
      * {@link RestClientException} (4xx/5xx, réseau) est convertie en {@link AgentProviderException}
      * avec un message neutre (jamais de clé ni de réponse brute).
      */
+    /**
+     * Convertit un échec d'appel en exception, en loggant de quoi diagnostiquer (F-30 SF-30-08).
+     *
+     * <p>Sont loggés l'opération, le <b>statut HTTP</b> et le <b>type d'erreur</b> renvoyé — jamais
+     * la clé d'API, ni le corps brut, ni aucune donnée utilisateur. Un log réduit au seul « appel en
+     * échec » a déjà coûté un diagnostic manuel pour une cause triviale.</p>
+     *
+     * <p>Un solde de crédits épuisé est reconnu et distingué : réessayer ne peut pas aboutir tant que
+     * le compte n'est pas rechargé, et l'utilisateur doit le savoir.</p>
+     */
+    private static AgentProviderException failure(String operation, RestClientException ex) {
+        if (!(ex instanceof RestClientResponseException response)) {
+            // Pas de réponse HTTP (réseau, timeout) : rien de plus à dire que l'opération.
+            log.warn("Appel au fournisseur d'agents en échec ({}) : pas de réponse HTTP", operation);
+            return new AgentProviderException("Échec de l'appel au fournisseur d'agents.", ex);
+        }
+        int status = response.getStatusCode().value();
+        String errorType = "inconnu";
+        String message = "";
+        try {
+            JsonNode error = MAPPER.readTree(response.getResponseBodyAsString()).path("error");
+            errorType = error.path("type").asText("inconnu");
+            message = error.path("message").asText("");
+        } catch (RuntimeException | java.io.IOException parseFailure) {
+            // Corps non exploitable : le statut seul oriente déjà le diagnostic.
+        }
+        log.warn("Appel au fournisseur d'agents en échec ({}) : HTTP {}, type {}", operation, status, errorType);
+        if (isCreditExhausted(status, errorType, message)) {
+            return new AgentCreditExhaustedException("Crédit du fournisseur d'agents épuisé.", ex);
+        }
+        return new AgentProviderException("Échec de l'appel au fournisseur d'agents.", ex);
+    }
+
+    /**
+     * Reconnaît un solde épuisé. L'API n'expose pas de code dédié : la détection s'appuie sur le
+     * libellé, et c'est assumé comme une <b>heuristique</b> — si le message est reformulé, on retombe
+     * sur l'erreur générique plutôt que d'échouer.
+     */
+    private static boolean isCreditExhausted(int status, String errorType, String message) {
+        if (status != 400 || !"invalid_request_error".equals(errorType)) {
+            return false;
+        }
+        String lower = message.toLowerCase(java.util.Locale.ROOT);
+        return lower.contains("credit balance") || lower.contains("purchase credits");
+    }
+
     private JsonNode post(String uri, Map<String, Object> body, String operation) {
         try {
             return restClient.post()
@@ -383,9 +429,7 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
                     .retrieve()
                     .body(JsonNode.class);
         } catch (RestClientException ex) {
-            // Message neutre : ni la clé ni la réponse brute du fournisseur ne remontent.
-            log.warn("Appel au fournisseur d'agents en échec ({})", operation);
-            throw new AgentProviderException("Échec de l'appel au fournisseur d'agents.", ex);
+            throw failure(operation, ex);
         }
     }
 
