@@ -1,0 +1,129 @@
+<section class="terminal-view" aria-label="Terminal du projet">
+  <!-- En-tête : identité du projet + actions. Rien d'autre ne subsiste de l'écran Atelier. -->
+  <header class="terminal-bar">
+    <span class="terminal-title">
+      <mat-icon>terminal</mat-icon>
+      {{ projectName }} — terminal
+    </span>
+    <span class="terminal-bar-actions">
+      @if (submitting) {
+        <mat-progress-spinner
+          mode="indeterminate"
+          [diameter]="16"
+          aria-label="Exécution en cours"
+        ></mat-progress-spinner>
+        <span class="terminal-elapsed">{{ elapsedLabel }}</span>
+      }
+      <button mat-button type="button" (click)="openFiles.emit()">
+        <mat-icon>folder</mat-icon>
+        Fichiers
+      </button>
+      <button mat-button type="button" [disabled]="submitting" (click)="resetSandbox.emit()">
+        <mat-icon>restart_alt</mat-icon>
+        Réinitialiser
+      </button>
+      <button mat-button type="button" (click)="quit.emit()">
+        <mat-icon>close</mat-icon>
+        Quitter
+      </button>
+    </span>
+  </header>
+
+  <!-- Flux continu : demandes, commentaires, commandes et sorties, dans l'ordre chronologique. -->
+  <div class="terminal-scrollback" #scrollback>
+    @if (messages.length === 0 && !streaming) {
+      <p class="terminal-hint">
+        Décrivez la tâche à réaliser (installer les dépendances, lancer les tests, corriger un bug).
+        Claude exécute les commandes dans un environnement isolé et vous en montrez la sortie ici.
+      </p>
+    }
+
+    @for (message of messages; track message.id) {
+      @if (message.role === 'USER') {
+        <div class="terminal-prompt-line">
+          <span class="terminal-caret" aria-hidden="true">&gt;</span>
+          <span class="terminal-request">{{ message.content }}</span>
+        </div>
+      } @else {
+        @if (message.terminal && message.terminal.length > 0) {
+          @for (block of message.terminal; track $index) {
+            <div class="terminal-block" [class.failed]="block.error">
+              @if (block.command || block.tool) {
+                <div class="terminal-command">
+                  <span class="terminal-dollar" aria-hidden="true">$</span>
+                  <code>{{ blockLabel(block) }}</code>
+                </div>
+              }
+              @if (block.hasOutput && block.output.length > 0) {
+                <pre class="terminal-output">{{ visibleOutput(block) }}</pre>
+                @if (hiddenLineCount(block) > 0) {
+                  <button mat-button type="button" class="terminal-toggle" (click)="toggleBlock(block)">
+                    @if (block.expanded) {
+                      Replier
+                    } @else {
+                      Afficher tout ({{ hiddenLineCount(block) }} lignes masquées)
+                    }
+                  </button>
+                }
+              }
+            </div>
+          }
+        }
+        @if (message.content) {
+          <p class="terminal-agent">{{ message.content }}</p>
+        }
+        @if (message.cost) {
+          <p class="terminal-cost">{{ costLabel(message.cost) }}</p>
+        }
+      }
+    }
+
+    <!-- Tour en cours : mêmes lignes, au fil de l'eau. -->
+    @if (streaming; as live) {
+      @for (block of live.blocks; track $index) {
+        <div class="terminal-block" [class.failed]="block.error">
+          @if (block.command || block.tool) {
+            <div class="terminal-command">
+              <span class="terminal-dollar" aria-hidden="true">$</span>
+              <code>{{ blockLabel(block) }}</code>
+            </div>
+          }
+          @if (block.hasOutput && block.output.length > 0) {
+            <pre class="terminal-output">{{ visibleOutput(block) }}</pre>
+            @if (hiddenLineCount(block) > 0) {
+              <button mat-button type="button" class="terminal-toggle" (click)="toggleBlock(block)">
+                @if (block.expanded) {
+                  Replier
+                } @else {
+                  Afficher tout ({{ hiddenLineCount(block) }} lignes masquées)
+                }
+              </button>
+            }
+          }
+        </div>
+      }
+      @if (live.text.length > 0) {
+        <p class="terminal-agent">{{ live.text }}</p>
+      }
+    }
+  </div>
+
+  <!-- Invite. Ce qu'on saisit est une DEMANDE, pas une commande shell (ADR-014). -->
+  <form class="terminal-input" (ngSubmit)="submit()">
+    <span class="terminal-dollar" aria-hidden="true">$</span>
+    <input
+      type="text"
+      class="terminal-field"
+      name="draft"
+      autocomplete="off"
+      placeholder="Décrivez la tâche à exécuter…"
+      aria-label="Demande à exécuter"
+      [disabled]="submitting"
+      [ngModel]="draft"
+      (ngModelChange)="draftChange.emit($event)"
+    />
+    <button mat-button type="submit" [disabled]="submitting || draft.trim().length === 0">
+      Envoyer
+    </button>
+  </form>
+</section>

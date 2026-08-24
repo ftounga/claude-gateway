@@ -958,4 +958,49 @@ describe('AtelierComponent', () => {
     expect(last.cost).toBeUndefined();
     expect(last.content).toBe('Terminé.');
   });
+  // ---- F-30 SF-30-07 : vue terminal immersive ----
+
+  it('passer en mode Terminal ouvre la vue immersive sans envoyer de message (F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    fixture.detectChanges();
+    // Mode Assistant : écran habituel, pas de terminal.
+    expect(fixture.nativeElement.querySelector('app-atelier-terminal')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.atelier-layout')).not.toBeNull();
+
+    component.setAgentMode('exec');
+    fixture.detectChanges();
+
+    // La vue terminal remplace l'écran : ni liste de projets, ni fil conversationnel.
+    expect(fixture.nativeElement.querySelector('app-atelier-terminal')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.atelier-layout')).toBeNull();
+    expect(service.streamAgent).not.toHaveBeenCalled();
+    expect(service.streamChat).not.toHaveBeenCalled();
+  });
+
+  it('quitter la vue terminal restaure l\'écran habituel sans perdre la conversation (F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.messages.set([
+      { id: 'm1', role: 'USER', content: 'lance les tests', actions: [] },
+    ]);
+    component.setAgentMode('exec');
+    fixture.detectChanges();
+
+    component.setAgentMode('edit');
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-atelier-terminal')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.atelier-layout')).not.toBeNull();
+    expect(component.messages().length).toBe(1);
+  });
+
+  it('sans projet sélectionné, la vue terminal ne s\'ouvre pas (F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set(null);
+    component.setAgentMode('exec');
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-atelier-terminal')).toBeNull();
+  });
 });

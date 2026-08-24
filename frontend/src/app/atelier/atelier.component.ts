@@ -19,6 +19,13 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MarkdownPipe } from '../shared/markdown.pipe';
 import { MessageSegmentsPipe } from '../shared/message-segments.pipe';
 import { httpErrorMessage, MAX_UPLOAD_BYTES, oversizeMessage } from '../shared/http-error.util';
+import { AtelierTerminalComponent } from './terminal/atelier-terminal.component';
+import {
+  blockLabel as blockLabelOf,
+  formatElapsed,
+  hiddenLineCount,
+  visibleOutput,
+} from './terminal/terminal-block';
 import {
   ConfirmDialogComponent,
   ConfirmDialogData,
@@ -41,72 +48,25 @@ import {
   WorkspaceSummary,
 } from '../core/models/atelier.models';
 
-/**
- * Mode de l'agent. Valeurs techniques inchangées (F-30 SF-30-03) : `edit` = mode **Assistant**
- * (Phase 1, lecture/écriture), `exec` = mode **Terminal** (Phase 2, sandbox hébergé).
- */
-export type AtelierAgentMode = 'edit' | 'exec';
-
-/**
- * Extensions texte/code acceptées à l'ajout d'un fichier depuis le PC (SF-28-13). Le workspace est
- * textuel (`readFile`/`writeFile` = String) : les binaires (PDF, image) passent par la bibliothèque
- * après OCR. Sert à la fois d'attribut `accept` et de garde-fou client anti-binaire.
- */
-export const WORKSPACE_TEXT_EXTENSIONS: readonly string[] = [
-  'txt', 'md', 'markdown', 'js', 'ts', 'tsx', 'jsx', 'java', 'py', 'json', 'html', 'htm', 'css',
-  'scss', 'sass', 'less', 'xml', 'yml', 'yaml', 'sh', 'bash', 'go', 'rb', 'php', 'c', 'cpp', 'cc',
-  'h', 'hpp', 'cs', 'kt', 'kts', 'rs', 'swift', 'sql', 'toml', 'ini', 'cfg', 'conf', 'properties',
-  'env', 'gradle', 'csv', 'tsv', 'vue', 'svelte', 'pl', 'r', 'lua', 'dart', 'scala', 'gql',
-  'graphql', 'proto', 'log', 'text',
-];
-
-/** Attribut `accept` du sélecteur de fichier PC, dérivé de {@link WORKSPACE_TEXT_EXTENSIONS}. */
-export const WORKSPACE_TEXT_ACCEPT = WORKSPACE_TEXT_EXTENSIONS.map((e) => `.${e}`).join(',');
-
-/** Élément du fil de conversation de l'Atelier : un tour (message + éventuelles actions fichier). */
-export interface AtelierThreadItem {
-  id: string;
-  role: AtelierRole;
-  content: string;
-  actions: AtelierAction[];
-  /** Chemins des fichiers modifiés par une session d'exécution (mode « Terminal », SF-28-11). */
-  changedFiles?: string[];
-  /**
-   * Transcription terminal du tour d'exécution (F-30 SF-30-02) : commandes et sorties, conservées
-   * dans le fil après la fin du run — sans quoi tout ce qu'on a vu défiler disparaît.
-   */
-  terminal?: AtelierTerminalBlock[];
-  /**
-   * Ce qu'a coûté le tour (F-30 SF-30-05) : durée écoulée et tokens consommés. Absent quand la
-   * consommation n'a pas pu être relevée — mieux vaut ne rien dire qu'annoncer « 0 token ».
-   */
-  cost?: AtelierTurnCost;
-}
-
-/** Coût d'un tour d'exécution affiché sous la transcription (F-30 SF-30-05). */
-export interface AtelierTurnCost {
-  elapsedSeconds: number;
-  tokens: number;
-}
-
-/** Tour assistant « en cours » pendant le streaming : étapes relayées + commentaire partiel. */
-export interface AtelierStreamingItem {
-  steps: AtelierStreamAction[];
-  text: string;
-}
-
-/**
- * Tour assistant « en cours » du mode « Terminal » (SF-28-11) : état de la session, transcription
- * terminal (commande + sortie, F-30 SF-30-02) relayée au fil de l'eau, et commentaire partiel.
- */
-export interface AtelierExecStreamingItem {
-  status: string;
-  blocks: AtelierTerminalBlock[];
-  text: string;
-}
-
-/** Seuil de repli d'une sortie longue (F-30 SF-30-02) : au-delà, on masque et on laisse déplier. */
-export const TERMINAL_COLLAPSE_LINES = 20;
+// Les types et constantes du fil vivent dans `atelier.types` (F-30 SF-30-07) : la vue terminal les
+// consomme aussi, et les garder ici créerait une dépendance circulaire. Réexportés pour compatibilité.
+import {
+  AtelierAgentMode,
+  AtelierExecStreamingItem,
+  AtelierStreamingItem,
+  AtelierThreadItem,
+  AtelierTurnCost,
+  WORKSPACE_TEXT_ACCEPT,
+  WORKSPACE_TEXT_EXTENSIONS,
+} from './atelier.types';
+export type {
+  AtelierAgentMode,
+  AtelierThreadItem,
+  AtelierStreamingItem,
+  AtelierExecStreamingItem,
+  AtelierTurnCost,
+} from './atelier.types';
+export { WORKSPACE_TEXT_EXTENSIONS, WORKSPACE_TEXT_ACCEPT } from './atelier.types';
 
 /**
  * Écran « Atelier » (F-28, Claude Code Lite). L'utilisateur téléverse un projet `.zip` et discute
@@ -135,6 +95,7 @@ export const TERMINAL_COLLAPSE_LINES = 20;
     MarkdownPipe,
     MessageSegmentsPipe,
     CopyBlockComponent,
+    AtelierTerminalComponent,
   ],
   templateUrl: './atelier.component.html',
   styleUrl: './atelier.component.scss',
@@ -638,7 +599,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /** Libellé de l'en-tête d'un bloc terminal : la commande si connue, sinon le nom de l'outil. */
   blockLabel(block: AtelierTerminalBlock): string {
-    return block.command ?? block.tool;
+    return blockLabelOf(block);
   }
 
   /**
@@ -650,16 +611,12 @@ export class AtelierComponent implements OnInit, OnDestroy {
     if (block.expanded) {
       return block.output;
     }
-    const lines = block.output.split('\n');
-    return lines.length <= TERMINAL_COLLAPSE_LINES
-      ? block.output
-      : lines.slice(0, TERMINAL_COLLAPSE_LINES).join('\n');
+    return visibleOutput(block);
   }
 
   /** Nombre de lignes masquées par le repli ; `0` si la sortie tient sous le seuil. */
   hiddenLineCount(block: AtelierTerminalBlock): number {
-    const lines = block.output.split('\n');
-    return Math.max(0, lines.length - TERMINAL_COLLAPSE_LINES);
+    return hiddenLineCount(block);
   }
 
   /** Déplie/replie la sortie d'un bloc terminal (tour en cours ou tour déjà dans le fil). */
@@ -861,10 +818,4 @@ function attachOutput(
     error: target.error || result.error,
   };
   return blocks.map((block, i) => (i === index ? merged : block));
-}
-
-/** Durée en secondes → `m:ss` (F-30 SF-30-02). */
-function formatElapsed(totalSeconds: number): string {
-  const seconds = totalSeconds % 60;
-  return `${Math.floor(totalSeconds / 60)}:${seconds < 10 ? '0' : ''}${seconds}`;
 }
