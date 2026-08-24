@@ -1,0 +1,160 @@
+// Vue terminal immersive (F-30 SF-30-07). Fond navy de la charte : l'écran EST le terminal.
+:host {
+  display: block;
+  height: 100%;
+}
+
+.terminal-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--cg-primary);
+}
+
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cg-space-3);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-bottom: 1px solid var(--cg-navy-2);
+  color: var(--cg-surface);
+}
+
+.terminal-title {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  font-family: var(--cg-font-mono);
+  font-size: 13px;
+}
+
+.terminal-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+
+  button {
+    color: var(--cg-divider);
+    font-size: 12px;
+  }
+}
+
+.terminal-elapsed {
+  font-family: var(--cg-font-mono);
+  font-size: 11px;
+  color: var(--cg-orange-2);
+}
+
+.terminal-scrollback {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--cg-space-3);
+  font-family: var(--cg-font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.terminal-hint {
+  color: var(--cg-text-secondary);
+  max-width: 60ch;
+}
+
+// La demande de l'utilisateur : ligne d'invite, en tête de chaque tour.
+.terminal-prompt-line {
+  display: flex;
+  gap: var(--cg-space-2);
+  margin-top: var(--cg-space-3);
+  color: var(--cg-surface);
+}
+
+.terminal-caret {
+  color: var(--cg-accent);
+  flex-shrink: 0;
+}
+
+.terminal-request {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.terminal-agent {
+  margin: var(--cg-space-2) 0;
+  color: var(--cg-divider);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.terminal-block {
+  border-left: 2px solid transparent;
+  padding-left: var(--cg-space-2);
+  margin: var(--cg-space-2) 0;
+
+  // Commande en échec : signalée par le rouge de la charte, pas par la seule couleur du texte.
+  &.failed {
+    border-left-color: var(--cg-error);
+  }
+}
+
+.terminal-command {
+  display: flex;
+  gap: var(--cg-space-2);
+  color: var(--cg-surface);
+
+  code {
+    font-family: var(--cg-font-mono);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}
+
+.terminal-dollar {
+  color: var(--cg-accent);
+  flex-shrink: 0;
+}
+
+.terminal-output {
+  margin: var(--cg-space-1) 0 0;
+  font-size: 12px;
+  color: var(--cg-divider);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.terminal-toggle {
+  font-size: 12px;
+  color: var(--cg-orange-2);
+}
+
+.terminal-cost {
+  margin: var(--cg-space-1) 0 0;
+  font-size: 11px;
+  color: var(--cg-text-secondary);
+}
+
+.terminal-input {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-top: 1px solid var(--cg-navy-2);
+
+  button {
+    color: var(--cg-orange-2);
+  }
+}
+
+// Champ nu : le cadre viendrait casser l'illusion du terminal.
+.terminal-field {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--cg-surface);
+  font-family: var(--cg-font-mono);
+  font-size: 13px;
+
+  &::placeholder {
+    color: var(--cg-text-secondary);
+  }
+}

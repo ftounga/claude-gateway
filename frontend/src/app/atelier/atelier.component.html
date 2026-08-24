@@ -11,6 +11,23 @@
     </button>
   </div>
 } @else {
+<!-- Vue terminal immersive (F-30 SF-30-07) : en mode Terminal, l'écran EST le terminal —
+     ni liste de projets, ni bulles de conversation. -->
+@if (agentMode() === 'exec' && activeWorkspaceId()) {
+  <app-atelier-terminal
+    [projectName]="activeName()"
+    [messages]="messages()"
+    [streaming]="execStreaming()"
+    [elapsedLabel]="execElapsedLabel()"
+    [submitting]="submitting()"
+    [draft]="draft()"
+    (draftChange)="draft.set($event)"
+    (send)="send()"
+    (quit)="setAgentMode('edit')"
+    (resetSandbox)="resetSandbox()"
+    (openFiles)="openFileExplorer()"
+  ></app-atelier-terminal>
+} @else {
 <div class="atelier-layout">
   <!-- Sidebar : projets (workspaces) -->
   <aside class="atelier-sidebar">
@@ -459,4 +476,5 @@
     }
   </section>
 </div>
+}
 }
