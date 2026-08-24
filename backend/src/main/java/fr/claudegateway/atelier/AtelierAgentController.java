@@ -130,7 +130,8 @@ public class AtelierAgentController {
             };
             AtelierSessionResult result = sessionService.runTaskStreaming(userId, workspaceId, message, listener);
             emitter.send(SseEmitter.event().name("done")
-                    .data(new StreamDone(result.reply(), result.changedFiles())));
+                    .data(new StreamDone(result.reply(), result.changedFiles(),
+                            result.inputTokens(), result.outputTokens(), result.activeSeconds())));
             emitter.complete();
         } catch (WorkspaceNotFoundException ex) {
             sendError(emitter, "workspace_not_found");
@@ -236,7 +237,12 @@ public class AtelierAgentController {
     record StreamStatus(String state) {
     }
 
-    record StreamDone(String reply, List<String> changedFiles) {
+    /**
+     * Fin de run. Les champs de consommation (F-30 SF-30-05) sont <b>additifs</b> : un client qui les
+     * ignore se comporte comme avant. À zéro, ils signifient « inconnu » (relevé best-effort manqué).
+     */
+    record StreamDone(String reply, List<String> changedFiles, long inputTokens, long outputTokens,
+            long activeSeconds) {
     }
 
     record StreamError(String error) {

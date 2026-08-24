@@ -107,6 +107,14 @@ export interface AtelierAgentStreamAction {
 export interface AtelierAgentStreamDone {
   reply: string;
   changedFiles: string[];
+  /**
+   * Consommation du **tour** (F-30 SF-30-05) : exactement ce qui est décompté du quota, jamais le
+   * cumul de la session. `0` signifie **inconnu** (relevé best-effort manqué côté backend) — dans ce
+   * cas rien n'est affiché, un « 0 token » après une exécution réelle serait faux.
+   */
+  inputTokens: number;
+  outputTokens: number;
+  activeSeconds: number;
 }
 
 /**

@@ -442,7 +442,13 @@ describe('AtelierComponent', () => {
       handlers.onStatus('running');
       handlers.onAction({ tool: 'bash', detail: 'npm test' });
       handlers.onAgent('Je lance les tests…');
-      handlers.onDone({ reply: 'Tests OK.', changedFiles: ['src/main.ts'] });
+      handlers.onDone({
+        reply: 'Tests OK.',
+        changedFiles: ['src/main.ts'],
+        inputTokens: 0,
+        outputTokens: 0,
+        activeSeconds: 0,
+      });
       return Promise.resolve();
     });
     service.getWorkspace.calls.reset();
@@ -748,7 +754,13 @@ describe('AtelierComponent', () => {
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onAction({ tool: 'bash', detail: 'npm test', toolUseId: 'tu_1' });
       handlers.onActionResult({ tool: 'bash', toolUseId: 'tu_1', output: '12 passing', error: false });
-      handlers.onDone({ reply: 'Tests verts.', changedFiles: [] });
+      handlers.onDone({
+        reply: 'Tests verts.',
+        changedFiles: [],
+        inputTokens: 0,
+        outputTokens: 0,
+        activeSeconds: 0,
+      });
       return Promise.resolve();
     });
 
@@ -892,5 +904,58 @@ describe('AtelierComponent', () => {
 
     expect(dialog.open).not.toHaveBeenCalled();
     expect(service.resetAgentSession).not.toHaveBeenCalled();
+  });
+  // ---- F-30 SF-30-05 : coût du tour (durée + tokens) ----
+
+  it('affiche durée et tokens sur le tour terminé (F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onDone({
+        reply: 'Terminé.',
+        changedFiles: [],
+        inputTokens: 12_000,
+        outputTokens: 400,
+        activeSeconds: 30,
+      });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Teste');
+    component.send();
+
+    const last = component.messages()[component.messages().length - 1];
+    expect(last.cost).toBeDefined();
+    expect(last.cost!.tokens).toBe(12_400);
+    // Les tokens affichés sont la somme entrée + sortie du tour, formatée en fr-FR.
+    expect(component.costLabel(last.cost!)).toContain('tokens');
+    expect(component.costLabel({ elapsedSeconds: 65, tokens: 12_400 })).toBe(
+      `1:05 · ${(12_400).toLocaleString('fr-FR')} tokens`,
+    );
+  });
+
+  it('n\'affiche aucun coût quand la consommation est inconnue (F-30)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      // Relevé best-effort manqué côté backend : zéro = inconnu, pas « 0 token ».
+      handlers.onDone({
+        reply: 'Terminé.',
+        changedFiles: [],
+        inputTokens: 0,
+        outputTokens: 0,
+        activeSeconds: 0,
+      });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Teste');
+    component.send();
+
+    const last = component.messages()[component.messages().length - 1];
+    expect(last.cost).toBeUndefined();
+    expect(last.content).toBe('Terminé.');
   });
 });

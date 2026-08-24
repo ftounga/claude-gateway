@@ -202,10 +202,11 @@ public class AtelierSessionService {
         // 7. Décompte du DELTA de consommation (F-30 SF-30-04) : `getSessionUsage` renvoie un cumul
         // depuis l'ouverture de la session — recréditer ce cumul à chaque tour ferait payer plusieurs
         // fois la même consommation. Best-effort : la réponse et le resync sont déjà livrés.
-        recordSessionUsage(userId, workspaceId, sessionId);
+        TurnUsage usage = recordSessionUsage(userId, workspaceId, sessionId);
 
         log.debug("Run atelier terminé : {} fichier(s) modifié(s).", changed.size());
-        return new AtelierSessionResult(run.reply(), changed);
+        return new AtelierSessionResult(run.reply(), changed, usage.inputTokens(), usage.outputTokens(),
+                usage.activeSeconds());
     }
 
     /**
@@ -301,7 +302,7 @@ public class AtelierSessionService {
      * <p>Toute erreur est <b>avalée</b> (log debug) : le run a déjà produit sa réponse et
      * resynchronisé ses fichiers, un comptage manqué ne doit rien interrompre.</p>
      */
-    private void recordSessionUsage(UUID userId, UUID workspaceId, String sessionId) {
+    private TurnUsage recordSessionUsage(UUID userId, UUID workspaceId, String sessionId) {
         try {
             SessionUsage usage = provider.getSessionUsage(sessionId);
             Workspace workspace = workspaceService.requireOwned(userId, workspaceId);
@@ -316,9 +317,20 @@ public class AtelierSessionService {
             quotaService.recordUsage(userId, (int) Math.min(inputDelta, Integer.MAX_VALUE),
                     (int) Math.min(outputDelta, Integer.MAX_VALUE));
             quotaService.recordSandboxSeconds(userId, secondsDelta);
+            return new TurnUsage(inputDelta, outputDelta, secondsDelta);
         } catch (RuntimeException ex) {
             log.debug("Décompte de l'usage de session ignoré (best-effort) : run déjà livré.");
+            return TurnUsage.UNKNOWN;
         }
+    }
+
+    /**
+     * Consommation d'un tour (F-30 SF-30-05) : les deltas <b>effectivement décomptés</b> du quota.
+     * {@link #UNKNOWN} signale un relevé manqué — l'écran n'affiche alors rien, plutôt qu'un
+     * « 0 token » qui serait faux après une exécution réelle.
+     */
+    private record TurnUsage(long inputTokens, long outputTokens, long activeSeconds) {
+        private static final TurnUsage UNKNOWN = new TurnUsage(0L, 0L, 0L);
     }
 
     /**
