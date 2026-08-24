@@ -130,6 +130,31 @@ class AtelierAgentControllerTest {
     }
 
     @Test
+    void doneCarriesTurnUsageAsAdditiveFields() throws Exception {
+        // F-30 SF-30-05 : la consommation du tour voyage dans `done`, en champs ADDITIFS.
+        when(access.hasAccess()).thenReturn(true);
+        when(sessionService.runTaskStreaming(eq(USER), eq(WORKSPACE), any(), any()))
+                .thenReturn(new AtelierSessionResult("Terminé.", List.of(), 1_200L, 300L, 42L));
+
+        var result = mockMvc(props(true)).perform(post("/workspaces/" + WORKSPACE + "/agent/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("{\"message\":\"go\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        org.assertj.core.api.Assertions.assertThat(body)
+                .contains("event:done")
+                .contains("\"inputTokens\":1200")
+                .contains("\"outputTokens\":300")
+                .contains("\"activeSeconds\":42")
+                // Non-régression : les champs préexistants de `done` sont intacts.
+                .contains("\"reply\":\"Terminé.\"")
+                .contains("\"changedFiles\":[]");
+    }
+
+    @Test
     void streamWithoutAccessEmitsForbiddenInStreamNotHttp406() throws Exception {
         when(access.hasAccess()).thenReturn(false);
 

@@ -185,6 +185,10 @@
                       }
                     </div>
                   }
+                  <!-- Ce qu'a coûté le tour (F-30 SF-30-05). Absent si la consommation est inconnue. -->
+                  @if (message.cost) {
+                    <div class="turn-cost">{{ costLabel(message.cost) }}</div>
+                  }
                   <!-- Fichiers modifiés par une session d'exécution (mode « Terminal », SF-28-11) -->
                   @if (message.changedFiles && message.changedFiles.length > 0) {
                     <div class="changed-files" aria-label="Fichiers modifiés par l'exécution">

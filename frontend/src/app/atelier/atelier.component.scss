@@ -408,6 +408,14 @@ a.active {
   color: var(--cg-orange-2);
 }
 
+// Coût d'un tour terminé (F-30 SF-30-05) : information de service, jamais mise en avant.
+.turn-cost {
+  margin-top: var(--cg-space-1);
+  font-family: var(--cg-font-mono);
+  font-size: 11px;
+  color: var(--cg-text-secondary);
+}
+
 // Action « Réinitialiser la sandbox » (F-30 SF-30-06) : discrète, jamais mise en avant.
 .reset-sandbox {
   font-size: 12px;

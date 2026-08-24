@@ -195,7 +195,7 @@ describe('AtelierService', () => {
     fakeSseFetch([
       'event:status\ndata:{"state":"running"}',
       'event:agent\ndata:{"text":"Je lance les tests."}',
-      'event:done\ndata:{"reply":"Terminé.","changedFiles":["src/a.ts"]}',
+      'event:done\ndata:{"reply":"Terminé.","changedFiles":["src/a.ts"],"inputTokens":1200,"outputTokens":300,"activeSeconds":42}',
     ]);
     const seen: string[] = [];
 
@@ -204,11 +204,17 @@ describe('AtelierService', () => {
       onAction: () => seen.push('action'),
       onActionResult: () => seen.push('action_result'),
       onStatus: (s) => seen.push(`status:${s}`),
-      onDone: (d) => seen.push(`done:${d.reply}:${d.changedFiles.join(',')}`),
+      onDone: (d) =>
+        seen.push(`done:${d.reply}:${d.changedFiles.join(',')}:${d.inputTokens}/${d.outputTokens}`),
       onError: (c) => seen.push(`error:${c}`),
     });
 
-    expect(seen).toEqual(['status:running', 'agent:Je lance les tests.', 'done:Terminé.:src/a.ts']);
+    // F-30 SF-30-05 : la consommation du tour voyage dans `done` (champs additifs).
+    expect(seen).toEqual([
+      'status:running',
+      'agent:Je lance les tests.',
+      'done:Terminé.:src/a.ts:1200/300',
+    ]);
   });
 
   it('event:error du flux d\'exécution reste routé vers onError (F-30)', async () => {

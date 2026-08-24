@@ -76,6 +76,17 @@ export interface AtelierThreadItem {
    * dans le fil après la fin du run — sans quoi tout ce qu'on a vu défiler disparaît.
    */
   terminal?: AtelierTerminalBlock[];
+  /**
+   * Ce qu'a coûté le tour (F-30 SF-30-05) : durée écoulée et tokens consommés. Absent quand la
+   * consommation n'a pas pu être relevée — mieux vaut ne rien dire qu'annoncer « 0 token ».
+   */
+  cost?: AtelierTurnCost;
+}
+
+/** Coût d'un tour d'exécution affiché sous la transcription (F-30 SF-30-05). */
+export interface AtelierTurnCost {
+  elapsedSeconds: number;
+  tokens: number;
 }
 
 /** Tour assistant « en cours » pendant le streaming : étapes relayées + commentaire partiel. */
@@ -577,8 +588,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
           // La transcription est reprise dans le tour final : sans cela, tout ce qui a défilé
           // pendant le run disparaîtrait de l'écran (F-30 SF-30-02).
           const transcript = this.execStreaming()?.blocks ?? [];
+          const elapsed = this.execElapsedSeconds();
           this.stopExecTimer();
           this.execStreaming.set(null);
+          // Consommation à zéro = relevé manqué côté backend : on n'affiche alors aucun chiffre.
+          const tokens = (done.inputTokens ?? 0) + (done.outputTokens ?? 0);
           this.messages.update((current) => [
             ...current,
             {
@@ -588,6 +602,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
               actions: [],
               changedFiles: done.changedFiles ?? [],
               terminal: transcript,
+              cost: tokens > 0 ? { elapsedSeconds: elapsed, tokens } : undefined,
             },
           ]);
           // La session a pu exécuter du code et modifier des fichiers : rafraîchir l'arborescence.
@@ -656,9 +671,12 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /** Durée écoulée du run, format `m:ss`. */
   execElapsedLabel(): string {
-    const total = this.execElapsedSeconds();
-    const seconds = total % 60;
-    return `${Math.floor(total / 60)}:${seconds < 10 ? '0' : ''}${seconds}`;
+    return formatElapsed(this.execElapsedSeconds());
+  }
+
+  /** Coût d'un tour terminé : « m:ss · N tokens » (F-30 SF-30-05). */
+  costLabel(cost: AtelierTurnCost): string {
+    return `${formatElapsed(cost.elapsedSeconds)} · ${cost.tokens.toLocaleString('fr-FR')} tokens`;
   }
 
   /** Démarre le chronomètre du run (hors zone : il ne pilote qu'un signal). */
@@ -843,4 +861,10 @@ function attachOutput(
     error: target.error || result.error,
   };
   return blocks.map((block, i) => (i === index ? merged : block));
+}
+
+/** Durée en secondes → `m:ss` (F-30 SF-30-02). */
+function formatElapsed(totalSeconds: number): string {
+  const seconds = totalSeconds % 60;
+  return `${Math.floor(totalSeconds / 60)}:${seconds < 10 ? '0' : ''}${seconds}`;
 }

@@ -593,4 +593,50 @@ class AtelierSessionServiceTest {
         verifyNoInteractions(provider);
         verifyNoInteractions(workspaceRepository);
     }
+    // ---------------------------------------------------------------------------------------------
+    // Consommation du tour exposée au résultat (F-30 SF-30-05).
+    // ---------------------------------------------------------------------------------------------
+
+    @Test
+    void resultCarriesTheTurnUsageActuallyChargedNotTheSessionTotal() {
+        Workspace workspace = ws(null);
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList()))
+                .thenReturn(new ManagedSession("sess_1"));
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+                .thenReturn(new SessionRun("Terminé.", "end_turn"));
+        when(provider.listOutputs("sess_1")).thenReturn(List.of());
+        when(provider.getSessionUsage("sess_1"))
+                .thenReturn(new SessionUsage(1_000L, 200L, 8L))
+                .thenReturn(new SessionUsage(1_500L, 260L, 20L));
+
+        AtelierSessionService service = service(enabled());
+        AtelierSessionResult first = service.runTask(USER, WORKSPACE, "un");
+        AtelierSessionResult second = service.runTask(USER, WORKSPACE, "deux");
+
+        assertThat(first.inputTokens()).isEqualTo(1_000L);
+        assertThat(first.outputTokens()).isEqualTo(200L);
+        assertThat(first.activeSeconds()).isEqualTo(8L);
+        // Second tour : l'écart, jamais le cumul — et exactement ce qui est décompté du quota.
+        assertThat(second.inputTokens()).isEqualTo(500L);
+        assertThat(second.outputTokens()).isEqualTo(60L);
+        assertThat(second.activeSeconds()).isEqualTo(12L);
+        verify(quotaService).recordUsage(USER, 500, 60);
+    }
+
+    @Test
+    void resultReportsUnknownUsageWhenTheReadingFailsWithoutBreakingTheRun() {
+        stubNominalRun();
+        when(provider.getSessionUsage("sess_1")).thenThrow(new AgentProviderException("indisponible"));
+
+        AtelierSessionResult result = service(enabled()).runTask(USER, WORKSPACE, "go");
+
+        // Best-effort inchangé : le run aboutit, la consommation est simplement inconnue (zéro).
+        assertThat(result.reply()).isEqualTo("Terminé.");
+        assertThat(result.inputTokens()).isZero();
+        assertThat(result.outputTokens()).isZero();
+        assertThat(result.activeSeconds()).isZero();
+    }
 }

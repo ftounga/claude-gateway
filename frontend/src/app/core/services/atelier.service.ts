@@ -239,6 +239,9 @@ export class AtelierService {
       error?: string | boolean;
       toolUseId?: string | null;
       output?: string;
+      inputTokens?: number;
+      outputTokens?: number;
+      activeSeconds?: number;
     };
     try {
       payload = JSON.parse(data);
@@ -264,7 +267,13 @@ export class AtelierService {
     } else if (event === 'status') {
       handlers.onStatus(payload.state ?? '');
     } else if (event === 'done') {
-      handlers.onDone({ reply: payload.reply ?? '', changedFiles: payload.changedFiles ?? [] });
+      handlers.onDone({
+        reply: payload.reply ?? '',
+        changedFiles: payload.changedFiles ?? [],
+        inputTokens: payload.inputTokens ?? 0,
+        outputTokens: payload.outputTokens ?? 0,
+        activeSeconds: payload.activeSeconds ?? 0,
+      });
     } else if (event === 'error') {
       handlers.onError(typeof payload.error === 'string' ? payload.error : 'provider_error');
     }
