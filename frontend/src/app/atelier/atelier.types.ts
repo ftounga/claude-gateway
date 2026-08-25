@@ -60,6 +60,21 @@ export interface AtelierStreamingItem {
 }
 
 /**
+ * Demande d'autorisation affichée dans le flux (F-33 / SF-33-03) : la commande que l'agent veut
+ * lancer, et l'état de la réponse. `answering` garde les actions inertes le temps que la décision
+ * parte — répondre deux fois n'aurait pas de sens.
+ */
+export interface AtelierPendingConfirmation {
+  toolUseId: string;
+  tool: string;
+  detail: string;
+  answering: boolean;
+  /** Champ de motif ouvert : le refus se fait en un clic, le motif est un second geste, facultatif. */
+  denying: boolean;
+  reason: string;
+}
+
+/**
  * Tour assistant « en cours » du mode « Terminal » (SF-28-11) : état de la session, transcription
  * terminal (commande + sortie, F-30 SF-30-02) relayée au fil de l'eau, et commentaire partiel.
  */

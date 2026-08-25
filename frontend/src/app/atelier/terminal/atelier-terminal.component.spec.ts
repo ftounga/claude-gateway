@@ -275,4 +275,88 @@ describe('AtelierTerminalComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.terminal-instructions')).toBeNull();
   });
+
+  // ---- F-33 / SF-33-03 : invite d'autorisation ----
+
+  it("affiche la commande soumise à autorisation et émet la décision", () => {
+    component.pendingConfirmation = {
+      toolUseId: 'sevt_1',
+      tool: 'bash',
+      detail: 'rm -rf build',
+      answering: false,
+      denying: false,
+      reason: '',
+    };
+    fixture.detectChanges();
+
+    const ask = fixture.nativeElement.querySelector('.terminal-ask') as HTMLElement;
+    expect(ask).not.toBeNull();
+    expect(ask.textContent).toContain('rm -rf build');
+
+    let decision: boolean | undefined;
+    component.confirmDecision.subscribe((allow: boolean) => (decision = allow));
+    (ask.querySelector('.terminal-ask-allow') as HTMLButtonElement).click();
+
+    expect(decision).toBeTrue();
+  });
+
+  it("n'affiche aucune invite tant qu'aucune autorisation n'est demandée", () => {
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.terminal-ask')).toBeNull();
+  });
+
+  it("propose le champ de motif au refus, puis émet le refus", () => {
+    component.pendingConfirmation = {
+      toolUseId: 'sevt_1',
+      tool: 'bash',
+      detail: 'rm -rf build',
+      answering: false,
+      denying: true,
+      reason: '',
+    };
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.terminal-ask-reason')).not.toBeNull();
+
+    let decision: boolean | undefined;
+    component.confirmDecision.subscribe((allow: boolean) => (decision = allow));
+    const buttons = Array.from(
+      fixture.nativeElement.querySelectorAll('.terminal-ask-actions button'),
+    ) as HTMLButtonElement[];
+    buttons[buttons.length - 1].click();
+
+    expect(decision).toBeFalse();
+  });
+
+  it("laisse les actions inertes pendant l'envoi d'une décision", () => {
+    component.pendingConfirmation = {
+      toolUseId: 'sevt_1',
+      tool: 'bash',
+      detail: 'ls',
+      answering: true,
+      denying: false,
+      reason: '',
+    };
+    fixture.detectChanges();
+
+    const buttons = Array.from(
+      fixture.nativeElement.querySelectorAll('.terminal-ask-actions button'),
+    ) as HTMLButtonElement[];
+    expect(buttons.every((b) => b.disabled)).toBeTrue();
+  });
+
+  it("dit l'état de l'option de validation et émet sa bascule", () => {
+    component.askBeforeBash = true;
+    fixture.detectChanges();
+
+    const guard = fixture.nativeElement.querySelector('.terminal-guard') as HTMLButtonElement;
+    expect(guard.textContent).toContain('Validation activée');
+
+    let toggled = false;
+    component.toggleAskBeforeBash.subscribe(() => (toggled = true));
+    guard.click();
+
+    expect(toggled).toBeTrue();
+  });
 });

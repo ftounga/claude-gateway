@@ -13,7 +13,12 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 import { AtelierTerminalBlock, GitPushResult } from '../../core/models/atelier.models';
-import { AtelierExecStreamingItem, AtelierThreadItem, AtelierTurnCost } from '../atelier.types';
+import {
+  AtelierExecStreamingItem,
+  AtelierPendingConfirmation,
+  AtelierThreadItem,
+  AtelierTurnCost,
+} from '../atelier.types';
 import { blockLabel, formatElapsed, hiddenLineCount, visibleOutput } from './terminal-block';
 
 /**
@@ -75,6 +80,18 @@ export class AtelierTerminalComponent implements AfterViewChecked {
    */
   @Input() instructionsPath: string | null = null;
 
+  /**
+   * Demande d'autorisation en attente (F-33 / SF-33-03), ou `null`. Tant qu'elle est là, la session
+   * est en pause : c'est la décision de l'utilisateur qui la relance.
+   */
+  @Input() pendingConfirmation: AtelierPendingConfirmation | null = null;
+
+  /** Le projet demande l'autorisation avant chaque commande (F-33 / SF-33-01). */
+  @Input() askBeforeBash = false;
+
+  /** Bascule de l'option en vol : le bouton reste inerte le temps de l'enregistrement. */
+  @Input() togglingConfirmation = false;
+
   @Output() draftChange = new EventEmitter<string>();
   @Output() send = new EventEmitter<void>();
   @Output() quit = new EventEmitter<void>();
@@ -85,6 +102,14 @@ export class AtelierTerminalComponent implements AfterViewChecked {
   @Output() interrupt = new EventEmitter<void>();
   /** Ouverture du fichier d'instructions du projet (F-34 / SF-34-02). */
   @Output() openInstructions = new EventEmitter<void>();
+  /** Décision sur la demande en attente (F-33 / SF-33-03) : `true` autorise, `false` refuse. */
+  @Output() confirmDecision = new EventEmitter<boolean>();
+  /** Ouverture du champ de motif de refus. */
+  @Output() denyWithReason = new EventEmitter<void>();
+  /** Saisie du motif de refus (le parent reste propriétaire de l'état). */
+  @Output() reasonChange = new EventEmitter<string>();
+  /** Bascule de l'option « demander avant d'exécuter » (F-33 / SF-33-01). */
+  @Output() toggleAskBeforeBash = new EventEmitter<void>();
 
   @ViewChild('scrollback') private scrollback?: ElementRef<HTMLElement>;
 

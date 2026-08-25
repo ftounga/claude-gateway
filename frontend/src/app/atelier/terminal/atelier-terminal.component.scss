@@ -205,8 +205,67 @@
   }
 }
 
-.terminal-push-icon {
+.terminal-push-icon,
+.terminal-ask-icon {
   font-size: 18px;
   width: 18px;
   height: 18px;
+}
+
+// Validation avant exécution (F-33) : teinte d'accent quand la protection est active.
+.terminal-guard.active {
+  color: var(--cg-orange-2);
+}
+
+// Invite d'autorisation (F-33) : encadrée dans le flux, elle interrompt la lecture sans masquer
+// ce qui précède.
+.terminal-ask {
+  margin: var(--cg-space-3) 0;
+  padding: var(--cg-space-3);
+  border: 1px solid var(--cg-orange-2);
+  border-radius: 4px;
+  background: var(--cg-navy-2);
+  color: var(--cg-surface);
+}
+
+.terminal-ask-title {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  margin: 0 0 var(--cg-space-2);
+  font-size: 13px;
+  color: var(--cg-orange-2);
+}
+
+.terminal-ask-command {
+  margin: 0 0 var(--cg-space-2);
+  padding: var(--cg-space-2);
+  border-radius: 4px;
+  background: var(--cg-primary);
+  font-family: var(--cg-font-mono);
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.terminal-ask-reason {
+  width: 100%;
+  margin-bottom: var(--cg-space-2);
+  padding: var(--cg-space-2);
+  border: 1px solid var(--cg-navy-2);
+  border-radius: 4px;
+  background: var(--cg-primary);
+  color: var(--cg-surface);
+  font-family: var(--cg-font-mono);
+  font-size: 13px;
+
+  &::placeholder {
+    color: var(--cg-divider);
+  }
+}
+
+.terminal-ask-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
 }

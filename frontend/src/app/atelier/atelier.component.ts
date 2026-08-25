@@ -44,6 +44,8 @@ import {
   AtelierAction,
   AtelierAgentStreamAction,
   AtelierAgentStreamActionResult,
+  AtelierConfirmRequest,
+  AtelierConfirmResolved,
   AtelierMessage,
   AtelierTerminalBlock,
   AtelierRole,
@@ -58,6 +60,7 @@ import {
 import {
   AtelierAgentMode,
   AtelierExecStreamingItem,
+  AtelierPendingConfirmation,
   AtelierStreamingItem,
   AtelierThreadItem,
   AtelierTurnCost,
@@ -192,6 +195,19 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * parte. L'arrêt lui-même vient plus tard, à une frontière sûre côté fournisseur.
    */
   readonly interrupting = signal(false);
+
+  /**
+   * Demande d'autorisation en attente (F-33 / SF-33-03), ou `null`. Une seule à la fois : l'API peut
+   * en poser plusieurs, mais les arbitrer simultanément à l'écran serait confus — la suivante prend
+   * la place une fois la précédente tranchée.
+   */
+  readonly pendingConfirmation = signal<AtelierPendingConfirmation | null>(null);
+
+  /** Bascule de l'option « demander avant d'exécuter » en vol : le bouton reste inerte. */
+  readonly togglingConfirmation = signal(false);
+
+  /** Vrai si le projet ouvert demande l'autorisation avant chaque commande (F-33 / SF-33-01). */
+  readonly askBeforeBash = computed(() => this.activeDetail()?.askBeforeBash === true);
 
   /**
    * Dernière publication du projet ouvert. Conservée à l'écran : le lien d'ouverture de pull request
@@ -728,6 +744,140 @@ export class AtelierComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Affiche la demande d'autorisation posée par l'agent (F-33 / SF-33-03). L'invite vit **dans le
+   * flux**, là où l'utilisateur regarde déjà défiler la sortie : une modale masquerait précisément
+   * les commandes précédentes, qui sont ce qui permet de juger.
+   */
+  private showConfirmation(request: AtelierConfirmRequest): void {
+    this.pendingConfirmation.set({
+      toolUseId: request.toolUseId,
+      tool: request.tool,
+      detail: request.detail,
+      answering: false,
+      denying: false,
+      reason: '',
+    });
+  }
+
+  /**
+   * Retire l'invite quand la demande a été tranchée — ici, dans un autre onglet, ou par expiration
+   * du délai. Le refus automatique est **dit** : sans cela, l'utilisateur croirait sa décision encore
+   * attendue alors que la commande a déjà été refusée.
+   */
+  private clearConfirmation(resolved: AtelierConfirmResolved): void {
+    const pending = this.pendingConfirmation();
+    if (pending && pending.toolUseId !== resolved.toolUseId) {
+      return;
+    }
+    this.pendingConfirmation.set(null);
+    if (resolved.decision === 'timeout') {
+      this.snackBar.open(
+        'Commande refusée : aucune réponse dans le délai imparti.', 'Fermer', { duration: 6000 });
+    }
+  }
+
+  /** Ouvre le champ de motif : refuser tient en un clic, motiver est un second geste, facultatif. */
+  startDenying(): void {
+    this.pendingConfirmation.update((current) =>
+      current ? { ...current, denying: true } : current);
+  }
+
+  /** Saisie du motif de refus (le composant terminal reste une vue de présentation). */
+  setConfirmationReason(reason: string): void {
+    this.pendingConfirmation.update((current) =>
+      current ? { ...current, reason } : current);
+  }
+
+  /**
+   * Répond à la demande en attente (F-33 / SF-33-03) : autorise, ou refuse avec le motif saisi — que
+   * l'agent recevra, pour qu'il propose autre chose plutôt que de rester bloqué.
+   *
+   * <p>L'invite n'est retirée qu'à la **résolution** relayée par le flux : c'est elle qui prouve que
+   * la décision est bien arrivée jusqu'à la session.</p>
+   */
+  answerConfirmation(allow: boolean): void {
+    const id = this.activeWorkspaceId();
+    const pending = this.pendingConfirmation();
+    if (!id || !pending || pending.answering) {
+      return;
+    }
+    this.pendingConfirmation.set({ ...pending, answering: true });
+    const reason = pending.reason.trim();
+    this.atelier
+      .confirmToolUse(id, {
+        toolUseId: pending.toolUseId,
+        decision: allow ? 'allow' : 'deny',
+        reason: !allow && reason.length > 0 ? reason : undefined,
+      })
+      .subscribe({
+        error: (err: unknown) => {
+          // La demande n'est plus à trancher (déjà expirée, session close) : retirer l'invite plutôt
+          // que de laisser l'utilisateur cliquer dans le vide.
+          this.pendingConfirmation.set(null);
+          this.notifyError(this.confirmErrorMessage(err));
+        },
+      });
+  }
+
+  /** Traduit l'échec d'une réponse d'autorisation en message lisible (F-33 / SF-33-03). */
+  private confirmErrorMessage(err: unknown): string {
+    if (err instanceof HttpErrorResponse) {
+      if (err.status === 409) {
+        return "L'exécution n'attend plus de réponse.";
+      }
+      if (err.status === 404) {
+        return 'Projet introuvable.';
+      }
+      if (err.status === 502) {
+        return "Votre réponse n'a pas pu être transmise : la demande n'était plus à trancher.";
+      }
+    }
+    return "Votre réponse n'a pas pu être transmise. Veuillez réessayer.";
+  }
+
+  /**
+   * Bascule l'option « demander avant d'exécuter » du projet (F-33 / SF-33-01).
+   *
+   * <p>La politique d'outils est fixée à l'ouverture de la sandbox : quand une session tourne déjà,
+   * le backend le dit (`appliesToCurrentSession: false`) et on le répète à l'utilisateur — annoncer
+   * une protection qui n'est pas en vigueur serait pire que ne rien annoncer.</p>
+   */
+  toggleAskBeforeBash(): void {
+    const id = this.activeWorkspaceId();
+    if (!id || this.togglingConfirmation()) {
+      return;
+    }
+    const enabled = !this.askBeforeBash();
+    this.togglingConfirmation.set(true);
+    this.atelier.setAskBeforeBash(id, enabled).subscribe({
+      next: (state) => {
+        this.togglingConfirmation.set(false);
+        this.activeDetail.update((detail) =>
+          detail ? { ...detail, askBeforeBash: state.enabled } : detail);
+        this.snackBar.open(this.confirmationToggleMessage(state.enabled,
+          state.appliesToCurrentSession), 'Fermer', { duration: 6000 });
+      },
+      error: (err: unknown) => {
+        this.togglingConfirmation.set(false);
+        this.notifyError(
+          err instanceof HttpErrorResponse && err.status === 404
+            ? 'Projet introuvable.'
+            : "Le réglage n'a pas pu être enregistré. Veuillez réessayer.");
+      },
+    });
+  }
+
+  /** Message de bascule : dit franchement quand le réglage ne vaut que pour la prochaine sandbox. */
+  private confirmationToggleMessage(enabled: boolean, appliesNow: boolean): string {
+    const state = enabled
+      ? 'Validation activée : Claude demandera avant chaque commande.'
+      : 'Validation désactivée : Claude exécutera sans demander.';
+    return appliesNow
+      ? state
+      : `${state} Prend effet à la prochaine sandbox — réinitialisez pour l'appliquer maintenant.`;
+  }
+
+  /**
    * Réinitialise la sandbox du workspace (F-30 SF-30-06). L'action ne détruit aucun fichier du
    * projet, mais elle jette un environnement qui a pu coûter plusieurs minutes d'installation : la
    * confirmation dit explicitement ce qui est perdu et ce qui est conservé.
@@ -818,10 +968,14 @@ export class AtelierComponent implements OnInit, OnDestroy {
             current ? { ...current, text: current.text + text } : current,
           );
         }),
+      onConfirmRequest: (request) => this.zone.run(() => this.showConfirmation(request)),
+      onConfirmResolved: (resolved) => this.zone.run(() => this.clearConfirmation(resolved)),
       onDone: (done) =>
         this.zone.run(() => {
           this.submitting.set(false);
           this.interrupting.set(false);
+          // Plus rien n'attend de décision : une invite restée à l'écran serait un piège.
+          this.pendingConfirmation.set(null);
           // La transcription est reprise dans le tour final : sans cela, tout ce qui a défilé
           // pendant le run disparaîtrait de l'écran (F-30 SF-30-02).
           const transcript = this.execStreaming()?.blocks ?? [];
@@ -851,6 +1005,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
         this.zone.run(() => {
           this.submitting.set(false);
           this.interrupting.set(false);
+          this.pendingConfirmation.set(null);
           this.stopExecTimer();
           this.execStreaming.set(null);
           // Retire le message utilisateur optimiste : rien n'a été persisté côté serveur.
