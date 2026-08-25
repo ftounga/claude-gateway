@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { Router, provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, throwError } from 'rxjs';
@@ -1910,5 +1910,95 @@ describe('AtelierComponent', () => {
 
     expect(component.pendingConfirmation()).toBeNull();
     expect(service.confirmToolUse).not.toHaveBeenCalled();
+  });
+});
+
+// ---- F-30 SF-30-10 : ouvrir un projet (et son terminal) depuis l'URL ----
+
+describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () => {
+  let service: jasmine.SpyObj<AtelierService>;
+  let snackBar: jasmine.SpyObj<MatSnackBar>;
+
+  function setupWithUrl(id: string | null, mode: string | null) {
+    service = jasmine.createSpyObj<AtelierService>('AtelierService', [
+      'createWorkspace', 'listWorkspaces', 'getWorkspace', 'getFile', 'writeFile',
+      'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory',
+    ]);
+    const apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
+    snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
+    const dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
+
+    const urlSummary: WorkspaceSummary = {
+      id: 'w1', name: 'projet', createdAt: '2026-08-26T00:00:00Z', source: 'ARCHIVE', gitRepo: null,
+    };
+    const urlDetail: WorkspaceDetail = {
+      id: 'w1', name: 'projet', fileCount: 0, files: [], createdAt: '2026-08-26T00:00:00Z',
+      source: 'ARCHIVE', gitRepoUrl: null, gitRepo: null, gitBranch: null, truncated: false,
+    };
+    const urlStatus: ApiKeyStatus = {
+      present: false, maskedKey: null, last4: null, provider: null, mode: 'HOSTED',
+      validatedAt: null, createdAt: null,
+    };
+    service.listWorkspaces.and.returnValue(of([urlSummary]));
+    service.getWorkspace.and.returnValue(of(urlDetail));
+    service.getHistory.and.returnValue(of([]));
+    apiKeyService.getStatus.and.returnValue(of(urlStatus));
+
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [AtelierComponent],
+      providers: [
+        provideNoopAnimations(),
+        provideRouter([]),
+        { provide: AtelierService, useValue: service },
+        { provide: ApiKeyService, useValue: apiKeyService },
+        { provide: MatSnackBar, useValue: snackBar },
+        { provide: MatDialog, useValue: dialog },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              paramMap: { get: (k: string) => (k === 'id' ? id : null) },
+              queryParamMap: { get: (k: string) => (k === 'mode' ? mode : null) },
+            },
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(AtelierComponent);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('sélectionne le projet nommé dans l\'URL', () => {
+    const fixture = setupWithUrl('w1', null);
+
+    expect(fixture.componentInstance.activeWorkspaceId()).toBe('w1');
+    expect(fixture.componentInstance.agentMode()).toBe('edit');
+  });
+
+  it('ouvre directement le terminal avec ?mode=terminal', () => {
+    const fixture = setupWithUrl('w1', 'terminal');
+
+    expect(fixture.componentInstance.activeWorkspaceId()).toBe('w1');
+    expect(fixture.componentInstance.agentMode()).toBe('exec');
+    expect(fixture.nativeElement.querySelector('app-atelier-terminal')).not.toBeNull();
+  });
+
+  it('sans identifiant, le comportement est inchangé (non-régression)', () => {
+    const fixture = setupWithUrl(null, null);
+
+    expect(fixture.componentInstance.activeWorkspaceId()).toBeNull();
+    expect(fixture.componentInstance.agentMode()).toBe('edit');
+    expect(snackBar.open).not.toHaveBeenCalled();
+  });
+
+  it('un projet inconnu retombe sur l\'écran habituel avec un message', () => {
+    const fixture = setupWithUrl('inconnu', 'terminal');
+
+    expect(fixture.componentInstance.activeWorkspaceId()).toBeNull();
+    // Le mode revient à Assistant : ouvrir un terminal sans projet n'aurait aucun sens.
+    expect(fixture.componentInstance.agentMode()).toBe('edit');
+    expect(snackBar.open.calls.mostRecent().args[0]).toBe('Projet introuvable.');
   });
 });
