@@ -2,6 +2,8 @@ package fr.claudegateway.atelier.agent;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -28,6 +30,7 @@ import fr.claudegateway.atelier.agent.ManagedAgentProvider.SessionUsage;
 import fr.claudegateway.git.GitTokenMissingException;
 import fr.claudegateway.git.GitTokenService;
 import fr.claudegateway.quota.QuotaService;
+import fr.claudegateway.quota.UsageSnapshot;
 
 /**
  * Orchestration d'un run d'exécution d'atelier sur une session Managed Agents (F-28 / Phase 2,
@@ -64,6 +67,16 @@ public class AtelierSessionService {
     /** Préfixe possible des sorties générées par la session (retiré à la réécriture). */
     private static final String OUTPUTS_PREFIX = "/mnt/session/outputs/";
 
+    /**
+     * Raison d'arrêt d'un tour stoppé par le <b>plafond de dépense</b> de la session (F-36 SF-36-01).
+     * Reconnue sur la racine : le libellé exact n'est pas garanti par le fournisseur, et c'est ce
+     * signal — jamais le montant affiché, arrondi au cent — qui dit que la session est en pause.
+     */
+    private static final String BUDGET_STOP_REASON = "budget";
+
+    /** Diviseur de conversion « tokens → millions de tokens » des tarifs de référence. */
+    private static final BigDecimal TOKENS_PER_MILLION = new BigDecimal("1000000");
+
     private final ManagedAgentProvider provider;
     private final WorkspaceService workspaceService;
     private final AtelierAgentBootstrapService bootstrapService;
@@ -74,6 +87,7 @@ public class AtelierSessionService {
     private final GitTokenService gitTokenService;
     private final ProjectInstructionsService instructionsService;
     private final McpVaultService mcpVaultService;
+    private final AtelierCostProperties costProperties;
 
     /** Sérialisation de la transcription persistée (F-30 SF-30-09) : donnée d'affichage. */
     private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER =
@@ -105,7 +119,8 @@ public class AtelierSessionService {
             AtelierAgentBootstrapService bootstrapService, AtelierAgentProperties properties,
             QuotaService quotaService, WorkspaceRepository workspaceRepository,
             AtelierMessageRepository messageRepository, GitTokenService gitTokenService,
-            ProjectInstructionsService instructionsService, McpVaultService mcpVaultService) {
+            ProjectInstructionsService instructionsService, McpVaultService mcpVaultService,
+            AtelierCostProperties costProperties) {
         this.provider = provider;
         this.workspaceService = workspaceService;
         this.bootstrapService = bootstrapService;
@@ -116,6 +131,7 @@ public class AtelierSessionService {
         this.gitTokenService = gitTokenService;
         this.instructionsService = instructionsService;
         this.mcpVaultService = mcpVaultService;
+        this.costProperties = costProperties;
     }
 
     /**
@@ -277,6 +293,11 @@ public class AtelierSessionService {
         // est consommée ici : elle ne vaut que pour le tour qui vient de sortir de son attente.
         boolean interrupted = consumeInterrupted(sessionId, run.stopReason());
 
+        // 5 ter. Le tour s'est-il arrêté sur le PLAFOND DE DÉPENSE de la session (F-36 SF-36-01) ?
+        // Le tour est conservé comme tout autre : il a eu lieu, il est facturé — mais l'écran doit
+        // pouvoir le dire, et proposer le rachat plutôt qu'un « réessayez » qui échouerait pareil.
+        boolean budgetReached = isBudgetStopReason(run.stopReason());
+
         // 6. Resync INCRÉMENTAL : une session persistante réexpose ses sorties à chaque tour ; ne
         // réécrire que les nouvelles évite de repasser sur tout le workspace et de signaler comme
         // modifiés des fichiers intacts.
@@ -302,11 +323,11 @@ public class AtelierSessionService {
         // 8. Historique (F-30 SF-30-09) : le run a abouti, on conserve la demande, la réponse et la
         // transcription. Un run en échec ne passe jamais ici — cohérent avec l'écran, qui retire le
         // tour optimiste en annonçant que rien n'a été enregistré.
-        persistTurn(userId, workspaceId, message, run.reply(), transcript, usage, interrupted);
+        persistTurn(userId, workspaceId, message, run.reply(), transcript, usage, interrupted, budgetReached);
 
         log.debug("Run atelier terminé : {} fichier(s) modifié(s).", changed.size());
         return new AtelierSessionResult(run.reply(), changed, usage.inputTokens(), usage.outputTokens(),
-                usage.activeSeconds(), interrupted);
+                usage.activeSeconds(), interrupted, budgetReached);
     }
 
     /**
@@ -318,7 +339,7 @@ public class AtelierSessionService {
      * ne doit pas les faire échouer après coup.</p>
      */
     private void persistTurn(UUID userId, UUID workspaceId, String message, String reply,
-            TerminalTranscript transcript, TurnUsage usage, boolean interrupted) {
+            TerminalTranscript transcript, TurnUsage usage, boolean interrupted, boolean budgetReached) {
         try {
             messageRepository.save(AtelierMessage.builder()
                     .workspaceId(workspaceId)
@@ -331,7 +352,7 @@ public class AtelierSessionService {
                     .userId(userId)
                     .role("ASSISTANT")
                     .content(reply == null ? "" : reply)
-                    .terminalJson(serializeTranscript(transcript, usage, interrupted))
+                    .terminalJson(serializeTranscript(transcript, usage, interrupted, budgetReached))
                     .build());
         } catch (RuntimeException ex) {
             log.debug("Historisation du tour d'exécution ignorée (best-effort) : run déjà livré.");
@@ -347,8 +368,9 @@ public class AtelierSessionService {
      * document, la mention « interrompu » serait perdue au rechargement, et l'utilisateur relirait un
      * tour d'apparence normale là où il avait coupé.</p>
      */
-    private String serializeTranscript(TerminalTranscript transcript, TurnUsage usage, boolean interrupted) {
-        if (transcript.isEmpty() && !interrupted) {
+    private String serializeTranscript(TerminalTranscript transcript, TurnUsage usage,
+            boolean interrupted, boolean budgetReached) {
+        if (transcript.isEmpty() && !interrupted && !budgetReached) {
             return null;
         }
         TerminalTranscript.Bounded bounded = transcript.bounded(properties.maxTranscriptChars());
@@ -359,6 +381,7 @@ public class AtelierSessionService {
         document.put("outputTokens", usage.outputTokens());
         document.put("activeSeconds", usage.activeSeconds());
         document.put("interrupted", interrupted);
+        document.put("budgetReached", budgetReached);
         try {
             return MAPPER.writeValueAsString(document);
         } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
@@ -394,7 +417,8 @@ public class AtelierSessionService {
             mounts.add(new FileMount(fileId, WORKSPACE_MOUNT + path));
         }
         ManagedSession session = provider.createSession(
-                config.getAgentId(), config.getEnvironmentId(), mounts, null, system, permissions);
+                config.getAgentId(), config.getEnvironmentId(), mounts, null, system, permissions,
+                null, sessionBudget(userId));
         markSessionOpened(workspace, session.id());
         return session.id();
     }
@@ -448,9 +472,37 @@ public class AtelierSessionService {
         McpAccess mcpAccess = mcpVaultService.resolveAccess(userId).orElse(null);
         ManagedSession session = provider.createSession(
                 config.getAgentId(), config.getEnvironmentId(), List.of(), repository, systemOverride,
-                permissions, mcpAccess);
+                permissions, mcpAccess, sessionBudget(userId));
         markSessionOpened(workspace, session.id());
         return session.id();
+    }
+
+    /**
+     * Plafond de dépense de la session à ouvrir (F-36 / SF-36-01) : le <b>minimum</b> entre le quota
+     * restant de l'utilisateur converti en dollars et le plafond par run configuré, jamais en dessous
+     * du plancher.
+     *
+     * <p>C'est ce qui transforme le quota en garantie structurelle : jusqu'ici il était vérifié
+     * <b>après</b> le run, et un seul run pouvait donc dépasser le quota mensuel entier. Ici, la
+     * plateforme met le thread en pause avant l'appel qui ferait franchir le plafond.</p>
+     *
+     * <p>Le quota lu est celui de l'utilisateur du <b>contexte de sécurité</b> — jamais un identifiant
+     * venu du client (isolation).</p>
+     *
+     * <p>Le plancher évite une session au budget nul quand il ne reste presque plus de quota : elle
+     * serait refusée par le fournisseur, ou mise en pause avant le premier mot. Le dépassement
+     * possible est alors borné à ce plancher (défaut 0,10 $), contre « illimité » avant F-36.</p>
+     */
+    private SessionBudget sessionBudget(UUID userId) {
+        UsageSnapshot usage = quotaService.currentUsage(userId);
+        BigDecimal remainingCost = BigDecimal.valueOf(usage.remainingTokens())
+                .multiply(costProperties.costPerMillionTokens())
+                .divide(TOKENS_PER_MILLION, 6, RoundingMode.DOWN);
+        BigDecimal amount = remainingCost.min(costProperties.maxRunCost());
+        if (amount.compareTo(costProperties.minRunCost()) < 0) {
+            amount = costProperties.minRunCost();
+        }
+        return SessionBudget.ofUsd(amount);
     }
 
     /**
@@ -532,6 +584,16 @@ public class AtelierSessionService {
     /** Raison d'arrêt d'interruption : le libellé exact n'est pas garanti, on reconnaît la racine. */
     private static boolean isInterruptStopReason(String stopReason) {
         return stopReason != null && stopReason.toLowerCase(java.util.Locale.ROOT).contains("interrupt");
+    }
+
+    /**
+     * Vrai si le tour s'est arrêté parce que le <b>plafond de dépense</b> de la session est atteint
+     * (F-36 SF-36-01). On se fie à la raison d'arrêt, jamais au montant affiché : celui-ci est arrondi
+     * au cent et ne dirait pas de façon fiable que la session est en pause.
+     */
+    private static boolean isBudgetStopReason(String stopReason) {
+        return stopReason != null
+                && stopReason.toLowerCase(java.util.Locale.ROOT).contains(BUDGET_STOP_REASON);
     }
 
     /**

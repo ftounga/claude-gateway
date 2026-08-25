@@ -328,6 +328,37 @@ class AnthropicManagedAgentProviderTest {
     }
 
     @Test
+    void createSessionWithABudgetCarriesTheHardSpendingCapInMinorUnits() {
+        // F-36 / SF-36-01 : le montant part en unités mineures ET en chaîne — une forme décimale
+        // ("2.00") serait rejetée par le fournisseur.
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.budget.type").value("limit"))
+                .andExpect(jsonPath("$.budget.max_list_cost.amount").value("200"))
+                .andExpect(jsonPath("$.budget.max_list_cost.currency").value("USD"))
+                .andRespond(withSuccess("{\"id\":\"sess_8\"}", MediaType.APPLICATION_JSON));
+
+        provider.createSession("agent_456", "env_123", List.of(), null, null,
+                SessionPermissions.ALLOW_ALL, null, new SessionBudget(200L, "USD"));
+
+        server.verify();
+    }
+
+    @Test
+    void createSessionWithoutABudgetSendsNoBudgetAtAll() {
+        // Non-régression : sans plafond, le corps est strictement celui d'avant F-36.
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.budget").doesNotExist())
+                .andRespond(withSuccess("{\"id\":\"sess_9\"}", MediaType.APPLICATION_JSON));
+
+        provider.createSession("agent_456", "env_123", List.of(), null, null,
+                SessionPermissions.ALLOW_ALL, null);
+
+        server.verify();
+    }
+
+    @Test
     void sendUserMessagePostsUserMessageEvent() {
         server.expect(requestTo("https://api.anthropic.com/v1/sessions/sess_1/events"))
                 .andExpect(method(HttpMethod.POST))

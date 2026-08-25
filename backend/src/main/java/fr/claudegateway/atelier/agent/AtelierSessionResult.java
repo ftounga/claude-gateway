@@ -17,18 +17,27 @@ import java.util.List;
  * @param activeSeconds secondes de bac à sable consommées par ce tour ({@code 0} si relevé échoué)
  * @param interrupted   vrai si le tour s'est arrêté sur une demande d'interruption (F-32 SF-32-01) :
  *                      il est conservé et décompté comme tout autre tour, mais l'écran doit le dire
+ * @param budgetReached vrai si le tour s'est arrêté sur le <b>plafond de dépense</b> de la session
+ *                      (F-36 SF-36-01). Distinct du quota mensuel épuisé : ce run-ci a atteint sa
+ *                      borne, le suivant repartira d'un plafond neuf
  */
 public record AtelierSessionResult(String reply, List<String> changedFiles, long inputTokens,
-        long outputTokens, long activeSeconds, boolean interrupted) {
+        long outputTokens, long activeSeconds, boolean interrupted, boolean budgetReached) {
 
     /** Résultat sans consommation connue (relevé best-effort en échec, ou run hors session). */
     public AtelierSessionResult(String reply, List<String> changedFiles) {
-        this(reply, changedFiles, 0L, 0L, 0L, false);
+        this(reply, changedFiles, 0L, 0L, 0L, false, false);
     }
 
     /** Résultat d'un tour mené à son terme (jamais interrompu) : forme historique. */
     public AtelierSessionResult(String reply, List<String> changedFiles, long inputTokens,
             long outputTokens, long activeSeconds) {
-        this(reply, changedFiles, inputTokens, outputTokens, activeSeconds, false);
+        this(reply, changedFiles, inputTokens, outputTokens, activeSeconds, false, false);
+    }
+
+    /** Résultat d'un tour sans plafond atteint : forme d'avant F-36. */
+    public AtelierSessionResult(String reply, List<String> changedFiles, long inputTokens,
+            long outputTokens, long activeSeconds, boolean interrupted) {
+        this(reply, changedFiles, inputTokens, outputTokens, activeSeconds, interrupted, false);
     }
 }
