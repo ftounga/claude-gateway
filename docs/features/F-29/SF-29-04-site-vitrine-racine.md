@@ -81,7 +81,7 @@ Pour un moteur de classification, un domaine dont la façade est une page de par
 
 ### Hors scope (explicite)
 
-- **Résolution HTTPS de l'apex nu** `ng-itconsulting.com` : un apex ne peut pas porter de CNAME et les IP de l'ELB sont dynamiques (TTL 59 s). L'apex conserve la redirection OVH existante vers `www`. Une résolution complète exigerait soit un hébergement, soit une migration de la zone DNS vers un fournisseur gérant l'aplatissement de CNAME — arbitré comme non prioritaire.
+- **Résolution HTTPS de l'apex nu** `ng-itconsulting.com` (diagnostic complet et correctif détaillé : **OQ-12** de `docs/OPEN_QUESTIONS.md`, 2026-08-25) : un apex ne peut pas porter de CNAME et les IP de l'ELB sont dynamiques (TTL 59 s). L'apex conserve la redirection OVH existante vers `www`. Une résolution complète exigerait soit un hébergement, soit une migration de la zone DNS vers un fournisseur gérant l'aplatissement de CNAME — arbitré comme non prioritaire.
 - **Création de l'enregistrement `CNAME www`** : action dans l'espace client OVH, hors du dépôt, à la main de l'éditeur.
 - Site multi-pages, formulaire de contact, blog, mesure d'audience.
 - Suppression de la page de parking OVH côté apex.

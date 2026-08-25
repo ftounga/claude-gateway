@@ -78,3 +78,62 @@ ne porte aucun montant. Les montants réels vivent dans Stripe (réversibles san
 **Contexte** : le **montage du dépôt** (clone, `git pull`, `git push`) s'authentifie avec le PAT via le proxy git du fournisseur — acquis et livré (SF-31-02/04). La **création de pull request** passe en revanche par le serveur **MCP GitHub**, qui s'authentifie par un **vault de credentials** ; la documentation avertit que les serveurs MCP hébergés attendent typiquement des **jetons bearer OAuth**, pas les clés d'API natives du service.
 **Options** : (a) vérifier empiriquement qu'un PAT est accepté comme `static_bearer` du serveur MCP GitHub (une requête de test, un dépôt de test, un PAT réel) ; (b) basculer d'emblée D2 sur GitHub App / OAuth ; (c) s'en tenir à SF-31-04 et laisser l'utilisateur ouvrir sa PR depuis le lien de comparaison.
 **Décision** : **à trancher par l'owner.** Aucune implémentation ne doit anticiper la réponse. **Repli en place** : (c) — SF-31-04 renvoie `https://github.com/{owner}/{repo}/compare/{base}...{branche}?expand=1`, donc le gain principal de F-31 (plus d'export/réimport manuel) est acquis sans SF-31-05. Détail : `docs/features/F-31/CADRAGE.md` § *Risque MCP*.
+## OQ-12 — HTTPS sur l'apex nu `ng-itconsulting.com`
+
+**Statut** : **Ouverte — reportée volontairement (2026-08-25)**. Correctif documenté ci-dessous, à
+appliquer si le besoin se matérialise.
+
+**Diagnostic exact (mesuré le 2026-08-25)**
+
+| Adresse | Résultat |
+|---------|----------|
+| `https://www.ng-itconsulting.com` | ✅ 200 — site servi par le cluster |
+| `http://ng-itconsulting.com` | ✅ **301** vers `https://www…` (redirection OVH) |
+| `https://ng-itconsulting.com` | ❌ **connexion refusée — port 443 fermé** |
+
+Ce n'est **pas** un problème de certificat : le serveur de redirection OVH (`213.186.33.5`) n'écoute
+pas du tout en HTTPS. Vérifié dans l'interface OVH : **aucune option SSL n'existe** dans le parcours
+de création d'une redirection de domaine (étapes 1 à 5) — OVH ne fait pas de HTTPS sur ses
+redirections DNS.
+
+**Impact réel — limité**
+
+Un seul cas casse : un lien écrit explicitement en `https://ng-itconsulting.com` (signature de mail,
+QR code, annuaire, carte de visite). La saisie au clavier fonctionne : le navigateur tente HTTPS,
+échoue, retombe en HTTP et suit le 301.
+
+**Ce qui rendrait le correctif nécessaire**
+
+1. Diffusion de `https://ng-itconsulting.com` sur un support figé (imprimé, QR code, annuaire).
+2. Durcissement du HTTPS-First des navigateurs supprimant le repli automatique vers HTTP — trajectoire
+   annoncée, sans échéance ferme.
+
+**Correctif, si le besoin se matérialise**
+
+Cause de fond : un apex ne peut pas porter de CNAME, les IP du NLB AWS sont dynamiques, et OVH
+n'aplatit pas les CNAME. Le NLB est **partagé** avec `legalcase.fr` — lui attacher des Elastic IP
+imposerait de le recréer, donc une coupure sur deux produits pour un confort d'URL : **écarté**.
+
+Reste la migration de zone DNS, en deux volets :
+
+*Volet éditeur (OVH → Route 53 ou Cloudflare)*
+1. Exporter la zone complète depuis OVH (bouton **Export as CSV** de la page Redirection).
+2. Recréer **tous** les enregistrements chez le nouvel hébergeur. ⚠️ **Le risque de l'opération est
+   là** : `MX 1 smtp.google.com` (messagerie Google Workspace), le SPF
+   (`google + mx.ovh.com + spf.brevo.com`), les DKIM Brevo (`brevo1/brevo2._domainkey`) et le
+   `google-site-verification`. Un MX oublié coupe les mails sans alerte immédiate.
+3. Créer l'apex : enregistrement **alias A** vers le NLB (Route 53, natif) ou **CNAME aplati**
+   (Cloudflare).
+4. Basculer les serveurs de noms chez OVH.
+
+*Volet dépôt (à faire côté cluster, avant la bascule)*
+5. Ajouter `ng-itconsulting.com` à `k8s/base/ingress/corporate-ingress.yaml` et au certificat
+   cert-manager, pour que l'apex soit servi dès que le DNS pointe.
+
+**Recommandation** : **Route 53** plutôt que Cloudflare — l'infrastructure est déjà sur AWS et pilotée
+par Terraform, l'alias vers un NLB est natif, et cela n'ajoute aucun intermédiaire devant le trafic.
+Coût : ~0,50 $/mois par zone.
+
+**Décision** : laissée en l'état le 2026-08-25. La règle de contournement, sans coût ni risque :
+**toujours écrire `www.ng-itconsulting.com`** dans tout ce qui est diffusé. Confirme et précise
+l'arbitrage « non prioritaire » de F-29 / SF-29-04.

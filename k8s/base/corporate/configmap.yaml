@@ -17,7 +17,7 @@ data:
     <meta charset="utf-8">
     <title>NG-CONSULTING — Conception et développement de logiciels</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="NG-CONSULTING conçoit, développe et exploite des logiciels et outils informatiques pour les entreprises. Éditeur de Claude Portal, passerelle professionnelle vers l'assistant Claude.">
+    <meta name="description" content="NG-CONSULTING conçoit, développe et exploite des logiciels et outils informatiques pour les entreprises. Solutions : Claude Portal, AI LegalCase, NG Acquisitions. Éditeur de Claude Portal, passerelle professionnelle vers l'assistant Claude.">
     <meta name="author" content="NG-CONSULTING">
     <meta name="robots" content="index, follow">
     <link rel="canonical" href="https://www.ng-itconsulting.com/">
@@ -25,7 +25,7 @@ data:
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="NG-CONSULTING">
     <meta property="og:title" content="NG-CONSULTING — Conception et développement de logiciels">
-    <meta property="og:description" content="Société de conception, développement et exploitation de logiciels. Éditeur de Claude Portal.">
+    <meta property="og:description" content="Société de conception, développement et exploitation de logiciels. Claude Portal, AI LegalCase et NG Acquisitions.">
     <meta property="og:url" content="https://www.ng-itconsulting.com/">
     <meta property="og:locale" content="fr_FR">
 
@@ -94,7 +94,7 @@ data:
         <div class="brand">NG<span>-</span>CONSULTING</div>
         <nav>
           <a href="#expertise">Expertise</a>
-          <a href="#produit">Claude Portal</a>
+          <a href="#solutions">Nos solutions</a>
           <a href="#contact">Contact</a>
         </nav>
       </div>
@@ -109,7 +109,7 @@ data:
           l'exploitation et à la maintenance de leurs applications métier.
         </p>
         <a class="btn" href="#contact">Nous contacter</a>
-        <a class="btn btn-alt" href="#produit">Découvrir Claude Portal</a>
+        <a class="btn btn-alt" href="#solutions">Découvrir nos solutions</a>
       </div>
     </div>
 
@@ -136,11 +136,16 @@ data:
       </div>
     </section>
 
-    <section id="produit" class="product">
+    <section id="solutions" class="product">
       <div class="wrap">
-        <h2>Notre produit</h2>
+        <h2>Nos solutions</h2>
+        <p style="max-width:65ch;margin:-8px 0 32px;color:var(--muted)">
+          Deux logiciels que nous éditons et exploitons, et une activité de reprise et de
+          développement de petites et moyennes entreprises.
+        </p>
+
         <div class="card">
-          <span class="tag">CLAUDE PORTAL</span>
+          <span class="tag">CLAUDE PORTAL — LOGICIEL ÉDITÉ</span>
           <h3>La passerelle professionnelle vers l'assistant Claude</h3>
           <p style="color:var(--text);margin-bottom:16px">
             Claude Portal donne aux consultants et aux indépendants un accès authentifié et sécurisé
@@ -151,9 +156,42 @@ data:
           </p>
           <p style="margin-bottom:24px">
             Le service comprend un espace de conversation, le dépôt et l'exploitation de documents
-            professionnels, la gestion des accès et le suivi de consommation.
+            professionnels, un atelier permettant de travailler sur ses projets, la gestion des accès
+            et le suivi de consommation.
           </p>
           <a class="btn" href="https://portal.ng-itconsulting.com/">Accéder à Claude Portal</a>
+        </div>
+
+        <div class="card" style="margin-top:24px">
+          <span class="tag">AI LEGALCASE — LOGICIEL ÉDITÉ</span>
+          <h3>De vos pièces jusqu'aux conclusions</h3>
+          <p style="color:var(--text);margin-bottom:16px">
+            AI LegalCase assiste les avocats dans l'analyse de leurs dossiers. Le logiciel lit les
+            pièces versées, en extrait les éléments utiles, restitue une synthèse structurée des faits
+            et des échéances, puis prépare un projet de conclusions que le praticien reprend et
+            valide. L'avocat garde la main de bout en bout.
+          </p>
+          <p style="margin-bottom:24px">
+            Conçu pour les cabinets intervenant en droit du travail, en droit des étrangers et en
+            droit de la famille, en France et en Belgique.
+          </p>
+          <a class="btn" href="https://legalcase.fr" target="_blank" rel="noopener">Découvrir AI LegalCase</a>
+        </div>
+
+        <div class="card" style="margin-top:24px">
+          <span class="tag">NG ACQUISITIONS — ACTIVITÉ DE REPRISE</span>
+          <h3>Reprendre, valoriser et développer des PME</h3>
+          <p style="color:var(--text);margin-bottom:16px">
+            NG Acquisitions n'est pas un logiciel&nbsp;: c'est notre activité de reprise
+            d'entreprises. Nous accompagnons les dirigeants de petites et moyennes entreprises
+            rentables qui envisagent une transmission, puis nous poursuivons le développement de
+            l'activité reprise aux côtés des équipes en place.
+          </p>
+          <p style="margin-bottom:24px">
+            Interventions dans l'industrie et le bâtiment, les services aux entreprises, la santé et
+            le médico&#8209;social.
+          </p>
+          <a class="btn" href="https://ng-acquisitions.com/" target="_blank" rel="noopener">Découvrir NG Acquisitions</a>
         </div>
       </div>
     </section>
