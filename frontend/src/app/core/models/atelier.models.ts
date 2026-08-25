@@ -146,6 +146,11 @@ export interface AtelierPersistedTranscript {
    * avant cette version : traité comme `false`.
    */
   interrupted?: boolean;
+  /**
+   * Le tour s'est arrêté sur le **plafond de dépense du run** (F-36 SF-36-01). Absent des tours
+   * écrits avant cette version : traité comme `false`.
+   */
+  budgetReached?: boolean;
 }
 
 /** Message de l'historique. Réponse de `GET /api/workspaces/{id}/chat`. */
@@ -232,6 +237,12 @@ export interface AtelierAgentStreamDone {
    * il vaut `false` et le tour s'affiche comme un tour mené à son terme.
    */
   interrupted: boolean;
+  /**
+   * Le tour s'est arrêté sur le **plafond de dépense de ce run** (F-36 SF-36-01) — distinct du quota
+   * mensuel épuisé : le travail est conservé, et relancer repart d'un plafond neuf dans la même
+   * sandbox. Champ **additif** : absent, il vaut `false`.
+   */
+  budgetReached?: boolean;
 }
 
 /**

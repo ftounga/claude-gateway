@@ -1049,6 +1049,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
               cost: tokens > 0 ? { elapsedSeconds: elapsed, tokens } : undefined,
               // Le tour interrompu reste affiché : il a eu lieu et il est facturé (F-32).
               interrupted: done.interrupted === true,
+              // Plafond de dépense de ce run atteint (F-36 SF-36-04) : le tour est conservé, et
+              // l'écran le dit — un arrêt au milieu sans explication serait le pire des deux mondes.
+              budgetReached: done.budgetReached === true,
             },
           ]);
           // La session a pu exécuter du code et modifier des fichiers : rafraîchir l'arborescence.
@@ -1345,6 +1348,9 @@ export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
   // Le drapeau d'interruption vit hors des blocs : un tour interrompu avant d'avoir lancé la moindre
   // commande n'a pas de transcription, et doit pourtant rester marqué au rechargement (F-32).
   item.interrupted = stored.interrupted === true;
+  // Même raison pour le plafond de dépense (F-36 SF-36-04) : sans cela, la mention disparaîtrait au
+  // rechargement et l'utilisateur relirait un tour d'apparence normale, arrêté sans motif.
+  item.budgetReached = stored.budgetReached === true;
   if (!Array.isArray(stored.blocks) || stored.blocks.length === 0) {
     return item;
   }

@@ -45,6 +45,11 @@ export interface AtelierThreadItem {
    * réellement eu lieu et il est facturé — mais l'écran doit le dire.
    */
   interrupted?: boolean;
+  /**
+   * Le tour s'est arrêté sur le **plafond de dépense de ce run** (F-36 SF-36-04). Distinct du quota
+   * mensuel épuisé : l'écran doit le dire, et proposer l'action qui débloque réellement.
+   */
+  budgetReached?: boolean;
 }
 
 /** Coût d'un tour d'exécution affiché sous la transcription (F-30 SF-30-05). */

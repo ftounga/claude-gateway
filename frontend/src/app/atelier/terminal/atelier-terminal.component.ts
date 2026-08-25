@@ -123,6 +123,12 @@ export class AtelierTerminalComponent implements AfterViewChecked {
   @Output() reasonChange = new EventEmitter<string>();
   /** Bascule de l'option « demander avant d'exécuter » (F-33 / SF-33-01). */
   @Output() toggleAskBeforeBash = new EventEmitter<void>();
+
+  /**
+   * Ouvre l'écran de facturation (F-36 / SF-36-04) : proposé quand un tour s'est arrêté sur le
+   * plafond de dépense du run, en second recours — relancer débloque dans le cas courant.
+   */
+  @Output() openBilling = new EventEmitter<void>();
   /** Demande d'ouverture de la pull request de la branche publiée (F-31 / SF-31-05). */
   @Output() openPullRequest = new EventEmitter<void>();
 

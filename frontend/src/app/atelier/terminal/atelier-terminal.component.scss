@@ -152,6 +152,41 @@
   height: 16px;
 }
 
+/* Plafond de dépense du run (F-36 / SF-36-04) : même orange de charte que l'interruption — un
+   arrêt attendu, pas une panne. */
+.terminal-budget {
+  margin: var(--cg-space-2) 0 0;
+  padding: var(--cg-space-2);
+  border-left: 2px solid var(--cg-orange-2);
+}
+
+.terminal-budget-line {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  margin: 0;
+  font-size: 12px;
+  color: var(--cg-orange-2);
+}
+
+.terminal-budget-icon {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}
+
+.terminal-budget-hint {
+  margin: var(--cg-space-1) 0 0;
+  font-size: 11px;
+  color: var(--cg-text-secondary);
+}
+
+.terminal-budget-action {
+  margin: var(--cg-space-1) 0 0;
+  font-size: 12px;
+  color: var(--cg-orange-2);
+}
+
 .terminal-cost {
   margin: var(--cg-space-1) 0 0;
   font-size: 11px;
