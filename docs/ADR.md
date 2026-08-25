@@ -266,14 +266,24 @@ des archives aujourd'hui — le périmètre de confiance ne change pas, seul l'a
   serveur MCP GitHub répond **200** à `initialize` avec le PAT en `Authorization: Bearer`, et expose
   44 outils dont `create_pull_request`. L'avertissement de la documentation vaut pour d'autres services,
   pas pour GitHub. **D2 reste sur le PAT**, aucune bascule GitHub App nécessaire, SF-31-05 est
-  débloquée. Détail dans OQ-11. L'ancienne mise en garde : Si non : basculer l'authentification sur GitHub App, ou s'arrêter au push
-  de branche (l'utilisateur ouvrant la PR depuis le lien de comparaison). SF-31-01→04 ne dépendent pas
-  de cette réponse.
+  débloquée. Détail dans OQ-11.
+- ✅ **SF-31-05 livrée le 2026-08-26** (PR #159 backend, #161 écran, #162 suppression de compte), ce
+  qui **clôt F-31**. Le vault de credentials est **par utilisateur** (le fournisseur n'accepte qu'une
+  credential par `mcp_server_url` et par vault, et mélanger les jetons violerait l'isolation
+  `user_id`), **créé paresseusement** à la première session Git et **détruit à la révocation** du
+  jeton — remplacement, retrait, ou suppression du compte (F-11). Son secret n'entre pas plus dans le
+  conteneur que le jeton du proxy git : un proxy MCP côté fournisseur l'injecte en sortie de sandbox.
+  Migration `045`, sans aucun secret en base (identifiants opaques seuls).
+- ℹ️ **Contrainte assumée** : `vault_ids` n'est accepté qu'à la **création** d'une session. Une session
+  ouverte avant SF-31-05 n'a donc pas l'outil ; « Réinitialiser la sandbox » en rouvre une équipée. On
+  ne bascule pas de session en douce — l'utilisateur perdrait son contexte de travail.
 - ⚠️ Une session détient désormais un accès en écriture à un dépôt réel. Atténuations : jeton hors
   sandbox (proxy), portée du PAT choisie par l'utilisateur, push sur **branche dédiée** — jamais sur la
   branche par défaut.
-- ℹ️ Trois questions restent ouvertes au niveau des subfeatures : rafraîchissement du clone entre
-  sessions, expiration du jeton, taille maximale du dépôt (voir `docs/features/F-31/CADRAGE.md`).
+- ✅ Les trois questions laissées aux subfeatures sont traitées : **pas de `git pull` automatique** (il
+  écraserait le travail en cours — le clone se rafraîchit en réinitialisant la sandbox), le **workspace
+  survit** au retrait du jeton (c'est le montage qui échoue), et la **taille du dépôt** est bornée par
+  la sandbox du fournisseur. Détail dans `docs/features/F-31/CADRAGE.md`.
 
 **Alternatives écartées**
 

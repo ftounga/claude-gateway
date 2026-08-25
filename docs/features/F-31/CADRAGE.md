@@ -239,7 +239,7 @@ dans le produit, ce que trace **ADR-015**.
 
 ---
 
-## État d'avancement (mise à jour 2026-08-25)
+## État d'avancement (mise à jour 2026-08-25 — feature close)
 
 | Subfeature | État | Livraison |
 |------------|------|-----------|
@@ -247,40 +247,57 @@ dans le produit, ce que trace **ADR-015**.
 | SF-31-02 — workspace depuis un dépôt | ✅ livrée | PR #141 (back), #142 (front) |
 | SF-31-03 — arborescence et explorateur | ✅ livrée | PR #143 (back), #144 (front) |
 | SF-31-04 — push d'une branche dédiée | ✅ livrée | PR #145 (back), #146 (front) |
-| SF-31-05 — création de PR via MCP | 🔴 **parquée** | — voir ci-dessous |
+| SF-31-05 — création de PR via MCP | ✅ livrée | PR #159 (back), #161 (front), #162 (correctif RGPD) |
 
-### SF-31-05 — pourquoi elle est parquée
+### Le § *Risque MCP* est levé
 
-Le § *Risque MCP* de ce document pose que la **première action** de SF-31-05 est une vérification
-**empirique** : un PAT GitHub est-il accepté comme credential `static_bearer` du serveur MCP GitHub,
-ou faut-il un jeton bearer OAuth (ce qui ramènerait D2 à l'option GitHub App) ?
+La question posée par ce cadrage — *un PAT GitHub est-il accepté comme credential `static_bearer` du
+serveur MCP GitHub, ou faut-il un jeton bearer OAuth ?* — a été tranchée le 2026-08-25 par
+**vérification empirique** avec un PAT réel :
 
-Cette vérification exige un **PAT réel** et un appel à l'API du fournisseur avec un vault de
-credentials. Ni l'un ni l'autre n'est disponible dans une livraison automatique, et implémenter
-sans la réponse reviendrait à trancher en aveugle une question de sécurité et de périmètre que
-l'ADR-015 a explicitement laissée ouverte.
+| Test | Résultat |
+|------|----------|
+| `GET https://api.github.com/user` | **200** — jeton valide |
+| `POST https://api.githubcopilot.com/mcp/` (`initialize`), PAT en `Authorization: Bearer` | **200** |
+| `tools/list` | **200** — 44 outils, dont `create_pull_request` |
 
-**Le repli prévu par ce cadrage est en place** : SF-31-04 renvoie le lien de comparaison
-`https://github.com/{owner}/{repo}/compare/{base}...{branche}?expand=1`, depuis lequel l'utilisateur
-ouvre sa pull request en un clic. Le gain principal de F-31 — plus d'export/réimport manuel — est
-donc acquis sans SF-31-05.
+L'avertissement de la documentation (« les serveurs MCP hébergés attendent typiquement des jetons
+OAuth ») vaut pour d'autres services — l'exemple cité était Notion — **pas pour GitHub**.
 
-**Question à trancher avant de reprendre** : lance-t-on la vérification empirique du credential MCP
-(un PAT en `static_bearer`) sur un dépôt de test, ou bascule-t-on d'emblée l'authentification sur
-GitHub App (D2 option B), qui lève l'incertitude mais ouvre un chantier à part entière ?
+**Conséquence** : **D2 reste sur le PAT chiffré** livré en SF-31-01. La bascule GitHub App (D2
+option B), qui aurait ouvert un chantier à part entière, n'est pas nécessaire. `OQ-11` est close.
 
-Cette question est **inscrite au registre des sujets non tranchés sous `OQ-11`**
-(`docs/OPEN_QUESTIONS.md`) : tant qu'elle est ouverte, SF-31-05 ne démarre pas — la règle
-« ne jamais implémenter silencieusement une solution à un sujet ouvert » (`CLAUDE.md`) s'applique.
+### Ce que SF-31-05 a livré
+
+- `POST /api/workspaces/{id}/git/pull-request` : l'agent appelle `create_pull_request` du serveur MCP
+  GitHub ; le backend **constate** ensuite l'existence de la pull request auprès de GitHub avant
+  d'annoncer une URL. Même règle qu'au push — ce que l'agent déclare ne suffit pas.
+- **Migration `045`** : `user_git_credentials` gagne `mcp_vault_id` et `mcp_credential_id`, nullables,
+  sans aucun secret. Réversible, Postgres + H2.
+- **Un vault par utilisateur**, créé paresseusement à la première session Git et **détruit à la
+  révocation** du jeton — remplacement, retrait, ou suppression du compte (F-11).
+- Le **repli reste offert à l'écran** : le lien de comparaison de SF-31-04 vit à côté du bouton de
+  création. Si le MCP n'aboutit pas, l'utilisateur ouvre sa pull request lui-même.
+
+### Ce qui reste connu et assumé
+
+Le fournisseur n'accepte `vault_ids` qu'**à la création** de session. Une session ouverte avant cette
+version n'a donc pas l'outil : l'agent le dira, `created` vaudra `false`, et « Réinitialiser la
+sandbox » (SF-30-06) rouvre une session équipée. On ne bascule pas de session en douce — l'utilisateur
+perdrait son contexte de travail.
+
+**OQ-A** (pas de `git pull` automatique), **OQ-B** (le workspace survit au retrait du jeton) et
+**OQ-C** (taille du dépôt, bornée par la sandbox du fournisseur) ont été traitées au fil des
+subfeatures, comme prévu.
 
 ---
 
 ## Prochaine étape
 
-SF-31-01→04 livrées, mergées et vérifiées sur `main` (650 tests backend + 367 frontend verts au
-2026-08-25). Les branches distantes des six PR F-31 ont été supprimées après vérification qu'elles
-ne portaient plus aucun commit absent de `main` (`git cherry`).
+Aucune : **F-31 est close**. Les cinq subfeatures sont livrées, mergées et vérifiées sur `main`
+(**759 tests backend + 418 frontend verts** au 2026-08-25), et les branches distantes ont été
+supprimées après merge.
 
-Reste **SF-31-05**, subordonnée à la levée d'**OQ-11** (§ *Risque MCP* ci-dessus). Elle ne sera pas
-reprise par une livraison automatique : la vérification exige un PAT réel et un appel au fournisseur.
-Décision de l'owner attendue.
+Les écarts restants avec Claude Code recensés plus haut sont désormais des features à part entière —
+F-32, F-33 et F-34 sont livrées ; F-35 (sous-agents) reste au backlog, derrière son flag et son
+plafond de coût.
