@@ -233,8 +233,38 @@ dans le produit, ce que trace **ADR-015**.
 
 ---
 
+## État d'avancement (mise à jour 2026-08-25)
+
+| Subfeature | État | Livraison |
+|------------|------|-----------|
+| SF-31-01 — jeton GitHub chiffré | ✅ livrée | PR #138 (back), #139 (front) |
+| SF-31-02 — workspace depuis un dépôt | ✅ livrée | PR #141 (back), #142 (front) |
+| SF-31-03 — arborescence et explorateur | ✅ livrée | PR #143 (back), #144 (front) |
+| SF-31-04 — push d'une branche dédiée | ✅ livrée | PR #145 (back), #146 (front) |
+| SF-31-05 — création de PR via MCP | 🔴 **parquée** | — voir ci-dessous |
+
+### SF-31-05 — pourquoi elle est parquée
+
+Le § *Risque MCP* de ce document pose que la **première action** de SF-31-05 est une vérification
+**empirique** : un PAT GitHub est-il accepté comme credential `static_bearer` du serveur MCP GitHub,
+ou faut-il un jeton bearer OAuth (ce qui ramènerait D2 à l'option GitHub App) ?
+
+Cette vérification exige un **PAT réel** et un appel à l'API du fournisseur avec un vault de
+credentials. Ni l'un ni l'autre n'est disponible dans une livraison automatique, et implémenter
+sans la réponse reviendrait à trancher en aveugle une question de sécurité et de périmètre que
+l'ADR-015 a explicitement laissée ouverte.
+
+**Le repli prévu par ce cadrage est en place** : SF-31-04 renvoie le lien de comparaison
+`https://github.com/{owner}/{repo}/compare/{base}...{branche}?expand=1`, depuis lequel l'utilisateur
+ouvre sa pull request en un clic. Le gain principal de F-31 — plus d'export/réimport manuel — est
+donc acquis sans SF-31-05.
+
+**Question à trancher avant de reprendre** : lance-t-on la vérification empirique du credential MCP
+(un PAT en `static_bearer`) sur un dépôt de test, ou bascule-t-on d'emblée l'authentification sur
+GitHub App (D2 option B), qui lève l'incertitude mais ouvre un chantier à part entière ?
+
+---
+
 ## Prochaine étape
 
-D1/D2/D3 arbitrées, F-31 ajoutée au `PRODUCT_SPEC`, **ADR-015** rédigé (entrée du MCP dans le
-périmètre). Reste à produire : **mini-spec SF-31-01** (stockage du jeton GitHub), puis readiness et
-développement selon le cycle habituel.
+SF-31-01→04 livrées. Reste **SF-31-05**, subordonnée à la levée du § *Risque MCP* ci-dessus.

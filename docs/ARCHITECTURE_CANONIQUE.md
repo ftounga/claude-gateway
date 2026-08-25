@@ -243,6 +243,26 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     une panne n'efface jamais un jeton valide. Jamais journalisé, jamais renvoyé. Inclus dans la
     suppression RGPD du compte (F-11). Il ne sera **jamais** injecté dans le sandbox : le proxy git du
     fournisseur l'ajoute après la sortie du conteneur (ADR-015).
+- **workspaces — source du projet** (F-31 / SF-31-02, migration `043`). Le workspace d'Atelier gagne
+  une **source** : `ARCHIVE` (archive `.zip` téléversée, comportement historique) ou `GIT` (dépôt monté
+  par le fournisseur). **Aucune table nouvelle** : colonnes ajoutées à `workspaces`, toutes nullables ou
+  à valeur par défaut — aucune donnée existante cassée.
+  - Colonnes : `source (varchar 16, défaut ARCHIVE, non nul)`, `git_repo_url (varchar 500 ; URL publique)`,
+    `git_owner (varchar 100)`, `git_repo (varchar 100)`, `git_branch (varchar 255 ; branche montée, et
+    branche de base interdite au push)`. **Aucun secret** : le jeton vit chiffré dans
+    `user_git_credentials`, déchiffré à la volée au seul moment du montage de session.
+  - Un projet `GIT` **ne copie aucun fichier** dans le stockage objet : le dépôt est cloné dans la
+    sandbox (`resources: [{type: "github_repository", …}]`), ce qui supprime le plafond
+    `maxSessionFiles` (300) sur ces projets. Le stockage objet ne reçoit que les fichiers **réécrits**
+    par la session.
+  - **Explorateur** (SF-31-03) : arborescence = union de la branche (API GitHub, sans coût de sandbox)
+    et des fichiers réécrits ; la version locale prime à la lecture. **Lecture seule** sur un projet
+    `GIT` (`409 git_workspace_read_only`) et mode « Assistant » écarté (`409 git_workspace_terminal_only`) :
+    écrire dans le stockage pendant que l'agent travaille sur le clone créerait deux vérités divergentes.
+  - **Publication** (SF-31-04) : `POST /workspaces/{id}/git/push` fait pousser une **branche dédiée**
+    par l'agent via le proxy git, puis **constate** l'existence de la branche auprès de GitHub avant
+    d'annoncer un succès. Jamais sur la branche de base ; jamais de session ouverte pour l'occasion
+    (`409 no_active_session`).
 - **prompt_templates** — modèle de prompt réutilisable (F-13, migration `031`). Isolé par `user_id`.
   Donnée purement relationnelle, **sans colonne vectorielle** (F-13 n'est pas du RAG) — le backend
   reste une Gateway (aucun appel IA attaché à cette entité).
