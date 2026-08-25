@@ -123,4 +123,16 @@ public class Workspace {
 
     @Column(name = "agent_active_seconds", nullable = false)
     private long agentActiveSeconds;
+
+    /**
+     * Demander l'autorisation avant d'exécuter une commande (F-33 / SF-33-01). Lue à l'<b>ouverture</b>
+     * de session : la politique d'outils est fixée pour toute la vie de la session, une bascule ne
+     * change donc pas une sandbox déjà ouverte.
+     *
+     * <p>{@code false} par défaut — qui n'active rien garde exactement le comportement d'avant F-33
+     * ({@code always_allow}), et aucune session ne peut rester bloquée en attente d'une confirmation
+     * que personne n'attend.</p>
+     */
+    @Column(name = "agent_ask_before_bash", nullable = false)
+    private boolean agentAskBeforeBash;
 }

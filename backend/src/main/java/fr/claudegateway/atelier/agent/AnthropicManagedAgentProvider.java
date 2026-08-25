@@ -45,6 +45,9 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
     /** Type d'outil « agent toolset » attendu par l'API Agents (valeur documentée). */
     private static final String AGENT_TOOLSET_TYPE = "agent_toolset_20260401";
 
+    /** Nom de l'outil qui exécute des commandes : le seul soumis à validation (F-33 / SF-33-01). */
+    static final String SHELL_TOOL = "bash";
+
     /** Borne de sécurité sur le nombre de pages d'events lues par tour de polling. */
     private static final int MAX_EVENT_PAGES = 1000;
 
@@ -135,7 +138,7 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
 
     @Override
     public ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
-            RepositoryMount repository, String systemOverride) {
+            RepositoryMount repository, String systemOverride, SessionPermissions permissions) {
         List<Map<String, Object>> mounts = new ArrayList<>();
         for (FileMount mount : resources) {
             mounts.add(Map.of(
@@ -154,7 +157,7 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
                     "checkout", Map.of("type", "branch", "name", repository.branch())));
         }
         Map<String, Object> body = Map.of(
-                "agent", agentReference(agentId, systemOverride),
+                "agent", agentReference(agentId, systemOverride, permissions),
                 "environment_id", environmentId,
                 "resources", mounts);
 
@@ -167,20 +170,53 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
     }
 
     /**
-     * Référence de l'agent dans le corps de création de session. Sans surcharge, l'identifiant nu —
-     * exactement le corps envoyé avant F-34, pour que les projets sans instructions ne changent pas
-     * de comportement. Avec surcharge, la forme {@code agent_with_overrides}, dont le {@code system}
-     * <b>remplace</b> celui de l'agent : le prompt reçu ici est donc déjà complet (plateforme incluse),
-     * et la surcharge reste locale à cette session (l'agent plateforme n'est pas modifié).
+     * Référence de l'agent dans le corps de création de session. Sans aucune surcharge, l'identifiant
+     * nu — exactement le corps envoyé avant F-34/F-33, pour que les projets qui n'activent rien ne
+     * changent pas de comportement. Avec surcharge, la forme {@code agent_with_overrides}, locale à
+     * cette session (l'agent plateforme n'est jamais modifié) :
+     *
+     * <ul>
+     *   <li>{@code system} <b>remplace</b> celui de l'agent — le prompt reçu ici est donc déjà
+     *       complet, prompt plateforme inclus (F-34 / SF-34-01) ;</li>
+     *   <li>{@code tools} <b>remplace en bloc</b> celui de l'agent — d'où le toolset complet, avec le
+     *       même {@code default_config} qu'au provisionnement, et le seul {@code bash} passé en
+     *       {@code always_ask} (F-33 / SF-33-01). Ne renvoyer que {@code bash} priverait la session
+     *       de ses outils de lecture/écriture.</li>
+     * </ul>
      */
-    private static Object agentReference(String agentId, String systemOverride) {
-        if (systemOverride == null || systemOverride.isBlank()) {
+    private static Object agentReference(String agentId, String systemOverride,
+            SessionPermissions permissions) {
+        boolean hasSystem = systemOverride != null && !systemOverride.isBlank();
+        boolean hasPolicy = permissions != null && permissions.askBeforeShellCommands();
+        if (!hasSystem && !hasPolicy) {
             return agentId;
         }
+        Map<String, Object> reference = new java.util.LinkedHashMap<>();
+        reference.put("type", "agent_with_overrides");
+        reference.put("id", agentId);
+        if (hasSystem) {
+            reference.put("system", systemOverride);
+        }
+        if (hasPolicy) {
+            reference.put("tools", List.of(askBeforeShellToolset()));
+        }
+        return reference;
+    }
+
+    /**
+     * Toolset demandant l'autorisation avant chaque commande shell (F-33 / SF-33-01) : tous les
+     * outils restent actifs et automatiques, seul {@code bash} bascule en {@code always_ask}. Au
+     * déclenchement, la session se met en pause et attend un {@code user.tool_confirmation}.
+     */
+    private static Map<String, Object> askBeforeShellToolset() {
         return Map.of(
-                "type", "agent_with_overrides",
-                "id", agentId,
-                "system", systemOverride);
+                "type", AGENT_TOOLSET_TYPE,
+                "default_config", Map.of(
+                        "enabled", true,
+                        "permission_policy", Map.of("type", "always_allow")),
+                "configs", List.of(Map.of(
+                        "name", SHELL_TOOL,
+                        "permission_policy", Map.of("type", "always_ask"))));
     }
 
     @Override
