@@ -73,11 +73,28 @@ ne porte aucun montant. Les montants réels vivent dans Stripe (réversibles san
 **Décision** : **Workers intra-backend `@Scheduled`** retenus — `OcrPollingWorker` (F-05) et `IngestionWorker` (F-06 / SF-06-02), désactivables par config. Choix **réversible** : les abstractions (`OcrProvider`, `EmbeddingProvider`/`EmbeddingStore`) + le pilotage par état en base (`documents.status`) permettent d'extraire des workers dédiés + file (SQS/…) en V2 sans réécrire le domaine. À réévaluer selon la charge d'ingestion réelle.
 
 ## OQ-11 — Credential du serveur MCP GitHub : PAT fine-grained ou jeton OAuth ?
-**Statut** : **Ouverte (2026-08-25)** — **bloquante pour F-31 / SF-31-05**, sans effet sur SF-31-01→04 (livrées).
+**Statut** : **TRANCHÉE (2026-08-25) — un PAT fine-grained EST accepté.** SF-31-05 est débloquée ; D2 reste sur le PAT chiffré livré en SF-31-01, aucune bascule sur GitHub App / OAuth n'est nécessaire.
 **Impact** : Détermine si D2 (authentification GitHub) peut rester sur le **PAT chiffré** livré en SF-31-01, ou doit basculer sur une **GitHub App / OAuth** — un chantier à part entière (enregistrement d'app, callback, rafraîchissement de jetons, gestion d'installation). Conditionne l'entrée effective du MCP dans le produit tracée par **ADR-015**.
 **Contexte** : le **montage du dépôt** (clone, `git pull`, `git push`) s'authentifie avec le PAT via le proxy git du fournisseur — acquis et livré (SF-31-02/04). La **création de pull request** passe en revanche par le serveur **MCP GitHub**, qui s'authentifie par un **vault de credentials** ; la documentation avertit que les serveurs MCP hébergés attendent typiquement des **jetons bearer OAuth**, pas les clés d'API natives du service.
 **Options** : (a) vérifier empiriquement qu'un PAT est accepté comme `static_bearer` du serveur MCP GitHub (une requête de test, un dépôt de test, un PAT réel) ; (b) basculer d'emblée D2 sur GitHub App / OAuth ; (c) s'en tenir à SF-31-04 et laisser l'utilisateur ouvrir sa PR depuis le lien de comparaison.
-**Décision** : **à trancher par l'owner.** Aucune implémentation ne doit anticiper la réponse. **Repli en place** : (c) — SF-31-04 renvoie `https://github.com/{owner}/{repo}/compare/{base}...{branche}?expand=1`, donc le gain principal de F-31 (plus d'export/réimport manuel) est acquis sans SF-31-05. Détail : `docs/features/F-31/CADRAGE.md` § *Risque MCP*.
+**Vérification empirique (2026-08-25)** — option (a) exécutée avec un PAT réel :
+
+| Test | Résultat |
+|------|----------|
+| `GET https://api.github.com/user` | **200** — jeton valide |
+| `POST https://api.githubcopilot.com/mcp/` (`initialize`), PAT en `Authorization: Bearer` | **200** — poignée de main MCP réussie |
+| `tools/list` | **200** — **44 outils**, dont `create_pull_request`, `create_branch`, `push_files` |
+
+Le serveur MCP GitHub **accepte donc un PAT fine-grained en jeton bearer**. L'avertissement de la
+documentation (« les serveurs MCP hébergés attendent typiquement des jetons OAuth ») vaut pour d'autres
+services — l'exemple cité était Notion — mais **pas** pour GitHub.
+
+**Reste à vérifier au moment d'implémenter** (et non plus avant de s'engager) : que le vault
+`static_bearer` du fournisseur transmette bien ce jeton au serveur. Le maillon incertain — le serveur
+accepte-t-il un PAT ? — est levé ; il ne reste qu'une vérification d'intégration, qui se fera
+naturellement en développant SF-31-05.
+
+**Décision** : **(a) confirmée — on garde le PAT.** **Repli en place** : (c) — SF-31-04 renvoie `https://github.com/{owner}/{repo}/compare/{base}...{branche}?expand=1`, donc le gain principal de F-31 (plus d'export/réimport manuel) est acquis sans SF-31-05. Détail : `docs/features/F-31/CADRAGE.md` § *Risque MCP*.
 ## OQ-12 — HTTPS sur l'apex nu `ng-itconsulting.com`
 
 **Statut** : **Ouverte — reportée volontairement (2026-08-25)**. Correctif documenté ci-dessous, à

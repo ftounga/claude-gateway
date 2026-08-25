@@ -262,10 +262,11 @@ des archives aujourd'hui — le périmètre de confiance ne change pas, seul l'a
 - ✅ Le plafond de **300 fichiers** par session (`maxSessionFiles`) disparaît pour les workspaces Git —
   un clone remplace N téléversements. Les projets volumineux deviennent traitables.
 - ✅ Coût neutre à favorable : moins de téléversements, moins de tokens de re-contexte.
-- ⚠️ **Incertitude sur la PR** : les credentials MCP ne sont pas les jetons d'API natifs — la
-  documentation avertit que les serveurs MCP hébergés exigent typiquement des jetons **bearer OAuth**.
-  Un PAT sera-t-il accepté comme `static_bearer` du serveur MCP GitHub ? **À vérifier empiriquement
-  avant d'engager SF-31-05.** Si non : basculer l'authentification sur GitHub App, ou s'arrêter au push
+- ✅ **Incertitude sur la PR : LEVÉE le 2026-08-25.** Vérification empirique avec un PAT réel : le
+  serveur MCP GitHub répond **200** à `initialize` avec le PAT en `Authorization: Bearer`, et expose
+  44 outils dont `create_pull_request`. L'avertissement de la documentation vaut pour d'autres services,
+  pas pour GitHub. **D2 reste sur le PAT**, aucune bascule GitHub App nécessaire, SF-31-05 est
+  débloquée. Détail dans OQ-11. L'ancienne mise en garde : Si non : basculer l'authentification sur GitHub App, ou s'arrêter au push
   de branche (l'utilisateur ouvrant la PR depuis le lien de comparaison). SF-31-01→04 ne dépendent pas
   de cette réponse.
 - ⚠️ Une session détient désormais un accès en écriture à un dépôt réel. Atténuations : jeton hors
