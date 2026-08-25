@@ -29,6 +29,34 @@ public final class AgentSystemPrompt {
     }
 
     /**
+     * Ajoute la consigne de délégation (F-35) : combien de sous-tâches lancer au plus, et quand ne
+     * pas déléguer du tout.
+     *
+     * <p><b>C'est ici que vit le plafond</b>, et nulle part ailleurs : le fournisseur n'accepte
+     * qu'<b>une</b> entrée {@code self} dans le roster, et une entrée est lançable autant de fois que
+     * le coordinateur le veut. Le nombre ne peut donc pas être exprimé par la structure — il se dit à
+     * l'agent. La dépense, elle, reste bornée par le budget de session (F-36).</p>
+     *
+     * @param base         prompt auquel ajouter la consigne
+     * @param maxSubagents plafond de sous-tâches simultanées ({@code 0} = délégation désactivée)
+     * @return le prompt complété, ou {@code base} si la délégation est désactivée
+     */
+    public static String withDelegation(String base, int maxSubagents) {
+        if (maxSubagents <= 0) {
+            return base;
+        }
+        return base
+                + "\n\nTu peux déléguer des sous-tâches à des copies de toi-même travaillant en"
+                + " parallèle, dans le même bac à sable. N'en lance jamais plus de " + maxSubagents
+                + " à la fois.\n\nNe délègue que ce qui le mérite : plusieurs pistes à explorer en"
+                + " même temps, ou de grandes quantités de fichiers à lire. Une tâche courte, ou en"
+                + " une seule étape, coûte plus cher déléguée qu'exécutée directement — fais-la"
+                + " toi-même. Chaque sous-tâche doit porter tout ce qu'il lui faut : les chemins, les"
+                + " contraintes et le format de réponse attendu, car elle ne voit pas ta"
+                + " conversation.";
+    }
+
+    /**
      * Compose le prompt de session : prompt plateforme, puis les instructions du projet présentées
      * comme un contexte fourni par l'utilisateur.
      *
