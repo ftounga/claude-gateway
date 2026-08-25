@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      SF-33-01 — Le workspace d'Atelier gagne une option « demander avant d'exécuter » (F-33).
+      Quand elle est posée, la session d'agent est ouverte avec `permission_policy: always_ask` sur
+      le seul outil `bash` : l'agent demande l'autorisation avant d'exécuter une commande.
+
+      `false` par défaut, avec un defaultValue explicite : tous les projets existants gardent le
+      comportement actuel (`always_allow`), aucune régression, aucune session en attente d'une
+      confirmation que personne n'attend. Réversible : `dropColumn`.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="044-workspaces-agent-confirmation-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="workspaces">
+            <column name="agent_ask_before_bash" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="agent_ask_before_bash"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="044-workspaces-agent-confirmation-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="workspaces">
+            <column name="agent_ask_before_bash" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="agent_ask_before_bash"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

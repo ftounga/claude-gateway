@@ -362,8 +362,11 @@ public class AtelierSessionService {
      */
     private String openSession(UUID userId, UUID workspaceId, AtelierAgentConfig config, Workspace workspace) {
         String system = sessionSystemPrompt(userId, workspace);
+        // Politique d'outils du projet (F-33 / SF-33-01), lue sur le workspace DÉJÀ possédé : elle est
+        // fixée pour toute la vie de la session, une bascule ultérieure ne change pas celle-ci.
+        SessionPermissions permissions = SessionPermissions.of(workspace.isAgentAskBeforeBash());
         if (workspace.isGit()) {
-            return openGitSession(userId, config, workspace, system);
+            return openGitSession(userId, config, workspace, system, permissions);
         }
         List<String> paths = workspaceService.tree(userId, workspaceId);
         int max = properties.maxSessionFiles();
@@ -379,7 +382,7 @@ public class AtelierSessionService {
             mounts.add(new FileMount(fileId, WORKSPACE_MOUNT + path));
         }
         ManagedSession session = provider.createSession(
-                config.getAgentId(), config.getEnvironmentId(), mounts, null, system);
+                config.getAgentId(), config.getEnvironmentId(), mounts, null, system, permissions);
         markSessionOpened(workspace, session.id());
         return session.id();
     }
@@ -417,14 +420,15 @@ public class AtelierSessionService {
      *                                  posé) — le workspace survit, c'est le montage qui échoue
      */
     private String openGitSession(UUID userId, AtelierAgentConfig config, Workspace workspace,
-            String systemOverride) {
+            String systemOverride, SessionPermissions permissions) {
         String token = gitTokenService.resolveToken(userId)
                 .orElseThrow(() -> new GitTokenMissingException(
                         "Aucun jeton GitHub enregistré : ajoutez-en un dans vos réglages pour ouvrir ce projet."));
         RepositoryMount repository = new RepositoryMount(
                 workspace.getGitRepoUrl(), token, GIT_MOUNT_PATH, workspace.getGitBranch());
         ManagedSession session = provider.createSession(
-                config.getAgentId(), config.getEnvironmentId(), List.of(), repository, systemOverride);
+                config.getAgentId(), config.getEnvironmentId(), List.of(), repository, systemOverride,
+                permissions);
         markSessionOpened(workspace, session.id());
         return session.id();
     }
@@ -508,6 +512,42 @@ public class AtelierSessionService {
     /** Raison d'arrêt d'interruption : le libellé exact n'est pas garanti, on reconnaît la racine. */
     private static boolean isInterruptStopReason(String stopReason) {
         return stopReason != null && stopReason.toLowerCase(java.util.Locale.ROOT).contains("interrupt");
+    }
+
+    /**
+     * Active ou désactive la <b>demande d'autorisation avant exécution</b> pour ce projet
+     * (F-33 / SF-33-01).
+     *
+     * <p>La politique d'outils est fixée à l'<b>ouverture</b> de la session : une bascule ne change
+     * donc pas une sandbox déjà ouverte. C'est dit explicitement par
+     * {@link AgentConfirmationState#appliesToCurrentSession()} plutôt que passé sous silence —
+     * annoncer une protection qui n'est pas en vigueur serait pire que ne rien annoncer.</p>
+     *
+     * @param userId      utilisateur propriétaire (isolation)
+     * @param workspaceId workspace à régler
+     * @param enabled     vrai pour demander l'autorisation avant chaque commande
+     * @return l'état retenu et son application à la session en cours
+     * @throws fr.claudegateway.atelier.WorkspaceNotFoundException si le workspace n'est pas possédé
+     */
+    public AgentConfirmationState setAskBeforeBash(UUID userId, UUID workspaceId, boolean enabled) {
+        // Isolation EN PREMIER : workspace d'un autre user / inexistant ⇒ 404, aucune écriture.
+        Workspace workspace = workspaceService.requireOwned(userId, workspaceId);
+        workspace.setAgentAskBeforeBash(enabled);
+        workspaceRepository.save(workspace);
+        String sessionId = workspace.getAgentSessionId();
+        boolean sessionOpen = sessionId != null && !sessionId.isBlank();
+        return new AgentConfirmationState(enabled, !sessionOpen);
+    }
+
+    /**
+     * État de l'option « demander avant d'exécuter » après une bascule (F-33 / SF-33-01).
+     *
+     * @param enabled                  l'option telle qu'elle est désormais enregistrée
+     * @param appliesToCurrentSession  faux si une session est déjà ouverte : elle garde la politique
+     *                                 posée à son ouverture, et seule une réinitialisation de la
+     *                                 sandbox (F-30 SF-30-06) appliquera la nouvelle
+     */
+    public record AgentConfirmationState(boolean enabled, boolean appliesToCurrentSession) {
     }
 
     /**

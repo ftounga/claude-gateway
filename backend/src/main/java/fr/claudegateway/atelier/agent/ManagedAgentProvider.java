@@ -95,8 +95,30 @@ public interface ManagedAgentProvider {
      *                       pour conserver celui de l'agent (comportement d'avant F-34)
      * @return la session créée (identifiant fournisseur)
      */
+    default ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
+            RepositoryMount repository, String systemOverride) {
+        return createSession(agentId, environmentId, resources, repository, systemOverride,
+                SessionPermissions.ALLOW_ALL);
+    }
+
+    /**
+     * Crée une session en fixant en outre la <b>politique d'autorisation des outils</b>
+     * (F-33 / SF-33-01).
+     *
+     * <p>La politique est fixée <b>à l'ouverture</b> et vaut pour toute la vie de la session. Avec
+     * {@link SessionPermissions#ALLOW_ALL}, la session est créée exactement comme avant F-33 (aucune
+     * surcharge d'outils) : aucune régression pour les projets qui n'activent rien.</p>
+     *
+     * @param agentId        identifiant de l'agent à exécuter
+     * @param environmentId  identifiant de l'environnement d'exécution
+     * @param resources      fichiers à monter (éventuellement vide)
+     * @param repository     dépôt à monter, ou {@code null} pour un workspace d'archive
+     * @param systemOverride prompt système complet pour cette session, ou {@code null}
+     * @param permissions    politique d'autorisation des outils (jamais {@code null})
+     * @return la session créée (identifiant fournisseur)
+     */
     ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
-            RepositoryMount repository, String systemOverride);
+            RepositoryMount repository, String systemOverride, SessionPermissions permissions);
 
     /**
      * Envoie un message utilisateur à la session (event {@code user.message}).

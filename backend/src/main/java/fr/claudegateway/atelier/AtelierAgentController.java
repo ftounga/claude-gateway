@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -27,6 +28,8 @@ import fr.claudegateway.atelier.agent.AtelierAgentDisabledException;
 import fr.claudegateway.atelier.agent.AtelierAgentListener;
 import fr.claudegateway.atelier.agent.AtelierSessionResult;
 import fr.claudegateway.atelier.agent.AtelierSessionService;
+import fr.claudegateway.atelier.dto.AgentConfirmationRequest;
+import fr.claudegateway.atelier.dto.AgentConfirmationResponse;
 import fr.claudegateway.atelier.dto.AtelierAgentRequest;
 import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.quota.QuotaExceededException;
@@ -178,6 +181,25 @@ public class AtelierAgentController {
     public ResponseEntity<Void> resetSession(@PathVariable UUID id) {
         sessionService.resetSession(currentUser.requireId(), id);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Active ou désactive la <b>demande d'autorisation avant exécution</b> pour ce projet
+     * (F-33 / SF-33-01). Une fois posée, la session est ouverte avec {@code always_ask} sur le seul
+     * outil qui exécute : l'agent demande avant chaque commande, au lieu de tout exécuter.
+     *
+     * <p>La politique d'outils étant fixée à l'ouverture de la session, la réponse porte
+     * {@code appliesToCurrentSession} : à {@code false}, la sandbox déjà ouverte garde sa politique,
+     * et c'est la réinitialisation (F-30 SF-30-06) qui appliquera la nouvelle. Endpoint JSON
+     * classique : l'isolation {@code user_id} est appliquée par {@code requireOwned} avant toute
+     * écriture.</p>
+     */
+    @PutMapping("/confirmation")
+    public AgentConfirmationResponse setConfirmation(@PathVariable UUID id,
+            @Valid @RequestBody AgentConfirmationRequest request) {
+        AtelierSessionService.AgentConfirmationState state = sessionService.setAskBeforeBash(
+                currentUser.requireId(), id, Boolean.TRUE.equals(request.enabled()));
+        return new AgentConfirmationResponse(state.enabled(), state.appliesToCurrentSession());
     }
 
     /**

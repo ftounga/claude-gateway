@@ -6,6 +6,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -319,5 +320,57 @@ class AtelierAgentControllerTest {
 
         String body = result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
         org.assertj.core.api.Assertions.assertThat(body).contains("\"interrupted\":false");
+    }
+
+    // ---------------------------- F-33 / SF-33-01 : demander avant d'exécuter
+
+    @Test
+    void enablingConfirmationSavesTheOptionAndSaysItAppliesNow() throws Exception {
+        when(sessionService.setAskBeforeBash(USER, WORKSPACE, true))
+                .thenReturn(new AtelierSessionService.AgentConfirmationState(true, true));
+
+        mockMvcWithErrorHandling().perform(put("/workspaces/" + WORKSPACE + "/agent/confirmation")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.appliesToCurrentSession").value(true));
+
+        verify(sessionService).setAskBeforeBash(USER, WORKSPACE, true);
+    }
+
+    @Test
+    void enablingConfirmationWithAnOpenSessionSaysItDoesNotApplyYet() throws Exception {
+        when(sessionService.setAskBeforeBash(USER, WORKSPACE, true))
+                .thenReturn(new AtelierSessionService.AgentConfirmationState(true, false));
+
+        mockMvcWithErrorHandling().perform(put("/workspaces/" + WORKSPACE + "/agent/confirmation")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.appliesToCurrentSession").value(false));
+    }
+
+    @Test
+    void confirmationOnAWorkspaceOfAnotherUserIsNotFound() throws Exception {
+        Mockito.doThrow(new WorkspaceNotFoundException("Workspace introuvable"))
+                .when(sessionService).setAskBeforeBash(USER, WORKSPACE, true);
+
+        mockMvcWithErrorHandling().perform(put("/workspaces/" + WORKSPACE + "/agent/confirmation")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\":true}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("not_found"));
+    }
+
+    @Test
+    void confirmationWithoutAnExplicitValueIsRejected() throws Exception {
+        // Réglage de sécurité : on ne devine pas l'intention d'un corps vide.
+        mockMvcWithErrorHandling().perform(put("/workspaces/" + WORKSPACE + "/agent/confirmation")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+
+        verify(sessionService, never()).setAskBeforeBash(any(), any(), Mockito.anyBoolean());
     }
 }

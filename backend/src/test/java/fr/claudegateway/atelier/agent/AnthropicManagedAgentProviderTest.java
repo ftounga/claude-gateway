@@ -159,6 +159,61 @@ class AnthropicManagedAgentProviderTest {
     }
 
     @Test
+    void createSessionWithAskPolicyOverridesToolsWithAlwaysAskOnBash() {
+        // F-33 / SF-33-01 : la surcharge d'outils REMPLACE en bloc celle de l'agent — on renvoie donc
+        // le toolset complet (default_config en always_allow) avec le seul `bash` en always_ask.
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.agent.type").value("agent_with_overrides"))
+                .andExpect(jsonPath("$.agent.id").value("agent_456"))
+                .andExpect(jsonPath("$.agent.system").doesNotExist())
+                .andExpect(jsonPath("$.agent.tools[0].type").value("agent_toolset_20260401"))
+                .andExpect(jsonPath("$.agent.tools[0].default_config.enabled").value(true))
+                .andExpect(jsonPath("$.agent.tools[0].default_config.permission_policy.type")
+                        .value("always_allow"))
+                .andExpect(jsonPath("$.agent.tools[0].configs[0].name").value("bash"))
+                .andExpect(jsonPath("$.agent.tools[0].configs[0].permission_policy.type")
+                        .value("always_ask"))
+                .andRespond(withSuccess("{\"id\":\"sess_4\"}", MediaType.APPLICATION_JSON));
+
+        ManagedSession session = provider.createSession("agent_456", "env_123", List.of(), null, null,
+                SessionPermissions.ASK_BEFORE_SHELL);
+
+        assertThat(session.id()).isEqualTo("sess_4");
+        server.verify();
+    }
+
+    @Test
+    void createSessionWithAskPolicyAndProjectInstructionsCarriesBothOverrides() {
+        // Les deux surcharges (F-34 système, F-33 outils) vivent dans le MÊME agent_with_overrides.
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.agent.type").value("agent_with_overrides"))
+                .andExpect(jsonPath("$.agent.system").value("prompt plateforme + projet"))
+                .andExpect(jsonPath("$.agent.tools[0].configs[0].name").value("bash"))
+                .andRespond(withSuccess("{\"id\":\"sess_5\"}", MediaType.APPLICATION_JSON));
+
+        provider.createSession("agent_456", "env_123", List.of(), null, "prompt plateforme + projet",
+                SessionPermissions.ASK_BEFORE_SHELL);
+
+        server.verify();
+    }
+
+    @Test
+    void createSessionWithAllowAllPolicyKeepsThePlainAgentIdentifier() {
+        // Option non activée : corps strictement identique à celui d'avant F-33 (aucune régression).
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.agent").value("agent_456"))
+                .andRespond(withSuccess("{\"id\":\"sess_6\"}", MediaType.APPLICATION_JSON));
+
+        provider.createSession("agent_456", "env_123", List.of(), null, null,
+                SessionPermissions.ALLOW_ALL);
+
+        server.verify();
+    }
+
+    @Test
     void sendUserMessagePostsUserMessageEvent() {
         server.expect(requestTo("https://api.anthropic.com/v1/sessions/sess_1/events"))
                 .andExpect(method(HttpMethod.POST))
