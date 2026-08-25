@@ -524,4 +524,33 @@ class AnthropicManagedAgentProviderTest {
                 .isInstanceOf(AgentProviderException.class);
         server.verify();
     }
+    // -------------------------------------- F-32 / SF-32-01 : interruption d'un run
+
+    @Test
+    void interruptSessionPostsUserInterruptEvent() {
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions/sess_1/events"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("x-api-key", "sk-ant-test-key"))
+                .andExpect(header("anthropic-beta", BETA))
+                .andExpect(jsonPath("$.events[0].type").value("user.interrupt"))
+                .andRespond(withSuccess("{\"ok\":true}", MediaType.APPLICATION_JSON));
+
+        provider.interruptSession("sess_1");
+
+        server.verify();
+    }
+
+    @Test
+    void interruptSessionSurfacesProviderFailure() {
+        // Contrairement à `terminateSession`, l'échec n'est pas avalé : une interruption qui n'est
+        // pas passée doit être dite, sinon l'utilisateur attend un arrêt qui ne viendra jamais.
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions/sess_dead/events"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withServerError());
+
+        assertThatThrownBy(() -> provider.interruptSession("sess_dead"))
+                .isInstanceOf(AgentProviderException.class);
+
+        server.verify();
+    }
 }

@@ -8,9 +8,11 @@ import java.util.concurrent.Executor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -29,6 +31,7 @@ import fr.claudegateway.atelier.dto.AtelierAgentRequest;
 import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.quota.QuotaExceededException;
 import fr.claudegateway.quota.SandboxLimitExceededException;
+import fr.claudegateway.shared.error.ErrorResponse;
 import jakarta.validation.Valid;
 
 /**
@@ -132,7 +135,8 @@ public class AtelierAgentController {
             AtelierSessionResult result = sessionService.runTaskStreaming(userId, workspaceId, message, listener);
             emitter.send(SseEmitter.event().name("done")
                     .data(new StreamDone(result.reply(), result.changedFiles(),
-                            result.inputTokens(), result.outputTokens(), result.activeSeconds())));
+                            result.inputTokens(), result.outputTokens(), result.activeSeconds(),
+                            result.interrupted())));
             emitter.complete();
         } catch (WorkspaceNotFoundException ex) {
             sendError(emitter, "workspace_not_found");
@@ -174,6 +178,36 @@ public class AtelierAgentController {
     public ResponseEntity<Void> resetSession(@PathVariable UUID id) {
         sessionService.resetSession(currentUser.requireId(), id);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Interrompt le run en cours sur la session du workspace (F-32 / SF-32-01) : relaie
+     * {@code user.interrupt} au fournisseur, qui ramène la session à une <b>frontière sûre</b> puis la
+     * repasse {@code idle}. Sans cela, une commande partie de travers tourne jusqu'au timeout de dix
+     * minutes, avec du temps de bac à sable facturé, sans que l'utilisateur puisse agir.
+     *
+     * <p>L'arrêt est <b>asynchrone</b> : cette réponse dit que la demande est partie, pas que le run
+     * est fini. Le flux SSE en cours se clôt de lui-même sur le {@code done} qui suit, en portant
+     * {@code interrupted}. Endpoint JSON classique : l'isolation {@code user_id} est appliquée par
+     * {@code requireOwned} <b>avant tout appel au fournisseur</b>.</p>
+     */
+    @PostMapping("/interrupt")
+    public ResponseEntity<Void> interrupt(@PathVariable UUID id) {
+        sessionService.interruptSession(currentUser.requireId(), id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Échec de relais au fournisseur sur les endpoints JSON de ce contrôleur (F-32 / SF-32-01).
+     * Cantonné ici : le flux SSE, lui, traduit ses erreurs en événement {@code error} dans le flux.
+     * Un {@code 502} plutôt qu'un {@code 500} — la panne est chez le fournisseur, pas dans la Gateway.
+     */
+    @ExceptionHandler(AgentProviderException.class)
+    public ResponseEntity<ErrorResponse> handleProviderFailure(AgentProviderException ex) {
+        log.debug("Relais au fournisseur d'agents en échec sur un endpoint JSON de l'atelier.");
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new ErrorResponse("provider_error",
+                        "Le service d'exécution n'a pas pu traiter la demande. Veuillez réessayer."));
     }
 
     /** Émet un fragment de texte de l'agent ; une déconnexion client interrompt le relais. */
@@ -245,9 +279,11 @@ public class AtelierAgentController {
     /**
      * Fin de run. Les champs de consommation (F-30 SF-30-05) sont <b>additifs</b> : un client qui les
      * ignore se comporte comme avant. À zéro, ils signifient « inconnu » (relevé best-effort manqué).
+     * {@code interrupted} (F-32 SF-32-01), également additif, dit que le tour s'est arrêté sur demande
+     * de l'utilisateur — il est conservé et décompté comme tout autre tour.
      */
     record StreamDone(String reply, List<String> changedFiles, long inputTokens, long outputTokens,
-            long activeSeconds) {
+            long activeSeconds, boolean interrupted) {
     }
 
     record StreamError(String error) {
