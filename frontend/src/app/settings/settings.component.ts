@@ -15,19 +15,23 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { AccountService } from '../core/services/account.service';
 import { ApiKeyService } from '../core/services/api-key.service';
 import { AuthService } from '../core/services/auth.service';
+import { GitTokenService } from '../core/services/git-token.service';
 import { AccountExport } from '../core/models/account.models';
 import { ApiKeyStatus, ProviderMode } from '../core/models/api-key.models';
+import { GitTokenStatus } from '../core/models/git-token.models';
 import { UserProfile } from '../core/models/auth.models';
 import {
   DeleteAccountDialogComponent,
   DeleteAccountDialogData,
 } from './delete-account-dialog/delete-account-dialog.component';
 import { RemoveApiKeyDialogComponent } from './remove-api-key-dialog/remove-api-key-dialog.component';
+import { RemoveGitTokenDialogComponent } from './remove-git-token-dialog/remove-git-token-dialog.component';
 
 /**
- * Écran « Paramètres du compte » : récapitulatif du compte, gestion RGPD des données (F-11) et
+ * Écran « Paramètres du compte » : récapitulatif du compte, gestion RGPD des données (F-11),
  * gestion de la clé API personnelle BYOK (F-03 : ajout masqué, statut, suppression, bascule
- * Hosted/BYOK). Conforme au design system (MatCard, MatSnackBar, confirmations via MatDialog,
+ * Hosted/BYOK) et gestion du jeton GitHub de l'Atelier (F-31 : ajout, remplacement, retrait, jeton
+ * masqué). Conforme au design system (MatCard, MatSnackBar, confirmations via MatDialog,
  * mat-form-field outline).
  */
 @Component({
@@ -49,6 +53,7 @@ import { RemoveApiKeyDialogComponent } from './remove-api-key-dialog/remove-api-
 export class SettingsComponent implements OnInit {
   private readonly accountService = inject(AccountService);
   private readonly apiKeyService = inject(ApiKeyService);
+  private readonly gitTokenService = inject(GitTokenService);
   private readonly authService = inject(AuthService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
@@ -65,12 +70,19 @@ export class SettingsComponent implements OnInit {
   readonly deletingKey = signal(false);
   readonly togglingMode = signal(false);
 
+  // --- Jeton GitHub (F-31) ---
+  readonly gitTokenStatus = signal<GitTokenStatus | null>(null);
+  readonly gitTokenControl = new FormControl('', { nonNullable: true, validators: [Validators.required] });
+  readonly savingGitToken = signal(false);
+  readonly deletingGitToken = signal(false);
+
   ngOnInit(): void {
     this.authService.me().subscribe({
       next: (profile) => this.profile.set(profile),
       error: () => this.notify('Impossible de charger le compte.', 'snack-error'),
     });
     this.loadApiKey();
+    this.loadGitToken();
   }
 
   /** Charge le statut de la clé BYOK de l'utilisateur. */
@@ -141,6 +153,87 @@ export class SettingsComponent implements OnInit {
         this.notify('La bascule du mode a échoué.', 'snack-error');
       },
     });
+  }
+
+  /** Charge l'état du jeton GitHub de l'utilisateur. */
+  loadGitToken(): void {
+    this.gitTokenService.getStatus().subscribe({
+      next: (status) => this.gitTokenStatus.set(status),
+      error: () => this.notify('Impossible de charger le jeton GitHub.', 'snack-error'),
+    });
+  }
+
+  /** Vérifie (backend, auprès de GitHub) puis enregistre le jeton ; vide le champ à succès. */
+  saveGitToken(): void {
+    if (this.savingGitToken()) {
+      return;
+    }
+    if (this.gitTokenControl.invalid) {
+      this.gitTokenControl.markAsTouched();
+      return;
+    }
+    this.savingGitToken.set(true);
+    this.gitTokenService.saveToken({ token: this.gitTokenControl.value }).subscribe({
+      next: (status) => {
+        this.savingGitToken.set(false);
+        this.gitTokenStatus.set(status);
+        this.gitTokenControl.reset();
+        this.notify('Jeton GitHub enregistré.', 'snack-success');
+      },
+      error: (error: HttpErrorResponse) => {
+        this.savingGitToken.set(false);
+        this.notify(this.gitTokenErrorMessage(error), 'snack-error');
+      },
+    });
+  }
+
+  /** Ouvre la confirmation puis retire le jeton GitHub si confirmé. */
+  deleteGitToken(): void {
+    if (this.deletingGitToken()) {
+      return;
+    }
+    const dialogRef = this.dialog.open<RemoveGitTokenDialogComponent, void, boolean>(
+      RemoveGitTokenDialogComponent,
+      { width: '480px' },
+    );
+    dialogRef.afterClosed().subscribe((confirmed) => {
+      if (confirmed) {
+        this.performGitTokenDeletion();
+      }
+    });
+  }
+
+  private performGitTokenDeletion(): void {
+    this.deletingGitToken.set(true);
+    this.gitTokenService.deleteToken().subscribe({
+      next: () => {
+        this.deletingGitToken.set(false);
+        this.gitTokenStatus.set({
+          present: false,
+          githubLogin: null,
+          maskedToken: null,
+          last4: null,
+          createdAt: null,
+          updatedAt: null,
+        });
+        this.notify('Jeton GitHub retiré.', 'snack-success');
+      },
+      error: () => {
+        this.deletingGitToken.set(false);
+        this.notify('Le retrait du jeton a échoué.', 'snack-error');
+      },
+    });
+  }
+
+  /** Messages distincts : jeton refusé par GitHub (400) vs GitHub indisponible (503). */
+  private gitTokenErrorMessage(error: HttpErrorResponse): string {
+    if (error.status === 400) {
+      return 'Jeton refusé par GitHub (invalide, révoqué ou expiré).';
+    }
+    if (error.status === 503) {
+      return 'GitHub est momentanément indisponible. Réessayez dans un instant.';
+    }
+    return "L'enregistrement du jeton a échoué. Veuillez réessayer.";
   }
 
   private performKeyDeletion(): void {

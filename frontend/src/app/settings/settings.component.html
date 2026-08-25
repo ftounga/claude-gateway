@@ -127,6 +127,75 @@
   </mat-card>
 
   <mat-card class="settings__card">
+    <h2 class="settings__card-title">Compte GitHub</h2>
+    <p class="settings__muted">
+      Enregistrez un jeton d'accès personnel GitHub pour que l'Atelier travaille directement sur vos
+      dépôts. Le jeton est vérifié auprès de GitHub, chiffré, jamais affiché en clair, et n'entre
+      jamais dans le bac à sable de l'agent.
+    </p>
+    <p class="settings__muted">
+      Un jeton <strong>fine-grained</strong> limité aux dépôts concernés est recommandé : portée
+      <em>Contents : lecture</em> pour cloner, <em>lecture et écriture</em> pour pousser une branche.
+      Les droits exacts se constatent à l'usage — GitHub ne permet pas de les vérifier à l'avance.
+    </p>
+
+    @if (gitTokenStatus(); as git) {
+      @if (git.present) {
+        <div class="settings__row">
+          <span class="settings__label">Compte GitHub</span>
+          <span class="settings__value">{{ git.githubLogin ?? 'Compte inconnu' }}</span>
+        </div>
+        <div class="settings__row">
+          <span class="settings__label">Jeton enregistré</span>
+          <span class="settings__value settings__mono">{{ git.maskedToken }}</span>
+        </div>
+        <div class="settings__row">
+          <span class="settings__label">Vérifié le</span>
+          <span class="settings__value">{{ git.updatedAt | date: 'short' }}</span>
+        </div>
+      } @else {
+        <p class="settings__muted">Aucun jeton enregistré — l'Atelier ne peut pas accéder à vos dépôts.</p>
+      }
+    } @else {
+      <p class="settings__muted">Chargement du jeton…</p>
+    }
+
+    <form class="settings__key-form" (ngSubmit)="saveGitToken()">
+      <mat-form-field appearance="outline" class="settings__key-field">
+        <mat-label>{{ gitTokenStatus()?.present ? 'Remplacer le jeton GitHub' : 'Jeton GitHub' }}</mat-label>
+        <input
+          matInput
+          type="password"
+          autocomplete="off"
+          placeholder="github_pat_..."
+          [formControl]="gitTokenControl"
+        />
+        @if (gitTokenControl.hasError('required') && gitTokenControl.touched) {
+          <mat-error>Jeton requis.</mat-error>
+        }
+      </mat-form-field>
+      <div class="settings__actions">
+        <button mat-flat-button color="primary" type="submit" [disabled]="savingGitToken()">
+          <mat-icon>hub</mat-icon>
+          Enregistrer le jeton
+        </button>
+        @if (gitTokenStatus()?.present) {
+          <button
+            mat-stroked-button
+            color="warn"
+            type="button"
+            [disabled]="deletingGitToken()"
+            (click)="deleteGitToken()"
+          >
+            <mat-icon>delete</mat-icon>
+            Retirer le jeton
+          </button>
+        }
+      </div>
+    </form>
+  </mat-card>
+
+  <mat-card class="settings__card">
     <h2 class="settings__card-title">Données personnelles (RGPD)</h2>
     <p class="settings__muted">
       Vous pouvez exporter l'intégralité de vos données ou supprimer définitivement votre compte.
