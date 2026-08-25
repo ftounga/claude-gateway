@@ -40,6 +40,12 @@
   }
 }
 
+// Instructions du projet (F-34 / SF-34-02) : chemin de fichier, en monospace comme le reste du
+// terminal, dans la teinte des autres actions de la barre.
+.terminal-instructions {
+  font-family: var(--cg-font-mono);
+}
+
 .terminal-elapsed {
   font-family: var(--cg-font-mono);
   font-size: 11px;

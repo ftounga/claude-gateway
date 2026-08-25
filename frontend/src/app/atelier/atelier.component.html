@@ -27,6 +27,8 @@
     [publishing]="publishing()"
     [interrupting]="interrupting()"
     [pushResult]="pushResult()"
+    [instructionsPath]="instructionsPath()"
+    (openInstructions)="openInstructions()"
     (quit)="leaveTerminal()"
     (resetSandbox)="resetSandbox()"
     (openFiles)="openFileExplorer()"
@@ -132,6 +134,20 @@
             {{ activeDetail()?.gitRepo }}
             <span class="git-branch">{{ activeDetail()?.gitBranch }}</span>
           </span>
+        }
+        @if (instructionsPath(); as instructions) {
+          <!-- Instructions du projet (F-34 / SF-34-02) : dire que l'agent les suit, et donner accès
+               au fichier. Absent du DOM si le projet n'en porte pas — aucun écran ne change. -->
+          <button
+            mat-button
+            type="button"
+            class="instructions-trigger"
+            (click)="openInstructions()"
+            matTooltip="Instructions du projet, ajoutées au prompt de l'agent à la prochaine ouverture de session. Cliquez pour les ouvrir."
+          >
+            <mat-icon class="instructions-icon">menu_book</mat-icon>
+            {{ instructions }}
+          </button>
         }
         <span class="toolbar-spacer"></span>
         <button

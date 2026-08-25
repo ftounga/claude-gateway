@@ -178,6 +178,12 @@ export class AtelierComponent implements OnInit, OnDestroy {
   /** Vrai si le projet ouvert est adossé à un dépôt Git. */
   readonly activeIsGit = computed(() => this.activeDetail()?.source === 'GIT');
 
+  /**
+   * Chemin du fichier d'instructions du projet (F-34 / SF-34-02), ou `null` s'il n'en porte pas.
+   * Le chemin vient du backend : l'écran ne devine jamais quel fichier fait foi.
+   */
+  readonly instructionsPath = computed(() => this.activeDetail()?.instructionsPath ?? null);
+
   /** Publication sur branche en cours (F-31 / SF-31-04) : le bouton reste inerte pendant le tour. */
   readonly publishing = signal(false);
 
@@ -947,6 +953,21 @@ export class AtelierComponent implements OnInit, OnDestroy {
       return;
     }
     this.router.navigate(['/atelier', id, 'fichiers']);
+  }
+
+  /**
+   * Ouvre l'explorateur de fichiers sur le fichier d'instructions du projet (F-34 / SF-34-02).
+   *
+   * <p>Réutilise l'explorateur plutôt qu'un éditeur dédié : c'est là que le fichier s'édite déjà, et
+   * un projet Git y est en lecture seule sans traitement particulier.</p>
+   */
+  openInstructions(): void {
+    const id = this.activeWorkspaceId();
+    const path = this.instructionsPath();
+    if (!id || !path) {
+      return;
+    }
+    this.router.navigate(['/atelier', id, 'fichiers'], { queryParams: { path } });
   }
 
   /** Charge le contenu d'un fichier dans l'aperçu éditable. */

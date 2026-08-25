@@ -69,6 +69,12 @@ export class AtelierTerminalComponent implements AfterViewChecked {
   /** Dernière publication, ou `null`. Conservée à l'écran : c'est là que se trouve le lien de PR. */
   @Input() pushResult: GitPushResult | null = null;
 
+  /**
+   * Chemin du fichier d'instructions du projet (F-34 / SF-34-02), ou `null` s'il n'en porte pas.
+   * Sans lui, rien ne dit à l'écran que l'agent suit des consignes propres à ce projet.
+   */
+  @Input() instructionsPath: string | null = null;
+
   @Output() draftChange = new EventEmitter<string>();
   @Output() send = new EventEmitter<void>();
   @Output() quit = new EventEmitter<void>();
@@ -77,6 +83,8 @@ export class AtelierTerminalComponent implements AfterViewChecked {
   @Output() publish = new EventEmitter<void>();
   /** Demande d'arrêt du run en cours (F-32 / SF-32-02). */
   @Output() interrupt = new EventEmitter<void>();
+  /** Ouverture du fichier d'instructions du projet (F-34 / SF-34-02). */
+  @Output() openInstructions = new EventEmitter<void>();
 
   @ViewChild('scrollback') private scrollback?: ElementRef<HTMLElement>;
 

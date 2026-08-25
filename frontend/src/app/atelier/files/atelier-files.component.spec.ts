@@ -30,7 +30,7 @@ describe('AtelierFilesComponent', () => {
     truncated: false,
   };
 
-  function setup(paramId: string | null = 'w1'): void {
+  function setup(paramId: string | null = 'w1', queryPath: string | null = null): void {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'getWorkspace',
       'getFile',
@@ -44,6 +44,8 @@ describe('AtelierFilesComponent', () => {
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
 
     service.getWorkspace.and.returnValue(of(detail));
+    // Stub par défaut : les tests qui s'intéressent au contenu le redéfinissent.
+    service.getFile.and.returnValue(of({ path: 'src/a.js', content: 'const x = 1;' }));
 
     TestBed.configureTestingModule({
       imports: [AtelierFilesComponent],
@@ -55,7 +57,13 @@ describe('AtelierFilesComponent', () => {
         { provide: MatDialog, useValue: dialog },
         {
           provide: ActivatedRoute,
-          useValue: { snapshot: { paramMap: convertToParamMap(paramId ? { id: paramId } : {}) } },
+          useValue: {
+            snapshot: {
+              paramMap: convertToParamMap(paramId ? { id: paramId } : {}),
+              // `?path=` : fichier à ouvrir dès le chargement (F-34 / SF-34-02).
+              queryParamMap: convertToParamMap(queryPath ? { path: queryPath } : {}),
+            },
+          },
         },
       ],
     });
@@ -314,5 +322,23 @@ describe('AtelierFilesComponent', () => {
     expect(component.readOnly()).toBeFalse();
     expect(component.gitRepo()).toBeNull();
     expect(component.truncated()).toBeFalse();
+  });
+
+  // ---- F-34 / SF-34-02 : ouverture directe du fichier désigné par `?path=` ----
+
+  it('ouvre le fichier demandé en paramètre de requête', () => {
+    setup('w1', 'src/a.js');
+
+    expect(component.selectedPath()).toBe('src/a.js');
+    expect(service.getFile).toHaveBeenCalledWith('w1', 'src/a.js');
+    expect(component.fileContent()).toBe('const x = 1;');
+  });
+
+  it("ignore en silence un chemin absent de l'arborescence", () => {
+    setup('w1', 'CLAUDE.md');
+
+    // Le lien peut être obsolète (fichier renommé, supprimé) : l'explorateur s'ouvre normalement.
+    expect(component.selectedPath()).toBeNull();
+    expect(service.getFile).not.toHaveBeenCalled();
   });
 });
