@@ -237,8 +237,10 @@ app:
       # par modèle). Aucun secret. Prix exprimés par million de tokens.
       currency: ${APP_USAGE_CURRENCY:EUR}
       max-months: ${APP_USAGE_MAX_MONTHS:12}
-      input-cost-per-million-tokens: ${APP_USAGE_INPUT_COST_PER_M:3.00}
-      output-cost-per-million-tokens: ${APP_USAGE_OUTPUT_COST_PER_M:15.00}
+      # Tarifs du modele REELLEMENT servi (Opus : 5 / 25 par million, F-36 / SF-36-03). Ils valaient
+      # 3 / 15 — le tarif de Sonnet — et sous-estimaient le cout d'environ 40 %.
+      input-cost-per-million-tokens: ${APP_USAGE_INPUT_COST_PER_M:5.00}
+      output-cost-per-million-tokens: ${APP_USAGE_OUTPUT_COST_PER_M:25.00}
   oauth2:
     google:
       # Identifiants OAuth2/OIDC Google. Fournis exclusivement par l'environnement.

@@ -37,7 +37,8 @@ class UsageReportServiceTest {
     private final LocalDate june = LocalDate.of(2026, 6, 1);
     private final LocalDate may = LocalDate.of(2026, 5, 1);
 
-    // Tarifs de test : 3.00 €/M entrée, 15.00 €/M sortie (défauts).
+    // Tarifs de test explicites : 3.00 €/M entrée, 15.00 €/M sortie. Les DÉFAUTS, eux, sont ceux du
+    // modèle réellement servi depuis F-36 / SF-36-03 (Opus : 5 / 25) — couverts par le test dédié.
     private final UsageReportProperties properties =
             new UsageReportProperties("EUR", 12, new BigDecimal("3.00"), new BigDecimal("15.00"));
 
@@ -106,6 +107,20 @@ class UsageReportServiceTest {
         // july (1000·3 + 2000·15)/1e6 = 0.033 ; june 3000·3/1e6 = 0.009 ; may 5000·15/1e6 = 0.075
         // → total 0.117
         assertThat(report.totalEstimatedCost()).isEqualByComparingTo("0.1170");
+    }
+
+    @Test
+    void costIsEstimatedAtTheRatesOfTheModelActuallyServedWhenNoneAreConfigured() {
+        // F-36 / SF-36-03 : sans tarif configuré, le rapport estime au tarif Opus (5 / 25).
+        UsageReportService atDefaults = new UsageReportService(usageCounterRepository,
+                new UsageReportProperties("EUR", 12, null, null), clock);
+        when(usageCounterRepository.findByUserIdOrderByPeriodStartDesc(alice))
+                .thenReturn(List.of(counter(july, 1_000, 2_000)));
+
+        UsageReport report = atDefaults.buildReport(alice);
+
+        // (1000·5 + 2000·25)/1e6 = 0.055 — contre 0.033 aux anciens tarifs Sonnet.
+        assertThat(report.totalEstimatedCost()).isEqualByComparingTo("0.0550");
     }
 
     @Test
