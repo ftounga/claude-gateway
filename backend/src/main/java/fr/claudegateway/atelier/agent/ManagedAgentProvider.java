@@ -172,9 +172,39 @@ public interface ManagedAgentProvider {
      * @param budget         plafond de dépense de la session, ou {@code null} pour aucun plafond
      * @return la session créée (identifiant fournisseur)
      */
+    default ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
+            RepositoryMount repository, String systemOverride, SessionPermissions permissions,
+            McpAccess mcpAccess, SessionBudget budget) {
+        return createSession(agentId, environmentId, resources, repository, systemOverride, permissions,
+                mcpAccess, budget, DelegationPolicy.DISABLED);
+    }
+
+    /**
+     * Crée une session pouvant en outre <b>déléguer</b> des sous-tâches à des copies d'elle-même
+     * (F-35 / SF-35-01).
+     *
+     * <p>Les sous-agents sont des <b>threads de la même session</b> : ils partagent son conteneur et
+     * son {@code budget}, qui les borne donc tous à la fois. La délégation est fixée <b>à
+     * l'ouverture</b> et vaut pour toute la vie de la session, comme le budget et la politique
+     * d'outils.</p>
+     *
+     * <p>Avec {@link DelegationPolicy#DISABLED}, le corps envoyé est strictement celui d'avant F-35 —
+     * aucune régression pour les sessions séquentielles.</p>
+     *
+     * @param agentId        identifiant de l'agent à exécuter
+     * @param environmentId  identifiant de l'environnement d'exécution
+     * @param resources      fichiers à monter (éventuellement vide)
+     * @param repository     dépôt à monter, ou {@code null} pour un workspace d'archive
+     * @param systemOverride prompt système complet pour cette session, ou {@code null}
+     * @param permissions    politique d'autorisation des outils (jamais {@code null})
+     * @param mcpAccess      serveur MCP et vault à attacher, ou {@code null} pour aucun
+     * @param budget         plafond de dépense de la session, ou {@code null} pour aucun plafond
+     * @param delegation     politique de délégation (jamais {@code null})
+     * @return la session créée (identifiant fournisseur)
+     */
     ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
             RepositoryMount repository, String systemOverride, SessionPermissions permissions,
-            McpAccess mcpAccess, SessionBudget budget);
+            McpAccess mcpAccess, SessionBudget budget, DelegationPolicy delegation);
 
     /**
      * Crée un <b>vault</b> de credentials chez le fournisseur et y dépose un jeton bearer statique

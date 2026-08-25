@@ -18,8 +18,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *
  * @param maxRunCost             plafond de dépense d'un run, en dollars (défaut {@code 2.00})
  * @param maxRunCostDelegated    plafond de dépense d'un run avec délégation à des sous-agents, en
- *                               dollars (défaut {@code 5.00}). <b>Dormant</b> : la délégation (F-35)
- *                               n'est pas livrée, aucun appelant ne le demande encore
+ *                               dollars (défaut {@code 5.00}), retenu par
+ *                               {@code AtelierSessionService} quand la session ouvre un roster de
+ *                               sous-agents (F-35 / SF-35-01). Toujours borné par le quota restant :
+ *                               déléguer ne donne jamais accès à plus que ce qui a été payé
  * @param minRunCost             plancher de plafond, en dollars (défaut {@code 0.10}) : un budget nul
  *                               serait refusé par le fournisseur, ou mettrait la session en pause
  *                               immédiatement avec une erreur incompréhensible. Il borne le

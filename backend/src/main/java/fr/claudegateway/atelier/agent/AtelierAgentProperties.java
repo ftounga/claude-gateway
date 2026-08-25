@@ -32,6 +32,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                             session (défaut {@code 20000}, F-34 SF-34-01) : au-delà le contenu est
  *                             tronqué avec mention — un fichier démesuré consommerait à chaque
  *                             session le contexte utile au travail
+ * @param subagentsEnabled     autorise l'agent à <b>déléguer</b> des sous-tâches à des copies de
+ *                             lui-même (défaut {@code true}, F-35 SF-35-01, révision D1 du
+ *                             2026-08-26) : les sous-agents sont des threads de la même session, donc
+ *                             sans multiplication du coût de bac à sable, et le budget de session
+ *                             (F-36) les borne tous à la fois. Le flag reste pour <b>couper sans
+ *                             redéployer</b> si l'usage révélait une dérive
+ * @param maxSubagents         plafond du nombre de sous-agents par session (défaut {@code 3},
+ *                             F-35 SF-35-01) : borne le parallélisme, pas la dépense — celle-ci est
+ *                             bornée par le budget partagé de la session
  */
 @ConfigurationProperties(prefix = "app.atelier.agent")
 public record AtelierAgentProperties(
@@ -47,7 +56,9 @@ public record AtelierAgentProperties(
         Integer maxToolOutputChars,
         Integer maxTranscriptChars,
         Integer maxInstructionsChars,
-        Duration confirmTimeout) {
+        Duration confirmTimeout,
+        Boolean subagentsEnabled,
+        Integer maxSubagents) {
 
     public AtelierAgentProperties {
         if (environmentName == null || environmentName.isBlank()) {
@@ -84,6 +95,14 @@ public record AtelierAgentProperties(
             // Deux minutes : le temps de lire une commande et de décider, sans laisser un bac à sable
             // réservé attendre indéfiniment (il est facturé pendant ce temps).
             confirmTimeout = Duration.ofMinutes(2);
+        }
+        if (subagentsEnabled == null) {
+            // Activée par défaut (révision D1) : une capacité livrée mais éteinte n'est jamais testée.
+            subagentsEnabled = true;
+        }
+        if (maxSubagents == null || maxSubagents <= 0) {
+            // Trois : le gain de parallélisme est déjà là, sans rendre la transcription illisible.
+            maxSubagents = 3;
         }
         if (pollDelay == null || pollDelay.isNegative()) {
             // 0 explicitement autorisé (tests déterministes sans sleep réel).
