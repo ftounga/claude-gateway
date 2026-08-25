@@ -217,3 +217,71 @@ L'éphémère ne fait donc économiser aucun runtime. Il en **coûte** : réinst
 - *Terminal interactif réel* (l'utilisateur tape ses commandes) : l'API Managed Agents ne l'expose pas — les seuls événements client sont `user.message`, `user.interrupt`, `user.tool_confirmation`, `user.custom_tool_result`, `user.define_outcome` ; aucun n'exécute une commande arbitraire. Le construire imposerait d'héberger nos propres conteneurs, ce qui contredit frontalement Gateway-First.
 - *Mode unique avec exécution* (envisagé, écarté le 2026-08-23) : ferait basculer tout l'Atelier sous Gold et supprimerait la porte d'entrée des utilisateurs non-Gold.
 - *Reprendre le nom « Claude Code » dans l'interface* : marque d'Anthropic ; risque disproportionné pour un libellé.
+
+---
+
+## ADR-015 — Atelier sur dépôt Git, et entrée du MCP dans le périmètre (complète ADR-014)
+
+**Status** : Accepted (2026-08-25) — **complète** ADR-014 sans le contredire : la sandbox et la boucle
+d'agent restent celles d'Anthropic. Arbitrages D1/D2/D3 rendus par l'owner le 2026-08-25.
+
+**Context** — L'Atelier travaille sur un `.zip` téléversé. Pour utiliser Claude sur un projet réel, il
+faut exporter son dépôt, le téléverser, puis réintégrer à la main les fichiers modifiés. C'est l'écart
+le plus visible avec Claude Code, et il disqualifie l'outil pour l'usage qu'il vise.
+
+Ce contournement **contredit Provider-First** (`PROJECT.md` §3.3) : l'API Managed Agents monte
+nativement un dépôt GitHub (`resources: [{type: "github_repository", …}]`) depuis le départ, et nous
+lui avons substitué un mécanisme plus pauvre. Vérification faite : zéro occurrence dans le code.
+
+**Fait qui lève l'objection de sécurité** — le `authorization_token` **n'entre jamais dans le
+sandbox** : un proxy git côté Anthropic l'injecte après que la requête a quitté le conteneur. Le code
+exécuté dans le sandbox — y compris ce que l'agent écrit — ne peut ni le lire ni l'exfiltrer, et l'API
+ne le renvoie jamais. Ce qui reste vrai : le **contenu** du dépôt transite chez Anthropic, comme celui
+des archives aujourd'hui — le périmètre de confiance ne change pas, seul l'acheminement change.
+
+**Decision**
+
+- **Le workspace gagne une source** : `ARCHIVE` (actuel) ou `GIT`. Arborescence, explorateur, mode
+  Terminal, session persistante et historique s'appliquent sans modification — seul l'approvisionnement
+  des fichiers change (D3).
+- **Authentification par PAT fine-grained**, saisi par l'utilisateur et **chiffré au repos** en
+  réutilisant le mécanisme BYOK (F-03 : `ByokKeyCipher`, chiffrement enveloppe, affichage masqué). Aucune
+  brique cryptographique nouvelle (D2).
+- **L'agent va jusqu'à la pull request** (D1) : édition dans le dépôt monté → push d'une branche via le
+  proxy git → création de la PR.
+- **Le MCP entre donc dans le périmètre**, pour ce seul usage. ADR-014 écartait « les commandes slash,
+  les plugins et les skills natifs de Claude Code » ; MCP n'y figurait pas explicitement, mais son
+  arrivée est une extension de périmètre et doit être tracée. **Les skills et les commandes slash
+  restent hors périmètre.**
+- **Inchangé** : Gateway-First (on relaie, on ne construit pas), abstraction `AgentProvider`, isolation
+  `user_id`, `networking: limited`, plafonds et surcompteur sandbox.
+
+**Consequences**
+
+- ✅ L'Atelier devient utilisable sur un projet réel : plus d'export/réimport manuel.
+- ✅ Le plafond de **300 fichiers** par session (`maxSessionFiles`) disparaît pour les workspaces Git —
+  un clone remplace N téléversements. Les projets volumineux deviennent traitables.
+- ✅ Coût neutre à favorable : moins de téléversements, moins de tokens de re-contexte.
+- ⚠️ **Incertitude sur la PR** : les credentials MCP ne sont pas les jetons d'API natifs — la
+  documentation avertit que les serveurs MCP hébergés exigent typiquement des jetons **bearer OAuth**.
+  Un PAT sera-t-il accepté comme `static_bearer` du serveur MCP GitHub ? **À vérifier empiriquement
+  avant d'engager SF-31-05.** Si non : basculer l'authentification sur GitHub App, ou s'arrêter au push
+  de branche (l'utilisateur ouvrant la PR depuis le lien de comparaison). SF-31-01→04 ne dépendent pas
+  de cette réponse.
+- ⚠️ Une session détient désormais un accès en écriture à un dépôt réel. Atténuations : jeton hors
+  sandbox (proxy), portée du PAT choisie par l'utilisateur, push sur **branche dédiée** — jamais sur la
+  branche par défaut.
+- ℹ️ Trois questions restent ouvertes au niveau des subfeatures : rafraîchissement du clone entre
+  sessions, expiration du jeton, taille maximale du dépôt (voir `docs/features/F-31/CADRAGE.md`).
+
+**Alternatives écartées**
+
+- *Statu quo (archive `.zip`)* : conserve un produit inutilisable sur un projet réel, en contradiction
+  avec Provider-First.
+- *GitHub App / OAuth en première version* : meilleure expérience, mais chantier entier (enregistrement,
+  callback, rafraîchissement, installations) qui retarderait la première version utilisable. Reste la
+  cible si la friction du PAT le justifie — ou si le risque MCP l'impose.
+- *Entité « projet Git » séparée du workspace* : dupliquerait des écrans entiers pour une différence qui
+  ne concerne que la provenance des fichiers.
+- *S'arrêter au push de branche* : envisagé et recommandé au cadrage, **écarté par l'owner** au profit
+  de la PR complète.
