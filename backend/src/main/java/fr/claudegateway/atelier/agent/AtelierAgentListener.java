@@ -41,6 +41,17 @@ public interface AtelierAgentListener {
     }
 
     /**
+     * Variante portant en outre le fil d'exécution dont vient la commande (miroir applicatif de
+     * {@link ManagedEventListener#onAction(String, String, String, String)}, F-35 / SF-35-02) ;
+     * délègue par défaut, donc sans effet sur les implémentations existantes.
+     *
+     * @param threadId identifiant opaque du fil, ou {@code null} pour un run séquentiel
+     */
+    default void onAction(String tool, String toolUseId, String detail, String threadId) {
+        onAction(tool, toolUseId, detail);
+    }
+
+    /**
      * Notifie une transition d'état de la session.
      *
      * @param state état atteint ({@code running} / {@code idle})
@@ -58,6 +69,18 @@ public interface AtelierAgentListener {
      * @param error     vrai si l'outil a échoué
      */
     default void onActionResult(String tool, String toolUseId, String output, boolean error) {
+    }
+
+    /**
+     * Variante portant en outre le fil d'exécution dont vient la sortie (miroir applicatif de
+     * {@link ManagedEventListener#onActionResult(String, String, String, boolean, String)},
+     * F-35 / SF-35-02).
+     *
+     * @param threadId identifiant opaque du fil, ou {@code null} pour un run séquentiel
+     */
+    default void onActionResult(String tool, String toolUseId, String output, boolean error,
+            String threadId) {
+        onActionResult(tool, toolUseId, output, error);
     }
 
     /**

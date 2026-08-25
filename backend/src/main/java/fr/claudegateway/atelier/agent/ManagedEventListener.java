@@ -45,6 +45,20 @@ public interface ManagedEventListener {
     }
 
     /**
+     * Variante portant en outre le <b>fil d'exécution</b> dont vient la commande (F-35 / SF-35-02).
+     * Un run délégué mène plusieurs fils de front : sans ce marqueur, leurs commandes s'entrelacent
+     * dans un flux unique où plus rien ne se lit. Délègue par défaut à
+     * {@link #onAction(String, String, String)} — une implémentation qui n'en a pas besoin reste
+     * inchangée.
+     *
+     * @param threadId identifiant opaque du fil, ou {@code null} si l'event ne le porte pas (cas de
+     *                 tous les runs séquentiels)
+     */
+    default void onAction(String tool, String toolUseId, String detail, String threadId) {
+        onAction(tool, toolUseId, detail);
+    }
+
+    /**
      * Notifie la <b>sortie</b> d'un outil (event {@code agent.tool_result} / {@code agent.mcp_tool_result}),
      * c'est-à-dire ce que la commande a produit — indispensable au rendu terminal (F-30 / ADR-014).
      *
@@ -58,6 +72,17 @@ public interface ManagedEventListener {
      * @param error     vrai si l'outil a échoué (code de retour non nul / {@code is_error})
      */
     default void onActionResult(String tool, String toolUseId, String output, boolean error) {
+    }
+
+    /**
+     * Variante portant en outre le <b>fil d'exécution</b> dont vient la sortie (F-35 / SF-35-02).
+     * Délègue par défaut à {@link #onActionResult(String, String, String, boolean)}.
+     *
+     * @param threadId identifiant opaque du fil, ou {@code null} si l'event ne le porte pas
+     */
+    default void onActionResult(String tool, String toolUseId, String output, boolean error,
+            String threadId) {
+        onActionResult(tool, toolUseId, output, error);
     }
 
     /**

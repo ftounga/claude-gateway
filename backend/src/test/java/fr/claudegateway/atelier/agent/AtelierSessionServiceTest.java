@@ -725,6 +725,63 @@ class AtelierSessionServiceTest {
     }
 
     @Test
+    void aPersistedTurnKeepsTheThreadEachCommandCameFrom() {
+        // F-35 SF-35-02 : sans le fil dans la transcription, un rechargement de page perdrait les
+        // sous-tâches et réafficherait un flux entrelacé illisible.
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(),
+                any(), any())).thenReturn(new ManagedSession("sess_1"));
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(inv -> {
+            ManagedEventListener sink = inv.getArgument(3);
+            sink.onAction("bash", "tu_1", "grep -r TODO", "thr_sub");
+            sink.onActionResult("bash", "tu_1", "3 occurrences", false, "thr_sub");
+            return new SessionRun("Fait.", "end_turn");
+        });
+        when(provider.listOutputs("sess_1")).thenReturn(List.of());
+
+        service(enabled()).runTask(USER, WORKSPACE, "audite le projet");
+
+        ArgumentCaptor<fr.claudegateway.atelier.AtelierMessage> saved =
+                ArgumentCaptor.forClass(fr.claudegateway.atelier.AtelierMessage.class);
+        verify(messageRepository, times(2)).save(saved.capture());
+        assertThat(saved.getAllValues().get(1).getTerminalJson()).contains("\"threadId\":\"thr_sub\"");
+    }
+
+    @Test
+    void aRelayedCommandCarriesItsThreadToTheApplicationListener() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(),
+                any(), any())).thenReturn(new ManagedSession("sess_1"));
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(inv -> {
+            ManagedEventListener sink = inv.getArgument(3);
+            sink.onAction("bash", "tu_1", "npm test", "thr_main");
+            sink.onActionResult("bash", "tu_1", "ok", false, "thr_main");
+            return new SessionRun("Fait.", "end_turn");
+        });
+        when(provider.listOutputs("sess_1")).thenReturn(List.of());
+
+        List<String> relayed = new java.util.ArrayList<>();
+        service(enabled()).runTaskStreaming(USER, WORKSPACE, "go", new AtelierAgentListener() {
+            @Override
+            public void onAction(String tool, String toolUseId, String detail, String threadId) {
+                relayed.add("action:" + threadId);
+            }
+
+            @Override
+            public void onActionResult(String tool, String toolUseId, String output, boolean error,
+                    String threadId) {
+                relayed.add("result:" + threadId);
+            }
+        });
+
+        assertThat(relayed).containsExactly("action:thr_main", "result:thr_main");
+    }
+
+    @Test
     void aFailedRunPersistsNothing() {
         // L'écran annonce déjà que rien n'a été enregistré : persister le contredirait.
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));

@@ -134,6 +134,57 @@ class AtelierAgentControllerTest {
     }
 
     @Test
+    void streamCarriesTheThreadOfEachCommandAsAnAdditiveField() throws Exception {
+        // F-35 SF-35-02 : sans ce marqueur, les commandes de trois sous-tâches s'entrelacent dans un
+        // flux unique où plus rien ne se lit — au moment précis où la délégation devrait aider.
+        when(access.hasAccess()).thenReturn(true);
+        when(sessionService.runTaskStreaming(eq(USER), eq(WORKSPACE), any(), any())).thenAnswer(inv -> {
+            AtelierAgentListener listener = inv.getArgument(3);
+            listener.onAction("bash", "tu_1", "npm test", "thr_main");
+            listener.onActionResult("bash", "tu_1", "12 passing", false, "thr_main");
+            listener.onAction("bash", "tu_2", "grep -r TODO", "thr_sub");
+            listener.onActionResult("bash", "tu_2", "3 occurrences", false, "thr_sub");
+            return new AtelierSessionResult("Terminé.", List.of());
+        });
+
+        var result = mockMvc(props(true)).perform(post("/workspaces/" + WORKSPACE + "/agent/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("{\"message\":\"audite le projet\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        org.assertj.core.api.Assertions.assertThat(body)
+                .contains("\"threadId\":\"thr_main\"")
+                .contains("\"threadId\":\"thr_sub\"");
+    }
+
+    @Test
+    void aSequentialRunReportsNoThreadOnItsCommands() throws Exception {
+        // Comportement d'avant F-35 : le champ est présent mais nul, et rien ne change à l'écran.
+        when(access.hasAccess()).thenReturn(true);
+        when(sessionService.runTaskStreaming(eq(USER), eq(WORKSPACE), any(), any())).thenAnswer(inv -> {
+            AtelierAgentListener listener = inv.getArgument(3);
+            listener.onAction("bash", "tu_1", "npm test");
+            listener.onActionResult("bash", "tu_1", "12 passing", false);
+            return new AtelierSessionResult("Terminé.", List.of());
+        });
+
+        var result = mockMvc(props(true)).perform(post("/workspaces/" + WORKSPACE + "/agent/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("{\"message\":\"lance les tests\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        org.assertj.core.api.Assertions.assertThat(body)
+                .contains("\"threadId\":null")
+                .doesNotContain("\"threadId\":\"");
+    }
+
+    @Test
     void doneCarriesTurnUsageAsAdditiveFields() throws Exception {
         // F-30 SF-30-05 : la consommation du tour voyage dans `done`, en champs ADDITIFS.
         when(access.hasAccess()).thenReturn(true);

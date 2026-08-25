@@ -519,6 +519,114 @@ class AnthropicManagedAgentProviderTest {
         server.verify();
     }
 
+    // ---- F-35 SF-35-02 : provenance des sous-tâches ----
+
+    @Test
+    void awaitCompletionRelaysTheThreadEachToolEventCameFrom() {
+        // Un run délégué mène plusieurs fils de front : sans ce marqueur, leurs commandes s'entrelacent
+        // dans un flux unique où plus rien ne se lit.
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"agent.tool_use\",\"id\":\"e0\",\"name\":\"bash\","
+                                + "\"thread_id\":\"thr_main\",\"tool_use_id\":\"tu_1\","
+                                + "\"input\":{\"command\":\"npm test\"}},"
+                                + "{\"type\":\"agent.tool_use\",\"id\":\"e1\",\"name\":\"bash\","
+                                + "\"thread\":{\"id\":\"thr_sub\"},\"tool_use_id\":\"tu_2\","
+                                + "\"input\":{\"command\":\"grep -r TODO\"}},"
+                                + "{\"type\":\"agent.tool_result\",\"id\":\"e2\",\"name\":\"bash\","
+                                + "\"thread_id\":\"thr_sub\",\"tool_use_id\":\"tu_2\","
+                                + "\"content\":[{\"type\":\"text\",\"text\":\"3 occurrences\"}]},"
+                                + "{\"type\":\"session.status_idle\",\"id\":\"e3\",\"stop_reason\":\"end_turn\"}]}",
+                        MediaType.APPLICATION_JSON));
+
+        RecordingListener listener = new RecordingListener();
+        provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10, listener);
+
+        // Le repli sur un objet `thread` imbriqué est reconnu comme l'identifiant nu.
+        assertThat(listener.actionThreads).containsExactly("thr_main", "thr_sub");
+        assertThat(listener.resultThreads).containsExactly("thr_sub");
+        server.verify();
+    }
+
+    @Test
+    void awaitCompletionReportsNoThreadForASequentialRun() {
+        // Comportement d'avant F-35 : aucun event ne porte de fil, rien ne change à l'affichage.
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"agent.tool_use\",\"id\":\"e0\",\"name\":\"bash\","
+                                + "\"tool_use_id\":\"tu_1\",\"input\":{\"command\":\"npm test\"}},"
+                                + "{\"type\":\"agent.tool_result\",\"id\":\"e1\",\"name\":\"bash\","
+                                + "\"tool_use_id\":\"tu_1\",\"content\":[{\"type\":\"text\",\"text\":\"ok\"}]},"
+                                + "{\"type\":\"session.status_idle\",\"id\":\"e2\",\"stop_reason\":\"end_turn\"}]}",
+                        MediaType.APPLICATION_JSON));
+
+        RecordingListener listener = new RecordingListener();
+        provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10, listener);
+
+        assertThat(listener.actionThreads).containsExactly("null");
+        assertThat(listener.resultThreads).containsExactly("null");
+        server.verify();
+    }
+
+    @Test
+    void aListenerImplementingOnlyTheOlderSignaturesIsStillNotified() {
+        // Les surcharges portant le fil sont `default` : une implémentation antérieure reste servie.
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"agent.tool_use\",\"id\":\"e0\",\"name\":\"bash\","
+                                + "\"thread_id\":\"thr_sub\",\"tool_use_id\":\"tu_1\","
+                                + "\"input\":{\"command\":\"npm test\"}},"
+                                + "{\"type\":\"agent.tool_result\",\"id\":\"e1\",\"name\":\"bash\","
+                                + "\"thread_id\":\"thr_sub\",\"tool_use_id\":\"tu_1\","
+                                + "\"content\":[{\"type\":\"text\",\"text\":\"ok\"}]},"
+                                + "{\"type\":\"session.status_idle\",\"id\":\"e2\",\"stop_reason\":\"end_turn\"}]}",
+                        MediaType.APPLICATION_JSON));
+
+        List<String> seen = new java.util.ArrayList<>();
+        provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10, new ManagedEventListener() {
+            @Override
+            public void onAction(String tool, String toolUseId, String detail) {
+                seen.add("action:" + detail);
+            }
+
+            @Override
+            public void onActionResult(String tool, String toolUseId, String output, boolean error) {
+                seen.add("result:" + output);
+            }
+        });
+
+        assertThat(seen).containsExactly("action:npm test", "result:ok");
+        server.verify();
+    }
+
+    @Test
+    void sessionUsageIsReadAtTheSessionLevelSoItCoversEveryThread() {
+        // D5 du cadrage : le coût du tour agrège les sous-agents. Il tient parce que le relevé est
+        // pris sur la SESSION — les sous-agents en sont des threads. Ce test fige ce point : passer un
+        // jour au niveau d'un fil sous-compterait en silence, et un sous-comptage ne se voit qu'en
+        // fin de mois.
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions/sess_1"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(
+                        "{\"id\":\"sess_1\",\"usage\":{\"input_tokens\":1000,\"output_tokens\":200},"
+                                + "\"stats\":{\"active_seconds\":42.4},"
+                                + "\"list_cost\":{\"amount\":\"150\",\"currency\":\"USD\"},"
+                                + "\"threads\":[{\"id\":\"thr_sub\",\"usage\":{\"input_tokens\":900}}]}",
+                        MediaType.APPLICATION_JSON));
+
+        ManagedAgentProvider.SessionUsage usage = provider.getSessionUsage("sess_1");
+
+        // Les totaux viennent de la racine, JAMAIS d'une addition avec les fils (double comptage).
+        assertThat(usage.inputTokens()).isEqualTo(1_000L);
+        assertThat(usage.outputTokens()).isEqualTo(200L);
+        assertThat(usage.activeSeconds()).isEqualTo(42L);
+        assertThat(usage.listCostMinorUnits()).isEqualTo(150L);
+        server.verify();
+    }
+
     // ---- F-30 SF-30-08 : diagnostic des erreurs du fournisseur ----
 
     @Test
@@ -826,6 +934,8 @@ class AnthropicManagedAgentProviderTest {
         private final List<String> states = new java.util.ArrayList<>();
         private final List<String> results = new java.util.ArrayList<>();
         private final List<String> actionIds = new java.util.ArrayList<>();
+        private final List<String> actionThreads = new java.util.ArrayList<>();
+        private final List<String> resultThreads = new java.util.ArrayList<>();
         private final List<String> asks = new java.util.ArrayList<>();
         private final List<String> resolved = new java.util.ArrayList<>();
 
@@ -848,6 +958,19 @@ class AnthropicManagedAgentProviderTest {
         @Override
         public void onActionResult(String tool, String toolUseId, String output, boolean error) {
             results.add(tool + "|" + toolUseId + "|" + output + "|" + error);
+        }
+
+        @Override
+        public void onAction(String tool, String toolUseId, String detail, String threadId) {
+            actionThreads.add(String.valueOf(threadId));
+            onAction(tool, toolUseId, detail);
+        }
+
+        @Override
+        public void onActionResult(String tool, String toolUseId, String output, boolean error,
+                String threadId) {
+            resultThreads.add(String.valueOf(threadId));
+            onActionResult(tool, toolUseId, output, error);
         }
 
         @Override
