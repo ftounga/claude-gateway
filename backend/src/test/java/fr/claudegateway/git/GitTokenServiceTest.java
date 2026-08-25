@@ -38,11 +38,13 @@ class GitTokenServiceTest {
     private ByokKeyCipher cipher;
     @Mock
     private GitHubClient gitHubClient;
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher events;
 
     private final UUID userId = UUID.randomUUID();
 
     private GitTokenService service() {
-        return new GitTokenService(repository, cipher, gitHubClient);
+        return new GitTokenService(repository, cipher, gitHubClient, events);
     }
 
     private static EncryptedKey encrypted() {
@@ -183,5 +185,93 @@ class GitTokenServiceTest {
 
         assertThat(service().resolveToken(userId)).isEmpty();
         verifyNoInteractions(cipher);
+    }
+
+    // ------------------------ F-31 / SF-31-05 : vault de credentials MCP
+
+    @Test
+    void findVaultReturnsTheStoredReferenceForThisUserOnly() {
+        UserGitCredential stored = UserGitCredential.builder()
+                .userId(userId).encryptedDataKey("dk").cipherIv("iv").ciphertext("ct")
+                .tokenLast4("AB12").mcpVaultId("vlt_1").mcpCredentialId("vcrd_1").build();
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(stored));
+
+        assertThat(service().findVault(userId))
+                .contains(new GitVaultRef("vlt_1", "vcrd_1"));
+    }
+
+    @Test
+    void findVaultIsEmptyWhenNoVaultHasBeenCreatedYet() {
+        // Création paresseuse : un jeton enregistré n'a encore été recopié nulle part.
+        UserGitCredential stored = UserGitCredential.builder()
+                .userId(userId).encryptedDataKey("dk").cipherIv("iv").ciphertext("ct")
+                .tokenLast4("AB12").build();
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(stored));
+
+        assertThat(service().findVault(userId)).isEmpty();
+    }
+
+    @Test
+    void rememberVaultStoresOnlyOpaqueIdentifiers() {
+        UserGitCredential stored = UserGitCredential.builder()
+                .userId(userId).encryptedDataKey("dk").cipherIv("iv").ciphertext("ct")
+                .tokenLast4("AB12").build();
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(stored));
+        when(repository.save(any(UserGitCredential.class))).thenAnswer(call -> call.getArgument(0));
+
+        service().rememberVault(userId, new GitVaultRef("vlt_1", "vcrd_1"));
+
+        assertThat(stored.getMcpVaultId()).isEqualTo("vlt_1");
+        assertThat(stored.getMcpCredentialId()).isEqualTo("vcrd_1");
+    }
+
+    @Test
+    void rememberVaultDoesNothingWhenTheUserHasNoTokenAnyMore() {
+        // Rattacher un vault à rien laisserait un identifiant orphelin en base.
+        when(repository.findByUserId(userId)).thenReturn(Optional.empty());
+
+        service().rememberVault(userId, new GitVaultRef("vlt_1", "vcrd_1"));
+
+        verify(repository, never()).save(any(UserGitCredential.class));
+    }
+
+    @Test
+    void replacingTheTokenDetachesAndAnnouncesTheRevocationOfTheOldVault() {
+        // Le vault porte l'ANCIEN jeton : il ne vaut plus rien et ne doit pas lui survivre.
+        UserGitCredential stored = UserGitCredential.builder()
+                .userId(userId).encryptedDataKey("dk").cipherIv("iv").ciphertext("ct")
+                .tokenLast4("AB12").mcpVaultId("vlt_1").mcpCredentialId("vcrd_1").build();
+        when(gitHubClient.verifyToken(TOKEN)).thenReturn(new GitHubAccount("octocat"));
+        when(cipher.encrypt(TOKEN)).thenReturn(encrypted());
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(stored));
+        when(repository.save(any(UserGitCredential.class))).thenAnswer(call -> call.getArgument(0));
+
+        service().saveToken(userId, TOKEN);
+
+        assertThat(stored.getMcpVaultId()).isNull();
+        assertThat(stored.getMcpCredentialId()).isNull();
+        verify(events).publishEvent(new GitVaultRevokedEvent(userId, "vlt_1", "vcrd_1"));
+    }
+
+    @Test
+    void removingTheTokenAnnouncesTheRevocationOfItsVault() {
+        UserGitCredential stored = UserGitCredential.builder()
+                .userId(userId).encryptedDataKey("dk").cipherIv("iv").ciphertext("ct")
+                .tokenLast4("AB12").mcpVaultId("vlt_1").mcpCredentialId("vcrd_1").build();
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(stored));
+
+        service().deleteToken(userId);
+
+        verify(repository).deleteByUserId(userId);
+        verify(events).publishEvent(new GitVaultRevokedEvent(userId, "vlt_1", "vcrd_1"));
+    }
+
+    @Test
+    void removingATokenWithoutAVaultAnnouncesNothing() {
+        when(repository.findByUserId(userId)).thenReturn(Optional.empty());
+
+        service().deleteToken(userId);
+
+        verify(events, never()).publishEvent(any());
     }
 }

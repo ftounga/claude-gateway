@@ -70,6 +70,21 @@ public class UserGitCredential {
     @Column(name = "token_last4", nullable = false, length = 4)
     private String tokenLast4;
 
+    /**
+     * Identifiant du <b>vault</b> de credentials créé chez le fournisseur d'agents pour cet
+     * utilisateur (F-31 / SF-31-05), ou {@code null} tant qu'aucun n'a été créé — il l'est
+     * paresseusement, à la première session sur un dépôt Git.
+     *
+     * <p>Ce n'est <b>pas un secret</b> : un identifiant opaque ({@code vlt_…}). Le jeton déposé dans
+     * ce vault est write-only côté fournisseur — jamais relu, jamais renvoyé.</p>
+     */
+    @Column(name = "mcp_vault_id", length = 64)
+    private String mcpVaultId;
+
+    /** Identifiant de la credential déposée dans ce vault ({@code vcrd_…}). Pas un secret non plus. */
+    @Column(name = "mcp_credential_id", length = 64)
+    private String mcpCredentialId;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

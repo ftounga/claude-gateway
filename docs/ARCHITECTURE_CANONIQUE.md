@@ -263,6 +263,26 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     par l'agent via le proxy git, puis **constate** l'existence de la branche auprès de GitHub avant
     d'annoncer un succès. Jamais sur la branche de base ; jamais de session ouverte pour l'occasion
     (`409 no_active_session`).
+  - **Pull request** (SF-31-05) : `POST /workspaces/{id}/git/pull-request` fait appeler l'outil
+    `create_pull_request` du **serveur MCP GitHub** par l'agent, puis **constate** l'existence de la
+    pull request ouverte auprès de GitHub (`GET /repos/{owner}/{repo}/pulls?head={owner}:{branche}`)
+    avant d'annoncer une URL. Même règles qu'au push : branche dédiée obligatoire, session existante
+    obligatoire, échec = `200 created:false` + compte rendu.
+- **user_git_credentials — vault de credentials MCP** (F-31 / SF-31-05, migration `045`). Deux
+  colonnes ajoutées, **nullables** et **sans aucun secret** : `mcp_vault_id (varchar 64)` et
+  `mcp_credential_id (varchar 64)` — des identifiants opaques rendus par le fournisseur
+  (`vlt_…`, `vcrd_…`). Le PAT reste chiffré dans les colonnes existantes ; sa copie déposée dans le
+  vault est **write-only** côté fournisseur (jamais relue, jamais renvoyée) et **n'entre jamais dans
+  le conteneur** (proxy MCP, même garantie que le proxy git).
+  - **Un vault par utilisateur** : le fournisseur n'accepte qu'une credential par `mcp_server_url` et
+    par vault — un vault partagé ne pourrait porter qu'un seul PAT — et mélanger les jetons violerait
+    l'isolation `user_id`.
+  - **Créé paresseusement**, à la première session sur un dépôt Git ; **détruit à la révocation** du
+    jeton (remplacement ou retrait), par événement applicatif consommé après commit. Un jeton révoqué
+    chez nous mais toujours utilisable chez le fournisseur serait une révocation de façade.
+  - Le vault s'attache **à la création de session** (`vault_ids`) : le fournisseur refuse de l'ajouter
+    ensuite. Une session ouverte avant SF-31-05 n'a donc pas l'outil ; « Réinitialiser la sandbox »
+    en rouvre une équipée.
 - **workspaces — validation avant exécution** (F-33 / SF-33-01, migration `044`). Colonne
   `agent_ask_before_bash (boolean, non nul, défaut false)` : quand elle est posée, la session d'agent
   est ouverte avec `permission_policy: always_ask` sur le **seul outil `bash`** (surcharge d'outils

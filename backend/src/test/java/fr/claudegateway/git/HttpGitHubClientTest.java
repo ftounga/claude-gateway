@@ -29,6 +29,7 @@ class HttpGitHubClientTest {
     private volatile int statusCode = 200;
     private volatile String responseBody = "{\"login\":\"octocat\"}";
     private final AtomicReference<String> requestedPath = new AtomicReference<>();
+    private final AtomicReference<String> requestedQuery = new AtomicReference<>();
     private volatile int repoStatusCode = 200;
     private volatile String repoResponseBody = "{\"full_name\":\"octocat/hello\",\"default_branch\":\"main\"}";
 
@@ -47,6 +48,7 @@ class HttpGitHubClientTest {
         server.createContext("/repos/", exchange -> {
             authorizationHeader.set(exchange.getRequestHeaders().getFirst("Authorization"));
             requestedPath.set(exchange.getRequestURI().getPath());
+            requestedQuery.set(exchange.getRequestURI().getRawQuery());
             byte[] payload = repoResponseBody.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(repoStatusCode, payload.length);
@@ -65,7 +67,7 @@ class HttpGitHubClientTest {
     private GitHubClient client() {
         int port = server.getAddress().getPort();
         return new HttpGitHubClient(
-                new GitProperties("http://127.0.0.1:" + port, Duration.ofSeconds(5), null, null),
+                new GitProperties("http://127.0.0.1:" + port, Duration.ofSeconds(5), null, null, null, null),
                 RestClient.builder());
     }
 
@@ -247,6 +249,41 @@ class HttpGitHubClientTest {
         assertThatThrownBy(() ->
                 client().readFile("github_pat_ok", "octocat", "hello", "main", "src", 1024))
                 .isInstanceOf(InvalidGitRepositoryException.class);
+    }
+
+    // ------------------------ F-31 / SF-31-05 : constat de la pull request ouverte
+
+    @Test
+    void findsTheOpenPullRequestAndQualifiesTheHeadWithTheOwner() {
+        // Sans le préfixe `owner:`, GitHub ignore le filtre `head` et renverrait la première pull
+        // request ouverte venue — on annoncerait celle de quelqu'un d'autre.
+        repoResponseBody = "[{\"number\":7,\"html_url\":\"https://github.com/octocat/hello/pull/7\"}]";
+
+        var found = client().findOpenPullRequest("github_pat_ok", "octocat", "hello", "feat/atelier");
+
+        assertThat(found).isPresent();
+        assertThat(found.get().number()).isEqualTo(7);
+        assertThat(found.get().url()).isEqualTo("https://github.com/octocat/hello/pull/7");
+        assertThat(requestedPath.get()).isEqualTo("/repos/octocat/hello/pulls");
+        assertThat(requestedQuery.get()).contains("head=octocat:feat/atelier").contains("state=open");
+    }
+
+    @Test
+    void findsNoPullRequestWhenTheListIsEmpty() {
+        repoResponseBody = "[]";
+
+        assertThat(client().findOpenPullRequest("github_pat_ok", "octocat", "hello", "feat/atelier"))
+                .isEmpty();
+    }
+
+    @Test
+    void anUnreachableGitHubNeverPretendsAPullRequestExists() {
+        repoStatusCode = 502;
+        repoResponseBody = "{\"message\":\"Bad gateway\"}";
+
+        assertThatThrownBy(() ->
+                client().findOpenPullRequest("github_pat_ok", "octocat", "hello", "feat/atelier"))
+                .isInstanceOf(GitHubUnavailableException.class);
     }
 
     @Test

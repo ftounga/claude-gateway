@@ -92,4 +92,24 @@ public interface GitHubClient {
      *                                    branche existe
      */
     boolean branchExists(String token, String owner, String repo, String branch);
+
+    /**
+     * Constate l'existence d'une pull request <b>ouverte</b> dont la tête est la branche donnée
+     * (F-31 / SF-31-05), après une demande de création via le serveur MCP GitHub.
+     *
+     * <p>Même règle qu'au push : ce que l'agent déclare ne suffit pas. Renvoyer une URL fabriquée
+     * depuis sa réponse mènerait l'utilisateur vers une page inexistante — ou pire, vers une autre
+     * pull request.</p>
+     *
+     * @param token  jeton en clair (jamais journalisé)
+     * @param owner  propriétaire du dépôt
+     * @param repo   nom du dépôt
+     * @param branch branche de tête de la pull request cherchée
+     * @return la pull request ouverte sur cette branche, ou vide s'il n'y en a aucune
+     * @throws InvalidGitTokenException   jeton refusé
+     * @throws GitHubUnavailableException GitHub injoignable — on ne prétend alors <b>pas</b> que la
+     *                                    pull request existe
+     */
+    java.util.Optional<GitPullRequest> findOpenPullRequest(String token, String owner, String repo,
+            String branch);
 }
