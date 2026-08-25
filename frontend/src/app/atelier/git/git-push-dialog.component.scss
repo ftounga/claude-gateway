@@ -1,0 +1,35 @@
+// Dialogue « Publier sur une branche » (F-31 / SF-31-04) — jetons du design system (--cg-*).
+
+.push-intro {
+  margin: 0 0 var(--cg-space-3);
+  color: var(--cg-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.push-field {
+  display: block;
+  width: 100%;
+  margin-bottom: var(--cg-space-3);
+}
+
+.push-hint-error {
+  color: var(--cg-error);
+}
+
+.push-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-1);
+  margin: 0;
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.push-note-icon {
+  flex: none;
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}

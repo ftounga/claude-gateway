@@ -84,6 +84,7 @@ describe('AtelierComponent', () => {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace',
       'createGitWorkspace',
+      'pushBranch',
       'listWorkspaces',
       'getWorkspace',
       'getFile',
@@ -132,6 +133,7 @@ describe('AtelierComponent', () => {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace',
       'createGitWorkspace',
+      'pushBranch',
       'listWorkspaces',
       'getWorkspace',
       'getFile',
@@ -197,6 +199,7 @@ describe('AtelierComponent', () => {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace',
       'createGitWorkspace',
+      'pushBranch',
       'listWorkspaces',
       'getWorkspace',
       'getFile',
@@ -235,6 +238,7 @@ describe('AtelierComponent', () => {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace',
       'createGitWorkspace',
+      'pushBranch',
       'listWorkspaces',
       'getWorkspace',
       'getFile',
@@ -1265,5 +1269,112 @@ describe('AtelierComponent', () => {
     });
 
     expect(component.activeDetail()?.truncated).toBeTrue();
+  });
+
+  // ---- F-31 SF-31-04 : publication sur une branche dédiée ----
+
+  /** Ouvre un projet Git : c'est le préalable de toute publication. */
+  function openGitProject(): void {
+    service.getWorkspace.and.returnValue(of(gitDetail));
+    component.selectWorkspace({
+      id: 'w2',
+      name: 'hello',
+      createdAt: '2026-08-25T00:00:00Z',
+      source: 'GIT',
+      gitRepo: 'octocat/hello',
+    });
+  }
+
+  it('publie sur la branche choisie et conserve le lien de pull request', () => {
+    setup();
+    openGitProject();
+    dialog.open.and.returnValue({
+      afterClosed: () => of({ branch: 'feat/atelier' }),
+    } as MatDialogRef<unknown, unknown>);
+    service.pushBranch.and.returnValue(
+      of({
+        branch: 'feat/atelier',
+        pushed: true,
+        compareUrl: 'https://github.com/octocat/hello/compare/x?expand=1',
+        reply: 'Branche poussée.',
+      }),
+    );
+
+    component.openPushDialog();
+
+    expect(service.pushBranch).toHaveBeenCalledWith('w2', { branch: 'feat/atelier' });
+    expect(component.pushResult()?.pushed).toBeTrue();
+    expect(component.pushResult()?.compareUrl).toContain('/compare/');
+    expect(component.publishing()).toBeFalse();
+  });
+
+  it("montre l'échec et sa cause quand rien n'a été publié", () => {
+    setup();
+    openGitProject();
+    dialog.open.and.returnValue({
+      afterClosed: () => of({ branch: 'feat/atelier' }),
+    } as MatDialogRef<unknown, unknown>);
+    service.pushBranch.and.returnValue(
+      of({
+        branch: 'feat/atelier',
+        pushed: false,
+        compareUrl: null,
+        reply: 'permission denied',
+      }),
+    );
+
+    component.openPushDialog();
+
+    expect(component.pushResult()?.pushed).toBeFalse();
+    expect(component.pushResult()?.compareUrl).toBeNull();
+    expect(component.pushResult()?.reply).toContain('permission denied');
+  });
+
+  it("oriente vers une commande préalable quand aucune session n'est en cours", () => {
+    setup();
+    openGitProject();
+    dialog.open.and.returnValue({
+      afterClosed: () => of({ branch: 'feat/atelier' }),
+    } as MatDialogRef<unknown, unknown>);
+    service.pushBranch.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 409, error: { error: 'no_active_session' } })),
+    );
+
+    component.openPushDialog();
+
+    expect(snackBar.open.calls.mostRecent().args[0]).toContain('Aucun travail en cours');
+    expect(component.publishing()).toBeFalse();
+  });
+
+  it("ne publie pas un projet d'archive", () => {
+    setup();
+    component.selectWorkspace(summary);
+
+    component.openPushDialog();
+
+    expect(dialog.open).not.toHaveBeenCalled();
+    expect(service.pushBranch).not.toHaveBeenCalled();
+  });
+
+  it("quitter le terminal referme un projet Git au lieu d'un mode indisponible", () => {
+    setup();
+    openGitProject();
+
+    component.leaveTerminal();
+
+    expect(component.activeWorkspaceId()).toBeNull();
+    expect(component.agentMode()).toBe('edit');
+    expect(component.pushResult()).toBeNull();
+  });
+
+  it("quitter le terminal d'un projet d'archive revient au mode Assistant", () => {
+    setup();
+    component.selectWorkspace(summary);
+    component.setAgentMode('exec');
+
+    component.leaveTerminal();
+
+    expect(component.agentMode()).toBe('edit');
+    expect(component.activeWorkspaceId()).toBe('w1');
   });
 });

@@ -13,6 +13,8 @@ import {
   AtelierStreamHandlers,
   CreateGitWorkspaceRequest,
   FileContent,
+  GitPushRequest,
+  GitPushResult,
   WorkspaceDetail,
   WorkspaceSummary,
   WriteFileRequest,
@@ -44,6 +46,15 @@ export class AtelierService {
    */
   createGitWorkspace(request: CreateGitWorkspaceRequest): Observable<WorkspaceDetail> {
     return this.http.post<WorkspaceDetail>('/api/workspaces/git', request);
+  }
+
+  /**
+   * Publie le travail de la session sur une branche dédiée (F-31 / SF-31-04) et renvoie le lien
+   * d'ouverture de pull request. Réponse `200` même si rien n'a été poussé : `pushed` dit ce qui
+   * s'est réellement passé, et `reply` en donne la cause.
+   */
+  pushBranch(id: string, request: GitPushRequest): Observable<GitPushResult> {
+    return this.http.post<GitPushResult>(`/api/workspaces/${id}/git/push`, request);
   }
 
   /** Workspaces de l'utilisateur. */
