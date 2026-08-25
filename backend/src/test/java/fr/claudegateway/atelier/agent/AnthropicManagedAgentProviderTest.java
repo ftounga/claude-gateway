@@ -882,6 +882,43 @@ class AnthropicManagedAgentProviderTest {
         assertThat(usage.outputTokens()).isEqualTo(353L);
         // active_seconds 8.455 arrondi → 8.
         assertThat(usage.activeSeconds()).isEqualTo(8L);
+        // Aucun `list_cost` rapporté : l'appelant retombe sur le décompte des tokens (F-36 SF-36-02).
+        assertThat(usage.listCostMinorUnits()).isNull();
+        server.verify();
+    }
+
+    @Test
+    void getSessionUsageReadsTheRealBilledCostWhenTheProviderReportsIt() {
+        // F-36 / SF-36-02 : coût réellement facturé, en unités mineures et en chaîne.
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions/sess_1"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(
+                        "{\"usage\":{\"input_tokens\":10,\"output_tokens\":5},"
+                                + "\"list_cost\":{\"amount\":\"137\",\"currency\":\"USD\"},"
+                                + "\"stats\":{\"active_seconds\":3.2}}",
+                        MediaType.APPLICATION_JSON));
+
+        ManagedAgentProvider.SessionUsage usage = provider.getSessionUsage("sess_1");
+
+        assertThat(usage.listCostMinorUnits()).isEqualTo(137L);
+        server.verify();
+    }
+
+    @Test
+    void getSessionUsageIgnoresAnUnreadableCostRatherThanChargingWrong() {
+        // Forme inattendue : mieux vaut décompter les tokens que décompter faux.
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions/sess_1"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(
+                        "{\"usage\":{\"input_tokens\":10,\"output_tokens\":5},"
+                                + "\"list_cost\":{\"amount\":\"1,37 EUR\"},"
+                                + "\"stats\":{\"active_seconds\":3.2}}",
+                        MediaType.APPLICATION_JSON));
+
+        ManagedAgentProvider.SessionUsage usage = provider.getSessionUsage("sess_1");
+
+        assertThat(usage.listCostMinorUnits()).isNull();
+        assertThat(usage.inputTokens()).isEqualTo(10L);
         server.verify();
     }
 

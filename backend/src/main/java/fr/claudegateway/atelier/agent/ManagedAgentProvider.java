@@ -314,12 +314,23 @@ public interface ManagedAgentProvider {
     SessionUsage getSessionUsage(String sessionId);
 
     /**
-     * Consommation agrégée d'une session Managed Agents (F-28 / SF-28-12).
+     * Consommation agrégée d'une session Managed Agents (F-28 / SF-28-12), enrichie du <b>coût
+     * réellement facturé</b> (F-36 / SF-36-02).
      *
-     * @param inputTokens   tokens d'entrée agrégés (entrée + lecture/création de cache)
-     * @param outputTokens  tokens de sortie
-     * @param activeSeconds temps de bac à sable facturé (secondes, arrondi)
+     * @param inputTokens      tokens d'entrée agrégés (entrée + lecture/création de cache)
+     * @param outputTokens     tokens de sortie
+     * @param activeSeconds    temps de bac à sable facturé (secondes, arrondi)
+     * @param listCostMinorUnits coût cumulé de la session en unités mineures (cents), ou {@code null}
+     *                         quand le fournisseur ne le rapporte pas — l'appelant retombe alors sur
+     *                         le décompte des tokens. Le coût capture ce que les tokens ignorent : le
+     *                         modèle réellement servi, les recherches web, le temps de bac à sable
      */
-    record SessionUsage(long inputTokens, long outputTokens, long activeSeconds) {
+    record SessionUsage(long inputTokens, long outputTokens, long activeSeconds,
+            Long listCostMinorUnits) {
+
+        /** Consommation sans coût rapporté : forme d'avant F-36 (repli sur les tokens). */
+        public SessionUsage(long inputTokens, long outputTokens, long activeSeconds) {
+            this(inputTokens, outputTokens, activeSeconds, null);
+        }
     }
 }

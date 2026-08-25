@@ -125,6 +125,14 @@ public class Workspace {
     private long agentActiveSeconds;
 
     /**
+     * Coût cumulé de la session courante en <b>unités mineures</b> (F-36 / SF-36-02) : ce que le
+     * fournisseur facture réellement (tokens au tarif du modèle servi, recherches web, temps de bac à
+     * sable). Même rôle que les compteurs ci-dessus — seul l'écart avec ce relevé est décompté.
+     */
+    @Column(name = "agent_list_cost", nullable = false)
+    private long agentListCost;
+
+    /**
      * Demander l'autorisation avant d'exécuter une commande (F-33 / SF-33-01). Lue à l'<b>ouverture</b>
      * de session : la politique d'outils est fixée pour toute la vie de la session, une bascule ne
      * change donc pas une sandbox déjà ouverte.

@@ -600,10 +600,41 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
             long outputTokens = usage.path("output_tokens").asLong(0);
             // Temps facturé du bac à sable : active_seconds arrondi à la seconde.
             long activeSeconds = Math.round(response.path("stats").path("active_seconds").asDouble(0));
-            return new SessionUsage(inputTokens, outputTokens, activeSeconds);
+            return new SessionUsage(inputTokens, outputTokens, activeSeconds, listCost(response));
         } catch (RestClientException ex) {
             throw failure("usage de session", ex);
         }
+    }
+
+    /**
+     * Coût cumulé de la session en <b>unités mineures</b> (F-36 / SF-36-02), ou {@code null} si le
+     * fournisseur ne le rapporte pas — l'appelant retombe alors sur le décompte des tokens.
+     *
+     * <p>Le montant est porté sous la même forme que le plafond posé à la création
+     * ({@code {amount, currency}}, {@code amount} en unités mineures). Une forme inattendue est
+     * traitée comme « non rapporté » : mieux vaut décompter les tokens que décompter faux.</p>
+     */
+    private static Long listCost(JsonNode response) {
+        JsonNode node = response.path("list_cost");
+        if (node.isMissingNode() || node.isNull()) {
+            node = response.path("usage").path("list_cost");
+        }
+        if (node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        JsonNode amount = node.isObject() ? node.path("amount") : node;
+        if (amount.isNumber()) {
+            return amount.asLong();
+        }
+        if (amount.isTextual()) {
+            try {
+                return Long.parseLong(amount.asText().trim());
+            } catch (NumberFormatException malformed) {
+                log.debug("Coût de session illisible : décompte des tokens (repli).");
+                return null;
+            }
+        }
+        return null;
     }
 
     /** Lit une page d'events (polling) de la session. Extraite pour la testabilité. */

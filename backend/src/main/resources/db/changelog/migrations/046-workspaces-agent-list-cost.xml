@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      SF-36-02 — Le workspace d'Atelier porte le COÛT CUMULÉ de sa session en cours (F-36).
+
+      Le fournisseur rapporte un cumul depuis l'ouverture de la session : sans mémoire du relevé
+      précédent, chaque tour redécompterait toute la dépense de la session, de plus en plus cher.
+      Même rôle que `agent_input_tokens` / `agent_active_seconds`, remis à zéro à l'ouverture.
+
+      Unités mineures (cents) : c'est la forme rapportée par le fournisseur, et un entier ne perd
+      rien à l'arrondi. `0` par défaut, avec un defaultValue explicite : les projets existants
+      repartent d'un cumul nul, aucune régression. Réversible : `dropColumn`.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="046-workspaces-agent-list-cost-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="workspaces">
+            <column name="agent_list_cost" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="agent_list_cost"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="046-workspaces-agent-list-cost-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="workspaces">
+            <column name="agent_list_cost" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="agent_list_cost"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
