@@ -37,6 +37,9 @@ import fr.claudegateway.chat.DocumentNotReadyException;
 import fr.claudegateway.chat.UnsupportedModelException;
 import fr.claudegateway.export.UnsupportedExportFormatException;
 import fr.claudegateway.git.GitHubUnavailableException;
+import fr.claudegateway.git.GitTokenMissingException;
+import fr.claudegateway.git.InvalidGitBranchException;
+import fr.claudegateway.git.InvalidGitRepositoryException;
 import fr.claudegateway.git.InvalidGitTokenException;
 import fr.claudegateway.ocr.DocumentNotFoundException;
 import fr.claudegateway.quota.QuotaExceededException;
@@ -297,6 +300,29 @@ public class GlobalExceptionHandler {
         log.debug("Jeton GitHub refusé : format invalide ou rejeté par GitHub");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ErrorResponse("invalid_git_token", ex.getMessage()));
+    }
+
+    @ExceptionHandler(GitTokenMissingException.class)
+    public ResponseEntity<ErrorResponse> handleGitTokenMissing(GitTokenMissingException ex) {
+        // Distinct d'un jeton refusé : l'action corrective est d'en enregistrer un, pas d'en changer.
+        log.debug("Opération Git refusée : aucun jeton GitHub enregistré pour l'utilisateur");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("git_token_missing", ex.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidGitRepositoryException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidGitRepository(InvalidGitRepositoryException ex) {
+        // L'URL est journalisable (publique), mais inutile au diagnostic : message métier seul.
+        log.debug("Dépôt Git refusé : URL invalide, ou dépôt hors de portée du jeton");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("invalid_git_repository", ex.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidGitBranchException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidGitBranch(InvalidGitBranchException ex) {
+        log.debug("Branche Git refusée : forme invalide ou branche de base");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("invalid_git_branch", ex.getMessage()));
     }
 
     @ExceptionHandler(GitHubUnavailableException.class)

@@ -59,6 +59,8 @@ class AtelierSessionServiceTest {
     private WorkspaceRepository workspaceRepository;
     @Mock
     private fr.claudegateway.atelier.AtelierMessageRepository messageRepository;
+    @Mock
+    private fr.claudegateway.git.GitTokenService gitTokenService;
 
     private AtelierAgentProperties enabled() {
         return new AtelierAgentProperties(true, null, null, null, null, null, null, null, null, null, null);
@@ -75,7 +77,7 @@ class AtelierSessionServiceTest {
 
     private AtelierSessionService service(AtelierAgentProperties props) {
         return new AtelierSessionService(provider, workspaceService, bootstrapService, props, quotaService,
-                workspaceRepository, messageRepository);
+                workspaceRepository, messageRepository, gitTokenService);
     }
 
     /** Workspace possédé, portant (ou non) une session sandbox déjà ouverte (F-30 SF-30-04). */
@@ -712,5 +714,75 @@ class AtelierSessionServiceTest {
         AtelierSessionResult result = service(enabled()).runTask(USER, WORKSPACE, "go");
 
         assertThat(result.reply()).isEqualTo("Terminé.");
+    }
+
+    // -------------------------------------- F-31 / SF-31-02 : session sur un dépôt Git
+
+    /** Workspace adossé à un dépôt, sans session ouverte. */
+    private Workspace gitWs() {
+        Workspace workspace = ws(null);
+        workspace.setSource(fr.claudegateway.atelier.WorkspaceSource.GIT);
+        workspace.setGitRepoUrl("https://github.com/octocat/hello");
+        workspace.setGitOwner("octocat");
+        workspace.setGitRepo("hello");
+        workspace.setGitBranch("main");
+        return workspace;
+    }
+
+    @Test
+    void aGitWorkspaceMountsTheRepositoryAndUploadsNothing() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(gitWs());
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any()))
+                .thenReturn(new ManagedSession("sess_git"));
+        when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any()))
+                .thenReturn(new SessionRun("Terminé.", "end_turn"));
+        when(provider.listOutputs("sess_git")).thenReturn(List.of());
+
+        service(enabled()).runTask(USER, WORKSPACE, "Corrige le bug.");
+
+        ArgumentCaptor<RepositoryMount> repo = ArgumentCaptor.forClass(RepositoryMount.class);
+        ArgumentCaptor<List<FileMount>> files = ArgumentCaptor.forClass(List.class);
+        verify(provider).createSession(eq("agent_1"), eq("env_1"), files.capture(), repo.capture());
+        assertThat(files.getValue()).isEmpty();
+        assertThat(repo.getValue().url()).isEqualTo("https://github.com/octocat/hello");
+        assertThat(repo.getValue().branch()).isEqualTo("main");
+        assertThat(repo.getValue().mountPath()).isEqualTo("/workspace");
+        assertThat(repo.getValue().authorizationToken()).isEqualTo("github_pat_secret");
+
+        // Aucun fichier téléversé : le plafond `maxSessionFiles` ne s'applique plus (ADR-015).
+        verify(provider, never()).uploadFile(any(), any());
+    }
+
+    @Test
+    void aRepositoryMountNeverRendersItsTokenInATrace() {
+        // Le montage porte un secret en mémoire : il ne doit jamais fuir dans un log ou un message.
+        RepositoryMount mount = new RepositoryMount(
+                "https://github.com/octocat/hello", "github_pat_secret", "/workspace", "main");
+
+        assertThat(mount.toString()).doesNotContain("github_pat_secret").contains("***");
+    }
+
+    @Test
+    void aGitWorkspaceWithoutTokenNeverOpensASession() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(gitWs());
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(gitTokenService.resolveToken(USER)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service(enabled()).runTask(USER, WORKSPACE, "go"))
+                .isInstanceOf(fr.claudegateway.git.GitTokenMissingException.class);
+
+        verify(provider, never()).createSession(any(), any(), anyList(), any());
+        verify(provider, never()).createSession(any(), any(), anyList());
+    }
+
+    @Test
+    void anArchiveWorkspaceNeverResolvesAGitToken() {
+        stubNominalRun();
+
+        service(enabled()).runTask(USER, WORKSPACE, "go");
+
+        verifyNoInteractions(gitTokenService);
     }
 }

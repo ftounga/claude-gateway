@@ -62,6 +62,37 @@ public class WorkspaceService {
         return new CreatedWorkspace(workspace, files.size());
     }
 
+    /**
+     * Crée un workspace dont les fichiers proviennent d'un <b>dépôt Git</b> (F-31 / SF-31-02) : rien
+     * n'est écrit dans le stockage objet, le dépôt sera cloné par le fournisseur à l'ouverture de la
+     * session (ADR-015).
+     *
+     * <p>Aucun {@code CLAUDE.md} n'est semé, contrairement à un import d'archive : le dépôt appartient
+     * à l'utilisateur, y injecter un fichier serait une modification non demandée, qui finirait dans
+     * sa pull request.</p>
+     *
+     * @param userId  propriétaire (isolation multi-tenant)
+     * @param name    nom du projet (défaut : nom du dépôt)
+     * @param repoUrl URL canonique du dépôt (déjà validée par l'appelant)
+     * @param owner   propriétaire du dépôt
+     * @param repo    nom du dépôt
+     * @param branch  branche montée (déjà résolue par l'appelant)
+     * @return le workspace créé
+     */
+    @Transactional
+    public Workspace createFromGit(UUID userId, String name, String repoUrl, String owner, String repo,
+            String branch) {
+        return workspaceRepository.save(Workspace.builder()
+                .userId(userId)
+                .name(name == null || name.isBlank() ? repo : name.trim())
+                .source(WorkspaceSource.GIT)
+                .gitRepoUrl(repoUrl)
+                .gitOwner(owner)
+                .gitRepo(repo)
+                .gitBranch(branch)
+                .build());
+    }
+
     /** Workspaces de l'utilisateur (isolation {@code user_id}). */
     public List<Workspace> list(UUID userId) {
         return workspaceRepository.findByUserIdOrderByCreatedAtDesc(userId);

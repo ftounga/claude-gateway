@@ -5,16 +5,37 @@ import java.util.List;
 import java.util.UUID;
 
 import fr.claudegateway.atelier.Workspace;
+import fr.claudegateway.atelier.WorkspaceSource;
 
 /**
  * Vue détaillée d'un workspace : métadonnées + arborescence (chemins relatifs). N'expose aucune clé
  * de stockage brute.
+ *
+ * <p>Depuis F-31 (SF-31-02), la vue porte aussi la <b>source</b> du projet et, pour un projet Git,
+ * le dépôt et la branche montés. Aucun secret : le jeton d'accès n'est jamais renvoyé — seule l'URL
+ * publique du dépôt l'est.</p>
+ *
+ * @param source     {@code ARCHIVE} ou {@code GIT}
+ * @param gitRepoUrl URL publique du dépôt, {@code null} pour un projet d'archive
+ * @param gitRepo    {@code owner/repo}, {@code null} pour un projet d'archive
+ * @param gitBranch  branche montée, {@code null} pour un projet d'archive
  */
 public record WorkspaceDetailResponse(
-        UUID id, String name, int fileCount, List<String> files, OffsetDateTime createdAt) {
+        UUID id, String name, int fileCount, List<String> files, OffsetDateTime createdAt,
+        WorkspaceSource source, String gitRepoUrl, String gitRepo, String gitBranch) {
 
     public static WorkspaceDetailResponse from(Workspace workspace, List<String> files) {
         return new WorkspaceDetailResponse(
-                workspace.getId(), workspace.getName(), files.size(), files, workspace.getCreatedAt());
+                workspace.getId(), workspace.getName(), files.size(), files, workspace.getCreatedAt(),
+                workspace.sourceOrDefault(), workspace.getGitRepoUrl(), fullName(workspace),
+                workspace.getGitBranch());
+    }
+
+    /** {@code owner/repo} lisible, ou {@code null} si le workspace n'est pas adossé à un dépôt. */
+    private static String fullName(Workspace workspace) {
+        if (workspace.getGitOwner() == null || workspace.getGitRepo() == null) {
+            return null;
+        }
+        return workspace.getGitOwner() + "/" + workspace.getGitRepo();
     }
 }

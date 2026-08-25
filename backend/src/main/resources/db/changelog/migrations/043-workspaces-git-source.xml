@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      SF-31-02 — Le workspace d'Atelier gagne une SOURCE (F-31 / ADR-015) : `ARCHIVE` (le projet a été
+      téléversé en .zip, comportement historique) ou `GIT` (le dépôt est monté dans la sandbox par le
+      fournisseur, `github_repository`).
+
+      Aucun secret ici : le jeton d'accès vit chiffré dans `user_git_credentials` (SF-31-01) et n'est
+      déchiffré qu'au moment du montage de session. Seules l'URL publique du dépôt, son propriétaire,
+      son nom et la branche montée sont stockés.
+
+      `source` porte une valeur par défaut `ARCHIVE` et un defaultValue explicite : toutes les lignes
+      existantes restent des workspaces d'archive, aucune donnée cassée. Les autres colonnes sont
+      nullables (elles ne concernent que les workspaces Git). Réversible : `dropColumn`.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="043-workspaces-git-source-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="workspaces">
+            <column name="source" type="varchar(16)" defaultValue="ARCHIVE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="git_repo_url" type="varchar(500)"/>
+            <column name="git_owner" type="varchar(100)"/>
+            <column name="git_repo" type="varchar(100)"/>
+            <column name="git_branch" type="varchar(255)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="source"/>
+            <dropColumn tableName="workspaces" columnName="git_repo_url"/>
+            <dropColumn tableName="workspaces" columnName="git_owner"/>
+            <dropColumn tableName="workspaces" columnName="git_repo"/>
+            <dropColumn tableName="workspaces" columnName="git_branch"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="043-workspaces-git-source-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="workspaces">
+            <column name="source" type="varchar(16)" defaultValue="ARCHIVE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="git_repo_url" type="varchar(500)"/>
+            <column name="git_owner" type="varchar(100)"/>
+            <column name="git_repo" type="varchar(100)"/>
+            <column name="git_branch" type="varchar(255)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="source"/>
+            <dropColumn tableName="workspaces" columnName="git_repo_url"/>
+            <dropColumn tableName="workspaces" columnName="git_owner"/>
+            <dropColumn tableName="workspaces" columnName="git_repo"/>
+            <dropColumn tableName="workspaces" columnName="git_branch"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

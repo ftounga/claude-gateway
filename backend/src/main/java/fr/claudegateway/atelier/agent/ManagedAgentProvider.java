@@ -56,7 +56,25 @@ public interface ManagedAgentProvider {
      * @param resources     fichiers à monter (chacun : {@code file_id} + {@code mount_path})
      * @return la session créée (identifiant fournisseur)
      */
-    ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources);
+    default ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources) {
+        return createSession(agentId, environmentId, resources, null);
+    }
+
+    /**
+     * Crée une session montant des fichiers <b>et/ou</b> un dépôt Git (F-31 / SF-31-02, ADR-015).
+     *
+     * <p>Un workspace {@code GIT} ne téléverse aucun fichier : le dépôt est cloné par le fournisseur,
+     * ce qui supprime le plafond du nombre de fichiers montés. Le jeton porté par {@code repository}
+     * n'entre jamais dans le conteneur (proxy git côté fournisseur) et ne doit jamais être journalisé.</p>
+     *
+     * @param agentId       identifiant de l'agent à exécuter
+     * @param environmentId identifiant de l'environnement d'exécution
+     * @param resources     fichiers à monter (éventuellement vide)
+     * @param repository    dépôt à monter, ou {@code null} pour un workspace d'archive
+     * @return la session créée (identifiant fournisseur)
+     */
+    ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
+            RepositoryMount repository);
 
     /**
      * Envoie un message utilisateur à la session (event {@code user.message}).

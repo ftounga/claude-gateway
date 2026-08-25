@@ -28,6 +28,9 @@ class HttpGitHubClientTest {
     private final AtomicReference<String> authorizationHeader = new AtomicReference<>();
     private volatile int statusCode = 200;
     private volatile String responseBody = "{\"login\":\"octocat\"}";
+    private final AtomicReference<String> requestedPath = new AtomicReference<>();
+    private volatile int repoStatusCode = 200;
+    private volatile String repoResponseBody = "{\"full_name\":\"octocat/hello\",\"default_branch\":\"main\"}";
 
     @BeforeEach
     void startServer() throws IOException {
@@ -37,6 +40,16 @@ class HttpGitHubClientTest {
             byte[] payload = responseBody.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(statusCode, payload.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(payload);
+            }
+        });
+        server.createContext("/repos/", exchange -> {
+            authorizationHeader.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            requestedPath.set(exchange.getRequestURI().getPath());
+            byte[] payload = repoResponseBody.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(repoStatusCode, payload.length);
             try (OutputStream out = exchange.getResponseBody()) {
                 out.write(payload);
             }
@@ -98,5 +111,55 @@ class HttpGitHubClientTest {
 
         assertThatThrownBy(() -> client.verifyToken("github_pat_ok"))
                 .isInstanceOf(GitHubUnavailableException.class);
+    }
+
+    // ------------------------------------------------- F-31 / SF-31-02 : résolution du dépôt
+
+    @Test
+    void resolvesRepositoryAndItsDefaultBranch() {
+        GitHubRepository repository = client().getRepository("github_pat_secret", "octocat", "hello");
+
+        assertThat(repository.fullName()).isEqualTo("octocat/hello");
+        assertThat(repository.defaultBranch()).isEqualTo("main");
+        assertThat(requestedPath.get()).isEqualTo("/repos/octocat/hello");
+        assertThat(authorizationHeader.get()).isEqualTo("Bearer github_pat_secret");
+    }
+
+    @Test
+    void mapsRepositoryNotFoundToInvalidRepository() {
+        // GitHub répond 404 aussi bien pour un dépôt inexistant que pour un dépôt hors de portée du
+        // jeton : les deux cas sont volontairement confondus (ne pas divulguer l'existence d'un privé).
+        repoStatusCode = 404;
+        repoResponseBody = "{\"message\":\"Not Found\"}";
+
+        assertThatThrownBy(() -> client().getRepository("github_pat_ok", "octocat", "secret"))
+                .isInstanceOf(InvalidGitRepositoryException.class);
+    }
+
+    @Test
+    void mapsRepositoryUnauthorizedToInvalidToken() {
+        repoStatusCode = 401;
+        repoResponseBody = "{\"message\":\"Bad credentials\"}";
+
+        assertThatThrownBy(() -> client().getRepository("github_pat_bad", "octocat", "hello"))
+                .isInstanceOf(InvalidGitTokenException.class);
+    }
+
+    @Test
+    void mapsRepositoryServerErrorToUnavailable() {
+        repoStatusCode = 503;
+        repoResponseBody = "{\"message\":\"unavailable\"}";
+
+        assertThatThrownBy(() -> client().getRepository("github_pat_ok", "octocat", "hello"))
+                .isInstanceOf(GitHubUnavailableException.class);
+    }
+
+    @Test
+    void rejectsRepositoryWithoutDefaultBranch() {
+        // Dépôt vide : rien à monter dans la sandbox, rien à comparer. Mieux vaut le dire tout de suite.
+        repoResponseBody = "{\"full_name\":\"octocat/empty\"}";
+
+        assertThatThrownBy(() -> client().getRepository("github_pat_ok", "octocat", "empty"))
+                .isInstanceOf(InvalidGitRepositoryException.class);
     }
 }

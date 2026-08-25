@@ -134,13 +134,24 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
     }
 
     @Override
-    public ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources) {
+    public ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
+            RepositoryMount repository) {
         List<Map<String, Object>> mounts = new ArrayList<>();
         for (FileMount mount : resources) {
             mounts.add(Map.of(
                     "type", "file",
                     "file_id", mount.fileId(),
                     "mount_path", mount.mountPath()));
+        }
+        if (repository != null) {
+            // Le jeton est porté par la requête et n'entre jamais dans le conteneur : le proxy git du
+            // fournisseur l'injecte en sortie de sandbox (ADR-015). Il n'est jamais journalisé ici.
+            mounts.add(Map.of(
+                    "type", "github_repository",
+                    "url", repository.url(),
+                    "authorization_token", repository.authorizationToken(),
+                    "mount_path", repository.mountPath(),
+                    "checkout", Map.of("type", "branch", "name", repository.branch())));
         }
         Map<String, Object> body = Map.of(
                 "agent", agentId,
