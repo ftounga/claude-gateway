@@ -18,6 +18,19 @@
         <mat-icon>folder</mat-icon>
         Fichiers
       </button>
+      @if (gitProject) {
+        <!-- Publication sur une branche dédiée (F-31 / SF-31-04) : sans elle, le travail
+             disparaîtrait à la réinitialisation de l'environnement. -->
+        <button
+          mat-button
+          type="button"
+          [disabled]="submitting || publishing"
+          (click)="publish.emit()"
+        >
+          <mat-icon>upload</mat-icon>
+          Publier
+        </button>
+      }
       <button mat-button type="button" [disabled]="submitting" (click)="resetSandbox.emit()">
         <mat-icon>restart_alt</mat-icon>
         Réinitialiser
@@ -28,6 +41,25 @@
       </button>
     </span>
   </header>
+
+  @if (pushResult; as push) {
+    <!-- Résultat de la dernière publication. Conservé à l'écran : le lien d'ouverture de pull
+         request est l'aboutissement du parcours, il ne doit pas défiler hors de vue. -->
+    <div class="terminal-push" [class.failed]="!push.pushed">
+      @if (push.pushed) {
+        <mat-icon class="terminal-push-icon">check_circle</mat-icon>
+        <span>Branche <strong>{{ push.branch }}</strong> publiée.</span>
+        <a [href]="push.compareUrl" target="_blank" rel="noopener noreferrer">
+          Ouvrir la pull request
+        </a>
+      } @else {
+        <mat-icon class="terminal-push-icon">error_outline</mat-icon>
+        <span>
+          Rien n'a été publié sur <strong>{{ push.branch }}</strong>. {{ push.reply }}
+        </span>
+      }
+    </div>
+  }
 
   <!-- Flux continu : demandes, commentaires, commandes et sorties, dans l'ordre chronologique. -->
   <div class="terminal-scrollback" #scrollback>

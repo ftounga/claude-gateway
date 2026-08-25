@@ -158,3 +158,29 @@
     color: var(--cg-text-secondary);
   }
 }
+
+// ---- Résultat de publication sur branche (F-31 / SF-31-04) ----
+
+.terminal-push {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-bottom: 1px solid var(--cg-divider);
+  font-size: 13px;
+
+  a {
+    color: var(--cg-accent);
+    font-weight: 600;
+  }
+
+  &.failed {
+    color: var(--cg-error);
+  }
+}
+
+.terminal-push-icon {
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+}

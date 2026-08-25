@@ -21,6 +21,26 @@ export interface WorkspaceSummary {
   gitRepo: string | null;
 }
 
+/** Corps de `POST /api/workspaces/{id}/git/push` (F-31 / SF-31-04). Les deux champs sont facultatifs. */
+export interface GitPushRequest {
+  branch?: string;
+  message?: string;
+}
+
+/**
+ * Résultat d'une publication sur branche (F-31 / SF-31-04).
+ *
+ * `pushed` est **constaté auprès de GitHub** par le backend, pas déduit de ce que l'agent répond :
+ * un agent peut annoncer « poussé » sans l'avoir fait. Quand il vaut `false`, `compareUrl` est nul et
+ * `reply` porte la cause.
+ */
+export interface GitPushResult {
+  branch: string;
+  pushed: boolean;
+  compareUrl: string | null;
+  reply: string;
+}
+
 /** Corps de `POST /api/workspaces/git` (F-31 / SF-31-02). Aucun secret : le jeton est déjà enregistré. */
 export interface CreateGitWorkspaceRequest {
   repoUrl: string;

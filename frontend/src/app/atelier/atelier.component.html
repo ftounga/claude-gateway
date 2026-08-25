@@ -23,9 +23,13 @@
     [draft]="draft()"
     (draftChange)="draft.set($event)"
     (send)="send()"
-    (quit)="setAgentMode('edit')"
+    [gitProject]="activeIsGit()"
+    [publishing]="publishing()"
+    [pushResult]="pushResult()"
+    (quit)="leaveTerminal()"
     (resetSandbox)="resetSandbox()"
     (openFiles)="openFileExplorer()"
+    (publish)="openPushDialog()"
   ></app-atelier-terminal>
 } @else {
 <div class="atelier-layout">

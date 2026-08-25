@@ -12,7 +12,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
-import { AtelierTerminalBlock } from '../../core/models/atelier.models';
+import { AtelierTerminalBlock, GitPushResult } from '../../core/models/atelier.models';
 import { AtelierExecStreamingItem, AtelierThreadItem, AtelierTurnCost } from '../atelier.types';
 import { blockLabel, formatElapsed, hiddenLineCount, visibleOutput } from './terminal-block';
 
@@ -52,11 +52,23 @@ export class AtelierTerminalComponent implements AfterViewChecked {
   /** Saisie courante (le parent reste propriétaire de l'état). */
   @Input() draft = '';
 
+  /**
+   * Projet adossé à un dépôt Git (F-31 / SF-31-04) : le bouton de publication n'apparaît que là.
+   */
+  @Input() gitProject = false;
+
+  /** Publication en cours : le bouton reste inerte tant que le tour n'est pas fini. */
+  @Input() publishing = false;
+
+  /** Dernière publication, ou `null`. Conservée à l'écran : c'est là que se trouve le lien de PR. */
+  @Input() pushResult: GitPushResult | null = null;
+
   @Output() draftChange = new EventEmitter<string>();
   @Output() send = new EventEmitter<void>();
   @Output() quit = new EventEmitter<void>();
   @Output() resetSandbox = new EventEmitter<void>();
   @Output() openFiles = new EventEmitter<void>();
+  @Output() publish = new EventEmitter<void>();
 
   @ViewChild('scrollback') private scrollback?: ElementRef<HTMLElement>;
 

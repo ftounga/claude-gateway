@@ -38,6 +38,7 @@ import {
 import { ApiKeyService } from '../core/services/api-key.service';
 import { AtelierService } from '../core/services/atelier.service';
 import { ProviderMode } from '../core/models/api-key.models';
+import { GitPushDialogComponent, PickedGitPush } from './git/git-push-dialog.component';
 import { GitRepoDialogComponent, PickedGitRepository } from './git/git-repo-dialog.component';
 import {
   AtelierAction,
@@ -47,6 +48,7 @@ import {
   AtelierTerminalBlock,
   AtelierRole,
   AtelierStreamAction,
+  GitPushResult,
   WorkspaceDetail,
   WorkspaceSummary,
 } from '../core/models/atelier.models';
@@ -175,6 +177,15 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /** Vrai si le projet ouvert est adossé à un dépôt Git. */
   readonly activeIsGit = computed(() => this.activeDetail()?.source === 'GIT');
+
+  /** Publication sur branche en cours (F-31 / SF-31-04) : le bouton reste inerte pendant le tour. */
+  readonly publishing = signal(false);
+
+  /**
+   * Dernière publication du projet ouvert. Conservée à l'écran : le lien d'ouverture de pull request
+   * est l'aboutissement du parcours, il ne doit pas défiler hors de vue avec le reste du terminal.
+   */
+  readonly pushResult = signal<GitPushResult | null>(null);
 
   ngOnInit(): void {
     this.loadWorkspaces();
@@ -310,6 +321,113 @@ export class AtelierComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Publie le travail de la session sur une branche dédiée (F-31 / SF-31-04), puis affiche le lien
+   * d'ouverture de pull request.
+   *
+   * Le résultat n'est **pas** déduit de ce que Claude répond : le backend constate l'existence de la
+   * branche auprès de GitHub. Un échec revient donc en `200` avec sa cause, et c'est cette cause que
+   * l'écran montre.
+   */
+  openPushDialog(): void {
+    const id = this.activeWorkspaceId();
+    const detail = this.activeDetail();
+    if (!id || !detail || detail.source !== 'GIT' || this.publishing()) {
+      return;
+    }
+    this.dialog
+      .open(GitPushDialogComponent, {
+        width: '520px',
+        autoFocus: false,
+        data: {
+          gitRepo: detail.gitRepo,
+          baseBranch: detail.gitBranch,
+          suggestedBranch: this.suggestedBranch(),
+        },
+      })
+      .afterClosed()
+      .subscribe((picked: PickedGitPush | undefined) => {
+        if (!picked) {
+          return;
+        }
+        this.publishing.set(true);
+        this.atelier.pushBranch(id, picked).subscribe({
+          next: (result) => {
+            this.publishing.set(false);
+            this.pushResult.set(result);
+            this.snackBar.open(
+              result.pushed ? `Branche ${result.branch} publiée.` : "Rien n'a été publié.",
+              'Fermer',
+              { duration: 4000 },
+            );
+            this.refreshTree(id);
+          },
+          error: (err) => {
+            this.publishing.set(false);
+            this.notifyError(this.pushErrorMessage(err));
+          },
+        });
+      });
+  }
+
+  /**
+   * Message d'erreur de publication. Comme à l'ouverture d'un dépôt, chaque cause appelle un geste
+   * différent : relancer une commande, changer de branche, réenregistrer un jeton, réessayer.
+   */
+  private pushErrorMessage(err: unknown): string {
+    const code =
+      err instanceof HttpErrorResponse ? (err.error as { error?: string } | null)?.error : undefined;
+    switch (code) {
+      case 'no_active_session':
+        return "Aucun travail en cours : demandez d'abord une modification à Claude.";
+      case 'invalid_git_branch':
+        return 'Nom de branche invalide, ou branche par défaut du dépôt.';
+      case 'git_workspace_required':
+        return "Ce projet n'est pas adossé à un dépôt Git.";
+      case 'git_token_missing':
+        return 'Aucun jeton GitHub enregistré : ajoutez-en un dans vos réglages.';
+      case 'invalid_git_token':
+        return 'GitHub a refusé votre jeton. Remplacez-le dans vos réglages.';
+      case 'github_unavailable':
+        return 'GitHub est momentanément indisponible : le résultat de la publication est inconnu.';
+      default:
+        return httpErrorMessage(err, 'La publication a échoué.');
+    }
+  }
+
+  /** Branche proposée par défaut : préfixe reconnaissable + horodatage, comme côté backend. */
+  private suggestedBranch(): string {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return (
+      `claude/atelier-${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}` +
+      `-${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}`
+    );
+  }
+
+  /**
+   * Quitte la vue terminal. Sur un projet Git, le mode Assistant n'existe pas (il lirait un stockage
+   * vide) : quitter, c'est donc refermer le projet plutôt que basculer vers un mode indisponible.
+   */
+  leaveTerminal(): void {
+    if (this.activeIsGit()) {
+      this.closeWorkspace();
+      return;
+    }
+    this.setAgentMode('edit');
+  }
+
+  /** Referme le projet ouvert et revient à la liste. */
+  private closeWorkspace(): void {
+    this.activeWorkspaceId.set(null);
+    this.activeDetail.set(null);
+    this.tree.set([]);
+    this.messages.set([]);
+    this.pushResult.set(null);
+    this.resetFilePanel();
+    this.agentMode.set('edit');
+  }
+
   /** Place un workspace fraîchement créé en tête de liste, l'ouvre, et réinitialise l'écran. */
   private adoptWorkspace(workspace: WorkspaceDetail): void {
     this.workspaces.update((list) => [
@@ -326,6 +444,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.tree.set(workspace.files);
     this.activeDetail.set(workspace);
     this.messages.set([]);
+    this.pushResult.set(null);
     this.resetFilePanel();
     this.alignModeWithSource(workspace);
   }
@@ -443,6 +562,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.messages.set([]);
     this.tree.set([]);
     this.activeDetail.set(null);
+    this.pushResult.set(null);
     this.resetFilePanel();
     this.loadHistory(workspace.id);
     this.refreshTree(workspace.id);
