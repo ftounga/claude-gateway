@@ -406,8 +406,12 @@ public class AtelierSessionService {
         // Politique d'outils du projet (F-33 / SF-33-01), lue sur le workspace DÉJÀ possédé : elle est
         // fixée pour toute la vie de la session, une bascule ultérieure ne change pas celle-ci.
         SessionPermissions permissions = SessionPermissions.of(workspace.isAgentAskBeforeBash());
+        // Délégation (F-35 / SF-35-01) : fixée elle aussi à l'ouverture. Les sous-agents sont des
+        // threads de cette session — ils partagent son conteneur et son budget.
+        DelegationPolicy delegation = DelegationPolicy.of(
+                properties.subagentsEnabled(), properties.maxSubagents());
         if (workspace.isGit()) {
-            return openGitSession(userId, config, workspace, system, permissions);
+            return openGitSession(userId, config, workspace, system, permissions, delegation);
         }
         List<String> paths = workspaceService.tree(userId, workspaceId);
         int max = properties.maxSessionFiles();
@@ -424,7 +428,7 @@ public class AtelierSessionService {
         }
         ManagedSession session = provider.createSession(
                 config.getAgentId(), config.getEnvironmentId(), mounts, null, system, permissions,
-                null, sessionBudget(userId));
+                null, sessionBudget(userId, delegation), delegation);
         markSessionOpened(workspace, session.id());
         return session.id();
     }
@@ -466,7 +470,7 @@ public class AtelierSessionService {
      *                                  posé) — le workspace survit, c'est le montage qui échoue
      */
     private String openGitSession(UUID userId, AtelierAgentConfig config, Workspace workspace,
-            String systemOverride, SessionPermissions permissions) {
+            String systemOverride, SessionPermissions permissions, DelegationPolicy delegation) {
         String token = gitTokenService.resolveToken(userId)
                 .orElseThrow(() -> new GitTokenMissingException(
                         "Aucun jeton GitHub enregistré : ajoutez-en un dans vos réglages pour ouvrir ce projet."));
@@ -478,7 +482,7 @@ public class AtelierSessionService {
         McpAccess mcpAccess = mcpVaultService.resolveAccess(userId).orElse(null);
         ManagedSession session = provider.createSession(
                 config.getAgentId(), config.getEnvironmentId(), List.of(), repository, systemOverride,
-                permissions, mcpAccess, sessionBudget(userId));
+                permissions, mcpAccess, sessionBudget(userId, delegation), delegation);
         markSessionOpened(workspace, session.id());
         return session.id();
     }
@@ -499,12 +503,18 @@ public class AtelierSessionService {
      * serait refusée par le fournisseur, ou mise en pause avant le premier mot. Le dépassement
      * possible est alors borné à ce plancher (défaut 0,10 $), contre « illimité » avant F-36.</p>
      */
-    private SessionBudget sessionBudget(UUID userId) {
+    private SessionBudget sessionBudget(UUID userId, DelegationPolicy delegation) {
         UsageSnapshot usage = quotaService.currentUsage(userId);
         BigDecimal remainingCost = BigDecimal.valueOf(usage.remainingTokens())
                 .multiply(costProperties.costPerMillionTokens())
                 .divide(TOKENS_PER_MILLION, 6, RoundingMode.DOWN);
-        BigDecimal amount = remainingCost.min(costProperties.maxRunCost());
+        // Une session qui délègue mène plusieurs travaux de front : son plafond par run est majoré
+        // (F-35 / SF-35-01, propriété laissée dormante par SF-36-01). Il reste borné par le quota
+        // restant — déléguer ne donne jamais accès à plus que ce que l'utilisateur a payé.
+        BigDecimal maxRunCost = delegation != null && delegation.enabled()
+                ? costProperties.maxRunCostDelegated()
+                : costProperties.maxRunCost();
+        BigDecimal amount = remainingCost.min(maxRunCost);
         if (amount.compareTo(costProperties.minRunCost()) < 0) {
             amount = costProperties.minRunCost();
         }
