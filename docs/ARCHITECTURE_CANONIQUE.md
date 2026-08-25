@@ -229,6 +229,20 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     impl locale dev/tests, impl dormante si non configuré → 503). `ChatService` déchiffre la clé active à la
     volée pour l'appel fournisseur (jamais persistée ni journalisée), sinon utilise la clé plateforme (Hosted).
     La clé est passée à `AIProvider` en paramètre neutre (Provider Independence).
+- **user_git_credentials** — jeton d'accès GitHub de l'utilisateur, chiffré au repos (F-31 / SF-31-01,
+  migration `042`). **Table dédiée**, et non extension de `user_api_keys` : le **chiffrement** de F-03 est
+  réutilisé (`ByokKeyCipher`), pas le stockage — toucher à l'unicité vivante de la table qui porte la clé
+  Claude serait un risque sans contrepartie. **Un seul jeton par utilisateur** (`user_id` unique).
+  **Aucun jeton en clair** : seuls le blob chiffré, les 4 derniers caractères et le compte GitHub sont persistés.
+  - `user_git_credentials` : `id (uuid)`, `user_id (uuid, unique)`, `github_login (varchar 100 ; public)`,
+    `encrypted_data_key`, `cipher_iv`, `ciphertext` (base64 chiffré), `token_last4`, `created_at`,
+    `updated_at`. Index `user_id`.
+  - Endpoints **`GET/POST/DELETE /user/git-token`** (authentifiés, `user_id` du `SecurityContext` uniquement).
+    Le jeton est **vérifié auprès de GitHub avant toute écriture** (`GitHubClient` → `GET /user` ; seul point
+    du code couplé à GitHub) : 401/403 → `400 invalid_git_token`, 5xx/réseau → `503 github_unavailable` —
+    une panne n'efface jamais un jeton valide. Jamais journalisé, jamais renvoyé. Inclus dans la
+    suppression RGPD du compte (F-11). Il ne sera **jamais** injecté dans le sandbox : le proxy git du
+    fournisseur l'ajoute après la sortie du conteneur (ADR-015).
 - **prompt_templates** — modèle de prompt réutilisable (F-13, migration `031`). Isolé par `user_id`.
   Donnée purement relationnelle, **sans colonne vectorielle** (F-13 n'est pas du RAG) — le backend
   reste une Gateway (aucun appel IA attaché à cette entité).
@@ -252,7 +266,7 @@ Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 rée
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/user_api_keys/prompt_templates via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exception documentée : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/user_api_keys/user_git_credentials/prompt_templates via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exception documentée : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur.)
 
 ---
 
