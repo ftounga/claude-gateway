@@ -63,6 +63,7 @@ describe('AtelierComponent', () => {
     gitRepoUrl: null,
     gitRepo: null,
     gitBranch: null,
+    truncated: false,
   };
 
   /** Projet adossé à un dépôt (F-31 / SF-31-02). */
@@ -76,6 +77,7 @@ describe('AtelierComponent', () => {
     gitRepoUrl: 'https://github.com/octocat/hello',
     gitRepo: 'octocat/hello',
     gitBranch: 'main',
+    truncated: false,
   };
 
   function setup(): void {
@@ -1209,5 +1211,59 @@ describe('AtelierComponent', () => {
 
     expect(component.activeIsGit()).toBeFalse();
     expect(component.activeDetail()?.gitRepo).toBeNull();
+  });
+
+  // ---- F-31 SF-31-03 : un projet Git n'a de sens qu'en mode Terminal, en lecture seule ----
+
+  it("aligne le mode sur Terminal à l'ouverture d'un projet Git", () => {
+    setup();
+    dialog.open.and.returnValue({
+      afterClosed: () => of({ repoUrl: 'https://github.com/octocat/hello' }),
+    } as MatDialogRef<unknown, unknown>);
+    service.createGitWorkspace.and.returnValue(of(gitDetail));
+
+    component.openGitRepoDialog();
+
+    expect(component.agentMode()).toBe('exec');
+  });
+
+  it("refuse le mode Assistant sur un projet Git et l'explique", () => {
+    setup();
+    service.getWorkspace.and.returnValue(of(gitDetail));
+    component.selectWorkspace({
+      id: 'w2',
+      name: 'hello',
+      createdAt: '2026-08-25T00:00:00Z',
+      source: 'GIT',
+      gitRepo: 'octocat/hello',
+    });
+
+    component.setAgentMode('edit');
+
+    expect(component.agentMode()).toBe('exec');
+    expect(snackBar.open.calls.mostRecent().args[0]).toContain('Terminal');
+  });
+
+  it("laisse le mode Assistant disponible sur un projet d'archive", () => {
+    setup();
+    component.selectWorkspace(summary);
+
+    component.setAgentMode('edit');
+
+    expect(component.agentMode()).toBe('edit');
+  });
+
+  it("expose le troncage d'arborescence d'un dépôt volumineux", () => {
+    setup();
+    service.getWorkspace.and.returnValue(of({ ...gitDetail, truncated: true }));
+    component.selectWorkspace({
+      id: 'w2',
+      name: 'hello',
+      createdAt: '2026-08-25T00:00:00Z',
+      source: 'GIT',
+      gitRepo: 'octocat/hello',
+    });
+
+    expect(component.activeDetail()?.truncated).toBeTrue();
   });
 });

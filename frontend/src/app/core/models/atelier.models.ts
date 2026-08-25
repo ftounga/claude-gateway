@@ -45,6 +45,11 @@ export interface WorkspaceDetail {
   gitRepo: string | null;
   /** Branche montée dans l'espace d'exécution, `null` pour un projet d'archive. */
   gitBranch: string | null;
+  /**
+   * Vrai si l'arborescence est **partielle** (dépôt volumineux). Le dire évite de faire conclure
+   * qu'un fichier absent de la liste n'existe pas.
+   */
+  truncated: boolean;
 }
 
 /** Contenu texte d'un fichier du workspace. Réponse de `GET /api/workspaces/{id}/file?path=`. */

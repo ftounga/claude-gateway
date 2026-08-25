@@ -352,6 +352,12 @@
               </button>
             </header>
 
+            @if (activeDetail()?.truncated) {
+              <!-- Liste partielle : le taire ferait conclure qu'un fichier manquant n'existe pas. -->
+              <p class="files-empty">
+                Dépôt volumineux : la liste est partielle. Ouvrez l'explorateur pour rechercher.
+              </p>
+            }
             @if (tree().length === 0) {
               <p class="files-empty">Aucun fichier dans ce projet.</p>
             } @else {
@@ -375,16 +381,18 @@
                   <span class="file-preview-path" [matTooltip]="selectedFilePath() ?? ''">
                     {{ selectedFilePath() }}
                   </span>
-                  <button
-                    mat-flat-button
-                    color="primary"
-                    type="button"
-                    [disabled]="fileLoading() || fileSaving()"
-                    (click)="saveFile()"
-                  >
-                    <mat-icon>save</mat-icon>
-                    Enregistrer
-                  </button>
+                  @if (!activeIsGit()) {
+                    <button
+                      mat-flat-button
+                      color="primary"
+                      type="button"
+                      [disabled]="fileLoading() || fileSaving()"
+                      (click)="saveFile()"
+                    >
+                      <mat-icon>save</mat-icon>
+                      Enregistrer
+                    </button>
+                  }
                 </div>
                 @if (fileLoading()) {
                   <p class="files-empty">Chargement…</p>
@@ -392,6 +400,7 @@
                   <textarea
                     class="file-editor"
                     spellcheck="false"
+                    [readonly]="activeIsGit()"
                     [ngModel]="fileContent()"
                     (ngModelChange)="fileContent.set($event)"
                     aria-label="Contenu du fichier"
@@ -412,7 +421,8 @@
           [disabled]="submitting()"
           (change)="setAgentMode($event.value)"
         >
-          <mat-button-toggle value="edit">
+          <!-- Sur un projet Git, le mode Assistant lirait un stockage vide : il est écarté. -->
+          <mat-button-toggle value="edit" [disabled]="activeIsGit()">
             <mat-icon>edit_note</mat-icon>
             Assistant
           </mat-button-toggle>
@@ -424,7 +434,9 @@
           </mat-button-toggle>
         </mat-button-toggle-group>
         <span class="mode-hint">
-          @if (agentMode() === 'exec') {
+          @if (activeIsGit()) {
+            Projet Git : Claude travaille sur le dépôt cloné, puis publie sur une branche.
+          } @else if (agentMode() === 'exec') {
             Claude exécute réellement vos commandes (bash, tests, build) dans un sandbox hébergé.
           } @else {
             Claude lit et édite les fichiers du projet, sans rien exécuter.
@@ -470,9 +482,13 @@
           type="button"
           class="add-file-button"
           aria-label="Ajouter un fichier"
-          matTooltip="Ajouter un fichier"
           [matMenuTriggerFor]="addFileMenu"
-          [disabled]="!activeWorkspaceId()"
+          [disabled]="!activeWorkspaceId() || activeIsGit()"
+          [matTooltip]="
+            activeIsGit()
+              ? 'Projet Git : les fichiers viennent du dépôt'
+              : 'Ajouter un fichier'
+          "
         >
           <mat-icon>attach_file</mat-icon>
         </button>
