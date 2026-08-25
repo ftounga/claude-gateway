@@ -151,6 +151,12 @@ app:
     region: ${APP_BYOK_REGION:eu-west-3}
     # Clé maître LOCALE base64 (AES 256 bits) réservée au dev/tests, jamais en production.
     local-key: ${APP_BYOK_LOCAL_KEY:}
+  git:
+    # Accès GitHub (F-31). AUCUN secret ici : le jeton appartient à l'utilisateur, il est chiffré en
+    # base (mécanisme BYOK) et n'est jamais configuré côté serveur. Seule l'URL de l'API est
+    # paramétrable (tests, GitHub Enterprise), avec le délai de la vérification du jeton.
+    github-api-url: ${APP_GIT_GITHUB_API_URL:https://api.github.com}
+    timeout: ${APP_GIT_TIMEOUT:PT10S}
   billing:
     # Durée de l'essai gratuit en jours (F-09). Décision réversible : ajustable sans changement de code.
     trial-days: ${APP_BILLING_TRIAL_DAYS:5}
