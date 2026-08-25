@@ -33,3 +33,47 @@ export function formatElapsed(totalSeconds: number): string {
   const seconds = totalSeconds % 60;
   return `${Math.floor(totalSeconds / 60)}:${seconds < 10 ? '0' : ''}${seconds}`;
 }
+
+/**
+ * Numérote les fils d'un tour (F-35 SF-35-03). Le **premier** fil rencontré est le coordinateur : il
+ * est absent de la table, ses blocs ne portent aucun badge — c'est le cas de tous les runs
+ * séquentiels, dont l'affichage ne change donc pas. Chaque autre fil reçoit son rang d'apparition
+ * (`1`, `2`, `3`…).
+ *
+ * Il n'existe aucun marqueur disant « ce fil est le principal » : l'ordre d'apparition est le seul
+ * signal disponible, et il est fiable — c'est le coordinateur qui reçoit le message de l'utilisateur
+ * et qui délègue, donc lui qui agit en premier.
+ */
+export function subtaskIndexes(blocks: AtelierTerminalBlock[]): Map<string, number> {
+  const indexes = new Map<string, number>();
+  let coordinator: string | null = null;
+  let next = 1;
+  for (const block of blocks) {
+    const thread = block.threadId;
+    if (!thread) {
+      continue;
+    }
+    if (coordinator === null) {
+      coordinator = thread;
+      continue;
+    }
+    if (thread !== coordinator && !indexes.has(thread)) {
+      indexes.set(thread, next);
+      next += 1;
+    }
+  }
+  return indexes;
+}
+
+/**
+ * Libellé de sous-tâche d'un bloc, ou `null` quand il appartient au travail principal (coordinateur,
+ * ou run sans aucun fil). Le libellé est court et en minuscules, comme le reste de la vue terminal :
+ * il rend la lecture possible sans transformer le flux en tableau de bord.
+ */
+export function subtaskLabel(
+  block: AtelierTerminalBlock,
+  indexes: Map<string, number>,
+): string | null {
+  const index = block.threadId ? indexes.get(block.threadId) : undefined;
+  return index === undefined ? null : `sous-tâche ${index}`;
+}

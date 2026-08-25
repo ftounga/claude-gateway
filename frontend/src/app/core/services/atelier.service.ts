@@ -271,6 +271,7 @@ export class AtelierService {
       changedFiles?: string[];
       error?: string | boolean;
       toolUseId?: string | null;
+      threadId?: string | null;
       output?: string;
       inputTokens?: number;
       outputTokens?: number;
@@ -290,6 +291,8 @@ export class AtelierService {
         tool: payload.tool ?? '',
         detail: payload.detail,
         toolUseId: payload.toolUseId ?? null,
+        // Champ additif (F-35 SF-35-02) : absent d'un backend antérieur ⇒ run séquentiel.
+        threadId: payload.threadId ?? null,
       });
     } else if (event === 'action_result') {
       // Sortie de la commande (F-30) : c'est elle qui fait le rendu terminal.
@@ -298,6 +301,7 @@ export class AtelierService {
         toolUseId: payload.toolUseId ?? null,
         output: payload.output ?? '',
         error: payload.error === true,
+        threadId: payload.threadId ?? null,
       });
     } else if (event === 'status') {
       handlers.onStatus(payload.state ?? '');

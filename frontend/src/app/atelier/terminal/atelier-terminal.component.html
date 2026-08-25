@@ -165,6 +165,9 @@
                 <div class="terminal-command">
                   <span class="terminal-dollar" aria-hidden="true">$</span>
                   <code>{{ blockLabel(block) }}</code>
+                  @if (subtaskLabel(message.terminal, block); as subtask) {
+                    <span class="terminal-subtask">{{ subtask }}</span>
+                  }
                 </div>
               }
               @if (block.hasOutput && block.output.length > 0) {
@@ -231,6 +234,9 @@
             <div class="terminal-command">
               <span class="terminal-dollar" aria-hidden="true">$</span>
               <code>{{ blockLabel(block) }}</code>
+              @if (subtaskLabel(live.blocks, block); as subtask) {
+                <span class="terminal-subtask">{{ subtask }}</span>
+              }
             </div>
           }
           @if (block.hasOutput && block.output.length > 0) {
