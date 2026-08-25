@@ -179,4 +179,77 @@ describe('AtelierTerminalComponent', () => {
 
     expect(component.visibleOutput(block)).toBe(block.output);
   });
+  // ---- F-32 / SF-32-02 : interrompre un run en cours ----
+
+  it('n\'affiche le bouton Interrompre que pendant une exécution', () => {
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.terminal-interrupt')).toBeNull();
+
+    component.submitting = true;
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.terminal-interrupt')).not.toBeNull();
+  });
+
+  it('émet la demande d\'interruption au clic', () => {
+    component.submitting = true;
+    fixture.detectChanges();
+    let emitted = 0;
+    component.interrupt.subscribe(() => (emitted += 1));
+
+    fixture.nativeElement.querySelector('.terminal-interrupt').click();
+
+    expect(emitted).toBe(1);
+  });
+
+  it('rend le bouton inerte et annonce l\'attente tant que la demande est en vol', () => {
+    // L'arrêt vient à une frontière sûre : annoncer un arrêt immédiat serait faux.
+    component.submitting = true;
+    component.interrupting = true;
+    fixture.detectChanges();
+
+    const button = fixture.nativeElement.querySelector('.terminal-interrupt') as HTMLButtonElement;
+    expect(button.disabled).toBeTrue();
+    expect(button.textContent).toContain('Interruption');
+  });
+
+  it('marque « Exécution interrompue » le tour arrêté, sans le retirer du fil', () => {
+    component.messages = [
+      {
+        id: 'a1',
+        role: 'ASSISTANT',
+        content: 'Arrêté.',
+        actions: [],
+        terminal: [
+          {
+            tool: 'bash',
+            command: 'npm install',
+            toolUseId: 'tu_1',
+            output: 'installing…',
+            hasOutput: true,
+            error: false,
+            expanded: false,
+          },
+        ],
+        cost: { elapsedSeconds: 42, tokens: 1_000 },
+        interrupted: true,
+      },
+    ];
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.terminal-interrupted').textContent)
+      .toContain('Exécution interrompue');
+    // Le tour reste entier : il a réellement eu lieu et il est facturé.
+    expect(fixture.nativeElement.querySelector('.terminal-command').textContent).toContain('npm install');
+    expect(fixture.nativeElement.querySelector('.terminal-cost')).not.toBeNull();
+  });
+
+  it('n\'affiche aucune mention d\'interruption sur un tour mené à son terme', () => {
+    component.messages = [
+      { id: 'a1', role: 'ASSISTANT', content: 'Terminé.', actions: [] },
+    ];
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.terminal-interrupted')).toBeNull();
+  });
 });

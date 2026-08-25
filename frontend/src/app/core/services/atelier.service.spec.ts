@@ -276,4 +276,51 @@ describe('AtelierService', () => {
 
     expect(received).toEqual(detail);
   });
+  // ---- F-32 / SF-32-02 : interruption d'un run en cours ----
+
+  it('POSTe la demande d\'interruption sur /api/workspaces/{id}/agent/interrupt', () => {
+    service.interruptAgentSession('w1').subscribe();
+
+    const req = httpMock.expectOne('/api/workspaces/w1/agent/interrupt');
+    expect(req.request.method).toBe('POST');
+    req.flush(null);
+  });
+
+  it('remonte le drapeau `interrupted` du `done` d\'exécution (F-32)', async () => {
+    fakeSseFetch([
+      'event:done\ndata:{"reply":"Arrêté.","changedFiles":[],"inputTokens":900,"outputTokens":100,'
+        + '"activeSeconds":42,"interrupted":true}',
+    ]);
+    let interrupted: boolean | undefined;
+
+    await service.streamAgent('w1', 'go', {
+      onAgent: () => undefined,
+      onAction: () => undefined,
+      onActionResult: () => undefined,
+      onStatus: () => undefined,
+      onDone: (d) => (interrupted = d.interrupted),
+      onError: () => undefined,
+    });
+
+    expect(interrupted).toBeTrue();
+  });
+
+  it('traite un `done` sans le champ `interrupted` comme un tour mené à son terme', async () => {
+    // Rétrocompatibilité : champ additif, un backend antérieur ne l'envoie pas.
+    fakeSseFetch([
+      'event:done\ndata:{"reply":"Terminé.","changedFiles":[],"inputTokens":10,"outputTokens":5,"activeSeconds":1}',
+    ]);
+    let interrupted: boolean | undefined;
+
+    await service.streamAgent('w1', 'go', {
+      onAgent: () => undefined,
+      onAction: () => undefined,
+      onActionResult: () => undefined,
+      onStatus: () => undefined,
+      onDone: (d) => (interrupted = d.interrupted),
+      onError: () => undefined,
+    });
+
+    expect(interrupted).toBeFalse();
+  });
 });

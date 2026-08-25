@@ -103,6 +103,11 @@ export interface AtelierPersistedTranscript {
   inputTokens: number;
   outputTokens: number;
   activeSeconds: number;
+  /**
+   * Le tour s'est arrêté sur une demande d'interruption (F-32 SF-32-01). Absent des tours écrits
+   * avant cette version : traité comme `false`.
+   */
+  interrupted?: boolean;
 }
 
 /** Message de l'historique. Réponse de `GET /api/workspaces/{id}/chat`. */
@@ -184,6 +189,11 @@ export interface AtelierAgentStreamDone {
   inputTokens: number;
   outputTokens: number;
   activeSeconds: number;
+  /**
+   * Le tour s'est arrêté sur une demande d'interruption (F-32 SF-32-01). Champ **additif** : absent,
+   * il vaut `false` et le tour s'affiche comme un tour mené à son terme.
+   */
+  interrupted: boolean;
 }
 
 /**

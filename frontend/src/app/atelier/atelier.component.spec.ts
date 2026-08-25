@@ -94,6 +94,7 @@ describe('AtelierComponent', () => {
       'streamChat',
       'streamAgent',
       'resetAgentSession',
+      'interruptAgentSession',
       'getHistory',
     ]);
     apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
@@ -481,6 +482,7 @@ describe('AtelierComponent', () => {
         inputTokens: 0,
         outputTokens: 0,
         activeSeconds: 0,
+        interrupted: false,
       });
       return Promise.resolve();
     });
@@ -793,6 +795,7 @@ describe('AtelierComponent', () => {
         inputTokens: 0,
         outputTokens: 0,
         activeSeconds: 0,
+        interrupted: false,
       });
       return Promise.resolve();
     });
@@ -951,6 +954,7 @@ describe('AtelierComponent', () => {
         inputTokens: 12_000,
         outputTokens: 400,
         activeSeconds: 30,
+        interrupted: false,
       });
       return Promise.resolve();
     });
@@ -980,6 +984,7 @@ describe('AtelierComponent', () => {
         inputTokens: 0,
         outputTokens: 0,
         activeSeconds: 0,
+        interrupted: false,
       });
       return Promise.resolve();
     });
@@ -1376,5 +1381,106 @@ describe('AtelierComponent', () => {
 
     expect(component.agentMode()).toBe('edit');
     expect(component.activeWorkspaceId()).toBe('w1');
+  });
+  // ---- F-32 / SF-32-02 : interrompre un run en cours ----
+
+  it('demande l\'interruption du run en cours, une seule fois malgré deux clics', () => {
+    setup();
+    service.interruptAgentSession.and.returnValue(of(void 0));
+    component.activeWorkspaceId.set('w1');
+    component.submitting.set(true);
+
+    component.interruptRun();
+    component.interruptRun();
+
+    expect(service.interruptAgentSession).toHaveBeenCalledOnceWith('w1');
+    expect(component.interrupting()).toBeTrue();
+  });
+
+  it('n\'interrompt rien hors exécution', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+
+    component.interruptRun();
+
+    expect(service.interruptAgentSession).not.toHaveBeenCalled();
+  });
+
+  it('sur 409, explique qu\'il n\'y a rien à interrompre et rend la main', () => {
+    setup();
+    service.interruptAgentSession.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 409, error: { error: 'no_active_session' } })),
+    );
+    component.activeWorkspaceId.set('w1');
+    component.submitting.set(true);
+
+    component.interruptRun();
+
+    expect(component.interrupting()).toBeFalse();
+    expect(snackBar.open.calls.mostRecent().args[0] as string)
+      .toContain('Aucune exécution en cours');
+  });
+
+  it('restitue la marque d\'interruption d\'un tour relu depuis l\'historique', () => {
+    const item = toThreadItem({
+      id: 'm1',
+      role: 'ASSISTANT',
+      content: 'Arrêté.',
+      createdAt: '2026-08-25T00:00:00Z',
+      terminal: {
+        blocks: [
+          { tool: 'bash', command: 'npm install', toolUseId: 'tu_1', output: '…', hasOutput: true, error: false },
+        ],
+        omittedBlocks: 0,
+        inputTokens: 900,
+        outputTokens: 100,
+        activeSeconds: 42,
+        interrupted: true,
+      },
+    });
+
+    expect(item.interrupted).toBeTrue();
+    expect(item.terminal!.length).toBe(1);
+  });
+
+  it('garde la marque d\'un tour interrompu avant la moindre commande', () => {
+    // Sans blocs, la transcription est vide : la mention doit survivre quand même.
+    const item = toThreadItem({
+      id: 'm1',
+      role: 'ASSISTANT',
+      content: 'Arrêté.',
+      createdAt: '2026-08-25T00:00:00Z',
+      terminal: {
+        blocks: [],
+        omittedBlocks: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        activeSeconds: 0,
+        interrupted: true,
+      },
+    });
+
+    expect(item.interrupted).toBeTrue();
+    expect(item.terminal).toBeUndefined();
+  });
+
+  it('un tour mené à son terme n\'est jamais marqué comme interrompu (non-régression F-30)', () => {
+    const item = toThreadItem({
+      id: 'm1',
+      role: 'ASSISTANT',
+      content: 'Terminé.',
+      createdAt: '2026-08-25T00:00:00Z',
+      terminal: {
+        blocks: [
+          { tool: 'bash', command: 'ls', toolUseId: null, output: 'a', hasOutput: true, error: false },
+        ],
+        omittedBlocks: 0,
+        inputTokens: 10,
+        outputTokens: 5,
+        activeSeconds: 1,
+      },
+    });
+
+    expect(item.interrupted).toBeFalse();
   });
 });

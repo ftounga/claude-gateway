@@ -60,6 +60,12 @@ export class AtelierTerminalComponent implements AfterViewChecked {
   /** Publication en cours : le bouton reste inerte tant que le tour n'est pas fini. */
   @Input() publishing = false;
 
+  /**
+   * Demande d'interruption en vol (F-32 / SF-32-02) : le bouton reste inerte le temps que la demande
+   * parte. L'arrêt lui-même vient à une frontière sûre, plus tard.
+   */
+  @Input() interrupting = false;
+
   /** Dernière publication, ou `null`. Conservée à l'écran : c'est là que se trouve le lien de PR. */
   @Input() pushResult: GitPushResult | null = null;
 
@@ -69,6 +75,8 @@ export class AtelierTerminalComponent implements AfterViewChecked {
   @Output() resetSandbox = new EventEmitter<void>();
   @Output() openFiles = new EventEmitter<void>();
   @Output() publish = new EventEmitter<void>();
+  /** Demande d'arrêt du run en cours (F-32 / SF-32-02). */
+  @Output() interrupt = new EventEmitter<void>();
 
   @ViewChild('scrollback') private scrollback?: ElementRef<HTMLElement>;
 

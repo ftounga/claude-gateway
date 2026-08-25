@@ -13,6 +13,23 @@
           aria-label="Exécution en cours"
         ></mat-progress-spinner>
         <span class="terminal-elapsed">{{ elapsedLabel }}</span>
+        <!-- Interrompre (F-32 / SF-32-02) : visible seulement pendant un run, là où l'utilisateur
+             regarde déjà défiler la sortie. Sans lui, une commande partie de travers tourne jusqu'au
+             timeout, facturée, sans qu'on puisse agir. -->
+        <button
+          mat-button
+          type="button"
+          class="terminal-interrupt"
+          [disabled]="interrupting"
+          (click)="interrupt.emit()"
+        >
+          <mat-icon>stop_circle</mat-icon>
+          @if (interrupting) {
+            Interruption…
+          } @else {
+            Interrompre
+          }
+        </button>
       }
       <button mat-button type="button" (click)="openFiles.emit()">
         <mat-icon>folder</mat-icon>
@@ -103,6 +120,13 @@
         }
         @if (message.content) {
           <p class="terminal-agent">{{ message.content }}</p>
+        }
+        @if (message.interrupted) {
+          <!-- Le tour est conservé : il a réellement eu lieu et il est facturé (F-32). -->
+          <p class="terminal-interrupted">
+            <mat-icon class="terminal-interrupted-icon">stop_circle</mat-icon>
+            Exécution interrompue
+          </p>
         }
         @if (message.cost) {
           <p class="terminal-cost">{{ costLabel(message.cost) }}</p>

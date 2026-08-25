@@ -25,11 +25,13 @@
     (send)="send()"
     [gitProject]="activeIsGit()"
     [publishing]="publishing()"
+    [interrupting]="interrupting()"
     [pushResult]="pushResult()"
     (quit)="leaveTerminal()"
     (resetSandbox)="resetSandbox()"
     (openFiles)="openFileExplorer()"
     (publish)="openPushDialog()"
+    (interrupt)="interruptRun()"
   ></app-atelier-terminal>
 } @else {
 <div class="atelier-layout">
