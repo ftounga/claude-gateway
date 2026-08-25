@@ -36,6 +36,7 @@ describe('AtelierService', () => {
       gitRepoUrl: null,
       gitRepo: null,
       gitBranch: null,
+      truncated: false,
     };
     const file = new File(['zip-bytes'], 'projet.zip', { type: 'application/zip' });
 
@@ -77,6 +78,7 @@ describe('AtelierService', () => {
       gitRepoUrl: null,
       gitRepo: null,
       gitBranch: null,
+      truncated: false,
     };
 
     let received: WorkspaceDetail | undefined;
@@ -254,6 +256,7 @@ describe('AtelierService', () => {
       gitRepoUrl: 'https://github.com/octocat/hello',
       gitRepo: 'octocat/hello',
       gitBranch: 'main',
+      truncated: false,
     };
 
     let received: WorkspaceDetail | undefined;

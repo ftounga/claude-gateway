@@ -327,6 +327,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.activeDetail.set(workspace);
     this.messages.set([]);
     this.resetFilePanel();
+    this.alignModeWithSource(workspace);
+  }
+
+  /**
+   * Un projet Git n'a de sens qu'en mode Terminal (F-31 / SF-31-03) : le mode Assistant travaille sur
+   * le stockage objet, vide ici. On aligne le mode sur la source plutôt que de laisser l'utilisateur
+   * découvrir le refus au premier message.
+   */
+  private alignModeWithSource(detail: WorkspaceDetail): void {
+    if (detail.source === 'GIT') {
+      this.agentMode.set('exec');
+    }
   }
 
   /**
@@ -451,6 +463,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
       next: (detail) => {
         this.tree.set(detail.files);
         this.activeDetail.set(detail);
+        this.alignModeWithSource(detail);
       },
       error: () => this.notifyError("Impossible de charger l'arborescence du projet."),
     });
@@ -581,9 +594,22 @@ export class AtelierComponent implements OnInit, OnDestroy {
       });
   }
 
-  /** Bascule le mode de l'agent (« Assistant » ⇄ « Terminal »), sauf pendant un envoi en cours. */
+  /**
+   * Bascule le mode de l'agent (« Assistant » ⇄ « Terminal »), sauf pendant un envoi en cours.
+   *
+   * <p>Sur un projet Git (F-31 / SF-31-03), le mode Assistant est refusé côté backend : il lit le
+   * stockage objet, vide sur ce type de projet. On reste donc en Terminal, où le dépôt est
+   * réellement cloné — plutôt que d'envoyer l'utilisateur vers une erreur.</p>
+   */
   setAgentMode(mode: AtelierAgentMode): void {
     if (this.submitting()) {
+      return;
+    }
+    if (mode === 'edit' && this.activeIsGit()) {
+      this.agentMode.set('exec');
+      this.notifyError(
+        'Ce projet est adossé à un dépôt Git : le mode Terminal est le seul où le dépôt est disponible.',
+      );
       return;
     }
     this.agentMode.set(mode);

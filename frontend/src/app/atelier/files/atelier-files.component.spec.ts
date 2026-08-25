@@ -27,6 +27,7 @@ describe('AtelierFilesComponent', () => {
     gitRepoUrl: null,
     gitRepo: null,
     gitBranch: null,
+    truncated: false,
   };
 
   function setup(paramId: string | null = 'w1'): void {
@@ -267,5 +268,51 @@ describe('AtelierFilesComponent', () => {
     expect(component.isExpanded('src')).toBeFalse();
     component.toggleFolder('src');
     expect(component.isExpanded('src')).toBeTrue();
+  });
+
+  // ---- F-31 SF-31-03 : explorateur d'un projet Git (lecture seule) ----
+
+  it("passe en lecture seule et affiche le dépôt sur un projet Git", () => {
+    setup();
+    service.getWorkspace.and.returnValue(
+      of({
+        ...detail,
+        source: 'GIT' as const,
+        gitRepoUrl: 'https://github.com/octocat/hello',
+        gitRepo: 'octocat/hello',
+        gitBranch: 'main',
+        truncated: false,
+      }),
+    );
+    component.ngOnInit();
+
+    expect(component.readOnly()).toBeTrue();
+    expect(component.gitRepo()).toBe('octocat/hello');
+    expect(component.gitBranch()).toBe('main');
+  });
+
+  it("signale une arborescence partielle plutôt que de la présenter comme complète", () => {
+    setup();
+    service.getWorkspace.and.returnValue(
+      of({
+        ...detail,
+        source: 'GIT' as const,
+        gitRepoUrl: 'https://github.com/octocat/hello',
+        gitRepo: 'octocat/hello',
+        gitBranch: 'main',
+        truncated: true,
+      }),
+    );
+    component.ngOnInit();
+
+    expect(component.truncated()).toBeTrue();
+  });
+
+  it("reste modifiable sur un projet d'archive", () => {
+    setup();
+
+    expect(component.readOnly()).toBeFalse();
+    expect(component.gitRepo()).toBeNull();
+    expect(component.truncated()).toBeFalse();
   });
 });

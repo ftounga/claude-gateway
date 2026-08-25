@@ -34,41 +34,63 @@
     </a>
   </header>
 
-  <!-- Barre d'outils : ajout / nouveau dossier / export -->
+  <!-- Barre d'outils : ajout / nouveau dossier / export — masqués sur un projet Git (lecture seule) -->
   <div class="toolbar">
-    <input
-      #fileInput
-      type="file"
-      class="hidden-input"
-      [accept]="workspaceTextAccept"
-      hidden
-      (change)="onFilePicked($event)"
-    />
-    <mat-menu #addMenu="matMenu">
-      <button mat-menu-item type="button" (click)="fileInput.click()">
-        <mat-icon>computer</mat-icon>
-        <span>Depuis mon ordinateur</span>
+    @if (readOnly()) {
+      <!-- Projet adossé à un dépôt (F-31 / SF-31-03) : dire pourquoi les gestes d'écriture
+           n'apparaissent pas vaut mieux que des boutons qui échouent. -->
+      <span class="badge badge--neutral git-chip">
+        <mat-icon class="git-chip-icon">hub</mat-icon>
+        {{ gitRepo() }}
+        <span class="git-branch">{{ gitBranch() }}</span>
+      </span>
+      <span class="toolbar-note">
+        Lecture seule : les fichiers se modifient via Claude, puis se publient sur une branche.
+      </span>
+    } @else {
+      <input
+        #fileInput
+        type="file"
+        class="hidden-input"
+        [accept]="workspaceTextAccept"
+        hidden
+        (change)="onFilePicked($event)"
+      />
+      <mat-menu #addMenu="matMenu">
+        <button mat-menu-item type="button" (click)="fileInput.click()">
+          <mat-icon>computer</mat-icon>
+          <span>Depuis mon ordinateur</span>
+        </button>
+        <button mat-menu-item type="button" (click)="openLibraryPicker()">
+          <mat-icon>folder_shared</mat-icon>
+          <span>Depuis ma bibliothèque</span>
+        </button>
+      </mat-menu>
+      <button mat-flat-button color="primary" type="button" [matMenuTriggerFor]="addMenu">
+        <mat-icon>add</mat-icon>
+        Ajouter un fichier
+        <mat-icon iconPositionEnd>arrow_drop_down</mat-icon>
       </button>
-      <button mat-menu-item type="button" (click)="openLibraryPicker()">
-        <mat-icon>folder_shared</mat-icon>
-        <span>Depuis ma bibliothèque</span>
+      <button mat-stroked-button type="button" (click)="newFolder()">
+        <mat-icon>create_new_folder</mat-icon>
+        Nouveau dossier
       </button>
-    </mat-menu>
-    <button mat-flat-button color="primary" type="button" [matMenuTriggerFor]="addMenu">
-      <mat-icon>add</mat-icon>
-      Ajouter un fichier
-      <mat-icon iconPositionEnd>arrow_drop_down</mat-icon>
-    </button>
-    <button mat-stroked-button type="button" (click)="newFolder()">
-      <mat-icon>create_new_folder</mat-icon>
-      Nouveau dossier
-    </button>
-    <button mat-stroked-button type="button" (click)="exportZip()">
-      <mat-icon>download</mat-icon>
-      Exporter
-    </button>
+      <button mat-stroked-button type="button" (click)="exportZip()">
+        <mat-icon>download</mat-icon>
+        Exporter
+      </button>
+    }
     <span class="toolbar-count">{{ fileCount() }} fichier(s)</span>
   </div>
+
+  @if (truncated()) {
+    <!-- Liste partielle : le taire ferait conclure qu'un fichier manquant n'existe pas. -->
+    <p class="tree-truncated">
+      <mat-icon class="tree-truncated-icon">info</mat-icon>
+      Ce dépôt est volumineux : la liste des fichiers est partielle. Utilisez la recherche, ou
+      demandez le fichier à Claude.
+    </p>
+  }
 
   @if (loading()) {
     <mat-progress-bar mode="indeterminate"></mat-progress-bar>
@@ -108,10 +130,12 @@
             }{{ baseName(sel) }}
           </span>
           <span class="viewer-actions">
-            <button mat-stroked-button type="button" (click)="renameFile(sel)">
-              <mat-icon>drive_file_rename_outline</mat-icon>
-              Renommer
-            </button>
+            @if (!readOnly()) {
+              <button mat-stroked-button type="button" (click)="renameFile(sel)">
+                <mat-icon>drive_file_rename_outline</mat-icon>
+                Renommer
+              </button>
+            }
             <button
               mat-icon-button
               type="button"
@@ -121,26 +145,28 @@
             >
               <mat-icon>download</mat-icon>
             </button>
-            <button
-              mat-icon-button
-              type="button"
-              class="danger"
-              matTooltip="Supprimer"
-              aria-label="Supprimer le fichier"
-              (click)="deleteFile(sel)"
-            >
-              <mat-icon>delete_outline</mat-icon>
-            </button>
-            <button
-              mat-flat-button
-              color="primary"
-              type="button"
-              [disabled]="fileLoading() || fileSaving()"
-              (click)="saveFile()"
-            >
-              <mat-icon>save</mat-icon>
-              Enregistrer
-            </button>
+            @if (!readOnly()) {
+              <button
+                mat-icon-button
+                type="button"
+                class="danger"
+                matTooltip="Supprimer"
+                aria-label="Supprimer le fichier"
+                (click)="deleteFile(sel)"
+              >
+                <mat-icon>delete_outline</mat-icon>
+              </button>
+              <button
+                mat-flat-button
+                color="primary"
+                type="button"
+                [disabled]="fileLoading() || fileSaving()"
+                (click)="saveFile()"
+              >
+                <mat-icon>save</mat-icon>
+                Enregistrer
+              </button>
+            }
           </span>
         </div>
         @if (fileLoading()) {
@@ -149,6 +175,7 @@
           <textarea
             class="viewer-editor"
             spellcheck="false"
+            [readonly]="readOnly()"
             [ngModel]="fileContent()"
             (ngModelChange)="fileContent.set($event)"
             aria-label="Contenu du fichier"
@@ -197,16 +224,18 @@
           <span class="ext">{{ fileExtension(node.name) }}</span>
         }
         <span class="row-actions">
-          <button
-            mat-icon-button
-            type="button"
-            class="iconbtn"
-            matTooltip="Renommer"
-            aria-label="Renommer"
-            (click)="renameFile(node.path, $event)"
-          >
-            <mat-icon>drive_file_rename_outline</mat-icon>
-          </button>
+          @if (!readOnly()) {
+            <button
+              mat-icon-button
+              type="button"
+              class="iconbtn"
+              matTooltip="Renommer"
+              aria-label="Renommer"
+              (click)="renameFile(node.path, $event)"
+            >
+              <mat-icon>drive_file_rename_outline</mat-icon>
+            </button>
+          }
           <button
             mat-icon-button
             type="button"
@@ -217,16 +246,18 @@
           >
             <mat-icon>download</mat-icon>
           </button>
-          <button
-            mat-icon-button
-            type="button"
-            class="iconbtn danger"
-            matTooltip="Supprimer"
-            aria-label="Supprimer"
-            (click)="deleteFile(node.path, $event)"
-          >
-            <mat-icon>delete_outline</mat-icon>
-          </button>
+          @if (!readOnly()) {
+            <button
+              mat-icon-button
+              type="button"
+              class="iconbtn danger"
+              matTooltip="Supprimer"
+              aria-label="Supprimer"
+              (click)="deleteFile(node.path, $event)"
+            >
+              <mat-icon>delete_outline</mat-icon>
+            </button>
+          }
         </span>
       </div>
     </li>

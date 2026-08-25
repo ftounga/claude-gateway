@@ -22,6 +22,7 @@ import {
   LibraryPickerDialogComponent,
   PickedLibraryDocument,
 } from '../../chat/library-picker/library-picker-dialog.component';
+import { WorkspaceDetail } from '../../core/models/atelier.models';
 import { AtelierService } from '../../core/services/atelier.service';
 import { WORKSPACE_TEXT_ACCEPT, WORKSPACE_TEXT_EXTENSIONS } from '../atelier.component';
 import { TreeNode, buildTree } from './file-tree';
@@ -106,6 +107,23 @@ export class AtelierFilesComponent implements OnInit {
     () => this.filteredPaths().filter((p) => !p.endsWith('/.gitkeep') && p !== '.gitkeep').length,
   );
 
+  /**
+   * Projet adossé à un dépôt Git (F-31 / SF-31-03) : l'explorateur y est en **lecture seule**. Écrire
+   * dans le stockage pendant que Claude travaille sur le clone créerait deux vérités divergentes ;
+   * les modifications passent par Claude, puis par la publication sur une branche.
+   */
+  readonly readOnly = signal(false);
+
+  /** `owner/repo` et branche montés, affichés en tête de l'explorateur d'un projet Git. */
+  readonly gitRepo = signal<string | null>(null);
+  readonly gitBranch = signal<string | null>(null);
+
+  /**
+   * Arborescence **partielle** (dépôt très volumineux) : le dire évite de faire conclure qu'un
+   * fichier absent de la liste n'existe pas.
+   */
+  readonly truncated = signal(false);
+
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) {
@@ -124,6 +142,7 @@ export class AtelierFilesComponent implements OnInit {
         this.loading.set(false);
         this.workspaceName.set(detail.name);
         this.paths.set(detail.files);
+        this.applySource(detail);
       },
       error: (err) => {
         this.loading.set(false);
@@ -138,9 +157,18 @@ export class AtelierFilesComponent implements OnInit {
       next: (detail) => {
         this.workspaceName.set(detail.name);
         this.paths.set(detail.files);
+        this.applySource(detail);
       },
       error: () => this.notifyError("Impossible de rafraîchir l'arborescence du projet."),
     });
+  }
+
+  /** Retient ce que la source du projet change à l'écran : lecture seule, dépôt, branche, troncage. */
+  private applySource(detail: WorkspaceDetail): void {
+    this.readOnly.set(detail.source === 'GIT');
+    this.gitRepo.set(detail.gitRepo);
+    this.gitBranch.set(detail.gitBranch);
+    this.truncated.set(detail.truncated);
   }
 
   // ---- Arbre : repli / sélection ----

@@ -331,3 +331,48 @@
   white-space: pre;
   tab-size: 2;
 }
+
+// ---- Projet adossé à un dépôt Git (F-31 / SF-31-03) ----
+
+.git-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  font-family: var(--cg-font-mono);
+  font-size: 12px;
+}
+
+.git-chip-icon {
+  font-size: 14px;
+  width: 14px;
+  height: 14px;
+}
+
+.git-branch {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cg-accent) 18%, transparent);
+  color: var(--cg-text-primary);
+}
+
+.toolbar-note {
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+}
+
+.tree-truncated {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  margin: 0;
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-bottom: 1px solid var(--cg-divider);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+}
+
+.tree-truncated-icon {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}
