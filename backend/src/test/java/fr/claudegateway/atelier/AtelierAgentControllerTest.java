@@ -323,6 +323,46 @@ class AtelierAgentControllerTest {
         org.assertj.core.api.Assertions.assertThat(body).contains("\"interrupted\":false");
     }
 
+    @Test
+    void doneCarriesTheBudgetReachedFlagWhenTheRunHitsItsSpendingCap() throws Exception {
+        // F-36 / SF-36-01 : plafond du run atteint. Ce n'est pas une erreur — le tour a eu lieu et il
+        // est facturé — donc il se clôt par `done`, marqué, jamais par `error`.
+        when(access.hasAccess()).thenReturn(true);
+        when(sessionService.runTaskStreaming(eq(USER), eq(WORKSPACE), any(), any()))
+                .thenReturn(new AtelierSessionResult("J'ai commencé…", List.of(), 900L, 100L, 42L,
+                        false, true));
+
+        var result = mockMvc(props(true)).perform(post("/workspaces/" + WORKSPACE + "/agent/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("{\"message\":\"go\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        org.assertj.core.api.Assertions.assertThat(body)
+                .contains("event:done")
+                .contains("\"budgetReached\":true")
+                .doesNotContain("event:error");
+    }
+
+    @Test
+    void doneOfANominalRunReportsNoSpendingCapReached() throws Exception {
+        when(access.hasAccess()).thenReturn(true);
+        when(sessionService.runTaskStreaming(eq(USER), eq(WORKSPACE), any(), any()))
+                .thenReturn(new AtelierSessionResult("Terminé.", List.of()));
+
+        var result = mockMvc(props(true)).perform(post("/workspaces/" + WORKSPACE + "/agent/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("{\"message\":\"go\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        org.assertj.core.api.Assertions.assertThat(body).contains("\"budgetReached\":false");
+    }
+
     // ---------------------------- F-33 / SF-33-01 : demander avant d'exécuter
 
     @Test

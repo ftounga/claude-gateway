@@ -143,9 +143,38 @@ public interface ManagedAgentProvider {
      * @param mcpAccess      serveur MCP et vault à attacher, ou {@code null} pour aucun
      * @return la session créée (identifiant fournisseur)
      */
+    default ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
+            RepositoryMount repository, String systemOverride, SessionPermissions permissions,
+            McpAccess mcpAccess) {
+        return createSession(agentId, environmentId, resources, repository, systemOverride, permissions,
+                mcpAccess, null);
+    }
+
+    /**
+     * Crée une session en lui posant en outre un <b>plafond de dépense dur</b> (F-36 / SF-36-01).
+     *
+     * <p>Le plafond est appliqué par la plateforme en <b>verrou pré-requête</b> : avant chaque appel
+     * au modèle, elle compare le cumul facturé au plafond et met le thread en pause s'il est atteint.
+     * Il <b>empêche</b> la dépense au lieu de la constater après coup — contrairement au contrôle de
+     * quota, qui ne bloque que le run suivant.</p>
+     *
+     * <p>Le budget est <b>création-seule</b> : le fournisseur refuse de l'ajouter à une session déjà
+     * ouverte. Avec {@code budget} à {@code null}, le corps envoyé est strictement celui d'avant
+     * F-36 — aucune régression.</p>
+     *
+     * @param agentId        identifiant de l'agent à exécuter
+     * @param environmentId  identifiant de l'environnement d'exécution
+     * @param resources      fichiers à monter (éventuellement vide)
+     * @param repository     dépôt à monter, ou {@code null} pour un workspace d'archive
+     * @param systemOverride prompt système complet pour cette session, ou {@code null}
+     * @param permissions    politique d'autorisation des outils (jamais {@code null})
+     * @param mcpAccess      serveur MCP et vault à attacher, ou {@code null} pour aucun
+     * @param budget         plafond de dépense de la session, ou {@code null} pour aucun plafond
+     * @return la session créée (identifiant fournisseur)
+     */
     ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
             RepositoryMount repository, String systemOverride, SessionPermissions permissions,
-            McpAccess mcpAccess);
+            McpAccess mcpAccess, SessionBudget budget);
 
     /**
      * Crée un <b>vault</b> de credentials chez le fournisseur et y dépose un jeton bearer statique

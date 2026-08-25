@@ -150,7 +150,7 @@ public class AtelierAgentController {
             emitter.send(SseEmitter.event().name("done")
                     .data(new StreamDone(result.reply(), result.changedFiles(),
                             result.inputTokens(), result.outputTokens(), result.activeSeconds(),
-                            result.interrupted())));
+                            result.interrupted(), result.budgetReached())));
             emitter.complete();
         } catch (WorkspaceNotFoundException ex) {
             sendError(emitter, "workspace_not_found");
@@ -368,8 +368,13 @@ public class AtelierAgentController {
      * {@code interrupted} (F-32 SF-32-01), également additif, dit que le tour s'est arrêté sur demande
      * de l'utilisateur — il est conservé et décompté comme tout autre tour.
      */
+    /**
+     * Fin de run relayée au client. {@code budgetReached} dit que le tour s'est arrêté sur le
+     * <b>plafond de dépense</b> de la session (F-36 SF-36-01) : le tour est conservé et facturé,
+     * mais l'écran doit le distinguer d'un quota mensuel épuisé.
+     */
     record StreamDone(String reply, List<String> changedFiles, long inputTokens, long outputTokens,
-            long activeSeconds, boolean interrupted) {
+            long activeSeconds, boolean interrupted, boolean budgetReached) {
     }
 
     record StreamError(String error) {

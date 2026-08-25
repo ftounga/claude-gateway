@@ -198,7 +198,7 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
     @Override
     public ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
             RepositoryMount repository, String systemOverride, SessionPermissions permissions,
-            McpAccess mcpAccess) {
+            McpAccess mcpAccess, SessionBudget budget) {
         List<Map<String, Object>> mounts = new ArrayList<>();
         for (FileMount mount : resources) {
             mounts.add(Map.of(
@@ -223,6 +223,15 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
         if (mcpAccess != null) {
             // `vault_ids` n'existe qu'à la création : le fournisseur refuse de l'ajouter ensuite.
             body.put("vault_ids", List.of(mcpAccess.vaultId()));
+        }
+        if (budget != null) {
+            // Plafond de dépense dur (F-36 / SF-36-01). Création-seule, comme le vault. Le montant est
+            // en unités mineures ET en chaîne : une forme décimale est rejetée par le fournisseur.
+            body.put("budget", Map.of(
+                    "type", "limit",
+                    "max_list_cost", Map.of(
+                            "amount", budget.amountAsString(),
+                            "currency", budget.currency())));
         }
 
         JsonNode response = post("/v1/sessions", body, "création de la session");

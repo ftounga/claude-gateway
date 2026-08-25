@@ -88,6 +88,21 @@ app:
       # delai la commande est REFUSEE : le silence ne vaut pas autorisation. Le bac a sable reste
       # reserve (et facture) pendant l'attente, d'ou une borne courte.
       confirm-timeout: ${APP_ATELIER_AGENT_CONFIRM_TIMEOUT:PT2M}
+      cost:
+        # Plafond de depense d'une session (F-36 / SF-36-01) : verrou PRE-requete pose a la creation
+        # de la session. Le pire cas d'un run passe d'illimite a `max-run-cost`. Valeurs commerciales
+        # reversibles, ajustables par environnement sans changement de code. Aucun secret.
+        # Montants en DOLLARS (devise des tarifs publics du fournisseur).
+        max-run-cost: ${APP_ATELIER_AGENT_MAX_RUN_COST:2.00}
+        # Plafond majore quand la delegation a des sous-agents est active (F-35). DORMANT : F-35 n'est
+        # pas livree, aucun appelant ne le demande encore.
+        max-run-cost-delegated: ${APP_ATELIER_AGENT_MAX_RUN_COST_DELEGATED:5.00}
+        # Plancher : une session au budget nul serait refusee par le fournisseur (ou mise en pause
+        # avant le premier mot). Borne le depassement possible du quota a quelques centimes.
+        min-run-cost: ${APP_ATELIER_AGENT_MIN_RUN_COST:0.10}
+        # Cout de reference du fournisseur (USD par million de tokens, blended Opus). Sert a convertir
+        # le quota restant en dollars pour en deduire le plafond de la session.
+        cost-per-million-tokens: ${APP_ATELIER_AGENT_COST_PER_M:9.00}
   ocr:
     # Pipeline OCR (F-05). Fournisseur `stub` par défaut (dev/tests, sans AWS) ; `textract` en cluster.
     # Liste blanche MIME, plafond de taille et routage sync/async : décisions réversibles (config).
