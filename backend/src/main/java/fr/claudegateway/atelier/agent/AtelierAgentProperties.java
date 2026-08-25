@@ -24,6 +24,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param maxToolOutputChars   borne de la sortie d'outil relayée au frontend (défaut {@code 10000},
  *                             F-30 SF-30-01) : un {@code npm install} produit des dizaines de milliers
  *                             de lignes, qui satureraient le flux SSE et le navigateur
+ * @param confirmTimeout       délai laissé à l'utilisateur pour autoriser ou refuser une commande
+ *                             (défaut {@code PT2M}, F-33 SF-33-02) : passé ce délai, la commande est
+ *                             <b>refusée</b> — le silence ne vaut pas autorisation. Borné de fait par
+ *                             {@code sessionTimeout}, qui plafonne le run entier
  * @param maxInstructionsChars borne du fichier d'instructions du projet injecté à l'ouverture de
  *                             session (défaut {@code 20000}, F-34 SF-34-01) : au-delà le contenu est
  *                             tronqué avec mention — un fichier démesuré consommerait à chaque
@@ -42,7 +46,8 @@ public record AtelierAgentProperties(
         Duration pollDelay,
         Integer maxToolOutputChars,
         Integer maxTranscriptChars,
-        Integer maxInstructionsChars) {
+        Integer maxInstructionsChars,
+        Duration confirmTimeout) {
 
     public AtelierAgentProperties {
         if (environmentName == null || environmentName.isBlank()) {
@@ -74,6 +79,11 @@ public record AtelierAgentProperties(
         }
         if (maxPolls == null || maxPolls <= 0) {
             maxPolls = 600;
+        }
+        if (confirmTimeout == null || confirmTimeout.isZero() || confirmTimeout.isNegative()) {
+            // Deux minutes : le temps de lire une commande et de décider, sans laisser un bac à sable
+            // réservé attendre indéfiniment (il est facturé pendant ce temps).
+            confirmTimeout = Duration.ofMinutes(2);
         }
         if (pollDelay == null || pollDelay.isNegative()) {
             // 0 explicitement autorisé (tests déterministes sans sleep réel).

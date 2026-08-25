@@ -84,6 +84,10 @@ app:
       # Borne du fichier d'instructions du projet injecte a l'ouverture de session (F-34 SF-34-01) :
       # au-dela, troncature avec mention. Evite qu'un CLAUDE.md demesure mange le contexte utile.
       max-instructions-chars: ${APP_ATELIER_AGENT_MAX_INSTRUCTIONS:20000}
+      # Delai laisse a l'utilisateur pour autoriser ou refuser une commande (F-33 SF-33-02). Passe ce
+      # delai la commande est REFUSEE : le silence ne vaut pas autorisation. Le bac a sable reste
+      # reserve (et facture) pendant l'attente, d'ou une borne courte.
+      confirm-timeout: ${APP_ATELIER_AGENT_CONFIRM_TIMEOUT:PT2M}
   ocr:
     # Pipeline OCR (F-05). Fournisseur `stub` par défaut (dev/tests, sans AWS) ; `textract` en cluster.
     # Liste blanche MIME, plafond de taille et routage sync/async : décisions réversibles (config).

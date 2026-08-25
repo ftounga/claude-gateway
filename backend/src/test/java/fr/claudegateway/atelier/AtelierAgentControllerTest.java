@@ -50,7 +50,8 @@ class AtelierAgentControllerTest {
     }
 
     private AtelierAgentProperties props(boolean enabled) {
-        return new AtelierAgentProperties(enabled, null, null, null, null, null, null, null, null, null, null, null);
+        return new AtelierAgentProperties(enabled, null, null, null, null, null, null, null, null, null,
+                null, null, null);
     }
 
     @BeforeEach
@@ -372,5 +373,101 @@ class AtelierAgentControllerTest {
                 .andExpect(status().isBadRequest());
 
         verify(sessionService, never()).setAskBeforeBash(any(), any(), Mockito.anyBoolean());
+    }
+
+    // ---------------------------- F-33 / SF-33-02 : réponse à une demande d'autorisation
+
+    @Test
+    void confirmAllowRelaysTheDecisionAndAnswersNoContent() throws Exception {
+        mockMvcWithErrorHandling().perform(post("/workspaces/" + WORKSPACE + "/agent/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"toolUseId\":\"sevt_1\",\"decision\":\"allow\"}"))
+                .andExpect(status().isNoContent());
+
+        verify(sessionService).confirmToolUse(USER, WORKSPACE, "sevt_1", true, null);
+    }
+
+    @Test
+    void confirmDenyCarriesTheReasonToTheAgent() throws Exception {
+        mockMvcWithErrorHandling().perform(post("/workspaces/" + WORKSPACE + "/agent/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"toolUseId\":\"sevt_1\",\"decision\":\"deny\",\"reason\":\"trop risqué\"}"))
+                .andExpect(status().isNoContent());
+
+        verify(sessionService).confirmToolUse(USER, WORKSPACE, "sevt_1", false, "trop risqué");
+    }
+
+    @Test
+    void confirmOnAWorkspaceOfAnotherUserIsNotFound() throws Exception {
+        Mockito.doThrow(new WorkspaceNotFoundException("Workspace introuvable"))
+                .when(sessionService).confirmToolUse(any(), any(), any(), Mockito.anyBoolean(), any());
+
+        mockMvcWithErrorHandling().perform(post("/workspaces/" + WORKSPACE + "/agent/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"toolUseId\":\"sevt_1\",\"decision\":\"allow\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("not_found"));
+    }
+
+    @Test
+    void confirmWithoutAnyRunningSessionIsAConflict() throws Exception {
+        Mockito.doThrow(new fr.claudegateway.atelier.agent.NoActiveSessionException("rien à autoriser"))
+                .when(sessionService).confirmToolUse(any(), any(), any(), Mockito.anyBoolean(), any());
+
+        mockMvcWithErrorHandling().perform(post("/workspaces/" + WORKSPACE + "/agent/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"toolUseId\":\"sevt_1\",\"decision\":\"allow\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("no_active_session"));
+    }
+
+    @Test
+    void confirmRefusedByTheProviderIsABadGateway() throws Exception {
+        // Demande inconnue ou déjà tranchée : la Gateway n'y peut rien, et ne masque pas l'échec.
+        Mockito.doThrow(new fr.claudegateway.atelier.agent.AgentProviderException("boom"))
+                .when(sessionService).confirmToolUse(any(), any(), any(), Mockito.anyBoolean(), any());
+
+        mockMvcWithErrorHandling().perform(post("/workspaces/" + WORKSPACE + "/agent/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"toolUseId\":\"sevt_1\",\"decision\":\"allow\"}"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.error").value("provider_error"));
+    }
+
+    @Test
+    void confirmWithAnUnknownDecisionIsRejected() throws Exception {
+        mockMvcWithErrorHandling().perform(post("/workspaces/" + WORKSPACE + "/agent/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"toolUseId\":\"sevt_1\",\"decision\":\"peut-être\"}"))
+                .andExpect(status().isBadRequest());
+
+        verify(sessionService, never()).confirmToolUse(any(), any(), any(), Mockito.anyBoolean(), any());
+    }
+
+    @Test
+    void streamRelaysConfirmationRequestAndResolutionAsAdditiveEvents() throws Exception {
+        when(access.hasAccess()).thenReturn(true);
+        when(sessionService.runTaskStreaming(eq(USER), eq(WORKSPACE), any(), any())).thenAnswer(inv -> {
+            AtelierAgentListener listener = inv.getArgument(3);
+            listener.onConfirmationRequest("bash", "sevt_1", "rm -rf build");
+            listener.onConfirmationResolved("sevt_1", "deny");
+            return new AtelierSessionResult("Compris.", List.of());
+        });
+
+        var result = mockMvc(props(true)).perform(post("/workspaces/" + WORKSPACE + "/agent/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("{\"message\":\"nettoie le projet\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        org.assertj.core.api.Assertions.assertThat(body)
+                .contains("event:confirm_request")
+                .contains("\"toolUseId\":\"sevt_1\"")
+                .contains("rm -rf build")
+                .contains("event:confirm_resolved")
+                .contains("\"decision\":\"deny\"")
+                .doesNotContain("event:error");
     }
 }

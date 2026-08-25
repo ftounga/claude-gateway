@@ -59,4 +59,26 @@ public interface AtelierAgentListener {
      */
     default void onActionResult(String tool, String toolUseId, String output, boolean error) {
     }
+
+    /**
+     * Notifie que l'agent demande l'autorisation d'utiliser un outil (miroir applicatif de
+     * {@link ManagedEventListener#onConfirmationRequest(String, String, String)}, F-33 / SF-33-02).
+     *
+     * @param tool           nom de l'outil demandé
+     * @param confirmationId identifiant à renvoyer pour trancher
+     * @param detail         commande que l'agent veut exécuter
+     */
+    default void onConfirmationRequest(String tool, String confirmationId, String detail) {
+    }
+
+    /**
+     * Notifie qu'une demande d'autorisation a été tranchée (miroir applicatif de
+     * {@link ManagedEventListener#onConfirmationResolved(String, String)}, F-33 / SF-33-02).
+     *
+     * @param confirmationId identifiant de la demande tranchée
+     * @param decision       {@code allow}, {@code deny} ou {@code timeout}
+     */
+    default void onConfirmationResolved(String confirmationId, String decision) {
+    }
+
 }

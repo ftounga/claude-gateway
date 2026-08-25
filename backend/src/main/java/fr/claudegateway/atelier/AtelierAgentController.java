@@ -28,6 +28,7 @@ import fr.claudegateway.atelier.agent.AtelierAgentDisabledException;
 import fr.claudegateway.atelier.agent.AtelierAgentListener;
 import fr.claudegateway.atelier.agent.AtelierSessionResult;
 import fr.claudegateway.atelier.agent.AtelierSessionService;
+import fr.claudegateway.atelier.dto.AgentConfirmRequest;
 import fr.claudegateway.atelier.dto.AgentConfirmationRequest;
 import fr.claudegateway.atelier.dto.AgentConfirmationResponse;
 import fr.claudegateway.atelier.dto.AtelierAgentRequest;
@@ -134,6 +135,16 @@ public class AtelierAgentController {
                 public void onStatus(String state) {
                     sendStatus(emitter, state);
                 }
+
+                @Override
+                public void onConfirmationRequest(String tool, String confirmationId, String detail) {
+                    sendConfirmRequest(emitter, tool, confirmationId, detail);
+                }
+
+                @Override
+                public void onConfirmationResolved(String confirmationId, String decision) {
+                    sendConfirmResolved(emitter, confirmationId, decision);
+                }
             };
             AtelierSessionResult result = sessionService.runTaskStreaming(userId, workspaceId, message, listener);
             emitter.send(SseEmitter.event().name("done")
@@ -180,6 +191,24 @@ public class AtelierAgentController {
     @DeleteMapping("/session")
     public ResponseEntity<Void> resetSession(@PathVariable UUID id) {
         sessionService.resetSession(currentUser.requireId(), id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Répond à une demande d'autorisation posée par l'agent (F-33 / SF-33-02) : autorise la commande,
+     * ou la refuse avec un motif que l'agent recevra.
+     *
+     * <p>Le run, lui, attend sur son flux SSE : cette réponse arrive sur une <b>autre requête</b>, est
+     * postée à la session chez le fournisseur, et la boucle d'attente la voit revenir dans le flux
+     * d'events. Sans réponse dans le délai imparti, la commande est <b>refusée</b> — le silence ne
+     * vaut pas autorisation. Endpoint JSON classique : l'isolation {@code user_id} est appliquée par
+     * {@code requireOwned} avant tout appel au fournisseur.</p>
+     */
+    @PostMapping("/confirm")
+    public ResponseEntity<Void> confirm(@PathVariable UUID id,
+            @Valid @RequestBody AgentConfirmRequest request) {
+        sessionService.confirmToolUse(currentUser.requireId(), id, request.toolUseId(),
+                request.allows(), request.reason());
         return ResponseEntity.noContent().build();
     }
 
@@ -263,6 +292,30 @@ public class AtelierAgentController {
         }
     }
 
+    /**
+     * Émet une demande d'autorisation (F-33 / SF-33-02) : l'écran affiche la commande et attend une
+     * décision. Événement <b>additif</b> — un client qui l'ignore ne voit rien de plus qu'avant, et
+     * la commande finira refusée par expiration du délai.
+     */
+    private void sendConfirmRequest(SseEmitter emitter, String tool, String confirmationId, String detail) {
+        try {
+            emitter.send(SseEmitter.event().name("confirm_request")
+                    .data(new StreamConfirmRequest(confirmationId, tool, detail)));
+        } catch (IOException | IllegalStateException ex) {
+            throw new StreamAbortedException();
+        }
+    }
+
+    /** Émet la résolution d'une demande d'autorisation, pour que l'écran retire l'invite. */
+    private void sendConfirmResolved(SseEmitter emitter, String confirmationId, String decision) {
+        try {
+            emitter.send(SseEmitter.event().name("confirm_resolved")
+                    .data(new StreamConfirmResolved(confirmationId, decision)));
+        } catch (IOException | IllegalStateException ex) {
+            throw new StreamAbortedException();
+        }
+    }
+
     /** Émet une transition d'état ; une déconnexion client interrompt le relais. */
     private void sendStatus(SseEmitter emitter, String state) {
         try {
@@ -296,6 +349,17 @@ public class AtelierAgentController {
     }
 
     record StreamStatus(String state) {
+    }
+
+    /**
+     * Demande d'autorisation en attente (F-33 / SF-33-02). {@code toolUseId} est l'identifiant à
+     * renvoyer pour trancher ; {@code detail} porte la commande, telle que l'agent veut la lancer.
+     */
+    record StreamConfirmRequest(String toolUseId, String tool, String detail) {
+    }
+
+    /** Demande tranchée : {@code allow}, {@code deny}, ou {@code timeout} (refus automatique). */
+    record StreamConfirmResolved(String toolUseId, String decision) {
     }
 
     /**

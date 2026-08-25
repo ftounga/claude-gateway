@@ -173,6 +173,26 @@ public interface ManagedAgentProvider {
     void interruptSession(String sessionId);
 
     /**
+     * Répond à une <b>demande d'autorisation</b> d'outil (event {@code user.tool_confirmation},
+     * F-33 / SF-33-02) : la session, en pause depuis la demande, reprend — en exécutant la commande,
+     * ou en apprenant qu'elle est refusée et pourquoi.
+     *
+     * <p>L'identifiant attendu est celui relayé par
+     * {@link ManagedEventListener#onConfirmationRequest(String, String, String)} — l'identifiant de
+     * l'<b>event</b> de demande, jamais un identifiant fabriqué ailleurs.</p>
+     *
+     * @param sessionId      identifiant de la session en attente
+     * @param confirmationId identifiant de la demande à trancher
+     * @param allow          vrai pour autoriser, faux pour refuser
+     * @param message        motif du refus relayé à l'agent (ignoré sur une autorisation) ; peut être
+     *                       {@code null}
+     * @throws AgentProviderException si la demande est inconnue, déjà tranchée, ou si le fournisseur
+     *                                est indisponible — l'échec est remonté : une autorisation qui
+     *                                n'est pas passée doit être dite
+     */
+    void confirmToolUse(String sessionId, String confirmationId, boolean allow, String message);
+
+    /**
      * Liste les fichiers de sortie de la session (Files API, filtrés sur le {@code scope_id}).
      *
      * @param sessionId identifiant de la session
