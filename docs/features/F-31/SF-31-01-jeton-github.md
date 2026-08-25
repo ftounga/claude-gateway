@@ -12,7 +12,7 @@
 
 ## Statut
 
-`ready`
+`done` — livrée le 2026-08-25 (PR #138 backend, #139 frontend)
 
 ## Date de création
 
@@ -20,7 +20,7 @@
 
 ## Branche Git
 
-`feat/SF-31-01-jeton-github`
+`feat/SF-31-01-jeton-github-backend` (backend) puis `feat/SF-31-01-jeton-github-front` (frontend)
 
 ---
 
