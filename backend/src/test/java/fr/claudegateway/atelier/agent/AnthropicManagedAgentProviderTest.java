@@ -222,6 +222,120 @@ class AnthropicManagedAgentProviderTest {
         server.verify();
     }
 
+    // ------------------------------- F-31 / SF-31-05 : vault et serveur MCP GitHub
+
+    private static final McpAccess GITHUB_MCP =
+            new McpAccess("vlt_1", "github", "https://api.githubcopilot.com/mcp/");
+
+    @Test
+    void createVaultWithBearerCreatesTheVaultThenDepositsTheCredential() {
+        server.expect(requestTo("https://api.anthropic.com/v1/vaults"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("anthropic-beta", BETA))
+                .andExpect(jsonPath("$.display_name").value("claude-gateway user 1"))
+                .andRespond(withSuccess("{\"id\":\"vlt_1\"}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://api.anthropic.com/v1/vaults/vlt_1/credentials"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.auth.type").value("static_bearer"))
+                .andExpect(jsonPath("$.auth.mcp_server_url").value("https://api.githubcopilot.com/mcp/"))
+                .andExpect(jsonPath("$.auth.token").value("github_pat_secret"))
+                .andRespond(withSuccess("{\"id\":\"vcrd_1\"}", MediaType.APPLICATION_JSON));
+
+        ManagedVault vault = provider.createVaultWithBearer("claude-gateway user 1",
+                "https://api.githubcopilot.com/mcp/", "github_pat_secret");
+
+        assertThat(vault.vaultId()).isEqualTo("vlt_1");
+        assertThat(vault.credentialId()).isEqualTo("vcrd_1");
+        server.verify();
+    }
+
+    @Test
+    void createVaultWithBearerRefusesAResponseWithoutAnIdentifier() {
+        server.expect(requestTo("https://api.anthropic.com/v1/vaults"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> provider.createVaultWithBearer("n", "https://mcp", "tok"))
+                .isInstanceOf(AgentProviderException.class);
+        server.verify();
+    }
+
+    @Test
+    void deleteVaultNeverFailsOnAProviderOutage() {
+        // Best-effort : le jeton est déjà retiré de chez nous, faire échouer le geste de l'utilisateur
+        // sur une panne du fournisseur n'y changerait rien.
+        server.expect(requestTo("https://api.anthropic.com/v1/vaults/vlt_1"))
+                .andExpect(method(HttpMethod.DELETE))
+                .andRespond(withServerError());
+
+        provider.deleteVault("vlt_1");
+
+        server.verify();
+    }
+
+    @Test
+    void createSessionWithMcpAccessAttachesTheVaultAndComposesTheToolset() {
+        // LE piège de SF-31-05 : `tools` REMPLACE en bloc. Le toolset de base doit rester présent,
+        // sinon l'agent perd bash et ses outils de fichiers en gagnant le MCP.
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.agent.type").value("agent_with_overrides"))
+                .andExpect(jsonPath("$.agent.id").value("agent_456"))
+                .andExpect(jsonPath("$.agent.tools[0].type").value("agent_toolset_20260401"))
+                .andExpect(jsonPath("$.agent.tools[0].default_config.enabled").value(true))
+                .andExpect(jsonPath("$.agent.tools[1].type").value("mcp_toolset"))
+                .andExpect(jsonPath("$.agent.tools[1].mcp_server_name").value("github"))
+                .andExpect(jsonPath("$.agent.mcp_servers[0].type").value("url"))
+                .andExpect(jsonPath("$.agent.mcp_servers[0].name").value("github"))
+                .andExpect(jsonPath("$.agent.mcp_servers[0].url")
+                        .value("https://api.githubcopilot.com/mcp/"))
+                .andExpect(jsonPath("$.vault_ids[0]").value("vlt_1"))
+                .andRespond(withSuccess("{\"id\":\"sess_mcp\"}", MediaType.APPLICATION_JSON));
+
+        ManagedSession session = provider.createSession("agent_456", "env_123", List.of(), null, null,
+                SessionPermissions.ALLOW_ALL, GITHUB_MCP);
+
+        assertThat(session.id()).isEqualTo("sess_mcp");
+        server.verify();
+    }
+
+    @Test
+    void createSessionWithMcpAccessAndAskPolicyKeepsBothTheAlwaysAskToolsetAndTheMcpOne() {
+        // F-33 active EN MÊME TEMPS que le MCP : la variante always_ask reste la première entrée, le
+        // MCP s'y ajoute. Remplacer l'une par l'autre casserait l'une des deux features.
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.agent.tools[0].type").value("agent_toolset_20260401"))
+                .andExpect(jsonPath("$.agent.tools[0].default_config.permission_policy.type")
+                        .value("always_allow"))
+                .andExpect(jsonPath("$.agent.tools[0].configs[0].name").value("bash"))
+                .andExpect(jsonPath("$.agent.tools[0].configs[0].permission_policy.type")
+                        .value("always_ask"))
+                .andExpect(jsonPath("$.agent.tools[1].type").value("mcp_toolset"))
+                .andExpect(jsonPath("$.vault_ids[0]").value("vlt_1"))
+                .andRespond(withSuccess("{\"id\":\"sess_mcp2\"}", MediaType.APPLICATION_JSON));
+
+        provider.createSession("agent_456", "env_123", List.of(), null, null,
+                SessionPermissions.ASK_BEFORE_SHELL, GITHUB_MCP);
+
+        server.verify();
+    }
+
+    @Test
+    void createSessionWithoutMcpAccessDeclaresNoServerAndNoVault() {
+        // Non-régression : sans MCP, le corps est strictement celui d'avant SF-31-05.
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.agent").value("agent_456"))
+                .andExpect(jsonPath("$.vault_ids").doesNotExist())
+                .andRespond(withSuccess("{\"id\":\"sess_7\"}", MediaType.APPLICATION_JSON));
+
+        provider.createSession("agent_456", "env_123", List.of(), null, null,
+                SessionPermissions.ALLOW_ALL, null);
+
+        server.verify();
+    }
+
     @Test
     void sendUserMessagePostsUserMessageEvent() {
         server.expect(requestTo("https://api.anthropic.com/v1/sessions/sess_1/events"))

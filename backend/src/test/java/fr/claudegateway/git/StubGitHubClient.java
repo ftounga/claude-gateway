@@ -49,6 +49,16 @@ public class StubGitHubClient implements GitHubClient {
     /** Dernière branche dont l'existence a été constatée. */
     public volatile String lastCheckedBranch;
 
+    /**
+     * Pull request ouverte renvoyée par {@link #findOpenPullRequest} (SF-31-05) ; {@code null} ⇒
+     * aucune — c'est-à-dire un agent qui a annoncé une création qui n'a pas eu lieu.
+     */
+    public volatile GitPullRequest openPullRequest =
+            new GitPullRequest(42, "https://github.com/octocat/demo/pull/42");
+
+    /** Dernière branche de tête cherchée parmi les pull requests ouvertes. */
+    public volatile String lastPullRequestHead;
+
     public void reset() {
         reject = false;
         unavailable = false;
@@ -63,6 +73,8 @@ public class StubGitHubClient implements GitHubClient {
         lastPath = null;
         branchPushed = true;
         lastCheckedBranch = null;
+        openPullRequest = new GitPullRequest(42, "https://github.com/octocat/demo/pull/42");
+        lastPullRequestHead = null;
     }
 
     @Override
@@ -118,6 +130,16 @@ public class StubGitHubClient implements GitHubClient {
         this.lastCheckedBranch = branch;
         failIfSimulated();
         return branchPushed;
+    }
+
+    @Override
+    public java.util.Optional<GitPullRequest> findOpenPullRequest(String token, String owner, String repo,
+            String branch) {
+        this.lastToken = token;
+        this.lastRepository = owner + "/" + repo;
+        this.lastPullRequestHead = branch;
+        failIfSimulated();
+        return java.util.Optional.ofNullable(openPullRequest);
     }
 
     private void failIfSimulated() {

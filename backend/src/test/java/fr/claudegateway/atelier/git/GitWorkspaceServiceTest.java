@@ -48,7 +48,7 @@ class GitWorkspaceServiceTest {
 
     private GitWorkspaceService service() {
         return new GitWorkspaceService(workspaceService, gitTokenService, gitHubClient,
-                new fr.claudegateway.git.GitProperties(null, null, null, null));
+                new fr.claudegateway.git.GitProperties(null, null, null, null, null, null));
     }
 
     private Workspace created() {

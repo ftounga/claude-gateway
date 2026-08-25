@@ -76,7 +76,7 @@ class AtelierChatServiceTest {
         service = new AtelierChatService(workspaceService, messageRepository, (AiAgentProvider) agentProvider,
                 byokKeyService, quotaService, modelCatalog,
                 new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
-                        gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null)));
+                        gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)));
     }
 
     /** Workspace d'archive possédé : la source par défaut, celle de tous les tests de ce fichier. */

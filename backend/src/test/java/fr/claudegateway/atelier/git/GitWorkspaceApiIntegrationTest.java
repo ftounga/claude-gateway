@@ -480,6 +480,90 @@ class GitWorkspaceApiIntegrationTest {
                 .andExpect(jsonPath("$.error", is("atelier_forbidden")));
     }
 
+    // ------------------------------- F-31 / SF-31-05 : ouverture de la pull request
+
+    @Test
+    void refusesToOpenAPullRequestWithoutAnActiveSession() throws Exception {
+        String id = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(post("/api/workspaces/" + id + "/git/pull-request").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"branch\":\"feat/atelier\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error", is("no_active_session")));
+    }
+
+    @Test
+    void refusesToOpenAPullRequestFromTheBaseBranch() throws Exception {
+        String id = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(post("/api/workspaces/" + id + "/git/pull-request").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"branch\":\"main\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", is("invalid_git_branch")));
+    }
+
+    @Test
+    void refusesToOpenAPullRequestOnAnArchiveProject() throws Exception {
+        Workspace archive = workspaceRepository.save(Workspace.builder()
+                .userId(alice.getId())
+                .name("archive")
+                .build());
+
+        mockMvc.perform(post("/api/workspaces/" + archive.getId() + "/git/pull-request")
+                        .contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"branch\":\"feat/atelier\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error", is("git_workspace_required")));
+    }
+
+    @Test
+    void refusesToOpenAPullRequestOnAProjectOfAnotherUser() throws Exception {
+        String id = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        // Isolation : le projet d'Alice est INTROUVABLE pour Bob — aucune fuite d'existence, aucun
+        // tour joué, et le vault d'Alice n'est jamais approché.
+        mockMvc.perform(post("/api/workspaces/" + id + "/git/pull-request").contextPath("/api")
+                        .header("Authorization", bearer(bobToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"branch\":\"feat/atelier\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void openingAPullRequestRequiresAuthenticationAndGoldAccess() throws Exception {
+        String id = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(post("/api/workspaces/" + id + "/git/pull-request").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"branch\":\"feat/atelier\"}"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/workspaces/" + id + "/git/pull-request").contextPath("/api")
+                        .header("Authorization", bearer(plainToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"branch\":\"feat/atelier\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error", is("atelier_forbidden")));
+    }
+
+    @Test
+    void rejectsAnOversizedPullRequestTitle() throws Exception {
+        String id = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(post("/api/workspaces/" + id + "/git/pull-request").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"branch\":\"feat/atelier\",\"title\":\"" + "T".repeat(201) + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", notNullValue()));
+    }
+
     @Test
     void rejectsAMissingRepositoryUrl() throws Exception {
         mockMvc.perform(post("/api/workspaces/git").contextPath("/api")

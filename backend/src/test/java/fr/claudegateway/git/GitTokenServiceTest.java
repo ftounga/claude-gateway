@@ -38,11 +38,13 @@ class GitTokenServiceTest {
     private ByokKeyCipher cipher;
     @Mock
     private GitHubClient gitHubClient;
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher events;
 
     private final UUID userId = UUID.randomUUID();
 
     private GitTokenService service() {
-        return new GitTokenService(repository, cipher, gitHubClient);
+        return new GitTokenService(repository, cipher, gitHubClient, events);
     }
 
     private static EncryptedKey encrypted() {
@@ -183,5 +185,122 @@ class GitTokenServiceTest {
 
         assertThat(service().resolveToken(userId)).isEmpty();
         verifyNoInteractions(cipher);
+    }
+
+    // ------------------------------- F-31 / SF-31-05 : vault de credentials MCP
+
+    /** Jeton en place portant déjà un vault chez le fournisseur d'agents. */
+    private UserGitCredential storedWithVault() {
+        return UserGitCredential.builder()
+                .id(UUID.randomUUID()).userId(userId).githubLogin("old-login")
+                .encryptedDataKey("old-dk").cipherIv("old-iv").ciphertext("old-ct")
+                .tokenLast4("0000").mcpVaultId("vlt_1").mcpCredentialId("vcrd_1").build();
+    }
+
+    @Test
+    void findVaultReturnsTheOpaqueIdentifiersOfTheUsersVault() {
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(storedWithVault()));
+
+        Optional<GitVaultRef> vault = service().findVault(userId);
+
+        assertThat(vault).isPresent();
+        assertThat(vault.get().vaultId()).isEqualTo("vlt_1");
+        assertThat(vault.get().credentialId()).isEqualTo("vcrd_1");
+    }
+
+    @Test
+    void findVaultIsEmptyWhenNoVaultHasBeenProvisionedYet() {
+        UserGitCredential stored = UserGitCredential.builder()
+                .userId(userId).encryptedDataKey("dk").cipherIv("iv").ciphertext("ct")
+                .tokenLast4("AB12").build();
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(stored));
+
+        // Création paresseuse : rien n'est déposé chez le fournisseur tant qu'on n'ouvre pas de projet.
+        assertThat(service().findVault(userId)).isEmpty();
+    }
+
+    @Test
+    void rememberVaultStoresOnlyIdentifiersOnTheUsersOwnCredential() {
+        UserGitCredential stored = UserGitCredential.builder()
+                .userId(userId).encryptedDataKey("dk").cipherIv("iv").ciphertext("ct")
+                .tokenLast4("AB12").build();
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(stored));
+        when(repository.save(any(UserGitCredential.class))).thenAnswer(call -> call.getArgument(0));
+
+        service().rememberVault(userId, new GitVaultRef("vlt_9", "vcrd_9"));
+
+        ArgumentCaptor<UserGitCredential> captor = ArgumentCaptor.forClass(UserGitCredential.class);
+        verify(repository).save(captor.capture());
+        assertThat(captor.getValue().getMcpVaultId()).isEqualTo("vlt_9");
+        assertThat(captor.getValue().getMcpCredentialId()).isEqualTo("vcrd_9");
+    }
+
+    @Test
+    void rememberVaultDoesNothingWhenTheUserNoLongerHasAToken() {
+        when(repository.findByUserId(userId)).thenReturn(Optional.empty());
+
+        service().rememberVault(userId, new GitVaultRef("vlt_9", "vcrd_9"));
+
+        // Rattacher un vault à rien laisserait un identifiant orphelin en base.
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void replacingTheTokenDetachesTheVaultAndAsksForItsDestruction() {
+        UserGitCredential existing = storedWithVault();
+        when(gitHubClient.verifyToken(TOKEN)).thenReturn(new GitHubAccount("octocat"));
+        when(cipher.encrypt(TOKEN)).thenReturn(encrypted());
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(existing));
+        when(repository.save(any(UserGitCredential.class))).thenAnswer(call -> call.getArgument(0));
+
+        service().saveToken(userId, TOKEN);
+
+        ArgumentCaptor<UserGitCredential> saved = ArgumentCaptor.forClass(UserGitCredential.class);
+        verify(repository).save(saved.capture());
+        // Le vault portait l'ANCIEN jeton : il ne doit pas survivre au remplacement.
+        assertThat(saved.getValue().getMcpVaultId()).isNull();
+        assertThat(saved.getValue().getMcpCredentialId()).isNull();
+
+        ArgumentCaptor<Object> published = ArgumentCaptor.forClass(Object.class);
+        verify(events).publishEvent(published.capture());
+        assertThat(published.getValue()).isEqualTo(new GitVaultRevokedEvent(userId, "vlt_1", "vcrd_1"));
+    }
+
+    @Test
+    void replacingATokenWithoutAVaultPublishesNothing() {
+        UserGitCredential existing = UserGitCredential.builder()
+                .id(UUID.randomUUID()).userId(userId).githubLogin("old-login")
+                .encryptedDataKey("old-dk").cipherIv("old-iv").ciphertext("old-ct")
+                .tokenLast4("0000").build();
+        when(gitHubClient.verifyToken(TOKEN)).thenReturn(new GitHubAccount("octocat"));
+        when(cipher.encrypt(TOKEN)).thenReturn(encrypted());
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(existing));
+        when(repository.save(any(UserGitCredential.class))).thenAnswer(call -> call.getArgument(0));
+
+        service().saveToken(userId, TOKEN);
+
+        verifyNoInteractions(events);
+    }
+
+    @Test
+    void removingTheTokenAsksForTheDestructionOfItsVault() {
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(storedWithVault()));
+
+        service().deleteToken(userId);
+
+        verify(repository).deleteByUserId(userId);
+        // Un jeton révoqué chez nous mais toujours utilisable chez le fournisseur serait une
+        // révocation de façade.
+        verify(events).publishEvent(new GitVaultRevokedEvent(userId, "vlt_1", "vcrd_1"));
+    }
+
+    @Test
+    void removingATokenWithoutAVaultPublishesNothing() {
+        when(repository.findByUserId(userId)).thenReturn(Optional.empty());
+
+        service().deleteToken(userId);
+
+        verify(repository).deleteByUserId(userId);
+        verifyNoInteractions(events);
     }
 }

@@ -63,6 +63,8 @@ class AtelierSessionServiceTest {
     private fr.claudegateway.git.GitTokenService gitTokenService;
     @Mock
     private fr.claudegateway.atelier.ProjectInstructionsService instructionsService;
+    @Mock
+    private McpVaultService mcpVaultService;
 
     private AtelierAgentProperties enabled() {
         return new AtelierAgentProperties(true, null, null, null, null, null, null, null, null, null,
@@ -81,7 +83,8 @@ class AtelierSessionServiceTest {
 
     private AtelierSessionService service(AtelierAgentProperties props) {
         return new AtelierSessionService(provider, workspaceService, bootstrapService, props, quotaService,
-                workspaceRepository, messageRepository, gitTokenService, instructionsService);
+                workspaceRepository, messageRepository, gitTokenService, instructionsService,
+                mcpVaultService);
     }
 
     /** Workspace possédé, portant (ou non) une session sandbox déjà ouverte (F-30 SF-30-04). */
@@ -738,7 +741,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(gitWs());
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_git"));
         when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
@@ -748,7 +751,8 @@ class AtelierSessionServiceTest {
 
         ArgumentCaptor<RepositoryMount> repo = ArgumentCaptor.forClass(RepositoryMount.class);
         ArgumentCaptor<List<FileMount>> files = ArgumentCaptor.forClass(List.class);
-        verify(provider).createSession(eq("agent_1"), eq("env_1"), files.capture(), repo.capture(), any(), any());
+        verify(provider).createSession(eq("agent_1"), eq("env_1"), files.capture(), repo.capture(), any(),
+                any(), any());
         assertThat(files.getValue()).isEmpty();
         assertThat(repo.getValue().url()).isEqualTo("https://github.com/octocat/hello");
         assertThat(repo.getValue().branch()).isEqualTo("main");
@@ -757,6 +761,63 @@ class AtelierSessionServiceTest {
 
         // Aucun fichier téléversé : le plafond `maxSessionFiles` ne s'applique plus (ADR-015).
         verify(provider, never()).uploadFile(any(), any());
+    }
+
+    // ------------------------ F-31 / SF-31-05 : serveur MCP GitHub attaché à la session Git
+
+    @Test
+    void aGitSessionCarriesTheMcpAccessWhenAVaultIsAvailable() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(gitWs());
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
+        when(mcpVaultService.resolveAccess(USER)).thenReturn(Optional.of(
+                new McpAccess("vlt_1", "github", "https://api.githubcopilot.com/mcp/")));
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any()))
+                .thenReturn(new ManagedSession("sess_git"));
+        when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any()))
+                .thenReturn(new SessionRun("Terminé.", "end_turn"));
+        when(provider.listOutputs("sess_git")).thenReturn(List.of());
+
+        service(enabled()).runTask(USER, WORKSPACE, "go");
+
+        ArgumentCaptor<McpAccess> mcp = ArgumentCaptor.forClass(McpAccess.class);
+        verify(provider).createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(),
+                mcp.capture());
+        // Le vault du PROPRIÉTAIRE du projet, résolu par son user_id — jamais celui d'un autre.
+        assertThat(mcp.getValue().vaultId()).isEqualTo("vlt_1");
+        assertThat(mcp.getValue().serverName()).isEqualTo("github");
+    }
+
+    @Test
+    void aGitSessionWithoutVaultDeclaresNoMcpServerAtAll() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(gitWs());
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
+        when(mcpVaultService.resolveAccess(USER)).thenReturn(Optional.empty());
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any()))
+                .thenReturn(new ManagedSession("sess_git"));
+        when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any()))
+                .thenReturn(new SessionRun("Terminé.", "end_turn"));
+        when(provider.listOutputs("sess_git")).thenReturn(List.of());
+
+        service(enabled()).runTask(USER, WORKSPACE, "go");
+
+        // Sans vault, déclarer le serveur MCP le connecterait SANS authentification : les outils
+        // GitHub apparaîtraient à l'agent puis échoueraient à l'usage.
+        ArgumentCaptor<McpAccess> mcp = ArgumentCaptor.forClass(McpAccess.class);
+        verify(provider).createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(),
+                mcp.capture());
+        assertThat(mcp.getValue()).isNull();
+    }
+
+    @Test
+    void anArchiveProjectNeverResolvesAnyVault() {
+        stubNominalRun();
+
+        service(enabled()).runTask(USER, WORKSPACE, "go");
+
+        // Le MCP GitHub n'a aucun sens hors d'un dépôt : rien n'est déposé, rien n'est déclaré.
+        verifyNoInteractions(mcpVaultService);
     }
 
     @Test
@@ -1043,7 +1104,7 @@ class AtelierSessionServiceTest {
         when(instructionsService.resolve(eq(USER), any())).thenReturn(Optional.of(
                 new fr.claudegateway.atelier.ProjectInstructions(
                         ".atelier/instructions.md", "Ne touche jamais au dossier legacy/.", false)));
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_git"));
         when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
@@ -1054,7 +1115,7 @@ class AtelierSessionServiceTest {
         ArgumentCaptor<RepositoryMount> repo = ArgumentCaptor.forClass(RepositoryMount.class);
         ArgumentCaptor<String> system = ArgumentCaptor.forClass(String.class);
         verify(provider).createSession(
-                eq("agent_1"), eq("env_1"), anyList(), repo.capture(), system.capture(), any());
+                eq("agent_1"), eq("env_1"), anyList(), repo.capture(), system.capture(), any(), any());
         assertThat(repo.getValue().url()).isEqualTo("https://github.com/octocat/hello");
         assertThat(system.getValue()).contains("Ne touche jamais au dossier legacy/.");
     }
@@ -1123,7 +1184,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_git"));
         when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
@@ -1134,7 +1195,7 @@ class AtelierSessionServiceTest {
         ArgumentCaptor<RepositoryMount> repo = ArgumentCaptor.forClass(RepositoryMount.class);
         ArgumentCaptor<SessionPermissions> permissions = ArgumentCaptor.forClass(SessionPermissions.class);
         verify(provider).createSession(eq("agent_1"), eq("env_1"), anyList(), repo.capture(), any(),
-                permissions.capture());
+                permissions.capture(), any());
         assertThat(repo.getValue().url()).isEqualTo("https://github.com/octocat/hello");
         assertThat(permissions.getValue().askBeforeShellCommands()).isTrue();
     }

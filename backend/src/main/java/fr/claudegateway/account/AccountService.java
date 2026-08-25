@@ -15,7 +15,7 @@ import fr.claudegateway.chat.Conversation;
 import fr.claudegateway.chat.ConversationRepository;
 import fr.claudegateway.chat.Message;
 import fr.claudegateway.chat.MessageRepository;
-import fr.claudegateway.git.UserGitCredentialRepository;
+import fr.claudegateway.git.GitTokenService;
 import fr.claudegateway.quota.UsageCounterRepository;
 import fr.claudegateway.template.TemplateRepository;
 import fr.claudegateway.upload.UploadedFileRepository;
@@ -40,7 +40,7 @@ public class AccountService {
     private final MessageRepository messageRepository;
     private final UploadedFileRepository uploadedFileRepository;
     private final UserApiKeyRepository userApiKeyRepository;
-    private final UserGitCredentialRepository userGitCredentialRepository;
+    private final GitTokenService gitTokenService;
     private final TemplateRepository templateRepository;
 
     public AccountService(
@@ -51,7 +51,7 @@ public class AccountService {
             MessageRepository messageRepository,
             UploadedFileRepository uploadedFileRepository,
             UserApiKeyRepository userApiKeyRepository,
-            UserGitCredentialRepository userGitCredentialRepository,
+            GitTokenService gitTokenService,
             TemplateRepository templateRepository) {
         this.userService = userService;
         this.subscriptionRepository = subscriptionRepository;
@@ -60,7 +60,7 @@ public class AccountService {
         this.messageRepository = messageRepository;
         this.uploadedFileRepository = uploadedFileRepository;
         this.userApiKeyRepository = userApiKeyRepository;
-        this.userGitCredentialRepository = userGitCredentialRepository;
+        this.gitTokenService = gitTokenService;
         this.templateRepository = templateRepository;
     }
 
@@ -123,8 +123,12 @@ public class AccountService {
         usageCounterRepository.deleteByUserId(userId);
         subscriptionRepository.deleteByUserId(userId);
         userApiKeyRepository.deleteByUserId(userId);
-        // Secrets de l'utilisateur : la clé Claude ET le jeton GitHub (F-31) disparaissent avec le compte.
-        userGitCredentialRepository.deleteByUserId(userId);
+        // Secrets de l'utilisateur : la clé Claude ET le jeton GitHub (F-31) disparaissent avec le
+        // compte. Le retrait passe par GitTokenService et non par le repository, car la copie du
+        // jeton déposée chez le fournisseur d'agents (vault MCP, SF-31-05) doit partir avec lui :
+        // effacer la seule ligne en base laisserait le secret vivant là-bas, sans plus rien pour le
+        // retrouver.
+        gitTokenService.deleteToken(userId);
         templateRepository.deleteByUserId(userId);
 
         userService.deleteById(user.getId());

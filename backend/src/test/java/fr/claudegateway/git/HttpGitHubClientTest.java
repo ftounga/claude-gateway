@@ -65,7 +65,7 @@ class HttpGitHubClientTest {
     private GitHubClient client() {
         int port = server.getAddress().getPort();
         return new HttpGitHubClient(
-                new GitProperties("http://127.0.0.1:" + port, Duration.ofSeconds(5), null, null),
+                new GitProperties("http://127.0.0.1:" + port, Duration.ofSeconds(5), null, null, null, null),
                 RestClient.builder());
     }
 

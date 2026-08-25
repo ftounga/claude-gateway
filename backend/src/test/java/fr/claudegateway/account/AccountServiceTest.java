@@ -59,14 +59,14 @@ class AccountServiceTest {
     @Mock
     private fr.claudegateway.byok.UserApiKeyRepository userApiKeyRepository;
     @Mock
-    private fr.claudegateway.git.UserGitCredentialRepository userGitCredentialRepository;
+    private fr.claudegateway.git.GitTokenService gitTokenService;
     @Mock
     private fr.claudegateway.template.TemplateRepository templateRepository;
 
     private AccountService service() {
         return new AccountService(userService, subscriptionRepository, usageCounterRepository,
                 conversationRepository, messageRepository, uploadedFileRepository, userApiKeyRepository,
-                userGitCredentialRepository, templateRepository);
+                gitTokenService, templateRepository);
     }
 
     private User user(UUID id) {
@@ -142,15 +142,17 @@ class AccountServiceTest {
 
         InOrder order = inOrder(messageRepository, conversationRepository, uploadedFileRepository,
                 usageCounterRepository, subscriptionRepository, userApiKeyRepository,
-                userGitCredentialRepository, templateRepository, userService);
+                gitTokenService, templateRepository, userService);
         order.verify(messageRepository).deleteByUserId(userId);
         order.verify(conversationRepository).deleteByUserId(userId);
         order.verify(uploadedFileRepository).deleteByUserId(userId);
         order.verify(usageCounterRepository).deleteByUserId(userId);
         order.verify(subscriptionRepository).deleteByUserId(userId);
         order.verify(userApiKeyRepository).deleteByUserId(userId);
-        // Le jeton GitHub (F-31) est un secret de l'utilisateur : il disparaît avec le compte (RGPD).
-        order.verify(userGitCredentialRepository).deleteByUserId(userId);
+        // Le jeton GitHub (F-31) est un secret de l'utilisateur : il disparaît avec le compte (RGPD),
+        // et avec lui la copie déposée dans le vault du fournisseur d'agents (SF-31-05) — d'où le
+        // passage par le service plutôt que par le repository.
+        order.verify(gitTokenService).deleteToken(userId);
         order.verify(templateRepository).deleteByUserId(userId);
         order.verify(userService).deleteById(userId);
         verify(userService).findByIdOrThrow(any());
