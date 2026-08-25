@@ -31,6 +31,19 @@
           }
         </button>
       }
+      @if (instructionsPath) {
+        <!-- Instructions du projet (F-34 / SF-34-02) : l'agent les suit depuis l'ouverture de la
+             session ; le dire ici évite de croire à un comportement inexpliqué. -->
+        <button
+          mat-button
+          type="button"
+          class="terminal-instructions"
+          (click)="openInstructions.emit()"
+        >
+          <mat-icon>menu_book</mat-icon>
+          {{ instructionsPath }}
+        </button>
+      }
       <button mat-button type="button" (click)="openFiles.emit()">
         <mat-icon>folder</mat-icon>
         Fichiers

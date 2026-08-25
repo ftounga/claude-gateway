@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, throwError } from 'rxjs';
@@ -1462,6 +1462,51 @@ describe('AtelierComponent', () => {
 
     expect(item.interrupted).toBeTrue();
     expect(item.terminal).toBeUndefined();
+  });
+
+  // ---- F-34 / SF-34-02 : instructions portées par le projet ----
+
+  it('expose le chemin des instructions du projet quand il en porte', () => {
+    setup();
+    service.getWorkspace.and.returnValue(of({ ...detail, instructionsPath: 'CLAUDE.md' }));
+
+    component.selectWorkspace(summary);
+
+    expect(component.instructionsPath()).toBe('CLAUDE.md');
+  });
+
+  it("n'affiche aucune instruction quand le projet n'en porte pas", () => {
+    setup();
+    component.selectWorkspace(summary); // `detail` ne porte pas `instructionsPath`
+
+    expect(component.instructionsPath()).toBeNull();
+  });
+
+  it("ouvre l'explorateur sur le fichier d'instructions", () => {
+    setup();
+    const router = TestBed.inject(Router);
+    const navigate = spyOn(router, 'navigate');
+    service.getWorkspace.and.returnValue(
+      of({ ...detail, instructionsPath: '.atelier/instructions.md' }),
+    );
+    component.selectWorkspace(summary);
+
+    component.openInstructions();
+
+    expect(navigate).toHaveBeenCalledWith(['/atelier', 'w1', 'fichiers'], {
+      queryParams: { path: '.atelier/instructions.md' },
+    });
+  });
+
+  it("ne navigue nulle part si le projet ne porte pas d'instructions", () => {
+    setup();
+    const router = TestBed.inject(Router);
+    const navigate = spyOn(router, 'navigate');
+    component.selectWorkspace(summary);
+
+    component.openInstructions();
+
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it('un tour mené à son terme n\'est jamais marqué comme interrompu (non-régression F-30)', () => {

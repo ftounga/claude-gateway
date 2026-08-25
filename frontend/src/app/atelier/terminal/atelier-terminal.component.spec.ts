@@ -252,4 +252,27 @@ describe('AtelierTerminalComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.terminal-interrupted')).toBeNull();
   });
+
+  // ---- F-34 / SF-34-02 : instructions portées par le projet ----
+
+  it('annonce le fichier d\'instructions du projet et émet son ouverture', () => {
+    component.instructionsPath = 'CLAUDE.md';
+    fixture.detectChanges();
+
+    const button = fixture.nativeElement.querySelector('.terminal-instructions') as HTMLButtonElement;
+    expect(button).not.toBeNull();
+    expect(button.textContent).toContain('CLAUDE.md');
+
+    let opened = false;
+    component.openInstructions.subscribe(() => (opened = true));
+    button.click();
+
+    expect(opened).toBeTrue();
+  });
+
+  it('n\'affiche rien quand le projet ne porte pas d\'instructions', () => {
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.terminal-instructions')).toBeNull();
+  });
 });

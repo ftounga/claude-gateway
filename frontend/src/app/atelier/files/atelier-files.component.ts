@@ -124,6 +124,13 @@ export class AtelierFilesComponent implements OnInit {
    */
   readonly truncated = signal(false);
 
+  /**
+   * Fichier à ouvrir dès le chargement, désigné par `?path=` (F-34 / SF-34-02 : la pastille
+   * « Instructions » amène directement sur le fichier). Consommé une fois : une navigation interne
+   * ultérieure ne doit pas ramener l'utilisateur sur ce fichier.
+   */
+  private pendingPath: string | null = null;
+
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) {
@@ -131,7 +138,21 @@ export class AtelierFilesComponent implements OnInit {
       return;
     }
     this.workspaceId.set(id);
+    this.pendingPath = this.route.snapshot.queryParamMap.get('path');
     this.loadWorkspace();
+  }
+
+  /**
+   * Ouvre le fichier demandé par `?path=`, s'il existe dans l'arborescence chargée. Un chemin inconnu
+   * est ignoré en silence : l'explorateur s'affiche normalement plutôt que de crier sur un lien
+   * devenu obsolète (fichier renommé ou supprimé depuis).
+   */
+  private openPendingPath(): void {
+    const path = this.pendingPath;
+    this.pendingPath = null;
+    if (path && this.paths().includes(path)) {
+      this.openFile(path);
+    }
   }
 
   /** Charge le détail du workspace (nom + arborescence). 404 → message + retour Atelier. */
@@ -143,6 +164,7 @@ export class AtelierFilesComponent implements OnInit {
         this.workspaceName.set(detail.name);
         this.paths.set(detail.files);
         this.applySource(detail);
+        this.openPendingPath();
       },
       error: (err) => {
         this.loading.set(false);

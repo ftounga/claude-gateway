@@ -70,6 +70,12 @@ export interface WorkspaceDetail {
    * qu'un fichier absent de la liste n'existe pas.
    */
   truncated: boolean;
+  /**
+   * Chemin du fichier d'instructions du projet (F-34 / SF-34-01) — `CLAUDE.md`, ou son repli
+   * `.atelier/instructions.md` — ajouté au prompt de l'agent à la **prochaine ouverture de
+   * session**. `null` (ou absent) si le projet n'en porte pas : l'écran n'affiche alors rien.
+   */
+  instructionsPath?: string | null;
 }
 
 /** Contenu texte d'un fichier du workspace. Réponse de `GET /api/workspaces/{id}/file?path=`. */
