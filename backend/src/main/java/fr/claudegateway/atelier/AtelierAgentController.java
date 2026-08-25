@@ -118,17 +118,28 @@ public class AtelierAgentController {
 
                 @Override
                 public void onAction(String tool, String detail) {
-                    sendAction(emitter, tool, null, detail);
+                    sendAction(emitter, tool, null, detail, null);
                 }
 
                 @Override
                 public void onAction(String tool, String toolUseId, String detail) {
-                    sendAction(emitter, tool, toolUseId, detail);
+                    sendAction(emitter, tool, toolUseId, detail, null);
+                }
+
+                @Override
+                public void onAction(String tool, String toolUseId, String detail, String threadId) {
+                    sendAction(emitter, tool, toolUseId, detail, threadId);
                 }
 
                 @Override
                 public void onActionResult(String tool, String toolUseId, String output, boolean error) {
-                    sendActionResult(emitter, tool, toolUseId, output, error);
+                    sendActionResult(emitter, tool, toolUseId, output, error, null);
+                }
+
+                @Override
+                public void onActionResult(String tool, String toolUseId, String output, boolean error,
+                        String threadId) {
+                    sendActionResult(emitter, tool, toolUseId, output, error, threadId);
                 }
 
                 @Override
@@ -271,9 +282,11 @@ public class AtelierAgentController {
     }
 
     /** Émet une action (usage d'outil) ; une déconnexion client interrompt le relais. */
-    private void sendAction(SseEmitter emitter, String tool, String toolUseId, String detail) {
+    private void sendAction(SseEmitter emitter, String tool, String toolUseId, String detail,
+            String threadId) {
         try {
-            emitter.send(SseEmitter.event().name("action").data(new StreamAction(tool, toolUseId, detail)));
+            emitter.send(SseEmitter.event().name("action")
+                    .data(new StreamAction(tool, toolUseId, detail, threadId)));
         } catch (IOException | IllegalStateException ex) {
             throw new StreamAbortedException();
         }
@@ -283,10 +296,11 @@ public class AtelierAgentController {
      * Émet la sortie d'une commande (F-30 SF-30-01) ; une déconnexion client interrompt le relais.
      * Événement <b>additif</b> : un client qui l'ignore conserve le comportement antérieur.
      */
-    private void sendActionResult(SseEmitter emitter, String tool, String toolUseId, String output, boolean error) {
+    private void sendActionResult(SseEmitter emitter, String tool, String toolUseId, String output,
+            boolean error, String threadId) {
         try {
             emitter.send(SseEmitter.event().name("action_result")
-                    .data(new StreamActionResult(tool, toolUseId, output, error)));
+                    .data(new StreamActionResult(tool, toolUseId, output, error, threadId)));
         } catch (IOException | IllegalStateException ex) {
             throw new StreamAbortedException();
         }
@@ -342,10 +356,12 @@ public class AtelierAgentController {
     record StreamAgent(String text) {
     }
 
-    record StreamAction(String tool, String toolUseId, String detail) {
+    /** {@code threadId} : fil d'exécution dont vient la commande (F-35 SF-35-02), {@code null} sinon. */
+    record StreamAction(String tool, String toolUseId, String detail, String threadId) {
     }
 
-    record StreamActionResult(String tool, String toolUseId, String output, boolean error) {
+    record StreamActionResult(String tool, String toolUseId, String output, boolean error,
+            String threadId) {
     }
 
     record StreamStatus(String state) {

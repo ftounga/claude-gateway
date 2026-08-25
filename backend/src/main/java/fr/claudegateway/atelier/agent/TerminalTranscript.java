@@ -17,20 +17,48 @@ import java.util.List;
  */
 public class TerminalTranscript {
 
-    /** Une commande et la sortie qu'elle a produite. */
+    /**
+     * Une commande et la sortie qu'elle a produite. {@code threadId} porte le <b>fil d'exécution</b>
+     * dont elle vient (F-35 / SF-35-02) : {@code null} pour un run séquentiel, c'est-à-dire pour tous
+     * les tours d'avant F-35.
+     */
     public record Block(String tool, String command, String toolUseId, String output, boolean hasOutput,
-            boolean error) {
+            boolean error, String threadId) {
     }
 
     private final List<Block> blocks = new ArrayList<>();
 
-    /** Ouvre un bloc pour une commande relayée. */
+    /** Ouvre un bloc pour une commande relayée (fil inconnu : run séquentiel). */
     public void addCommand(String tool, String toolUseId, String detail) {
-        blocks.add(new Block(tool, detail, toolUseId, "", false, false));
+        addCommand(tool, toolUseId, detail, null);
     }
 
-    /** Rattache une sortie à sa commande, ou crée un bloc orphelin si aucune ne correspond. */
+    /**
+     * Ouvre un bloc pour une commande relayée, en conservant le <b>fil d'exécution</b> dont elle vient
+     * (F-35 / SF-35-02).
+     *
+     * @param threadId identifiant opaque du fil, ou {@code null} pour un run séquentiel
+     */
+    public void addCommand(String tool, String toolUseId, String detail, String threadId) {
+        blocks.add(new Block(tool, detail, toolUseId, "", false, false, threadId));
+    }
+
+    /** Rattache une sortie à sa commande, ou crée un bloc orphelin (fil inconnu). */
     public void addOutput(String tool, String toolUseId, String output, boolean error) {
+        addOutput(tool, toolUseId, output, error, null);
+    }
+
+    /**
+     * Rattache une sortie à sa commande, ou crée un bloc orphelin si aucune ne correspond, en
+     * conservant le <b>fil d'exécution</b> (F-35 / SF-35-02).
+     *
+     * <p>Le fil du bloc l'emporte sur celui de la sortie quand les deux sont connus : c'est la
+     * commande qui dit d'où vient le travail. Une commande sans fil qui reçoit une sortie avec fil
+     * adopte celui-ci — mieux vaut un fil tardif qu'aucun.</p>
+     *
+     * @param threadId identifiant opaque du fil, ou {@code null} pour un run séquentiel
+     */
+    public void addOutput(String tool, String toolUseId, String output, boolean error, String threadId) {
         int index = -1;
         if (toolUseId != null && !toolUseId.isBlank()) {
             for (int i = 0; i < blocks.size(); i++) {
@@ -49,7 +77,8 @@ public class TerminalTranscript {
             }
         }
         if (index < 0) {
-            blocks.add(new Block(tool, null, toolUseId, output == null ? "" : output, true, error));
+            blocks.add(new Block(tool, null, toolUseId, output == null ? "" : output, true, error,
+                    threadId));
             return;
         }
         Block target = blocks.get(index);
@@ -58,7 +87,8 @@ public class TerminalTranscript {
                 ? target.output() + "\n" + (output == null ? "" : output)
                 : (output == null ? "" : output);
         blocks.set(index, new Block(target.tool(), target.command(), target.toolUseId() == null
-                ? toolUseId : target.toolUseId(), merged, true, target.error() || error));
+                ? toolUseId : target.toolUseId(), merged, true, target.error() || error,
+                target.threadId() == null ? threadId : target.threadId()));
     }
 
     /** Vrai si le tour n'a lancé aucune commande (rien à persister). */

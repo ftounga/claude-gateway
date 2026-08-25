@@ -400,7 +400,8 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
                         reply.append(fragment);
                         sink.onAgentText(fragment);
                     } else if ("agent.tool_use".equals(type) || "agent.custom_tool_use".equals(type)) {
-                        sink.onAction(toolName(event), text(event, "tool_use_id"), toolDetail(event));
+                        sink.onAction(toolName(event), text(event, "tool_use_id"), toolDetail(event),
+                                threadId(event));
                         registerPermissionAsk(event, pendingAsks, sink);
                     } else if ("user.tool_confirmation".equals(type)) {
                         // Décision vue dans le flux (postée par nous, par une autre réplique, ou par
@@ -412,7 +413,8 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
                     } else if ("agent.tool_result".equals(type) || "agent.mcp_tool_result".equals(type)) {
                         // Sortie de la commande (F-30 SF-30-01) : c'est elle qui fait le rendu terminal.
                         sink.onActionResult(toolName(event), text(event, "tool_use_id"),
-                                truncate(extractToolOutput(event), agentProperties.maxToolOutputChars()), isToolError(event));
+                                truncate(extractToolOutput(event), agentProperties.maxToolOutputChars()),
+                                isToolError(event), threadId(event));
                     } else if ("session.status_running".equals(type)) {
                         sink.onStatus("running");
                     } else if ("session.status_idle".equals(type)) {
@@ -880,6 +882,24 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * Fil d'exécution dont vient un event d'outil (F-35 / SF-35-02) : {@code thread_id}, avec repli sur
+     * {@code thread}. Un run séquentiel n'en porte aucun et renvoie {@code null} — c'est le cas de
+     * tous les runs d'avant F-35, dont l'affichage ne change donc pas.
+     *
+     * <p>Chaîne <b>opaque</b> : elle sert uniquement à distinguer les fils entre eux, jamais à
+     * déduire un ordre ou une hiérarchie, et n'est jamais journalisée.</p>
+     */
+    private static String threadId(JsonNode event) {
+        String id = text(event, "thread_id");
+        if (id == null || id.isBlank()) {
+            // Repli : le fil peut être porté par un objet imbriqué plutôt que par un identifiant nu.
+            JsonNode thread = event == null ? null : event.get("thread");
+            id = thread != null && thread.isObject() ? text(thread, "id") : text(event, "thread");
+        }
+        return id == null || id.isBlank() ? null : id;
     }
 
     /**

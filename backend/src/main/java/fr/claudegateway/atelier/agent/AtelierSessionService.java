@@ -239,16 +239,29 @@ public class AtelierSessionService {
                 sink.onAction(tool, detail);
             }
 
+            // Les deux arités sont surchargées : la variante sans fil reste le chemin nominal d'un
+            // run séquentiel, et n'a pas à traverser une délégation pour être enregistrée.
             @Override
             public void onAction(String tool, String toolUseId, String detail) {
-                transcript.addCommand(tool, toolUseId, detail);
-                sink.onAction(tool, toolUseId, detail);
+                onAction(tool, toolUseId, detail, null);
+            }
+
+            @Override
+            public void onAction(String tool, String toolUseId, String detail, String threadId) {
+                transcript.addCommand(tool, toolUseId, detail, threadId);
+                sink.onAction(tool, toolUseId, detail, threadId);
             }
 
             @Override
             public void onActionResult(String tool, String toolUseId, String output, boolean error) {
-                transcript.addOutput(tool, toolUseId, output, error);
-                sink.onActionResult(tool, toolUseId, output, error);
+                onActionResult(tool, toolUseId, output, error, null);
+            }
+
+            @Override
+            public void onActionResult(String tool, String toolUseId, String output, boolean error,
+                    String threadId) {
+                transcript.addOutput(tool, toolUseId, output, error, threadId);
+                sink.onActionResult(tool, toolUseId, output, error, threadId);
             }
 
             @Override

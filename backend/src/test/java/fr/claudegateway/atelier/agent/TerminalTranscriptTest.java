@@ -1,6 +1,7 @@
 package fr.claudegateway.atelier.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import org.junit.jupiter.api.Test;
 
@@ -79,5 +80,52 @@ class TerminalTranscriptTest {
     @Test
     void anEmptyTranscriptHasNothingToPersist() {
         assertThat(new TerminalTranscript().isEmpty()).isTrue();
+    }
+
+    // --- F-35 / SF-35-02 : provenance des sous-tâches ---
+
+    @Test
+    void aCommandKeepsTheThreadItCameFromWhenItsOutputArrives() {
+        TerminalTranscript transcript = new TerminalTranscript();
+        transcript.addCommand("bash", "tu_1", "npm test", "thr_a");
+        transcript.addOutput("bash", "tu_1", "12 passing", false, "thr_a");
+
+        assertThat(transcript.bounded(10_000).blocks())
+                .extracting(TerminalTranscript.Block::command, TerminalTranscript.Block::threadId)
+                .containsExactly(tuple("npm test", "thr_a"));
+    }
+
+    @Test
+    void anOrphanOutputKeepsTheThreadItCameFrom() {
+        TerminalTranscript transcript = new TerminalTranscript();
+        transcript.addOutput("bash", "inconnu", "orpheline", false, "thr_b");
+
+        assertThat(transcript.bounded(10_000).blocks())
+                .extracting(TerminalTranscript.Block::threadId)
+                .containsExactly("thr_b");
+    }
+
+    @Test
+    void aCommandWithoutAThreadAdoptsTheOneCarriedByItsOutput() {
+        // Mieux vaut un fil tardif qu'aucun : sans cela, le bloc resterait rattaché au coordinateur.
+        TerminalTranscript transcript = new TerminalTranscript();
+        transcript.addCommand("bash", "tu_1", "npm test", null);
+        transcript.addOutput("bash", "tu_1", "12 passing", false, "thr_c");
+
+        assertThat(transcript.bounded(10_000).blocks())
+                .extracting(TerminalTranscript.Block::threadId)
+                .containsExactly("thr_c");
+    }
+
+    @Test
+    void aSequentialRunLeavesEveryBlockWithoutAThread() {
+        // Comportement d'avant F-35 : les surcharges historiques restent sans fil.
+        TerminalTranscript transcript = new TerminalTranscript();
+        transcript.addCommand("bash", "tu_1", "npm test");
+        transcript.addOutput("bash", "tu_1", "12 passing", false);
+
+        assertThat(transcript.bounded(10_000).blocks())
+                .extracting(TerminalTranscript.Block::threadId)
+                .containsOnlyNulls();
     }
 }
