@@ -57,7 +57,7 @@ class AnthropicManagedAgentProviderTest {
         // pollDelay = 0 : polling déterministe sans Thread.sleep réel.
         AtelierAgentProperties agentProperties = new AtelierAgentProperties(
                 false, null, null, null, null, null, null, null, Duration.ZERO, null, null, null,
-                confirmTimeout);
+                confirmTimeout, false, null, null);
         RestClient.Builder builder = RestClient.builder();
         server = MockRestServiceServer.bindTo(builder).ignoreExpectOrder(true).build();
         provider = new AnthropicManagedAgentProvider(properties, agentProperties, builder);
@@ -218,6 +218,60 @@ class AnthropicManagedAgentProviderTest {
 
         provider.createSession("agent_456", "env_123", List.of(), null, null,
                 SessionPermissions.ALLOW_ALL);
+
+        server.verify();
+    }
+
+    // ------------------------ F-35 / SF-35-01 : roster de sous-agents
+
+    @Test
+    void createSessionWithDelegationDeclaresACoordinatorRosterOfSelfCopies() {
+        // F-35 / SF-35-01 : le roster est plafonné côté Gateway — c'est lui qui borne le pire cas de
+        // coût, puisque chaque sous-agent consomme sa propre session de bac à sable facturée.
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.agent.type").value("agent_with_overrides"))
+                .andExpect(jsonPath("$.agent.id").value("agent_456"))
+                .andExpect(jsonPath("$.agent.multiagent.type").value("coordinator"))
+                .andExpect(jsonPath("$.agent.multiagent.agents.length()").value(3))
+                .andExpect(jsonPath("$.agent.multiagent.agents[0].type").value("self"))
+                .andExpect(jsonPath("$.agent.multiagent.agents[2].type").value("self"))
+                .andRespond(withSuccess("{\"id\":\"sess_ma\"}", MediaType.APPLICATION_JSON));
+
+        ManagedSession session = provider.createSession("agent_456", "env_123", List.of(), null, null,
+                SessionPermissions.ALLOW_ALL, null, DelegationPolicy.of(true, 3));
+
+        assertThat(session.id()).isEqualTo("sess_ma");
+        server.verify();
+    }
+
+    @Test
+    void createSessionWithoutDelegationKeepsThePlainAgentIdentifier() {
+        // Flag fermé : corps strictement identique à celui d'avant F-35 (aucune régression).
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.agent").value("agent_456"))
+                .andRespond(withSuccess("{\"id\":\"sess_seq\"}", MediaType.APPLICATION_JSON));
+
+        provider.createSession("agent_456", "env_123", List.of(), null, null,
+                SessionPermissions.ALLOW_ALL, null, DelegationPolicy.DISABLED);
+
+        server.verify();
+    }
+
+    @Test
+    void createSessionWithDelegationAndOtherOverridesCarriesThemAllInTheSameObject() {
+        // Délégation, prompt système et politique d'outils vivent dans le MÊME agent_with_overrides.
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.agent.type").value("agent_with_overrides"))
+                .andExpect(jsonPath("$.agent.system").value("prompt plateforme + projet"))
+                .andExpect(jsonPath("$.agent.tools[0].configs[0].name").value("bash"))
+                .andExpect(jsonPath("$.agent.multiagent.agents.length()").value(2))
+                .andRespond(withSuccess("{\"id\":\"sess_mix\"}", MediaType.APPLICATION_JSON));
+
+        provider.createSession("agent_456", "env_123", List.of(), null, "prompt plateforme + projet",
+                SessionPermissions.ASK_BEFORE_SHELL, null, DelegationPolicy.of(true, 2));
 
         server.verify();
     }

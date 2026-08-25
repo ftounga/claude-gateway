@@ -32,6 +32,17 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                             session (défaut {@code 20000}, F-34 SF-34-01) : au-delà le contenu est
  *                             tronqué avec mention — un fichier démesuré consommerait à chaque
  *                             session le contexte utile au travail
+ * @param subagentsEnabled     autorise l'agent à <b>déléguer</b> des sous-tâches à des copies de
+ *                             lui-même (défaut {@code false}, F-35 SF-35-01) : chaque sous-agent
+ *                             consomme sa propre session de bac à sable facturée, on n'ouvre donc pas
+ *                             ce robinet sans l'avoir observé
+ * @param maxSubagents         plafond du nombre de sous-agents par session (défaut {@code 3},
+ *                             F-35 SF-35-01) : borne le pire cas de coût à un multiple connu, plutôt
+ *                             qu'à un nombre décidé par le modèle
+ * @param subagentHeadroomTokens marge de quota exigée <b>par session déléguée</b> avant d'autoriser
+ *                             la délégation (défaut {@code 50000}, F-35 SF-35-01) : la marge totale
+ *                             demandée vaut {@code subagentHeadroomTokens × (maxSubagents + 1)} — le
+ *                             coordinateur plus ses sous-agents
  */
 @ConfigurationProperties(prefix = "app.atelier.agent")
 public record AtelierAgentProperties(
@@ -47,7 +58,10 @@ public record AtelierAgentProperties(
         Integer maxToolOutputChars,
         Integer maxTranscriptChars,
         Integer maxInstructionsChars,
-        Duration confirmTimeout) {
+        Duration confirmTimeout,
+        boolean subagentsEnabled,
+        Integer maxSubagents,
+        Long subagentHeadroomTokens) {
 
     public AtelierAgentProperties {
         if (environmentName == null || environmentName.isBlank()) {
@@ -84,6 +98,13 @@ public record AtelierAgentProperties(
             // Deux minutes : le temps de lire une commande et de décider, sans laisser un bac à sable
             // réservé attendre indéfiniment (il est facturé pendant ce temps).
             confirmTimeout = Duration.ofMinutes(2);
+        }
+        if (maxSubagents == null || maxSubagents <= 0) {
+            // Trois : le gain de parallélisme est déjà là, et le pire cas de coût reste lisible.
+            maxSubagents = 3;
+        }
+        if (subagentHeadroomTokens == null || subagentHeadroomTokens <= 0) {
+            subagentHeadroomTokens = 50_000L;
         }
         if (pollDelay == null || pollDelay.isNegative()) {
             // 0 explicitement autorisé (tests déterministes sans sleep réel).

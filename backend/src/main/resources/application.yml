@@ -88,6 +88,14 @@ app:
       # delai la commande est REFUSEE : le silence ne vaut pas autorisation. Le bac a sable reste
       # reserve (et facture) pendant l'attente, d'ou une borne courte.
       confirm-timeout: ${APP_ATELIER_AGENT_CONFIRM_TIMEOUT:PT2M}
+      # Delegation de sous-taches (F-35 SF-35-01). Flag OFF par defaut : chaque sous-agent consomme
+      # SA PROPRE session de bac a sable facturee, et le surcompteur (SF-28-12) constate le
+      # depassement au lieu de l'empecher. Le plafond borne le pire cas a un multiple connu ; la marge
+      # exigee vaut headroom x (max-subagents + 1) et, si elle n'est pas la, la session s'ouvre sans
+      # delegation (jamais un refus : l'utilisateur n'a pas demande a deleguer).
+      subagents-enabled: ${APP_ATELIER_AGENT_SUBAGENTS_ENABLED:false}
+      max-subagents: ${APP_ATELIER_AGENT_MAX_SUBAGENTS:3}
+      subagent-headroom-tokens: ${APP_ATELIER_AGENT_SUBAGENT_HEADROOM:50000}
   ocr:
     # Pipeline OCR (F-05). Fournisseur `stub` par défaut (dev/tests, sans AWS) ; `textract` en cluster.
     # Liste blanche MIME, plafond de taille et routage sync/async : décisions réversibles (config).

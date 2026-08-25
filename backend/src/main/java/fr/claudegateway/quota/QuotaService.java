@@ -60,6 +60,28 @@ public class QuotaService {
     }
 
     /**
+     * Dit s'il reste au moins {@code tokens} jetons disponibles sur la période courante
+     * (F-35 / SF-35-01). Contrôle <b>de marge</b>, distinct de {@link #assertWithinQuota} : il ne
+     * refuse rien, il répond — l'appelant s'en sert pour décider s'il peut engager une dépense
+     * <b>multipliée</b> (une session déléguée coûte autant de bacs à sable qu'elle a de sous-agents).
+     *
+     * <p>Ne jamais l'utiliser pour bloquer un run ordinaire : un utilisateur dont la marge est mince
+     * a toujours droit à ce qu'il a payé. C'est la <b>capacité coûteuse</b> qu'on lui retire, pas le
+     * service.</p>
+     *
+     * @param userId utilisateur authentifié (contexte de sécurité)
+     * @param tokens marge exigée ; {@code <= 0} vaut « aucune exigence » (toujours vrai)
+     * @return vrai si le restant de la période couvre la marge demandée
+     */
+    @Transactional(readOnly = true)
+    public boolean hasRemainingTokens(UUID userId, long tokens) {
+        if (tokens <= 0) {
+            return true;
+        }
+        return effectiveQuota(userId) - currentPeriodUsage(userId) >= tokens;
+    }
+
+    /**
      * Ajoute la consommation d'un appel au compteur de la période courante de l'utilisateur.
      * Idempotence structurelle : une seule ligne par ({@code user_id}, période) grâce à la contrainte
      * d'unicité ; une création concurrente est rattrapée par relecture.

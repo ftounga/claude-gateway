@@ -377,8 +377,11 @@ public class AtelierSessionService {
         // Politique d'outils du projet (F-33 / SF-33-01), lue sur le workspace DÉJÀ possédé : elle est
         // fixée pour toute la vie de la session, une bascule ultérieure ne change pas celle-ci.
         SessionPermissions permissions = SessionPermissions.of(workspace.isAgentAskBeforeBash());
+        // Délégation (F-35 / SF-35-01) : fixée elle aussi à l'ouverture, et seulement si la marge de
+        // quota couvre le pire cas — un run délégué coûte plusieurs bacs à sable, pas un.
+        DelegationPolicy delegation = resolveDelegation(userId);
         if (workspace.isGit()) {
-            return openGitSession(userId, config, workspace, system, permissions);
+            return openGitSession(userId, config, workspace, system, permissions, delegation);
         }
         List<String> paths = workspaceService.tree(userId, workspaceId);
         int max = properties.maxSessionFiles();
@@ -394,9 +397,38 @@ public class AtelierSessionService {
             mounts.add(new FileMount(fileId, WORKSPACE_MOUNT + path));
         }
         ManagedSession session = provider.createSession(
-                config.getAgentId(), config.getEnvironmentId(), mounts, null, system, permissions);
+                config.getAgentId(), config.getEnvironmentId(), mounts, null, system, permissions, null,
+                delegation);
         markSessionOpened(workspace, session.id());
         return session.id();
+    }
+
+    /**
+     * Politique de délégation à appliquer à la session qui s'ouvre (F-35 / SF-35-01).
+     *
+     * <p>Deux verrous, dans cet ordre. Le <b>flag serveur</b> d'abord : désactivé par défaut, il tient
+     * fermé un robinet de coût qu'on n'a pas encore observé en production. Puis le <b>pré-vol de quota
+     * renforcé</b> : déléguer multiplie les sessions de bac à sable facturées, et le surcompteur
+     * (SF-28-12) constate le dépassement au lieu de l'empêcher — il faut donc que la marge restante
+     * couvre le pire cas <b>avant</b> d'engager quoi que ce soit.</p>
+     *
+     * <p>Marge insuffisante ⇒ la session s'ouvre <b>sans délégation</b>, jamais un refus : c'est un
+     * réglage serveur, l'utilisateur n'a rien demandé, et lui retirer l'Atelier pour une capacité
+     * qu'il n'a pas réclamée serait une régression. On lui retire la capacité coûteuse, pas le
+     * service.</p>
+     */
+    private DelegationPolicy resolveDelegation(UUID userId) {
+        if (!properties.subagentsEnabled()) {
+            return DelegationPolicy.DISABLED;
+        }
+        int maxSubagents = properties.maxSubagents();
+        // Le coordinateur compte lui aussi : d'où le « + 1 ».
+        long headroom = properties.subagentHeadroomTokens() * (maxSubagents + 1L);
+        if (!quotaService.hasRemainingTokens(userId, headroom)) {
+            log.debug("Délégation retirée pour cette session : marge de quota insuffisante.");
+            return DelegationPolicy.DISABLED;
+        }
+        return DelegationPolicy.of(true, maxSubagents);
     }
 
     /**
@@ -436,7 +468,7 @@ public class AtelierSessionService {
      *                                  posé) — le workspace survit, c'est le montage qui échoue
      */
     private String openGitSession(UUID userId, AtelierAgentConfig config, Workspace workspace,
-            String systemOverride, SessionPermissions permissions) {
+            String systemOverride, SessionPermissions permissions, DelegationPolicy delegation) {
         String token = gitTokenService.resolveToken(userId)
                 .orElseThrow(() -> new GitTokenMissingException(
                         "Aucun jeton GitHub enregistré : ajoutez-en un dans vos réglages pour ouvrir ce projet."));
@@ -448,7 +480,7 @@ public class AtelierSessionService {
         McpAccess mcpAccess = mcpVaultService.resolveAccess(userId).orElse(null);
         ManagedSession session = provider.createSession(
                 config.getAgentId(), config.getEnvironmentId(), List.of(), repository, systemOverride,
-                permissions, mcpAccess);
+                permissions, mcpAccess, delegation);
         markSessionOpened(workspace, session.id());
         return session.id();
     }

@@ -198,7 +198,7 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
     @Override
     public ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
             RepositoryMount repository, String systemOverride, SessionPermissions permissions,
-            McpAccess mcpAccess) {
+            McpAccess mcpAccess, DelegationPolicy delegation) {
         List<Map<String, Object>> mounts = new ArrayList<>();
         for (FileMount mount : resources) {
             mounts.add(Map.of(
@@ -217,7 +217,7 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
                     "checkout", Map.of("type", "branch", "name", repository.branch())));
         }
         Map<String, Object> body = new java.util.LinkedHashMap<>();
-        body.put("agent", agentReference(agentId, systemOverride, permissions, mcpAccess));
+        body.put("agent", agentReference(agentId, systemOverride, permissions, mcpAccess, delegation));
         body.put("environment_id", environmentId);
         body.put("resources", mounts);
         if (mcpAccess != null) {
@@ -251,14 +251,19 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
      *       et un projet d'archive n'en hérite donc jamais. La déclaration s'accompagne
      *       obligatoirement d'une entrée {@code mcp_toolset} dans {@code tools} — sans elle, le
      *       serveur est connecté mais aucun de ses outils n'est offert à l'agent.</li>
+     *   <li>{@code multiagent} fait de la session un <b>coordinateur</b> pouvant confier des
+     *       sous-tâches à des copies d'elle-même (F-35 / SF-35-01). Le roster est plafonné par la
+     *       politique : c'est lui qui borne le pire cas de coût, puisque chaque sous-agent consomme
+     *       sa propre session de bac à sable facturée.</li>
      * </ul>
      */
     private static Object agentReference(String agentId, String systemOverride,
-            SessionPermissions permissions, McpAccess mcpAccess) {
+            SessionPermissions permissions, McpAccess mcpAccess, DelegationPolicy delegation) {
         boolean hasSystem = systemOverride != null && !systemOverride.isBlank();
         boolean hasPolicy = permissions != null && permissions.askBeforeShellCommands();
         boolean hasMcp = mcpAccess != null;
-        if (!hasSystem && !hasPolicy && !hasMcp) {
+        boolean hasDelegation = delegation != null && delegation.enabled();
+        if (!hasSystem && !hasPolicy && !hasMcp && !hasDelegation) {
             return agentId;
         }
         Map<String, Object> reference = new java.util.LinkedHashMap<>();
@@ -283,7 +288,25 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
                     "name", mcpAccess.serverName(),
                     "url", mcpAccess.serverUrl())));
         }
+        if (hasDelegation) {
+            reference.put("multiagent", Map.of(
+                    "type", "coordinator",
+                    "agents", selfRoster(delegation.maxSubagents())));
+        }
         return reference;
+    }
+
+    /**
+     * Roster de sous-agents (F-35 / SF-35-01) : {@code n} copies de l'agent courant, et rien d'autre.
+     * Pas d'agent nommé ni d'{@code advisor} sur un autre modèle — il n'y aurait rien à provisionner
+     * ni à versionner, et le gain de parallélisme est déjà là (D2 du cadrage).
+     */
+    private static List<Map<String, Object>> selfRoster(int size) {
+        List<Map<String, Object>> roster = new ArrayList<>();
+        for (int i = 0; i < size; i++) {
+            roster.add(Map.of("type", "self"));
+        }
+        return roster;
     }
 
     /** Toolset complet, tel qu'il est provisionné sur l'agent : aucune politique particulière. */

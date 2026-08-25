@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.Clock;
@@ -236,5 +237,33 @@ class QuotaServiceTest {
 
         assertThatThrownBy(() -> quotaService.assertWithinSandboxLimit(alice))
                 .isInstanceOf(SandboxLimitExceededException.class);
+    }
+
+    // --- F-35 / SF-35-01 : marge de quota exigée avant d'engager une dépense multipliée ---
+
+    @Test
+    void hasRemainingTokensIsTrueWhenTheMarginFits() {
+        stubQuota(1_000L);
+        when(usageCounterRepository.findByUserIdAndPeriodStart(alice, expectedPeriod))
+                .thenReturn(Optional.of(counter(500, 200))); // restant = 300
+
+        assertThat(quotaService.hasRemainingTokens(alice, 300L)).isTrue();
+    }
+
+    @Test
+    void hasRemainingTokensIsFalseWhenTheMarginDoesNotFit() {
+        stubQuota(1_000L);
+        when(usageCounterRepository.findByUserIdAndPeriodStart(alice, expectedPeriod))
+                .thenReturn(Optional.of(counter(500, 200))); // restant = 300
+
+        assertThat(quotaService.hasRemainingTokens(alice, 301L)).isFalse();
+    }
+
+    @Test
+    void hasRemainingTokensRequiringNothingIsAlwaysTrueAndReadsNoCounter() {
+        assertThat(quotaService.hasRemainingTokens(alice, 0L)).isTrue();
+        assertThat(quotaService.hasRemainingTokens(alice, -10L)).isTrue();
+
+        verifyNoInteractions(usageCounterRepository);
     }
 }

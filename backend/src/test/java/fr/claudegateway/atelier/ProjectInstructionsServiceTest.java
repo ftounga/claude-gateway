@@ -37,7 +37,7 @@ class ProjectInstructionsServiceTest {
 
     private static AtelierAgentProperties props(Integer maxInstructionsChars) {
         return new AtelierAgentProperties(true, null, null, null, null, null, null, null, null, null,
-                null, maxInstructionsChars, null);
+                null, maxInstructionsChars, null, false, null, null);
     }
 
     @BeforeEach

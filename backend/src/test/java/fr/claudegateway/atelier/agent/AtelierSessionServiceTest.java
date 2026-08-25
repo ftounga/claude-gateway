@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
@@ -68,12 +69,18 @@ class AtelierSessionServiceTest {
 
     private AtelierAgentProperties enabled() {
         return new AtelierAgentProperties(true, null, null, null, null, null, null, null, null, null,
-                null, null, null);
+                null, null, null, false, null, null);
     }
 
     private AtelierAgentProperties disabled() {
         return new AtelierAgentProperties(false, null, null, null, null, null, null, null, null, null,
-                null, null, null);
+                null, null, null, false, null, null);
+    }
+
+    /** Atelier actif avec la delegation ouverte (F-35 SF-35-01) : plafond et marge explicites. */
+    private AtelierAgentProperties withSubagents(int maxSubagents, long headroomTokens) {
+        return new AtelierAgentProperties(true, null, null, null, null, null, null, null, null, null,
+                null, null, null, true, maxSubagents, headroomTokens);
     }
 
     private AtelierAgentConfig config() {
@@ -104,7 +111,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("src/a.txt"));
         when(workspaceService.readFile(USER, WORKSPACE, "src/a.txt")).thenReturn("class A {}");
         when(provider.uploadFile(eq("src_a.txt"), any())).thenReturn("file_in");
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
         when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
@@ -123,7 +130,7 @@ class AtelierSessionServiceTest {
 
         // Chemins de montage : uniquement sous /workspace/, à partir de l'arbo du user.
         ArgumentCaptor<List<FileMount>> mountsCaptor = ArgumentCaptor.forClass(List.class);
-        verify(provider).createSession(eq("agent_1"), eq("env_1"), mountsCaptor.capture(), any(), any(), any());
+        verify(provider).createSession(eq("agent_1"), eq("env_1"), mountsCaptor.capture(), any(), any(), any(), any(), any());
         assertThat(mountsCaptor.getValue()).containsExactly(new FileMount("file_in", "/workspace/src/a.txt"));
 
         // Sorties réécrites via WorkspaceService (isolation + garde-fous Phase 1).
@@ -137,7 +144,7 @@ class AtelierSessionServiceTest {
         order.verify(workspaceService).requireOwned(USER, WORKSPACE);
         order.verify(workspaceService).tree(USER, WORKSPACE);
         order.verify(provider).uploadFile(eq("src_a.txt"), any());
-        order.verify(provider).createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any());
+        order.verify(provider).createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any());
         order.verify(provider).sendUserMessage("sess_1", "Corrige le bug.");
         order.verify(provider).awaitCompletion(eq("sess_1"), any(), anyInt(), any());
         order.verify(provider).listOutputs("sess_1");
@@ -152,7 +159,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("src/a.txt"));
         when(workspaceService.readFile(USER, WORKSPACE, "src/a.txt")).thenReturn("class A {}");
         when(provider.uploadFile(eq("src_a.txt"), any())).thenReturn("file_in");
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
         // Le provider relaie des events au listener passé (bridge) puis renvoie la réponse agrégée.
         when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(inv -> {
@@ -211,7 +218,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("a.txt"));
         when(workspaceService.readFile(USER, WORKSPACE, "a.txt")).thenReturn("x");
         when(provider.uploadFile(eq("a.txt"), any())).thenReturn("file_in");
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
         when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
                 .thenThrow(new AgentProviderException("boom"));
@@ -277,7 +284,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("a.txt"));
         when(workspaceService.readFile(USER, WORKSPACE, "a.txt")).thenReturn("x");
         when(provider.uploadFile(eq("a.txt"), any())).thenReturn("file_in");
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
         when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
                 .thenThrow(new AgentProviderException("boom"));
@@ -295,7 +302,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("a.txt"));
         when(workspaceService.readFile(USER, WORKSPACE, "a.txt")).thenReturn("x");
         when(provider.uploadFile(eq("a.txt"), any())).thenReturn("file_in");
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
         when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
                 .thenThrow(new AgentSessionTimeoutException("timeout"));
@@ -390,7 +397,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("a.txt"));
         when(workspaceService.readFile(USER, WORKSPACE, "a.txt")).thenReturn("x");
         when(provider.uploadFile(eq("a.txt"), any())).thenReturn("file_in");
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
         when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
@@ -419,7 +426,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("a.txt"));
         when(workspaceService.readFile(USER, WORKSPACE, "a.txt")).thenReturn("x");
         when(provider.uploadFile(eq("a.txt"), any())).thenReturn("file_in");
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
         when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
@@ -430,7 +437,7 @@ class AtelierSessionServiceTest {
         service.runTask(USER, WORKSPACE, "npm test");
 
         // Une seule session ouverte, et aucun remontage au second tour.
-        verify(provider, times(1)).createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any());
+        verify(provider, times(1)).createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any());
         verify(provider, times(1)).uploadFile(eq("a.txt"), any());
         verify(provider).sendUserMessage("sess_1", "npm install");
         verify(provider).sendUserMessage("sess_1", "npm test");
@@ -448,7 +455,7 @@ class AtelierSessionServiceTest {
         // La session persistée n'est plus jouable (expirée / inconnue côté fournisseur).
         doThrow(new AgentProviderException("session inconnue"))
                 .when(provider).sendUserMessage(eq("sess_morte"), any());
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_neuve"));
         when(provider.awaitCompletion(eq("sess_neuve"), any(), anyInt(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
@@ -458,7 +465,7 @@ class AtelierSessionServiceTest {
 
         assertThat(result.reply()).isEqualTo("Terminé.");
         verify(provider).sendUserMessage("sess_neuve", "go");
-        verify(provider, times(1)).createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any());
+        verify(provider, times(1)).createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any());
         assertThat(workspace.getAgentSessionId()).isEqualTo("sess_neuve");
     }
 
@@ -468,14 +475,14 @@ class AtelierSessionServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_morte"));
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_neuve"));
         doThrow(new AgentProviderException("boom")).when(provider).sendUserMessage(any(), any());
 
         assertThatThrownBy(() -> service(enabled()).runTask(USER, WORKSPACE, "go"))
                 .isInstanceOf(AgentProviderException.class);
 
-        verify(provider, times(1)).createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any());
+        verify(provider, times(1)).createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -486,7 +493,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
         when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
@@ -515,7 +522,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
         when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
@@ -539,7 +546,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("a.txt"));
         when(workspaceService.readFile(USER, WORKSPACE, "a.txt")).thenReturn("x");
         when(provider.uploadFile(eq("a.txt"), any())).thenReturn("file_in");
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
         when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
@@ -614,7 +621,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
         when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
@@ -659,7 +666,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
         when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(inv -> {
             ManagedEventListener sink = inv.getArgument(3);
@@ -690,7 +697,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
         when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
                 .thenThrow(new AgentProviderException("boom"));
@@ -741,7 +748,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(gitWs());
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_git"));
         when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
@@ -752,7 +759,7 @@ class AtelierSessionServiceTest {
         ArgumentCaptor<RepositoryMount> repo = ArgumentCaptor.forClass(RepositoryMount.class);
         ArgumentCaptor<List<FileMount>> files = ArgumentCaptor.forClass(List.class);
         verify(provider).createSession(eq("agent_1"), eq("env_1"), files.capture(), repo.capture(), any(),
-                any(), any());
+                any(), any(), any());
         assertThat(files.getValue()).isEmpty();
         assertThat(repo.getValue().url()).isEqualTo("https://github.com/octocat/hello");
         assertThat(repo.getValue().branch()).isEqualTo("main");
@@ -772,7 +779,7 @@ class AtelierSessionServiceTest {
         when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
         when(mcpVaultService.resolveAccess(USER)).thenReturn(
                 Optional.of(new McpAccess("vlt_1", "github", "https://api.githubcopilot.com/mcp/")));
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_git"));
         when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
@@ -782,7 +789,7 @@ class AtelierSessionServiceTest {
 
         ArgumentCaptor<McpAccess> mcp = ArgumentCaptor.forClass(McpAccess.class);
         verify(provider).createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(),
-                mcp.capture());
+                mcp.capture(), any());
         assertThat(mcp.getValue().vaultId()).isEqualTo("vlt_1");
         assertThat(mcp.getValue().serverName()).isEqualTo("github");
     }
@@ -795,7 +802,7 @@ class AtelierSessionServiceTest {
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
         when(mcpVaultService.resolveAccess(USER)).thenReturn(Optional.empty());
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_git"));
         when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
@@ -805,7 +812,7 @@ class AtelierSessionServiceTest {
 
         ArgumentCaptor<McpAccess> mcp = ArgumentCaptor.forClass(McpAccess.class);
         verify(provider).createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(),
-                mcp.capture());
+                mcp.capture(), any());
         assertThat(mcp.getValue()).isNull();
     }
 
@@ -840,6 +847,7 @@ class AtelierSessionServiceTest {
 
         verify(provider, never()).createSession(any(), any(), anyList(), any(), any(), any());
         verify(provider, never()).createSession(any(), any(), anyList(), any(), any(), any(), any());
+        verify(provider, never()).createSession(any(), any(), anyList(), any(), any(), any(), any(), any());
     }
 
     // ------------------------ F-31 / SF-31-04 : tour dans la session existante uniquement
@@ -855,6 +863,7 @@ class AtelierSessionServiceTest {
         // Une session neuve repartirait d'un clone vierge : elle publierait une branche vide.
         verify(provider, never()).createSession(any(), any(), anyList(), any(), any(), any());
         verify(provider, never()).createSession(any(), any(), anyList(), any(), any(), any(), any());
+        verify(provider, never()).createSession(any(), any(), anyList(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -873,6 +882,7 @@ class AtelierSessionServiceTest {
         verify(provider).sendUserMessage("sess_git", "publie");
         verify(provider, never()).createSession(any(), any(), anyList(), any(), any(), any());
         verify(provider, never()).createSession(any(), any(), anyList(), any(), any(), any(), any());
+        verify(provider, never()).createSession(any(), any(), anyList(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -890,6 +900,7 @@ class AtelierSessionServiceTest {
         assertThat(workspace.getAgentSessionId()).isNull();
         verify(provider, never()).createSession(any(), any(), anyList(), any(), any(), any());
         verify(provider, never()).createSession(any(), any(), anyList(), any(), any(), any(), any());
+        verify(provider, never()).createSession(any(), any(), anyList(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -1063,7 +1074,8 @@ class AtelierSessionServiceTest {
     /** Ouvre une session sur un workspace d'archive vide et renvoie la surcharge de prompt reçue. */
     private String systemSentAtSessionOpening() {
         ArgumentCaptor<String> system = ArgumentCaptor.forClass(String.class);
-        verify(provider).createSession(eq("agent_1"), eq("env_1"), anyList(), any(), system.capture(), any());
+        verify(provider).createSession(eq("agent_1"), eq("env_1"), anyList(), any(), system.capture(), any(),
+                any(), any());
         return system.getValue();
     }
 
@@ -1075,7 +1087,7 @@ class AtelierSessionServiceTest {
         when(instructionsService.resolve(eq(USER), any())).thenReturn(Optional.of(
                 new fr.claudegateway.atelier.ProjectInstructions(
                         "CLAUDE.md", "Les tests se lancent avec `make test`.", false)));
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
         when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
@@ -1108,7 +1120,7 @@ class AtelierSessionServiceTest {
         when(instructionsService.resolve(eq(USER), any())).thenReturn(Optional.of(
                 new fr.claudegateway.atelier.ProjectInstructions(
                         ".atelier/instructions.md", "Ne touche jamais au dossier legacy/.", false)));
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_git"));
         when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
@@ -1119,7 +1131,7 @@ class AtelierSessionServiceTest {
         ArgumentCaptor<RepositoryMount> repo = ArgumentCaptor.forClass(RepositoryMount.class);
         ArgumentCaptor<String> system = ArgumentCaptor.forClass(String.class);
         verify(provider).createSession(
-                eq("agent_1"), eq("env_1"), anyList(), repo.capture(), system.capture(), any(), any());
+                eq("agent_1"), eq("env_1"), anyList(), repo.capture(), system.capture(), any(), any(), any());
         assertThat(repo.getValue().url()).isEqualTo("https://github.com/octocat/hello");
         assertThat(system.getValue()).contains("Ne touche jamais au dossier legacy/.");
     }
@@ -1144,7 +1156,7 @@ class AtelierSessionServiceTest {
     private SessionPermissions permissionsSentAtSessionOpening() {
         ArgumentCaptor<SessionPermissions> permissions = ArgumentCaptor.forClass(SessionPermissions.class);
         verify(provider).createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(),
-                permissions.capture());
+                permissions.capture(), any(), any());
         return permissions.getValue();
     }
 
@@ -1170,7 +1182,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(askingWs());
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
         when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
@@ -1188,7 +1200,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
-        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any()))
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_git"));
         when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
@@ -1199,7 +1211,7 @@ class AtelierSessionServiceTest {
         ArgumentCaptor<RepositoryMount> repo = ArgumentCaptor.forClass(RepositoryMount.class);
         ArgumentCaptor<SessionPermissions> permissions = ArgumentCaptor.forClass(SessionPermissions.class);
         verify(provider).createSession(eq("agent_1"), eq("env_1"), anyList(), repo.capture(), any(),
-                permissions.capture(), any());
+                permissions.capture(), any(), any());
         assertThat(repo.getValue().url()).isEqualTo("https://github.com/octocat/hello");
         assertThat(permissions.getValue().askBeforeShellCommands()).isTrue();
     }
@@ -1304,5 +1316,83 @@ class AtelierSessionServiceTest {
         service(enabled()).runTaskStreaming(USER, WORKSPACE, "go", listener);
 
         assertThat(relayed).containsExactly("ask:bash:sevt_1:rm -rf build", "resolved:sevt_1:deny");
+    }
+
+    // --- F-35 SF-35-01 : délégation derrière flag, plafonnée et pré-volée ---
+
+    @Test
+    void subagentsDisabledOpensTheSessionWithoutAnyDelegation() {
+        stubSimpleRun();
+
+        service(enabled()).runTask(USER, WORKSPACE, "audite le projet");
+
+        assertThat(capturedDelegation()).isEqualTo(DelegationPolicy.DISABLED);
+        // Aucune marge n'est même demandée quand le flag est fermé : le quota n'est pas sollicité.
+        verify(quotaService, never()).hasRemainingTokens(any(), anyLong());
+    }
+
+    @Test
+    void subagentsEnabledWithEnoughHeadroomOpensTheSessionWithTheCappedRoster() {
+        stubSimpleRun();
+        // Marge exigée = headroom × (max + 1) = 1000 × 4 : le coordinateur compte lui aussi.
+        when(quotaService.hasRemainingTokens(USER, 4000L)).thenReturn(true);
+
+        service(withSubagents(3, 1000L)).runTask(USER, WORKSPACE, "audite le projet");
+
+        assertThat(capturedDelegation()).isEqualTo(DelegationPolicy.of(true, 3));
+    }
+
+    @Test
+    void subagentsEnabledWithoutHeadroomDegradesToASequentialRunInsteadOfRefusing() {
+        stubSimpleRun();
+        when(quotaService.hasRemainingTokens(USER, 4000L)).thenReturn(false);
+
+        AtelierSessionResult result = service(withSubagents(3, 1000L)).runTask(USER, WORKSPACE, "audite");
+
+        // Le run aboutit : c'est la capacité coûteuse qu'on retire, jamais le service.
+        assertThat(result.reply()).isEqualTo("Terminé.");
+        assertThat(capturedDelegation()).isEqualTo(DelegationPolicy.DISABLED);
+    }
+
+    @Test
+    void subagentsDelegationIsAlsoCarriedOnAGitWorkspace() {
+        Workspace workspace = ws(null);
+        workspace.setSource(fr.claudegateway.atelier.WorkspaceSource.GIT);
+        workspace.setGitRepoUrl("https://github.com/acme/demo.git");
+        workspace.setGitBranch("main");
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("ghp_secret"));
+        when(mcpVaultService.resolveAccess(USER)).thenReturn(Optional.empty());
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
+                .thenReturn(new ManagedSession("sess_1"));
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+                .thenReturn(new SessionRun("Terminé.", "end_turn"));
+        when(provider.listOutputs("sess_1")).thenReturn(List.of());
+        when(quotaService.hasRemainingTokens(USER, 4000L)).thenReturn(true);
+
+        service(withSubagents(3, 1000L)).runTask(USER, WORKSPACE, "corrige les tests");
+
+        assertThat(capturedDelegation()).isEqualTo(DelegationPolicy.of(true, 3));
+    }
+
+    /** Run minimal sur workspace d'archive : une session ouverte, aucune sortie à rapatrier. */
+    private void stubSimpleRun() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
+                .thenReturn(new ManagedSession("sess_1"));
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+                .thenReturn(new SessionRun("Terminé.", "end_turn"));
+        when(provider.listOutputs("sess_1")).thenReturn(List.of());
+    }
+
+    /** Politique de délégation effectivement transmise au provider à l'ouverture. */
+    private DelegationPolicy capturedDelegation() {
+        ArgumentCaptor<DelegationPolicy> captor = ArgumentCaptor.forClass(DelegationPolicy.class);
+        verify(provider).createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(),
+                captor.capture());
+        return captor.getValue();
     }
 }
