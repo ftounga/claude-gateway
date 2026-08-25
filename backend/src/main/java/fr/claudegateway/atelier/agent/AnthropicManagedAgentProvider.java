@@ -45,6 +45,12 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
     /** Type d'outil « agent toolset » attendu par l'API Agents (valeur documentée). */
     private static final String AGENT_TOOLSET_TYPE = "agent_toolset_20260401";
 
+    /** Type d'outil donnant accès aux outils d'un serveur MCP déclaré (F-31 / SF-31-05). */
+    static final String MCP_TOOLSET_TYPE = "mcp_toolset";
+
+    /** Type de credential MCP : un jeton bearer fixe, sans rafraîchissement (F-31 / SF-31-05). */
+    static final String MCP_STATIC_BEARER = "static_bearer";
+
     /** Nom de l'outil qui exécute des commandes : le seul soumis à validation (F-33 / SF-33-01). */
     static final String SHELL_TOOL = "bash";
 
@@ -148,8 +154,51 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
     }
 
     @Override
+    public ManagedVault createVaultWithBearer(String displayName, String serverUrl, String token) {
+        JsonNode vault = post("/v1/vaults", Map.of("display_name", displayName),
+                "création du vault de credentials");
+        String vaultId = text(vault, "id");
+        if (vaultId == null || vaultId.isBlank()) {
+            throw new AgentProviderException("Réponse sans identifiant de vault du fournisseur d'agents.");
+        }
+        // Le jeton n'apparaît QUE dans ce corps de requête : jamais dans un journal, jamais dans une
+        // réponse (le fournisseur traite `token` comme un champ write-only).
+        Map<String, Object> credential = Map.of(
+                "display_name", displayName,
+                "auth", Map.of(
+                        "type", MCP_STATIC_BEARER,
+                        "mcp_server_url", serverUrl,
+                        "token", token));
+        JsonNode created = post("/v1/vaults/" + vaultId + "/credentials", credential,
+                "dépôt de la credential MCP");
+        String credentialId = text(created, "id");
+        if (credentialId == null || credentialId.isBlank()) {
+            throw new AgentProviderException("Réponse sans identifiant de credential du fournisseur d'agents.");
+        }
+        return new ManagedVault(vaultId, credentialId);
+    }
+
+    @Override
+    public void deleteVault(String vaultId) {
+        try {
+            restClient.delete()
+                    .uri("/v1/vaults/" + vaultId)
+                    .header("x-api-key", properties.apiKey())
+                    .header("anthropic-version", properties.version())
+                    .header("anthropic-beta", MANAGED_AGENTS_BETA)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException ex) {
+            // Best-effort : le jeton a déjà été retiré de chez nous. Faire échouer le geste de
+            // l'utilisateur sur une panne du fournisseur n'y changerait rien.
+            log.warn("Suppression du vault {} impossible : {}", vaultId, ex.getClass().getSimpleName());
+        }
+    }
+
+    @Override
     public ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
-            RepositoryMount repository, String systemOverride, SessionPermissions permissions) {
+            RepositoryMount repository, String systemOverride, SessionPermissions permissions,
+            McpAccess mcpAccess) {
         List<Map<String, Object>> mounts = new ArrayList<>();
         for (FileMount mount : resources) {
             mounts.add(Map.of(
@@ -167,10 +216,14 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
                     "mount_path", repository.mountPath(),
                     "checkout", Map.of("type", "branch", "name", repository.branch())));
         }
-        Map<String, Object> body = Map.of(
-                "agent", agentReference(agentId, systemOverride, permissions),
-                "environment_id", environmentId,
-                "resources", mounts);
+        Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("agent", agentReference(agentId, systemOverride, permissions, mcpAccess));
+        body.put("environment_id", environmentId);
+        body.put("resources", mounts);
+        if (mcpAccess != null) {
+            // `vault_ids` n'existe qu'à la création : le fournisseur refuse de l'ajouter ensuite.
+            body.put("vault_ids", List.of(mcpAccess.vaultId()));
+        }
 
         JsonNode response = post("/v1/sessions", body, "création de la session");
         String id = text(response, "id");
@@ -193,13 +246,19 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
      *       même {@code default_config} qu'au provisionnement, et le seul {@code bash} passé en
      *       {@code always_ask} (F-33 / SF-33-01). Ne renvoyer que {@code bash} priverait la session
      *       de ses outils de lecture/écriture.</li>
+     *   <li>{@code mcp_servers} déclare le serveur MCP <b>pour cette session seulement</b>
+     *       (F-31 / SF-31-05) : l'agent plateforme, commun à tous les utilisateurs, n'en porte aucun,
+     *       et un projet d'archive n'en hérite donc jamais. La déclaration s'accompagne
+     *       obligatoirement d'une entrée {@code mcp_toolset} dans {@code tools} — sans elle, le
+     *       serveur est connecté mais aucun de ses outils n'est offert à l'agent.</li>
      * </ul>
      */
     private static Object agentReference(String agentId, String systemOverride,
-            SessionPermissions permissions) {
+            SessionPermissions permissions, McpAccess mcpAccess) {
         boolean hasSystem = systemOverride != null && !systemOverride.isBlank();
         boolean hasPolicy = permissions != null && permissions.askBeforeShellCommands();
-        if (!hasSystem && !hasPolicy) {
+        boolean hasMcp = mcpAccess != null;
+        if (!hasSystem && !hasPolicy && !hasMcp) {
             return agentId;
         }
         Map<String, Object> reference = new java.util.LinkedHashMap<>();
@@ -208,10 +267,30 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
         if (hasSystem) {
             reference.put("system", systemOverride);
         }
-        if (hasPolicy) {
-            reference.put("tools", List.of(askBeforeShellToolset()));
+        if (hasPolicy || hasMcp) {
+            // `tools` remplace en bloc : le toolset complet est TOUJOURS renvoyé, sinon la session
+            // perdrait ses outils de lecture, d'écriture et d'exécution.
+            List<Map<String, Object>> tools = new ArrayList<>();
+            tools.add(hasPolicy ? askBeforeShellToolset() : fullToolset());
+            if (hasMcp) {
+                tools.add(Map.of("type", MCP_TOOLSET_TYPE, "mcp_server_name", mcpAccess.serverName()));
+            }
+            reference.put("tools", tools);
+        }
+        if (hasMcp) {
+            reference.put("mcp_servers", List.of(Map.of(
+                    "type", "url",
+                    "name", mcpAccess.serverName(),
+                    "url", mcpAccess.serverUrl())));
         }
         return reference;
+    }
+
+    /** Toolset complet, tel qu'il est provisionné sur l'agent : aucune politique particulière. */
+    private static Map<String, Object> fullToolset() {
+        return Map.of(
+                "type", AGENT_TOOLSET_TYPE,
+                "default_config", Map.of("enabled", true));
     }
 
     /**

@@ -73,6 +73,7 @@ public class AtelierSessionService {
     private final AtelierMessageRepository messageRepository;
     private final GitTokenService gitTokenService;
     private final ProjectInstructionsService instructionsService;
+    private final McpVaultService mcpVaultService;
 
     /** Sérialisation de la transcription persistée (F-30 SF-30-09) : donnée d'affichage. */
     private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER =
@@ -104,7 +105,7 @@ public class AtelierSessionService {
             AtelierAgentBootstrapService bootstrapService, AtelierAgentProperties properties,
             QuotaService quotaService, WorkspaceRepository workspaceRepository,
             AtelierMessageRepository messageRepository, GitTokenService gitTokenService,
-            ProjectInstructionsService instructionsService) {
+            ProjectInstructionsService instructionsService, McpVaultService mcpVaultService) {
         this.provider = provider;
         this.workspaceService = workspaceService;
         this.bootstrapService = bootstrapService;
@@ -114,6 +115,7 @@ public class AtelierSessionService {
         this.messageRepository = messageRepository;
         this.gitTokenService = gitTokenService;
         this.instructionsService = instructionsService;
+        this.mcpVaultService = mcpVaultService;
     }
 
     /**
@@ -426,6 +428,10 @@ public class AtelierSessionService {
      * workspace</b> (isolation), et n'est ni journalisé ni conservé. Il n'entre jamais dans le
      * conteneur : le proxy git du fournisseur l'injecte en sortie de sandbox (ADR-015).</p>
      *
+     * <p>La session déclare en outre le <b>serveur MCP GitHub</b> quand un vault est disponible
+     * (F-31 / SF-31-05), ce qui rend l'outil {@code create_pull_request} accessible à l'agent. Là
+     * encore, le secret reste chez le fournisseur : le proxy MCP l'injecte hors du conteneur.</p>
+     *
      * @throws GitTokenMissingException si l'utilisateur n'a plus de jeton enregistré (retiré ou jamais
      *                                  posé) — le workspace survit, c'est le montage qui échoue
      */
@@ -436,9 +442,13 @@ public class AtelierSessionService {
                         "Aucun jeton GitHub enregistré : ajoutez-en un dans vos réglages pour ouvrir ce projet."));
         RepositoryMount repository = new RepositoryMount(
                 workspace.getGitRepoUrl(), token, GIT_MOUNT_PATH, workspace.getGitBranch());
+        // Serveur MCP GitHub, s'il est disponible (F-31 / SF-31-05) : c'est lui qui permettra de
+        // créer la pull request. Le vault s'attache ICI et nulle part ailleurs — le fournisseur
+        // refuse d'en ajouter un à une session déjà ouverte.
+        McpAccess mcpAccess = mcpVaultService.resolveAccess(userId).orElse(null);
         ManagedSession session = provider.createSession(
                 config.getAgentId(), config.getEnvironmentId(), List.of(), repository, systemOverride,
-                permissions);
+                permissions, mcpAccess);
         markSessionOpened(workspace, session.id());
         return session.id();
     }

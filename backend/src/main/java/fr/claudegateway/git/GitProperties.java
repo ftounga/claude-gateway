@@ -14,10 +14,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       (défaut {@code 5000}) : au-delà la liste est tronquée, et le dit
  * @param maxFileBytes   taille maximale d'un fichier lu depuis un dépôt (défaut 1 Mo) : au-delà, refus
  *                       explicite plutôt qu'un contenu tronqué présenté comme complet
+ * @param mcpServerUrl   URL du serveur MCP GitHub (F-31 / SF-31-05) : c'est là que l'agent appelle
+ *                       {@code create_pull_request}, et c'est la clé de la credential dans le vault.
+ *                       Valeur publique, non secrète
+ * @param mcpServerName  nom donné au serveur MCP dans la configuration de session (défaut
+ *                       {@code github}) : référencé par le toolset MCP
  */
 @ConfigurationProperties(prefix = "app.git")
 public record GitProperties(String githubApiUrl, Duration timeout, Integer maxTreeEntries,
-        Long maxFileBytes) {
+        Long maxFileBytes, String mcpServerUrl, String mcpServerName) {
 
     public GitProperties {
         if (githubApiUrl == null || githubApiUrl.isBlank()) {
@@ -31,6 +36,13 @@ public record GitProperties(String githubApiUrl, Duration timeout, Integer maxTr
         }
         if (maxFileBytes == null || maxFileBytes <= 0) {
             maxFileBytes = 1_048_576L;
+        }
+        if (mcpServerUrl == null || mcpServerUrl.isBlank()) {
+            // Point d'entrée du serveur MCP GitHub, constaté à la levée d'OQ-11 (2026-08-25).
+            mcpServerUrl = "https://api.githubcopilot.com/mcp/";
+        }
+        if (mcpServerName == null || mcpServerName.isBlank()) {
+            mcpServerName = "github";
         }
     }
 }

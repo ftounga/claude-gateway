@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,12 +36,14 @@ public class GitTokenService {
     private final UserGitCredentialRepository repository;
     private final ByokKeyCipher cipher;
     private final GitHubClient gitHubClient;
+    private final ApplicationEventPublisher events;
 
     public GitTokenService(UserGitCredentialRepository repository, ByokKeyCipher cipher,
-            GitHubClient gitHubClient) {
+            GitHubClient gitHubClient, ApplicationEventPublisher events) {
         this.repository = repository;
         this.cipher = cipher;
         this.gitHubClient = gitHubClient;
+        this.events = events;
     }
 
     /** État du jeton de l'utilisateur (présent/absent, masqué). */
@@ -72,6 +75,9 @@ public class GitTokenService {
 
         UserGitCredential credential = repository.findByUserId(userId)
                 .orElseGet(() -> UserGitCredential.builder().userId(userId).build());
+        // Le vault du fournisseur porte l'ANCIEN jeton : il ne vaut plus rien et ne doit pas survivre
+        // au remplacement. La référence est effacée ici, la destruction est demandée après commit.
+        GitVaultRevokedEvent revoked = detachVault(credential);
         credential.setGithubLogin(account.login());
         credential.setEncryptedDataKey(encrypted.encryptedDataKey());
         credential.setCipherIv(encrypted.iv());
@@ -79,8 +85,37 @@ public class GitTokenService {
         credential.setTokenLast4(last4(token));
 
         UserGitCredential saved = repository.save(credential);
+        publish(revoked);
         log.info("Jeton GitHub enregistré pour l'utilisateur {}", userId);
         return toStatus(saved);
+    }
+
+    /**
+     * Vault de credentials associé au jeton de l'utilisateur (F-31 / SF-31-05), s'il en existe un.
+     * Isolation {@code user_id}. Ne renvoie que des identifiants opaques, jamais de secret.
+     */
+    @Transactional(readOnly = true)
+    public Optional<GitVaultRef> findVault(UUID userId) {
+        return repository.findByUserId(userId)
+                .filter(credential -> credential.getMcpVaultId() != null)
+                .map(credential -> new GitVaultRef(credential.getMcpVaultId(),
+                        credential.getMcpCredentialId()));
+    }
+
+    /**
+     * Mémorise le vault créé chez le fournisseur pour ce jeton (F-31 / SF-31-05), afin de le
+     * réutiliser aux sessions suivantes plutôt que d'en créer un par session.
+     *
+     * <p>Sans effet si l'utilisateur n'a plus de jeton : le vault référencé n'aurait plus de raison
+     * d'être, et le rattacher à rien laisserait un identifiant orphelin en base.</p>
+     */
+    @Transactional
+    public void rememberVault(UUID userId, GitVaultRef vault) {
+        repository.findByUserId(userId).ifPresent(credential -> {
+            credential.setMcpVaultId(vault.vaultId());
+            credential.setMcpCredentialId(vault.credentialId());
+            repository.save(credential);
+        });
     }
 
     /**
@@ -97,11 +132,45 @@ public class GitTokenService {
                         credential.getCiphertext())));
     }
 
-    /** Retire le jeton de l'utilisateur (idempotent : aucun effet, aucune erreur, s'il est absent). */
+    /**
+     * Retire le jeton de l'utilisateur (idempotent : aucun effet, aucune erreur, s'il est absent).
+     *
+     * <p>La copie déposée chez le fournisseur d'agents part avec lui : un jeton révoqué ici mais
+     * toujours utilisable là-bas serait une révocation de façade.</p>
+     */
     @Transactional
     public void deleteToken(UUID userId) {
+        GitVaultRevokedEvent revoked = repository.findByUserId(userId)
+                .map(GitTokenService::toRevokedEvent)
+                .orElse(null);
         repository.deleteByUserId(userId);
+        publish(revoked);
         log.info("Jeton GitHub retiré pour l'utilisateur {}", userId);
+    }
+
+    /**
+     * Détache le vault du jeton en place et décrit sa destruction, ou {@code null} s'il n'y en avait
+     * pas. L'entité est modifiée ici, l'appel au fournisseur n'aura lieu qu'après commit.
+     */
+    private static GitVaultRevokedEvent detachVault(UserGitCredential credential) {
+        GitVaultRevokedEvent revoked = toRevokedEvent(credential);
+        credential.setMcpVaultId(null);
+        credential.setMcpCredentialId(null);
+        return revoked;
+    }
+
+    private static GitVaultRevokedEvent toRevokedEvent(UserGitCredential credential) {
+        if (credential.getMcpVaultId() == null) {
+            return null;
+        }
+        return new GitVaultRevokedEvent(credential.getUserId(), credential.getMcpVaultId(),
+                credential.getMcpCredentialId());
+    }
+
+    private void publish(GitVaultRevokedEvent revoked) {
+        if (revoked != null) {
+            events.publishEvent(revoked);
+        }
     }
 
     private static void validateFormat(String token) {

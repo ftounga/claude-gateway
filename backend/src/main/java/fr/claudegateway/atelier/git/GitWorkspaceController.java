@@ -13,8 +13,10 @@ import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceService;
 import fr.claudegateway.atelier.dto.WorkspaceDetailResponse;
 import fr.claudegateway.atelier.git.dto.CreateGitWorkspaceRequest;
+import fr.claudegateway.atelier.git.dto.CreatePullRequestRequest;
 import fr.claudegateway.atelier.git.dto.GitPushRequest;
 import fr.claudegateway.atelier.git.dto.GitPushResponse;
+import fr.claudegateway.atelier.git.dto.PullRequestResponse;
 import fr.claudegateway.auth.CurrentUser;
 import jakarta.validation.Valid;
 
@@ -29,15 +31,17 @@ public class GitWorkspaceController {
 
     private final GitWorkspaceService gitWorkspaceService;
     private final GitPushService gitPushService;
+    private final GitPullRequestService gitPullRequestService;
     private final WorkspaceService workspaceService;
     private final AtelierAccessService atelierAccess;
     private final CurrentUser currentUser;
 
     public GitWorkspaceController(GitWorkspaceService gitWorkspaceService, GitPushService gitPushService,
-            WorkspaceService workspaceService, AtelierAccessService atelierAccess,
-            CurrentUser currentUser) {
+            GitPullRequestService gitPullRequestService, WorkspaceService workspaceService,
+            AtelierAccessService atelierAccess, CurrentUser currentUser) {
         this.gitWorkspaceService = gitWorkspaceService;
         this.gitPushService = gitPushService;
+        this.gitPullRequestService = gitPullRequestService;
         this.workspaceService = workspaceService;
         this.atelierAccess = atelierAccess;
         this.currentUser = currentUser;
@@ -72,5 +76,21 @@ public class GitWorkspaceController {
         return gitPushService.push(currentUser.requireId(), id,
                 request == null ? null : request.branch(),
                 request == null ? null : request.message());
+    }
+
+    /**
+     * Ouvre la pull request de la branche publiée vers la branche de base (SF-31-05), via l'outil
+     * {@code create_pull_request} du serveur MCP GitHub.
+     *
+     * <p>Même règle qu'au push : réponse {@code 200} même quand rien n'a été ouvert. Le tour a eu
+     * lieu et a été facturé ; {@code created} dit ce qui s'est réellement passé, constaté auprès de
+     * GitHub, et {@code reply} porte la cause d'un échec.</p>
+     */
+    @PostMapping("/{id}/git/pull-request")
+    public PullRequestResponse createPullRequest(@PathVariable UUID id,
+            @Valid @RequestBody CreatePullRequestRequest request) {
+        atelierAccess.requireAccess();
+        return gitPullRequestService.create(currentUser.requireId(), id, request.branch(),
+                request.title(), request.body());
     }
 }

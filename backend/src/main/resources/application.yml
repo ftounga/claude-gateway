@@ -164,6 +164,11 @@ app:
     # paramétrable (tests, GitHub Enterprise), avec le délai de la vérification du jeton.
     github-api-url: ${APP_GIT_GITHUB_API_URL:https://api.github.com}
     timeout: ${APP_GIT_TIMEOUT:PT10S}
+    # Serveur MCP GitHub (F-31 / SF-31-05, ADR-015) : c'est lui qui expose `create_pull_request`.
+    # Valeur PUBLIQUE, non secrète — l'authentification passe par le vault de l'utilisateur, où son
+    # PAT est déposé sous cette même URL.
+    mcp-server-url: ${APP_GIT_MCP_SERVER_URL:https://api.githubcopilot.com/mcp/}
+    mcp-server-name: ${APP_GIT_MCP_SERVER_NAME:github}
   billing:
     # Durée de l'essai gratuit en jours (F-09). Décision réversible : ajustable sans changement de code.
     trial-days: ${APP_BILLING_TRIAL_DAYS:5}

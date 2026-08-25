@@ -117,8 +117,65 @@ public interface ManagedAgentProvider {
      * @param permissions    politique d'autorisation des outils (jamais {@code null})
      * @return la session créée (identifiant fournisseur)
      */
+    default ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
+            RepositoryMount repository, String systemOverride, SessionPermissions permissions) {
+        return createSession(agentId, environmentId, resources, repository, systemOverride, permissions,
+                null);
+    }
+
+    /**
+     * Crée une session en lui donnant en outre accès à un <b>serveur MCP</b> authentifié par un vault
+     * de credentials (F-31 / SF-31-05, ADR-015).
+     *
+     * <p>Le vault s'attache <b>à la création</b> : le fournisseur refuse de l'ajouter à une session
+     * déjà ouverte. Avec {@code mcpAccess} à {@code null}, le corps envoyé est strictement celui
+     * d'avant SF-31-05 — aucune régression pour les projets qui n'en ont pas besoin.</p>
+     *
+     * <p>Le secret n'est pas ici : il vit dans le vault, chez le fournisseur, et n'entre jamais dans
+     * le conteneur.</p>
+     *
+     * @param agentId        identifiant de l'agent à exécuter
+     * @param environmentId  identifiant de l'environnement d'exécution
+     * @param resources      fichiers à monter (éventuellement vide)
+     * @param repository     dépôt à monter, ou {@code null} pour un workspace d'archive
+     * @param systemOverride prompt système complet pour cette session, ou {@code null}
+     * @param permissions    politique d'autorisation des outils (jamais {@code null})
+     * @param mcpAccess      serveur MCP et vault à attacher, ou {@code null} pour aucun
+     * @return la session créée (identifiant fournisseur)
+     */
     ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
-            RepositoryMount repository, String systemOverride, SessionPermissions permissions);
+            RepositoryMount repository, String systemOverride, SessionPermissions permissions,
+            McpAccess mcpAccess);
+
+    /**
+     * Crée un <b>vault</b> de credentials chez le fournisseur et y dépose un jeton bearer statique
+     * destiné à un serveur MCP (F-31 / SF-31-05).
+     *
+     * <p>Un vault par utilisateur : le fournisseur n'accepte qu'une credential par
+     * {@code mcp_server_url} et par vault, et mélanger les jetons de plusieurs utilisateurs dans un
+     * même vault violerait l'isolation.</p>
+     *
+     * <p>Le jeton passé ici est un <b>secret en clair</b>, le temps de l'appel. Il ne doit jamais
+     * être journalisé, et le fournisseur ne le renvoie jamais.</p>
+     *
+     * @param displayName nom lisible du vault (jamais un secret : sert au diagnostic côté fournisseur)
+     * @param serverUrl   URL du serveur MCP, qui est la clé de la credential
+     * @param token       jeton bearer à déposer
+     * @return le vault créé et l'identifiant de la credential déposée
+     * @throws AgentProviderException si le fournisseur refuse la création
+     */
+    ManagedVault createVaultWithBearer(String displayName, String serverUrl, String token);
+
+    /**
+     * Détruit un vault chez le fournisseur (F-31 / SF-31-05), après révocation du jeton qu'il porte.
+     *
+     * <p>Nettoyage <b>best-effort</b> : ne lève jamais. Un échec est journalisé — le jeton, lui, a
+     * déjà été révoqué côté GitHub ou retiré de chez nous, et faire échouer le geste de l'utilisateur
+     * sur une panne du fournisseur n'améliorerait rien.</p>
+     *
+     * @param vaultId identifiant du vault à détruire
+     */
+    void deleteVault(String vaultId);
 
     /**
      * Envoie un message utilisateur à la session (event {@code user.message}).

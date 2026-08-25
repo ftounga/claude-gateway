@@ -175,6 +175,24 @@ public class HttpGitHubClient implements GitHubClient {
         }
     }
 
+    @Override
+    public java.util.Optional<GitPullRequest> findOpenPullRequest(String token, String owner, String repo,
+            String branch) {
+        // `head` se qualifie du propriétaire du dépôt : sans lui, GitHub ignore le filtre et
+        // renverrait la première PR ouverte venue — on annoncerait alors la PR de quelqu'un d'autre.
+        GitPullRequestResponse[] found = get(builder -> builder
+                        .path("/repos/{owner}/{repo}/pulls")
+                        .queryParam("head", owner + ":" + branch)
+                        .queryParam("state", "open")
+                        .queryParam("per_page", 1)
+                        .build(owner, repo),
+                token, GitPullRequestResponse[].class, "vérification de la pull request");
+        if (found == null || found.length == 0 || found[0].number() == null) {
+            return java.util.Optional.empty();
+        }
+        return java.util.Optional.of(new GitPullRequest(found[0].number(), found[0].htmlUrl()));
+    }
+
     /** Décode le base64 de l'API (qui insère des retours à la ligne) ; contenu illisible ⇒ refus net. */
     private static byte[] decode(String content) {
         try {
@@ -266,6 +284,14 @@ public class HttpGitHubClient implements GitHubClient {
 
     /** Projection minimale de {@code GET /repos/{owner}/{repo}/branches/{branch}} : seul le nom sert. */
     private record GitBranchResponse(String name) {
+    }
+
+    /**
+     * Projection minimale de {@code GET /repos/{owner}/{repo}/pulls} : numéro et URL publique.
+     * {@code number} est boxé pour distinguer un champ absent d'un zéro.
+     */
+    private record GitPullRequestResponse(Integer number,
+            @com.fasterxml.jackson.annotation.JsonProperty("html_url") String htmlUrl) {
     }
 
     /** Projection minimale de {@code GET /repos/{owner}/{repo}}. */
