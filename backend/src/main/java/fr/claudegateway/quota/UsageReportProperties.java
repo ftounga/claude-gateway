@@ -13,6 +13,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * sans ventilation par modèle. Le tarif « blended » configuré ci-dessous est donc appliqué à
  * l'ensemble de la période.</p>
  *
+ * <p>Les défauts sont ceux du modèle <b>réellement servi</b> (Opus : 5 / 25 par million,
+ * F-36 / SF-36-03). Ils valaient auparavant 3 / 15 — le tarif de Sonnet — et sous-estimaient donc le
+ * coût d'environ 40 % : le rapport décrivait un modèle que la plateforme n'utilise pas.</p>
+ *
  * @param currency                     devise d'affichage du coût estimé (ex. {@code EUR})
  * @param maxMonths                    nombre maximum de périodes retournées (les plus récentes)
  * @param inputCostPerMillionTokens    prix estimé par million de tokens d'entrée
@@ -27,8 +31,8 @@ public record UsageReportProperties(
 
     private static final String DEFAULT_CURRENCY = "EUR";
     private static final int DEFAULT_MAX_MONTHS = 12;
-    private static final BigDecimal DEFAULT_INPUT_COST = new BigDecimal("3.00");
-    private static final BigDecimal DEFAULT_OUTPUT_COST = new BigDecimal("15.00");
+    private static final BigDecimal DEFAULT_INPUT_COST = new BigDecimal("5.00");
+    private static final BigDecimal DEFAULT_OUTPUT_COST = new BigDecimal("25.00");
 
     public UsageReportProperties {
         if (currency == null || currency.isBlank()) {
