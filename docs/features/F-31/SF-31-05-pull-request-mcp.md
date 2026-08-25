@@ -12,7 +12,7 @@
 
 ## Statut
 
-`ready`
+`done` — livrée le 2026-08-26 (PR #159 backend, #161 écran, #162 vault et suppression de compte).
 
 ## Date de création
 
@@ -178,6 +178,9 @@ Aucun secret n'entre en base : le PAT reste chiffré dans les colonnes existante
 - `atelier/git/GitPullRequestService.java` *(nouveau)*
 - `atelier/git/GitWorkspaceController.java` — nouvel endpoint
 - `atelier/git/dto/CreatePullRequestRequest.java`, `PullRequestResponse.java` *(nouveaux)*
+- `account/AccountService.java` — la suppression de compte (RGPD, F-11) passe par
+  `GitTokenService.deleteToken` : effacer la seule ligne en base laisserait la copie du PAT active
+  dans le vault du fournisseur, et sans son identifiant plus rien ne permettrait de la retrouver
 - `resources/application.yml` — `app.git.mcp-server-url`
 
 **Frontend**
@@ -229,7 +232,7 @@ Aucun secret n'entre en base : le PAT reste chiffré dans les colonnes existante
 | Préoccupation | Concernée | Composants vérifiés |
 |---------------|-----------|---------------------|
 | Auth / Principal | non | aucun changement : `CurrentUser.requireId()` comme les autres endpoints de l'Atelier |
-| Contexte tenant | **oui** | `GitTokenService` (findByUserId), `GitVaultService` (vault par `user_id`), `GitPullRequestService` (`requireOwned`), `AtelierSessionService.openGitSession` |
+| Contexte tenant | **oui** | `GitTokenService` (findByUserId), `McpVaultService` (vault par `user_id`), `GitPullRequestService` (`requireOwned`), `AtelierSessionService.openGitSession`, `AccountService.deleteAccount` (le vault part avec le compte) |
 | Plans / limites | **oui** | même gate que le reste de l'Atelier (`AtelierAccessService.requireAccess()`) ; le tour est décompté par le mécanisme d'usage existant (SF-28-12) — aucun nouveau compteur |
 | Navigation / routing | non | aucune route nouvelle |
 
