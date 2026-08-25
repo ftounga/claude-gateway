@@ -43,6 +43,8 @@ class AtelierChatServiceTest {
     @Mock private ByokKeyService byokKeyService;
     @Mock private QuotaService quotaService;
     @Mock private ModelCatalog modelCatalog;
+    @Mock private fr.claudegateway.git.GitTokenService gitTokenService;
+    @Mock private fr.claudegateway.git.GitHubClient gitHubClient;
 
     private StubAiAgentProvider agentProvider;
     private AtelierChatService service;
@@ -69,11 +71,25 @@ class AtelierChatServiceTest {
     @BeforeEach
     void setUp() {
         agentProvider = new StubAiAgentProvider();
+        // Le garde-fou Git (F-31 / SF-31-03) est réel : sur un workspace d'archive il ne fait rien,
+        // ce qui garantit qu'aucun test existant ne dépend d'un stub complaisant.
         service = new AtelierChatService(workspaceService, messageRepository, (AiAgentProvider) agentProvider,
-                byokKeyService, quotaService, modelCatalog);
+                byokKeyService, quotaService, modelCatalog,
+                new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
+                        gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null)));
+    }
+
+    /** Workspace d'archive possédé : la source par défaut, celle de tous les tests de ce fichier. */
+    private void stubOwnedArchiveWorkspace() {
+        Workspace workspace = new Workspace();
+        workspace.setId(workspaceId);
+        workspace.setUserId(userId);
+        workspace.setSource(WorkspaceSource.ARCHIVE);
+        when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(workspace);
     }
 
     private void stubHappyPath() {
+        stubOwnedArchiveWorkspace();
         when(modelCatalog.defaultModel()).thenReturn("claude-model");
         when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.empty());
         when(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId))
@@ -147,6 +163,7 @@ class AtelierChatServiceTest {
     @Test
     void quotaExceededIsRaisedBeforeAnyProviderCall() {
         // CA3 : le quota est vérifié avant tout appel fournisseur (aucun tour joué).
+        stubOwnedArchiveWorkspace();
         org.mockito.Mockito.doThrow(new QuotaExceededException("quota atteint"))
                 .when(quotaService).assertWithinQuota(userId);
         RecordingListener listener = new RecordingListener();
@@ -175,6 +192,7 @@ class AtelierChatServiceTest {
     void byokModeSkipsQuotaCheckAndRecording() {
         // SF-28-06 : avec une clé BYOK active, les tokens sont sur le compte de l'utilisateur =>
         // ni contrôle (assertWithinQuota) ni comptabilisation (recordUsage) du quota plateforme.
+        stubOwnedArchiveWorkspace();
         when(modelCatalog.defaultModel()).thenReturn("claude-model");
         when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.of("sk-ant-user-key"));
         when(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId))

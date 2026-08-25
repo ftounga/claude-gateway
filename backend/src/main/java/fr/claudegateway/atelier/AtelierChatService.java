@@ -43,16 +43,19 @@ public class AtelierChatService {
     private final ByokKeyService byokKeyService;
     private final QuotaService quotaService;
     private final ModelCatalog modelCatalog;
+    private final fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService;
 
     public AtelierChatService(WorkspaceService workspaceService, AtelierMessageRepository messageRepository,
             AiAgentProvider agentProvider, ByokKeyService byokKeyService, QuotaService quotaService,
-            ModelCatalog modelCatalog) {
+            ModelCatalog modelCatalog,
+            fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService) {
         this.workspaceService = workspaceService;
         this.messageRepository = messageRepository;
         this.agentProvider = agentProvider;
         this.byokKeyService = byokKeyService;
         this.quotaService = quotaService;
         this.modelCatalog = modelCatalog;
+        this.gitWorkspaceService = gitWorkspaceService;
     }
 
     /**
@@ -82,7 +85,11 @@ public class AtelierChatService {
 
     private AtelierChatResult runLoop(UUID userId, UUID workspaceId, String rawMessage,
             AtelierProgressListener listener) {
-        workspaceService.requireOwned(userId, workspaceId); // 404 si non possédé (isolation) — TOUJOURS en premier
+        Workspace workspace = workspaceService.requireOwned(userId, workspaceId); // 404 si non possédé (isolation) — TOUJOURS en premier
+        // Mode « Assistant » sur un projet Git (F-31 / SF-31-03) : cette boucle lit et édite le
+        // stockage objet, vide sur ce type de projet. Répondre quand même reviendrait à commenter un
+        // projet inexistant ; le mode Terminal, lui, a le dépôt réellement cloné.
+        gitWorkspaceService.requireArchiveChatMode(workspace);
         // Mode BYOK (clé personnelle active) vs Hosted (clé plateforme) : en BYOK, les tokens sont sur
         // le compte Anthropic de l'utilisateur => aucun contrôle ni comptage du quota plateforme (F-28 /
         // SF-28-06). En Hosted, comportement historique : contrôle avant + comptabilisation après.

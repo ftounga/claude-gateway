@@ -28,6 +28,8 @@ import fr.claudegateway.atelier.dto.RenameFileRequest;
 import fr.claudegateway.atelier.dto.WorkspaceDetailResponse;
 import fr.claudegateway.atelier.dto.WorkspaceSummaryResponse;
 import fr.claudegateway.atelier.dto.WriteFileRequest;
+import fr.claudegateway.atelier.git.GitWorkspaceService;
+import fr.claudegateway.atelier.git.GitWorkspaceService.WorkspaceContent;
 import fr.claudegateway.auth.CurrentUser;
 import jakarta.validation.Valid;
 
@@ -46,15 +48,17 @@ public class AtelierController {
     private final AtelierAccessService atelierAccess;
     private final WorkspaceLibraryImportService libraryImportService;
     private final AtelierSessionService sessionService;
+    private final GitWorkspaceService gitWorkspaceService;
 
     public AtelierController(WorkspaceService workspaceService, CurrentUser currentUser,
             AtelierAccessService atelierAccess, WorkspaceLibraryImportService libraryImportService,
-            AtelierSessionService sessionService) {
+            AtelierSessionService sessionService, GitWorkspaceService gitWorkspaceService) {
         this.workspaceService = workspaceService;
         this.currentUser = currentUser;
         this.atelierAccess = atelierAccess;
         this.libraryImportService = libraryImportService;
         this.sessionService = sessionService;
+        this.gitWorkspaceService = gitWorkspaceService;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -76,19 +80,25 @@ public class AtelierController {
                 .toList();
     }
 
+    /**
+     * Détail d'un projet : métadonnées + arborescence. Sur un projet Git (F-31 / SF-31-03),
+     * l'arborescence vient du dépôt <b>et</b> des fichiers déjà réécrits par la session.
+     */
     @GetMapping("/{id}")
     public WorkspaceDetailResponse detail(@PathVariable UUID id) {
         atelierAccess.requireAccess();
         UUID userId = currentUser.requireId();
-        return WorkspaceDetailResponse.from(
-                workspaceService.requireOwned(userId, id), workspaceService.tree(userId, id));
+        Workspace workspace = workspaceService.requireOwned(userId, id);
+        WorkspaceContent content = gitWorkspaceService.tree(userId, workspace);
+        return WorkspaceDetailResponse.from(workspace, content.files(), content.truncated());
     }
 
     @GetMapping("/{id}/file")
     public FileContentResponse readFile(@PathVariable UUID id, @RequestParam("path") String path) {
         atelierAccess.requireAccess();
         UUID userId = currentUser.requireId();
-        return new FileContentResponse(path, workspaceService.readFile(userId, id, path));
+        Workspace workspace = workspaceService.requireOwned(userId, id);
+        return new FileContentResponse(path, gitWorkspaceService.readFile(userId, workspace, path));
     }
 
     @PutMapping("/{id}/file")
@@ -97,8 +107,9 @@ public class AtelierController {
             @RequestParam("path") String path,
             @RequestBody WriteFileRequest request) {
         atelierAccess.requireAccess();
-        workspaceService.writeFile(currentUser.requireId(), id, path,
-                request == null ? "" : request.content());
+        UUID userId = currentUser.requireId();
+        gitWorkspaceService.requireWritable(workspaceService.requireOwned(userId, id));
+        workspaceService.writeFile(userId, id, path, request == null ? "" : request.content());
         return ResponseEntity.noContent().build();
     }
 
@@ -112,6 +123,7 @@ public class AtelierController {
             @PathVariable UUID id, @Valid @RequestBody AtelierImportLibraryRequest request) {
         atelierAccess.requireAccess();
         UUID userId = currentUser.requireId();
+        gitWorkspaceService.requireWritable(workspaceService.requireOwned(userId, id));
         List<String> tree = libraryImportService.importDocuments(userId, id, request.documentIds());
         return WorkspaceDetailResponse.from(workspaceService.requireOwned(userId, id), tree);
     }
@@ -141,7 +153,9 @@ public class AtelierController {
     @DeleteMapping("/{id}/file")
     public ResponseEntity<Void> deleteFile(@PathVariable UUID id, @RequestParam("path") String path) {
         atelierAccess.requireAccess();
-        workspaceService.deleteFile(currentUser.requireId(), id, path);
+        UUID userId = currentUser.requireId();
+        gitWorkspaceService.requireWritable(workspaceService.requireOwned(userId, id));
+        workspaceService.deleteFile(userId, id, path);
         return ResponseEntity.noContent().build();
     }
 
@@ -151,6 +165,7 @@ public class AtelierController {
             @PathVariable UUID id, @Valid @RequestBody RenameFileRequest request) {
         atelierAccess.requireAccess();
         UUID userId = currentUser.requireId();
+        gitWorkspaceService.requireWritable(workspaceService.requireOwned(userId, id));
         workspaceService.renameFile(userId, id, request.from(), request.to());
         return WorkspaceDetailResponse.from(
                 workspaceService.requireOwned(userId, id), workspaceService.tree(userId, id));
@@ -161,7 +176,11 @@ public class AtelierController {
     public ResponseEntity<byte[]> export(@PathVariable UUID id) {
         atelierAccess.requireAccess();
         UUID userId = currentUser.requireId();
-        String filename = sanitizeFilename(workspaceService.requireOwned(userId, id).getName()) + ".zip";
+        Workspace workspace = workspaceService.requireOwned(userId, id);
+        // Sur un projet Git, la source de vérité est le dépôt : exporter le stockage livrerait
+        // quelques fichiers rapatriés en les présentant comme le projet entier.
+        gitWorkspaceService.requireWritable(workspace);
+        String filename = sanitizeFilename(workspace.getName()) + ".zip";
         byte[] zip = workspaceService.exportZip(userId, id);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
