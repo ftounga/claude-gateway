@@ -299,22 +299,25 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
         if (hasDelegation) {
             reference.put("multiagent", Map.of(
                     "type", "coordinator",
-                    "agents", selfRoster(delegation.maxSubagents())));
+                    "agents", selfRoster()));
         }
         return reference;
     }
 
     /**
-     * Roster de sous-agents (F-35 / SF-35-01) : {@code n} copies de l'agent courant, et rien d'autre.
+     * Roster de sous-agents (F-35 / SF-35-01) : <b>une seule</b> entrée {@code self}, et rien d'autre.
      * Pas d'agent nommé ni d'{@code advisor} sur un autre modèle — il n'y aurait rien à provisionner
      * ni à versionner, et le gain de parallélisme est déjà là (D2 du cadrage).
+     *
+     * <p><b>Le roster ne porte pas le plafond.</b> Le fournisseur n'accepte <b>qu'une</b> entrée
+     * {@code self} — dupliquer l'entrée pour exprimer « trois sous-agents » fait rejeter la création
+     * de session. Une entrée de roster est une <i>référence</i>, lançable autant de fois que le
+     * coordinateur le décide : le plafond se dit donc dans le <b>prompt</b>
+     * ({@link AgentSystemPrompt#withDelegation}), et la dépense reste bornée par le budget de session
+     * (F-36), partagé entre tous les fils.</p>
      */
-    private static List<Map<String, Object>> selfRoster(int size) {
-        List<Map<String, Object>> roster = new ArrayList<>();
-        for (int i = 0; i < size; i++) {
-            roster.add(Map.of("type", "self"));
-        }
-        return roster;
+    private static List<Map<String, Object>> selfRoster() {
+        return List.of(Map.of("type", "self"));
     }
 
     /** Toolset complet, tel qu'il est provisionné sur l'agent : aucune politique particulière. */

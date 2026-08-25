@@ -40,4 +40,30 @@ class AgentSystemPromptTest {
         assertThat(AgentSystemPrompt.withProjectInstructions("   "))
                 .isEqualTo(AgentSystemPrompt.platform());
     }
+    // ---- F-35 : le plafond de délégation vit dans le prompt, pas dans le roster ----
+
+    @Test
+    void withDelegationStatesTheCeilingAndWhenNotToDelegate() {
+        String prompt = AgentSystemPrompt.withDelegation(AgentSystemPrompt.platform(), 3);
+
+        assertThat(prompt).startsWith(AgentSystemPrompt.platform());
+        assertThat(prompt).contains("jamais plus de 3");
+        // La consigne doit aussi dire quand NE PAS déléguer : une tâche courte coûte plus cher déléguée.
+        assertThat(prompt).contains("une seule étape");
+    }
+
+    @Test
+    void withDelegationLeavesThePromptUntouchedWhenDisabled() {
+        String base = AgentSystemPrompt.platform();
+
+        assertThat(AgentSystemPrompt.withDelegation(base, 0)).isEqualTo(base);
+    }
+
+    @Test
+    void withDelegationComposesWithProjectInstructions() {
+        String withProject = AgentSystemPrompt.withProjectInstructions("Utilise Maven.");
+        String full = AgentSystemPrompt.withDelegation(withProject, 2);
+
+        assertThat(full).contains("Utilise Maven.").contains("jamais plus de 2");
+    }
 }

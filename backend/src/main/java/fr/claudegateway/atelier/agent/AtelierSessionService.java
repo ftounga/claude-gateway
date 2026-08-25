@@ -456,14 +456,20 @@ public class AtelierSessionService {
      * fichier prend donc effet à la session suivante (décision D5 du cadrage F-34).</p>
      */
     private String sessionSystemPrompt(UUID userId, Workspace workspace) {
+        DelegationPolicy delegation = DelegationPolicy.of(
+                properties.subagentsEnabled(), properties.maxSubagents());
         Optional<ProjectInstructions> instructions = instructionsService.resolve(userId, workspace);
-        if (instructions.isEmpty()) {
-            return null;
+        String base = AgentSystemPrompt.platform();
+        if (instructions.isPresent()) {
+            ProjectInstructions resolved = instructions.get();
+            log.debug("Instructions de projet injectées depuis {} ({} caractères{}).",
+                    resolved.path(), resolved.content().length(), resolved.truncated() ? ", tronquées" : "");
+            base = AgentSystemPrompt.withProjectInstructions(resolved.content());
         }
-        ProjectInstructions resolved = instructions.get();
-        log.debug("Instructions de projet injectées depuis {} ({} caractères{}).",
-                resolved.path(), resolved.content().length(), resolved.truncated() ? ", tronquées" : "");
-        return AgentSystemPrompt.withProjectInstructions(resolved.content());
+        // Le plafond de délégation (F-35) ne peut pas vivre dans le roster — le fournisseur n'accepte
+        // qu'une entrée `self` — il se dit donc à l'agent, dans son prompt.
+        String composed = AgentSystemPrompt.withDelegation(base, delegation.maxSubagents());
+        return composed.equals(AgentSystemPrompt.platform()) ? null : composed;
     }
 
     /**

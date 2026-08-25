@@ -225,15 +225,17 @@ class AnthropicManagedAgentProviderTest {
     // ------------------------ F-35 / SF-35-01 : roster de sous-agents
 
     @Test
-    void createSessionWithDelegationDeclaresACoordinatorRosterOfSelfCopies() {
+    void createSessionWithDelegationDeclaresASingleSelfRoster() {
         server.expect(requestTo("https://api.anthropic.com/v1/sessions"))
                 .andExpect(method(HttpMethod.POST))
                 .andExpect(jsonPath("$.agent.type").value("agent_with_overrides"))
                 .andExpect(jsonPath("$.agent.id").value("agent_456"))
                 .andExpect(jsonPath("$.agent.multiagent.type").value("coordinator"))
-                .andExpect(jsonPath("$.agent.multiagent.agents.length()").value(3))
+                // UNE seule entrée `self` : le fournisseur n'en accepte pas davantage, et une entrée
+                // est lançable autant de fois que le coordinateur le décide. Le plafond vit dans le
+                // prompt (AgentSystemPrompt.withDelegation), pas dans la structure du roster.
+                .andExpect(jsonPath("$.agent.multiagent.agents.length()").value(1))
                 .andExpect(jsonPath("$.agent.multiagent.agents[0].type").value("self"))
-                .andExpect(jsonPath("$.agent.multiagent.agents[2].type").value("self"))
                 .andRespond(withSuccess("{\"id\":\"sess_ma\"}", MediaType.APPLICATION_JSON));
 
         ManagedSession session = provider.createSession("agent_456", "env_123", List.of(), null, null,
@@ -265,7 +267,8 @@ class AnthropicManagedAgentProviderTest {
                 .andExpect(jsonPath("$.agent.type").value("agent_with_overrides"))
                 .andExpect(jsonPath("$.agent.system").value("prompt plateforme + projet"))
                 .andExpect(jsonPath("$.agent.tools[0].configs[0].name").value("bash"))
-                .andExpect(jsonPath("$.agent.multiagent.agents.length()").value(2))
+                // Le roster reste à UNE entrée `self`, quel que soit le plafond configuré.
+                .andExpect(jsonPath("$.agent.multiagent.agents.length()").value(1))
                 .andRespond(withSuccess("{\"id\":\"sess_mix\"}", MediaType.APPLICATION_JSON));
 
         provider.createSession("agent_456", "env_123", List.of(), null, "prompt plateforme + projet",
