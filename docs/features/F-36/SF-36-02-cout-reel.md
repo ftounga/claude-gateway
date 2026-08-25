@@ -12,7 +12,7 @@
 
 ## Statut
 
-`in-progress`
+`done` — livrée le 2026-08-26 (PR #165)
 
 ## Date de création
 
@@ -79,14 +79,14 @@ coût est converti en équivalent tokens au tarif de référence configuré en S
 
 ## Critères d'acceptation
 
-- [ ] Le quota est décompté à partir du **coût réel** quand le fournisseur le rapporte.
-- [ ] Le décompte porte sur le **delta** de coût, jamais sur le cumul de la session persistante.
-- [ ] Le markup et le tarif de référence sont **configurables** (aucune valeur commerciale en dur).
-- [ ] Markup à `1.0` (défaut) ⇒ le décompte reproduit l'économie d'avant F-36 (voir arbitrage A-2).
-- [ ] Sans `list_cost`, le décompte est **identique** à celui d'avant cette SF (repli tokens).
-- [ ] Le temps de bac à sable reste décompté séparément (garde de coût F-28 / SF-28-12 inchangée).
-- [ ] La consommation affichée pour le tour est celle **effectivement décomptée**.
-- [ ] Le cumul de coût est porté par le workspace **de l'utilisateur propriétaire** (isolation).
+- [x] Le quota est décompté à partir du **coût réel** quand le fournisseur le rapporte.
+- [x] Le décompte porte sur le **delta** de coût, jamais sur le cumul de la session persistante.
+- [x] Le markup et le tarif de référence sont **configurables** (aucune valeur commerciale en dur).
+- [x] Markup à `1.0` (défaut) ⇒ le décompte reproduit l'économie d'avant F-36 (voir arbitrage A-2).
+- [x] Sans `list_cost`, le décompte est **identique** à celui d'avant cette SF (repli tokens).
+- [x] Le temps de bac à sable reste décompté séparément (garde de coût F-28 / SF-28-12 inchangée).
+- [x] La consommation affichée pour le tour est celle **effectivement décomptée**.
+- [x] Le cumul de coût est porté par le workspace **de l'utilisateur propriétaire** (isolation).
 
 ---
 
@@ -130,19 +130,19 @@ Aucun changement de contrat. `AtelierSessionResult` / l'événement SSE `done` p
 
 ### Tests unitaires
 
-- [ ] `AnthropicManagedAgentProviderTest` — `list_cost` lu depuis la réponse de session (forme
+- [x] `AnthropicManagedAgentProviderTest` — `list_cost` lu depuis la réponse de session (forme
       `{amount, currency}`), et absent ⇒ coût inconnu.
-- [ ] `AtelierSessionServiceTest` — coût réel présent ⇒ décompte de l'équivalent tokens (delta).
-- [ ] `AtelierSessionServiceTest` — markup 2,0 ⇒ décompte doublé.
-- [ ] `AtelierSessionServiceTest` — deuxième tour ⇒ seul le **delta** de coût est décompté.
-- [ ] `AtelierSessionServiceTest` — coût absent ⇒ **repli** sur les tokens bruts.
-- [ ] `AtelierSessionServiceTest` — coût positif sans token rapporté ⇒ tout en entrée.
-- [ ] `AtelierSessionServiceTest` — relevé en baisse ⇒ delta borné à zéro.
-- [ ] `AtelierCostPropertiesTest` — défaut et bornes du markup.
+- [x] `AtelierSessionServiceTest` — coût réel présent ⇒ décompte de l'équivalent tokens (delta).
+- [x] `AtelierSessionServiceTest` — markup 2,0 ⇒ décompte doublé.
+- [x] `AtelierSessionServiceTest` — deuxième tour ⇒ seul le **delta** de coût est décompté.
+- [x] `AtelierSessionServiceTest` — coût absent ⇒ **repli** sur les tokens bruts.
+- [x] `AtelierSessionServiceTest` — coût positif sans token rapporté ⇒ tout en entrée.
+- [x] `AtelierSessionServiceTest` — relevé en baisse ⇒ delta borné à zéro.
+- [x] `AtelierCostPropertiesTest` — défaut et bornes du markup.
 
 ### Tests d'intégration
 
-- [ ] La suite d'intégration existante (`AtelierApiIntegrationTest`) reste verte : la colonne ajoutée
+- [x] La suite d'intégration existante (`AtelierApiIntegrationTest`) reste verte : la colonne ajoutée
       est nullable-free avec valeur par défaut, aucun contrat modifié.
 
 ### Isolation utilisateur
@@ -160,7 +160,7 @@ Aucun changement de contrat. `AtelierSessionResult` / l'événement SSE `done` p
 
 ### Questions ouvertes impactées
 
-- [ ] OQ-08 (overage monétisé) — **non tranchée**, hors scope.
+- [x] OQ-08 (overage monétisé) — **non tranchée**, hors scope.
 
 ---
 

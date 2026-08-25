@@ -12,7 +12,7 @@
 
 ## Statut
 
-`in-progress`
+`done` — livrée le 2026-08-26 (PR #167)
 
 ## Date de création
 
@@ -68,11 +68,11 @@ elles restent surchargeables par environnement.
 
 ## Critères d'acceptation
 
-- [ ] Le tarif d'entrée par défaut vaut **5,00** par million ; celui de sortie **25,00**.
-- [ ] Le coût estimé d'une période connue est celui calculé aux nouveaux tarifs.
-- [ ] Une valeur explicitement configurée reste prioritaire sur le défaut.
-- [ ] Aucun changement de contrat d'API ni de forme de réponse.
-- [ ] L'isolation `user_id` du rapport reste inchangée (test existant vert).
+- [x] Le tarif d'entrée par défaut vaut **5,00** par million ; celui de sortie **25,00**.
+- [x] Le coût estimé d'une période connue est celui calculé aux nouveaux tarifs.
+- [x] Une valeur explicitement configurée reste prioritaire sur le défaut.
+- [x] Aucun changement de contrat d'API ni de forme de réponse.
+- [x] L'isolation `user_id` du rapport reste inchangée (test existant vert).
 
 ---
 
@@ -114,13 +114,13 @@ Aucune.
 
 ### Tests unitaires
 
-- [ ] `UsageReportPropertiesTest` — les défauts valent 5,00 et 25,00 ; une valeur configurée est
+- [x] `UsageReportPropertiesTest` — les défauts valent 5,00 et 25,00 ; une valeur configurée est
       conservée ; une valeur négative retombe sur le défaut.
-- [ ] `UsageReportServiceTest` — le coût d'une période est calculé aux tarifs Opus.
+- [x] `UsageReportServiceTest` — le coût d'une période est calculé aux tarifs Opus.
 
 ### Tests d'intégration
 
-- [ ] `UsageReportApiIntegrationTest` — le rapport reste servi, isolation par utilisateur inchangée.
+- [x] `UsageReportApiIntegrationTest` — le rapport reste servi, isolation par utilisateur inchangée.
 
 ### Isolation utilisateur
 
