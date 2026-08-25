@@ -8,8 +8,12 @@
 
 ## Statut
 
-`cadré` — décisions D1/D2/D3 **arbitrées par l'owner le 2026-08-25**. Aucun développement engagé :
-la première mini-spec (SF-31-01) reste à produire.
+`livrée partiellement (4/5)` — décisions D1/D2/D3 **arbitrées par l'owner le 2026-08-25**.
+**SF-31-01→04 livrées et mergées** le 2026-08-25 (PR #138/#139, #141/#142, #143/#144, #145/#146) ;
+**SF-31-05 parquée 🔴** — elle est subordonnée à la levée du § *Risque MCP*, question désormais
+inscrite au registre sous **OQ-11** (`docs/OPEN_QUESTIONS.md`). Le repli prévu par ce cadrage est
+en place : l'utilisateur ouvre sa pull request depuis le lien de comparaison renvoyé par SF-31-04.
+Voir § *État d'avancement* en fin de document.
 
 ## Date
 
@@ -263,8 +267,18 @@ donc acquis sans SF-31-05.
 (un PAT en `static_bearer`) sur un dépôt de test, ou bascule-t-on d'emblée l'authentification sur
 GitHub App (D2 option B), qui lève l'incertitude mais ouvre un chantier à part entière ?
 
+Cette question est **inscrite au registre des sujets non tranchés sous `OQ-11`**
+(`docs/OPEN_QUESTIONS.md`) : tant qu'elle est ouverte, SF-31-05 ne démarre pas — la règle
+« ne jamais implémenter silencieusement une solution à un sujet ouvert » (`CLAUDE.md`) s'applique.
+
 ---
 
 ## Prochaine étape
 
-SF-31-01→04 livrées. Reste **SF-31-05**, subordonnée à la levée du § *Risque MCP* ci-dessus.
+SF-31-01→04 livrées, mergées et vérifiées sur `main` (650 tests backend + 367 frontend verts au
+2026-08-25). Les branches distantes des six PR F-31 ont été supprimées après vérification qu'elles
+ne portaient plus aucun commit absent de `main` (`git cherry`).
+
+Reste **SF-31-05**, subordonnée à la levée d'**OQ-11** (§ *Risque MCP* ci-dessus). Elle ne sera pas
+reprise par une livraison automatique : la vérification exige un PAT réel et un appel au fournisseur.
+Décision de l'owner attendue.
