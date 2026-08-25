@@ -2,7 +2,7 @@
 
 ## Identifiant / Statut / Date
 
-`F-33` · `cadré, décisions par défaut prises` · 2026-08-25
+`F-33` · `livrée` (SF-33-01 PR #155, SF-33-02 PR #156, SF-33-03 PR #157) · 2026-08-25
 
 ## Objectif
 

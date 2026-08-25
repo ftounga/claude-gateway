@@ -10,7 +10,7 @@
 
 ## Statut
 
-`done`
+`done` — livrée le 2026-08-25 (PR #152)
 
 ## Date de création
 

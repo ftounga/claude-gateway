@@ -279,6 +279,20 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     Sans réponse dans `app.atelier.agent.confirm-timeout` (défaut `PT2M`), la commande est **refusée**.
   - ⚠️ Une session en attente de confirmation émet `session.status_idle` : seul un `idle`
     **non `requires_action`** termine un run, sous peine de clore le tour sans exécuter la commande.
+- **atelier_messages — tour interrompu** (F-32 / SF-32-01). **Aucune migration** : la marque d'un tour
+  arrêté par l'utilisateur vit dans le document d'affichage `terminal_json` déjà existant (F-30 /
+  SF-30-09), sous un champ booléen **additif** `interrupted` — un tour antérieur, qui ne le porte pas,
+  se relit exactement comme avant. Le tour interrompu **est persisté** (transcription partielle,
+  sérialisée même si aucune commande n'a été lancée) et sa consommation **est décomptée** : il a
+  réellement consommé du bac à sable. Écart assumé avec SF-30-09, qui ne persiste que les runs aboutis.
+  L'interruption elle-même n'est **aucunement persistée** : `POST /workspaces/{id}/agent/interrupt`
+  relaie `user.interrupt` à la session chez le fournisseur, qui s'arrête à une frontière sûre.
+- **Instructions de projet — aucune persistance** (F-34 / SF-34-01). Le `CLAUDE.md` du workspace (repli
+  `.atelier/instructions.md`) est lu **à l'ouverture de session** dans la source du projet — stockage
+  objet pour un projet `ARCHIVE`, branche montée via l'API GitHub pour un projet `GIT` — et composé au
+  prompt plateforme (`agent_with_overrides.system`, plateforme **en tête**). **Aucune table, aucune
+  colonne, aucune migration** : les instructions vivent dans les fichiers du projet, et `instructionsPath`
+  exposé par `GET /workspaces/{id}` est **dérivé de l'arborescence** déjà chargée, jamais stocké.
 
 - **prompt_templates** — modèle de prompt réutilisable (F-13, migration `031`). Isolé par `user_id`.
   Donnée purement relationnelle, **sans colonne vectorielle** (F-13 n'est pas du RAG) — le backend
