@@ -43,6 +43,12 @@ public class StubGitHubClient implements GitHubClient {
     /** Dernier chemin lu sur la branche. */
     public volatile String lastPath;
 
+    /** Réponse de {@link #branchExists} : simule un push réussi (vrai) ou raté (faux) — SF-31-04. */
+    public volatile boolean branchPushed = true;
+
+    /** Dernière branche dont l'existence a été constatée. */
+    public volatile String lastCheckedBranch;
+
     public void reset() {
         reject = false;
         unavailable = false;
@@ -55,6 +61,8 @@ public class StubGitHubClient implements GitHubClient {
         fileContent = "contenu de la branche";
         lastRef = null;
         lastPath = null;
+        branchPushed = true;
+        lastCheckedBranch = null;
     }
 
     @Override
@@ -101,6 +109,15 @@ public class StubGitHubClient implements GitHubClient {
             throw new InvalidGitRepositoryException("fichier introuvable sur cette branche (simulé)");
         }
         return fileContent;
+    }
+
+    @Override
+    public boolean branchExists(String token, String owner, String repo, String branch) {
+        this.lastToken = token;
+        this.lastRepository = owner + "/" + repo;
+        this.lastCheckedBranch = branch;
+        failIfSimulated();
+        return branchPushed;
     }
 
     private void failIfSimulated() {

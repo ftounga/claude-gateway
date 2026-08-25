@@ -163,6 +163,18 @@ public class HttpGitHubClient implements GitHubClient {
         return new String(bytes, StandardCharsets.UTF_8);
     }
 
+    @Override
+    public boolean branchExists(String token, String owner, String repo, String branch) {
+        try {
+            get(builder -> builder.path("/repos/{owner}/{repo}/branches/" + branch).build(owner, repo),
+                    token, GitBranchResponse.class, "vérification de la branche poussée");
+            return true;
+        } catch (InvalidGitRepositoryException absent) {
+            // 404 : la branche n'existe pas. Ce n'est pas une panne — c'est la réponse à la question.
+            return false;
+        }
+    }
+
     /** Décode le base64 de l'API (qui insère des retours à la ligne) ; contenu illisible ⇒ refus net. */
     private static byte[] decode(String content) {
         try {
@@ -250,6 +262,10 @@ public class HttpGitHubClient implements GitHubClient {
 
     /** Projection minimale de {@code GET /repos/{owner}/{repo}/contents/{path}}. */
     private record GitContentResponse(String type, String content, Long size) {
+    }
+
+    /** Projection minimale de {@code GET /repos/{owner}/{repo}/branches/{branch}} : seul le nom sert. */
+    private record GitBranchResponse(String name) {
     }
 
     /** Projection minimale de {@code GET /repos/{owner}/{repo}}. */
