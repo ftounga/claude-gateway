@@ -45,6 +45,7 @@ describe('AtelierTerminalComponent', () => {
             tool: 'bash',
             command: 'npm test',
             toolUseId: 'tu_1',
+            threadId: null,
             output: '12 passing',
             hasOutput: true,
             error: false,
@@ -77,6 +78,7 @@ describe('AtelierTerminalComponent', () => {
             tool: 'bash',
             command: 'npm run build',
             toolUseId: null,
+            threadId: null,
             output: 'command not found',
             hasOutput: true,
             error: true,
@@ -107,6 +109,7 @@ describe('AtelierTerminalComponent', () => {
           tool: 'bash',
           command: 'npm install',
           toolUseId: 'tu_1',
+          threadId: null,
           output: '',
           hasOutput: false,
           error: false,
@@ -162,6 +165,7 @@ describe('AtelierTerminalComponent', () => {
       tool: 'bash',
       command: 'npm install',
       toolUseId: null,
+      threadId: null,
       output: Array.from({ length: 30 }, (_, i) => `ligne ${i + 1}`).join('\n'),
       hasOutput: true,
       error: false,
@@ -225,6 +229,7 @@ describe('AtelierTerminalComponent', () => {
             tool: 'bash',
             command: 'npm install',
             toolUseId: 'tu_1',
+            threadId: null,
             output: 'installing…',
             hasOutput: true,
             error: false,
@@ -493,5 +498,105 @@ describe('AtelierTerminalComponent', () => {
     fixture.detectChanges();
 
     expect(text()).not.toContain('Créer la pull request');
+  });
+
+  // ---- F-35 / SF-35-03 : sous-tâches visibles dans la vue terminal ----
+
+  it("marque les commandes venant d'une sous-tâche, jamais celles du travail principal", () => {
+    component.messages = [
+      {
+        id: 'a1',
+        role: 'ASSISTANT',
+        content: '',
+        actions: [],
+        terminal: [
+          {
+            tool: 'bash',
+            command: 'npm test',
+            toolUseId: 'tu_1',
+            threadId: 'thr_main',
+            output: '',
+            hasOutput: false,
+            error: false,
+            expanded: false,
+          },
+          {
+            tool: 'bash',
+            command: 'grep -r TODO',
+            toolUseId: 'tu_2',
+            threadId: 'thr_sub',
+            output: '',
+            hasOutput: false,
+            error: false,
+            expanded: false,
+          },
+        ],
+      },
+    ];
+    fixture.detectChanges();
+
+    const badges = Array.from(
+      fixture.nativeElement.querySelectorAll('.terminal-subtask'),
+    ) as HTMLElement[];
+    expect(badges.length).toBe(1);
+    expect(badges[0].textContent).toContain('sous-tâche 1');
+  });
+
+  it("n'affiche aucun badge pour un run séquentiel (non-régression F-30)", () => {
+    component.messages = [
+      {
+        id: 'a1',
+        role: 'ASSISTANT',
+        content: '',
+        actions: [],
+        terminal: [
+          {
+            tool: 'bash',
+            command: 'npm test',
+            toolUseId: 'tu_1',
+            threadId: null,
+            output: '12 passing',
+            hasOutput: true,
+            error: false,
+            expanded: false,
+          },
+        ],
+      },
+    ];
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelectorAll('.terminal-subtask').length).toBe(0);
+  });
+
+  it('marque aussi les sous-tâches du tour en cours', () => {
+    component.streaming = {
+      status: 'running',
+      blocks: [
+        {
+          tool: 'bash',
+          command: 'npm test',
+          toolUseId: 'tu_1',
+          threadId: 'thr_main',
+          output: '',
+          hasOutput: false,
+          error: false,
+          expanded: false,
+        },
+        {
+          tool: 'bash',
+          command: 'grep -r TODO',
+          toolUseId: 'tu_2',
+          threadId: 'thr_sub',
+          output: '',
+          hasOutput: false,
+          error: false,
+          expanded: false,
+        },
+      ],
+      text: '',
+    };
+    fixture.detectChanges();
+
+    expect(text()).toContain('sous-tâche 1');
   });
 });

@@ -23,7 +23,14 @@ import {
   AtelierThreadItem,
   AtelierTurnCost,
 } from '../atelier.types';
-import { blockLabel, formatElapsed, hiddenLineCount, visibleOutput } from './terminal-block';
+import {
+  blockLabel,
+  formatElapsed,
+  hiddenLineCount,
+  subtaskIndexes,
+  subtaskLabel,
+  visibleOutput,
+} from './terminal-block';
 
 /**
  * Vue **terminal immersive** du mode Terminal de l'Atelier (F-30 SF-30-07).
@@ -156,6 +163,27 @@ export class AtelierTerminalComponent implements AfterViewChecked {
   blockLabel = blockLabel;
   visibleOutput = visibleOutput;
   hiddenLineCount = hiddenLineCount;
+
+  /**
+   * Numérotation des fils, mémorisée **par tableau de blocs** (F-35 SF-35-03). Le gabarit interroge
+   * chaque bloc : sans mémo, la table serait recalculée à chaque bloc et à chaque cycle de détection.
+   * Le tour en cours produit un nouveau tableau à chaque événement, ce qui invalide naturellement
+   * l'entrée — d'où la `WeakMap`, qui n'a rien à purger.
+   */
+  private readonly subtaskCache = new WeakMap<AtelierTerminalBlock[], Map<string, number>>();
+
+  /**
+   * Libellé de sous-tâche d'un bloc, ou `null` s'il appartient au travail principal. Un run
+   * séquentiel n'en produit aucun : l'écran est alors strictement celui d'avant F-35.
+   */
+  subtaskLabel(blocks: AtelierTerminalBlock[], block: AtelierTerminalBlock): string | null {
+    let indexes = this.subtaskCache.get(blocks);
+    if (!indexes) {
+      indexes = subtaskIndexes(blocks);
+      this.subtaskCache.set(blocks, indexes);
+    }
+    return subtaskLabel(block, indexes);
+  }
 
   /** Coût d'un tour : « m:ss · N tokens ». */
   costLabel(cost: AtelierTurnCost): string {

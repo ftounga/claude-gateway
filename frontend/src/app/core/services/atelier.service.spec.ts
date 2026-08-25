@@ -196,10 +196,38 @@ describe('AtelierService', () => {
       onError: () => undefined,
     });
 
-    expect(actions).toEqual([{ tool: 'bash', detail: 'npm test', toolUseId: 'tu_1' }]);
+    // `threadId` est le champ additif de F-35 SF-35-02 : nul quand le backend ne l'envoie pas.
+    expect(actions).toEqual([
+      { tool: 'bash', detail: 'npm test', toolUseId: 'tu_1', threadId: null },
+    ]);
     expect(results).toEqual([
-      { tool: 'bash', toolUseId: 'tu_1', output: '12 passing', error: false },
-      { tool: 'bash', toolUseId: 'tu_2', output: 'boom', error: true },
+      { tool: 'bash', toolUseId: 'tu_1', output: '12 passing', error: false, threadId: null },
+      { tool: 'bash', toolUseId: 'tu_2', output: 'boom', error: true, threadId: null },
+    ]);
+  });
+
+  it('relaie le fil d’exécution porté par le flux (F-35 SF-35-02)', async () => {
+    fakeSseFetch([
+      'event:action\ndata:{"tool":"bash","toolUseId":"tu_1","detail":"npm test","threadId":"thr_main"}',
+      'event:action_result\ndata:{"tool":"bash","toolUseId":"tu_1","output":"ok","error":false,"threadId":"thr_main"}',
+    ]);
+    const actions: unknown[] = [];
+    const results: unknown[] = [];
+
+    await service.streamAgent('w1', 'go', {
+      onAgent: () => undefined,
+      onAction: (a) => actions.push(a),
+      onActionResult: (r) => results.push(r),
+      onStatus: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+    });
+
+    expect(actions).toEqual([
+      { tool: 'bash', detail: 'npm test', toolUseId: 'tu_1', threadId: 'thr_main' },
+    ]);
+    expect(results).toEqual([
+      { tool: 'bash', toolUseId: 'tu_1', output: 'ok', error: false, threadId: 'thr_main' },
     ]);
   });
 

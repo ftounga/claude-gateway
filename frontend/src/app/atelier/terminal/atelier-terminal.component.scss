@@ -119,6 +119,21 @@
   flex-shrink: 0;
 }
 
+// Sous-tâche (F-35 SF-35-03) : marqueur discret en fin de ligne de commande. La vue terminal est un
+// flux continu, pas un tableau de bord — il faut juste pouvoir suivre qui fait quoi. Le libellé est
+// textuel, jamais porté par la seule couleur.
+.terminal-subtask {
+  flex-shrink: 0;
+  align-self: flex-start;
+  padding: 0 var(--cg-space-1);
+  border: 1px solid var(--cg-navy-2);
+  border-radius: 4px;
+  background: var(--cg-navy-2);
+  color: var(--cg-orange-2);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .terminal-output {
   margin: var(--cg-space-1) 0 0;
   font-size: 12px;

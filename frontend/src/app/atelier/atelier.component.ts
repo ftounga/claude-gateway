@@ -1277,6 +1277,7 @@ function openBlock(action: AtelierAgentStreamAction): AtelierTerminalBlock {
     tool: action.tool,
     command: action.detail,
     toolUseId: action.toolUseId ?? null,
+    threadId: action.threadId ?? null,
     output: '',
     hasOutput: false,
     error: false,
@@ -1310,6 +1311,7 @@ function attachOutput(
       {
         tool: result.tool,
         toolUseId: result.toolUseId,
+        threadId: result.threadId ?? null,
         output: result.output,
         hasOutput: true,
         error: result.error,
@@ -1321,6 +1323,8 @@ function attachOutput(
   const merged: AtelierTerminalBlock = {
     ...target,
     toolUseId: target.toolUseId ?? result.toolUseId,
+    // Mieux vaut un fil tardif qu'aucun : une commande sans fil adopte celui de sa sortie.
+    threadId: target.threadId ?? result.threadId ?? null,
     // Plusieurs sorties pour une même commande : concaténées dans l'ordre d'arrivée.
     output: target.hasOutput && target.output ? `${target.output}\n${result.output}` : result.output,
     hasOutput: true,
@@ -1358,6 +1362,7 @@ export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
     tool: block.tool,
     command: block.command ?? undefined,
     toolUseId: block.toolUseId ?? null,
+    threadId: block.threadId ?? null,
     output: block.output ?? '',
     hasOutput: block.hasOutput === true,
     error: block.error === true,
