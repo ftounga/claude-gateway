@@ -1593,6 +1593,97 @@ describe('AtelierComponent', () => {
     expect(item.terminal).toBeUndefined();
   });
 
+  // ---- F-36 / SF-36-04 : plafond de dépense du run atteint ----
+
+  it('marque le tour arrêté sur le plafond de dépense du run', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onDone({
+        reply: 'J\'ai commencé…',
+        changedFiles: [],
+        inputTokens: 900,
+        outputTokens: 100,
+        activeSeconds: 42,
+        interrupted: false,
+        budgetReached: true,
+      });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Teste');
+    component.send();
+
+    const last = component.messages()[component.messages().length - 1];
+    // Le tour est conservé : il a eu lieu et il est facturé. L'écran le dit, il ne l'efface pas.
+    expect(last.budgetReached).toBeTrue();
+    expect(last.content).toBe('J\'ai commencé…');
+    expect(last.interrupted).toBeFalse();
+  });
+
+  it('ne marque aucun plafond quand le flux ne le signale pas', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onDone({
+        reply: 'Terminé.',
+        changedFiles: [],
+        inputTokens: 0,
+        outputTokens: 0,
+        activeSeconds: 0,
+        interrupted: false,
+      });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Teste');
+    component.send();
+
+    const last = component.messages()[component.messages().length - 1];
+    expect(last.budgetReached).toBeFalse();
+  });
+
+  it('restitue la marque de plafond d\'un tour relu depuis l\'historique', () => {
+    const item = toThreadItem({
+      id: 'm1',
+      role: 'ASSISTANT',
+      content: 'J\'ai commencé…',
+      createdAt: '2026-08-26T00:00:00Z',
+      terminal: {
+        blocks: [],
+        omittedBlocks: 0,
+        inputTokens: 900,
+        outputTokens: 100,
+        activeSeconds: 42,
+        interrupted: false,
+        budgetReached: true,
+      },
+    });
+
+    expect(item.budgetReached).toBeTrue();
+  });
+
+  it('traite un historique écrit avant F-36 comme un tour sans plafond atteint', () => {
+    const item = toThreadItem({
+      id: 'm1',
+      role: 'ASSISTANT',
+      content: 'Terminé.',
+      createdAt: '2026-08-20T00:00:00Z',
+      terminal: {
+        blocks: [],
+        omittedBlocks: 0,
+        inputTokens: 10,
+        outputTokens: 5,
+        activeSeconds: 1,
+        interrupted: false,
+      },
+    });
+
+    expect(item.budgetReached).toBeFalse();
+  });
+
   // ---- F-34 / SF-34-02 : instructions portées par le projet ----
 
   it('expose le chemin des instructions du projet quand il en porte', () => {

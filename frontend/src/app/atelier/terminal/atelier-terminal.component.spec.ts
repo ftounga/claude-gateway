@@ -253,6 +253,53 @@ describe('AtelierTerminalComponent', () => {
     expect(fixture.nativeElement.querySelector('.terminal-interrupted')).toBeNull();
   });
 
+  // ---- F-36 / SF-36-04 : plafond de dépense du run atteint ----
+
+  it('annonce le plafond de dépense du run, sans parler du quota mensuel', () => {
+    component.messages = [
+      {
+        id: 'a1',
+        role: 'ASSISTANT',
+        content: 'J\'ai commencé…',
+        actions: [],
+        cost: { elapsedSeconds: 42, tokens: 1_000 },
+        budgetReached: true,
+      },
+    ];
+    fixture.detectChanges();
+
+    const banner = fixture.nativeElement.querySelector('.terminal-budget') as HTMLElement;
+    expect(banner).not.toBeNull();
+    expect(banner.textContent).toContain('Plafond de dépense de ce run');
+    // Ce n'est pas le quota mensuel : dire l'un pour l'autre enverrait l'utilisateur au mauvais geste.
+    expect(banner.textContent).not.toContain('quota');
+    // Le tour reste entier : réponse et coût conservés.
+    expect(fixture.nativeElement.querySelector('.terminal-cost')).not.toBeNull();
+  });
+
+  it('propose le rachat de tokens et émet l\'ouverture de la facturation', () => {
+    component.messages = [
+      { id: 'a1', role: 'ASSISTANT', content: 'J\'ai commencé…', actions: [], budgetReached: true },
+    ];
+    fixture.detectChanges();
+    const emitted: boolean[] = [];
+    component.openBilling.subscribe(() => emitted.push(true));
+
+    const action = fixture.nativeElement.querySelector('.terminal-budget-action') as HTMLButtonElement;
+    action.click();
+
+    expect(emitted.length).toBe(1);
+  });
+
+  it('n\'affiche aucune mention de plafond sur un tour mené à son terme', () => {
+    component.messages = [
+      { id: 'a1', role: 'ASSISTANT', content: 'Terminé.', actions: [] },
+    ];
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.terminal-budget')).toBeNull();
+  });
+
   // ---- F-34 / SF-34-02 : instructions portées par le projet ----
 
   it('annonce le fichier d\'instructions du projet et émet son ouverture', () => {
