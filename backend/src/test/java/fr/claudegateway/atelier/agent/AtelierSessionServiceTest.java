@@ -65,11 +65,13 @@ class AtelierSessionServiceTest {
     private fr.claudegateway.atelier.ProjectInstructionsService instructionsService;
 
     private AtelierAgentProperties enabled() {
-        return new AtelierAgentProperties(true, null, null, null, null, null, null, null, null, null, null, null);
+        return new AtelierAgentProperties(true, null, null, null, null, null, null, null, null, null,
+                null, null, null);
     }
 
     private AtelierAgentProperties disabled() {
-        return new AtelierAgentProperties(false, null, null, null, null, null, null, null, null, null, null, null);
+        return new AtelierAgentProperties(false, null, null, null, null, null, null, null, null, null,
+                null, null, null);
     }
 
     private AtelierAgentConfig config() {
@@ -1175,5 +1177,67 @@ class AtelierSessionServiceTest {
 
         assertThat(state.enabled()).isTrue();
         assertThat(state.appliesToCurrentSession()).isFalse();
+    }
+
+    // ------------------------ F-33 / SF-33-02 : réponse à une demande d'autorisation
+
+    @Test
+    void confirmingRequiresOwnershipFirst() {
+        when(workspaceService.requireOwned(USER, WORKSPACE))
+                .thenThrow(new WorkspaceNotFoundException("Workspace introuvable"));
+
+        assertThatThrownBy(() -> service(enabled()).confirmToolUse(USER, WORKSPACE, "sevt_1", true, null))
+                .isInstanceOf(WorkspaceNotFoundException.class);
+
+        verifyNoInteractions(provider);
+    }
+
+    @Test
+    void confirmingWithoutAnActiveSessionIsRefusedBeforeAnyProviderCall() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));
+
+        assertThatThrownBy(() -> service(enabled()).confirmToolUse(USER, WORKSPACE, "sevt_1", true, null))
+                .isInstanceOf(NoActiveSessionException.class);
+
+        verifyNoInteractions(provider);
+    }
+
+    @Test
+    void confirmingRelaysTheDecisionAndItsReasonToTheSessionOfTheOwnedWorkspace() {
+        // L'identifiant de session n'est jamais accepté du client : il est lu sur le workspace possédé.
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_1"));
+
+        service(enabled()).confirmToolUse(USER, WORKSPACE, "sevt_1", false, "Trop risqué.");
+
+        verify(provider).confirmToolUse("sess_1", "sevt_1", false, "Trop risqué.");
+    }
+
+    @Test
+    void aConfirmationRequestIsRelayedToTheApplicationListener() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_1"));
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(provider.listOutputs("sess_1")).thenReturn(List.of());
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(invocation -> {
+            ManagedEventListener bridge = invocation.getArgument(3);
+            bridge.onConfirmationRequest("bash", "sevt_1", "rm -rf build");
+            bridge.onConfirmationResolved("sevt_1", "deny");
+            return new SessionRun("Compris.", "end_turn");
+        });
+
+        List<String> relayed = new java.util.ArrayList<>();
+        AtelierAgentListener listener = new AtelierAgentListener() {
+            @Override
+            public void onConfirmationRequest(String tool, String confirmationId, String detail) {
+                relayed.add("ask:" + tool + ":" + confirmationId + ":" + detail);
+            }
+
+            @Override
+            public void onConfirmationResolved(String confirmationId, String decision) {
+                relayed.add("resolved:" + confirmationId + ":" + decision);
+            }
+        };
+        service(enabled()).runTaskStreaming(USER, WORKSPACE, "go", listener);
+
+        assertThat(relayed).containsExactly("ask:bash:sevt_1:rm -rf build", "resolved:sevt_1:deny");
     }
 }

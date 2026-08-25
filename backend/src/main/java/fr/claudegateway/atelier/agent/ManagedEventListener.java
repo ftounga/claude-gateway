@@ -67,4 +67,27 @@ public interface ManagedEventListener {
      */
     default void onStatus(String state) {
     }
+
+    /**
+     * Notifie que l'agent <b>demande l'autorisation</b> d'utiliser un outil (F-33 / SF-33-02) : la
+     * session est en pause tant qu'une réponse n'a pas été postée.
+     *
+     * @param tool           nom de l'outil demandé (en pratique {@code bash})
+     * @param confirmationId identifiant à renvoyer pour trancher — c'est l'identifiant de
+     *                       l'<b>event</b> ({@code sevt_…}), jamais le {@code tool_use_id} du bloc
+     * @param detail         commande que l'agent veut exécuter, ou {@code ""} si absente
+     */
+    default void onConfirmationRequest(String tool, String confirmationId, String detail) {
+    }
+
+    /**
+     * Notifie qu'une demande d'autorisation a été <b>tranchée</b> (F-33 / SF-33-02), que la décision
+     * vienne de cette instance, d'une autre réplique, ou du refus automatique de fin de délai.
+     *
+     * @param confirmationId identifiant de la demande tranchée
+     * @param decision       {@code allow}, {@code deny} ou {@code timeout} (refus automatique)
+     */
+    default void onConfirmationResolved(String confirmationId, String decision) {
+    }
+
 }

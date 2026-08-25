@@ -43,12 +43,21 @@ class AnthropicManagedAgentProviderTest {
 
     @BeforeEach
     void setUp() {
+        buildProvider(Duration.ofMinutes(2));
+    }
+
+    /**
+     * (Re)construit le provider et son serveur simulé. Le délai de confirmation (F-33 / SF-33-02) est
+     * paramétrable : un délai d'une nanoseconde rend l'expiration déterministe, sans attente réelle.
+     */
+    private void buildProvider(Duration confirmTimeout) {
         AnthropicProperties properties = new AnthropicProperties(
                 "sk-ant-test-key", "https://api.anthropic.com", "2023-06-01",
                 null, null, null, Duration.ofSeconds(5));
         // pollDelay = 0 : polling déterministe sans Thread.sleep réel.
         AtelierAgentProperties agentProperties = new AtelierAgentProperties(
-                false, null, null, null, null, null, null, null, Duration.ZERO, null, null, null);
+                false, null, null, null, null, null, null, null, Duration.ZERO, null, null, null,
+                confirmTimeout);
         RestClient.Builder builder = RestClient.builder();
         server = MockRestServiceServer.bindTo(builder).ignoreExpectOrder(true).build();
         provider = new AnthropicManagedAgentProvider(properties, agentProperties, builder);
@@ -465,12 +474,172 @@ class AnthropicManagedAgentProviderTest {
         server.verify();
     }
 
+    // ------------------------ F-33 / SF-33-02 : demande d'autorisation
+
+    @Test
+    void anIdleAwaitingConfirmationDoesNotEndTheRun() {
+        // ⚠️ Le piège central : une session EN ATTENTE d'autorisation est `idle`. La traiter comme une
+        // fin de run clôturerait le tour sans que la commande soit exécutée, silencieusement.
+        server.expect(ExpectedCount.once(), requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"agent.tool_use\",\"id\":\"sevt_1\",\"name\":\"bash\","
+                                + "\"evaluated_permission\":\"ask\",\"input\":{\"command\":\"rm -rf build\"}},"
+                                + "{\"type\":\"session.status_idle\",\"id\":\"e1\","
+                                + "\"stop_reason\":{\"type\":\"requires_action\"}}]}",
+                        MediaType.APPLICATION_JSON));
+        // Second tour de polling : la commande a été autorisée ailleurs, le tour s'achève.
+        server.expect(ExpectedCount.once(), requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"user.tool_confirmation\",\"id\":\"e2\","
+                                + "\"tool_use_id\":\"sevt_1\",\"result\":\"allow\"},"
+                                + "{\"type\":\"agent.message\",\"id\":\"e3\",\"content\":\"C'est fait.\"},"
+                                + "{\"type\":\"session.status_idle\",\"id\":\"e4\",\"stop_reason\":\"end_turn\"}]}",
+                        MediaType.APPLICATION_JSON));
+
+        RecordingListener listener = new RecordingListener();
+        SessionRun run = provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10, listener);
+
+        assertThat(run.reply()).isEqualTo("C'est fait.");
+        assertThat(run.stopReason()).isEqualTo("end_turn");
+        // L'identifiant relayé est celui de l'EVENT (sevt_…), pas le tool_use_id du bloc d'outil.
+        assertThat(listener.asks).containsExactly("bash|sevt_1|rm -rf build");
+        assertThat(listener.resolved).containsExactly("sevt_1|allow");
+        server.verify();
+    }
+
+    @Test
+    void aToolUseWithoutAskPermissionNeverRequestsConfirmation() {
+        // Non-régression : un projet sans l'option ne voit aucun de ces chemins.
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"agent.tool_use\",\"id\":\"sevt_1\",\"name\":\"bash\","
+                                + "\"input\":{\"command\":\"ls\"}},"
+                                + "{\"type\":\"session.status_idle\",\"id\":\"e1\",\"stop_reason\":\"end_turn\"}]}",
+                        MediaType.APPLICATION_JSON));
+
+        RecordingListener listener = new RecordingListener();
+        provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10, listener);
+
+        assertThat(listener.asks).isEmpty();
+        assertThat(listener.resolved).isEmpty();
+        server.verify();
+    }
+
+    @Test
+    void anUnansweredConfirmationIsDeniedWhenTheDelayExpires() {
+        // Le silence ne vaut pas autorisation (D3) : passé le délai, la commande est refusée, motivée.
+        buildProvider(Duration.ofNanos(1));
+        server.expect(ExpectedCount.once(), requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"agent.tool_use\",\"id\":\"sevt_9\",\"name\":\"bash\","
+                                + "\"evaluated_permission\":\"ask\",\"input\":{\"command\":\"rm -rf /\"}},"
+                                + "{\"type\":\"session.status_idle\",\"id\":\"e1\","
+                                + "\"stop_reason\":{\"type\":\"requires_action\"}}]}",
+                        MediaType.APPLICATION_JSON));
+        server.expect(ExpectedCount.once(), requestTo("https://api.anthropic.com/v1/sessions/sess_1/events"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.events[0].type").value("user.tool_confirmation"))
+                .andExpect(jsonPath("$.events[0].tool_use_id").value("sevt_9"))
+                .andExpect(jsonPath("$.events[0].result").value("deny"))
+                .andExpect(jsonPath("$.events[0].message").exists())
+                .andRespond(withSuccess("{\"ok\":true}", MediaType.APPLICATION_JSON));
+        server.expect(ExpectedCount.once(), requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"session.status_idle\",\"id\":\"e2\",\"stop_reason\":\"end_turn\"}]}",
+                        MediaType.APPLICATION_JSON));
+
+        RecordingListener listener = new RecordingListener();
+        SessionRun run = provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10, listener);
+
+        assertThat(run.stopReason()).isEqualTo("end_turn");
+        assertThat(listener.resolved).containsExactly("sevt_9|timeout");
+        server.verify();
+    }
+
+    @Test
+    void anAutomaticDenialThatFailsNeverBreaksTheRun() {
+        // Le refus automatique croise une réponse humaine : le fournisseur le rejette, et le run
+        // continue — faire échouer un tour parce qu'on a répondu deux fois serait absurde.
+        buildProvider(Duration.ofNanos(1));
+        server.expect(ExpectedCount.once(), requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"agent.tool_use\",\"id\":\"sevt_9\",\"name\":\"bash\","
+                                + "\"evaluated_permission\":\"ask\",\"input\":{\"command\":\"ls\"}},"
+                                + "{\"type\":\"session.status_idle\",\"id\":\"e1\","
+                                + "\"stop_reason\":{\"type\":\"requires_action\"}}]}",
+                        MediaType.APPLICATION_JSON));
+        server.expect(ExpectedCount.once(), requestTo("https://api.anthropic.com/v1/sessions/sess_1/events"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withBadRequest());
+        server.expect(ExpectedCount.once(), requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"session.status_idle\",\"id\":\"e2\",\"stop_reason\":\"end_turn\"}]}",
+                        MediaType.APPLICATION_JSON));
+
+        SessionRun run = provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10);
+
+        assertThat(run.stopReason()).isEqualTo("end_turn");
+        server.verify();
+    }
+
+    @Test
+    void confirmToolUseAllowsWithoutAnyMessage() {
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions/sess_1/events"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("anthropic-beta", BETA))
+                .andExpect(jsonPath("$.events[0].type").value("user.tool_confirmation"))
+                .andExpect(jsonPath("$.events[0].tool_use_id").value("sevt_1"))
+                .andExpect(jsonPath("$.events[0].result").value("allow"))
+                .andExpect(jsonPath("$.events[0].message").doesNotExist())
+                .andRespond(withSuccess("{\"ok\":true}", MediaType.APPLICATION_JSON));
+
+        provider.confirmToolUse("sess_1", "sevt_1", true, "ignoré sur une autorisation");
+
+        server.verify();
+    }
+
+    @Test
+    void confirmToolUseDeniesAndCarriesTheReasonToTheAgent() {
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions/sess_1/events"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.events[0].result").value("deny"))
+                .andExpect(jsonPath("$.events[0].message").value("Ne touche pas au dossier build."))
+                .andRespond(withSuccess("{\"ok\":true}", MediaType.APPLICATION_JSON));
+
+        provider.confirmToolUse("sess_1", "sevt_1", false, "Ne touche pas au dossier build.");
+
+        server.verify();
+    }
+
+    @Test
+    void confirmToolUseFailureIsReportedNotSwallowed() {
+        // Une autorisation qui n'est pas passée doit être dite : sinon l'utilisateur attend devant un
+        // agent figé, persuadé d'avoir répondu.
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions/sess_1/events"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withBadRequest());
+
+        assertThatThrownBy(() -> provider.confirmToolUse("sess_1", "sevt_1", true, null))
+                .isInstanceOf(AgentProviderException.class);
+
+        server.verify();
+    }
+
     private static final class RecordingListener implements ManagedEventListener {
         private final List<String> texts = new java.util.ArrayList<>();
         private final List<String> actions = new java.util.ArrayList<>();
         private final List<String> states = new java.util.ArrayList<>();
         private final List<String> results = new java.util.ArrayList<>();
         private final List<String> actionIds = new java.util.ArrayList<>();
+        private final List<String> asks = new java.util.ArrayList<>();
+        private final List<String> resolved = new java.util.ArrayList<>();
 
         @Override
         public void onAgentText(String text) {
@@ -491,6 +660,16 @@ class AnthropicManagedAgentProviderTest {
         @Override
         public void onActionResult(String tool, String toolUseId, String output, boolean error) {
             results.add(tool + "|" + toolUseId + "|" + output + "|" + error);
+        }
+
+        @Override
+        public void onConfirmationRequest(String tool, String confirmationId, String detail) {
+            asks.add(tool + "|" + confirmationId + "|" + detail);
+        }
+
+        @Override
+        public void onConfirmationResolved(String confirmationId, String decision) {
+            resolved.add(confirmationId + "|" + decision);
         }
 
         @Override

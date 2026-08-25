@@ -231,6 +231,16 @@ public class AtelierSessionService {
             public void onStatus(String state) {
                 sink.onStatus(state);
             }
+
+            @Override
+            public void onConfirmationRequest(String tool, String confirmationId, String detail) {
+                sink.onConfirmationRequest(tool, confirmationId, detail);
+            }
+
+            @Override
+            public void onConfirmationResolved(String confirmationId, String decision) {
+                sink.onConfirmationResolved(confirmationId, decision);
+            }
         };
 
         // 5. Session PERSISTANTE (F-30 SF-30-04) : réutilisée si le workspace en porte une, sinon
@@ -512,6 +522,41 @@ public class AtelierSessionService {
     /** Raison d'arrêt d'interruption : le libellé exact n'est pas garanti, on reconnaît la racine. */
     private static boolean isInterruptStopReason(String stopReason) {
         return stopReason != null && stopReason.toLowerCase(java.util.Locale.ROOT).contains("interrupt");
+    }
+
+    /**
+     * Répond à une demande d'autorisation posée par l'agent (F-33 / SF-33-02) : autorise la commande,
+     * ou la refuse — avec un motif que l'agent recevra, pour qu'il propose autre chose plutôt que de
+     * rester bloqué.
+     *
+     * <p>Le rendez-vous ne passe par <b>aucun état partagé</b> : le run attend sur le pool SSE, cette
+     * réponse arrive sur un thread de requête (et possiblement sur une autre réplique). Elle est
+     * postée à la session chez le fournisseur, et la boucle d'attente la voit revenir dans le flux
+     * d'events.</p>
+     *
+     * <p>Aucun pré-vol de quota ici, délibérément : répondre ne consomme rien, et refuser la réponse
+     * laisserait le run bloqué jusqu'au refus automatique — en facturant l'attente.</p>
+     *
+     * @param userId         utilisateur propriétaire (isolation)
+     * @param workspaceId    workspace dont la session attend une réponse
+     * @param confirmationId identifiant de la demande, tel que relayé dans le flux
+     * @param allow          vrai pour autoriser, faux pour refuser
+     * @param reason         motif du refus relayé à l'agent (ignoré sur une autorisation)
+     * @throws fr.claudegateway.atelier.WorkspaceNotFoundException si le workspace n'est pas possédé
+     * @throws NoActiveSessionException si aucune session n'est en cours (rien à autoriser)
+     * @throws AgentProviderException   si la demande est inconnue, déjà tranchée, ou le fournisseur en panne
+     */
+    public void confirmToolUse(UUID userId, UUID workspaceId, String confirmationId, boolean allow,
+            String reason) {
+        // Isolation EN PREMIER : workspace d'un autre user / inexistant ⇒ 404, aucun appel provider.
+        // L'identifiant de session n'est jamais accepté du client : il est lu sur le workspace possédé,
+        // ce qui rend l'identifiant de demande inopérant en dehors de la session de CE workspace.
+        Workspace workspace = workspaceService.requireOwned(userId, workspaceId);
+        String sessionId = workspace.getAgentSessionId();
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new NoActiveSessionException("Aucune exécution en cours à autoriser.");
+        }
+        provider.confirmToolUse(sessionId, confirmationId, allow, reason);
     }
 
     /**

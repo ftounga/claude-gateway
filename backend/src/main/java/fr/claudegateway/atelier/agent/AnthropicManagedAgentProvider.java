@@ -48,6 +48,17 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
     /** Nom de l'outil qui exécute des commandes : le seul soumis à validation (F-33 / SF-33-01). */
     static final String SHELL_TOOL = "bash";
 
+    /**
+     * Raison d'arrêt d'un {@code session.status_idle} qui <b>attend le client</b> (F-33 / SF-33-02) :
+     * la session n'a pas fini, elle est en pause sur une demande d'autorisation.
+     */
+    static final String REQUIRES_ACTION = "requires_action";
+
+    /** Motif du refus automatique de fin de délai : l'agent doit savoir qu'il a été oublié, pas jugé. */
+    static final String CONFIRMATION_TIMEOUT_REASON =
+            "Aucune réponse de l'utilisateur dans le délai imparti : commande refusée. "
+                    + "Propose une autre approche ou attends de nouvelles instructions.";
+
     /** Borne de sécurité sur le nombre de pages d'events lues par tour de polling. */
     private static final int MAX_EVENT_PAGES = 1000;
 
@@ -251,6 +262,9 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
         ManagedEventListener sink = listener == null ? ManagedEventListener.NOOP : listener;
         StringBuilder reply = new StringBuilder();
         Set<String> seen = new HashSet<>();
+        // Demandes d'autorisation en attente (F-33 / SF-33-02) : identifiant d'event → échéance de
+        // refus automatique. Locale à la boucle : elle seule sait ce qui reste à trancher.
+        Map<String, Long> pendingAsks = new java.util.LinkedHashMap<>();
         long deadlineNanos = System.nanoTime() + timeout.toNanos();
         for (int poll = 0; poll < maxPolls; poll++) {
             if (System.nanoTime() > deadlineNanos) {
@@ -277,6 +291,14 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
                         sink.onAgentText(fragment);
                     } else if ("agent.tool_use".equals(type) || "agent.custom_tool_use".equals(type)) {
                         sink.onAction(toolName(event), text(event, "tool_use_id"), toolDetail(event));
+                        registerPermissionAsk(event, pendingAsks, sink);
+                    } else if ("user.tool_confirmation".equals(type)) {
+                        // Décision vue dans le flux (postée par nous, par une autre réplique, ou par
+                        // un autre onglet) : la demande n'est plus en attente, son échéance tombe.
+                        String answered = text(event, "tool_use_id");
+                        if (answered != null && pendingAsks.remove(answered) != null) {
+                            sink.onConfirmationResolved(answered, confirmationResult(event));
+                        }
                     } else if ("agent.tool_result".equals(type) || "agent.mcp_tool_result".equals(type)) {
                         // Sortie de la commande (F-30 SF-30-01) : c'est elle qui fait le rendu terminal.
                         sink.onActionResult(toolName(event), text(event, "tool_use_id"),
@@ -294,13 +316,106 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
                     break; // idle terminal, ou plus de page (fin des events courants)
                 }
             }
-            if (idle) {
+            // ⚠️ F-33 / SF-33-02 : une session EN ATTENTE d'autorisation est elle aussi `idle`. La
+            // traiter comme une fin de run clôturerait le tour sans que la commande soit exécutée,
+            // silencieusement. Seul un `idle` NON `requires_action` termine le run.
+            if (idle && !isAwaitingClientAction(stopReason)) {
                 return new SessionRun(reply.toString(), stopReason);
             }
+            // Le silence ne vaut pas autorisation (D3 du cadrage) : passé le délai, on refuse.
+            denyExpiredAsks(sessionId, pendingAsks, sink);
             sleepBetweenPolls();
         }
         throw new AgentSessionTimeoutException(
                 "Nombre maximal de tours de polling atteint sans complétion de la session.");
+    }
+
+    @Override
+    public void confirmToolUse(String sessionId, String confirmationId, boolean allow, String message) {
+        // Même canal que le message utilisateur : un event posté sur la session. L'échec n'est PAS
+        // avalé — une autorisation qui n'est pas passée laisserait l'utilisateur devant un agent
+        // figé, persuadé d'avoir répondu.
+        Map<String, Object> event = new java.util.LinkedHashMap<>();
+        event.put("type", "user.tool_confirmation");
+        event.put("tool_use_id", confirmationId);
+        event.put("result", allow ? "allow" : "deny");
+        if (!allow && message != null && !message.isBlank()) {
+            // Motif relayé tel quel : l'agent peut alors proposer autre chose au lieu de rester bloqué.
+            event.put("message", message);
+        }
+        post("/v1/sessions/" + sessionId + "/events", Map.of("events", List.of(event)),
+                "réponse à une demande d'autorisation");
+    }
+
+    /**
+     * Enregistre un usage d'outil <b>soumis à autorisation</b> et le relaie (F-33 / SF-33-02).
+     *
+     * <p>L'identifiant renvoyé au fournisseur est celui de l'<b>event</b> ({@code sevt_…}), pas le
+     * {@code tool_use_id} du bloc d'outil : c'est le contrat de l'API, et s'en écarter ferait rejeter
+     * silencieusement la confirmation.</p>
+     */
+    private void registerPermissionAsk(JsonNode event, Map<String, Long> pendingAsks,
+            ManagedEventListener sink) {
+        if (!isPermissionAsk(event)) {
+            return;
+        }
+        String confirmationId = text(event, "id");
+        if (confirmationId == null || confirmationId.isBlank()) {
+            // Sans identifiant, la demande ne peut pas être tranchée : ne rien afficher vaut mieux
+            // qu'une invite dont aucune réponse ne pourra aboutir.
+            log.warn("Demande d'autorisation d'outil sans identifiant d'event : ignorée.");
+            return;
+        }
+        pendingAsks.put(confirmationId,
+                System.nanoTime() + agentProperties.confirmTimeout().toNanos());
+        sink.onConfirmationRequest(toolName(event), confirmationId, toolDetail(event));
+    }
+
+    /** Vrai si l'event d'usage d'outil attend une autorisation ({@code evaluated_permission: ask}). */
+    private static boolean isPermissionAsk(JsonNode event) {
+        String permission = text(event, "evaluated_permission");
+        return permission != null && "ask".equalsIgnoreCase(permission.trim());
+    }
+
+    /** Décision portée par un event {@code user.tool_confirmation} ({@code allow} par défaut). */
+    private static String confirmationResult(JsonNode event) {
+        String result = text(event, "result");
+        return result == null || result.isBlank() ? "allow" : result;
+    }
+
+    /**
+     * Refuse les demandes d'autorisation dont le délai est écoulé (F-33 / SF-33-02, décision D3) : le
+     * silence ne vaut pas autorisation. Le refus porte un motif explicite — l'agent doit savoir qu'il
+     * n'a pas été jugé, mais oublié.
+     *
+     * <p>L'échec du refus est <b>avalé</b> : il signifie en pratique qu'une réponse humaine est
+     * arrivée entre-temps (la demande n'est plus à trancher). Faire échouer un run pour cela serait
+     * absurde.</p>
+     */
+    private void denyExpiredAsks(String sessionId, Map<String, Long> pendingAsks,
+            ManagedEventListener sink) {
+        if (pendingAsks.isEmpty()) {
+            return;
+        }
+        long now = System.nanoTime();
+        for (var iterator = pendingAsks.entrySet().iterator(); iterator.hasNext();) {
+            var pending = iterator.next();
+            if (now < pending.getValue()) {
+                continue;
+            }
+            iterator.remove();
+            try {
+                confirmToolUse(sessionId, pending.getKey(), false, CONFIRMATION_TIMEOUT_REASON);
+            } catch (RuntimeException ex) {
+                log.debug("Refus automatique non transmis : la demande avait déjà été tranchée.");
+            }
+            sink.onConfirmationResolved(pending.getKey(), "timeout");
+        }
+    }
+
+    /** Vrai si l'état {@code idle} traduit une <b>attente du client</b>, et non la fin du travail. */
+    private static boolean isAwaitingClientAction(String stopReason) {
+        return stopReason != null && REQUIRES_ACTION.equalsIgnoreCase(stopReason.trim());
     }
 
     /** Raison d'arrêt d'un {@code session.status_idle} : chaîne, ou objet {@code {type: ...}}. */
