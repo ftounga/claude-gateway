@@ -262,6 +262,7 @@ export class AtelierService {
       inputTokens?: number;
       outputTokens?: number;
       activeSeconds?: number;
+      interrupted?: boolean;
     };
     try {
       payload = JSON.parse(data);
@@ -293,6 +294,8 @@ export class AtelierService {
         inputTokens: payload.inputTokens ?? 0,
         outputTokens: payload.outputTokens ?? 0,
         activeSeconds: payload.activeSeconds ?? 0,
+        // Champ additif (F-32 SF-32-01) : absent d'un backend antérieur ⇒ tour non interrompu.
+        interrupted: payload.interrupted === true,
       });
     } else if (event === 'error') {
       handlers.onError(typeof payload.error === 'string' ? payload.error : 'provider_error');
@@ -305,6 +308,15 @@ export class AtelierService {
    */
   resetAgentSession(id: string): Observable<void> {
     return this.http.delete<void>(`/api/workspaces/${id}/agent/session`);
+  }
+
+  /**
+   * Demande l'**interruption** du run en cours (F-32 SF-32-02). L'arrêt est asynchrone : la session
+   * s'arrête à une frontière sûre côté fournisseur, et c'est le flux SSE en cours qui se clôt par son
+   * `done` — cet appel dit seulement que la demande est partie.
+   */
+  interruptAgentSession(id: string): Observable<void> {
+    return this.http.post<void>(`/api/workspaces/${id}/agent/interrupt`, null);
   }
 
   /** Historique de conversation du workspace. */

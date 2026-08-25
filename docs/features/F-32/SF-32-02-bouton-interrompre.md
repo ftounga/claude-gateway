@@ -102,7 +102,7 @@ que l'interruption est *demandée* — pas prétendre qu'elle est faite.
 | Inertie | `interrupting === true` ⇒ bouton `disabled` |
 | Libellés | « Interrompre » / « Interruption… » / « Exécution interrompue » |
 | Icône | `stop_circle` (Material Icons, déjà utilisé par la charte) |
-| Couleur de la mention | Jeton d'avertissement du design system, pas de valeur hexadécimale en dur |
+| Couleur de la mention | `--cg-orange-2` (jeton de la charte, déjà utilisé par le chronomètre du terminal) — aucune valeur hexadécimale en dur |
 
 ---
 

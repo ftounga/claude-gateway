@@ -182,6 +182,12 @@ export class AtelierComponent implements OnInit, OnDestroy {
   readonly publishing = signal(false);
 
   /**
+   * Demande d'interruption en vol (F-32 / SF-32-02) : le bouton reste inerte le temps que la demande
+   * parte. L'arrêt lui-même vient plus tard, à une frontière sûre côté fournisseur.
+   */
+  readonly interrupting = signal(false);
+
+  /**
    * Dernière publication du projet ouvert. Conservée à l'écran : le lien d'ouverture de pull request
    * est l'aboutissement du parcours, il ne doit pas défiler hors de vue avec le reste du terminal.
    */
@@ -679,6 +685,43 @@ export class AtelierComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Demande l'interruption du run en cours (F-32 / SF-32-02). Sans confirmation : l'action est
+   * réversible (on renvoie un message) et l'urgence est le motif même du bouton.
+   *
+   * <p>L'arrêt est <b>asynchrone</b> — la session s'arrête à une frontière sûre côté fournisseur —
+   * donc rien n'est retiré de l'écran ici : c'est le `done` du flux en cours qui clôt le tour, marqué
+   * comme interrompu.</p>
+   */
+  interruptRun(): void {
+    const id = this.activeWorkspaceId();
+    if (!id || !this.submitting() || this.interrupting()) {
+      return;
+    }
+    this.interrupting.set(true);
+    this.atelier.interruptAgentSession(id).subscribe({
+      next: () =>
+        this.snackBar.open('Interruption demandée : arrêt en cours…', 'Fermer', { duration: 4000 }),
+      error: (err: unknown) => {
+        this.interrupting.set(false);
+        this.notifyError(this.interruptErrorMessage(err));
+      },
+    });
+  }
+
+  /** Traduit l'échec d'une demande d'interruption en message lisible (F-32 / SF-32-02). */
+  private interruptErrorMessage(err: unknown): string {
+    if (err instanceof HttpErrorResponse) {
+      if (err.status === 409) {
+        return "Aucune exécution en cours à interrompre.";
+      }
+      if (err.status === 404) {
+        return 'Projet introuvable.';
+      }
+    }
+    return "L'interruption n'a pas pu être transmise. Veuillez réessayer.";
+  }
+
+  /**
    * Réinitialise la sandbox du workspace (F-30 SF-30-06). L'action ne détruit aucun fichier du
    * projet, mais elle jette un environnement qui a pu coûter plusieurs minutes d'installation : la
    * confirmation dit explicitement ce qui est perdu et ce qui est conservé.
@@ -772,6 +815,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
       onDone: (done) =>
         this.zone.run(() => {
           this.submitting.set(false);
+          this.interrupting.set(false);
           // La transcription est reprise dans le tour final : sans cela, tout ce qui a défilé
           // pendant le run disparaîtrait de l'écran (F-30 SF-30-02).
           const transcript = this.execStreaming()?.blocks ?? [];
@@ -790,6 +834,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
               changedFiles: done.changedFiles ?? [],
               terminal: transcript,
               cost: tokens > 0 ? { elapsedSeconds: elapsed, tokens } : undefined,
+              // Le tour interrompu reste affiché : il a eu lieu et il est facturé (F-32).
+              interrupted: done.interrupted === true,
             },
           ]);
           // La session a pu exécuter du code et modifier des fichiers : rafraîchir l'arborescence.
@@ -798,6 +844,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
       onError: (code) =>
         this.zone.run(() => {
           this.submitting.set(false);
+          this.interrupting.set(false);
           this.stopExecTimer();
           this.execStreaming.set(null);
           // Retire le message utilisateur optimiste : rien n'a été persisté côté serveur.
@@ -1063,7 +1110,13 @@ export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
     actions: [],
   };
   const stored = message.terminal;
-  if (!stored || !Array.isArray(stored.blocks) || stored.blocks.length === 0) {
+  if (!stored) {
+    return item;
+  }
+  // Le drapeau d'interruption vit hors des blocs : un tour interrompu avant d'avoir lancé la moindre
+  // commande n'a pas de transcription, et doit pourtant rester marqué au rechargement (F-32).
+  item.interrupted = stored.interrupted === true;
+  if (!Array.isArray(stored.blocks) || stored.blocks.length === 0) {
     return item;
   }
   item.terminal = stored.blocks.map((block): AtelierTerminalBlock => ({

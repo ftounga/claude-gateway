@@ -40,6 +40,11 @@ export interface AtelierThreadItem {
    * consommation n'a pas pu être relevée — mieux vaut ne rien dire qu'annoncer « 0 token ».
    */
   cost?: AtelierTurnCost;
+  /**
+   * Le tour s'est arrêté sur une demande d'interruption (F-32 SF-32-02). Il reste dans le fil — il a
+   * réellement eu lieu et il est facturé — mais l'écran doit le dire.
+   */
+  interrupted?: boolean;
 }
 
 /** Coût d'un tour d'exécution affiché sous la transcription (F-30 SF-30-05). */
