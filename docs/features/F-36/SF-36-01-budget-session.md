@@ -12,7 +12,7 @@
 
 ## Statut
 
-`in-progress`
+`done` — livrée le 2026-08-26 (PR #164)
 
 ## Date de création
 
@@ -83,16 +83,16 @@ Deux contraintes du fournisseur structurent la SF :
 
 ## Critères d'acceptation
 
-- [ ] Toute session **nouvellement ouverte** porte un `budget.max_list_cost` non nul, en unités
+- [x] Toute session **nouvellement ouverte** porte un `budget.max_list_cost` non nul, en unités
       mineures et en chaîne, devise `USD`.
-- [ ] Le montant vaut `min(restant converti, plafond par run)` et n'est jamais inférieur au plancher.
-- [ ] Le plafond par run, le plancher et le coût de référence sont **configurables** (aucune valeur
+- [x] Le montant vaut `min(restant converti, plafond par run)` et n'est jamais inférieur au plancher.
+- [x] Le plafond par run, le plancher et le coût de référence sont **configurables** (aucune valeur
       commerciale en dur dans le code).
-- [ ] Une session **réutilisée** n'envoie aucun budget (le corps de reprise est inchangé).
-- [ ] `stop_reason: budget_reached` ⇒ `AtelierSessionResult.budgetReached() == true` et l'événement
+- [x] Une session **réutilisée** n'envoie aucun budget (le corps de reprise est inchangé).
+- [x] `stop_reason: budget_reached` ⇒ `AtelierSessionResult.budgetReached() == true` et l'événement
       SSE `done` porte `budgetReached: true`, sans perdre la réponse ni les fichiers réécrits.
-- [ ] Le calcul du budget lit le quota **de l'utilisateur du contexte de sécurité** (isolation).
-- [ ] Aucune clé ni aucun secret journalisé.
+- [x] Le calcul du budget lit le quota **de l'utilisateur du contexte de sécurité** (isolation).
+- [x] Aucune clé ni aucun secret journalisé.
 
 ---
 
@@ -139,21 +139,21 @@ Aucune. Le budget est calculé à l'ouverture et n'est pas persisté.
 
 ### Tests unitaires
 
-- [ ] `AtelierCostPropertiesTest` — valeurs par défaut appliquées si absentes/négatives.
-- [ ] `SessionBudgetTest` — montant sérialisé en unités mineures, en chaîne ; arrondi ; refus des valeurs ≤ 0.
-- [ ] `AtelierSessionServiceTest` — une session neuve est créée **avec** un budget = plafond par run
+- [x] `AtelierCostPropertiesTest` — valeurs par défaut appliquées si absentes/négatives.
+- [x] `SessionBudgetTest` — montant sérialisé en unités mineures, en chaîne ; arrondi ; refus des valeurs ≤ 0.
+- [x] `AtelierSessionServiceTest` — une session neuve est créée **avec** un budget = plafond par run
       quand le quota restant est large.
-- [ ] `AtelierSessionServiceTest` — quota restant faible ⇒ budget = conversion du restant.
-- [ ] `AtelierSessionServiceTest` — quota restant ~nul ⇒ budget = plancher.
-- [ ] `AtelierSessionServiceTest` — session réutilisée ⇒ aucun appel de création, donc aucun budget.
-- [ ] `AtelierSessionServiceTest` — `stop_reason: budget_reached` ⇒ résultat `budgetReached`, réponse
+- [x] `AtelierSessionServiceTest` — quota restant faible ⇒ budget = conversion du restant.
+- [x] `AtelierSessionServiceTest` — quota restant ~nul ⇒ budget = plancher.
+- [x] `AtelierSessionServiceTest` — session réutilisée ⇒ aucun appel de création, donc aucun budget.
+- [x] `AtelierSessionServiceTest` — `stop_reason: budget_reached` ⇒ résultat `budgetReached`, réponse
       et fichiers préservés.
-- [ ] `AnthropicManagedAgentProviderTest` — le corps de création porte `budget.max_list_cost`
+- [x] `AnthropicManagedAgentProviderTest` — le corps de création porte `budget.max_list_cost`
       (`amount` en chaîne, `currency` USD) ; corps **inchangé** quand le budget est `null`.
 
 ### Tests d'intégration
 
-- [ ] `AtelierAgentControllerTest` — l'événement `done` porte `budgetReached`.
+- [x] `AtelierAgentControllerTest` — l'événement `done` porte `budgetReached`.
 
 ### Isolation utilisateur
 
@@ -170,7 +170,7 @@ Aucune. Le budget est calculé à l'ouverture et n'est pas persisté.
 
 ### Questions ouvertes impactées
 
-- [ ] OQ-08 (overage monétisé) — **non tranchée**, hors scope : le budget **empêche**, il ne facture pas.
+- [x] OQ-08 (overage monétisé) — **non tranchée**, hors scope : le budget **empêche**, il ne facture pas.
 
 ---
 

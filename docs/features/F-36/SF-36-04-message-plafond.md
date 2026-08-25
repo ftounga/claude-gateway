@@ -12,7 +12,7 @@
 
 ## Statut
 
-`in-progress`
+`done` — livrée le 2026-08-26 (PR #169)
 
 ## Date de création
 
@@ -73,13 +73,13 @@ second en attendant la période suivante ou en rachetant des tokens.
 
 ## Critères d'acceptation
 
-- [ ] `budgetReached: true` dans `done` ⇒ un bloc dédié s'affiche sous le tour, avec un libellé qui
+- [x] `budgetReached: true` dans `done` ⇒ un bloc dédié s'affiche sous le tour, avec un libellé qui
       parle de **ce run** et non du quota mensuel.
-- [ ] Le bloc porte une action menant à l'écran de facturation (`/billing`).
-- [ ] Le tour conserve sa réponse, sa transcription, ses fichiers modifiés et son coût.
-- [ ] Le drapeau est **restauré au rechargement** depuis la transcription persistée.
-- [ ] Un tour nominal ou interrompu n'affiche pas le bloc.
-- [ ] Couleurs, polices et espacements conformes à `docs/DESIGN_SYSTEM.md` (variables de la charte,
+- [x] Le bloc porte une action menant à l'écran de facturation (`/billing`).
+- [x] Le tour conserve sa réponse, sa transcription, ses fichiers modifiés et son coût.
+- [x] Le drapeau est **restauré au rechargement** depuis la transcription persistée.
+- [x] Un tour nominal ou interrompu n'affiche pas le bloc.
+- [x] Couleurs, polices et espacements conformes à `docs/DESIGN_SYSTEM.md` (variables de la charte,
       aucune valeur en dur) ; aucun `window.alert/confirm/prompt`.
 
 ---
@@ -123,10 +123,10 @@ Aucun. Le champ `budgetReached` est déjà servi par le backend (SF-36-01).
 
 ### Tests unitaires (Karma/Jasmine)
 
-- [ ] `atelier.component.spec` — `done` avec `budgetReached: true` ⇒ le tour ajouté porte le drapeau.
-- [ ] `atelier.component.spec` — `done` sans le champ ⇒ drapeau `false`.
-- [ ] `atelier.component.spec` — historique portant `budgetReached` ⇒ drapeau restauré.
-- [ ] `atelier-terminal.component.spec` — le bloc s'affiche si et seulement si le drapeau est vrai, et
+- [x] `atelier.component.spec` — `done` avec `budgetReached: true` ⇒ le tour ajouté porte le drapeau.
+- [x] `atelier.component.spec` — `done` sans le champ ⇒ drapeau `false`.
+- [x] `atelier.component.spec` — historique portant `budgetReached` ⇒ drapeau restauré.
+- [x] `atelier-terminal.component.spec` — le bloc s'affiche si et seulement si le drapeau est vrai, et
       l'action émet `openBilling`.
 
 ### Tests d'intégration

@@ -307,6 +307,25 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   réellement consommé du bac à sable. Écart assumé avec SF-30-09, qui ne persiste que les runs aboutis.
   L'interruption elle-même n'est **aucunement persistée** : `POST /workspaces/{id}/agent/interrupt`
   relaie `user.interrupt` à la session chez le fournisseur, qui s'arrête à une frontière sûre.
+- **workspaces — coût facturé de la session** (F-36 / SF-36-02, migration `046`). Colonne
+  `agent_list_cost (bigint, non nul, défaut 0)` : coût cumulé de la session en cours, en **unités
+  mineures**, tel que le fournisseur le facture (tokens au tarif du modèle servi, recherches web,
+  temps de bac à sable). Même rôle que `agent_input_tokens` / `agent_active_seconds` — le fournisseur
+  rapporte un **cumul**, seul le **delta** est décompté, sinon la même dépense serait facturée à
+  chaque tour. Remise à zéro à l'ouverture d'une session. **Aucune table nouvelle** ; à 0, le
+  décompte retombe exactement sur celui d'avant F-36.
+  - Le quota reste **libellé en tokens** : le coût est converti en équivalent tokens au tarif de
+    référence (`app.atelier.agent.cost.cost-per-million-tokens`), multiplié par un **markup**
+    configurable (`markup`, défaut **1,0 = neutre** — les allocations par plan portent déjà la marge).
+  - Sans `list_cost` rapporté (ou illisible), **repli** sur le décompte des tokens bruts.
+- **Plafond de dépense d'une session — aucune persistance** (F-36 / SF-36-01). Le budget
+  (`budget.max_list_cost`) est calculé à l'**ouverture** — `min(quota restant converti, plafond par
+  run)`, plancher configurable — et posé chez le fournisseur, qui l'applique en **verrou pré-requête**.
+  Il n'est **ni stocké ni modifiable** : le fournisseur refuse d'ajouter un budget à une session déjà
+  ouverte, donc une session ouverte avant F-36 n'en a pas (le quota post-run continue de s'y
+  appliquer, et « Réinitialiser la sandbox » en rouvre une bornée). Un tour arrêté par ce plafond est
+  marqué par un champ **additif** `budgetReached` dans le document `terminal_json` — même patron que
+  `interrupted` (F-32) : le tour a eu lieu, il est décompté, et l'écran le dit.
 - **Instructions de projet — aucune persistance** (F-34 / SF-34-01). Le `CLAUDE.md` du workspace (repli
   `.atelier/instructions.md`) est lu **à l'ouverture de session** dans la source du projet — stockage
   objet pour un projet `ARCHIVE`, branche montée via l'API GitHub pour un projet `GIT` — et composé au
