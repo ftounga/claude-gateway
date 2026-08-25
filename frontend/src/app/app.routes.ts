@@ -90,6 +90,12 @@ export const routes: Routes = [
         loadComponent: () => import('./atelier/atelier.component').then((m) => m.AtelierComponent),
       },
       {
+        // Route additive (F-30 SF-30-10) : ouvrir un projet précis, et éventuellement son terminal.
+        // Placée APRÈS `atelier` pour ne pas la masquer — `/atelier` seul reste valide.
+        path: 'atelier/:id',
+        loadComponent: () => import('./atelier/atelier.component').then((m) => m.AtelierComponent),
+      },
+      {
         path: 'atelier/:id/fichiers',
         loadComponent: () =>
           import('./atelier/files/atelier-files.component').then((m) => m.AtelierFilesComponent),

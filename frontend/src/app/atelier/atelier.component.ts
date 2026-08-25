@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, NgZone, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatDialog } from '@angular/material/dialog';
@@ -113,6 +113,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
   private readonly atelier = inject(AtelierService);
   private readonly apiKeyService = inject(ApiKeyService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly snackBar = inject(MatSnackBar);
   private readonly zone = inject(NgZone);
   private readonly dialog = inject(MatDialog);
@@ -227,13 +228,43 @@ export class AtelierComponent implements OnInit, OnDestroy {
   readonly openingPullRequest = signal(false);
 
   ngOnInit(): void {
+    // Projet et mode demandés par l'URL (F-30 SF-30-10) : `/atelier/{id}?mode=terminal`. Les deux
+    // sont optionnels — `/atelier` seul garde exactement son comportement d'origine.
+    this.requestedWorkspaceId = this.route.snapshot.paramMap.get('id');
+    if (this.route.snapshot.queryParamMap.get('mode') === 'terminal') {
+      this.agentMode.set('exec');
+    }
     this.loadWorkspaces();
+  }
+
+  /** Projet réclamé par l'URL, honoré une fois la liste chargée (ou ignoré s'il n'existe pas). */
+  private requestedWorkspaceId: string | null = null;
+
+  /**
+   * Applique le projet demandé par l'URL, si l'utilisateur le possède. Un identifiant inconnu ou
+   * appartenant à quelqu'un d'autre n'apparaît pas dans la liste : on retombe alors sur l'écran
+   * habituel avec un message, plutôt que sur un écran vide.
+   */
+  private applyRequestedWorkspace(list: WorkspaceSummary[]): void {
+    const id = this.requestedWorkspaceId;
+    this.requestedWorkspaceId = null;
+    if (!id) {
+      return;
+    }
+    const found = list.find((w) => w.id === id);
+    if (!found) {
+      this.agentMode.set('edit');
+      this.notifyError('Projet introuvable.');
+      return;
+    }
+    this.selectWorkspace(found);
   }
 
   private loadWorkspaces(): void {
     this.atelier.listWorkspaces().subscribe({
       next: (list) => {
         this.workspaces.set(list);
+        this.applyRequestedWorkspace(list);
         // Accès accordé : charger le mode d'exécution pour l'indicateur de tête d'écran.
         this.loadProviderMode();
       },
