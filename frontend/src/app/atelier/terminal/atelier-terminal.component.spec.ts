@@ -49,6 +49,7 @@ describe('AtelierTerminalComponent', () => {
             hasOutput: true,
             error: false,
             expanded: false,
+            threadId: null,
           },
         ],
         cost: { elapsedSeconds: 65, tokens: 12_400 },
@@ -81,6 +82,7 @@ describe('AtelierTerminalComponent', () => {
             hasOutput: true,
             error: true,
             expanded: false,
+            threadId: null,
           },
         ],
       },
@@ -111,6 +113,7 @@ describe('AtelierTerminalComponent', () => {
           hasOutput: false,
           error: false,
           expanded: false,
+          threadId: null,
         },
       ],
       text: 'Installation en cours.',
@@ -166,6 +169,7 @@ describe('AtelierTerminalComponent', () => {
       hasOutput: true,
       error: false,
       expanded: false,
+      threadId: null,
     };
     component.messages = [
       { id: 'a1', role: 'ASSISTANT', content: '', actions: [], terminal: [block] },
@@ -229,6 +233,7 @@ describe('AtelierTerminalComponent', () => {
             hasOutput: true,
             error: false,
             expanded: false,
+            threadId: null,
           },
         ],
         cost: { elapsedSeconds: 42, tokens: 1_000 },
@@ -493,5 +498,104 @@ describe('AtelierTerminalComponent', () => {
     fixture.detectChanges();
 
     expect(text()).not.toContain('Créer la pull request');
+  });
+
+  // ---- F-35 SF-35-03 : visibilité des sous-tâches déléguées ----
+
+  function terminalBlock(threadId: string | null, command: string, error = false) {
+    return {
+      tool: 'bash',
+      command,
+      toolUseId: null,
+      output: '',
+      hasOutput: false,
+      error,
+      expanded: false,
+      threadId,
+    };
+  }
+
+  it('marque les sous-tâches d\'un tour délégué et les numérote (F-35)', () => {
+    component.messages = [
+      {
+        id: 'a1',
+        role: 'ASSISTANT',
+        content: '',
+        actions: [],
+        terminal: [
+          terminalBlock(null, 'ls'),
+          terminalBlock('th_a', 'npm test'),
+          terminalBlock('th_b', 'npm run lint'),
+        ],
+      },
+    ];
+    fixture.detectChanges();
+
+    // `textContent` porte aussi la ligature de l'icône : on vérifie le libellé, pas l'égalité.
+    const threads = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.terminal-thread'),
+    ).map((el) => el.textContent ?? '');
+    expect(threads.length).toBe(3);
+    expect(threads[0]).toContain('Fil principal');
+    expect(threads[1]).toContain('Sous-tâche 1');
+    expect(threads[2]).toContain('Sous-tâche 2');
+    // Le rail d'accent ne marque QUE les blocs délégués.
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.terminal-block.subtask').length,
+    ).toBe(2);
+    expect(text()).toContain('2 sous-tâches');
+  });
+
+  it('n\'affiche aucun marqueur de fil sur un tour sans délégation (non-régression F-35)', () => {
+    component.messages = [
+      {
+        id: 'a1',
+        role: 'ASSISTANT',
+        content: '',
+        actions: [],
+        terminal: [terminalBlock(null, 'npm test'), terminalBlock(null, 'npm run build')],
+      },
+    ];
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('.terminal-thread')).toBeNull();
+    expect(root.querySelector('.terminal-block.subtask')).toBeNull();
+    expect(root.querySelector('.terminal-subtasks')).toBeNull();
+    expect(text()).not.toContain('sous-tâche');
+  });
+
+  it('garde le marquage d\'échec sur un bloc délégué en erreur (l\'échec prime, F-35)', () => {
+    component.messages = [
+      {
+        id: 'a1',
+        role: 'ASSISTANT',
+        content: '',
+        actions: [],
+        terminal: [terminalBlock('th_a', 'npm test', true)],
+      },
+    ];
+    fixture.detectChanges();
+
+    const block = (fixture.nativeElement as HTMLElement).querySelector('.terminal-block');
+    expect(block!.classList).toContain('failed');
+    expect(block!.classList).toContain('subtask');
+  });
+
+  it('marque aussi les sous-tâches du tour EN COURS (F-35)', () => {
+    component.streaming = {
+      status: 'running',
+      blocks: [terminalBlock('th_a', 'npm test')],
+      text: '',
+    };
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('.terminal-thread')?.textContent)
+      .toContain('Sous-tâche 1');
+  });
+
+  it('accorde le décompte au singulier quand une seule sous-tâche a été ouverte (F-35)', () => {
+    expect(component.subtaskLabel(1)).toBe('1 sous-tâche');
+    expect(component.subtaskLabel(3)).toBe('3 sous-tâches');
   });
 });

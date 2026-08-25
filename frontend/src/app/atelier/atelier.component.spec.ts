@@ -1911,4 +1911,101 @@ describe('AtelierComponent', () => {
     expect(component.pendingConfirmation()).toBeNull();
     expect(service.confirmToolUse).not.toHaveBeenCalled();
   });
+
+  // ---- F-35 SF-35-03 : provenance des sous-tâches ----
+
+  it('mode Terminal : le fil relayé par le flux est porté par le bloc affiché (F-35)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onAction({ tool: 'bash', detail: 'npm test', toolUseId: 'tu_1', threadId: 'th_a' });
+      handlers.onAction({ tool: 'bash', detail: 'ls', toolUseId: 'tu_2' });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Lance tout');
+    component.send();
+
+    expect(component.execStreaming()!.blocks.map((b) => b.threadId)).toEqual(['th_a', null]);
+  });
+
+  it('mode Terminal : une commande sans fil adopte celui de sa sortie (parité backend, F-35)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onAction({ tool: 'bash', detail: 'npm test', toolUseId: 'tu_1' });
+      handlers.onActionResult({
+        tool: 'bash',
+        toolUseId: 'tu_1',
+        output: '12 passing',
+        error: false,
+        threadId: 'th_a',
+      });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Teste');
+    component.send();
+
+    expect(component.execStreaming()!.blocks[0].threadId).toBe('th_a');
+  });
+
+  it("mode Terminal : un bloc orphelin prend le fil de la sortie qui l'a créé (F-35)", () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onActionResult({
+        tool: 'bash',
+        toolUseId: 'inconnu',
+        output: 'orpheline',
+        error: false,
+        threadId: 'th_b',
+      });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Teste');
+    component.send();
+
+    expect(component.execStreaming()!.blocks[0].threadId).toBe('th_b');
+  });
+
+  it('relit le fil des blocs persistés, et traite son absence comme le fil principal (F-35)', () => {
+    const item = toThreadItem({
+      id: 'm1',
+      role: 'ASSISTANT',
+      content: 'Fait.',
+      createdAt: '2026-08-26T10:00:00Z',
+      terminal: {
+        blocks: [
+          {
+            tool: 'bash',
+            command: 'npm test',
+            toolUseId: 'tu_1',
+            output: 'ok',
+            hasOutput: true,
+            error: false,
+            threadId: 'th_a',
+          },
+          {
+            tool: 'bash',
+            command: 'ls',
+            toolUseId: 'tu_2',
+            output: '',
+            hasOutput: false,
+            error: false,
+          },
+        ],
+        omittedBlocks: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        activeSeconds: 0,
+      },
+    });
+
+    expect(item.terminal!.map((block) => block.threadId)).toEqual(['th_a', null]);
+  });
 });

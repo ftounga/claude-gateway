@@ -1281,6 +1281,8 @@ function openBlock(action: AtelierAgentStreamAction): AtelierTerminalBlock {
     hasOutput: false,
     error: false,
     expanded: false,
+    // Fil d'exécution dont vient la commande (F-35 SF-35-03) : `null` hors délégation.
+    threadId: action.threadId ?? null,
   };
 }
 
@@ -1314,6 +1316,8 @@ function attachOutput(
         hasOutput: true,
         error: result.error,
         expanded: false,
+        // Bloc orphelin : il prend le fil de la sortie, seule provenance connue (F-35 SF-35-03).
+        threadId: result.threadId ?? null,
       },
     ];
   }
@@ -1321,6 +1325,10 @@ function attachOutput(
   const merged: AtelierTerminalBlock = {
     ...target,
     toolUseId: target.toolUseId ?? result.toolUseId,
+    // Même règle d'adoption que `TerminalTranscript.addOutput` côté backend : le fil de la commande
+    // s'il en a un, sinon celui de la sortie. Sans cette parité, un run se lirait autrement en direct
+    // et après rechargement.
+    threadId: target.threadId ?? result.threadId ?? null,
     // Plusieurs sorties pour une même commande : concaténées dans l'ordre d'arrivée.
     output: target.hasOutput && target.output ? `${target.output}\n${result.output}` : result.output,
     hasOutput: true,
@@ -1362,6 +1370,11 @@ export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
     hasOutput: block.hasOutput === true,
     error: block.error === true,
     expanded: false,
+    // Fil d'exécution du bloc (F-35 SF-35-03) : absent des tours écrits avant SF-35-02, qui se
+    // relisent alors comme un run séquentiel — sans marquage, mais lisibles.
+    threadId: typeof block.threadId === 'string' && block.threadId.length > 0
+      ? block.threadId
+      : null,
   }));
   const tokens = (stored.inputTokens ?? 0) + (stored.outputTokens ?? 0);
   if (tokens > 0) {

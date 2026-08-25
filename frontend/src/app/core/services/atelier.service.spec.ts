@@ -196,11 +196,54 @@ describe('AtelierService', () => {
       onError: () => undefined,
     });
 
-    expect(actions).toEqual([{ tool: 'bash', detail: 'npm test', toolUseId: 'tu_1' }]);
-    expect(results).toEqual([
-      { tool: 'bash', toolUseId: 'tu_1', output: '12 passing', error: false },
-      { tool: 'bash', toolUseId: 'tu_2', output: 'boom', error: true },
+    // `threadId: null` = fil principal (F-35 SF-35-02) : un run sans délégation n'en porte aucun.
+    expect(actions).toEqual([
+      { tool: 'bash', detail: 'npm test', toolUseId: 'tu_1', threadId: null },
     ]);
+    expect(results).toEqual([
+      { tool: 'bash', toolUseId: 'tu_1', output: '12 passing', error: false, threadId: null },
+      { tool: 'bash', toolUseId: 'tu_2', output: 'boom', error: true, threadId: null },
+    ]);
+  });
+
+  // ---- F-35 SF-35-03 : le fil d'exécution relayé par le flux ----
+
+  it('relaie le fil d\'exécution porté par action et action_result (F-35)', async () => {
+    fakeSseFetch([
+      'event:action\ndata:{"tool":"bash","toolUseId":"tu_1","detail":"npm test","threadId":"th_a"}',
+      'event:action_result\ndata:{"tool":"bash","toolUseId":"tu_1","output":"ok","error":false,"threadId":"th_a"}',
+    ]);
+    const threads: (string | null | undefined)[] = [];
+
+    await service.streamAgent('w1', 'go', {
+      onAgent: () => undefined,
+      onAction: (a) => threads.push(a.threadId),
+      onActionResult: (r) => threads.push(r.threadId),
+      onStatus: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+    });
+
+    expect(threads).toEqual(['th_a', 'th_a']);
+  });
+
+  it('traite un fil vide ou non textuel comme le fil principal (F-35)', async () => {
+    fakeSseFetch([
+      'event:action\ndata:{"tool":"bash","detail":"ls","threadId":""}',
+      'event:action\ndata:{"tool":"bash","detail":"pwd","threadId":42}',
+    ]);
+    const threads: (string | null | undefined)[] = [];
+
+    await service.streamAgent('w1', 'go', {
+      onAgent: () => undefined,
+      onAction: (a) => threads.push(a.threadId),
+      onActionResult: () => undefined,
+      onStatus: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+    });
+
+    expect(threads).toEqual([null, null]);
   });
 
   it('laisse les événements du flux d\'exécution préexistants inchangés (non-régression F-30)', async () => {

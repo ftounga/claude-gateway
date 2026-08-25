@@ -159,27 +159,52 @@
         </div>
       } @else {
         @if (message.terminal && message.terminal.length > 0) {
-          @for (block of message.terminal; track $index) {
-            <div class="terminal-block" [class.failed]="block.error">
-              @if (block.command || block.tool) {
+          <!-- Provenance des blocs (F-35 / SF-35-03) : sans délégation, `rows()` ne produit ni
+               libellé ni rail, et le rendu est celui d'avant F-35. -->
+          @for (row of rows(message.terminal); track $index) {
+            @if (row.header) {
+              <p class="terminal-thread" [class.subtask]="row.subtask">
+                <mat-icon class="terminal-thread-icon">account_tree</mat-icon>
+                {{ row.header }}
+              </p>
+            }
+            <div
+              class="terminal-block"
+              [class.subtask]="row.subtask"
+              [class.failed]="row.block.error"
+            >
+              @if (row.block.command || row.block.tool) {
                 <div class="terminal-command">
                   <span class="terminal-dollar" aria-hidden="true">$</span>
-                  <code>{{ blockLabel(block) }}</code>
+                  <code>{{ blockLabel(row.block) }}</code>
                 </div>
               }
-              @if (block.hasOutput && block.output.length > 0) {
-                <pre class="terminal-output">{{ visibleOutput(block) }}</pre>
-                @if (hiddenLineCount(block) > 0) {
-                  <button mat-button type="button" class="terminal-toggle" (click)="toggleBlock(block)">
-                    @if (block.expanded) {
+              @if (row.block.hasOutput && row.block.output.length > 0) {
+                <pre class="terminal-output">{{ visibleOutput(row.block) }}</pre>
+                @if (hiddenLineCount(row.block) > 0) {
+                  <button
+                    mat-button
+                    type="button"
+                    class="terminal-toggle"
+                    (click)="toggleBlock(row.block)"
+                  >
+                    @if (row.block.expanded) {
                       Replier
                     } @else {
-                      Afficher tout ({{ hiddenLineCount(block) }} lignes masquées)
+                      Afficher tout ({{ hiddenLineCount(row.block) }} lignes masquées)
                     }
                   </button>
                 }
               }
             </div>
+          }
+          @if (subtaskCount(message.terminal); as delegated) {
+            <!-- Le tour a délégué : le dire une fois, à sa fin. C'est le taux de délégation qu'on
+                 surveille (cadrage F-35), pas le coût brut — déjà agrégé par la ligne de coût. -->
+            <p class="terminal-subtasks">
+              <mat-icon class="terminal-thread-icon">account_tree</mat-icon>
+              {{ subtaskLabel(delegated) }}
+            </p>
           }
         }
         @if (message.content) {
@@ -225,22 +250,34 @@
 
     <!-- Tour en cours : mêmes lignes, au fil de l'eau. -->
     @if (streaming; as live) {
-      @for (block of live.blocks; track $index) {
-        <div class="terminal-block" [class.failed]="block.error">
-          @if (block.command || block.tool) {
+      <!-- Mêmes marqueurs de fil qu'un tour relu : le run en cours doit se lire de la même façon. -->
+      @for (row of rows(live.blocks); track $index) {
+        @if (row.header) {
+          <p class="terminal-thread" [class.subtask]="row.subtask">
+            <mat-icon class="terminal-thread-icon">account_tree</mat-icon>
+            {{ row.header }}
+          </p>
+        }
+        <div class="terminal-block" [class.subtask]="row.subtask" [class.failed]="row.block.error">
+          @if (row.block.command || row.block.tool) {
             <div class="terminal-command">
               <span class="terminal-dollar" aria-hidden="true">$</span>
-              <code>{{ blockLabel(block) }}</code>
+              <code>{{ blockLabel(row.block) }}</code>
             </div>
           }
-          @if (block.hasOutput && block.output.length > 0) {
-            <pre class="terminal-output">{{ visibleOutput(block) }}</pre>
-            @if (hiddenLineCount(block) > 0) {
-              <button mat-button type="button" class="terminal-toggle" (click)="toggleBlock(block)">
-                @if (block.expanded) {
+          @if (row.block.hasOutput && row.block.output.length > 0) {
+            <pre class="terminal-output">{{ visibleOutput(row.block) }}</pre>
+            @if (hiddenLineCount(row.block) > 0) {
+              <button
+                mat-button
+                type="button"
+                class="terminal-toggle"
+                (click)="toggleBlock(row.block)"
+              >
+                @if (row.block.expanded) {
                   Replier
                 } @else {
-                  Afficher tout ({{ hiddenLineCount(block) }} lignes masquées)
+                  Afficher tout ({{ hiddenLineCount(row.block) }} lignes masquées)
                 }
               </button>
             }

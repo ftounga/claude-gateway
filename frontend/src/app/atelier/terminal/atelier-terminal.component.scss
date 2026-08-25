@@ -96,9 +96,41 @@
   padding-left: var(--cg-space-2);
   margin: var(--cg-space-2) 0;
 
+  // Bloc venu d'une sous-tâche déléguée (F-35 / SF-35-03) : rail d'accent. Une distinction BINAIRE
+  // (délégué / fil principal), tenable avec les jetons de la charte ; les sous-tâches se
+  // distinguent entre elles par leur NUMÉRO, jamais par une couleur — la charte n'a pas de palette
+  // catégorielle, et un numéro se lit aussi en niveaux de gris.
+  &.subtask {
+    border-left-color: var(--cg-accent);
+  }
+
   // Commande en échec : signalée par le rouge de la charte, pas par la seule couleur du texte.
+  // Déclaré APRÈS `.subtask` : sur un bloc délégué en échec, c'est l'échec qui prime.
   &.failed {
     border-left-color: var(--cg-error);
+  }
+}
+
+// Fils d'exécution (F-35 / SF-35-03) : le changement de fil, annoncé à la frontière seulement —
+// comme un changement de locuteur dans une transcription — et le décompte des sous-tâches du tour.
+// Discrétion de la ligne de coût : c'est un repère, pas un titre.
+.terminal-thread,
+.terminal-subtasks {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  margin: var(--cg-space-1) 0 0;
+  font-size: 11px;
+  color: var(--cg-text-secondary);
+}
+
+.terminal-thread {
+  margin-top: var(--cg-space-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+
+  &.subtask {
+    color: var(--cg-orange-2);
   }
 }
 
@@ -146,7 +178,8 @@
   color: var(--cg-orange-2);
 }
 
-.terminal-interrupted-icon {
+.terminal-interrupted-icon,
+.terminal-thread-icon {
   font-size: 16px;
   width: 16px;
   height: 16px;

@@ -23,7 +23,14 @@ import {
   AtelierThreadItem,
   AtelierTurnCost,
 } from '../atelier.types';
-import { blockLabel, formatElapsed, hiddenLineCount, visibleOutput } from './terminal-block';
+import {
+  blockLabel,
+  formatElapsed,
+  hiddenLineCount,
+  subtaskCount,
+  terminalRows,
+  visibleOutput,
+} from './terminal-block';
 
 /**
  * Vue **terminal immersive** du mode Terminal de l'Atelier (F-30 SF-30-07).
@@ -156,6 +163,20 @@ export class AtelierTerminalComponent implements AfterViewChecked {
   blockLabel = blockLabel;
   visibleOutput = visibleOutput;
   hiddenLineCount = hiddenLineCount;
+
+  /**
+   * Blocs enrichis de leur provenance (F-35 / SF-35-03) : sans délégation, chaque ligne rendue est
+   * exactement celle d'avant F-35 — aucun libellé, aucun rail.
+   */
+  rows = terminalRows;
+
+  /** Nombre de sous-tâches distinctes ouvertes par un tour ; `0` sans délégation. */
+  subtaskCount = subtaskCount;
+
+  /** « 1 sous-tâche » / « 3 sous-tâches » — l'indicateur à surveiller, c'est le taux de délégation. */
+  subtaskLabel(count: number): string {
+    return count === 1 ? '1 sous-tâche' : `${count} sous-tâches`;
+  }
 
   /** Coût d'un tour : « m:ss · N tokens ». */
   costLabel(cost: AtelierTurnCost): string {

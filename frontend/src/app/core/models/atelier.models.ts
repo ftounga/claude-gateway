@@ -136,6 +136,11 @@ export interface AtelierPersistedTranscript {
     output: string;
     hasOutput: boolean;
     error: boolean;
+    /**
+     * Fil d'exécution dont vient le bloc (F-35 SF-35-02). Absent des tours écrits avant cette
+     * version : traité comme le fil principal.
+     */
+    threadId?: string | null;
   }[];
   omittedBlocks: number;
   inputTokens: number;
@@ -215,6 +220,12 @@ export interface AtelierAgentStreamAction {
   detail?: string;
   /** Identifiant de l'appel d'outil, qui apparie la commande à sa sortie (F-30). `null` si absent. */
   toolUseId?: string | null;
+  /**
+   * Fil d'exécution dont vient la commande (F-35 SF-35-02) : `null` pour un run séquentiel, une
+   * chaîne **opaque** du fournisseur pour une sous-tâche déléguée. Jamais interprétée ni affichée
+   * telle quelle — seul son ordre d'apparition l'est.
+   */
+  threadId?: string | null;
 }
 
 /**
@@ -255,6 +266,8 @@ export interface AtelierAgentStreamActionResult {
   toolUseId: string | null;
   output: string;
   error: boolean;
+  /** Fil d'exécution dont vient la sortie (F-35 SF-35-02) ; `null` pour un run séquentiel. */
+  threadId?: string | null;
 }
 
 /**
@@ -322,4 +335,9 @@ export interface AtelierTerminalBlock {
   error: boolean;
   /** Repli de l'affichage des sorties longues (piloté par l'utilisateur). */
   expanded: boolean;
+  /**
+   * Fil d'exécution dont vient le bloc (F-35 SF-35-03) : `null` pour le fil principal — donc pour
+   * tout run sans délégation, ce qui reste le cas courant.
+   */
+  threadId: string | null;
 }

@@ -290,6 +290,9 @@ export class AtelierService {
         tool: payload.tool ?? '',
         detail: payload.detail,
         toolUseId: payload.toolUseId ?? null,
+        // Fil d'exécution (F-35 SF-35-02) : champ additif, absent d'un backend antérieur et de tout
+        // run sans délégation ⇒ fil principal.
+        threadId: threadOf(payload.threadId),
       });
     } else if (event === 'action_result') {
       // Sortie de la commande (F-30) : c'est elle qui fait le rendu terminal.
@@ -298,6 +301,7 @@ export class AtelierService {
         toolUseId: payload.toolUseId ?? null,
         output: payload.output ?? '',
         error: payload.error === true,
+        threadId: threadOf(payload.threadId),
       });
     } else if (event === 'status') {
       handlers.onStatus(payload.state ?? '');
@@ -370,4 +374,13 @@ export class AtelierService {
   getHistory(id: string): Observable<AtelierMessage[]> {
     return this.http.get<AtelierMessage[]>(`/api/workspaces/${id}/chat`);
   }
+}
+
+/**
+ * Normalise le fil d'exécution relayé par le flux (F-35 SF-35-02). Défensif comme l'extraction côté
+ * backend : absent, vide ou non textuel ⇒ `null`, c'est-à-dire le fil principal. Un affichage ne doit
+ * jamais faire échouer la lecture d'un run.
+ */
+function threadOf(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
 }
