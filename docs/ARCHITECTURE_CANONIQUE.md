@@ -326,6 +326,24 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   appliquer, et « Réinitialiser la sandbox » en rouvre une bornée). Un tour arrêté par ce plafond est
   marqué par un champ **additif** `budgetReached` dans le document `terminal_json` — même patron que
   `interrupted` (F-32) : le tour a eu lieu, il est décompté, et l'écran le dit.
+- **Délégation à des sous-agents — aucune persistance** (F-35 / SF-35-01→03). **Aucune migration** :
+  la délégation est un **réglage global** (`app.atelier.agent.subagents-enabled`, défaut **true**, et
+  `max-subagents`, défaut **3**), pas une propriété de projet — rien à stocker par workspace. La
+  capacité est celle du fournisseur (`agent_with_overrides.multiagent: {type: "coordinator", agents:
+  [{type: "self"} …]}`) : la Gateway la **relaie** et n'ordonnance rien (Gateway-First).
+  - **Bornée par le budget de session** (F-36) et non par un compteur propre : quand la session
+    délègue, le plafond passe de `cost.max-run-cost` à `cost.max-run-cost-delegated`, **toujours**
+    borné par le quota restant. Les sous-agents étant des **threads d'une même session**, un seul
+    conteneur est facturé et le verrou pré-requête les borne tous à la fois.
+  - **Relevé d'usage pris au niveau session** (`usage`, `stats.active_seconds`, `list_cost`) : il
+    couvre déjà tous les fils. Ne jamais le passer au niveau d'un fil — ce serait sous-compter — ni
+    additionner racine et fils — ce serait compter deux fois. Un test fige ce point.
+  - **Provenance** : `thread_id` relayé dans le flux SSE (`action` / `action_result`) et persisté
+    comme champ **additif** `threadId` du document `terminal_json` — même patron que `interrupted`
+    (F-32) et `budgetReached` (F-36). `null` sur un run séquentiel : l'historique antérieur se relit
+    exactement comme avant.
+  - **Coupe-circuit** : `APP_ATELIER_AGENT_SUBAGENTS_ENABLED=false` — une variable d'environnement,
+    sans redéploiement. À `false`, le corps de création de session est strictement celui d'avant F-35.
 - **Instructions de projet — aucune persistance** (F-34 / SF-34-01). Le `CLAUDE.md` du workspace (repli
   `.atelier/instructions.md`) est lu **à l'ouverture de session** dans la source du projet — stockage
   objet pour un projet `ARCHIVE`, branche montée via l'API GitHub pour un projet `GIT` — et composé au
