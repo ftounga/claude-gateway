@@ -263,6 +263,23 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     par l'agent via le proxy git, puis **constate** l'existence de la branche auprès de GitHub avant
     d'annoncer un succès. Jamais sur la branche de base ; jamais de session ouverte pour l'occasion
     (`409 no_active_session`).
+- **workspaces — validation avant exécution** (F-33 / SF-33-01, migration `044`). Colonne
+  `agent_ask_before_bash (boolean, non nul, défaut false)` : quand elle est posée, la session d'agent
+  est ouverte avec `permission_policy: always_ask` sur le **seul outil `bash`** (surcharge d'outils
+  session-locale, `agent_with_overrides.tools` — l'agent plateforme n'est jamais modifié).
+  **Aucune table nouvelle**, aucune donnée existante changée : à `false`, le corps de création de
+  session est strictement celui d'avant F-33.
+  - La politique est fixée à l'**ouverture** de session : `PUT /workspaces/{id}/agent/confirmation`
+    répond `appliesToCurrentSession: false` quand une sandbox tourne déjà, plutôt que d'annoncer une
+    protection qui n'est pas en vigueur. La réinitialisation (F-30 SF-30-06) l'applique.
+  - **La demande en attente n'est jamais persistée** (SF-33-02) : elle ne vaut que le temps du run.
+    Elle est relayée dans le flux SSE (`confirm_request`), tranchée par
+    `POST /workspaces/{id}/agent/confirm` (`allow` / `deny` + motif relayé à l'agent), et le
+    rendez-vous passe par la session chez le fournisseur — donc sans état partagé entre répliques.
+    Sans réponse dans `app.atelier.agent.confirm-timeout` (défaut `PT2M`), la commande est **refusée**.
+  - ⚠️ Une session en attente de confirmation émet `session.status_idle` : seul un `idle`
+    **non `requires_action`** termine un run, sous peine de clore le tour sans exécuter la commande.
+
 - **prompt_templates** — modèle de prompt réutilisable (F-13, migration `031`). Isolé par `user_id`.
   Donnée purement relationnelle, **sans colonne vectorielle** (F-13 n'est pas du RAG) — le backend
   reste une Gateway (aucun appel IA attaché à cette entité).
