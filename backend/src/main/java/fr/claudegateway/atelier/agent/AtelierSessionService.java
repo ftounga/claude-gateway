@@ -130,10 +130,42 @@ public class AtelierSessionService {
      */
     public AtelierSessionResult runTaskStreaming(UUID userId, UUID workspaceId, String message,
             AtelierAgentListener listener) {
+        return run(userId, workspaceId, message, listener, true);
+    }
+
+    /**
+     * Exécute un tour <b>dans la session déjà ouverte</b>, sans jamais en ouvrir une nouvelle
+     * (F-31 / SF-31-04).
+     *
+     * <p>Réservé aux opérations qui agissent sur un travail déjà fait — la publication sur une
+     * branche. Une session neuve repartirait d'un clone vierge : la branche poussée serait identique
+     * à la base, et l'utilisateur croirait avoir publié son travail.</p>
+     *
+     * @param userId      utilisateur propriétaire (isolation)
+     * @param workspaceId workspace cible
+     * @param message     instruction à exécuter
+     * @return la réponse de l'agent + les fichiers réécrits
+     * @throws NoActiveSessionException si aucune session n'est en cours, ou si celle-ci n'est plus
+     *                                  jouable (elle est alors oubliée)
+     */
+    public AtelierSessionResult runInExistingSession(UUID userId, UUID workspaceId, String message) {
+        return run(userId, workspaceId, message, AtelierAgentListener.NOOP, false);
+    }
+
+    private AtelierSessionResult run(UUID userId, UUID workspaceId, String message,
+            AtelierAgentListener listener, boolean mayOpenSession) {
         AtelierAgentListener sink = listener == null ? AtelierAgentListener.NOOP : listener;
 
         // 1. Isolation EN PREMIER : workspace d'un autre user / inexistant ⇒ 404, aucun appel provider.
         Workspace workspace = workspaceService.requireOwned(userId, workspaceId);
+
+        // 1 bis. Opération réservée à une session déjà ouverte (F-31 / SF-31-04) : sans elle, il n'y a
+        // rien à publier, et le dire tout de suite évite d'engager quoi que ce soit.
+        if (!mayOpenSession && (workspace.getAgentSessionId() == null
+                || workspace.getAgentSessionId().isBlank())) {
+            throw new NoActiveSessionException(
+                    "Aucun travail en cours dans ce projet : demandez d'abord une modification à Claude.");
+        }
 
         // 2. Flag off ⇒ refus avant tout appel réseau / coût runtime.
         if (!properties.enabled()) {
@@ -192,6 +224,13 @@ public class AtelierSessionService {
             try {
                 run = runInSession(sessionId, message, bridge);
             } catch (RuntimeException ex) {
+                if (!mayOpenSession) {
+                    // Publication sur une session morte : on l'oublie et on le dit. Rejouer dans une
+                    // session neuve publierait un clone vierge sous couvert de succès.
+                    forgetSession(workspace);
+                    throw new NoActiveSessionException(
+                            "La session de travail s'est terminée : relancez une commande avant de publier.");
+                }
                 // Session expirée, terminée ou inconnue : on en ouvre une neuve et on rejoue le
                 // message UNE fois. Boucler au-delà masquerait une panne réelle du fournisseur.
                 log.debug("Session d'atelier injouable, ouverture d'une nouvelle session.");
@@ -199,6 +238,7 @@ public class AtelierSessionService {
                 run = runInSession(sessionId, message, bridge);
             }
         } else {
+            // Le cas « aucune session » sans droit d'en ouvrir a déjà été refusé plus haut.
             sessionId = openSession(userId, workspaceId, config, workspace);
             run = runInSession(sessionId, message, bridge);
         }
@@ -349,6 +389,13 @@ public class AtelierSessionService {
         workspace.setAgentInputTokens(0L);
         workspace.setAgentOutputTokens(0L);
         workspace.setAgentActiveSeconds(0L);
+        workspaceRepository.save(workspace);
+    }
+
+    /** Oublie la session courante du workspace, sans rien terminer chez le fournisseur. */
+    private void forgetSession(Workspace workspace) {
+        workspace.setAgentSessionId(null);
+        workspace.setAgentSessionStartedAt(null);
         workspaceRepository.save(workspace);
     }
 

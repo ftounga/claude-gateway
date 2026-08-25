@@ -73,4 +73,23 @@ public interface GitHubClient {
      * @throws GitHubUnavailableException    GitHub injoignable
      */
     String readFile(String token, String owner, String repo, String ref, String path, long maxBytes);
+
+    /**
+     * Constate l'existence d'une branche (F-31 / SF-31-04), après une demande de publication.
+     *
+     * <p>Ce que l'agent déclare ne suffit pas : il peut répondre « poussé » sans l'avoir fait — un
+     * jeton en lecture seule, par exemple, échoue au {@code push} et la sortie peut passer inaperçue.
+     * L'existence de la branche est donc <b>constatée</b> avant d'annoncer quoi que ce soit, et c'est
+     * aussi le premier retour réel sur les droits du jeton.</p>
+     *
+     * @param token  jeton en clair (jamais journalisé)
+     * @param owner  propriétaire du dépôt
+     * @param repo   nom du dépôt
+     * @param branch branche à constater
+     * @return vrai si la branche existe
+     * @throws InvalidGitTokenException   jeton refusé
+     * @throws GitHubUnavailableException GitHub injoignable — on ne prétend alors <b>pas</b> que la
+     *                                    branche existe
+     */
+    boolean branchExists(String token, String owner, String repo, String branch);
 }

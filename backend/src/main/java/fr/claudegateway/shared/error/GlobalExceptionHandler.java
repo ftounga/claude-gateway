@@ -33,6 +33,8 @@ import fr.claudegateway.atelier.InvalidFilePathException;
 import fr.claudegateway.atelier.WorkspaceNotFoundException;
 import fr.claudegateway.atelier.git.GitWorkspaceModeException;
 import fr.claudegateway.atelier.git.GitWorkspaceReadOnlyException;
+import fr.claudegateway.atelier.git.GitWorkspaceRequiredException;
+import fr.claudegateway.atelier.agent.NoActiveSessionException;
 import fr.claudegateway.chat.AttachmentNotFoundException;
 import fr.claudegateway.chat.ConversationNotFoundException;
 import fr.claudegateway.chat.DocumentNotReadyException;
@@ -334,6 +336,22 @@ public class GlobalExceptionHandler {
         log.debug("Écriture refusée : le projet est adossé à un dépôt Git (lecture seule)");
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse("git_workspace_read_only", ex.getMessage()));
+    }
+
+    @ExceptionHandler(GitWorkspaceRequiredException.class)
+    public ResponseEntity<ErrorResponse> handleGitWorkspaceRequired(GitWorkspaceRequiredException ex) {
+        log.debug("Opération Git refusée : le projet n'est pas adossé à un dépôt");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("git_workspace_required", ex.getMessage()));
+    }
+
+    @ExceptionHandler(NoActiveSessionException.class)
+    public ResponseEntity<ErrorResponse> handleNoActiveSession(NoActiveSessionException ex) {
+        // Rien n'a été fait dans la sandbox : il n'y a rien à publier, et aucune session n'a été
+        // ouverte pour l'occasion (elle repartirait d'un clone vierge).
+        log.debug("Publication refusée : aucune session sandbox en cours");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("no_active_session", ex.getMessage()));
     }
 
     @ExceptionHandler(GitWorkspaceModeException.class)

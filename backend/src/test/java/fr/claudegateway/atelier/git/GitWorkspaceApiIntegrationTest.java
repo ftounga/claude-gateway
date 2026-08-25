@@ -410,6 +410,76 @@ class GitWorkspaceApiIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
+    // ------------------------------- F-31 / SF-31-04 : publication sur une branche
+
+    @Test
+    void refusesToPublishWithoutAnActiveSession() throws Exception {
+        String id = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(post("/api/workspaces/" + id + "/git/push").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"branch\":\"feat/atelier\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error", is("no_active_session")));
+    }
+
+    @Test
+    void refusesToPublishOnTheBaseBranch() throws Exception {
+        String id = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(post("/api/workspaces/" + id + "/git/push").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"branch\":\"main\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", is("invalid_git_branch")));
+    }
+
+    @Test
+    void refusesToPublishAnArchiveProject() throws Exception {
+        // Un projet d'archive n'a aucun dépôt où publier.
+        Workspace archive = workspaceRepository.save(Workspace.builder()
+                .userId(alice.getId())
+                .name("archive")
+                .build());
+
+        mockMvc.perform(post("/api/workspaces/" + archive.getId() + "/git/push").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error", is("git_workspace_required")));
+    }
+
+    @Test
+    void refusesToPublishAProjectOfAnotherUser() throws Exception {
+        String id = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(post("/api/workspaces/" + id + "/git/push").contextPath("/api")
+                        .header("Authorization", bearer(bobToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void publishingRequiresAuthenticationAndGoldAccess() throws Exception {
+        String id = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(post("/api/workspaces/" + id + "/git/push").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(post("/api/workspaces/" + id + "/git/push").contextPath("/api")
+                        .header("Authorization", bearer(plainToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error", is("atelier_forbidden")));
+    }
+
     @Test
     void rejectsAMissingRepositoryUrl() throws Exception {
         mockMvc.perform(post("/api/workspaces/git").contextPath("/api")

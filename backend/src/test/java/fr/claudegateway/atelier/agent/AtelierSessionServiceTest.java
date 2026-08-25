@@ -777,6 +777,54 @@ class AtelierSessionServiceTest {
         verify(provider, never()).createSession(any(), any(), anyList());
     }
 
+    // ------------------------ F-31 / SF-31-04 : tour dans la session existante uniquement
+
+    @Test
+    void runningInAnExistingSessionRefusesToOpenANewOne() {
+        Workspace workspace = gitWs(); // aucune session ouverte
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
+
+        assertThatThrownBy(() -> service(enabled()).runInExistingSession(USER, WORKSPACE, "publie"))
+                .isInstanceOf(NoActiveSessionException.class);
+
+        // Une session neuve repartirait d'un clone vierge : elle publierait une branche vide.
+        verify(provider, never()).createSession(any(), any(), anyList(), any());
+        verify(provider, never()).createSession(any(), any(), anyList());
+    }
+
+    @Test
+    void runningInAnExistingSessionUsesItWithoutRemounting() {
+        Workspace workspace = gitWs();
+        workspace.setAgentSessionId("sess_git");
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any()))
+                .thenReturn(new SessionRun("Branche poussée.", "end_turn"));
+        when(provider.listOutputs("sess_git")).thenReturn(List.of());
+
+        AtelierSessionResult result = service(enabled()).runInExistingSession(USER, WORKSPACE, "publie");
+
+        assertThat(result.reply()).isEqualTo("Branche poussée.");
+        verify(provider).sendUserMessage("sess_git", "publie");
+        verify(provider, never()).createSession(any(), any(), anyList(), any());
+    }
+
+    @Test
+    void aDeadSessionIsForgottenRatherThanReplacedDuringAPush() {
+        Workspace workspace = gitWs();
+        workspace.setAgentSessionId("sess_dead");
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        doThrow(new AgentProviderException("session inconnue"))
+                .when(provider).sendUserMessage(eq("sess_dead"), any());
+
+        assertThatThrownBy(() -> service(enabled()).runInExistingSession(USER, WORKSPACE, "publie"))
+                .isInstanceOf(NoActiveSessionException.class);
+
+        assertThat(workspace.getAgentSessionId()).isNull();
+        verify(provider, never()).createSession(any(), any(), anyList(), any());
+    }
+
     @Test
     void anArchiveWorkspaceNeverResolvesAGitToken() {
         stubNominalRun();
