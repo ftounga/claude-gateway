@@ -59,12 +59,14 @@ class AccountServiceTest {
     @Mock
     private fr.claudegateway.byok.UserApiKeyRepository userApiKeyRepository;
     @Mock
+    private fr.claudegateway.git.UserGitCredentialRepository userGitCredentialRepository;
+    @Mock
     private fr.claudegateway.template.TemplateRepository templateRepository;
 
     private AccountService service() {
         return new AccountService(userService, subscriptionRepository, usageCounterRepository,
                 conversationRepository, messageRepository, uploadedFileRepository, userApiKeyRepository,
-                templateRepository);
+                userGitCredentialRepository, templateRepository);
     }
 
     private User user(UUID id) {
@@ -139,14 +141,16 @@ class AccountServiceTest {
         service().deleteAccount(userId);
 
         InOrder order = inOrder(messageRepository, conversationRepository, uploadedFileRepository,
-                usageCounterRepository, subscriptionRepository, userApiKeyRepository, templateRepository,
-                userService);
+                usageCounterRepository, subscriptionRepository, userApiKeyRepository,
+                userGitCredentialRepository, templateRepository, userService);
         order.verify(messageRepository).deleteByUserId(userId);
         order.verify(conversationRepository).deleteByUserId(userId);
         order.verify(uploadedFileRepository).deleteByUserId(userId);
         order.verify(usageCounterRepository).deleteByUserId(userId);
         order.verify(subscriptionRepository).deleteByUserId(userId);
         order.verify(userApiKeyRepository).deleteByUserId(userId);
+        // Le jeton GitHub (F-31) est un secret de l'utilisateur : il disparaît avec le compte (RGPD).
+        order.verify(userGitCredentialRepository).deleteByUserId(userId);
         order.verify(templateRepository).deleteByUserId(userId);
         order.verify(userService).deleteById(userId);
         verify(userService).findByIdOrThrow(any());

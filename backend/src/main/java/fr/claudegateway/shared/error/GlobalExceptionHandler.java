@@ -36,6 +36,8 @@ import fr.claudegateway.chat.ConversationNotFoundException;
 import fr.claudegateway.chat.DocumentNotReadyException;
 import fr.claudegateway.chat.UnsupportedModelException;
 import fr.claudegateway.export.UnsupportedExportFormatException;
+import fr.claudegateway.git.GitHubUnavailableException;
+import fr.claudegateway.git.InvalidGitTokenException;
 import fr.claudegateway.ocr.DocumentNotFoundException;
 import fr.claudegateway.quota.QuotaExceededException;
 import fr.claudegateway.quota.SandboxLimitExceededException;
@@ -287,6 +289,22 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(new ErrorResponse("byok_unavailable",
                         "La gestion de clé API personnelle est momentanément indisponible."));
+    }
+
+    @ExceptionHandler(InvalidGitTokenException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidGitToken(InvalidGitTokenException ex) {
+        // Le jeton n'est jamais journalisé : message métier neutre uniquement (F-31 / SF-31-01).
+        log.debug("Jeton GitHub refusé : format invalide ou rejeté par GitHub");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("invalid_git_token", ex.getMessage()));
+    }
+
+    @ExceptionHandler(GitHubUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleGitHubUnavailable(GitHubUnavailableException ex) {
+        // Panne temporaire : distincte d'un jeton refusé, et rien n'a été persisté.
+        log.warn("GitHub indisponible lors de la vérification d'un jeton");
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ErrorResponse("github_unavailable", ex.getMessage()));
     }
 
     @ExceptionHandler(EmbeddingProviderUnavailableException.class)
