@@ -52,6 +52,36 @@
   color: var(--cg-text-primary);
 }
 
+// Dépôt d'un projet Git dans la liste (F-31 / SF-31-02) : discret, sous le nom du projet.
+.workspace-repo {
+  font-family: var(--cg-font-mono);
+  font-size: 11px;
+  color: var(--cg-text-secondary);
+}
+
+// Dépôt et branche montés, dans la barre de titre du projet ouvert (F-31 / SF-31-02).
+.git-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  margin-left: var(--cg-space-2);
+  font-family: var(--cg-font-mono);
+  font-size: 12px;
+}
+
+.git-chip-icon {
+  font-size: 14px;
+  width: 14px;
+  height: 14px;
+}
+
+.git-branch {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cg-accent) 18%, transparent);
+  color: var(--cg-text-primary);
+}
+
 a.active {
   border-left: 4px solid var(--cg-accent);
   background: color-mix(in srgb, var(--cg-primary) 6%, transparent);

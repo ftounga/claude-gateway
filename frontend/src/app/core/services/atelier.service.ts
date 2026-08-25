@@ -11,6 +11,7 @@ import {
   AtelierMessage,
   AtelierStreamAction,
   AtelierStreamHandlers,
+  CreateGitWorkspaceRequest,
   FileContent,
   WorkspaceDetail,
   WorkspaceSummary,
@@ -35,6 +36,14 @@ export class AtelierService {
       form.append('name', name);
     }
     return this.http.post<WorkspaceDetail>('/api/workspaces', form);
+  }
+
+  /**
+   * Ouvre un projet sur un dépôt GitHub (F-31 / SF-31-02). Aucun secret ne transite : le jeton
+   * d'accès a été enregistré séparément (réglages) et n'est manipulé que côté backend.
+   */
+  createGitWorkspace(request: CreateGitWorkspaceRequest): Observable<WorkspaceDetail> {
+    return this.http.post<WorkspaceDetail>('/api/workspaces/git', request);
   }
 
   /** Workspaces de l'utilisateur. */

@@ -1,0 +1,35 @@
+// Dialogue « Ouvrir un dépôt GitHub » (F-31 / SF-31-02) — jetons du design system (--cg-*).
+
+.repo-intro {
+  margin: 0 0 var(--cg-space-3);
+  color: var(--cg-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.repo-field {
+  display: block;
+  width: 100%;
+  margin-bottom: var(--cg-space-3);
+}
+
+.repo-hint-error {
+  color: var(--cg-error);
+}
+
+.repo-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-1);
+  margin: 0;
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.repo-note-icon {
+  flex: none;
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}

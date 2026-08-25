@@ -23,6 +23,10 @@ describe('AtelierFilesComponent', () => {
     fileCount: 3,
     files: ['src/a.js', 'src/utils/b.js', 'bibliotheque/c.md'],
     createdAt: '2026-07-11T00:00:00Z',
+    source: 'ARCHIVE',
+    gitRepoUrl: null,
+    gitRepo: null,
+    gitBranch: null,
   };
 
   function setup(paramId: string | null = 'w1'): void {

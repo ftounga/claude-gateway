@@ -46,18 +46,42 @@ describe('AtelierComponent', () => {
     createdAt: '2026-07-11T00:00:00Z',
   };
 
-  const summary: WorkspaceSummary = { id: 'w1', name: 'projet', createdAt: '2026-07-11T00:00:00Z' };
+  const summary: WorkspaceSummary = {
+    id: 'w1',
+    name: 'projet',
+    createdAt: '2026-07-11T00:00:00Z',
+    source: 'ARCHIVE',
+    gitRepo: null,
+  };
   const detail: WorkspaceDetail = {
     id: 'w1',
     name: 'projet',
     fileCount: 1,
     files: ['src/main.ts'],
     createdAt: '2026-07-11T00:00:00Z',
+    source: 'ARCHIVE',
+    gitRepoUrl: null,
+    gitRepo: null,
+    gitBranch: null,
+  };
+
+  /** Projet adossé à un dépôt (F-31 / SF-31-02). */
+  const gitDetail: WorkspaceDetail = {
+    id: 'w2',
+    name: 'hello',
+    fileCount: 0,
+    files: [],
+    createdAt: '2026-08-25T00:00:00Z',
+    source: 'GIT',
+    gitRepoUrl: 'https://github.com/octocat/hello',
+    gitRepo: 'octocat/hello',
+    gitBranch: 'main',
   };
 
   function setup(): void {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace',
+      'createGitWorkspace',
       'listWorkspaces',
       'getWorkspace',
       'getFile',
@@ -105,6 +129,7 @@ describe('AtelierComponent', () => {
   it('affiche le panneau d\'upsell (sans snackbar) sur un 403 atelier_forbidden', () => {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace',
+      'createGitWorkspace',
       'listWorkspaces',
       'getWorkspace',
       'getFile',
@@ -169,6 +194,7 @@ describe('AtelierComponent', () => {
   it('sur une 500, montre le message d\'erreur sans passer en upsell', () => {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace',
+      'createGitWorkspace',
       'listWorkspaces',
       'getWorkspace',
       'getFile',
@@ -206,6 +232,7 @@ describe('AtelierComponent', () => {
   it('notifies when the workspace list fails to load', () => {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace',
+      'createGitWorkspace',
       'listWorkspaces',
       'getWorkspace',
       'getFile',
@@ -1097,5 +1124,90 @@ describe('AtelierComponent', () => {
 
     expect(item.terminal!.length).toBe(1);
     expect(item.cost).toBeUndefined();
+  });
+
+  // ---- F-31 SF-31-02 : ouverture d'un projet sur un dépôt Git ----
+
+  it("ouvre un dépôt via le dialogue et adopte le projet créé", () => {
+    setup();
+    dialog.open.and.returnValue({
+      afterClosed: () => of({ repoUrl: 'https://github.com/octocat/hello', branch: 'main' }),
+    } as MatDialogRef<unknown, unknown>);
+    service.createGitWorkspace.and.returnValue(of(gitDetail));
+
+    component.openGitRepoDialog();
+
+    expect(service.createGitWorkspace).toHaveBeenCalledWith({
+      repoUrl: 'https://github.com/octocat/hello',
+      branch: 'main',
+    });
+    expect(component.activeWorkspaceId()).toBe('w2');
+    expect(component.activeIsGit()).toBeTrue();
+    expect(component.activeDetail()?.gitBranch).toBe('main');
+    expect(component.workspaces()[0].source).toBe('GIT');
+    expect(component.workspaces()[0].gitRepo).toBe('octocat/hello');
+    expect(component.creating()).toBeFalse();
+  });
+
+  it("n'appelle rien si le dialogue de dépôt est fermé sans choix", () => {
+    setup();
+    dialog.open.and.returnValue({ afterClosed: () => of(undefined) } as MatDialogRef<unknown, unknown>);
+
+    component.openGitRepoDialog();
+
+    expect(service.createGitWorkspace).not.toHaveBeenCalled();
+    expect(component.creating()).toBeFalse();
+  });
+
+  it("oriente vers les réglages quand aucun jeton GitHub n'est enregistré", () => {
+    setup();
+    dialog.open.and.returnValue({
+      afterClosed: () => of({ repoUrl: 'https://github.com/octocat/hello' }),
+    } as MatDialogRef<unknown, unknown>);
+    service.createGitWorkspace.and.returnValue(
+      throwError(
+        () =>
+          new HttpErrorResponse({ status: 400, error: { error: 'git_token_missing' } }),
+      ),
+    );
+
+    component.openGitRepoDialog();
+
+    expect(snackBar.open.calls.mostRecent().args[0]).toContain('réglages');
+    expect(component.creating()).toBeFalse();
+  });
+
+  it("distingue un dépôt hors de portée d'une panne GitHub", () => {
+    setup();
+    dialog.open.and.returnValue({
+      afterClosed: () => of({ repoUrl: 'https://github.com/octocat/secret' }),
+    } as MatDialogRef<unknown, unknown>);
+    service.createGitWorkspace.and.returnValue(
+      throwError(
+        () =>
+          new HttpErrorResponse({ status: 400, error: { error: 'invalid_git_repository' } }),
+      ),
+    );
+
+    component.openGitRepoDialog();
+    expect(snackBar.open.calls.mostRecent().args[0]).toContain('introuvable');
+
+    service.createGitWorkspace.and.returnValue(
+      throwError(
+        () =>
+          new HttpErrorResponse({ status: 503, error: { error: 'github_unavailable' } }),
+      ),
+    );
+
+    component.openGitRepoDialog();
+    expect(snackBar.open.calls.mostRecent().args[0]).toContain('indisponible');
+  });
+
+  it("un projet d'archive n'est jamais présenté comme un dépôt", () => {
+    setup();
+    component.selectWorkspace(summary);
+
+    expect(component.activeIsGit()).toBeFalse();
+    expect(component.activeDetail()?.gitRepo).toBeNull();
   });
 });

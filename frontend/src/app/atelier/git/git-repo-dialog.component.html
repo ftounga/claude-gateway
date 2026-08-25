@@ -1,0 +1,56 @@
+<h2 mat-dialog-title>Ouvrir un dépôt GitHub</h2>
+<mat-dialog-content>
+  <p class="repo-intro">
+    Le dépôt est cloné dans l'espace d'exécution de Claude. Votre jeton d'accès n'y entre jamais :
+    il reste côté passerelle.
+  </p>
+
+  <mat-form-field appearance="outline" class="repo-field" subscriptSizing="dynamic">
+    <mat-label>URL du dépôt</mat-label>
+    <input
+      matInput
+      cdkFocusInitial
+      placeholder="https://github.com/proprietaire/depot"
+      [ngModel]="repoUrl()"
+      (ngModelChange)="repoUrl.set($event)"
+      (keydown.enter)="confirm()"
+    />
+    @if (urlError()) {
+      <mat-hint class="repo-hint-error">{{ urlError() }}</mat-hint>
+    }
+  </mat-form-field>
+
+  <mat-form-field appearance="outline" class="repo-field" subscriptSizing="dynamic">
+    <mat-label>Branche (facultatif)</mat-label>
+    <input
+      matInput
+      placeholder="branche par défaut du dépôt"
+      [ngModel]="branch()"
+      (ngModelChange)="branch.set($event)"
+      (keydown.enter)="confirm()"
+    />
+  </mat-form-field>
+
+  <mat-form-field appearance="outline" class="repo-field" subscriptSizing="dynamic">
+    <mat-label>Nom du projet (facultatif)</mat-label>
+    <input
+      matInput
+      placeholder="nom du dépôt"
+      [ngModel]="name()"
+      (ngModelChange)="name.set($event)"
+      (keydown.enter)="confirm()"
+    />
+  </mat-form-field>
+
+  <p class="repo-note">
+    <mat-icon class="repo-note-icon">info</mat-icon>
+    Le contenu du dépôt est transmis à Claude pour être travaillé, comme l'est aujourd'hui celui
+    d'une archive importée.
+  </p>
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+  <button mat-stroked-button type="button" (click)="cancel()">Annuler</button>
+  <button mat-flat-button color="primary" type="button" [disabled]="!urlValid()" (click)="confirm()">
+    Ouvrir le dépôt
+  </button>
+</mat-dialog-actions>

@@ -46,19 +46,31 @@
         color="primary"
         type="button"
         [disabled]="creating()"
-        (click)="zipInput.click()"
+        [matMenuTriggerFor]="newProjectMenu"
       >
         @if (creating()) {
           <mat-progress-spinner mode="indeterminate" [diameter]="18"></mat-progress-spinner>
         } @else {
-          <mat-icon>upload_file</mat-icon>
+          <mat-icon>add</mat-icon>
         }
         Nouveau projet
       </button>
+      <mat-menu #newProjectMenu="matMenu">
+        <button mat-menu-item type="button" (click)="openGitRepoDialog()">
+          <mat-icon>hub</mat-icon>
+          Ouvrir un dépôt GitHub
+        </button>
+        <button mat-menu-item type="button" (click)="zipInput.click()">
+          <mat-icon>upload_file</mat-icon>
+          Importer une archive .zip
+        </button>
+      </mat-menu>
     </div>
 
     @if (workspaces().length === 0) {
-      <p class="sidebar-empty">Aucun projet. Importez une archive .zip pour commencer.</p>
+      <p class="sidebar-empty">
+        Aucun projet. Ouvrez un dépôt GitHub, ou importez une archive .zip.
+      </p>
     } @else {
       <mat-nav-list class="workspace-list">
         @for (workspace of workspaces(); track workspace.id) {
@@ -67,8 +79,13 @@
             [class.active]="workspace.id === activeWorkspaceId()"
             (click)="selectWorkspace(workspace)"
           >
-            <mat-icon matListItemIcon>folder_zip</mat-icon>
+            <mat-icon matListItemIcon>{{
+              workspace.source === 'GIT' ? 'hub' : 'folder_zip'
+            }}</mat-icon>
             <span matListItemTitle class="workspace-name">{{ workspace.name }}</span>
+            @if (workspace.gitRepo) {
+              <span matListItemLine class="workspace-repo">{{ workspace.gitRepo }}</span>
+            }
           </a>
         }
       </mat-nav-list>
@@ -96,12 +113,20 @@
     @if (activeWorkspaceId() === null) {
       <div class="atelier-empty">
         <mat-icon>terminal</mat-icon>
-        <p>Sélectionnez un projet ou importez une archive .zip pour discuter avec Claude.</p>
+        <p>Sélectionnez un projet, ouvrez un dépôt GitHub, ou importez une archive .zip.</p>
       </div>
     } @else {
       <mat-toolbar class="atelier-toolbar">
         <mat-icon class="toolbar-icon">terminal</mat-icon>
         <span class="atelier-heading">{{ activeName() }}</span>
+        @if (activeIsGit()) {
+          <!-- Dépôt et branche montés (F-31 / SF-31-02) : savoir sur quoi l'on travaille. -->
+          <span class="badge badge--neutral git-chip" [matTooltip]="activeDetail()?.gitRepoUrl ?? ''">
+            <mat-icon class="git-chip-icon">hub</mat-icon>
+            {{ activeDetail()?.gitRepo }}
+            <span class="git-branch">{{ activeDetail()?.gitBranch }}</span>
+          </span>
+        }
         <span class="toolbar-spacer"></span>
         <button
           mat-stroked-button
