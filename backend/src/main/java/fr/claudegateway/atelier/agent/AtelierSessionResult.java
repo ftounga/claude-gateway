@@ -15,12 +15,20 @@ import java.util.List;
  * @param inputTokens   tokens d'entrée consommés par ce tour ({@code 0} si le relevé a échoué)
  * @param outputTokens  tokens de sortie consommés par ce tour ({@code 0} si le relevé a échoué)
  * @param activeSeconds secondes de bac à sable consommées par ce tour ({@code 0} si relevé échoué)
+ * @param interrupted   vrai si le tour s'est arrêté sur une demande d'interruption (F-32 SF-32-01) :
+ *                      il est conservé et décompté comme tout autre tour, mais l'écran doit le dire
  */
 public record AtelierSessionResult(String reply, List<String> changedFiles, long inputTokens,
-        long outputTokens, long activeSeconds) {
+        long outputTokens, long activeSeconds, boolean interrupted) {
 
     /** Résultat sans consommation connue (relevé best-effort en échec, ou run hors session). */
     public AtelierSessionResult(String reply, List<String> changedFiles) {
-        this(reply, changedFiles, 0L, 0L, 0L);
+        this(reply, changedFiles, 0L, 0L, 0L, false);
+    }
+
+    /** Résultat d'un tour mené à son terme (jamais interrompu) : forme historique. */
+    public AtelierSessionResult(String reply, List<String> changedFiles, long inputTokens,
+            long outputTokens, long activeSeconds) {
+        this(reply, changedFiles, inputTokens, outputTokens, activeSeconds, false);
     }
 }

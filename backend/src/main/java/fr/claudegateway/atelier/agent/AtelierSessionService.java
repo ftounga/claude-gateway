@@ -84,6 +84,18 @@ public class AtelierSessionService {
      */
     private final Map<String, Set<String>> syncedOutputs = new ConcurrentHashMap<>();
 
+    /**
+     * Sessions pour lesquelles une interruption a été demandée (F-32 SF-32-01). Marque
+     * d'<b>affichage</b>, jamais un mécanisme d'arrêt : l'arrêt est fait par le fournisseur, qui
+     * ramène la session à une frontière sûre. Elle sert seulement à dire au tour en vol, quand il
+     * sort de son attente, qu'il a été interrompu plutôt que mené à son terme.
+     *
+     * <p>Posée sur le thread de requête, consommée sur le pool SSE : d'où l'ensemble concurrent. Elle
+     * est <b>remise à zéro à l'ouverture de chaque tour</b>, pour qu'une interruption arrivée hors run
+     * ne vienne pas marquer le tour suivant.</p>
+     */
+    private final Set<String> interruptedSessions = ConcurrentHashMap.newKeySet();
+
     public AtelierSessionService(ManagedAgentProvider provider, WorkspaceService workspaceService,
             AtelierAgentBootstrapService bootstrapService, AtelierAgentProperties properties,
             QuotaService quotaService, WorkspaceRepository workspaceRepository,
@@ -243,6 +255,10 @@ public class AtelierSessionService {
             run = runInSession(sessionId, message, bridge);
         }
 
+        // 5 bis. Le tour s'est-il arrêté sur une demande d'interruption (F-32 SF-32-01) ? La marque
+        // est consommée ici : elle ne vaut que pour le tour qui vient de sortir de son attente.
+        boolean interrupted = consumeInterrupted(sessionId, run.stopReason());
+
         // 6. Resync INCRÉMENTAL : une session persistante réexpose ses sorties à chaque tour ; ne
         // réécrire que les nouvelles évite de repasser sur tout le workspace et de signaler comme
         // modifiés des fichiers intacts.
@@ -268,11 +284,11 @@ public class AtelierSessionService {
         // 8. Historique (F-30 SF-30-09) : le run a abouti, on conserve la demande, la réponse et la
         // transcription. Un run en échec ne passe jamais ici — cohérent avec l'écran, qui retire le
         // tour optimiste en annonçant que rien n'a été enregistré.
-        persistTurn(userId, workspaceId, message, run.reply(), transcript, usage);
+        persistTurn(userId, workspaceId, message, run.reply(), transcript, usage, interrupted);
 
         log.debug("Run atelier terminé : {} fichier(s) modifié(s).", changed.size());
         return new AtelierSessionResult(run.reply(), changed, usage.inputTokens(), usage.outputTokens(),
-                usage.activeSeconds());
+                usage.activeSeconds(), interrupted);
     }
 
     /**
@@ -284,7 +300,7 @@ public class AtelierSessionService {
      * ne doit pas les faire échouer après coup.</p>
      */
     private void persistTurn(UUID userId, UUID workspaceId, String message, String reply,
-            TerminalTranscript transcript, TurnUsage usage) {
+            TerminalTranscript transcript, TurnUsage usage, boolean interrupted) {
         try {
             messageRepository.save(AtelierMessage.builder()
                     .workspaceId(workspaceId)
@@ -297,7 +313,7 @@ public class AtelierSessionService {
                     .userId(userId)
                     .role("ASSISTANT")
                     .content(reply == null ? "" : reply)
-                    .terminalJson(serializeTranscript(transcript, usage))
+                    .terminalJson(serializeTranscript(transcript, usage, interrupted))
                     .build());
         } catch (RuntimeException ex) {
             log.debug("Historisation du tour d'exécution ignorée (best-effort) : run déjà livré.");
@@ -308,9 +324,13 @@ public class AtelierSessionService {
      * Sérialise la transcription et le coût du tour. Bornée par {@code maxTranscriptChars} : un tour
      * qui installe un projet entier ne doit pas faire gonfler l'historique sans limite, et le nombre
      * de blocs omis est mentionné explicitement. Renvoie {@code null} si rien n'a été exécuté.
+     *
+     * <p>Un tour <b>interrompu</b> est sérialisé même sans aucune commande (F-32 SF-32-01) : sans
+     * document, la mention « interrompu » serait perdue au rechargement, et l'utilisateur relirait un
+     * tour d'apparence normale là où il avait coupé.</p>
      */
-    private String serializeTranscript(TerminalTranscript transcript, TurnUsage usage) {
-        if (transcript.isEmpty()) {
+    private String serializeTranscript(TerminalTranscript transcript, TurnUsage usage, boolean interrupted) {
+        if (transcript.isEmpty() && !interrupted) {
             return null;
         }
         TerminalTranscript.Bounded bounded = transcript.bounded(properties.maxTranscriptChars());
@@ -320,6 +340,7 @@ public class AtelierSessionService {
         document.put("inputTokens", usage.inputTokens());
         document.put("outputTokens", usage.outputTokens());
         document.put("activeSeconds", usage.activeSeconds());
+        document.put("interrupted", interrupted);
         try {
             return MAPPER.writeValueAsString(document);
         } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
@@ -401,8 +422,63 @@ public class AtelierSessionService {
 
     /** Envoie le message dans la session donnée et attend la complétion du tour. */
     private SessionRun runInSession(String sessionId, String message, ManagedEventListener bridge) {
+        // Une interruption demandée alors qu'aucun run n'était en vol ne doit pas marquer CE tour :
+        // la marque ne vaut que pour le travail lancé après elle.
+        interruptedSessions.remove(sessionId);
         provider.sendUserMessage(sessionId, message);
         return provider.awaitCompletion(sessionId, properties.sessionTimeout(), properties.maxPolls(), bridge);
+    }
+
+    /**
+     * Demande l'interruption du travail en cours dans la session du workspace (F-32 SF-32-01).
+     *
+     * <p>Relaie {@code user.interrupt} au fournisseur : la session s'arrête à une <b>frontière
+     * sûre</b>, ce n'est pas un {@code kill}. Le run en vol sort alors de son attente par le chemin
+     * nominal, et son tour est conservé et décompté — il a réellement consommé du bac à sable.</p>
+     *
+     * <p>Aucun pré-vol de quota ici, délibérément : c'est l'action qui <b>réduit</b> la consommation,
+     * la refuser faute de quota enfermerait l'utilisateur dans le run qu'il cherche à arrêter.</p>
+     *
+     * @param userId      utilisateur propriétaire (isolation)
+     * @param workspaceId workspace dont la session doit être interrompue
+     * @throws fr.claudegateway.atelier.WorkspaceNotFoundException si le workspace n'est pas possédé
+     * @throws NoActiveSessionException si aucune session n'est en cours (rien à interrompre)
+     * @throws AgentProviderException   si le fournisseur refuse l'interruption
+     */
+    public void interruptSession(UUID userId, UUID workspaceId) {
+        // Isolation EN PREMIER : workspace d'un autre user / inexistant ⇒ 404, aucun appel provider.
+        Workspace workspace = workspaceService.requireOwned(userId, workspaceId);
+        String sessionId = workspace.getAgentSessionId();
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new NoActiveSessionException("Aucune exécution en cours à interrompre.");
+        }
+        // Marque posée AVANT le relais : le `session.status_idle` peut arriver au run pendant que
+        // cet appel se termine. Retirée si le relais échoue, pour ne pas afficher comme interrompu
+        // un tour qui ne l'a pas été.
+        interruptedSessions.add(sessionId);
+        try {
+            provider.interruptSession(sessionId);
+        } catch (RuntimeException ex) {
+            interruptedSessions.remove(sessionId);
+            throw ex;
+        }
+    }
+
+    /**
+     * Dit si le tour qui vient de s'achever a été interrompu, et consomme la marque (F-32 SF-32-01).
+     *
+     * <p>Deux signaux, jamais l'un à la place de l'autre : la marque locale (posée par l'appel
+     * d'interruption reçu par <b>cette</b> instance) et la raison d'arrêt rapportée par le
+     * fournisseur (seule disponible quand l'interruption a été traitée par une autre réplique).</p>
+     */
+    private boolean consumeInterrupted(String sessionId, String stopReason) {
+        boolean marked = interruptedSessions.remove(sessionId);
+        return marked || isInterruptStopReason(stopReason);
+    }
+
+    /** Raison d'arrêt d'interruption : le libellé exact n'est pas garanti, on reconnaît la racine. */
+    private static boolean isInterruptStopReason(String stopReason) {
+        return stopReason != null && stopReason.toLowerCase(java.util.Locale.ROOT).contains("interrupt");
     }
 
     /**
@@ -428,6 +504,7 @@ public class AtelierSessionService {
             log.debug("Terminaison de session ignorée (best-effort) : identifiant effacé malgré tout.");
         }
         syncedOutputs.remove(sessionId);
+        interruptedSessions.remove(sessionId);
         workspace.setAgentSessionId(null);
         workspace.setAgentSessionStartedAt(null);
         workspaceRepository.save(workspace);

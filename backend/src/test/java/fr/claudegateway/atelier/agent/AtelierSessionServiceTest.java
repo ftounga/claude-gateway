@@ -833,4 +833,161 @@ class AtelierSessionServiceTest {
 
         verifyNoInteractions(gitTokenService);
     }
+    // ---------------------------------------------------------------------------------------------
+    // Interruption d'un run en cours (F-32 / SF-32-01).
+    // ---------------------------------------------------------------------------------------------
+
+    @Test
+    void interruptingRelaysTheInterruptEventToTheRunningSession() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_1"));
+
+        service(enabled()).interruptSession(USER, WORKSPACE);
+
+        verify(provider).interruptSession("sess_1");
+    }
+
+    @Test
+    void interruptingChecksOwnershipBeforeCallingTheProvider() {
+        // Isolation d'abord : un workspace d'un autre utilisateur n'engage aucun appel fournisseur.
+        when(workspaceService.requireOwned(USER, WORKSPACE))
+                .thenThrow(new WorkspaceNotFoundException("inconnu"));
+
+        assertThatThrownBy(() -> service(enabled()).interruptSession(USER, WORKSPACE))
+                .isInstanceOf(WorkspaceNotFoundException.class);
+
+        verifyNoInteractions(provider);
+    }
+
+    @Test
+    void interruptingWithoutAnyRunningSessionIsRefusedWithoutCallingTheProvider() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));
+
+        assertThatThrownBy(() -> service(enabled()).interruptSession(USER, WORKSPACE))
+                .isInstanceOf(NoActiveSessionException.class);
+
+        verifyNoInteractions(provider);
+    }
+
+    @Test
+    void anInterruptedTurnIsReportedAsInterrupted() {
+        AtelierSessionService service = service(enabled());
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_1"));
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(provider.listOutputs("sess_1")).thenReturn(List.of());
+        // L'interruption arrive pendant le run (autre thread) : ici, depuis le stub d'attente.
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(inv -> {
+            service.interruptSession(USER, WORKSPACE);
+            return new SessionRun("Arrêté.", "end_turn");
+        });
+
+        AtelierSessionResult result = service.runTask(USER, WORKSPACE, "installe tout");
+
+        assertThat(result.interrupted()).isTrue();
+        assertThat(result.reply()).isEqualTo("Arrêté.");
+    }
+
+    @Test
+    void anInterruptedTurnIsPersistedAndItsUsageCounted() {
+        AtelierSessionService service = service(enabled());
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_1"));
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(provider.listOutputs("sess_1")).thenReturn(List.of());
+        when(provider.getSessionUsage("sess_1")).thenReturn(new SessionUsage(900L, 100L, 42L));
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(inv -> {
+            ManagedEventListener sink = inv.getArgument(3);
+            sink.onAction("bash", "tu_1", "npm install");
+            service.interruptSession(USER, WORKSPACE);
+            return new SessionRun("Arrêté.", "end_turn");
+        });
+
+        AtelierSessionResult result = service.runTask(USER, WORKSPACE, "installe tout");
+
+        // Le tour a réellement consommé du bac à sable : il est décompté comme tout autre tour (D3).
+        assertThat(result.activeSeconds()).isEqualTo(42L);
+        verify(quotaService).recordUsage(USER, 900, 100);
+        verify(quotaService).recordSandboxSeconds(USER, 42L);
+        // ... et conservé, avec sa transcription partielle et sa marque (D2).
+        ArgumentCaptor<fr.claudegateway.atelier.AtelierMessage> saved =
+                ArgumentCaptor.forClass(fr.claudegateway.atelier.AtelierMessage.class);
+        verify(messageRepository, times(2)).save(saved.capture());
+        assertThat(saved.getAllValues().get(1).getTerminalJson())
+                .contains("npm install").contains("\"interrupted\":true");
+    }
+
+    @Test
+    void anInterruptedTurnWithoutAnyCommandStillCarriesTheMark() {
+        // Sans document, la mention « interrompu » serait perdue au rechargement de l'historique.
+        AtelierSessionService service = service(enabled());
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_1"));
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(provider.listOutputs("sess_1")).thenReturn(List.of());
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(inv -> {
+            service.interruptSession(USER, WORKSPACE);
+            return new SessionRun("Arrêté.", "end_turn");
+        });
+
+        service.runTask(USER, WORKSPACE, "go");
+
+        ArgumentCaptor<fr.claudegateway.atelier.AtelierMessage> saved =
+                ArgumentCaptor.forClass(fr.claudegateway.atelier.AtelierMessage.class);
+        verify(messageRepository, times(2)).save(saved.capture());
+        assertThat(saved.getAllValues().get(1).getTerminalJson()).contains("\"interrupted\":true");
+    }
+
+    @Test
+    void aFailedInterruptLeavesTheTurnUnmarked() {
+        AtelierSessionService service = service(enabled());
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_1"));
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(provider.listOutputs("sess_1")).thenReturn(List.of());
+        doThrow(new AgentProviderException("session morte")).when(provider).interruptSession("sess_1");
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(inv -> {
+            assertThatThrownBy(() -> service.interruptSession(USER, WORKSPACE))
+                    .isInstanceOf(AgentProviderException.class);
+            return new SessionRun("Terminé.", "end_turn");
+        });
+
+        AtelierSessionResult result = service.runTask(USER, WORKSPACE, "go");
+
+        // La demande n'est pas passée : afficher le tour comme interrompu serait faux.
+        assertThat(result.interrupted()).isFalse();
+    }
+
+    @Test
+    void anInterruptRequestedOutsideARunNeverMarksTheNextTurn() {
+        AtelierSessionService service = service(enabled());
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_1"));
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(provider.listOutputs("sess_1")).thenReturn(List.of());
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+                .thenReturn(new SessionRun("Terminé.", "end_turn"));
+
+        service.interruptSession(USER, WORKSPACE); // session idle : rien à interrompre en vol
+        AtelierSessionResult result = service.runTask(USER, WORKSPACE, "go");
+
+        assertThat(result.interrupted()).isFalse();
+    }
+
+    @Test
+    void aProviderReportedInterruptStopReasonMarksTheTurn() {
+        // Repli multi-instance : l'interruption a pu être traitée par une autre réplique.
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_1"));
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(provider.listOutputs("sess_1")).thenReturn(List.of());
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+                .thenReturn(new SessionRun("Arrêté.", "user_interrupt"));
+
+        AtelierSessionResult result = service(enabled()).runTask(USER, WORKSPACE, "go");
+
+        assertThat(result.interrupted()).isTrue();
+    }
+
+    @Test
+    void aNominalTurnIsNeverReportedAsInterrupted() {
+        stubNominalRun();
+
+        AtelierSessionResult result = service(enabled()).runTask(USER, WORKSPACE, "go");
+
+        assertThat(result.interrupted()).isFalse();
+    }
 }

@@ -6,7 +6,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.util.List;
 import java.util.UUID;
@@ -227,5 +229,95 @@ class AtelierAgentControllerTest {
         org.assertj.core.api.Assertions.assertThat(body)
                 .contains("provider_error")
                 .doesNotContain("credit_exhausted");
+    }
+    // -------------------------------------- F-32 / SF-32-01 : interruption d'un run
+
+    /** Contrôleur monté avec l'advice d'erreurs global : les codes JSON sont ceux de production. */
+    private MockMvc mockMvcWithErrorHandling() {
+        AtelierAgentController controller = new AtelierAgentController(
+                sessionService, access, props(true), currentUser, Runnable::run);
+        return MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new fr.claudegateway.shared.error.GlobalExceptionHandler())
+                .build();
+    }
+
+    @Test
+    void interruptRelaysTheRequestAndAnswersNoContent() throws Exception {
+        mockMvcWithErrorHandling().perform(post("/workspaces/" + WORKSPACE + "/agent/interrupt"))
+                .andExpect(status().isNoContent());
+
+        verify(sessionService).interruptSession(USER, WORKSPACE);
+    }
+
+    @Test
+    void interruptOnAWorkspaceOfAnotherUserIsNotFound() throws Exception {
+        // Isolation : le service lève avant tout appel fournisseur, l'API répond 404 comme ailleurs.
+        Mockito.doThrow(new WorkspaceNotFoundException("inconnu"))
+                .when(sessionService).interruptSession(USER, WORKSPACE);
+
+        mockMvcWithErrorHandling().perform(post("/workspaces/" + WORKSPACE + "/agent/interrupt"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("not_found"));
+    }
+
+    @Test
+    void interruptWithoutAnyRunningSessionIsAConflict() throws Exception {
+        Mockito.doThrow(new fr.claudegateway.atelier.agent.NoActiveSessionException("rien à interrompre"))
+                .when(sessionService).interruptSession(USER, WORKSPACE);
+
+        mockMvcWithErrorHandling().perform(post("/workspaces/" + WORKSPACE + "/agent/interrupt"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("no_active_session"));
+    }
+
+    @Test
+    void interruptRefusedByTheProviderIsABadGateway() throws Exception {
+        // La panne est chez le fournisseur, pas dans la Gateway : 502, et aucun détail technique.
+        Mockito.doThrow(new fr.claudegateway.atelier.agent.AgentProviderException("boom"))
+                .when(sessionService).interruptSession(USER, WORKSPACE);
+
+        mockMvcWithErrorHandling().perform(post("/workspaces/" + WORKSPACE + "/agent/interrupt"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.error").value("provider_error"))
+                .andExpect(jsonPath("$.message").value(
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("boom"))));
+    }
+
+    @Test
+    void doneCarriesTheInterruptedFlagAsAnAdditiveField() throws Exception {
+        // Le tour interrompu n'est pas une erreur : il se clôt par `done`, marqué comme interrompu.
+        when(access.hasAccess()).thenReturn(true);
+        when(sessionService.runTaskStreaming(eq(USER), eq(WORKSPACE), any(), any()))
+                .thenReturn(new AtelierSessionResult("Arrêté.", List.of(), 900L, 100L, 42L, true));
+
+        var result = mockMvc(props(true)).perform(post("/workspaces/" + WORKSPACE + "/agent/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("{\"message\":\"go\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        org.assertj.core.api.Assertions.assertThat(body)
+                .contains("event:done")
+                .contains("\"interrupted\":true")
+                .doesNotContain("event:error");
+    }
+
+    @Test
+    void doneOfANominalRunReportsNoInterruption() throws Exception {
+        when(access.hasAccess()).thenReturn(true);
+        when(sessionService.runTaskStreaming(eq(USER), eq(WORKSPACE), any(), any()))
+                .thenReturn(new AtelierSessionResult("Terminé.", List.of()));
+
+        var result = mockMvc(props(true)).perform(post("/workspaces/" + WORKSPACE + "/agent/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("{\"message\":\"go\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        org.assertj.core.api.Assertions.assertThat(body).contains("\"interrupted\":false");
     }
 }

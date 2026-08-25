@@ -177,6 +177,16 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
     }
 
     @Override
+    public void interruptSession(String sessionId) {
+        // Même canal que le message utilisateur : un event posté sur la session. L'API ramène la
+        // session à une frontière sûre puis émet `session.status_idle` — d'où l'absence de réponse
+        // à exploiter ici. L'échec n'est PAS avalé (cf. terminateSession) : une interruption qui
+        // n'est pas passée doit être dite, sinon l'utilisateur attend un arrêt qui ne viendra pas.
+        Map<String, Object> body = Map.of("events", List.of(Map.of("type", "user.interrupt")));
+        post("/v1/sessions/" + sessionId + "/events", body, "interruption de la session");
+    }
+
+    @Override
     public SessionRun awaitCompletion(String sessionId, Duration timeout, int maxPolls) {
         // Délégation à la variante 4-args avec écouteur inerte : comportement historique inchangé.
         return awaitCompletion(sessionId, timeout, maxPolls, ManagedEventListener.NOOP);

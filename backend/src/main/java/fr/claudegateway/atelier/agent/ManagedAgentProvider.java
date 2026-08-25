@@ -114,6 +114,21 @@ public interface ManagedAgentProvider {
     SessionRun awaitCompletion(String sessionId, Duration timeout, int maxPolls, ManagedEventListener listener);
 
     /**
+     * Demande l'<b>interruption</b> du travail en cours dans la session (event {@code user.interrupt},
+     * F-32 / SF-32-01).
+     *
+     * <p>L'arrêt est <b>asynchrone</b> : la session poursuit jusqu'à une frontière sûre puis passe
+     * {@code idle} — ce n'est pas un {@code kill}, aucun état n'est corrompu. Le run en cours sort
+     * donc de son attente par le chemin nominal, sur le {@code session.status_idle} qui suit.</p>
+     *
+     * @param sessionId identifiant de la session à interrompre
+     * @throws AgentProviderException si le fournisseur refuse l'interruption (session morte, panne) —
+     *                                contrairement à {@link #terminateSession(String)}, l'échec est
+     *                                remonté : l'utilisateur doit savoir que sa demande n'est pas passée
+     */
+    void interruptSession(String sessionId);
+
+    /**
      * Liste les fichiers de sortie de la session (Files API, filtrés sur le {@code scope_id}).
      *
      * @param sessionId identifiant de la session
