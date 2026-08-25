@@ -77,7 +77,79 @@ public class HttpGitHubClient implements GitHubClient {
         }
     }
 
+    @Override
+    public GitHubRepository getRepository(String token, String owner, String repo) {
+        GitHubRepoResponse response = get("/repos/" + owner + "/" + repo, token, GitHubRepoResponse.class,
+                "résolution du dépôt");
+        if (response == null || response.defaultBranch() == null || response.defaultBranch().isBlank()) {
+            // Un dépôt sans branche par défaut est un dépôt vide : rien à monter, rien à comparer.
+            throw new InvalidGitRepositoryException(
+                    "Ce dépôt est vide : il n'a pas encore de branche à ouvrir.");
+        }
+        String fullName = response.fullName() == null || response.fullName().isBlank()
+                ? owner + "/" + repo
+                : response.fullName();
+        return new GitHubRepository(fullName, response.defaultBranch());
+    }
+
+    /**
+     * Appel {@code GET} authentifié sur l'API GitHub, avec la traduction d'erreurs commune :
+     * {@code 401/403} ⇒ jeton refusé, {@code 404} ⇒ ressource introuvable <b>ou</b> hors de portée du
+     * jeton (GitHub ne distingue pas, et nous non plus), toute autre erreur ⇒ indisponibilité
+     * temporaire. Ni le jeton ni le corps de la réponse ne sont journalisés.
+     *
+     * @param <T>       type de la projection attendue
+     * @param path      chemin relatif à l'API
+     * @param token     jeton en clair (jamais journalisé)
+     * @param type      classe de la projection
+     * @param operation libellé de l'opération, pour les journaux (jamais de secret)
+     * @return le corps désérialisé, éventuellement {@code null} si GitHub répond sans corps
+     */
+    private <T> T get(String path, String token, Class<T> type, String operation) {
+        try {
+            return restClient.get()
+                    .uri(path)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                    .header(HttpHeaders.ACCEPT, ACCEPT)
+                    .header(API_VERSION_HEADER, API_VERSION)
+                    .retrieve()
+                    .onStatus(status -> status.value() == HttpStatus.UNAUTHORIZED.value()
+                                    || status.value() == HttpStatus.FORBIDDEN.value(),
+                            (request, clientResponse) -> {
+                                log.info("GitHub ({}) : jeton refusé (statut {})", operation,
+                                        clientResponse.getStatusCode().value());
+                                throw new InvalidGitTokenException(
+                                        "GitHub a refusé ce jeton (invalide, révoqué ou expiré).");
+                            })
+                    .onStatus(status -> status.value() == HttpStatus.NOT_FOUND.value(),
+                            (request, clientResponse) -> {
+                                log.info("GitHub ({}) : ressource introuvable ou hors de portée du jeton",
+                                        operation);
+                                throw new InvalidGitRepositoryException(
+                                        "Dépôt introuvable, ou hors de portée de votre jeton GitHub.");
+                            })
+                    .onStatus(status -> status.isError(),
+                            (request, clientResponse) -> {
+                                log.warn("GitHub ({}) indisponible (statut {})", operation,
+                                        clientResponse.getStatusCode().value());
+                                throw new GitHubUnavailableException(
+                                        "GitHub est momentanément indisponible. Réessayez dans un instant.");
+                            })
+                    .body(type);
+        } catch (RestClientException ex) {
+            log.warn("GitHub ({}) injoignable : {}", operation, ex.getClass().getSimpleName());
+            throw new GitHubUnavailableException(
+                    "GitHub est momentanément injoignable. Réessayez dans un instant.");
+        }
+    }
+
     /** Projection minimale de {@code GET /user} : seul le login est retenu. */
     private record GitHubUserResponse(String login) {
+    }
+
+    /** Projection minimale de {@code GET /repos/{owner}/{repo}}. */
+    private record GitHubRepoResponse(
+            @com.fasterxml.jackson.annotation.JsonProperty("full_name") String fullName,
+            @com.fasterxml.jackson.annotation.JsonProperty("default_branch") String defaultBranch) {
     }
 }

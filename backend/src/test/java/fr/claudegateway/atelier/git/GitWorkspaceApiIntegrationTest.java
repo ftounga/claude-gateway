@@ -1,0 +1,306 @@
+package fr.claudegateway.atelier.git;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.notNullValue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.util.UUID;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+
+import com.jayway.jsonpath.JsonPath;
+
+import fr.claudegateway.atelier.Workspace;
+import fr.claudegateway.atelier.WorkspaceRepository;
+import fr.claudegateway.atelier.WorkspaceSource;
+import fr.claudegateway.auth.JwtService;
+import fr.claudegateway.billing.PlanCode;
+import fr.claudegateway.billing.Subscription;
+import fr.claudegateway.billing.SubscriptionRepository;
+import fr.claudegateway.billing.SubscriptionStatus;
+import fr.claudegateway.git.StubGitHubClient;
+import fr.claudegateway.user.AuthProvider;
+import fr.claudegateway.user.User;
+import fr.claudegateway.user.UserRepository;
+import fr.claudegateway.user.UserRole;
+
+/**
+ * Tests d'intégration de l'ouverture d'un projet sur dépôt Git (F-31 / SF-31-02) :
+ * {@code POST /api/workspaces/git}, gating Gold, authentification, cas d'erreur et isolation
+ * {@code user_id}. GitHub est remplacé par un stub — aucun appel réseau.
+ */
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+class GitWorkspaceApiIntegrationTest {
+
+    @TestConfiguration
+    static class StubGitHubConfig {
+        @Bean
+        @Primary
+        StubGitHubClient stubGitHubClient() {
+            return new StubGitHubClient();
+        }
+    }
+
+    @Autowired
+    private MockMvc mockMvc;
+    @Autowired
+    private UserRepository userRepository;
+    @Autowired
+    private WorkspaceRepository workspaceRepository;
+    @Autowired
+    private SubscriptionRepository subscriptionRepository;
+    @Autowired
+    private JwtService jwtService;
+    @Autowired
+    private StubGitHubClient stubGitHubClient;
+
+    private User alice;
+    private String aliceToken;
+    private String bobToken;
+    private String plainToken;
+
+    @BeforeEach
+    void setUp() throws Exception {
+        workspaceRepository.deleteAll();
+        subscriptionRepository.deleteAll();
+        userRepository.deleteAll();
+        stubGitHubClient.reset();
+
+        alice = user("alice-git@ex.com");
+        provisionGold(alice);
+        aliceToken = jwtService.generateToken(alice);
+
+        User bob = user("bob-git@ex.com");
+        provisionGold(bob);
+        bobToken = jwtService.generateToken(bob);
+
+        // Utilisateur sans offre Gold : sert à vérifier que le gating de l'Atelier couvre l'endpoint.
+        User plain = user("plain-git@ex.com");
+        plainToken = jwtService.generateToken(plain);
+
+        registerToken(aliceToken, "github_pat_alice");
+        registerToken(bobToken, "github_pat_bob");
+    }
+
+    private User user(String email) {
+        return userRepository.save(User.builder().email(email).emailVerified(true)
+                .provider(AuthProvider.LOCAL).role(UserRole.USER).build());
+    }
+
+    private void provisionGold(User user) {
+        subscriptionRepository.save(Subscription.builder()
+                .userId(user.getId())
+                .planCode(PlanCode.GOLD)
+                .status(SubscriptionStatus.ACTIVE)
+                .build());
+    }
+
+    private String bearer(String token) {
+        return "Bearer " + token;
+    }
+
+    /** Enregistre un jeton GitHub pour l'utilisateur, par l'API réelle (chiffrement compris). */
+    private void registerToken(String jwt, String pat) throws Exception {
+        mockMvc.perform(post("/api/user/git-token").contextPath("/api")
+                        .header("Authorization", bearer(jwt))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"" + pat + "\"}"))
+                .andExpect(status().isOk());
+    }
+
+    private String openRepository(String jwt, String body) throws Exception {
+        String response = mockMvc.perform(post("/api/workspaces/git").contextPath("/api")
+                        .header("Authorization", bearer(jwt))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return JsonPath.read(response, "$.id");
+    }
+
+    @Test
+    void opensAProjectOnTheRepositoryDefaultBranch() throws Exception {
+        stubGitHubClient.defaultBranch = "develop";
+
+        String id = openRepository(aliceToken,
+                "{\"repoUrl\":\"https://github.com/octocat/hello\",\"name\":\"Mon dépôt\"}");
+
+        Workspace workspace = workspaceRepository.findById(UUID.fromString(id)).orElseThrow();
+        assertThat(workspace.getUserId()).isEqualTo(alice.getId());
+        assertThat(workspace.getSource()).isEqualTo(WorkspaceSource.GIT);
+        assertThat(workspace.getGitRepoUrl()).isEqualTo("https://github.com/octocat/hello");
+        assertThat(workspace.getGitOwner()).isEqualTo("octocat");
+        assertThat(workspace.getGitRepo()).isEqualTo("hello");
+        assertThat(workspace.getGitBranch()).isEqualTo("develop");
+        // Aucun fichier n'est copié : le dépôt est cloné par le fournisseur à l'ouverture de session.
+        assertThat(workspace.getName()).isEqualTo("Mon dépôt");
+    }
+
+    @Test
+    void exposesTheSourceAndRepositoryInTheApi() throws Exception {
+        String id = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(get("/api/workspaces/" + id).contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.source", is("GIT")))
+                .andExpect(jsonPath("$.gitRepo", is("octocat/hello")))
+                .andExpect(jsonPath("$.gitBranch", is("main")))
+                .andExpect(jsonPath("$.gitRepoUrl", is("https://github.com/octocat/hello")))
+                .andExpect(jsonPath("$.name", is("hello")));
+
+        mockMvc.perform(get("/api/workspaces").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].source", is("GIT")))
+                .andExpect(jsonPath("$[0].gitRepo", is("octocat/hello")));
+    }
+
+    @Test
+    void neverReturnsTheAccessTokenInAnyResponse() throws Exception {
+        String response = mockMvc.perform(post("/api/workspaces/git").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"repoUrl\":\"https://github.com/octocat/hello\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(response).doesNotContain("github_pat_alice");
+    }
+
+    @Test
+    void usesTheTokenOfTheRequestingUser() throws Exception {
+        openRepository(bobToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        // Le jeton employé est celui de Bob : jamais celui d'un autre utilisateur.
+        assertThat(stubGitHubClient.lastToken).isEqualTo("github_pat_bob");
+        assertThat(stubGitHubClient.lastRepository).isEqualTo("octocat/hello");
+    }
+
+    @Test
+    void refusesARepositoryOpenedByAnotherUser() throws Exception {
+        String id = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(get("/api/workspaces/" + id).contextPath("/api")
+                        .header("Authorization", bearer(bobToken)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void refusesWhenNoGitHubTokenIsRegistered() throws Exception {
+        mockMvc.perform(post("/api/user/git-token").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/user/git-token").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(post("/api/workspaces/git").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"repoUrl\":\"https://github.com/octocat/hello\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", is("git_token_missing")));
+
+        assertThat(workspaceRepository.count()).isZero();
+    }
+
+    @Test
+    void refusesANonGitHubUrl() throws Exception {
+        mockMvc.perform(post("/api/workspaces/git").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"repoUrl\":\"https://gitlab.com/octocat/hello\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", is("invalid_git_repository")));
+
+        assertThat(workspaceRepository.count()).isZero();
+    }
+
+    @Test
+    void refusesAnInvalidBranch() throws Exception {
+        mockMvc.perform(post("/api/workspaces/git").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"repoUrl\":\"https://github.com/octocat/hello\",\"branch\":\"-force\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", is("invalid_git_branch")));
+
+        assertThat(workspaceRepository.count()).isZero();
+    }
+
+    @Test
+    void refusesARepositoryOutOfReachOfTheToken() throws Exception {
+        stubGitHubClient.repositoryMissing = true;
+
+        mockMvc.perform(post("/api/workspaces/git").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"repoUrl\":\"https://github.com/octocat/secret\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", is("invalid_git_repository")));
+
+        assertThat(workspaceRepository.count()).isZero();
+    }
+
+    @Test
+    void reportsGitHubOutageAsTemporaryAndCreatesNothing() throws Exception {
+        stubGitHubClient.unavailable = true;
+
+        mockMvc.perform(post("/api/workspaces/git").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"repoUrl\":\"https://github.com/octocat/hello\"}"))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.error", is("github_unavailable")));
+
+        assertThat(workspaceRepository.count()).isZero();
+    }
+
+    @Test
+    void requiresAuthentication() throws Exception {
+        mockMvc.perform(post("/api/workspaces/git").contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"repoUrl\":\"https://github.com/octocat/hello\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void requiresGoldAccess() throws Exception {
+        mockMvc.perform(post("/api/workspaces/git").contextPath("/api")
+                        .header("Authorization", bearer(plainToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"repoUrl\":\"https://github.com/octocat/hello\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error", is("atelier_forbidden")));
+    }
+
+    @Test
+    void rejectsAMissingRepositoryUrl() throws Exception {
+        mockMvc.perform(post("/api/workspaces/git").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", notNullValue()));
+    }
+}

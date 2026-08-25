@@ -22,6 +22,8 @@ import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceRepository;
 import fr.claudegateway.atelier.WorkspaceService;
 import fr.claudegateway.atelier.agent.ManagedAgentProvider.SessionUsage;
+import fr.claudegateway.git.GitTokenMissingException;
+import fr.claudegateway.git.GitTokenService;
 import fr.claudegateway.quota.QuotaService;
 
 /**
@@ -53,6 +55,9 @@ public class AtelierSessionService {
     /** Préfixe de montage des fichiers du workspace dans le bac à sable. */
     private static final String WORKSPACE_MOUNT = "/workspace/";
 
+    /** Point de montage du dépôt cloné (F-31 / SF-31-02) : la racine du projet, sans barre finale. */
+    private static final String GIT_MOUNT_PATH = "/workspace";
+
     /** Préfixe possible des sorties générées par la session (retiré à la réécriture). */
     private static final String OUTPUTS_PREFIX = "/mnt/session/outputs/";
 
@@ -63,6 +68,7 @@ public class AtelierSessionService {
     private final QuotaService quotaService;
     private final WorkspaceRepository workspaceRepository;
     private final AtelierMessageRepository messageRepository;
+    private final GitTokenService gitTokenService;
 
     /** Sérialisation de la transcription persistée (F-30 SF-30-09) : donnée d'affichage. */
     private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER =
@@ -81,7 +87,7 @@ public class AtelierSessionService {
     public AtelierSessionService(ManagedAgentProvider provider, WorkspaceService workspaceService,
             AtelierAgentBootstrapService bootstrapService, AtelierAgentProperties properties,
             QuotaService quotaService, WorkspaceRepository workspaceRepository,
-            AtelierMessageRepository messageRepository) {
+            AtelierMessageRepository messageRepository, GitTokenService gitTokenService) {
         this.provider = provider;
         this.workspaceService = workspaceService;
         this.bootstrapService = bootstrapService;
@@ -89,6 +95,7 @@ public class AtelierSessionService {
         this.quotaService = quotaService;
         this.workspaceRepository = workspaceRepository;
         this.messageRepository = messageRepository;
+        this.gitTokenService = gitTokenService;
     }
 
     /**
@@ -287,6 +294,9 @@ public class AtelierSessionService {
      * à zéro les compteurs d'usage, une session neuve repartant d'un cumul nul.
      */
     private String openSession(UUID userId, UUID workspaceId, AtelierAgentConfig config, Workspace workspace) {
+        if (workspace.isGit()) {
+            return openGitSession(userId, config, workspace);
+        }
         List<String> paths = workspaceService.tree(userId, workspaceId);
         int max = properties.maxSessionFiles();
         if (paths.size() > max) {
@@ -301,13 +311,45 @@ public class AtelierSessionService {
             mounts.add(new FileMount(fileId, WORKSPACE_MOUNT + path));
         }
         ManagedSession session = provider.createSession(config.getAgentId(), config.getEnvironmentId(), mounts);
-        workspace.setAgentSessionId(session.id());
+        markSessionOpened(workspace, session.id());
+        return session.id();
+    }
+
+    /**
+     * Ouvre une session sur un workspace <b>Git</b> (F-31 / SF-31-02) : le dépôt est cloné par le
+     * fournisseur au lieu d'être téléversé fichier par fichier. Aucun {@link FileMount} n'est produit,
+     * ce qui supprime de fait le plafond {@code maxSessionFiles} (300) sur ces projets.
+     *
+     * <p>Le jeton est déchiffré à la volée pour cet appel, appartient au <b>propriétaire du
+     * workspace</b> (isolation), et n'est ni journalisé ni conservé. Il n'entre jamais dans le
+     * conteneur : le proxy git du fournisseur l'injecte en sortie de sandbox (ADR-015).</p>
+     *
+     * @throws GitTokenMissingException si l'utilisateur n'a plus de jeton enregistré (retiré ou jamais
+     *                                  posé) — le workspace survit, c'est le montage qui échoue
+     */
+    private String openGitSession(UUID userId, AtelierAgentConfig config, Workspace workspace) {
+        String token = gitTokenService.resolveToken(userId)
+                .orElseThrow(() -> new GitTokenMissingException(
+                        "Aucun jeton GitHub enregistré : ajoutez-en un dans vos réglages pour ouvrir ce projet."));
+        RepositoryMount repository = new RepositoryMount(
+                workspace.getGitRepoUrl(), token, GIT_MOUNT_PATH, workspace.getGitBranch());
+        ManagedSession session = provider.createSession(
+                config.getAgentId(), config.getEnvironmentId(), List.of(), repository);
+        markSessionOpened(workspace, session.id());
+        return session.id();
+    }
+
+    /**
+     * Enregistre l'ouverture d'une session sur le workspace et remet à zéro les compteurs d'usage :
+     * une session neuve repart d'un cumul nul, et seul le delta est décompté (F-30 SF-30-04).
+     */
+    private void markSessionOpened(Workspace workspace, String sessionId) {
+        workspace.setAgentSessionId(sessionId);
         workspace.setAgentSessionStartedAt(OffsetDateTime.now());
         workspace.setAgentInputTokens(0L);
         workspace.setAgentOutputTokens(0L);
         workspace.setAgentActiveSeconds(0L);
         workspaceRepository.save(workspace);
-        return session.id();
     }
 
     /** Envoie le message dans la session donnée et attend la complétion du tour. */

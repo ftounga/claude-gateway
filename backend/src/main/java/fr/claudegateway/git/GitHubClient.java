@@ -20,4 +20,19 @@ public interface GitHubClient {
      * @throws GitHubUnavailableException si GitHub est injoignable ou répond en erreur serveur
      */
     GitHubAccount verifyToken(String token);
+
+    /**
+     * Résout un dépôt visible par ce jeton (F-31 / SF-31-02) : confirme l'accès et renvoie sa branche
+     * par défaut, qui sert de révision montée quand l'utilisateur n'en choisit pas, et de branche
+     * interdite au push.
+     *
+     * @param token jeton en clair (jamais journalisé)
+     * @param owner propriétaire du dépôt
+     * @param repo  nom du dépôt
+     * @return le dépôt et sa branche par défaut
+     * @throws InvalidGitRepositoryException si le dépôt est introuvable ou hors de portée du jeton
+     * @throws InvalidGitTokenException      si GitHub refuse le jeton
+     * @throws GitHubUnavailableException    si GitHub est injoignable ou répond en erreur serveur
+     */
+    GitHubRepository getRepository(String token, String owner, String repo);
 }

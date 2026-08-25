@@ -9,6 +9,8 @@ import org.hibernate.annotations.UuidGenerator;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -44,6 +46,49 @@ public class Workspace {
 
     @Column(name = "name", nullable = false, length = 255)
     private String name;
+
+    /**
+     * Provenance des fichiers (F-31 / SF-31-02) : {@code ARCHIVE} (zip téléversé, historique) ou
+     * {@code GIT} (dépôt monté par le fournisseur). {@code ARCHIVE} par défaut, y compris pour les
+     * lignes créées avant la migration 043.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source", nullable = false, length = 16)
+    @Builder.Default
+    private WorkspaceSource source = WorkspaceSource.ARCHIVE;
+
+    /** URL publique du dépôt monté ({@code https://github.com/owner/repo}), source {@code GIT} seule. */
+    @Column(name = "git_repo_url", length = 500)
+    private String gitRepoUrl;
+
+    /** Propriétaire du dépôt (organisation ou utilisateur GitHub). */
+    @Column(name = "git_owner", length = 100)
+    private String gitOwner;
+
+    /** Nom du dépôt. */
+    @Column(name = "git_repo", length = 100)
+    private String gitRepo;
+
+    /**
+     * Branche montée dans la sandbox. C'est aussi la <b>branche de base</b> d'un push : y pousser est
+     * refusé (ADR-015). Aucun secret : le jeton d'accès vit chiffré dans {@code user_git_credentials}.
+     */
+    @Column(name = "git_branch", length = 255)
+    private String gitBranch;
+
+    /**
+     * Vrai si le projet est adossé à un dépôt Git (F-31 / SF-31-02). Volontairement null-tolérant :
+     * une entité construite hors du builder (tests, désérialisation partielle) n'est pas un projet
+     * Git, et le chemin le plus sûr — celui de l'archive — reste le comportement par défaut.
+     */
+    public boolean isGit() {
+        return source == WorkspaceSource.GIT;
+    }
+
+    /** Source du projet, {@code ARCHIVE} par défaut si elle n'a pas été renseignée. */
+    public WorkspaceSource sourceOrDefault() {
+        return source == null ? WorkspaceSource.ARCHIVE : source;
+    }
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

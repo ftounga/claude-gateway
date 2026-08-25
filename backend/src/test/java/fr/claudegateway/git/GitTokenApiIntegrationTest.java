@@ -37,31 +37,6 @@ import fr.claudegateway.user.UserRole;
 @ActiveProfiles("test")
 class GitTokenApiIntegrationTest {
 
-    /** Stub GitHub : accepte le jeton par défaut, ou simule un refus / une panne. */
-    static class StubGitHubClient implements GitHubClient {
-        volatile boolean reject;
-        volatile boolean unavailable;
-        volatile String lastToken;
-
-        void reset() {
-            reject = false;
-            unavailable = false;
-            lastToken = null;
-        }
-
-        @Override
-        public GitHubAccount verifyToken(String token) {
-            this.lastToken = token;
-            if (unavailable) {
-                throw new GitHubUnavailableException("panne simulée");
-            }
-            if (reject) {
-                throw new InvalidGitTokenException("jeton refusé");
-            }
-            return new GitHubAccount("octocat");
-        }
-    }
-
     @TestConfiguration
     static class StubGitHubConfig {
         @Bean
