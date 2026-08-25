@@ -161,6 +161,26 @@ class AtelierApiIntegrationTest {
     }
 
     @Test
+    void detailAnnouncesTheProjectInstructionsFile() throws Exception {
+        // F-34 / SF-34-01 : l'écran doit pouvoir dire que le projet porte des instructions, sans
+        // relire aucun fichier — le chemin est dérivé de l'arborescence déjà renvoyée.
+        String id = createWorkspace(aliceToken, Map.of("a.txt", "x"));
+        mockMvc.perform(get("/api/workspaces/" + id).contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.instructionsPath", is("CLAUDE.md")));
+
+        mockMvc.perform(delete("/api/workspaces/" + id + "/file").param("path", "CLAUDE.md")
+                        .contextPath("/api").header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/workspaces/" + id).contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.instructionsPath").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
     void ignoresZipSlipEntries() throws Exception {
         Map<String, String> entries = new LinkedHashMap<>();
         entries.put("../evil.txt", "pwned");

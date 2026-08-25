@@ -48,7 +48,7 @@ class AnthropicManagedAgentProviderTest {
                 null, null, null, Duration.ofSeconds(5));
         // pollDelay = 0 : polling déterministe sans Thread.sleep réel.
         AtelierAgentProperties agentProperties = new AtelierAgentProperties(
-                false, null, null, null, null, null, null, null, Duration.ZERO, null, null);
+                false, null, null, null, null, null, null, null, Duration.ZERO, null, null, null);
         RestClient.Builder builder = RestClient.builder();
         server = MockRestServiceServer.bindTo(builder).ignoreExpectOrder(true).build();
         provider = new AnthropicManagedAgentProvider(properties, agentProperties, builder);
@@ -124,6 +124,37 @@ class AnthropicManagedAgentProviderTest {
                 List.of(new FileMount("file_abc", "/workspace/src/App.java")));
 
         assertThat(session.id()).isEqualTo("sess_1");
+        server.verify();
+    }
+
+    @Test
+    void createSessionWithASystemOverrideUsesTheAgentWithOverridesForm() {
+        // F-34 / SF-34-01 : instructions du projet portées par une surcharge SESSION-LOCALE ;
+        // l'agent provisionné pour la plateforme n'est jamais modifié.
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.agent.type").value("agent_with_overrides"))
+                .andExpect(jsonPath("$.agent.id").value("agent_456"))
+                .andExpect(jsonPath("$.agent.system").value("prompt plateforme + projet"))
+                .andRespond(withSuccess("{\"id\":\"sess_2\"}", MediaType.APPLICATION_JSON));
+
+        ManagedSession session = provider.createSession(
+                "agent_456", "env_123", List.of(), null, "prompt plateforme + projet");
+
+        assertThat(session.id()).isEqualTo("sess_2");
+        server.verify();
+    }
+
+    @Test
+    void createSessionWithoutOverrideKeepsThePlainAgentIdentifier() {
+        // Aucune instruction de projet : le corps envoyé reste celui d'avant F-34 (aucune régression).
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.agent").value("agent_456"))
+                .andRespond(withSuccess("{\"id\":\"sess_3\"}", MediaType.APPLICATION_JSON));
+
+        provider.createSession("agent_456", "env_123", List.of(), null, null);
+
         server.verify();
     }
 

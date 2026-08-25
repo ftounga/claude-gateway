@@ -57,7 +57,7 @@ public interface ManagedAgentProvider {
      * @return la session créée (identifiant fournisseur)
      */
     default ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources) {
-        return createSession(agentId, environmentId, resources, null);
+        return createSession(agentId, environmentId, resources, null, null);
     }
 
     /**
@@ -73,8 +73,30 @@ public interface ManagedAgentProvider {
      * @param repository    dépôt à monter, ou {@code null} pour un workspace d'archive
      * @return la session créée (identifiant fournisseur)
      */
+    default ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
+            RepositoryMount repository) {
+        return createSession(agentId, environmentId, resources, repository, null);
+    }
+
+    /**
+     * Crée une session en <b>surchargeant le prompt système</b> pour cette session seulement
+     * (F-34 / SF-34-01).
+     *
+     * <p>Sert à porter les instructions du projet à l'ouverture de la session. La surcharge est
+     * <b>session-locale</b> : elle ne modifie pas l'agent provisionné pour la plateforme, et n'est
+     * donc jamais visible d'un autre utilisateur. Le prompt passé est <b>complet</b> (il contient
+     * déjà le prompt plateforme) : chez le fournisseur, une surcharge remplace, elle n'ajoute pas.</p>
+     *
+     * @param agentId        identifiant de l'agent à exécuter
+     * @param environmentId  identifiant de l'environnement d'exécution
+     * @param resources      fichiers à monter (éventuellement vide)
+     * @param repository     dépôt à monter, ou {@code null} pour un workspace d'archive
+     * @param systemOverride prompt système complet à utiliser pour cette session, ou {@code null}
+     *                       pour conserver celui de l'agent (comportement d'avant F-34)
+     * @return la session créée (identifiant fournisseur)
+     */
     ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
-            RepositoryMount repository);
+            RepositoryMount repository, String systemOverride);
 
     /**
      * Envoie un message utilisateur à la session (event {@code user.message}).

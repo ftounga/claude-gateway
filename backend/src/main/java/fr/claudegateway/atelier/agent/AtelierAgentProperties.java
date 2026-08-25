@@ -24,6 +24,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param maxToolOutputChars   borne de la sortie d'outil relayée au frontend (défaut {@code 10000},
  *                             F-30 SF-30-01) : un {@code npm install} produit des dizaines de milliers
  *                             de lignes, qui satureraient le flux SSE et le navigateur
+ * @param maxInstructionsChars borne du fichier d'instructions du projet injecté à l'ouverture de
+ *                             session (défaut {@code 20000}, F-34 SF-34-01) : au-delà le contenu est
+ *                             tronqué avec mention — un fichier démesuré consommerait à chaque
+ *                             session le contexte utile au travail
  */
 @ConfigurationProperties(prefix = "app.atelier.agent")
 public record AtelierAgentProperties(
@@ -37,7 +41,8 @@ public record AtelierAgentProperties(
         Integer maxPolls,
         Duration pollDelay,
         Integer maxToolOutputChars,
-        Integer maxTranscriptChars) {
+        Integer maxTranscriptChars,
+        Integer maxInstructionsChars) {
 
     public AtelierAgentProperties {
         if (environmentName == null || environmentName.isBlank()) {
@@ -51,6 +56,9 @@ public record AtelierAgentProperties(
         }
         if (maxTranscriptChars == null || maxTranscriptChars <= 0) {
             maxTranscriptChars = 100_000;
+        }
+        if (maxInstructionsChars == null || maxInstructionsChars <= 0) {
+            maxInstructionsChars = 20_000;
         }
         if (model == null || model.isBlank()) {
             model = "claude-opus-4-8";

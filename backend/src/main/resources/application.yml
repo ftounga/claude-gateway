@@ -81,6 +81,9 @@ app:
       # Borne de la transcription persistee dans l'historique (F-30 SF-30-09) : au-dela, les blocs
       # excedentaires sont omis (mention explicite). Evite qu'un `npm install` gonfle l'historique.
       max-transcript-chars: ${APP_ATELIER_AGENT_MAX_TRANSCRIPT:100000}
+      # Borne du fichier d'instructions du projet injecte a l'ouverture de session (F-34 SF-34-01) :
+      # au-dela, troncature avec mention. Evite qu'un CLAUDE.md demesure mange le contexte utile.
+      max-instructions-chars: ${APP_ATELIER_AGENT_MAX_INSTRUCTIONS:20000}
   ocr:
     # Pipeline OCR (F-05). Fournisseur `stub` par défaut (dev/tests, sans AWS) ; `textract` en cluster.
     # Liste blanche MIME, plafond de taille et routage sync/async : décisions réversibles (config).
