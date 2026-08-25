@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
@@ -8,8 +9,10 @@ import { SettingsComponent } from './settings.component';
 import { AccountService } from '../core/services/account.service';
 import { ApiKeyService } from '../core/services/api-key.service';
 import { AuthService } from '../core/services/auth.service';
+import { GitTokenService } from '../core/services/git-token.service';
 import { AccountExport } from '../core/models/account.models';
 import { ApiKeyStatus } from '../core/models/api-key.models';
+import { GitTokenStatus } from '../core/models/git-token.models';
 import { UserProfile } from '../core/models/auth.models';
 
 describe('SettingsComponent', () => {
@@ -17,6 +20,7 @@ describe('SettingsComponent', () => {
   let component: SettingsComponent;
   let accountService: jasmine.SpyObj<AccountService>;
   let apiKeyService: jasmine.SpyObj<ApiKeyService>;
+  let gitTokenService: jasmine.SpyObj<GitTokenService>;
   let authService: jasmine.SpyObj<AuthService>;
   let dialog: jasmine.SpyObj<MatDialog>;
   let router: Router;
@@ -39,6 +43,24 @@ describe('SettingsComponent', () => {
     mode: 'BYOK',
     validatedAt: '2026-07-01T12:00:00Z',
     createdAt: '2026-07-01T12:00:00Z',
+  };
+
+  const absentGitToken: GitTokenStatus = {
+    present: false,
+    githubLogin: null,
+    maskedToken: null,
+    last4: null,
+    createdAt: null,
+    updatedAt: null,
+  };
+
+  const presentGitToken: GitTokenStatus = {
+    present: true,
+    githubLogin: 'octocat',
+    maskedToken: '…AB12',
+    last4: 'AB12',
+    createdAt: '2026-08-25T10:00:00Z',
+    updatedAt: '2026-08-25T10:00:00Z',
   };
 
   const profile: UserProfile = {
@@ -70,6 +92,12 @@ describe('SettingsComponent', () => {
       'setMode',
     ]);
     apiKeyService.getStatus.and.returnValue(of(absentKey));
+    gitTokenService = jasmine.createSpyObj<GitTokenService>('GitTokenService', [
+      'getStatus',
+      'saveToken',
+      'deleteToken',
+    ]);
+    gitTokenService.getStatus.and.returnValue(of(absentGitToken));
     authService = jasmine.createSpyObj<AuthService>('AuthService', ['me', 'clearToken']);
     authService.me.and.returnValue(of(profile));
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
@@ -84,6 +112,7 @@ describe('SettingsComponent', () => {
         provideNoopAnimations(),
         { provide: AccountService, useValue: accountService },
         { provide: ApiKeyService, useValue: apiKeyService },
+        { provide: GitTokenService, useValue: gitTokenService },
         { provide: AuthService, useValue: authService },
         { provide: MatDialog, useValue: dialog },
       ],
@@ -211,5 +240,83 @@ describe('SettingsComponent', () => {
 
     expect(apiKeyService.setMode).toHaveBeenCalledWith({ mode: 'HOSTED' });
     expect(component.apiKeyStatus()?.mode).toBe('HOSTED');
+  });
+  // --- Jeton GitHub (F-31) ---
+
+  it('loads the github token status on init', () => {
+    setup();
+    expect(gitTokenService.getStatus).toHaveBeenCalled();
+    expect(component.gitTokenStatus()).toEqual(absentGitToken);
+  });
+
+  it('saves the github token, clears the field and shows the account', () => {
+    setup();
+    gitTokenService.saveToken.and.returnValue(of(presentGitToken));
+    component.gitTokenControl.setValue('github_pat_secret_AB12');
+
+    component.saveGitToken();
+
+    expect(gitTokenService.saveToken).toHaveBeenCalledWith({ token: 'github_pat_secret_AB12' });
+    expect(component.gitTokenStatus()).toEqual(presentGitToken);
+    expect(component.gitTokenControl.value).toBe('');
+  });
+
+  it('does not save when the github token field is empty', () => {
+    setup();
+    component.gitTokenControl.setValue('');
+
+    component.saveGitToken();
+
+    expect(gitTokenService.saveToken).not.toHaveBeenCalled();
+    expect(component.gitTokenControl.touched).toBeTrue();
+  });
+
+  it('keeps the previous github token when the save fails', () => {
+    setup();
+    gitTokenService.getStatus.and.returnValue(of(presentGitToken));
+    component.loadGitToken();
+    gitTokenService.saveToken.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 400 })),
+    );
+    component.gitTokenControl.setValue('github_pat_revoked');
+
+    component.saveGitToken();
+
+    expect(component.gitTokenStatus()).toEqual(presentGitToken);
+    expect(component.savingGitToken()).toBeFalse();
+  });
+
+  it('reports a github outage distinctly from a refused token', () => {
+    setup();
+    gitTokenService.saveToken.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 503 })),
+    );
+    component.gitTokenControl.setValue('github_pat_valid');
+
+    component.saveGitToken();
+
+    expect(component.gitTokenStatus()).toEqual(absentGitToken);
+    expect(component.savingGitToken()).toBeFalse();
+  });
+
+  it('removes the github token when confirmed', () => {
+    setup(true);
+    gitTokenService.deleteToken.and.returnValue(of(void 0));
+
+    component.deleteGitToken();
+
+    expect(dialog.open).toHaveBeenCalled();
+    expect(gitTokenService.deleteToken).toHaveBeenCalled();
+    expect(component.gitTokenStatus()?.present).toBeFalse();
+    expect(component.gitTokenStatus()?.githubLogin).toBeNull();
+  });
+
+  it('does not remove the github token when confirmation is cancelled', () => {
+    setup(false);
+
+    component.deleteGitToken();
+
+    expect(dialog.open).toHaveBeenCalled();
+    expect(gitTokenService.deleteToken).not.toHaveBeenCalled();
   });
 });

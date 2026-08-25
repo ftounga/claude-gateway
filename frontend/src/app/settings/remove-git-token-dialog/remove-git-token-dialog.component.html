@@ -1,0 +1,15 @@
+<h2 mat-dialog-title>Retirer le jeton GitHub</h2>
+<mat-dialog-content>
+  <p>
+    Votre jeton GitHub sera retiré de Claude Gateway. Les prochains ateliers ne pourront plus
+    accéder à vos dépôts tant qu'un nouveau jeton n'aura pas été enregistré.
+  </p>
+  <p>
+    Le retrait ici ne révoque pas le jeton sur GitHub : pour cela, supprimez-le depuis les réglages
+    de votre compte GitHub.
+  </p>
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+  <button mat-stroked-button (click)="cancel()">Annuler</button>
+  <button mat-flat-button color="warn" (click)="confirm()">Retirer le jeton</button>
+</mat-dialog-actions>
