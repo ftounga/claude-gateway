@@ -58,7 +58,7 @@ public class AtelierAgentBootstrapService {
         ManagedEnvironment environment = provider.createEnvironment(
                 new EnvironmentSpec(properties.environmentName(), properties.allowPackageManagers()));
         ManagedAgentDefinition agent = provider.createAgent(
-                new AgentSpec(properties.agentName(), properties.model(), systemPrompt()));
+                new AgentSpec(properties.agentName(), properties.model(), AgentSystemPrompt.platform()));
 
         AtelierAgentConfig config = AtelierAgentConfig.builder()
                 .environmentId(environment.id())
@@ -66,11 +66,5 @@ public class AtelierAgentBootstrapService {
                 .agentVersion(agent.version())
                 .build();
         return Optional.of(repository.save(config));
-    }
-
-    /** Prompt système de base de l'agent Atelier. Neutre, sans secret. */
-    private static String systemPrompt() {
-        return "Tu es l'agent de l'Atelier claude-gateway. Tu opères dans un bac à sable cloud "
-                + "pour lire et modifier les fichiers du workspace de l'utilisateur.";
     }
 }

@@ -135,7 +135,7 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
 
     @Override
     public ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
-            RepositoryMount repository) {
+            RepositoryMount repository, String systemOverride) {
         List<Map<String, Object>> mounts = new ArrayList<>();
         for (FileMount mount : resources) {
             mounts.add(Map.of(
@@ -154,7 +154,7 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
                     "checkout", Map.of("type", "branch", "name", repository.branch())));
         }
         Map<String, Object> body = Map.of(
-                "agent", agentId,
+                "agent", agentReference(agentId, systemOverride),
                 "environment_id", environmentId,
                 "resources", mounts);
 
@@ -164,6 +164,23 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
             throw new AgentProviderException("Réponse sans identifiant de session du fournisseur d'agents.");
         }
         return new ManagedSession(id);
+    }
+
+    /**
+     * Référence de l'agent dans le corps de création de session. Sans surcharge, l'identifiant nu —
+     * exactement le corps envoyé avant F-34, pour que les projets sans instructions ne changent pas
+     * de comportement. Avec surcharge, la forme {@code agent_with_overrides}, dont le {@code system}
+     * <b>remplace</b> celui de l'agent : le prompt reçu ici est donc déjà complet (plateforme incluse),
+     * et la surcharge reste locale à cette session (l'agent plateforme n'est pas modifié).
+     */
+    private static Object agentReference(String agentId, String systemOverride) {
+        if (systemOverride == null || systemOverride.isBlank()) {
+            return agentId;
+        }
+        return Map.of(
+                "type", "agent_with_overrides",
+                "id", agentId,
+                "system", systemOverride);
     }
 
     @Override

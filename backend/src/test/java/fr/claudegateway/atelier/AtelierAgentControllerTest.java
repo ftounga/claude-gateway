@@ -49,7 +49,7 @@ class AtelierAgentControllerTest {
     }
 
     private AtelierAgentProperties props(boolean enabled) {
-        return new AtelierAgentProperties(enabled, null, null, null, null, null, null, null, null, null, null);
+        return new AtelierAgentProperties(enabled, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     @BeforeEach

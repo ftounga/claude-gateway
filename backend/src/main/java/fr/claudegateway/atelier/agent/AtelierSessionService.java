@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -18,6 +19,8 @@ import org.springframework.stereotype.Service;
 
 import fr.claudegateway.atelier.AtelierMessage;
 import fr.claudegateway.atelier.AtelierMessageRepository;
+import fr.claudegateway.atelier.ProjectInstructions;
+import fr.claudegateway.atelier.ProjectInstructionsService;
 import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceRepository;
 import fr.claudegateway.atelier.WorkspaceService;
@@ -69,6 +72,7 @@ public class AtelierSessionService {
     private final WorkspaceRepository workspaceRepository;
     private final AtelierMessageRepository messageRepository;
     private final GitTokenService gitTokenService;
+    private final ProjectInstructionsService instructionsService;
 
     /** Sérialisation de la transcription persistée (F-30 SF-30-09) : donnée d'affichage. */
     private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER =
@@ -99,7 +103,8 @@ public class AtelierSessionService {
     public AtelierSessionService(ManagedAgentProvider provider, WorkspaceService workspaceService,
             AtelierAgentBootstrapService bootstrapService, AtelierAgentProperties properties,
             QuotaService quotaService, WorkspaceRepository workspaceRepository,
-            AtelierMessageRepository messageRepository, GitTokenService gitTokenService) {
+            AtelierMessageRepository messageRepository, GitTokenService gitTokenService,
+            ProjectInstructionsService instructionsService) {
         this.provider = provider;
         this.workspaceService = workspaceService;
         this.bootstrapService = bootstrapService;
@@ -108,6 +113,7 @@ public class AtelierSessionService {
         this.workspaceRepository = workspaceRepository;
         this.messageRepository = messageRepository;
         this.gitTokenService = gitTokenService;
+        this.instructionsService = instructionsService;
     }
 
     /**
@@ -355,8 +361,9 @@ public class AtelierSessionService {
      * à zéro les compteurs d'usage, une session neuve repartant d'un cumul nul.
      */
     private String openSession(UUID userId, UUID workspaceId, AtelierAgentConfig config, Workspace workspace) {
+        String system = sessionSystemPrompt(userId, workspace);
         if (workspace.isGit()) {
-            return openGitSession(userId, config, workspace);
+            return openGitSession(userId, config, workspace, system);
         }
         List<String> paths = workspaceService.tree(userId, workspaceId);
         int max = properties.maxSessionFiles();
@@ -371,9 +378,30 @@ public class AtelierSessionService {
             String fileId = provider.uploadFile(uploadFilename(path), content.getBytes(UTF_8));
             mounts.add(new FileMount(fileId, WORKSPACE_MOUNT + path));
         }
-        ManagedSession session = provider.createSession(config.getAgentId(), config.getEnvironmentId(), mounts);
+        ManagedSession session = provider.createSession(
+                config.getAgentId(), config.getEnvironmentId(), mounts, null, system);
         markSessionOpened(workspace, session.id());
         return session.id();
+    }
+
+    /**
+     * Prompt système de la session (F-34 / SF-34-01) : le prompt plateforme, augmenté des instructions
+     * portées par le projet quand il en porte. Renvoie {@code null} quand le projet n'en porte aucune —
+     * la session est alors créée exactement comme avant F-34, sans surcharge.
+     *
+     * <p>Les instructions sont lues <b>à l'ouverture</b> et figées pour toute la vie de la session :
+     * le fournisseur ne permet pas de changer le prompt d'une session ouverte. Une modification du
+     * fichier prend donc effet à la session suivante (décision D5 du cadrage F-34).</p>
+     */
+    private String sessionSystemPrompt(UUID userId, Workspace workspace) {
+        Optional<ProjectInstructions> instructions = instructionsService.resolve(userId, workspace);
+        if (instructions.isEmpty()) {
+            return null;
+        }
+        ProjectInstructions resolved = instructions.get();
+        log.debug("Instructions de projet injectées depuis {} ({} caractères{}).",
+                resolved.path(), resolved.content().length(), resolved.truncated() ? ", tronquées" : "");
+        return AgentSystemPrompt.withProjectInstructions(resolved.content());
     }
 
     /**
@@ -388,14 +416,15 @@ public class AtelierSessionService {
      * @throws GitTokenMissingException si l'utilisateur n'a plus de jeton enregistré (retiré ou jamais
      *                                  posé) — le workspace survit, c'est le montage qui échoue
      */
-    private String openGitSession(UUID userId, AtelierAgentConfig config, Workspace workspace) {
+    private String openGitSession(UUID userId, AtelierAgentConfig config, Workspace workspace,
+            String systemOverride) {
         String token = gitTokenService.resolveToken(userId)
                 .orElseThrow(() -> new GitTokenMissingException(
                         "Aucun jeton GitHub enregistré : ajoutez-en un dans vos réglages pour ouvrir ce projet."));
         RepositoryMount repository = new RepositoryMount(
                 workspace.getGitRepoUrl(), token, GIT_MOUNT_PATH, workspace.getGitBranch());
         ManagedSession session = provider.createSession(
-                config.getAgentId(), config.getEnvironmentId(), List.of(), repository);
+                config.getAgentId(), config.getEnvironmentId(), List.of(), repository, systemOverride);
         markSessionOpened(workspace, session.id());
         return session.id();
     }
