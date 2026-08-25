@@ -323,4 +323,75 @@ describe('AtelierService', () => {
 
     expect(interrupted).toBeFalse();
   });
+
+  // ---- F-33 / SF-33-01 et SF-33-02 : validation avant exécution ----
+
+  it("PUT l'option « demander avant d'exécuter » sur /agent/confirmation (F-33)", () => {
+    let state: { enabled: boolean; appliesToCurrentSession: boolean } | undefined;
+    service.setAskBeforeBash('w1', true).subscribe((s) => (state = s));
+
+    const req = httpMock.expectOne('/api/workspaces/w1/agent/confirmation');
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual({ enabled: true });
+    req.flush({ enabled: true, appliesToCurrentSession: false });
+
+    expect(state).toEqual({ enabled: true, appliesToCurrentSession: false });
+  });
+
+  it('POSTe la décision d\'autorisation sur /agent/confirm (F-33)', () => {
+    service
+      .confirmToolUse('w1', { toolUseId: 'sevt_1', decision: 'deny', reason: 'trop risqué' })
+      .subscribe();
+
+    const req = httpMock.expectOne('/api/workspaces/w1/agent/confirm');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({
+      toolUseId: 'sevt_1',
+      decision: 'deny',
+      reason: 'trop risqué',
+    });
+    req.flush(null);
+  });
+
+  it('route confirm_request et confirm_resolved vers leurs callbacks (F-33)', async () => {
+    fakeSseFetch([
+      'event:confirm_request\ndata:{"toolUseId":"sevt_1","tool":"bash","detail":"rm -rf build"}',
+      'event:confirm_resolved\ndata:{"toolUseId":"sevt_1","decision":"deny"}',
+    ]);
+    const seen: unknown[] = [];
+
+    await service.streamAgent('w1', 'go', {
+      onAgent: () => undefined,
+      onAction: () => undefined,
+      onActionResult: () => undefined,
+      onStatus: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+      onConfirmRequest: (r) => seen.push(r),
+      onConfirmResolved: (r) => seen.push(r),
+    });
+
+    expect(seen).toEqual([
+      { toolUseId: 'sevt_1', tool: 'bash', detail: 'rm -rf build' },
+      { toolUseId: 'sevt_1', decision: 'deny' },
+    ]);
+  });
+
+  it('traite une décision inconnue de confirm_resolved comme une autorisation (F-33)', async () => {
+    // Repli défensif : une valeur inattendue ne doit pas laisser l'invite bloquée à l'écran.
+    fakeSseFetch(['event:confirm_resolved\ndata:{"toolUseId":"sevt_1","decision":"???"}']);
+    const seen: unknown[] = [];
+
+    await service.streamAgent('w1', 'go', {
+      onAgent: () => undefined,
+      onAction: () => undefined,
+      onActionResult: () => undefined,
+      onStatus: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+      onConfirmResolved: (r) => seen.push(r),
+    });
+
+    expect(seen).toEqual([{ toolUseId: 'sevt_1', decision: 'allow' }]);
+  });
 });

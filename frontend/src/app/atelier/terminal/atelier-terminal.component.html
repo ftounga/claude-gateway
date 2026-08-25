@@ -44,6 +44,24 @@
           {{ instructionsPath }}
         </button>
       }
+      <!-- Validation avant exécution (F-33 / SF-33-01) : le réglage vit ici, seul écran où l'agent
+           exécute réellement. L'icône dit l'état d'un coup d'œil. -->
+      <button
+        mat-button
+        type="button"
+        class="terminal-guard"
+        [class.active]="askBeforeBash"
+        [disabled]="togglingConfirmation"
+        [attr.aria-pressed]="askBeforeBash"
+        (click)="toggleAskBeforeBash.emit()"
+      >
+        <mat-icon>{{ askBeforeBash ? 'shield' : 'security' }}</mat-icon>
+        @if (askBeforeBash) {
+          Validation activée
+        } @else {
+          Valider les commandes
+        }
+      </button>
       <button mat-button type="button" (click)="openFiles.emit()">
         <mat-icon>folder</mat-icon>
         Fichiers
@@ -174,6 +192,62 @@
       @if (live.text.length > 0) {
         <p class="terminal-agent">{{ live.text }}</p>
       }
+    }
+
+    @if (pendingConfirmation; as ask) {
+      <!-- Demande d'autorisation (F-33 / SF-33-03). Dans le flux, pas dans une modale : les
+           commandes précédentes restent lisibles, et ce sont elles qui permettent de juger. -->
+      <div class="terminal-ask" role="alertdialog" aria-label="Autorisation demandée">
+        <p class="terminal-ask-title">
+          <mat-icon class="terminal-ask-icon">shield</mat-icon>
+          Claude demande à exécuter cette commande
+        </p>
+        <pre class="terminal-ask-command">{{ ask.detail || ask.tool }}</pre>
+        @if (ask.denying) {
+          <input
+            type="text"
+            class="terminal-ask-reason"
+            name="denyReason"
+            autocomplete="off"
+            maxlength="500"
+            placeholder="Motif du refus (facultatif) — Claude le recevra"
+            aria-label="Motif du refus"
+            [ngModel]="ask.reason"
+            (ngModelChange)="reasonChange.emit($event)"
+          />
+        }
+        <div class="terminal-ask-actions">
+          <button
+            mat-flat-button
+            color="primary"
+            type="button"
+            class="terminal-ask-allow"
+            [disabled]="ask.answering"
+            (click)="confirmDecision.emit(true)"
+          >
+            Autoriser
+          </button>
+          @if (ask.denying) {
+            <button
+              mat-stroked-button
+              type="button"
+              [disabled]="ask.answering"
+              (click)="confirmDecision.emit(false)"
+            >
+              Confirmer le refus
+            </button>
+          } @else {
+            <button
+              mat-stroked-button
+              type="button"
+              [disabled]="ask.answering"
+              (click)="denyWithReason.emit()"
+            >
+              Refuser
+            </button>
+          }
+        </div>
+      </div>
     }
   </div>
 

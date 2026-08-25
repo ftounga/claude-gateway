@@ -76,6 +76,11 @@ export interface WorkspaceDetail {
    * session**. `null` (ou absent) si le projet n'en porte pas : l'écran n'affiche alors rien.
    */
   instructionsPath?: string | null;
+  /**
+   * Vrai si le projet demande l'autorisation avant d'exécuter une commande (F-33 / SF-33-01).
+   * Champ **additif** : absent d'un backend antérieur ⇒ `false`, le comportement historique.
+   */
+  askBeforeBash?: boolean;
 }
 
 /** Contenu texte d'un fichier du workspace. Réponse de `GET /api/workspaces/{id}/file?path=`. */
@@ -214,6 +219,39 @@ export interface AtelierAgentStreamActionResult {
   error: boolean;
 }
 
+/**
+ * Demande d'autorisation posée par l'agent (F-33 / SF-33-02) : la session est **en pause** tant
+ * qu'aucune décision n'est envoyée. `toolUseId` est l'identifiant à renvoyer pour trancher.
+ */
+export interface AtelierConfirmRequest {
+  toolUseId: string;
+  tool: string;
+  detail: string;
+}
+
+/**
+ * Décision prise sur une demande d'autorisation (F-33 / SF-33-02). `timeout` signale le refus
+ * automatique de fin de délai : personne n'a répondu, la commande n'a pas été exécutée.
+ */
+export interface AtelierConfirmResolved {
+  toolUseId: string;
+  decision: 'allow' | 'deny' | 'timeout';
+}
+
+/** Corps de `POST /api/workspaces/{id}/agent/confirm` (F-33 / SF-33-02). */
+export interface AtelierConfirmDecision {
+  toolUseId: string;
+  decision: 'allow' | 'deny';
+  reason?: string;
+}
+
+/** Réponse de `PUT /api/workspaces/{id}/agent/confirmation` (F-33 / SF-33-01). */
+export interface AtelierConfirmationState {
+  enabled: boolean;
+  /** Faux si une sandbox est déjà ouverte : elle garde la politique posée à son ouverture. */
+  appliesToCurrentSession: boolean;
+}
+
 /** Callbacks du streaming du mode « Exécution » (Phase 2, SF-28-11 ; `onActionResult` F-30 SF-30-02). */
 export interface AtelierAgentStreamHandlers {
   onAgent: (text: string) => void;
@@ -222,6 +260,13 @@ export interface AtelierAgentStreamHandlers {
   onStatus: (state: string) => void;
   onDone: (done: AtelierAgentStreamDone) => void;
   onError: (code: string) => void;
+  /**
+   * Demande d'autorisation à afficher (F-33 / SF-33-02). **Facultatif** : ces événements sont
+   * additifs, un appelant qui ne les fournit pas se comporte comme avant F-33.
+   */
+  onConfirmRequest?: (request: AtelierConfirmRequest) => void;
+  /** Demande tranchée (ici, ailleurs, ou par expiration) : l'invite n'a plus lieu d'être. */
+  onConfirmResolved?: (resolved: AtelierConfirmResolved) => void;
 }
 
 /**

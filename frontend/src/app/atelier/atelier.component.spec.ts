@@ -95,6 +95,8 @@ describe('AtelierComponent', () => {
       'streamAgent',
       'resetAgentSession',
       'interruptAgentSession',
+      'setAskBeforeBash',
+      'confirmToolUse',
       'getHistory',
     ]);
     apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
@@ -1527,5 +1529,168 @@ describe('AtelierComponent', () => {
     });
 
     expect(item.interrupted).toBeFalse();
+  });
+
+  // ---------------------------- F-33 / SF-33-03 : invite d'autorisation
+
+  /** Lance un run qui pose une demande d'autorisation et ne se termine pas. */
+  function runAwaitingConfirmation(): void {
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onAction({ tool: 'bash', detail: 'rm -rf build' });
+      handlers.onConfirmRequest!({ toolUseId: 'sevt_1', tool: 'bash', detail: 'rm -rf build' });
+      return Promise.resolve();
+    });
+    component.draft.set('nettoie le projet');
+    component.send();
+  }
+
+  it("F-33 : une demande d'autorisation pose l'invite avec sa commande", () => {
+    setup();
+    runAwaitingConfirmation();
+
+    const pending = component.pendingConfirmation();
+    expect(pending).not.toBeNull();
+    expect(pending!.toolUseId).toBe('sevt_1');
+    expect(pending!.detail).toBe('rm -rf build');
+    expect(pending!.answering).toBeFalse();
+  });
+
+  it('F-33 : Autoriser envoie allow et laisse la résolution retirer l\'invite', () => {
+    setup();
+    runAwaitingConfirmation();
+    service.confirmToolUse.and.returnValue(of(void 0));
+
+    component.answerConfirmation(true);
+
+    expect(service.confirmToolUse).toHaveBeenCalledWith('w1', {
+      toolUseId: 'sevt_1',
+      decision: 'allow',
+      reason: undefined,
+    });
+    // L'invite ne disparaît qu'à la résolution relayée par le flux : c'est elle qui prouve que la
+    // décision est arrivée jusqu'à la session.
+    expect(component.pendingConfirmation()).not.toBeNull();
+  });
+
+  it('F-33 : Refuser envoie deny avec le motif saisi', () => {
+    setup();
+    runAwaitingConfirmation();
+    service.confirmToolUse.and.returnValue(of(void 0));
+
+    component.startDenying();
+    component.setConfirmationReason('  Ne touche pas au dossier build.  ');
+    component.answerConfirmation(false);
+
+    expect(service.confirmToolUse).toHaveBeenCalledWith('w1', {
+      toolUseId: 'sevt_1',
+      decision: 'deny',
+      reason: 'Ne touche pas au dossier build.',
+    });
+  });
+
+  it('F-33 : une seconde décision est ignorée pendant l\'envoi de la première', () => {
+    setup();
+    runAwaitingConfirmation();
+    service.confirmToolUse.and.returnValue(of(void 0));
+
+    component.answerConfirmation(true);
+    component.answerConfirmation(false);
+
+    expect(service.confirmToolUse).toHaveBeenCalledTimes(1);
+  });
+
+  it('F-33 : la résolution retire l\'invite, et un refus par expiration est annoncé', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onConfirmRequest!({ toolUseId: 'sevt_1', tool: 'bash', detail: 'rm -rf build' });
+      handlers.onConfirmResolved!({ toolUseId: 'sevt_1', decision: 'timeout' });
+      return Promise.resolve();
+    });
+
+    component.draft.set('nettoie');
+    component.send();
+
+    expect(component.pendingConfirmation()).toBeNull();
+    expect(snackBar.open).toHaveBeenCalledWith(
+      'Commande refusée : aucune réponse dans le délai imparti.', 'Fermer', { duration: 6000 });
+  });
+
+  it('F-33 : une réponse refusée par le serveur retire l\'invite avec un message lisible', () => {
+    setup();
+    runAwaitingConfirmation();
+    service.confirmToolUse.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 409 })));
+
+    component.answerConfirmation(true);
+
+    expect(component.pendingConfirmation()).toBeNull();
+    expect(snackBar.open).toHaveBeenCalledWith(
+      "L'exécution n'attend plus de réponse.", 'Fermer', jasmine.anything());
+  });
+
+  it('F-33 : la fin du run retire une invite restée en attente', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onConfirmRequest!({ toolUseId: 'sevt_1', tool: 'bash', detail: 'ls' });
+      handlers.onDone({
+        reply: 'Terminé.',
+        changedFiles: [],
+        inputTokens: 0,
+        outputTokens: 0,
+        activeSeconds: 0,
+        interrupted: false,
+      });
+      return Promise.resolve();
+    });
+
+    component.draft.set('liste les fichiers');
+    component.send();
+
+    expect(component.pendingConfirmation()).toBeNull();
+  });
+
+  it("F-33 : la bascule enregistre l'option et dit qu'elle ne vaut pas pour la sandbox en cours", () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.activeDetail.set(detail);
+    service.setAskBeforeBash.and.returnValue(of({ enabled: true, appliesToCurrentSession: false }));
+
+    component.toggleAskBeforeBash();
+
+    expect(service.setAskBeforeBash).toHaveBeenCalledWith('w1', true);
+    expect(component.askBeforeBash()).toBeTrue();
+    expect(component.togglingConfirmation()).toBeFalse();
+    expect(snackBar.open).toHaveBeenCalledWith(
+      jasmine.stringMatching('Prend effet à la prochaine sandbox'), 'Fermer', { duration: 6000 });
+  });
+
+  it('F-33 : un projet sans l\'option ne pose aucune invite (non-régression)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onAction({ tool: 'bash', detail: 'npm test' });
+      handlers.onDone({
+        reply: 'Tests OK.',
+        changedFiles: [],
+        inputTokens: 0,
+        outputTokens: 0,
+        activeSeconds: 0,
+        interrupted: false,
+      });
+      return Promise.resolve();
+    });
+
+    component.draft.set('lance les tests');
+    component.send();
+
+    expect(component.pendingConfirmation()).toBeNull();
+    expect(service.confirmToolUse).not.toHaveBeenCalled();
   });
 });

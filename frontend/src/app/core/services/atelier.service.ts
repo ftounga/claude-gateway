@@ -7,6 +7,8 @@ import {
   AtelierAgentStreamAction,
   AtelierAgentStreamHandlers,
   AtelierChatRequest,
+  AtelierConfirmDecision,
+  AtelierConfirmationState,
   AtelierChatResponse,
   AtelierMessage,
   AtelierStreamAction,
@@ -263,6 +265,7 @@ export class AtelierService {
       outputTokens?: number;
       activeSeconds?: number;
       interrupted?: boolean;
+      decision?: string;
     };
     try {
       payload = JSON.parse(data);
@@ -297,6 +300,20 @@ export class AtelierService {
         // Champ additif (F-32 SF-32-01) : absent d'un backend antérieur ⇒ tour non interrompu.
         interrupted: payload.interrupted === true,
       });
+    } else if (event === 'confirm_request') {
+      // L'agent attend une autorisation (F-33) : la session est en pause tant que rien n'est décidé.
+      handlers.onConfirmRequest?.({
+        toolUseId: payload.toolUseId ?? '',
+        tool: payload.tool ?? '',
+        detail: payload.detail ?? '',
+      });
+    } else if (event === 'confirm_resolved') {
+      handlers.onConfirmResolved?.({
+        toolUseId: payload.toolUseId ?? '',
+        decision: payload.decision === 'deny' || payload.decision === 'timeout'
+          ? payload.decision
+          : 'allow',
+      });
     } else if (event === 'error') {
       handlers.onError(typeof payload.error === 'string' ? payload.error : 'provider_error');
     }
@@ -317,6 +334,25 @@ export class AtelierService {
    */
   interruptAgentSession(id: string): Observable<void> {
     return this.http.post<void>(`/api/workspaces/${id}/agent/interrupt`, null);
+  }
+
+  /**
+   * Active ou désactive la **demande d'autorisation avant exécution** pour ce projet (F-33 / SF-33-01).
+   * La politique est fixée à l'ouverture de la sandbox : `appliesToCurrentSession` dit si le réglage
+   * vaut déjà pour celle en cours, ou seulement pour la prochaine.
+   */
+  setAskBeforeBash(id: string, enabled: boolean): Observable<AtelierConfirmationState> {
+    return this.http.put<AtelierConfirmationState>(
+      `/api/workspaces/${id}/agent/confirmation`, { enabled });
+  }
+
+  /**
+   * Répond à une demande d'autorisation (F-33 / SF-33-02) : autorise la commande, ou la refuse avec
+   * un motif que l'agent recevra. Sans réponse dans le délai imparti, le backend refuse — le silence
+   * ne vaut pas autorisation.
+   */
+  confirmToolUse(id: string, decision: AtelierConfirmDecision): Observable<void> {
+    return this.http.post<void>(`/api/workspaces/${id}/agent/confirm`, decision);
   }
 
   /** Historique de conversation du workspace. */
