@@ -38,6 +38,7 @@ import {
 import { ApiKeyService } from '../core/services/api-key.service';
 import { AtelierService } from '../core/services/atelier.service';
 import { ProviderMode } from '../core/models/api-key.models';
+import { GitRepoDialogComponent, PickedGitRepository } from './git/git-repo-dialog.component';
 import {
   AtelierAction,
   AtelierAgentStreamAction,
@@ -46,6 +47,7 @@ import {
   AtelierTerminalBlock,
   AtelierRole,
   AtelierStreamAction,
+  WorkspaceDetail,
   WorkspaceSummary,
 } from '../core/models/atelier.models';
 
@@ -165,6 +167,15 @@ export class AtelierComponent implements OnInit, OnDestroy {
     return this.workspaces().find((w) => w.id === id)?.name ?? '';
   });
 
+  /**
+   * Détail du projet ouvert (F-31 / SF-31-02) : porte la source et, pour un dépôt, `owner/repo` et
+   * la branche montée. Nourri par le même appel que l'arborescence — aucun aller-retour de plus.
+   */
+  readonly activeDetail = signal<WorkspaceDetail | null>(null);
+
+  /** Vrai si le projet ouvert est adossé à un dépôt Git. */
+  readonly activeIsGit = computed(() => this.activeDetail()?.source === 'GIT');
+
   ngOnInit(): void {
     this.loadWorkspaces();
   }
@@ -235,14 +246,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.atelier.createWorkspace(file).subscribe({
       next: (workspace) => {
         this.creating.set(false);
-        this.workspaces.update((list) => [
-          { id: workspace.id, name: workspace.name, createdAt: workspace.createdAt },
-          ...list.filter((w) => w.id !== workspace.id),
-        ]);
-        this.activeWorkspaceId.set(workspace.id);
-        this.tree.set(workspace.files);
-        this.messages.set([]);
-        this.resetFilePanel();
+        this.adoptWorkspace(workspace);
         this.snackBar.open('Projet importé.', 'Fermer', { duration: 3000 });
       },
       error: (err) => {
@@ -252,6 +256,77 @@ export class AtelierComponent implements OnInit, OnDestroy {
         );
       },
     });
+  }
+
+  /**
+   * Ouvre un projet sur un **dépôt GitHub** (F-31 / SF-31-02) : plus d'export/réimport manuel, le
+   * dépôt est cloné dans l'espace d'exécution de Claude. Le jeton d'accès n'est pas saisi ici — il
+   * est enregistré une fois pour toutes dans les réglages, chiffré côté backend.
+   */
+  openGitRepoDialog(): void {
+    this.dialog
+      .open(GitRepoDialogComponent, { width: '520px', autoFocus: false })
+      .afterClosed()
+      .subscribe((picked: PickedGitRepository | undefined) => {
+        if (!picked) {
+          return;
+        }
+        this.creating.set(true);
+        this.atelier.createGitWorkspace(picked).subscribe({
+          next: (workspace) => {
+            this.creating.set(false);
+            this.adoptWorkspace(workspace);
+            this.snackBar.open('Dépôt ouvert.', 'Fermer', { duration: 3000 });
+          },
+          error: (err) => {
+            this.creating.set(false);
+            this.notifyError(this.gitErrorMessage(err));
+          },
+        });
+      });
+  }
+
+  /**
+   * Message d'erreur d'ouverture de dépôt. Chaque cause appelle une action différente — enregistrer
+   * un jeton, corriger l'URL, réessayer plus tard — et les confondre laisserait l'utilisateur sans
+   * geste à faire.
+   */
+  private gitErrorMessage(err: unknown): string {
+    const code =
+      err instanceof HttpErrorResponse ? (err.error as { error?: string } | null)?.error : undefined;
+    switch (code) {
+      case 'git_token_missing':
+        return 'Aucun jeton GitHub enregistré : ajoutez-en un dans vos réglages.';
+      case 'invalid_git_token':
+        return 'GitHub a refusé votre jeton. Remplacez-le dans vos réglages.';
+      case 'invalid_git_repository':
+        return 'Dépôt introuvable, ou hors de portée de votre jeton GitHub.';
+      case 'invalid_git_branch':
+        return 'Nom de branche invalide.';
+      case 'github_unavailable':
+        return 'GitHub est momentanément indisponible. Réessayez dans un instant.';
+      default:
+        return httpErrorMessage(err, "L'ouverture du dépôt a échoué.");
+    }
+  }
+
+  /** Place un workspace fraîchement créé en tête de liste, l'ouvre, et réinitialise l'écran. */
+  private adoptWorkspace(workspace: WorkspaceDetail): void {
+    this.workspaces.update((list) => [
+      {
+        id: workspace.id,
+        name: workspace.name,
+        createdAt: workspace.createdAt,
+        source: workspace.source,
+        gitRepo: workspace.gitRepo,
+      },
+      ...list.filter((w) => w.id !== workspace.id),
+    ]);
+    this.activeWorkspaceId.set(workspace.id);
+    this.tree.set(workspace.files);
+    this.activeDetail.set(workspace);
+    this.messages.set([]);
+    this.resetFilePanel();
   }
 
   /**
@@ -355,6 +430,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.activeWorkspaceId.set(workspace.id);
     this.messages.set([]);
     this.tree.set([]);
+    this.activeDetail.set(null);
     this.resetFilePanel();
     this.loadHistory(workspace.id);
     this.refreshTree(workspace.id);
@@ -372,7 +448,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   private refreshTree(id: string): void {
     this.atelier.getWorkspace(id).subscribe({
-      next: (detail) => this.tree.set(detail.files),
+      next: (detail) => {
+        this.tree.set(detail.files);
+        this.activeDetail.set(detail);
+      },
       error: () => this.notifyError("Impossible de charger l'arborescence du projet."),
     });
   }

@@ -5,11 +5,27 @@
  * côté backend via le JWT porté par l'`authInterceptor`.
  */
 
+/**
+ * Provenance des fichiers d'un projet (F-31 / SF-31-02) : archive `.zip` téléversée, ou dépôt Git
+ * cloné dans l'espace d'exécution. Les écrans sont communs ; seuls les gestes disponibles diffèrent.
+ */
+export type WorkspaceSource = 'ARCHIVE' | 'GIT';
+
 /** Vue résumée d'un workspace (liste). Réponse de `GET /api/workspaces`. */
 export interface WorkspaceSummary {
   id: string;
   name: string;
   createdAt: string;
+  source: WorkspaceSource;
+  /** `owner/repo` pour un projet Git, `null` sinon. */
+  gitRepo: string | null;
+}
+
+/** Corps de `POST /api/workspaces/git` (F-31 / SF-31-02). Aucun secret : le jeton est déjà enregistré. */
+export interface CreateGitWorkspaceRequest {
+  repoUrl: string;
+  branch?: string;
+  name?: string;
 }
 
 /**
@@ -22,6 +38,13 @@ export interface WorkspaceDetail {
   fileCount: number;
   files: string[];
   createdAt: string;
+  source: WorkspaceSource;
+  /** URL publique du dépôt (jamais le jeton), `null` pour un projet d'archive. */
+  gitRepoUrl: string | null;
+  /** `owner/repo`, `null` pour un projet d'archive. */
+  gitRepo: string | null;
+  /** Branche montée dans l'espace d'exécution, `null` pour un projet d'archive. */
+  gitBranch: string | null;
 }
 
 /** Contenu texte d'un fichier du workspace. Réponse de `GET /api/workspaces/{id}/file?path=`. */

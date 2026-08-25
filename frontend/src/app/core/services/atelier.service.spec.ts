@@ -32,6 +32,10 @@ describe('AtelierService', () => {
       fileCount: 2,
       files: ['src/main.ts', 'README.md'],
       createdAt: '2026-07-11T00:00:00Z',
+      source: 'ARCHIVE',
+      gitRepoUrl: null,
+      gitRepo: null,
+      gitBranch: null,
     };
     const file = new File(['zip-bytes'], 'projet.zip', { type: 'application/zip' });
 
@@ -48,7 +52,9 @@ describe('AtelierService', () => {
   });
 
   it('lists workspaces from /api/workspaces', () => {
-    const list: WorkspaceSummary[] = [{ id: 'w1', name: 'projet', createdAt: '2026-07-11T00:00:00Z' }];
+    const list: WorkspaceSummary[] = [
+      { id: 'w1', name: 'projet', createdAt: '2026-07-11T00:00:00Z', source: 'ARCHIVE', gitRepo: null },
+    ];
 
     let received: WorkspaceSummary[] | undefined;
     service.listWorkspaces().subscribe((r) => (received = r));
@@ -67,6 +73,10 @@ describe('AtelierService', () => {
       fileCount: 1,
       files: ['a.txt'],
       createdAt: '2026-07-11T00:00:00Z',
+      source: 'ARCHIVE',
+      gitRepoUrl: null,
+      gitRepo: null,
+      gitBranch: null,
     };
 
     let received: WorkspaceDetail | undefined;
@@ -231,5 +241,36 @@ describe('AtelierService', () => {
     });
 
     expect(code).toBe('forbidden');
+  });
+
+  it("POSTs a repository to /api/workspaces/git and never carries a token (F-31 / SF-31-02)", () => {
+    const detail: WorkspaceDetail = {
+      id: 'w2',
+      name: 'hello',
+      fileCount: 0,
+      files: [],
+      createdAt: '2026-08-25T00:00:00Z',
+      source: 'GIT',
+      gitRepoUrl: 'https://github.com/octocat/hello',
+      gitRepo: 'octocat/hello',
+      gitBranch: 'main',
+    };
+
+    let received: WorkspaceDetail | undefined;
+    service
+      .createGitWorkspace({ repoUrl: 'https://github.com/octocat/hello', branch: 'main' })
+      .subscribe((r) => (received = r));
+
+    const req = httpMock.expectOne('/api/workspaces/git');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({
+      repoUrl: 'https://github.com/octocat/hello',
+      branch: 'main',
+    });
+    // Le jeton d'accès n'est jamais transmis par le client : il vit chiffré côté backend.
+    expect(JSON.stringify(req.request.body)).not.toContain('token');
+    req.flush(detail);
+
+    expect(received).toEqual(detail);
   });
 });
