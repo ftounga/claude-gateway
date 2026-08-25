@@ -50,6 +50,7 @@ import {
   AtelierTerminalBlock,
   AtelierRole,
   AtelierStreamAction,
+  GitPullRequestResult,
   GitPushResult,
   WorkspaceDetail,
   WorkspaceSummary,
@@ -215,6 +216,16 @@ export class AtelierComponent implements OnInit, OnDestroy {
    */
   readonly pushResult = signal<GitPushResult | null>(null);
 
+  /**
+   * Pull request ouverte pour la dernière publication (F-31 / SF-31-05), ou `null` tant qu'aucune
+   * n'a été demandée. Épinglée au même endroit que la publication : c'est l'aboutissement du
+   * parcours, et l'URL est la seule chose que l'utilisateur ait à emporter.
+   */
+  readonly pullRequest = signal<GitPullRequestResult | null>(null);
+
+  /** Ouverture de pull request en vol : le bouton reste inerte tant que le tour n'est pas fini. */
+  readonly openingPullRequest = signal(false);
+
   ngOnInit(): void {
     this.loadWorkspaces();
   }
@@ -379,6 +390,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
           return;
         }
         this.publishing.set(true);
+        // Une nouvelle publication rend caduque la pull request de la précédente : la laisser à
+        // l'écran ferait pointer un lien vers un travail qui n'est plus celui qu'on vient de pousser.
+        this.pullRequest.set(null);
         this.atelier.pushBranch(id, picked).subscribe({
           next: (result) => {
             this.publishing.set(false);
@@ -399,8 +413,44 @@ export class AtelierComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Ouvre la pull request de la branche qui vient d'être publiée (F-31 / SF-31-05).
+   *
+   * Rien n'est deviné côté client : la branche envoyée est celle que le backend a **constatée** au
+   * push. Et le résultat n'est pas déduit de ce que Claude répond — le backend constate l'existence
+   * de la pull request auprès de GitHub. Un échec revient donc en `200` avec sa cause.
+   */
+  openPullRequest(): void {
+    const id = this.activeWorkspaceId();
+    const push = this.pushResult();
+    if (!id || !push || !push.pushed || this.openingPullRequest()) {
+      return;
+    }
+    this.openingPullRequest.set(true);
+    this.atelier.createPullRequest(id, { branch: push.branch }).subscribe({
+      next: (result) => {
+        this.openingPullRequest.set(false);
+        this.pullRequest.set(result);
+        this.snackBar.open(
+          result.created
+            ? `Pull request #${result.number} ouverte.`
+            : "Aucune pull request n'a été ouverte.",
+          'Fermer',
+          { duration: 4000 },
+        );
+      },
+      error: (err) => {
+        this.openingPullRequest.set(false);
+        this.notifyError(this.pushErrorMessage(err));
+      },
+    });
+  }
+
+  /**
    * Message d'erreur de publication. Comme à l'ouverture d'un dépôt, chaque cause appelle un geste
    * différent : relancer une commande, changer de branche, réenregistrer un jeton, réessayer.
+   *
+   * Partagé avec l'ouverture de pull request (SF-31-05) : les causes et les gestes correctifs sont
+   * exactement les mêmes — dupliquer la table ferait diverger les deux messages sans raison.
    */
   private pushErrorMessage(err: unknown): string {
     const code =
@@ -452,6 +502,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.tree.set([]);
     this.messages.set([]);
     this.pushResult.set(null);
+    this.pullRequest.set(null);
     this.resetFilePanel();
     this.agentMode.set('edit');
   }
@@ -473,6 +524,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.activeDetail.set(workspace);
     this.messages.set([]);
     this.pushResult.set(null);
+    this.pullRequest.set(null);
     this.resetFilePanel();
     this.alignModeWithSource(workspace);
   }
@@ -591,6 +643,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.tree.set([]);
     this.activeDetail.set(null);
     this.pushResult.set(null);
+    this.pullRequest.set(null);
     this.resetFilePanel();
     this.loadHistory(workspace.id);
     this.refreshTree(workspace.id);

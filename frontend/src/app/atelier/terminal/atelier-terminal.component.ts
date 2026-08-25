@@ -12,7 +12,11 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
-import { AtelierTerminalBlock, GitPushResult } from '../../core/models/atelier.models';
+import {
+  AtelierTerminalBlock,
+  GitPullRequestResult,
+  GitPushResult,
+} from '../../core/models/atelier.models';
 import {
   AtelierExecStreamingItem,
   AtelierPendingConfirmation,
@@ -75,6 +79,15 @@ export class AtelierTerminalComponent implements AfterViewChecked {
   @Input() pushResult: GitPushResult | null = null;
 
   /**
+   * Pull request ouverte pour cette publication (F-31 / SF-31-05), ou `null` tant qu'aucune n'a été
+   * demandée. Son URL est **constatée par le backend** auprès de GitHub, jamais fabriquée.
+   */
+  @Input() pullRequest: GitPullRequestResult | null = null;
+
+  /** Ouverture de pull request en vol : le bouton reste inerte le temps du tour. */
+  @Input() openingPullRequest = false;
+
+  /**
    * Chemin du fichier d'instructions du projet (F-34 / SF-34-02), ou `null` s'il n'en porte pas.
    * Sans lui, rien ne dit à l'écran que l'agent suit des consignes propres à ce projet.
    */
@@ -110,6 +123,8 @@ export class AtelierTerminalComponent implements AfterViewChecked {
   @Output() reasonChange = new EventEmitter<string>();
   /** Bascule de l'option « demander avant d'exécuter » (F-33 / SF-33-01). */
   @Output() toggleAskBeforeBash = new EventEmitter<void>();
+  /** Demande d'ouverture de la pull request de la branche publiée (F-31 / SF-31-05). */
+  @Output() openPullRequest = new EventEmitter<void>();
 
   @ViewChild('scrollback') private scrollback?: ElementRef<HTMLElement>;
 

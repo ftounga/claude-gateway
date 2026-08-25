@@ -41,6 +41,33 @@ export interface GitPushResult {
   reply: string;
 }
 
+/**
+ * Corps de `POST /api/workspaces/{id}/git/pull-request` (F-31 / SF-31-05).
+ *
+ * La branche est **obligatoire** : c'est celle que l'utilisateur vient de publier. La deviner
+ * ouvrirait la mauvaise pull request le jour où il en a publié deux.
+ */
+export interface GitPullRequestRequest {
+  branch: string;
+  title?: string;
+  body?: string;
+}
+
+/**
+ * Résultat d'une ouverture de pull request (F-31 / SF-31-05).
+ *
+ * `created` est **constaté auprès de GitHub** par le backend, jamais déduit de ce que l'agent
+ * répond : il peut annoncer une création qui n'a pas eu lieu. Quand il vaut `false`, `url` et
+ * `number` sont nuls et `reply` porte la cause.
+ */
+export interface GitPullRequestResult {
+  branch: string;
+  created: boolean;
+  url: string | null;
+  number: number | null;
+  reply: string;
+}
+
 /** Corps de `POST /api/workspaces/git` (F-31 / SF-31-02). Aucun secret : le jeton est déjà enregistré. */
 export interface CreateGitWorkspaceRequest {
   repoUrl: string;

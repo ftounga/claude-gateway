@@ -97,9 +97,31 @@
       @if (push.pushed) {
         <mat-icon class="terminal-push-icon">check_circle</mat-icon>
         <span>Branche <strong>{{ push.branch }}</strong> publiée.</span>
-        <a [href]="push.compareUrl" target="_blank" rel="noopener noreferrer">
-          Ouvrir la pull request
-        </a>
+        @if (pullRequest?.created) {
+          <!-- URL constatée par le backend auprès de GitHub, jamais fabriquée depuis la réponse
+               de l'agent : elle mène donc toujours quelque part. -->
+          <a [href]="pullRequest!.url" target="_blank" rel="noopener noreferrer">
+            Pull request #{{ pullRequest!.number }}
+          </a>
+        } @else {
+          <button
+            mat-button
+            type="button"
+            [disabled]="openingPullRequest"
+            (click)="openPullRequest.emit()"
+          >
+            @if (openingPullRequest) {
+              <mat-spinner diameter="16"></mat-spinner>
+            } @else {
+              <mat-icon>call_merge</mat-icon>
+            }
+            Créer la pull request
+          </button>
+          <!-- Repli toujours offert : si le MCP n'aboutit pas, l'utilisateur ouvre sa PR lui-même. -->
+          <a [href]="push.compareUrl" target="_blank" rel="noopener noreferrer">
+            Ouvrir sur GitHub
+          </a>
+        }
       } @else {
         <mat-icon class="terminal-push-icon">error_outline</mat-icon>
         <span>
@@ -107,6 +129,17 @@
         </span>
       }
     </div>
+    @if (pullRequest && !pullRequest.created) {
+      <!-- On ne prétend pas : le backend n'a trouvé aucune pull request ouverte sur cette branche.
+           Le compte rendu de l'agent porte la cause, et le lien GitHub reste disponible ci-dessus. -->
+      <div class="terminal-push failed">
+        <mat-icon class="terminal-push-icon">error_outline</mat-icon>
+        <span>
+          Aucune pull request n'a été ouverte sur <strong>{{ pullRequest.branch }}</strong>.
+          {{ pullRequest.reply }}
+        </span>
+      </div>
+    }
   }
 
   <!-- Flux continu : demandes, commentaires, commandes et sorties, dans l'ordre chronologique. -->

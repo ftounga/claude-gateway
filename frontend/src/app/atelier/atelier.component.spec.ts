@@ -85,6 +85,7 @@ describe('AtelierComponent', () => {
       'createWorkspace',
       'createGitWorkspace',
       'pushBranch',
+      'createPullRequest',
       'listWorkspaces',
       'getWorkspace',
       'getFile',
@@ -137,6 +138,7 @@ describe('AtelierComponent', () => {
       'createWorkspace',
       'createGitWorkspace',
       'pushBranch',
+      'createPullRequest',
       'listWorkspaces',
       'getWorkspace',
       'getFile',
@@ -203,6 +205,7 @@ describe('AtelierComponent', () => {
       'createWorkspace',
       'createGitWorkspace',
       'pushBranch',
+      'createPullRequest',
       'listWorkspaces',
       'getWorkspace',
       'getFile',
@@ -242,6 +245,7 @@ describe('AtelierComponent', () => {
       'createWorkspace',
       'createGitWorkspace',
       'pushBranch',
+      'createPullRequest',
       'listWorkspaces',
       'getWorkspace',
       'getFile',
@@ -1361,6 +1365,129 @@ describe('AtelierComponent', () => {
 
     expect(dialog.open).not.toHaveBeenCalled();
     expect(service.pushBranch).not.toHaveBeenCalled();
+  });
+
+  // ---- F-31 SF-31-05 : ouverture de la pull request ----
+
+  /** Publie une branche : préalable de toute ouverture de pull request. */
+  function publishBranch(): void {
+    dialog.open.and.returnValue({
+      afterClosed: () => of({ branch: 'feat/atelier' }),
+    } as MatDialogRef<unknown, unknown>);
+    service.pushBranch.and.returnValue(
+      of({
+        branch: 'feat/atelier',
+        pushed: true,
+        compareUrl: 'https://github.com/octocat/hello/compare/x?expand=1',
+        reply: 'Branche poussée.',
+      }),
+    );
+    component.openPushDialog();
+  }
+
+  it('ouvre la pull request de la branche publiée et en conserve l\'URL', () => {
+    setup();
+    openGitProject();
+    publishBranch();
+    service.createPullRequest.and.returnValue(
+      of({
+        branch: 'feat/atelier',
+        created: true,
+        url: 'https://github.com/octocat/hello/pull/7',
+        number: 7,
+        reply: 'Pull request créée.',
+      }),
+    );
+
+    component.openPullRequest();
+
+    // La branche envoyée est celle CONSTATÉE au push, jamais devinée côté client.
+    expect(service.createPullRequest).toHaveBeenCalledWith('w2', { branch: 'feat/atelier' });
+    expect(component.pullRequest()?.created).toBeTrue();
+    expect(component.pullRequest()?.url).toContain('/pull/7');
+    expect(component.openingPullRequest()).toBeFalse();
+  });
+
+  it("montre la cause quand aucune pull request n'a été ouverte", () => {
+    setup();
+    openGitProject();
+    publishBranch();
+    service.createPullRequest.and.returnValue(
+      of({
+        branch: 'feat/atelier',
+        created: false,
+        url: null,
+        number: null,
+        reply: "L'outil create_pull_request n'est pas disponible.",
+      }),
+    );
+
+    component.openPullRequest();
+
+    expect(component.pullRequest()?.created).toBeFalse();
+    expect(component.pullRequest()?.url).toBeNull();
+    expect(component.pullRequest()?.reply).toContain('create_pull_request');
+  });
+
+  it("n'ouvre aucune pull request tant que rien n'a été publié", () => {
+    setup();
+    openGitProject();
+
+    component.openPullRequest();
+
+    expect(service.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it("n'ouvre aucune pull request quand la publication a échoué", () => {
+    setup();
+    openGitProject();
+    dialog.open.and.returnValue({
+      afterClosed: () => of({ branch: 'feat/atelier' }),
+    } as MatDialogRef<unknown, unknown>);
+    service.pushBranch.and.returnValue(
+      of({ branch: 'feat/atelier', pushed: false, compareUrl: null, reply: 'permission denied' }),
+    );
+    component.openPushDialog();
+
+    component.openPullRequest();
+
+    expect(service.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('signale la cause quand le backend refuse la demande', () => {
+    setup();
+    openGitProject();
+    publishBranch();
+    service.createPullRequest.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 400, error: { error: 'git_token_missing' } })),
+    );
+
+    component.openPullRequest();
+
+    expect(snackBar.open.calls.mostRecent().args[0]).toContain('Aucun jeton GitHub');
+    expect(component.openingPullRequest()).toBeFalse();
+  });
+
+  it('une nouvelle publication efface la pull request de la précédente', () => {
+    // Sinon le lien pointerait vers un travail qui n'est plus celui qu'on vient de pousser.
+    setup();
+    openGitProject();
+    publishBranch();
+    service.createPullRequest.and.returnValue(
+      of({
+        branch: 'feat/atelier',
+        created: true,
+        url: 'https://github.com/octocat/hello/pull/7',
+        number: 7,
+        reply: 'ok',
+      }),
+    );
+    component.openPullRequest();
+    expect(component.pullRequest()).not.toBeNull();
+
+    publishBranch();
+
+    expect(component.pullRequest()).toBeNull();
   });
 
   it("quitter le terminal referme un projet Git au lieu d'un mode indisponible", () => {
