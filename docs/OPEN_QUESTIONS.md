@@ -71,3 +71,63 @@ ne porte aucun montant. Les montants réels vivent dans Stripe (réversibles san
 **Impact** : Architecture de déploiement (pods), scaling de l'ingestion.
 **Options** : Traitement asynchrone intra-backend (scheduler/threadpool) en V1 ; workers dédiés (pods séparés + file) en V2.
 **Décision** : **Workers intra-backend `@Scheduled`** retenus — `OcrPollingWorker` (F-05) et `IngestionWorker` (F-06 / SF-06-02), désactivables par config. Choix **réversible** : les abstractions (`OcrProvider`, `EmbeddingProvider`/`EmbeddingStore`) + le pilotage par état en base (`documents.status`) permettent d'extraire des workers dédiés + file (SQS/…) en V2 sans réécrire le domaine. À réévaluer selon la charge d'ingestion réelle.
+
+## OQ-12 — HTTPS sur l'apex nu `ng-itconsulting.com`
+
+**Statut** : **Ouverte — reportée volontairement (2026-08-25)**. Correctif documenté ci-dessous, à
+appliquer si le besoin se matérialise.
+
+**Diagnostic exact (mesuré le 2026-08-25)**
+
+| Adresse | Résultat |
+|---------|----------|
+| `https://www.ng-itconsulting.com` | ✅ 200 — site servi par le cluster |
+| `http://ng-itconsulting.com` | ✅ **301** vers `https://www…` (redirection OVH) |
+| `https://ng-itconsulting.com` | ❌ **connexion refusée — port 443 fermé** |
+
+Ce n'est **pas** un problème de certificat : le serveur de redirection OVH (`213.186.33.5`) n'écoute
+pas du tout en HTTPS. Vérifié dans l'interface OVH : **aucune option SSL n'existe** dans le parcours
+de création d'une redirection de domaine (étapes 1 à 5) — OVH ne fait pas de HTTPS sur ses
+redirections DNS.
+
+**Impact réel — limité**
+
+Un seul cas casse : un lien écrit explicitement en `https://ng-itconsulting.com` (signature de mail,
+QR code, annuaire, carte de visite). La saisie au clavier fonctionne : le navigateur tente HTTPS,
+échoue, retombe en HTTP et suit le 301.
+
+**Ce qui rendrait le correctif nécessaire**
+
+1. Diffusion de `https://ng-itconsulting.com` sur un support figé (imprimé, QR code, annuaire).
+2. Durcissement du HTTPS-First des navigateurs supprimant le repli automatique vers HTTP — trajectoire
+   annoncée, sans échéance ferme.
+
+**Correctif, si le besoin se matérialise**
+
+Cause de fond : un apex ne peut pas porter de CNAME, les IP du NLB AWS sont dynamiques, et OVH
+n'aplatit pas les CNAME. Le NLB est **partagé** avec `legalcase.fr` — lui attacher des Elastic IP
+imposerait de le recréer, donc une coupure sur deux produits pour un confort d'URL : **écarté**.
+
+Reste la migration de zone DNS, en deux volets :
+
+*Volet éditeur (OVH → Route 53 ou Cloudflare)*
+1. Exporter la zone complète depuis OVH (bouton **Export as CSV** de la page Redirection).
+2. Recréer **tous** les enregistrements chez le nouvel hébergeur. ⚠️ **Le risque de l'opération est
+   là** : `MX 1 smtp.google.com` (messagerie Google Workspace), le SPF
+   (`google + mx.ovh.com + spf.brevo.com`), les DKIM Brevo (`brevo1/brevo2._domainkey`) et le
+   `google-site-verification`. Un MX oublié coupe les mails sans alerte immédiate.
+3. Créer l'apex : enregistrement **alias A** vers le NLB (Route 53, natif) ou **CNAME aplati**
+   (Cloudflare).
+4. Basculer les serveurs de noms chez OVH.
+
+*Volet dépôt (à faire côté cluster, avant la bascule)*
+5. Ajouter `ng-itconsulting.com` à `k8s/base/ingress/corporate-ingress.yaml` et au certificat
+   cert-manager, pour que l'apex soit servi dès que le DNS pointe.
+
+**Recommandation** : **Route 53** plutôt que Cloudflare — l'infrastructure est déjà sur AWS et pilotée
+par Terraform, l'alias vers un NLB est natif, et cela n'ajoute aucun intermédiaire devant le trafic.
+Coût : ~0,50 $/mois par zone.
+
+**Décision** : laissée en l'état le 2026-08-25. La règle de contournement, sans coût ni risque :
+**toujours écrire `www.ng-itconsulting.com`** dans tout ce qui est diffusé. Confirme et précise
+l'arbitrage « non prioritaire » de F-29 / SF-29-04.
