@@ -96,14 +96,23 @@ class AtelierSessionServiceTest {
     }
 
     private AtelierSessionService service(AtelierAgentProperties props) {
+        return service(props, costProperties());
+    }
+
+    private AtelierSessionService service(AtelierAgentProperties props, AtelierCostProperties cost) {
         return new AtelierSessionService(provider, workspaceService, bootstrapService, props, quotaService,
                 workspaceRepository, messageRepository, gitTokenService, instructionsService,
-                mcpVaultService, costProperties());
+                mcpVaultService, cost);
     }
 
     /** Réglages de dépense par défaut (F-36 / SF-36-01) : plafond 2 $, plancher 0,10 $, 9 $/M. */
     private AtelierCostProperties costProperties() {
-        return new AtelierCostProperties(null, null, null, null);
+        return costProperties(null);
+    }
+
+    /** Réglages de dépense avec un markup explicite (F-36 / SF-36-02). */
+    private AtelierCostProperties costProperties(java.math.BigDecimal markup) {
+        return new AtelierCostProperties(null, null, null, null, markup);
     }
 
     /** Quota restant large : le plafond par run est alors le facteur limitant (F-36 / SF-36-01). */
@@ -1436,5 +1445,117 @@ class AtelierSessionServiceTest {
         AtelierSessionResult result = service(enabled()).runTask(USER, WORKSPACE, "go");
 
         assertThat(result.budgetReached()).isFalse();
+    }
+
+    // ------------------------------------ F-36 / SF-36-02 : décompte au coût réel
+
+    @Test
+    void theQuotaIsChargedFromTheRealCostWhenTheProviderReportsIt() {
+        stubNominalRun();
+        // 90 cents = 0,90 $ ; à 9 $/M et markup 1,0 ⇒ 100 000 tokens équivalents, répartis au prorata
+        // des tokens rapportés (1 000 / 200) ⇒ 83 333 en entrée, 16 667 en sortie.
+        when(provider.getSessionUsage("sess_1")).thenReturn(new SessionUsage(1_000L, 200L, 8L, 90L));
+
+        AtelierSessionResult result = service(enabled()).runTask(USER, WORKSPACE, "go");
+
+        verify(quotaService).recordUsage(USER, 83_333, 16_667);
+        verify(quotaService).recordSandboxSeconds(USER, 8L);
+        // Le tour affiche ce qui est réellement décompté : une seule source de vérité.
+        assertThat(result.inputTokens()).isEqualTo(83_333L);
+        assertThat(result.outputTokens()).isEqualTo(16_667L);
+    }
+
+    @Test
+    void theMarkupMultipliesWhatIsChargedToTheQuota() {
+        stubNominalRun();
+        when(provider.getSessionUsage("sess_1")).thenReturn(new SessionUsage(1_000L, 200L, 8L, 90L));
+
+        service(enabled(), costProperties(new java.math.BigDecimal("2.0")))
+                .runTask(USER, WORKSPACE, "go");
+
+        // 2× le décompte neutre : le levier de marge agit sur le décompte, pas sur le tarif affiché.
+        verify(quotaService).recordUsage(USER, 166_667, 33_333);
+    }
+
+    @Test
+    void onlyTheCostDeltaIsChargedOnASecondTurnOfTheSameSession() {
+        // Le fournisseur rapporte un CUMUL : recréditer le cumul ferait payer deux fois le 1er tour.
+        Workspace workspace = ws("sess_ouverte");
+        workspace.setAgentInputTokens(1_000L);
+        workspace.setAgentOutputTokens(200L);
+        workspace.setAgentListCost(90L);
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(provider.awaitCompletion(eq("sess_ouverte"), any(), anyInt(), any()))
+                .thenReturn(new SessionRun("Terminé.", "end_turn"));
+        when(provider.listOutputs("sess_ouverte")).thenReturn(List.of());
+        when(provider.getSessionUsage("sess_ouverte"))
+                .thenReturn(new SessionUsage(2_000L, 400L, 16L, 135L));
+
+        service(enabled()).runTask(USER, WORKSPACE, "go");
+
+        // Delta = 45 cents ⇒ 50 000 tokens, au prorata du delta de tokens (1 000 / 200).
+        verify(quotaService).recordUsage(USER, 41_667, 8_333);
+        assertThat(workspace.getAgentListCost()).isEqualTo(135L);
+    }
+
+    @Test
+    void aMissingRealCostFallsBackToTheRawTokenAccounting() {
+        // Repli : sans coût rapporté, le décompte est exactement celui d'avant F-36.
+        stubNominalRun();
+        when(provider.getSessionUsage("sess_1")).thenReturn(new SessionUsage(1_000L, 200L, 8L, null));
+
+        service(enabled()).runTask(USER, WORKSPACE, "go");
+
+        verify(quotaService).recordUsage(USER, 1_000, 200);
+    }
+
+    @Test
+    void aCostWithoutAnyReportedTokenIsChargedEntirelyOnInput() {
+        // Recherches web ou temps de bac à sable seuls : ne rien décompter serait faux.
+        stubNominalRun();
+        when(provider.getSessionUsage("sess_1")).thenReturn(new SessionUsage(0L, 0L, 30L, 18L));
+
+        service(enabled()).runTask(USER, WORKSPACE, "go");
+
+        verify(quotaService).recordUsage(USER, 20_000, 0);
+    }
+
+    @Test
+    void aCostReadingBelowThePreviousOneNeverCreditsTheQuota() {
+        // Session remplacée côté fournisseur : le cumul repart plus bas. Jamais de delta négatif.
+        Workspace workspace = ws("sess_ouverte");
+        workspace.setAgentListCost(500L);
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(provider.awaitCompletion(eq("sess_ouverte"), any(), anyInt(), any()))
+                .thenReturn(new SessionRun("Terminé.", "end_turn"));
+        when(provider.listOutputs("sess_ouverte")).thenReturn(List.of());
+        when(provider.getSessionUsage("sess_ouverte"))
+                .thenReturn(new SessionUsage(0L, 0L, 0L, 100L));
+
+        service(enabled()).runTask(USER, WORKSPACE, "go");
+
+        verify(quotaService).recordUsage(USER, 0, 0);
+    }
+
+    @Test
+    void openingANewSessionResetsTheCostCounterToo() {
+        Workspace workspace = ws(null);
+        workspace.setAgentListCost(500L);
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any()))
+                .thenReturn(new ManagedSession("sess_neuve"));
+        when(provider.awaitCompletion(eq("sess_neuve"), any(), anyInt(), any()))
+                .thenReturn(new SessionRun("Terminé.", "end_turn"));
+        when(provider.listOutputs("sess_neuve")).thenReturn(List.of());
+        when(provider.getSessionUsage("sess_neuve")).thenReturn(new SessionUsage(0L, 0L, 0L, 9L));
+
+        service(enabled()).runTask(USER, WORKSPACE, "go");
+
+        // Le cumul de l'ancienne session ne doit pas masquer les premiers tours de la nouvelle.
+        verify(quotaService).recordUsage(USER, 10_000, 0);
     }
 }

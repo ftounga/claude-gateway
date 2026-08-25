@@ -103,6 +103,11 @@ app:
         # Cout de reference du fournisseur (USD par million de tokens, blended Opus). Sert a convertir
         # le quota restant en dollars pour en deduire le plafond de la session.
         cost-per-million-tokens: ${APP_ATELIER_AGENT_COST_PER_M:9.00}
+        # Multiplicateur applique au cout reel lors du decompte du quota (F-36 / SF-36-02).
+        # 1.0 = NEUTRE : les allocations de tokens par plan embarquent deja la marge commerciale
+        # (GOLD : 199 EUR pour 12 M tokens ~ 2x le cout blended). Le porter a 2.0 doublerait la
+        # vitesse de consommation du quota de chaque client — levier de marge, a actionner sciemment.
+        markup: ${APP_ATELIER_AGENT_COST_MARKUP:1.0}
   ocr:
     # Pipeline OCR (F-05). Fournisseur `stub` par défaut (dev/tests, sans AWS) ; `textract` en cluster.
     # Liste blanche MIME, plafond de taille et routage sync/async : décisions réversibles (config).

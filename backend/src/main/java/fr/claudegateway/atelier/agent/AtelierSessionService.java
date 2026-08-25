@@ -77,6 +77,12 @@ public class AtelierSessionService {
     /** Diviseur de conversion « tokens → millions de tokens » des tarifs de référence. */
     private static final BigDecimal TOKENS_PER_MILLION = new BigDecimal("1000000");
 
+    /**
+     * Numérateur de conversion « unités mineures → tokens » : {@code 1 000 000 / 100}. Le coût est
+     * rapporté en cents, le tarif de référence en dollars par million de tokens.
+     */
+    private static final BigDecimal TOKENS_PER_MINOR_UNIT_NUMERATOR = new BigDecimal("10000");
+
     private final ManagedAgentProvider provider;
     private final WorkspaceService workspaceService;
     private final AtelierAgentBootstrapService bootstrapService;
@@ -515,6 +521,9 @@ public class AtelierSessionService {
         workspace.setAgentInputTokens(0L);
         workspace.setAgentOutputTokens(0L);
         workspace.setAgentActiveSeconds(0L);
+        // Le coût facturé repart lui aussi de zéro (F-36 / SF-36-02) : une session neuve n'a rien
+        // dépensé, et garder l'ancien cumul empêcherait de décompter ses premiers tours.
+        workspace.setAgentListCost(0L);
         workspaceRepository.save(workspace);
     }
 
@@ -733,19 +742,65 @@ public class AtelierSessionService {
             long inputDelta = Math.max(0L, usage.inputTokens() - workspace.getAgentInputTokens());
             long outputDelta = Math.max(0L, usage.outputTokens() - workspace.getAgentOutputTokens());
             long secondsDelta = Math.max(0L, usage.activeSeconds() - workspace.getAgentActiveSeconds());
+            Long cost = usage.listCostMinorUnits();
+            long costDelta = cost == null ? 0L : Math.max(0L, cost - workspace.getAgentListCost());
             workspace.setAgentInputTokens(usage.inputTokens());
             workspace.setAgentOutputTokens(usage.outputTokens());
             workspace.setAgentActiveSeconds(usage.activeSeconds());
+            if (cost != null) {
+                workspace.setAgentListCost(cost);
+            }
             workspaceRepository.save(workspace);
+            // Décompte au COÛT RÉEL quand le fournisseur le rapporte (F-36 / SF-36-02), sinon repli
+            // sur les tokens bruts — exactement le comportement d'avant F-36.
+            TurnUsage billed = cost == null
+                    ? new TurnUsage(inputDelta, outputDelta, secondsDelta)
+                    : billedFromCost(costDelta, inputDelta, outputDelta, secondsDelta);
             // recordUsage prend des int : on borne les deltas à Integer.MAX_VALUE.
-            quotaService.recordUsage(userId, (int) Math.min(inputDelta, Integer.MAX_VALUE),
-                    (int) Math.min(outputDelta, Integer.MAX_VALUE));
+            quotaService.recordUsage(userId, (int) Math.min(billed.inputTokens(), Integer.MAX_VALUE),
+                    (int) Math.min(billed.outputTokens(), Integer.MAX_VALUE));
             quotaService.recordSandboxSeconds(userId, secondsDelta);
-            return new TurnUsage(inputDelta, outputDelta, secondsDelta);
+            return billed;
         } catch (RuntimeException ex) {
             log.debug("Décompte de l'usage de session ignoré (best-effort) : run déjà livré.");
             return TurnUsage.UNKNOWN;
         }
+    }
+
+    /**
+     * Convertit le coût réellement facturé en <b>équivalent tokens</b> décompté du quota
+     * (F-36 / SF-36-02). Le quota reste libellé en tokens ; c'est la conversion qui fait entrer dans
+     * le décompte ce que les tokens ignorent — le modèle réellement servi, les recherches web, le
+     * temps de bac à sable.
+     *
+     * <p>Formule : {@code cents ÷ 100 × markup ÷ coût de référence par million × 1 000 000}. Le
+     * markup est le levier de marge, ajustable par configuration ; à {@code 1.0} (défaut) le décompte
+     * reproduit l'économie d'avant F-36.</p>
+     *
+     * <p>L'équivalent est réparti entre entrée et sortie <b>au prorata des tokens rapportés</b> : le
+     * compteur n'a que ces deux colonnes, et inventer une autre ventilation fausserait le rapport
+     * d'usage. Un coût sans aucun token rapporté (recherche web ou temps de bac à sable seuls) est
+     * décompté entièrement en entrée — ne rien décompter serait faux.</p>
+     */
+    private TurnUsage billedFromCost(long costDeltaMinorUnits, long inputDelta, long outputDelta,
+            long secondsDelta) {
+        if (costDeltaMinorUnits <= 0) {
+            return new TurnUsage(0L, 0L, secondsDelta);
+        }
+        long total = BigDecimal.valueOf(costDeltaMinorUnits)
+                .multiply(costProperties.markup())
+                .multiply(TOKENS_PER_MINOR_UNIT_NUMERATOR)
+                .divide(costProperties.costPerMillionTokens(), 0, RoundingMode.HALF_UP)
+                .longValue();
+        long rawTokens = inputDelta + outputDelta;
+        if (rawTokens <= 0) {
+            return new TurnUsage(total, 0L, secondsDelta);
+        }
+        long input = BigDecimal.valueOf(total)
+                .multiply(BigDecimal.valueOf(inputDelta))
+                .divide(BigDecimal.valueOf(rawTokens), 0, RoundingMode.HALF_UP)
+                .longValue();
+        return new TurnUsage(input, total - input, secondsDelta);
     }
 
     /**
