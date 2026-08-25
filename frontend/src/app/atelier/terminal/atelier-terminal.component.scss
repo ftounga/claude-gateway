@@ -185,11 +185,14 @@
   }
 }
 
-// ---- Résultat de publication sur branche (F-31 / SF-31-04) ----
+// ---- Résultat de publication sur branche (F-31 / SF-31-04) et pull request (SF-31-05) ----
 
 .terminal-push {
   display: flex;
   align-items: center;
+  // Le bandeau porte désormais un bouton en plus des liens : sur un écran étroit, il passe à la
+  // ligne au lieu d'écraser le nom de la branche, qui est l'information à lire.
+  flex-wrap: wrap;
   gap: var(--cg-space-2);
   padding: var(--cg-space-2) var(--cg-space-3);
   border-bottom: 1px solid var(--cg-divider);
@@ -198,6 +201,11 @@
   a {
     color: var(--cg-accent);
     font-weight: 600;
+  }
+
+  // Le spinner remplace l'icône pendant le tour : même gabarit, aucun saut de mise en page.
+  mat-spinner {
+    margin-right: var(--cg-space-1);
   }
 
   &.failed {

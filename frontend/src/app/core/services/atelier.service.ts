@@ -15,6 +15,8 @@ import {
   AtelierStreamHandlers,
   CreateGitWorkspaceRequest,
   FileContent,
+  GitPullRequestRequest,
+  GitPullRequestResult,
   GitPushRequest,
   GitPushResult,
   WorkspaceDetail,
@@ -57,6 +59,15 @@ export class AtelierService {
    */
   pushBranch(id: string, request: GitPushRequest): Observable<GitPushResult> {
     return this.http.post<GitPushResult>(`/api/workspaces/${id}/git/push`, request);
+  }
+
+  /**
+   * Ouvre la pull request de la branche publiée (F-31 / SF-31-05). Réponse `200` même si rien n'a
+   * été ouvert : `created` dit ce qui s'est réellement passé — constaté auprès de GitHub, pas déduit
+   * de ce que l'agent répond — et `reply` en donne la cause.
+   */
+  createPullRequest(id: string, request: GitPullRequestRequest): Observable<GitPullRequestResult> {
+    return this.http.post<GitPullRequestResult>(`/api/workspaces/${id}/git/pull-request`, request);
   }
 
   /** Workspaces de l'utilisateur. */

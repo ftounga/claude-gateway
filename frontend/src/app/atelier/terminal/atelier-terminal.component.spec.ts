@@ -359,4 +359,92 @@ describe('AtelierTerminalComponent', () => {
 
     expect(toggled).toBeTrue();
   });
+
+  // ---- F-31 SF-31-05 : pull request dans le bandeau de publication ----
+
+  /** Publication réussie : le seul état où l'ouverture d'une pull request a un sens. */
+  function pushed(): void {
+    component.pushResult = {
+      branch: 'feat/atelier',
+      pushed: true,
+      compareUrl: 'https://github.com/octocat/hello/compare/x?expand=1',
+      reply: 'Branche poussée.',
+    };
+  }
+
+  it('propose de créer la pull request après une publication réussie et émet la demande', () => {
+    pushed();
+    fixture.detectChanges();
+
+    const button = Array.from(
+      fixture.nativeElement.querySelectorAll('.terminal-push button'),
+    ).find((b) => (b as HTMLElement).textContent?.includes('Créer la pull request')) as
+      | HTMLButtonElement
+      | undefined;
+    expect(button).toBeDefined();
+
+    let asked = false;
+    component.openPullRequest.subscribe(() => (asked = true));
+    button!.click();
+
+    expect(asked).toBeTrue();
+  });
+
+  it("affiche l'URL de la pull request une fois ouverte, à la place du bouton", () => {
+    pushed();
+    component.pullRequest = {
+      branch: 'feat/atelier',
+      created: true,
+      url: 'https://github.com/octocat/hello/pull/7',
+      number: 7,
+      reply: 'ok',
+    };
+    fixture.detectChanges();
+
+    const link = fixture.nativeElement.querySelector('.terminal-push a') as HTMLAnchorElement;
+    expect(link.href).toContain('/pull/7');
+    expect(text()).toContain('Pull request #7');
+    expect(text()).not.toContain('Créer la pull request');
+  });
+
+  it("ne prétend rien quand aucune pull request n'a été ouverte, et garde le repli GitHub", () => {
+    pushed();
+    component.pullRequest = {
+      branch: 'feat/atelier',
+      created: false,
+      url: null,
+      number: null,
+      reply: 'permission denied',
+    };
+    fixture.detectChanges();
+
+    expect(text()).toContain("Aucune pull request n'a été ouverte");
+    expect(text()).toContain('permission denied');
+    expect(text()).toContain('Ouvrir sur GitHub');
+  });
+
+  it('rend le bouton inerte pendant que la demande est en vol', () => {
+    pushed();
+    component.openingPullRequest = true;
+    fixture.detectChanges();
+
+    const button = Array.from(
+      fixture.nativeElement.querySelectorAll('.terminal-push button'),
+    ).find((b) => (b as HTMLElement).textContent?.includes('Créer la pull request')) as
+      | HTMLButtonElement
+      | undefined;
+    expect(button!.disabled).toBeTrue();
+  });
+
+  it("n'offre aucune pull request quand rien n'a été publié", () => {
+    component.pushResult = {
+      branch: 'feat/atelier',
+      pushed: false,
+      compareUrl: null,
+      reply: 'rien à commiter',
+    };
+    fixture.detectChanges();
+
+    expect(text()).not.toContain('Créer la pull request');
+  });
 });
