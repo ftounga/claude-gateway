@@ -12,7 +12,7 @@
 
 ## Statut
 
-`ready`
+`done` — livrée le 2026-08-26 (PR #168)
 
 ## Date de création
 
