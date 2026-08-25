@@ -11,11 +11,10 @@
 `livrée (5/5)` — décisions D1/D2/D3 **arbitrées par l'owner le 2026-08-25**. SF-31-05 débloquée par la
 levée d'**OQ-11** (2026-08-25 : un PAT fine-grained est accepté comme credential `static_bearer` du serveur
 MCP GitHub) et livrée le 2026-08-26 — D2 reste sur le PAT chiffré, aucune bascule GitHub App.
-**SF-31-01→04 livrées et mergées** le 2026-08-25 (PR #138/#139, #141/#142, #143/#144, #145/#146) ;
-**SF-31-05 parquée 🔴** — elle est subordonnée à la levée du § *Risque MCP*, question désormais
-inscrite au registre sous **OQ-11** (`docs/OPEN_QUESTIONS.md`). Le repli prévu par ce cadrage est
-en place : l'utilisateur ouvre sa pull request depuis le lien de comparaison renvoyé par SF-31-04.
-Voir § *État d'avancement* en fin de document.
+**SF-31-01→04 livrées et mergées** le 2026-08-25 (PR #138/#139, #141/#142, #143/#144, #145/#146),
+**SF-31-05 le 2026-08-26** (PR #159/#161, correctif #162). Le repli prévu par ce cadrage reste offert
+à l'écran, à côté du bouton de création : si la pull request n'aboutit pas, l'utilisateur l'ouvre
+depuis le lien de comparaison renvoyé par SF-31-04. Voir § *État d'avancement* en fin de document.
 
 ## Date
 
