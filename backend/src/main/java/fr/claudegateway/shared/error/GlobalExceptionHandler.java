@@ -31,11 +31,14 @@ import fr.claudegateway.atelier.AtelierAccessDeniedException;
 import fr.claudegateway.atelier.InvalidArchiveException;
 import fr.claudegateway.atelier.InvalidFilePathException;
 import fr.claudegateway.atelier.WorkspaceNotFoundException;
+import fr.claudegateway.atelier.git.GitWorkspaceModeException;
+import fr.claudegateway.atelier.git.GitWorkspaceReadOnlyException;
 import fr.claudegateway.chat.AttachmentNotFoundException;
 import fr.claudegateway.chat.ConversationNotFoundException;
 import fr.claudegateway.chat.DocumentNotReadyException;
 import fr.claudegateway.chat.UnsupportedModelException;
 import fr.claudegateway.export.UnsupportedExportFormatException;
+import fr.claudegateway.git.GitFileNotReadableException;
 import fr.claudegateway.git.GitHubUnavailableException;
 import fr.claudegateway.git.GitTokenMissingException;
 import fr.claudegateway.git.InvalidGitBranchException;
@@ -323,6 +326,29 @@ public class GlobalExceptionHandler {
         log.debug("Branche Git refusée : forme invalide ou branche de base");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ErrorResponse("invalid_git_branch", ex.getMessage()));
+    }
+
+    @ExceptionHandler(GitWorkspaceReadOnlyException.class)
+    public ResponseEntity<ErrorResponse> handleGitWorkspaceReadOnly(GitWorkspaceReadOnlyException ex) {
+        // 409 et non 403 : la demande est légitime, c'est l'état du projet qui l'interdit.
+        log.debug("Écriture refusée : le projet est adossé à un dépôt Git (lecture seule)");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("git_workspace_read_only", ex.getMessage()));
+    }
+
+    @ExceptionHandler(GitWorkspaceModeException.class)
+    public ResponseEntity<ErrorResponse> handleGitWorkspaceMode(GitWorkspaceModeException ex) {
+        log.debug("Mode Assistant refusé : le projet est adossé à un dépôt Git");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("git_workspace_terminal_only", ex.getMessage()));
+    }
+
+    @ExceptionHandler(GitFileNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleGitFileNotReadable(GitFileNotReadableException ex) {
+        // Le fichier existe : le dire évite de faire chercher l'utilisateur, contrairement à un 404.
+        log.debug("Fichier du dépôt non affichable : binaire ou trop volumineux");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("git_file_not_readable", ex.getMessage()));
     }
 
     @ExceptionHandler(GitHubUnavailableException.class)

@@ -19,16 +19,22 @@ import fr.claudegateway.atelier.WorkspaceSource;
  * @param gitRepoUrl URL publique du dépôt, {@code null} pour un projet d'archive
  * @param gitRepo    {@code owner/repo}, {@code null} pour un projet d'archive
  * @param gitBranch  branche montée, {@code null} pour un projet d'archive
+ * @param truncated  vrai si l'arborescence est <b>partielle</b> (SF-31-03) : le dire évite de faire
+ *                   croire qu'un fichier absent de la liste n'existe pas
  */
 public record WorkspaceDetailResponse(
         UUID id, String name, int fileCount, List<String> files, OffsetDateTime createdAt,
-        WorkspaceSource source, String gitRepoUrl, String gitRepo, String gitBranch) {
+        WorkspaceSource source, String gitRepoUrl, String gitRepo, String gitBranch, boolean truncated) {
 
     public static WorkspaceDetailResponse from(Workspace workspace, List<String> files) {
+        return from(workspace, files, false);
+    }
+
+    public static WorkspaceDetailResponse from(Workspace workspace, List<String> files, boolean truncated) {
         return new WorkspaceDetailResponse(
                 workspace.getId(), workspace.getName(), files.size(), files, workspace.getCreatedAt(),
                 workspace.sourceOrDefault(), workspace.getGitRepoUrl(), fullName(workspace),
-                workspace.getGitBranch());
+                workspace.getGitBranch(), truncated);
     }
 
     /** {@code owner/repo} lisible, ou {@code null} si le workspace n'est pas adossé à un dépôt. */

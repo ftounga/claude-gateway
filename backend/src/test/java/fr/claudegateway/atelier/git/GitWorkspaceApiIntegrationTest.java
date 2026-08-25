@@ -294,6 +294,122 @@ class GitWorkspaceApiIntegrationTest {
                 .andExpect(jsonPath("$.error", is("atelier_forbidden")));
     }
 
+    // ------------------------------- F-31 / SF-31-03 : explorateur d'un projet Git
+
+    @Test
+    void showsTheBranchFilesInTheExplorer() throws Exception {
+        stubGitHubClient.treePaths = java.util.List.of("README.md", "src/App.java");
+
+        String id = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(get("/api/workspaces/" + id).contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.files.length()", is(2)))
+                .andExpect(jsonPath("$.files[0]", is("README.md")))
+                .andExpect(jsonPath("$.files[1]", is("src/App.java")))
+                .andExpect(jsonPath("$.truncated", is(false)));
+
+        // C'est bien la branche montée qui est listée, avec le jeton du propriétaire.
+        assertThat(stubGitHubClient.lastRef).isEqualTo("main");
+        assertThat(stubGitHubClient.lastToken).isEqualTo("github_pat_alice");
+    }
+
+    @Test
+    void announcesATruncatedTreeRatherThanHidingIt() throws Exception {
+        stubGitHubClient.treeTruncated = true;
+
+        String id = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(get("/api/workspaces/" + id).contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.truncated", is(true)));
+    }
+
+    @Test
+    void readsAFileFromTheBranch() throws Exception {
+        stubGitHubClient.fileContent = "# Hello";
+
+        String id = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(get("/api/workspaces/" + id + "/file").contextPath("/api")
+                        .param("path", "README.md")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content", is("# Hello")));
+
+        assertThat(stubGitHubClient.lastPath).isEqualTo("README.md");
+    }
+
+    @Test
+    void reportsAFileMissingFromTheBranchAsNotFound() throws Exception {
+        stubGitHubClient.fileContent = null;
+
+        String id = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(get("/api/workspaces/" + id + "/file").contextPath("/api")
+                        .param("path", "absent.md")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", is("invalid_git_repository")));
+    }
+
+    @Test
+    void refusesToWriteIntoAGitWorkspace() throws Exception {
+        String id = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .put("/api/workspaces/" + id + "/file").contextPath("/api")
+                        .param("path", "README.md")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"modifié\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error", is("git_workspace_read_only")));
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/workspaces/" + id + "/file").contextPath("/api")
+                        .param("path", "README.md")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error", is("git_workspace_read_only")));
+
+        mockMvc.perform(post("/api/workspaces/" + id + "/file/rename").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"from\":\"README.md\",\"to\":\"LISEZMOI.md\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error", is("git_workspace_read_only")));
+
+        mockMvc.perform(get("/api/workspaces/" + id + "/export").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error", is("git_workspace_read_only")));
+    }
+
+    @Test
+    void refusesTheAssistantModeOnAGitWorkspace() throws Exception {
+        String id = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(post("/api/workspaces/" + id + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"bonjour\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error", is("git_workspace_terminal_only")));
+    }
+
+    @Test
+    void refusesToReadAGitWorkspaceOfAnotherUser() throws Exception {
+        String id = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(get("/api/workspaces/" + id + "/file").contextPath("/api")
+                        .param("path", "README.md")
+                        .header("Authorization", bearer(bobToken)))
+                .andExpect(status().isNotFound());
+    }
+
     @Test
     void rejectsAMissingRepositoryUrl() throws Exception {
         mockMvc.perform(post("/api/workspaces/git").contextPath("/api")

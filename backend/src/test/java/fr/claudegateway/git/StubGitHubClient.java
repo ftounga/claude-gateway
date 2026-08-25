@@ -28,6 +28,21 @@ public class StubGitHubClient implements GitHubClient {
     /** Dernier dépôt demandé, sous la forme {@code owner/repo}. */
     public volatile String lastRepository;
 
+    /** Arborescence renvoyée pour toute branche résolue (SF-31-03). */
+    public volatile java.util.List<String> treePaths = java.util.List.of("README.md", "src/App.java");
+
+    /** Vrai pour simuler une arborescence partielle (dépôt très volumineux). */
+    public volatile boolean treeTruncated;
+
+    /** Contenu renvoyé par {@link #readFile} ; {@code null} ⇒ fichier absent de la branche. */
+    public volatile String fileContent = "contenu de la branche";
+
+    /** Dernière branche demandée : sert à vérifier que c'est bien celle qui est montée. */
+    public volatile String lastRef;
+
+    /** Dernier chemin lu sur la branche. */
+    public volatile String lastPath;
+
     public void reset() {
         reject = false;
         unavailable = false;
@@ -35,6 +50,11 @@ public class StubGitHubClient implements GitHubClient {
         defaultBranch = "main";
         lastToken = null;
         lastRepository = null;
+        treePaths = java.util.List.of("README.md", "src/App.java");
+        treeTruncated = false;
+        fileContent = "contenu de la branche";
+        lastRef = null;
+        lastPath = null;
     }
 
     @Override
@@ -53,6 +73,34 @@ public class StubGitHubClient implements GitHubClient {
             throw new InvalidGitRepositoryException("dépôt introuvable (simulé)");
         }
         return new GitHubRepository(owner + "/" + repo, defaultBranch);
+    }
+
+    @Override
+    public GitTreeListing listTree(String token, String owner, String repo, String ref, int maxEntries) {
+        this.lastToken = token;
+        this.lastRepository = owner + "/" + repo;
+        this.lastRef = ref;
+        failIfSimulated();
+        if (repositoryMissing) {
+            throw new InvalidGitRepositoryException("branche introuvable (simulée)");
+        }
+        java.util.List<String> paths = treePaths.size() > maxEntries
+                ? treePaths.subList(0, maxEntries)
+                : treePaths;
+        return new GitTreeListing(java.util.List.copyOf(paths), treeTruncated || treePaths.size() > maxEntries);
+    }
+
+    @Override
+    public String readFile(String token, String owner, String repo, String ref, String path, long maxBytes) {
+        this.lastToken = token;
+        this.lastRepository = owner + "/" + repo;
+        this.lastRef = ref;
+        this.lastPath = path;
+        failIfSimulated();
+        if (fileContent == null) {
+            throw new InvalidGitRepositoryException("fichier introuvable sur cette branche (simulé)");
+        }
+        return fileContent;
     }
 
     private void failIfSimulated() {

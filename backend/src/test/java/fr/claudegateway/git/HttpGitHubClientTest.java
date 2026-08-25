@@ -65,7 +65,7 @@ class HttpGitHubClientTest {
     private GitHubClient client() {
         int port = server.getAddress().getPort();
         return new HttpGitHubClient(
-                new GitProperties("http://127.0.0.1:" + port, Duration.ofSeconds(5)),
+                new GitProperties("http://127.0.0.1:" + port, Duration.ofSeconds(5), null, null),
                 RestClient.builder());
     }
 
@@ -152,6 +152,101 @@ class HttpGitHubClientTest {
 
         assertThatThrownBy(() -> client().getRepository("github_pat_ok", "octocat", "hello"))
                 .isInstanceOf(GitHubUnavailableException.class);
+    }
+
+    // ------------------------------------------- F-31 / SF-31-03 : arborescence et lecture
+
+    @Test
+    void listsOnlyBlobsOfTheBranch() {
+        repoResponseBody = """
+                {"truncated": false, "tree": [
+                  {"path": "src", "type": "tree"},
+                  {"path": "src/App.java", "type": "blob"},
+                  {"path": "README.md", "type": "blob"}
+                ]}""";
+
+        GitTreeListing listing = client().listTree("github_pat_ok", "octocat", "hello", "main", 100);
+
+        // Les dossiers sont écartés : il n'y a rien à ouvrir dedans.
+        assertThat(listing.paths()).containsExactly("src/App.java", "README.md");
+        assertThat(listing.truncated()).isFalse();
+        assertThat(requestedPath.get()).isEqualTo("/repos/octocat/hello/git/trees/main");
+    }
+
+    @Test
+    void keepsBranchNamesContainingASlashIntact() {
+        repoResponseBody = "{\"truncated\": false, \"tree\": []}";
+
+        client().listTree("github_pat_ok", "octocat", "hello", "feat/atelier", 100);
+
+        // Encoder le « / » rendrait la branche introuvable.
+        assertThat(requestedPath.get()).isEqualTo("/repos/octocat/hello/git/trees/feat/atelier");
+    }
+
+    @Test
+    void reportsTruncationFromGitHubAndFromOurOwnCap() {
+        repoResponseBody = """
+                {"truncated": true, "tree": [{"path": "a.txt", "type": "blob"}]}""";
+        assertThat(client().listTree("github_pat_ok", "octocat", "hello", "main", 100).truncated()).isTrue();
+
+        repoResponseBody = """
+                {"truncated": false, "tree": [
+                  {"path": "a.txt", "type": "blob"},
+                  {"path": "b.txt", "type": "blob"}
+                ]}""";
+        GitTreeListing capped = client().listTree("github_pat_ok", "octocat", "hello", "main", 1);
+        assertThat(capped.paths()).containsExactly("a.txt");
+        assertThat(capped.truncated()).isTrue();
+    }
+
+    @Test
+    void readsAndDecodesAFileOfTheBranch() {
+        String encoded = java.util.Base64.getEncoder()
+                .encodeToString("# Hello".getBytes(StandardCharsets.UTF_8));
+        repoResponseBody = "{\"type\":\"file\",\"size\":7,\"content\":\"" + encoded + "\"}";
+
+        String content = client().readFile("github_pat_ok", "octocat", "hello", "main", "docs/README.md", 1024);
+
+        assertThat(content).isEqualTo("# Hello");
+        assertThat(requestedPath.get()).isEqualTo("/repos/octocat/hello/contents/docs/README.md");
+    }
+
+    @Test
+    void refusesABinaryFileRatherThanDecodingItAsText() {
+        String encoded = java.util.Base64.getEncoder().encodeToString(new byte[] {1, 0, 2});
+        repoResponseBody = "{\"type\":\"file\",\"size\":3,\"content\":\"" + encoded + "\"}";
+
+        assertThatThrownBy(() ->
+                client().readFile("github_pat_ok", "octocat", "hello", "main", "logo.png", 1024))
+                .isInstanceOf(GitFileNotReadableException.class);
+    }
+
+    @Test
+    void refusesAFileLargerThanTheLimit() {
+        repoResponseBody = "{\"type\":\"file\",\"size\":9999,\"content\":\"\"}";
+
+        assertThatThrownBy(() ->
+                client().readFile("github_pat_ok", "octocat", "hello", "main", "big.bin", 10))
+                .isInstanceOf(GitFileNotReadableException.class);
+    }
+
+    @Test
+    void refusesAnEmptyContentFromTheApiRatherThanServingAnEmptyFile() {
+        // Au-delà de sa propre limite, l'API renvoie la métadonnée sans contenu.
+        repoResponseBody = "{\"type\":\"file\",\"size\":5,\"content\":\"\"}";
+
+        assertThatThrownBy(() ->
+                client().readFile("github_pat_ok", "octocat", "hello", "main", "big.bin", 10_000))
+                .isInstanceOf(GitFileNotReadableException.class);
+    }
+
+    @Test
+    void treatsADirectoryAsAMissingFile() {
+        repoResponseBody = "{\"type\":\"dir\"}";
+
+        assertThatThrownBy(() ->
+                client().readFile("github_pat_ok", "octocat", "hello", "main", "src", 1024))
+                .isInstanceOf(InvalidGitRepositoryException.class);
     }
 
     @Test
