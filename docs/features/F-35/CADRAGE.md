@@ -2,7 +2,7 @@
 
 ## Identifiant / Statut / Date
 
-`F-35` · `cadré, décisions par défaut prises` · 2026-08-25
+`F-35` · `livrée` · cadré le 2026-08-25, D1 révisée et feature livrée le 2026-08-26
 
 ## Objectif
 
@@ -51,14 +51,22 @@ défaut devrait rester « désactivé ».
 
 ---
 
-## ⚠️ Le point qui commande tout : le coût
+## ~~⚠️ Le point qui commande tout : le coût~~ — analyse corrigée le 2026-08-26
 
-Chaque sous-agent consomme **sa propre session sandbox facturée**. Une tâche déléguée à cinq
+> **Cette section était fausse.** Elle est conservée barrée plutôt que supprimée : c'est elle qui
+> explique pourquoi le découpage et les décisions ont d'abord été écrits ainsi.
+
+~~Chaque sous-agent consomme **sa propre session sandbox facturée**. Une tâche déléguée à cinq
 sous-agents peut coûter plusieurs fois le run équivalent — et le surcompteur sandbox (SF-28-12) est
-alimenté **après** coup, donc il constate le dépassement, il ne l'empêche pas.
+alimenté **après** coup, donc il constate le dépassement, il ne l'empêche pas.~~
 
-C'est le seul écart de cette vague dont le coût n'est **pas réversible** : des sessions facturées ne
-se récupèrent pas.
+~~C'est le seul écart de cette vague dont le coût n'est **pas réversible** : des sessions facturées ne
+se récupèrent pas.~~
+
+**Ce qui est vrai** : les sous-agents sont des **threads de la même session** — un seul conteneur,
+donc aucune multiplication du coût de bac à sable, et l'usage remonté au niveau session couvre déjà
+tous les fils. Depuis F-36, le **budget de session** est un plafond dur partagé entre threads,
+appliqué en verrou **pré-requête** : la dépense est bornée par construction. Voir § Révision de D1.
 
 ## Décisions par défaut (à contredire si besoin)
 
@@ -66,17 +74,21 @@ se récupèrent pas.
 |---|----------|----------|
 | D1 | **Derrière un flag, ACTIVÉ par défaut** — *révisé le 2026-08-26* | Voir § Révision de D1 ci-dessous : F-36 borne la dépense par construction, l'argument d'origine ne tient plus. Le flag reste, pour pouvoir couper en une variable d'environnement sans redéployer |
 | D2 | Roster limité à **`{type: "self"}`** | Pas d'agent supplémentaire à provisionner ni à versionner ; le gain de parallélisme est déjà là |
-| D3 | **Plafond du nombre de sous-agents** par run, configurable, défaut **3** | Borne le pire cas à un multiple connu, pas à un nombre décidé par le modèle |
-| D4 | Pré-vol de quota **renforcé** avant un run susceptible de déléguer | Refuser avant d'engager coûte zéro ; constater après coûte le dépassement |
-| D5 | Le coût affiché du tour **agrège** les sous-agents | Sinon l'utilisateur verrait un coût faux, et c'est exactement le piège que SF-30-05 a évité |
+| D3 | **Plafond du nombre de sous-agents** par run, configurable, défaut **3** | *Livrée*. Borne le **parallélisme** — pas la dépense, que le budget de session borne déjà |
+| D4 | Pré-vol de quota **renforcé** avant un run susceptible de déléguer | *Livrée sous une autre forme* : le budget de session passe à `cost.max-run-cost-delegated` (5 $) quand la session délègue, **toujours** borné par le quota restant. Un compteur de tokens supplémentaire aurait doublonné avec F-36 en se contentant de *constater*, là où le budget *empêche*, avant chaque appel et pour tous les threads |
+| D5 | Le coût affiché du tour **agrège** les sous-agents | *Satisfaite par construction* : le relevé d'usage et `list_cost` sont pris au niveau **session**, qui couvre tous les threads. Rien dans le code ne le disait — un test le **fige** désormais, et vérifie qu'on n'additionne pas racine et fils (double comptage) |
 
 ## Découpage
 
-| SF | Contenu |
-|----|---------|
-| **SF-35-01** | Roster `multiagent` derrière flag + plafond + pré-vol renforcé (backend) |
-| **SF-35-02** | Agrégation de la consommation des sous-agents dans le coût du tour (backend) |
-| **SF-35-03** | Visibilité des sous-tâches dans la vue terminal (frontend) |
+| SF | Contenu | Statut |
+|----|---------|--------|
+| **SF-35-01** | Roster `multiagent` (flag + plafond) et budget de session majoré quand la session délègue (backend) | **Livrée** — PR #168 |
+| **SF-35-02** | Provenance des sous-tâches relayée au flux et à l'historique ; D5 figée par un test (backend) | **Livrée** — PR #170 |
+| **SF-35-03** | Sous-tâches marquées dans la vue terminal (frontend) | **Livrée** — PR #172 |
+
+Le contenu de SF-35-02 a été ajusté après la révision de D1 : l'agrégation par fil qu'elle prévoyait
+était sans objet (l'usage de session couvre déjà les threads). Ce qui restait à faire — et qui
+conditionnait SF-35-03 — était la **provenance**.
 
 ## Hors scope
 
@@ -85,6 +97,10 @@ sous-agents par l'utilisateur.
 
 ## Recommandation
 
-**À livrer après F-36**, qui borne la dépense par construction. Activée par défaut depuis la révision
-de D1 ; surveiller le **taux de délégation** (déléguer une tâche qui n'en valait pas la peine coûte
-plus pour un résultat qui n'est pas meilleur) plutôt que le coût brut, désormais plafonné.
+**Livrée après F-36** (SF-36-01→04 mergées avant SF-35-01), qui borne la dépense par construction.
+Activée par défaut depuis la révision de D1.
+
+**À surveiller** : le **taux de délégation**, pas le coût brut — celui-ci est désormais plafonné.
+Déléguer une tâche qui n'en valait pas la peine coûte plus pour un résultat qui n'est pas meilleur ;
+c'est le seul risque résiduel, il est qualitatif, et il se mesure à l'usage. Le coupe-circuit est
+`APP_ATELIER_AGENT_SUBAGENTS_ENABLED=false` — une variable, sans redéploiement.
