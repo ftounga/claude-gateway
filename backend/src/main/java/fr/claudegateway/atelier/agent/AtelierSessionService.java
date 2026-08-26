@@ -410,6 +410,14 @@ public class AtelierSessionService {
     }
 
     /**
+     * Modèle et effort retenus pour les sessions (F-28 / SF-28-17). Lus dans la configuration à chaque
+     * ouverture : les changer ne demande ni re-provisionnement de l'agent, ni migration.
+     */
+    private ModelChoice modelChoice() {
+        return new ModelChoice(properties.model(), properties.effort());
+    }
+
+    /**
      * Ouvre une session pour ce workspace et persiste son identifiant (F-30 SF-30-04) : téléverse les
      * fichiers du workspace (bornés par {@code maxSessionFiles}) et les monte dans la sandbox. Remet
      * à zéro les compteurs d'usage, une session neuve repartant d'un cumul nul.
@@ -441,7 +449,7 @@ public class AtelierSessionService {
         }
         ManagedSession session = provider.createSession(
                 config.getAgentId(), config.getEnvironmentId(), mounts, null, system, permissions,
-                null, sessionBudget(userId, delegation), delegation);
+                null, sessionBudget(userId, delegation), delegation, modelChoice());
         markSessionOpened(workspace, session.id());
         return session.id();
     }
@@ -501,7 +509,7 @@ public class AtelierSessionService {
         McpAccess mcpAccess = mcpVaultService.resolveAccess(userId).orElse(null);
         ManagedSession session = provider.createSession(
                 config.getAgentId(), config.getEnvironmentId(), List.of(), repository, systemOverride,
-                permissions, mcpAccess, sessionBudget(userId, delegation), delegation);
+                permissions, mcpAccess, sessionBudget(userId, delegation), delegation, modelChoice());
         markSessionOpened(workspace, session.id());
         return session.id();
     }

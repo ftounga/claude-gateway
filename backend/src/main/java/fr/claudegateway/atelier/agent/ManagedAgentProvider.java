@@ -202,9 +202,24 @@ public interface ManagedAgentProvider {
      * @param delegation     politique de délégation (jamais {@code null})
      * @return la session créée (identifiant fournisseur)
      */
+    default ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
+            RepositoryMount repository, String systemOverride, SessionPermissions permissions,
+            McpAccess mcpAccess, SessionBudget budget, DelegationPolicy delegation) {
+        return createSession(agentId, environmentId, resources, repository, systemOverride, permissions,
+                mcpAccess, budget, delegation, null);
+    }
+
+    /**
+     * Variante portant le <b>modèle et l'effort</b> de la session (F-28 / SF-28-17). Transmis en
+     * surcharge locale : l'agent provisionné garde les siens, et changer la configuration ne demande ni
+     * re-provisionnement ni migration. {@code null} laisse l'agent décider, comme avant.
+     *
+     * @param model modèle et effort retenus, ou {@code null} pour s'en remettre à l'agent
+     * @return la session créée (identifiant fournisseur)
+     */
     ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
             RepositoryMount repository, String systemOverride, SessionPermissions permissions,
-            McpAccess mcpAccess, SessionBudget budget, DelegationPolicy delegation);
+            McpAccess mcpAccess, SessionBudget budget, DelegationPolicy delegation, ModelChoice model);
 
     /**
      * Crée un <b>vault</b> de credentials chez le fournisseur et y dépose un jeton bearer statique

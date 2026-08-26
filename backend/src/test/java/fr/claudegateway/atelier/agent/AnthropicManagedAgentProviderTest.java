@@ -57,7 +57,7 @@ class AnthropicManagedAgentProviderTest {
         // pollDelay = 0 : polling déterministe sans Thread.sleep réel.
         AtelierAgentProperties agentProperties = new AtelierAgentProperties(
                 false, null, null, null, null, null, null, null, Duration.ZERO, null, null, null,
-                confirmTimeout, true, null);
+                confirmTimeout, true, null, null);
         RestClient.Builder builder = RestClient.builder();
         server = MockRestServiceServer.bindTo(builder).ignoreExpectOrder(true).build();
         provider = new AnthropicManagedAgentProvider(properties, agentProperties, builder);
@@ -683,6 +683,58 @@ class AnthropicManagedAgentProviderTest {
         assertThatThrownBy(() -> provider.createSession("agent_1", "env_1", List.of()))
                 .isInstanceOf(AgentProviderException.class)
                 .isNotInstanceOf(AgentCreditExhaustedException.class);
+        server.verify();
+    }
+
+    // ------------------------ F-28 / SF-28-17 : modèle et effort par session
+
+    @Test
+    void createSessionCarriesTheModelAndItsEffort() {
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.agent.type").value("agent_with_overrides"))
+                .andExpect(jsonPath("$.agent.model.id").value("claude-opus-5"))
+                .andExpect(jsonPath("$.agent.model.effort.type").value("xhigh"))
+                .andRespond(withSuccess("{\"id\":\"sess_model\"}", MediaType.APPLICATION_JSON));
+
+        ManagedSession session = provider.createSession("agent_456", "env_123", List.of(), null, null,
+                SessionPermissions.ALLOW_ALL, null, null, DelegationPolicy.DISABLED,
+                new ModelChoice("claude-opus-5", "xhigh"));
+
+        assertThat(session.id()).isEqualTo("sess_model");
+        server.verify();
+    }
+
+    @Test
+    void modelCoexistsWithEveryOtherOverrideInTheSameObject() {
+        // Modèle, prompt, politique d'outils et délégation vivent dans le MÊME agent_with_overrides.
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.agent.model.id").value("claude-sonnet-5"))
+                .andExpect(jsonPath("$.agent.model.effort.type").value("low"))
+                .andExpect(jsonPath("$.agent.system").value("prompt composé"))
+                .andExpect(jsonPath("$.agent.tools[0].configs[0].name").value("bash"))
+                .andExpect(jsonPath("$.agent.multiagent.agents.length()").value(1))
+                .andRespond(withSuccess("{\"id\":\"sess_all\"}", MediaType.APPLICATION_JSON));
+
+        provider.createSession("agent_456", "env_123", List.of(), null, "prompt composé",
+                SessionPermissions.ASK_BEFORE_SHELL, null, null, DelegationPolicy.of(true, 2),
+                new ModelChoice("claude-sonnet-5", "low"));
+
+        server.verify();
+    }
+
+    @Test
+    void withoutAModelChoiceTheAgentKeepsItsOwn() {
+        // Non-régression : sans surcharge fonctionnelle ni modèle, la référence reste une simple chaîne.
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.agent").value("agent_456"))
+                .andRespond(withSuccess("{\"id\":\"sess_plain\"}", MediaType.APPLICATION_JSON));
+
+        provider.createSession("agent_456", "env_123", List.of(), null, null,
+                SessionPermissions.ALLOW_ALL, null, null, DelegationPolicy.DISABLED, null);
+
         server.verify();
     }
 
