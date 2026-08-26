@@ -25,6 +25,7 @@ import fr.claudegateway.atelier.agent.AtelierSessionService;
 import fr.claudegateway.atelier.dto.AtelierImportLibraryRequest;
 import fr.claudegateway.atelier.dto.FileContentResponse;
 import fr.claudegateway.atelier.dto.RenameFileRequest;
+import fr.claudegateway.atelier.dto.RenameWorkspaceRequest;
 import fr.claudegateway.atelier.dto.WorkspaceDetailResponse;
 import fr.claudegateway.atelier.dto.WorkspaceSummaryResponse;
 import fr.claudegateway.atelier.dto.WriteFileRequest;
@@ -126,6 +127,19 @@ public class AtelierController {
         gitWorkspaceService.requireWritable(workspaceService.requireOwned(userId, id));
         List<String> tree = libraryImportService.importDocuments(userId, id, request.documentIds());
         return WorkspaceDetailResponse.from(workspaceService.requireOwned(userId, id), tree);
+    }
+
+    /**
+     * Renomme le projet (F-28 / SF-28-16) et renvoie son détail à jour. Le nom est une étiquette :
+     * les fichiers, la session sandbox et l'historique ne bougent pas.
+     */
+    @PostMapping("/{id}/rename")
+    public WorkspaceDetailResponse renameWorkspace(
+            @PathVariable UUID id, @Valid @RequestBody RenameWorkspaceRequest request) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        Workspace renamed = workspaceService.renameWorkspace(userId, id, request.name());
+        return WorkspaceDetailResponse.from(renamed, workspaceService.tree(userId, id));
     }
 
     /**

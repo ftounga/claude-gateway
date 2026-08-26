@@ -95,6 +95,7 @@ describe('AtelierComponent', () => {
       'streamChat',
       'streamAgent',
       'resetAgentSession',
+      'renameWorkspace',
       'interruptAgentSession',
       'setAskBeforeBash',
       'confirmToolUse',
@@ -282,9 +283,14 @@ describe('AtelierComponent', () => {
     const file = new File(['zip'], 'projet.zip', { type: 'application/zip' });
     const event = { target: { files: [file], value: 'x' } } as unknown as Event;
 
+    // Le nommage à la création (F-28 SF-28-16) passe par le dialogue de saisie.
+    dialog.open.and.returnValue({
+      afterClosed: () => of('projet'),
+    } as MatDialogRef<unknown, unknown>);
     component.onZipPicked(event);
 
-    expect(service.createWorkspace).toHaveBeenCalledWith(file);
+    // Le nom saisi accompagne désormais l'archive (F-28 SF-28-16).
+    expect(service.createWorkspace).toHaveBeenCalledWith(file, 'projet');
     expect(component.activeWorkspaceId()).toBe('w1');
     expect(component.tree()).toEqual(['src/main.ts']);
   });
@@ -295,6 +301,10 @@ describe('AtelierComponent', () => {
     const file = new File(['zip'], 'bad.zip', { type: 'application/zip' });
     const event = { target: { files: [file], value: 'x' } } as unknown as Event;
 
+    // Le nommage à la création (F-28 SF-28-16) passe par le dialogue de saisie.
+    dialog.open.and.returnValue({
+      afterClosed: () => of('projet'),
+    } as MatDialogRef<unknown, unknown>);
     component.onZipPicked(event);
 
     expect(snackBar.open).toHaveBeenCalled();
@@ -307,6 +317,10 @@ describe('AtelierComponent', () => {
     Object.defineProperty(file, 'size', { value: MAX_UPLOAD_BYTES + 1 });
     const event = { target: { files: [file], value: 'x' } } as unknown as Event;
 
+    // Le nommage à la création (F-28 SF-28-16) passe par le dialogue de saisie.
+    dialog.open.and.returnValue({
+      afterClosed: () => of('projet'),
+    } as MatDialogRef<unknown, unknown>);
     component.onZipPicked(event);
 
     expect(service.createWorkspace).not.toHaveBeenCalled();
@@ -326,6 +340,10 @@ describe('AtelierComponent', () => {
     const file = new File(['zip'], 'projet.zip', { type: 'application/zip' });
     const event = { target: { files: [file], value: 'x' } } as unknown as Event;
 
+    // Le nommage à la création (F-28 SF-28-16) passe par le dialogue de saisie.
+    dialog.open.and.returnValue({
+      afterClosed: () => of('projet'),
+    } as MatDialogRef<unknown, unknown>);
     component.onZipPicked(event);
 
     expect(snackBar.open.calls.mostRecent().args[0]).toBe(
@@ -340,6 +358,10 @@ describe('AtelierComponent', () => {
     const file = new File(['zip'], 'projet.zip', { type: 'application/zip' });
     const event = { target: { files: [file], value: 'x' } } as unknown as Event;
 
+    // Le nommage à la création (F-28 SF-28-16) passe par le dialogue de saisie.
+    dialog.open.and.returnValue({
+      afterClosed: () => of('projet'),
+    } as MatDialogRef<unknown, unknown>);
     component.onZipPicked(event);
 
     expect(snackBar.open.calls.mostRecent().args[0]).toContain('trop volumineuse');
@@ -1911,7 +1933,62 @@ describe('AtelierComponent', () => {
     expect(component.pendingConfirmation()).toBeNull();
     expect(service.confirmToolUse).not.toHaveBeenCalled();
   });
+  // ---- F-28 SF-28-16 : nommer et renommer un projet ----
+
+  it('renomme le projet actif et met la liste à jour (F-28)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    dialog.open.and.returnValue({
+      afterClosed: () => of('  Refonte SCRM  '),
+    } as MatDialogRef<unknown, unknown>);
+    service.renameWorkspace.and.returnValue(of({ ...detail, name: 'Refonte SCRM' }));
+
+    component.renameActiveWorkspace();
+
+    // Le nom est élagué avant l'appel.
+    expect(service.renameWorkspace).toHaveBeenCalledWith('w1', 'Refonte SCRM');
+    expect(component.workspaces()[0].name).toBe('Refonte SCRM');
+    expect(snackBar.open.calls.mostRecent().args[0]).toBe('Projet renommé.');
+  });
+
+  it('un dialogue annulé ne renomme rien (F-28)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    dialog.open.and.returnValue({
+      afterClosed: () => of(undefined),
+    } as MatDialogRef<unknown, unknown>);
+
+    component.renameActiveWorkspace();
+
+    expect(service.renameWorkspace).not.toHaveBeenCalled();
+  });
+
+  it('un nom vide ne renomme rien (F-28)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    dialog.open.and.returnValue({
+      afterClosed: () => of('   '),
+    } as MatDialogRef<unknown, unknown>);
+
+    component.renameActiveWorkspace();
+
+    expect(service.renameWorkspace).not.toHaveBeenCalled();
+  });
+
+  it('un échec de renommage affiche un message lisible (F-28)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    dialog.open.and.returnValue({
+      afterClosed: () => of('Nouveau nom'),
+    } as MatDialogRef<unknown, unknown>);
+    service.renameWorkspace.and.returnValue(throwError(() => new HttpErrorResponse({ status: 404 })));
+
+    component.renameActiveWorkspace();
+
+    expect(snackBar.open.calls.mostRecent().args[0]).toBe('Projet introuvable.');
+  });
 });
+
 
 // ---- F-30 SF-30-10 : ouvrir un projet (et son terminal) depuis l'URL ----
 
