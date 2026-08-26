@@ -12,7 +12,7 @@
 
 ## Statut
 
-`ready`
+`done` — livrée le 2026-08-26 (PR #181)
 
 ## Date de création
 
@@ -105,25 +105,25 @@ Deux pièges du cadrage sont traités ici, pas ailleurs :
 
 ## Critères d'acceptation
 
-- [ ] Un fichier existant modifié produit un diff unifié portant les lignes retirées (`-`) et ajoutées
+- [x] Un fichier existant modifié produit un diff unifié portant les lignes retirées (`-`) et ajoutées
       (`+`) et 3 lignes de contexte, avec en-tête `@@`
-- [ ] Un fichier **nouveau** produit un diff d'ajout intégral et `added: true`
-- [ ] Un fichier réécrit **à l'identique** n'est ni écrit, ni listé dans `changedFiles`, ni porteur
+- [x] Un fichier **nouveau** produit un diff d'ajout intégral et `added: true`
+- [x] Un fichier réécrit **à l'identique** n'est ni écrit, ni listé dans `changedFiles`, ni porteur
       d'un diff
-- [ ] `addedLines` / `removedLines` comptent exactement les lignes `+` / `-` du diff produit
-- [ ] Un diff dépassant `max-diff-lines` est tronqué sur une frontière de ligne, `omittedLines > 0`
-- [ ] Au-delà de `max-diff-files` fichiers, les suivants sont réécrits sans diff, `changedFiles` reste
+- [x] `addedLines` / `removedLines` comptent exactement les lignes `+` / `-` du diff produit
+- [x] Un diff dépassant `max-diff-lines` est tronqué sur une frontière de ligne, `omittedLines > 0`
+- [x] Au-delà de `max-diff-files` fichiers, les suivants sont réécrits sans diff, `changedFiles` reste
       complet
-- [ ] Un contenu contenant un octet `NUL` produit `unreadable: true` sans exception ni comparaison
-- [ ] Une comparaison hors borne mémoire retombe sur le repli en blocs, sans exception
-- [ ] L'événement SSE `done` porte `diffs` (**additif** : un client antérieur l'ignore)
-- [ ] Le document `terminal_json` du tour porte `diffs` ; un tour écrit avant cette SF n'en porte pas
+- [x] Un contenu contenant un octet `NUL` produit `unreadable: true` sans exception ni comparaison
+- [x] Une comparaison hors borne mémoire retombe sur le repli en blocs, sans exception
+- [x] L'événement SSE `done` porte `diffs` (**additif** : un client antérieur l'ignore)
+- [x] Le document `terminal_json` du tour porte `diffs` ; un tour écrit avant cette SF n'en porte pas
       et reste lisible
-- [ ] L'isolation `user_id` est inchangée : lecture et écriture passent par `WorkspaceService`, après
+- [x] L'isolation `user_id` est inchangée : lecture et écriture passent par `WorkspaceService`, après
       `requireOwned`
-- [ ] Aucune dépendance nouvelle (pas de bibliothèque de diff), aucune dépendance Anthropic dans le
+- [x] Aucune dépendance nouvelle (pas de bibliothèque de diff), aucune dépendance Anthropic dans le
       calcul
-- [ ] Aucun contenu de fichier ni aucune clé n'est journalisé
+- [x] Aucun contenu de fichier ni aucune clé n'est journalisé
 
 ---
 
@@ -225,32 +225,32 @@ Aucun nouvel endpoint, aucun code d'erreur nouveau.
 
 ### Tests unitaires (`UnifiedDiff`)
 
-- [ ] Contenus identiques ⇒ aucun diff produit
-- [ ] Une ligne modifiée ⇒ un `-`, un `+`, contexte autour, en-tête `@@`
-- [ ] Fichier nouveau ⇒ toutes les lignes en `+`, `added = true`
-- [ ] Ajout en fin de fichier ⇒ pas de contexte fantôme après la dernière ligne
-- [ ] Deux zones de changement éloignées ⇒ **deux** sections `@@`
-- [ ] Deux zones proches (< 2 × contexte) ⇒ **une seule** section
-- [ ] `addedLines` / `removedLines` comptent exactement les lignes du diff
-- [ ] Diff plus long que la borne ⇒ tronqué, `omittedLines > 0`, dernière ligne complète
-- [ ] Contenu avec octet `NUL` ⇒ `unreadable = true`, `diff` vide, aucune exception
-- [ ] Comparaison hors borne mémoire ⇒ repli en blocs, aucune exception
-- [ ] Fichier vidé (nouveau contenu vide) ⇒ toutes les lignes en `-`
+- [x] Contenus identiques ⇒ aucun diff produit
+- [x] Une ligne modifiée ⇒ un `-`, un `+`, contexte autour, en-tête `@@`
+- [x] Fichier nouveau ⇒ toutes les lignes en `+`, `added = true`
+- [x] Ajout en fin de fichier ⇒ pas de contexte fantôme après la dernière ligne
+- [x] Deux zones de changement éloignées ⇒ **deux** sections `@@`
+- [x] Deux zones proches (< 2 × contexte) ⇒ **une seule** section
+- [x] `addedLines` / `removedLines` comptent exactement les lignes du diff
+- [x] Diff plus long que la borne ⇒ tronqué, `omittedLines > 0`, dernière ligne complète
+- [x] Contenu avec octet `NUL` ⇒ `unreadable = true`, `diff` vide, aucune exception
+- [x] Comparaison hors borne mémoire ⇒ repli en blocs, aucune exception
+- [x] Fichier vidé (nouveau contenu vide) ⇒ toutes les lignes en `-`
 
 ### Tests unitaires (`AtelierSessionService`)
 
-- [ ] Sortie réécrivant un fichier existant ⇒ `writeFile` appelé, `changedFiles` contient le chemin,
+- [x] Sortie réécrivant un fichier existant ⇒ `writeFile` appelé, `changedFiles` contient le chemin,
       un diff est produit
-- [ ] Sortie **identique** au contenu existant ⇒ **aucun** `writeFile`, `changedFiles` vide, aucun diff
-- [ ] Sortie sur un chemin inconnu ⇒ diff `added = true`
-- [ ] Plus de `max-diff-files` sorties ⇒ diffs bornés, `changedFiles` complet
-- [ ] Le tour persisté porte `diffs` dans `terminal_json`
-- [ ] Aucun diff et aucune transcription ⇒ document du tour toujours `null` (comportement d'avant)
+- [x] Sortie **identique** au contenu existant ⇒ **aucun** `writeFile`, `changedFiles` vide, aucun diff
+- [x] Sortie sur un chemin inconnu ⇒ diff `added = true`
+- [x] Plus de `max-diff-files` sorties ⇒ diffs bornés, `changedFiles` complet
+- [x] Le tour persisté porte `diffs` dans `terminal_json`
+- [x] Aucun diff et aucune transcription ⇒ document du tour toujours `null` (comportement d'avant)
 
 ### Tests d'intégration
 
-- [ ] Flux SSE d'un run ⇒ l'événement `done` porte `diffs`
-- [ ] Run sans modification ⇒ `diffs` vide, `changedFiles` vide
+- [x] Flux SSE d'un run ⇒ l'événement `done` porte `diffs`
+- [x] Run sans modification ⇒ `diffs` vide, `changedFiles` vide
 
 ### Isolation utilisateur
 
