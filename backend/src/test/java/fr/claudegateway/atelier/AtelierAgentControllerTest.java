@@ -24,6 +24,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import fr.claudegateway.atelier.agent.AtelierAgentListener;
 import fr.claudegateway.atelier.agent.AtelierAgentProperties;
 import fr.claudegateway.atelier.agent.AtelierSessionResult;
+import fr.claudegateway.atelier.agent.FileDiff;
 import fr.claudegateway.atelier.agent.AtelierSessionService;
 import fr.claudegateway.auth.CurrentUser;
 
@@ -207,6 +208,54 @@ class AtelierAgentControllerTest {
                 // Non-régression : les champs préexistants de `done` sont intacts.
                 .contains("\"reply\":\"Terminé.\"")
                 .contains("\"changedFiles\":[]");
+    }
+
+    @Test
+    void doneCarriesTheModificationsOfTheTurnAsAnAdditiveField() throws Exception {
+        // F-37 SF-37-01 : `done` porte désormais CE QUI a changé, pas seulement la liste des chemins.
+        when(access.hasAccess()).thenReturn(true);
+        FileDiff diff = new FileDiff("src/a.txt", false, "@@ -1,1 +1,1 @@\n-un\n+deux", 1, 1, 0, false);
+        when(sessionService.runTaskStreaming(eq(USER), eq(WORKSPACE), any(), any()))
+                .thenReturn(new AtelierSessionResult("Terminé.", List.of("src/a.txt"), 0L, 0L, 0L,
+                        false, false, List.of(diff)));
+
+        var result = mockMvc(props(true)).perform(post("/workspaces/" + WORKSPACE + "/agent/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("{\"message\":\"go\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        org.assertj.core.api.Assertions.assertThat(body)
+                .contains("event:done")
+                .contains("\"diffs\":[")
+                .contains("\"path\":\"src/a.txt\"")
+                .contains("\"added\":false")
+                .contains("\"addedLines\":1")
+                .contains("\"removedLines\":1")
+                .contains("\"unreadable\":false")
+                // Non-régression : les champs préexistants de `done` sont intacts.
+                .contains("\"changedFiles\":[\"src/a.txt\"]");
+    }
+
+    @Test
+    void doneCarriesAnEmptyModificationListWhenNothingChanged() throws Exception {
+        when(access.hasAccess()).thenReturn(true);
+        when(sessionService.runTaskStreaming(eq(USER), eq(WORKSPACE), any(), any()))
+                .thenReturn(new AtelierSessionResult("Rien à faire.", List.of()));
+
+        var result = mockMvc(props(true)).perform(post("/workspaces/" + WORKSPACE + "/agent/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("{\"message\":\"go\"}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        String body = result.getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        org.assertj.core.api.Assertions.assertThat(body)
+                .contains("event:done")
+                .contains("\"diffs\":[]");
     }
 
     @Test

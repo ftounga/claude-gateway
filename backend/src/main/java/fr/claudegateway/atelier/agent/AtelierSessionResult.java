@@ -20,24 +20,42 @@ import java.util.List;
  * @param budgetReached vrai si le tour s'est arrêté sur le <b>plafond de dépense</b> de la session
  *                      (F-36 SF-36-01). Distinct du quota mensuel épuisé : ce run-ci a atteint sa
  *                      borne, le suivant repartira d'un plafond neuf
+ * @param diffs         modifications constatées à la resynchronisation (F-37 SF-37-01) : le contenu
+ *                      de ce qui a changé, et pas seulement la liste des chemins. Sous-ensemble de
+ *                      {@code changedFiles} — un tour qui touche plus de fichiers que la borne
+ *                      configurée les réécrit tous mais n'en décrit que les premiers
  */
 public record AtelierSessionResult(String reply, List<String> changedFiles, long inputTokens,
-        long outputTokens, long activeSeconds, boolean interrupted, boolean budgetReached) {
+        long outputTokens, long activeSeconds, boolean interrupted, boolean budgetReached,
+        List<FileDiff> diffs) {
+
+    /** Liste des modifications toujours exploitable, y compris construite par une forme historique. */
+    public AtelierSessionResult {
+        diffs = diffs == null ? List.of() : List.copyOf(diffs);
+    }
 
     /** Résultat sans consommation connue (relevé best-effort en échec, ou run hors session). */
     public AtelierSessionResult(String reply, List<String> changedFiles) {
-        this(reply, changedFiles, 0L, 0L, 0L, false, false);
+        this(reply, changedFiles, 0L, 0L, 0L, false, false, List.of());
     }
 
     /** Résultat d'un tour mené à son terme (jamais interrompu) : forme historique. */
     public AtelierSessionResult(String reply, List<String> changedFiles, long inputTokens,
             long outputTokens, long activeSeconds) {
-        this(reply, changedFiles, inputTokens, outputTokens, activeSeconds, false, false);
+        this(reply, changedFiles, inputTokens, outputTokens, activeSeconds, false, false, List.of());
     }
 
     /** Résultat d'un tour sans plafond atteint : forme d'avant F-36. */
     public AtelierSessionResult(String reply, List<String> changedFiles, long inputTokens,
             long outputTokens, long activeSeconds, boolean interrupted) {
-        this(reply, changedFiles, inputTokens, outputTokens, activeSeconds, interrupted, false);
+        this(reply, changedFiles, inputTokens, outputTokens, activeSeconds, interrupted, false,
+                List.of());
+    }
+
+    /** Résultat sans description des modifications : forme d'avant F-37. */
+    public AtelierSessionResult(String reply, List<String> changedFiles, long inputTokens,
+            long outputTokens, long activeSeconds, boolean interrupted, boolean budgetReached) {
+        this(reply, changedFiles, inputTokens, outputTokens, activeSeconds, interrupted,
+                budgetReached, List.of());
     }
 }
