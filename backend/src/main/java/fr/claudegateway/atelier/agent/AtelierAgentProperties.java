@@ -38,6 +38,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                             sans multiplication du coût de bac à sable, et le budget de session
  *                             (F-36) les borne tous à la fois. Le flag reste pour <b>couper sans
  *                             redéployer</b> si l'usage révélait une dérive
+ * @param effort               effort de raisonnement du modèle (F-28 SF-28-17) : {@code low} à
+ *                             {@code max}, défaut {@code xhigh}. Envoyé en surcharge de session, donc
+ *                             modifiable sans re-provisionner l'agent
  * @param maxSubagents         plafond du nombre de sous-agents par session (défaut {@code 3},
  *                             F-35 SF-35-01) : borne le parallélisme, pas la dépense — celle-ci est
  *                             bornée par le budget partagé de la session
@@ -58,7 +61,13 @@ public record AtelierAgentProperties(
         Integer maxInstructionsChars,
         Duration confirmTimeout,
         Boolean subagentsEnabled,
-        Integer maxSubagents) {
+        Integer maxSubagents,
+        String effort) {
+
+    /** Niveaux d'effort acceptés par le fournisseur ; toute autre valeur retombe sur le défaut. */
+    private static final java.util.Set<String> ALLOWED_EFFORTS =
+            java.util.Set.of("low", "medium", "high", "xhigh", "max");
+
 
     public AtelierAgentProperties {
         if (environmentName == null || environmentName.isBlank()) {
@@ -77,7 +86,7 @@ public record AtelierAgentProperties(
             maxInstructionsChars = 20_000;
         }
         if (model == null || model.isBlank()) {
-            model = "claude-opus-4-8";
+            model = "claude-opus-5";
         }
         if (allowPackageManagers == null) {
             allowPackageManagers = true;
@@ -99,6 +108,10 @@ public record AtelierAgentProperties(
         if (subagentsEnabled == null) {
             // Activée par défaut (révision D1) : une capacité livrée mais éteinte n'est jamais testée.
             subagentsEnabled = true;
+        }
+        if (effort == null || effort.isBlank() || !ALLOWED_EFFORTS.contains(effort)) {
+            // Une faute de frappe en configuration ne doit pas faire échouer les runs (F-28 SF-28-17).
+            effort = "xhigh";
         }
         if (maxSubagents == null || maxSubagents <= 0) {
             // Trois : le gain de parallélisme est déjà là, sans rendre la transcription illisible.

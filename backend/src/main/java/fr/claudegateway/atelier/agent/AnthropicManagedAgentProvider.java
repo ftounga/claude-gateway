@@ -198,7 +198,8 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
     @Override
     public ManagedSession createSession(String agentId, String environmentId, List<FileMount> resources,
             RepositoryMount repository, String systemOverride, SessionPermissions permissions,
-            McpAccess mcpAccess, SessionBudget budget, DelegationPolicy delegation) {
+            McpAccess mcpAccess, SessionBudget budget, DelegationPolicy delegation,
+            ModelChoice model) {
         List<Map<String, Object>> mounts = new ArrayList<>();
         for (FileMount mount : resources) {
             mounts.add(Map.of(
@@ -217,7 +218,7 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
                     "checkout", Map.of("type", "branch", "name", repository.branch())));
         }
         Map<String, Object> body = new java.util.LinkedHashMap<>();
-        body.put("agent", agentReference(agentId, systemOverride, permissions, mcpAccess, delegation));
+        body.put("agent", agentReference(agentId, systemOverride, permissions, mcpAccess, delegation, model));
         body.put("environment_id", environmentId);
         body.put("resources", mounts);
         if (mcpAccess != null) {
@@ -266,17 +267,26 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
      * </ul>
      */
     private static Object agentReference(String agentId, String systemOverride,
-            SessionPermissions permissions, McpAccess mcpAccess, DelegationPolicy delegation) {
+            SessionPermissions permissions, McpAccess mcpAccess, DelegationPolicy delegation,
+            ModelChoice model) {
         boolean hasSystem = systemOverride != null && !systemOverride.isBlank();
         boolean hasPolicy = permissions != null && permissions.askBeforeShellCommands();
         boolean hasMcp = mcpAccess != null;
         boolean hasDelegation = delegation != null && delegation.enabled();
-        if (!hasSystem && !hasPolicy && !hasMcp && !hasDelegation) {
+        boolean hasModel = model != null;
+        if (!hasSystem && !hasPolicy && !hasMcp && !hasDelegation && !hasModel) {
             return agentId;
         }
         Map<String, Object> reference = new java.util.LinkedHashMap<>();
         reference.put("type", "agent_with_overrides");
         reference.put("id", agentId);
+        if (hasModel) {
+            // Modèle et effort décidés PAR SESSION (F-28 SF-28-17) : l'agent provisionné garde les
+            // siens, et changer la configuration ne demande ni re-provisionnement ni migration.
+            reference.put("model", Map.of(
+                    "id", model.id(),
+                    "effort", Map.of("type", model.effort())));
+        }
         if (hasSystem) {
             reference.put("system", systemOverride);
         }
