@@ -3,6 +3,8 @@ package fr.claudegateway.atelier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayOutputStream;
@@ -242,5 +244,51 @@ class WorkspaceServiceTest {
             }
         }
         return out;
+    }
+    // ---- F-28 SF-28-16 : nommer et renommer un projet ----
+
+    @Test
+    void renameWorkspaceChangesOnlyTheLabel() {
+        Workspace workspace = Workspace.builder().id(workspaceId).userId(alice).name("export-final-v2").build();
+        when(workspaceRepository.findByIdAndUserId(workspaceId, alice)).thenReturn(Optional.of(workspace));
+        when(workspaceRepository.save(workspace)).thenReturn(workspace);
+
+        Workspace renamed = service().renameWorkspace(alice, workspaceId, "  Refonte SCRM  ");
+
+        // Élagué, et rien d'autre n'est touché : ni stockage, ni session.
+        assertThat(renamed.getName()).isEqualTo("Refonte SCRM");
+    }
+
+    @Test
+    void renameWorkspaceRefusesAnEmptyName() {
+        Workspace workspace = Workspace.builder().id(workspaceId).userId(alice).name("projet").build();
+        when(workspaceRepository.findByIdAndUserId(workspaceId, alice)).thenReturn(Optional.of(workspace));
+
+        assertThatThrownBy(() -> service().renameWorkspace(alice, workspaceId, "   "))
+                .isInstanceOf(InvalidArchiveException.class);
+
+        assertThat(workspace.getName()).isEqualTo("projet");
+        verify(workspaceRepository, never()).save(any());
+    }
+
+    @Test
+    void renameWorkspaceRefusesANameLongerThanTheColumn() {
+        Workspace workspace = Workspace.builder().id(workspaceId).userId(alice).name("projet").build();
+        when(workspaceRepository.findByIdAndUserId(workspaceId, alice)).thenReturn(Optional.of(workspace));
+
+        assertThatThrownBy(() -> service().renameWorkspace(alice, workspaceId, "x".repeat(256)))
+                .isInstanceOf(InvalidArchiveException.class);
+
+        verify(workspaceRepository, never()).save(any());
+    }
+
+    @Test
+    void renameWorkspaceOfAnotherUserIsNotFoundAndWritesNothing() {
+        when(workspaceRepository.findByIdAndUserId(workspaceId, alice)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service().renameWorkspace(alice, workspaceId, "peu importe"))
+                .isInstanceOf(WorkspaceNotFoundException.class);
+
+        verify(workspaceRepository, never()).save(any());
     }
 }

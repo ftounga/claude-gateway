@@ -32,6 +32,10 @@ import {
 } from '../chat/confirm-dialog/confirm-dialog.component';
 import { CopyBlockComponent } from '../chat/copy-block/copy-block.component';
 import {
+  TextPromptDialogComponent,
+  TextPromptDialogData,
+} from './files/text-prompt-dialog.component';
+import {
   LibraryPickerDialogComponent,
   PickedLibraryDocument,
 } from '../chat/library-picker/library-picker-dialog.component';
@@ -323,8 +327,58 @@ export class AtelierComponent implements OnInit, OnDestroy {
       this.notifyError(oversizeMessage(file.size));
       return;
     }
+    // Nom proposé à la création (F-28 SF-28-16) : pré-rempli avec le nom de l'archive, modifiable.
+    // Annuler la saisie annule l'import — l'utilisateur a choisi un fichier, pas encore un projet.
+    const suggested = file.name.replace(/\.zip$/i, '');
+    this.promptForName('Nommer le projet', suggested, (name) => this.uploadZip(file, name));
+  }
+
+  /** Demande un nom à l'utilisateur, pré-rempli, puis exécute l'action. Annuler ne fait rien. */
+  private promptForName(title: string, initialValue: string, then: (name: string) => void): void {
+    const data: TextPromptDialogData = {
+      title,
+      label: 'Nom du projet',
+      confirmLabel: 'Valider',
+      initialValue,
+      hint: 'Une étiquette : deux projets peuvent porter le même nom.',
+    };
+    this.dialog
+      .open(TextPromptDialogComponent, { data, width: '420px' })
+      .afterClosed()
+      .subscribe((name) => {
+        if (name && name.trim().length > 0) {
+          then(name.trim());
+        }
+      });
+  }
+
+  /** Renomme le projet actif (F-28 SF-28-16) : étiquette seule, rien d'autre ne bouge. */
+  renameActiveWorkspace(): void {
+    const id = this.activeWorkspaceId();
+    if (!id) {
+      return;
+    }
+    this.promptForName('Renommer le projet', this.activeName(), (name) => {
+      this.atelier.renameWorkspace(id, name).subscribe({
+        next: (detail) => {
+          this.workspaces.update((list) =>
+            list.map((w) => (w.id === id ? { ...w, name: detail.name } : w)),
+          );
+          this.snackBar.open('Projet renommé.', 'Fermer', { duration: 3000 });
+        },
+        error: (err: unknown) =>
+          this.notifyError(
+            err instanceof HttpErrorResponse && err.status === 404
+              ? 'Projet introuvable.'
+              : "Le projet n'a pas pu être renommé. Veuillez réessayer.",
+          ),
+      });
+    });
+  }
+
+  private uploadZip(file: File, name: string): void {
     this.creating.set(true);
-    this.atelier.createWorkspace(file).subscribe({
+    this.atelier.createWorkspace(file, name).subscribe({
       next: (workspace) => {
         this.creating.set(false);
         this.adoptWorkspace(workspace);

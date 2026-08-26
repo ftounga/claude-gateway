@@ -138,6 +138,17 @@
       <mat-toolbar class="atelier-toolbar">
         <mat-icon class="toolbar-icon">terminal</mat-icon>
         <span class="atelier-heading">{{ activeName() }}</span>
+        <!-- Renommer le projet (F-28 SF-28-16) : le nom est une etiquette, editable a tout moment. -->
+        <button
+          mat-icon-button
+          type="button"
+          class="rename-project"
+          matTooltip="Renommer le projet"
+          aria-label="Renommer le projet"
+          (click)="renameActiveWorkspace()"
+        >
+          <mat-icon>edit</mat-icon>
+        </button>
         @if (activeIsGit()) {
           <!-- Dépôt et branche montés (F-31 / SF-31-02) : savoir sur quoi l'on travaille. -->
           <span class="badge badge--neutral git-chip" [matTooltip]="activeDetail()?.gitRepoUrl ?? ''">

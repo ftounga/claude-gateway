@@ -370,6 +370,14 @@ export class AtelierService {
     return this.http.post<void>(`/api/workspaces/${id}/agent/confirm`, decision);
   }
 
+  /**
+   * Renomme le projet (F-28 SF-28-16). Le nom est une étiquette : ni les fichiers, ni la session
+   * sandbox, ni l'historique ne bougent.
+   */
+  renameWorkspace(id: string, name: string): Observable<WorkspaceDetail> {
+    return this.http.post<WorkspaceDetail>(`/api/workspaces/${id}/rename`, { name });
+  }
+
   /** Historique de conversation du workspace. */
   getHistory(id: string): Observable<AtelierMessage[]> {
     return this.http.get<AtelierMessage[]>(`/api/workspaces/${id}/chat`);

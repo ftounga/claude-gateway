@@ -27,6 +27,9 @@ import fr.claudegateway.atelier.storage.WorkspaceStorage;
 @Service
 public class WorkspaceService {
 
+    /** Longueur maximale du nom d'un projet : borne de la colonne `workspaces.name`. */
+    private static final int MAX_NAME_LENGTH = 255;
+
     private static final String CLAUDE_MD = "CLAUDE.md";
     private static final byte[] DEFAULT_CLAUDE_MD = ("# CLAUDE.md\n\n"
             + "Conventions et contexte de ce projet, à destination de Claude.\n"
@@ -136,6 +139,32 @@ public class WorkspaceService {
         }
         storage.putFile(prefixOf(userId, id) + rel, bytes, "text/plain; charset=utf-8");
         workspaceRepository.save(workspace); // rafraîchit updated_at
+    }
+
+    /**
+     * Renomme le projet (F-28 / SF-28-16). Isolation d'abord, comme tout accès à un workspace.
+     *
+     * <p>Le renommage ne touche <b>que</b> l'étiquette : ni les fichiers (rangés sous l'identifiant du
+     * workspace, jamais sous son nom), ni la session sandbox, ni l'historique de conversation.</p>
+     *
+     * @param userId utilisateur propriétaire (isolation)
+     * @param id     workspace à renommer
+     * @param name   nouveau nom ; élagué, refusé s'il est vide ou trop long
+     * @return le workspace renommé
+     * @throws InvalidArchiveException si le nom est vide ou dépasse la longueur de la colonne
+     */
+    @Transactional
+    public Workspace renameWorkspace(UUID userId, UUID id, String name) {
+        Workspace workspace = requireOwned(userId, id);
+        String trimmed = name == null ? "" : name.trim();
+        if (trimmed.isEmpty()) {
+            throw new InvalidArchiveException("Le nom du projet ne peut pas être vide.");
+        }
+        if (trimmed.length() > MAX_NAME_LENGTH) {
+            throw new InvalidArchiveException("Le nom du projet est trop long (255 caractères au plus).");
+        }
+        workspace.setName(trimmed);
+        return workspaceRepository.save(workspace);
     }
 
     /** Supprime le workspace (fichiers + ligne). */
