@@ -106,9 +106,15 @@ class AtelierSessionServiceTest {
     }
 
     private AtelierSessionService service(AtelierAgentProperties props, AtelierCostProperties cost) {
+        return service(props, cost, new AtelierDiffProperties(null, null));
+    }
+
+    /** Service avec des bornes de diff explicites (F-37 / SF-37-01). */
+    private AtelierSessionService service(AtelierAgentProperties props, AtelierCostProperties cost,
+            AtelierDiffProperties diff) {
         return new AtelierSessionService(provider, workspaceService, bootstrapService, props, quotaService,
                 workspaceRepository, messageRepository, gitTokenService, instructionsService,
-                mcpVaultService, cost);
+                mcpVaultService, cost, diff);
     }
 
     /** Réglages de dépense par défaut (F-36 / SF-36-01) : plafond 2 $, plancher 0,10 $, 9 $/M. */
@@ -1708,5 +1714,166 @@ class AtelierSessionServiceTest {
         verify(provider).createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(),
                 captor.capture(), any(), any());
         return captor.getValue();
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Diff des modifications du tour (F-37 / SF-37-01).
+    // ---------------------------------------------------------------------------------------------
+
+    /** Run nominal sur une session neuve, avec les sorties données. */
+    private void stubRunWithOutputs(List<OutputFile> outputs) {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of("src/a.txt"));
+        when(workspaceService.readFile(USER, WORKSPACE, "src/a.txt")).thenReturn("un\ndeux\ntrois\n");
+        when(provider.uploadFile(eq("src_a.txt"), any())).thenReturn("file_in");
+        when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(),
+                any(), any(), any())).thenReturn(new ManagedSession("sess_1"));
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+                .thenReturn(new SessionRun("Terminé.", "end_turn"));
+        when(provider.listOutputs("sess_1")).thenReturn(outputs);
+    }
+
+    @Test
+    void aRewrittenFileCarriesTheUnifiedDiffOfWhatChanged() {
+        stubRunWithOutputs(List.of(new OutputFile("out_1", "/workspace/src/a.txt")));
+        when(provider.downloadFile("out_1")).thenReturn("un\nDEUX\ntrois\n".getBytes());
+
+        AtelierSessionResult result = service(enabled()).runTask(USER, WORKSPACE, "corrige");
+
+        assertThat(result.changedFiles()).containsExactly("src/a.txt");
+        assertThat(result.diffs()).hasSize(1);
+        FileDiff diff = result.diffs().get(0);
+        assertThat(diff.path()).isEqualTo("src/a.txt");
+        assertThat(diff.added()).isFalse();
+        assertThat(diff.diff()).contains("-deux").contains("+DEUX");
+        assertThat(diff.addedLines()).isEqualTo(1);
+        assertThat(diff.removedLines()).isEqualTo(1);
+        verify(workspaceService).writeFile(USER, WORKSPACE, "src/a.txt", "un\nDEUX\ntrois\n");
+    }
+
+    @Test
+    void aFileRewrittenIdenticallyIsNeitherWrittenNorAnnouncedAsModified() {
+        // Une session persistante réexpose ses sorties : sans ce filtre, un fichier intact serait
+        // annoncé comme modifié, avec un diff vide (F-37, décision D5).
+        stubRunWithOutputs(List.of(new OutputFile("out_1", "/workspace/src/a.txt")));
+        when(provider.downloadFile("out_1")).thenReturn("un\ndeux\ntrois\n".getBytes());
+
+        AtelierSessionResult result = service(enabled()).runTask(USER, WORKSPACE, "ne change rien");
+
+        assertThat(result.changedFiles()).isEmpty();
+        assertThat(result.diffs()).isEmpty();
+        verify(workspaceService, never()).writeFile(eq(USER), eq(WORKSPACE), eq("src/a.txt"), any());
+    }
+
+    @Test
+    void aFileThatDidNotExistIsPresentedAsAFullAddition() {
+        stubRunWithOutputs(List.of(new OutputFile("out_1", "/mnt/session/outputs/nouveau.txt")));
+        when(provider.downloadFile("out_1")).thenReturn("alpha\nbeta\n".getBytes());
+
+        AtelierSessionResult result = service(enabled()).runTask(USER, WORKSPACE, "crée");
+
+        assertThat(result.diffs()).hasSize(1);
+        FileDiff diff = result.diffs().get(0);
+        assertThat(diff.added()).isTrue();
+        assertThat(diff.addedLines()).isEqualTo(2);
+        assertThat(diff.removedLines()).isZero();
+        assertThat(diff.diff()).contains("+alpha").contains("+beta");
+    }
+
+    @Test
+    void anUnreadablePreviousVersionDegradesToAnAdditionInsteadOfFailingTheRun() {
+        // Le fichier est dans l'arborescence mais sa lecture échoue : un défaut d'affichage ne doit
+        // jamais faire échouer un run déjà mené à son terme.
+        stubRunWithOutputs(List.of(new OutputFile("out_1", "/workspace/src/a.txt")));
+        when(workspaceService.readFile(USER, WORKSPACE, "src/a.txt"))
+                .thenReturn("un\ndeux\ntrois\n")
+                .thenThrow(new WorkspaceNotFoundException("Fichier introuvable : src/a.txt"));
+        when(provider.downloadFile("out_1")).thenReturn("neuf\n".getBytes());
+
+        AtelierSessionResult result = service(enabled()).runTask(USER, WORKSPACE, "corrige");
+
+        assertThat(result.changedFiles()).containsExactly("src/a.txt");
+        assertThat(result.diffs()).hasSize(1);
+        assertThat(result.diffs().get(0).added()).isTrue();
+    }
+
+    @Test
+    void theNumberOfDescribedFilesIsBoundedWhileTheChangedListStaysComplete() {
+        stubRunWithOutputs(List.of(
+                new OutputFile("out_1", "un.txt"),
+                new OutputFile("out_2", "deux.txt"),
+                new OutputFile("out_3", "trois.txt")));
+        when(provider.downloadFile("out_1")).thenReturn("a\n".getBytes());
+        when(provider.downloadFile("out_2")).thenReturn("b\n".getBytes());
+        when(provider.downloadFile("out_3")).thenReturn("c\n".getBytes());
+
+        AtelierSessionResult result = service(enabled(), costProperties(),
+                new AtelierDiffProperties(400, 2)).runTask(USER, WORKSPACE, "génère");
+
+        // Tous les fichiers sont réécrits et listés ; seuls les deux premiers sont décrits.
+        assertThat(result.changedFiles()).containsExactly("un.txt", "deux.txt", "trois.txt");
+        assertThat(result.diffs()).extracting(FileDiff::path).containsExactly("un.txt", "deux.txt");
+        verify(workspaceService).writeFile(USER, WORKSPACE, "trois.txt", "c\n");
+    }
+
+    @Test
+    void aDiffLongerThanTheBoundIsTruncatedAndSaysHowMuchWasOmitted() {
+        StringBuilder generated = new StringBuilder();
+        for (int i = 0; i < 100; i++) {
+            generated.append("ligne ").append(i).append('\n');
+        }
+        stubRunWithOutputs(List.of(new OutputFile("out_1", "genere.txt")));
+        when(provider.downloadFile("out_1")).thenReturn(generated.toString().getBytes());
+
+        AtelierSessionResult result = service(enabled(), costProperties(),
+                new AtelierDiffProperties(10, 50)).runTask(USER, WORKSPACE, "génère");
+
+        FileDiff diff = result.diffs().get(0);
+        assertThat(diff.diff().lines()).hasSize(10);
+        assertThat(diff.omittedLines()).isEqualTo(91);
+    }
+
+    @Test
+    void theTurnIsPersistedWithItsDiffs() {
+        stubRunWithOutputs(List.of(new OutputFile("out_1", "/workspace/src/a.txt")));
+        when(provider.downloadFile("out_1")).thenReturn("un\nDEUX\ntrois\n".getBytes());
+
+        service(enabled()).runTask(USER, WORKSPACE, "corrige");
+
+        ArgumentCaptor<fr.claudegateway.atelier.AtelierMessage> saved =
+                ArgumentCaptor.forClass(fr.claudegateway.atelier.AtelierMessage.class);
+        verify(messageRepository, times(2)).save(saved.capture());
+        assertThat(saved.getAllValues().get(1).getTerminalJson())
+                .contains("\"diffs\"")
+                .contains("\"path\":\"src/a.txt\"")
+                .contains("+DEUX");
+    }
+
+    @Test
+    void aTurnWithoutAnyModificationKeepsTheDocumentItHadBeforeF37() {
+        // Sans transcription, sans interruption et sans modification, le tour reste sans document :
+        // exactement le comportement d'avant F-37.
+        stubNominalRun();
+
+        service(enabled()).runTask(USER, WORKSPACE, "bonjour");
+
+        ArgumentCaptor<fr.claudegateway.atelier.AtelierMessage> saved =
+                ArgumentCaptor.forClass(fr.claudegateway.atelier.AtelierMessage.class);
+        verify(messageRepository, times(2)).save(saved.capture());
+        assertThat(saved.getAllValues().get(1).getTerminalJson()).isNull();
+    }
+
+    @Test
+    void aBinaryOutputIsWrittenButReportedAsUnreadableRatherThanCompared() {
+        stubRunWithOutputs(List.of(new OutputFile("out_1", "image.bin")));
+        when(provider.downloadFile("out_1")).thenReturn(new byte[] {80, 75, 0, 3, 4});
+
+        AtelierSessionResult result = service(enabled()).runTask(USER, WORKSPACE, "génère");
+
+        assertThat(result.changedFiles()).containsExactly("image.bin");
+        assertThat(result.diffs()).hasSize(1);
+        assertThat(result.diffs().get(0).unreadable()).isTrue();
+        assertThat(result.diffs().get(0).diff()).isEmpty();
     }
 }

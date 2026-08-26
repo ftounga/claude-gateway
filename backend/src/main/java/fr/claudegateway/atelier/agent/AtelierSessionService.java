@@ -94,6 +94,7 @@ public class AtelierSessionService {
     private final ProjectInstructionsService instructionsService;
     private final McpVaultService mcpVaultService;
     private final AtelierCostProperties costProperties;
+    private final AtelierDiffProperties diffProperties;
 
     /** Sérialisation de la transcription persistée (F-30 SF-30-09) : donnée d'affichage. */
     private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER =
@@ -126,7 +127,7 @@ public class AtelierSessionService {
             QuotaService quotaService, WorkspaceRepository workspaceRepository,
             AtelierMessageRepository messageRepository, GitTokenService gitTokenService,
             ProjectInstructionsService instructionsService, McpVaultService mcpVaultService,
-            AtelierCostProperties costProperties) {
+            AtelierCostProperties costProperties, AtelierDiffProperties diffProperties) {
         this.provider = provider;
         this.workspaceService = workspaceService;
         this.bootstrapService = bootstrapService;
@@ -138,6 +139,7 @@ public class AtelierSessionService {
         this.instructionsService = instructionsService;
         this.mcpVaultService = mcpVaultService;
         this.costProperties = costProperties;
+        this.diffProperties = diffProperties;
     }
 
     /**
@@ -320,18 +322,35 @@ public class AtelierSessionService {
         // 6. Resync INCRÉMENTAL : une session persistante réexpose ses sorties à chaque tour ; ne
         // réécrire que les nouvelles évite de repasser sur tout le workspace et de signaler comme
         // modifiés des fichiers intacts.
+        //
+        // C'est ici, et nulle part ailleurs, que se calcule le DIFF du tour (F-37 / SF-37-01) :
+        // l'ancien contenu est encore lisible dans le stockage, le nouveau vient d'être téléchargé.
+        // Les deux versions ne coexistent qu'à cet instant.
         List<String> changed = new ArrayList<>();
+        List<FileDiff> diffs = new ArrayList<>();
         Set<String> alreadySynced = syncedOutputs.computeIfAbsent(sessionId, k -> ConcurrentHashMap.newKeySet());
-        Map<String, String> byBasename = basenameIndex(workspaceService.tree(userId, workspaceId));
-        Set<String> knownPaths = new HashSet<>(workspaceService.tree(userId, workspaceId));
+        List<String> tree = workspaceService.tree(userId, workspaceId);
+        Map<String, String> byBasename = basenameIndex(tree);
+        Set<String> knownPaths = new HashSet<>(tree);
         for (OutputFile output : provider.listOutputs(sessionId)) {
             if (!alreadySynced.add(output.fileId())) {
                 continue;
             }
             byte[] bytes = provider.downloadFile(output.fileId());
             String relPath = resolveOutputPath(normalizePath(output.filename()), knownPaths, byBasename);
-            workspaceService.writeFile(userId, workspaceId, relPath, new String(bytes, UTF_8));
+            String content = new String(bytes, UTF_8);
+            String previous = knownPaths.contains(relPath) ? readQuietly(userId, workspaceId, relPath) : null;
+            if (content.equals(previous)) {
+                // Réécrit à l'identique (F-37 D5) : une session persistante réexpose ses sorties, et
+                // après un redémarrage d'instance le registre incrémental est vide. L'annoncer comme
+                // modifié serait faux — et son diff serait vide.
+                continue;
+            }
+            workspaceService.writeFile(userId, workspaceId, relPath, content);
             changed.add(relPath);
+            if (diffs.size() < diffProperties.maxFiles()) {
+                diffs.add(UnifiedDiff.between(relPath, previous, content, diffProperties.maxLines()));
+            }
         }
 
         // 7. Décompte du DELTA de consommation (F-30 SF-30-04) : `getSessionUsage` renvoie un cumul
@@ -342,11 +361,30 @@ public class AtelierSessionService {
         // 8. Historique (F-30 SF-30-09) : le run a abouti, on conserve la demande, la réponse et la
         // transcription. Un run en échec ne passe jamais ici — cohérent avec l'écran, qui retire le
         // tour optimiste en annonçant que rien n'a été enregistré.
-        persistTurn(userId, workspaceId, message, run.reply(), transcript, usage, interrupted, budgetReached);
+        persistTurn(userId, workspaceId, message, run.reply(), transcript, usage, interrupted,
+                budgetReached, diffs);
 
         log.debug("Run atelier terminé : {} fichier(s) modifié(s).", changed.size());
         return new AtelierSessionResult(run.reply(), changed, usage.inputTokens(), usage.outputTokens(),
-                usage.activeSeconds(), interrupted, budgetReached);
+                usage.activeSeconds(), interrupted, budgetReached, diffs);
+    }
+
+    /**
+     * Ancien contenu d'un fichier sur le point d'être réécrit, ou {@code null} s'il n'est pas lisible
+     * (F-37 / SF-37-01). Un fichier disparu du stockage entre l'inventaire et la lecture est alors
+     * traité comme <b>nouveau</b> : le diff dégrade en ajout intégral plutôt que de faire échouer un
+     * run déjà mené à son terme pour un motif d'affichage.
+     *
+     * <p>L'isolation est celle de tout accès au workspace : {@code readFile} ré-applique
+     * {@code requireOwned} sur le {@code userId} du JWT.</p>
+     */
+    private String readQuietly(UUID userId, UUID workspaceId, String path) {
+        try {
+            return workspaceService.readFile(userId, workspaceId, path);
+        } catch (RuntimeException ex) {
+            log.debug("Ancien contenu illisible : la modification sera présentée comme un ajout.");
+            return null;
+        }
     }
 
     /**
@@ -358,7 +396,8 @@ public class AtelierSessionService {
      * ne doit pas les faire échouer après coup.</p>
      */
     private void persistTurn(UUID userId, UUID workspaceId, String message, String reply,
-            TerminalTranscript transcript, TurnUsage usage, boolean interrupted, boolean budgetReached) {
+            TerminalTranscript transcript, TurnUsage usage, boolean interrupted, boolean budgetReached,
+            List<FileDiff> diffs) {
         try {
             messageRepository.save(AtelierMessage.builder()
                     .workspaceId(workspaceId)
@@ -371,7 +410,7 @@ public class AtelierSessionService {
                     .userId(userId)
                     .role("ASSISTANT")
                     .content(reply == null ? "" : reply)
-                    .terminalJson(serializeTranscript(transcript, usage, interrupted, budgetReached))
+                    .terminalJson(serializeTranscript(transcript, usage, interrupted, budgetReached, diffs))
                     .build());
         } catch (RuntimeException ex) {
             log.debug("Historisation du tour d'exécution ignorée (best-effort) : run déjà livré.");
@@ -388,8 +427,8 @@ public class AtelierSessionService {
      * tour d'apparence normale là où il avait coupé.</p>
      */
     private String serializeTranscript(TerminalTranscript transcript, TurnUsage usage,
-            boolean interrupted, boolean budgetReached) {
-        if (transcript.isEmpty() && !interrupted && !budgetReached) {
+            boolean interrupted, boolean budgetReached, List<FileDiff> diffs) {
+        if (transcript.isEmpty() && !interrupted && !budgetReached && diffs.isEmpty()) {
             return null;
         }
         TerminalTranscript.Bounded bounded = transcript.bounded(properties.maxTranscriptChars());
@@ -401,6 +440,11 @@ public class AtelierSessionService {
         document.put("activeSeconds", usage.activeSeconds());
         document.put("interrupted", interrupted);
         document.put("budgetReached", budgetReached);
+        if (!diffs.isEmpty()) {
+            // Clé ABSENTE quand le tour n'a rien modifié (F-37 / SF-37-01) : un document de tour
+            // inchangé reste bit pour bit celui d'avant F-37.
+            document.put("diffs", diffs);
+        }
         try {
             return MAPPER.writeValueAsString(document);
         } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {

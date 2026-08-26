@@ -100,6 +100,15 @@ app:
       # `max-subagents` borne le PARALLELISME, pas la depense (c'est le budget qui la borne).
       subagents-enabled: ${APP_ATELIER_AGENT_SUBAGENTS_ENABLED:true}
       max-subagents: ${APP_ATELIER_AGENT_MAX_SUBAGENTS:3}
+      diff:
+        # Diff des modifications d'un tour (F-37 / SF-37-01). `max-lines` borne le diff PAR FICHIER
+        # (decision D3 du cadrage) : au-dela, troncature avec mention du volume omis — un fichier
+        # genere entierement reecrit produirait des milliers de lignes que personne ne lit.
+        # `max-files` borne le NOMBRE de fichiers decrits dans un tour : les suivants restent reecrits
+        # et listes dans les fichiers modifies, sans diff, pour ne pas faire gonfler sans limite le
+        # document du tour (qui porte deja la transcription).
+        max-lines: ${APP_ATELIER_AGENT_MAX_DIFF_LINES:400}
+        max-files: ${APP_ATELIER_AGENT_MAX_DIFF_FILES:50}
       cost:
         # Plafond de depense d'une session (F-36 / SF-36-01) : verrou PRE-requete pose a la creation
         # de la session. Le pire cas d'un run passe d'illimite a `max-run-cost`. Valeurs commerciales

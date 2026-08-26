@@ -28,6 +28,7 @@ import fr.claudegateway.atelier.agent.AtelierAgentDisabledException;
 import fr.claudegateway.atelier.agent.AtelierAgentListener;
 import fr.claudegateway.atelier.agent.AtelierSessionResult;
 import fr.claudegateway.atelier.agent.AtelierSessionService;
+import fr.claudegateway.atelier.agent.FileDiff;
 import fr.claudegateway.atelier.dto.AgentConfirmRequest;
 import fr.claudegateway.atelier.dto.AgentConfirmationRequest;
 import fr.claudegateway.atelier.dto.AgentConfirmationResponse;
@@ -161,7 +162,7 @@ public class AtelierAgentController {
             emitter.send(SseEmitter.event().name("done")
                     .data(new StreamDone(result.reply(), result.changedFiles(),
                             result.inputTokens(), result.outputTokens(), result.activeSeconds(),
-                            result.interrupted(), result.budgetReached())));
+                            result.interrupted(), result.budgetReached(), result.diffs())));
             emitter.complete();
         } catch (WorkspaceNotFoundException ex) {
             sendError(emitter, "workspace_not_found");
@@ -388,9 +389,13 @@ public class AtelierAgentController {
      * Fin de run relayée au client. {@code budgetReached} dit que le tour s'est arrêté sur le
      * <b>plafond de dépense</b> de la session (F-36 SF-36-01) : le tour est conservé et facturé,
      * mais l'écran doit le distinguer d'un quota mensuel épuisé.
+     *
+     * <p>{@code diffs} porte <b>ce qui a changé</b> dans les fichiers (F-37 SF-37-01), et non plus la
+     * seule liste des chemins. Champ <b>additif</b> : un client qui l'ignore se comporte comme
+     * avant.</p>
      */
     record StreamDone(String reply, List<String> changedFiles, long inputTokens, long outputTokens,
-            long activeSeconds, boolean interrupted, boolean budgetReached) {
+            long activeSeconds, boolean interrupted, boolean budgetReached, List<FileDiff> diffs) {
     }
 
     record StreamError(String error) {
