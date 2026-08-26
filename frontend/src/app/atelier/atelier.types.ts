@@ -1,4 +1,5 @@
 import { AtelierAction, AtelierRole, AtelierAgentStreamAction, AtelierStreamAction, AtelierTerminalBlock } from '../core/models/atelier.models';
+import { AtelierFileDiffView } from './terminal/terminal-diff';
 
 /**
  * Mode de l'agent. Valeurs techniques inchangées (F-30 SF-30-03) : `edit` = mode **Assistant**
@@ -50,6 +51,12 @@ export interface AtelierThreadItem {
    * mensuel épuisé : l'écran doit le dire, et proposer l'action qui débloque réellement.
    */
   budgetReached?: boolean;
+  /**
+   * Ce qui a changé dans les fichiers (F-37 SF-37-02) : le diff unifié calculé et borné par le
+   * backend, replié par fichier. Absent d'un tour qui n'a rien modifié — et de tous les tours
+   * antérieurs à F-37, qui restent lisibles tels quels.
+   */
+  diffs?: AtelierFileDiffView[];
 }
 
 /** Coût d'un tour d'exécution affiché sous la transcription (F-30 SF-30-05). */

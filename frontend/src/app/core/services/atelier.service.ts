@@ -5,6 +5,7 @@ import { Observable } from 'rxjs';
 import { AuthService } from './auth.service';
 import {
   AtelierAgentStreamAction,
+  AtelierFileDiff,
   AtelierAgentStreamHandlers,
   AtelierChatRequest,
   AtelierConfirmDecision,
@@ -277,6 +278,8 @@ export class AtelierService {
       outputTokens?: number;
       activeSeconds?: number;
       interrupted?: boolean;
+      budgetReached?: boolean;
+      diffs?: AtelierFileDiff[];
       decision?: string;
     };
     try {
@@ -314,6 +317,11 @@ export class AtelierService {
         activeSeconds: payload.activeSeconds ?? 0,
         // Champ additif (F-32 SF-32-01) : absent d'un backend antérieur ⇒ tour non interrompu.
         interrupted: payload.interrupted === true,
+        // Idem pour le plafond de dépense du run (F-36 SF-36-01) : sans ce relais, la mention
+        // n'apparaissait qu'après rechargement de la page, relue du tour persisté.
+        budgetReached: payload.budgetReached === true,
+        // Modifications du tour (F-37 SF-37-01) : liste vide quand le backend ne les envoie pas.
+        diffs: payload.diffs ?? [],
       });
     } else if (event === 'confirm_request') {
       // L'agent attend une autorisation (F-33) : la session est en pause tant que rien n'est décidé.

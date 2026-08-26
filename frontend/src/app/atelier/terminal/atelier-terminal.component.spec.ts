@@ -3,6 +3,7 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 
 import { AtelierTerminalComponent } from './atelier-terminal.component';
 import { AtelierThreadItem } from '../atelier.types';
+import { AtelierFileDiffView } from './terminal-diff';
 
 /**
  * Vue terminal immersive (F-30 SF-30-07) : composant de présentation. On vérifie le rendu des lignes
@@ -598,5 +599,106 @@ describe('AtelierTerminalComponent', () => {
     fixture.detectChanges();
 
     expect(text()).toContain('sous-tâche 1');
+  });
+
+  // ---- F-37 SF-37-02 : modifications du tour, repliées par fichier ----
+
+  /** Tour assistant portant les modifications données. */
+  function turnWithDiffs(diffs: AtelierFileDiffView[]): AtelierThreadItem[] {
+    return [
+      { id: 'u1', role: 'USER', content: 'corrige le bug', actions: [] },
+      { id: 'a1', role: 'ASSISTANT', content: 'C\'est fait.', actions: [], diffs },
+    ];
+  }
+
+  const diffView = (over: Partial<AtelierFileDiffView> = {}): AtelierFileDiffView => ({
+    path: 'src/app.ts',
+    added: false,
+    diff: '@@ -1,2 +1,2 @@\n un\n-deux\n+DEUX',
+    addedLines: 1,
+    removedLines: 1,
+    omittedLines: 0,
+    unreadable: false,
+    expanded: false,
+    ...over,
+  });
+
+  it('liste une ligne par fichier modifié, repliée : le diff ne noie pas le fil (F-37)', () => {
+    component.messages = turnWithDiffs([
+      diffView(),
+      diffView({ path: 'src/nouveau.ts', added: true, addedLines: 4, removedLines: 0 }),
+    ]);
+    fixture.detectChanges();
+
+    const heads = fixture.nativeElement.querySelectorAll('.terminal-diff-head');
+    expect(heads.length).toBe(2);
+    expect(text()).toContain('Modifications');
+    expect(text()).toContain('src/app.ts');
+    expect(text()).toContain('+1 −1');
+    // Un fichier créé se dit : sans cela, sa création n'apparaîtrait nulle part.
+    expect(text()).toContain('nouveau');
+    // Replié : aucune ligne de diff rendue tant qu'on n'a rien déplié.
+    expect(fixture.nativeElement.querySelectorAll('.terminal-diff-line').length).toBe(0);
+  });
+
+  it('déplie le diff d\'un seul fichier, les autres restent repliés (F-37)', () => {
+    const first = diffView();
+    const second = diffView({ path: 'src/autre.ts' });
+    component.messages = turnWithDiffs([first, second]);
+    fixture.detectChanges();
+
+    fixture.nativeElement.querySelectorAll('.terminal-diff-head')[0].click();
+    fixture.detectChanges();
+
+    expect(first.expanded).toBeTrue();
+    expect(second.expanded).toBeFalse();
+    const lines = fixture.nativeElement.querySelectorAll('.terminal-diff-line');
+    expect(lines.length).toBe(4);
+    expect(lines[2].classList).toContain('is-remove');
+    expect(lines[3].classList).toContain('is-add');
+    expect(lines[0].classList).toContain('is-hunk');
+  });
+
+  it('replie de nouveau au second clic (F-37)', () => {
+    const only = diffView();
+    component.messages = turnWithDiffs([only]);
+    fixture.detectChanges();
+
+    const head = fixture.nativeElement.querySelector('.terminal-diff-head');
+    head.click();
+    fixture.detectChanges();
+    head.click();
+    fixture.detectChanges();
+
+    expect(only.expanded).toBeFalse();
+    expect(fixture.nativeElement.querySelectorAll('.terminal-diff-line').length).toBe(0);
+  });
+
+  it('dit le volume omis quand le backend a borné le diff (F-37)', () => {
+    component.messages = turnWithDiffs([diffView({ expanded: true, omittedLines: 120 })]);
+    fixture.detectChanges();
+
+    expect(text()).toContain('120 lignes omises');
+  });
+
+  it('dit « fichier binaire ou illisible » plutôt que d\'afficher un diff vide (F-37)', () => {
+    component.messages = turnWithDiffs([
+      diffView({ expanded: true, unreadable: true, diff: '', addedLines: 0, removedLines: 0 }),
+    ]);
+    fixture.detectChanges();
+
+    expect(text()).toContain('fichier binaire ou illisible');
+    expect(fixture.nativeElement.querySelectorAll('.terminal-diff-line').length).toBe(0);
+  });
+
+  it('n\'affiche aucune section quand le tour n\'a rien modifié (F-37)', () => {
+    component.messages = [
+      { id: 'u1', role: 'USER', content: 'bonjour', actions: [] },
+      { id: 'a1', role: 'ASSISTANT', content: 'Bonjour.', actions: [] },
+    ];
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.terminal-diffs')).toBeNull();
+    expect(text()).not.toContain('Modifications');
   });
 });
