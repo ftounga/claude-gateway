@@ -220,6 +220,55 @@
             </button>
           </div>
         }
+        @if (message.diffs && message.diffs.length > 0) {
+          <!--
+            Modifications du tour (F-37 / SF-37-02). REPLIÉES par fichier : la liste dit ce qui a
+            changé en une ligne chacun, et le détail est à un clic. Dépliées d'office, un tour qui
+            touche dix fichiers pousserait le commentaire de l'agent hors de l'écran.
+          -->
+          <div class="terminal-diffs">
+            <p class="terminal-diffs-title">
+              <mat-icon class="terminal-diffs-icon">difference</mat-icon>
+              Modifications
+            </p>
+            @for (change of message.diffs; track change.path) {
+              <div class="terminal-diff">
+                <button
+                  mat-button
+                  type="button"
+                  class="terminal-diff-head"
+                  [attr.aria-expanded]="change.expanded"
+                  (click)="toggleDiff(change)"
+                >
+                  <mat-icon class="terminal-diff-chevron">
+                    {{ change.expanded ? 'expand_more' : 'chevron_right' }}
+                  </mat-icon>
+                  <code class="terminal-diff-path">{{ change.path }}</code>
+                  @if (change.added) {
+                    <span class="terminal-diff-new">nouveau</span>
+                  }
+                  @if (diffCountLabel(change); as counts) {
+                    <span class="terminal-diff-counts">{{ counts }}</span>
+                  }
+                </button>
+                @if (change.expanded) {
+                  @if (change.unreadable) {
+                    <p class="terminal-diff-unreadable">fichier binaire ou illisible</p>
+                  } @else {
+                    <div class="terminal-diff-body">
+                      @for (line of diffLines(change); track $index) {
+                        <span class="terminal-diff-line" [class]="'is-' + line.type">{{ line.text }}</span>
+                      }
+                    </div>
+                    @if (omittedLabel(change); as omitted) {
+                      <p class="terminal-diff-omitted">{{ omitted }}</p>
+                    }
+                  }
+                }
+              </div>
+            }
+          </div>
+        }
         @if (message.cost) {
           <p class="terminal-cost">{{ costLabel(message.cost) }}</p>
         }

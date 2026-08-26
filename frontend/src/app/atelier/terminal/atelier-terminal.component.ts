@@ -31,6 +31,13 @@ import {
   subtaskLabel,
   visibleOutput,
 } from './terminal-block';
+import {
+  AtelierFileDiffView,
+  DiffLine,
+  diffCountLabel,
+  diffLines,
+  omittedLabel,
+} from './terminal-diff';
 
 /**
  * Vue **terminal immersive** du mode Terminal de l'Atelier (F-30 SF-30-07).
@@ -193,5 +200,34 @@ export class AtelierTerminalComponent implements AfterViewChecked {
   /** Déplie/replie la sortie d'un bloc. */
   toggleBlock(block: AtelierTerminalBlock): void {
     block.expanded = !block.expanded;
+  }
+
+  diffCountLabel = diffCountLabel;
+  omittedLabel = omittedLabel;
+
+  /**
+   * Lignes typées d'un diff, mémorisées **par vue de fichier** (F-37 SF-37-02). Le gabarit les
+   * demande à chaque cycle de détection tant que le fichier est déplié : sans mémo, un diff de
+   * quatre cents lignes serait redécoupé en boucle. La `WeakMap` n'a rien à purger — la vue meurt
+   * avec le tour qui la porte.
+   */
+  private readonly diffCache = new WeakMap<AtelierFileDiffView, DiffLine[]>();
+
+  /** Lignes du diff d'un fichier, prêtes à styler. */
+  diffLines(view: AtelierFileDiffView): DiffLine[] {
+    let lines = this.diffCache.get(view);
+    if (!lines) {
+      lines = diffLines(view);
+      this.diffCache.set(view, lines);
+    }
+    return lines;
+  }
+
+  /**
+   * Déplie/replie les modifications d'**un** fichier. Chaque fichier a son état : on ouvre celui
+   * qu'on veut relire, les autres restent des lignes de une ligne.
+   */
+  toggleDiff(view: AtelierFileDiffView): void {
+    view.expanded = !view.expanded;
   }
 }

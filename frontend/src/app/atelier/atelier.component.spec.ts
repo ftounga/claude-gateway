@@ -1987,6 +1987,116 @@ describe('AtelierComponent', () => {
 
     expect(snackBar.open.calls.mostRecent().args[0]).toBe('Projet introuvable.');
   });
+  // ---- F-37 SF-37-02 : modifications du tour dans le fil ----
+
+  it('mode Terminal : les modifications du tour rejoignent le fil, repliées (F-37)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onDone({
+        reply: "C'est fait.",
+        changedFiles: ['src/main.ts'],
+        inputTokens: 0,
+        outputTokens: 0,
+        activeSeconds: 0,
+        interrupted: false,
+        diffs: [
+          {
+            path: 'src/main.ts',
+            added: false,
+            diff: '@@ -1,1 +1,1 @@\n-un\n+deux',
+            addedLines: 1,
+            removedLines: 1,
+            omittedLines: 0,
+            unreadable: false,
+          },
+        ],
+      });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Corrige');
+    component.send();
+
+    const last = component.messages()[component.messages().length - 1];
+    expect(last.diffs!.length).toBe(1);
+    expect(last.diffs![0].path).toBe('src/main.ts');
+    expect(last.diffs![0].addedLines).toBe(1);
+    expect(last.diffs![0].expanded).toBeFalse();
+  });
+
+  it('mode Terminal : un flux sans modifications laisse le tour tel qu\'avant F-37', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.setAgentMode('exec');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onDone({
+        reply: 'Rien à changer.',
+        changedFiles: [],
+        inputTokens: 0,
+        outputTokens: 0,
+        activeSeconds: 0,
+        interrupted: false,
+      });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Regarde');
+    component.send();
+
+    const last = component.messages()[component.messages().length - 1];
+    expect(last.diffs).toEqual([]);
+  });
+
+  it('restitue les modifications d\'un tour Terminal depuis l\'historique (F-37)', () => {
+    const item = toThreadItem({
+      id: 'm1',
+      role: 'ASSISTANT',
+      content: "C'est fait.",
+      createdAt: '2026-08-26T00:00:00Z',
+      terminal: {
+        blocks: [],
+        omittedBlocks: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        activeSeconds: 0,
+        diffs: [
+          {
+            path: 'src/main.ts',
+            added: true,
+            diff: '@@ -0,0 +1,1 @@\n+un',
+            addedLines: 1,
+            removedLines: 0,
+            omittedLines: 0,
+            unreadable: false,
+          },
+        ],
+      },
+    });
+
+    expect(item.diffs!.length).toBe(1);
+    expect(item.diffs![0].added).toBeTrue();
+    expect(item.diffs![0].expanded).toBeFalse();
+  });
+
+  it('un tour d\'historique sans modifications reste sans section (non-régression F-37)', () => {
+    const item = toThreadItem({
+      id: 'm1',
+      role: 'ASSISTANT',
+      content: 'Tests verts.',
+      createdAt: '2026-08-26T00:00:00Z',
+      terminal: {
+        blocks: [],
+        omittedBlocks: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        activeSeconds: 0,
+      },
+    });
+
+    expect(item.diffs).toBeUndefined();
+  });
 });
 
 
@@ -2078,4 +2188,5 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
     expect(fixture.componentInstance.agentMode()).toBe('edit');
     expect(snackBar.open.calls.mostRecent().args[0]).toBe('Projet introuvable.');
   });
+
 });

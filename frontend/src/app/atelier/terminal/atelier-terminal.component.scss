@@ -327,3 +327,106 @@
   align-items: center;
   gap: var(--cg-space-2);
 }
+
+/* Modifications du tour (F-37 / SF-37-02). Repliées par fichier : une ligne par fichier, le détail
+   à un clic. Les seules couleurs employées sont celles de la charte — vert de succès pour ce qui
+   entre, rouge d'erreur pour ce qui sort, orange de charte pour les repères. */
+.terminal-diffs {
+  margin: var(--cg-space-2) 0 0;
+  padding-left: var(--cg-space-2);
+  border-left: 2px solid var(--cg-navy-2);
+}
+
+.terminal-diffs-title {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  margin: 0;
+  font-size: 12px;
+  color: var(--cg-orange-2);
+}
+
+.terminal-diffs-icon {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}
+
+.terminal-diff {
+  margin-top: var(--cg-space-1);
+}
+
+.terminal-diff-head {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  width: 100%;
+  padding: 0 var(--cg-space-1);
+  font-size: 12px;
+  text-align: left;
+  color: var(--cg-surface);
+}
+
+.terminal-diff-chevron {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+  color: var(--cg-orange-2);
+}
+
+.terminal-diff-path {
+  flex: 1;
+  overflow: hidden;
+  font-family: var(--cg-font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-diff-new {
+  padding: 0 var(--cg-space-1);
+  border: 1px solid var(--cg-navy-2);
+  border-radius: 4px;
+  background: var(--cg-navy-2);
+  font-size: 11px;
+  color: var(--cg-orange-2);
+}
+
+.terminal-diff-counts {
+  font-family: var(--cg-font-mono);
+  font-size: 11px;
+  color: var(--cg-text-secondary);
+}
+
+.terminal-diff-body {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--cg-space-1);
+  overflow-x: auto;
+  font-family: var(--cg-font-mono);
+  font-size: 12px;
+}
+
+.terminal-diff-line {
+  white-space: pre;
+  color: var(--cg-divider);
+
+  &.is-add {
+    color: var(--cg-success);
+  }
+
+  &.is-remove {
+    color: var(--cg-error);
+  }
+
+  &.is-hunk {
+    color: var(--cg-orange-2);
+  }
+}
+
+.terminal-diff-omitted,
+.terminal-diff-unreadable {
+  margin: var(--cg-space-1) 0 0;
+  padding-left: var(--cg-space-3);
+  font-size: 11px;
+  color: var(--cg-text-secondary);
+}

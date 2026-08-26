@@ -125,6 +125,27 @@ export interface WriteFileRequest {
 export type AtelierRole = 'USER' | 'ASSISTANT';
 
 /**
+ * Modification d'un fichier constatée par le backend à la resynchronisation d'un tour (F-37 /
+ * SF-37-01) : **ce qui a changé**, et pas seulement le chemin touché.
+ *
+ * Le diff est déjà calculé et **borné** côté serveur — l'écran ne le recalcule jamais, il le lit.
+ */
+export interface AtelierFileDiff {
+  /** Chemin relatif au workspace. */
+  path: string;
+  /** Le fichier n'existait pas avant ce tour : le diff est un ajout intégral. */
+  added: boolean;
+  /** Diff unifié (lignes `@@`, ` `, `-`, `+`), séparateur `\n`. Vide si `unreadable`. */
+  diff: string;
+  addedLines: number;
+  removedLines: number;
+  /** Lignes de diff écartées par la borne par fichier ; `0` si le diff est complet. */
+  omittedLines: number;
+  /** Contenu non textuel : aucune comparaison n'était possible. */
+  unreadable: boolean;
+}
+
+/**
  * Transcription d'un tour Terminal telle que stockée (F-30 SF-30-09) : commandes appariées à leurs
  * sorties côté backend, coût du tour, et nombre de blocs omis par la borne de persistance.
  */
@@ -156,6 +177,11 @@ export interface AtelierPersistedTranscript {
    * écrits avant cette version : traité comme `false`.
    */
   budgetReached?: boolean;
+  /**
+   * Modifications de fichiers du tour (F-37 / SF-37-01). **Absent** des tours écrits avant cette
+   * version, et des tours qui n'ont rien modifié : traité comme une liste vide.
+   */
+  diffs?: AtelierFileDiff[];
 }
 
 /** Message de l'historique. Réponse de `GET /api/workspaces/{id}/chat`. */
@@ -253,6 +279,12 @@ export interface AtelierAgentStreamDone {
    * sandbox. Champ **additif** : absent, il vaut `false`.
    */
   budgetReached?: boolean;
+  /**
+   * Modifications de fichiers du tour (F-37 / SF-37-01) : le contenu de ce qui a changé, calculé et
+   * borné par le backend. Champ **additif** — absent d'un backend antérieur, il vaut liste vide, et
+   * l'écran se comporte alors exactement comme avant F-37.
+   */
+  diffs?: AtelierFileDiff[];
 }
 
 /**

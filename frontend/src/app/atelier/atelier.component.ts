@@ -26,6 +26,7 @@ import {
   hiddenLineCount,
   visibleOutput,
 } from './terminal/terminal-block';
+import { toDiffViews } from './terminal/terminal-diff';
 import {
   ConfirmDialogComponent,
   ConfirmDialogData,
@@ -1137,6 +1138,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
               // Plafond de dépense de ce run atteint (F-36 SF-36-04) : le tour est conservé, et
               // l'écran le dit — un arrêt au milieu sans explication serait le pire des deux mondes.
               budgetReached: done.budgetReached === true,
+              // Ce qui a changé dans les fichiers (F-37 SF-37-02) : replié, sous le commentaire.
+              diffs: toDiffViews(done.diffs),
             },
           ]);
           // La session a pu exécuter du code et modifier des fichiers : rafraîchir l'arborescence.
@@ -1440,6 +1443,12 @@ export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
   // Même raison pour le plafond de dépense (F-36 SF-36-04) : sans cela, la mention disparaîtrait au
   // rechargement et l'utilisateur relirait un tour d'apparence normale, arrêté sans motif.
   item.budgetReached = stored.budgetReached === true;
+  // Les modifications vivent hors des blocs (F-37 SF-37-02) : un tour peut n'avoir lancé aucune
+  // commande visible et avoir pourtant réécrit des fichiers.
+  const diffs = toDiffViews(stored.diffs);
+  if (diffs.length > 0) {
+    item.diffs = diffs;
+  }
   if (!Array.isArray(stored.blocks) || stored.blocks.length === 0) {
     return item;
   }
