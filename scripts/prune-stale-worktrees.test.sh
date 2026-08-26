@@ -48,7 +48,9 @@ git -C "$SANDBOX/repo" symbolic-ref HEAD refs/heads/main
 cd "$SANDBOX/repo"
 git remote add origin "$SANDBOX/origin.git"
 echo one > f.txt
-git add f.txt
+mkdir -p deep
+echo live > deep/live.txt
+git add f.txt deep/live.txt
 git commit --quiet -m "c1"
 git push --quiet -u origin main 2>/dev/null
 mkdir -p .claude/worktrees
@@ -135,6 +137,34 @@ code=$?
 set -e
 [[ "$code" -eq 4 ]] \
     && check ok "sortie 4 (fetch impossible)" || check ko "sortie $code au lieu de 4"
+
+# --- Cas 7 : activite recente EN PROFONDEUR, racine ancienne -----------------------------
+# Regression : tester la seule mtime de la racine du worktree ne suffit pas. Elle ne change
+# que si une entree est creee/supprimee a la racine — un agent editant un fichier imbrique
+# la laisse intacte, et le worktree serait juge inactif alors qu'une session y travaille.
+echo "[7] activite recente sur un fichier imbrique, racine backdatee"
+git remote set-url origin "$SANDBOX/origin.git"
+git worktree add --quiet -b wt-deep .claude/worktrees/wf_test-4 HEAD
+# `touch` sur un fichier suivi ne change que la mtime : le worktree reste propre et merge,
+# donc seul le garde-fou d'age peut l'ecarter.
+touch .claude/worktrees/wf_test-4/deep/live.txt
+old="$(date -d '3 hours ago' '+%Y%m%d%H%M')"
+touch -t "$old" .claude/worktrees/wf_test-4
+for meta in index HEAD logs/HEAD; do
+    [[ -e ".git/worktrees/wf_test-4/$meta" ]] && touch -t "$old" ".git/worktrees/wf_test-4/$meta"
+done
+out="$(bash "$SCRIPT" --no-fetch)"
+grep -q 'wf_test-4.*recently-active' <<<"$out" \
+    && check ok "worktree ecarte grace au fichier imbrique recent" \
+    || check ko "worktree juge inactif alors qu'un fichier imbrique est recent (regression mtime racine)"
+grep -q 'REMOVE  .claude/worktrees/wf_test-4' <<<"$out" \
+    && check ko "wf_test-4 planifie au retrait a tort" \
+    || check ok "aucun retrait planifie pour wf_test-4"
+# Contrôle positif : sans garde-fou d'age, il redevient candidat (propre + merge).
+out="$(bash "$SCRIPT" --no-fetch --age-minutes 0)"
+grep -q 'REMOVE  .claude/worktrees/wf_test-4' <<<"$out" \
+    && check ok "candidat a nouveau avec --age-minutes 0 (propre + merge)" \
+    || check ko "wf_test-4 aurait du redevenir candidat avec --age-minutes 0"
 
 echo
 if [[ "$failures" -eq 0 ]]; then

@@ -101,8 +101,13 @@ Livrables : `scripts/prune-stale-worktrees.sh` et son test `scripts/prune-stale-
    `.claude/worktrees/`.
 4. Pour chaque candidat, appliquer **quatre garde-fous cumulatifs** ; un seul qui échoue ⇒ SKIP :
    - non verrouillé (`locked` absent) ;
-   - **inactif** : dernière modification du répertoire > `--age-minutes` (défaut 60) — protège les
-     sessions concurrentes vivantes ;
+   - **inactif** : aucune activité depuis plus de `--age-minutes` (défaut 60) — protège les
+     sessions concurrentes vivantes. Trois signaux testés, du moins cher au plus cher :
+     (a) mtime de la racine du worktree, (b) métadonnées Git du worktree
+     (`index`, `HEAD`, `logs/HEAD`, `ORIG_HEAD` — rafraîchies par quasiment toute commande Git
+     exécutée dedans), (c) parcours récursif du contenu élagué des répertoires de build
+     (`node_modules`, `target`, `dist`, `.angular`, `.git`) et arrêté au premier fichier récent
+     (`-quit`) ;
    - **propre** : `git -C <wt> status --porcelain` vide ;
    - **déjà dans `main`** : `git merge-base --is-ancestor <HEAD> origin/main`.
 5. `git worktree remove` des candidats retenus.
@@ -131,7 +136,7 @@ Livrables : `scripts/prune-stale-worktrees.sh` et son test `scripts/prune-stale-
 ## Critères d'acceptation
 
 - [x] `scripts/prune-stale-worktrees.sh` existe, est exécutable et passe `bash -n` (syntaxe).
-- [x] `scripts/prune-stale-worktrees.test.sh` existe et passe : **18 assertions vertes, 0 échec**.
+- [x] `scripts/prune-stale-worktrees.test.sh` existe et passe : **21 assertions vertes, 0 échec**.
 - [x] Sans `--apply`, le script **ne modifie rien** (dry-run par défaut, vérifié : `git worktree list`
       et `git branch` identiques avant/après).
 - [x] Le script refuse de s'exécuter depuis un worktree lié.
@@ -160,8 +165,24 @@ répertoire temporaire (`mktemp -d`, jamais dans ce dépôt, config utilisateur 
 | 4 | Idempotence | Ré-exécution `--apply` sans erreur (code 0) | ✅ |
 | 5 | Lancement depuis un worktree lié | Code de sortie **3**, aucun effet | ✅ |
 | 6 | `git fetch` en échec (remote inexistant) | Code de sortie **4** (STOP) | ✅ |
+| 7 | Worktree propre + mergé, **racine backdatée de 3 h**, fichier **imbriqué** touché à l'instant | Écarté en `recently-active` ; redevient candidat avec `--age-minutes 0` | ✅ |
 
-**18 assertions, 0 échec.** `bash -n` passe sur les deux scripts.
+**21 assertions, 0 échec.** `bash -n` passe sur les deux scripts.
+
+### Correctif issu du cas 7 (post-merge PR #179)
+
+Le cas 7 a été ajouté après coup et a **révélé un défaut réel** de la première version : le
+garde-fou d'inactivité testait `find "$wt" -maxdepth 0 -newermt …`, c'est-à-dire la seule mtime
+du **répertoire racine** du worktree. Or celle-ci ne change que lorsqu'une entrée est créée ou
+supprimée *à la racine* : un agent éditant `backend/src/main/java/…` pendant des heures la laisse
+intacte. Le worktree d'une session vivante était donc jugé **inactif**, et le garde-fou ne
+remplissait pas sa fonction — les garde-fous `dirty` et `unmerged` restaient la seule protection
+effective.
+
+Corrigé par la fonction `is_recently_active()` (trois signaux, cf. « Cas nominal » étape 4).
+**Le cas 7 est un test de non-régression vérifié** : exécuté contre l'implémentation d'avant le
+correctif, il **échoue** (2 assertions rouges) ; contre la version corrigée, il passe. Un test
+qui ne peut pas échouer ne vaut rien — le contrôle a été fait explicitement.
 
 Vérifications manuelles complémentaires :
 

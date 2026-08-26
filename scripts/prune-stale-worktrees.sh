@@ -89,6 +89,46 @@ echo "  inactivite min.  : ${AGE_MINUTES} min"
 echo "  mode             : $mode_label"
 echo
 
+# --- Detection d'activite recente -------------------------------------------------------
+# Un agent vivant peut avoir un arbre propre entre deux commits : ce garde-fou repere
+# l'activite recente independamment de l'etat Git.
+#
+# La mtime du repertoire racine du worktree ne suffit pas : elle ne change que lorsqu'une
+# entree est creee ou supprimee *a la racine*. Un agent editant backend/src/... pendant des
+# heures la laisserait intacte. On teste donc trois signaux, du moins cher au plus cher :
+#   1. la mtime de la racine du worktree ;
+#   2. les metadonnees Git du worktree (index, HEAD, logs/HEAD) — rafraichies par a peu pres
+#      toute commande Git executee dedans, y compris `git status` ;
+#   3. un parcours recursif du contenu, elague des repertoires de build (node_modules,
+#      target, dist, .angular, .git) et arrete des le premier fichier recent (-quit).
+is_recently_active() {
+    local wt="$1" minutes="$2"
+    local threshold="-${minutes} minutes"
+
+    # 1. Racine du worktree.
+    if [[ -n "$(find "$wt" -maxdepth 0 -newermt "$threshold" -print 2>/dev/null)" ]]; then
+        return 0
+    fi
+
+    # 2. Metadonnees Git propres a ce worktree.
+    local wt_git_dir="$git_common_dir/worktrees/$(basename "$wt")"
+    local meta
+    for meta in index HEAD logs/HEAD ORIG_HEAD; do
+        if [[ -e "$wt_git_dir/$meta" ]] &&
+           [[ -n "$(find "$wt_git_dir/$meta" -maxdepth 0 -newermt "$threshold" -print 2>/dev/null)" ]]; then
+            return 0
+        fi
+    done
+
+    # 3. Contenu du worktree, hors repertoires de build, arret au premier fichier recent.
+    local hit
+    hit="$(find "$wt" \
+             \( -name node_modules -o -name target -o -name dist \
+                -o -name .angular -o -name .git \) -prune -o \
+             -type f -newermt "$threshold" -print -quit 2>/dev/null)"
+    [[ -n "$hit" ]]
+}
+
 # --- Etape 2 : enumerer les worktrees --------------------------------------------------
 # `git worktree list --porcelain` produit des blocs separes par une ligne vide :
 #   worktree <chemin> / HEAD <sha> / branch <ref> | detached / locked [raison]
@@ -143,11 +183,9 @@ flush_worktree() {
     fi
 
     # Garde-fou 2 : activite recente -> probablement une session vivante.
-    if [[ "$AGE_MINUTES" -gt 0 ]]; then
-        if [[ -n "$(find "$wt" -maxdepth 0 -newermt "-${AGE_MINUTES} minutes" -print 2>/dev/null)" ]]; then
-            skip "recently-active (modifie il y a moins de ${AGE_MINUTES} min — session probablement vivante)"
-            return 0
-        fi
+    if [[ "$AGE_MINUTES" -gt 0 ]] && is_recently_active "$wt" "$AGE_MINUTES"; then
+        skip "recently-active (activite il y a moins de ${AGE_MINUTES} min — session probablement vivante)"
+        return 0
     fi
 
     # Garde-fou 3 : worktree sale -> ne jamais supprimer du travail non commite.
