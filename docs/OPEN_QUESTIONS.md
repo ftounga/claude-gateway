@@ -29,7 +29,23 @@ Questions non tranchées ayant un impact produit ou technique. À mettre à jour
 **Décision** : **IVFFlat `lists=100`** (déjà provisionné `002`, recréé en `011`). **F-07 (`/ask`) livrée** exploite cet index via la recherche plus-proches-voisins `<->` L2 (isolée `user_id`) et le **conserve**. HNSW reste une **évolution ultérieure** (à réévaluer selon le rappel/charge réels), réversible via migration d'index.
 
 ## OQ-04 — Modèles Claude disponibles sur le compte
-**Statut** : Ouvert
+**Statut** : **TRANCHÉE (2026-08-26, F-28 / SF-28-17)** — inventaire relevé sur le compte, et usage décidé.
+
+**Inventaire réel** (`GET /v1/models`, 2026-08-26) : `claude-opus-5`, `claude-sonnet-5`,
+`claude-fable-5`, `claude-opus-4-8`, `claude-opus-4-7`, `claude-sonnet-4-6`, `claude-opus-4-6`,
+`claude-opus-4-5`, `claude-haiku-4-5`, `claude-sonnet-4-5`. Contexte 1 M et sortie 128 K sur les
+générations récentes.
+
+**Décision d'usage (Atelier)** : **`claude-opus-5`**, effort **`xhigh`**, envoyés en **surcharge de
+session**. Trois raisons : Opus 5 est au **même tarif** qu'Opus 4.8 pour des capacités supérieures ;
+`xhigh` était déjà le réglage effectif (défaut de la plateforme, que rien n'envoyait) ; et la surcharge
+de session rend les deux modifiables **sans re-provisionner l'agent**, ce que l'ancienne propriété
+`model` ne permettait pas — `ensureBootstrapped` ne comparait jamais la configuration voulue à celle
+déjà en base.
+
+**Reste ouvert, à traiter à part** : le catalogue proposé aux utilisateurs du **chat** (`ANTHROPIC_MODELS`)
+ignore encore `opus-5`. Et baisser l'effort est désormais possible — cela se décidera sur les mesures
+de coût produites par F-36, pas sur une intuition.
 **Impact** : Valeurs par défaut du proxy (`model`) et affichage des modèles sélectionnables côté UI.
 **Options** : À lister depuis le compte Anthropic (ex. Sonnet/Haiku/Opus courants).
 **Décision** : À définir.
