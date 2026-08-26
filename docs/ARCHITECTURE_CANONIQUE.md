@@ -344,6 +344,18 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     exactement comme avant.
   - **Coupe-circuit** : `APP_ATELIER_AGENT_SUBAGENTS_ENABLED=false` — une variable d'environnement,
     sans redéploiement. À `false`, le corps de création de session est strictement celui d'avant F-35.
+- **Diff des modifications d'un tour — aucune persistance dédiée** (F-37 / SF-37-01). Le diff unifié
+  est calculé **à la resynchronisation**, seul instant où l'ancienne version (encore dans le stockage
+  objet) et la nouvelle (téléchargée de la session) coexistent, puis relayé sur l'événement SSE
+  `done` (champ **additif** `diffs`) et persisté comme clé **additive** `diffs` du document
+  `terminal_json` — même patron que `interrupted` (F-32), `budgetReached` (F-36) et `threadId`
+  (F-35). **Aucune table, aucune colonne, aucune migration.** Clé **absente** d'un tour sans
+  modification : les tours antérieurs à F-37 se relisent exactement comme avant. Le calcul est écrit
+  à la main (plus longue sous-séquence commune sur les lignes) et **borné avant de comparer** —
+  préfixe et suffixe communs élagués, puis repli sans comparaison fine au-delà de 2 000 000 de
+  cellules — pour qu'un fichier volumineux ne produise jamais de pic mémoire quadratique. Un fichier
+  réécrit **à l'identique** est écarté du resync : une session persistante réexpose ses sorties, et
+  l'annoncer comme modifié serait faux.
 - **Instructions de projet — aucune persistance** (F-34 / SF-34-01). Le `CLAUDE.md` du workspace (repli
   `.atelier/instructions.md`) est lu **à l'ouverture de session** dans la source du projet — stockage
   objet pour un projet `ARCHIVE`, branche montée via l'API GitHub pour un projet `GIT` — et composé au

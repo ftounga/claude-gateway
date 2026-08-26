@@ -12,7 +12,7 @@
 
 ## Statut
 
-`ready`
+`done` — livrée le 2026-08-26 (PR #182)
 
 ## Date de création
 
@@ -91,17 +91,17 @@ du service, sans dépendre du backend mergé.
 
 ## Critères d'acceptation
 
-- [ ] Un tour portant des modifications affiche une ligne **par fichier**, repliée
-- [ ] La ligne porte le chemin, `+N`, `−M`, et « nouveau » pour un fichier créé
-- [ ] Un clic déplie le diff de ce fichier ; un autre fichier reste replié
-- [ ] Les lignes `+`, `-`, `@@` et de contexte ont des styles distincts
-- [ ] `omittedLines > 0` ⇒ mention du nombre de lignes omises sous le diff
-- [ ] `unreadable` ⇒ mention « fichier binaire ou illisible », aucun diff vide affiché
-- [ ] Après rechargement, les modifications persistées réapparaissent, repliées
-- [ ] Un tour sans modification n'affiche aucune section
-- [ ] Les couleurs et polices proviennent du `DESIGN_SYSTEM.md` (variables existantes de la vue
+- [x] Un tour portant des modifications affiche une ligne **par fichier**, repliée
+- [x] La ligne porte le chemin, `+N`, `−M`, et « nouveau » pour un fichier créé
+- [x] Un clic déplie le diff de ce fichier ; un autre fichier reste replié
+- [x] Les lignes `+`, `-`, `@@` et de contexte ont des styles distincts
+- [x] `omittedLines > 0` ⇒ mention du nombre de lignes omises sous le diff
+- [x] `unreadable` ⇒ mention « fichier binaire ou illisible », aucun diff vide affiché
+- [x] Après rechargement, les modifications persistées réapparaissent, repliées
+- [x] Un tour sans modification n'affiche aucune section
+- [x] Les couleurs et polices proviennent du `DESIGN_SYSTEM.md` (variables existantes de la vue
       terminal) — aucune valeur littérale nouvelle hors palette
-- [ ] Les tests frontend passent sur un **mock** du service, sans backend
+- [x] Les tests frontend passent sur un **mock** du service, sans backend
 
 ---
 
@@ -171,23 +171,23 @@ Aucun endpoint appelé nouveau, aucune route, aucun guard.
 
 ### Tests unitaires (`terminal-diff`)
 
-- [ ] Découpage d'un diff en lignes typées : `add`, `remove`, `hunk`, `context`
-- [ ] Diff vide ⇒ aucune ligne
-- [ ] Ligne vide dans le diff ⇒ ligne de contexte (jamais une exception)
-- [ ] Libellé de compteur : `+3 −1` ; compteur à zéro omis
-- [ ] Libellé d'un fichier nouveau ⇒ mention « nouveau »
-- [ ] Libellé de lignes omises ⇒ singulier/pluriel corrects
+- [x] Découpage d'un diff en lignes typées : `add`, `remove`, `hunk`, `context`
+- [x] Diff vide ⇒ aucune ligne
+- [x] Ligne vide dans le diff ⇒ ligne de contexte (jamais une exception)
+- [x] Libellé de compteur : `+3 −1` ; compteur à zéro omis
+- [x] Libellé d'un fichier nouveau ⇒ mention « nouveau »
+- [x] Libellé de lignes omises ⇒ singulier/pluriel corrects
 
 ### Tests unitaires (composants, sur **mock** du service)
 
-- [ ] `done` portant `diffs` ⇒ le tour du fil les porte
-- [ ] `done` **sans** `diffs` ⇒ tour sans modification, aucun rendu
-- [ ] `toThreadItem` relit `diffs` du document persisté
-- [ ] `toThreadItem` sur un document sans `diffs` ⇒ tour sans modification
-- [ ] Entrée sans `path` ⇒ ignorée
-- [ ] Rendu : une ligne par fichier, repliée ; un clic déplie ce fichier seulement
-- [ ] Rendu : `unreadable` ⇒ mention « fichier binaire ou illisible »
-- [ ] Rendu : `omittedLines > 0` ⇒ mention du volume omis
+- [x] `done` portant `diffs` ⇒ le tour du fil les porte
+- [x] `done` **sans** `diffs` ⇒ tour sans modification, aucun rendu
+- [x] `toThreadItem` relit `diffs` du document persisté
+- [x] `toThreadItem` sur un document sans `diffs` ⇒ tour sans modification
+- [x] Entrée sans `path` ⇒ ignorée
+- [x] Rendu : une ligne par fichier, repliée ; un clic déplie ce fichier seulement
+- [x] Rendu : `unreadable` ⇒ mention « fichier binaire ou illisible »
+- [x] Rendu : `omittedLines > 0` ⇒ mention du volume omis
 
 ### Isolation utilisateur
 
