@@ -296,3 +296,28 @@ des archives aujourd'hui — le périmètre de confiance ne change pas, seul l'a
   ne concerne que la provenance des fichiers.
 - *S'arrêter au push de branche* : envisagé et recommandé au cadrage, **écarté par l'owner** au profit
   de la PR complète.
+
+## ADR-016 — Runner d'exécution sur machine connectée (F-38)
+
+**Statut** : accepté (2026-08-29). **Contexte** : l'Atelier (F-28 Phase 2) exécute les outils dans le
+sandbox d'Anthropic, aveugle à un projet/cluster/environnement qui vit sur une machine précise.
+D'où le double transbordement manuel (zip aller/retour + copier-coller des sorties) quand on
+travaille depuis le navigateur sur un projet distant.
+
+**Décision** :
+- **Runner en connexion sortante** (option A) : un `.jar` posé sur la machine ouvre lui-même une
+  connexion **sortante** WSS/443 vers la gateway (aucun port entrant). La gateway route les appels
+  d'outils de la **boucle tool-use maison** (SF-28-02) vers le runner au lieu du sandbox — les
+  Managed Agents exécutant chez Anthropic ne sont pas rerouteables. Écartée : l'option B (File System
+  Access API du navigateur), qui réglait les fichiers mais jamais l'exécution.
+- **RunnerRegistry derrière une interface** (`InMemory` dev/tests, `PgNotify` prod) : le backend
+  tourne à 2 replicas ; runner (WSS) et navigateur (SSE) atterrissent sur des pods différents.
+  Postgres `LISTEN`/`NOTIFY` évite d'introduire Redis sans perdre la HA. Réversible.
+- **Chaîne de sécurité Spring dédiée** `@Order(1)` `securityMatcher("/runner/**")` : le jeton runner
+  (second type de porteur d'identité, par jeton et non par JWT) ne peut jamais authentifier un
+  endpoint utilisateur ; la chaîne principale reste inchangée. Secrets (code d'appairage, jeton)
+  stockés hachés (SHA-256), jamais en clair.
+
+**Conséquences** : la validation d'action (F-33) devient obligatoire en mode runner ; exclusions
+`.runnerignore` côté runner (les secrets ne quittent pas la machine) ; audit des lectures et des
+commandes. Livraison SF-38-01→10 ; SF-38-01 pose l'identité (appairage + jetons).

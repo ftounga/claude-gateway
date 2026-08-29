@@ -50,6 +50,7 @@ import fr.claudegateway.ocr.DocumentNotFoundException;
 import fr.claudegateway.quota.QuotaExceededException;
 import fr.claudegateway.quota.SandboxLimitExceededException;
 import fr.claudegateway.rag.provider.EmbeddingProviderException;
+import fr.claudegateway.runner.PairingInvalidException;
 import fr.claudegateway.rag.provider.EmbeddingProviderUnavailableException;
 import fr.claudegateway.template.TemplateNotFoundException;
 import fr.claudegateway.upload.EmptyFileException;
@@ -112,6 +113,13 @@ public class GlobalExceptionHandler {
         log.debug("Vérification refusée : token invalide ou expiré");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(new ErrorResponse("invalid_token", ex.getMessage()));
+    }
+
+    @ExceptionHandler(PairingInvalidException.class)
+    public ResponseEntity<ErrorResponse> handlePairingInvalid(PairingInvalidException ex) {
+        log.debug("Appairage runner refusé : code invalide, expiré ou déjà consommé");
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(new ErrorResponse("pairing_invalid", ex.getMessage()));
     }
 
     @ExceptionHandler(InvalidPasswordResetTokenException.class)

@@ -382,11 +382,26 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     côté serveur via le catalogue `TopUpCatalog`, jamais depuis le payload). Endpoints top-up : **`GET /billing/topups`**,
     **`POST /billing/topup/checkout`** (authentifiés) ; crédit appliqué via le webhook signé **`POST /webhook/stripe`**.
 
+- **runner_pairing_codes / runner_tokens** — identité du runner (F-38 / SF-38-01, migration `047`).
+  Deux tables neuves. Le **runner** est un second type de porteur d'identité, authentifié par jeton
+  et non par JWT utilisateur ; il ouvre (SF-38-02) une connexion sortante pour exécuter les outils de
+  l'agent sur une machine connectée. **Aucun secret en clair** : seul le `SHA-256 (hex)` du code
+  d'appairage et du jeton est stocké.
+  - `runner_pairing_codes` : `id (uuid)`, `user_id (uuid)`, `workspace_id (uuid)`, `code_hash (varchar 64)`,
+    `expires_at`, `consumed_at`, `created_at`. Index `code_hash`. Code court, TTL 5 min, usage unique.
+  - `runner_tokens` : `id (uuid)`, `user_id (uuid)`, `workspace_id (uuid)`, `token_hash (varchar 64, unique)`,
+    `label (varchar 100)`, `expires_at`, `revoked_at`, `last_seen_at`, `created_at`. Index `(user_id, workspace_id)`.
+    TTL 30 j, révocable. Isolation `user_id` sur toutes les lectures/gestions.
+  - Endpoints **`POST /workspaces/{id}/runner/pairing-code`**, **`GET/DELETE /workspaces/{id}/runner/tokens`**
+    (JWT, gardés par l'accès Atelier Gold/ADMIN) et **`POST /runner/pair`** (sans JWT : le code d'appairage
+    est la credential), ce dernier servi par une **chaîne de sécurité Spring dédiée** `@Order(1)`
+    `securityMatcher("/runner/**")` — la chaîne principale reste inchangée (ADR-016).
+
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/user_api_keys/user_git_credentials/prompt_templates via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exception documentée : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/user_api_keys/user_git_credentials/prompt_templates/runner_tokens/runner_pairing_codes via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exception documentée : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur.)
 
 ---
 
