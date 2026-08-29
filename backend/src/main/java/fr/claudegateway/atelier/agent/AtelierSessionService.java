@@ -620,8 +620,11 @@ public class AtelierSessionService {
         // Une interruption demandée alors qu'aucun run n'était en vol ne doit pas marquer CE tour :
         // la marque ne vaut que pour le travail lancé après elle.
         interruptedSessions.remove(sessionId);
-        provider.sendUserMessage(sessionId, message);
-        return provider.awaitCompletion(sessionId, properties.sessionTimeout(), properties.maxPolls(), bridge);
+        // La borne rendue par la publication délimite CE tour : la session est persistante
+        // (SF-30-04) et porte encore les events des tours précédents (F-30 / SF-30-11).
+        String since = provider.sendUserMessage(sessionId, message);
+        return provider.awaitCompletion(sessionId, properties.sessionTimeout(), properties.maxPolls(),
+                bridge, since);
     }
 
     /**

@@ -441,9 +441,39 @@ class AnthropicManagedAgentProviderTest {
                 .andExpect(jsonPath("$.events[0].type").value("user.message"))
                 .andExpect(jsonPath("$.events[0].content[0].type").value("text"))
                 .andExpect(jsonPath("$.events[0].content[0].text").value("Corrige le bug."))
-                .andRespond(withSuccess("{\"ok\":true}", MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"id\":\"sevt_courant\",\"type\":\"user.message\"}]}",
+                        MediaType.APPLICATION_JSON));
 
-        provider.sendUserMessage("sess_1", "Corrige le bug.");
+        // L'identifiant rendu borne le tour (F-30 / SF-30-11) : sans lui, les events du tour
+        // précédent seraient relus.
+        assertThat(provider.sendUserMessage("sess_1", "Corrige le bug.")).isEqualTo("sevt_courant");
+
+        server.verify();
+    }
+
+    /**
+     * SF-30-11 — repli : publication sans identifiant. La borne est retrouvée sur le DERNIER
+     * `user.message` de la session, celui qui vient d'être posté. On ne retombe jamais sur « pas de
+     * borne », qui rétablirait la relecture du tour précédent.
+     */
+    @Test
+    void sendUserMessageFallsBackToTheLastUserMessageWhenNoIdIsReturned() {
+        server.expect(requestTo("https://api.anthropic.com/v1/sessions/sess_1/events"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("{\"ok\":true}", MediaType.APPLICATION_JSON));
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        {"data":[
+                          {"id":"sevt_vieux","type":"user.message"},
+                          {"id":"sevt_reponse","type":"agent.message"},
+                          {"id":"sevt_recent","type":"user.message"}
+                        ]}
+                        """, MediaType.APPLICATION_JSON));
+
+        assertThat(provider.sendUserMessage("sess_1", "Corrige le bug.")).isEqualTo("sevt_recent");
 
         server.verify();
     }
@@ -500,6 +530,101 @@ class AnthropicManagedAgentProviderTest {
         assertThat(listener.texts).containsExactly("Bonjour monde");
         assertThat(listener.actions).containsExactly("bash:ls -la");
         assertThat(listener.states).containsExactly("running", "idle");
+        server.verify();
+    }
+
+    /**
+     * SF-30-11 — LE scénario de production du 2026-08-29 : la session est persistante (SF-30-04),
+     * elle porte donc encore le tour précédent. Sans borne, le provider réémettait la réponse de ce
+     * tour-là puis s'arrêtait sur SA fin, si bien que la nouvelle demande n'était jamais exécutée —
+     * trois messages différents avaient produit trois fois le même texte, au caractère près.
+     */
+    @Test
+    void aBoundedTurnIgnoresEverythingBeforeItsOwnUserMessage() {
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        {"data":[
+                          {"type":"user.message","id":"e0","content":[{"type":"text","text":"decris le projet"}]},
+                          {"type":"agent.tool_use","id":"e1","name":"bash","input":{"command":"ls -la"}},
+                          {"type":"agent.message","id":"e2","content":[{"type":"text","text":"TOUR PRECEDENT"}]},
+                          {"type":"session.status_idle","id":"e3","stop_reason":{"type":"end_turn"}},
+                          {"type":"user.message","id":"sevt_courant","content":[{"type":"text","text":"clean install"}]},
+                          {"type":"agent.tool_use","id":"e5","name":"bash","input":{"command":"mvn clean install"}},
+                          {"type":"agent.message","id":"e6","content":[{"type":"text","text":"Build OK"}]},
+                          {"type":"session.status_idle","id":"e7","stop_reason":{"type":"end_turn"}}
+                        ]}
+                        """, MediaType.APPLICATION_JSON));
+
+        RecordingListener listener = new RecordingListener();
+        SessionRun run = provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10, listener,
+                "sevt_courant");
+
+        // La réponse est celle de CE tour, et rien du précédent n'a fuité.
+        assertThat(run.reply()).isEqualTo("Build OK");
+        assertThat(run.reply()).doesNotContain("TOUR PRECEDENT");
+        assertThat(listener.texts).containsExactly("Build OK");
+        // L'action du tour précédent n'est pas rejouée : une seule commande notifiée, la bonne.
+        assertThat(listener.actions).containsExactly("bash:mvn clean install");
+        assertThat(run.stopReason()).isEqualTo("end_turn");
+        server.verify();
+    }
+
+    /**
+     * SF-30-11 — contre-épreuve : SANS borne, sur la même session, le texte du tour précédent est
+     * agrégé à celui du tour courant. C'est exactement le défaut constaté en production ; ce test le
+     * fige, pour qu'un retour au comportement non borné se voie immédiatement.
+     */
+    @Test
+    void withoutABoundThePreviousTurnLeaksIntoTheCurrentOne() {
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess("""
+                        {"data":[
+                          {"type":"agent.message","id":"e2","content":[{"type":"text","text":"TOUR PRECEDENT"}]},
+                          {"type":"user.message","id":"sevt_courant","content":[{"type":"text","text":"clean install"}]},
+                          {"type":"agent.message","id":"e6","content":[{"type":"text","text":" Build OK"}]},
+                          {"type":"session.status_idle","id":"e7","stop_reason":{"type":"end_turn"}}
+                        ]}
+                        """, MediaType.APPLICATION_JSON));
+
+        SessionRun run = provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10,
+                ManagedEventListener.NOOP, null);
+
+        assertThat(run.reply()).isEqualTo("TOUR PRECEDENT Build OK");
+        server.verify();
+    }
+
+    /**
+     * SF-30-11 — la fin du tour PRÉCÉDENT ne termine pas le tour courant. C'est ce qui faisait
+     * conclure au run terminé avant même que l'agent ait commencé.
+     */
+    @Test
+    void anIdleEventBeforeTheBoundDoesNotEndTheTurn() {
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess("""
+                        {"data":[
+                          {"type":"session.status_idle","id":"e0","stop_reason":{"type":"end_turn"}},
+                          {"type":"user.message","id":"sevt_courant","content":[{"type":"text","text":"go"}]}
+                        ]}
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess("""
+                        {"data":[
+                          {"type":"user.message","id":"sevt_courant","content":[{"type":"text","text":"go"}]},
+                          {"type":"agent.message","id":"e2","content":[{"type":"text","text":"fait"}]},
+                          {"type":"session.status_idle","id":"e3","stop_reason":{"type":"end_turn"}}
+                        ]}
+                        """, MediaType.APPLICATION_JSON));
+
+        SessionRun run = provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10,
+                ManagedEventListener.NOOP, "sevt_courant");
+
+        // Le premier poll ne s'arrête pas sur l'idle antérieur : il faut un second poll.
+        assertThat(run.reply()).isEqualTo("fait");
         server.verify();
     }
 

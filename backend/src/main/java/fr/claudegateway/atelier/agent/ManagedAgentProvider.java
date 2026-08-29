@@ -257,7 +257,7 @@ public interface ManagedAgentProvider {
      * @param sessionId identifiant de la session
      * @param text      contenu du message
      */
-    void sendUserMessage(String sessionId, String text);
+    String sendUserMessage(String sessionId, String text);
 
     /**
      * Attend la complétion de la session par polling des events jusqu'à {@code session.status_idle},
@@ -287,6 +287,21 @@ public interface ManagedAgentProvider {
      * @throws AgentSessionTimeoutException si l'état idle n'est pas atteint dans les bornes
      */
     SessionRun awaitCompletion(String sessionId, Duration timeout, int maxPolls, ManagedEventListener listener);
+
+    /**
+     * Variante bornée : seuls les events <b>postérieurs</b> à {@code sinceEventId} sont lus et
+     * relayés (F-30 / SF-30-11).
+     *
+     * <p>Indispensable depuis que la session survit d'un message à l'autre (SF-30-04) : sans borne,
+     * un tour relit les events du tour précédent, réémet sa réponse et prend sa fin pour la sienne —
+     * la demande courante n'étant jamais exécutée.</p>
+     *
+     * @param sinceEventId identifiant de l'event {@code user.message} de ce tour, ou {@code null}
+     *                     pour lire toute la session (session neuve)
+     * @return le résultat du run
+     */
+    SessionRun awaitCompletion(String sessionId, Duration timeout, int maxPolls,
+            ManagedEventListener listener, String sinceEventId);
 
     /**
      * Demande l'<b>interruption</b> du travail en cours dans la session (event {@code user.interrupt},
