@@ -15,7 +15,7 @@ déjà référencées dans `docs/PRODUCT_SPEC.md`.
 
 ## Statut
 
-`ready`
+`done` — livrée le 2026-08-29 (PR #184)
 
 ## Date de création
 
