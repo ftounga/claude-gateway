@@ -2,7 +2,7 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormControl, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatDialog } from '@angular/material/dialog';
@@ -38,6 +38,12 @@ import { RemoveGitTokenDialogComponent } from './remove-git-token-dialog/remove-
   selector: 'app-settings',
   imports: [
     RouterLink,
+    // FormsModule n'est PAS superflu : il apporte `NgForm`, dont le sélecteur
+    // `form:not([ngNoForm]):not([formGroup])` est le seul à intercepter le submit des deux
+    // formulaires de cet écran — ils n'ont pas de [formGroup]. Sans lui, `(ngSubmit)` n'est jamais
+    // émis et le navigateur soumet nativement le formulaire : la page se recharge et rien n'est
+    // enregistré (SF-31-06). Ne pas retirer en « nettoyant » les imports.
+    FormsModule,
     ReactiveFormsModule,
     DatePipe,
     MatCardModule,

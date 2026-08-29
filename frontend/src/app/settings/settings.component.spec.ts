@@ -319,4 +319,85 @@ describe('SettingsComponent', () => {
     expect(dialog.open).toHaveBeenCalled();
     expect(gitTokenService.deleteToken).not.toHaveBeenCalled();
   });
+  /**
+   * Non-régression SF-31-06 — le chemin réellement cassé en production : DOM → directive → handler.
+   *
+   * Les autres tests appellent `component.saveGitToken()` / `saveApiKey()` directement, ce qui ne
+   * prouve rien du template : sans `FormsModule`, aucune directive ne s'applique aux <form> (ils
+   * n'ont pas de [formGroup]), `(ngSubmit)` n'est jamais émis, et le navigateur soumet nativement —
+   * la page se recharge et rien n'est enregistré. Ces tests exercent le submit du DOM.
+   */
+  describe('soumission des formulaires depuis le DOM (SF-31-06)', () => {
+    /** Le <form> portant le champ du jeton GitHub, identifié par son champ et non par son rang. */
+    function gitTokenForm(): HTMLFormElement {
+      const form = (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLInputElement>('input[placeholder="github_pat_..."]')
+        ?.closest('form');
+      expect(form).withContext('formulaire du jeton GitHub introuvable').not.toBeNull();
+      return form as HTMLFormElement;
+    }
+
+    /** Le <form> portant le champ de la clé Anthropic (BYOK, F-03) — même défaut, même écran. */
+    function apiKeyForm(): HTMLFormElement {
+      const form = (fixture.nativeElement as HTMLElement)
+        .querySelector<HTMLInputElement>('input[placeholder="sk-ant-..."]')
+        ?.closest('form');
+      expect(form).withContext('formulaire de la clé API introuvable').not.toBeNull();
+      return form as HTMLFormElement;
+    }
+
+    /** Soumet comme le ferait le navigateur, et rend l'événement pour inspecter `preventDefault`. */
+    function submit(form: HTMLFormElement): Event {
+      const event = new Event('submit', { bubbles: true, cancelable: true });
+      form.dispatchEvent(event);
+      return event;
+    }
+
+    it('submitting the github token form calls the service with the typed token', () => {
+      setup();
+      gitTokenService.saveToken.and.returnValue(of(presentGitToken));
+      component.gitTokenControl.setValue('github_pat_secret_AB12');
+
+      submit(gitTokenForm());
+
+      expect(gitTokenService.saveToken).toHaveBeenCalledWith({ token: 'github_pat_secret_AB12' });
+      expect(component.gitTokenStatus()).toEqual(presentGitToken);
+    });
+
+    it('prevents the native submit that would reload the page', () => {
+      setup();
+      gitTokenService.saveToken.and.returnValue(of(presentGitToken));
+      component.gitTokenControl.setValue('github_pat_secret_AB12');
+
+      // Le cœur du défaut : sans NgForm, `defaultPrevented` reste false et le navigateur navigue.
+      expect(submit(gitTokenForm()).defaultPrevented).toBeTrue();
+    });
+
+    it('submitting the api key form calls the service with the typed key', () => {
+      setup();
+      apiKeyService.saveKey.and.returnValue(of(presentKey));
+      component.apiKeyControl.setValue('sk-ant-secret-AB12');
+
+      const event = submit(apiKeyForm());
+
+      expect(apiKeyService.saveKey).toHaveBeenCalledWith({ apiKey: 'sk-ant-secret-AB12' });
+      expect(event.defaultPrevented).toBeTrue();
+    });
+
+    it('submitting an empty github token form sends nothing and flags the field', () => {
+      setup();
+
+      submit(gitTokenForm());
+
+      expect(gitTokenService.saveToken).not.toHaveBeenCalled();
+      expect(component.gitTokenControl.touched).toBeTrue();
+    });
+
+    it('keeps the save buttons of type submit inside their own form', () => {
+      setup();
+      const button = gitTokenForm().querySelector<HTMLButtonElement>('button[type="submit"]');
+      expect(button).not.toBeNull();
+      expect(button?.textContent).toContain('Enregistrer le jeton');
+    });
+  });
 });
