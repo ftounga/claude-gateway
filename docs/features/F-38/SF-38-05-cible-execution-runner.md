@@ -7,7 +7,7 @@
 `F-38` — Exécution sur machine connectée (runner local)
 
 ## Statut
-`in-review`
+`done`
 
 ## Date de création
 2026-08-30
