@@ -7,6 +7,8 @@ import {
   AtelierChatResponse,
   AtelierMessage,
   FileContent,
+  RunnerPairingCode,
+  RunnerStatus,
   WorkspaceDetail,
   WorkspaceSummary,
 } from '../models/atelier.models';
@@ -421,5 +423,67 @@ describe('AtelierService', () => {
     });
 
     expect(seen).toEqual([{ toolUseId: 'sevt_1', decision: 'allow' }]);
+  });
+
+  // ---- F-38 SF-38-06 : cible d'exécution et runner ----
+
+  it('bascule la cible d\'exécution via PUT /api/workspaces/{id}/execution-target', () => {
+    const detail: WorkspaceDetail = {
+      id: 'w1',
+      name: 'projet',
+      fileCount: 0,
+      files: [],
+      createdAt: '2026-08-30T00:00:00Z',
+      source: 'ARCHIVE',
+      gitRepoUrl: null,
+      gitRepo: null,
+      gitBranch: null,
+      truncated: false,
+      executionTarget: 'RUNNER',
+    };
+
+    let received: WorkspaceDetail | undefined;
+    service.setExecutionTarget('w1', 'RUNNER').subscribe((r) => (received = r));
+
+    const req = httpMock.expectOne('/api/workspaces/w1/execution-target');
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual({ executionTarget: 'RUNNER' });
+    req.flush(detail);
+
+    expect(received?.executionTarget).toBe('RUNNER');
+  });
+
+  it('relève l\'état runner via GET /api/workspaces/{id}/runner/status', () => {
+    let received: RunnerStatus | undefined;
+    service.getRunnerStatus('w1').subscribe((r) => (received = r));
+
+    const req = httpMock.expectOne('/api/workspaces/w1/runner/status');
+    expect(req.request.method).toBe('GET');
+    req.flush({ connected: true, lastSeenAt: '2026-08-30T10:00:00Z' });
+
+    expect(received).toEqual({ connected: true, lastSeenAt: '2026-08-30T10:00:00Z' });
+  });
+
+  it('génère un code d\'appairage via POST /api/workspaces/{id}/runner/pairing-code', () => {
+    let received: RunnerPairingCode | undefined;
+    service.createRunnerPairingCode('w1').subscribe((r) => (received = r));
+
+    const req = httpMock.expectOne('/api/workspaces/w1/runner/pairing-code');
+    expect(req.request.method).toBe('POST');
+    req.flush({ code: 'AB12CD', expiresAt: '2026-08-30T10:05:00Z' });
+
+    expect(received?.code).toBe('AB12CD');
+  });
+
+  it('télécharge le binaire du runner en blob via GET /api/runner/download', () => {
+    let received: Blob | undefined;
+    service.downloadRunnerJar().subscribe((r) => (received = r));
+
+    const req = httpMock.expectOne('/api/runner/download');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.responseType).toBe('blob');
+    req.flush(new Blob(['jar']));
+
+    expect(received instanceof Blob).toBeTrue();
   });
 });

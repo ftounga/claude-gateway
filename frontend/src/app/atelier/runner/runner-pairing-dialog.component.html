@@ -1,0 +1,152 @@
+<h2 mat-dialog-title>Connecter une machine</h2>
+<mat-dialog-content>
+  <p class="pairing-intro">
+    Le runner tourne sur votre machine et ouvre lui-même la connexion vers cette passerelle : aucun
+    port à ouvrir. Il s'affiche en clair et s'arrête au <code>Ctrl-C</code>.
+    Projet appairé : <strong>{{ data.workspaceName }}</strong>.
+  </p>
+
+  <!-- Étape 1 — le code d'appairage (usage unique, TTL court) -->
+  <section class="pairing-step">
+    <h3 class="pairing-step-title"><span class="pairing-step-number">1</span> Générer un code</h3>
+
+    @if (codeUsable()) {
+      <div class="pairing-code-box">
+        <code class="pairing-code">{{ pairingCode()!.code }}</code>
+        <button
+          mat-icon-button
+          type="button"
+          matTooltip="Copier le code"
+          aria-label="Copier le code d'appairage"
+          (click)="copy(pairingCode()!.code, 'Code')"
+        >
+          <mat-icon>content_copy</mat-icon>
+        </button>
+      </div>
+      <p class="pairing-countdown">
+        <mat-icon class="pairing-inline-icon">timer</mat-icon>
+        Valable encore {{ countdownLabel() }} — à usage unique.
+      </p>
+    } @else if (codeExpired()) {
+      <p class="pairing-expired">
+        <mat-icon class="pairing-inline-icon">timer_off</mat-icon>
+        Code expiré. Un code n'est valable que quelques minutes et ne sert qu'une fois.
+      </p>
+    } @else {
+      <p class="pairing-hint">
+        Le code est valable quelques minutes et ne sert qu'une seule fois. Il n'est affiché qu'ici :
+        fermer cette fenêtre le perd définitivement.
+      </p>
+    }
+
+    @if (generationError(); as error) {
+      <p class="pairing-error">{{ error }}</p>
+    }
+
+    <button
+      mat-flat-button
+      color="primary"
+      type="button"
+      class="pairing-action"
+      [disabled]="generating()"
+      (click)="generateCode()"
+    >
+      @if (generating()) {
+        <mat-progress-spinner mode="indeterminate" [diameter]="18"></mat-progress-spinner>
+      } @else {
+        <mat-icon>key</mat-icon>
+      }
+      {{ pairingCode() ? 'Générer un nouveau code' : 'Générer un code' }}
+    </button>
+  </section>
+
+  <!-- Étape 2 — le binaire -->
+  <section class="pairing-step">
+    <h3 class="pairing-step-title"><span class="pairing-step-number">2</span> Récupérer le runner</h3>
+
+    @if (jarUnavailable()) {
+      <!-- 404 : état de déploiement normal, pas une panne. On donne la commande de construction. -->
+      <div class="pairing-note">
+        <mat-icon class="pairing-inline-icon">info</mat-icon>
+        <div>
+          <p class="pairing-note-title">Binaire non publié sur cette passerelle.</p>
+          <p class="pairing-note-text">
+            Construisez-le depuis le dépôt ; le fichier apparaît dans
+            <code>runner/target/claude-runner.jar</code>.
+          </p>
+          <div class="pairing-command">
+            <code>{{ buildCommand }}</code>
+            <button
+              mat-icon-button
+              type="button"
+              matTooltip="Copier la commande"
+              aria-label="Copier la commande de construction"
+              (click)="copy(buildCommand, 'Commande')"
+            >
+              <mat-icon>content_copy</mat-icon>
+            </button>
+          </div>
+        </div>
+      </div>
+    } @else {
+      <p class="pairing-hint">
+        Un seul fichier, aucun installeur, aucun droit administrateur. Java 21 suffit.
+      </p>
+    }
+
+    <button
+      mat-stroked-button
+      type="button"
+      class="pairing-action"
+      [disabled]="downloading()"
+      (click)="downloadJar()"
+    >
+      @if (downloading()) {
+        <mat-progress-spinner mode="indeterminate" [diameter]="18"></mat-progress-spinner>
+      } @else {
+        <mat-icon>download</mat-icon>
+      }
+      Télécharger le runner (.jar)
+    </button>
+  </section>
+
+  <!-- Étape 3 — la commande à coller -->
+  <section class="pairing-step">
+    <h3 class="pairing-step-title"><span class="pairing-step-number">3</span> Lancer le runner</h3>
+
+    <mat-form-field appearance="outline" class="pairing-field" subscriptSizing="dynamic">
+      <mat-label>Racine du projet sur la machine</mat-label>
+      <input
+        matInput
+        maxlength="200"
+        [placeholder]="'/chemin/vers/le/projet'"
+        [ngModel]="workspacePath()"
+        (ngModelChange)="workspacePath.set($event)"
+      />
+      <mat-hint>
+        Le runner refuse tout accès au-dessus de ce dossier. Ce chemin reste dans votre navigateur.
+      </mat-hint>
+    </mat-form-field>
+
+    <div class="pairing-command">
+      <code>{{ runCommand() }}</code>
+      <button
+        mat-icon-button
+        type="button"
+        matTooltip="Copier la commande"
+        aria-label="Copier la commande de lancement"
+        (click)="copy(runCommand(), 'Commande')"
+      >
+        <mat-icon>content_copy</mat-icon>
+      </button>
+    </div>
+
+    <p class="pairing-hint">
+      Le runner échange le code contre un jeton et le réutilise ensuite : il n'y a pas de nouvel
+      appairage à chaque lancement.
+    </p>
+  </section>
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+  <button mat-stroked-button type="button" (click)="close()">Fermer</button>
+</mat-dialog-actions>

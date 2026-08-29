@@ -57,9 +57,15 @@ import {
   AtelierStreamAction,
   GitPullRequestResult,
   GitPushResult,
+  RunnerStatus,
   WorkspaceDetail,
+  WorkspaceExecutionTarget,
   WorkspaceSummary,
 } from '../core/models/atelier.models';
+import {
+  RunnerPairingDialogComponent,
+  RunnerPairingDialogData,
+} from './runner/runner-pairing-dialog.component';
 
 // Les types et constantes du fil vivent dans `atelier.types` (F-30 SF-30-07) : la vue terminal les
 // consomme aussi, et les garder ici créerait une dépendance circulaire. Réexportés pour compatibilité.
@@ -81,6 +87,15 @@ export type {
   AtelierTurnCost,
 } from './atelier.types';
 export { WORKSPACE_TEXT_EXTENSIONS, WORKSPACE_TEXT_ACCEPT } from './atelier.types';
+
+/**
+ * Période de relevé du statut runner (F-38 / SF-38-06), en millisecondes.
+ *
+ * <p>15 s : le backend tolère déjà 90 s de silence avant de déclarer un runner absent
+ * (`app.runner.heartbeat.stale-after`). Sonder plus vite n'apporterait rien de plus juste, et
+ * ouvrir un canal poussé pour cette seule information coûterait plus qu'il ne rapporte.</p>
+ */
+export const RUNNER_STATUS_POLL_MS = 15_000;
 
 /**
  * Écran « Atelier » (F-28, Claude Code Lite). L'utilisateur téléverse un projet `.zip` et discute
@@ -187,6 +202,42 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /** Vrai si le projet ouvert est adossé à un dépôt Git. */
   readonly activeIsGit = computed(() => this.activeDetail()?.source === 'GIT');
+
+  /**
+   * Cible d'exécution du projet ouvert (F-38 / SF-38-05). Champ additif : absent d'un backend
+   * antérieur ⇒ `SANDBOX`, exactement le comportement historique.
+   */
+  readonly executionTarget = computed<WorkspaceExecutionTarget>(
+    () => this.activeDetail()?.executionTarget ?? 'SANDBOX');
+
+  /** Vrai si les outils du projet s'exécutent sur la machine de l'utilisateur. */
+  readonly runnerTarget = computed(() => this.executionTarget() === 'RUNNER');
+
+  /**
+   * Dernier état runner relevé (F-38 / SF-38-02), ou `null` tant qu'aucun relevé n'a abouti —
+   * « état inconnu » se dit, il ne se devine pas.
+   */
+  readonly runnerStatus = signal<RunnerStatus | null>(null);
+
+  /** Bascule de cible d'exécution en vol : le sélecteur reste inerte le temps de l'aller-retour. */
+  readonly switchingTarget = signal(false);
+
+  /** Sondage du statut runner ; `null` hors cible `RUNNER`. */
+  private runnerStatusTimer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Le mode **Assistant** est écarté sur un projet Git… sauf en cible `RUNNER` : le dépôt est alors
+   * cloné sur la machine de l'utilisateur, et la boucle tool-use y lit réellement les fichiers
+   * (SF-38-05 lève le garde-fou `requireArchiveChatMode`).
+   */
+  readonly assistantModeDisabled = computed(() => this.activeIsGit() && !this.runnerTarget());
+
+  /**
+   * Le mode **Terminal** s'appuie sur les Managed Agents, qui exécutent les outils chez le
+   * fournisseur : impossible à rerouter vers une machine (décision D2). Le backend refuse d'ouvrir
+   * la session (409 `execution_target_runner`) — autant le dire avant le premier message.
+   */
+  readonly terminalModeDisabled = computed(() => this.runnerTarget());
 
   /**
    * Chemin du fichier d'instructions du projet (F-34 / SF-34-02), ou `null` s'il n'en porte pas.
@@ -589,6 +640,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.messages.set([]);
     this.pushResult.set(null);
     this.pullRequest.set(null);
+    this.stopRunnerPolling();
+    this.runnerStatus.set(null);
     this.resetFilePanel();
     this.agentMode.set('edit');
   }
@@ -613,14 +666,23 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.pullRequest.set(null);
     this.resetFilePanel();
     this.alignModeWithSource(workspace);
+    this.syncRunnerPolling();
   }
 
   /**
    * Un projet Git n'a de sens qu'en mode Terminal (F-31 / SF-31-03) : le mode Assistant travaille sur
    * le stockage objet, vide ici. On aligne le mode sur la source plutôt que de laisser l'utilisateur
    * découvrir le refus au premier message.
+   *
+   * <p>Exception depuis F-38 : en cible `RUNNER`, c'est l'inverse — le dépôt vit sur la machine de
+   * l'utilisateur (le mode Assistant y lit réellement), et c'est le mode Terminal qui n'existe pas
+   * (D2). La cible prime donc sur la source.</p>
    */
   private alignModeWithSource(detail: WorkspaceDetail): void {
+    if (detail.executionTarget === 'RUNNER') {
+      this.agentMode.set('edit');
+      return;
+    }
     if (detail.source === 'GIT') {
       this.agentMode.set('exec');
     }
@@ -730,6 +792,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.activeDetail.set(null);
     this.pushResult.set(null);
     this.pullRequest.set(null);
+    // L'état runner appartient au projet quitté : le garder afficherait le statut d'une autre machine.
+    this.stopRunnerPolling();
+    this.runnerStatus.set(null);
     this.resetFilePanel();
     this.loadHistory(workspace.id);
     this.refreshTree(workspace.id);
@@ -751,6 +816,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
         this.tree.set(detail.files);
         this.activeDetail.set(detail);
         this.alignModeWithSource(detail);
+        // Le statut runner n'a de sens qu'en cible RUNNER : le sondage suit la cible du projet.
+        this.syncRunnerPolling();
       },
       error: () => this.notifyError("Impossible de charger l'arborescence du projet."),
     });
@@ -1006,6 +1073,138 @@ export class AtelierComponent implements OnInit, OnDestroy {
     });
   }
 
+  /**
+   * Bascule la **cible d'exécution** du projet (F-38 / SF-38-06) : sandbox hébergé ⇄ ma machine.
+   *
+   * <p>Aucune valeur optimiste : l'écran n'affiche la nouvelle cible qu'après confirmation du
+   * backend. Cette cible décide d'où l'agent lit et où il écrit — annoncer « ma machine » alors que
+   * le serveur a refusé enverrait des écritures là où l'utilisateur ne les attend pas.</p>
+   */
+  setExecutionTarget(target: WorkspaceExecutionTarget): void {
+    const id = this.activeWorkspaceId();
+    if (!id || this.switchingTarget() || this.submitting() || target === this.executionTarget()) {
+      return;
+    }
+    this.switchingTarget.set(true);
+    this.atelier.setExecutionTarget(id, target).subscribe({
+      next: (detail) => {
+        this.switchingTarget.set(false);
+        this.activeDetail.set(detail);
+        this.tree.set(detail.files);
+        this.alignModeWithTarget(detail);
+        this.syncRunnerPolling();
+      },
+      error: (err: unknown) => {
+        this.switchingTarget.set(false);
+        this.notifyError(
+          err instanceof HttpErrorResponse && err.status === 404
+            ? 'Projet introuvable.'
+            : "La cible d'exécution n'a pas pu être changée. Veuillez réessayer.");
+      },
+    });
+  }
+
+  /**
+   * Relève l'état runner du projet ouvert. **Silencieux en cas d'échec** : ce relevé se répète toutes
+   * les 15 secondes, une snackbar par tentative ratée noierait l'écran. L'état retombe simplement à
+   * « inconnu » et le relevé suivant corrige.
+   */
+  refreshRunnerStatus(): void {
+    const id = this.activeWorkspaceId();
+    if (!id || !this.runnerTarget()) {
+      return;
+    }
+    this.atelier.getRunnerStatus(id).subscribe({
+      next: (status) => this.runnerStatus.set(status),
+      error: () => this.runnerStatus.set(null),
+    });
+  }
+
+  /**
+   * Ouvre l'écran d'appairage d'une machine. Au retour, on relève le statut : l'utilisateur vient
+   * peut-être de lancer son runner.
+   */
+  openRunnerPairing(): void {
+    const id = this.activeWorkspaceId();
+    if (!id) {
+      return;
+    }
+    const data: RunnerPairingDialogData = { workspaceId: id, workspaceName: this.activeName() };
+    this.dialog
+      .open(RunnerPairingDialogComponent, { data, width: '560px', maxWidth: '95vw' })
+      .afterClosed()
+      .subscribe(() => this.refreshRunnerStatus());
+  }
+
+  /** Libellé de la pastille d'état runner. « Inconnu » tant qu'aucun relevé n'a abouti. */
+  runnerStatusLabel(): string {
+    const status = this.runnerStatus();
+    if (!status) {
+      return 'État du runner inconnu';
+    }
+    return status.connected ? 'Runner connecté' : 'Aucun runner connecté';
+  }
+
+  /**
+   * Détail de la pastille : la dernière activité observée, en relatif. Le statut n'est **pas** du
+   * temps réel — c'est cette date qui permet de juger sa fraîcheur.
+   */
+  runnerLastSeenLabel(): string | null {
+    const lastSeen = this.runnerStatus()?.lastSeenAt;
+    if (!lastSeen) {
+      return null;
+    }
+    const elapsed = Math.floor((Date.now() - new Date(lastSeen).getTime()) / 1000);
+    if (!Number.isFinite(elapsed) || elapsed < 0) {
+      return null;
+    }
+    if (elapsed < 60) {
+      return `dernier signe de vie il y a ${elapsed} s`;
+    }
+    if (elapsed < 3600) {
+      return `dernier signe de vie il y a ${Math.floor(elapsed / 60)} min`;
+    }
+    return `dernier signe de vie il y a ${Math.floor(elapsed / 3600)} h`;
+  }
+
+  /**
+   * Aligne le sondage du statut runner sur la cible courante : il ne tourne qu'en cible `RUNNER`,
+   * avec un projet ouvert. Ailleurs, il est arrêté et l'état effacé.
+   */
+  private syncRunnerPolling(): void {
+    if (!this.runnerTarget() || !this.activeWorkspaceId()) {
+      this.stopRunnerPolling();
+      this.runnerStatus.set(null);
+      return;
+    }
+    this.refreshRunnerStatus();
+    if (this.runnerStatusTimer === null) {
+      this.runnerStatusTimer = setInterval(
+        () => this.zone.run(() => this.refreshRunnerStatus()), RUNNER_STATUS_POLL_MS);
+    }
+  }
+
+  /** Arrête le sondage ; idempotent (fermeture de projet, bascule de cible, destruction). */
+  private stopRunnerPolling(): void {
+    if (this.runnerStatusTimer !== null) {
+      clearInterval(this.runnerStatusTimer);
+      this.runnerStatusTimer = null;
+    }
+  }
+
+  /**
+   * En cible `RUNNER`, le mode Terminal n'est pas disponible (D2) : on retombe sur l'Assistant, qui
+   * lit et écrit sur la machine via le runner. Symétrique de {@link alignModeWithSource}.
+   */
+  private alignModeWithTarget(detail: WorkspaceDetail): void {
+    if (detail.executionTarget === 'RUNNER' && this.agentMode() === 'exec') {
+      this.agentMode.set('edit');
+      this.snackBar.open(
+        'Cible « ma machine » : le mode Terminal (sandbox hébergé) n\'y est pas disponible.',
+        'Fermer', { duration: 6000 });
+    }
+  }
+
   /** Message de bascule : dit franchement quand le réglage ne vaut que pour la prochaine sandbox. */
   private confirmationToggleMessage(enabled: boolean, appliesNow: boolean): string {
     const state = enabled
@@ -1063,7 +1262,16 @@ export class AtelierComponent implements OnInit, OnDestroy {
     if (this.submitting()) {
       return;
     }
-    if (mode === 'edit' && this.activeIsGit()) {
+    if (mode === 'exec' && this.terminalModeDisabled()) {
+      // Cible « ma machine » : les Managed Agents exécuteraient les outils chez le fournisseur (D2).
+      this.agentMode.set('edit');
+      this.notifyError(
+        'Les outils de ce projet s\'exécutent sur votre machine : le mode Terminal (sandbox hébergé) '
+        + 'n\'y est pas disponible.',
+      );
+      return;
+    }
+    if (mode === 'edit' && this.assistantModeDisabled()) {
       this.agentMode.set('exec');
       this.notifyError(
         'Ce projet est adossé à un dépôt Git : le mode Terminal est le seul où le dépôt est disponible.',
@@ -1240,9 +1448,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Quitter l'écran pendant un run ne doit pas laisser le chronomètre tourner. */
+  /** Quitter l'écran ne doit laisser tourner ni le chronomètre, ni le sondage du statut runner. */
   ngOnDestroy(): void {
     this.stopExecTimer();
+    this.stopRunnerPolling();
   }
 
   /** Ouvre/ferme le panneau « Fichiers ». */
@@ -1324,23 +1533,35 @@ export class AtelierComponent implements OnInit, OnDestroy {
     return action.type === 'write' ? `${action.path} modifié` : `${action.path} lu`;
   }
 
-  /** Icône Material d'une étape de streaming (lecture / écriture / liste / recherche). */
+  /**
+   * Icône Material d'une étape de streaming. Le type est une **chaîne libre** : le backend en ajoute
+   * (`bash` en SF-38-07) et un type inconnu doit rester présentable, jamais déguisé en lecture.
+   */
   stepIcon(type: string): string {
     switch (type) {
+      case 'read':
+        return 'visibility';
       case 'write':
         return 'edit';
       case 'list':
         return 'folder_open';
       case 'search':
         return 'search';
+      case 'bash':
+        return 'terminal';
       default:
-        return 'visibility';
+        return 'bolt';
     }
   }
 
-  /** Libellé humain d'une étape de streaming en cours. */
+  /**
+   * Libellé humain d'une étape de streaming en cours. Un type inconnu affiche son argument brut
+   * plutôt qu'une étiquette fausse : mieux vaut « npm test » que « Lecture de npm test ».
+   */
   stepLabel(step: AtelierStreamAction): string {
     switch (step.type) {
+      case 'read':
+        return `Lecture de ${step.path}`;
       case 'write':
         return `Édition de ${step.path}`;
       case 'list':
@@ -1348,7 +1569,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
       case 'search':
         return `Recherche « ${step.path} »`;
       default:
-        return `Lecture de ${step.path}`;
+        return step.path ?? step.type;
     }
   }
 

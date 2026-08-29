@@ -196,6 +196,78 @@
         </button>
       </mat-toolbar>
 
+      <!-- Cible d'exécution (F-38 / SF-38-06) : sandbox hébergé ⇄ machine de l'utilisateur. -->
+      <div class="target-bar">
+        <span class="target-label">Où s'exécutent les outils</span>
+        <mat-button-toggle-group
+          class="target-toggle"
+          aria-label="Cible d'exécution des outils"
+          [value]="executionTarget()"
+          [disabled]="switchingTarget() || submitting()"
+          (change)="setExecutionTarget($event.value)"
+        >
+          <mat-button-toggle value="SANDBOX">
+            <mat-icon>cloud</mat-icon>
+            Sandbox hébergé
+          </mat-button-toggle>
+          <mat-button-toggle value="RUNNER">
+            <mat-icon>dns</mat-icon>
+            Ma machine
+          </mat-button-toggle>
+        </mat-button-toggle-group>
+
+        @if (runnerTarget()) {
+          <!-- Pastille d'état : volontairement présentée comme différée, jamais comme du temps réel. -->
+          <span
+            class="badge runner-chip"
+            [class.badge--success]="runnerStatus()?.connected === true"
+            [class.badge--error]="runnerStatus() !== null && runnerStatus()?.connected === false"
+            [class.badge--neutral]="runnerStatus() === null"
+            [matTooltip]="
+              'État relevé toutes les 15 s, et non en temps réel : la passerelle considère un runner ' +
+              'connecté tant que son dernier signe de vie date de moins de 90 s. Un runner arrêté ' +
+              '(Ctrl-C) peut donc rester affiché connecté jusqu\'à ce délai.'
+            "
+          >
+            <mat-icon class="runner-chip-icon">{{
+              runnerStatus() === null ? 'help' : (runnerStatus()!.connected ? 'link' : 'link_off')
+            }}</mat-icon>
+            {{ runnerStatusLabel() }}
+            @if (runnerLastSeenLabel(); as seen) {
+              <span class="runner-last-seen">— {{ seen }}</span>
+            }
+          </span>
+          <button
+            mat-icon-button
+            type="button"
+            class="runner-refresh"
+            matTooltip="Actualiser l'état du runner"
+            aria-label="Actualiser l'état du runner"
+            (click)="refreshRunnerStatus()"
+          >
+            <mat-icon>refresh</mat-icon>
+          </button>
+          <button
+            mat-stroked-button
+            type="button"
+            class="runner-pair"
+            (click)="openRunnerPairing()"
+          >
+            <mat-icon>settings_ethernet</mat-icon>
+            Connecter une machine
+          </button>
+        }
+
+        <span class="target-hint">
+          @if (runnerTarget()) {
+            Claude lit et écrit les fichiers de votre machine via le runner local. Rien n'est stocké
+            sur la passerelle.
+          } @else {
+            Claude travaille sur les fichiers hébergés par la passerelle.
+          }
+        </span>
+      </div>
+
       @if (submitting()) {
         <mat-progress-bar mode="indeterminate"></mat-progress-bar>
       }
@@ -466,12 +538,14 @@
           [disabled]="submitting()"
           (change)="setAgentMode($event.value)"
         >
-          <!-- Sur un projet Git, le mode Assistant lirait un stockage vide : il est écarté. -->
-          <mat-button-toggle value="edit" [disabled]="activeIsGit()">
+          <!-- Sur un projet Git, le mode Assistant lirait un stockage vide : il est écarté. En cible
+               « ma machine », il redevient le mode normal (le dépôt est sur la machine). -->
+          <mat-button-toggle value="edit" [disabled]="assistantModeDisabled()">
             <mat-icon>edit_note</mat-icon>
             Assistant
           </mat-button-toggle>
-          <mat-button-toggle value="exec">
+          <!-- Le mode Terminal passe par les Managed Agents : indisponible en cible « ma machine ». -->
+          <mat-button-toggle value="exec" [disabled]="terminalModeDisabled()">
             <mat-icon>terminal</mat-icon>
             Terminal
             <!-- Badge informatif : signale la capacité qui justifie l'offre, n'ajoute aucun gate -->
@@ -479,7 +553,10 @@
           </mat-button-toggle>
         </mat-button-toggle-group>
         <span class="mode-hint">
-          @if (activeIsGit()) {
+          @if (runnerTarget()) {
+            Les outils s'exécutent sur votre machine : le mode Terminal (sandbox hébergé) n'y est pas
+            disponible.
+          } @else if (activeIsGit()) {
             Projet Git : Claude travaille sur le dépôt cloné, puis publie sur une branche.
           } @else if (agentMode() === 'exec') {
             Claude exécute réellement vos commandes (bash, tests, build) dans un sandbox hébergé.

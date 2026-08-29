@@ -100,6 +100,10 @@ describe('AtelierComponent', () => {
       'setAskBeforeBash',
       'confirmToolUse',
       'getHistory',
+      'setExecutionTarget',
+      'getRunnerStatus',
+      'createRunnerPairingCode',
+      'downloadRunnerJar',
     ]);
     apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
@@ -2189,4 +2193,193 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
     expect(snackBar.open.calls.mostRecent().args[0]).toBe('Projet introuvable.');
   });
 
+});
+
+
+// ---- F-38 SF-38-06 : cible d'exécution, état du runner, écran d'appairage ----
+
+describe('AtelierComponent — écrans runner (F-38 SF-38-06)', () => {
+  let service: jasmine.SpyObj<AtelierService>;
+  let snackBar: jasmine.SpyObj<MatSnackBar>;
+  let dialog: jasmine.SpyObj<MatDialog>;
+  let fixture: ComponentFixture<AtelierComponent>;
+  let component: AtelierComponent;
+
+  const runnerSummary: WorkspaceSummary = {
+    id: 'w1', name: 'projet', createdAt: '2026-08-30T00:00:00Z', source: 'ARCHIVE', gitRepo: null,
+  };
+  const sandboxDetail: WorkspaceDetail = {
+    id: 'w1', name: 'projet', fileCount: 1, files: ['src/main.ts'],
+    createdAt: '2026-08-30T00:00:00Z', source: 'ARCHIVE', gitRepoUrl: null, gitRepo: null,
+    gitBranch: null, truncated: false, executionTarget: 'SANDBOX',
+  };
+  const runnerDetail: WorkspaceDetail = { ...sandboxDetail, executionTarget: 'RUNNER' };
+  const runnerGitDetail: WorkspaceDetail = {
+    ...runnerDetail, source: 'GIT', gitRepoUrl: 'https://github.com/octocat/hello',
+    gitRepo: 'octocat/hello', gitBranch: 'main',
+  };
+
+  function setup(detail: WorkspaceDetail = sandboxDetail): void {
+    service = jasmine.createSpyObj<AtelierService>('AtelierService', [
+      'createWorkspace', 'listWorkspaces', 'getWorkspace', 'getFile', 'writeFile',
+      'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory',
+      'setExecutionTarget', 'getRunnerStatus', 'createRunnerPairingCode', 'downloadRunnerJar',
+    ]);
+    const apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
+    snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
+    dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
+
+    const status: ApiKeyStatus = {
+      present: false, maskedKey: null, last4: null, provider: null, mode: 'HOSTED',
+      validatedAt: null, createdAt: null,
+    };
+    apiKeyService.getStatus.and.returnValue(of(status));
+    service.listWorkspaces.and.returnValue(of([runnerSummary]));
+    service.getWorkspace.and.returnValue(of(detail));
+    service.getHistory.and.returnValue(of([]));
+    service.getRunnerStatus.and.returnValue(
+      of({ connected: true, lastSeenAt: new Date().toISOString() }));
+
+    TestBed.configureTestingModule({
+      imports: [AtelierComponent],
+      providers: [
+        provideNoopAnimations(),
+        provideRouter([]),
+        { provide: AtelierService, useValue: service },
+        { provide: ApiKeyService, useValue: apiKeyService },
+        { provide: MatSnackBar, useValue: snackBar },
+        { provide: MatDialog, useValue: dialog },
+      ],
+    });
+
+    fixture = TestBed.createComponent(AtelierComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    component.selectWorkspace(runnerSummary);
+    fixture.detectChanges();
+  }
+
+  it('la cible par défaut est SANDBOX et aucun statut runner n\'est relevé', () => {
+    setup();
+    expect(component.executionTarget()).toBe('SANDBOX');
+    expect(component.runnerTarget()).toBeFalse();
+    expect(service.getRunnerStatus).not.toHaveBeenCalled();
+    fixture.destroy();
+  });
+
+  it('bascule la cible vers RUNNER et relève aussitôt l\'état du runner', () => {
+    setup();
+    service.setExecutionTarget.and.returnValue(of(runnerDetail));
+
+    component.setExecutionTarget('RUNNER');
+    fixture.detectChanges();
+
+    expect(service.setExecutionTarget).toHaveBeenCalledWith('w1', 'RUNNER');
+    expect(component.executionTarget()).toBe('RUNNER');
+    expect(service.getRunnerStatus).toHaveBeenCalledWith('w1');
+    expect(component.runnerStatus()?.connected).toBeTrue();
+    fixture.destroy();
+  });
+
+  it('laisse la cible inchangée quand le backend refuse la bascule', () => {
+    setup();
+    service.setExecutionTarget.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 500 })));
+
+    component.setExecutionTarget('RUNNER');
+
+    expect(component.executionTarget()).toBe('SANDBOX');
+    expect(snackBar.open.calls.mostRecent().args[0])
+      .toContain("La cible d'exécution n'a pas pu être changée");
+    fixture.destroy();
+  });
+
+  it('signale un projet introuvable sur 404 de bascule', () => {
+    setup();
+    service.setExecutionTarget.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 404 })));
+
+    component.setExecutionTarget('RUNNER');
+
+    expect(snackBar.open.calls.mostRecent().args[0]).toBe('Projet introuvable.');
+    fixture.destroy();
+  });
+
+  it('relève l\'état du runner à l\'ouverture d\'un projet en cible RUNNER', () => {
+    setup(runnerDetail);
+    expect(service.getRunnerStatus).toHaveBeenCalledWith('w1');
+    expect(component.runnerStatusLabel()).toBe('Runner connecté');
+    expect(component.runnerLastSeenLabel()).toContain('dernier signe de vie');
+    fixture.destroy();
+  });
+
+  it('n\'ouvre aucune snackbar quand le relevé d\'état échoue', () => {
+    setup(runnerDetail);
+    snackBar.open.calls.reset();
+    service.getRunnerStatus.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 503 })));
+
+    component.refreshRunnerStatus();
+
+    expect(component.runnerStatus()).toBeNull();
+    expect(component.runnerStatusLabel()).toBe('État du runner inconnu');
+    expect(snackBar.open).not.toHaveBeenCalled();
+    fixture.destroy();
+  });
+
+  it('annonce « aucun runner connecté » quand la passerelle ne voit personne', () => {
+    setup(runnerDetail);
+    service.getRunnerStatus.and.returnValue(of({ connected: false, lastSeenAt: null }));
+
+    component.refreshRunnerStatus();
+
+    expect(component.runnerStatusLabel()).toBe('Aucun runner connecté');
+    expect(component.runnerLastSeenLabel()).toBeNull();
+    fixture.destroy();
+  });
+
+  it('refuse le mode Terminal en cible RUNNER (Managed Agents non reroutables)', () => {
+    setup(runnerDetail);
+    expect(component.terminalModeDisabled()).toBeTrue();
+
+    component.setAgentMode('exec');
+
+    expect(component.agentMode()).toBe('edit');
+    expect(snackBar.open.calls.mostRecent().args[0]).toContain('mode Terminal');
+    fixture.destroy();
+  });
+
+  it('autorise le mode Assistant sur un projet Git en cible RUNNER', () => {
+    setup(runnerGitDetail);
+    expect(component.assistantModeDisabled()).toBeFalse();
+    expect(component.agentMode()).toBe('edit');
+    fixture.destroy();
+  });
+
+  it('ouvre l\'écran d\'appairage avec le projet courant et relève l\'état au retour', () => {
+    setup(runnerDetail);
+    dialog.open.and.returnValue(
+      { afterClosed: () => of(undefined) } as MatDialogRef<unknown>);
+    service.getRunnerStatus.calls.reset();
+
+    component.openRunnerPairing();
+
+    expect(dialog.open).toHaveBeenCalled();
+    expect(dialog.open.calls.mostRecent().args[1]?.data)
+      .toEqual({ workspaceId: 'w1', workspaceName: 'projet' });
+    expect(service.getRunnerStatus).toHaveBeenCalled();
+    fixture.destroy();
+  });
+
+  it('tolère un type d\'action inconnu sans le déguiser en lecture', () => {
+    setup();
+    expect(component.stepLabel({ type: 'bash', path: 'npm test' })).toBe('npm test');
+    expect(component.stepIcon('bash')).toBe('terminal');
+    expect(component.stepIcon('inconnu')).toBe('bolt');
+    expect(component.stepLabel({ type: 'inconnu' })).toBe('inconnu');
+    // Les types connus gardent leur libellé historique.
+    expect(component.stepLabel({ type: 'read', path: 'a.ts' })).toBe('Lecture de a.ts');
+    expect(component.stepLabel({ type: 'list' })).toBe('Liste des fichiers');
+    fixture.destroy();
+  });
 });
