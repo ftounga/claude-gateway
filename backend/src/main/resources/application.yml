@@ -294,6 +294,10 @@ app:
     # (dev/tests, un seul pod) ; `pg-notify` en cluster multi-replica (présence diffusée entre les
     # 2 pods par Postgres LISTEN/NOTIFY, canal `runner_presence`, aucun composant d'infra ajouté).
     registry: ${APP_RUNNER_REGISTRY:in-memory}
+    # F-38 / SF-38-03 : chemin filesystem du fat-jar `claude-runner.jar` servi par
+    # `GET /runner/download`. Vide par défaut → l'endpoint répond 404 `runner_jar_unavailable`
+    # (le jar n'est pas empaqueté dans l'image du backend, il est déposé côté déploiement).
+    jar-path: ${APP_RUNNER_JAR_PATH:}
     heartbeat:
       # Fenêtre de fraîcheur du dernier heartbeat pour le statut « runner connecté » : au-delà, le
       # runner est considéré déconnecté si le registre ne le voit pas. Adossé à `last_seen_at` (base

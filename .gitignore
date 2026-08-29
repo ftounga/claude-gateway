@@ -1,4 +1,5 @@
 backend/target/
+runner/target/
 backend/.idea/
 backend/*.iml
 frontend/node_modules/
