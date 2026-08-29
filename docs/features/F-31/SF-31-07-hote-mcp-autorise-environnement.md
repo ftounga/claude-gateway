@@ -13,7 +13,7 @@ serveur sans étendre la politique réseau de l'environnement Managed Agents.
 
 ## Statut
 
-`ready`
+`done` — livrée le 2026-08-29 (PR #185)
 
 ## Date de création
 
