@@ -1,7 +1,9 @@
 # F-38 — Exécution sur machine connectée (runner local) — Cadrage
 
-> Statut : **cadrage validé sur le principe** (option A retenue par l'owner le 2026-08-29).
-> Découpage à valider avant tout dev. Aucune ligne de code n'est écrite à ce stade.
+> Statut : **cadrage validé** (option A retenue par l'owner le 2026-08-29).
+> **Livraison en un bloc** : l'owner a demandé le 2026-08-29 la totalité du périmètre d'un seul
+> tenant. Les neuf subfeatures s'enchaînent sans arrêt ; SF-38-06 reste un **point de contrôle**
+> et non un point de livraison.
 
 ---
 
@@ -42,6 +44,8 @@ le 2026-08-29 : l'owner peut lancer un exécutable chez ses clients.
 | D5 | **Aucune furtivité** : premier plan, sortie en clair, aucune persistance, aucun démarrage automatique, aucune reconnexion silencieuse | Tout ce qui imite un logiciel espion déclenche les règles écrites pour les logiciels espions |
 | D6 | Racine imposée au lancement (`--workspace /chemin`), refus de tout accès au-dessus | Confinement gardé **par le runner**, pas par le serveur |
 | D7 | La validation d'action (F-33) devient **obligatoire et non désactivable** en mode `RUNNER` | `always_allow` est acceptable dans un conteneur jetable, pas dans le réseau d'un client |
+| D8 | Registre de connexions derrière une interface **`RunnerRegistry`** : `InMemory` (dev, tests) / `PgNotify` (production) | Tranchée par défaut le 2026-08-29 faute d'arbitrage explicite — voir §4. Réversible : changer d'implémentation ne touche aucun appelant |
+| D9 | Le jeton runner est porté par une **chaîne de sécurité Spring dédiée** (`@Order(1)`, `securityMatcher("/runner/**")`), la chaîne principale restant inchangée | Un jeton runner ne doit jamais authentifier un endpoint utilisateur. Isoler les chaînes rend la non-régression structurelle, pas seulement testée |
 
 ## 4 — Point d'architecture ouvert : 2 replicas backend
 
@@ -75,8 +79,8 @@ Chaque subfeature vise ≤ 2 jours.
 
 | ID | Subfeature | Contenu |
 |----|-----------|---------|
-| SF-38-01 | Protocole et registre de connexions | Endpoint WS `/api/runner/ws`, handshake, heartbeat, `RunnerRegistry` (InMemory + PgNotify), statut « runner connecté » exposé en API. **Pas encore d'exécution.** |
-| SF-38-02 | Appairage et jetons | Code à usage unique (TTL court) généré dans l'UI, échangé contre un jeton runner lié à `user_id` + workspace, révocable. Migration `runner_tokens`. |
+| SF-38-01 | Identité du runner : appairage et jetons | Code d'appairage à usage unique (TTL court) généré dans l'UI, échangé par le runner contre un jeton lié à `user_id` + workspace, révocable. Chaîne de sécurité dédiée (D9). Migration `runner_tokens`. |
+| SF-38-02 | Canal et registre de connexions | Endpoint WS `/api/runner/ws` authentifié par le jeton de SF-38-01, handshake, heartbeat, `RunnerRegistry` (InMemory + PgNotify), statut « runner connecté » exposé en API. **Pas encore d'exécution.** |
 | SF-38-03 | Runner — connexion | Nouveau module `runner/` : `.jar` Java 21, connexion sortante WSS, **support `HTTPS_PROXY` + truststore d'entreprise**, appairage, heartbeat, affichage en clair, `Ctrl-C` propre. |
 | SF-38-04 | Runner — outils fichiers | `read` / `write` / `list` / `search` confinés à la racine, refus de toute sortie de racine. Aucun processus enfant. |
 | SF-38-05 | Cible d'exécution `RUNNER` (backend) | Le workspace porte sa cible ; `runLoop` route les outils fichiers vers le runner au lieu de S3. |
@@ -86,7 +90,11 @@ Chaque subfeature vise ≤ 2 jours.
 | SF-38-08 | Garde-fous d'exécution | Validation obligatoire par commande (F-33 non désactivable en mode runner), journal d'audit (migration `runner_commands`), coupe-circuit et révocation. |
 | SF-38-09 | Repli de transport | Long-polling HTTP si le proxy du client tue le WebSocket. À déclencher au premier client où ça casse. |
 
-### Pourquoi `bash` arrive après le jalon
+> **Ordre corrigé le 2026-08-29** : l'appairage précède désormais le canal WebSocket. En
+> rédigeant la mini-spec on a vu la dépendance — le handshake WS a besoin d'un jeton à valider,
+> donc le jeton doit exister avant le canal.
+
+### Pourquoi `bash` arrive après le point de contrôle
 
 Un runner qui lit et écrit des fichiers sans jamais engendrer de processus enfant a le
 comportement d'un client de synchronisation : il ne déclenche essentiellement rien côté EDR.
@@ -95,10 +103,11 @@ L'exécution de commandes, elle, a la signature comportementale d'une balise C2 
 sortante persistante + processus shell engendrés. En Java, le motif « `java` engendre un shell »
 est en outre celui de Log4Shell et des failles Struts, et fait l'objet de règles dédiées.
 
-**Conséquence opérationnelle : SF-38-07 et au-delà exigent une déclaration préalable auprès de
-l'équipe sécurité du client** (hash du `.jar`, domaine contacté, port, comportement exact) pour
-obtenir une exclusion EDR. Cela se compte en jours et s'anticipe **avant** la mission. La valeur
-immédiate (SF-38-01→06) n'est pas bloquée par cette négociation.
+**Conséquence opérationnelle — dépendance externe, hors du code : SF-38-07 et au-delà exigent une
+déclaration préalable auprès de l'équipe sécurité du client** (hash du `.jar`, domaine contacté, port, comportement exact) pour
+obtenir une exclusion EDR. Cela se compte en jours et s'anticipe **avant** la mission. La totalité du code est livrée en un bloc, mais
+**l'usage de `bash` chez un client donné reste suspendu à cette autorisation** : c'est le seul
+élément du périmètre qu'aucune ligne de code ne peut débloquer.
 
 ## 6 — Hors périmètre
 

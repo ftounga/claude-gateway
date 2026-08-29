@@ -85,13 +85,20 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
 
     @Override
     public ManagedEnvironment createEnvironment(EnvironmentSpec spec) {
+        Map<String, Object> networking = new java.util.LinkedHashMap<>();
+        networking.put("type", "limited");
+        networking.put("allow_package_managers", spec.allowPackageManagers());
+        if (!spec.allowedHosts().isEmpty()) {
+            // Sans cette liste, la politique réseau de l'environnement bloque le serveur MCP que la
+            // session déclare elle-même, et toute session Git est refusée en 400 (F-31 / SF-31-07).
+            // Absente quand il n'y a rien à autoriser : le corps reste alors celui d'avant.
+            networking.put("allowed_hosts", spec.allowedHosts());
+        }
         Map<String, Object> body = Map.of(
                 "name", spec.name(),
                 "config", Map.of(
                         "type", "cloud",
-                        "networking", Map.of(
-                                "type", "limited",
-                                "allow_package_managers", spec.allowPackageManagers())));
+                        "networking", networking));
 
         JsonNode response = post("/v1/environments", body, "création de l'environnement");
         String id = text(response, "id");

@@ -1,11 +1,15 @@
 package fr.claudegateway.atelier.agent;
 
+import java.net.URI;
+import java.util.List;
 import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import fr.claudegateway.git.GitProperties;
 
 /**
  * Bootstrap idempotent des Managed Agents de l'Atelier (F-28 / Phase 2, ADR-013). Provisionne une
@@ -24,12 +28,15 @@ public class AtelierAgentBootstrapService {
     private final ManagedAgentProvider provider;
     private final AtelierAgentConfigRepository repository;
     private final AtelierAgentProperties properties;
+    private final GitProperties gitProperties;
 
     public AtelierAgentBootstrapService(ManagedAgentProvider provider,
-            AtelierAgentConfigRepository repository, AtelierAgentProperties properties) {
+            AtelierAgentConfigRepository repository, AtelierAgentProperties properties,
+            GitProperties gitProperties) {
         this.provider = provider;
         this.repository = repository;
         this.properties = properties;
+        this.gitProperties = gitProperties;
     }
 
     /**
@@ -56,7 +63,8 @@ public class AtelierAgentBootstrapService {
 
         log.info("Bootstrap Managed Agents (F-28) : provisionnement environnement + agent.");
         ManagedEnvironment environment = provider.createEnvironment(
-                new EnvironmentSpec(properties.environmentName(), properties.allowPackageManagers()));
+                new EnvironmentSpec(properties.environmentName(), properties.allowPackageManagers(),
+                        mcpAllowedHosts()));
         ManagedAgentDefinition agent = provider.createAgent(
                 new AgentSpec(properties.agentName(), properties.model(), AgentSystemPrompt.platform()));
 
@@ -66,5 +74,33 @@ public class AtelierAgentBootstrapService {
                 .agentVersion(agent.version())
                 .build();
         return Optional.of(repository.save(config));
+    }
+
+    /**
+     * Hôtes que la politique réseau de l'environnement doit laisser joindre : celui du serveur MCP
+     * GitHub, <b>dérivé</b> de {@code app.git.mcp-server-url} (F-31 / SF-31-07).
+     *
+     * <p>Dérivé, et non configuré à part : une seconde propriété devrait rester cohérente avec l'URL
+     * MCP à la main, et c'est exactement cette duplication qui a produit le défaut — SF-31-05 a
+     * déclaré le serveur côté session sans que la politique de l'environnement suive, si bien que
+     * toute session Git était refusée en {@code 400}.</p>
+     *
+     * <p>Une URL illisible ne fait <b>pas</b> échouer le bootstrap : un environnement non provisionné
+     * serait pire qu'un environnement sans MCP.</p>
+     *
+     * @return l'hôte du serveur MCP, ou une liste vide si l'URL n'en porte pas
+     */
+    private List<String> mcpAllowedHosts() {
+        String url = gitProperties.mcpServerUrl();
+        if (url == null || url.isBlank()) {
+            return List.of();
+        }
+        try {
+            String host = URI.create(url).getHost();
+            return host == null || host.isBlank() ? List.of() : List.of(host);
+        } catch (IllegalArgumentException malformed) {
+            log.warn("URL du serveur MCP illisible : aucun hôte autorisé sur l'environnement.");
+            return List.of();
+        }
     }
 }

@@ -18,6 +18,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import fr.claudegateway.git.GitProperties;
+
 /**
  * Vérifie l'idempotence et l'inertie de {@link AtelierAgentBootstrapService} : config existante →
  * aucun appel fournisseur ; activé sans config → env+agent créés et persistés une fois ; désactivé
@@ -37,6 +39,11 @@ class AtelierAgentBootstrapServiceTest {
                 null, null, null, null, null, null, null, null, true, null, null);
     }
 
+    /** GitProperties réduites à ce qui compte ici : l'URL du serveur MCP dont l'hôte est dérivé. */
+    private GitProperties gitProps(String mcpServerUrl) {
+        return new GitProperties(null, null, null, null, mcpServerUrl, null);
+    }
+
     private AtelierAgentProperties disabledProps() {
         return new AtelierAgentProperties(false, "env-name", "agent-name", "claude-opus-4-8", true,
                 null, null, null, null, null, null, null, null, true, null, null);
@@ -52,7 +59,8 @@ class AtelierAgentBootstrapServiceTest {
         when(repository.findFirstByOrderByCreatedAtAsc()).thenReturn(Optional.of(existing));
 
         AtelierAgentBootstrapService service =
-                new AtelierAgentBootstrapService(provider, repository, enabledProps());
+                new AtelierAgentBootstrapService(provider, repository, enabledProps(),
+                        gitProps("https://api.githubcopilot.com/mcp/"));
 
         Optional<AtelierAgentConfig> result = service.ensureBootstrapped();
 
@@ -69,7 +77,8 @@ class AtelierAgentBootstrapServiceTest {
         when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         AtelierAgentBootstrapService service =
-                new AtelierAgentBootstrapService(provider, repository, enabledProps());
+                new AtelierAgentBootstrapService(provider, repository, enabledProps(),
+                        gitProps("https://api.githubcopilot.com/mcp/"));
 
         Optional<AtelierAgentConfig> result = service.ensureBootstrapped();
 
@@ -111,7 +120,8 @@ class AtelierAgentBootstrapServiceTest {
         when(repository.save(any())).thenReturn(persisted);
 
         AtelierAgentBootstrapService service =
-                new AtelierAgentBootstrapService(provider, repository, enabledProps());
+                new AtelierAgentBootstrapService(provider, repository, enabledProps(),
+                        gitProps("https://api.githubcopilot.com/mcp/"));
 
         service.ensureBootstrapped();
         Optional<AtelierAgentConfig> second = service.ensureBootstrapped();
@@ -128,12 +138,53 @@ class AtelierAgentBootstrapServiceTest {
         when(repository.findFirstByOrderByCreatedAtAsc()).thenReturn(Optional.empty());
 
         AtelierAgentBootstrapService service =
-                new AtelierAgentBootstrapService(provider, repository, disabledProps());
+                new AtelierAgentBootstrapService(provider, repository, disabledProps(),
+                        gitProps("https://api.githubcopilot.com/mcp/"));
 
         Optional<AtelierAgentConfig> result = service.ensureBootstrapped();
 
         assertThat(result).isEmpty();
         verifyNoInteractions(provider);
         verify(repository, never()).save(any());
+    }
+    /**
+     * SF-31-07 — l'environnement doit autoriser l'hôte du serveur MCP que la session déclarera
+     * elle-même. Sans lui, le fournisseur refuse toute session Git en 400, ce qui est arrivé en
+     * production le 2026-08-29.
+     */
+    @Test
+    void provisionedEnvironmentAllowsTheConfiguredMcpHost() {
+        when(repository.findFirstByOrderByCreatedAtAsc()).thenReturn(Optional.empty());
+        when(provider.createEnvironment(any())).thenReturn(new ManagedEnvironment("env_1"));
+        when(provider.createAgent(any())).thenReturn(new ManagedAgentDefinition("agent_1", "v1"));
+        when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        new AtelierAgentBootstrapService(provider, repository, enabledProps(),
+                gitProps("https://api.githubcopilot.com/mcp/")).ensureBootstrapped();
+
+        ArgumentCaptor<EnvironmentSpec> spec = ArgumentCaptor.forClass(EnvironmentSpec.class);
+        verify(provider).createEnvironment(spec.capture());
+        assertThat(spec.getValue().allowedHosts()).containsExactly("api.githubcopilot.com");
+    }
+
+    /**
+     * SF-31-07 — une URL MCP illisible ne doit pas faire échouer le provisionnement : un
+     * environnement absent serait pire qu'un environnement sans MCP.
+     */
+    @Test
+    void malformedMcpUrlAllowsNoHostAndStillProvisions() {
+        when(repository.findFirstByOrderByCreatedAtAsc()).thenReturn(Optional.empty());
+        when(provider.createEnvironment(any())).thenReturn(new ManagedEnvironment("env_1"));
+        when(provider.createAgent(any())).thenReturn(new ManagedAgentDefinition("agent_1", "v1"));
+        when(repository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Optional<AtelierAgentConfig> result =
+                new AtelierAgentBootstrapService(provider, repository, enabledProps(),
+                        gitProps("pas une url")).ensureBootstrapped();
+
+        ArgumentCaptor<EnvironmentSpec> spec = ArgumentCaptor.forClass(EnvironmentSpec.class);
+        verify(provider).createEnvironment(spec.capture());
+        assertThat(spec.getValue().allowedHosts()).isEmpty();
+        assertThat(result).isPresent();
     }
 }
