@@ -42,8 +42,17 @@ class RunnerWebSocketHandlerTest {
     private final UUID userId = UUID.randomUUID();
     private final UUID tokenId = UUID.randomUUID();
 
+    private RunnerCallDispatcher dispatcher;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setUpDispatcher() {
+        // Dispatcher réel (grâce raccourcie) : le routage des trames non-heartbeat n'a d'intérêt que
+        // s'il aboutit vraiment quelque part.
+        dispatcher = new RunnerCallDispatcher(registry, objectMapper, 100L);
+    }
+
     private RunnerWebSocketHandler handler() {
-        return new RunnerWebSocketHandler(registry, heartbeatService, objectMapper);
+        return new RunnerWebSocketHandler(registry, heartbeatService, objectMapper, dispatcher);
     }
 
     private void withIdentity() {
@@ -96,5 +105,28 @@ class RunnerWebSocketHandlerTest {
         handler().afterConnectionClosed(session, CloseStatus.NORMAL);
 
         verify(registry).unregister(workspaceId, tokenId);
+    }
+
+    @Test
+    void unreadablePayloadIsIgnoredWithoutClosingTheSocket() throws Exception {
+        withIdentity();
+
+        handler().handleTextMessage(session, new TextMessage("ceci n'est pas du JSON"));
+
+        verify(heartbeatService, never()).touch(any());
+        verify(session, never()).sendMessage(any());
+    }
+
+    @Test
+    void toolResultIsRoutedToTheDispatcher() throws Exception {
+        // SF-38-05 : le handler n'interprète plus les trames d'outil, il les aiguille — avec l'identité
+        // de la session, jamais un identifiant lu dans le message.
+        withIdentity();
+
+        handler().handleTextMessage(session, new TextMessage(
+                "{\"type\":\"tool_result\",\"id\":\"inconnu\",\"ok\":true,\"content\":\"x\"}"));
+
+        // Aucun appel en vol : la trame est jetée en silence, sans erreur ni émission.
+        verify(session, never()).sendMessage(any());
     }
 }

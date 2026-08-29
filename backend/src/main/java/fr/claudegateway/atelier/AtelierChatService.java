@@ -20,6 +20,8 @@ import fr.claudegateway.ai.ModelCatalog;
 import fr.claudegateway.atelier.dto.AtelierChatResponse.AtelierAction;
 import fr.claudegateway.byok.ByokKeyService;
 import fr.claudegateway.quota.QuotaService;
+import fr.claudegateway.runner.channel.RunnerCallResult;
+import fr.claudegateway.runner.exec.RunnerToolGateway;
 
 /**
  * Cœur de l'Atelier (F-28 / SF-28-02) : orchestre une boucle <b>tool-use</b> où Claude lit et édite
@@ -44,11 +46,13 @@ public class AtelierChatService {
     private final QuotaService quotaService;
     private final ModelCatalog modelCatalog;
     private final fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService;
+    private final RunnerToolGateway runnerToolGateway;
 
     public AtelierChatService(WorkspaceService workspaceService, AtelierMessageRepository messageRepository,
             AiAgentProvider agentProvider, ByokKeyService byokKeyService, QuotaService quotaService,
             ModelCatalog modelCatalog,
-            fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService) {
+            fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService,
+            RunnerToolGateway runnerToolGateway) {
         this.workspaceService = workspaceService;
         this.messageRepository = messageRepository;
         this.agentProvider = agentProvider;
@@ -56,6 +60,7 @@ public class AtelierChatService {
         this.quotaService = quotaService;
         this.modelCatalog = modelCatalog;
         this.gitWorkspaceService = gitWorkspaceService;
+        this.runnerToolGateway = runnerToolGateway;
     }
 
     /**
@@ -89,7 +94,13 @@ public class AtelierChatService {
         // Mode « Assistant » sur un projet Git (F-31 / SF-31-03) : cette boucle lit et édite le
         // stockage objet, vide sur ce type de projet. Répondre quand même reviendrait à commenter un
         // projet inexistant ; le mode Terminal, lui, a le dépôt réellement cloné.
-        gitWorkspaceService.requireArchiveChatMode(workspace);
+        //
+        // Le garde-fou ne vaut QUE pour la cible SANDBOX (F-38 / SF-38-05) : en cible RUNNER, les
+        // outils s'exécutent sur la machine de l'utilisateur, où le dépôt est réellement cloné. Un
+        // projet Git + RUNNER est donc légitime — le refuser serait un faux positif.
+        if (!workspace.isRunnerTarget()) {
+            gitWorkspaceService.requireArchiveChatMode(workspace);
+        }
         // Mode BYOK (clé personnelle active) vs Hosted (clé plateforme) : en BYOK, les tokens sont sur
         // le compte Anthropic de l'utilisateur => aucun contrôle ni comptage du quota plateforme (F-28 /
         // SF-28-06). En Hosted, comportement historique : contrôle avant + comptabilisation après.
@@ -111,7 +122,7 @@ public class AtelierChatService {
         messageRepository.save(AtelierMessage.builder()
                 .workspaceId(workspaceId).userId(userId).role("USER").content(userText).build());
 
-        String system = buildSystemPrompt(userId, workspaceId);
+        String system = buildSystemPrompt(userId, workspace);
         List<AgentTool> tools = buildTools();
         String model = modelCatalog.defaultModel();
 
@@ -143,17 +154,21 @@ public class AtelierChatService {
             }
             List<AgentContentBlock> toolResults = new ArrayList<>();
             for (AgentToolCall call : turn.toolCalls()) {
-                assistantBlocks.add(new AgentContentBlock.ToolUse(call.id(), call.name(), call.input()));
+                // Identifiant de corrélation unique de l'appel (contrat de messages runner §1) : celui
+                // du fournisseur, ou un UUID généré s'il manque — et le MÊME partout (bloc tool_use,
+                // bloc tool_result, trame runner), sans quoi la réponse ne se rattacherait à rien.
+                String callId = correlationId(call);
+                assistantBlocks.add(new AgentContentBlock.ToolUse(callId, call.name(), call.input()));
                 // Intention d'étape relayée avant exécution (émise même si l'outil échoue ensuite).
                 AtelierProgressListener.AtelierStepEvent step = stepFor(call);
                 if (step != null) {
                     listener.onAction(step);
                 }
-                ToolOutcome outcome = executeTool(userId, workspaceId, call);
+                ToolOutcome outcome = executeTool(userId, workspace, callId, call);
                 if (outcome.action() != null) {
                     actions.add(outcome.action());
                 }
-                toolResults.add(new AgentContentBlock.ToolResult(call.id(), outcome.content(), outcome.isError()));
+                toolResults.add(new AgentContentBlock.ToolResult(callId, outcome.content(), outcome.isError()));
             }
             messages.add(AgentMessage.assistant(assistantBlocks));
             messages.add(AgentMessage.toolResults(toolResults));
@@ -204,7 +219,65 @@ public class AtelierChatService {
         return input == null ? null : input.path(name).asText(null);
     }
 
-    private ToolOutcome executeTool(UUID userId, UUID workspaceId, AgentToolCall call) {
+    /** Identifiant de corrélation d'un appel d'outil : celui du fournisseur, ou un UUID de secours. */
+    private String correlationId(AgentToolCall call) {
+        return call.id() == null || call.id().isBlank() ? UUID.randomUUID().toString() : call.id();
+    }
+
+    private ToolOutcome executeTool(UUID userId, Workspace workspace, String callId, AgentToolCall call) {
+        if (workspace.isRunnerTarget()) {
+            return executeToolOnRunner(workspace.getId(), callId, call);
+        }
+        return executeToolOnStorage(userId, workspace.getId(), call);
+    }
+
+    /**
+     * Exécute un outil sur la <b>machine de l'utilisateur</b> (F-38 / SF-38-05). La gateway relaie :
+     * elle traduit l'appel en trame {@code tool_call}, attend le {@code tool_result} et le retraduit
+     * en résultat d'outil pour le modèle, dans les formats exacts du mode sandbox (contrat §3) — le
+     * prompt ne doit pas dériver selon la cible d'exécution.
+     */
+    private ToolOutcome executeToolOnRunner(UUID workspaceId, String callId, AgentToolCall call) {
+        try {
+            JsonNode input = call.input();
+            return switch (call.name()) {
+                case "list_files" -> textOutcome(runnerToolGateway.listFiles(workspaceId, callId), null);
+                case "read_file" -> {
+                    String path = requiredArg(input, "path");
+                    yield textOutcome(runnerToolGateway.readFile(workspaceId, callId, path),
+                            new AtelierAction("read", path));
+                }
+                case "write_file" -> {
+                    String path = requiredArg(input, "path");
+                    RunnerCallResult result = runnerToolGateway.writeFile(workspaceId, callId, path,
+                            input.path("content").asText(""));
+                    // Le `content` renvoyé par le runner est ignoré : seul compte l'aboutissement, et
+                    // le modèle attend la formulation historique.
+                    yield result.ok()
+                            ? new ToolOutcome("Fichier écrit : " + path, false, new AtelierAction("write", path))
+                            : ToolOutcome.error(result.errorMessage());
+                }
+                case "search_files" -> textOutcome(
+                        runnerToolGateway.searchFiles(workspaceId, callId, requiredArg(input, "query")), null);
+                default -> ToolOutcome.error("Outil inconnu : " + call.name());
+            };
+        } catch (RuntimeException ex) {
+            return ToolOutcome.error(ex.getMessage() != null ? ex.getMessage() : "Opération refusée.");
+        }
+    }
+
+    /** Traduit une issue d'appel runner en résultat d'outil dont le contenu est rendu verbatim. */
+    private ToolOutcome textOutcome(RunnerCallResult result, AtelierAction action) {
+        if (!result.ok()) {
+            return ToolOutcome.error(result.errorMessage());
+        }
+        String content = result.truncated()
+                ? result.content() + "\n… (contenu tronqué)"
+                : result.content();
+        return new ToolOutcome(content, false, action);
+    }
+
+    private ToolOutcome executeToolOnStorage(UUID userId, UUID workspaceId, AgentToolCall call) {
         try {
             JsonNode input = call.input();
             return switch (call.name()) {
@@ -280,8 +353,15 @@ public class AtelierChatService {
                                 "required", List.of("query"))));
     }
 
-    /** Consigne système : conventions du projet (CLAUDE.md) + skills + rôle de l'agent. */
-    private String buildSystemPrompt(UUID userId, UUID workspaceId) {
+    /**
+     * Consigne système : conventions du projet (CLAUDE.md) + skills + rôle de l'agent.
+     *
+     * <p>Les lectures passent par la <b>cible d'exécution</b> du workspace (F-38 / SF-38-05). En cible
+     * {@code RUNNER}, le stockage objet est vide : lire là-bas enverrait une consigne sans les
+     * conventions du projet, <b>en silence</b> (les lectures optionnelles avalent l'erreur). C'est
+     * exactement la panne qu'on ne verrait pas.</p>
+     */
+    private String buildSystemPrompt(UUID userId, Workspace workspace) {
         StringBuilder system = new StringBuilder();
         system.append("Tu es un assistant de développement qui travaille sur le projet de l'utilisateur, ")
                 .append("dans un espace de travail hébergé. Utilise les outils fournis (list_files, read_file, ")
@@ -289,12 +369,12 @@ public class AtelierChatService {
                 .append("Ne fais aucune supposition sur un fichier sans l'avoir lu. Après une modification, ")
                 .append("résume clairement ce que tu as changé.\n\n");
 
-        readOptional(userId, workspaceId, "CLAUDE.md").ifPresent(content ->
+        readOptional(userId, workspace, "CLAUDE.md").ifPresent(content ->
                 system.append("--- Conventions du projet (CLAUDE.md) ---\n").append(content).append("\n\n"));
 
-        for (String path : safeTree(userId, workspaceId)) {
+        for (String path : safeTree(userId, workspace)) {
             if (SKILL_PREFIXES.stream().anyMatch(path::startsWith)) {
-                readOptional(userId, workspaceId, path).ifPresent(content ->
+                readOptional(userId, workspace, path).ifPresent(content ->
                         system.append("--- Skill : ").append(path).append(" ---\n").append(content).append("\n\n"));
             }
             if (system.length() > SYSTEM_MAX_CHARS) {
@@ -305,17 +385,29 @@ public class AtelierChatService {
         return result.length() > SYSTEM_MAX_CHARS ? result.substring(0, SYSTEM_MAX_CHARS) : result;
     }
 
-    private List<String> safeTree(UUID userId, UUID workspaceId) {
+    /** Arborescence pour la consigne système, prise là où les fichiers vivent réellement. */
+    private List<String> safeTree(UUID userId, Workspace workspace) {
         try {
-            return workspaceService.tree(userId, workspaceId);
+            if (workspace.isRunnerTarget()) {
+                RunnerCallResult result = runnerToolGateway.listFiles(
+                        workspace.getId(), UUID.randomUUID().toString());
+                return result.ok() ? List.of(result.content().split("\n")) : List.of();
+            }
+            return workspaceService.tree(userId, workspace.getId());
         } catch (RuntimeException ex) {
             return List.of();
         }
     }
 
-    private java.util.Optional<String> readOptional(UUID userId, UUID workspaceId, String path) {
+    /** Lecture optionnelle pour la consigne système, prise là où les fichiers vivent réellement. */
+    private java.util.Optional<String> readOptional(UUID userId, Workspace workspace, String path) {
         try {
-            return java.util.Optional.of(workspaceService.readFile(userId, workspaceId, path));
+            if (workspace.isRunnerTarget()) {
+                RunnerCallResult result = runnerToolGateway.readFile(
+                        workspace.getId(), UUID.randomUUID().toString(), path);
+                return result.ok() ? java.util.Optional.of(result.content()) : java.util.Optional.empty();
+            }
+            return java.util.Optional.of(workspaceService.readFile(userId, workspace.getId(), path));
         } catch (RuntimeException ex) {
             return java.util.Optional.empty();
         }

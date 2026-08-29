@@ -167,6 +167,30 @@ public class WorkspaceService {
         return workspaceRepository.save(workspace);
     }
 
+    /**
+     * Change la <b>cible d'exécution</b> du projet (F-38 / SF-38-05, décision D1) : {@code SANDBOX}
+     * (historique) ou {@code RUNNER} (machine de l'utilisateur). Isolation d'abord, comme tout accès.
+     *
+     * <p>La cible est une dimension <b>indépendante de la source</b> : un dépôt Git travaillé sur la
+     * machine de l'utilisateur est un couple {@code GIT} + {@code RUNNER} légitime. Aucun fichier
+     * n'est déplacé : basculer la cible change <b>où</b> les outils s'exécutent, pas où le projet a
+     * été importé.</p>
+     *
+     * @param userId propriétaire (isolation)
+     * @param id     workspace visé
+     * @param target nouvelle cible, obligatoire
+     * @return le workspace à jour
+     */
+    @Transactional
+    public Workspace setExecutionTarget(UUID userId, UUID id, WorkspaceExecutionTarget target) {
+        Workspace workspace = requireOwned(userId, id);
+        if (target == null) {
+            throw new InvalidArchiveException("Cible d'exécution requise.");
+        }
+        workspace.setExecutionTarget(target);
+        return workspaceRepository.save(workspace);
+    }
+
     /** Supprime le workspace (fichiers + ligne). */
     @Transactional
     public void delete(UUID userId, UUID id) {

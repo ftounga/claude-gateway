@@ -151,6 +151,23 @@ class AtelierSessionServiceTest {
     }
 
     @Test
+    void runTaskRefusesAWorkspaceThatExecutesOnTheUsersMachine() {
+        // F-38 / SF-38-05, décision D2 : les Managed Agents exécutent les outils chez le fournisseur.
+        // Ouvrir une session ici ferait travailler l'agent sur un bac à sable vide pendant que
+        // l'utilisateur croit qu'il travaille sur sa machine — le refus doit être explicite.
+        Workspace workspace = ws(null);
+        workspace.setExecutionTarget(fr.claudegateway.atelier.WorkspaceExecutionTarget.RUNNER);
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
+
+        org.assertj.core.api.Assertions
+                .assertThatThrownBy(() -> service(enabled()).runTask(USER, WORKSPACE, "Corrige le bug."))
+                .isInstanceOf(fr.claudegateway.atelier.ExecutionTargetModeException.class);
+
+        verify(provider, never()).createSession(any(), any(), anyList(), any(), any(), any(), any(),
+                any(), any(), any());
+    }
+
+    @Test
     void runTaskMountsFilesRunsSessionAndSyncsOutputsInOrder() {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws(null));
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));

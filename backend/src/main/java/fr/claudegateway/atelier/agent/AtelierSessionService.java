@@ -222,6 +222,15 @@ public class AtelierSessionService {
         quotaService.assertWithinQuota(userId);
         quotaService.assertWithinSandboxLimit(userId);
 
+        // 2 ter. Cible d'exécution RUNNER (F-38 / SF-38-05, décision D2) : les Managed Agents exécutent
+        // les outils chez le fournisseur, hors de portée de tout reroutage vers la machine de
+        // l'utilisateur. Un refus lisible vaut mieux qu'une session qui travaille au mauvais endroit.
+        if (workspace.isRunnerTarget()) {
+            throw new fr.claudegateway.atelier.ExecutionTargetModeException(
+                    "Ce projet s'exécute sur votre machine (runner) : utilisez le mode Assistant, "
+                            + "qui route les outils vers le runner.");
+        }
+
         // 3. Config Managed Agents (environment/agent provisionnés une fois).
         AtelierAgentConfig config = bootstrapService.ensureBootstrapped()
                 .orElseThrow(() -> new IllegalStateException(

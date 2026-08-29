@@ -31,6 +31,7 @@ import fr.claudegateway.atelier.AtelierAccessDeniedException;
 import fr.claudegateway.atelier.InvalidArchiveException;
 import fr.claudegateway.atelier.InvalidFilePathException;
 import fr.claudegateway.atelier.WorkspaceNotFoundException;
+import fr.claudegateway.atelier.ExecutionTargetModeException;
 import fr.claudegateway.atelier.git.GitWorkspaceModeException;
 import fr.claudegateway.atelier.git.GitWorkspaceReadOnlyException;
 import fr.claudegateway.atelier.git.GitWorkspaceRequiredException;
@@ -367,6 +368,15 @@ public class GlobalExceptionHandler {
         log.debug("Mode Assistant refusé : le projet est adossé à un dépôt Git");
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse("git_workspace_terminal_only", ex.getMessage()));
+    }
+
+    @ExceptionHandler(ExecutionTargetModeException.class)
+    public ResponseEntity<ErrorResponse> handleExecutionTargetMode(ExecutionTargetModeException ex) {
+        // Le projet s'execute sur la machine de l'utilisateur : ouvrir un bac a sable chez le
+        // fournisseur travaillerait au mauvais endroit (F-38, decision D2).
+        log.debug("Session sandbox refusee : le projet est en cible d'execution RUNNER");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("execution_target_runner", ex.getMessage()));
     }
 
     @ExceptionHandler(GitFileNotReadableException.class)

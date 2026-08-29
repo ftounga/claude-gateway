@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import fr.claudegateway.atelier.ProjectInstructions;
 import fr.claudegateway.atelier.Workspace;
+import fr.claudegateway.atelier.WorkspaceExecutionTarget;
 import fr.claudegateway.atelier.WorkspaceSource;
 
 /**
@@ -25,6 +26,9 @@ import fr.claudegateway.atelier.WorkspaceSource;
  * @param askBeforeBash vrai si le projet demande l'autorisation avant d'exécuter une commande
  *                   (F-33 / SF-33-01). Champ <b>additif</b> : absent de la vue d'un client antérieur,
  *                   il vaut {@code false} — le comportement historique
+ * @param executionTarget cible d'exécution des outils (F-38 / SF-38-05) : {@code SANDBOX} ou
+ *                   {@code RUNNER}. Champ <b>additif</b> : absent de la vue d'un client antérieur,
+ *                   il vaut {@code SANDBOX} — le comportement historique
  * @param instructionsPath chemin du fichier d'instructions du projet (F-34 / SF-34-01), qui sera
  *                   ajouté au prompt de l'agent à la <b>prochaine ouverture de session</b>, ou
  *                   {@code null} si le projet n'en porte pas. Dérivé de l'arborescence déjà chargée :
@@ -33,7 +37,7 @@ import fr.claudegateway.atelier.WorkspaceSource;
 public record WorkspaceDetailResponse(
         UUID id, String name, int fileCount, List<String> files, OffsetDateTime createdAt,
         WorkspaceSource source, String gitRepoUrl, String gitRepo, String gitBranch, boolean truncated,
-        String instructionsPath, boolean askBeforeBash) {
+        String instructionsPath, boolean askBeforeBash, WorkspaceExecutionTarget executionTarget) {
 
     public static WorkspaceDetailResponse from(Workspace workspace, List<String> files) {
         return from(workspace, files, false);
@@ -44,7 +48,7 @@ public record WorkspaceDetailResponse(
                 workspace.getId(), workspace.getName(), files.size(), files, workspace.getCreatedAt(),
                 workspace.sourceOrDefault(), workspace.getGitRepoUrl(), fullName(workspace),
                 workspace.getGitBranch(), truncated, ProjectInstructions.detectPath(files).orElse(null),
-                workspace.isAgentAskBeforeBash());
+                workspace.isAgentAskBeforeBash(), workspace.executionTargetOrDefault());
     }
 
     /** {@code owner/repo} lisible, ou {@code null} si le workspace n'est pas adossé à un dépôt. */
