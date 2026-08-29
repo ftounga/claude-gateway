@@ -13,7 +13,7 @@ fin de tour de SF-30-05.
 
 ## Statut
 
-`ready`
+`done` — livrée le 2026-08-29 (PR #189 backend, #190 écran)
 
 ## Date de création
 
