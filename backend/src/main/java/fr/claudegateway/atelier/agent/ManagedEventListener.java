@@ -90,6 +90,17 @@ public interface ManagedEventListener {
      *
      * @param state état atteint ({@code running} ou {@code idle})
      */
+    /**
+     * Battement de polling (F-30 / SF-30-13) : appelé une fois par tour de scrutation, que des events
+     * soient arrivés ou non.
+     *
+     * <p>Ne porte aucune donnée : c'est un simple « je suis toujours là ». Ce que l'appelant en fait —
+     * relever la consommation, rafraîchir un indicateur — ne regarde pas le provider, qui ignore tout
+     * du quota et de l'écran.</p>
+     */
+    default void onPoll() {
+    }
+
     default void onStatus(String state) {
     }
 

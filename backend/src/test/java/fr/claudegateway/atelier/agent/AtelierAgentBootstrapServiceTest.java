@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.Duration;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,7 +37,7 @@ class AtelierAgentBootstrapServiceTest {
 
     private AtelierAgentProperties enabledProps() {
         return new AtelierAgentProperties(true, "env-name", "agent-name", "claude-opus-4-8", true,
-                null, null, null, null, null, null, null, null, true, null, null);
+                null, null, null, null, null, null, null, null, true, null, null, Duration.ZERO);
     }
 
     /** GitProperties réduites à ce qui compte ici : l'URL du serveur MCP dont l'hôte est dérivé. */
@@ -46,7 +47,7 @@ class AtelierAgentBootstrapServiceTest {
 
     private AtelierAgentProperties disabledProps() {
         return new AtelierAgentProperties(false, "env-name", "agent-name", "claude-opus-4-8", true,
-                null, null, null, null, null, null, null, null, true, null, null);
+                null, null, null, null, null, null, null, null, true, null, null, Duration.ZERO);
     }
 
     @Test

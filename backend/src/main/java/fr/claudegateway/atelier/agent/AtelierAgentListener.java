@@ -56,6 +56,18 @@ public interface AtelierAgentListener {
      *
      * @param state état atteint ({@code running} / {@code idle})
      */
+    /**
+     * Consommation du tour en cours, en tokens, relevée pendant le run (F-30 / SF-30-13).
+     *
+     * <p>C'est un <b>delta</b> depuis le début du tour, jamais le cumul de la session : sur une
+     * session persistante, le cumul ferait apparaître la consommation des tours précédents comme
+     * celle du tour courant.</p>
+     *
+     * @param tokens tokens consommés depuis le début du tour
+     */
+    default void onProgress(long tokens) {
+    }
+
     default void onStatus(String state) {
     }
 

@@ -18,6 +18,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param sessionTimeout       délai dur d'attente de complétion (défaut {@code PT10M} — garde-fou coût)
  * @param maxPolls             nombre maximal de tours de polling d'events (défaut {@code 600})
  * @param pollDelay            attente entre deux tours de polling (défaut {@code PT1S} ; {@code 0} en test)
+ * @param progressInterval     intervalle minimal entre deux relevés de consommation pendant un run
+ *                             (F-30 / SF-30-13, défaut {@code PT5S}). {@code 0} ou négatif ⇒ relevé
+ *                             DÉSACTIVÉ : aucun appel au fournisseur, flux strictement identique à
+ *                             celui d'avant cette subfeature
  * @param maxTranscriptChars   borne de la transcription persistée dans l'historique (défaut
  *                             {@code 100000}, F-30 SF-30-09) : un tour qui installe un projet entier
  *                             ne doit pas faire gonfler l'historique sans limite
@@ -62,7 +66,8 @@ public record AtelierAgentProperties(
         Duration confirmTimeout,
         Boolean subagentsEnabled,
         Integer maxSubagents,
-        String effort) {
+        String effort,
+        Duration progressInterval) {
 
     /** Niveaux d'effort acceptés par le fournisseur ; toute autre valeur retombe sur le défaut. */
     private static final java.util.Set<String> ALLOWED_EFFORTS =
@@ -120,6 +125,11 @@ public record AtelierAgentProperties(
         if (pollDelay == null || pollDelay.isNegative()) {
             // 0 explicitement autorisé (tests déterministes sans sleep réel).
             pollDelay = Duration.ofSeconds(1);
+        }
+        if (progressInterval == null) {
+            // Cinq secondes suffisent à donner le sentiment que ça avance, sans multiplier les
+            // appels au fournisseur pendant un run. `0` reste un choix valide : il coupe le relevé.
+            progressInterval = Duration.ofSeconds(5);
         }
     }
 }

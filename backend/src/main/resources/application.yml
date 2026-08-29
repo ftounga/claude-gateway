@@ -74,6 +74,11 @@ app:
       # et modifiable sans re-provisionner l'agent — le modele et l'effort sont envoyes en surcharge
       # de session. Le baisser se decide sur les mesures de cout (F-36), pas sur une intuition.
       effort: ${APP_ATELIER_AGENT_EFFORT:xhigh}
+      # Releve de consommation PENDANT le run (F-30 / SF-30-13) : alimente la ligne vivante du
+      # terminal. Intervalle MINIMAL entre deux appels — le polling des events tourne bien plus vite,
+      # y accrocher un releve multiplierait les requetes pour un chiffre qui n'a d'interet qu'a
+      # l'echelle de la seconde. `0` desactive le releve : aucun appel, flux identique a avant.
+      progress-interval: ${APP_ATELIER_AGENT_PROGRESS_INTERVAL:PT5S}
       allow-package-managers: ${APP_ATELIER_AGENT_ALLOW_PKG:true}
       # Garde-fous des sessions (SF-28-09) : bornent le nb de fichiers montés et le runtime facturé.
       max-session-files: ${APP_ATELIER_AGENT_MAX_SESSION_FILES:300}

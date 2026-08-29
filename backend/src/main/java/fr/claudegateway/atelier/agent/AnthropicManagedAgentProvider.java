@@ -523,6 +523,9 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
             }
             // Le silence ne vaut pas autorisation (D3 du cadrage) : passé le délai, on refuse.
             denyExpiredAsks(sessionId, pendingAsks, sink);
+            // Battement (F-30 / SF-30-13) : le run continue. Émis APRÈS la sortie sur `idle`, donc
+            // jamais pour un tour déjà terminé — et sans donnée, le provider ignorant ce qu'on en fait.
+            sink.onPoll();
             sleepBetweenPolls();
         }
         throw new AgentSessionTimeoutException(
