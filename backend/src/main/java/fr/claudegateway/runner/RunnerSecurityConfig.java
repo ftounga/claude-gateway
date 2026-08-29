@@ -15,9 +15,11 @@ import org.springframework.security.web.SecurityFilterChain;
  * (ou son code d'appairage) ne peut jamais authentifier un endpoint utilisateur, et la chaîne
  * principale reste strictement inchangée.
  *
- * <p>SF-38-01 n'expose que {@code POST /runner/pair}, authentifié par le code d'appairage porté dans
- * le corps (pas de JWT). Le canal WebSocket {@code /runner/ws} viendra en SF-38-02 sur cette même
- * chaîne. Stateless, CSRF désactivé (API non navigateur, pas de cookie de session).</p>
+ * <p>Deux entrées : {@code POST /runner/pair} (SF-38-01, authentifié par le code d'appairage porté
+ * dans le corps) et le handshake WebSocket {@code GET /runner/ws} (SF-38-02, authentifié par le jeton
+ * runner dans {@code RunnerHandshakeInterceptor}). Les deux sont {@code permitAll} au niveau de la
+ * chaîne (l'authentification réelle est faite en aval) ; tout le reste est refusé. Stateless, CSRF
+ * désactivé (API non navigateur, pas de cookie de session).</p>
  */
 @Configuration
 public class RunnerSecurityConfig {
@@ -34,6 +36,9 @@ public class RunnerSecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/runner/**").permitAll()
                         // L'appairage s'authentifie par le code porté dans le corps, pas par un JWT.
                         .requestMatchers(HttpMethod.POST, "/runner/pair").permitAll()
+                        // Le handshake WS (SF-38-02) est authentifié par le jeton runner dans
+                        // RunnerHandshakeInterceptor (query param ou sous-protocole), pas ici.
+                        .requestMatchers(HttpMethod.GET, "/runner/ws").permitAll()
                         .anyRequest().denyAll());
         return http.build();
     }
