@@ -361,13 +361,63 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
     }
 
     @Override
-    public void sendUserMessage(String sessionId, String text) {
+    public String sendUserMessage(String sessionId, String text) {
         // Forme attendue par l'API : un tableau `events`, chaque event portant un `content` en blocs.
         Map<String, Object> event = Map.of(
                 "type", "user.message",
                 "content", List.of(Map.of("type", "text", "text", text == null ? "" : text)));
         Map<String, Object> body = Map.of("events", List.of(event));
-        post("/v1/sessions/" + sessionId + "/events", body, "envoi du message utilisateur");
+        JsonNode response = post("/v1/sessions/" + sessionId + "/events", body, "envoi du message utilisateur");
+        // L'identifiant de CET event borne le tour : la session est persistante (SF-30-04), elle
+        // porte donc encore les events des tours précédents, qu'il ne faut ni rejouer ni prendre
+        // pour la fin du tour courant (F-30 / SF-30-11).
+        String posted = postedEventId(response);
+        return posted != null ? posted : lastUserMessageId(sessionId);
+    }
+
+    /** Identifiant du premier event renvoyé par la publication, ou {@code null} s'il n'y en a pas. */
+    private static String postedEventId(JsonNode response) {
+        if (response == null) {
+            return null;
+        }
+        for (JsonNode event : response.path("data")) {
+            String id = text(event, "id");
+            if (id != null && !id.isBlank()) {
+                return id;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Repli quand la publication ne rend pas d'identifiant : le <b>dernier</b> {@code user.message}
+     * de la session est celui qui vient d'être posté.
+     *
+     * <p>Ne jamais retomber sur « pas de borne » : ce serait rétablir exactement le défaut corrigé,
+     * la relecture du tour précédent. Une borne introuvable vaut mieux qu'une borne absente — le tour
+     * échouera franchement en délai plutôt que de rejouer une ancienne réponse.</p>
+     */
+    private String lastUserMessageId(String sessionId) {
+        String found = null;
+        String cursor = null;
+        for (int page = 0; page < MAX_EVENT_PAGES; page++) {
+            JsonNode pageNode = readEventsPage(sessionId, cursor);
+            boolean empty = true;
+            for (JsonNode event : events(pageNode)) {
+                empty = false;
+                if ("user.message".equals(text(event, "type"))) {
+                    found = text(event, "id");
+                }
+            }
+            cursor = text(pageNode, "next_page");
+            if (empty || cursor == null || cursor.isBlank()) {
+                break;
+            }
+        }
+        if (found == null) {
+            log.warn("Aucune borne d'event trouvée pour le tour : le tour ne lira aucun event.");
+        }
+        return found;
     }
 
     @Override
@@ -389,6 +439,14 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
     @Override
     public SessionRun awaitCompletion(String sessionId, Duration timeout, int maxPolls,
             ManagedEventListener listener) {
+        // Sans borne : toute la session est lue. Correct pour une session neuve — et c'est le
+        // comportement historique, conservé pour les appelants qui n'ont pas de borne à donner.
+        return awaitCompletion(sessionId, timeout, maxPolls, listener, null);
+    }
+
+    @Override
+    public SessionRun awaitCompletion(String sessionId, Duration timeout, int maxPolls,
+            ManagedEventListener listener, String sinceEventId) {
         ManagedEventListener sink = listener == null ? ManagedEventListener.NOOP : listener;
         StringBuilder reply = new StringBuilder();
         Set<String> seen = new HashSet<>();
@@ -407,12 +465,21 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
             String stopReason = null;
             boolean idle = false;
             String cursor = null; // 1re page sans curseur ; ensuite `next_page` de la réponse
+            // Borne du tour (F-30 / SF-30-11). Chaque poll relit depuis la page 0 : l'état « borne
+            // franchie » est donc local au poll. Sans borne, tout est pris dès la première ligne.
+            boolean reached = sinceEventId == null;
             for (int page = 0; page < MAX_EVENT_PAGES; page++) {
                 JsonNode pageNode = readEventsPage(sessionId, cursor);
                 for (JsonNode event : events(pageNode)) {
                     String id = text(event, "id");
+                    if (!reached) {
+                        // Tout ce qui précède le message de CE tour appartient aux tours précédents :
+                        // le rejouer réémettrait leur réponse et ferait prendre leur fin pour la nôtre.
+                        reached = sinceEventId.equals(id);
+                        continue;
+                    }
                     if (id != null && !seen.add(id)) {
-                        continue; // event déjà traité lors d'un tour précédent
+                        continue; // event déjà traité lors d'un poll précédent
                     }
                     String type = text(event, "type");
                     if ("agent.message".equals(type)) {

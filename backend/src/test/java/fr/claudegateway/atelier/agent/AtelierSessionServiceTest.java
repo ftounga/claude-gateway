@@ -152,7 +152,7 @@ class AtelierSessionServiceTest {
         when(provider.uploadFile(eq("src_a.txt"), any())).thenReturn("file_in");
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_1")).thenReturn(List.of(
                 new OutputFile("out_1", "/workspace/src/a.txt"),
@@ -185,7 +185,7 @@ class AtelierSessionServiceTest {
         order.verify(provider).uploadFile(eq("src_a.txt"), any());
         order.verify(provider).createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any());
         order.verify(provider).sendUserMessage("sess_1", "Corrige le bug.");
-        order.verify(provider).awaitCompletion(eq("sess_1"), any(), anyInt(), any());
+        order.verify(provider).awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any());
         order.verify(provider).listOutputs("sess_1");
         order.verify(provider).downloadFile("out_1");
         verify(provider, never()).terminateSession(any());
@@ -201,7 +201,7 @@ class AtelierSessionServiceTest {
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
         // Le provider relaie des events au listener passé (bridge) puis renvoie la réponse agrégée.
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(inv -> {
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any())).thenAnswer(inv -> {
             ManagedEventListener sink = inv.getArgument(3);
             sink.onStatus("running");
             sink.onAgentText("Je corrige.");
@@ -259,7 +259,7 @@ class AtelierSessionServiceTest {
         when(provider.uploadFile(eq("a.txt"), any())).thenReturn("file_in");
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any()))
                 .thenThrow(new AgentProviderException("boom"));
 
         assertThatThrownBy(() -> service(enabled())
@@ -325,7 +325,7 @@ class AtelierSessionServiceTest {
         when(provider.uploadFile(eq("a.txt"), any())).thenReturn("file_in");
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any()))
                 .thenThrow(new AgentProviderException("boom"));
 
         assertThatThrownBy(() -> service(enabled()).runTask(USER, WORKSPACE, "go"))
@@ -343,7 +343,7 @@ class AtelierSessionServiceTest {
         when(provider.uploadFile(eq("a.txt"), any())).thenReturn("file_in");
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any()))
                 .thenThrow(new AgentSessionTimeoutException("timeout"));
 
         assertThatThrownBy(() -> service(enabled()).runTask(USER, WORKSPACE, "go"))
@@ -438,7 +438,7 @@ class AtelierSessionServiceTest {
         when(provider.uploadFile(eq("a.txt"), any())).thenReturn("file_in");
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_1")).thenReturn(List.of());
     }
@@ -467,7 +467,7 @@ class AtelierSessionServiceTest {
         when(provider.uploadFile(eq("a.txt"), any())).thenReturn("file_in");
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_1")).thenReturn(List.of());
 
@@ -496,7 +496,7 @@ class AtelierSessionServiceTest {
                 .when(provider).sendUserMessage(eq("sess_morte"), any());
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_neuve"));
-        when(provider.awaitCompletion(eq("sess_neuve"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_neuve"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_neuve")).thenReturn(List.of());
 
@@ -534,7 +534,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_1")).thenReturn(List.of());
         when(provider.getSessionUsage("sess_1"))
@@ -563,7 +563,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_1")).thenReturn(List.of());
         // Session neuve : les compteurs repartent à zéro, donc en deçà du dernier relevé.
@@ -587,7 +587,7 @@ class AtelierSessionServiceTest {
         when(provider.uploadFile(eq("a.txt"), any())).thenReturn("file_in");
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_1"))
                 .thenReturn(List.of(new OutputFile("out_1", "a.txt")))
@@ -662,7 +662,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_1")).thenReturn(List.of());
         when(provider.getSessionUsage("sess_1"))
@@ -707,7 +707,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(inv -> {
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any())).thenAnswer(inv -> {
             ManagedEventListener sink = inv.getArgument(3);
             sink.onAction("bash", "tu_1", "npm test");
             sink.onActionResult("bash", "tu_1", "12 passing", false);
@@ -739,7 +739,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(),
                 any(), any(), any())).thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(inv -> {
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any())).thenAnswer(inv -> {
             ManagedEventListener sink = inv.getArgument(3);
             sink.onAction("bash", "tu_1", "grep -r TODO", "thr_sub");
             sink.onActionResult("bash", "tu_1", "3 occurrences", false, "thr_sub");
@@ -762,7 +762,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(),
                 any(), any(), any())).thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(inv -> {
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any())).thenAnswer(inv -> {
             ManagedEventListener sink = inv.getArgument(3);
             sink.onAction("bash", "tu_1", "npm test", "thr_main");
             sink.onActionResult("bash", "tu_1", "ok", false, "thr_main");
@@ -795,7 +795,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any()))
                 .thenThrow(new AgentProviderException("boom"));
 
         assertThatThrownBy(() -> service(enabled()).runTask(USER, WORKSPACE, "go"))
@@ -846,7 +846,7 @@ class AtelierSessionServiceTest {
         when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_git"));
-        when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_git")).thenReturn(List.of());
 
@@ -877,7 +877,7 @@ class AtelierSessionServiceTest {
                 Optional.of(new McpAccess("vlt_1", "github", "https://api.githubcopilot.com/mcp/")));
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_git"));
-        when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_git")).thenReturn(List.of());
 
@@ -900,7 +900,7 @@ class AtelierSessionServiceTest {
         when(mcpVaultService.resolveAccess(USER)).thenReturn(Optional.empty());
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_git"));
-        when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_git")).thenReturn(List.of());
 
@@ -966,7 +966,7 @@ class AtelierSessionServiceTest {
         workspace.setAgentSessionId("sess_git");
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
-        when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Branche poussée.", "end_turn"));
         when(provider.listOutputs("sess_git")).thenReturn(List.of());
 
@@ -1045,7 +1045,7 @@ class AtelierSessionServiceTest {
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(provider.listOutputs("sess_1")).thenReturn(List.of());
         // L'interruption arrive pendant le run (autre thread) : ici, depuis le stub d'attente.
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(inv -> {
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any())).thenAnswer(inv -> {
             service.interruptSession(USER, WORKSPACE);
             return new SessionRun("Arrêté.", "end_turn");
         });
@@ -1063,7 +1063,7 @@ class AtelierSessionServiceTest {
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(provider.listOutputs("sess_1")).thenReturn(List.of());
         when(provider.getSessionUsage("sess_1")).thenReturn(new SessionUsage(900L, 100L, 42L));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(inv -> {
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any())).thenAnswer(inv -> {
             ManagedEventListener sink = inv.getArgument(3);
             sink.onAction("bash", "tu_1", "npm install");
             service.interruptSession(USER, WORKSPACE);
@@ -1091,7 +1091,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_1"));
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(provider.listOutputs("sess_1")).thenReturn(List.of());
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(inv -> {
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any())).thenAnswer(inv -> {
             service.interruptSession(USER, WORKSPACE);
             return new SessionRun("Arrêté.", "end_turn");
         });
@@ -1111,7 +1111,7 @@ class AtelierSessionServiceTest {
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(provider.listOutputs("sess_1")).thenReturn(List.of());
         doThrow(new AgentProviderException("session morte")).when(provider).interruptSession("sess_1");
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(inv -> {
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any())).thenAnswer(inv -> {
             assertThatThrownBy(() -> service.interruptSession(USER, WORKSPACE))
                     .isInstanceOf(AgentProviderException.class);
             return new SessionRun("Terminé.", "end_turn");
@@ -1129,7 +1129,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_1"));
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(provider.listOutputs("sess_1")).thenReturn(List.of());
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
 
         service.interruptSession(USER, WORKSPACE); // session idle : rien à interrompre en vol
@@ -1144,7 +1144,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_1"));
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(provider.listOutputs("sess_1")).thenReturn(List.of());
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Arrêté.", "user_interrupt"));
 
         AtelierSessionResult result = service(enabled()).runTask(USER, WORKSPACE, "go");
@@ -1180,7 +1180,7 @@ class AtelierSessionServiceTest {
                         "CLAUDE.md", "Les tests se lancent avec `make test`.", false)));
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_1")).thenReturn(List.of());
 
@@ -1213,7 +1213,7 @@ class AtelierSessionServiceTest {
                         ".atelier/instructions.md", "Ne touche jamais au dossier legacy/.", false)));
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_git"));
-        when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_git")).thenReturn(List.of());
 
@@ -1231,7 +1231,7 @@ class AtelierSessionServiceTest {
     void instructionsAreReadOnceAtOpeningAndNotOnAReusedSession() {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_1"));
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_1")).thenReturn(List.of());
 
@@ -1275,7 +1275,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_1")).thenReturn(List.of());
 
@@ -1293,7 +1293,7 @@ class AtelierSessionServiceTest {
         when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_git"));
-        when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_git")).thenReturn(List.of());
 
@@ -1385,7 +1385,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_1"));
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
         when(provider.listOutputs("sess_1")).thenReturn(List.of());
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any())).thenAnswer(invocation -> {
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any())).thenAnswer(invocation -> {
             ManagedEventListener bridge = invocation.getArgument(3);
             bridge.onConfirmationRequest("bash", "sevt_1", "rm -rf build");
             bridge.onConfirmationResolved("sevt_1", "deny");
@@ -1457,7 +1457,7 @@ class AtelierSessionServiceTest {
     void aReusedSessionGetsNoBudgetBecauseTheProviderRefusesToAddOneAfterwards() {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_ouverte"));
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
-        when(provider.awaitCompletion(eq("sess_ouverte"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_ouverte"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_ouverte")).thenReturn(List.of());
 
@@ -1473,7 +1473,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("J'ai commencé…", "budget_reached"));
         when(provider.listOutputs("sess_1")).thenReturn(List.of(new OutputFile("out_1", "a.txt")));
         when(provider.downloadFile("out_1")).thenReturn("partiel".getBytes());
@@ -1494,7 +1494,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("J'ai commencé…", "budget_reached"));
         when(provider.listOutputs("sess_1")).thenReturn(List.of());
 
@@ -1555,7 +1555,7 @@ class AtelierSessionServiceTest {
         workspace.setAgentListCost(90L);
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
-        when(provider.awaitCompletion(eq("sess_ouverte"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_ouverte"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_ouverte")).thenReturn(List.of());
         when(provider.getSessionUsage("sess_ouverte"))
@@ -1597,7 +1597,7 @@ class AtelierSessionServiceTest {
         workspace.setAgentListCost(500L);
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(workspace);
         when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
-        when(provider.awaitCompletion(eq("sess_ouverte"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_ouverte"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_ouverte")).thenReturn(List.of());
         when(provider.getSessionUsage("sess_ouverte"))
@@ -1617,7 +1617,7 @@ class AtelierSessionServiceTest {
         when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new ManagedSession("sess_neuve"));
-        when(provider.awaitCompletion(eq("sess_neuve"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_neuve"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_neuve")).thenReturn(List.of());
         when(provider.getSessionUsage("sess_neuve")).thenReturn(new SessionUsage(0L, 0L, 0L, 9L));
@@ -1690,7 +1690,7 @@ class AtelierSessionServiceTest {
         when(mcpVaultService.resolveAccess(USER)).thenReturn(Optional.empty());
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(),
                 any(), any(), any())).thenReturn(new ManagedSession("sess_git"));
-        when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_git"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_git")).thenReturn(List.of());
 
@@ -1729,7 +1729,7 @@ class AtelierSessionServiceTest {
         when(provider.uploadFile(eq("src_a.txt"), any())).thenReturn("file_in");
         when(provider.createSession(eq("agent_1"), eq("env_1"), anyList(), any(), any(), any(), any(),
                 any(), any(), any())).thenReturn(new ManagedSession("sess_1"));
-        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any()))
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any()))
                 .thenReturn(new SessionRun("Terminé.", "end_turn"));
         when(provider.listOutputs("sess_1")).thenReturn(outputs);
     }
