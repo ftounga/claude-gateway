@@ -15,12 +15,16 @@ import {
   AtelierStreamAction,
   AtelierStreamHandlers,
   CreateGitWorkspaceRequest,
+  ExecutionTargetRequest,
   FileContent,
   GitPullRequestRequest,
   GitPullRequestResult,
   GitPushRequest,
   GitPushResult,
+  RunnerPairingCode,
+  RunnerStatus,
   WorkspaceDetail,
+  WorkspaceExecutionTarget,
   WorkspaceSummary,
   WriteFileRequest,
 } from '../models/atelier.models';
@@ -394,5 +398,44 @@ export class AtelierService {
   /** Historique de conversation du workspace. */
   getHistory(id: string): Observable<AtelierMessage[]> {
     return this.http.get<AtelierMessage[]>(`/api/workspaces/${id}/chat`);
+  }
+
+  /**
+   * Bascule la **cible d'exécution** du projet (F-38 / SF-38-05) : `SANDBOX` (sandbox hébergé) ou
+   * `RUNNER` (la machine de l'utilisateur, via le runner local). Renvoie le détail à jour — c'est
+   * lui qui fait foi, jamais la valeur demandée : la cible pilote où s'écrivent réellement les
+   * fichiers, l'afficher de façon optimiste serait dangereux.
+   */
+  setExecutionTarget(id: string, target: WorkspaceExecutionTarget): Observable<WorkspaceDetail> {
+    const body: ExecutionTargetRequest = { executionTarget: target };
+    return this.http.put<WorkspaceDetail>(`/api/workspaces/${id}/execution-target`, body);
+  }
+
+  /**
+   * État runner du projet (F-38 / SF-38-02). Volontairement **relevé à la demande** : aucun canal
+   * poussé n'est ouvert pour cette information, et le backend lui-même la calcule avec une tolérance
+   * de 90 s sur le dernier heartbeat — un temps réel affiché serait un mensonge.
+   */
+  getRunnerStatus(id: string): Observable<RunnerStatus> {
+    return this.http.get<RunnerStatus>(`/api/workspaces/${id}/runner/status`);
+  }
+
+  /**
+   * Génère un **code d'appairage à usage unique** pour ce projet (F-38 / SF-38-01). Le code
+   * n'apparaît que dans cette réponse : il n'est ni stocké ni ré-obtenable, et une régénération
+   * produit un nouveau code.
+   */
+  createRunnerPairingCode(id: string): Observable<RunnerPairingCode> {
+    return this.http.post<RunnerPairingCode>(`/api/workspaces/${id}/runner/pairing-code`, null);
+  }
+
+  /**
+   * Télécharge le binaire du runner (F-38 / SF-38-03). Endpoint **public** : le jar est un client,
+   * il ne porte aucun secret. Un **404** n'est pas une panne mais un état de déploiement normal —
+   * `app.runner.jar-path` est vide par défaut, le jar n'étant pas empaqueté dans l'image ; l'appelant
+   * doit alors proposer la commande de construction plutôt qu'une erreur technique.
+   */
+  downloadRunnerJar(): Observable<Blob> {
+    return this.http.get('/api/runner/download', { responseType: 'blob' });
   }
 }

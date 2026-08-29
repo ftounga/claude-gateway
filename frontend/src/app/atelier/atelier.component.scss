@@ -651,3 +651,56 @@ a.active {
     text-decoration: underline;
   }
 }
+
+// ---- Cible d'exécution et état du runner (F-38 / SF-38-06) ----
+
+.target-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-bottom: 1px solid var(--cg-divider);
+  background: var(--cg-surface);
+}
+
+.target-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cg-text-secondary);
+}
+
+.target-toggle {
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    margin-right: var(--cg-space-1);
+    vertical-align: middle;
+  }
+}
+
+.target-hint {
+  flex: 1 1 240px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--cg-text-secondary);
+}
+
+.runner-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  cursor: default;
+}
+
+.runner-chip-icon {
+  font-size: 14px;
+  width: 14px;
+  height: 14px;
+}
+
+.runner-last-seen {
+  font-weight: 400;
+  opacity: 0.85;
+}

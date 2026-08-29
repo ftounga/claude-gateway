@@ -11,6 +11,14 @@
  */
 export type WorkspaceSource = 'ARCHIVE' | 'GIT';
 
+/**
+ * Cible d'exécution des outils d'un projet (F-38 / SF-38-05, décision D1) : le **sandbox hébergé**
+ * chez le fournisseur, ou la **machine de l'utilisateur** via le runner local. Dimension
+ * indépendante de la {@link WorkspaceSource} : un dépôt Git cloné sur sa propre machine est un
+ * couple `GIT` + `RUNNER` parfaitement légitime.
+ */
+export type WorkspaceExecutionTarget = 'SANDBOX' | 'RUNNER';
+
 /** Vue résumée d'un workspace (liste). Réponse de `GET /api/workspaces`. */
 export interface WorkspaceSummary {
   id: string;
@@ -19,6 +27,11 @@ export interface WorkspaceSummary {
   source: WorkspaceSource;
   /** `owner/repo` pour un projet Git, `null` sinon. */
   gitRepo: string | null;
+  /**
+   * Cible d'exécution (F-38 / SF-38-05). Champ **additif** : absent d'un backend antérieur ⇒
+   * `SANDBOX`, le comportement historique.
+   */
+  executionTarget?: WorkspaceExecutionTarget;
 }
 
 /** Corps de `POST /api/workspaces/{id}/git/push` (F-31 / SF-31-04). Les deux champs sont facultatifs. */
@@ -108,6 +121,41 @@ export interface WorkspaceDetail {
    * Champ **additif** : absent d'un backend antérieur ⇒ `false`, le comportement historique.
    */
   askBeforeBash?: boolean;
+  /**
+   * Cible d'exécution des outils (F-38 / SF-38-05) : `SANDBOX` (sandbox hébergé) ou `RUNNER` (la
+   * machine de l'utilisateur). Champ **additif** : absent d'un backend antérieur ⇒ `SANDBOX`.
+   */
+  executionTarget?: WorkspaceExecutionTarget;
+}
+
+/** Corps de `PUT /api/workspaces/{id}/execution-target` (F-38 / SF-38-05). */
+export interface ExecutionTargetRequest {
+  executionTarget: WorkspaceExecutionTarget;
+}
+
+/**
+ * État runner d'un projet (F-38 / SF-38-02), réponse de `GET /api/workspaces/{id}/runner/status`.
+ *
+ * <p>`connected` n'est **pas** du temps réel : le backend le calcule à partir du registre de
+ * présence et de la fraîcheur du dernier heartbeat (`app.runner.heartbeat.stale-after`, 90 s par
+ * défaut). Un runner coupé par `Ctrl-C` reste donc annoncé connecté jusqu'à ce délai — l'écran doit
+ * le dire plutôt que de laisser croire à une pastille instantanée.</p>
+ */
+export interface RunnerStatus {
+  connected: boolean;
+  /** Dernier signe de vie observé, ou `null` si aucun runner ne s'est jamais signalé. */
+  lastSeenAt: string | null;
+}
+
+/**
+ * Code d'appairage runner (F-38 / SF-38-01), réponse de
+ * `POST /api/workspaces/{id}/runner/pairing-code`. **À usage unique**, TTL court
+ * (`app.runner.pairing-code-ttl`, 5 min par défaut) : il n'apparaît qu'ici, n'est jamais réexposé
+ * par l'API, et ne doit donc être ni stocké ni ré-affiché après consommation.
+ */
+export interface RunnerPairingCode {
+  code: string;
+  expiresAt: string;
 }
 
 /** Contenu texte d'un fichier du workspace. Réponse de `GET /api/workspaces/{id}/file?path=`. */
@@ -217,7 +265,12 @@ export interface AtelierChatResponse {
  * (événement `action`, SF-28-05). `path` est absent pour `list`.
  */
 export interface AtelierStreamAction {
-  type: 'read' | 'write' | 'list' | 'search';
+  /**
+   * Type d'étape. **Chaîne libre volontairement** (contrat de messages runner §3) : le backend peut
+   * en ajouter (`bash` arrive en SF-38-07) et l'écran doit tolérer un type qu'il ne connaît pas
+   * plutôt que de l'afficher sous une étiquette fausse.
+   */
+  type: string;
   path?: string;
 }
 

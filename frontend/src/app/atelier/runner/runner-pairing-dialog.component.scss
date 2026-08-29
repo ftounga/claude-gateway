@@ -1,0 +1,164 @@
+// Dialogue « Connecter une machine » (F-38 / SF-38-06) — jetons du design system (--cg-*).
+
+.pairing-intro {
+  margin: 0 0 var(--cg-space-3);
+  color: var(--cg-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+
+  code {
+    font-family: var(--cg-font-mono);
+    font-size: 12px;
+  }
+}
+
+.pairing-step {
+  padding: var(--cg-space-3) 0;
+  border-top: 1px solid var(--cg-divider);
+}
+
+.pairing-step-title {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  margin: 0 0 var(--cg-space-2);
+  font-family: var(--cg-font-heading);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--cg-text-primary);
+}
+
+.pairing-step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--cg-accent);
+  color: #fff;
+  font-family: var(--cg-font-body);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pairing-hint {
+  margin: 0 0 var(--cg-space-2);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pairing-error {
+  margin: 0 0 var(--cg-space-2);
+  color: var(--cg-error);
+  font-size: 12px;
+}
+
+.pairing-code-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  margin-bottom: var(--cg-space-2);
+  border: 1px solid var(--cg-divider);
+  border-radius: 8px;
+  background: var(--cg-surface-2);
+}
+
+.pairing-code {
+  font-family: var(--cg-font-mono);
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: 4px;
+  color: var(--cg-primary);
+  word-break: break-all;
+}
+
+.pairing-countdown,
+.pairing-expired {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  margin: 0 0 var(--cg-space-2);
+  font-size: 12px;
+}
+
+.pairing-countdown {
+  color: var(--cg-text-secondary);
+}
+
+.pairing-expired {
+  color: var(--cg-error);
+}
+
+.pairing-inline-icon {
+  flex: none;
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}
+
+.pairing-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  margin-bottom: var(--cg-space-2);
+  border: 1px solid var(--cg-divider);
+  border-radius: 8px;
+  background: var(--cg-surface-2);
+}
+
+.pairing-note-title {
+  margin: 0 0 var(--cg-space-1);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cg-text-primary);
+}
+
+.pairing-note-text {
+  margin: 0 0 var(--cg-space-2);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+
+  code {
+    font-family: var(--cg-font-mono);
+  }
+}
+
+.pairing-command {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2);
+  margin-bottom: var(--cg-space-2);
+  border-radius: 8px;
+  background: var(--cg-navy);
+
+  code {
+    flex: 1;
+    font-family: var(--cg-font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    color: #fff;
+    word-break: break-all;
+  }
+
+  .mat-mdc-icon-button {
+    flex: none;
+    color: #fff;
+  }
+}
+
+.pairing-field {
+  display: block;
+  width: 100%;
+  margin-bottom: var(--cg-space-3);
+}
+
+.pairing-action {
+  margin-top: var(--cg-space-1);
+}
