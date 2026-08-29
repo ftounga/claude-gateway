@@ -94,4 +94,10 @@ export interface AtelierExecStreamingItem {
   status: string;
   blocks: AtelierTerminalBlock[];
   text: string;
+  /**
+   * Tokens consommés depuis le début du tour (F-30 / SF-30-13), relevés pendant le run. `null` tant
+   * qu'aucun relevé n'est arrivé — la ligne vivante omet alors le compteur plutôt que d'afficher un
+   * zéro qui passerait pour une mesure.
+   */
+  tokens: number | null;
 }

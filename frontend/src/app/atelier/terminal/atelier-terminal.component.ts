@@ -1,11 +1,14 @@
 import {
   AfterViewChecked,
+  ChangeDetectorRef,
   Component,
   ElementRef,
   EventEmitter,
   Input,
+  OnDestroy,
   Output,
   ViewChild,
+  inject,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -58,7 +61,7 @@ import {
   templateUrl: './atelier-terminal.component.html',
   styleUrl: './atelier-terminal.component.scss',
 })
-export class AtelierTerminalComponent implements AfterViewChecked {
+export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   /** Nom du projet, affiché dans l'en-tête. */
   @Input() projectName = '';
 
@@ -152,6 +155,96 @@ export class AtelierTerminalComponent implements AfterViewChecked {
 
   /** Hauteur de contenu au dernier défilement : évite de forcer le scroll à chaque cycle. */
   private lastScrollHeight = 0;
+
+  /**
+   * Images du spinner braille de la ligne vivante (F-30 / SF-30-13) : la même séquence que les
+   * outils en ligne de commande, pour un écran qui se donne pour un terminal.
+   */
+  private static readonly SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+  /** Cadence du spinner : assez vive pour vivre, assez lente pour ne pas scintiller. */
+  private static readonly SPINNER_INTERVAL_MS = 120;
+
+  private readonly changeDetector = inject(ChangeDetectorRef);
+
+  /** Image courante du spinner ; seule la ligne vivante la lit. */
+  spinnerFrame = AtelierTerminalComponent.SPINNER_FRAMES[0];
+
+  private spinnerTimer?: ReturnType<typeof setInterval>;
+  private spinnerIndex = 0;
+
+  /**
+   * Le spinner ne tourne que pendant un tour : une animation qui tourne dans le vide consomme du
+   * temps de rendu et ment sur l'état du système.
+   */
+  @Input() set streamingActive(active: boolean) {
+    if (active) {
+      this.startSpinner();
+    } else {
+      this.stopSpinner();
+    }
+  }
+
+  ngOnDestroy(): void {
+    this.stopSpinner();
+  }
+
+  private startSpinner(): void {
+    if (this.spinnerTimer) {
+      return;
+    }
+    this.spinnerTimer = setInterval(() => {
+      this.spinnerIndex = (this.spinnerIndex + 1) % AtelierTerminalComponent.SPINNER_FRAMES.length;
+      this.spinnerFrame = AtelierTerminalComponent.SPINNER_FRAMES[this.spinnerIndex];
+      this.changeDetector.markForCheck();
+    }, AtelierTerminalComponent.SPINNER_INTERVAL_MS);
+  }
+
+  private stopSpinner(): void {
+    if (this.spinnerTimer) {
+      clearInterval(this.spinnerTimer);
+      this.spinnerTimer = undefined;
+    }
+    this.spinnerIndex = 0;
+    this.spinnerFrame = AtelierTerminalComponent.SPINNER_FRAMES[0];
+  }
+
+  /**
+   * Ce que l'agent fait à l'instant : le dernier outil annoncé dont la sortie n'est pas arrivée.
+   *
+   * <p>Aucune action encore reçue ⇒ « démarrage… ». Ne rien afficher laisserait croire à un blocage,
+   * ce qui est précisément le doute que cette ligne lève.</p>
+   */
+  liveActionLabel(live: AtelierExecStreamingItem): string {
+    for (let i = live.blocks.length - 1; i >= 0; i -= 1) {
+      const block = live.blocks[i];
+      if ((block.command || block.tool) && !block.hasOutput) {
+        return blockLabel(block);
+      }
+    }
+    return live.blocks.length > 0 ? 'traitement…' : 'démarrage…';
+  }
+
+  /** Étapes déjà faites : les blocs portant une commande ou un outil. Rien à dire avant la 1re. */
+  liveStepLabel(live: AtelierExecStreamingItem): string | null {
+    const steps = live.blocks.filter((block) => block.command || block.tool).length;
+    if (steps === 0) {
+      return null;
+    }
+    return steps === 1 ? '1 étape' : `${steps} étapes`;
+  }
+
+  /**
+   * Consommation du tour, quand elle est connue. Tant qu'aucun relevé n'est arrivé — backend
+   * antérieur, ou relevé désactivé — la mention est absente : un « 0 token » se lirait comme une
+   * mesure, alors que c'est une absence de mesure.
+   */
+  liveTokenLabel(live: AtelierExecStreamingItem): string | null {
+    if (live.tokens === null || live.tokens === undefined) {
+      return null;
+    }
+    return `${live.tokens.toLocaleString('fr-FR')} tokens`;
+  }
 
   /** Le flux suit le nouveau contenu, comme un vrai terminal. */
   ngAfterViewChecked(): void {

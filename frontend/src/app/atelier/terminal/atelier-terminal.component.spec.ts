@@ -1,8 +1,15 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import {
+  ComponentFixture,
+  TestBed,
+  discardPeriodicTasks,
+  fakeAsync,
+  tick,
+} from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 
 import { AtelierTerminalComponent } from './atelier-terminal.component';
 import { AtelierThreadItem } from '../atelier.types';
+import { AtelierTerminalBlock } from '../../core/models/atelier.models';
 import { AtelierFileDiffView } from './terminal-diff';
 
 /**
@@ -104,6 +111,7 @@ describe('AtelierTerminalComponent', () => {
 
   it('rend le tour en cours au fil de l\'eau', () => {
     component.streaming = {
+      tokens: null,
       status: 'running',
       blocks: [
         {
@@ -571,6 +579,7 @@ describe('AtelierTerminalComponent', () => {
 
   it('marque aussi les sous-tâches du tour en cours', () => {
     component.streaming = {
+      tokens: null,
       status: 'running',
       blocks: [
         {
@@ -743,9 +752,11 @@ describe('AtelierTerminalComponent', () => {
 
     it('rend aussi le texte du tour en cours, au fil de l\'eau', () => {
       component.streaming = {
+        status: 'running',
         blocks: [],
         text: 'Je lance **le build**.',
-      } as unknown as AtelierTerminalComponent['streaming'];
+        tokens: null,
+      };
       fixture.detectChanges();
 
       expect(agentBlock().querySelector('strong')?.textContent).toBe('le build');
@@ -776,5 +787,120 @@ describe('AtelierTerminalComponent', () => {
       expect((fixture.nativeElement as HTMLElement).querySelector('.terminal-agent')?.textContent ?? '')
         .toBe('');
     });
+  });
+  /**
+   * SF-30-13 — la ligne vivante. Le spinner de la barre du haut est hors du champ de vision pendant
+   * qu'on lit défiler les commandes : entre deux étapes longues, rien ne bougeait là où l'œil est.
+   */
+  describe('ligne vivante pendant un tour (SF-30-13)', () => {
+    function live(over: Partial<AtelierTerminalComponent['streaming'] & object> = {}) {
+      component.streaming = {
+        status: 'running',
+        blocks: [],
+        text: '',
+        tokens: null,
+        ...over,
+      } as AtelierTerminalComponent['streaming'];
+      fixture.detectChanges();
+    }
+
+    function lineText(): string {
+      return (fixture.nativeElement as HTMLElement)
+        .querySelector('.terminal-live')?.textContent?.replace(/\s+/g, ' ')
+        .trim() ?? '';
+    }
+
+    function block(over: Record<string, unknown>) {
+      return {
+        tool: 'bash',
+        command: '',
+        toolUseId: 't1',
+        threadId: null,
+        output: '',
+        hasOutput: false,
+        error: false,
+        expanded: false,
+        ...over,
+      } as unknown as AtelierTerminalBlock;
+    }
+
+    it('est absente tant qu\'aucun tour n\'est en cours', () => {
+      component.messages = [{ id: 'a1', role: 'ASSISTANT', content: 'fini', actions: [] }];
+      fixture.detectChanges();
+
+      expect((fixture.nativeElement as HTMLElement).querySelector('.terminal-live')).toBeNull();
+    });
+
+    it('annonce le démarrage avant la première action', () => {
+      live();
+
+      expect(lineText()).toContain('démarrage…');
+    });
+
+    it('montre la commande en cours et compte les étapes', () => {
+      live({
+        blocks: [
+          block({ command: 'npm install', hasOutput: true, output: 'ok' }),
+          block({ command: 'npm test', toolUseId: 't2' }),
+        ],
+      });
+
+      const line = lineText();
+      // La dernière action SANS sortie est celle qui tourne.
+      expect(line).toContain('npm test');
+      expect(line).not.toContain('npm install');
+      expect(line).toContain('2 étapes');
+    });
+
+    it('accorde le singulier sur une seule étape', () => {
+      live({ blocks: [block({ command: 'npm test' })] });
+
+      expect(lineText()).toContain('1 étape');
+    });
+
+    it('affiche les tokens dès qu\'un relevé est arrivé', () => {
+      live({ blocks: [block({ command: 'npm test' })], tokens: 12345 });
+
+      // Séparateur de milliers français : le chiffre se lit d'un coup d'œil.
+      expect(lineText()).toContain('12 345 tokens');
+    });
+
+    it('omet les tokens tant qu\'aucun relevé n\'est arrivé', () => {
+      live({ blocks: [block({ command: 'npm test' })] });
+
+      // Un « 0 token » se lirait comme une mesure, alors que c'est une absence de mesure.
+      expect(lineText()).not.toContain('tokens');
+      expect((fixture.nativeElement as HTMLElement).querySelector('.terminal-live-tokens')).toBeNull();
+    });
+
+    it('porte le chrono et un rôle accessible', () => {
+      component.elapsedLabel = '1:07';
+      live();
+
+      const line = (fixture.nativeElement as HTMLElement).querySelector('.terminal-live');
+      expect(line?.getAttribute('role')).toBe('status');
+      expect(line?.getAttribute('aria-live')).toBe('polite');
+      expect(lineText()).toContain('1:07');
+    });
+
+    it('n\'anime le spinner que pendant un tour', fakeAsync(() => {
+      live();
+      const first = component.spinnerFrame;
+
+      component.streamingActive = true;
+      tick(400);
+      const spinning = component.spinnerFrame;
+      expect(spinning).not.toBe(first);
+
+      // Tour terminé : l'animation s'arrête et l'image revient à son état de repos.
+      component.streamingActive = false;
+      const atRest = component.spinnerFrame;
+      tick(400);
+      // Une animation qui tourne dans le vide consomme du rendu et ment sur l'état du système.
+      expect(component.spinnerFrame).toBe(atRest);
+      expect(component.spinnerFrame).toBe(first);
+
+      discardPeriodicTasks();
+    }));
   });
 });

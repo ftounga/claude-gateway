@@ -281,6 +281,7 @@ export class AtelierService {
       budgetReached?: boolean;
       diffs?: AtelierFileDiff[];
       decision?: string;
+      tokens?: number;
     };
     try {
       payload = JSON.parse(data);
@@ -306,6 +307,10 @@ export class AtelierService {
         error: payload.error === true,
         threadId: payload.threadId ?? null,
       });
+    } else if (event === 'progress') {
+      // Consommation du tour en cours (F-30 / SF-30-13). Additif : un backend antérieur ne l'émet
+      // pas, et un appelant qui ne s'y abonne pas ne voit aucune différence.
+      handlers.onProgress?.(payload.tokens ?? 0);
     } else if (event === 'status') {
       handlers.onStatus(payload.state ?? '');
     } else if (event === 'done') {

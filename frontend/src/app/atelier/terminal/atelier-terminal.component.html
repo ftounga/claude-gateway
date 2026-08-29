@@ -312,6 +312,23 @@
              que le texte arrive, marked fermant implicitement ce qui ne l'est pas. -->
         <p class="terminal-agent" [innerHTML]="live.text | markdown"></p>
       }
+
+      <!--
+        Ligne vivante (F-30 / SF-30-13). À LA SUITE de la sortie, là où l'œil est déjà : le spinner
+        de la barre du haut est hors du champ de vision pendant qu'on lit défiler les commandes.
+        Elle informe et n'agit pas — « Interrompre » reste le seul point d'arrêt, dans l'en-tête.
+      -->
+      <p class="terminal-live" role="status" aria-live="polite">
+        <span class="terminal-live-spinner" aria-hidden="true">{{ spinnerFrame }}</span>
+        <span class="terminal-live-action">{{ liveActionLabel(live) }}</span>
+        @if (liveStepLabel(live); as steps) {
+          <span class="terminal-live-steps">{{ steps }}</span>
+        }
+        @if (liveTokenLabel(live); as tokens) {
+          <span class="terminal-live-tokens">{{ tokens }}</span>
+        }
+        <span class="terminal-live-elapsed">{{ elapsedLabel }}</span>
+      </p>
     }
 
     @if (pendingConfirmation; as ask) {

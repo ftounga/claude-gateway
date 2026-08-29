@@ -343,6 +343,12 @@ export interface AtelierAgentStreamHandlers {
   onDone: (done: AtelierAgentStreamDone) => void;
   onError: (code: string) => void;
   /**
+   * Consommation du tour en cours, en tokens (F-30 / SF-30-13). **Facultatif** : l'événement est
+   * additif, et un backend antérieur ne l'émet jamais — l'appelant qui ne le fournit pas se comporte
+   * exactement comme avant.
+   */
+  onProgress?: (tokens: number) => void;
+  /**
    * Demande d'autorisation à afficher (F-33 / SF-33-02). **Facultatif** : ces événements sont
    * additifs, un appelant qui ne les fournit pas se comporte comme avant F-33.
    */

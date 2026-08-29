@@ -1081,13 +1081,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * utilisateur optimiste est retiré (rien n'a été persisté) et un message lisible est affiché.
    */
   private sendExec(id: string, content: string, userItem: AtelierThreadItem): void {
-    this.execStreaming.set({ status: '', blocks: [], text: '' });
+    this.execStreaming.set({ status: '', blocks: [], text: '', tokens: null });
     this.startExecTimer();
 
     void this.atelier.streamAgent(id, content, {
       onStatus: (state) =>
         this.zone.run(() => {
           this.execStreaming.update((current) => (current ? { ...current, status: state } : current));
+        }),
+      // Consommation relevée pendant le run (F-30 / SF-30-13) : alimente la ligne vivante.
+      onProgress: (tokens) =>
+        this.zone.run(() => {
+          this.execStreaming.update((current) => (current ? { ...current, tokens } : current));
         }),
       onAction: (action) =>
         this.zone.run(() => {

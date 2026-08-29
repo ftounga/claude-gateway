@@ -529,3 +529,50 @@
   font-size: 11px;
   color: var(--cg-text-secondary);
 }
+
+// Ligne vivante (F-30 / SF-30-13) : à la suite de la sortie, discrète mais impossible à manquer.
+// Une seule ligne, toujours — c'est ce qui la distingue d'un message du fil.
+.terminal-live {
+  display: flex;
+  align-items: baseline;
+  gap: var(--cg-space-2);
+  margin: var(--cg-space-2) 0 0;
+  font-family: var(--cg-font-mono);
+  font-size: 12px;
+  color: var(--cg-text-secondary);
+}
+
+.terminal-live-spinner {
+  // Largeur fixe : sans elle, chaque image du braille décalerait le texte qui suit.
+  display: inline-block;
+  width: 1em;
+  color: var(--cg-orange-2);
+}
+
+.terminal-live-action {
+  // L'action est la seule part de longueur imprévisible : c'est elle qui cède, jamais les chiffres.
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--cg-divider);
+}
+
+.terminal-live-steps,
+.terminal-live-tokens,
+.terminal-live-elapsed {
+  flex: 0 0 auto;
+}
+
+.terminal-live-elapsed {
+  color: var(--cg-orange-2);
+}
+
+// Mouvement coupé pour qui l'a demandé au système : le spinner reste alors une image fixe, et
+// l'information (action, étapes, tokens, chrono) demeure entière.
+@media (prefers-reduced-motion: reduce) {
+  .terminal-live-spinner {
+    color: var(--cg-text-secondary);
+  }
+}
