@@ -23,6 +23,13 @@ data:
   # par offre Gold/ADMIN (SF-28-06) et la session est éphémère (runtime borné). ⚠️ Ouvrir aux
   # abonnés Gold au-delà de l'admin nécessite les plafonds de dépense de SF-28-12.
   APP_ATELIER_AGENT_ENABLED: "true"
+  # Délégation à des sous-agents (F-35) COUPÉE. Constaté en production le 2026-08-29 : l'API répond
+  # `400 invalid_request_error — Failed to parse request body: unknown field "multiagent"`. Le champ
+  # est accepté à la CRÉATION de l'agent (`POST /v1/agents` → 200, vérifié) mais PAS dans la surcharge
+  # de session `agent_with_overrides`, où SF-35-01 le pose. Comme le flag est activé par défaut, la
+  # création de session échouait pour TOUT projet — d'archive comme Git. Ce réglage rétablit l'Atelier
+  # en attendant que la délégation soit portée sur la définition de l'agent.
+  APP_ATELIER_AGENT_SUBAGENTS_ENABLED: "false"
   # Limites d'import ZIP Atelier — profil « généreux » (import de gros monorepos/assets).
   # Chaîne cohérente : ingress 155m >= Spring max-request 155MB >= max-file 150MB ; garde-fous
   # anti-zip-bomb sur le décompressé (total/par-fichier/nb-entrées). Purement configurable (réversible).
