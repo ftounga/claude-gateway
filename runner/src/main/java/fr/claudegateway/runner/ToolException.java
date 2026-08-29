@@ -3,7 +3,7 @@ package fr.claudegateway.runner;
 /**
  * Échec d'un outil runner (F-38 / SF-38-04), porteur d'un code de la <b>liste close</b> du contrat de
  * messages (§4) : {@code invalid_input}, {@code path_outside_root}, {@code not_found},
- * {@code is_directory}, {@code not_a_file}, {@code too_large}, {@code io_error},
+ * {@code is_directory}, {@code not_a_file}, {@code too_large}, {@code excluded}, {@code io_error},
  * {@code unsupported_tool}, {@code timeout}, {@code cancelled}, {@code internal}…
  *
  * <p><b>Règle anti-fuite</b> : le message est en français, court, et ne contient <b>jamais</b> un
