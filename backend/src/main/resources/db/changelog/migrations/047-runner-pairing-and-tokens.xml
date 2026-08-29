@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      SF-38-01 — Identité du runner (F-38). Deux tables nouvelles :
+
+      * runner_pairing_codes : code d'appairage à usage unique et expirant, généré par l'utilisateur
+        pour un de ses workspaces, échangé par le runner contre un jeton. Seul le SHA-256 (hex) du
+        code est stocké (code_hash), jamais le clair.
+      * runner_tokens : jeton d'authentification du runner, lié à user_id + workspace_id, expirant et
+        révocable. Seul le SHA-256 (hex) du jeton est stocké (token_hash, UNIQUE), jamais le clair.
+
+      Aucune donnée existante n'est touchée (tables neuves). Réversible : dropTable.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="047-runner-pairing-codes-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="runner_pairing_codes">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="code_hash" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="expires_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="consumed_at" type="timestamptz"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="runner_pairing_codes" indexName="idx_runner_pairing_codes_code_hash">
+            <column name="code_hash"/>
+        </createIndex>
+        <rollback><dropTable tableName="runner_pairing_codes"/></rollback>
+    </changeSet>
+
+    <changeSet id="047-runner-tokens-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="runner_tokens">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="token_hash" type="varchar(64)"><constraints nullable="false" unique="true"/></column>
+            <column name="label" type="varchar(100)"/>
+            <column name="expires_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="revoked_at" type="timestamptz"/>
+            <column name="last_seen_at" type="timestamptz"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="runner_tokens" indexName="idx_runner_tokens_user_workspace">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+        </createIndex>
+        <rollback><dropTable tableName="runner_tokens"/></rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="047-runner-pairing-codes-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="runner_pairing_codes">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="code_hash" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="expires_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="consumed_at" type="timestamp with time zone"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="runner_pairing_codes" indexName="idx_runner_pairing_codes_code_hash">
+            <column name="code_hash"/>
+        </createIndex>
+        <rollback><dropTable tableName="runner_pairing_codes"/></rollback>
+    </changeSet>
+
+    <changeSet id="047-runner-tokens-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="runner_tokens">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="token_hash" type="varchar(64)"><constraints nullable="false" unique="true"/></column>
+            <column name="label" type="varchar(100)"/>
+            <column name="expires_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="revoked_at" type="timestamp with time zone"/>
+            <column name="last_seen_at" type="timestamp with time zone"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="runner_tokens" indexName="idx_runner_tokens_user_workspace">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+        </createIndex>
+        <rollback><dropTable tableName="runner_tokens"/></rollback>
+    </changeSet>
+
+</databaseChangeLog>

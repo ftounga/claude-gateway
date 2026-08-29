@@ -280,3 +280,8 @@ app:
   password-reset:
     # Durée de validité d'un token de réinitialisation de mot de passe (ISO-8601). Défaut : 1h.
     token-ttl: ${APP_PASSWORD_RESET_TOKEN_TTL:PT1H}
+  runner:
+    # F-38 : durée de vie d'un code d'appairage runner (ISO-8601). Défaut : 5 min.
+    pairing-code-ttl: ${APP_RUNNER_PAIRING_CODE_TTL:PT5M}
+    # F-38 : durée de vie d'un jeton runner (ISO-8601). Défaut : 30 jours.
+    token-ttl: ${APP_RUNNER_TOKEN_TTL:P30D}
