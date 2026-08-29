@@ -33,6 +33,21 @@ L'accès au dossier local depuis le navigateur (File System Access API) réglait
 **jamais l'exécution** — or c'est le retour des commandes qui est la douleur principale. Écartée
 le 2026-08-29.
 
+## 2 bis — Distribution et démarrage du runner
+
+- **Où vit le code** : un module Maven **`runner/`** dans ce dépôt (à côté de `backend/` et
+  `frontend/`), produisant un **fat-jar autonome** `runner/target/claude-runner.jar` (SF-38-03).
+- **Récupération sur la machine** :
+  - défaut v1 — le jar est construit (`./mvnw -pl runner package`) et **déposé** sur la machine
+    (un seul fichier, ni installeur ni droits admin) ;
+  - confort — l'écran d'appairage (SF-38-06) offre un **lien de téléchargement** du jar servi par
+    la gateway et **la commande à coller**.
+- **Démarrage** : processus au premier plan —
+  `java -jar claude-runner.jar --gateway <url> --workspace <racine> --code <code-appairage>`.
+  Il échange le code contre un jeton (`POST /runner/pair`), ouvre la connexion **sortante** WSS,
+  affiche son activité en clair, et se coupe au `Ctrl-C`. Le jeton est réutilisé jusqu'à
+  expiration/révocation (pas de réappairage à chaque lancement).
+
 ## 3 — Décisions d'architecture
 
 | # | Décision | Justification |
