@@ -23,6 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 import fr.claudegateway.atelier.WorkspaceService.CreatedWorkspace;
 import fr.claudegateway.atelier.agent.AtelierSessionService;
 import fr.claudegateway.atelier.dto.AtelierImportLibraryRequest;
+import fr.claudegateway.atelier.dto.ExecutionTargetRequest;
 import fr.claudegateway.atelier.dto.FileContentResponse;
 import fr.claudegateway.atelier.dto.RenameFileRequest;
 import fr.claudegateway.atelier.dto.RenameWorkspaceRequest;
@@ -112,6 +113,20 @@ public class AtelierController {
         gitWorkspaceService.requireWritable(workspaceService.requireOwned(userId, id));
         workspaceService.writeFile(userId, id, path, request == null ? "" : request.content());
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Bascule la <b>cible d'exécution</b> du projet (F-38 / SF-38-05) : {@code SANDBOX} (historique)
+     * ou {@code RUNNER} (les outils s'exécutent sur la machine de l'utilisateur, via le runner). La
+     * cible est indépendante de la source : un projet Git peut très bien s'exécuter sur la machine.
+     */
+    @PutMapping("/{id}/execution-target")
+    public WorkspaceDetailResponse setExecutionTarget(
+            @PathVariable UUID id, @Valid @RequestBody ExecutionTargetRequest request) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        Workspace workspace = workspaceService.setExecutionTarget(userId, id, request.executionTarget());
+        return WorkspaceDetailResponse.from(workspace, workspaceService.tree(userId, id));
     }
 
     /**

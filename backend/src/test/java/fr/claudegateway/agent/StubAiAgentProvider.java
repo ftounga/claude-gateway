@@ -36,6 +36,17 @@ public class StubAiAgentProvider implements AiAgentProvider {
         script.add(new AgentTurn("", calls, false, 5, 5));
     }
 
+    /**
+     * Empile un tour « appel d'outil » <b>sans identifiant</b> : certains fournisseurs peuvent
+     * renvoyer un {@code tool_use} sans id exploitable, et la boucle doit alors en fabriquer un
+     * (F-38 / SF-38-05, contrat de messages §1).
+     */
+    public void enqueueToolCallWithoutId(String toolName) {
+        List<AgentToolCall> calls = new ArrayList<>();
+        calls.add(new AgentToolCall(null, toolName, mapper.createObjectNode()));
+        script.add(new AgentTurn("", calls, false, 5, 5));
+    }
+
     /** Empile le tour final (réponse texte, stop). */
     public void enqueueFinal(String text) {
         script.add(new AgentTurn(text, List.of(), true, 5, 5));

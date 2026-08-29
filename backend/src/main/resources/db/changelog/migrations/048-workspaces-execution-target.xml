@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      SF-38-05 — Le workspace d'Atelier gagne une CIBLE D'EXÉCUTION (F-38 / décision D1) :
+      `SANDBOX` (les outils s'exécutent dans le bac à sable du fournisseur ou sur le stockage objet,
+      comportement historique) ou `RUNNER` (les outils s'exécutent sur la machine de l'utilisateur,
+      via le canal WebSocket runner de SF-38-02).
+
+      Strictement symétrique de la SOURCE `ARCHIVE`|`GIT` de la migration 043 : une colonne de
+      dimension, `NOT NULL` avec un defaultValue explicite, pour que toutes les lignes existantes
+      restent exactement dans le comportement d'avant F-38.
+
+      Aucun secret ici : le jeton runner vit haché dans `runner_tokens` (SF-38-01). Réversible :
+      `dropColumn`.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="048-workspaces-execution-target-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="workspaces">
+            <column name="execution_target" type="varchar(16)" defaultValue="SANDBOX">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="execution_target"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="048-workspaces-execution-target-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="workspaces">
+            <column name="execution_target" type="varchar(16)" defaultValue="SANDBOX">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="execution_target"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

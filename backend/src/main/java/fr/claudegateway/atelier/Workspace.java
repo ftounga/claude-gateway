@@ -77,6 +77,16 @@ public class Workspace {
     private String gitBranch;
 
     /**
+     * Cible d'exécution des outils (F-38 / SF-38-05, décision D1) : {@code SANDBOX} (historique) ou
+     * {@code RUNNER} (machine de l'utilisateur, via le canal WebSocket runner). {@code SANDBOX} par
+     * défaut, y compris pour les lignes créées avant la migration 048.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "execution_target", nullable = false, length = 16)
+    @Builder.Default
+    private WorkspaceExecutionTarget executionTarget = WorkspaceExecutionTarget.SANDBOX;
+
+    /**
      * Vrai si le projet est adossé à un dépôt Git (F-31 / SF-31-02). Volontairement null-tolérant :
      * une entité construite hors du builder (tests, désérialisation partielle) n'est pas un projet
      * Git, et le chemin le plus sûr — celui de l'archive — reste le comportement par défaut.
@@ -88,6 +98,20 @@ public class Workspace {
     /** Source du projet, {@code ARCHIVE} par défaut si elle n'a pas été renseignée. */
     public WorkspaceSource sourceOrDefault() {
         return source == null ? WorkspaceSource.ARCHIVE : source;
+    }
+
+    /**
+     * Cible d'exécution, {@code SANDBOX} par défaut si elle n'a pas été renseignée. Même discipline
+     * null-tolérante que {@link #sourceOrDefault()} : une entité construite hors du builder retombe
+     * sur le chemin historique, jamais sur le mode le plus puissant.
+     */
+    public WorkspaceExecutionTarget executionTargetOrDefault() {
+        return executionTarget == null ? WorkspaceExecutionTarget.SANDBOX : executionTarget;
+    }
+
+    /** Vrai si les outils de ce projet s'exécutent sur la machine de l'utilisateur (F-38 / SF-38-05). */
+    public boolean isRunnerTarget() {
+        return executionTargetOrDefault() == WorkspaceExecutionTarget.RUNNER;
     }
 
     @CreationTimestamp

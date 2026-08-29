@@ -400,6 +400,53 @@ class AtelierApiIntegrationTest {
     }
 
     @Test
+    void executionTargetDefaultsToSandboxAndCanBeSwitchedToRunner() throws Exception {
+        // F-38 / SF-38-05 : la cible d'exécution est une dimension du projet, `SANDBOX` par défaut —
+        // tout projet existant garde exactement le comportement d'avant F-38.
+        String id = createWorkspace(aliceToken, Map.of("a.txt", "x"));
+        mockMvc.perform(get("/api/workspaces/" + id).contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(jsonPath("$.executionTarget", is("SANDBOX")));
+
+        mockMvc.perform(put("/api/workspaces/" + id + "/execution-target").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"executionTarget\":\"RUNNER\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.executionTarget", is("RUNNER")));
+
+        // Persistée, et visible dès la liste.
+        mockMvc.perform(get("/api/workspaces/" + id).contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(jsonPath("$.executionTarget", is("RUNNER")));
+        mockMvc.perform(get("/api/workspaces").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(jsonPath("$[0].executionTarget", is("RUNNER")));
+    }
+
+    @Test
+    void executionTargetRejectsAnUnknownValue() throws Exception {
+        String id = createWorkspace(aliceToken, Map.of("a.txt", "x"));
+
+        mockMvc.perform(put("/api/workspaces/" + id + "/execution-target").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"executionTarget\":\"MA_MACHINE\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void executionTargetOfAnotherUsersWorkspaceIsNotFound() throws Exception {
+        String bobWs = createWorkspace(bobToken, Map.of("a.txt", "de Bob"));
+
+        mockMvc.perform(put("/api/workspaces/" + bobWs + "/execution-target").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"executionTarget\":\"RUNNER\"}"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void requiresAuthentication() throws Exception {
         mockMvc.perform(get("/api/workspaces").contextPath("/api"))
                 .andExpect(status().isUnauthorized());
