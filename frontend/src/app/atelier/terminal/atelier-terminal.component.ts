@@ -12,6 +12,8 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
+import { MarkdownPipe } from '../../shared/markdown.pipe';
+
 import {
   AtelierTerminalBlock,
   GitPullRequestResult,
@@ -52,7 +54,7 @@ import {
  */
 @Component({
   selector: 'app-atelier-terminal',
-  imports: [FormsModule, MatButtonModule, MatIconModule, MatProgressSpinnerModule],
+  imports: [FormsModule, MarkdownPipe, MatButtonModule, MatIconModule, MatProgressSpinnerModule],
   templateUrl: './atelier-terminal.component.html',
   styleUrl: './atelier-terminal.component.scss',
 })

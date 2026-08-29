@@ -87,8 +87,107 @@
 .terminal-agent {
   margin: var(--cg-space-2) 0;
   color: var(--cg-divider);
-  white-space: pre-wrap;
   word-break: break-word;
+
+  // Le contenu est désormais du HTML rendu depuis du Markdown (SF-30-12) : `pre-wrap` doublerait
+  // les sauts de ligne déjà portés par les <p> et les <li>. Les blocs <pre>, eux, le conservent.
+  white-space: normal;
+
+  // Densité du terminal : la hiérarchie passe par la GRAISSE, jamais par la taille. Un `##` à
+  // l'échelle d'un document repousserait la sortie des commandes hors de l'écran.
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    margin: var(--cg-space-3) 0 var(--cg-space-1);
+    font-family: var(--cg-font-body);
+    font-size: 1em;
+    font-weight: 700;
+    color: var(--cg-surface);
+  }
+
+  p {
+    margin: var(--cg-space-2) 0;
+  }
+
+  // Premier et dernier éléments collés au bloc : le fil garde son rythme vertical.
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+
+  strong {
+    color: var(--cg-surface);
+    font-weight: 700;
+  }
+
+  ul,
+  ol {
+    margin: var(--cg-space-2) 0;
+    padding-left: var(--cg-space-4);
+  }
+
+  li {
+    margin: var(--cg-space-1) 0;
+  }
+
+  code {
+    font-family: var(--cg-font-mono);
+    font-size: 12px;
+    background: var(--cg-navy-2);
+    border-radius: 4px;
+    padding: 0 var(--cg-space-1);
+  }
+
+  // Bloc de code : même apparence que la sortie d'une commande, pour que l'œil ne change pas de
+  // registre entre ce que l'agent montre et ce que la sandbox a répondu.
+  pre {
+    margin: var(--cg-space-2) 0;
+    padding: var(--cg-space-2);
+    background: var(--cg-navy-2);
+    border-radius: 4px;
+    // Le bloc défile DANS son conteneur : sans cela, une ligne longue ferait défiler tout le fil.
+    overflow-x: auto;
+    white-space: pre;
+
+    code {
+      background: none;
+      padding: 0;
+    }
+  }
+
+  a {
+    color: var(--cg-orange-2);
+  }
+
+  blockquote {
+    margin: var(--cg-space-2) 0;
+    padding-left: var(--cg-space-2);
+    border-left: 2px solid var(--cg-navy-2);
+    color: var(--cg-text-secondary);
+  }
+
+  // Un tableau large défile lui aussi chez lui.
+  table {
+    display: block;
+    overflow-x: auto;
+    border-collapse: collapse;
+  }
+
+  th,
+  td {
+    border: 1px solid var(--cg-navy-2);
+    padding: var(--cg-space-1) var(--cg-space-2);
+  }
+
+  img {
+    max-width: 100%;
+  }
 }
 
 .terminal-block {

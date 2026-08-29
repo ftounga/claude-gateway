@@ -701,4 +701,80 @@ describe('AtelierTerminalComponent', () => {
     expect(fixture.nativeElement.querySelector('.terminal-diffs')).toBeNull();
     expect(text()).not.toContain('Modifications');
   });
+  /**
+   * SF-30-12 — le modèle répond en Markdown ; le terminal l'interpolait brut, si bien que les ** et
+   * les ## s'affichaient tels quels. Le rendu passe par le pipe partagé (marked + DOMPurify).
+   */
+  describe('rendu Markdown du commentaire de l\'agent (SF-30-12)', () => {
+    function agentTurn(content: string): AtelierThreadItem[] {
+      return [
+        { id: 'u1', role: 'USER', content: 'décris le projet', actions: [] },
+        { id: 'a1', role: 'ASSISTANT', content, actions: [] },
+      ];
+    }
+
+    function agentBlock(): HTMLElement {
+      const el = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.terminal-agent');
+      expect(el).withContext('bloc du commentaire de l\'agent introuvable').not.toBeNull();
+      return el as HTMLElement;
+    }
+
+    it('met en forme le gras, le code et les titres au lieu d\'afficher les marqueurs', () => {
+      component.messages = agentTurn('## Vue d\'ensemble\n\nC\'est **important** et `scrm` est un mot.');
+      fixture.detectChanges();
+
+      const block = agentBlock();
+      expect(block.querySelector('h2')?.textContent).toContain('Vue d\'ensemble');
+      expect(block.querySelector('strong')?.textContent).toBe('important');
+      expect(block.querySelector('code')?.textContent).toBe('scrm');
+      // Les marqueurs eux-mêmes ont disparu du texte rendu.
+      expect(block.textContent).not.toContain('**');
+      expect(block.textContent).not.toContain('##');
+    });
+
+    it('rend les listes et les blocs de code', () => {
+      component.messages = agentTurn('- un\n- deux\n\n```\nnpm test\n```');
+      fixture.detectChanges();
+
+      const block = agentBlock();
+      expect(block.querySelectorAll('li').length).toBe(2);
+      expect(block.querySelector('pre code')?.textContent).toContain('npm test');
+    });
+
+    it('rend aussi le texte du tour en cours, au fil de l\'eau', () => {
+      component.streaming = {
+        blocks: [],
+        text: 'Je lance **le build**.',
+      } as unknown as AtelierTerminalComponent['streaming'];
+      fixture.detectChanges();
+
+      expect(agentBlock().querySelector('strong')?.textContent).toBe('le build');
+    });
+
+    it('neutralise le HTML dangereux : le contenu vient d\'un LLM', () => {
+      component.messages = agentTurn('Voici <script>alert(1)</script> et <img src=x onerror="alert(2)">');
+      fixture.detectChanges();
+
+      const block = agentBlock();
+      expect(block.querySelector('script')).toBeNull();
+      expect(block.querySelector('img')?.hasAttribute('onerror')).toBeFalse();
+    });
+
+    it('ouvre les liens dans un nouvel onglet, sans fuite d\'opener', () => {
+      component.messages = agentTurn('voir [le dépôt](https://github.com/ftounga/scrm)');
+      fixture.detectChanges();
+
+      const link = agentBlock().querySelector('a');
+      expect(link?.getAttribute('target')).toBe('_blank');
+      expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
+    });
+
+    it('n\'affiche aucun bloc quand le commentaire est vide', () => {
+      component.messages = agentTurn('');
+      fixture.detectChanges();
+
+      expect((fixture.nativeElement as HTMLElement).querySelector('.terminal-agent')?.textContent ?? '')
+        .toBe('');
+    });
+  });
 });
