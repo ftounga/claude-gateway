@@ -4,6 +4,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -230,7 +231,17 @@ public class AtelierSessionService {
         // accumulé pour la transcription persistée (F-30 SF-30-09) — reconstruite depuis les events
         // du fournisseur, jamais depuis ce que déclare le client.
         TerminalTranscript transcript = new TerminalTranscript();
+        // Consommation affichée pendant le run (F-30 / SF-30-13). La BASE de comparaison est celle
+        // du tour : le fournisseur rapporte un cumul de session, et sur une session persistante ce
+        // cumul porte aussi les tours précédents.
+        TurnProgress progress = new TurnProgress(workspace.getAgentInputTokens()
+                + workspace.getAgentOutputTokens(), properties.progressInterval());
         ManagedEventListener bridge = new ManagedEventListener() {
+            @Override
+            public void onPoll() {
+                relayProgress(progress, listener);
+            }
+
             @Override
             public void onAgentText(String text) {
                 sink.onAgentText(text);
@@ -289,7 +300,7 @@ public class AtelierSessionService {
         SessionRun run;
         if (sessionId != null && !sessionId.isBlank()) {
             try {
-                run = runInSession(sessionId, message, bridge);
+                run = runInSession(sessionId, message, bridge, progress);
             } catch (RuntimeException ex) {
                 if (!mayOpenSession) {
                     // Publication sur une session morte : on l'oublie et on le dit. Rejouer dans une
@@ -302,12 +313,12 @@ public class AtelierSessionService {
                 // message UNE fois. Boucler au-delà masquerait une panne réelle du fournisseur.
                 log.debug("Session d'atelier injouable, ouverture d'une nouvelle session.");
                 sessionId = openSession(userId, workspaceId, config, workspace);
-                run = runInSession(sessionId, message, bridge);
+                run = runInSession(sessionId, message, bridge, progress);
             }
         } else {
             // Le cas « aucune session » sans droit d'en ouvrir a déjà été refusé plus haut.
             sessionId = openSession(userId, workspaceId, config, workspace);
-            run = runInSession(sessionId, message, bridge);
+            run = runInSession(sessionId, message, bridge, progress);
         }
 
         // 5 bis. Le tour s'est-il arrêté sur une demande d'interruption (F-32 SF-32-01) ? La marque
@@ -616,10 +627,14 @@ public class AtelierSessionService {
     }
 
     /** Envoie le message dans la session donnée et attend la complétion du tour. */
-    private SessionRun runInSession(String sessionId, String message, ManagedEventListener bridge) {
+    private SessionRun runInSession(String sessionId, String message, ManagedEventListener bridge,
+            TurnProgress progress) {
         // Une interruption demandée alors qu'aucun run n'était en vol ne doit pas marquer CE tour :
         // la marque ne vaut que pour le travail lancé après elle.
         interruptedSessions.remove(sessionId);
+        // La session n'existe qu'ici : le compteur de progression s'y accroche avant le premier
+        // battement (F-30 / SF-30-13).
+        progress.attach(sessionId);
         // La borne rendue par la publication délimite CE tour : la session est persistante
         // (SF-30-04) et porte encore les events des tours précédents (F-30 / SF-30-11).
         String since = provider.sendUserMessage(sessionId, message);
@@ -805,6 +820,78 @@ public class AtelierSessionService {
         }
         ambiguous.forEach(byBasename::remove);
         return byBasename;
+    }
+
+    /**
+     * Compteur de consommation d'un tour, alimenté pendant le run (F-30 / SF-30-13).
+     *
+     * <p>Porte la <b>base</b> du tour (le cumul de session au moment où le tour commence), l'espacement
+     * minimal entre deux relevés, et le dernier chiffre publié. Mutable et confiné à un tour : c'est
+     * le pont entre le battement du provider, qui ne sait rien du quota, et l'écran.</p>
+     */
+    private static final class TurnProgress {
+
+        private final long baselineTokens;
+        private final Duration interval;
+        private volatile String sessionId;
+        private long lastPublishedAt;
+        private long lastTokens;
+
+        private TurnProgress(long baselineTokens, Duration interval) {
+            this.baselineTokens = baselineTokens;
+            this.interval = interval;
+        }
+
+        /** La session n'existe qu'après l'ouverture ou la réutilisation : elle s'attache ici. */
+        private void attach(String sessionId) {
+            this.sessionId = sessionId;
+        }
+
+        /** Vrai si l'intervalle configuré est écoulé — et faux tant que le relevé est désactivé. */
+        private boolean due(long nowNanos) {
+            if (interval == null || interval.isZero() || interval.isNegative() || sessionId == null) {
+                return false;
+            }
+            if (lastPublishedAt == 0L) {
+                lastPublishedAt = nowNanos;
+                return true;
+            }
+            if (nowNanos - lastPublishedAt < interval.toNanos()) {
+                return false;
+            }
+            lastPublishedAt = nowNanos;
+            return true;
+        }
+
+        /**
+         * Retient le nouveau total, borné au précédent : le cumul du fournisseur peut retomber
+         * (session remplacée), et un compteur qui recule à l'écran donne l'impression que le travail
+         * est défait.
+         */
+        private long retain(long tokens) {
+            lastTokens = Math.max(lastTokens, Math.max(0L, tokens - baselineTokens));
+            return lastTokens;
+        }
+    }
+
+    /**
+     * Relève la consommation du tour en cours et la relaie à l'écran (F-30 / SF-30-13).
+     *
+     * <p><b>Best-effort intégral</b> : toute erreur est avalée. Le run a du travail en vol ; un
+     * indicateur manqué ne doit ni l'interrompre ni le ralentir. Le relevé est espacé par
+     * {@code progress-interval} — le polling des events tourne bien plus vite que ce qu'un humain
+     * lit.</p>
+     */
+    private void relayProgress(TurnProgress progress, AtelierAgentListener listener) {
+        if (!progress.due(System.nanoTime())) {
+            return;
+        }
+        try {
+            SessionUsage usage = provider.getSessionUsage(progress.sessionId);
+            listener.onProgress(progress.retain(usage.inputTokens() + usage.outputTokens()));
+        } catch (RuntimeException ex) {
+            log.debug("Relevé de progression ignoré (best-effort) : le run continue.");
+        }
     }
 
     /**

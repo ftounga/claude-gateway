@@ -19,6 +19,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.Duration;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -82,18 +83,24 @@ class AtelierSessionServiceTest {
 
     private AtelierAgentProperties enabled() {
         return new AtelierAgentProperties(true, null, null, null, null, null, null, null, null, null,
-                null, null, null, false, null, null);
+                null, null, null, false, null, null, Duration.ZERO);
     }
 
     private AtelierAgentProperties disabled() {
         return new AtelierAgentProperties(false, null, null, null, null, null, null, null, null, null,
-                null, null, null, false, null, null);
+                null, null, null, false, null, null, Duration.ZERO);
+    }
+
+    /** Atelier actif avec relevé de progression (F-30 SF-30-13) : intervalle court, mais non nul. */
+    private AtelierAgentProperties withProgress(Duration interval) {
+        return new AtelierAgentProperties(true, null, null, null, null, null, null, null, null, null,
+                null, null, null, false, null, null, interval);
     }
 
     /** Atelier actif avec la délégation ouverte (F-35 SF-35-01), plafond de roster explicite. */
     private AtelierAgentProperties withSubagents(int maxSubagents) {
         return new AtelierAgentProperties(true, null, null, null, null, null, null, null, null, null,
-                null, null, null, true, maxSubagents, null);
+                null, null, null, true, maxSubagents, null, Duration.ZERO);
     }
 
     private AtelierAgentConfig config() {
@@ -276,6 +283,7 @@ class AtelierSessionServiceTest {
         private final List<String> texts = new java.util.ArrayList<>();
         private final List<String> actions = new java.util.ArrayList<>();
         private final List<String> states = new java.util.ArrayList<>();
+        private final List<Long> progress = new java.util.ArrayList<>();
 
         @Override
         public void onAgentText(String text) {
@@ -290,6 +298,11 @@ class AtelierSessionServiceTest {
         @Override
         public void onStatus(String state) {
             states.add(state);
+        }
+
+        @Override
+        public void onProgress(long tokens) {
+            progress.add(tokens);
         }
     }
 
@@ -1635,7 +1648,7 @@ class AtelierSessionServiceTest {
         // Révision D1 (2026-08-26) : une capacité livrée mais éteinte n'est jamais testée. Le défaut
         // est donc « activée » ; le flag reste pour couper sans redéployer.
         AtelierAgentProperties defaults = new AtelierAgentProperties(true, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, Duration.ZERO);
 
         assertThat(defaults.subagentsEnabled()).isTrue();
         assertThat(defaults.maxSubagents()).isEqualTo(3);
@@ -1875,5 +1888,107 @@ class AtelierSessionServiceTest {
         assertThat(result.diffs()).hasSize(1);
         assertThat(result.diffs().get(0).unreadable()).isTrue();
         assertThat(result.diffs().get(0).diff()).isEmpty();
+    }
+    // ---------------------------------------------------------------------------------------------
+    // F-30 / SF-30-13 — ligne vivante : relevé de consommation PENDANT le run
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Fait battre le polling {@code beats} fois, comme le provider le ferait pendant un run, puis
+     * rend une réponse. C'est le seul moyen d'exercer le chemin réel : le battement vient du provider.
+     */
+    private void answerAfterBeats(int beats) {
+        when(provider.awaitCompletion(eq("sess_1"), any(), anyInt(), any(), any())).thenAnswer(inv -> {
+            ManagedEventListener bridge = inv.getArgument(3);
+            for (int i = 0; i < beats; i++) {
+                bridge.onPoll();
+            }
+            return new SessionRun("Terminé.", "end_turn");
+        });
+    }
+
+    private void givenRunningSession() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_1"));
+        when(bootstrapService.ensureBootstrapped()).thenReturn(Optional.of(config()));
+        when(provider.listOutputs("sess_1")).thenReturn(List.of());
+    }
+
+    @Test
+    void progressIsRelayedAsTheTurnDeltaNeverTheSessionTotal() {
+        givenRunningSession();
+        // La session porte déjà 1 000 tokens des tours précédents : c'est la base du tour.
+        Workspace withHistory = ws("sess_1");
+        withHistory.setAgentInputTokens(600L);
+        withHistory.setAgentOutputTokens(400L);
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(withHistory);
+        when(provider.getSessionUsage("sess_1")).thenReturn(new SessionUsage(900L, 500L, 0L, null));
+        answerAfterBeats(1);
+
+        RecordingAgentListener listener = new RecordingAgentListener();
+        service(withProgress(Duration.ofNanos(1))).runTaskStreaming(USER, WORKSPACE, "go", listener);
+
+        // 1400 relevés - 1000 de base = 400 pour CE tour, et non le cumul de la session.
+        assertThat(listener.progress).containsExactly(400L);
+    }
+
+    @Test
+    void progressIsSampledAtMostOncePerConfiguredInterval() {
+        givenRunningSession();
+        when(provider.getSessionUsage("sess_1")).thenReturn(new SessionUsage(10L, 5L, 0L, null));
+        answerAfterBeats(5);
+
+        RecordingAgentListener listener = new RecordingAgentListener();
+        // Intervalle d'une heure : les cinq battements se suivent, un seul relevé peut passer.
+        service(withProgress(Duration.ofHours(1))).runTaskStreaming(USER, WORKSPACE, "go", listener);
+
+        assertThat(listener.progress).hasSize(1);
+        // Deux appels au total : le relevé de progression, et le décompte de FIN de tour, qui est un
+        // chemin distinct (SF-30-04) et reste dû quel que soit l'intervalle.
+        verify(provider, times(2)).getSessionUsage("sess_1");
+    }
+
+    @Test
+    void aZeroIntervalDisablesTheSamplingEntirely() {
+        givenRunningSession();
+        answerAfterBeats(5);
+
+        RecordingAgentListener listener = new RecordingAgentListener();
+        // `enabled()` porte Duration.ZERO : aucun relevé, flux strictement identique à avant SF-30-13.
+        service(enabled()).runTaskStreaming(USER, WORKSPACE, "go", listener);
+
+        assertThat(listener.progress).isEmpty();
+        // Un seul appel : celui du décompte de fin de tour. Aucun relevé de progression n'a eu lieu.
+        verify(provider, times(1)).getSessionUsage("sess_1");
+    }
+
+    @Test
+    void aFailedSamplingIsSwallowedAndTheRunCompletes() {
+        givenRunningSession();
+        when(provider.getSessionUsage("sess_1")).thenThrow(new AgentProviderException("boom"));
+        answerAfterBeats(1);
+
+        RecordingAgentListener listener = new RecordingAgentListener();
+        AtelierSessionResult result =
+                service(withProgress(Duration.ofNanos(1))).runTaskStreaming(USER, WORKSPACE, "go", listener);
+
+        // Le run a du travail en vol : un indicateur manqué ne doit ni l'interrompre ni le ralentir.
+        assertThat(result.reply()).isEqualTo("Terminé.");
+        assertThat(listener.progress).isEmpty();
+    }
+
+    @Test
+    void theProgressCounterNeverGoesBackwards() {
+        givenRunningSession();
+        // Deuxième relevé plus BAS que le premier (session remplacée côté fournisseur).
+        when(provider.getSessionUsage("sess_1"))
+                .thenReturn(new SessionUsage(80L, 20L, 0L, null))
+                .thenReturn(new SessionUsage(10L, 5L, 0L, null));
+        answerAfterBeats(2);
+
+        RecordingAgentListener listener = new RecordingAgentListener();
+        service(withProgress(Duration.ofNanos(1))).runTaskStreaming(USER, WORKSPACE, "go", listener);
+
+        // Un compteur qui recule donnerait l'impression que le travail est défait.
+        assertThat(listener.progress).containsExactly(100L, 100L);
     }
 }

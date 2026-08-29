@@ -1,5 +1,6 @@
 package fr.claudegateway.atelier.agent;
 
+import java.time.Duration;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
@@ -11,7 +12,7 @@ class AtelierAgentPropertiesTest {
 
     private AtelierAgentProperties withEffort(String effort) {
         return new AtelierAgentProperties(true, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, effort);
+                null, null, null, null, null, effort, Duration.ZERO);
     }
 
     @Test

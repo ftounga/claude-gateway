@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import java.util.List;
 import java.util.UUID;
+import java.time.Duration;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -52,7 +53,7 @@ class AtelierAgentControllerTest {
 
     private AtelierAgentProperties props(boolean enabled) {
         return new AtelierAgentProperties(enabled, null, null, null, null, null, null, null, null, null,
-                null, null, null, true, null, null);
+                null, null, null, true, null, null, Duration.ZERO);
     }
 
     @BeforeEach

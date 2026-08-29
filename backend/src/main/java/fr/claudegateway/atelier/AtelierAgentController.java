@@ -118,6 +118,11 @@ public class AtelierAgentController {
                 }
 
                 @Override
+                public void onProgress(long tokens) {
+                    sendProgress(emitter, tokens);
+                }
+
+                @Override
                 public void onAction(String tool, String detail) {
                     sendAction(emitter, tool, null, detail, null);
                 }
@@ -282,6 +287,18 @@ public class AtelierAgentController {
         }
     }
 
+    /**
+     * Émet la consommation du tour en cours (F-30 / SF-30-13). Événement <b>additif</b> : un client
+     * qui l'ignore conserve exactement le comportement antérieur.
+     */
+    private void sendProgress(SseEmitter emitter, long tokens) {
+        try {
+            emitter.send(SseEmitter.event().name("progress").data(new StreamProgress(tokens)));
+        } catch (IOException | IllegalStateException ex) {
+            throw new StreamAbortedException();
+        }
+    }
+
     /** Émet une action (usage d'outil) ; une déconnexion client interrompt le relais. */
     private void sendAction(SseEmitter emitter, String tool, String toolUseId, String detail,
             String threadId) {
@@ -363,6 +380,10 @@ public class AtelierAgentController {
 
     record StreamActionResult(String tool, String toolUseId, String output, boolean error,
             String threadId) {
+    }
+
+    /** Consommation du tour en cours, en tokens (F-30 / SF-30-13). */
+    record StreamProgress(long tokens) {
     }
 
     record StreamStatus(String state) {

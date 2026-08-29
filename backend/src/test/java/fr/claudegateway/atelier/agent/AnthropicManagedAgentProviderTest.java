@@ -57,7 +57,7 @@ class AnthropicManagedAgentProviderTest {
         // pollDelay = 0 : polling déterministe sans Thread.sleep réel.
         AtelierAgentProperties agentProperties = new AtelierAgentProperties(
                 false, null, null, null, null, null, null, null, Duration.ZERO, null, null, null,
-                confirmTimeout, true, null, null);
+                confirmTimeout, true, null, null, Duration.ZERO);
         RestClient.Builder builder = RestClient.builder();
         server = MockRestServiceServer.bindTo(builder).ignoreExpectOrder(true).build();
         provider = new AnthropicManagedAgentProvider(properties, agentProperties, builder);
@@ -628,6 +628,32 @@ class AnthropicManagedAgentProviderTest {
         server.verify();
     }
 
+    /**
+     * SF-30-13 — le battement de polling est émis tant que le run continue, et JAMAIS après la sortie
+     * sur un `idle` terminal : un tour déjà fini n'a pas de progression à relever.
+     */
+    @Test
+    void pollBeatsAreEmittedWhileTheRunContinuesAndNotAfterItEnds() {
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"session.status_running\",\"id\":\"e0\"}]}",
+                        MediaType.APPLICATION_JSON));
+        server.expect(requestToUriTemplate(
+                "https://api.anthropic.com/v1/sessions/sess_1/events?limit=1000"))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"type\":\"session.status_idle\",\"id\":\"e1\","
+                                + "\"stop_reason\":{\"type\":\"end_turn\"}}]}",
+                        MediaType.APPLICATION_JSON));
+
+        RecordingListener listener = new RecordingListener();
+        provider.awaitCompletion("sess_1", Duration.ofSeconds(30), 10, listener);
+
+        // Un seul battement : celui du poll qui n'a pas conclu. Le second poll termine le run.
+        assertThat(listener.polls).isEqualTo(1);
+        server.verify();
+    }
+
     @Test
     void awaitCompletionThreeArgsDelegatesWithNoopListenerNoRegression() {
         server.expect(requestToUriTemplate(
@@ -1132,12 +1158,18 @@ class AnthropicManagedAgentProviderTest {
         private final List<String> texts = new java.util.ArrayList<>();
         private final List<String> actions = new java.util.ArrayList<>();
         private final List<String> states = new java.util.ArrayList<>();
+        private int polls;
         private final List<String> results = new java.util.ArrayList<>();
         private final List<String> actionIds = new java.util.ArrayList<>();
         private final List<String> actionThreads = new java.util.ArrayList<>();
         private final List<String> resultThreads = new java.util.ArrayList<>();
         private final List<String> asks = new java.util.ArrayList<>();
         private final List<String> resolved = new java.util.ArrayList<>();
+
+        @Override
+        public void onPoll() {
+            polls++;
+        }
 
         @Override
         public void onAgentText(String text) {

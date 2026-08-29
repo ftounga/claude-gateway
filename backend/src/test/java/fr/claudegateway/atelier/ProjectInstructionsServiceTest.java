@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.Duration;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,7 +38,7 @@ class ProjectInstructionsServiceTest {
 
     private static AtelierAgentProperties props(Integer maxInstructionsChars) {
         return new AtelierAgentProperties(true, null, null, null, null, null, null, null, null, null,
-                null, maxInstructionsChars, null, true, null, null);
+                null, maxInstructionsChars, null, true, null, null, Duration.ZERO);
     }
 
     @BeforeEach
