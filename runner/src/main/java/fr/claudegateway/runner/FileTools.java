@@ -31,9 +31,13 @@ import com.fasterxml.jackson.databind.JsonNode;
  * pour la liste, {@code chemin:ligne: texte} pour la recherche) afin que le prompt du modèle ne
  * dérive pas selon la cible d'exécution.</p>
  *
+ * <p>Depuis SF-38-10, les quatre outils traversent la <b>même</b> garde d'exclusion
+ * ({@link ExclusionRules}, portée par {@link PathGuard}) : un chemin exclu est refusé avec le code
+ * {@code excluded} pour {@code read_file}/{@code write_file}, et les dossiers exclus sont élagués du
+ * balayage de {@code list_files}/{@code search_files}. Deviner un chemin ne contourne rien.</p>
+ *
  * <p>Aucune exécution de commande ici : {@code bash} arrive en SF-38-07 et répond d'ici là
- * {@code unsupported_tool}. Les exclusions ({@code .runnerignore}) arrivent en SF-38-10 ; en
- * attendant, le balayage est borné (voir les constantes).</p>
+ * {@code unsupported_tool}.</p>
  */
 public final class FileTools implements ToolExecutor {
 
@@ -172,18 +176,38 @@ public final class FileTools implements ToolExecutor {
      * Balayage de la racine, <b>sans suivre les liens symboliques</b> : un lien n'est pas un fichier
      * régulier, il ne figure donc ni dans la liste ni dans la recherche — ce qui ferme d'un coup les
      * boucles de liens et les sorties de racine par lien. Un dossier illisible est ignoré.
+     *
+     * <p>Les exclusions (SF-38-10) sont appliquées <b>pendant</b> le balayage : un dossier exclu est
+     * élagué ({@code SKIP_SUBTREE}), son contenu n'est donc ni listé, ni ouvert, ni lu.</p>
      */
     private List<String> walkFiles() throws IOException {
+        ExclusionRules exclusions = guard.exclusions();
         List<String> paths = new ArrayList<>();
         Files.walkFileTree(guard.root(), EnumSet.noneOf(FileVisitOption.class), Integer.MAX_VALUE,
                 new SimpleFileVisitor<>() {
+                    @Override
+                    public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                        if (Thread.currentThread().isInterrupted()) {
+                            return FileVisitResult.TERMINATE;
+                        }
+                        String relative = guard.relativize(dir);
+                        if (!relative.isEmpty() && exclusions.isExcludedDirectory(relative)) {
+                            return FileVisitResult.SKIP_SUBTREE;
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+
                     @Override
                     public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
                         if (Thread.currentThread().isInterrupted()) {
                             return FileVisitResult.TERMINATE;
                         }
                         if (attrs.isRegularFile()) {
-                            paths.add(guard.relativize(file));
+                            String relative = guard.relativize(file);
+                            if (exclusions.isExcludedFile(relative)) {
+                                return FileVisitResult.CONTINUE;
+                            }
+                            paths.add(relative);
                             if (paths.size() >= LIST_MAX_ENTRIES) {
                                 return FileVisitResult.TERMINATE;
                             }

@@ -69,8 +69,30 @@ au-delà de 512 Kio, 20 000 fichiers au plus pour `list_files`, fichiers binaire
 d'1 Mio ignorés par `search_files`. Chaque appel a son propre délai (30 s par défaut) et peut être
 interrompu depuis la session. La console affiche chaque appel exécuté et sa durée.
 
-> Tant que SF-38-10 n'est pas livrée, il n'y a **pas** d'exclusions : tout fichier régulier sous la
-> racine est visible du runner. Pointez `--workspace` sur le dossier de projet voulu, pas sur `$HOME`.
+## Exclusions (SF-38-10)
+
+Le filtre d'exclusion est appliqué **sur votre machine, avant toute lecture, écriture ou listing** :
+ce qui est exclu ne quitte jamais le poste. Il est traversé par **les quatre** outils — deviner le
+chemin d'un fichier exclu ne le rend pas lisible, il répond `excluded`.
+
+Deux jeux de règles :
+
+1. **Vos règles** — `.runnerignore` à la racine `--workspace`. S'il est absent, **repli** sur le
+   `.gitignore` de la racine. Syntaxe gitignore : `#` commentaire, `!` négation, `/` final =
+   dossier uniquement, `/` initial ou interne = motif ancré à la racine, sinon nom de base à
+   n'importe quelle profondeur, jokers `*`, `?`, `**`. La dernière règle qui correspond l'emporte.
+   (Les classes de caractères `[a-z]` ne sont pas interprétées : elles sont comparées littéralement.)
+2. **La liste par défaut, non désactivable** (décision D10) — `.env`, `*.pem`, `id_rsa*`, `.aws/`,
+   `.kube/config`, `.ssh/`. Elle est évaluée **en dernier** et **gagne toujours** : un `!.env` dans
+   votre `.runnerignore` ne la réactive pas.
+
+Un dossier exclu est élagué du balayage : son contenu n'est ni listé, ni ouvert, ni lu. Les règles
+sont chargées **au démarrage** — modifier `.runnerignore` demande un redémarrage du runner, qui
+affiche alors la source et le nombre de règles retenues.
+
+> La liste par défaut est volontairement littérale et courte. Elle ne couvre **pas** `.env.local`,
+> `id_ed25519`, `*.key`, `.npmrc`… : ajoutez-les à votre `.runnerignore`. Et pointez `--workspace`
+> sur le dossier de projet voulu, pas sur `$HOME`.
 
 ## Jeton
 

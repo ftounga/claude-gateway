@@ -73,10 +73,15 @@ public final class RunnerConnection {
             return t;
         });
         sender = new FrameSender(console);
-        dispatcher = new ToolDispatcher(new FileTools(new PathGuard(config.workspaceRoot())), sender, console);
+        ExclusionRules exclusions = ExclusionRules.load(config.workspaceRoot(), console);
+        PathGuard guard = new PathGuard(config.workspaceRoot(), exclusions);
+        dispatcher = new ToolDispatcher(new FileTools(guard), sender, console);
         URI uri = config.webSocketUri(token);
         console.info("Cible WebSocket : " + safeUri(uri));
         console.info("Outils fichiers actifs, confinés à : " + config.workspaceRoot());
+        console.info("Exclusions : " + exclusions.userRuleCount() + " règle(s) issues de "
+                + exclusions.source() + " + liste par défaut non désactivable ("
+                + String.join(", ", ExclusionRules.DEFAULT_DENY) + ").");
 
         try {
             while (running.get()) {
