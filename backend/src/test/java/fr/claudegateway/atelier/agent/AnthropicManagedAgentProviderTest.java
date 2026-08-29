@@ -74,11 +74,31 @@ class AnthropicManagedAgentProviderTest {
                 .andExpect(jsonPath("$.config.type").value("cloud"))
                 .andExpect(jsonPath("$.config.networking.type").value("limited"))
                 .andExpect(jsonPath("$.config.networking.allow_package_managers").value(true))
+                .andExpect(jsonPath("$.config.networking.allowed_hosts[0]").value("api.githubcopilot.com"))
                 .andRespond(withSuccess("{\"id\":\"env_123\"}", MediaType.APPLICATION_JSON));
 
-        ManagedEnvironment environment = provider.createEnvironment(new EnvironmentSpec("atelier-env", true));
+        ManagedEnvironment environment = provider.createEnvironment(
+                new EnvironmentSpec("atelier-env", true, java.util.List.of("api.githubcopilot.com")));
 
         assertThat(environment.id()).isEqualTo("env_123");
+        server.verify();
+    }
+
+    /**
+     * SF-31-07 — sans hôte à autoriser, le corps doit rester STRICTEMENT celui d'avant : une clé
+     * `allowed_hosts` vide n'est pas la même chose qu'une clé absente, et l'API a déjà refusé des
+     * corps pour moins que cela.
+     */
+    @Test
+    void createEnvironmentOmitsAllowedHostsWhenThereIsNoneToAllow() {
+        server.expect(requestTo("https://api.anthropic.com/v1/environments"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(jsonPath("$.config.networking.allow_package_managers").value(true))
+                .andExpect(jsonPath("$.config.networking.allowed_hosts").doesNotExist())
+                .andRespond(withSuccess("{\"id\":\"env_123\"}", MediaType.APPLICATION_JSON));
+
+        provider.createEnvironment(new EnvironmentSpec("atelier-env", true, java.util.List.of()));
+
         server.verify();
     }
 
@@ -1177,7 +1197,7 @@ class AnthropicManagedAgentProviderTest {
         server.expect(requestTo("https://api.anthropic.com/v1/environments"))
                 .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR));
 
-        assertThatThrownBy(() -> provider.createEnvironment(new EnvironmentSpec("atelier-env", true)))
+        assertThatThrownBy(() -> provider.createEnvironment(new EnvironmentSpec("atelier-env", true, java.util.List.of())))
                 .isInstanceOf(AgentProviderException.class);
         server.verify();
     }
