@@ -14,32 +14,45 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 /**
  * Connexion sortante WSS du runner (F-38 / SF-38-03) vers {@code /runner/ws}, avec heartbeat
- * périodique, reconnexion à backoff plafonné et arrêt propre.
+ * périodique, reconnexion à backoff plafonné et arrêt propre. Depuis SF-38-04, elle transporte aussi
+ * les <b>messages d'outils</b> : les trames reçues sont réellement analysées (champ {@code type}) et
+ * les {@code tool_call} / {@code tool_cancel} sont confiés au {@link ToolDispatcher}.
  *
  * <p>La socket est authentifiée par le jeton runner porté en query param (SF-38-02). Un rejet de
  * handshake {@code 401} lève {@link AuthRejectedException} pour que l'appelant efface le jeton
  * périmé. {@link #stop()} (déclenché par {@code Ctrl-C}) ferme la socket (close 1000) et libère la
  * boucle.</p>
  *
+ * <p>Toutes les émissions — heartbeat compris — passent par {@link FrameSender} : {@code
+ * java.net.http.WebSocket} interdit un {@code sendText} concurrent d'un envoi non terminé.</p>
+ *
  * <p>Note : cette classe est intrinsèquement I/O réseau ; elle n'est pas couverte par les tests
  * unitaires (la connexion réelle est un smoke manuel). La logique testable (backoff, config, proxy,
- * jeton) est isolée dans des classes dédiées.</p>
+ * jeton, confinement, outils, file d'émission, aiguillage) est isolée dans des classes dédiées.</p>
  */
 public final class RunnerConnection {
 
     private static final String HEARTBEAT_MESSAGE = "{\"type\":\"heartbeat\"}";
+    private static final String FALLBACK_VERSION = "0.0.1";
 
     private final HttpClient httpClient;
     private final RunnerConfig config;
     private final Console console;
     private final Backoff backoff;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile WebSocket webSocket;
     private volatile CountDownLatch closedLatch;
     private ScheduledExecutorService heartbeatExecutor;
+    private volatile ScheduledFuture<?> heartbeatTask;
+    private FrameSender sender;
+    private ToolDispatcher dispatcher;
 
     public RunnerConnection(HttpClient httpClient, RunnerConfig config, Console console) {
         this.httpClient = httpClient;
@@ -59,35 +72,41 @@ public final class RunnerConnection {
             t.setDaemon(true);
             return t;
         });
+        sender = new FrameSender(console);
+        dispatcher = new ToolDispatcher(new FileTools(new PathGuard(config.workspaceRoot())), sender, console);
         URI uri = config.webSocketUri(token);
         console.info("Cible WebSocket : " + safeUri(uri));
+        console.info("Outils fichiers actifs, confinés à : " + config.workspaceRoot());
 
-        while (running.get()) {
-            CountDownLatch latch = new CountDownLatch(1);
-            closedLatch = latch;
-            try {
-                connectOnce(uri, latch);
-                backoff.reset();
-                latch.await(); // attend la fermeture/erreur de la socket
-            } catch (AuthRejectedException e) {
-                shutdownHeartbeat();
-                throw e;
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            } catch (RuntimeException e) {
-                console.warn("Connexion échouée : " + e.getMessage());
+        try {
+            while (running.get()) {
+                CountDownLatch latch = new CountDownLatch(1);
+                closedLatch = latch;
+                try {
+                    connectOnce(uri, latch);
+                    backoff.reset();
+                    latch.await(); // attend la fermeture/erreur de la socket
+                } catch (AuthRejectedException e) {
+                    throw e;
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                } catch (RuntimeException e) {
+                    console.warn("Connexion échouée : " + e.getMessage());
+                }
+                if (!running.get()) {
+                    break;
+                }
+                Duration delay = backoff.nextDelay();
+                console.warn("Reconnexion dans " + delay.toSeconds() + " s…");
+                if (!sleep(delay)) {
+                    break;
+                }
             }
-            if (!running.get()) {
-                break;
-            }
-            Duration delay = backoff.nextDelay();
-            console.warn("Reconnexion dans " + delay.toSeconds() + " s…");
-            if (!sleep(delay)) {
-                break;
-            }
+        } finally {
+            shutdownHeartbeat();
+            closeChannel();
         }
-        shutdownHeartbeat();
         console.info("Boucle de connexion terminée.");
     }
 
@@ -117,8 +136,10 @@ public final class RunnerConnection {
         CompletableFuture<WebSocket> future = httpClient.newWebSocketBuilder()
                 .connectTimeout(Duration.ofSeconds(20))
                 .buildAsync(uri, new Listener(latch));
+        WebSocket ws;
         try {
-            this.webSocket = future.join();
+            ws = future.join();
+            this.webSocket = ws;
         } catch (RuntimeException e) {
             Throwable cause = e.getCause() != null ? e.getCause() : e;
             if (cause instanceof WebSocketHandshakeException handshake
@@ -128,14 +149,23 @@ public final class RunnerConnection {
             throw new RunnerException(cause.getMessage() == null ? cause.toString() : cause.getMessage(), cause);
         }
         console.info("Runner connecté.");
+        // La file d'émission est branchée sur la socket courante avant toute trame sortante.
+        sender.attach(frame -> ws.sendText(frame, true));
+        sender.send(dispatcher.readyFrame(runnerVersion()));
         startHeartbeat();
     }
 
     private void startHeartbeat() {
-        ScheduledFuture<?> ignored = heartbeatExecutor.scheduleAtFixedRate(() -> {
-            WebSocket ws = this.webSocket;
-            if (ws != null && running.get()) {
-                ws.sendText(HEARTBEAT_MESSAGE, true);
+        // Une reconnexion ne doit pas empiler un second ordonnancement sur le premier.
+        ScheduledFuture<?> previous = this.heartbeatTask;
+        if (previous != null) {
+            previous.cancel(false);
+        }
+        this.heartbeatTask = heartbeatExecutor.scheduleAtFixedRate(() -> {
+            if (running.get()) {
+                // Passe par la file d'émission : le heartbeat ne doit jamais entrer en concurrence
+                // avec un tool_result parti d'un thread worker.
+                sender.send(HEARTBEAT_MESSAGE);
                 console.info("Heartbeat envoyé.");
             }
         }, config.heartbeatInterval().toSeconds(), config.heartbeatInterval().toSeconds(), TimeUnit.SECONDS);
@@ -145,6 +175,17 @@ public final class RunnerConnection {
         ScheduledExecutorService executor = this.heartbeatExecutor;
         if (executor != null) {
             executor.shutdownNow();
+        }
+    }
+
+    private void closeChannel() {
+        ToolDispatcher currentDispatcher = this.dispatcher;
+        if (currentDispatcher != null) {
+            currentDispatcher.close();
+        }
+        FrameSender currentSender = this.sender;
+        if (currentSender != null) {
+            currentSender.close();
         }
     }
 
@@ -158,6 +199,11 @@ public final class RunnerConnection {
         }
     }
 
+    private static String runnerVersion() {
+        String version = RunnerConnection.class.getPackage().getImplementationVersion();
+        return version == null || version.isBlank() ? FALLBACK_VERSION : version;
+    }
+
     private static String safeUri(URI uri) {
         // On masque le jeton dans l'affichage.
         String s = uri.toString();
@@ -165,7 +211,12 @@ public final class RunnerConnection {
         return idx < 0 ? s : s.substring(0, idx) + "token=***";
     }
 
-    /** Listener WebSocket : journalise les acks de heartbeat et signale la fermeture. */
+    /**
+     * Listener WebSocket : analyse le champ {@code type} de chaque trame (Jackson) et aiguille les
+     * messages d'outils. Une trame de type inconnu est <b>ignorée en silence</b> — c'est la règle de
+     * compatibilité ascendante du contrat, qui permet à un runner ancien de cohabiter avec une
+     * gateway plus récente (et l'inverse).
+     */
     private final class Listener implements WebSocket.Listener {
         private final CountDownLatch latch;
         private final StringBuilder buffer = new StringBuilder();
@@ -185,19 +236,43 @@ public final class RunnerConnection {
             if (last) {
                 String payload = buffer.toString();
                 buffer.setLength(0);
-                if (payload.contains("heartbeat_ack")) {
-                    console.info("Heartbeat confirmé (ack).");
-                } else {
-                    console.info("Message reçu : " + payload);
-                }
+                handle(payload);
             }
             ws.request(1);
             return null;
         }
 
+        private void handle(String payload) {
+            JsonNode frame;
+            try {
+                frame = objectMapper.readTree(payload);
+            } catch (Exception e) {
+                dispatcher.sendProtocolError("unparsable", "Trame illisible.", null);
+                return;
+            }
+            if (frame == null || !frame.isObject()) {
+                dispatcher.sendProtocolError("unparsable", "Trame illisible.", null);
+                return;
+            }
+            String type = frame.path("type").asText(null);
+            if (type == null) {
+                dispatcher.sendProtocolError("invalid_envelope", "Champ type manquant.", null);
+                return;
+            }
+            switch (type) {
+                case "heartbeat_ack" -> console.info("Heartbeat confirmé (ack).");
+                case "tool_call" -> dispatcher.onToolCall(frame);
+                case "tool_cancel" -> dispatcher.onToolCancel(frame);
+                default -> {
+                    // Type inconnu : ignoré, jamais une erreur ni une fermeture de socket.
+                }
+            }
+        }
+
         @Override
         public CompletionStage<?> onClose(WebSocket ws, int statusCode, String reason) {
             console.warn("Connexion fermée par la gateway (" + statusCode + " " + reason + ").");
+            releaseChannel();
             latch.countDown();
             return null;
         }
@@ -205,7 +280,14 @@ public final class RunnerConnection {
         @Override
         public void onError(WebSocket ws, Throwable error) {
             console.warn("Erreur de connexion : " + error.getMessage());
+            releaseChannel();
             latch.countDown();
+        }
+
+        /** Socket perdue : plus rien à émettre, et les appels en vol sont abandonnés (contrat §7). */
+        private void releaseChannel() {
+            sender.detach();
+            dispatcher.abortAll();
         }
     }
 

@@ -4,8 +4,10 @@ Le runner est un **client léger** posé sur la machine où vit le projet. Il ou
 connexion **sortante** WSS/443 vers la gateway : aucun port entrant, aucun installeur, aucun droit
 administrateur, aucun service en arrière-plan.
 
-> Périmètre de **SF-38-03** : appairage, connexion, heartbeat, reconnexion, arrêt propre.
-> Les outils fichiers (SF-38-04) et l'exécution de commandes (SF-38-07) arrivent ensuite.
+> Périmètre livré : appairage, connexion, heartbeat, reconnexion, arrêt propre (**SF-38-03**) et
+> **outils fichiers** `list_files` / `read_file` / `write_file` / `search_files` (**SF-38-04**).
+> L'exécution de commandes (`bash`, SF-38-07) et les exclusions `.runnerignore` (SF-38-10) arrivent
+> ensuite ; d'ici là le runner répond `unsupported_tool` à `bash`.
 
 ## Construire
 
@@ -44,6 +46,31 @@ inutile tant que le jeton est valide et non révoqué.
 | `--heartbeat-interval` | `CLAUDE_RUNNER_HEARTBEAT_INTERVAL` | `30` (s) | Période du heartbeat |
 
 L'argument CLI prime toujours sur la variable d'environnement.
+
+## Outils fichiers et confinement (SF-38-04)
+
+Le runner exécute quatre outils, reçus de la gateway sur la connexion WSS :
+
+| Outil | Entrée | Sortie |
+|---|---|---|
+| `list_files` | — | chemins relatifs des fichiers de la racine, triés, un par ligne |
+| `read_file` | `path` | contenu texte UTF-8 (borné à 512 Kio, au-delà `truncated`) |
+| `write_file` | `path`, `content` | écrit le fichier, crée les dossiers parents manquants |
+| `search_files` | `query` | lignes `chemin:ligne: texte`, bornées à 8 000 caractères |
+
+**Confinement — la vérification qui fait foi est celle du runner** : tout chemin est résolu de façon
+canonique (liens symboliques compris) et doit rester sous `--workspace`. Un `..`, un chemin absolu,
+une lettre de lecteur Windows ou un lien qui sort de la racine sont refusés (`path_outside_root`) —
+**rien n'est lu ni écrit**. Les messages d'erreur renvoyés à la gateway ne citent que des chemins
+**relatifs** : le chemin absolu de votre machine ne sort jamais du poste.
+
+Bornes appliquées localement : lecture refusée au-delà de 8 Mio (`too_large`), écriture refusée
+au-delà de 512 Kio, 20 000 fichiers au plus pour `list_files`, fichiers binaires et fichiers de plus
+d'1 Mio ignorés par `search_files`. Chaque appel a son propre délai (30 s par défaut) et peut être
+interrompu depuis la session. La console affiche chaque appel exécuté et sa durée.
+
+> Tant que SF-38-10 n'est pas livrée, il n'y a **pas** d'exclusions : tout fichier régulier sous la
+> racine est visible du runner. Pointez `--workspace` sur le dossier de projet voulu, pas sur `$HOME`.
 
 ## Jeton
 
