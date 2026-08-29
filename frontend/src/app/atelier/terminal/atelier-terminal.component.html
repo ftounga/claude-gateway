@@ -186,7 +186,12 @@
           }
         }
         @if (message.content) {
-          <p class="terminal-agent">{{ message.content }}</p>
+          <!--
+            Commentaire de l'agent rendu en Markdown (SF-30-12) : le modèle répond en Markdown, et
+            l'interpolation brute affichait les ** et les ## à l'écran. Le pipe assainit par DOMPurify
+            avant tout innerHTML — le contenu vient d'un LLM.
+          -->
+          <p class="terminal-agent" [innerHTML]="message.content | markdown"></p>
         }
         @if (message.interrupted) {
           <!-- Le tour est conservé : il a réellement eu lieu et il est facturé (F-32). -->
@@ -303,7 +308,9 @@
         </div>
       }
       @if (live.text.length > 0) {
-        <p class="terminal-agent">{{ live.text }}</p>
+        <!-- Même rendu au fil de l'eau : un Markdown encore incomplet se stabilise à mesure
+             que le texte arrive, marked fermant implicitement ce qui ne l'est pas. -->
+        <p class="terminal-agent" [innerHTML]="live.text | markdown"></p>
       }
     }
 
