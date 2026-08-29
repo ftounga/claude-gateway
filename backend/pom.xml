@@ -70,6 +70,12 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-web</artifactId>
 		</dependency>
+		<!-- WebSocket (F-38 / SF-38-02) : canal du runner /runner/ws. Confiné à
+		     fr.claudegateway.runner.channel (handshake authentifie par jeton runner, heartbeat). -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-websocket</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-mail</artifactId>
@@ -144,10 +150,12 @@
 			<artifactId>h2</artifactId>
 			<scope>runtime</scope>
 		</dependency>
+		<!-- Driver PostgreSQL. Portee `compile` (et non `runtime`) car PgNotifyRunnerRegistry
+		     (F-38 / SF-38-02) utilise l'API LISTEN/NOTIFY du driver (PGConnection/PGNotification).
+		     Cet usage reste confine a fr.claudegateway.runner.channel. -->
 		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
-			<scope>runtime</scope>
 		</dependency>
 		<dependency>
 			<groupId>org.projectlombok</groupId>

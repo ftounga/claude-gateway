@@ -15,6 +15,7 @@ import fr.claudegateway.atelier.AtelierAccessService;
 import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.runner.RunnerPairingService.PairingCode;
 import fr.claudegateway.runner.dto.PairingCodeResponse;
+import fr.claudegateway.runner.dto.RunnerStatusResponse;
 import fr.claudegateway.runner.dto.RunnerTokenResponse;
 
 /**
@@ -28,14 +29,16 @@ public class RunnerManagementController {
 
     private final RunnerPairingService pairingService;
     private final RunnerTokenService tokenService;
+    private final RunnerStatusService statusService;
     private final AtelierAccessService atelierAccess;
     private final CurrentUser currentUser;
 
     public RunnerManagementController(RunnerPairingService pairingService,
-            RunnerTokenService tokenService, AtelierAccessService atelierAccess,
-            CurrentUser currentUser) {
+            RunnerTokenService tokenService, RunnerStatusService statusService,
+            AtelierAccessService atelierAccess, CurrentUser currentUser) {
         this.pairingService = pairingService;
         this.tokenService = tokenService;
+        this.statusService = statusService;
         this.atelierAccess = atelierAccess;
         this.currentUser = currentUser;
     }
@@ -57,6 +60,14 @@ public class RunnerManagementController {
         return tokenService.list(userId, workspaceId).stream()
                 .map(RunnerTokenResponse::from)
                 .toList();
+    }
+
+    /** État « runner connecté / déconnecté » de ce workspace. */
+    @GetMapping("/status")
+    public RunnerStatusResponse status(@PathVariable UUID workspaceId) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        return RunnerStatusResponse.from(statusService.status(userId, workspaceId));
     }
 
     /** Révoque un jeton runner. Idempotent. */

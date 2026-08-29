@@ -290,3 +290,12 @@ app:
     pairing-code-ttl: ${APP_RUNNER_PAIRING_CODE_TTL:PT5M}
     # F-38 : durée de vie d'un jeton runner (ISO-8601). Défaut : 30 jours.
     token-ttl: ${APP_RUNNER_TOKEN_TTL:P30D}
+    # F-38 / SF-38-02 : registre des connexions runner (D8 / ADR-016). `in-memory` par défaut
+    # (dev/tests, un seul pod) ; `pg-notify` en cluster multi-replica (présence diffusée entre les
+    # 2 pods par Postgres LISTEN/NOTIFY, canal `runner_presence`, aucun composant d'infra ajouté).
+    registry: ${APP_RUNNER_REGISTRY:in-memory}
+    heartbeat:
+      # Fenêtre de fraîcheur du dernier heartbeat pour le statut « runner connecté » : au-delà, le
+      # runner est considéré déconnecté si le registre ne le voit pas. Adossé à `last_seen_at` (base
+      # partagée), ce critère garde le statut correct même quand la socket vit sur l'autre replica.
+      stale-after: ${APP_RUNNER_HEARTBEAT_STALE_AFTER:PT90S}
