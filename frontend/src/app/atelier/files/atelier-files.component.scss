@@ -376,3 +376,15 @@
   width: 16px;
   height: 16px;
 }
+
+/* Sélecteur de branche de l'explorateur Git (F-31 / SF-31-10). */
+.branch-picker {
+  min-width: 220px;
+  max-width: 320px;
+}
+
+.branch-default {
+  margin-left: 8px;
+  font-size: 12px;
+  opacity: 0.6;
+}

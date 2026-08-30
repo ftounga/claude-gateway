@@ -40,6 +40,9 @@ describe('AtelierFilesComponent', () => {
       'exportZip',
       'importLibrary',
       'commitGitFiles',
+      'gitBranches',
+      'switchGitBranch',
+      'createGitBranch',
     ]);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
@@ -47,6 +50,10 @@ describe('AtelierFilesComponent', () => {
     service.getWorkspace.and.returnValue(of(detail));
     // Stub par défaut : les tests qui s'intéressent au contenu le redéfinissent.
     service.getFile.and.returnValue(of({ path: 'src/a.js', content: 'const x = 1;' }));
+    // Projet d'archive par défaut : les branches ne sont chargées que sur un projet Git.
+    service.gitBranches.and.returnValue(
+      of({ branches: ['main', 'claude/edition'], current: 'main', defaultBranch: 'main' }),
+    );
 
     TestBed.configureTestingModule({
       imports: [AtelierFilesComponent],
@@ -133,6 +140,57 @@ describe('AtelierFilesComponent', () => {
     );
     (component as unknown as { loadWorkspace: () => void }).loadWorkspace();
   }
+
+  it('projet Git : les branches sont chargées et la courante affichée', () => {
+    asGitProject();
+
+    expect(service.gitBranches).toHaveBeenCalledWith('w1');
+    expect(component.branches()).toEqual(['main', 'claude/edition']);
+    expect(component.gitBranch()).toBe('main');
+    expect(component.defaultBranch()).toBe('main');
+  });
+
+  it('projet Git : changer de branche recharge le projet', () => {
+    asGitProject();
+    service.switchGitBranch.and.returnValue(of(detail));
+
+    component.switchBranch('claude/edition');
+
+    expect(service.switchGitBranch).toHaveBeenCalledWith('w1', 'claude/edition');
+    expect(component.selectedPath()).toBeNull();
+  });
+
+  it('projet Git : rester sur la même branche ne déclenche aucun appel', () => {
+    asGitProject();
+
+    component.switchBranch('main');
+
+    expect(service.switchGitBranch).not.toHaveBeenCalled();
+  });
+
+  it('projet Git : changer de branche avec des modifications demande confirmation', () => {
+    asGitProject();
+    component.openFile('src/a.js');
+    component.fileContent.set('un');
+    component.saveFile();
+    dialog.open.and.returnValue({ afterClosed: () => of(false) } as never);
+
+    component.switchBranch('claude/edition');
+
+    expect(dialog.open).toHaveBeenCalled();
+    expect(service.switchGitBranch).not.toHaveBeenCalled();
+    expect(component.pendingCount()).withContext('rien n’est perdu si on annule').toBe(1);
+  });
+
+  it('projet Git : créer une branche s’y place et recharge', () => {
+    asGitProject();
+    dialog.open.and.returnValue({ afterClosed: () => of('claude/nouvelle') } as never);
+    service.createGitBranch.and.returnValue(of(detail));
+
+    component.createBranch();
+
+    expect(service.createGitBranch).toHaveBeenCalledWith('w1', 'claude/nouvelle');
+  });
 
   it('projet Git : enregistrer retient la modification sans appeler writeFile', () => {
     asGitProject();

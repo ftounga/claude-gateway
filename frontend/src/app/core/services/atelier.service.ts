@@ -17,6 +17,7 @@ import {
   CreateGitWorkspaceRequest,
   ExecutionTargetRequest,
   FileContent,
+  GitBranches,
   GitCommitResult,
   GitPullRequestRequest,
   GitPullRequestResult,
@@ -94,6 +95,21 @@ export class AtelierService {
   }
 
   /** Écrit (remplace) le contenu texte d'un fichier du workspace. */
+  /** Branches du dépôt, avec celle du projet et celle par défaut (F-31 / SF-31-10). */
+  gitBranches(id: string): Observable<GitBranches> {
+    return this.http.get<GitBranches>(`/api/workspaces/${id}/git/branches`);
+  }
+
+  /** Place le projet sur une branche existante (F-31 / SF-31-10). */
+  switchGitBranch(id: string, branch: string): Observable<WorkspaceDetail> {
+    return this.http.put<WorkspaceDetail>(`/api/workspaces/${id}/git/branch`, { branch });
+  }
+
+  /** Crée une branche depuis celle du projet et s'y place (F-31 / SF-31-10). */
+  createGitBranch(id: string, branch: string): Observable<WorkspaceDetail> {
+    return this.http.post<WorkspaceDetail>(`/api/workspaces/${id}/git/branches`, { branch });
+  }
+
   /**
    * Publie les modifications faites par l'utilisateur en un commit sur une branche dédiée
    * (F-31 / SF-31-09, endpoint de SF-31-08). Un seul appel porte tous les fichiers : le commit est
