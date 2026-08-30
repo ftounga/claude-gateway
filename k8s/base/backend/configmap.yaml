@@ -24,6 +24,9 @@ data:
   # `findRemote()` rend toujours vide et le relais inter-pods de SF-38-12/13 reste INERTE — le mode
   # RUNNER retomberait sur `runner_not_on_this_node` dès le second pod, comme avant le relais.
   APP_RUNNER_REGISTRY: "pg-notify"
+  # F-38 — Chemin du fat-jar du runner dans l'image (empaqueté par backend/Dockerfile). Sans lui,
+  # `GET /runner/download` répond 404 et le bouton de téléchargement de l'écran d'appairage échoue.
+  APP_RUNNER_JAR_PATH: "/app/claude-runner.jar"
   # Phase 2 Atelier (Managed Agents / exécution de code, ADR-013) : activée. L'accès reste gardé
   # par offre Gold/ADMIN (SF-28-06) et la session est éphémère (runtime borné). ⚠️ Ouvrir aux
   # abonnés Gold au-delà de l'admin nécessite les plafonds de dépense de SF-28-12.
