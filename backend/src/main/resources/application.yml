@@ -333,3 +333,7 @@ app:
       # Strictement supérieur au plus grand `timeoutMs + grâce` possible (bash : 120 000 + 5 000) :
       # le pod propriétaire doit toujours gagner la course et écrire son `result`.
       read-timeout-ms: ${APP_RUNNER_RELAY_READ_TIMEOUT_MS:135000}
+      # F-38 / SF-38-13 : délai de lecture d'un geste DIFFUSÉ (annulation, décision d'autorisation,
+      # interruption). Court par nature — un utilisateur attend derrière, et un pod muet ne doit pas
+      # retarder les autres pairs.
+      broadcast-timeout-ms: ${APP_RUNNER_RELAY_BROADCAST_TIMEOUT_MS:3000}

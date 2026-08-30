@@ -26,6 +26,8 @@ import fr.claudegateway.runner.channel.RunnerCallResult;
 import fr.claudegateway.runner.channel.RunnerErrorCodes;
 import fr.claudegateway.runner.exec.RunnerConfirmationGate;
 import fr.claudegateway.runner.exec.RunnerToolGateway;
+import fr.claudegateway.runner.relay.RelayInterruptTarget;
+import fr.claudegateway.runner.relay.RunnerRelayBroadcaster;
 
 /**
  * Cœur de l'Atelier (F-28 / SF-28-02) : orchestre une boucle <b>tool-use</b> où Claude lit et édite
@@ -35,7 +37,7 @@ import fr.claudegateway.runner.exec.RunnerToolGateway;
  * et à la conversation passe par {@code user_id}.
  */
 @Service
-public class AtelierChatService {
+public class AtelierChatService implements RelayInterruptTarget {
 
     /** Garde-fou anti-boucle : nombre maximal d'allers-retours par message. */
     private static final int MAX_ITERATIONS = 12;
@@ -70,6 +72,11 @@ public class AtelierChatService {
     private final fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher;
     private final RunnerConfirmationGate confirmationGate;
     private final RunnerAuditService runnerAuditService;
+    /**
+     * Diffusion des gestes qui doivent atteindre le pod où tourne la boucle (F-38 / SF-38-13).
+     * Inerte tant que le relais n'est pas configuré : le chemin mono-pod reste le chemin par défaut.
+     */
+    private final RunnerRelayBroadcaster relayBroadcaster;
 
     /**
      * Tours pour lesquels une interruption a été demandée (F-38 / SF-38-07, même geste que F-32).
@@ -86,7 +93,8 @@ public class AtelierChatService {
             RunnerToolGateway runnerToolGateway,
             fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher,
             RunnerConfirmationGate confirmationGate,
-            RunnerAuditService runnerAuditService) {
+            RunnerAuditService runnerAuditService,
+            RunnerRelayBroadcaster relayBroadcaster) {
         this.workspaceService = workspaceService;
         this.messageRepository = messageRepository;
         this.agentProvider = agentProvider;
@@ -98,6 +106,7 @@ public class AtelierChatService {
         this.runnerCallDispatcher = runnerCallDispatcher;
         this.confirmationGate = confirmationGate;
         this.runnerAuditService = runnerAuditService;
+        this.relayBroadcaster = relayBroadcaster;
     }
 
     /**
@@ -260,14 +269,30 @@ public class AtelierChatService {
      *
      * <p>Idempotent et silencieux si rien ne tourne : la marque est de toute façon effacée à
      * l'ouverture du prochain tour. Isolation : {@code requireOwned} d'abord, toujours (404 sinon).</p>
+     *
+     * <p><b>Multi-pod (F-38 / SF-38-13)</b> : ces trois gestes vivent en mémoire, sur le pod qui
+     * exécute la boucle et tient le flux SSE — pas forcément celui qui reçoit ce clic. On agit donc
+     * d'abord ici, puis on <b>diffuse</b> le même geste aux pods pairs. La diffusion est best-effort :
+     * un pair injoignable est journalisé et ne change pas la réponse rendue au navigateur.</p>
      */
     public void interruptChat(UUID userId, UUID workspaceId) {
         workspaceService.requireOwned(userId, workspaceId);
+        interruptLocally(userId, workspaceId, "user_interrupt");
+        relayBroadcaster.broadcastInterrupt(userId, workspaceId, "user_interrupt");
+    }
+
+    /**
+     * Les trois gestes d'une interruption, appliqués <b>sur ce pod</b> — appelés par
+     * {@link #interruptChat} et par le relais interne, dans le même ordre.
+     */
+    @Override
+    public RelayInterruptOutcome interruptLocally(UUID userId, UUID workspaceId, String reason) {
         interruptedTurns.add(turnKey(userId, workspaceId));
         // Une demande d'autorisation encore en attente bloquerait la boucle jusqu'à son échéance,
         // alors que l'utilisateur vient précisément de demander l'arrêt (F-38 / SF-38-08).
-        confirmationGate.cancelWorkspace(workspaceId);
-        runnerCallDispatcher.cancelWorkspace(workspaceId, "user_interrupt");
+        int released = confirmationGate.cancelWorkspace(workspaceId);
+        int cancelled = runnerCallDispatcher.cancelWorkspace(workspaceId, reason);
+        return new RelayInterruptOutcome(released, cancelled);
     }
 
     /**
@@ -280,14 +305,26 @@ public class AtelierChatService {
      * porte revérifie que la demande appartient bien à ce couple utilisateur/workspace — un
      * identifiant de corrélation deviné n'autorise rien.</p>
      *
+     * <p><b>Multi-pod (F-38 / SF-38-13)</b> : la porte qui attend vit sur le pod qui exécute la
+     * boucle, alors que ce clic peut atterrir sur n'importe lequel. Si personne n'attend ici, la
+     * décision est <b>diffusée</b> aux pairs ; un seul d'entre eux détient la demande et la tranche.
+     * Si vraiment personne ne résout, l'erreur d'origine est relancée (409) — et la porte qui
+     * attendrait sans être atteinte expirera en refus : le silence ne vaut jamais autorisation.</p>
+     *
      * @throws WorkspaceNotFoundException si le workspace n'est pas possédé
      * @throws fr.claudegateway.runner.exec.NoPendingConfirmationException si rien n'attend cette réponse
      */
     public void confirmToolUse(UUID userId, UUID workspaceId, String toolUseId, boolean allow,
             String reason) {
         workspaceService.requireOwned(userId, workspaceId);
-        confirmationGate.resolve(userId, workspaceId, toolUseId == null ? "" : toolUseId.trim(),
-                allow, reason);
+        String callId = toolUseId == null ? "" : toolUseId.trim();
+        try {
+            confirmationGate.resolve(userId, workspaceId, callId, allow, reason);
+        } catch (fr.claudegateway.runner.exec.NoPendingConfirmationException ex) {
+            if (!relayBroadcaster.broadcastConfirm(userId, workspaceId, callId, allow, reason)) {
+                throw ex;
+            }
+        }
     }
 
     /** Clef de marque d'interruption : l'utilisateur ET le workspace, jamais l'un sans l'autre. */

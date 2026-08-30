@@ -49,16 +49,20 @@ public class RunnerRelayClient {
 
     private static final Logger log = LoggerFactory.getLogger(RunnerRelayClient.class);
     private static final String CALL_PATH = "/api/internal/runner/call";
+    private static final String CANCEL_PATH = "/api/internal/runner/cancel";
     private static final long UNAUTHORIZED_WARN_INTERVAL_MS = 60_000L;
 
     private final RestClient restClient;
+    private final RelayPeerClient peerClient;
     private final ObjectMapper objectMapper;
     private final String secret;
     /** Identifiant d'instance de ce pod, porté par {@code X-Relay-Origin} — journal uniquement. */
     private final String originId = UUID.randomUUID().toString();
     private final AtomicLong lastUnauthorizedWarnAt = new AtomicLong(0L);
 
-    public RunnerRelayClient(RunnerRelayProperties properties, ObjectMapper objectMapper) {
+    public RunnerRelayClient(RunnerRelayProperties properties, RelayPeerClient peerClient,
+            ObjectMapper objectMapper) {
+        this.peerClient = peerClient;
         this.objectMapper = objectMapper;
         this.secret = properties.getSecret();
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
@@ -80,7 +84,7 @@ public class RunnerRelayClient {
             JsonNode input, long timeoutMs, Consumer<String> onChunk) {
         URI uri = URI.create(node.baseUrl() + CALL_PATH);
         try {
-            return restClient.post()
+            RunnerCallResult result = restClient.post()
                     .uri(uri)
                     .header(RunnerRelayAuthFilter.SECRET_HEADER, secret)
                     .header(RunnerRelayAuthFilter.ORIGIN_HEADER, originId)
@@ -88,12 +92,31 @@ public class RunnerRelayClient {
                     .accept(MediaType.APPLICATION_NDJSON)
                     .body(payload(workspaceId, callId, tool, input, timeoutMs))
                     .exchange((request, response) -> read(response, onChunk, workspaceId, callId, tool));
+            if (RunnerErrorCodes.RUNNER_TIMEOUT.equals(result.errorCode())) {
+                // Le pair est resté muet au-delà du délai de lecture : il tient peut-être encore une
+                // commande sur la machine de l'utilisateur. On lui demande de l'arrêter, best-effort
+                // et sans jamais retenter (contrat du relais §7).
+                cancelQuietly(node, workspaceId);
+            }
+            return result;
         } catch (RuntimeException ex) {
             // Connexion refusée, DNS en échec, timeout de connexion : le pod n'est pas là.
             log.warn("Relais injoignable (node={}, workspace={}, appel={}, outil={}) : {}",
                     node.nodeId(), workspaceId, callId, tool, ex.getClass().getSimpleName());
             return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE);
         }
+    }
+
+    /**
+     * Annulation <b>dirigée</b> vers le pod dont on n'a pas reçu l'issue à temps (contrat §7). Seul
+     * cas où cette route n'est pas diffusée : ici, on sait exactement à qui parler. Un échec est
+     * ignoré — c'est déjà un chemin de rattrapage.
+     */
+    private void cancelQuietly(RemoteRunnerNode node, UUID workspaceId) {
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("workspaceId", workspaceId.toString());
+        payload.put("reason", "timeout");
+        peerClient.post(node.baseUrl(), CANCEL_PATH, payload.toString());
     }
 
     private String payload(UUID workspaceId, String callId, String tool, JsonNode input,

@@ -41,6 +41,13 @@ public class RunnerRelayProperties {
      */
     private long readTimeoutMs = 135_000L;
 
+    /**
+     * Délai de lecture d'un geste <b>diffusé</b> (annulation, confirmation, interruption), en
+     * millisecondes. Court par nature : un utilisateur attend derrière, et un pod muet ne doit pas
+     * retarder les autres pairs (F-38 / SF-38-13).
+     */
+    private long broadcastTimeoutMs = 3_000L;
+
     public int getPort() {
         return port;
     }
@@ -87,6 +94,14 @@ public class RunnerRelayProperties {
 
     public void setReadTimeoutMs(long readTimeoutMs) {
         this.readTimeoutMs = readTimeoutMs;
+    }
+
+    public long getBroadcastTimeoutMs() {
+        return broadcastTimeoutMs;
+    }
+
+    public void setBroadcastTimeoutMs(long broadcastTimeoutMs) {
+        this.broadcastTimeoutMs = broadcastTimeoutMs;
     }
 
     /** Vrai si le relais est configuré (secret présent). */

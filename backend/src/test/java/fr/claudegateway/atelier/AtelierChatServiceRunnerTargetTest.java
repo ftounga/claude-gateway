@@ -71,7 +71,8 @@ class AtelierChatServiceRunnerTargetTest {
                 byokKeyService, quotaService, modelCatalog,
                 new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
-                runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService);
+                runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
+                fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled());
 
         // Porte de validation (SF-38-08) : ces tests-ci portent sur le routage, pas sur la
         // validation — on autorise donc systématiquement, en relayant quand même la demande à

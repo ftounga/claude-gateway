@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +23,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import fr.claudegateway.runner.channel.RunnerCallDispatcher;
 import fr.claudegateway.runner.channel.RunnerCallResult;
+import fr.claudegateway.runner.exec.NoPendingConfirmationException;
+import fr.claudegateway.runner.exec.RunnerConfirmationGate;
 
 /**
  * Point d'entrée du relais interne, côté <b>pod propriétaire de la socket</b>
@@ -44,10 +47,13 @@ public class RunnerRelayController {
     private static final Logger log = LoggerFactory.getLogger(RunnerRelayController.class);
 
     private final RunnerCallDispatcher dispatcher;
+    private final RunnerConfirmationGate confirmationGate;
     private final ObjectMapper objectMapper;
 
-    public RunnerRelayController(RunnerCallDispatcher dispatcher, ObjectMapper objectMapper) {
+    public RunnerRelayController(RunnerCallDispatcher dispatcher,
+            RunnerConfirmationGate confirmationGate, ObjectMapper objectMapper) {
         this.dispatcher = dispatcher;
+        this.confirmationGate = confirmationGate;
         this.objectMapper = objectMapper;
     }
 
@@ -83,6 +89,55 @@ public class RunnerRelayController {
                 .header(HttpHeaders.CACHE_CONTROL, "no-store")
                 .contentType(MediaType.APPLICATION_NDJSON)
                 .body(body);
+    }
+
+    /**
+     * Annule les appels d'outils en vol d'un workspace sur <b>ce</b> pod (contrat du relais §4).
+     *
+     * <p>Route diffusée : un pod qui n'héberge pas la socket rend simplement {@code 0}, ce n'est pas
+     * une erreur. L'annulation <b>ne ferme jamais</b> le flux NDJSON d'un appel en cours — le runner
+     * tue son processus et émet quand même sa trame terminale (contrat de messages §2.5), donc la
+     * ligne {@code result} part normalement. Couper la réponse ici serait une régression.</p>
+     */
+    @PostMapping(value = "/cancel", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> cancel(
+            @RequestBody(required = false) RelayGestureRequests.CancelRequest request) {
+        if (request == null || !request.isValid()) {
+            return ResponseEntity.badRequest().build();
+        }
+        int cancelled = dispatcher.cancelWorkspace(request.workspaceId(), request.safeReason());
+        return ResponseEntity.ok(Map.of("cancelled", cancelled));
+    }
+
+    /**
+     * Tranche une demande d'autorisation qui attendrait sur <b>ce</b> pod (contrat du relais §5).
+     *
+     * <p>C'est le geste que le multi-pod cassait le plus silencieusement : la porte
+     * ({@link RunnerConfirmationGate}) vit sur le pod qui exécute la boucle, alors que la requête du
+     * navigateur peut atterrir sur n'importe lequel. Sans cette route, toute commande aurait fini
+     * refusée au bout de 120 s par expiration.</p>
+     *
+     * <p>Réponse <b>toujours 200</b> : {@code resolved=false} veut dire « ce n'est pas moi qui
+     * attendais », ce qui est le cas de tous les pods sauf un — l'absence de demande n'est pas une
+     * erreur de transport. L'appartenance est revérifiée par la porte elle-même ({@code userId}
+     * <i>et</i> {@code workspaceId}) : le {@code userId} de l'enveloppe n'authentifie rien, il est
+     * rejoué comme critère.</p>
+     */
+    @PostMapping(value = "/confirm", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> confirm(
+            @RequestBody(required = false) RelayGestureRequests.ConfirmRequest request) {
+        if (request == null || !request.isValid()) {
+            return ResponseEntity.badRequest().build();
+        }
+        try {
+            confirmationGate.resolve(request.userId(), request.workspaceId(), request.callId().trim(),
+                    request.allow(), request.reason());
+            log.debug("Décision d'autorisation relayée et appliquée (workspace={}, appel={})",
+                    request.workspaceId(), request.callId());
+            return ResponseEntity.ok(Map.of("resolved", true));
+        } catch (NoPendingConfirmationException ex) {
+            return ResponseEntity.ok(Map.of("resolved", false));
+        }
     }
 
     /**

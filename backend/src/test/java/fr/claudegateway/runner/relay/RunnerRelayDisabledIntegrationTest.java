@@ -30,6 +30,20 @@ class RunnerRelayDisabledIntegrationTest {
         assertThat(context.getBeansOfType(RunnerRelayConnectorCustomizer.class)).isEmpty();
         assertThat(context.getBeansOfType(RunnerRelayClient.class)).isEmpty();
         assertThat(context.getBeansOfType(RelaySecurityConfig.class)).isEmpty();
+        // F-38 / SF-38-13 : les routes d'interruption suivent la même règle — pas de secret, pas de
+        // surface.
+        assertThat(context.getBeansOfType(AtelierRelayController.class)).isEmpty();
+    }
+
+    @Test
+    void theBroadcasterExistsButTalksToNoOne() {
+        // Il est toujours câblé (les services appelants n'ont qu'un chemin de code), et reste inerte
+        // tant que le relais n'est pas configuré : comportement strictement mono-pod.
+        RunnerRelayBroadcaster broadcaster = context.getBean(RunnerRelayBroadcaster.class);
+
+        assertThat(broadcaster.broadcastConfirm(java.util.UUID.randomUUID(),
+                java.util.UUID.randomUUID(), "toolu_1", true, null)).isFalse();
+        assertThat(context.getBean(RelayPeerResolver.class).peerBaseUrls()).isEmpty();
     }
 
     @Test

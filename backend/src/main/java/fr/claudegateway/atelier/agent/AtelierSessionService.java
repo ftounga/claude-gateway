@@ -32,6 +32,8 @@ import fr.claudegateway.git.GitTokenMissingException;
 import fr.claudegateway.git.GitTokenService;
 import fr.claudegateway.quota.QuotaService;
 import fr.claudegateway.quota.UsageSnapshot;
+import fr.claudegateway.runner.relay.RelaySessionInterruptTarget;
+import fr.claudegateway.runner.relay.RunnerRelayBroadcaster;
 
 /**
  * Orchestration d'un run d'exécution d'atelier sur une session Managed Agents (F-28 / Phase 2,
@@ -55,7 +57,7 @@ import fr.claudegateway.quota.UsageSnapshot;
  * ({@code app.atelier.agent.enabled}). Flag off ⇒ refus <b>avant tout appel réseau</b>.</p>
  */
 @Service
-public class AtelierSessionService {
+public class AtelierSessionService implements RelaySessionInterruptTarget {
 
     private static final Logger log = LoggerFactory.getLogger(AtelierSessionService.class);
 
@@ -96,6 +98,11 @@ public class AtelierSessionService {
     private final McpVaultService mcpVaultService;
     private final AtelierCostProperties costProperties;
     private final AtelierDiffProperties diffProperties;
+    /**
+     * Diffusion de la marque d'interruption aux pods pairs (F-38 / SF-38-13). Inerte tant que le
+     * relais n'est pas configuré : le comportement mono-pod reste le comportement par défaut.
+     */
+    private final RunnerRelayBroadcaster relayBroadcaster;
 
     /** Sérialisation de la transcription persistée (F-30 SF-30-09) : donnée d'affichage. */
     private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER =
@@ -128,7 +135,8 @@ public class AtelierSessionService {
             QuotaService quotaService, WorkspaceRepository workspaceRepository,
             AtelierMessageRepository messageRepository, GitTokenService gitTokenService,
             ProjectInstructionsService instructionsService, McpVaultService mcpVaultService,
-            AtelierCostProperties costProperties, AtelierDiffProperties diffProperties) {
+            AtelierCostProperties costProperties, AtelierDiffProperties diffProperties,
+            RunnerRelayBroadcaster relayBroadcaster) {
         this.provider = provider;
         this.workspaceService = workspaceService;
         this.bootstrapService = bootstrapService;
@@ -141,6 +149,7 @@ public class AtelierSessionService {
         this.mcpVaultService = mcpVaultService;
         this.costProperties = costProperties;
         this.diffProperties = diffProperties;
+        this.relayBroadcaster = relayBroadcaster;
     }
 
     /**
@@ -676,13 +685,30 @@ public class AtelierSessionService {
         }
         // Marque posée AVANT le relais : le `session.status_idle` peut arriver au run pendant que
         // cet appel se termine. Retirée si le relais échoue, pour ne pas afficher comme interrompu
-        // un tour qui ne l'a pas été.
-        interruptedSessions.add(sessionId);
+        // un tour qui ne l'a pas été. La même précaution vaut pour les pods pairs (F-38 / SF-38-13) :
+        // le run en vol peut tourner ailleurs que sur le pod qui reçoit ce clic.
+        markSessionInterruptedLocally(sessionId, true);
+        relayBroadcaster.broadcastSessionInterrupt(sessionId, true);
         try {
             provider.interruptSession(sessionId);
         } catch (RuntimeException ex) {
-            interruptedSessions.remove(sessionId);
+            markSessionInterruptedLocally(sessionId, false);
+            relayBroadcaster.broadcastSessionInterrupt(sessionId, false);
             throw ex;
+        }
+    }
+
+    /**
+     * Pose ou retire la marque d'interruption d'une session <b>sur ce pod</b> (F-38 / SF-38-13) :
+     * même geste que le chemin local, appelé aussi par le relais interne quand la décision est
+     * arrivée sur un autre pod que celui qui exécute le run.
+     */
+    @Override
+    public void markSessionInterruptedLocally(String sessionId, boolean mark) {
+        if (mark) {
+            interruptedSessions.add(sessionId);
+        } else {
+            interruptedSessions.remove(sessionId);
         }
     }
 
