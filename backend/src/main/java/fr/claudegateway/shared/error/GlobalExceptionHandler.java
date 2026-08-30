@@ -117,6 +117,14 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("invalid_token", ex.getMessage()));
     }
 
+    @ExceptionHandler(fr.claudegateway.atelier.git.GitNothingToPublishException.class)
+    public ResponseEntity<ErrorResponse> handleGitNothingToPublish(
+            fr.claudegateway.atelier.git.GitNothingToPublishException ex) {
+        log.debug("Publication refusée : aucun travail non publié");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("git_nothing_to_publish", ex.getMessage()));
+    }
+
     @ExceptionHandler(fr.claudegateway.atelier.git.GitBranchUnknownException.class)
     public ResponseEntity<ErrorResponse> handleGitBranchUnknown(
             fr.claudegateway.atelier.git.GitBranchUnknownException ex) {

@@ -136,9 +136,8 @@ class GitWorkspaceApiIntegrationTest {
 
     // ---------- SF-31-08 : publier ses propres modifications ----------
 
-    private String commitBody(String branch, String message, String path, String content) {
-        return "{\"branch\":\"" + branch + "\",\"message\":\"" + message
-                + "\",\"files\":[{\"path\":\"" + path + "\",\"content\":\"" + content + "\"}]}";
+    private String commitBody(String branch, String message) {
+        return "{\"branch\":\"" + branch + "\",\"message\":\"" + message + "\"}";
     }
 
     @Test
@@ -146,10 +145,19 @@ class GitWorkspaceApiIntegrationTest {
         registerToken(aliceToken, "github_pat_alice");
         String workspaceId = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
 
+        // Le travail non publié vit dans le stockage : on l'y dépose, puis on publie.
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .put("/api/workspaces/" + workspaceId + "/file").contextPath("/api")
+                        .param("path", "README.md")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"bonjour\"}"))
+                .andExpect(status().isNoContent());
+
         mockMvc.perform(post("/api/workspaces/" + workspaceId + "/git/commit").contextPath("/api")
                         .header("Authorization", bearer(aliceToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(commitBody("claude/edition", "Mes modifications", "README.md", "bonjour")))
+                        .content(commitBody("claude/edition", "Mes modifications")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.branch").value("claude/edition"))
                 .andExpect(jsonPath("$.commitSha").isNotEmpty())
@@ -168,7 +176,7 @@ class GitWorkspaceApiIntegrationTest {
         mockMvc.perform(post("/api/workspaces/" + workspaceId + "/git/commit").contextPath("/api")
                         .header("Authorization", bearer(aliceToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(commitBody(stubGitHubClient.defaultBranch, "Direct", "a.txt", "x")))
+                        .content(commitBody(stubGitHubClient.defaultBranch, "Direct")))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value("git_default_branch_refused"));
 
@@ -183,20 +191,22 @@ class GitWorkspaceApiIntegrationTest {
         mockMvc.perform(post("/api/workspaces/" + workspaceId + "/git/commit").contextPath("/api")
                         .header("Authorization", bearer(bobToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(commitBody("claude/x", "m", "a.txt", "x")))
+                        .content(commitBody("claude/x", "m")))
                 .andExpect(status().isNotFound());
     }
 
     @Test
-    void refusesACommitWithoutAnyFile() throws Exception {
+    void refusesACommitWhenThereIsNothingUnpublished() throws Exception {
         registerToken(aliceToken, "github_pat_alice");
         String workspaceId = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
 
+        // Rien n'a été édité : le stockage est vide, il n'y a rien à publier.
         mockMvc.perform(post("/api/workspaces/" + workspaceId + "/git/commit").contextPath("/api")
                         .header("Authorization", bearer(aliceToken))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"branch\":\"claude/x\",\"message\":\"m\",\"files\":[]}"))
-                .andExpect(status().isBadRequest());
+                        .content(commitBody("claude/x", "m")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error", is("git_nothing_to_publish")));
     }
 
     @Test
@@ -204,7 +214,7 @@ class GitWorkspaceApiIntegrationTest {
         mockMvc.perform(post("/api/workspaces/" + java.util.UUID.randomUUID() + "/git/commit")
                         .contextPath("/api")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(commitBody("claude/x", "m", "a.txt", "x")))
+                        .content(commitBody("claude/x", "m")))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -430,17 +440,19 @@ class GitWorkspaceApiIntegrationTest {
     }
 
     @Test
-    void refusesToWriteIntoAGitWorkspace() throws Exception {
+    void allowsEditingButRefusesStructuralChangesOnAGitWorkspace() throws Exception {
         String id = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
 
+        // SF-31-12 : l'ÉDITION d'un fichier est désormais permise sur un projet Git — le stockage
+        // porte le travail en cours, la branche porte le publié. Les gestes de structure, eux,
+        // restent refusés (vérifiés juste après).
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                         .put("/api/workspaces/" + id + "/file").contextPath("/api")
                         .param("path", "README.md")
                         .header("Authorization", bearer(aliceToken))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"content\":\"modifié\"}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error", is("git_workspace_read_only")));
+                .andExpect(status().isNoContent());
 
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                         .delete("/api/workspaces/" + id + "/file").contextPath("/api")

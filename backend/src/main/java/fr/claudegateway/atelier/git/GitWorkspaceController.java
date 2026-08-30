@@ -124,11 +124,8 @@ public class GitWorkspaceController {
      */
     @PostMapping("/{id}/git/commit")
     public GitCommitResponse commit(@PathVariable UUID id, @Valid @RequestBody GitCommitRequest request) {
-        List<GitFileEdit> files = request.files().stream()
-                .map(f -> new GitFileEdit(f.path().trim(), f.content()))
-                .toList();
         GitCommitService.CommitPublication published = gitCommitService.commit(
-                currentUser.requireId(), id, request.branch(), request.message().trim(), files);
+                currentUser.requireId(), id, request.branch(), request.message().trim());
         return new GitCommitResponse(
                 published.result().branch(),
                 published.result().commitSha(),

@@ -115,17 +115,9 @@ export class AtelierService {
    * (F-31 / SF-31-09, endpoint de SF-31-08). Un seul appel porte tous les fichiers : le commit est
    * atomique côté serveur.
    */
-  commitGitFiles(
-    id: string,
-    branch: string,
-    message: string,
-    files: { path: string; content: string }[],
-  ): Observable<GitCommitResult> {
-    return this.http.post<GitCommitResult>(`/api/workspaces/${id}/git/commit`, {
-      branch,
-      message,
-      files,
-    });
+  commitGitFiles(id: string, branch: string, message: string): Observable<GitCommitResult> {
+    // Le serveur publie tout le travail non publié du projet : l'écran n'envoie pas de contenus.
+    return this.http.post<GitCommitResult>(`/api/workspaces/${id}/git/commit`, { branch, message });
   }
 
   writeFile(id: string, path: string, content: string): Observable<void> {

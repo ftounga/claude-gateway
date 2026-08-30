@@ -170,6 +170,7 @@ describe('AtelierFilesComponent', () => {
 
   it('projet Git : changer de branche avec des modifications demande confirmation', () => {
     asGitProject();
+    service.writeFile.and.returnValue(of(void 0));
     component.openFile('src/a.js');
     component.fileContent.set('un');
     component.saveFile();
@@ -192,19 +193,21 @@ describe('AtelierFilesComponent', () => {
     expect(service.createGitBranch).toHaveBeenCalledWith('w1', 'claude/nouvelle');
   });
 
-  it('projet Git : enregistrer retient la modification sans appeler writeFile', () => {
+  it('projet Git : enregistrer écrit dans le stockage, comme Claude (SF-31-12)', () => {
     asGitProject();
+    service.writeFile.and.returnValue(of(void 0));
     component.openFile('src/a.js');
     component.fileContent.set('const x = 2;');
 
     component.saveFile();
 
-    expect(service.writeFile).not.toHaveBeenCalled();
-    expect(component.pendingCount()).toBe(1);
+    expect(service.writeFile).toHaveBeenCalledWith('w1', 'src/a.js', 'const x = 2;');
+    expect(component.pendingCount()).withContext('compté comme non publié').toBe(1);
   });
 
   it('projet Git : deux enregistrements du même fichier ne font qu’une modification', () => {
     asGitProject();
+    service.writeFile.and.returnValue(of(void 0));
     component.openFile('src/a.js');
     component.fileContent.set('v1');
     component.saveFile();
@@ -214,20 +217,26 @@ describe('AtelierFilesComponent', () => {
     expect(component.pendingCount()).toBe(1);
   });
 
-  it('projet Git : rouvrir un fichier modifié montre la version retenue', () => {
+  it('projet Git : rouvrir un fichier le relit depuis le serveur, source unique (SF-31-12)', () => {
     asGitProject();
+    service.writeFile.and.returnValue(of(void 0));
     component.openFile('src/a.js');
     component.fileContent.set('retenu');
     component.saveFile();
 
+    // Le stockage fait foi : c'est lui qui rend le contenu, plus un cache d'écran. En production,
+    // getFile renvoie donc ce qui vient d'être enregistré — ici on vérifie qu'on le redemande bien.
+    service.getFile.and.returnValue(of({ path: 'src/a.js', content: 'retenu' }));
     component.openFile('src/utils/b.js');
     component.openFile('src/a.js');
 
+    expect(service.getFile).toHaveBeenCalledWith('w1', 'src/a.js');
     expect(component.fileContent()).toBe('retenu');
   });
 
   it('projet Git : publier envoie un seul appel avec tous les fichiers, puis vide la file', () => {
     asGitProject();
+    service.writeFile.and.returnValue(of(void 0));
     component.openFile('src/a.js');
     component.fileContent.set('un');
     component.saveFile();
@@ -252,15 +261,16 @@ describe('AtelierFilesComponent', () => {
     component.publishEdits();
 
     expect(service.commitGitFiles).toHaveBeenCalledTimes(1);
-    const [, branch, message, files] = service.commitGitFiles.calls.mostRecent().args;
+    const [, branch, message] = service.commitGitFiles.calls.mostRecent().args;
     expect(branch).toBe('claude/edition');
     expect(message).toBe('Mes modifications');
-    expect(files.length).toBe(2);
+    // Le serveur publie tout le non-publié du projet : l'écran n'envoie plus de contenus (SF-31-12).
     expect(component.pendingCount()).toBe(0);
   });
 
   it('projet Git : après publication, le message nomme les deux branches sans conseiller de réinitialiser', () => {
     asGitProject();
+    service.writeFile.and.returnValue(of(void 0));
     component.openFile('src/a.js');
     component.fileContent.set('un');
     component.saveFile();
@@ -292,6 +302,7 @@ describe('AtelierFilesComponent', () => {
 
   it('projet Git : un échec de publication conserve les modifications', () => {
     asGitProject();
+    service.writeFile.and.returnValue(of(void 0));
     component.openFile('src/a.js');
     component.fileContent.set('un');
     component.saveFile();
@@ -320,6 +331,7 @@ describe('AtelierFilesComponent', () => {
 
   it('projet Git : quitter avec des modifications demande confirmation', () => {
     asGitProject();
+    service.writeFile.and.returnValue(of(void 0));
     component.openFile('src/a.js');
     component.fileContent.set('un');
     component.saveFile();
@@ -333,6 +345,7 @@ describe('AtelierFilesComponent', () => {
 
   it('projet Git : confirmer la sortie navigue malgré les modifications', () => {
     asGitProject();
+    service.writeFile.and.returnValue(of(void 0));
     component.openFile('src/a.js');
     component.fileContent.set('un');
     component.saveFile();

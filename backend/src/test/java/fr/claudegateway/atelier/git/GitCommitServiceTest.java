@@ -50,6 +50,14 @@ class GitCommitServiceTest {
         return new GitCommitService(workspaceService, gitTokenService, gitHubClient);
     }
 
+    /** Le stockage porte le travail non publié : c'est lui que la publication envoie (SF-31-12). */
+    private void withUnpublished(String... paths) {
+        when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of(paths));
+        for (String path : paths) {
+            when(workspaceService.readFile(USER, WORKSPACE, path)).thenReturn("contenu de " + path);
+        }
+    }
+
     private Workspace gitWorkspace() {
         Workspace workspace = new Workspace();
         workspace.setId(WORKSPACE);
@@ -76,15 +84,14 @@ class GitCommitServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(gitWorkspace());
         when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
         withDefaultBranch("main");
+        withUnpublished("a.txt", "b.txt");
         when(gitHubClient.commitFiles(anyString(), anyString(), anyString(), anyString(), anyString(),
                 anyString(), any())).thenReturn(new GitCommitResult("claude/edition", "abc123", true));
         when(gitHubClient.findOpenPullRequest(anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(Optional.empty());
 
-        List<GitFileEdit> files = List.of(
-                new GitFileEdit("a.txt", "un"), new GitFileEdit("b.txt", "deux"));
         GitCommitService.CommitPublication published =
-                service().commit(USER, WORKSPACE, "claude/edition", "Mes modifications", files);
+                service().commit(USER, WORKSPACE, "claude/edition", "Mes modifications");
 
         // Un seul appel, portant les deux fichiers : le commit est atomique, pas un par fichier.
         ArgumentCaptor<List<GitFileEdit>> sent = ArgumentCaptor.captor();
@@ -98,12 +105,26 @@ class GitCommitServiceTest {
     }
 
     @Test
+    void refusesWhenThereIsNothingUnpublished() {
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(gitWorkspace());
+        when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
+        withDefaultBranch("main");
+        when(workspaceService.tree(USER, WORKSPACE)).thenReturn(List.of());
+
+        assertThatThrownBy(() -> service().commit(USER, WORKSPACE, "claude/x", "m"))
+                .isInstanceOf(GitNothingToPublishException.class);
+
+        verify(gitHubClient, never()).commitFiles(anyString(), anyString(), anyString(), anyString(),
+                anyString(), anyString(), any());
+    }
+
+    @Test
     void refusesTheRepositoryDefaultBranch() {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(gitWorkspace());
         when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
         withDefaultBranch("main");
 
-        assertThatThrownBy(() -> service().commit(USER, WORKSPACE, "main", "Direct sur main", oneFile()))
+        assertThatThrownBy(() -> service().commit(USER, WORKSPACE, "main", "Direct sur main"))
                 .isInstanceOf(GitDefaultBranchRefusedException.class);
 
         // Aucune écriture : le refus tombe avant le commit, seule la lecture du dépôt a eu lieu.
@@ -122,13 +143,14 @@ class GitCommitServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(onWorkBranch);
         when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
         withDefaultBranch("main");
+        withUnpublished("a.txt", "b.txt");
         when(gitHubClient.commitFiles(anyString(), anyString(), anyString(), anyString(), anyString(),
                 anyString(), any())).thenReturn(new GitCommitResult("claude/edition", "abc", false));
         when(gitHubClient.findOpenPullRequest(anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(Optional.empty());
 
         GitCommitService.CommitPublication published =
-                service().commit(USER, WORKSPACE, "claude/edition", "Suite", oneFile());
+                service().commit(USER, WORKSPACE, "claude/edition", "Suite");
 
         assertThat(published.result().branch()).isEqualTo("claude/edition");
     }
@@ -141,7 +163,7 @@ class GitCommitServiceTest {
         archive.setSource(WorkspaceSource.ARCHIVE);
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(archive);
 
-        assertThatThrownBy(() -> service().commit(USER, WORKSPACE, "claude/x", "m", oneFile()))
+        assertThatThrownBy(() -> service().commit(USER, WORKSPACE, "claude/x", "m"))
                 .isInstanceOf(GitWorkspaceRequiredException.class);
         verifyNoInteractions(gitHubClient);
     }
@@ -151,7 +173,7 @@ class GitCommitServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(gitWorkspace());
         when(gitTokenService.resolveToken(USER)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service().commit(USER, WORKSPACE, "claude/x", "m", oneFile()))
+        assertThatThrownBy(() -> service().commit(USER, WORKSPACE, "claude/x", "m"))
                 .isInstanceOf(GitTokenMissingException.class);
         verifyNoInteractions(gitHubClient);
     }
@@ -161,13 +183,14 @@ class GitCommitServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(gitWorkspace());
         when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
         withDefaultBranch("main");
+        withUnpublished("a.txt", "b.txt");
         when(gitHubClient.commitFiles(anyString(), anyString(), anyString(), anyString(), anyString(),
                 anyString(), any())).thenReturn(new GitCommitResult("claude/x", "abc123", false));
         when(gitHubClient.findOpenPullRequest(anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(Optional.of(new GitPullRequest(7, "https://github.com/octocat/hello/pull/7")));
 
         GitCommitService.CommitPublication published =
-                service().commit(USER, WORKSPACE, "claude/x", "m", oneFile());
+                service().commit(USER, WORKSPACE, "claude/x", "m");
 
         assertThat(published.pullRequest().url()).endsWith("/pull/7");
         assertThat(published.result().branchCreated()).isFalse();
@@ -178,12 +201,13 @@ class GitCommitServiceTest {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(gitWorkspace());
         when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
         withDefaultBranch("main");
+        withUnpublished("a.txt", "b.txt");
         when(gitHubClient.commitFiles(anyString(), anyString(), anyString(), anyString(), anyString(),
                 anyString(), any())).thenReturn(new GitCommitResult("claude/x", "abc", true));
         when(gitHubClient.findOpenPullRequest(anyString(), anyString(), anyString(), anyString()))
                 .thenReturn(Optional.empty());
 
-        service().commit(USER, WORKSPACE, "claude/x", "m", oneFile());
+        service().commit(USER, WORKSPACE, "claude/x", "m");
 
         ArgumentCaptor<String> base = ArgumentCaptor.captor();
         verify(gitHubClient).commitFiles(anyString(), anyString(), anyString(), base.capture(),
