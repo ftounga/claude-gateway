@@ -17,6 +17,7 @@ import {
   CreateGitWorkspaceRequest,
   ExecutionTargetRequest,
   FileContent,
+  GitCommitResult,
   GitPullRequestRequest,
   GitPullRequestResult,
   GitPushRequest,
@@ -93,6 +94,24 @@ export class AtelierService {
   }
 
   /** Écrit (remplace) le contenu texte d'un fichier du workspace. */
+  /**
+   * Publie les modifications faites par l'utilisateur en un commit sur une branche dédiée
+   * (F-31 / SF-31-09, endpoint de SF-31-08). Un seul appel porte tous les fichiers : le commit est
+   * atomique côté serveur.
+   */
+  commitGitFiles(
+    id: string,
+    branch: string,
+    message: string,
+    files: { path: string; content: string }[],
+  ): Observable<GitCommitResult> {
+    return this.http.post<GitCommitResult>(`/api/workspaces/${id}/git/commit`, {
+      branch,
+      message,
+      files,
+    });
+  }
+
   writeFile(id: string, path: string, content: string): Observable<void> {
     const body: WriteFileRequest = { content };
     return this.http.put<void>(`/api/workspaces/${id}/file`, body, { params: { path } });
