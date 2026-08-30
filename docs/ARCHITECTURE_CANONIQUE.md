@@ -397,6 +397,33 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     est la credential), ce dernier servi par une **chaîne de sécurité Spring dédiée** `@Order(1)`
     `securityMatcher("/runner/**")` — la chaîne principale reste inchangée (ADR-016).
 
+- **workspaces — cible d'exécution** (F-38 / SF-38-05, décision D1, migration `048`). Le workspace
+  d'Atelier gagne une **cible d'exécution** : `SANDBOX` (les outils s'exécutent dans le bac à sable du
+  fournisseur ou sur le stockage objet — comportement historique) ou `RUNNER` (les outils s'exécutent
+  sur la machine de l'utilisateur, via le canal WebSocket de SF-38-02). Strictement **symétrique de la
+  source `ARCHIVE`\|`GIT`** de la migration `043`. **Aucune table nouvelle** : une colonne de dimension
+  ajoutée à `workspaces`.
+  - Colonne : `execution_target (varchar 16, défaut `SANDBOX`, non nul)`. Le `defaultValue` explicite
+    laisse **toutes les lignes existantes dans le comportement d'avant F-38**. Réversible (`dropColumn`).
+    **Aucun secret** : le jeton runner vit haché dans `runner_tokens`.
+  - En cible `RUNNER`, `AtelierChatService.runLoop` route ses **quatre outils fichiers** (`list_files`,
+    `read_file`, `write_file`, `search_files`) vers le runner de l'utilisateur au lieu du stockage objet,
+    et expose en plus l'outil **`bash`** (SF-38-07) — jamais en cible `SANDBOX`. Les **Managed Agents sont
+    refusés** dans ce mode (D2 : ils exécutent chez Anthropic, impossible à rerouter) → `409
+    execution_target_runner`. Le garde-fou « projet Git en lecture seule » ne vaut plus que pour
+    `SANDBOX` : un projet `GIT` + `RUNNER` est légitime (le dépôt est cloné sur la machine).
+  - **Effet de bord sur `workspaces.agent_ask_before_bash`** (migration `044`, F-33) : le passage en cible
+    `RUNNER` **force la colonne à `true`** et sa désactivation est refusée (`409 execution_target_runner`) —
+    `always_allow` est acceptable dans un conteneur jetable, pas sur une vraie machine (D7). Le
+    coupe-circuit `POST /workspaces/{id}/runner/kill` **ramène la colonne à `SANDBOX`**.
+  - Endpoint **`PUT /workspaces/{id}/execution-target`** (JWT, accès Atelier, `requireOwned` d'abord :
+    **404** sur le workspace d'autrui, **400** sur valeur inconnue) ; `executionTarget` est exposé en champ
+    **additif** dans le détail et la liste des workspaces.
+  - **Limite de production tracée** : le routage n'utilise que `findLocal()` (la socket runner doit vivre
+    sur le pod qui tient le tour) et la porte de confirmation est en mémoire — le mode `RUNNER` suppose
+    un **replica unique ou une affinité d'ingress**. `NOTIFY` (plafonné à 8 000 octets) ne peut pas
+    relayer du contenu de fichier entre pods.
+
 - **runner_audit** — journal d'audit du runner (F-38 / SF-38-08, décision D11, migration `049`).
   Table neuve, **une ligne par appel d'outil terminé** sur la machine de l'utilisateur et par appel
   **refusé avant émission** (validation d'action). Clef de corrélation `call_id` = l'identifiant
