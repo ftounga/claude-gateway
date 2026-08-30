@@ -12,9 +12,11 @@ import java.util.Map;
  * l'environnement. Priorité : <b>argument CLI &gt; variable d'environnement</b>.
  *
  * <p>Arguments : {@code --gateway <url>}, {@code --workspace <racine>}, {@code --code <code>},
- * {@code --label <libellé>}, {@code --heartbeat-interval <secondes>}. Équivalents d'environnement :
+ * {@code --label <libellé>}, {@code --heartbeat-interval <secondes>},
+ * {@code --transport auto|websocket|polling}. Équivalents d'environnement :
  * {@code CLAUDE_RUNNER_GATEWAY}, {@code CLAUDE_RUNNER_WORKSPACE}, {@code CLAUDE_RUNNER_CODE},
- * {@code CLAUDE_RUNNER_LABEL}, {@code CLAUDE_RUNNER_HEARTBEAT_INTERVAL}.</p>
+ * {@code CLAUDE_RUNNER_LABEL}, {@code CLAUDE_RUNNER_HEARTBEAT_INTERVAL},
+ * {@code CLAUDE_RUNNER_TRANSPORT}.</p>
  *
  * <p>Cette classe ne fait aucune I/O réseau : elle valide le format et l'existence du workspace, et
  * dérive l'URI WSS. Elle est intégralement testable unitairement.</p>
@@ -27,15 +29,17 @@ public final class RunnerConfig {
     private final String label;
     private final Duration heartbeatInterval;
     private final boolean allowBash;
+    private final Transport transport;
 
     private RunnerConfig(String gatewayBaseUrl, Path workspaceRoot, String pairingCode,
-            String label, Duration heartbeatInterval, boolean allowBash) {
+            String label, Duration heartbeatInterval, boolean allowBash, Transport transport) {
         this.gatewayBaseUrl = gatewayBaseUrl;
         this.workspaceRoot = workspaceRoot;
         this.pairingCode = pairingCode;
         this.label = label;
         this.heartbeatInterval = heartbeatInterval;
         this.allowBash = allowBash;
+        this.transport = transport;
     }
 
     /**
@@ -51,6 +55,7 @@ public final class RunnerConfig {
         String label = pick(cli, "label", env, "CLAUDE_RUNNER_LABEL");
         String heartbeat = pick(cli, "heartbeat-interval", env, "CLAUDE_RUNNER_HEARTBEAT_INTERVAL");
         String allowBash = pick(cli, "allow-bash", env, "CLAUDE_RUNNER_ALLOW_BASH");
+        String transport = pick(cli, "transport", env, "CLAUDE_RUNNER_TRANSPORT");
 
         if (gateway == null) {
             throw new ConfigException("--gateway est requis (URL de la gateway, ex: https://host/api)");
@@ -90,12 +95,27 @@ public final class RunnerConfig {
         }
 
         return new RunnerConfig(normalizedGateway, root, normalizedCode, normalizedLabel, hb,
-                isTrue(allowBash));
+                isTrue(allowBash), Transport.parse(transport));
     }
 
     /** URL absolue de l'endpoint d'appairage, {@code {gateway}/runner/pair}. */
     public String pairUrl() {
         return gatewayBaseUrl + "/runner/pair";
+    }
+
+    /** Long-poll du repli de transport (F-38 / SF-38-09), {@code {gateway}/runner/poll}. */
+    public String pollUrl() {
+        return gatewayBaseUrl + "/runner/poll";
+    }
+
+    /** Dépôt des trames sortantes du repli, {@code {gateway}/runner/send}. */
+    public String sendUrl() {
+        return gatewayBaseUrl + "/runner/send";
+    }
+
+    /** Arrêt propre du repli, {@code {gateway}/runner/disconnect}. */
+    public String disconnectUrl() {
+        return gatewayBaseUrl + "/runner/disconnect";
     }
 
     /**
@@ -143,6 +163,15 @@ public final class RunnerConfig {
      */
     public boolean allowBash() {
         return allowBash;
+    }
+
+    /**
+     * Transport demandé (F-38 / SF-38-09). {@code AUTO} par défaut : WebSocket d'abord, repli
+     * long-polling si le réseau le tue. {@code WEBSOCKET} ne se replie jamais, {@code POLLING} ne
+     * tente même pas la socket (réseau déjà connu comme hostile).
+     */
+    public Transport transport() {
+        return transport;
     }
 
     /** Un drapeau vaut « vrai » sur {@code true}, {@code 1}, {@code yes} ou {@code oui}. */
@@ -222,6 +251,33 @@ public final class RunnerConfig {
             return fromEnv;
         }
         return null;
+    }
+
+    /**
+     * Transport du canal runner (F-38 / SF-38-09). Le repli existe parce qu'un proxy d'entreprise
+     * peut refuser l'{@code Upgrade} WebSocket — ou l'accepter puis couper la socket aussitôt.
+     */
+    public enum Transport {
+        /** WebSocket d'abord, repli long-polling après des échecs répétés de transport. */
+        AUTO,
+        /** WebSocket uniquement : aucun repli, l'échec reste visible. */
+        WEBSOCKET,
+        /** Long-polling HTTP d'emblée, sans tenter la socket. */
+        POLLING;
+
+        /** Valeur par défaut ({@code AUTO}) si rien n'est fourni ; refuse toute valeur inconnue. */
+        static Transport parse(String raw) {
+            if (raw == null || raw.isBlank()) {
+                return AUTO;
+            }
+            return switch (raw.trim().toLowerCase(java.util.Locale.ROOT)) {
+                case "auto" -> AUTO;
+                case "websocket", "ws" -> WEBSOCKET;
+                case "polling", "http", "long-polling" -> POLLING;
+                default -> throw new ConfigException(
+                        "--transport doit valoir auto, websocket ou polling : " + raw);
+            };
+        }
     }
 
     /** Erreur de configuration : usage invalide, code de sortie {@code 2}. */

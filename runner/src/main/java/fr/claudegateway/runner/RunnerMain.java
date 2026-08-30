@@ -5,6 +5,8 @@ import java.net.http.HttpClient;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Point d'entrée du runner (F-38 / SF-38-03). Orchestration : résolution de la configuration, du
@@ -34,7 +36,8 @@ public final class RunnerMain {
         } catch (RunnerConfig.ConfigException e) {
             console.error(e.getMessage());
             console.info("Usage : java -jar claude-runner.jar --gateway <url> --workspace <racine> "
-                    + "--code <code-appairage> [--label <libellé>] [--heartbeat-interval <s>] [--allow-bash]");
+                    + "--code <code-appairage> [--label <libellé>] [--heartbeat-interval <s>] "
+                    + "[--allow-bash] [--transport auto|websocket|polling]");
             return 2;
         }
 
@@ -62,10 +65,20 @@ public final class RunnerMain {
             return 3;
         }
 
-        RunnerConnection connection = new RunnerConnection(httpClient, config, console);
+        // Repli de transport (SF-38-09) : le WebSocket d'abord, le long-polling HTTP si le reseau le
+        // tue. Une session est portee par l'un OU l'autre, jamais les deux.
+        TransportFallbackPolicy fallbackPolicy = new TransportFallbackPolicy(config.transport());
+        RunnerConnection connection = new RunnerConnection(httpClient, config, console, fallbackPolicy);
+        AtomicReference<PollingConnection> polling = new AtomicReference<>();
+        AtomicBoolean shuttingDown = new AtomicBoolean(false);
         CountDownLatch stopped = new CountDownLatch(1);
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            shuttingDown.set(true);
             connection.stop();
+            PollingConnection active = polling.get();
+            if (active != null) {
+                active.stop();
+            }
             try {
                 stopped.await();
             } catch (InterruptedException e) {
@@ -75,7 +88,8 @@ public final class RunnerMain {
 
         console.info("Appuyez sur Ctrl-C pour arrêter le runner.");
         try {
-            connection.run(token);
+            runSession(token, config, console, httpClient, connection, fallbackPolicy, polling,
+                    shuttingDown);
             return 0;
         } catch (RunnerConnection.AuthRejectedException e) {
             console.warn(e.getMessage() + " — jeton effacé.");
@@ -84,7 +98,8 @@ public final class RunnerMain {
                 console.info("Réappairage avec le code fourni…");
                 try {
                     String fresh = pairAndStore(config, tokenStore, httpClient);
-                    connection.run(fresh);
+                    runSession(fresh, config, console, httpClient, connection, fallbackPolicy, polling,
+                            shuttingDown);
                     return 0;
                 } catch (PairingClient.PairingException pe) {
                     console.error(pe.getMessage());
@@ -102,6 +117,35 @@ public final class RunnerMain {
         } finally {
             stopped.countDown();
         }
+    }
+
+    /**
+     * Deroule la session sur le transport retenu (F-38 / SF-38-09) : WebSocket, puis repli
+     * long-polling si la boucle WS a renonce faute de tenir sur ce reseau. Un {@code Ctrl-C} pendant
+     * la phase WebSocket n'enchaine PAS sur le repli : on s'arrete, c'est ce qui a ete demande.
+     */
+    private void runSession(String token, RunnerConfig config, Console console, HttpClient httpClient,
+            RunnerConnection connection, TransportFallbackPolicy fallbackPolicy,
+            AtomicReference<PollingConnection> polling, AtomicBoolean shuttingDown) {
+        if (!fallbackPolicy.startsWithPolling()) {
+            connection.run(token);
+            if (!connection.fellBackToPolling()) {
+                return;
+            }
+        } else {
+            console.info("Transport imposé : long-polling HTTP (--transport polling).");
+        }
+        if (shuttingDown.get()) {
+            return;
+        }
+        PollingConnection fallback =
+                new PollingConnection(new HttpPollingClient(httpClient, config, token), config, console);
+        polling.set(fallback);
+        if (shuttingDown.get()) {
+            // Arret demande pendant le montage : ne pas ouvrir une boucle que personne n'arretera.
+            return;
+        }
+        fallback.run();
     }
 
     private String obtainToken(RunnerConfig config, TokenStore tokenStore, HttpClient httpClient) {
