@@ -4,9 +4,10 @@
 > **Livraison en un bloc** : les dix subfeatures s'enchaînent ; SF-38-06 est un **point de
 > contrôle** (les zips disparaissent), pas un point d'arrêt.
 >
-> **Avancement au 2026-08-30 — 9 subfeatures sur 10 livrées sur `main`** (vague `wave-2026-08-30`) :
-> SF-38-01→08 et SF-38-10 sont livrées, **point de contrôle SF-38-06 atteint** ; **reste SF-38-09
-> (repli de transport)**. Voir le tableau §5 pour le détail et `docs/PRODUCT_SPEC.md` pour l'historique.
+> **Avancement au 2026-08-30 — découpage entièrement livré : 10 subfeatures sur 10 sur `main`**
+> (vague `wave-2026-08-30`) : SF-38-01→10 sont livrées, **point de contrôle SF-38-06 atteint** ;
+> **F-38 est Terminée** dans `docs/PRODUCT_SPEC.md`. Voir le tableau §5 pour le détail (PR et
+> migrations) et l'historique de `docs/PRODUCT_SPEC.md` pour le contenu de chaque livraison.
 
 ---
 
@@ -94,15 +95,24 @@ Chaque subfeature vise ≤ 2 jours.
 | — | **Point de contrôle** | **À ce stade les `.zip` disparaissent dans les deux sens.** | **Atteint** le 2026-08-30 (SF-38-06, PR #196). |
 | SF-38-07 | Outil `bash` | Exécution, streaming stdout/stderr ligne à ligne, code retour, timeout, interruption (réutilise F-32). | **Livrée** (PR #197) |
 | SF-38-08 | Garde-fous d'exécution et traçabilité | Validation obligatoire par commande (F-33 non désactivable en mode runner), journal d'audit (commandes ET lectures, migration `runner_audit`), coupe-circuit et révocation. | **Livrée** (PR #198, migration `049`) |
-| SF-38-09 | Repli de transport | Long-polling HTTP si un proxy tue le WebSocket. | **À livrer** — seule subfeature restante |
+| SF-38-09 | Repli de transport | Long-polling HTTP si un proxy tue le WebSocket. | **Livrée** (PR #199, aucune migration) |
 | SF-38-10 | Exclusions côté runner | `.runnerignore` (repli `.gitignore`) + liste par défaut non désactivable (D10), appliquée avant toute lecture. | **Livrée** (PR #194, remontée avant SF-38-05) |
 
 ### Écarts de séquence assumés
 **SF-38-10 a été remontée juste après SF-38-04, avant SF-38-05** : livrer le routage backend avant les
 exclusions aurait laissé exister sur `main` un socle de lecture **sans filtre**. Le point de contrôle
-SF-38-06 est atteint, et la suite (SF-38-07, SF-38-08) a été livrée dans la foulée comme prévu.
-**SF-38-09 (repli de transport) est la seule subfeature restante** : sans elle, le mode `RUNNER` exige
-un WebSocket sortant praticable — un proxy d'entreprise qui coupe le WSS n'a pas encore de repli.
+SF-38-06 est atteint, et la suite (SF-38-07, SF-38-08, SF-38-09) a été livrée dans la foulée comme prévu.
+C'est le **seul** écart de séquence du lot ; le découpage a été livré en entier, sans subfeature
+abandonnée ni ajoutée.
+
+### Ce qui reste ouvert après la clôture du lot
+Le découpage est épuisé, mais trois limites sont **assumées et tracées** (voir la ligne de clôture dans
+l'historique de `docs/PRODUCT_SPEC.md`) : ⚠️ **pas de relais inter-pods** — le routage n'utilise que
+`findLocal()`, la porte de confirmation est en mémoire et un canal de repli s'enregistre sur **son** pod,
+donc le mode `RUNNER` suppose un **replica unique ou une affinité d'ingress** (§4 reste la cible) ; le
+**fat-jar n'est pas empaqueté** dans l'image backend (`app.runner.jar-path` vide → 404 assumé, l'écran
+propose la commande de construction) ; le parcours **bout en bout sur une vraie machine** — y compris la
+bascule de transport derrière un proxy qui coupe l'`Upgrade` — reste un **smoke manuel**.
 
 ### Pourquoi `bash` arrive après le point de contrôle
 Un runner qui ne fait que lire et écrire des fichiers apporte déjà l'essentiel (fin des zips)

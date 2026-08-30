@@ -400,7 +400,8 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
 - **workspaces — cible d'exécution** (F-38 / SF-38-05, décision D1, migration `048`). Le workspace
   d'Atelier gagne une **cible d'exécution** : `SANDBOX` (les outils s'exécutent dans le bac à sable du
   fournisseur ou sur le stockage objet — comportement historique) ou `RUNNER` (les outils s'exécutent
-  sur la machine de l'utilisateur, via le canal WebSocket de SF-38-02). Strictement **symétrique de la
+  sur la machine de l'utilisateur, via le canal de SF-38-02 — WebSocket, ou long-polling HTTP en repli
+  depuis SF-38-09). Strictement **symétrique de la
   source `ARCHIVE`\|`GIT`** de la migration `043`. **Aucune table nouvelle** : une colonne de dimension
   ajoutée à `workspaces`.
   - Colonne : `execution_target (varchar 16, défaut `SANDBOX`, non nul)`. Le `defaultValue` explicite
@@ -442,6 +443,27 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     de la liaison, retour en cible `SANDBOX`) et **`POST /workspaces/{id}/chat/confirm`** (réponse à
     une demande d'autorisation de la boucle Assistant) — JWT, gardés par l'accès Atelier.
     L'écriture d'audit est **hors transaction et non bloquante** pour la boucle tool-use.
+
+- **Repli de transport du runner — aucune table** (F-38 / SF-38-09). Le canal runner peut être porté
+  par le WebSocket de SF-38-02 **ou** par un long-polling HTTP quand un proxy refuse (ou coupe)
+  l'`Upgrade`. **Aucune migration, aucune colonne, aucun type de message nouveau** : les deux
+  transports portent les mêmes enveloppes et s'enregistrent avec le **même** record `RunnerConnection`
+  (nodeId du pod), de sorte que `GET /workspaces/{id}/runner/status`, `findLocal()` et le routage des
+  appels d'outils sont identiques quel que soit le tuyau.
+  - Trois endpoints supplémentaires sur la **chaîne dédiée** `/runner/**` (D9, `@Order(1)`) :
+    **`POST /runner/poll`** (long-poll ≤ 25 s), **`POST /runner/send`** (une trame ou un lot),
+    **`POST /runner/disconnect`**. Ils sont **`permitAll` dans la chaîne runner uniquement** (elle se
+    termine par `anyRequest().denyAll()`) et le contrôleur **authentifie lui-même** l'en-tête
+    `X-Runner-Token` : refus en **401 générique**, et **jamais** d'`AuthenticatedUser` posé dans le
+    `SecurityContext` — un jeton runner n'ouvre aucun endpoint utilisateur. Le jeton ne voyage jamais
+    en query (journaux d'accès du proxy et de l'ingress).
+  - Le **poll fait office de heartbeat** (`runner_tokens.last_seen_at` rafraîchi à chaque poll et à
+    chaque dépôt) ; un canal inactif au-delà de `app.runner.poll.idle-timeout-ms` (90 s) est fermé
+    comme une socket coupée (appels en vol terminés en `runner_unavailable`, présence retirée,
+    aucun rejeu).
+  - **Limite de production inchangée** : le long-polling n'ajoute **aucun** relais inter-pods — un
+    canal s'enregistre sur **son** pod, le mode `RUNNER` suppose toujours un replica unique ou une
+    affinité d'ingress.
 
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 
