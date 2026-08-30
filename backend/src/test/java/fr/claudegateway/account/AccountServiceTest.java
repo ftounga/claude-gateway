@@ -62,11 +62,18 @@ class AccountServiceTest {
     private fr.claudegateway.git.GitTokenService gitTokenService;
     @Mock
     private fr.claudegateway.template.TemplateRepository templateRepository;
+    @Mock
+    private fr.claudegateway.runner.RunnerTokenRepository runnerTokenRepository;
+    @Mock
+    private fr.claudegateway.runner.RunnerPairingCodeRepository runnerPairingCodeRepository;
+    @Mock
+    private fr.claudegateway.runner.audit.RunnerAuditRepository runnerAuditRepository;
 
     private AccountService service() {
         return new AccountService(userService, subscriptionRepository, usageCounterRepository,
                 conversationRepository, messageRepository, uploadedFileRepository, userApiKeyRepository,
-                gitTokenService, templateRepository);
+                gitTokenService, templateRepository, runnerTokenRepository, runnerPairingCodeRepository,
+                runnerAuditRepository);
     }
 
     private User user(UUID id) {
@@ -142,7 +149,8 @@ class AccountServiceTest {
 
         InOrder order = inOrder(messageRepository, conversationRepository, uploadedFileRepository,
                 usageCounterRepository, subscriptionRepository, userApiKeyRepository,
-                gitTokenService, templateRepository, userService);
+                gitTokenService, templateRepository, runnerTokenRepository, runnerPairingCodeRepository,
+                runnerAuditRepository, userService);
         order.verify(messageRepository).deleteByUserId(userId);
         order.verify(conversationRepository).deleteByUserId(userId);
         order.verify(uploadedFileRepository).deleteByUserId(userId);
@@ -154,6 +162,12 @@ class AccountServiceTest {
         // passage par le service plutôt que par le repository, qui n'effacerait que la ligne en base.
         order.verify(gitTokenService).deleteToken(userId);
         order.verify(templateRepository).deleteByUserId(userId);
+        // Domaine runner (SF-38-14) : sans ces trois purges, un jeton continuerait d'authentifier un
+        // runner jusqu'à 30 jours au nom d'un compte effacé, et le journal d'audit — chemins lus et
+        // commandes exécutées — survivrait au compte. Aucune FK vers `users` : rien ne cascade.
+        order.verify(runnerTokenRepository).deleteByUserId(userId);
+        order.verify(runnerPairingCodeRepository).deleteByUserId(userId);
+        order.verify(runnerAuditRepository).deleteByUserId(userId);
         order.verify(userService).deleteById(userId);
         verify(userService).findByIdOrThrow(any());
     }

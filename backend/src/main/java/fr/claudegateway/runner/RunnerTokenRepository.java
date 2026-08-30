@@ -21,4 +21,7 @@ public interface RunnerTokenRepository extends JpaRepository<RunnerToken, UUID> 
 
     /** Lecture isolée d'un jeton précis (le propriétaire uniquement). */
     Optional<RunnerToken> findByIdAndUserId(UUID id, UUID userId);
+
+    /** Purge à la suppression du compte (SF-38-14) : aucun jeton ne survit à son propriétaire. */
+    void deleteByUserId(UUID userId);
 }

@@ -11,4 +11,7 @@ import org.springframework.stereotype.Repository;
 public interface RunnerPairingCodeRepository extends JpaRepository<RunnerPairingCode, UUID> {
 
     Optional<RunnerPairingCode> findByCodeHash(String codeHash);
+
+    /** Purge à la suppression du compte (SF-38-14) : aucun code ne survit à son propriétaire. */
+    void deleteByUserId(UUID userId);
 }

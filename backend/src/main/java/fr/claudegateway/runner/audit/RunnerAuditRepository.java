@@ -18,4 +18,10 @@ public interface RunnerAuditRepository extends JpaRepository<RunnerAudit, UUID> 
     /** Dernières lignes du workspace possédé, du plus récent au plus ancien. */
     List<RunnerAudit> findByUserIdAndWorkspaceIdOrderByCreatedAtDesc(UUID userId, UUID workspaceId,
             Pageable pageable);
+
+    /**
+     * Purge à la suppression du compte (SF-38-14) : le journal porte des données personnelles
+     * (chemins lus, commandes exécutées) et ne survit pas au compte qu'il décrit.
+     */
+    void deleteByUserId(UUID userId);
 }

@@ -17,6 +17,9 @@ import fr.claudegateway.chat.Message;
 import fr.claudegateway.chat.MessageRepository;
 import fr.claudegateway.git.GitTokenService;
 import fr.claudegateway.quota.UsageCounterRepository;
+import fr.claudegateway.runner.RunnerPairingCodeRepository;
+import fr.claudegateway.runner.RunnerTokenRepository;
+import fr.claudegateway.runner.audit.RunnerAuditRepository;
 import fr.claudegateway.template.TemplateRepository;
 import fr.claudegateway.upload.UploadedFileRepository;
 import fr.claudegateway.user.User;
@@ -42,6 +45,9 @@ public class AccountService {
     private final UserApiKeyRepository userApiKeyRepository;
     private final GitTokenService gitTokenService;
     private final TemplateRepository templateRepository;
+    private final RunnerTokenRepository runnerTokenRepository;
+    private final RunnerPairingCodeRepository runnerPairingCodeRepository;
+    private final RunnerAuditRepository runnerAuditRepository;
 
     public AccountService(
             UserService userService,
@@ -52,7 +58,10 @@ public class AccountService {
             UploadedFileRepository uploadedFileRepository,
             UserApiKeyRepository userApiKeyRepository,
             GitTokenService gitTokenService,
-            TemplateRepository templateRepository) {
+            TemplateRepository templateRepository,
+            RunnerTokenRepository runnerTokenRepository,
+            RunnerPairingCodeRepository runnerPairingCodeRepository,
+            RunnerAuditRepository runnerAuditRepository) {
         this.userService = userService;
         this.subscriptionRepository = subscriptionRepository;
         this.usageCounterRepository = usageCounterRepository;
@@ -62,6 +71,9 @@ public class AccountService {
         this.userApiKeyRepository = userApiKeyRepository;
         this.gitTokenService = gitTokenService;
         this.templateRepository = templateRepository;
+        this.runnerTokenRepository = runnerTokenRepository;
+        this.runnerPairingCodeRepository = runnerPairingCodeRepository;
+        this.runnerAuditRepository = runnerAuditRepository;
     }
 
     /**
@@ -131,6 +143,14 @@ public class AccountService {
         // vault.
         gitTokenService.deleteToken(userId);
         templateRepository.deleteByUserId(userId);
+        // Domaine runner (F-38 / SF-38-14) : jetons, codes d'appairage et journal d'audit. Sans cette
+        // purge, un jeton continuerait d'authentifier un runner jusqu'à son expiration (30 j) au nom
+        // d'un compte effacé, et le journal — qui porte des chemins lus et des commandes exécutées —
+        // survivrait au compte qu'il décrit. Aucune clé étrangère vers `users` n'existe dans ce
+        // schéma : rien ne tombe en cascade, la purge doit être explicite.
+        runnerTokenRepository.deleteByUserId(userId);
+        runnerPairingCodeRepository.deleteByUserId(userId);
+        runnerAuditRepository.deleteByUserId(userId);
 
         userService.deleteById(user.getId());
     }
