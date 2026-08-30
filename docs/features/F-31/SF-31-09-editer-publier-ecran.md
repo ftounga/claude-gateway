@@ -37,8 +37,13 @@
    refusée à la saisie), puis publie **tous** les fichiers en attente en un commit.
 5. Après publication : les modifications en attente sont vidées, et l'écran affiche le lien de
    comparaison — ou celui de la pull request si elle existe déjà.
-6. Un avertissement dit que **la session de l'agent travaille désormais sur une version antérieure**
-   du dépôt, et propose de la réinitialiser.
+6. Un avertissement dit **où vit le travail** : « Vos modifications sont sur *branche*. La session
+   Claude travaille sur *branche du projet* et ne les voit pas. »
+
+   *Corrigé le 2026-08-30 :* la première formulation parlait d'une « version antérieure du dépôt » et
+   conseillait de réinitialiser la session. Les deux étaient faux — la branche du projet n'a pas
+   bougé, et la session monte le dépôt sur cette branche-là (`AtelierSessionService.openGitSession`),
+   donc une réinitialisation reviendrait au même point, sans le commit.
 
 ### Cas d'erreur
 
