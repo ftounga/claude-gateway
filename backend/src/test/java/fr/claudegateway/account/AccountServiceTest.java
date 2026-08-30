@@ -68,12 +68,25 @@ class AccountServiceTest {
     private fr.claudegateway.runner.RunnerPairingCodeRepository runnerPairingCodeRepository;
     @Mock
     private fr.claudegateway.runner.audit.RunnerAuditRepository runnerAuditRepository;
+    @Mock
+    private fr.claudegateway.atelier.WorkspaceRepository workspaceRepository;
+    @Mock
+    private fr.claudegateway.atelier.WorkspaceService workspaceService;
+    @Mock
+    private fr.claudegateway.atelier.AtelierMessageRepository atelierMessageRepository;
+    @Mock
+    private fr.claudegateway.ocr.DocumentRepository documentRepository;
+    @Mock
+    private fr.claudegateway.rag.ChunkRepository chunkRepository;
+    @Mock
+    private fr.claudegateway.chat.MessageLibraryDocumentRepository messageLibraryDocumentRepository;
 
     private AccountService service() {
         return new AccountService(userService, subscriptionRepository, usageCounterRepository,
                 conversationRepository, messageRepository, uploadedFileRepository, userApiKeyRepository,
                 gitTokenService, templateRepository, runnerTokenRepository, runnerPairingCodeRepository,
-                runnerAuditRepository);
+                runnerAuditRepository, workspaceRepository, workspaceService, atelierMessageRepository,
+                documentRepository, chunkRepository, messageLibraryDocumentRepository);
     }
 
     private User user(UUID id) {
@@ -150,7 +163,8 @@ class AccountServiceTest {
         InOrder order = inOrder(messageRepository, conversationRepository, uploadedFileRepository,
                 usageCounterRepository, subscriptionRepository, userApiKeyRepository,
                 gitTokenService, templateRepository, runnerTokenRepository, runnerPairingCodeRepository,
-                runnerAuditRepository, userService);
+                runnerAuditRepository, chunkRepository, documentRepository, atelierMessageRepository,
+                userService);
         order.verify(messageRepository).deleteByUserId(userId);
         order.verify(conversationRepository).deleteByUserId(userId);
         order.verify(uploadedFileRepository).deleteByUserId(userId);
@@ -168,6 +182,11 @@ class AccountServiceTest {
         order.verify(runnerTokenRepository).deleteByUserId(userId);
         order.verify(runnerPairingCodeRepository).deleteByUserId(userId);
         order.verify(runnerAuditRepository).deleteByUserId(userId);
+        // Domaine documentaire et Atelier (SF-11-03) : documents OCR, embeddings, historique des
+        // sessions d'agent et fichiers de workspace survivaient au compte.
+        order.verify(chunkRepository).deleteByUserId(userId);
+        order.verify(documentRepository).deleteByUserId(userId);
+        order.verify(atelierMessageRepository).deleteByUserId(userId);
         order.verify(userService).deleteById(userId);
         verify(userService).findByIdOrThrow(any());
     }

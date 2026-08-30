@@ -37,12 +37,16 @@ class WorkspaceServiceTest {
     private WorkspaceRepository workspaceRepository;
 
     private final WorkspaceStorage storage = new InMemoryWorkspaceStorage();
+    @org.mockito.Mock
+    private AtelierMessageRepository atelierMessageRepository;
+
     private final UUID alice = UUID.randomUUID();
     private final UUID workspaceId = UUID.randomUUID();
 
     private WorkspaceService serviceWith(long maxTotal, int maxEntries, long maxFile) {
         return new WorkspaceService(workspaceRepository, storage,
-                new AtelierProperties("in-memory", null, "atelier/", maxTotal, maxEntries, maxFile));
+                new AtelierProperties("in-memory", null, "atelier/", maxTotal, maxEntries, maxFile),
+                atelierMessageRepository);
     }
 
     private WorkspaceService service() {

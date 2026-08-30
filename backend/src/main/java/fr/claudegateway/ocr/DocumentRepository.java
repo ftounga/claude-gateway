@@ -22,4 +22,7 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
     /** Documents en attente de complétion d'un job OCR asynchrone (worker de polling, SF-05-02). */
     List<Document> findByStatus(DocumentStatus status);
+
+    /** Purge à la suppression du compte (SF-11-03) : texte extrait et réponse brute compris. */
+    void deleteByUserId(UUID userId);
 }

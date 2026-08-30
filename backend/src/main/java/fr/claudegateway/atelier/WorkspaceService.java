@@ -39,12 +39,14 @@ public class WorkspaceService {
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceStorage storage;
     private final AtelierProperties properties;
+    private final AtelierMessageRepository atelierMessageRepository;
 
     public WorkspaceService(WorkspaceRepository workspaceRepository, WorkspaceStorage storage,
-            AtelierProperties properties) {
+            AtelierProperties properties, AtelierMessageRepository atelierMessageRepository) {
         this.workspaceRepository = workspaceRepository;
         this.storage = storage;
         this.properties = properties;
+        this.atelierMessageRepository = atelierMessageRepository;
     }
 
     /** Crée un workspace à partir d'un zip (décompression sécurisée) et renvoie son résultat. */
@@ -198,11 +200,17 @@ public class WorkspaceService {
         return workspaceRepository.save(workspace);
     }
 
-    /** Supprime le workspace (fichiers + ligne). */
+    /**
+     * Supprime le workspace : fichiers du stockage, <b>messages d'Atelier</b>, puis la ligne.
+     *
+     * <p>Les messages ont été ajoutés par SF-11-03 : sans eux, l'historique des sessions d'agent
+     * survivait à son workspace, sans plus aucun moyen d'y accéder ni de le purger.</p>
+     */
     @Transactional
     public void delete(UUID userId, UUID id) {
         Workspace workspace = requireOwned(userId, id);
         storage.deletePrefix(prefixOf(userId, id));
+        atelierMessageRepository.deleteByWorkspaceId(id);
         workspaceRepository.delete(workspace);
     }
 
