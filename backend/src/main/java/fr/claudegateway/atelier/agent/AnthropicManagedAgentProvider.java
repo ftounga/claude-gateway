@@ -819,11 +819,25 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
         } catch (RuntimeException | java.io.IOException parseFailure) {
             // Corps non exploitable : le statut seul oriente déjà le diagnostic.
         }
-        log.warn("Appel au fournisseur d'agents en échec ({}) : HTTP {}, type {}", operation, status, errorType);
+        // Le message du fournisseur est la seule chose qui distingue deux 400 `invalid_request_error`
+        // (champ inconnu, session close, budget épuisé…). Le lire puis le jeter, c'est se condamner à
+        // un diagnostic manuel à chaque incident — ce qui est déjà arrivé deux fois. Il est borné :
+        // un corps d'erreur peut citer la requête, on n'en veut que la tête.
+        log.warn("Appel au fournisseur d'agents en échec ({}) : HTTP {}, type {}, message : {}",
+                operation, status, errorType, abbreviate(message));
         if (isCreditExhausted(status, errorType, message)) {
             return new AgentCreditExhaustedException("Crédit du fournisseur d'agents épuisé.", ex);
         }
         return new AgentProviderException("Échec de l'appel au fournisseur d'agents.", ex);
+    }
+
+    /** Tête du message d'erreur du fournisseur : assez pour diagnostiquer, trop court pour déverser. */
+    private static String abbreviate(String message) {
+        if (message == null || message.isBlank()) {
+            return "(aucun)";
+        }
+        String flat = message.replace('\n', ' ').strip();
+        return flat.length() <= 300 ? flat : flat.substring(0, 300) + "…";
     }
 
     /**
