@@ -117,6 +117,14 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("invalid_token", ex.getMessage()));
     }
 
+    @ExceptionHandler(fr.claudegateway.atelier.git.GitDefaultBranchRefusedException.class)
+    public ResponseEntity<ErrorResponse> handleGitDefaultBranchRefused(
+            fr.claudegateway.atelier.git.GitDefaultBranchRefusedException ex) {
+        log.debug("Publication refusée : commit demandé sur la branche par défaut");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("git_default_branch_refused", ex.getMessage()));
+    }
+
     @ExceptionHandler(PairingInvalidException.class)
     public ResponseEntity<ErrorResponse> handlePairingInvalid(PairingInvalidException ex) {
         log.debug("Appairage runner refusé : code invalide, expiré ou déjà consommé");

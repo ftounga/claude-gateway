@@ -1,5 +1,9 @@
 package fr.claudegateway.atelier.git;
 
+import fr.claudegateway.atelier.git.dto.GitCommitRequest;
+import fr.claudegateway.atelier.git.dto.GitCommitResponse;
+import fr.claudegateway.git.GitFileEdit;
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.web.bind.annotation.PathVariable;
@@ -32,16 +36,18 @@ public class GitWorkspaceController {
     private final GitWorkspaceService gitWorkspaceService;
     private final GitPushService gitPushService;
     private final GitPullRequestService gitPullRequestService;
+    private final GitCommitService gitCommitService;
     private final WorkspaceService workspaceService;
     private final AtelierAccessService atelierAccess;
     private final CurrentUser currentUser;
 
     public GitWorkspaceController(GitWorkspaceService gitWorkspaceService, GitPushService gitPushService,
-            GitPullRequestService gitPullRequestService, WorkspaceService workspaceService,
-            AtelierAccessService atelierAccess, CurrentUser currentUser) {
+            GitPullRequestService gitPullRequestService, GitCommitService gitCommitService,
+            WorkspaceService workspaceService, AtelierAccessService atelierAccess, CurrentUser currentUser) {
         this.gitWorkspaceService = gitWorkspaceService;
         this.gitPushService = gitPushService;
         this.gitPullRequestService = gitPullRequestService;
+        this.gitCommitService = gitCommitService;
         this.workspaceService = workspaceService;
         this.atelierAccess = atelierAccess;
         this.currentUser = currentUser;
@@ -86,6 +92,25 @@ public class GitWorkspaceController {
      * lieu et a été facturé ; {@code created} dit ce qui s'est réellement passé, constaté auprès de
      * GitHub, et {@code reply} porte la cause d'un échec.</p>
      */
+    /**
+     * Publie les modifications faites par l'utilisateur (F-31 / SF-31-08) : un commit atomique sur
+     * une branche dédiée, sans qu'aucune session de bac à sable soit nécessaire.
+     */
+    @PostMapping("/{id}/git/commit")
+    public GitCommitResponse commit(@PathVariable UUID id, @Valid @RequestBody GitCommitRequest request) {
+        List<GitFileEdit> files = request.files().stream()
+                .map(f -> new GitFileEdit(f.path().trim(), f.content()))
+                .toList();
+        GitCommitService.CommitPublication published = gitCommitService.commit(
+                currentUser.requireId(), id, request.branch(), request.message().trim(), files);
+        return new GitCommitResponse(
+                published.result().branch(),
+                published.result().commitSha(),
+                published.result().branchCreated(),
+                published.compareUrl(),
+                published.pullRequest() == null ? null : published.pullRequest().url());
+    }
+
     @PostMapping("/{id}/git/pull-request")
     public PullRequestResponse createPullRequest(@PathVariable UUID id,
             @Valid @RequestBody CreatePullRequestRequest request) {

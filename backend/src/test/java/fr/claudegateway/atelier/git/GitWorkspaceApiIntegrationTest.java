@@ -134,6 +134,80 @@ class GitWorkspaceApiIntegrationTest {
         return JsonPath.read(response, "$.id");
     }
 
+    // ---------- SF-31-08 : publier ses propres modifications ----------
+
+    private String commitBody(String branch, String message, String path, String content) {
+        return "{\"branch\":\"" + branch + "\",\"message\":\"" + message
+                + "\",\"files\":[{\"path\":\"" + path + "\",\"content\":\"" + content + "\"}]}";
+    }
+
+    @Test
+    void publishesTheUserOwnEditsOnADedicatedBranch() throws Exception {
+        registerToken(aliceToken, "github_pat_alice");
+        String workspaceId = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(post("/api/workspaces/" + workspaceId + "/git/commit").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(commitBody("claude/edition", "Mes modifications", "README.md", "bonjour")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.branch").value("claude/edition"))
+                .andExpect(jsonPath("$.commitSha").isNotEmpty())
+                .andExpect(jsonPath("$.compareUrl").value(org.hamcrest.Matchers.containsString("compare/")));
+
+        assertThat(stubGitHubClient.lastCommitBranch).isEqualTo("claude/edition");
+        assertThat(stubGitHubClient.lastCommitFiles).hasSize(1);
+    }
+
+    @Test
+    void refusesACommitOnTheProjectBranch() throws Exception {
+        registerToken(aliceToken, "github_pat_alice");
+        String workspaceId = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+        int before = stubGitHubClient.commitCalls;
+
+        mockMvc.perform(post("/api/workspaces/" + workspaceId + "/git/commit").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(commitBody(stubGitHubClient.defaultBranch, "Direct", "a.txt", "x")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("git_default_branch_refused"));
+
+        assertThat(stubGitHubClient.commitCalls).as("aucune écriture tentée").isEqualTo(before);
+    }
+
+    @Test
+    void refusesACommitOnAWorkspaceOfAnotherUser() throws Exception {
+        registerToken(aliceToken, "github_pat_alice");
+        String workspaceId = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(post("/api/workspaces/" + workspaceId + "/git/commit").contextPath("/api")
+                        .header("Authorization", bearer(bobToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(commitBody("claude/x", "m", "a.txt", "x")))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void refusesACommitWithoutAnyFile() throws Exception {
+        registerToken(aliceToken, "github_pat_alice");
+        String workspaceId = openRepository(aliceToken, "{\"repoUrl\":\"https://github.com/octocat/hello\"}");
+
+        mockMvc.perform(post("/api/workspaces/" + workspaceId + "/git/commit").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"branch\":\"claude/x\",\"message\":\"m\",\"files\":[]}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void refusesACommitWithoutJwt() throws Exception {
+        mockMvc.perform(post("/api/workspaces/" + java.util.UUID.randomUUID() + "/git/commit")
+                        .contextPath("/api")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(commitBody("claude/x", "m", "a.txt", "x")))
+                .andExpect(status().isUnauthorized());
+    }
+
     @Test
     void opensAProjectOnTheRepositoryDefaultBranch() throws Exception {
         stubGitHubClient.defaultBranch = "develop";
