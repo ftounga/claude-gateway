@@ -12,7 +12,7 @@
 
 ## Statut
 
-`in-progress`
+`done` — mergée le 2026-08-30 (PR #201)
 
 ## Date de création
 
@@ -88,27 +88,27 @@ donc pas de boucle).
 
 ## Critères d'acceptation
 
-- [ ] `RunnerRegistry` expose `Optional<RemoteRunnerNode> findRemote(UUID)` ; `InMemoryRunnerRegistry`
+- [x] `RunnerRegistry` expose `Optional<RemoteRunnerNode> findRemote(UUID)` ; `InMemoryRunnerRegistry`
       rend toujours `Optional.empty()`.
-- [ ] La charge `pg_notify` porte `address` ; la carte distante porte `(nodeId, address, seenAt)`.
-- [ ] Ré-annonce périodique, péremption à 45 s (y compris pour `isConnected`), `SYNC_REQUEST` au
+- [x] La charge `pg_notify` porte `address` ; la carte distante porte `(nodeId, address, seenAt)`.
+- [x] Ré-annonce périodique, péremption à 45 s (y compris pour `isConnected`), `SYNC_REQUEST` au
       démarrage, jamais rediffusé.
-- [ ] Le relais vit sur un **second connecteur TCP** (`app.runner.relay.port`, défaut 8081), créé
+- [x] Le relais vit sur un **second connecteur TCP** (`app.runner.relay.port`, défaut 8081), créé
       **uniquement** si `app.runner.relay.secret` est non vide.
-- [ ] `RunnerCallRouter` applique l'ordre local → distant → erreur existante ; le contrôleur interne
+- [x] `RunnerCallRouter` applique l'ordre local → distant → erreur existante ; le contrôleur interne
       appelle `RunnerCallDispatcher` directement (un seul saut, garanti par la structure).
-- [ ] La route `/internal/runner/call` répond en NDJSON `stream`* + `result` unique et final, écrites
+- [x] La route `/internal/runner/call` répond en NDJSON `stream`* + `result` unique et final, écrites
       sous un verrou dédié à la réponse (aucune ligne coupée en deux).
-- [ ] Le client relais lit ligne à ligne ; aucun `.body(String.class)`.
-- [ ] T1 : `POST http://localhost:{server.port}/api/internal/runner/call` **avec** secret valide → 404, corps vide.
-- [ ] T2 : même appel sur le port relais **sans** en-tête → 401, corps vide.
-- [ ] T3 : secret erroné de même longueur → 401, corps vide.
-- [ ] T4 : bon secret sur le port relais → 200 et réponse fonctionnelle NDJSON.
-- [ ] T5 : aucun mapping `/internal*` déclaré hors du paquet `fr.claudegateway.runner.relay`.
-- [ ] T6 : secret vide → aucun bean contrôleur interne, aucun connecteur supplémentaire.
-- [ ] Isolation : aucun accès aux données par le relais ; l'identité d'une trame runner continue de
+- [x] Le client relais lit ligne à ligne ; aucun `.body(String.class)`.
+- [x] T1 : `POST http://localhost:{server.port}/api/internal/runner/call` **avec** secret valide → 404, corps vide.
+- [x] T2 : même appel sur le port relais **sans** en-tête → 401, corps vide.
+- [x] T3 : secret erroné de même longueur → 401, corps vide.
+- [x] T4 : bon secret sur le port relais → 200 et réponse fonctionnelle NDJSON.
+- [x] T5 : aucun mapping `/internal*` déclaré hors du paquet `fr.claudegateway.runner.relay`.
+- [x] T6 : secret vide → aucun bean contrôleur interne, aucun connecteur supplémentaire.
+- [x] Isolation : aucun accès aux données par le relais ; l'identité d'une trame runner continue de
       venir de la session, jamais du message.
-- [ ] Aucun secret journalisé ; aucun `chunk` ni contenu de fichier journalisé.
+- [x] Aucun secret journalisé ; aucun `chunk` ni contenu de fichier journalisé.
 
 ---
 
@@ -178,26 +178,26 @@ Aucun — le relais est interne à la gateway.
 
 ### Tests unitaires
 
-- [ ] `RunnerCallRouter` — socket locale présente → délègue au dispatcher, aucun relais.
-- [ ] `RunnerCallRouter` — pas de socket locale, pas de relais actif → `runner_not_on_this_node` si
+- [x] `RunnerCallRouter` — socket locale présente → délègue au dispatcher, aucun relais.
+- [x] `RunnerCallRouter` — pas de socket locale, pas de relais actif → `runner_not_on_this_node` si
       `isConnected`, `runner_unavailable` sinon.
-- [ ] `RunnerCallRouter` — adresse distante = la sienne → pas de relais (garde anti-auto-appel).
-- [ ] `RunnerCallRouter` — adresse distante différente → relais appelé une seule fois.
-- [ ] `RunnerRelayClient` — flux `stream`+`result` → chunks relayés dans l'ordre, `streamed` pris
+- [x] `RunnerCallRouter` — adresse distante = la sienne → pas de relais (garde anti-auto-appel).
+- [x] `RunnerCallRouter` — adresse distante différente → relais appelé une seule fois.
+- [x] `RunnerRelayClient` — flux `stream`+`result` → chunks relayés dans l'ordre, `streamed` pris
       dans `result`.
-- [ ] `RunnerRelayClient` — 401 / 404 / corps non NDJSON → `RUNNER_NOT_ON_THIS_NODE`.
-- [ ] `RunnerRelayClient` — flux coupé sans `result` → `RUNNER_UNAVAILABLE`.
-- [ ] `InMemoryRunnerRegistry.findRemote` → toujours vide.
-- [ ] `RunnerToolGateway` — délègue au routeur avec les délais du contrat (tests existants adaptés).
+- [x] `RunnerRelayClient` — 401 / 404 / corps non NDJSON → `RUNNER_NOT_ON_THIS_NODE`.
+- [x] `RunnerRelayClient` — flux coupé sans `result` → `RUNNER_UNAVAILABLE`.
+- [x] `InMemoryRunnerRegistry.findRemote` → toujours vide.
+- [x] `RunnerToolGateway` — délègue au routeur avec les délais du contrat (tests existants adaptés).
 
 ### Tests d'intégration
 
-- [ ] T1 404 corps vide sur le port public avec secret valide.
-- [ ] T2 401 corps vide sans en-tête sur le port relais.
-- [ ] T3 401 corps vide avec secret erroné de même longueur.
-- [ ] T4 200 NDJSON avec le bon secret (une seule ligne `result`, dernière).
-- [ ] T5 aucun mapping `/internal*` hors du paquet `runner.relay`.
-- [ ] T6 secret vide → aucun bean contrôleur ni connecteur.
+- [x] T1 404 corps vide sur le port public avec secret valide.
+- [x] T2 401 corps vide sans en-tête sur le port relais.
+- [x] T3 401 corps vide avec secret erroné de même longueur.
+- [x] T4 200 NDJSON avec le bon secret (une seule ligne `result`, dernière).
+- [x] T5 aucun mapping `/internal*` hors du paquet `runner.relay`.
+- [x] T6 secret vide → aucun bean contrôleur ni connecteur.
 
 ### Isolation workspace
 
