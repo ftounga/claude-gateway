@@ -129,7 +129,9 @@ public class StubGitHubClient implements GitHubClient {
         this.lastRepository = owner + "/" + repo;
         this.lastCheckedBranch = branch;
         failIfSimulated();
-        return branchPushed;
+        // Quand le test décrit des branches précises, elles font foi ; sinon on garde le drapeau
+        // global, qui suffit aux tests de publication (SF-31-04).
+        return existingBranches.isEmpty() ? branchPushed : existingBranches.contains(branch);
     }
 
     @Override
@@ -163,6 +165,33 @@ public class StubGitHubClient implements GitHubClient {
         this.commitCalls++;
         failIfSimulated();
         return new GitCommitResult(branch, "c0ffee1234567890", !commitBranchExists);
+    }
+
+    /** Branches du dépôt simulé (F-31 / SF-31-10). */
+    public volatile java.util.List<String> branches = new java.util.ArrayList<>(
+            java.util.List.of("main", "claude/atelier-20260830"));
+    /** Branches déjà existantes du point de vue de {@link #branchExists}. */
+    public volatile java.util.Set<String> existingBranches = new java.util.HashSet<>();
+    public volatile String lastCreatedBranch;
+    public volatile String lastCreatedFrom;
+
+    @Override
+    public java.util.List<String> listBranches(String token, String owner, String repo) {
+        this.lastToken = token;
+        this.lastRepository = owner + "/" + repo;
+        failIfSimulated();
+        return java.util.List.copyOf(branches);
+    }
+
+    @Override
+    public void createBranch(String token, String owner, String repo, String fromBranch, String newBranch) {
+        this.lastToken = token;
+        this.lastCreatedFrom = fromBranch;
+        this.lastCreatedBranch = newBranch;
+        failIfSimulated();
+        branches = new java.util.ArrayList<>(branches);
+        branches.add(newBranch);
+        existingBranches.add(newBranch);
     }
 
     private void failIfSimulated() {

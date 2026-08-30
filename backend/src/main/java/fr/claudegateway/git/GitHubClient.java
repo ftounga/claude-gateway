@@ -120,6 +120,30 @@ public interface GitHubClient {
     boolean branchExists(String token, String owner, String repo, String branch);
 
     /**
+     * Liste les branches du dépôt (F-31 / SF-31-10), pour que l'explorateur puisse en proposer le
+     * choix plutôt que d'afficher une branche figée.
+     *
+     * @param token jeton en clair (jamais journalisé)
+     * @param owner propriétaire du dépôt
+     * @param repo  nom du dépôt
+     * @return les noms de branches, triés, éventuellement tronqués par la pagination de l'API
+     */
+    java.util.List<String> listBranches(String token, String owner, String repo);
+
+    /**
+     * Crée une branche à partir de la tête d'une autre (F-31 / SF-31-10), sans commit.
+     *
+     * @param token      jeton en clair (jamais journalisé)
+     * @param owner      propriétaire du dépôt
+     * @param repo       nom du dépôt
+     * @param fromBranch branche de départ
+     * @param newBranch  branche à créer
+     * @throws InvalidGitRepositoryException si la branche de départ est introuvable
+     * @throws InvalidGitTokenException      si GitHub refuse le jeton ou l'écriture
+     */
+    void createBranch(String token, String owner, String repo, String fromBranch, String newBranch);
+
+    /**
      * Constate l'existence d'une pull request <b>ouverte</b> dont la tête est la branche donnée
      * (F-31 / SF-31-05), après une demande de création via le serveur MCP GitHub.
      *
