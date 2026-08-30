@@ -48,7 +48,7 @@
 | Jeton absent ou sans droit d'écriture | Message du serveur, qui nomme le droit manquant ; modifications conservées |
 | GitHub indisponible | Message de réessai ; modifications conservées |
 | Aucune modification en attente | Le bouton *Commiter et publier* est désactivé |
-| Quitter l'écran avec des modifications en attente | Elles sont perdues — l'écran le **dit** avant, par une confirmation |
+| Quitter l'écran avec des modifications en attente | Confirmation `MatDialog` (*Quitter sans publier* / *Rester*) sur les deux sorties de l'écran, et `beforeunload` pour la fermeture d'onglet ou le rechargement |
 | Projet d'archive | Comportement actuel **inchangé** : enregistrement direct, aucun bouton de publication |
 
 ---

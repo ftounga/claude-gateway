@@ -1,5 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, NgZone, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, HostListener, NgZone, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -375,6 +375,56 @@ export class AtelierFilesComponent implements OnInit {
       'Compris',
       { duration: 14000 },
     );
+  }
+
+  /**
+   * Garde de sortie (F-31 / SF-31-09) : les modifications retenues vivent le temps de l'écran.
+   * Partir sans le dire les perdrait en silence — c'est le seul endroit où l'utilisateur peut
+   * encore décider.
+   *
+   * <p>Branchée sur `beforeunload` (fermeture d'onglet, rechargement) et sur les deux sorties
+   * internes de l'écran, qui passent par {@link #confirmLeave}.</p>
+   */
+  @HostListener('window:beforeunload', ['$event'])
+  onBeforeUnload(event: BeforeUnloadEvent): void {
+    if (this.pendingCount() > 0) {
+      event.preventDefault();
+      // Les navigateurs imposent leur propre libellé ; seul le fait de bloquer nous appartient.
+      event.returnValue = true;
+    }
+  }
+
+  /**
+   * Demande confirmation avant de quitter l'écran avec des modifications non publiées.
+   *
+   * @param destination route de destination
+   */
+  confirmLeave(destination: unknown[], queryParams?: Record<string, string>): void {
+    const go = () => void this.router.navigate(destination, queryParams ? { queryParams } : {});
+    if (this.pendingCount() === 0) {
+      go();
+      return;
+    }
+    const ref = this.dialog.open(ConfirmDialogComponent, {
+      width: '460px',
+      data: {
+        title: 'Modifications non publiées',
+        message:
+          `${this.pendingCount()} fichier(s) modifié(s) n'ont pas été publiés. ` +
+          'En quittant cet écran, ces modifications seront perdues.',
+        confirmLabel: 'Quitter sans publier',
+      } satisfies ConfirmDialogData,
+    });
+    ref.afterClosed().subscribe((confirmed) => {
+      if (confirmed) {
+        go();
+      }
+    });
+  }
+
+  /** Retour au terminal du projet, sous la même garde que le retour au projet. */
+  confirmLeaveToTerminal(): void {
+    this.confirmLeave(['/atelier', this.workspaceId()], { mode: 'terminal' });
   }
 
   /** Nom de branche proposé : reconnaissable, horodaté, jamais la branche de base. */
