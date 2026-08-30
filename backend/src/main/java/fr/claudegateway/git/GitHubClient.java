@@ -37,6 +37,32 @@ public interface GitHubClient {
     GitHubRepository getRepository(String token, String owner, String repo);
 
     /**
+     * Publie un <b>commit unique</b> portant tous les fichiers donnés, sur {@code branch}
+     * (F-31 / SF-31-08). La branche est créée depuis {@code baseBranch} si elle n'existe pas.
+     *
+     * <p>L'atomicité est voulue : une modification de trois fichiers est un commit, pas trois. La
+     * mécanique de l'API (blobs, arbre, commit, référence) reste confinée à l'implémentation — le
+     * domaine ne connaît que cette opération.</p>
+     *
+     * <p>La référence n'est <b>jamais forcée</b> : si la branche a bougé entre-temps, GitHub refuse
+     * et l'échec remonte tel quel plutôt que d'écraser le travail d'un autre.</p>
+     *
+     * @param token      jeton en clair (jamais journalisé)
+     * @param owner      propriétaire du dépôt
+     * @param repo       nom du dépôt
+     * @param baseBranch branche d'où partir si {@code branch} n'existe pas encore
+     * @param branch     branche cible du commit
+     * @param message    message de commit
+     * @param files      fichiers à publier (au moins un)
+     * @return la branche, le commit créé, et si la branche a été créée
+     * @throws InvalidGitTokenException      si GitHub refuse le jeton ou les droits d'écriture
+     * @throws InvalidGitRepositoryException si le dépôt ou la branche de base est introuvable
+     * @throws GitHubUnavailableException    si GitHub est injoignable ou répond en erreur serveur
+     */
+    GitCommitResult commitFiles(String token, String owner, String repo, String baseBranch,
+            String branch, String message, java.util.List<GitFileEdit> files);
+
+    /**
      * Liste les fichiers d'une branche (F-31 / SF-31-03), pour l'arborescence de l'explorateur.
      *
      * <p>Demander la liste à l'agent coûterait du temps de bac à sable facturé à chaque ouverture

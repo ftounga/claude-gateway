@@ -300,3 +300,46 @@ supprimées après merge.
 Les écarts restants avec Claude Code recensés plus haut sont désormais des features à part entière —
 F-32, F-33 et F-34 sont livrées ; F-35 (sous-agents) reste au backlog, derrière son flag et son
 plafond de coût.
+
+---
+
+## Amendement 2026-08-30 — Éditer soi-même un projet Git
+
+**Demande du PO** : « Si on a mis un jeton en lecture et écriture, c'était pour pouvoir modifier le
+code source du projet Git. Ensuite, via un bouton, commiter et pousser. »
+
+**Ce qui existait** : l'explorateur d'un projet `GIT` est en lecture seule (SF-31-03), et le seul
+chemin d'écriture passe par l'agent, qui modifie le clone dans la sandbox puis pousse (SF-31-04).
+Le jeton `Contents: Read and write` sert bien à écrire — mais seulement pour ce push-là.
+
+**Pourquoi la lecture seule avait été retenue** : écrire dans le stockage S3 pendant que l'agent
+travaille sur le clone créerait deux vérités divergentes. L'argument reste valable — il condamne
+l'écriture **dans le stockage**, pas l'écriture tout court.
+
+### La voie retenue : écrire là où l'explorateur lit déjà
+
+L'explorateur d'un projet Git **lit l'API GitHub** (SF-31-03, pour ne pas payer de temps de sandbox
+à chaque ouverture d'écran). Il écrira donc **au même endroit** : un commit via l'API GitHub, sur
+une branche dédiée. La symétrie supprime le problème : GitHub reste la seule source de vérité.
+
+| Option | Retenue ? | Pourquoi |
+|---|---|---|
+| **B — commit via l'API GitHub** | **Oui** | Aucune session sandbox requise, donc aucun coût runtime pour éditer du texte, et l'édition fonctionne même sans session ouverte. Symétrique de la lecture. |
+| A — écrire dans le clone de la sandbox | Non | Exige une session ouverte et facturée pour éditer un fichier ; hors session, il faudrait en créer une. |
+| C — écrire dans le stockage S3 | Non | C'est exactement ce que SF-31-03 a écarté : deux vérités divergentes. |
+
+### Conséquences assumées
+
+- **Jamais de commit sur la branche par défaut.** Une branche de travail dédiée, comme l'agent.
+- **Le clone de l'agent devient périmé** après un commit fait depuis l'écran. L'écran doit le dire,
+  et proposer la réinitialisation de la session — c'est le prix de l'absence de session pendant
+  l'édition, et il est explicite plutôt que silencieux.
+- **Un commit atomique** pour l'ensemble des fichiers modifiés (API Git Data : blobs → arbre →
+  commit → référence), pas un commit par fichier enregistré.
+
+### Découpage
+
+| ID | Contenu |
+|----|---------|
+| SF-31-08 | Backend : écriture GitHub (branche + commit atomique + push), endpoint de publication, refus de la branche par défaut, isolation `user_id`. |
+| SF-31-09 | Frontend : éditeur actif sur un projet Git, modifications marquées « non publiées », bouton *Commiter et publier*, avertissement de clone périmé. |

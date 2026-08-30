@@ -142,6 +142,29 @@ public class StubGitHubClient implements GitHubClient {
         return java.util.Optional.ofNullable(openPullRequest);
     }
 
+    /** Dernier commit demandé (F-31 / SF-31-08) : branche, base, message, fichiers. */
+    public volatile String lastCommitBranch;
+    public volatile String lastCommitBase;
+    public volatile String lastCommitMessage;
+    public volatile java.util.List<GitFileEdit> lastCommitFiles = java.util.List.of();
+    public volatile int commitCalls;
+    /** Branche déjà existante côté GitHub : pilote {@code branchCreated} du résultat. */
+    public volatile boolean commitBranchExists;
+
+    @Override
+    public GitCommitResult commitFiles(String token, String owner, String repo, String baseBranch,
+            String branch, String message, java.util.List<GitFileEdit> files) {
+        this.lastToken = token;
+        this.lastRepository = owner + "/" + repo;
+        this.lastCommitBranch = branch;
+        this.lastCommitBase = baseBranch;
+        this.lastCommitMessage = message;
+        this.lastCommitFiles = java.util.List.copyOf(files);
+        this.commitCalls++;
+        failIfSimulated();
+        return new GitCommitResult(branch, "c0ffee1234567890", !commitBranchExists);
+    }
+
     private void failIfSimulated() {
         if (unavailable) {
             throw new GitHubUnavailableException("panne simulée");

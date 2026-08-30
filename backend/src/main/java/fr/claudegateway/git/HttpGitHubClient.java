@@ -5,11 +5,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -193,6 +195,60 @@ public class HttpGitHubClient implements GitHubClient {
         return java.util.Optional.of(new GitPullRequest(found[0].number(), found[0].htmlUrl()));
     }
 
+    @Override
+    public GitCommitResult commitFiles(String token, String owner, String repo, String baseBranch,
+            String branch, String message, List<GitFileEdit> files) {
+        // 1. Point de départ : la tête de la branche cible si elle existe, sinon celle de la base.
+        //    C'est ce qui rend l'opération idempotente à la création comme à la mise à jour.
+        boolean exists = branchExists(token, owner, repo, branch);
+        String startRef = exists ? branch : baseBranch;
+        GitRefResponse start = get(builder -> builder
+                        .path("/repos/{owner}/{repo}/git/ref/heads/" + startRef).build(owner, repo),
+                token, GitRefResponse.class, "lecture de la tête de branche");
+        if (start == null || start.object() == null || start.object().sha() == null) {
+            throw new InvalidGitRepositoryException("Branche de départ introuvable sur ce dépôt.");
+        }
+        String baseSha = start.object().sha();
+
+        // 2. Un blob par fichier, puis UN arbre, puis UN commit : l'atomicité tient à ce que le
+        //    commit ne référence qu'un seul arbre, quelle que soit la quantité de fichiers.
+        List<Map<String, Object>> entries = new ArrayList<>();
+        for (GitFileEdit file : files) {
+            GitShaResponse blob = post(builder -> builder.path("/repos/{owner}/{repo}/git/blobs").build(owner, repo),
+                    token, Map.of("content", file.content(), "encoding", "utf-8"),
+                    GitShaResponse.class, "création du contenu");
+            entries.add(Map.of("path", file.path(), "mode", "100644", "type", "blob",
+                    "sha", requireSha(blob, "contenu")));
+        }
+        GitShaResponse tree = post(builder -> builder.path("/repos/{owner}/{repo}/git/trees").build(owner, repo),
+                token, Map.of("base_tree", baseSha, "tree", entries),
+                GitShaResponse.class, "création de l'arborescence");
+        GitShaResponse commit = post(builder -> builder.path("/repos/{owner}/{repo}/git/commits").build(owner, repo),
+                token, Map.of("message", message, "tree", requireSha(tree, "arborescence"),
+                        "parents", List.of(baseSha)),
+                GitShaResponse.class, "création du commit");
+        String commitSha = requireSha(commit, "commit");
+
+        // 3. Déplacer la référence. Jamais de `force` : si la branche a bougé entre-temps, GitHub
+        //    refuse et l'échec remonte — écraser le travail d'un autre serait pire que l'erreur.
+        if (exists) {
+            patch(builder -> builder.path("/repos/{owner}/{repo}/git/refs/heads/" + branch).build(owner, repo),
+                    token, Map.of("sha", commitSha, "force", false), "mise à jour de la branche");
+        } else {
+            post(builder -> builder.path("/repos/{owner}/{repo}/git/refs").build(owner, repo),
+                    token, Map.of("ref", "refs/heads/" + branch, "sha", commitSha),
+                    GitShaResponse.class, "création de la branche");
+        }
+        return new GitCommitResult(branch, commitSha, !exists);
+    }
+
+    private static String requireSha(GitShaResponse response, String what) {
+        if (response == null || response.sha() == null || response.sha().isBlank()) {
+            throw new GitHubUnavailableException("GitHub n'a pas renvoyé l'identifiant du " + what + ".");
+        }
+        return response.sha();
+    }
+
     /** Décode le base64 de l'API (qui insère des retours à la ligne) ; contenu illisible ⇒ refus net. */
     private static byte[] decode(String content) {
         try {
@@ -264,6 +320,71 @@ public class HttpGitHubClient implements GitHubClient {
             throw new GitHubUnavailableException(
                     "GitHub est momentanément injoignable. Réessayez dans un instant.");
         }
+    }
+
+    /** {@code POST} authentifié, avec la même traduction d'erreurs que {@link #get}. */
+    private <T> T post(Function<UriBuilder, URI> uri, String token, Object body, Class<T> type,
+            String operation) {
+        return send(HttpMethod.POST, uri, token, body, type, operation);
+    }
+
+    /** {@code PATCH} authentifié (mise à jour d'une référence de branche). */
+    private void patch(Function<UriBuilder, URI> uri, String token, Object body, String operation) {
+        send(HttpMethod.PATCH, uri, token, body, GitShaResponse.class, operation);
+    }
+
+    private <T> T send(HttpMethod method, Function<UriBuilder, URI> uri, String token, Object body,
+            Class<T> type, String operation) {
+        try {
+            return restClient.method(method)
+                    .uri(uri)
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                    .header(HttpHeaders.ACCEPT, ACCEPT)
+                    .header(API_VERSION_HEADER, API_VERSION)
+                    .body(body)
+                    .retrieve()
+                    .onStatus(status -> status.value() == HttpStatus.UNAUTHORIZED.value()
+                                    || status.value() == HttpStatus.FORBIDDEN.value(),
+                            (request, clientResponse) -> {
+                                // 403 sur une écriture = jeton sans `Contents: Read and write`. Le
+                                // dire ainsi évite de renvoyer l'utilisateur vers un jeton « invalide »
+                                // qui fonctionne pourtant très bien en lecture.
+                                log.info("GitHub ({}) : écriture refusée (statut {})", operation,
+                                        clientResponse.getStatusCode().value());
+                                throw new InvalidGitTokenException(
+                                        "GitHub a refusé l'écriture : votre jeton n'a pas le droit "
+                                                + "« Contents: Read and write » sur ce dépôt.");
+                            })
+                    .onStatus(status -> status.value() == HttpStatus.NOT_FOUND.value(),
+                            (request, clientResponse) -> {
+                                log.info("GitHub ({}) : ressource introuvable", operation);
+                                throw new InvalidGitRepositoryException(
+                                        "Dépôt ou branche introuvable, ou hors de portée de votre jeton GitHub.");
+                            })
+                    .onStatus(status -> status.isError(),
+                            (request, clientResponse) -> {
+                                log.warn("GitHub ({}) en échec (statut {})", operation,
+                                        clientResponse.getStatusCode().value());
+                                throw new GitHubUnavailableException(
+                                        "GitHub a refusé la publication. Réessayez dans un instant.");
+                            })
+                    .body(type);
+        } catch (RestClientException ex) {
+            log.warn("GitHub ({}) injoignable : {}", operation, ex.getClass().getSimpleName());
+            throw new GitHubUnavailableException(
+                    "GitHub est momentanément injoignable. Réessayez dans un instant.");
+        }
+    }
+
+    /** Projection d'une réponse portant un {@code sha} (blob, arbre, commit, référence). */
+    private record GitShaResponse(String sha) {
+    }
+
+    /** Projection de {@code GET /git/ref/...} : la tête de la branche. */
+    private record GitRefResponse(GitRefObject object) {
+    }
+
+    private record GitRefObject(String sha) {
     }
 
     /** Projection minimale de {@code GET /user} : seul le login est retenu. */
