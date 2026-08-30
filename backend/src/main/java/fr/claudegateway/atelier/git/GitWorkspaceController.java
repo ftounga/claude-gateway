@@ -1,5 +1,6 @@
 package fr.claudegateway.atelier.git;
 
+import fr.claudegateway.atelier.git.dto.GitBranchRequest;
 import fr.claudegateway.atelier.git.dto.GitCommitRequest;
 import fr.claudegateway.atelier.git.dto.GitCommitResponse;
 import fr.claudegateway.git.GitFileEdit;
@@ -37,17 +38,20 @@ public class GitWorkspaceController {
     private final GitPushService gitPushService;
     private final GitPullRequestService gitPullRequestService;
     private final GitCommitService gitCommitService;
+    private final GitBranchService gitBranchService;
     private final WorkspaceService workspaceService;
     private final AtelierAccessService atelierAccess;
     private final CurrentUser currentUser;
 
     public GitWorkspaceController(GitWorkspaceService gitWorkspaceService, GitPushService gitPushService,
             GitPullRequestService gitPullRequestService, GitCommitService gitCommitService,
+            GitBranchService gitBranchService,
             WorkspaceService workspaceService, AtelierAccessService atelierAccess, CurrentUser currentUser) {
         this.gitWorkspaceService = gitWorkspaceService;
         this.gitPushService = gitPushService;
         this.gitPullRequestService = gitPullRequestService;
         this.gitCommitService = gitCommitService;
+        this.gitBranchService = gitBranchService;
         this.workspaceService = workspaceService;
         this.atelierAccess = atelierAccess;
         this.currentUser = currentUser;
@@ -92,6 +96,28 @@ public class GitWorkspaceController {
      * lieu et a été facturé ; {@code created} dit ce qui s'est réellement passé, constaté auprès de
      * GitHub, et {@code reply} porte la cause d'un échec.</p>
      */
+    /** Branches du dépôt, avec la branche courante du projet et celle par défaut (F-31 / SF-31-10). */
+    @org.springframework.web.bind.annotation.GetMapping("/{id}/git/branches")
+    public GitBranchService.Branches branches(@PathVariable UUID id) {
+        return gitBranchService.list(currentUser.requireId(), id);
+    }
+
+    /** Place le projet sur une branche existante (F-31 / SF-31-10). */
+    @org.springframework.web.bind.annotation.PutMapping("/{id}/git/branch")
+    public WorkspaceDetailResponse switchBranch(@PathVariable UUID id,
+            @Valid @RequestBody GitBranchRequest request) {
+        return WorkspaceDetailResponse.from(
+                gitBranchService.switchTo(currentUser.requireId(), id, request.branch()), List.of(), false);
+    }
+
+    /** Crée une branche depuis celle du projet et s'y place (F-31 / SF-31-10). */
+    @PostMapping("/{id}/git/branches")
+    public WorkspaceDetailResponse createBranch(@PathVariable UUID id,
+            @Valid @RequestBody GitBranchRequest request) {
+        return WorkspaceDetailResponse.from(
+                gitBranchService.createAndSwitch(currentUser.requireId(), id, request.branch()), List.of(), false);
+    }
+
     /**
      * Publie les modifications faites par l'utilisateur (F-31 / SF-31-08) : un commit atomique sur
      * une branche dédiée, sans qu'aucune session de bac à sable soit nécessaire.

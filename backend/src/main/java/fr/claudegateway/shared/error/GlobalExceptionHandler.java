@@ -117,6 +117,22 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("invalid_token", ex.getMessage()));
     }
 
+    @ExceptionHandler(fr.claudegateway.atelier.git.GitBranchUnknownException.class)
+    public ResponseEntity<ErrorResponse> handleGitBranchUnknown(
+            fr.claudegateway.atelier.git.GitBranchUnknownException ex) {
+        log.debug("Changement de branche refusé : branche inconnue");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("git_branch_unknown", ex.getMessage()));
+    }
+
+    @ExceptionHandler(fr.claudegateway.atelier.git.GitBranchExistsException.class)
+    public ResponseEntity<ErrorResponse> handleGitBranchExists(
+            fr.claudegateway.atelier.git.GitBranchExistsException ex) {
+        log.debug("Création de branche refusée : la branche existe déjà");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("git_branch_exists", ex.getMessage()));
+    }
+
     @ExceptionHandler(fr.claudegateway.atelier.git.GitDefaultBranchRefusedException.class)
     public ResponseEntity<ErrorResponse> handleGitDefaultBranchRefused(
             fr.claudegateway.atelier.git.GitDefaultBranchRefusedException ex) {

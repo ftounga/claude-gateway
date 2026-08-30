@@ -61,6 +61,12 @@ class GitCommitServiceTest {
         return workspace;
     }
 
+    /** Le refus porte désormais sur la branche par défaut du dépôt (SF-31-10), lue auprès de GitHub. */
+    private void withDefaultBranch(String defaultBranch) {
+        when(gitHubClient.getRepository(anyString(), anyString(), anyString()))
+                .thenReturn(new fr.claudegateway.git.GitHubRepository("octocat/hello", defaultBranch));
+    }
+
     private static List<GitFileEdit> oneFile() {
         return List.of(new GitFileEdit("src/App.java", "class App {}"));
     }
@@ -69,6 +75,7 @@ class GitCommitServiceTest {
     void publishesASingleCommitOnTheRequestedBranch() {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(gitWorkspace());
         when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
+        withDefaultBranch("main");
         when(gitHubClient.commitFiles(anyString(), anyString(), anyString(), anyString(), anyString(),
                 anyString(), any())).thenReturn(new GitCommitResult("claude/edition", "abc123", true));
         when(gitHubClient.findOpenPullRequest(anyString(), anyString(), anyString(), anyString()))
@@ -91,15 +98,39 @@ class GitCommitServiceTest {
     }
 
     @Test
-    void refusesTheProjectBranchWithoutTouchingGitHub() {
+    void refusesTheRepositoryDefaultBranch() {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(gitWorkspace());
+        when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
+        withDefaultBranch("main");
 
         assertThatThrownBy(() -> service().commit(USER, WORKSPACE, "main", "Direct sur main", oneFile()))
                 .isInstanceOf(GitDefaultBranchRefusedException.class);
 
-        // Rien ne doit partir : ni écriture, ni même la résolution du jeton.
-        verifyNoInteractions(gitHubClient);
-        verify(gitTokenService, never()).resolveToken(any());
+        // Aucune écriture : le refus tombe avant le commit, seule la lecture du dépôt a eu lieu.
+        verify(gitHubClient, never()).commitFiles(anyString(), anyString(), anyString(), anyString(),
+                anyString(), anyString(), any());
+    }
+
+    /**
+     * Régression SF-31-10 : depuis que le projet peut suivre une branche de travail, publier
+     * dessus doit être POSSIBLE. L'ancienne règle (« refuser la branche du projet ») l'interdisait.
+     */
+    @Test
+    void allowsCommittingOnTheProjectBranchWhenItIsNotTheDefaultOne() {
+        Workspace onWorkBranch = gitWorkspace();
+        onWorkBranch.setGitBranch("claude/edition");
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(onWorkBranch);
+        when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
+        withDefaultBranch("main");
+        when(gitHubClient.commitFiles(anyString(), anyString(), anyString(), anyString(), anyString(),
+                anyString(), any())).thenReturn(new GitCommitResult("claude/edition", "abc", false));
+        when(gitHubClient.findOpenPullRequest(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(Optional.empty());
+
+        GitCommitService.CommitPublication published =
+                service().commit(USER, WORKSPACE, "claude/edition", "Suite", oneFile());
+
+        assertThat(published.result().branch()).isEqualTo("claude/edition");
     }
 
     @Test
@@ -129,6 +160,7 @@ class GitCommitServiceTest {
     void reportsAnAlreadyOpenPullRequest() {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(gitWorkspace());
         when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
+        withDefaultBranch("main");
         when(gitHubClient.commitFiles(anyString(), anyString(), anyString(), anyString(), anyString(),
                 anyString(), any())).thenReturn(new GitCommitResult("claude/x", "abc123", false));
         when(gitHubClient.findOpenPullRequest(anyString(), anyString(), anyString(), anyString()))
@@ -145,6 +177,7 @@ class GitCommitServiceTest {
     void startsFromTheProjectBranch() {
         when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(gitWorkspace());
         when(gitTokenService.resolveToken(USER)).thenReturn(Optional.of("github_pat_secret"));
+        withDefaultBranch("main");
         when(gitHubClient.commitFiles(anyString(), anyString(), anyString(), anyString(), anyString(),
                 anyString(), any())).thenReturn(new GitCommitResult("claude/x", "abc", true));
         when(gitHubClient.findOpenPullRequest(anyString(), anyString(), anyString(), anyString()))

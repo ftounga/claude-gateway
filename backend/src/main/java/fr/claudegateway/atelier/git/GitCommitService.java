@@ -68,19 +68,27 @@ public class GitCommitService {
                     "Ce projet n'est pas adossé à un dépôt Git : il n'y a rien à publier.");
         }
 
-        // 3. Branche validée et refusée si c'est celle du projet — AVANT tout appel à GitHub, pour
-        // qu'une demande fautive ne consomme même pas un aller-retour réseau.
+        // 3. Branche validée avant tout appel réseau.
         String target = GitRepositoryRef.requireValidBranch(branch);
         String base = workspace.getGitBranch();
-        if (target.equals(base)) {
-            throw new GitDefaultBranchRefusedException(
-                    "Publier directement sur « " + base + " » n'est pas permis : choisissez une autre branche.");
-        }
 
         // 4. Le jeton : sans lui, rien n'est publiable.
         String token = gitTokenService.resolveToken(userId)
                 .orElseThrow(() -> new GitTokenMissingException(
                         "Aucun jeton GitHub enregistré : ajoutez-en un dans vos réglages."));
+
+        // 5. Le refus porte sur la branche PAR DÉFAUT DU DÉPÔT, pas sur celle du projet (SF-31-10).
+        // Tant qu'un projet suivait forcément `master`, les deux se confondaient. Depuis que le projet
+        // peut suivre une branche de travail, refuser « la branche du projet » interdirait de commiter
+        // sur sa propre branche — exactement ce qu'on veut faire.
+        String defaultBranch = gitHubClient
+                .getRepository(token, workspace.getGitOwner(), workspace.getGitRepo())
+                .defaultBranch();
+        if (target.equals(defaultBranch)) {
+            throw new GitDefaultBranchRefusedException(
+                    "Publier directement sur « " + defaultBranch
+                            + " » n'est pas permis : choisissez une autre branche.");
+        }
 
         GitCommitResult result = gitHubClient.commitFiles(token, workspace.getGitOwner(),
                 workspace.getGitRepo(), base, target, message, files);

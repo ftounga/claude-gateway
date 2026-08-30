@@ -196,6 +196,37 @@ public class HttpGitHubClient implements GitHubClient {
     }
 
     @Override
+    public List<String> listBranches(String token, String owner, String repo) {
+        // 100 branches par page : au-delà, l'utilisateur cherchera par le nom plutôt que par la liste.
+        GitBranchResponse[] branches = get(builder -> builder
+                        .path("/repos/{owner}/{repo}/branches")
+                        .queryParam("per_page", 100)
+                        .build(owner, repo),
+                token, GitBranchResponse[].class, "liste des branches");
+        if (branches == null) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(branches)
+                .map(GitBranchResponse::name)
+                .filter(java.util.Objects::nonNull)
+                .sorted()
+                .toList();
+    }
+
+    @Override
+    public void createBranch(String token, String owner, String repo, String fromBranch, String newBranch) {
+        GitRefResponse start = get(builder -> builder
+                        .path("/repos/{owner}/{repo}/git/ref/heads/" + fromBranch).build(owner, repo),
+                token, GitRefResponse.class, "lecture de la branche de départ");
+        if (start == null || start.object() == null || start.object().sha() == null) {
+            throw new InvalidGitRepositoryException("Branche de départ introuvable sur ce dépôt.");
+        }
+        post(builder -> builder.path("/repos/{owner}/{repo}/git/refs").build(owner, repo),
+                token, Map.of("ref", "refs/heads/" + newBranch, "sha", start.object().sha()),
+                GitShaResponse.class, "création de la branche");
+    }
+
+    @Override
     public GitCommitResult commitFiles(String token, String owner, String repo, String baseBranch,
             String branch, String message, List<GitFileEdit> files) {
         // 1. Point de départ : la tête de la branche cible si elle existe, sinon celle de la base.
