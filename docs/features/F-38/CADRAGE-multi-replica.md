@@ -90,30 +90,45 @@ seul pod » — c'est l'option A, autant l'appeler par son nom.
 Demander au runner de se reconnecter quand il n'est pas sur le bon pod : rien ne garantit qu'il
 atterrisse sur le bon (le load balancing est aveugle). Boucle possible, aucune convergence.
 
-## 4 — Recommandation
+## 4 — Recommandation : **B, maintenant**
 
-**A maintenant, B en cible.**
+**Arbitrée le 2026-08-30 avec le PO.** Une première version de ce cadrage recommandait « A
+maintenant, B en cible ». Cette recommandation est **abandonnée**, et il est utile de dire pourquoi
+plutôt que de la réécrire en silence.
 
-1. **Épingler à 1 pod** (`maxReplicas: 1` + `Recreate`) et **configurer `APP_RUNNER_REGISTRY`** :
-   cela débloque la mise en service de F-38 immédiatement, sans rien réécrire, et le coût réel est
-   nul au trafic actuel. À tracer comme dette explicite, pas comme choix définitif.
-2. **Livrer le relais inter-pods (B)** pour rendre l'HPA de nouveau utilisable, puis remettre
-   `maxReplicas: 4`.
+L'argument qui la portait était : « A débloque la mise en service immédiatement ». Il ne tient pas.
+**Rien n'attend cette mise en service** — aucune subfeature F-38 n'est en production, aucun
+utilisateur ne s'en sert. Un déblocage qui ne débloque rien ne paie pas une dette d'architecture.
 
-Ce que cette recommandation **assume** : que le trafic reste au niveau actuel le temps de livrer B.
-Si ce n'est pas le cas, B devient prioritaire sur toute autre chose — un HPA plafonné à 1 est une
-panne de capacité en attente.
+Trois points avaient été sous-pondérés :
 
-## 5 — Découpage si B est retenue
+1. **A n'est pas gratuit.** `strategy: Recreate` impose une interruption de service à *chaque*
+   déploiement, là où le rolling update actuel n'en cause aucune.
+2. **A, c'est deux changements d'infra** (épingler, puis dé-épingler) au lieu d'un, et un plafond de
+   capacité qui survit d'ordinaire bien plus longtemps que prévu — jusqu'à la panne qu'il devait
+   éviter.
+3. **B coûte deux subfeatures de ≤ 2 jours.** Le lot SF-38-04→10 en a livré sept en une nuit.
+   « Trop long pour maintenant » ne résiste pas aux faits.
 
-| ID proposé | Contenu | Effort |
+**Vérification technique préalable (2026-08-30)** : `kubectl get networkpolicy -n
+claude-gateway-staging` → aucune. Le trafic pod-à-pod est libre, le relais HTTP direct est possible
+sans changement d'infrastructure.
+
+**Décision** : livrer B (§5) **avant** toute mise en service, puis déployer une seule fois, sans
+toucher à l'HPA (`min 1 / max 4` conservé). L'option A reste documentée comme **repli d'urgence** si
+un incident de capacité survenait avant la fin de B : une ligne de configuration, applicable en
+minutes.
+
+## 5 — Découpage retenu
+
+| ID | Contenu | Effort |
 |---|---|---|
 | SF-38-12 | Adresse du pod dans le registre (downward API `status.podIP`), endpoint interne authentifié par secret partagé, relais de `tool_call` → `tool_result` vers le pod propriétaire de la socket. Non routé par l'ingress ; test de non-régression prouvant qu'il reste inatteignable de l'extérieur. | ≤ 2 j |
 | SF-38-13 | Relais du **flux** (`tool_stream`), de l'**annulation** et de la **porte de confirmation** (SF-38-08) — la décision de l'utilisateur doit atteindre la porte qui attend, quel que soit le pod qui reçoit la requête. | ≤ 2 j |
 
 Les marques d'interruption de F-32 (`interruptedSessions`, `interruptedTurns`), pod-dépendantes
-**avant** F-38, relèvent du même mécanisme : à traiter dans SF-38-13 ou dans une feature dédiée si
-l'on veut couvrir tout l'Atelier — **à arbitrer**.
+**avant** F-38, relèvent du même mécanisme : **traitées dans SF-38-13** (§7.3), par le même relais
+interne que l'annulation d'outil.
 
 ## 6 — Hors périmètre
 
@@ -121,9 +136,13 @@ l'on veut couvrir tout l'Atelier — **à arbitrer**.
 - Le partage d'un runner entre plusieurs utilisateurs (F-17, V3).
 - La refonte du canal en file persistée (option C).
 
-## 7 — Ce qu'il faut décider
+## 7 — Ce qui a été décidé
 
-1. Déploie-t-on F-38 **maintenant** en épinglant à 1 pod (option A) ?
-2. B est-elle programmée dans la foulée, ou attend-elle un besoin de capacité avéré ?
-3. Le correctif de F-32 (interruption cross-pod) entre-t-il dans SF-38-13, ou fait-il l'objet d'une
-   feature propre couvrant tout l'Atelier ?
+1. **B est livrée maintenant**, avant toute mise en service. A devient un repli d'urgence documenté.
+2. L'HPA reste `min 1 / max 4` : aucun épinglage, aucun `Recreate`.
+3. **L'interruption F-32 cross-pod entre dans SF-38-13** (arbitrage par défaut, réversible) : elle
+   emprunte le même relais interne que l'annulation d'outil. La traiter à part créerait deux
+   mécanismes pour le même besoin. Si l'on veut ensuite couvrir tout l'Atelier au-delà de la cible
+   `RUNNER`, ce sera une feature propre, sur ce socle.
+4. Le déploiement de F-38 se fera **une seule fois**, après SF-38-13, avec `APP_RUNNER_REGISTRY=pg-notify`
+   dans la configmap et `APP_RUNNER_JAR_PATH` renseigné, suivi du smoke manuel bout en bout.
