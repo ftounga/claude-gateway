@@ -121,10 +121,14 @@ minutes.
 
 ## 5 — Découpage retenu
 
-| ID | Contenu | Effort |
-|---|---|---|
-| SF-38-12 | Adresse du pod dans le registre (downward API `status.podIP`), endpoint interne authentifié par secret partagé, relais de `tool_call` → `tool_result` vers le pod propriétaire de la socket. Non routé par l'ingress ; test de non-régression prouvant qu'il reste inatteignable de l'extérieur. | ≤ 2 j |
-| SF-38-13 | Relais du **flux** (`tool_stream`), de l'**annulation** et de la **porte de confirmation** (SF-38-08) — la décision de l'utilisateur doit atteindre la porte qui attend, quel que soit le pod qui reçoit la requête. | ≤ 2 j |
+| ID | Contenu | Effort | État |
+|---|---|---|---|
+| SF-38-12 | Adresse du pod dans le registre (downward API `status.podIP`), endpoint interne authentifié par secret partagé, relais de `tool_call` → `tool_result` vers le pod propriétaire de la socket. Non routé par l'ingress ; test de non-régression prouvant qu'il reste inatteignable de l'extérieur. | ≤ 2 j | **Livrée** 2026-08-30 (PR #201) |
+| SF-38-13 | Relais du **flux** (`tool_stream`), de l'**annulation** et de la **porte de confirmation** (SF-38-08) — la décision de l'utilisateur doit atteindre la porte qui attend, quel que soit le pod qui reçoit la requête. | ≤ 2 j | **Livrée** 2026-08-30 (PR #202) — diffusion par Service headless pour `confirm`/`interrupt`/`session-interrupt`, flux prouvé non bufferisé |
+
+Le relais inter-pods est **complet**. Ne reste que le **déploiement** (§7, point 4), manuel :
+`APP_RUNNER_RELAY_SECRET`, `APP_RUNNER_REGISTRY=pg-notify`, Service headless et `POD_IP`. Sans eux le
+relais reste éteint et le comportement est celui d'un pod unique.
 
 Les marques d'interruption de F-32 (`interruptedSessions`, `interruptedTurns`), pod-dépendantes
 **avant** F-38, relèvent du même mécanisme : **traitées dans SF-38-13** (§7.3), par le même relais
