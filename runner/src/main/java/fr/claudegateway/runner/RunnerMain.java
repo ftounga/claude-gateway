@@ -34,7 +34,7 @@ public final class RunnerMain {
         } catch (RunnerConfig.ConfigException e) {
             console.error(e.getMessage());
             console.info("Usage : java -jar claude-runner.jar --gateway <url> --workspace <racine> "
-                    + "--code <code-appairage> [--label <libellé>] [--heartbeat-interval <s>]");
+                    + "--code <code-appairage> [--label <libellé>] [--heartbeat-interval <s>] [--allow-bash]");
             return 2;
         }
 

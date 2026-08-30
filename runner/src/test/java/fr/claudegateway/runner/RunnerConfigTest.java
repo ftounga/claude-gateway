@@ -1,6 +1,8 @@
 package fr.claudegateway.runner;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -159,5 +161,40 @@ class RunnerConfigTest {
     void custom_heartbeat_interval_applied() {
         RunnerConfig cfg = RunnerConfig.resolve(baseArgs("--heartbeat-interval", "10"), Map.of());
         assertEquals(10, cfg.heartbeatInterval().toSeconds());
+    }
+
+    // --- Exécution de commandes : opt-in explicite (F-38 / SF-38-07) ------------------------
+
+    @Test
+    void bash_disabled_by_default() {
+        assertFalse(RunnerConfig.resolve(baseArgs(), Map.of()).allowBash(),
+                "Démarrer un runner n'autorise pas l'exécution de commandes");
+    }
+
+    @Test
+    void allow_bash_flag_without_value() {
+        // Drapeau sans valeur : il ne doit pas avaler l'argument suivant.
+        RunnerConfig cfg = RunnerConfig.resolve(new String[] {
+                "--gateway", "https://gw.example.com/api",
+                "--workspace", workspace.toString(),
+                "--allow-bash",
+                "--label", "poste-dev"
+        }, Map.of());
+
+        assertTrue(cfg.allowBash());
+        assertEquals("poste-dev", cfg.label());
+    }
+
+    @Test
+    void allow_bash_flag_with_explicit_false() {
+        assertFalse(RunnerConfig.resolve(baseArgs("--allow-bash=false"), Map.of()).allowBash());
+    }
+
+    @Test
+    void allow_bash_from_environment() {
+        assertTrue(RunnerConfig.resolve(baseArgs(), Map.of("CLAUDE_RUNNER_ALLOW_BASH", "true"))
+                .allowBash());
+        assertFalse(RunnerConfig.resolve(baseArgs(), Map.of("CLAUDE_RUNNER_ALLOW_BASH", "non"))
+                .allowBash());
     }
 }

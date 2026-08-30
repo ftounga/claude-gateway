@@ -36,8 +36,8 @@ import com.fasterxml.jackson.databind.JsonNode;
  * {@code excluded} pour {@code read_file}/{@code write_file}, et les dossiers exclus sont élagués du
  * balayage de {@code list_files}/{@code search_files}. Deviner un chemin ne contourne rien.</p>
  *
- * <p>Aucune exécution de commande ici : {@code bash} arrive en SF-38-07 et répond d'ici là
- * {@code unsupported_tool}.</p>
+ * <p>Aucune exécution de commande ici : {@code bash} est porté par {@link BashTool} depuis SF-38-07,
+ * et l'aiguillage entre les deux par {@link ToolRouter}.</p>
  */
 public final class FileTools implements ToolExecutor {
 
@@ -68,11 +68,13 @@ public final class FileTools implements ToolExecutor {
      * Exécute un outil. Ne lève jamais : toute erreur est convertie en {@link ToolOutcome} porteur
      * d'un code de la liste close du contrat (§4).
      *
-     * @param tool  nom d'outil tel qu'exposé au modèle (identité, sans préfixe)
-     * @param input objet d'entrée, éventuellement {@code null}
+     * @param tool    nom d'outil tel qu'exposé au modèle (identité, sans préfixe)
+     * @param input   objet d'entrée, éventuellement {@code null}
+     * @param context contexte d'appel ; les outils fichiers rendent leur résultat d'un bloc et ne
+     *                diffusent rien (seul {@code bash} alimente le flux, contrat §2.3)
      */
     @Override
-    public ToolOutcome execute(String tool, JsonNode input) {
+    public ToolOutcome execute(String tool, JsonNode input, ToolContext context) {
         try {
             return switch (tool) {
                 case "list_files" -> listFiles();

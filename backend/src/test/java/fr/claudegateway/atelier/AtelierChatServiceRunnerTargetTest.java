@@ -3,6 +3,7 @@ package fr.claudegateway.atelier;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -53,6 +54,7 @@ class AtelierChatServiceRunnerTargetTest {
     @Mock private fr.claudegateway.git.GitTokenService gitTokenService;
     @Mock private fr.claudegateway.git.GitHubClient gitHubClient;
     @Mock private RunnerToolGateway runnerToolGateway;
+    @Mock private fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher;
 
     private StubAiAgentProvider agentProvider;
     private AtelierChatService service;
@@ -67,7 +69,7 @@ class AtelierChatServiceRunnerTargetTest {
                 byokKeyService, quotaService, modelCatalog,
                 new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
-                runnerToolGateway);
+                runnerToolGateway, runnerCallDispatcher);
 
         when(modelCatalog.defaultModel()).thenReturn("claude-model");
         when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.empty());
@@ -248,5 +250,192 @@ class AtelierChatServiceRunnerTargetTest {
         }
         assertThat(found).as("aucun tool_result transmis au modèle").isNotNull();
         return found;
+    }
+
+    // ------------------------------------------------------------ outil bash (SF-38-07)
+
+    @Test
+    void bashToolIsOfferedOnlyOnRunnerTarget() {
+        Workspace sandbox = new Workspace();
+        sandbox.setExecutionTarget(WorkspaceExecutionTarget.SANDBOX);
+        Workspace runner = new Workspace();
+        runner.setExecutionTarget(WorkspaceExecutionTarget.RUNNER);
+
+        assertThat(service.buildTools(sandbox)).extracting(fr.claudegateway.agent.AgentTool::name)
+                .containsExactly("list_files", "read_file", "write_file", "search_files");
+        assertThat(service.buildTools(runner)).extracting(fr.claudegateway.agent.AgentTool::name)
+                .containsExactly("list_files", "read_file", "write_file", "search_files", "bash");
+    }
+
+    @Test
+    void bashAssemblesStreamedOutputAndExitCodeForTheModel() {
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.bash(eq(workspaceId), anyString(), eq("npm test"), any(), anyLong(), any()))
+                .thenReturn(bashOk("ok 1\nok 2\n", 0, false));
+        agentProvider.enqueueToolCall("bash", "command", "npm test");
+        agentProvider.enqueueFinal("Tests passés.");
+
+        service.chat(userId, workspaceId, "lance les tests");
+
+        assertThat(toolResultText()).isEqualTo("$ npm test\nok 1\nok 2\n[code de sortie: 0]");
+        assertThat(lastToolResult().isError()).isFalse();
+    }
+
+    @Test
+    void aNonZeroExitCodeIsStillASuccessfulCall() {
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.bash(eq(workspaceId), anyString(), eq("false"), any(), anyLong(), any()))
+                .thenReturn(bashOk("", 1, false));
+        agentProvider.enqueueToolCall("bash", "command", "false");
+        agentProvider.enqueueFinal("Échec constaté.");
+
+        service.chat(userId, workspaceId, "lance");
+
+        // La commande a tourné : le modèle doit lire son code de sortie, pas un message d'erreur.
+        assertThat(lastToolResult().isError()).isFalse();
+        assertThat(toolResultText()).isEqualTo("$ false\n[code de sortie: 1]");
+    }
+
+    @Test
+    void aTruncatedOutputIsMarkedForTheModel() {
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.bash(eq(workspaceId), anyString(), eq("cat gros.log"), any(), anyLong(), any()))
+                .thenReturn(bashOk("début…", 0, true));
+        agentProvider.enqueueToolCall("bash", "command", "cat gros.log");
+        agentProvider.enqueueFinal("Vu.");
+
+        service.chat(userId, workspaceId, "affiche");
+
+        assertThat(toolResultText()).contains("… (sortie tronquée)").endsWith("[code de sortie: 0]");
+    }
+
+    @Test
+    void aFailedBashCallIsReturnedAsAnErrorToolResult() {
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.bash(eq(workspaceId), anyString(), anyString(), any(), anyLong(), any()))
+                .thenReturn(RunnerCallResult.backendError(RunnerErrorCodes.UNSUPPORTED_TOOL,
+                        "L'exécution de commandes n'est pas activée sur ce runner."));
+        agentProvider.enqueueToolCall("bash", "command", "rm -rf /");
+        agentProvider.enqueueFinal("Refusé.");
+
+        service.chat(userId, workspaceId, "lance");
+
+        assertThat(lastToolResult().isError()).isTrue();
+        assertThat(toolResultText()).contains("pas activée sur ce runner");
+    }
+
+    @Test
+    void theBashStepCarriesTheCommandTruncatedForTheScreen() {
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        String longCommand = "echo " + "x".repeat(500);
+        when(runnerToolGateway.bash(eq(workspaceId), anyString(), eq(longCommand), any(), anyLong(), any()))
+                .thenReturn(bashOk("", 0, false));
+        agentProvider.enqueueToolCall("bash", "command", longCommand);
+        agentProvider.enqueueFinal("Fait.");
+        RecordingListener listener = new RecordingListener();
+
+        service.chatStreaming(userId, workspaceId, "lance", listener);
+
+        assertThat(listener.steps).hasSize(1);
+        assertThat(listener.steps.get(0).type()).isEqualTo("bash");
+        assertThat(listener.steps.get(0).path()).hasSize(200).isEqualTo(longCommand.substring(0, 200));
+    }
+
+    @Test
+    void commandOutputIsRelayedToTheSessionWhileItRuns() {
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        // Le relais est le consommateur passé à la passerelle : on le déclenche depuis le stub, comme
+        // le ferait une trame tool_stream arrivant pendant l'exécution.
+        when(runnerToolGateway.bash(eq(workspaceId), anyString(), anyString(), any(), anyLong(), any()))
+                .thenAnswer(invocation -> {
+                    java.util.function.Consumer<String> relay = invocation.getArgument(5);
+                    relay.accept("ligne 1\n");
+                    relay.accept("ligne 2\n");
+                    return bashOk("ligne 1\nligne 2\n", 0, false);
+                });
+        agentProvider.enqueueToolCall("bash", "command", "make");
+        agentProvider.enqueueFinal("Fini.");
+        RecordingListener listener = new RecordingListener();
+
+        service.chatStreaming(userId, workspaceId, "lance", listener);
+
+        assertThat(listener.outputs).containsExactly("ligne 1\n", "ligne 2\n");
+    }
+
+    @Test
+    void bashTimeoutIsCappedByTheRemainingTurnBudget() {
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.bash(eq(workspaceId), anyString(), anyString(), any(), anyLong(), any()))
+                .thenReturn(bashOk("", 0, false));
+        agentProvider.enqueueToolCall("bash", "command", "sleep 1");
+        agentProvider.enqueueFinal("Fini.");
+
+        service.chat(userId, workspaceId, "lance");
+
+        org.mockito.ArgumentCaptor<Long> timeout = org.mockito.ArgumentCaptor.forClass(Long.class);
+        verify(runnerToolGateway).bash(eq(workspaceId), anyString(), anyString(), any(),
+                timeout.capture(), any());
+        // Le délai proposé ne dépasse jamais ce qu'il reste du tour (la passerelle le clampe ensuite
+        // à 120 000 ms) : une commande ne peut pas survivre au tour qui l'a lancée.
+        assertThat(timeout.getValue()).isPositive()
+                .isLessThanOrEqualTo(AtelierChatService.TURN_BUDGET_MS);
+    }
+
+    @Test
+    void anInterruptionStopsTheLoopAndCancelsTheRunnerCall() {
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.bash(eq(workspaceId), anyString(), anyString(), any(), anyLong(), any()))
+                .thenAnswer(invocation -> {
+                    // Interruption demandée pendant que la commande tourne.
+                    service.interruptChat(userId, workspaceId);
+                    return RunnerCallResult.backendError("cancelled", "Appel interrompu.");
+                });
+        agentProvider.enqueueToolCall("bash", "command", "sleep 300");
+        agentProvider.enqueueToolCall("bash", "command", "echo jamais");
+        agentProvider.enqueueFinal("Ne doit pas arriver.");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "lance");
+
+        assertThat(result.reply()).isEqualTo(AtelierChatService.INTERRUPTED_REPLY);
+        verify(runnerCallDispatcher).cancelWorkspace(workspaceId, "user_interrupt");
+        // La seconde commande n'a jamais été lancée : la boucle s'est arrêtée à la frontière sûre.
+        verify(runnerToolGateway, times(1))
+                .bash(eq(workspaceId), anyString(), anyString(), any(), anyLong(), any());
+    }
+
+    @Test
+    void anInterruptionOnSomeoneElsesWorkspaceIsRefused() {
+        UUID intruder = UUID.randomUUID();
+        when(workspaceService.requireOwned(intruder, workspaceId))
+                .thenThrow(new WorkspaceNotFoundException("Projet introuvable"));
+
+        assertThatThrownBy(() -> service.interruptChat(intruder, workspaceId))
+                .isInstanceOf(WorkspaceNotFoundException.class);
+        verify(runnerCallDispatcher, never()).cancelWorkspace(any(), anyString());
+    }
+
+    private static RunnerCallResult bashOk(String streamed, int exitCode, boolean truncated) {
+        return new RunnerCallResult(true, "", false, exitCode, 12L, null, null, null, streamed, truncated);
+    }
+
+    /** Listener de test : mémorise étapes et fragments de sortie relayés. */
+    private static final class RecordingListener implements AtelierProgressListener {
+        private final List<AtelierProgressListener.AtelierStepEvent> steps = new java.util.ArrayList<>();
+        private final List<String> outputs = new java.util.ArrayList<>();
+
+        @Override
+        public void onAction(AtelierProgressListener.AtelierStepEvent step) {
+            steps.add(step);
+        }
+
+        @Override
+        public void onText(String text) {
+            // Non utilisé ici.
+        }
+
+        @Override
+        public void onOutput(String chunk) {
+            outputs.add(chunk);
+        }
     }
 }

@@ -118,4 +118,87 @@ class RunnerToolGatewayTest {
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.INVALID_INPUT);
         verify(dispatcher, never()).call(any(), anyString(), anyString(), any(), anyLong());
     }
+
+    // -------------------------------------------------------------- bash (SF-38-07)
+
+    /** Passerelle dont l'appel {@code bash} (6 arguments, avec relais de flux) est stubé. */
+    private RunnerToolGateway bashGateway(RunnerCallResult response) {
+        when(dispatcher.call(any(), anyString(), anyString(), any(), anyLong(), any()))
+                .thenReturn(response);
+        return new RunnerToolGateway(dispatcher, objectMapper);
+    }
+
+    private JsonNode capturedBashInput(long expectedTimeoutMs) {
+        ArgumentCaptor<JsonNode> input = ArgumentCaptor.forClass(JsonNode.class);
+        ArgumentCaptor<Long> timeout = ArgumentCaptor.forClass(Long.class);
+        verify(dispatcher).call(org.mockito.ArgumentMatchers.eq(workspaceId), anyString(),
+                org.mockito.ArgumentMatchers.eq("bash"), input.capture(), timeout.capture(), any());
+        assertThat(timeout.getValue()).isEqualTo(expectedTimeoutMs);
+        return input.getValue();
+    }
+
+    @Test
+    void bashSendsTheCommandWithTheContractTimeout() {
+        bashGateway(bashOk()).bash(workspaceId, "toolu_1", "  npm test  ", null,
+                RunnerToolGateway.BASH_TIMEOUT_MS, null);
+
+        JsonNode input = capturedBashInput(RunnerToolGateway.BASH_TIMEOUT_MS);
+        assertThat(input.path("command").asText()).isEqualTo("npm test");
+        assertThat(input.has("cwd")).isFalse();
+    }
+
+    @Test
+    void bashNormalisesTheWorkingDirectoryBeforeSending() {
+        bashGateway(bashOk()).bash(workspaceId, "toolu_1", "ls", "./src\\app/",
+                RunnerToolGateway.BASH_TIMEOUT_MS, null);
+
+        assertThat(capturedBashInput(RunnerToolGateway.BASH_TIMEOUT_MS).path("cwd").asText())
+                .isEqualTo("src/app");
+    }
+
+    @Test
+    void bashRefusesAnEscapingWorkingDirectoryBeforeSending() {
+        RunnerCallResult result = bashGateway(bashOk()).bash(workspaceId, "toolu_1", "ls",
+                "../ailleurs", RunnerToolGateway.BASH_TIMEOUT_MS, null);
+
+        assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.INVALID_INPUT);
+        verify(dispatcher, never()).call(any(), anyString(), anyString(), any(), anyLong(), any());
+    }
+
+    @Test
+    void bashRefusesAnEmptyOrOversizedCommandBeforeSending() {
+        RunnerToolGateway gateway = bashGateway(bashOk());
+
+        assertThat(gateway.bash(workspaceId, "toolu_1", "   ", null, 1_000L, null).errorCode())
+                .isEqualTo(RunnerErrorCodes.INVALID_INPUT);
+        assertThat(gateway.bash(workspaceId, "toolu_2",
+                "x".repeat(RunnerToolGateway.MAX_COMMAND_CHARS + 1), null, 1_000L, null).errorCode())
+                .isEqualTo(RunnerErrorCodes.INVALID_INPUT);
+        verify(dispatcher, never()).call(any(), anyString(), anyString(), any(), anyLong(), any());
+    }
+
+    @Test
+    void bashClampsTheTimeoutBetweenTheFloorAndTheContractCeiling() {
+        bashGateway(bashOk()).bash(workspaceId, "toolu_1", "ls", null, 10L, null);
+        capturedBashInput(RunnerToolGateway.MIN_BASH_TIMEOUT_MS);
+
+        org.mockito.Mockito.reset(dispatcher);
+        bashGateway(bashOk()).bash(workspaceId, "toolu_2", "ls", null, 3_600_000L, null);
+        capturedBashInput(RunnerToolGateway.BASH_TIMEOUT_MS);
+    }
+
+    @Test
+    void anUnsupportedBashSaysHowToEnableItOnTheMachine() {
+        RunnerCallResult refused = RunnerCallResult.backendError(RunnerErrorCodes.UNSUPPORTED_TOOL);
+
+        RunnerCallResult result = bashGateway(refused).bash(workspaceId, "toolu_1", "ls", null,
+                RunnerToolGateway.BASH_TIMEOUT_MS, null);
+
+        assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.UNSUPPORTED_TOOL);
+        assertThat(result.errorMessage()).contains("--allow-bash");
+    }
+
+    private static RunnerCallResult bashOk() {
+        return new RunnerCallResult(true, "", false, 0, 1L, null, null, null, "", false);
+    }
 }

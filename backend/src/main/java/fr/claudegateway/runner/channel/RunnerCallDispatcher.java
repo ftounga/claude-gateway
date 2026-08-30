@@ -147,6 +147,21 @@ public class RunnerCallDispatcher {
      */
     public RunnerCallResult call(UUID workspaceId, String callId, String tool, JsonNode input,
             long timeoutMs) {
+        return call(workspaceId, callId, tool, input, timeoutMs, null);
+    }
+
+    /**
+     * Variante avec <b>relais de flux</b> (SF-38-07) : chaque {@code chunk} d'un {@code tool_stream}
+     * est remis à {@code onChunk} au fil de l'eau, en plus d'être agrégé. Utilisé par {@code bash}
+     * pour que la sortie d'une commande apparaisse dans la session pendant qu'elle tourne, au lieu
+     * d'arriver d'un bloc à la fin.
+     *
+     * <p>Le consommateur est appelé sur le thread de réception WebSocket : il ne doit ni bloquer ni
+     * lever. Il est <b>détaché</b> dès que le résultat est traité, pour qu'aucun fragment tardif ne
+     * parte alors que l'appelant a repris la main.</p>
+     */
+    public RunnerCallResult call(UUID workspaceId, String callId, String tool, JsonNode input,
+            long timeoutMs, java.util.function.Consumer<String> onChunk) {
         if (registry.findLocal(workspaceId).isEmpty()) {
             // isConnected() peut être vrai cross-replica : la socket vit alors sur l'autre pod.
             return RunnerCallResult.backendError(registry.isConnected(workspaceId)
@@ -161,7 +176,7 @@ public class RunnerCallDispatcher {
             return RunnerCallResult.backendError(RunnerErrorCodes.UNSUPPORTED_TOOL);
         }
 
-        InFlightCall pending = new InFlightCall(workspaceId, new CompletableFuture<>());
+        InFlightCall pending = new InFlightCall(workspaceId, new CompletableFuture<>(), onChunk);
         if (inFlight.putIfAbsent(callId, pending) != null) {
             return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_PROTOCOL_ERROR,
                     "Identifiant d'appel déjà utilisé.");
@@ -192,6 +207,33 @@ public class RunnerCallDispatcher {
             // Tout résultat tardif portant cet id sera jeté : il n'est plus en vol.
             inFlight.remove(callId);
         }
+    }
+
+    /**
+     * Demande l'annulation de tous les appels en vol d'un workspace (F-38 / SF-38-07, interruption
+     * utilisateur — même geste que F-32). Émet un {@code tool_cancel} par appel ; le runner tue le
+     * processus et émet <b>quand même</b> sa trame terminale (contrat §2.5), qui débloque l'appelant
+     * normalement. Le backend ne complète donc rien lui-même : pas de résultat inventé.
+     *
+     * @return le nombre d'appels effectivement visés
+     */
+    public int cancelWorkspace(UUID workspaceId, String reason) {
+        WebSocketSession session = outbound.get(workspaceId);
+        if (session == null) {
+            return 0;
+        }
+        int cancelled = 0;
+        for (Map.Entry<String, InFlightCall> entry : inFlight.entrySet()) {
+            if (entry.getValue().workspaceId().equals(workspaceId)) {
+                sendQuietly(session, cancelFrame(entry.getKey(), reason));
+                cancelled++;
+            }
+        }
+        if (cancelled > 0) {
+            log.info("Annulation demandée sur {} appel(s) en vol (workspace={}, motif={})", cancelled,
+                    workspaceId, reason);
+        }
+        return cancelled;
     }
 
     // ---------------------------------------------------------------- réception
@@ -232,6 +274,9 @@ public class RunnerCallDispatcher {
         if (pending == null) {
             return;
         }
+        // Détaché AVANT de rendre la main : plus aucun fragment ne peut être relayé une fois que
+        // l'appelant a repris (le flux SSE n'est pas thread-safe, et l'appel est terminé).
+        pending.detachRelay();
         pending.future().complete(parseResult(frame, pending));
     }
 
@@ -243,6 +288,7 @@ public class RunnerCallDispatcher {
         String chunk = frame.path("chunk").asText("");
         if (!chunk.isEmpty()) {
             pending.appendStream(chunk);
+            pending.relay(chunk);
         }
     }
 
@@ -251,6 +297,7 @@ public class RunnerCallDispatcher {
                 frame.path("code").asText("?"));
         InFlightCall pending = pendingFor(identity, frame);
         if (pending != null) {
+            pending.detachRelay();
             pending.future().complete(
                     RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_PROTOCOL_ERROR));
         }
@@ -345,6 +392,7 @@ public class RunnerCallDispatcher {
     private void failAllOf(UUID workspaceId) {
         inFlight.forEach((id, pending) -> {
             if (pending.workspaceId().equals(workspaceId)) {
+                pending.detachRelay();
                 pending.future().complete(
                         RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_UNAVAILABLE));
             }
@@ -362,10 +410,31 @@ public class RunnerCallDispatcher {
      * résultat, et l'agrégat des trames {@code tool_stream} reçues avant le résultat.
      */
     private record InFlightCall(UUID workspaceId, CompletableFuture<RunnerCallResult> future,
-            StringBuilder stream, AtomicBoolean truncatedFlag) {
+            StringBuilder stream, AtomicBoolean truncatedFlag,
+            java.util.concurrent.atomic.AtomicReference<java.util.function.Consumer<String>> relay) {
 
-        InFlightCall(UUID workspaceId, CompletableFuture<RunnerCallResult> future) {
-            this(workspaceId, future, new StringBuilder(), new AtomicBoolean(false));
+        InFlightCall(UUID workspaceId, CompletableFuture<RunnerCallResult> future,
+                java.util.function.Consumer<String> onChunk) {
+            this(workspaceId, future, new StringBuilder(), new AtomicBoolean(false),
+                    new java.util.concurrent.atomic.AtomicReference<>(onChunk));
+        }
+
+        /** Relaie un fragment au consommateur, s'il est encore branché. Ne propage jamais d'échec. */
+        void relay(String chunk) {
+            java.util.function.Consumer<String> consumer = relay.get();
+            if (consumer == null) {
+                return;
+            }
+            try {
+                consumer.accept(chunk);
+            } catch (RuntimeException ex) {
+                // Client parti, flux clos : la sortie continue d'être agrégée pour le modèle.
+                relay.set(null);
+            }
+        }
+
+        void detachRelay() {
+            relay.set(null);
         }
 
         void appendStream(String chunk) {

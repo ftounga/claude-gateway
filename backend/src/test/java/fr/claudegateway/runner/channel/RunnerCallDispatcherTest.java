@@ -287,4 +287,103 @@ class RunnerCallDispatcherTest {
 
         assertThat(dispatcher.outboundFor(session)).isNotSameAs(session);
     }
+
+    // ------------------------------------------------- flux et annulation (SF-38-07)
+
+    /** Runner local ayant annoncé la capacité {@code bash} (contrat §2.1) : sans elle, rien ne part. */
+    private void withLocalBashRunner() throws Exception {
+        withLocalRunner();
+        dispatcher.onFrame(identity, "ready", objectMapper.readTree(
+                "{\"type\":\"ready\",\"protocol\":1,\"capabilities\":[\"files\",\"bash\"]}"));
+    }
+
+    @Test
+    void relaysStreamChunksInOrderThenDetachesOnTheResult() throws Exception {
+        withLocalBashRunner();
+        java.util.List<String> relayed = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        doAnswer(invocation -> {
+            dispatcher.onFrame(identity, "tool_stream", objectMapper.readTree(
+                    "{\"type\":\"tool_stream\",\"id\":\"toolu_1\",\"seq\":0,\"stream\":\"stdout\",\"chunk\":\"un\\n\"}"));
+            dispatcher.onFrame(identity, "tool_stream", objectMapper.readTree(
+                    "{\"type\":\"tool_stream\",\"id\":\"toolu_1\",\"seq\":1,\"stream\":\"stderr\",\"chunk\":\"deux\\n\"}"));
+            dispatcher.onFrame(identity, "tool_result", objectMapper.readTree(
+                    "{\"type\":\"tool_result\",\"id\":\"toolu_1\",\"ok\":true,\"content\":\"\",\"exitCode\":0}"));
+            // Fragment tardif : l'appel est terminé, plus rien ne doit être relayé (contrat §2.3).
+            dispatcher.onFrame(identity, "tool_stream", objectMapper.readTree(
+                    "{\"type\":\"tool_stream\",\"id\":\"toolu_1\",\"seq\":2,\"stream\":\"stdout\",\"chunk\":\"trop tard\"}"));
+            return null;
+        }).when(session).sendMessage(any(TextMessage.class));
+
+        RunnerCallResult result = dispatcher.call(workspaceId, "toolu_1", "bash",
+                objectMapper.readTree("{\"command\":\"ls\"}"), 5_000L, relayed::add);
+
+        assertThat(result.ok()).isTrue();
+        assertThat(result.exitCode()).isZero();
+        // L'agrégat conserve l'entrelacement réel des deux flux, dans l'ordre des seq.
+        assertThat(result.streamed()).isEqualTo("un\ndeux\n");
+        assertThat(relayed).containsExactly("un\n", "deux\n");
+    }
+
+    @Test
+    void aFailingRelayNeverBreaksTheCall() throws Exception {
+        withLocalBashRunner();
+        doAnswer(invocation -> {
+            dispatcher.onFrame(identity, "tool_stream", objectMapper.readTree(
+                    "{\"type\":\"tool_stream\",\"id\":\"toolu_1\",\"seq\":0,\"stream\":\"stdout\",\"chunk\":\"x\"}"));
+            dispatcher.onFrame(identity, "tool_result", objectMapper.readTree(
+                    "{\"type\":\"tool_result\",\"id\":\"toolu_1\",\"ok\":true,\"content\":\"\",\"exitCode\":0}"));
+            return null;
+        }).when(session).sendMessage(any(TextMessage.class));
+
+        // Le client SSE est parti : le relais lève, la commande continue quand même d'être agrégée.
+        RunnerCallResult result = dispatcher.call(workspaceId, "toolu_1", "bash",
+                objectMapper.readTree("{\"command\":\"ls\"}"), 5_000L, chunk -> {
+                    throw new IllegalStateException("flux client fermé");
+                });
+
+        assertThat(result.ok()).isTrue();
+        assertThat(result.streamed()).isEqualTo("x");
+    }
+
+    @Test
+    void cancelWorkspaceSendsAToolCancelForEachInFlightCall() throws Exception {
+        withLocalBashRunner();
+        CountDownLatch emitted = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            emitted.countDown();
+            return null; // le runner ne répond pas : l'appel reste en vol
+        }).when(session).sendMessage(any(TextMessage.class));
+
+        Future<RunnerCallResult> pending = executor.submit(() -> dispatcher.call(workspaceId,
+                "toolu_1", "bash", objectMapper.readTree("{\"command\":\"sleep 300\"}"), 5_000L, null));
+        assertThat(emitted.await(5, TimeUnit.SECONDS)).isTrue();
+
+        int cancelled = dispatcher.cancelWorkspace(workspaceId, "user_interrupt");
+
+        assertThat(cancelled).isEqualTo(1);
+        ArgumentCaptor<TextMessage> frames = ArgumentCaptor.forClass(TextMessage.class);
+        verify(session, org.mockito.Mockito.atLeast(2)).sendMessage(frames.capture());
+        JsonNode cancel = objectMapper.readTree(frames.getAllValues().get(1).getPayload());
+        assertThat(cancel.path("type").asText()).isEqualTo("tool_cancel");
+        assertThat(cancel.path("id").asText()).isEqualTo("toolu_1");
+        assertThat(cancel.path("reason").asText()).isEqualTo("user_interrupt");
+        pending.cancel(true);
+    }
+
+    @Test
+    void cancelWorkspaceIgnoresCallsOfAnotherWorkspace() throws Exception {
+        withLocalBashRunner();
+        CountDownLatch emitted = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            emitted.countDown();
+            return null;
+        }).when(session).sendMessage(any(TextMessage.class));
+        Future<RunnerCallResult> pending = executor.submit(() -> dispatcher.call(workspaceId,
+                "toolu_1", "bash", objectMapper.readTree("{\"command\":\"ls\"}"), 5_000L, null));
+        assertThat(emitted.await(5, TimeUnit.SECONDS)).isTrue();
+
+        // Isolation : le workspace d'un autre utilisateur n'annule rien ici.
+        assertThat(dispatcher.cancelWorkspace(UUID.randomUUID(), "user_interrupt")).isZero();
+        pending.cancel(true);
+    }
 }

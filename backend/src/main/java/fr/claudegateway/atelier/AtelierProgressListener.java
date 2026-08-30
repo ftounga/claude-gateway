@@ -25,6 +25,18 @@ public interface AtelierProgressListener {
     /** Notifie un commentaire textuel de l'assistant pour un tour (avant l'exécution de ses outils). */
     void onText(String text);
 
+    /**
+     * Notifie un fragment de <b>sortie de commande</b> reçu du runner (F-38 / SF-38-07), au fil de
+     * l'eau : c'est ce qui fait défiler {@code stdout}/{@code stderr} dans la session pendant qu'une
+     * commande tourne, au lieu de tout découvrir à la fin.
+     *
+     * <p>Volontairement <b>par défaut neutre</b> : additif, les implémentations antérieures (mode
+     * synchrone, tests) restent valides sans changement.</p>
+     */
+    default void onOutput(String chunk) {
+        // Aucun relais : la sortie reste dans l'agrégat rendu au modèle.
+    }
+
     /** Listener neutre : n'émet rien (mode synchrone historique). */
     AtelierProgressListener NOOP = new AtelierProgressListener() {
         @Override

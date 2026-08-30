@@ -97,6 +97,7 @@ describe('AtelierComponent', () => {
       'resetAgentSession',
       'renameWorkspace',
       'interruptAgentSession',
+      'interruptChat',
       'setAskBeforeBash',
       'confirmToolUse',
       'getHistory',
@@ -440,6 +441,49 @@ describe('AtelierComponent', () => {
     expect(live!.steps.map((s) => s.type)).toEqual(['read', 'write']);
     expect(live!.text).toBe('Voilà ce que je fais.');
     expect(component.submitting()).toBeTrue();
+  });
+
+  it("attache la sortie d'une commande à l'étape bash en cours (F-38 / SF-38-07)", () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onAction({ type: 'read', path: 'a.txt' });
+      handlers.onAction({ type: 'bash', path: 'npm test' });
+      handlers.onOutput?.('ok 1\n');
+      handlers.onOutput?.('ok 2\n');
+      return Promise.resolve();
+    });
+
+    component.draft.set('lance les tests');
+    component.send();
+
+    const live = component.streaming();
+    // La sortie appartient à l'étape qui la produit, pas au tour entier.
+    expect(live!.steps[0].output).toBeUndefined();
+    expect(live!.steps[1].output).toBe('ok 1\nok 2\n');
+  });
+
+  it("demande l'interruption du tour Assistant en cours (F-38 / SF-38-07)", () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    service.interruptChat.and.returnValue(of(void 0));
+    service.streamChat.and.callFake(() => Promise.resolve()); // tour laissé en cours
+    component.draft.set('lance');
+    component.send();
+
+    component.interruptAssistantRun();
+
+    expect(service.interruptChat).toHaveBeenCalledWith('w1');
+    expect(snackBar.open).toHaveBeenCalled();
+  });
+
+  it("n'interrompt rien quand aucun tour n'est en cours (F-38 / SF-38-07)", () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+
+    component.interruptAssistantRun();
+
+    expect(service.interruptChat).not.toHaveBeenCalled();
   });
 
   it('does not send when the draft is blank', () => {

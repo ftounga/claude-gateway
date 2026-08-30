@@ -4,10 +4,10 @@ Le runner est un **client léger** posé sur la machine où vit le projet. Il ou
 connexion **sortante** WSS/443 vers la gateway : aucun port entrant, aucun installeur, aucun droit
 administrateur, aucun service en arrière-plan.
 
-> Périmètre livré : appairage, connexion, heartbeat, reconnexion, arrêt propre (**SF-38-03**) et
-> **outils fichiers** `list_files` / `read_file` / `write_file` / `search_files` (**SF-38-04**).
-> L'exécution de commandes (`bash`, SF-38-07) et les exclusions `.runnerignore` (SF-38-10) arrivent
-> ensuite ; d'ici là le runner répond `unsupported_tool` à `bash`.
+> Périmètre livré : appairage, connexion, heartbeat, reconnexion, arrêt propre (**SF-38-03**),
+> **outils fichiers** `list_files` / `read_file` / `write_file` / `search_files` (**SF-38-04**),
+> exclusions `.runnerignore` (**SF-38-10**) et **exécution de commandes** `bash` (**SF-38-07**,
+> désactivée par défaut — voir `--allow-bash`).
 
 ## Construire
 
@@ -44,8 +44,44 @@ inutile tant que le jeton est valide et non révoqué.
 | `--code` | `CLAUDE_RUNNER_CODE` | — (requis au premier appairage) | Code d'appairage à usage unique |
 | `--label` | `CLAUDE_RUNNER_LABEL` | aucun | Libellé du jeton affiché dans l'UI (≤ 100 caractères) |
 | `--heartbeat-interval` | `CLAUDE_RUNNER_HEARTBEAT_INTERVAL` | `30` (s) | Période du heartbeat |
+| `--allow-bash` | `CLAUDE_RUNNER_ALLOW_BASH` | **`false`** | Autorise l'exécution de commandes (`bash`) sur cette machine |
 
-L'argument CLI prime toujours sur la variable d'environnement.
+L'argument CLI prime toujours sur la variable d'environnement. `--allow-bash` est un **drapeau** :
+il s'écrit seul (il n'avale pas l'argument suivant) ; `--allow-bash=false` le remet à l'état par
+défaut.
+
+## Exécution de commandes (SF-38-07)
+
+**Désactivée par défaut.** Démarrer un runner autorise l'assistant à lire et écrire les fichiers de
+la racine ; exécuter des commandes arbitraires est un cran au-dessus, et c'est **la machine** qui le
+décide — pas la gateway :
+
+```bash
+java -jar claude-runner.jar --gateway … --workspace … --allow-bash
+```
+
+Sans ce drapeau, le runner n'annonce pas la capacité `bash` et la gateway refuse l'appel **avant de
+l'émettre**, avec un message qui rappelle comment l'activer.
+
+Une fois activée :
+
+| Outil | Entrée | Sortie |
+|---|---|---|
+| `bash` | `command`, `cwd` (optionnel, relatif) | sortie diffusée **ligne à ligne** + code de sortie |
+
+- La commande est passée à `/bin/sh -c` (`cmd.exe /c` sous Windows) et tourne **avec vos droits**,
+  dans la racine `--workspace` par défaut. Un `cwd` demandé passe par la même garde de confinement
+  que les fichiers : ni `..`, ni chemin absolu, ni dossier exclu.
+- `stdout` et `stderr` sont pompés sur **deux threads dédiés** et diffusés au fil de l'eau ; le
+  heartbeat continue pendant une commande longue.
+- `stdin` est fermé au démarrage : une commande qui lit l'entrée standard reçoit EOF au lieu de
+  pendre jusqu'au délai.
+- Bornes : **une seule** commande à la fois (`denied` sinon), 8 192 caractères de ligne de commande,
+  256 Kio de sortie diffusée par appel (au-delà `truncated`), délai de **120 s** par défaut, ramené
+  au temps restant du tour.
+- Un code de sortie non nul est rendu tel quel à l'assistant : la commande a tourné, son échec est
+  une information.
+- Le bouton **Interrompre** de l'Atelier tue le processus (`destroyForcibly`) et arrête le tour.
 
 ## Outils fichiers et confinement (SF-38-04)
 

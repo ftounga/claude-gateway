@@ -387,8 +387,28 @@
                       <mat-icon class="action-icon">{{ stepIcon(step.type) }}</mat-icon>
                       <span class="action-label">{{ stepLabel(step) }}</span>
                     </li>
+                    <!-- Sortie de la commande, au fil de l'eau (F-38 / SF-38-07). -->
+                    @if (step.output) {
+                      <li class="step-output-item">
+                        <pre class="step-output">{{ step.output }}</pre>
+                      </li>
+                    }
                   }
                 </ul>
+              }
+              <!-- Interruption du tour Assistant (F-38 / SF-38-07) : indispensable en cible RUNNER,
+                   où une commande tourne réellement sur la machine de l'utilisateur. -->
+              @if (runnerTarget()) {
+                <button
+                  mat-stroked-button
+                  type="button"
+                  class="interrupt-assistant"
+                  [disabled]="interrupting()"
+                  (click)="interruptAssistantRun()"
+                >
+                  <mat-icon>stop_circle</mat-icon>
+                  Interrompre
+                </button>
               }
               @if (live.text.length > 0) {
                 <div class="message-content markdown-body" [innerHTML]="live.text | markdown"></div>

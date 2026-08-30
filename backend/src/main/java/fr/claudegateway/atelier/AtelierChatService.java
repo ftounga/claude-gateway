@@ -35,6 +35,20 @@ public class AtelierChatService {
 
     /** Garde-fou anti-boucle : nombre maximal d'allers-retours par message. */
     private static final int MAX_ITERATIONS = 12;
+    /**
+     * Budget de temps d'un tour (F-38 / SF-38-07). Sans lui, 12 itérations × 120 s de {@code bash}
+     * dépassent largement la durée de vie du flux SSE : l'émetteur se clôt, l'écran se fige, et la
+     * boucle continue d'exécuter des commandes sur la machine de l'utilisateur. Le budget garantit
+     * l'inverse : la boucle rend la main <b>avant</b> que le flux expire.
+     */
+    static final long TURN_BUDGET_MS = 600_000L;
+    /** Longueur de la commande relayée à l'écran comme étape de progression (contrat §3). */
+    private static final int STEP_COMMAND_CHARS = 200;
+    /** Agrégat de sortie de commande conservé et rendu au modèle (contrat §5), en octets. */
+    private static final int MAX_BASH_OUTPUT_BYTES = 131_072;
+    static final String INTERRUPTED_REPLY = "J'ai arrêté le travail en cours à ta demande.";
+    static final String BUDGET_REACHED_REPLY =
+            "Le temps imparti à ce message est écoulé ; relance-moi pour continuer.";
     /** Garde-fou : longueur max de la consigne système (CLAUDE.md + skills). */
     private static final int SYSTEM_MAX_CHARS = 40_000;
     private static final List<String> SKILL_PREFIXES = List.of(".claude/skills/", "skills/");
@@ -47,12 +61,22 @@ public class AtelierChatService {
     private final ModelCatalog modelCatalog;
     private final fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService;
     private final RunnerToolGateway runnerToolGateway;
+    private final fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher;
+
+    /**
+     * Tours pour lesquels une interruption a été demandée (F-38 / SF-38-07, même geste que F-32).
+     * Clef {@code userId:workspaceId} : l'isolation est déjà garantie par {@code requireOwned}, la
+     * clef composite évite en plus qu'une marque déborde d'un utilisateur à l'autre. Remise à zéro à
+     * l'ouverture de chaque tour, pour qu'une interruption arrivée hors run ne tue pas le suivant.
+     */
+    private final java.util.Set<String> interruptedTurns = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public AtelierChatService(WorkspaceService workspaceService, AtelierMessageRepository messageRepository,
             AiAgentProvider agentProvider, ByokKeyService byokKeyService, QuotaService quotaService,
             ModelCatalog modelCatalog,
             fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService,
-            RunnerToolGateway runnerToolGateway) {
+            RunnerToolGateway runnerToolGateway,
+            fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher) {
         this.workspaceService = workspaceService;
         this.messageRepository = messageRepository;
         this.agentProvider = agentProvider;
@@ -61,6 +85,7 @@ public class AtelierChatService {
         this.modelCatalog = modelCatalog;
         this.gitWorkspaceService = gitWorkspaceService;
         this.runnerToolGateway = runnerToolGateway;
+        this.runnerCallDispatcher = runnerCallDispatcher;
     }
 
     /**
@@ -109,6 +134,10 @@ public class AtelierChatService {
         if (hosted) {
             quotaService.assertWithinQuota(userId);
         }
+        // Une interruption demandée alors qu'aucun tour ne tournait ne doit pas tuer celui-ci
+        // (même précaution que F-32 SF-32-01).
+        interruptedTurns.remove(turnKey(userId, workspaceId));
+        long deadline = System.currentTimeMillis() + TURN_BUDGET_MS;
         String userText = rawMessage.trim();
 
         // Historique de l'atelier (texte) + nouveau message utilisateur.
@@ -123,7 +152,7 @@ public class AtelierChatService {
                 .workspaceId(workspaceId).userId(userId).role("USER").content(userText).build());
 
         String system = buildSystemPrompt(userId, workspace);
-        List<AgentTool> tools = buildTools();
+        List<AgentTool> tools = buildTools(workspace);
         String model = modelCatalog.defaultModel();
 
         List<AtelierAction> actions = new ArrayList<>();
@@ -132,6 +161,16 @@ public class AtelierChatService {
         String finalText = "";
 
         for (int iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+            if (interruptedTurns.remove(turnKey(userId, workspaceId))) {
+                finalText = INTERRUPTED_REPLY;
+                break;
+            }
+            if (System.currentTimeMillis() >= deadline) {
+                // Frontière sûre : on s'arrête ici plutôt que de laisser tourner des commandes
+                // derrière un flux SSE déjà expiré.
+                finalText = BUDGET_REACHED_REPLY;
+                break;
+            }
             AgentTurn turn = agentProvider.nextTurn(
                     new AgentTurnRequest(model, system, messages, tools, apiKey));
             inputTokens += turn.inputTokens();
@@ -164,7 +203,7 @@ public class AtelierChatService {
                 if (step != null) {
                     listener.onAction(step);
                 }
-                ToolOutcome outcome = executeTool(userId, workspace, callId, call);
+                ToolOutcome outcome = executeTool(userId, workspace, callId, call, listener, deadline);
                 if (outcome.action() != null) {
                     actions.add(outcome.action());
                 }
@@ -173,6 +212,12 @@ public class AtelierChatService {
             messages.add(AgentMessage.assistant(assistantBlocks));
             messages.add(AgentMessage.toolResults(toolResults));
 
+            if (interruptedTurns.remove(turnKey(userId, workspaceId))) {
+                // Interruption arrivée pendant les outils de ce tour : on s'arrête sans rappeler le
+                // fournisseur — l'appel runner en vol a déjà reçu son tool_cancel.
+                finalText = INTERRUPTED_REPLY;
+                break;
+            }
             if (iteration == MAX_ITERATIONS - 1) {
                 finalText = (turn.text() == null || turn.text().isBlank())
                         ? "J'ai atteint la limite d'étapes pour ce message ; relance-moi pour continuer."
@@ -189,6 +234,30 @@ public class AtelierChatService {
                 .content(finalText == null ? "" : finalText).build());
 
         return new AtelierChatResult(finalText, actions, assistant.getId());
+    }
+
+    /**
+     * Demande l'interruption du tour en cours sur ce workspace (F-38 / SF-38-07, même geste que
+     * F-32 SF-32-01). Deux effets, dans cet ordre :
+     * <ol>
+     *   <li>un {@code tool_cancel(user_interrupt)} part vers le runner, qui <b>tue la commande</b>
+     *       en cours et émet quand même sa trame terminale (contrat §2.5) ;</li>
+     *   <li>le tour est marqué : la boucle s'arrête à la <b>frontière sûre</b> suivante plutôt que
+     *       de relancer le fournisseur.</li>
+     * </ol>
+     *
+     * <p>Idempotent et silencieux si rien ne tourne : la marque est de toute façon effacée à
+     * l'ouverture du prochain tour. Isolation : {@code requireOwned} d'abord, toujours (404 sinon).</p>
+     */
+    public void interruptChat(UUID userId, UUID workspaceId) {
+        workspaceService.requireOwned(userId, workspaceId);
+        interruptedTurns.add(turnKey(userId, workspaceId));
+        runnerCallDispatcher.cancelWorkspace(workspaceId, "user_interrupt");
+    }
+
+    /** Clef de marque d'interruption : l'utilisateur ET le workspace, jamais l'un sans l'autre. */
+    private static String turnKey(UUID userId, UUID workspaceId) {
+        return userId + ":" + workspaceId;
     }
 
     /** Historique des messages de l'atelier (isolation {@code user_id}). */
@@ -210,8 +279,20 @@ public class AtelierChatService {
             case "write_file" -> new AtelierProgressListener.AtelierStepEvent("write", arg(input, "path"));
             case "list_files" -> new AtelierProgressListener.AtelierStepEvent("list", null);
             case "search_files" -> new AtelierProgressListener.AtelierStepEvent("search", arg(input, "query"));
+            // F-38 / SF-38-07 : la commande elle-même est l'information utile à l'écran, tronquée
+            // pour qu'un one-liner de 3 000 caractères ne noie pas la liste des étapes (contrat §3).
+            case "bash" -> new AtelierProgressListener.AtelierStepEvent("bash",
+                    shorten(arg(input, "command"), STEP_COMMAND_CHARS));
             default -> null;
         };
+    }
+
+    /** Tronque un texte à {@code max} caractères, sans marqueur : c'est une étiquette, pas un contenu. */
+    private static String shorten(String value, int max) {
+        if (value == null) {
+            return null;
+        }
+        return value.length() <= max ? value : value.substring(0, max);
     }
 
     /** Extrait un argument texte d'un input d'outil (ou {@code null} si absent). */
@@ -224,9 +305,10 @@ public class AtelierChatService {
         return call.id() == null || call.id().isBlank() ? UUID.randomUUID().toString() : call.id();
     }
 
-    private ToolOutcome executeTool(UUID userId, Workspace workspace, String callId, AgentToolCall call) {
+    private ToolOutcome executeTool(UUID userId, Workspace workspace, String callId, AgentToolCall call,
+            AtelierProgressListener listener, long deadline) {
         if (workspace.isRunnerTarget()) {
-            return executeToolOnRunner(workspace.getId(), callId, call);
+            return executeToolOnRunner(workspace.getId(), callId, call, listener, deadline);
         }
         return executeToolOnStorage(userId, workspace.getId(), call);
     }
@@ -237,7 +319,8 @@ public class AtelierChatService {
      * en résultat d'outil pour le modèle, dans les formats exacts du mode sandbox (contrat §3) — le
      * prompt ne doit pas dériver selon la cible d'exécution.
      */
-    private ToolOutcome executeToolOnRunner(UUID workspaceId, String callId, AgentToolCall call) {
+    private ToolOutcome executeToolOnRunner(UUID workspaceId, String callId, AgentToolCall call,
+            AtelierProgressListener listener, long deadline) {
         try {
             JsonNode input = call.input();
             return switch (call.name()) {
@@ -259,11 +342,56 @@ public class AtelierChatService {
                 }
                 case "search_files" -> textOutcome(
                         runnerToolGateway.searchFiles(workspaceId, callId, requiredArg(input, "query")), null);
+                case "bash" -> {
+                    String command = requiredArg(input, "command");
+                    // Le délai est ramené au budget de tour restant : une commande ne doit jamais
+                    // pouvoir survivre au tour qui l'a lancée.
+                    long remaining = deadline - System.currentTimeMillis();
+                    RunnerCallResult result = runnerToolGateway.bash(workspaceId, callId, command,
+                            input.path("cwd").asText(null), remaining, listener::onOutput);
+                    yield bashOutcome(command, result);
+                }
                 default -> ToolOutcome.error("Outil inconnu : " + call.name());
             };
         } catch (RuntimeException ex) {
             return ToolOutcome.error(ex.getMessage() != null ? ex.getMessage() : "Opération refusée.");
         }
+    }
+
+    /**
+     * Assemble le résultat d'une commande pour le modèle (F-38 / SF-38-07, contrat §3) :
+     * {@code "$ <commande>\n<sortie entrelacée>\n[code de sortie: N]"}.
+     *
+     * <p>La sortie vient des trames {@code tool_stream} — dans leur ordre d'émission, donc avec
+     * l'entrelacement réel de {@code stdout} et {@code stderr} — et non du {@code content} du
+     * {@code tool_result}, qui est vide pour {@code bash}. Elle est bornée en <b>octets</b> : la
+     * tête est conservée, c'est là que se trouve la commande qui a échoué.</p>
+     *
+     * <p>Un code de sortie non nul reste un <b>succès d'appel</b> : la commande a tourné, son échec
+     * est une information que le modèle doit lire, pas une panne de la gateway.</p>
+     */
+    private ToolOutcome bashOutcome(String command, RunnerCallResult result) {
+        if (!result.ok()) {
+            return ToolOutcome.error(result.errorMessage());
+        }
+        boolean truncated = result.streamTruncated() || result.truncated();
+        String output = result.streamed() == null ? "" : result.streamed();
+        byte[] bytes = output.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (bytes.length > MAX_BASH_OUTPUT_BYTES) {
+            output = new String(bytes, 0, MAX_BASH_OUTPUT_BYTES, java.nio.charset.StandardCharsets.UTF_8);
+            truncated = true;
+        }
+        StringBuilder text = new StringBuilder("$ ").append(command).append('\n').append(output);
+        if (truncated) {
+            text.append("\n… (sortie tronquée)");
+        }
+        if (text.charAt(text.length() - 1) != '\n') {
+            text.append('\n');
+        }
+        text.append("[code de sortie: ")
+                .append(result.exitCode() == null ? "inconnu" : result.exitCode())
+                .append(']');
+        return new ToolOutcome(text.toString(), false, null);
     }
 
     /** Traduit une issue d'appel runner en résultat d'outil dont le contenu est rendu verbatim. */
@@ -336,8 +464,29 @@ public class AtelierChatService {
         return result.length() == 0 ? "Aucun résultat." : result.toString();
     }
 
-    private List<AgentTool> buildTools() {
+    /**
+     * Outils exposés au modèle. Les quatre outils fichiers sont inconditionnels ; {@code bash}
+     * n'apparaît qu'en cible <b>{@code RUNNER}</b> (F-38 / SF-38-07).
+     *
+     * <p>La condition n'est pas cosmétique : en cible {@code SANDBOX}, il n'existe aucun endroit où
+     * exécuter une commande — le backend est une gateway, il n'exécute rien lui-même. Exposer
+     * l'outil reviendrait à promettre au modèle une capacité qui n'aboutirait qu'à des erreurs.</p>
+     */
+    List<AgentTool> buildTools(Workspace workspace) {
         Map<String, Object> stringProp = Map.of("type", "string");
+        List<AgentTool> tools = new ArrayList<>(fileTools(stringProp));
+        if (workspace.isRunnerTarget()) {
+            tools.add(new AgentTool("bash",
+                    "Exécute une commande shell sur la machine connectée (runner), depuis la racine "
+                            + "du projet. Renvoie la sortie (stdout et stderr) et le code de sortie.",
+                    Map.of("type", "object",
+                            "properties", Map.of("command", stringProp, "cwd", stringProp),
+                            "required", List.of("command"))));
+        }
+        return List.copyOf(tools);
+    }
+
+    private List<AgentTool> fileTools(Map<String, Object> stringProp) {
         return List.of(
                 new AgentTool("list_files", "Liste tous les fichiers du projet (chemins relatifs).",
                         Map.of("type", "object", "properties", Map.of())),

@@ -47,6 +47,7 @@ class AtelierChatServiceTest {
     @Mock private fr.claudegateway.git.GitHubClient gitHubClient;
     /** Cible SANDBOX dans tout ce fichier : le runner ne doit jamais être sollicité (F-38 / SF-38-05). */
     @Mock private fr.claudegateway.runner.exec.RunnerToolGateway runnerToolGateway;
+    @Mock private fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher;
 
     private StubAiAgentProvider agentProvider;
     private AtelierChatService service;
@@ -79,7 +80,7 @@ class AtelierChatServiceTest {
                 byokKeyService, quotaService, modelCatalog,
                 new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
-                runnerToolGateway);
+                runnerToolGateway, runnerCallDispatcher);
     }
 
     /** Workspace d'archive possédé : la source par défaut, celle de tous les tests de ce fichier. */
