@@ -54,11 +54,9 @@ public class GitCommitService {
      * @param workspaceId projet visé
      * @param branch      branche cible, jamais la branche par défaut du projet
      * @param message     message de commit
-     * @param files       fichiers à publier (chemins déjà validés par le DTO)
      * @return la branche, le commit, et la pull request ouverte s'il en existe une
      */
-    public CommitPublication commit(UUID userId, UUID workspaceId, String branch, String message,
-            List<GitFileEdit> files) {
+    public CommitPublication commit(UUID userId, UUID workspaceId, String branch, String message) {
         // 1. Isolation d'abord : le workspace d'un autre utilisateur est introuvable.
         Workspace workspace = workspaceService.requireOwned(userId, workspaceId);
 
@@ -90,6 +88,14 @@ public class GitCommitService {
                             + " » n'est pas permis : choisissez une autre branche.");
         }
 
+        // Tout ce qui vit dans le stockage d'un projet Git est du travail NON PUBLIÉ : le clone vient
+        // de la branche, et le stockage n'est alimenté que par la resynchronisation des tours de
+        // l'agent et par les éditions de l'écran. Publier, c'est donc publier le stockage — quelle
+        // que soit l'origine du travail (SF-31-12). C'est ce qui unifie les deux chemins d'écriture.
+        List<GitFileEdit> files = unpublishedFiles(userId, workspaceId);
+        if (files.isEmpty()) {
+            throw new GitNothingToPublishException("Aucune modification à publier sur ce projet.");
+        }
         GitCommitResult result = gitHubClient.commitFiles(token, workspace.getGitOwner(),
                 workspace.getGitRepo(), base, target, message, files);
         log.info("Commit publié depuis l'écran : workspace={} branche={} fichiers={}",
@@ -98,6 +104,24 @@ public class GitCommitService {
         Optional<GitPullRequest> pullRequest =
                 gitHubClient.findOpenPullRequest(token, workspace.getGitOwner(), workspace.getGitRepo(), target);
         return new CommitPublication(result, compareUrl(workspace, base, target), pullRequest.orElse(null));
+    }
+
+    /**
+     * Fichiers non publiés d'un projet Git : le contenu du stockage.
+     *
+     * @param userId      propriétaire (isolation)
+     * @param workspaceId projet visé
+     * @return les fichiers et leur contenu, prêts à être commités
+     */
+    public List<GitFileEdit> unpublishedFiles(UUID userId, UUID workspaceId) {
+        List<GitFileEdit> files = new java.util.ArrayList<>();
+        for (String path : workspaceService.tree(userId, workspaceId)) {
+            if (path.endsWith("/.gitkeep") || path.equals(".gitkeep")) {
+                continue; // marqueur de dossier vide, sans intérêt dans un dépôt
+            }
+            files.add(new GitFileEdit(path, workspaceService.readFile(userId, workspaceId, path)));
+        }
+        return List.copyOf(files);
     }
 
     /**

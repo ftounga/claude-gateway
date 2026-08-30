@@ -140,8 +140,13 @@ public class GitWorkspaceService {
     }
 
     /**
-     * Refuse toute écriture sur un projet Git (SF-31-03) : écrire dans le stockage pendant que l'agent
-     * travaille sur le clone créerait deux vérités divergentes, silencieusement.
+     * Refuse les gestes de <b>structure</b> sur un projet Git : import, suppression, renommage, export.
+     *
+     * <p>SF-31-03 refusait aussi l'<b>édition de fichier</b>, au motif qu'écrire dans le stockage
+     * pendant que l'agent travaille sur le clone créerait deux vérités divergentes. Ce motif est levé
+     * par SF-31-12/13 : le clone est désormais <b>alimenté</b> par le stockage à son montage, au lieu
+     * de l'ignorer. Le stockage porte le travail en cours — de l'écran comme de l'agent — et la
+     * branche porte le publié.</p>
      *
      * @param workspace workspace concerné
      * @throws GitWorkspaceReadOnlyException si le workspace est adossé à un dépôt

@@ -143,10 +143,11 @@ export class AtelierFilesComponent implements OnInit {
 
 
   /**
-   * Modifications retenues, non encore publiées (F-31 / SF-31-09) : chemin → contenu.
+   * Fichiers non publiés touchés depuis cet écran (F-31 / SF-31-09, amendé par SF-31-12).
    *
-   * <p>Elles vivent le temps de l'écran. Les persister donnerait l'illusion d'un brouillon
-   * sauvegardé, alors qu'aucun serveur ne les connaît tant que la publication n'a pas eu lieu.</p>
+   * <p>Le contenu vit désormais dans le <b>stockage</b>, comme celui que Claude produit : c'est lui
+   * qui fait foi, et l'écran le relit à chaque ouverture. Cette carte ne sert plus qu'à compter et à
+   * avertir — d'où le fait qu'elle puisse être vidée sans rien perdre.</p>
    */
   readonly pendingEdits = signal<ReadonlyMap<string, string>>(new Map());
 
@@ -272,14 +273,6 @@ export class AtelierFilesComponent implements OnInit {
   /** Charge le contenu d'un fichier dans l'aperçu éditable (réutilise `getFile`). */
   openFile(path: string): void {
     this.selectedPath.set(path);
-    const pending = this.pendingEdits().get(path);
-    if (pending !== undefined) {
-      // Une modification retenue prime sur la version de la branche : sinon l'utilisateur verrait
-      // son propre travail disparaître en rouvrant le fichier.
-      this.fileContent.set(pending);
-      this.fileLoading.set(false);
-      return;
-    }
     this.fileLoading.set(true);
     this.atelier.getFile(this.workspaceId(), path).subscribe({
       next: (file) => {
@@ -305,21 +298,22 @@ export class AtelierFilesComponent implements OnInit {
     if (!path || this.fileSaving()) {
       return;
     }
-    if (this.readOnly()) {
-      const next = new Map(this.pendingEdits());
-      next.set(path, this.fileContent());
-      this.pendingEdits.set(next);
-      this.snackBar.open(
-        `Modification retenue — ${next.size} fichier(s) à publier.`,
-        'Fermer',
-        { duration: 2500 },
-      );
-      return;
-    }
     this.fileSaving.set(true);
     this.atelier.writeFile(this.workspaceId(), path, this.fileContent()).subscribe({
       next: () => {
         this.fileSaving.set(false);
+        if (this.readOnly()) {
+          // Projet Git : le fichier vient de rejoindre le travail non publié (SF-31-12).
+          const next = new Map(this.pendingEdits());
+          next.set(path, this.fileContent());
+          this.pendingEdits.set(next);
+          this.snackBar.open(
+            `Enregistré — ${next.size} fichier(s) à publier.`,
+            'Fermer',
+            { duration: 2500 },
+          );
+          return;
+        }
         this.snackBar.open('Fichier enregistré.', 'Fermer', { duration: 2000 });
       },
       error: (err) => {
@@ -358,16 +352,18 @@ export class AtelierFilesComponent implements OnInit {
   }
 
   private sendCommit(branch: string, message: string): void {
-    const files = [...this.pendingEdits()].map(([path, content]) => ({ path, content }));
+    // Le serveur publie TOUT le travail non publié du projet — vos éditions et celles de Claude
+    // confondues (SF-31-12). L'écran n'envoie donc plus de contenus, seulement où et sous quel nom.
+    const count = this.pendingCount();
     this.publishing.set(true);
-    this.atelier.commitGitFiles(this.workspaceId(), branch, message, files).subscribe({
+    this.atelier.commitGitFiles(this.workspaceId(), branch, message).subscribe({
       next: (result) => {
         this.publishing.set(false);
         this.pendingEdits.set(new Map());
         const link = result.pullRequestUrl ?? result.compareUrl;
         this.snackBar
           .open(
-            `${files.length} fichier(s) publié(s) sur ${result.branch}.`,
+            `Publié sur ${result.branch}.`,
             result.pullRequestUrl ? 'Voir la pull request' : 'Voir les modifications',
             { duration: 12000 },
           )

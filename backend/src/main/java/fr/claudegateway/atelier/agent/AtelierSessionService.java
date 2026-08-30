@@ -576,12 +576,35 @@ public class AtelierSessionService implements RelaySessionInterruptTarget {
                         "Aucun jeton GitHub enregistré : ajoutez-en un dans vos réglages pour ouvrir ce projet."));
         RepositoryMount repository = new RepositoryMount(
                 workspace.getGitRepoUrl(), token, GIT_MOUNT_PATH, workspace.getGitBranch());
+
+        // Travail non publié du stockage déposé PAR-DESSUS le clone (F-31 / SF-31-13).
+        //
+        // Sans cela, la circulation restait à sens unique : Claude écrivait, la resynchronisation
+        // portait son travail au stockage, l'écran le voyait — mais ce que l'utilisateur éditait
+        // depuis l'écran n'atteignait jamais Claude, qui repartait du dépôt à chaque session.
+        //
+        // Les fichiers sont montés sur le même chemin que le clone : le montage écrase la version
+        // de la branche pour ces fichiers-là, et elle seule. C'est exactement la sémantique voulue —
+        // le stockage porte le travail en cours, la branche porte le publié.
+        List<FileMount> unpublished = new ArrayList<>();
+        for (String path : workspaceService.tree(userId, workspace.getId())) {
+            if (path.endsWith("/.gitkeep") || path.equals(".gitkeep")) {
+                continue;
+            }
+            String content = workspaceService.readFile(userId, workspace.getId(), path);
+            String fileId = provider.uploadFile(uploadFilename(path), content.getBytes(UTF_8));
+            unpublished.add(new FileMount(fileId, GIT_MOUNT_PATH + "/" + path));
+        }
+        if (!unpublished.isEmpty()) {
+            log.debug("Session Git {} : {} fichier(s) non publié(s) déposés sur le clone",
+                    workspace.getId(), unpublished.size());
+        }
         // Serveur MCP GitHub, s'il est disponible (F-31 / SF-31-05) : c'est lui qui permettra de
         // créer la pull request. Le vault s'attache ICI et nulle part ailleurs — le fournisseur
         // refuse d'en ajouter un à une session déjà ouverte.
         McpAccess mcpAccess = mcpVaultService.resolveAccess(userId).orElse(null);
         ManagedSession session = provider.createSession(
-                config.getAgentId(), config.getEnvironmentId(), List.of(), repository, systemOverride,
+                config.getAgentId(), config.getEnvironmentId(), unpublished, repository, systemOverride,
                 permissions, mcpAccess, sessionBudget(userId, delegation), delegation, modelChoice());
         markSessionOpened(workspace, session.id());
         return session.id();

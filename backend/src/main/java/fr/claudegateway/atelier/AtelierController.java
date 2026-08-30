@@ -110,7 +110,9 @@ public class AtelierController {
             @RequestBody WriteFileRequest request) {
         atelierAccess.requireAccess();
         UUID userId = currentUser.requireId();
-        gitWorkspaceService.requireWritable(workspaceService.requireOwned(userId, id));
+        // Projet Git compris (SF-31-12) : le stockage porte le travail en cours, de l'écran
+        // comme de l'agent, et la branche porte le publié. L'ancien refus est levé.
+        workspaceService.requireOwned(userId, id);
         workspaceService.writeFile(userId, id, path, request == null ? "" : request.content());
         return ResponseEntity.noContent().build();
     }
