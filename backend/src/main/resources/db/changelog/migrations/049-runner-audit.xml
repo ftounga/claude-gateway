@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      SF-38-08 — Journal d'audit du runner (F-38, décision D11). Une table neuve :
+
+      * runner_audit : une ligne par appel d'outil TERMINÉ sur la machine de l'utilisateur, et par
+        appel REFUSÉ avant émission (validation d'action). call_id est l'identifiant de corrélation
+        du contrat de messages (= tool_use du fournisseur) : la même clef relie la trame WebSocket,
+        l'événement SSE de confirmation et cette ligne.
+
+      Aucun contenu de fichier, aucune sortie de commande, aucun message d'erreur n'est stocké : seuls
+      le nom d'outil, la cible (chemin ou commande tronquée), l'issue et des mesures. Un message peut
+      contenir un fragment de chemin absolu ; un code d'erreur, jamais.
+
+      Aucune donnée existante n'est touchée (table neuve). Réversible : dropTable.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="049-runner-audit-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="runner_audit">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="token_id" type="uuid"/>
+            <column name="call_id" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="tool" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="target" type="varchar(1000)"/>
+            <column name="outcome" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="error_code" type="varchar(32)"/>
+            <column name="exit_code" type="int"/>
+            <column name="duration_ms" type="bigint"/>
+            <column name="bytes" type="bigint"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="runner_audit" indexName="idx_runner_audit_user_workspace_created">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+            <column name="created_at"/>
+        </createIndex>
+        <rollback><dropTable tableName="runner_audit"/></rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="049-runner-audit-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="runner_audit">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="token_id" type="uuid"/>
+            <column name="call_id" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="tool" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="target" type="varchar(1000)"/>
+            <column name="outcome" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="error_code" type="varchar(32)"/>
+            <column name="exit_code" type="int"/>
+            <column name="duration_ms" type="bigint"/>
+            <column name="bytes" type="bigint"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="runner_audit" indexName="idx_runner_audit_user_workspace_created">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+            <column name="created_at"/>
+        </createIndex>
+        <rollback><dropTable tableName="runner_audit"/></rollback>
+    </changeSet>
+
+</databaseChangeLog>

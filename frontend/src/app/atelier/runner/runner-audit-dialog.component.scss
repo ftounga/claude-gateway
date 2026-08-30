@@ -1,0 +1,108 @@
+// Journal d'activité du runner (F-38 / SF-38-08) — jetons du design system (--cg-*).
+
+.audit-intro {
+  margin: 0 0 var(--cg-space-3);
+  color: var(--cg-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.audit-error {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  margin: 0 0 var(--cg-space-2);
+  color: var(--cg-error);
+  font-size: 12px;
+}
+
+.audit-loading,
+.audit-empty {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  margin: 0;
+  padding: var(--cg-space-3) 0;
+  color: var(--cg-text-secondary);
+  font-size: 13px;
+}
+
+.audit-inline-icon {
+  width: 18px;
+  height: 18px;
+  font-size: 18px;
+}
+
+.audit-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.audit-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) 0;
+  border-top: 1px solid var(--cg-divider);
+}
+
+.audit-icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  font-size: 20px;
+  color: var(--cg-text-secondary);
+}
+
+.audit-row--failed .audit-icon {
+  color: var(--cg-error);
+}
+
+.audit-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.audit-action {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--cg-space-2);
+  font-size: 13px;
+  color: var(--cg-text-primary);
+}
+
+.audit-tool {
+  font-weight: 600;
+}
+
+.audit-target {
+  font-family: var(--cg-font-mono);
+  font-size: 12px;
+  color: var(--cg-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.audit-meta {
+  margin: var(--cg-space-1) 0 0;
+  font-size: 11px;
+  color: var(--cg-text-secondary);
+}
+
+.audit-detail {
+  font-family: var(--cg-font-mono);
+}
+
+.audit-outcome {
+  flex: none;
+  align-self: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cg-text-secondary);
+}
+
+.audit-outcome--failed {
+  color: var(--cg-error);
+}

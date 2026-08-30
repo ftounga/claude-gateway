@@ -7,6 +7,8 @@ import {
   AtelierChatResponse,
   AtelierMessage,
   FileContent,
+  RunnerAuditEntry,
+  RunnerKillResult,
   RunnerPairingCode,
   RunnerStatus,
   WorkspaceDetail,
@@ -530,5 +532,87 @@ describe('AtelierService', () => {
     req.flush(new Blob(['jar']));
 
     expect(received instanceof Blob).toBeTrue();
+  });
+  // ---- F-38 / SF-38-08 : garde-fous d'exécution et traçabilité ----
+
+  it("route confirm_request et confirm_resolved du flux Assistant (F-38 / SF-38-08)", async () => {
+    fakeSseFetch([
+      'event:confirm_request\ndata:{"toolUseId":"toolu_1","tool":"bash","detail":"npm test"}',
+      'event:confirm_resolved\ndata:{"toolUseId":"toolu_1","decision":"timeout"}',
+      'event:done\ndata:{"reply":"Fini.","actions":[],"messageId":"m1"}',
+    ]);
+    const seen: unknown[] = [];
+
+    await service.streamChat('w1', 'lance', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+      onConfirmRequest: (r) => seen.push(r),
+      onConfirmResolved: (r) => seen.push(r),
+    });
+
+    expect(seen).toEqual([
+      { toolUseId: 'toolu_1', tool: 'bash', detail: 'npm test' },
+      { toolUseId: 'toolu_1', decision: 'timeout' },
+    ]);
+  });
+
+  it("un appelant sans onConfirmRequest ignore l'événement sans erreur (F-38 / SF-38-08)", async () => {
+    // Additif : un écran qui ne gère pas la demande verra la commande refusée à l'échéance,
+    // jamais exécutée par défaut.
+    fakeSseFetch([
+      'event:confirm_request\ndata:{"toolUseId":"toolu_1","tool":"bash","detail":"ls"}',
+      'event:done\ndata:{"reply":"Fini.","actions":[],"messageId":"m1"}',
+    ]);
+    let reply = '';
+
+    await service.streamChat('w1', 'go', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: (d) => (reply = d.reply),
+      onError: () => undefined,
+    });
+
+    expect(reply).toBe('Fini.');
+  });
+
+  it("POSTe la décision du mode Assistant sur /chat/confirm (F-38 / SF-38-08)", () => {
+    service
+      .confirmChatToolUse('w1', { toolUseId: 'toolu_1', decision: 'deny', reason: 'non' })
+      .subscribe();
+
+    const req = httpMock.expectOne('/api/workspaces/w1/chat/confirm');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ toolUseId: 'toolu_1', decision: 'deny', reason: 'non' });
+    req.flush(null);
+  });
+
+  it('POSTe le coupe-circuit sur /runner/kill (F-38 / SF-38-08)', () => {
+    let result: RunnerKillResult | undefined;
+    service.killRunner('w1').subscribe((r) => (result = r));
+
+    const req = httpMock.expectOne('/api/workspaces/w1/runner/kill');
+    expect(req.request.method).toBe('POST');
+    req.flush({ revokedTokens: 2, disconnected: true, executionTarget: 'SANDBOX' });
+
+    expect(result).toEqual({ revokedTokens: 2, disconnected: true, executionTarget: 'SANDBOX' });
+  });
+
+  it("relit le journal d'activité du runner avec sa limite (F-38 / SF-38-08)", () => {
+    let entries: RunnerAuditEntry[] | undefined;
+    service.getRunnerAudit('w1', 100).subscribe((r) => (entries = r));
+
+    const req = httpMock.expectOne((r) => r.url === '/api/workspaces/w1/runner/audit');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.get('limit')).toBe('100');
+    req.flush([{
+      id: 'a1', callId: 'toolu_1', tool: 'bash', target: 'npm test', outcome: 'DENIED',
+      errorCode: 'denied', exitCode: null, durationMs: 0, bytes: null,
+      createdAt: '2026-08-30T10:00:00Z',
+    }]);
+
+    expect(entries?.length).toBe(1);
+    expect(entries?.[0].outcome).toBe('DENIED');
   });
 });

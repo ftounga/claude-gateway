@@ -188,6 +188,13 @@ public class WorkspaceService {
             throw new InvalidArchiveException("Cible d'exécution requise.");
         }
         workspace.setExecutionTarget(target);
+        if (target == WorkspaceExecutionTarget.RUNNER) {
+            // Décision D7 (F-38 / SF-38-08) : la validation avant exécution devient obligatoire dès
+            // que les commandes tournent sur une vraie machine. `always_allow` est acceptable dans
+            // un conteneur jetable, pas ici — on la pose donc au moment de la bascule, plutôt que de
+            // compter sur un réglage que l'utilisateur n'a jamais activé.
+            workspace.setAgentAskBeforeBash(true);
+        }
         return workspaceRepository.save(workspace);
     }
 

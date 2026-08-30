@@ -21,6 +21,8 @@ import {
   GitPullRequestResult,
   GitPushRequest,
   GitPushResult,
+  RunnerAuditEntry,
+  RunnerKillResult,
   RunnerPairingCode,
   RunnerStatus,
   WorkspaceDetail,
@@ -191,6 +193,10 @@ export class AtelierService {
       actions?: AtelierChatResponse['actions'];
       messageId?: string;
       output?: string;
+      toolUseId?: string;
+      tool?: string;
+      detail?: string;
+      decision?: string;
     };
     try {
       payload = JSON.parse(data);
@@ -205,6 +211,21 @@ export class AtelierService {
       handlers.onOutput?.(payload.output ?? '');
     } else if (event === 'text') {
       handlers.onText(payload.text ?? '');
+    } else if (event === 'confirm_request') {
+      // L'agent attend une autorisation avant d'exécuter sur la machine (F-38 / SF-38-08) : le
+      // tour est en pause tant que rien n'est décidé.
+      handlers.onConfirmRequest?.({
+        toolUseId: payload.toolUseId ?? '',
+        tool: payload.tool ?? '',
+        detail: payload.detail ?? '',
+      });
+    } else if (event === 'confirm_resolved') {
+      handlers.onConfirmResolved?.({
+        toolUseId: payload.toolUseId ?? '',
+        decision: payload.decision === 'deny' || payload.decision === 'timeout'
+          ? payload.decision
+          : 'allow',
+      });
     } else if (event === 'done') {
       handlers.onDone({
         reply: payload.reply ?? '',
@@ -371,6 +392,30 @@ export class AtelierService {
    */
   interruptAgentSession(id: string): Observable<void> {
     return this.http.post<void>(`/api/workspaces/${id}/agent/interrupt`, null);
+  }
+
+  /**
+   * Répond à une demande d'autorisation du mode **Assistant** (F-38 / SF-38-08) : autorise la
+   * commande sur la machine connectée, ou la refuse avec un motif que le modèle recevra. Sans
+   * réponse dans le délai imparti, le backend refuse — le silence ne vaut pas autorisation.
+   */
+  confirmChatToolUse(id: string, decision: AtelierConfirmDecision): Observable<void> {
+    return this.http.post<void>(`/api/workspaces/${id}/chat/confirm`, decision);
+  }
+
+  /**
+   * **Coupe-circuit** (F-38 / SF-38-08) : révoque tous les jetons runner du projet, coupe la
+   * liaison en cours et ramène la cible d'exécution à `SANDBOX`. Idempotent — couper une liaison
+   * déjà coupée n'est pas une erreur.
+   */
+  killRunner(id: string): Observable<RunnerKillResult> {
+    return this.http.post<RunnerKillResult>(`/api/workspaces/${id}/runner/kill`, null);
+  }
+
+  /** Journal d'activité du runner (F-38 / SF-38-08), du plus récent au plus ancien. */
+  getRunnerAudit(id: string, limit?: number): Observable<RunnerAuditEntry[]> {
+    return this.http.get<RunnerAuditEntry[]>(`/api/workspaces/${id}/runner/audit`,
+      limit ? { params: { limit } } : {});
   }
 
   /**

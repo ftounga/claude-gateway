@@ -26,6 +26,43 @@ public interface AtelierProgressListener {
     void onText(String text);
 
     /**
+     * Demande d'autorisation posée avant d'exécuter une action sur la machine de l'utilisateur
+     * (F-38 / SF-38-08, décision D7). Le tour est <b>suspendu</b> tant que rien n'est tranché.
+     *
+     * <p>Volontairement <b>par défaut neutre</b> : additif, les implémentations antérieures (mode
+     * synchrone, tests) restent valides. Un mode qui n'affiche pas la demande la verra refusée à
+     * l'échéance — le silence ne vaut jamais autorisation.</p>
+     */
+    default void onConfirmRequest(AtelierConfirmRequest request) {
+        // Aucun relais : la demande sera refusée à l'échéance.
+    }
+
+    /** Notifie la résolution d'une demande d'autorisation, pour que l'écran retire l'invite. */
+    default void onConfirmResolved(AtelierConfirmResolved resolved) {
+        // Aucun relais : mode synchrone.
+    }
+
+    /**
+     * Demande d'autorisation relayée à l'écran (F-38 / SF-38-08).
+     *
+     * @param toolUseId identifiant de corrélation du contrat §1 — le même que celui de la trame
+     *                  runner et de la ligne d'audit ; aucun second identifiant n'est créé
+     * @param tool      outil concerné ({@code bash})
+     * @param detail    ce qui est soumis à décision (la commande), tronqué pour l'affichage
+     */
+    record AtelierConfirmRequest(String toolUseId, String tool, String detail) {
+    }
+
+    /**
+     * Résolution d'une demande d'autorisation (F-38 / SF-38-08).
+     *
+     * @param toolUseId identifiant de la demande tranchée
+     * @param decision  {@code allow}, {@code deny} ou {@code timeout}
+     */
+    record AtelierConfirmResolved(String toolUseId, String decision) {
+    }
+
+    /**
      * Notifie un fragment de <b>sortie de commande</b> reçu du runner (F-38 / SF-38-07), au fil de
      * l'eau : c'est ce qui fait défiler {@code stdout}/{@code stderr} dans la session pendant qu'une
      * commande tourne, au lieu de tout découvrir à la fin.

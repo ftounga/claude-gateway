@@ -22,6 +22,9 @@ import fr.claudegateway.ai.AIProviderException;
 import fr.claudegateway.ai.AIProviderUnavailableException;
 import fr.claudegateway.atelier.AtelierChatService.AtelierChatResult;
 import fr.claudegateway.atelier.AtelierProgressListener.AtelierStepEvent;
+import fr.claudegateway.atelier.AtelierProgressListener.AtelierConfirmRequest;
+import fr.claudegateway.atelier.AtelierProgressListener.AtelierConfirmResolved;
+import fr.claudegateway.atelier.dto.AgentConfirmRequest;
 import fr.claudegateway.atelier.dto.AtelierChatRequest;
 import fr.claudegateway.atelier.dto.AtelierChatResponse;
 import fr.claudegateway.atelier.dto.AtelierChatResponse.AtelierAction;
@@ -109,6 +112,25 @@ public class AtelierChatController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Tranche une demande d'autorisation posée par le tour en cours (F-38 / SF-38-08, décision D7) :
+     * autorise la commande, ou la refuse avec un motif que le modèle recevra.
+     *
+     * <p>Endpoint JSON classique (pas SSE) : le tour attend sur son flux, cette réponse arrive sur
+     * une autre requête. Sans réponse dans le délai imparti, la commande est <b>refusée</b> — le
+     * silence ne vaut pas autorisation. L'isolation {@code user_id} est appliquée par le service
+     * ({@code requireOwned} d'abord : 404 sur un projet d'autrui), et une demande qui n'attend plus
+     * rien renvoie 409 plutôt que de laisser croire à une autorisation passée.</p>
+     */
+    @PostMapping("/confirm")
+    public ResponseEntity<Void> confirm(@PathVariable UUID id,
+            @Valid @RequestBody AgentConfirmRequest request) {
+        atelierAccess.requireAccess();
+        atelierChatService.confirmToolUse(currentUser.requireId(), id, request.toolUseId(),
+                request.allows(), request.reason());
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping
     public List<AtelierMessageResponse> history(@PathVariable UUID id) {
         atelierAccess.requireAccess();
@@ -137,6 +159,16 @@ public class AtelierChatController {
                 @Override
                 public void onOutput(String chunk) {
                     sendOutput(emitter, chunk);
+                }
+
+                @Override
+                public void onConfirmRequest(AtelierConfirmRequest request) {
+                    sendConfirmRequest(emitter, request);
+                }
+
+                @Override
+                public void onConfirmResolved(AtelierConfirmResolved resolved) {
+                    sendConfirmResolved(emitter, resolved);
                 }
             };
             AtelierChatResult result = atelierChatService.chatStreaming(userId, workspaceId, message, listener);
@@ -190,6 +222,27 @@ public class AtelierChatController {
             emitter.send(SseEmitter.event().name("output").data(new StreamOutput(chunk)));
         } catch (IOException | IllegalStateException ex) {
             // Client parti : la sortie reste agrégée pour le modèle et pour le fil persisté.
+        }
+    }
+
+    /**
+     * Émet une demande d'autorisation (F-38 / SF-38-08). Une déconnexion du client interrompt le
+     * relais : sans écran pour trancher, la commande ne doit pas être lancée « en attendant ».
+     */
+    private void sendConfirmRequest(SseEmitter emitter, AtelierConfirmRequest request) {
+        try {
+            emitter.send(SseEmitter.event().name("confirm_request").data(request));
+        } catch (IOException | IllegalStateException ex) {
+            throw new StreamAbortedException();
+        }
+    }
+
+    /** Émet la résolution d'une demande d'autorisation, pour que l'écran retire l'invite. */
+    private void sendConfirmResolved(SseEmitter emitter, AtelierConfirmResolved resolved) {
+        try {
+            emitter.send(SseEmitter.event().name("confirm_resolved").data(resolved));
+        } catch (IOException | IllegalStateException ex) {
+            throw new StreamAbortedException();
         }
     }
 

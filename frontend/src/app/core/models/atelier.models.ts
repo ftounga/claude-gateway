@@ -158,6 +158,38 @@ export interface RunnerPairingCode {
   expiresAt: string;
 }
 
+/**
+ * Ligne du journal d'activité du runner (F-38 / SF-38-08, décision D11), réponse de
+ * `GET /api/workspaces/{id}/runner/audit`. Elle dit **ce qui a été fait** sur la machine — jamais
+ * le contenu lu ni la sortie produite.
+ */
+export interface RunnerAuditEntry {
+  id: string;
+  callId: string;
+  /** `list_files` | `read_file` | `write_file` | `search_files` | `bash` | `bootstrap` | `kill_switch`. */
+  tool: string;
+  /** Chemin, terme recherché ou commande. `null` pour un listage. */
+  target: string | null;
+  /** `OK` | `ERROR` | `DENIED` | `TIMEOUT` | `CANCELLED`. */
+  outcome: string;
+  errorCode: string | null;
+  exitCode: number | null;
+  durationMs: number | null;
+  bytes: number | null;
+  createdAt: string;
+}
+
+/**
+ * Résultat du coupe-circuit (F-38 / SF-38-08), réponse de
+ * `POST /api/workspaces/{id}/runner/kill`. Le projet repasse en cible `SANDBOX` : la boucle ne
+ * route plus rien vers la machine, et le runner ne peut plus se reconnecter (jetons révoqués).
+ */
+export interface RunnerKillResult {
+  revokedTokens: number;
+  disconnected: boolean;
+  executionTarget: WorkspaceExecutionTarget;
+}
+
 /** Contenu texte d'un fichier du workspace. Réponse de `GET /api/workspaces/{id}/file?path=`. */
 export interface FileContent {
   path: string;
@@ -297,6 +329,15 @@ export interface AtelierStreamHandlers {
    * pas ne voit aucune différence, et un backend antérieur n'émet jamais cet événement.
    */
   onOutput?: (chunk: string) => void;
+  /**
+   * L'agent demande l'autorisation d'exécuter une commande sur la machine connectée
+   * (F-38 / SF-38-08). Le tour est **suspendu** tant que rien n'est décidé, et le silence vaut
+   * refus. **Optionnel** : un appelant qui ne s'y abonne pas verra la commande refusée à
+   * l'échéance — jamais exécutée par défaut.
+   */
+  onConfirmRequest?: (request: AtelierConfirmRequest) => void;
+  /** Demande tranchée (ici, ailleurs, ou par expiration) : l'invite n'a plus lieu d'être. */
+  onConfirmResolved?: (resolved: AtelierConfirmResolved) => void;
 }
 
 /**
