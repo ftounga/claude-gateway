@@ -69,4 +69,15 @@ class InMemoryRunnerRegistryTest {
         assertThat(registry.isConnected(wsB)).isFalse();
         assertThat(registry.findLocal(wsB)).isEmpty();
     }
+
+    @Test
+    void findRemoteIsAlwaysEmptyBecauseThereIsOnlyOneNode() {
+        UUID ws = UUID.randomUUID();
+        registry.register(connection(ws, UUID.randomUUID()));
+
+        // Un registre en mémoire ne connaît qu'un pod : aucun relais inter-pods n'est possible ni
+        // nécessaire (F-38 / SF-38-12).
+        assertThat(registry.findRemote(ws)).isEmpty();
+        assertThat(registry.findRemote(UUID.randomUUID())).isEmpty();
+    }
 }

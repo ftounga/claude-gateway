@@ -1,0 +1,24 @@
+# Service HEADLESS du relais interne entre pods backend (F-38 / SF-38-12).
+#
+# Il ne sert qu'à deux choses :
+#   - donner à chaque pod l'adresse de ses pairs (résolution DNS de tous les endpoints, utilisée par
+#     la diffusion de SF-38-13) ;
+#   - publier le port 8081 du connecteur interne, JAMAIS exposé par le Service public
+#     `claude-gateway-backend` (qui n'ouvre que 8080) ni par aucun Ingress.
+#
+# `clusterIP: None` : pas de VIP, la résolution rend directement les IP des pods.
+# `publishNotReadyAddresses: true` : un pod encore en warm-up doit rester joignable par ses pairs —
+# un relais vers un pod « not ready » vaut mieux qu'un appel d'outil qui échoue.
+apiVersion: v1
+kind: Service
+metadata:
+  name: claude-gateway-backend-internal
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: claude-gateway-backend
+  ports:
+    - name: relay
+      port: 8081
+      targetPort: 8081

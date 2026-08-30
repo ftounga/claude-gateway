@@ -37,6 +37,15 @@ public class InMemoryRunnerRegistry implements RunnerRegistry {
         return Optional.ofNullable(byWorkspace.get(workspaceId));
     }
 
+    /**
+     * Toujours vide : un registre en mémoire ne connaît qu'un seul pod, celui qui l'héberge. Aucun
+     * relais inter-pods n'est donc possible ni nécessaire (F-38 / SF-38-12).
+     */
+    @Override
+    public Optional<RemoteRunnerNode> findRemote(UUID workspaceId) {
+        return Optional.empty();
+    }
+
     @Override
     public boolean isConnected(UUID workspaceId) {
         return byWorkspace.containsKey(workspaceId);

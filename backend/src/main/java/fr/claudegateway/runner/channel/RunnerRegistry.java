@@ -33,6 +33,16 @@ public interface RunnerRegistry {
     Optional<RunnerConnection> findLocal(UUID workspaceId);
 
     /**
+     * Nœud <b>distant</b> hébergeant la socket de ce workspace, s'il est connu (F-38 / SF-38-12).
+     * Alimente le relais inter-pods : sans adresse, aucun relais n'est possible et l'appel dégrade
+     * vers le comportement d'origine.
+     *
+     * <p>Vide quand la socket est locale, quand aucun runner n'est connecté, ou quand la présence
+     * distante n'a pas encore convergé. Vide <b>toujours</b> pour un registre mono-pod.</p>
+     */
+    Optional<RemoteRunnerNode> findRemote(UUID workspaceId);
+
+    /**
      * Vrai si un runner est connecté pour ce workspace, <b>tous replicas confondus</b> (présence
      * locale ou distante). Alimente le statut exposé à l'utilisateur.
      */
