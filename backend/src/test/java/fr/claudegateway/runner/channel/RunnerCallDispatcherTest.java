@@ -386,4 +386,53 @@ class RunnerCallDispatcherTest {
         assertThat(dispatcher.cancelWorkspace(UUID.randomUUID(), "user_interrupt")).isZero();
         pending.cancel(true);
     }
+
+    // ---------------------------------------------------------- repli long-polling (SF-38-09)
+
+    @Test
+    void aCallRoutedToALongPollingChannelIsQueuedInsteadOfWritten() throws Exception {
+        // Le dispatcher ne sait pas quel transport porte le runner : le tool_call doit partir de la
+        // même façon vers une file de long-polling que vers une socket.
+        when(registry.findLocal(workspaceId)).thenReturn(Optional.of(new RunnerConnection(
+                workspaceId, userId, tokenId, "node-1", OffsetDateTime.now())));
+        LongPollingRunnerOutbound channel =
+                new LongPollingRunnerOutbound(workspaceId, userId, tokenId, null);
+        dispatcher.attachChannel(identity, channel);
+
+        Future<RunnerCallResult> pending = executor.submit(() -> dispatcher.call(workspaceId,
+                "toolu_poll", "read_file", objectMapper.readTree("{\"path\":\"a.txt\"}"), 300L));
+
+        java.util.List<String> frames = channel.drain(java.time.Duration.ofSeconds(5));
+        assertThat(frames).hasSize(1);
+        JsonNode frame = objectMapper.readTree(frames.get(0));
+        assertThat(frame.path("type").asText()).isEqualTo("tool_call");
+        assertThat(frame.path("id").asText()).isEqualTo("toolu_poll");
+        assertThat(frame.path("tool").asText()).isEqualTo("read_file");
+        assertThat(frame.path("input").path("path").asText()).isEqualTo("a.txt");
+        // Le résultat arrive par POST /runner/send, donc par le même onFrame que le WebSocket.
+        dispatcher.onFrame(identity, "tool_result", objectMapper.readTree(
+                "{\"type\":\"tool_result\",\"id\":\"toolu_poll\",\"ok\":true,"
+                        + "\"content\":\"contenu\",\"durationMs\":4}"));
+        assertThat(pending.get(5, TimeUnit.SECONDS).content()).isEqualTo("contenu");
+    }
+
+    @Test
+    void closingALongPollingChannelFailsItsInFlightCalls() throws Exception {
+        when(registry.findLocal(workspaceId)).thenReturn(Optional.of(new RunnerConnection(
+                workspaceId, userId, tokenId, "node-1", OffsetDateTime.now())));
+        LongPollingRunnerOutbound channel =
+                new LongPollingRunnerOutbound(workspaceId, userId, tokenId,
+                        c -> dispatcher.detachChannel(workspaceId, c));
+        dispatcher.attachChannel(identity, channel);
+        Future<RunnerCallResult> pending = executor.submit(() -> dispatcher.call(workspaceId,
+                "toolu_lost", "read_file", objectMapper.readTree("{\"path\":\"a.txt\"}"), 60_000L));
+        assertThat(channel.drain(java.time.Duration.ofSeconds(5))).hasSize(1);
+
+        channel.close();
+
+        // Aucun rejeu : un appel perdu avec le canal est une erreur rendue au modèle (contrat §7).
+        RunnerCallResult result = pending.get(5, TimeUnit.SECONDS);
+        assertThat(result.ok()).isFalse();
+        assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.RUNNER_UNAVAILABLE);
+    }
 }

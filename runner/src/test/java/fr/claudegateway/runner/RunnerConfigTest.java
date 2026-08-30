@@ -197,4 +197,46 @@ class RunnerConfigTest {
         assertFalse(RunnerConfig.resolve(baseArgs(), Map.of("CLAUDE_RUNNER_ALLOW_BASH", "non"))
                 .allowBash());
     }
+
+    // ------------------------------------------------ repli de transport (SF-38-09)
+
+    @Test
+    void transport_defaults_to_auto() {
+        RunnerConfig cfg = RunnerConfig.resolve(baseArgs(), Map.of());
+        assertEquals(RunnerConfig.Transport.AUTO, cfg.transport());
+    }
+
+    @Test
+    void transport_accepts_the_three_documented_values_and_their_aliases() {
+        assertEquals(RunnerConfig.Transport.WEBSOCKET,
+                RunnerConfig.resolve(baseArgs("--transport", "websocket"), Map.of()).transport());
+        assertEquals(RunnerConfig.Transport.WEBSOCKET,
+                RunnerConfig.resolve(baseArgs("--transport", " WS "), Map.of()).transport());
+        assertEquals(RunnerConfig.Transport.POLLING,
+                RunnerConfig.resolve(baseArgs("--transport", "Polling"), Map.of()).transport());
+        assertEquals(RunnerConfig.Transport.POLLING,
+                RunnerConfig.resolve(baseArgs("--transport", "http"), Map.of()).transport());
+    }
+
+    @Test
+    void transport_can_come_from_the_environment() {
+        RunnerConfig cfg = RunnerConfig.resolve(baseArgs(),
+                Map.of("CLAUDE_RUNNER_TRANSPORT", "polling"));
+        assertEquals(RunnerConfig.Transport.POLLING, cfg.transport());
+    }
+
+    @Test
+    void an_unknown_transport_is_refused() {
+        // Une faute de frappe ne doit pas silencieusement retomber sur le mode par defaut.
+        assertThrows(RunnerConfig.ConfigException.class,
+                () -> RunnerConfig.resolve(baseArgs("--transport", "carrier-pigeon"), Map.of()));
+    }
+
+    @Test
+    void fallback_urls_are_derived_from_the_gateway() {
+        RunnerConfig cfg = RunnerConfig.resolve(baseArgs(), Map.of());
+        assertEquals("https://portal.example.com/api/runner/poll", cfg.pollUrl());
+        assertEquals("https://portal.example.com/api/runner/send", cfg.sendUrl());
+        assertEquals("https://portal.example.com/api/runner/disconnect", cfg.disconnectUrl());
+    }
 }

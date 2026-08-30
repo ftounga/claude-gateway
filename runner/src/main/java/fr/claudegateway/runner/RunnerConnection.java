@@ -14,9 +14,6 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 /**
  * Connexion sortante WSS du runner (F-38 / SF-38-03) vers {@code /runner/ws}, avec heartbeat
  * périodique, reconnexion à backoff plafonné et arrêt propre. Depuis SF-38-04, elle transporte aussi
@@ -44,21 +41,42 @@ public final class RunnerConnection {
     private final RunnerConfig config;
     private final Console console;
     private final Backoff backoff;
-    private final ObjectMapper objectMapper = new ObjectMapper();
 
+    private final TransportFallbackPolicy fallbackPolicy;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private volatile boolean fellBackToPolling;
     private volatile WebSocket webSocket;
     private volatile CountDownLatch closedLatch;
     private ScheduledExecutorService heartbeatExecutor;
     private volatile ScheduledFuture<?> heartbeatTask;
     private FrameSender sender;
     private ToolDispatcher dispatcher;
+    private FrameRouter router;
 
     public RunnerConnection(HttpClient httpClient, RunnerConfig config, Console console) {
+        this(httpClient, config, console, new TransportFallbackPolicy(config.transport()));
+    }
+
+    /**
+     * @param fallbackPolicy decide quand renoncer au WebSocket au profit du repli long-polling
+     *                       (F-38 / SF-38-09) ; la boucle s'arrete alors et l'appelant enchaine sur
+     *                       {@link PollingConnection}
+     */
+    public RunnerConnection(HttpClient httpClient, RunnerConfig config, Console console,
+            TransportFallbackPolicy fallbackPolicy) {
         this.httpClient = httpClient;
         this.config = config;
         this.console = console;
+        this.fallbackPolicy = fallbackPolicy;
         this.backoff = new Backoff(Duration.ofSeconds(1), Duration.ofSeconds(30));
+    }
+
+    /**
+     * Vrai si la boucle s'est arretee parce que le WebSocket ne tient pas sur ce reseau : l'appelant
+     * doit alors basculer sur le repli long-polling (F-38 / SF-38-09).
+     */
+    public boolean fellBackToPolling() {
+        return fellBackToPolling;
     }
 
     /**
@@ -73,38 +91,42 @@ public final class RunnerConnection {
             return t;
         });
         sender = new FrameSender(console);
-        ExclusionRules exclusions = ExclusionRules.load(config.workspaceRoot(), console);
-        PathGuard guard = new PathGuard(config.workspaceRoot(), exclusions);
-        BashTool bash = new BashTool(guard, config.allowBash());
-        ToolRouter tools = new ToolRouter(new FileTools(guard), bash);
-        dispatcher = new ToolDispatcher(tools, tools.capabilities(), sender, console);
+        // Meme montage de gardes que le repli long-polling : confinement et exclusions ne doivent
+        // jamais dependre du transport (SF-38-09).
+        dispatcher = ToolStack.create(config, console, sender).dispatcher();
+        router = new FrameRouter(dispatcher, console);
         URI uri = config.webSocketUri(token);
         console.info("Cible WebSocket : " + safeUri(uri));
-        console.info("Outils fichiers actifs, confinés à : " + config.workspaceRoot());
-        console.info(bash.enabled()
-                ? "Exécution de commandes ACTIVÉE (--allow-bash) — les commandes tournent avec vos droits."
-                : "Exécution de commandes désactivée (relancez avec --allow-bash pour l'autoriser).");
-        console.info("Exclusions : " + exclusions.userRuleCount() + " règle(s) issues de "
-                + exclusions.source() + " + liste par défaut non désactivable ("
-                + String.join(", ", ExclusionRules.DEFAULT_DENY) + ").");
 
         try {
             while (running.get()) {
                 CountDownLatch latch = new CountDownLatch(1);
                 closedLatch = latch;
+                long startedAt = System.nanoTime();
                 try {
                     connectOnce(uri, latch);
                     backoff.reset();
                     latch.await(); // attend la fermeture/erreur de la socket
+                    // Une socket qui meurt en quelques secondes est la signature d'un proxy qui
+                    // coupe l'upgrade : elle compte comme un echec de transport (SF-38-09).
+                    fallbackPolicy.recordSessionEnded(Duration.ofNanos(System.nanoTime() - startedAt));
                 } catch (AuthRejectedException e) {
+                    // Un jeton refuse n'est pas un probleme de tuyau : aucun repli ne le reparerait.
                     throw e;
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
                 } catch (RuntimeException e) {
                     console.warn("Connexion échouée : " + e.getMessage());
+                    fallbackPolicy.recordTransportFailure();
                 }
                 if (!running.get()) {
+                    break;
+                }
+                if (fallbackPolicy.shouldFallBack()) {
+                    console.warn("WebSocket coupé de façon répétée sur ce réseau — bascule sur le "
+                            + "repli long-polling HTTP.");
+                    fellBackToPolling = true;
                     break;
                 }
                 Duration delay = backoff.nextDelay();
@@ -253,30 +275,9 @@ public final class RunnerConnection {
         }
 
         private void handle(String payload) {
-            JsonNode frame;
-            try {
-                frame = objectMapper.readTree(payload);
-            } catch (Exception e) {
-                dispatcher.sendProtocolError("unparsable", "Trame illisible.", null);
-                return;
-            }
-            if (frame == null || !frame.isObject()) {
-                dispatcher.sendProtocolError("unparsable", "Trame illisible.", null);
-                return;
-            }
-            String type = frame.path("type").asText(null);
-            if (type == null) {
-                dispatcher.sendProtocolError("invalid_envelope", "Champ type manquant.", null);
-                return;
-            }
-            switch (type) {
-                case "heartbeat_ack" -> console.info("Heartbeat confirmé (ack).");
-                case "tool_call" -> dispatcher.onToolCall(frame);
-                case "tool_cancel" -> dispatcher.onToolCancel(frame);
-                default -> {
-                    // Type inconnu : ignoré, jamais une erreur ni une fermeture de socket.
-                }
-            }
+            // Aiguillage commun aux deux transports : une trame produit le meme effet qu'elle
+            // arrive par la socket ou par le repli long-polling (SF-38-09).
+            router.route(payload);
         }
 
         @Override

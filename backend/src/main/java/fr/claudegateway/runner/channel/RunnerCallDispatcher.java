@@ -16,8 +16,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import org.springframework.web.socket.CloseStatus;
-import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator;
 
@@ -55,6 +53,9 @@ public class RunnerCallDispatcher {
     /** Clé sous laquelle la session décorée est déposée dans les attributs de session WS. */
     public static final String OUTBOUND_SESSION_ATTRIBUTE = "runnerOutboundSession";
 
+    /** Clé sous laquelle le canal d'émission ({@link RunnerOutbound}) est déposé dans la session WS. */
+    public static final String OUTBOUND_CHANNEL_ATTRIBUTE = "runnerOutboundChannel";
+
     /**
      * Grâce ajoutée au {@code timeoutMs} de la trame avant que le backend abandonne (contrat §6).
      * Valeur imposée par le contrat ; la propriété n'existe que pour raccourcir l'attente en test.
@@ -75,7 +76,7 @@ public class RunnerCallDispatcher {
     private final ObjectMapper objectMapper;
     private final long graceMs;
 
-    private final Map<UUID, WebSocketSession> outbound = new ConcurrentHashMap<>();
+    private final Map<UUID, RunnerOutbound> outbound = new ConcurrentHashMap<>();
     private final Map<String, InFlightCall> inFlight = new ConcurrentHashMap<>();
     private final Map<UUID, Set<String>> capabilities = new ConcurrentHashMap<>();
 
@@ -96,8 +97,34 @@ public class RunnerCallDispatcher {
     public void attach(WebSocketSession session, RunnerIdentity identity) {
         WebSocketSession decorated =
                 new ConcurrentWebSocketSessionDecorator(session, SEND_TIME_LIMIT_MS, SEND_BUFFER_BYTES);
+        WebSocketRunnerOutbound channel = new WebSocketRunnerOutbound(decorated);
         session.getAttributes().put(OUTBOUND_SESSION_ATTRIBUTE, decorated);
-        outbound.put(identity.workspaceId(), decorated);
+        session.getAttributes().put(OUTBOUND_CHANNEL_ATTRIBUTE, channel);
+        outbound.put(identity.workspaceId(), channel);
+    }
+
+    /**
+     * Branche un canal de <b>repli long-polling</b> (F-38 / SF-38-09) sur ce workspace : le
+     * dispatcher émet ses {@code tool_call} de la même façon, ils attendent simplement dans une file
+     * qu'un {@code POST /runner/poll} vienne les chercher. Un canal précédent (socket WS ou polling
+     * plus ancien) est remplacé — c'est le même runner qui change de tuyau.
+     */
+    public void attachChannel(RunnerIdentity identity, RunnerOutbound channel) {
+        outbound.put(identity.workspaceId(), channel);
+    }
+
+    /**
+     * Débranche un canal (quel que soit son transport) et termine ses appels en vol. Ne fait rien si
+     * le canal courant du workspace n'est plus celui-ci : une connexion plus récente ne doit pas être
+     * effacée par la fin tardive de l'ancienne (garde anti-course, même esprit que
+     * {@link RunnerRegistry#unregister}).
+     */
+    public void detachChannel(UUID workspaceId, RunnerOutbound channel) {
+        if (!outbound.remove(workspaceId, channel)) {
+            return;
+        }
+        capabilities.remove(workspaceId);
+        failAllOf(workspaceId);
     }
 
     /**
@@ -110,16 +137,13 @@ public class RunnerCallDispatcher {
      * anti-course que {@link RunnerRegistry#unregister}).</p>
      */
     public void detach(WebSocketSession session, RunnerIdentity identity) {
-        Object stored = session.getAttributes().remove(OUTBOUND_SESSION_ATTRIBUTE);
-        boolean wasCurrent = stored instanceof WebSocketSession decorated
-                && outbound.remove(identity.workspaceId(), decorated);
-        if (!wasCurrent) {
-            // Fermeture d'une socket déjà remplacée par une reconnexion : ne rien casser de la
-            // connexion vivante, ni sa carte, ni ses appels en vol.
-            return;
+        session.getAttributes().remove(OUTBOUND_SESSION_ATTRIBUTE);
+        Object stored = session.getAttributes().remove(OUTBOUND_CHANNEL_ATTRIBUTE);
+        if (stored instanceof RunnerOutbound channel) {
+            // Fermeture d'une socket déjà remplacée par une reconnexion (ou par un repli
+            // long-polling) : detachChannel ne casse rien de la connexion vivante.
+            detachChannel(identity.workspaceId(), channel);
         }
-        capabilities.remove(identity.workspaceId());
-        failAllOf(identity.workspaceId());
     }
 
     /**
@@ -169,7 +193,7 @@ public class RunnerCallDispatcher {
                     ? RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE
                     : RunnerErrorCodes.RUNNER_UNAVAILABLE);
         }
-        WebSocketSession session = outbound.get(workspaceId);
+        RunnerOutbound session = outbound.get(workspaceId);
         if (session == null || !session.isOpen()) {
             return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_UNAVAILABLE);
         }
@@ -183,7 +207,7 @@ public class RunnerCallDispatcher {
                     "Identifiant d'appel déjà utilisé.");
         }
         try {
-            session.sendMessage(new TextMessage(toolCallFrame(callId, tool, input, timeoutMs)));
+            session.send(toolCallFrame(callId, tool, input, timeoutMs));
         } catch (IOException | RuntimeException ex) {
             inFlight.remove(callId);
             log.debug("Émission tool_call impossible (workspace={}, outil={})", workspaceId, tool);
@@ -219,7 +243,7 @@ public class RunnerCallDispatcher {
      * @return le nombre d'appels effectivement visés
      */
     public int cancelWorkspace(UUID workspaceId, String reason) {
-        WebSocketSession session = outbound.get(workspaceId);
+        RunnerOutbound session = outbound.get(workspaceId);
         if (session == null) {
             return 0;
         }
@@ -250,16 +274,14 @@ public class RunnerCallDispatcher {
      * @return vrai si une socket locale a effectivement été fermée
      */
     public boolean disconnect(UUID workspaceId, String reason) {
-        WebSocketSession session = outbound.get(workspaceId);
+        RunnerOutbound session = outbound.get(workspaceId);
         if (session == null) {
             return false;
         }
         cancelWorkspace(workspaceId, reason);
-        try {
-            session.close(CloseStatus.NORMAL);
-        } catch (IOException | RuntimeException ex) {
-            log.debug("Fermeture de la socket runner impossible (workspace={})", workspaceId);
-        }
+        // Selon le transport : fermeture de la socket, ou fermeture du canal long-polling (qui se
+        // retire lui-même du registre et débranche ses appels en vol).
+        session.close();
         failAllOf(workspaceId);
         log.info("Liaison runner coupée (workspace={}, motif={})", workspaceId, reason);
         return true;
@@ -414,9 +436,9 @@ public class RunnerCallDispatcher {
     }
 
     /** Émission « best effort » : une annulation qui n'arrive pas ne doit pas masquer l'erreur initiale. */
-    private void sendQuietly(WebSocketSession session, String payload) {
+    private void sendQuietly(RunnerOutbound session, String payload) {
         try {
-            session.sendMessage(new TextMessage(payload));
+            session.send(payload);
         } catch (IOException | RuntimeException ex) {
             log.debug("Émission d'annulation impossible : socket déjà indisponible");
         }
