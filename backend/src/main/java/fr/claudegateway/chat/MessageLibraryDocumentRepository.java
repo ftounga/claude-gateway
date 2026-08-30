@@ -18,4 +18,10 @@ public interface MessageLibraryDocumentRepository extends JpaRepository<MessageL
      * (évite le N+1) à la reconstruction de l'historique d'une conversation.
      */
     List<MessageLibraryDocument> findByMessageIdInOrderByCreatedAtAsc(Collection<UUID> messageIds);
+
+    /**
+     * Purge à la suppression du compte (SF-11-03). Le lien ne porte pas d'{@code user_id} : on passe
+     * par les documents de l'utilisateur, qui en portent un.
+     */
+    void deleteByDocumentIdIn(Collection<UUID> documentIds);
 }

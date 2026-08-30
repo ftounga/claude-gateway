@@ -11,4 +11,10 @@ import org.springframework.stereotype.Repository;
 public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, UUID> {
 
     List<AtelierMessage> findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(UUID workspaceId, UUID userId);
+
+    /** Purge à la suppression du compte (SF-11-03). */
+    void deleteByUserId(UUID userId);
+
+    /** Purge des messages d'un workspace supprimé (SF-11-03) : sans elle, ils restent orphelins. */
+    void deleteByWorkspaceId(UUID workspaceId);
 }

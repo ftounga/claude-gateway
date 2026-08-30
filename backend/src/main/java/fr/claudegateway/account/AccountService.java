@@ -16,7 +16,15 @@ import fr.claudegateway.chat.ConversationRepository;
 import fr.claudegateway.chat.Message;
 import fr.claudegateway.chat.MessageRepository;
 import fr.claudegateway.git.GitTokenService;
+import fr.claudegateway.atelier.AtelierMessageRepository;
+import fr.claudegateway.atelier.Workspace;
+import fr.claudegateway.atelier.WorkspaceRepository;
+import fr.claudegateway.atelier.WorkspaceService;
+import fr.claudegateway.chat.MessageLibraryDocumentRepository;
+import fr.claudegateway.ocr.Document;
+import fr.claudegateway.ocr.DocumentRepository;
 import fr.claudegateway.quota.UsageCounterRepository;
+import fr.claudegateway.rag.ChunkRepository;
 import fr.claudegateway.runner.RunnerPairingCodeRepository;
 import fr.claudegateway.runner.RunnerTokenRepository;
 import fr.claudegateway.runner.audit.RunnerAuditRepository;
@@ -48,6 +56,12 @@ public class AccountService {
     private final RunnerTokenRepository runnerTokenRepository;
     private final RunnerPairingCodeRepository runnerPairingCodeRepository;
     private final RunnerAuditRepository runnerAuditRepository;
+    private final WorkspaceRepository workspaceRepository;
+    private final WorkspaceService workspaceService;
+    private final AtelierMessageRepository atelierMessageRepository;
+    private final DocumentRepository documentRepository;
+    private final ChunkRepository chunkRepository;
+    private final MessageLibraryDocumentRepository messageLibraryDocumentRepository;
 
     public AccountService(
             UserService userService,
@@ -61,7 +75,13 @@ public class AccountService {
             TemplateRepository templateRepository,
             RunnerTokenRepository runnerTokenRepository,
             RunnerPairingCodeRepository runnerPairingCodeRepository,
-            RunnerAuditRepository runnerAuditRepository) {
+            RunnerAuditRepository runnerAuditRepository,
+            WorkspaceRepository workspaceRepository,
+            WorkspaceService workspaceService,
+            AtelierMessageRepository atelierMessageRepository,
+            DocumentRepository documentRepository,
+            ChunkRepository chunkRepository,
+            MessageLibraryDocumentRepository messageLibraryDocumentRepository) {
         this.userService = userService;
         this.subscriptionRepository = subscriptionRepository;
         this.usageCounterRepository = usageCounterRepository;
@@ -74,6 +94,12 @@ public class AccountService {
         this.runnerTokenRepository = runnerTokenRepository;
         this.runnerPairingCodeRepository = runnerPairingCodeRepository;
         this.runnerAuditRepository = runnerAuditRepository;
+        this.workspaceRepository = workspaceRepository;
+        this.workspaceService = workspaceService;
+        this.atelierMessageRepository = atelierMessageRepository;
+        this.documentRepository = documentRepository;
+        this.chunkRepository = chunkRepository;
+        this.messageLibraryDocumentRepository = messageLibraryDocumentRepository;
     }
 
     /**
@@ -151,6 +177,29 @@ public class AccountService {
         runnerTokenRepository.deleteByUserId(userId);
         runnerPairingCodeRepository.deleteByUserId(userId);
         runnerAuditRepository.deleteByUserId(userId);
+        // Domaine documentaire (F-05/F-06) et Atelier (F-28), ajoutés par SF-11-03. Ces données
+        // survivaient au compte : documents OCR (texte extrait et réponse brute du fournisseur
+        // compris), embeddings, historique des sessions d'agent, et les fichiers de chaque
+        // workspace dans le stockage objet.
+        // L'ordre suit les dépendances de lecture : les liens d'abord (ils ne portent pas d'user_id
+        // et se retrouvent par leurs documents), puis les chunks, puis les documents.
+        List<UUID> documentIds = documentRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
+                .map(Document::getId)
+                .toList();
+        if (!documentIds.isEmpty()) {
+            messageLibraryDocumentRepository.deleteByDocumentIdIn(documentIds);
+        }
+        chunkRepository.deleteByUserId(userId);
+        documentRepository.deleteByUserId(userId);
+        atelierMessageRepository.deleteByUserId(userId);
+        // On passe par WorkspaceService.delete plutôt que de supprimer les lignes directement : lui
+        // seul connaît le préfixe de stockage (il porte le préfixe applicatif configuré, pas
+        // seulement userId/workspaceId), et il efface fichiers, messages et ligne d'un seul geste.
+        // Recalculer ce préfixe ici, c'est prendre le risque d'effacer à côté — donc de laisser les
+        // fichiers en place en croyant les avoir supprimés.
+        for (Workspace workspace : workspaceRepository.findByUserIdOrderByCreatedAtDesc(userId)) {
+            workspaceService.delete(userId, workspace.getId());
+        }
 
         userService.deleteById(user.getId());
     }

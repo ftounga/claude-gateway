@@ -35,4 +35,8 @@ public interface ChunkRepository extends JpaRepository<Chunk, UUID> {
      */
     @Transactional
     long deleteByDocumentIdAndUserId(UUID documentId, UUID userId);
+
+    /** Purge à la suppression du compte (SF-11-03) : les embeddings suivent leurs documents. */
+    @Transactional
+    void deleteByUserId(UUID userId);
 }
