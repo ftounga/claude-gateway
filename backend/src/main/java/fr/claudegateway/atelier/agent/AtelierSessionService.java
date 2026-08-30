@@ -766,6 +766,14 @@ public class AtelierSessionService {
     public AgentConfirmationState setAskBeforeBash(UUID userId, UUID workspaceId, boolean enabled) {
         // Isolation EN PREMIER : workspace d'un autre user / inexistant ⇒ 404, aucune écriture.
         Workspace workspace = workspaceService.requireOwned(userId, workspaceId);
+        if (!enabled && workspace.isRunnerTarget()) {
+            // Décision D7 (F-38 / SF-38-08) : non désactivable en cible RUNNER. Accepter la bascule
+            // en silence afficherait « désactivé » alors que la boucle continue de demander — pire
+            // qu'un refus, parce que l'utilisateur croirait le réglage effectif.
+            throw new fr.claudegateway.atelier.ExecutionTargetModeException(
+                    "La validation avant exécution ne peut pas être désactivée sur un projet "
+                            + "exécuté sur votre machine.");
+        }
         workspace.setAgentAskBeforeBash(enabled);
         workspaceRepository.save(workspace);
         String sessionId = workspace.getAgentSessionId();

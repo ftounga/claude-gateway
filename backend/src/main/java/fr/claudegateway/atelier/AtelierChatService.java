@@ -20,7 +20,11 @@ import fr.claudegateway.ai.ModelCatalog;
 import fr.claudegateway.atelier.dto.AtelierChatResponse.AtelierAction;
 import fr.claudegateway.byok.ByokKeyService;
 import fr.claudegateway.quota.QuotaService;
+import fr.claudegateway.runner.audit.RunnerAuditOutcome;
+import fr.claudegateway.runner.audit.RunnerAuditService;
 import fr.claudegateway.runner.channel.RunnerCallResult;
+import fr.claudegateway.runner.channel.RunnerErrorCodes;
+import fr.claudegateway.runner.exec.RunnerConfirmationGate;
 import fr.claudegateway.runner.exec.RunnerToolGateway;
 
 /**
@@ -52,6 +56,8 @@ public class AtelierChatService {
     /** Garde-fou : longueur max de la consigne système (CLAUDE.md + skills). */
     private static final int SYSTEM_MAX_CHARS = 40_000;
     private static final List<String> SKILL_PREFIXES = List.of(".claude/skills/", "skills/");
+    /** Cible d'audit d'une commande (F-38 / SF-38-08) : la ligne du journal, pas un contenu. */
+    private static final int AUDIT_TARGET_CHARS = 1_000;
 
     private final WorkspaceService workspaceService;
     private final AtelierMessageRepository messageRepository;
@@ -62,6 +68,8 @@ public class AtelierChatService {
     private final fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService;
     private final RunnerToolGateway runnerToolGateway;
     private final fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher;
+    private final RunnerConfirmationGate confirmationGate;
+    private final RunnerAuditService runnerAuditService;
 
     /**
      * Tours pour lesquels une interruption a été demandée (F-38 / SF-38-07, même geste que F-32).
@@ -76,7 +84,9 @@ public class AtelierChatService {
             ModelCatalog modelCatalog,
             fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService,
             RunnerToolGateway runnerToolGateway,
-            fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher) {
+            fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher,
+            RunnerConfirmationGate confirmationGate,
+            RunnerAuditService runnerAuditService) {
         this.workspaceService = workspaceService;
         this.messageRepository = messageRepository;
         this.agentProvider = agentProvider;
@@ -86,6 +96,8 @@ public class AtelierChatService {
         this.gitWorkspaceService = gitWorkspaceService;
         this.runnerToolGateway = runnerToolGateway;
         this.runnerCallDispatcher = runnerCallDispatcher;
+        this.confirmationGate = confirmationGate;
+        this.runnerAuditService = runnerAuditService;
     }
 
     /**
@@ -252,7 +264,30 @@ public class AtelierChatService {
     public void interruptChat(UUID userId, UUID workspaceId) {
         workspaceService.requireOwned(userId, workspaceId);
         interruptedTurns.add(turnKey(userId, workspaceId));
+        // Une demande d'autorisation encore en attente bloquerait la boucle jusqu'à son échéance,
+        // alors que l'utilisateur vient précisément de demander l'arrêt (F-38 / SF-38-08).
+        confirmationGate.cancelWorkspace(workspaceId);
         runnerCallDispatcher.cancelWorkspace(workspaceId, "user_interrupt");
+    }
+
+    /**
+     * Tranche une demande d'autorisation posée par la boucle en cible {@code RUNNER}
+     * (F-38 / SF-38-08, décision D7) : autorise la commande, ou la refuse avec un motif que le
+     * modèle recevra.
+     *
+     * <p>Le tour, lui, attend sur son flux SSE : cette réponse arrive sur une <b>autre requête</b>.
+     * Isolation appliquée en premier ({@code requireOwned} : 404 sur un projet d'autrui), et la
+     * porte revérifie que la demande appartient bien à ce couple utilisateur/workspace — un
+     * identifiant de corrélation deviné n'autorise rien.</p>
+     *
+     * @throws WorkspaceNotFoundException si le workspace n'est pas possédé
+     * @throws fr.claudegateway.runner.exec.NoPendingConfirmationException si rien n'attend cette réponse
+     */
+    public void confirmToolUse(UUID userId, UUID workspaceId, String toolUseId, boolean allow,
+            String reason) {
+        workspaceService.requireOwned(userId, workspaceId);
+        confirmationGate.resolve(userId, workspaceId, toolUseId == null ? "" : toolUseId.trim(),
+                allow, reason);
     }
 
     /** Clef de marque d'interruption : l'utilisateur ET le workspace, jamais l'un sans l'autre. */
@@ -308,7 +343,7 @@ public class AtelierChatService {
     private ToolOutcome executeTool(UUID userId, Workspace workspace, String callId, AgentToolCall call,
             AtelierProgressListener listener, long deadline) {
         if (workspace.isRunnerTarget()) {
-            return executeToolOnRunner(workspace.getId(), callId, call, listener, deadline);
+            return executeToolOnRunner(userId, workspace.getId(), callId, call, listener, deadline);
         }
         return executeToolOnStorage(userId, workspace.getId(), call);
     }
@@ -318,44 +353,128 @@ public class AtelierChatService {
      * elle traduit l'appel en trame {@code tool_call}, attend le {@code tool_result} et le retraduit
      * en résultat d'outil pour le modèle, dans les formats exacts du mode sandbox (contrat §3) — le
      * prompt ne doit pas dériver selon la cible d'exécution.
+     *
+     * <p>Deux garde-fous s'ajoutent en SF-38-08, dans cet ordre : la <b>validation d'action</b>
+     * (D7) — la trame n'est jamais émise avant décision — puis la <b>trace</b> (D11) : une ligne de
+     * journal par appel, qu'il ait abouti, échoué ou été refusé.</p>
      */
-    private ToolOutcome executeToolOnRunner(UUID workspaceId, String callId, AgentToolCall call,
-            AtelierProgressListener listener, long deadline) {
-        try {
-            JsonNode input = call.input();
-            return switch (call.name()) {
-                case "list_files" -> textOutcome(runnerToolGateway.listFiles(workspaceId, callId), null);
-                case "read_file" -> {
-                    String path = requiredArg(input, "path");
-                    yield textOutcome(runnerToolGateway.readFile(workspaceId, callId, path),
-                            new AtelierAction("read", path));
-                }
-                case "write_file" -> {
-                    String path = requiredArg(input, "path");
-                    RunnerCallResult result = runnerToolGateway.writeFile(workspaceId, callId, path,
-                            input.path("content").asText(""));
-                    // Le `content` renvoyé par le runner est ignoré : seul compte l'aboutissement, et
-                    // le modèle attend la formulation historique.
-                    yield result.ok()
-                            ? new ToolOutcome("Fichier écrit : " + path, false, new AtelierAction("write", path))
-                            : ToolOutcome.error(result.errorMessage());
-                }
-                case "search_files" -> textOutcome(
-                        runnerToolGateway.searchFiles(workspaceId, callId, requiredArg(input, "query")), null);
-                case "bash" -> {
-                    String command = requiredArg(input, "command");
-                    // Le délai est ramené au budget de tour restant : une commande ne doit jamais
-                    // pouvoir survivre au tour qui l'a lancée.
-                    long remaining = deadline - System.currentTimeMillis();
-                    RunnerCallResult result = runnerToolGateway.bash(workspaceId, callId, command,
-                            input.path("cwd").asText(null), remaining, listener::onOutput);
-                    yield bashOutcome(command, result);
-                }
-                default -> ToolOutcome.error("Outil inconnu : " + call.name());
-            };
-        } catch (RuntimeException ex) {
-            return ToolOutcome.error(ex.getMessage() != null ? ex.getMessage() : "Opération refusée.");
+    private ToolOutcome executeToolOnRunner(UUID userId, UUID workspaceId, String callId,
+            AgentToolCall call, AtelierProgressListener listener, long deadline) {
+        String tool = call.name();
+        String target = auditTarget(call);
+        if (requiresConfirmation(tool)) {
+            RunnerConfirmationGate.Outcome decision =
+                    askPermission(userId, workspaceId, callId, tool, target, listener);
+            if (!decision.decision().allows()) {
+                // Refus AVANT émission (contrat §6) : rien n'est parti sur la machine, et le modèle
+                // reçoit le motif pour proposer autre chose plutôt que de rester bloqué.
+                runnerAuditService.recordDenied(userId, workspaceId, callId, tool, target,
+                        decision.decision() == RunnerConfirmationGate.Decision.TIMEOUT
+                                ? RunnerAuditOutcome.TIMEOUT
+                                : RunnerAuditOutcome.DENIED);
+                return ToolOutcome.error(deniedMessage(decision));
+            }
         }
+        RunnerCallResult result;
+        try {
+            result = callRunner(workspaceId, callId, call, listener, deadline);
+        } catch (RuntimeException ex) {
+            // Argument manquant ou malformé : rien n'est parti, mais la tentative est tracée — le
+            // journal doit dire ce que le modèle a essayé, pas seulement ce qui a abouti.
+            result = RunnerCallResult.backendError(RunnerErrorCodes.INVALID_INPUT,
+                    ex.getMessage() != null ? ex.getMessage() : "Opération refusée.");
+        }
+        if (result == null) {
+            return ToolOutcome.error("Outil inconnu : " + tool);
+        }
+        runnerAuditService.recordCall(userId, workspaceId, callId, tool, target, result);
+        return runnerOutcome(call, result);
+    }
+
+    /**
+     * Vrai si l'action doit être autorisée par l'utilisateur avant d'être émise (F-38 / SF-38-08,
+     * décision D7). En cible {@code RUNNER}, l'exécution de commandes l'est <b>toujours</b> : le
+     * réglage {@code agent_ask_before_bash} n'est pas consulté ici, il n'est pas désactivable.
+     *
+     * <p>Les écritures de fichier n'y sont volontairement pas soumises : c'est l'usage central du
+     * mode (l'agent édite le projet), et un clic par écriture pousserait à chercher un contournement
+     * — ce qui affaiblirait la garde. Elles restent tracées, confinées à la racine et révocables
+     * d'un geste (coupe-circuit). Étendre la porte ne coûte qu'une ligne ici.</p>
+     */
+    private static boolean requiresConfirmation(String tool) {
+        return "bash".equals(tool);
+    }
+
+    /** Pose la demande d'autorisation à l'écran, attend la décision, puis relaie sa résolution. */
+    private RunnerConfirmationGate.Outcome askPermission(UUID userId, UUID workspaceId, String callId,
+            String tool, String detail, AtelierProgressListener listener) {
+        RunnerConfirmationGate.Outcome outcome = confirmationGate.await(userId, workspaceId, callId,
+                () -> listener.onConfirmRequest(
+                        new AtelierProgressListener.AtelierConfirmRequest(callId, tool, detail)));
+        listener.onConfirmResolved(new AtelierProgressListener.AtelierConfirmResolved(
+                callId, outcome.decision().label()));
+        return outcome;
+    }
+
+    /** Message rendu au modèle quand l'action n'a pas été autorisée (jamais un détail technique). */
+    private static String deniedMessage(RunnerConfirmationGate.Outcome outcome) {
+        if (outcome.decision() == RunnerConfirmationGate.Decision.TIMEOUT) {
+            return "Commande refusée : aucune autorisation n'a été donnée dans le délai imparti.";
+        }
+        return outcome.reason() == null || outcome.reason().isBlank()
+                ? "Commande refusée par l'utilisateur."
+                : "Commande refusée par l'utilisateur. Motif : " + outcome.reason();
+    }
+
+    /** Émet l'appel vers le runner ; {@code null} si l'outil demandé n'existe pas. */
+    private RunnerCallResult callRunner(UUID workspaceId, String callId, AgentToolCall call,
+            AtelierProgressListener listener, long deadline) {
+        JsonNode input = call.input();
+        return switch (call.name()) {
+            case "list_files" -> runnerToolGateway.listFiles(workspaceId, callId);
+            case "read_file" -> runnerToolGateway.readFile(workspaceId, callId,
+                    requiredArg(input, "path"));
+            case "write_file" -> runnerToolGateway.writeFile(workspaceId, callId,
+                    requiredArg(input, "path"), input.path("content").asText(""));
+            case "search_files" -> runnerToolGateway.searchFiles(workspaceId, callId,
+                    requiredArg(input, "query"));
+            // Le délai est ramené au budget de tour restant : une commande ne doit jamais pouvoir
+            // survivre au tour qui l'a lancée.
+            case "bash" -> runnerToolGateway.bash(workspaceId, callId, requiredArg(input, "command"),
+                    input.path("cwd").asText(null), deadline - System.currentTimeMillis(),
+                    listener::onOutput);
+            default -> null;
+        };
+    }
+
+    /** Traduit l'issue d'un appel runner en résultat d'outil, aux formats du mode sandbox. */
+    private ToolOutcome runnerOutcome(AgentToolCall call, RunnerCallResult result) {
+        JsonNode input = call.input();
+        return switch (call.name()) {
+            case "read_file" -> textOutcome(result, new AtelierAction("read", arg(input, "path")));
+            // Le `content` renvoyé par le runner est ignoré : seul compte l'aboutissement, et le
+            // modèle attend la formulation historique.
+            case "write_file" -> result.ok()
+                    ? new ToolOutcome("Fichier écrit : " + arg(input, "path"), false,
+                            new AtelierAction("write", arg(input, "path")))
+                    : ToolOutcome.error(result.errorMessage());
+            case "bash" -> bashOutcome(arg(input, "command"), result);
+            default -> textOutcome(result, null);
+        };
+    }
+
+    /**
+     * Cible journalisée d'un appel (F-38 / SF-38-08) : un chemin, un terme recherché ou une commande
+     * tronquée — jamais un contenu de fichier ni une sortie de commande.
+     */
+    private String auditTarget(AgentToolCall call) {
+        JsonNode input = call.input();
+        return switch (call.name()) {
+            case "read_file", "write_file" -> arg(input, "path");
+            case "search_files" -> arg(input, "query");
+            case "bash" -> shorten(arg(input, "command"), AUDIT_TARGET_CHARS);
+            default -> null;
+        };
     }
 
     /**
@@ -518,17 +637,41 @@ public class AtelierChatService {
                 .append("Ne fais aucune supposition sur un fichier sans l'avoir lu. Après une modification, ")
                 .append("résume clairement ce que tu as changé.\n\n");
 
-        readOptional(userId, workspace, "CLAUDE.md").ifPresent(content ->
-                system.append("--- Conventions du projet (CLAUDE.md) ---\n").append(content).append("\n\n"));
+        // Compteurs d'amorçage : ces lectures sont journalisées en UNE ligne (F-38 / SF-38-08).
+        // Les tracer une par une noierait le journal sous des dizaines d'entrées que l'utilisateur
+        // n'a pas demandées, et masquerait ce qu'il cherche : ce que le modèle a décidé de lire.
+        int reads = 0;
+        long chars = 0L;
 
-        for (String path : safeTree(userId, workspace)) {
+        java.util.Optional<String> instructions = readOptional(userId, workspace, "CLAUDE.md");
+        if (instructions.isPresent()) {
+            reads++;
+            chars += instructions.get().length();
+            system.append("--- Conventions du projet (CLAUDE.md) ---\n")
+                    .append(instructions.get()).append("\n\n");
+        }
+
+        List<String> tree = safeTree(userId, workspace);
+        if (!tree.isEmpty()) {
+            reads++; // Le listage est lui aussi une action menée sur la machine.
+        }
+        for (String path : tree) {
             if (SKILL_PREFIXES.stream().anyMatch(path::startsWith)) {
-                readOptional(userId, workspace, path).ifPresent(content ->
-                        system.append("--- Skill : ").append(path).append(" ---\n").append(content).append("\n\n"));
+                java.util.Optional<String> skill = readOptional(userId, workspace, path);
+                if (skill.isPresent()) {
+                    reads++;
+                    chars += skill.get().length();
+                    system.append("--- Skill : ").append(path).append(" ---\n")
+                            .append(skill.get()).append("\n\n");
+                }
             }
             if (system.length() > SYSTEM_MAX_CHARS) {
                 break;
             }
+        }
+        if (workspace.isRunnerTarget()) {
+            runnerAuditService.recordBootstrap(userId, workspace.getId(),
+                    UUID.randomUUID().toString(), reads, chars);
         }
         String result = system.toString();
         return result.length() > SYSTEM_MAX_CHARS ? result.substring(0, SYSTEM_MAX_CHARS) : result;

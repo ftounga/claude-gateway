@@ -2427,3 +2427,169 @@ describe('AtelierComponent — écrans runner (F-38 SF-38-06)', () => {
     fixture.destroy();
   });
 });
+
+/**
+ * Garde-fous d'exécution sur la machine connectée (F-38 / SF-38-08). Deux propriétés tiennent
+ * l'écran : la décision part **au bon endroit** (mode Assistant ≠ session sandbox), et le
+ * coupe-circuit ramène réellement le projet sur le sandbox hébergé.
+ */
+describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
+  let fixture: ComponentFixture<AtelierComponent>;
+  let component: AtelierComponent;
+  let service: jasmine.SpyObj<AtelierService>;
+  let snackBar: jasmine.SpyObj<MatSnackBar>;
+  let dialog: jasmine.SpyObj<MatDialog>;
+
+  const summary: WorkspaceSummary = {
+    id: 'w1', name: 'projet', createdAt: '2026-08-30T00:00:00Z', source: 'ARCHIVE', gitRepo: null,
+  };
+  const runnerDetail: WorkspaceDetail = {
+    id: 'w1', name: 'projet', fileCount: 1, files: ['src/main.ts'],
+    createdAt: '2026-08-30T00:00:00Z', source: 'ARCHIVE', gitRepoUrl: null, gitRepo: null,
+    gitBranch: null, truncated: false, executionTarget: 'RUNNER',
+  };
+
+  function setup(): void {
+    service = jasmine.createSpyObj<AtelierService>('AtelierService', [
+      'createWorkspace', 'listWorkspaces', 'getWorkspace', 'getFile', 'writeFile',
+      'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory',
+      'setExecutionTarget', 'getRunnerStatus', 'createRunnerPairingCode', 'downloadRunnerJar',
+      'confirmToolUse', 'confirmChatToolUse', 'killRunner', 'getRunnerAudit', 'interruptChat',
+    ]);
+    const apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
+    snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
+    dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
+
+    apiKeyService.getStatus.and.returnValue(of({
+      present: false, maskedKey: null, last4: null, provider: null, mode: 'HOSTED',
+      validatedAt: null, createdAt: null,
+    } as ApiKeyStatus));
+    service.listWorkspaces.and.returnValue(of([summary]));
+    service.getWorkspace.and.returnValue(of(runnerDetail));
+    service.getHistory.and.returnValue(of([]));
+    service.getRunnerStatus.and.returnValue(of({ connected: true, lastSeenAt: null }));
+
+    TestBed.configureTestingModule({
+      imports: [AtelierComponent],
+      providers: [
+        provideNoopAnimations(),
+        provideRouter([]),
+        { provide: AtelierService, useValue: service },
+        { provide: ApiKeyService, useValue: apiKeyService },
+        { provide: MatSnackBar, useValue: snackBar },
+        { provide: MatDialog, useValue: dialog },
+      ],
+    });
+
+    fixture = TestBed.createComponent(AtelierComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    component.selectWorkspace(summary);
+    fixture.detectChanges();
+  }
+
+  /** Lance un tour Assistant qui s'arrête sur une demande d'autorisation. */
+  function runAwaitingConfirmation(): void {
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onConfirmRequest!({ toolUseId: 'toolu_1', tool: 'bash', detail: 'npm test' });
+      return Promise.resolve();
+    });
+    component.draft.set('lance les tests');
+    component.send();
+  }
+
+  it("pose l'invite d'autorisation dans le fil Assistant", () => {
+    setup();
+    runAwaitingConfirmation();
+
+    const pending = component.pendingConfirmation();
+    expect(pending).not.toBeNull();
+    expect(pending!.source).toBe('edit');
+    expect(pending!.detail).toBe('npm test');
+    fixture.destroy();
+  });
+
+  it('envoie la décision du mode Assistant sur /chat/confirm, pas sur la session sandbox', () => {
+    setup();
+    runAwaitingConfirmation();
+    service.confirmChatToolUse.and.returnValue(of(void 0));
+
+    component.answerConfirmation(true);
+
+    expect(service.confirmChatToolUse).toHaveBeenCalledWith('w1', {
+      toolUseId: 'toolu_1', decision: 'allow', reason: undefined,
+    });
+    // Le mauvais endpoint laisserait la commande en attente jusqu'à son refus automatique.
+    expect(service.confirmToolUse).not.toHaveBeenCalled();
+    fixture.destroy();
+  });
+
+  it('relaie le motif du refus au modèle', () => {
+    setup();
+    runAwaitingConfirmation();
+    service.confirmChatToolUse.and.returnValue(of(void 0));
+
+    component.startDenying();
+    component.setConfirmationReason('  pas maintenant  ');
+    component.answerConfirmation(false);
+
+    expect(service.confirmChatToolUse).toHaveBeenCalledWith('w1', {
+      toolUseId: 'toolu_1', decision: 'deny', reason: 'pas maintenant',
+    });
+    fixture.destroy();
+  });
+
+  it("annonce le refus automatique quand personne n'a répondu à temps", () => {
+    setup();
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onConfirmRequest!({ toolUseId: 'toolu_1', tool: 'bash', detail: 'npm test' });
+      handlers.onConfirmResolved!({ toolUseId: 'toolu_1', decision: 'timeout' });
+      return Promise.resolve();
+    });
+    component.draft.set('lance');
+    component.send();
+
+    expect(component.pendingConfirmation()).toBeNull();
+    expect(snackBar.open).toHaveBeenCalled();
+    fixture.destroy();
+  });
+
+  it('le coupe-circuit coupe la liaison et ramène le projet sur le sandbox hébergé', () => {
+    setup();
+    dialog.open.and.returnValue({ afterClosed: () => of(true) } as MatDialogRef<unknown>);
+    service.killRunner.and.returnValue(
+      of({ revokedTokens: 2, disconnected: true, executionTarget: 'SANDBOX' as const }));
+
+    component.killRunner();
+    fixture.detectChanges();
+
+    expect(service.killRunner).toHaveBeenCalledWith('w1');
+    expect(component.executionTarget()).toBe('SANDBOX');
+    expect(component.runnerTarget()).toBeFalse();
+    expect(snackBar.open).toHaveBeenCalled();
+    fixture.destroy();
+  });
+
+  it('un coupe-circuit annulé ne coupe rien', () => {
+    setup();
+    dialog.open.and.returnValue({ afterClosed: () => of(false) } as MatDialogRef<unknown>);
+
+    component.killRunner();
+
+    expect(service.killRunner).not.toHaveBeenCalled();
+    expect(component.executionTarget()).toBe('RUNNER');
+    fixture.destroy();
+  });
+
+  it("ouvre le journal d'activité sur le projet courant", () => {
+    setup();
+    dialog.open.and.returnValue({ afterClosed: () => of(undefined) } as MatDialogRef<unknown>);
+
+    component.openRunnerAudit();
+
+    expect(dialog.open).toHaveBeenCalled();
+    expect(dialog.open.calls.mostRecent().args[1]?.data)
+      .toEqual({ workspaceId: 'w1', workspaceName: 'projet' });
+    fixture.destroy();
+  });
+});

@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator;
@@ -234,6 +235,39 @@ public class RunnerCallDispatcher {
                     workspaceId, reason);
         }
         return cancelled;
+    }
+
+    /**
+     * <b>Coupe la liaison</b> avec le runner d'un workspace, sur-le-champ (F-38 / SF-38-08) :
+     * annulation des appels en vol, fermeture de la socket, puis terminaison de ce qui attendait
+     * encore. Utilisé par la révocation d'un jeton et par le coupe-circuit.
+     *
+     * <p>Sans cette coupure, révoquer un jeton ne révoquait rien tant que la socket restait
+     * ouverte : le runner continuait de servir les appels d'une connexion pourtant retirée. Les
+     * appels en vol sont terminés ici même, sans attendre {@code afterConnectionClosed} — au moment
+     * où l'on coupe, plus rien ne doit attendre une socket condamnée.</p>
+     *
+     * @return vrai si une socket locale a effectivement été fermée
+     */
+    public boolean disconnect(UUID workspaceId, String reason) {
+        WebSocketSession session = outbound.get(workspaceId);
+        if (session == null) {
+            return false;
+        }
+        cancelWorkspace(workspaceId, reason);
+        try {
+            session.close(CloseStatus.NORMAL);
+        } catch (IOException | RuntimeException ex) {
+            log.debug("Fermeture de la socket runner impossible (workspace={})", workspaceId);
+        }
+        failAllOf(workspaceId);
+        log.info("Liaison runner coupée (workspace={}, motif={})", workspaceId, reason);
+        return true;
+    }
+
+    /** Jeton du runner <b>local</b> de ce workspace, s'il y en a un (audit, révocation ciblée). */
+    public java.util.Optional<UUID> localTokenId(UUID workspaceId) {
+        return registry.findLocal(workspaceId).map(RunnerConnection::tokenId);
     }
 
     // ---------------------------------------------------------------- réception

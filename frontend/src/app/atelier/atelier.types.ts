@@ -80,6 +80,13 @@ export interface AtelierPendingConfirmation {
   toolUseId: string;
   tool: string;
   detail: string;
+  /**
+   * D'où vient la demande : `exec` = sandbox hébergé (F-33), `edit` = machine connectée
+   * (F-38 / SF-38-08). Les deux modes posent la même question mais **la réponse ne part pas au
+   * même endroit** — répondre au mauvais laisserait la commande en attente jusqu'à son refus
+   * automatique.
+   */
+  source: AtelierAgentMode;
   answering: boolean;
   /** Champ de motif ouvert : le refus se fait en un clic, le motif est un second geste, facultatif. */
   denying: boolean;

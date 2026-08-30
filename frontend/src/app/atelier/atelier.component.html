@@ -256,6 +256,30 @@
             <mat-icon>settings_ethernet</mat-icon>
             Connecter une machine
           </button>
+          <!-- Journal d'activité (F-38 / SF-38-08, D11) : ce qui a été lu, écrit et exécuté. -->
+          <button
+            mat-icon-button
+            type="button"
+            class="runner-audit"
+            matTooltip="Journal d'activité de la machine"
+            aria-label="Journal d'activité de la machine"
+            (click)="openRunnerAudit()"
+          >
+            <mat-icon>history</mat-icon>
+          </button>
+          <!-- Coupe-circuit (F-38 / SF-38-08) : le bouton qu'on cherche quand ça se passe mal. -->
+          <button
+            mat-icon-button
+            type="button"
+            class="runner-kill"
+            color="warn"
+            matTooltip="Couper la liaison avec la machine"
+            aria-label="Couper la liaison avec la machine"
+            [disabled]="killingRunner()"
+            (click)="killRunner()"
+          >
+            <mat-icon>power_settings_new</mat-icon>
+          </button>
         }
 
         <span class="target-hint">
@@ -409,6 +433,66 @@
                   <mat-icon>stop_circle</mat-icon>
                   Interrompre
                 </button>
+              }
+              <!--
+                Demande d'autorisation avant exécution sur la machine (F-38 / SF-38-08, D7).
+                Dans le fil, à la suite des étapes : ce sont elles qui permettent de juger, une
+                modale les masquerait. Le silence vaut refus, l'écran le dit à la résolution.
+              -->
+              @if (pendingConfirmation(); as ask) {
+                @if (ask.source === 'edit') {
+                  <div class="chat-ask" role="alertdialog" aria-label="Autorisation demandée">
+                    <p class="chat-ask-title">
+                      <mat-icon class="chat-ask-icon">shield</mat-icon>
+                      Claude demande à exécuter cette commande sur votre machine
+                    </p>
+                    <pre class="chat-ask-command">{{ ask.detail || ask.tool }}</pre>
+                    @if (ask.denying) {
+                      <input
+                        type="text"
+                        class="chat-ask-reason"
+                        name="chatDenyReason"
+                        autocomplete="off"
+                        maxlength="500"
+                        placeholder="Motif du refus (facultatif) — Claude le recevra"
+                        aria-label="Motif du refus"
+                        [ngModel]="ask.reason"
+                        (ngModelChange)="setConfirmationReason($event)"
+                      />
+                    }
+                    <div class="chat-ask-actions">
+                      <button
+                        mat-flat-button
+                        color="primary"
+                        type="button"
+                        class="chat-ask-allow"
+                        [disabled]="ask.answering"
+                        (click)="answerConfirmation(true)"
+                      >
+                        Autoriser
+                      </button>
+                      @if (ask.denying) {
+                        <button
+                          mat-stroked-button
+                          type="button"
+                          [disabled]="ask.answering"
+                          (click)="answerConfirmation(false)"
+                        >
+                          Confirmer le refus
+                        </button>
+                      } @else {
+                        <button
+                          mat-stroked-button
+                          type="button"
+                          [disabled]="ask.answering"
+                          (click)="startDenying()"
+                        >
+                          Refuser
+                        </button>
+                      }
+                    </div>
+                  </div>
+                }
               }
               @if (live.text.length > 0) {
                 <div class="message-content markdown-body" [innerHTML]="live.text | markdown"></div>

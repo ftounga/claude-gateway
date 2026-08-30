@@ -728,3 +728,66 @@ a.active {
   font-weight: 400;
   opacity: 0.85;
 }
+
+/* Demande d'autorisation avant exécution sur la machine connectée (F-38 / SF-38-08, décision D7).
+   Encadrée dans le fil, à la suite des étapes : ce sont elles qui permettent de juger. Accent de
+   charte (or/ambre) — la question n'est pas une erreur, c'est une décision à prendre. */
+.chat-ask {
+  margin: var(--cg-space-3) 0;
+  padding: var(--cg-space-3);
+  border: 1px solid var(--cg-accent);
+  border-radius: 4px;
+  background: var(--cg-surface-2);
+}
+
+.chat-ask-title {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  margin: 0 0 var(--cg-space-2);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cg-primary);
+}
+
+.chat-ask-icon {
+  width: 18px;
+  height: 18px;
+  font-size: 18px;
+  color: var(--cg-accent);
+}
+
+.chat-ask-command {
+  margin: 0 0 var(--cg-space-2);
+  padding: var(--cg-space-2);
+  border-radius: 4px;
+  background: var(--cg-surface);
+  border: 1px solid var(--cg-divider);
+  font-family: var(--cg-font-mono);
+  font-size: 13px;
+  color: var(--cg-text-primary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.chat-ask-reason {
+  width: 100%;
+  margin-bottom: var(--cg-space-2);
+  padding: var(--cg-space-2);
+  border: 1px solid var(--cg-divider);
+  border-radius: 4px;
+  background: var(--cg-surface);
+  color: var(--cg-text-primary);
+  font-family: var(--cg-font-body);
+  font-size: 13px;
+
+  &::placeholder {
+    color: var(--cg-text-secondary);
+  }
+}
+
+.chat-ask-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+}

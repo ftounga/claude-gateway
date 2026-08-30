@@ -342,6 +342,7 @@ describe('AtelierTerminalComponent', () => {
   it("affiche la commande soumise à autorisation et émet la décision", () => {
     component.pendingConfirmation = {
       toolUseId: 'sevt_1',
+      source: 'exec',
       tool: 'bash',
       detail: 'rm -rf build',
       answering: false,
@@ -370,6 +371,7 @@ describe('AtelierTerminalComponent', () => {
   it("propose le champ de motif au refus, puis émet le refus", () => {
     component.pendingConfirmation = {
       toolUseId: 'sevt_1',
+      source: 'exec',
       tool: 'bash',
       detail: 'rm -rf build',
       answering: false,
@@ -393,6 +395,7 @@ describe('AtelierTerminalComponent', () => {
   it("laisse les actions inertes pendant l'envoi d'une décision", () => {
     component.pendingConfirmation = {
       toolUseId: 'sevt_1',
+      source: 'exec',
       tool: 'bash',
       detail: 'ls',
       answering: true,

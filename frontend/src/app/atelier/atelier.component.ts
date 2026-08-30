@@ -66,6 +66,10 @@ import {
   RunnerPairingDialogComponent,
   RunnerPairingDialogData,
 } from './runner/runner-pairing-dialog.component';
+import {
+  RunnerAuditDialogComponent,
+  RunnerAuditDialogData,
+} from './runner/runner-audit-dialog.component';
 
 // Les types et constantes du fil vivent dans `atelier.types` (F-30 SF-30-07) : la vue terminal les
 // consomme aussi, et les garder ici créerait une dépendance circulaire. Réexportés pour compatibilité.
@@ -221,6 +225,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /** Bascule de cible d'exécution en vol : le sélecteur reste inerte le temps de l'aller-retour. */
   readonly switchingTarget = signal(false);
+
+  /** Coupe-circuit en vol : le bouton reste inerte le temps de l'aller-retour. */
+  readonly killingRunner = signal(false);
 
   /** Sondage du statut runner ; `null` hors cible `RUNNER`. */
   private runnerStatusTimer: ReturnType<typeof setInterval> | null = null;
@@ -880,11 +887,17 @@ export class AtelierComponent implements OnInit, OnDestroy {
             return { ...current, steps };
           });
         }),
+      // Autorisation demandée avant d'exécuter sur la machine connectée (F-38 / SF-38-08) : le
+      // tour est en pause tant que rien n'est décidé, et le silence vaut refus.
+      onConfirmRequest: (request) => this.zone.run(() => this.showConfirmation(request, 'edit')),
+      onConfirmResolved: (resolved) => this.zone.run(() => this.clearConfirmation(resolved)),
       onDone: (done) =>
         this.zone.run(() => {
           this.submitting.set(false);
           this.interrupting.set(false);
           this.streaming.set(null);
+          // Plus rien n'attend de décision : une invite restée à l'écran serait un piège.
+          this.pendingConfirmation.set(null);
           this.messages.update((current) => [
             ...current,
             {
@@ -906,6 +919,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.submitting.set(false);
           this.interrupting.set(false);
           this.streaming.set(null);
+          this.pendingConfirmation.set(null);
           // Retire le message utilisateur optimiste : rien n'a été persisté côté serveur.
           this.messages.update((current) => current.filter((m) => m.id !== userItem.id));
           this.notifyError(this.streamErrorMessage(code));
@@ -993,11 +1007,12 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * flux**, là où l'utilisateur regarde déjà défiler la sortie : une modale masquerait précisément
    * les commandes précédentes, qui sont ce qui permet de juger.
    */
-  private showConfirmation(request: AtelierConfirmRequest): void {
+  private showConfirmation(request: AtelierConfirmRequest, source: AtelierAgentMode): void {
     this.pendingConfirmation.set({
       toolUseId: request.toolUseId,
       tool: request.tool,
       detail: request.detail,
+      source,
       answering: false,
       denying: false,
       reason: '',
@@ -1048,12 +1063,17 @@ export class AtelierComponent implements OnInit, OnDestroy {
     }
     this.pendingConfirmation.set({ ...pending, answering: true });
     const reason = pending.reason.trim();
-    this.atelier
-      .confirmToolUse(id, {
-        toolUseId: pending.toolUseId,
-        decision: allow ? 'allow' : 'deny',
-        reason: !allow && reason.length > 0 ? reason : undefined,
-      })
+    const decision = {
+      toolUseId: pending.toolUseId,
+      decision: (allow ? 'allow' : 'deny') as 'allow' | 'deny',
+      reason: !allow && reason.length > 0 ? reason : undefined,
+    };
+    // La question est la même dans les deux modes, la destination non : mode Assistant sur machine
+    // connectée (F-38 / SF-38-08) ou session sandbox (F-33).
+    const answer = pending.source === 'edit'
+      ? this.atelier.confirmChatToolUse(id, decision)
+      : this.atelier.confirmToolUse(id, decision);
+    answer
       .subscribe({
         error: (err: unknown) => {
           // La demande n'est plus à trancher (déjà expirée, session close) : retirer l'invite plutôt
@@ -1173,6 +1193,78 @@ export class AtelierComponent implements OnInit, OnDestroy {
       .open(RunnerPairingDialogComponent, { data, width: '560px', maxWidth: '95vw' })
       .afterClosed()
       .subscribe(() => this.refreshRunnerStatus());
+  }
+
+  /** Ouvre le journal d'activité de la machine (F-38 / SF-38-08, décision D11). */
+  openRunnerAudit(): void {
+    const id = this.activeWorkspaceId();
+    if (!id) {
+      return;
+    }
+    const data: RunnerAuditDialogData = { workspaceId: id, workspaceName: this.activeName() };
+    this.dialog.open(RunnerAuditDialogComponent, { data, width: '640px', maxWidth: '95vw' });
+  }
+
+  /**
+   * **Coupe-circuit** (F-38 / SF-38-08) : coupe la liaison avec la machine, révoque ses jetons et
+   * ramène le projet sur le sandbox hébergé.
+   *
+   * <p>Confirmation préalable — le geste oblige à réappairer la machine ensuite — mais aucune
+   * étape de plus : c'est le bouton qu'on cherche quand quelque chose se passe mal.</p>
+   */
+  killRunner(): void {
+    const id = this.activeWorkspaceId();
+    if (!id || this.killingRunner()) {
+      return;
+    }
+    const data: ConfirmDialogData = {
+      title: 'Couper la liaison avec la machine',
+      message:
+        'La connexion en cours est fermée, les jetons de ce projet sont révoqués et le projet '
+        + "repasse sur le sandbox hébergé. Il faudra réappairer la machine pour l'utiliser à "
+        + 'nouveau.',
+      confirmLabel: 'Couper maintenant',
+    };
+    this.dialog
+      .open(ConfirmDialogComponent, { data, width: '460px' })
+      .afterClosed()
+      .subscribe((confirmed) => {
+        if (confirmed) {
+          this.performKillRunner(id);
+        }
+      });
+  }
+
+  private performKillRunner(id: string): void {
+    this.killingRunner.set(true);
+    this.atelier.killRunner(id).subscribe({
+      next: (result) => {
+        this.killingRunner.set(false);
+        // La cible qui fait foi est celle renvoyée par le backend, jamais celle qu'on espérait.
+        const detail = this.activeDetail();
+        if (detail) {
+          const updated = { ...detail, executionTarget: result.executionTarget };
+          this.activeDetail.set(updated);
+          this.alignModeWithTarget(updated);
+        }
+        this.pendingConfirmation.set(null);
+        this.runnerStatus.set(null);
+        this.syncRunnerPolling();
+        this.snackBar.open(
+          result.revokedTokens > 0
+            ? `Liaison coupée : ${result.revokedTokens} jeton(s) révoqué(s). Projet repassé sur le `
+              + 'sandbox hébergé.'
+            : 'Aucune liaison active. Projet repassé sur le sandbox hébergé.',
+          'Fermer', { duration: 6000 });
+      },
+      error: (err: unknown) => {
+        this.killingRunner.set(false);
+        this.notifyError(
+          err instanceof HttpErrorResponse && err.status === 404
+            ? 'Projet introuvable.'
+            : "La liaison n'a pas pu être coupée. Veuillez réessayer.");
+      },
+    });
   }
 
   /** Libellé de la pastille d'état runner. « Inconnu » tant qu'aucun relevé n'a abouti. */
@@ -1359,7 +1451,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
             current ? { ...current, text: current.text + text } : current,
           );
         }),
-      onConfirmRequest: (request) => this.zone.run(() => this.showConfirmation(request)),
+      onConfirmRequest: (request) => this.zone.run(() => this.showConfirmation(request, 'exec')),
       onConfirmResolved: (resolved) => this.zone.run(() => this.clearConfirmation(resolved)),
       onDone: (done) =>
         this.zone.run(() => {

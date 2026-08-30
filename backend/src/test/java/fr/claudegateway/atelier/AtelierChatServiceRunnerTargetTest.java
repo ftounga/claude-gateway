@@ -55,6 +55,8 @@ class AtelierChatServiceRunnerTargetTest {
     @Mock private fr.claudegateway.git.GitHubClient gitHubClient;
     @Mock private RunnerToolGateway runnerToolGateway;
     @Mock private fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher;
+    @Mock private fr.claudegateway.runner.exec.RunnerConfirmationGate confirmationGate;
+    @Mock private fr.claudegateway.runner.audit.RunnerAuditService runnerAuditService;
 
     private StubAiAgentProvider agentProvider;
     private AtelierChatService service;
@@ -69,7 +71,16 @@ class AtelierChatServiceRunnerTargetTest {
                 byokKeyService, quotaService, modelCatalog,
                 new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
-                runnerToolGateway, runnerCallDispatcher);
+                runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService);
+
+        // Porte de validation (SF-38-08) : ces tests-ci portent sur le routage, pas sur la
+        // validation — on autorise donc systématiquement, en relayant quand même la demande à
+        // l'écran comme le fait la vraie porte.
+        when(confirmationGate.await(any(), any(), anyString(), any())).thenAnswer(invocation -> {
+            invocation.getArgument(3, Runnable.class).run();
+            return new fr.claudegateway.runner.exec.RunnerConfirmationGate.Outcome(
+                    fr.claudegateway.runner.exec.RunnerConfirmationGate.Decision.ALLOW, null);
+        });
 
         when(modelCatalog.defaultModel()).thenReturn("claude-model");
         when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.empty());

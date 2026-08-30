@@ -1,0 +1,67 @@
+<h2 mat-dialog-title>Journal d'activité de la machine</h2>
+<mat-dialog-content>
+  <p class="audit-intro">
+    Ce que Claude a lu, écrit et exécuté sur votre machine pour le projet
+    <strong>{{ data.workspaceName }}</strong>. Le journal dit ce qui a été fait — jamais le contenu
+    lu ni la sortie produite.
+  </p>
+
+  @if (error(); as message) {
+    <p class="audit-error">
+      <mat-icon class="audit-inline-icon">error_outline</mat-icon>
+      {{ message }}
+    </p>
+  }
+
+  @if (loading()) {
+    <p class="audit-loading" role="status">
+      <mat-progress-spinner mode="indeterminate" [diameter]="18"></mat-progress-spinner>
+      Lecture du journal…
+    </p>
+  } @else if (entries().length === 0 && !error()) {
+    <p class="audit-empty">
+      <mat-icon class="audit-inline-icon">history</mat-icon>
+      Aucune activité enregistrée sur ce projet.
+    </p>
+  } @else {
+    <ul class="audit-list">
+      @for (entry of entries(); track entry.id) {
+        <li class="audit-row" [class.audit-row--failed]="isFailure(entry)">
+          <mat-icon class="audit-icon">{{ toolIcon(entry) }}</mat-icon>
+          <div class="audit-main">
+            <p class="audit-action">
+              <span class="audit-tool">{{ toolLabel(entry) }}</span>
+              @if (entry.target) {
+                <span class="audit-target">{{ entry.target }}</span>
+              }
+            </p>
+            <p class="audit-meta">
+              <span class="audit-time">{{ timeLabel(entry) }}</span>
+              @if (detailLabel(entry); as detail) {
+                <span class="audit-detail">· {{ detail }}</span>
+              }
+            </p>
+          </div>
+          <span
+            class="audit-outcome"
+            [class.audit-outcome--failed]="isFailure(entry)"
+            >{{ outcomeLabel(entry) }}</span
+          >
+        </li>
+      }
+    </ul>
+  }
+</mat-dialog-content>
+<mat-dialog-actions align="end">
+  <button
+    mat-stroked-button
+    type="button"
+    matTooltip="Relire le journal"
+    [disabled]="loading()"
+    (click)="refresh()"
+  >
+    <mat-icon>refresh</mat-icon>
+    Actualiser
+  </button>
+  <button mat-flat-button color="primary" type="button" (click)="close()">Fermer</button>
+</mat-dialog-actions>

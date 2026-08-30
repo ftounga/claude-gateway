@@ -397,11 +397,30 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     est la credential), ce dernier servi par une **chaîne de sécurité Spring dédiée** `@Order(1)`
     `securityMatcher("/runner/**")` — la chaîne principale reste inchangée (ADR-016).
 
+- **runner_audit** — journal d'audit du runner (F-38 / SF-38-08, décision D11, migration `049`).
+  Table neuve, **une ligne par appel d'outil terminé** sur la machine de l'utilisateur et par appel
+  **refusé avant émission** (validation d'action). Clef de corrélation `call_id` = l'identifiant
+  `tool_use` du fournisseur : la même clef relie la trame WebSocket, l'événement SSE de confirmation
+  et la ligne d'audit.
+  - `runner_audit` : `id (uuid)`, `user_id (uuid)`, `workspace_id (uuid)`, `token_id (uuid, nullable)`,
+    `call_id (varchar 64)`, `tool (varchar 32)`, `target (varchar 1000)`, `outcome (varchar 16)`,
+    `error_code (varchar 32)`, `exit_code (int)`, `duration_ms (bigint)`, `bytes (bigint)`,
+    `created_at`. Index `(user_id, workspace_id, created_at)`.
+  - **Ce que la table ne contient jamais** : aucun contenu de fichier, aucune sortie de commande,
+    aucun message d'erreur du runner (un message peut porter un fragment de chemin de la machine ;
+    un code d'erreur, jamais). Les lectures d'amorçage de la consigne système sont **agrégées en une
+    seule ligne** (`tool = bootstrap`) plutôt qu'une par fichier.
+  - Endpoints **`GET /workspaces/{id}/runner/audit`** (journal, `limit` borné à `[1..200]`),
+    **`POST /workspaces/{id}/runner/kill`** (coupe-circuit : révocation de tous les jetons, coupure
+    de la liaison, retour en cible `SANDBOX`) et **`POST /workspaces/{id}/chat/confirm`** (réponse à
+    une demande d'autorisation de la boucle Assistant) — JWT, gardés par l'accès Atelier.
+    L'écriture d'audit est **hors transaction et non bloquante** pour la boucle tool-use.
+
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/user_api_keys/user_git_credentials/prompt_templates/runner_tokens/runner_pairing_codes via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exception documentée : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/user_api_keys/user_git_credentials/prompt_templates/runner_tokens/runner_pairing_codes/runner_audit via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exception documentée : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur.)
 
 ---
 

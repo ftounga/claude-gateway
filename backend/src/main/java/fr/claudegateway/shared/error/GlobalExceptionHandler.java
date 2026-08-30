@@ -36,6 +36,7 @@ import fr.claudegateway.atelier.git.GitWorkspaceModeException;
 import fr.claudegateway.atelier.git.GitWorkspaceReadOnlyException;
 import fr.claudegateway.atelier.git.GitWorkspaceRequiredException;
 import fr.claudegateway.atelier.agent.NoActiveSessionException;
+import fr.claudegateway.runner.exec.NoPendingConfirmationException;
 import fr.claudegateway.chat.AttachmentNotFoundException;
 import fr.claudegateway.chat.ConversationNotFoundException;
 import fr.claudegateway.chat.DocumentNotReadyException;
@@ -368,6 +369,15 @@ public class GlobalExceptionHandler {
         log.debug("Mode Assistant refusé : le projet est adossé à un dépôt Git");
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse("git_workspace_terminal_only", ex.getMessage()));
+    }
+
+    @ExceptionHandler(NoPendingConfirmationException.class)
+    public ResponseEntity<ErrorResponse> handleNoPendingConfirmation(NoPendingConfirmationException ex) {
+        // Demande inconnue, déjà tranchée ou expirée : le dire, plutôt que de laisser croire qu'une
+        // autorisation est passée alors qu'elle s'est perdue (F-38 / SF-38-08).
+        log.debug("Réponse d'autorisation refusée : aucune demande en attente");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("no_pending_confirmation", ex.getMessage()));
     }
 
     @ExceptionHandler(ExecutionTargetModeException.class)
