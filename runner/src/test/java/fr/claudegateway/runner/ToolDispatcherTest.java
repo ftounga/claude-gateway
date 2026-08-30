@@ -180,6 +180,31 @@ class ToolDispatcherTest {
         }
     }
 
+    /**
+     * Régression SF-38-11 : l'outil lent rend {@code cancelled} quand on l'interrompt (c'est aussi ce
+     * que fait {@code BashTool}). Tant que l'aiguilleur interrompait avant de publier, ce
+     * {@code cancelled} pouvait gagner la course et masquer un vrai dépassement de délai — le défaut
+     * se voyait une fois sur quatre environ. On rejoue donc l'échéance en boucle : l'issue doit être
+     * {@code timeout} à chaque tour, sans exception.
+     */
+    @Test
+    void leDelaiDepasseNestJamaisRenduCommeUneAnnulation() throws Exception {
+        for (int i = 0; i < 30; i++) {
+            ToolDispatcher slow = slowDispatcher();
+            try {
+                slow.onToolCall(toolCall("toolu_race_" + i, "read_file", input("path", "a.txt"), 20));
+
+                JsonNode result = nextFrame();
+                assertFalse(result.path("ok").asBoolean());
+                assertEquals("timeout", result.path("error").path("code").asText(),
+                        "Tour " + i + " : le dépassement de délai a été rendu comme une annulation");
+                assertNull(frames.poll(50, TimeUnit.MILLISECONDS), "Une seule trame terminale par id");
+            } finally {
+                slow.close();
+            }
+        }
+    }
+
     @Test
     void ignoreUnIdentifiantDejaEnVol() throws Exception {
         ToolDispatcher slow = slowDispatcher();

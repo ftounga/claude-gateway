@@ -137,8 +137,9 @@ public final class ToolDispatcher implements AutoCloseable {
         if (call == null) {
             return;
         }
-        interrupt(call);
+        // L'issue est réservée AVANT l'interruption (voir onTimeout) : même raison, même ordre.
         complete(call, ToolOutcome.error("cancelled", "Appel interrompu."));
+        interrupt(call);
     }
 
     /** Émet un {@code protocol_error} (§2.6) ; l'identifiant est facultatif. */
@@ -186,12 +187,21 @@ public final class ToolDispatcher implements AutoCloseable {
         complete(call, outcome);
     }
 
+    /**
+     * Échéance atteinte : on <b>réserve l'issue avant</b> d'interrompre le worker.
+     *
+     * <p>L'ordre inverse est une course : {@code interrupt} réveille le worker, qui rend son propre
+     * {@code cancelled} (c'est ce que fait {@code BashTool} sur {@code InterruptedException}) et peut
+     * gagner le {@code compareAndSet} de {@link #complete} — la gateway verrait alors une annulation
+     * là où le délai a bel et bien été dépassé. En publiant d'abord, le drapeau terminal est pris :
+     * le worker réveillé ne peut plus lui substituer la sienne.</p>
+     *
+     * <p>L'interruption suit dans tous les cas, y compris quand le {@code compareAndSet} a échoué :
+     * aucun thread ne doit rester à travailler pour un appel déjà terminé.</p>
+     */
     private void onTimeout(Call call) {
-        if (call.done.get()) {
-            return;
-        }
-        interrupt(call);
         complete(call, ToolOutcome.error("timeout", "Délai d'exécution dépassé."));
+        interrupt(call);
     }
 
     private void complete(Call call, ToolOutcome outcome) {
