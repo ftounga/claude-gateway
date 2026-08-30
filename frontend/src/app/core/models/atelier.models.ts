@@ -497,3 +497,13 @@ export interface GitCommitResult {
   compareUrl: string;
   pullRequestUrl?: string | null;
 }
+
+/**
+ * Branches d'un projet Git (F-31 / SF-31-10) : celles du dépôt, celle que suit le projet, et celle
+ * par défaut — la seule sur laquelle publier reste interdit.
+ */
+export interface GitBranches {
+  branches: string[];
+  current: string;
+  defaultBranch: string;
+}

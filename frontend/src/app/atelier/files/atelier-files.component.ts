@@ -5,6 +5,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatSelectModule } from '@angular/material/select';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatMenuModule } from '@angular/material/menu';
@@ -26,6 +27,10 @@ import { WorkspaceDetail } from '../../core/models/atelier.models';
 import { AtelierService } from '../../core/services/atelier.service';
 import { WORKSPACE_TEXT_ACCEPT, WORKSPACE_TEXT_EXTENSIONS } from '../atelier.component';
 import { TreeNode, buildTree } from './file-tree';
+import {
+  GitBranchDialogComponent,
+  GitBranchDialogData,
+} from '../git/git-branch-dialog.component';
 import {
   GitPushDialogComponent,
   GitPushDialogData,
@@ -60,6 +65,7 @@ const DEFAULT_COMMIT_MESSAGE = 'Modifications depuis l\'Atelier';
     MatIconModule,
     MatMenuModule,
     MatFormFieldModule,
+    MatSelectModule,
     MatInputModule,
     MatProgressBarModule,
     MatTooltipModule,
@@ -125,6 +131,16 @@ export class AtelierFilesComponent implements OnInit {
    * qui n'ont pas de sens sur un dépôt.</p>
    */
   readonly readOnly = signal(false);
+
+  /** Branches du dépôt (F-31 / SF-31-10), chargées à l'ouverture d'un projet Git. */
+  readonly branches = signal<string[]>([]);
+
+  /** Branche par défaut du dépôt : la seule sur laquelle publier reste interdit. */
+  readonly defaultBranch = signal<string | null>(null);
+
+  /** Changement de branche en cours : évite deux bascules concurrentes. */
+  readonly switchingBranch = signal(false);
+
 
   /**
    * Modifications retenues, non encore publiées (F-31 / SF-31-09) : chemin → contenu.
@@ -214,6 +230,9 @@ export class AtelierFilesComponent implements OnInit {
   /** Retient ce que la source du projet change à l'écran : lecture seule, dépôt, branche, troncage. */
   private applySource(detail: WorkspaceDetail): void {
     this.readOnly.set(detail.source === 'GIT');
+    if (detail.source === 'GIT') {
+      this.loadBranches();
+    }
     this.gitRepo.set(detail.gitRepo);
     this.gitBranch.set(detail.gitBranch);
     this.truncated.set(detail.truncated);
@@ -432,6 +451,113 @@ export class AtelierFilesComponent implements OnInit {
   /** Retour au terminal du projet, sous la même garde que le retour au projet. */
   confirmLeaveToTerminal(): void {
     this.confirmLeave(['/atelier', this.workspaceId()], { mode: 'terminal' });
+  }
+
+  private loadBranches(): void {
+    this.atelier.gitBranches(this.workspaceId()).subscribe({
+      next: (result) => {
+        this.branches.set(result.branches);
+        this.defaultBranch.set(result.defaultBranch);
+        this.gitBranch.set(result.current);
+      },
+      // Silencieux : ne pas pouvoir lister les branches ne doit pas empêcher de lire les fichiers.
+      error: () => this.branches.set([]),
+    });
+  }
+
+  /**
+   * Place le projet sur une autre branche (F-31 / SF-31-10) : l'arborescence et les fichiers en
+   * viennent aussitôt, et la prochaine session Claude la montera.
+   */
+  switchBranch(branch: string): void {
+    if (branch === this.gitBranch() || this.switchingBranch()) {
+      return;
+    }
+    if (this.pendingCount() > 0) {
+      // Changer de branche abandonnerait des modifications qui n'existent qu'ici.
+      const ref = this.dialog.open(ConfirmDialogComponent, {
+        width: '460px',
+        data: {
+          title: 'Modifications non publiées',
+          message:
+            `${this.pendingCount()} fichier(s) modifié(s) seront perdus en changeant de branche.`,
+          confirmLabel: 'Changer sans publier',
+        } satisfies ConfirmDialogData,
+      });
+      ref.afterClosed().subscribe((confirmed) => {
+        if (confirmed) {
+          this.pendingEdits.set(new Map());
+          this.applyBranch(branch);
+        }
+      });
+      return;
+    }
+    this.applyBranch(branch);
+  }
+
+  private applyBranch(branch: string): void {
+    const previous = this.gitBranch();
+    this.switchingBranch.set(true);
+    this.atelier.switchGitBranch(this.workspaceId(), branch).subscribe({
+      next: () => {
+        this.switchingBranch.set(false);
+        this.selectedPath.set(null);
+        this.fileContent.set('');
+        this.loadWorkspace();
+        this.noteSessionBranch(previous);
+        this.snackBar.open(`Projet placé sur ${branch}.`, 'Fermer', { duration: 3000 });
+      },
+      error: (err) => {
+        this.switchingBranch.set(false);
+        this.notifyError(httpErrorMessage(err, 'Le changement de branche a échoué.'));
+      },
+    });
+  }
+
+  /** Crée une branche depuis la courante, puis s'y place. */
+  createBranch(): void {
+    const ref = this.dialog.open(GitBranchDialogComponent, {
+      width: '480px',
+      data: { fromBranch: this.gitBranch() ?? '', existing: this.branches() } satisfies GitBranchDialogData,
+    });
+    ref.afterClosed().subscribe((name?: string) => {
+      if (!name) {
+        return;
+      }
+      this.switchingBranch.set(true);
+      const previous = this.gitBranch();
+      this.atelier.createGitBranch(this.workspaceId(), name).subscribe({
+        next: () => {
+          this.switchingBranch.set(false);
+          this.loadWorkspace();
+          this.noteSessionBranch(previous);
+          this.snackBar.open(`Branche ${name} créée, projet placé dessus.`, 'Fermer', { duration: 4000 });
+        },
+        error: (err) => {
+          this.switchingBranch.set(false);
+          this.notifyError(httpErrorMessage(err, 'La création de la branche a échoué.'));
+        },
+      });
+    });
+  }
+
+  /**
+   * Après un changement de branche, dire ce qu'il advient de la session Claude.
+   *
+   * <p>Formulé au conditionnel parce que l'écran ne sait pas si une session est ouverte — le
+   * prétendre serait une supposition de plus. Ici, contrairement au message corrigé en #209, le
+   * conseil de réinitialisation est <b>exact</b> : la session monte `workspace.gitBranch` à son
+   * ouverture, donc la rouvrir la placera sur la nouvelle branche.</p>
+   */
+  private noteSessionBranch(previous: string | null): void {
+    if (!previous) {
+      return;
+    }
+    this.snackBar.open(
+      `Si une session Claude est ouverte, elle travaille encore sur ${previous} — réinitialisez-la pour qu'elle suive la nouvelle branche.`,
+      'Compris',
+      { duration: 12000 },
+    );
   }
 
   /** Nom de branche proposé : reconnaissable, horodaté, jamais la branche de base. */

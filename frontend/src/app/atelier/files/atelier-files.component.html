@@ -58,8 +58,35 @@
       <span class="badge badge--neutral git-chip">
         <mat-icon class="git-chip-icon">hub</mat-icon>
         {{ gitRepo() }}
-        <span class="git-branch">{{ gitBranch() }}</span>
       </span>
+      <!-- Sélecteur de branche (SF-31-10) : voir où l'on travaille, et en changer à tout moment —
+           pas seulement au moment de publier. -->
+      <mat-form-field appearance="outline" class="branch-picker" subscriptSizing="dynamic">
+        <mat-label>Branche</mat-label>
+        <mat-select
+          [value]="gitBranch()"
+          [disabled]="switchingBranch() || branches().length === 0"
+          (selectionChange)="switchBranch($event.value)"
+        >
+          @for (b of branches(); track b) {
+            <mat-option [value]="b">
+              {{ b }}
+              @if (b === defaultBranch()) {
+                <span class="branch-default">par défaut</span>
+              }
+            </mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+      <button
+        mat-stroked-button
+        type="button"
+        [disabled]="switchingBranch()"
+        (click)="createBranch()"
+      >
+        <mat-icon>alt_route</mat-icon>
+        Nouvelle branche
+      </button>
       <span class="toolbar-note">
         @if (pendingCount() > 0) {
           {{ pendingCount() }} fichier(s) modifié(s), non publié(s).

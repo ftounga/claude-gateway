@@ -1,0 +1,28 @@
+<h2 mat-dialog-title>Nouvelle branche</h2>
+
+<mat-dialog-content>
+  <p class="from">
+    Créée depuis <strong>{{ data.fromBranch }}</strong>, sans commit. Le projet s'y placera aussitôt.
+  </p>
+
+  <mat-form-field appearance="outline" class="full">
+    <mat-label>Nom de la branche</mat-label>
+    <input
+      matInput
+      [ngModel]="name()"
+      (ngModelChange)="onNameChange($event)"
+      placeholder="claude/ma-branche"
+      autocomplete="off"
+    />
+    @if (error()) {
+      <mat-error>{{ error() }}</mat-error>
+    }
+  </mat-form-field>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" mat-dialog-close>Annuler</button>
+  <button mat-flat-button color="primary" type="button" [disabled]="!canCreate()" (click)="create()">
+    Créer et s'y placer
+  </button>
+</mat-dialog-actions>
