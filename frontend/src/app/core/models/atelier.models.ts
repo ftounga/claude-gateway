@@ -272,6 +272,11 @@ export interface AtelierStreamAction {
    */
   type: string;
   path?: string;
+  /**
+   * Sortie de la commande accumulée au fil de l'eau (F-38 / SF-38-07, événement SSE `output`).
+   * Absente pour toute étape autre que `bash`.
+   */
+  output?: string;
 }
 
 /** Métadonnées de fin de flux d'atelier (événement SSE `done`, SF-28-05). */
@@ -287,6 +292,11 @@ export interface AtelierStreamHandlers {
   onText: (text: string) => void;
   onDone: (done: AtelierStreamDone) => void;
   onError: (code: string) => void;
+  /**
+   * Fragment de sortie de commande (F-38 / SF-38-07). **Optionnel** : un appelant qui ne s'y abonne
+   * pas ne voit aucune différence, et un backend antérieur n'émet jamais cet événement.
+   */
+  onOutput?: (chunk: string) => void;
 }
 
 /**

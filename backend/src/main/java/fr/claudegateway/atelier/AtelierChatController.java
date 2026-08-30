@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -40,8 +41,17 @@ public class AtelierChatController {
 
     private static final Logger log = LoggerFactory.getLogger(AtelierChatController.class);
 
-    /** Durée de vie max d'un flux SSE (garde-fou ; un flux nominal se clôt bien avant). */
-    private static final long STREAM_TIMEOUT_MS = 300_000L;
+    /**
+     * Durée de vie max d'un flux SSE (garde-fou ; un flux nominal se clôt bien avant).
+     *
+     * <p>Relevée de 300 000 à 900 000 ms en F-38 / SF-38-07 : avec l'outil {@code bash}, un tour peut
+     * légitimement enchaîner plusieurs commandes de deux minutes. À 5 minutes, l'émetteur se fermait
+     * <b>pendant</b> que la boucle continuait d'exécuter des commandes sur la machine de
+     * l'utilisateur — écran figé, travail invisible. La borne qui fait foi est désormais le
+     * <b>budget de tour</b> ({@link AtelierChatService#TURN_BUDGET_MS}, 600 000 ms) : la boucle rend
+     * la main avant que ce garde-fou ne se déclenche.</p>
+     */
+    private static final long STREAM_TIMEOUT_MS = 900_000L;
 
     private final AtelierChatService atelierChatService;
     private final CurrentUser currentUser;
@@ -83,6 +93,22 @@ public class AtelierChatController {
         return emitter;
     }
 
+    /**
+     * Interrompt le tour d'atelier en cours sur ce projet (F-38 / SF-38-07, même geste que F-32
+     * SF-32-02). La commande éventuellement lancée sur la machine de l'utilisateur est <b>tuée</b>,
+     * et la boucle s'arrête à la frontière sûre suivante.
+     *
+     * <p>Volontairement <b>idempotent</b> : interrompre alors que rien ne tourne n'est pas une
+     * erreur (la marque est effacée à l'ouverture du prochain tour). L'isolation {@code user_id} est
+     * appliquée par le service ({@code requireOwned} d'abord : 404 sur un projet d'autrui).</p>
+     */
+    @PostMapping("/interrupt")
+    public ResponseEntity<Void> interrupt(@PathVariable UUID id) {
+        atelierAccess.requireAccess();
+        atelierChatService.interruptChat(currentUser.requireId(), id);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping
     public List<AtelierMessageResponse> history(@PathVariable UUID id) {
         atelierAccess.requireAccess();
@@ -106,6 +132,11 @@ public class AtelierChatController {
                 @Override
                 public void onText(String text) {
                     sendText(emitter, text);
+                }
+
+                @Override
+                public void onOutput(String chunk) {
+                    sendOutput(emitter, chunk);
                 }
             };
             AtelierChatResult result = atelierChatService.chatStreaming(userId, workspaceId, message, listener);
@@ -149,6 +180,19 @@ public class AtelierChatController {
         }
     }
 
+    /**
+     * Émet un fragment de sortie de commande (F-38 / SF-38-07). Une déconnexion client ne doit pas
+     * tuer le tour : contrairement aux étapes, la sortie est un <b>confort d'affichage</b>, et la
+     * commande tourne déjà sur la machine de l'utilisateur. On abandonne le relais, pas le travail.
+     */
+    private void sendOutput(SseEmitter emitter, String chunk) {
+        try {
+            emitter.send(SseEmitter.event().name("output").data(new StreamOutput(chunk)));
+        } catch (IOException | IllegalStateException ex) {
+            // Client parti : la sortie reste agrégée pour le modèle et pour le fil persisté.
+        }
+    }
+
     private void sendError(SseEmitter emitter, String code) {
         try {
             emitter.send(SseEmitter.event().name("error").data(new StreamError(code)));
@@ -164,6 +208,10 @@ public class AtelierChatController {
 
     /** Charges utiles JSON des événements SSE. */
     record StreamText(String text) {
+    }
+
+    /** Fragment de sortie de commande relayé au fil de l'eau (F-38 / SF-38-07). */
+    record StreamOutput(String output) {
     }
 
     record StreamDone(String reply, List<AtelierAction> actions, UUID messageId) {

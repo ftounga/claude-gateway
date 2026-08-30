@@ -26,14 +26,16 @@ public final class RunnerConfig {
     private final String pairingCode;
     private final String label;
     private final Duration heartbeatInterval;
+    private final boolean allowBash;
 
     private RunnerConfig(String gatewayBaseUrl, Path workspaceRoot, String pairingCode,
-            String label, Duration heartbeatInterval) {
+            String label, Duration heartbeatInterval, boolean allowBash) {
         this.gatewayBaseUrl = gatewayBaseUrl;
         this.workspaceRoot = workspaceRoot;
         this.pairingCode = pairingCode;
         this.label = label;
         this.heartbeatInterval = heartbeatInterval;
+        this.allowBash = allowBash;
     }
 
     /**
@@ -48,6 +50,7 @@ public final class RunnerConfig {
         String code = pick(cli, "code", env, "CLAUDE_RUNNER_CODE");
         String label = pick(cli, "label", env, "CLAUDE_RUNNER_LABEL");
         String heartbeat = pick(cli, "heartbeat-interval", env, "CLAUDE_RUNNER_HEARTBEAT_INTERVAL");
+        String allowBash = pick(cli, "allow-bash", env, "CLAUDE_RUNNER_ALLOW_BASH");
 
         if (gateway == null) {
             throw new ConfigException("--gateway est requis (URL de la gateway, ex: https://host/api)");
@@ -86,7 +89,8 @@ public final class RunnerConfig {
             hb = Duration.ofSeconds(seconds);
         }
 
-        return new RunnerConfig(normalizedGateway, root, normalizedCode, normalizedLabel, hb);
+        return new RunnerConfig(normalizedGateway, root, normalizedCode, normalizedLabel, hb,
+                isTrue(allowBash));
     }
 
     /** URL absolue de l'endpoint d'appairage, {@code {gateway}/runner/pair}. */
@@ -132,6 +136,24 @@ public final class RunnerConfig {
         return heartbeatInterval;
     }
 
+    /**
+     * Exécution de commandes autorisée sur cette machine (F-38 / SF-38-07). <b>Faux par défaut</b> :
+     * démarrer un runner autorise la lecture et l'écriture de fichiers, pas l'exécution de commandes
+     * arbitraires. Le drapeau se pose avec {@code --allow-bash} ou {@code CLAUDE_RUNNER_ALLOW_BASH=true}.
+     */
+    public boolean allowBash() {
+        return allowBash;
+    }
+
+    /** Un drapeau vaut « vrai » sur {@code true}, {@code 1}, {@code yes} ou {@code oui}. */
+    private static boolean isTrue(String value) {
+        if (value == null) {
+            return false;
+        }
+        String v = value.trim().toLowerCase(java.util.Locale.ROOT);
+        return v.equals("true") || v.equals("1") || v.equals("yes") || v.equals("oui");
+    }
+
     private static String normalizeGateway(String raw) {
         String g = raw.trim();
         while (g.endsWith("/")) {
@@ -152,6 +174,12 @@ public final class RunnerConfig {
         return g;
     }
 
+    /**
+     * Arguments qui n'attendent pas de valeur : {@code --allow-bash} seul vaut {@code true}, sans
+     * avaler l'argument suivant. La forme {@code --allow-bash=false} reste acceptée.
+     */
+    private static final java.util.Set<String> BOOLEAN_FLAGS = java.util.Set.of("allow-bash");
+
     private static Map<String, String> parseArgs(String[] args) {
         Map<String, String> map = new HashMap<>();
         if (args == null) {
@@ -170,6 +198,10 @@ public final class RunnerConfig {
                 value = arg.substring(eq + 1);
             } else {
                 key = arg.substring(2);
+                if (BOOLEAN_FLAGS.contains(key)) {
+                    map.put(key, "true");
+                    continue;
+                }
                 if (i + 1 >= args.length) {
                     throw new ConfigException("Valeur manquante pour --" + key);
                 }

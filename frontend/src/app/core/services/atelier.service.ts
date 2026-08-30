@@ -190,6 +190,7 @@ export class AtelierService {
       reply?: string;
       actions?: AtelierChatResponse['actions'];
       messageId?: string;
+      output?: string;
     };
     try {
       payload = JSON.parse(data);
@@ -198,6 +199,10 @@ export class AtelierService {
     }
     if (event === 'action') {
       handlers.onAction({ type: payload.type ?? 'read', path: payload.path });
+    } else if (event === 'output') {
+      // Sortie d'une commande exécutée sur la machine connectée (F-38 / SF-38-07). Additif : un
+      // backend antérieur ne l'émet pas, et un appelant qui ne s'y abonne pas l'ignore.
+      handlers.onOutput?.(payload.output ?? '');
     } else if (event === 'text') {
       handlers.onText(payload.text ?? '');
     } else if (event === 'done') {
@@ -366,6 +371,15 @@ export class AtelierService {
    */
   interruptAgentSession(id: string): Observable<void> {
     return this.http.post<void>(`/api/workspaces/${id}/agent/interrupt`, null);
+  }
+
+  /**
+   * Interrompt le tour du mode **Assistant** en cours (F-38 / SF-38-07). En cible `RUNNER`, la
+   * commande lancée sur la machine de l'utilisateur est tuée et la boucle s'arrête à la frontière
+   * sûre suivante. Idempotent : interrompre alors que rien ne tourne renvoie 204.
+   */
+  interruptChat(id: string): Observable<void> {
+    return this.http.post<void>(`/api/workspaces/${id}/chat/interrupt`, null);
   }
 
   /**

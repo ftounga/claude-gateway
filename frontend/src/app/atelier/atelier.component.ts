@@ -866,9 +866,24 @@ export class AtelierComponent implements OnInit, OnDestroy {
             current ? { ...current, text: current.text + text } : current,
           );
         }),
+      // Sortie de commande (F-38 / SF-38-07) : elle appartient à l'étape en cours — celle qui vient
+      // d'être relayée. L'accumuler ailleurs la détacherait de la commande qui la produit.
+      onOutput: (chunk) =>
+        this.zone.run(() => {
+          this.streaming.update((current) => {
+            if (!current || current.steps.length === 0) {
+              return current;
+            }
+            const steps = [...current.steps];
+            const last = steps[steps.length - 1];
+            steps[steps.length - 1] = { ...last, output: (last.output ?? '') + chunk };
+            return { ...current, steps };
+          });
+        }),
       onDone: (done) =>
         this.zone.run(() => {
           this.submitting.set(false);
+          this.interrupting.set(false);
           this.streaming.set(null);
           this.messages.update((current) => [
             ...current,
@@ -889,6 +904,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
       onError: (code) =>
         this.zone.run(() => {
           this.submitting.set(false);
+          this.interrupting.set(false);
           this.streaming.set(null);
           // Retire le message utilisateur optimiste : rien n'a été persisté côté serveur.
           this.messages.update((current) => current.filter((m) => m.id !== userItem.id));
@@ -929,6 +945,29 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.atelier.interruptAgentSession(id).subscribe({
       next: () =>
         this.snackBar.open('Interruption demandée : arrêt en cours…', 'Fermer', { duration: 4000 }),
+      error: (err: unknown) => {
+        this.interrupting.set(false);
+        this.notifyError(this.interruptErrorMessage(err));
+      },
+    });
+  }
+
+  /**
+   * Interrompt le tour du mode **Assistant** en cours (F-38 / SF-38-07). Utile surtout en cible
+   * `RUNNER`, où une commande peut tourner plusieurs minutes sur la machine de l'utilisateur : sans
+   * ce bouton, la seule sortie serait de fermer l'onglet en laissant la commande derrière soi.
+   */
+  interruptAssistantRun(): void {
+    const id = this.activeWorkspaceId();
+    if (!id || !this.submitting() || this.interrupting()) {
+      return;
+    }
+    this.interrupting.set(true);
+    this.atelier.interruptChat(id).subscribe({
+      next: () => {
+        this.interrupting.set(false);
+        this.snackBar.open('Interruption demandée : arrêt en cours…', 'Fermer', { duration: 4000 });
+      },
       error: (err: unknown) => {
         this.interrupting.set(false);
         this.notifyError(this.interruptErrorMessage(err));

@@ -180,6 +180,43 @@ describe('AtelierService', () => {
     return spyOn(window, 'fetch').and.returnValue(Promise.resolve(response as unknown as Response));
   }
 
+  it("route event:output du flux d'atelier vers onOutput (F-38 / SF-38-07)", async () => {
+    fakeSseFetch([
+      'event:action\ndata:{"type":"bash","path":"npm test"}',
+      'event:output\ndata:{"output":"ok 1\\n"}',
+      'event:output\ndata:{"output":"ok 2\\n"}',
+      'event:done\ndata:{"reply":"Terminé.","actions":[],"messageId":"m1"}',
+    ]);
+    const seen: string[] = [];
+
+    await service.streamChat('w1', 'lance les tests', {
+      onAction: (a) => seen.push(`action:${a.type}:${a.path}`),
+      onText: () => undefined,
+      onOutput: (chunk) => seen.push(`output:${chunk}`),
+      onDone: (d) => seen.push(`done:${d.reply}`),
+      onError: () => undefined,
+    });
+
+    expect(seen).toEqual(['action:bash:npm test', 'output:ok 1\n', 'output:ok 2\n', 'done:Terminé.']);
+  });
+
+  it("un appelant sans onOutput ignore l'événement sans erreur (additif, F-38 / SF-38-07)", async () => {
+    fakeSseFetch([
+      'event:output\ndata:{"output":"bruit"}',
+      'event:done\ndata:{"reply":"Fini.","actions":[],"messageId":"m1"}',
+    ]);
+    let reply = '';
+
+    await service.streamChat('w1', 'go', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: (d) => (reply = d.reply),
+      onError: () => undefined,
+    });
+
+    expect(reply).toBe('Fini.');
+  });
+
   it('route event:action_result vers onActionResult (F-30 SF-30-02)', async () => {
     fakeSseFetch([
       'event:action\ndata:{"tool":"bash","toolUseId":"tu_1","detail":"npm test"}',
@@ -312,6 +349,14 @@ describe('AtelierService', () => {
     service.interruptAgentSession('w1').subscribe();
 
     const req = httpMock.expectOne('/api/workspaces/w1/agent/interrupt');
+    expect(req.request.method).toBe('POST');
+    req.flush(null);
+  });
+
+  it("POSTe l'interruption du mode Assistant sur /api/workspaces/{id}/chat/interrupt (F-38 / SF-38-07)", () => {
+    service.interruptChat('w1').subscribe();
+
+    const req = httpMock.expectOne('/api/workspaces/w1/chat/interrupt');
     expect(req.request.method).toBe('POST');
     req.flush(null);
   });

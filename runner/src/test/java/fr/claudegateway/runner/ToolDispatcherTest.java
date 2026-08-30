@@ -2,6 +2,7 @@ package fr.claudegateway.runner;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -17,6 +18,8 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -96,7 +99,7 @@ class ToolDispatcherTest {
     }
 
     @Test
-    void refuseLOutilBashTantQuIlNEstPasLivre() throws Exception {
+    void refuseLOutilBashQuandLaMachineNeLAutorisePas() throws Exception {
         dispatcher.onToolCall(toolCall("toolu_04", "bash", input("command", "ls"), 120_000));
 
         JsonNode result = nextFrame();
@@ -208,6 +211,74 @@ class ToolDispatcherTest {
     }
 
     @Test
+    void annonceLaCapaciteBashQuandLaMachineLAutorise() throws Exception {
+        PathGuard guard = new PathGuard(root);
+        ToolRouter tools = new ToolRouter(new FileTools(guard), new BashTool(guard, true));
+        try (ToolDispatcher withBash = new ToolDispatcher(tools, tools.capabilities(), sender,
+                new Console())) {
+            JsonNode ready = MAPPER.readTree(withBash.readyFrame("1.2.3"));
+
+            assertEquals(2, ready.path("capabilities").size());
+            assertEquals("files", ready.path("capabilities").get(0).asText());
+            assertEquals("bash", ready.path("capabilities").get(1).asText());
+        }
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void diffuseLaSortieDeBashAvantSaTrameTerminale() throws Exception {
+        PathGuard guard = new PathGuard(root);
+        ToolRouter tools = new ToolRouter(new FileTools(guard), new BashTool(guard, true));
+        try (ToolDispatcher withBash = new ToolDispatcher(tools, tools.capabilities(), sender,
+                new Console())) {
+            withBash.onToolCall(toolCall("toolu_bash", "bash",
+                    input("command", "echo un; echo deux 1>&2"), 30_000));
+
+            JsonNode first = nextFrame();
+            JsonNode second = nextFrame();
+            JsonNode terminal = nextFrame();
+
+            assertEquals("tool_stream", first.path("type").asText());
+            assertEquals("toolu_bash", first.path("id").asText());
+            assertEquals(0, first.path("seq").asInt());
+            assertEquals("tool_stream", second.path("type").asText());
+            // Compteur PARTAGÉ entre stdout et stderr : l'ordre des seq est l'ordre réel (contrat §2.3).
+            assertEquals(1, second.path("seq").asInt());
+            assertNotEquals(first.path("stream").asText(), second.path("stream").asText());
+
+            assertEquals("tool_result", terminal.path("type").asText());
+            assertTrue(terminal.path("ok").asBoolean());
+            assertEquals(0, terminal.path("exitCode").asInt());
+            assertEquals("", terminal.path("content").asText());
+        }
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void uneAnnulationDeBashTueLeProcessusEtNeProduitQuUneTrameTerminale() throws Exception {
+        PathGuard guard = new PathGuard(root);
+        ToolRouter tools = new ToolRouter(new FileTools(guard), new BashTool(guard, true));
+        try (ToolDispatcher withBash = new ToolDispatcher(tools, tools.capabilities(), sender,
+                new Console())) {
+            withBash.onToolCall(toolCall("toolu_kill", "bash", input("command", "sleep 30"), 30_000));
+            Thread.sleep(300);
+
+            ObjectNode cancel = MAPPER.createObjectNode();
+            cancel.put("type", "tool_cancel");
+            cancel.put("id", "toolu_kill");
+            cancel.put("reason", "user_interrupt");
+            withBash.onToolCancel(cancel);
+
+            JsonNode terminal = nextFrame();
+            assertEquals("tool_result", terminal.path("type").asText());
+            assertFalse(terminal.path("ok").asBoolean());
+            assertEquals("cancelled", terminal.path("error").path("code").asText());
+            assertNull(frames.poll(1, TimeUnit.SECONDS),
+                    "Exactement une trame terminale par identifiant");
+        }
+    }
+
+    @Test
     void abandonneLesAppelsEnVolQuandLaSocketTombe() throws Exception {
         ToolDispatcher slow = slowDispatcher();
         try {
@@ -226,7 +297,7 @@ class ToolDispatcherTest {
     /** Dispatcher branché sur un outil volontairement lent, pour tester annulation et timeout. */
     private ToolDispatcher slowDispatcher() throws IOException {
         Files.writeString(root.resolve("a.txt"), "x");
-        ToolExecutor slowTool = (tool, input) -> {
+        ToolExecutor slowTool = (tool, input, context) -> {
             try {
                 Thread.sleep(5_000);
             } catch (InterruptedException e) {

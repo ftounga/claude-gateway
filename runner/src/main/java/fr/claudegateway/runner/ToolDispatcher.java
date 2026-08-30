@@ -1,5 +1,6 @@
 package fr.claudegateway.runner;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -42,6 +43,7 @@ public final class ToolDispatcher implements AutoCloseable {
     static final int MAX_ID_LENGTH = 64;
 
     private final ToolExecutor tools;
+    private final List<String> capabilities;
     private final FrameSender sender;
     private final Console console;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -49,8 +51,19 @@ public final class ToolDispatcher implements AutoCloseable {
     private final ExecutorService workers;
     private final ScheduledExecutorService clock;
 
+    /** Aiguilleur annonçant les seuls outils fichiers (compatibilité : tests et appels historiques). */
     public ToolDispatcher(ToolExecutor tools, FrameSender sender, Console console) {
+        this(tools, List.of("files"), sender, console);
+    }
+
+    /**
+     * @param capabilities capacités annoncées dans la trame {@code ready} (contrat §2.1) ;
+     *                     {@code bash} n'y figure que si la machine l'a autorisé (SF-38-07)
+     */
+    public ToolDispatcher(ToolExecutor tools, List<String> capabilities, FrameSender sender,
+            Console console) {
         this.tools = tools;
+        this.capabilities = List.copyOf(capabilities);
         this.sender = sender;
         this.console = console;
         AtomicInteger counter = new AtomicInteger();
@@ -67,15 +80,17 @@ public final class ToolDispatcher implements AutoCloseable {
     }
 
     /**
-     * Trame d'annonce émise juste après l'ouverture de la socket. Le runner déclare la capacité
-     * {@code files} uniquement : {@code bash} arrive en SF-38-07.
+     * Trame d'annonce émise juste après l'ouverture de la socket. Le runner y déclare ses capacités
+     * réelles : {@code files} toujours, {@code bash} seulement si l'exécution de commandes a été
+     * autorisée au démarrage ({@code --allow-bash}, SF-38-07).
      */
     public String readyFrame(String runnerVersion) {
         ObjectNode frame = mapper.createObjectNode();
         frame.put("type", "ready");
         frame.put("protocol", 1);
         frame.put("runnerVersion", runnerVersion);
-        frame.putArray("capabilities").add("files");
+        com.fasterxml.jackson.databind.node.ArrayNode declared = frame.putArray("capabilities");
+        capabilities.forEach(declared::add);
         frame.put("os", System.getProperty("os.name", "unknown").toLowerCase(Locale.ROOT));
         return write(frame);
     }
@@ -103,8 +118,9 @@ public final class ToolDispatcher implements AutoCloseable {
             // Identifiant déjà en vol : le contrat garantit son unicité, on ne rejoue rien.
             return;
         }
+        int effectiveTimeoutMs = timeoutMs;
         try {
-            call.worker = workers.submit(() -> run(call, tool, input));
+            call.worker = workers.submit(() -> run(call, tool, input, effectiveTimeoutMs));
             call.deadline = clock.schedule(() -> onTimeout(call), timeoutMs, TimeUnit.MILLISECONDS);
         } catch (RejectedExecutionException e) {
             complete(call, ToolOutcome.error("internal", "Runner en cours d'arrêt."));
@@ -157,10 +173,10 @@ public final class ToolDispatcher implements AutoCloseable {
         clock.shutdownNow();
     }
 
-    private void run(Call call, String tool, JsonNode input) {
+    private void run(Call call, String tool, JsonNode input, int timeoutMs) {
         ToolOutcome outcome;
         try {
-            outcome = tools.execute(tool, input);
+            outcome = tools.execute(tool, input, new CallContext(call, timeoutMs));
         } catch (RuntimeException e) {
             outcome = ToolOutcome.error("internal", "Erreur interne du runner.");
         } finally {
@@ -211,12 +227,32 @@ public final class ToolDispatcher implements AutoCloseable {
             if (outcome.bytes() >= 0) {
                 frame.put("bytes", outcome.bytes());
             }
+            if (outcome.exitCode() != null) {
+                // Présent uniquement pour `bash` (contrat §2.4) : c'est l'information qui dit si la
+                // commande a réussi, indépendamment du fait qu'elle ait bien tourné.
+                frame.put("exitCode", outcome.exitCode());
+            }
         } else {
             ObjectNode error = frame.putObject("error");
             error.put("code", outcome.errorCode());
             error.put("message", outcome.errorMessage());
         }
         frame.put("durationMs", durationMs);
+        return write(frame);
+    }
+
+    /**
+     * Trame {@code tool_stream} (contrat §2.3). Le {@code seq} est <b>partagé</b> entre {@code stdout}
+     * et {@code stderr} du même appel : l'ordre des {@code seq} est l'ordre réel d'émission, ce qui
+     * permet à la gateway de reconstituer l'entrelacement des deux flux.
+     */
+    private String streamFrame(String id, int seq, String stream, String chunk) {
+        ObjectNode frame = mapper.createObjectNode();
+        frame.put("type", "tool_stream");
+        frame.put("id", id);
+        frame.put("seq", seq);
+        frame.put("stream", stream);
+        frame.put("chunk", chunk);
         return write(frame);
     }
 
@@ -234,10 +270,44 @@ public final class ToolDispatcher implements AutoCloseable {
         return value == null || !value.isTextual() ? null : value.asText();
     }
 
-    /** Appel en vol : garde d'unicité de la trame terminale, worker et chronomètre associés. */
+    /**
+     * Contexte remis à l'outil : c'est par lui que {@code bash} diffuse sa sortie, sans rien savoir
+     * du transport. Une fois la trame terminale émise, plus aucun fragment ne part (contrat §2.3 :
+     * tous les {@code tool_stream} d'un {@code id} précèdent son {@code tool_result}).
+     */
+    private final class CallContext implements ToolContext {
+        private final Call call;
+        private final int timeoutMs;
+
+        private CallContext(Call call, int timeoutMs) {
+            this.call = call;
+            this.timeoutMs = timeoutMs;
+        }
+
+        @Override
+        public void stream(String stream, String chunk) {
+            if (call.done.get() || chunk == null || chunk.isEmpty()) {
+                return;
+            }
+            sender.send(streamFrame(call.id, call.seq.getAndIncrement(), stream, chunk));
+        }
+
+        @Override
+        public long timeoutMs() {
+            return timeoutMs;
+        }
+
+        @Override
+        public boolean cancelled() {
+            return call.done.get();
+        }
+    }
+
+    /** Appel en vol : garde d'unicité de la trame terminale, worker, chronomètre et compteur seq. */
     private static final class Call {
         private final String id;
         private final AtomicBoolean done = new AtomicBoolean(false);
+        private final AtomicInteger seq = new AtomicInteger();
         private final long startedAt = System.nanoTime();
         private volatile Future<?> worker;
         private volatile ScheduledFuture<?> deadline;

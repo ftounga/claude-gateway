@@ -75,10 +75,15 @@ public final class RunnerConnection {
         sender = new FrameSender(console);
         ExclusionRules exclusions = ExclusionRules.load(config.workspaceRoot(), console);
         PathGuard guard = new PathGuard(config.workspaceRoot(), exclusions);
-        dispatcher = new ToolDispatcher(new FileTools(guard), sender, console);
+        BashTool bash = new BashTool(guard, config.allowBash());
+        ToolRouter tools = new ToolRouter(new FileTools(guard), bash);
+        dispatcher = new ToolDispatcher(tools, tools.capabilities(), sender, console);
         URI uri = config.webSocketUri(token);
         console.info("Cible WebSocket : " + safeUri(uri));
         console.info("Outils fichiers actifs, confinés à : " + config.workspaceRoot());
+        console.info(bash.enabled()
+                ? "Exécution de commandes ACTIVÉE (--allow-bash) — les commandes tournent avec vos droits."
+                : "Exécution de commandes désactivée (relancez avec --allow-bash pour l'autoriser).");
         console.info("Exclusions : " + exclusions.userRuleCount() + " règle(s) issues de "
                 + exclusions.source() + " + liste par défaut non désactivable ("
                 + String.join(", ", ExclusionRules.DEFAULT_DENY) + ").");

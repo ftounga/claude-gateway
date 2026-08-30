@@ -256,4 +256,47 @@ class AtelierChatApiIntegrationTest {
         org.assertj.core.api.Assertions.assertThat(workspaceService.tree(alice.getId(), ws))
                 .noneMatch(p -> p.contains("evil"));
     }
+
+    // ------------------------------------------- interruption du tour (F-38 / SF-38-07)
+
+    @Test
+    void interruptOnOwnWorkspaceReturns204() throws Exception {
+        UUID ws = createWorkspace(alice, "a.txt", "x");
+
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat/interrupt").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void interruptIsIdempotentWhenNothingIsRunning() throws Exception {
+        UUID ws = createWorkspace(alice, "a.txt", "x");
+
+        // Interrompre deux fois de suite alors que rien ne tourne n'est pas une erreur : la marque
+        // est de toute façon effacée à l'ouverture du prochain tour.
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat/interrupt").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat/interrupt").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void interruptOnAnotherUsersWorkspaceIsRefused() throws Exception {
+        UUID ws = createWorkspace(alice, "a.txt", "x");
+
+        // Isolation user_id : le projet d'autrui n'existe pas pour Bob.
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat/interrupt").contextPath("/api")
+                        .header("Authorization", bearer(bobToken)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void interruptWithoutTokenIsRejected() throws Exception {
+        UUID ws = createWorkspace(alice, "a.txt", "x");
+
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat/interrupt").contextPath("/api"))
+                .andExpect(status().isUnauthorized());
+    }
 }

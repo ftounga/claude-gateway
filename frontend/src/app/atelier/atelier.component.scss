@@ -287,6 +287,30 @@ a.active {
   }
 }
 
+// ---- Sortie d'une commande sur la machine connectée (F-38 / SF-38-07) ----
+.step-output-item {
+  list-style: none;
+  // Aligné sous le libellé de l'étape, pas sous son icône.
+  padding: 0 0 0 24px;
+
+  .step-output {
+    margin: 0;
+    padding: var(--cg-space-2);
+    max-height: 240px;
+    overflow: auto;
+    background: var(--cg-surface-2);
+    border-radius: 4px;
+    font: 12px/1.5 var(--cg-font-mono);
+    color: var(--cg-text-secondary);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}
+
+.interrupt-assistant {
+  margin-top: var(--cg-space-2);
+}
+
 // ---- Panneau Fichiers repliable ----
 .files-panel {
   width: 360px;

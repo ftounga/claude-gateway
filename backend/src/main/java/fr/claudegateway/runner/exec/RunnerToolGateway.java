@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import org.springframework.stereotype.Service;
 
@@ -29,6 +30,12 @@ public class RunnerToolGateway {
 
     /** Délai imposé aux outils fichiers par le contrat de messages §2.2. */
     public static final long FILE_TOOL_TIMEOUT_MS = 30_000L;
+    /** Délai imposé à {@code bash} par le contrat de messages §2.2. */
+    public static final long BASH_TIMEOUT_MS = 120_000L;
+    /** Plancher : un délai ridicule ferait échouer la commande avant même son démarrage. */
+    public static final long MIN_BASH_TIMEOUT_MS = 1_000L;
+    /** Longueur maximale d'une ligne de commande acceptée (le runner applique la même borne). */
+    public static final int MAX_COMMAND_CHARS = 8_192;
     /** Borne du contenu d'un {@code write_file} (contrat §5) : au-delà on refuse, on ne fragmente pas. */
     public static final int MAX_WRITE_BYTES = 524_288;
     private static final int MAX_PATH_CHARS = 4_096;
@@ -88,6 +95,43 @@ public class RunnerToolGateway {
         ObjectNode input = objectMapper.createObjectNode();
         input.put("query", needle);
         return dispatcher.call(workspaceId, callId, "search_files", input, FILE_TOOL_TIMEOUT_MS);
+    }
+
+    /**
+     * Exécute une commande sur la machine de l'utilisateur (F-38 / SF-38-07).
+     *
+     * <p>Ce que cette méthode fait <b>avant</b> d'émettre quoi que ce soit : borner la commande,
+     * ramener un éventuel {@code cwd} à un chemin relatif (le runner revérifie et fait foi, D6), et
+     * clamper le délai. Ce qu'elle ne fait pas : décider si la commande a le droit d'être lancée —
+     * c'est la machine qui tranche (opt-in {@code --allow-bash}), et ce sera la validation par
+     * commande de SF-38-08 côté gateway.</p>
+     *
+     * @param timeoutMs délai souhaité, clampé dans {@code [1 000 ; 120 000]} ms
+     * @param onOutput  relais de la sortie au fil de l'eau, ou {@code null}
+     */
+    public RunnerCallResult bash(UUID workspaceId, String callId, String command, String cwd,
+            long timeoutMs, Consumer<String> onOutput) {
+        String cmd = command == null ? "" : command.strip();
+        if (cmd.isEmpty() || cmd.length() > MAX_COMMAND_CHARS || cmd.indexOf('\0') >= 0) {
+            return invalid("Commande invalide ou trop longue.");
+        }
+        ObjectNode input = objectMapper.createObjectNode();
+        input.put("command", cmd);
+        if (cwd != null && !cwd.isBlank()) {
+            String rel = normalizePath(cwd);
+            if (rel == null) {
+                return invalid("Répertoire de travail invalide.");
+            }
+            input.put("cwd", rel);
+        }
+        long effective = Math.max(MIN_BASH_TIMEOUT_MS, Math.min(BASH_TIMEOUT_MS, timeoutMs));
+        RunnerCallResult result =
+                dispatcher.call(workspaceId, callId, "bash", input, effective, onOutput);
+        return RunnerErrorCodes.UNSUPPORTED_TOOL.equals(result.errorCode())
+                ? RunnerCallResult.backendError(RunnerErrorCodes.UNSUPPORTED_TOOL,
+                        "L'exécution de commandes n'est pas activée sur ce runner. "
+                                + "Redémarre-le avec --allow-bash pour l'autoriser.")
+                : result;
     }
 
     private static RunnerCallResult invalid(String message) {
