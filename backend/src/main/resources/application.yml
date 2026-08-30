@@ -303,3 +303,33 @@ app:
       # runner est considéré déconnecté si le registre ne le voit pas. Adossé à `last_seen_at` (base
       # partagée), ce critère garde le statut correct même quand la socket vit sur l'autre replica.
       stale-after: ${APP_RUNNER_HEARTBEAT_STALE_AFTER:PT90S}
+    presence:
+      # F-38 / SF-38-12 : convergence de la présence entre pods (registre `pg-notify` uniquement).
+      # Ré-annonce périodique de chaque connexion locale, et péremption d'une présence distante non
+      # revue depuis `stale-after-ms` — un pod parti sans DISCONNECT (OOMKilled, évincé) ne doit pas
+      # laisser croire indéfiniment qu'un runner est joignable.
+      announce-ms: ${APP_RUNNER_PRESENCE_ANNOUNCE_MS:15000}
+      stale-after-ms: ${APP_RUNNER_PRESENCE_STALE_AFTER_MS:45000}
+    relay:
+      # F-38 / SF-38-12 : relais interne des appels d'outils entre pods backend.
+      #
+      # DÉSACTIVÉ TANT QUE LE SECRET EST VIDE (dev, tests, prod avant configuration) : aucun
+      # connecteur supplémentaire, aucun contrôleur interne, aucun appel sortant — le comportement
+      # est exactement celui d'avant SF-38-12 (`runner_not_on_this_node`). Il n'existe AUCUN repli
+      # non authentifié.
+      #
+      # Le relais vit sur un SECOND connecteur TCP (port ci-dessous), volontairement absent du
+      # Service public : `server.servlet.context-path` vaut `/api` et l'ingress route `/api` en
+      # Prefix vers le port 8080, donc une route interne publiée sur 8080 serait joignable depuis
+      # Internet. Le port 8081 n'est publié que par le Service headless
+      # `claude-gateway-backend-internal`, visé par aucun Ingress.
+      port: ${APP_RUNNER_RELAY_PORT:8081}
+      secret: ${APP_RUNNER_RELAY_SECRET:}
+      # Adresse de ce pod, injectée par la downward API (`status.podIP`). Vide hors cluster.
+      self-address: ${POD_IP:}
+      # Service headless résolvant les autres pods backend (diffusion, SF-38-13).
+      peers-host: ${APP_RUNNER_RELAY_PEERS_HOST:claude-gateway-backend-internal}
+      connect-timeout-ms: ${APP_RUNNER_RELAY_CONNECT_TIMEOUT_MS:2000}
+      # Strictement supérieur au plus grand `timeoutMs + grâce` possible (bash : 120 000 + 5 000) :
+      # le pod propriétaire doit toujours gagner la course et écrire son `result`.
+      read-timeout-ms: ${APP_RUNNER_RELAY_READ_TIMEOUT_MS:135000}

@@ -37,8 +37,12 @@ import fr.claudegateway.runner.RunnerIdentity;
  * </ul>
  *
  * <p><b>Multi-replica (contrat §8)</b> : le routage n'utilise que {@link RunnerRegistry#findLocal},
- * jamais {@code isConnected()}. Un runner présent sur l'autre pod fait échouer l'appel
- * immédiatement en {@code runner_not_on_this_node} — aucun relais inter-pods n'existe en v1.</p>
+ * jamais {@code isConnected()} — cette classe n'exécute que ce qui est branché <b>ici</b>. Depuis
+ * SF-38-12, le choix du pod appartient à {@code RunnerCallRouter}, qui relaie l'appel au pod
+ * propriétaire de la socket ; ce dernier rappelle ce dispatcher <b>directement</b>, ce qui rend un
+ * second saut inexprimable. Appelé sur un pod qui n'héberge pas la socket, le dispatcher rend
+ * toujours {@code runner_not_on_this_node} / {@code runner_unavailable} : jamais d'exécution chez le
+ * mauvais runner.</p>
  *
  * <p><b>Écriture concurrente</b> : une {@code WebSocketSession} Spring n'est pas thread-safe ; toute
  * émission passe par le même {@link ConcurrentWebSocketSessionDecorator}, y compris le

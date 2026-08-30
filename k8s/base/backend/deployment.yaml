@@ -23,6 +23,21 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
+            # Connecteur interne du relais F-38 (SF-38-12). Déclaration documentaire : ce port
+            # n'est publié que par le Service headless `claude-gateway-backend-internal`, et
+            # n'apparaît dans aucun Ingress.
+            - containerPort: 8081
+              name: relay
+          env:
+            # Adresse du pod (downward API) : le registre l'annonce aux autres replicas pour qu'ils
+            # sachent où relayer un appel d'outil. Jamais dérivée du nodeId, qui n'identifie pas
+            # une machine.
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: APP_RUNNER_RELAY_PORT
+              value: "8081"
           envFrom:
             - configMapRef:
                 name: backend-config

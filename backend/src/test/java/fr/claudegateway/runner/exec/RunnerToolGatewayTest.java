@@ -21,9 +21,9 @@ import org.mockito.quality.Strictness;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import fr.claudegateway.runner.channel.RunnerCallDispatcher;
 import fr.claudegateway.runner.channel.RunnerCallResult;
 import fr.claudegateway.runner.channel.RunnerErrorCodes;
+import fr.claudegateway.runner.relay.RunnerCallRouter;
 
 /**
  * Tests de la façade des outils fichiers du runner (F-38 / SF-38-05). Elle a une seule
@@ -35,21 +35,21 @@ import fr.claudegateway.runner.channel.RunnerErrorCodes;
 class RunnerToolGatewayTest {
 
     @Mock
-    private RunnerCallDispatcher dispatcher;
+    private RunnerCallRouter router;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final UUID workspaceId = UUID.randomUUID();
 
     private RunnerToolGateway gateway() {
-        when(dispatcher.call(any(), anyString(), anyString(), any(), anyLong()))
+        when(router.call(any(), anyString(), anyString(), any(), anyLong()))
                 .thenReturn(new RunnerCallResult(true, "ok", false, null, 1L, null, null, null, "", false));
-        return new RunnerToolGateway(dispatcher, objectMapper);
+        return new RunnerToolGateway(router, objectMapper);
     }
 
     private JsonNode capturedInput(String expectedTool) {
         ArgumentCaptor<JsonNode> input = ArgumentCaptor.forClass(JsonNode.class);
         ArgumentCaptor<Long> timeout = ArgumentCaptor.forClass(Long.class);
-        verify(dispatcher).call(org.mockito.ArgumentMatchers.eq(workspaceId), anyString(),
+        verify(router).call(org.mockito.ArgumentMatchers.eq(workspaceId), anyString(),
                 org.mockito.ArgumentMatchers.eq(expectedTool), input.capture(), timeout.capture());
         assertThat(timeout.getValue()).isEqualTo(RunnerToolGateway.FILE_TOOL_TIMEOUT_MS);
         return input.getValue();
@@ -74,7 +74,7 @@ class RunnerToolGatewayTest {
         RunnerCallResult result = gateway().readFile(workspaceId, "toolu_1", "../etc/passwd");
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.INVALID_INPUT);
-        verify(dispatcher, never()).call(any(), anyString(), anyString(), any(), anyLong());
+        verify(router, never()).call(any(), anyString(), anyString(), any(), anyLong());
     }
 
     @Test
@@ -82,7 +82,7 @@ class RunnerToolGatewayTest {
         RunnerCallResult result = gateway().readFile(workspaceId, "toolu_1", "/etc/passwd");
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.INVALID_INPUT);
-        verify(dispatcher, never()).call(any(), anyString(), anyString(), any(), anyLong());
+        verify(router, never()).call(any(), anyString(), anyString(), any(), anyLong());
     }
 
     @Test
@@ -92,7 +92,7 @@ class RunnerToolGatewayTest {
         RunnerCallResult result = gateway().writeFile(workspaceId, "toolu_1", "a.txt", tooBig);
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.INVALID_INPUT);
-        verify(dispatcher, never()).call(any(), anyString(), anyString(), any(), anyLong());
+        verify(router, never()).call(any(), anyString(), anyString(), any(), anyLong());
     }
 
     @Test
@@ -116,22 +116,22 @@ class RunnerToolGatewayTest {
         RunnerCallResult result = gateway().searchFiles(workspaceId, "toolu_1", "   ");
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.INVALID_INPUT);
-        verify(dispatcher, never()).call(any(), anyString(), anyString(), any(), anyLong());
+        verify(router, never()).call(any(), anyString(), anyString(), any(), anyLong());
     }
 
     // -------------------------------------------------------------- bash (SF-38-07)
 
     /** Passerelle dont l'appel {@code bash} (6 arguments, avec relais de flux) est stubé. */
     private RunnerToolGateway bashGateway(RunnerCallResult response) {
-        when(dispatcher.call(any(), anyString(), anyString(), any(), anyLong(), any()))
+        when(router.call(any(), anyString(), anyString(), any(), anyLong(), any()))
                 .thenReturn(response);
-        return new RunnerToolGateway(dispatcher, objectMapper);
+        return new RunnerToolGateway(router, objectMapper);
     }
 
     private JsonNode capturedBashInput(long expectedTimeoutMs) {
         ArgumentCaptor<JsonNode> input = ArgumentCaptor.forClass(JsonNode.class);
         ArgumentCaptor<Long> timeout = ArgumentCaptor.forClass(Long.class);
-        verify(dispatcher).call(org.mockito.ArgumentMatchers.eq(workspaceId), anyString(),
+        verify(router).call(org.mockito.ArgumentMatchers.eq(workspaceId), anyString(),
                 org.mockito.ArgumentMatchers.eq("bash"), input.capture(), timeout.capture(), any());
         assertThat(timeout.getValue()).isEqualTo(expectedTimeoutMs);
         return input.getValue();
@@ -162,7 +162,7 @@ class RunnerToolGatewayTest {
                 "../ailleurs", RunnerToolGateway.BASH_TIMEOUT_MS, null);
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.INVALID_INPUT);
-        verify(dispatcher, never()).call(any(), anyString(), anyString(), any(), anyLong(), any());
+        verify(router, never()).call(any(), anyString(), anyString(), any(), anyLong(), any());
     }
 
     @Test
@@ -174,7 +174,7 @@ class RunnerToolGatewayTest {
         assertThat(gateway.bash(workspaceId, "toolu_2",
                 "x".repeat(RunnerToolGateway.MAX_COMMAND_CHARS + 1), null, 1_000L, null).errorCode())
                 .isEqualTo(RunnerErrorCodes.INVALID_INPUT);
-        verify(dispatcher, never()).call(any(), anyString(), anyString(), any(), anyLong(), any());
+        verify(router, never()).call(any(), anyString(), anyString(), any(), anyLong(), any());
     }
 
     @Test
@@ -182,7 +182,7 @@ class RunnerToolGatewayTest {
         bashGateway(bashOk()).bash(workspaceId, "toolu_1", "ls", null, 10L, null);
         capturedBashInput(RunnerToolGateway.MIN_BASH_TIMEOUT_MS);
 
-        org.mockito.Mockito.reset(dispatcher);
+        org.mockito.Mockito.reset(router);
         bashGateway(bashOk()).bash(workspaceId, "toolu_2", "ls", null, 3_600_000L, null);
         capturedBashInput(RunnerToolGateway.BASH_TIMEOUT_MS);
     }

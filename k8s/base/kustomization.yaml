@@ -5,6 +5,8 @@ resources:
   - backend/configmap.yaml
   - backend/deployment.yaml
   - backend/service.yaml
+  # Service headless du relais interne entre pods (F-38 / SF-38-12) — port 8081, aucun Ingress.
+  - backend/service-internal.yaml
   - backend/hpa.yaml
   - backend/pdb.yaml
   - frontend/deployment.yaml
