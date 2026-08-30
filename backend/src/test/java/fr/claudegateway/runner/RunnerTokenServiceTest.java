@@ -92,6 +92,21 @@ class RunnerTokenServiceTest {
         assertThat(authenticator.authenticate(clear)).isEmpty();
     }
 
+    /**
+     * SF-38-14 — défense en profondeur : la purge de {@code deleteAccount} est le premier rempart,
+     * mais un jeton ne doit jamais authentifier au nom d'un compte qui n'existe plus (jeton présenté
+     * avant que la purge existe, restauration partielle de sauvegarde).
+     */
+    @Test
+    void authenticatorRejectsTokenOfADeletedUser() {
+        RunnerTokenService.IssuedToken issued = tokenService.issue(userId, workspaceId, null);
+        assertThat(authenticator.authenticate(issued.clearToken())).isPresent();
+
+        userRepository.deleteById(userId);
+
+        assertThat(authenticator.authenticate(issued.clearToken())).isEmpty();
+    }
+
     @Test
     void authenticatorRejectsRevokedToken() {
         RunnerTokenService.IssuedToken issued = tokenService.issue(userId, workspaceId, null);
