@@ -483,3 +483,17 @@ export interface AtelierTerminalBlock {
   /** Repli de l'affichage des sorties longues (piloté par l'utilisateur). */
   expanded: boolean;
 }
+
+/**
+ * Résultat d'une publication de modifications faites depuis l'écran (F-31 / SF-31-08).
+ *
+ * `pullRequestUrl` n'est renseigné que si une pull request est **déjà** ouverte sur cette branche :
+ * publier un commit n'en ouvre pas.
+ */
+export interface GitCommitResult {
+  branch: string;
+  commitSha: string;
+  branchCreated: boolean;
+  compareUrl: string;
+  pullRequestUrl?: string | null;
+}

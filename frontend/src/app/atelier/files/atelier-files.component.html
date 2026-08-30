@@ -56,8 +56,22 @@
         <span class="git-branch">{{ gitBranch() }}</span>
       </span>
       <span class="toolbar-note">
-        Lecture seule : les fichiers se modifient via Claude, puis se publient sur une branche.
+        @if (pendingCount() > 0) {
+          {{ pendingCount() }} fichier(s) modifié(s), non publié(s).
+        } @else {
+          Modifiez un fichier, puis publiez-le sur une branche.
+        }
       </span>
+      <button
+        mat-flat-button
+        color="primary"
+        type="button"
+        [disabled]="pendingCount() === 0 || publishing()"
+        (click)="publishEdits()"
+      >
+        <mat-icon>commit</mat-icon>
+        {{ publishing() ? 'Publication…' : 'Commiter et publier' }}
+      </button>
     } @else {
       <input
         #fileInput
@@ -167,17 +181,19 @@
               >
                 <mat-icon>delete_outline</mat-icon>
               </button>
-              <button
-                mat-flat-button
-                color="primary"
-                type="button"
-                [disabled]="fileLoading() || fileSaving()"
-                (click)="saveFile()"
-              >
-                <mat-icon>save</mat-icon>
-                Enregistrer
-              </button>
             }
+            <!-- Enregistrer vaut pour les deux modes : écriture directe sur une archive,
+                 modification retenue puis publiée sur un projet Git (SF-31-09). -->
+            <button
+              mat-flat-button
+              color="primary"
+              type="button"
+              [disabled]="fileLoading() || fileSaving()"
+              (click)="saveFile()"
+            >
+              <mat-icon>save</mat-icon>
+              Enregistrer
+            </button>
           </span>
         </div>
         @if (fileLoading()) {
@@ -186,7 +202,6 @@
           <textarea
             class="viewer-editor"
             spellcheck="false"
-            [readonly]="readOnly()"
             [ngModel]="fileContent()"
             (ngModelChange)="fileContent.set($event)"
             aria-label="Contenu du fichier"

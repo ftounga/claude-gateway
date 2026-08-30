@@ -39,6 +39,7 @@ describe('AtelierFilesComponent', () => {
       'renameFile',
       'exportZip',
       'importLibrary',
+      'commitGitFiles',
     ]);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
@@ -120,6 +121,112 @@ describe('AtelierFilesComponent', () => {
     expect(service.getFile).toHaveBeenCalledWith('w1', 'src/a.js');
     expect(component.selectedPath()).toBe('src/a.js');
     expect(component.fileContent()).toBe('const x = 1;');
+  });
+
+  // ---------- SF-31-09 : éditer et publier un projet Git ----------
+
+  /** Recharge le composant sur un projet Git, comme le ferait l'API. */
+  function asGitProject(): void {
+    setup();
+    service.getWorkspace.and.returnValue(
+      of({ ...detail, source: 'GIT', gitRepo: 'octocat/hello', gitBranch: 'main' } as WorkspaceDetail),
+    );
+    (component as unknown as { loadWorkspace: () => void }).loadWorkspace();
+  }
+
+  it('projet Git : enregistrer retient la modification sans appeler writeFile', () => {
+    asGitProject();
+    component.openFile('src/a.js');
+    component.fileContent.set('const x = 2;');
+
+    component.saveFile();
+
+    expect(service.writeFile).not.toHaveBeenCalled();
+    expect(component.pendingCount()).toBe(1);
+  });
+
+  it('projet Git : deux enregistrements du même fichier ne font qu’une modification', () => {
+    asGitProject();
+    component.openFile('src/a.js');
+    component.fileContent.set('v1');
+    component.saveFile();
+    component.fileContent.set('v2');
+    component.saveFile();
+
+    expect(component.pendingCount()).toBe(1);
+  });
+
+  it('projet Git : rouvrir un fichier modifié montre la version retenue', () => {
+    asGitProject();
+    component.openFile('src/a.js');
+    component.fileContent.set('retenu');
+    component.saveFile();
+
+    component.openFile('src/utils/b.js');
+    component.openFile('src/a.js');
+
+    expect(component.fileContent()).toBe('retenu');
+  });
+
+  it('projet Git : publier envoie un seul appel avec tous les fichiers, puis vide la file', () => {
+    asGitProject();
+    component.openFile('src/a.js');
+    component.fileContent.set('un');
+    component.saveFile();
+    component.openFile('src/utils/b.js');
+    component.fileContent.set('deux');
+    component.saveFile();
+
+    dialog.open.and.returnValue({
+      afterClosed: () => of({ branch: 'claude/edition', message: 'Mes modifications' }),
+    } as never);
+    service.commitGitFiles.and.returnValue(
+      of({
+        branch: 'claude/edition',
+        commitSha: 'abc123',
+        branchCreated: true,
+        compareUrl: 'https://github.com/octocat/hello/compare/main...claude/edition?expand=1',
+        pullRequestUrl: null,
+      }),
+    );
+    snackBar.open.and.returnValue({ onAction: () => of(void 0) } as never);
+
+    component.publishEdits();
+
+    expect(service.commitGitFiles).toHaveBeenCalledTimes(1);
+    const [, branch, message, files] = service.commitGitFiles.calls.mostRecent().args;
+    expect(branch).toBe('claude/edition');
+    expect(message).toBe('Mes modifications');
+    expect(files.length).toBe(2);
+    expect(component.pendingCount()).toBe(0);
+  });
+
+  it('projet Git : un échec de publication conserve les modifications', () => {
+    asGitProject();
+    component.openFile('src/a.js');
+    component.fileContent.set('un');
+    component.saveFile();
+
+    dialog.open.and.returnValue({
+      afterClosed: () => of({ branch: 'main', message: 'direct' }),
+    } as never);
+    service.commitGitFiles.and.returnValue(
+      throwError(() => ({ status: 409, error: { message: 'Publier sur main est refusé.' } })),
+    );
+
+    component.publishEdits();
+
+    expect(component.pendingCount()).withContext('la file survit à l’échec').toBe(1);
+    expect(component.publishing()).toBeFalse();
+  });
+
+  it('projet Git : publier ne fait rien sans modification en attente', () => {
+    asGitProject();
+
+    component.publishEdits();
+
+    expect(dialog.open).not.toHaveBeenCalled();
+    expect(service.commitGitFiles).not.toHaveBeenCalled();
   });
 
   it('enregistre le fichier édité via writeFile', () => {

@@ -27,9 +27,17 @@ import { AtelierService } from '../../core/services/atelier.service';
 import { WORKSPACE_TEXT_ACCEPT, WORKSPACE_TEXT_EXTENSIONS } from '../atelier.component';
 import { TreeNode, buildTree } from './file-tree';
 import {
+  GitPushDialogComponent,
+  GitPushDialogData,
+  PickedGitPush,
+} from '../git/git-push-dialog.component';
+import {
   TextPromptDialogComponent,
   TextPromptDialogData,
 } from './text-prompt-dialog.component';
+
+/** Message de commit par défaut quand l'utilisateur n'en saisit pas. */
+const DEFAULT_COMMIT_MESSAGE = 'Modifications depuis l\'Atelier';
 
 /**
  * Page « Explorateur de fichiers » de l'Atelier (F-28 / SF-28-15). Remplace le tiroir « Fichiers »
@@ -108,11 +116,29 @@ export class AtelierFilesComponent implements OnInit {
   );
 
   /**
-   * Projet adossé à un dépôt Git (F-31 / SF-31-03) : l'explorateur y est en **lecture seule**. Écrire
-   * dans le stockage pendant que Claude travaille sur le clone créerait deux vérités divergentes ;
-   * les modifications passent par Claude, puis par la publication sur une branche.
+   * Projet adossé à un dépôt Git (F-31 / SF-31-03, amendé par SF-31-09).
+   *
+   * <p>L'explorateur n'écrit toujours pas dans le stockage — ce serait la deuxième vérité que
+   * SF-31-03 a refusée. Mais l'édition n'est plus interdite pour autant : les modifications sont
+   * <b>retenues</b> ici, puis publiées en un commit sur une branche dédiée (SF-31-08). Le nom reste
+   * `readOnly` pour ce qu'il gouverne encore : l'ajout, la suppression, le renommage et l'export,
+   * qui n'ont pas de sens sur un dépôt.</p>
    */
   readonly readOnly = signal(false);
+
+  /**
+   * Modifications retenues, non encore publiées (F-31 / SF-31-09) : chemin → contenu.
+   *
+   * <p>Elles vivent le temps de l'écran. Les persister donnerait l'illusion d'un brouillon
+   * sauvegardé, alors qu'aucun serveur ne les connaît tant que la publication n'a pas eu lieu.</p>
+   */
+  readonly pendingEdits = signal<ReadonlyMap<string, string>>(new Map());
+
+  /** Nombre de fichiers touchés — pas d'enregistrements : deux sauvegardes du même fichier font un. */
+  readonly pendingCount = computed(() => this.pendingEdits().size);
+
+  /** Publication en cours : évite un double envoi et grise le bouton. */
+  readonly publishing = signal(false);
 
   /** `owner/repo` et branche montés, affichés en tête de l'explorateur d'un projet Git. */
   readonly gitRepo = signal<string | null>(null);
@@ -227,6 +253,14 @@ export class AtelierFilesComponent implements OnInit {
   /** Charge le contenu d'un fichier dans l'aperçu éditable (réutilise `getFile`). */
   openFile(path: string): void {
     this.selectedPath.set(path);
+    const pending = this.pendingEdits().get(path);
+    if (pending !== undefined) {
+      // Une modification retenue prime sur la version de la branche : sinon l'utilisateur verrait
+      // son propre travail disparaître en rouvrant le fichier.
+      this.fileContent.set(pending);
+      this.fileLoading.set(false);
+      return;
+    }
     this.fileLoading.set(true);
     this.atelier.getFile(this.workspaceId(), path).subscribe({
       next: (file) => {
@@ -240,10 +274,27 @@ export class AtelierFilesComponent implements OnInit {
     });
   }
 
-  /** Enregistre le contenu édité (réutilise `writeFile`). */
+  /**
+   * Enregistre le contenu édité.
+   *
+   * <p>Sur un projet Git, « enregistrer » ne part pas sur le réseau : la modification est
+   * <b>retenue</b> jusqu'à la publication (SF-31-09). Le backend refuserait de toute façon une
+   * écriture dans le stockage d'un projet Git (`git_workspace_read_only`).</p>
+   */
   saveFile(): void {
     const path = this.selectedPath();
     if (!path || this.fileSaving()) {
+      return;
+    }
+    if (this.readOnly()) {
+      const next = new Map(this.pendingEdits());
+      next.set(path, this.fileContent());
+      this.pendingEdits.set(next);
+      this.snackBar.open(
+        `Modification retenue — ${next.size} fichier(s) à publier.`,
+        'Fermer',
+        { duration: 2500 },
+      );
       return;
     }
     this.fileSaving.set(true);
@@ -257,6 +308,79 @@ export class AtelierFilesComponent implements OnInit {
         this.notifyError(httpErrorMessage(err, "L'enregistrement du fichier a échoué."));
       },
     });
+  }
+
+  /**
+   * Publie toutes les modifications retenues en <b>un commit</b> sur une branche dédiée
+   * (F-31 / SF-31-09, endpoint de SF-31-08).
+   *
+   * <p>Réutilise le dialogue de SF-31-04 : même formulaire, même refus de la branche de base à la
+   * saisie. Un échec <b>conserve</b> la file — on ne fait pas disparaître le travail de
+   * l'utilisateur parce que GitHub a répondu non.</p>
+   */
+  publishEdits(): void {
+    if (this.pendingCount() === 0 || this.publishing()) {
+      return;
+    }
+    const dialogRef = this.dialog.open(GitPushDialogComponent, {
+      width: '520px',
+      data: {
+        gitRepo: this.gitRepo(),
+        baseBranch: this.gitBranch(),
+        suggestedBranch: this.suggestedBranch(),
+      } satisfies GitPushDialogData,
+    });
+    dialogRef.afterClosed().subscribe((picked?: PickedGitPush) => {
+      if (!picked) {
+        return;
+      }
+      this.sendCommit(picked.branch ?? this.suggestedBranch(), picked.message ?? DEFAULT_COMMIT_MESSAGE);
+    });
+  }
+
+  private sendCommit(branch: string, message: string): void {
+    const files = [...this.pendingEdits()].map(([path, content]) => ({ path, content }));
+    this.publishing.set(true);
+    this.atelier.commitGitFiles(this.workspaceId(), branch, message, files).subscribe({
+      next: (result) => {
+        this.publishing.set(false);
+        this.pendingEdits.set(new Map());
+        const link = result.pullRequestUrl ?? result.compareUrl;
+        this.snackBar
+          .open(
+            `${files.length} fichier(s) publié(s) sur ${result.branch}.`,
+            result.pullRequestUrl ? 'Voir la pull request' : 'Voir les modifications',
+            { duration: 12000 },
+          )
+          .onAction()
+          .subscribe(() => window.open(link, '_blank', 'noopener'));
+        this.warnStaleClone();
+      },
+      error: (err) => {
+        this.publishing.set(false);
+        // La file reste intacte : l'utilisateur peut corriger la branche et republier.
+        this.notifyError(httpErrorMessage(err, 'La publication a échoué.'));
+      },
+    });
+  }
+
+  /**
+   * Après une publication faite depuis l'écran, la session de Claude travaille sur un clone
+   * antérieur au commit. Le dire est le prix assumé de l'édition sans session (SF-31-08) : mieux
+   * vaut un avertissement qu'une divergence silencieuse.
+   */
+  private warnStaleClone(): void {
+    this.snackBar.open(
+      'Votre session Claude travaille encore sur la version précédente du dépôt — réinitialisez-la pour repartir du commit publié.',
+      'Compris',
+      { duration: 14000 },
+    );
+  }
+
+  /** Nom de branche proposé : reconnaissable, horodaté, jamais la branche de base. */
+  private suggestedBranch(): string {
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+    return `claude/edition-${stamp}`;
   }
 
   /** Fil d'Ariane du fichier ouvert (segments de dossier, sans le nom du fichier). */
