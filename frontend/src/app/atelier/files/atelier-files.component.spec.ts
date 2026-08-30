@@ -201,6 +201,37 @@ describe('AtelierFilesComponent', () => {
     expect(component.pendingCount()).toBe(0);
   });
 
+  it('projet Git : après publication, le message nomme les deux branches sans conseiller de réinitialiser', () => {
+    asGitProject();
+    component.openFile('src/a.js');
+    component.fileContent.set('un');
+    component.saveFile();
+
+    dialog.open.and.returnValue({
+      afterClosed: () => of({ branch: 'claude/edition', message: 'm' }),
+    } as never);
+    service.commitGitFiles.and.returnValue(
+      of({
+        branch: 'claude/edition',
+        commitSha: 'abc',
+        branchCreated: true,
+        compareUrl: 'https://github.com/octocat/hello/compare/main...claude/edition',
+        pullRequestUrl: null,
+      }),
+    );
+    snackBar.open.and.returnValue({ onAction: () => of(void 0) } as never);
+
+    component.publishEdits();
+
+    const messages = snackBar.open.calls.all().map((c) => String(c.args[0]));
+    const warning = messages.find((m) => m.includes('La session Claude'));
+    expect(warning).toContain('claude/edition');
+    expect(warning).toContain('main');
+    // Le conseil de réinitialisation était faux : la session repart de la branche du projet,
+    // où le commit n'est pas.
+    expect(warning).not.toContain('réinitialis');
+  });
+
   it('projet Git : un échec de publication conserve les modifications', () => {
     asGitProject();
     component.openFile('src/a.js');

@@ -354,7 +354,7 @@ export class AtelierFilesComponent implements OnInit {
           )
           .onAction()
           .subscribe(() => window.open(link, '_blank', 'noopener'));
-        this.warnStaleClone();
+        this.warnOtherBranch(result.branch);
       },
       error: (err) => {
         this.publishing.set(false);
@@ -365,13 +365,20 @@ export class AtelierFilesComponent implements OnInit {
   }
 
   /**
-   * Après une publication faite depuis l'écran, la session de Claude travaille sur un clone
-   * antérieur au commit. Le dire est le prix assumé de l'édition sans session (SF-31-08) : mieux
-   * vaut un avertissement qu'une divergence silencieuse.
+   * Après une publication faite depuis l'écran, dire <b>exactement</b> où vit le travail.
+   *
+   * <p>La première version de ce message conseillait de réinitialiser la session « pour repartir du
+   * commit publié ». C'était faux : la session monte le dépôt sur la branche du projet
+   * ({@code workspace.gitBranch}), et une réinitialisation y reviendrait — sans le commit, qui vit
+   * sur la branche de publication. Elle parlait aussi d'une « version précédente du dépôt », alors
+   * que la branche du projet n'a pas bougé.</p>
+   *
+   * <p>Ce qui est vrai, et suffit : le travail est sur une branche que la session ne voit pas.</p>
    */
-  private warnStaleClone(): void {
+  private warnOtherBranch(published: string): void {
+    const base = this.gitBranch() ?? 'la branche du projet';
     this.snackBar.open(
-      'Votre session Claude travaille encore sur la version précédente du dépôt — réinitialisez-la pour repartir du commit publié.',
+      `Vos modifications sont sur ${published}. La session Claude travaille sur ${base} et ne les voit pas.`,
       'Compris',
       { duration: 14000 },
     );
