@@ -362,7 +362,10 @@ class RunnerCallDispatcherTest {
 
         assertThat(cancelled).isEqualTo(1);
         ArgumentCaptor<TextMessage> frames = ArgumentCaptor.forClass(TextMessage.class);
-        verify(session, org.mockito.Mockito.atLeast(2)).sendMessage(frames.capture());
+        // Attente active : les trames passent par ConcurrentWebSocketSessionDecorator, qui met la
+        // seconde en tampon tant que l'envoi de la première est en cours et la flush sur un autre
+        // thread. Un verify immédiat observait parfois une seule invocation (SF-38-11).
+        verify(session, org.mockito.Mockito.timeout(2_000).atLeast(2)).sendMessage(frames.capture());
         JsonNode cancel = objectMapper.readTree(frames.getAllValues().get(1).getPayload());
         assertThat(cancel.path("type").asText()).isEqualTo("tool_cancel");
         assertThat(cancel.path("id").asText()).isEqualTo("toolu_1");
