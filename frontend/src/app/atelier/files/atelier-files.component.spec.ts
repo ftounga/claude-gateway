@@ -229,6 +229,40 @@ describe('AtelierFilesComponent', () => {
     expect(service.commitGitFiles).not.toHaveBeenCalled();
   });
 
+  it('projet Git : quitter avec des modifications demande confirmation', () => {
+    asGitProject();
+    component.openFile('src/a.js');
+    component.fileContent.set('un');
+    component.saveFile();
+    dialog.open.and.returnValue({ afterClosed: () => of(false) } as never);
+
+    component.confirmLeave(['/atelier', 'w1']);
+
+    expect(dialog.open).toHaveBeenCalled();
+    expect(router.navigate).not.toHaveBeenCalledWith(['/atelier', 'w1'], {});
+  });
+
+  it('projet Git : confirmer la sortie navigue malgré les modifications', () => {
+    asGitProject();
+    component.openFile('src/a.js');
+    component.fileContent.set('un');
+    component.saveFile();
+    dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+
+    component.confirmLeave(['/atelier', 'w1']);
+
+    expect(router.navigate).toHaveBeenCalledWith(['/atelier', 'w1'], {});
+  });
+
+  it('sans modification en attente, la sortie ne demande rien', () => {
+    asGitProject();
+
+    component.confirmLeave(['/atelier', 'w1']);
+
+    expect(dialog.open).not.toHaveBeenCalled();
+    expect(router.navigate).toHaveBeenCalledWith(['/atelier', 'w1'], {});
+  });
+
   it('enregistre le fichier édité via writeFile', () => {
     setup();
     component.selectedPath.set('src/a.js');

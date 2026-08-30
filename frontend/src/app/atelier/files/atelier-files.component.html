@@ -30,19 +30,24 @@
     </mat-form-field>
     <!-- Deux retours distincts (F-30 SF-30-10) : revenir au projet, ou ouvrir directement son
          terminal. Un bouton unique devrait deviner l'intention, et se tromperait la moitié du temps. -->
-    <a
+    <button
       mat-stroked-button
+      type="button"
       class="back-button"
-      [routerLink]="['/atelier', workspaceId()]"
-      [queryParams]="{ mode: 'terminal' }"
+      (click)="confirmLeaveToTerminal()"
     >
       <mat-icon>terminal</mat-icon>
       Ouvrir le terminal
-    </a>
-    <a mat-stroked-button [routerLink]="['/atelier', workspaceId()]" class="back-button">
+    </button>
+    <button
+      mat-stroked-button
+      type="button"
+      class="back-button"
+      (click)="confirmLeave(['/atelier', workspaceId()])"
+    >
       <mat-icon>arrow_back</mat-icon>
       Retour au projet
-    </a>
+    </button>
   </header>
 
   <!-- Barre d'outils : ajout / nouveau dossier / export — masqués sur un projet Git (lecture seule) -->
