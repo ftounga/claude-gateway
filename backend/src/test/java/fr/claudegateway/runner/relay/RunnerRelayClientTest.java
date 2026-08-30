@@ -50,7 +50,8 @@ class RunnerRelayClientTest {
         properties.setSecret(SECRET);
         properties.setConnectTimeoutMs(2_000L);
         properties.setReadTimeoutMs(5_000L);
-        client = new RunnerRelayClient(properties, objectMapper);
+        client = new RunnerRelayClient(properties, new RelayPeerClient(properties, objectMapper),
+                objectMapper);
     }
 
     @AfterEach
@@ -191,6 +192,48 @@ class RunnerRelayClientTest {
         assertThat(result.ok()).isFalse();
         assertThat(result.errorCode()).isEqualTo("path_denied");
         assertThat(result.errorMessage()).isEqualTo("refus");
+    }
+
+    @Test
+    void aSilentPeerTimesOutAndIsAskedToCancelWhatItStillRuns() throws Exception {
+        // F-38 / SF-38-13 : le pair muet tient peut-être encore une commande sur la machine de
+        // l'utilisateur. On dégrade en RUNNER_TIMEOUT et on lui demande de l'arrêter — best-effort,
+        // une seule fois, jamais de nouvelle tentative d'appel.
+        server.setExecutor(java.util.concurrent.Executors.newCachedThreadPool());
+        java.util.concurrent.CountDownLatch cancelled = new java.util.concurrent.CountDownLatch(1);
+        server.createContext("/api/internal/runner/cancel", exchange -> {
+            exchange.getRequestBody().readAllBytes();
+            byte[] body = "{\"cancelled\":1}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, body.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(body);
+            }
+            exchange.close();
+            cancelled.countDown();
+        });
+        RunnerRelayProperties properties = new RunnerRelayProperties();
+        properties.setSecret(SECRET);
+        properties.setConnectTimeoutMs(2_000L);
+        properties.setReadTimeoutMs(400L);
+        properties.setBroadcastTimeoutMs(2_000L);
+        client = new RunnerRelayClient(properties, new RelayPeerClient(properties, objectMapper),
+                objectMapper);
+        RemoteRunnerNode node = peer(exchange -> {
+            exchange.sendResponseHeaders(200, 0);
+            OutputStream out = exchange.getResponseBody();
+            line(out, "{\"type\":\"stream\",\"chunk\":\"debut\"}");
+            try {
+                Thread.sleep(2_000L); // Silence prolongé : aucune ligne `result` n'arrive à temps.
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+            }
+            out.close();
+        });
+
+        RunnerCallResult result = call(node, null);
+
+        assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.RUNNER_TIMEOUT);
+        assertThat(cancelled.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
     }
 
     @FunctionalInterface

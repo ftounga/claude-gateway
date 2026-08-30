@@ -78,7 +78,8 @@ class AtelierChatServiceRunnerGuardTest {
                 (AiAgentProvider) agentProvider, byokKeyService, quotaService, modelCatalog,
                 new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
-                runnerToolGateway, runnerCallDispatcher, gate, auditService);
+                runnerToolGateway, runnerCallDispatcher, gate, auditService,
+                fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled());
 
         when(modelCatalog.defaultModel()).thenReturn("claude-model");
         when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.empty());

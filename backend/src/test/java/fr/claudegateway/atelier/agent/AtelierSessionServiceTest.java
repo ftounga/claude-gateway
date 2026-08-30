@@ -70,6 +70,9 @@ class AtelierSessionServiceTest {
     private fr.claudegateway.atelier.ProjectInstructionsService instructionsService;
     @Mock
     private McpVaultService mcpVaultService;
+    /** Diffusion inter-pods (F-38 / SF-38-13) : muette par défaut, vérifiée là où elle compte. */
+    @Mock
+    private fr.claudegateway.runner.relay.RunnerRelayBroadcaster relayBroadcaster;
 
     /**
      * Quota restant large par défaut : le plafond de dépense de la session (F-36 / SF-36-01) est alors
@@ -121,7 +124,7 @@ class AtelierSessionServiceTest {
             AtelierDiffProperties diff) {
         return new AtelierSessionService(provider, workspaceService, bootstrapService, props, quotaService,
                 workspaceRepository, messageRepository, gitTokenService, instructionsService,
-                mcpVaultService, cost, diff);
+                mcpVaultService, cost, diff, relayBroadcaster);
     }
 
     /** Réglages de dépense par défaut (F-36 / SF-36-01) : plafond 2 $, plancher 0,10 $, 9 $/M. */
@@ -1047,6 +1050,35 @@ class AtelierSessionServiceTest {
     }
 
     @Test
+    void interruptingBroadcastsTheMarkToPeerPodsBeforeRelayingToTheProvider() {
+        // F-38 / SF-38-13 : le run en vol peut tourner sur un autre pod que celui qui reçoit ce
+        // clic. La marque est diffusée AVANT le relais fournisseur, comme elle est posée localement.
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_1"));
+
+        service(enabled()).interruptSession(USER, WORKSPACE);
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(relayBroadcaster, provider);
+        order.verify(relayBroadcaster).broadcastSessionInterrupt("sess_1", true);
+        order.verify(provider).interruptSession("sess_1");
+        verify(relayBroadcaster, org.mockito.Mockito.never())
+                .broadcastSessionInterrupt("sess_1", false);
+    }
+
+    @Test
+    void aRefusedInterruptRetractsTheMarkOnPeerPodsToo() {
+        // Le rattrapage vaut pour tous les pods : sans lui, un pair afficherait comme interrompu un
+        // tour qui ne l'a pas été.
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(ws("sess_1"));
+        doThrow(new AgentProviderException("session morte")).when(provider).interruptSession("sess_1");
+
+        assertThatThrownBy(() -> service(enabled()).interruptSession(USER, WORKSPACE))
+                .isInstanceOf(AgentProviderException.class);
+
+        verify(relayBroadcaster).broadcastSessionInterrupt("sess_1", true);
+        verify(relayBroadcaster).broadcastSessionInterrupt("sess_1", false);
+    }
+
+    @Test
     void interruptingChecksOwnershipBeforeCallingTheProvider() {
         // Isolation d'abord : un workspace d'un autre utilisateur n'engage aucun appel fournisseur.
         when(workspaceService.requireOwned(USER, WORKSPACE))
@@ -1056,6 +1088,8 @@ class AtelierSessionServiceTest {
                 .isInstanceOf(WorkspaceNotFoundException.class);
 
         verifyNoInteractions(provider);
+        // Isolation : rien ne part non plus sur le réseau interne (F-38 / SF-38-13).
+        verifyNoInteractions(relayBroadcaster);
     }
 
     @Test
