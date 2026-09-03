@@ -41,8 +41,20 @@ data:
   # Limites d'import ZIP Atelier — profil « généreux » (import de gros monorepos/assets).
   # Chaîne cohérente : ingress 155m >= Spring max-request 155MB >= max-file 150MB ; garde-fous
   # anti-zip-bomb sur le décompressé (total/par-fichier/nb-entrées). Purement configurable (réversible).
+  # ─── Trois plafonds distincts, souvent confondus. Les poser tous les trois évite de croire
+  # que « la » limite est celle qu'on lit en premier (SF-08-03).
+  #
+  # 1. Enveloppe multipart de Spring — s'applique à TOUT téléversement, et c'est l'import de
+  #    projet ZIP de l'Atelier (F-28, ~150 Mo) qui commande cette valeur. Doit rester <=
+  #    proxy-body-size de l'ingress (155m), sinon nginx coupe avec un 413 opaque.
   APP_UPLOAD_MAX_FILE_SIZE: "150MB"
   APP_UPLOAD_MAX_REQUEST_SIZE: "155MB"
+  # 2. Pièce jointe de conversation (F-04) : ce que Claude accepte de recevoir dans un message.
+  APP_UPLOAD_MAX_SIZE: "32MB"
+  # 3. Document de la bibliothèque soumis à l'OCR (F-05) : le plus bas des trois, et donc celui
+  #    que rencontre un utilisateur qui dépose un PDF. C'est cette valeur que le message d'erreur
+  #    et l'écran annoncent.
+  APP_OCR_MAX_SIZE: "20MB"
   APP_ATELIER_MAX_TOTAL_BYTES: "419430400"   # 400 Mo décompressé
   APP_ATELIER_MAX_FILE_BYTES: "20971520"     # 20 Mo par fichier
   APP_ATELIER_MAX_ENTRIES: "8000"

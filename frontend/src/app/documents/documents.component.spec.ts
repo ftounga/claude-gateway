@@ -211,6 +211,35 @@ describe('DocumentsComponent', () => {
     expect(component.selected()).toBeNull();
   });
 
+  it('choisir un fichier lance l’envoi sans second clic (SF-08-03)', () => {
+    setup();
+    service.submit.and.returnValue(of(extractedDoc));
+    const file = new File(['%PDF-1.4'], 'rapport.pdf', { type: 'application/pdf' });
+    const input = { files: [file], value: 'C:/rapport.pdf' } as unknown as HTMLInputElement;
+
+    component.onFileSelected({ target: input } as unknown as Event);
+
+    expect(service.submit).toHaveBeenCalledWith(file);
+    expect(input.value).withContext('champ vidé pour pouvoir rechoisir le même fichier').toBe('');
+  });
+
+  it('un refus de format affiche le message du serveur, pas un libellé générique', () => {
+    setup();
+    service.submit.and.returnValue(
+      throwError(() => new HttpErrorResponse({
+        status: 415,
+        error: { error: 'unsupported_file_type', message: 'Format refusé (« application/octet-stream »).' },
+      })),
+    );
+    const file = new File(['x'], 'rapport.pdf', { type: '' });
+
+    component.onFileSelected({
+      target: { files: [file], value: '' } as unknown as HTMLInputElement,
+    } as unknown as Event);
+
+    expect(component.submitting()).toBeFalse();
+  });
+
   it('shows an error snackbar without window.alert when delete fails', () => {
     setup();
     stubDialog(true);

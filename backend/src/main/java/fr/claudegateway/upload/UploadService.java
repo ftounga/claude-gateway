@@ -3,6 +3,8 @@ package fr.claudegateway.upload;
 import java.io.IOException;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -19,6 +21,8 @@ import fr.claudegateway.ai.ProviderFileUpload;
  */
 @Service
 public class UploadService {
+
+    private static final Logger log = LoggerFactory.getLogger(UploadService.class);
 
     private final AIProvider aiProvider;
     private final UploadedFileRepository uploadedFileRepository;
@@ -50,11 +54,13 @@ public class UploadService {
         }
         long size = file.getSize();
         if (size > properties.maxBytes()) {
+            log.info("Fichier refusé : taille au-dessus du plafond");
             throw new FileTooLargeException("Fichier trop volumineux.");
         }
 
         String mediaType = normalizeMediaType(file.getContentType());
         if (!properties.allowedTypeSet().contains(mediaType)) {
+            log.info("Fichier refusé : type hors liste blanche");
             throw new UnsupportedFileTypeException("Type de fichier non supporté : " + mediaType);
         }
 

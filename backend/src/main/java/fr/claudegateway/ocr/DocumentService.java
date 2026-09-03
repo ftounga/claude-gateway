@@ -59,15 +59,26 @@ public class DocumentService {
      */
     public Document submit(UUID userId, MultipartFile file) {
         if (file == null || file.isEmpty()) {
+            log.info("Document refusé : aucun fichier reçu ou fichier vide");
             throw new EmptyFileException("Aucun document fourni.");
         }
         long size = file.getSize();
+        long maxMb = properties.maxBytes() / (1024 * 1024);
         if (size > properties.maxBytes()) {
-            throw new FileTooLargeException("Document trop volumineux.");
+            // Journalisé en INFO, pas en debug : un refus d'upload est la première chose qu'on cherche
+            // quand un utilisateur dit « ça ne marche pas », et un refus invisible se diagnostique à
+            // l'aveugle. Type et taille suffisent — le nom du fichier est une donnée personnelle.
+            log.info("Document refusé : {} octets > plafond de {} Mo (type={})", size, maxMb, file.getContentType());
+            throw new FileTooLargeException(
+                    "Document trop volumineux : " + (size / (1024 * 1024)) + " Mo, maximum " + maxMb + " Mo.");
         }
         String mediaType = normalizeMediaType(file.getContentType());
         if (!properties.allowedTypeSet().contains(mediaType)) {
-            throw new UnsupportedFileTypeException("Type de document non supporté : " + mediaType);
+            log.info("Document refusé : type « {} » hors liste blanche {}", mediaType, properties.allowedTypeSet());
+            // Le type déclaré est dit à l'utilisateur : un PDF annoncé `application/octet-stream` par
+            // le navigateur tombe ici, et sans cette précision le refus est incompréhensible.
+            throw new UnsupportedFileTypeException("Format refusé (« " + mediaType
+                    + " »). Formats acceptés : " + String.join(", ", properties.allowedTypeSet()) + ".");
         }
         String filename = StringUtils.cleanPath(
                 StringUtils.hasText(file.getOriginalFilename()) ? file.getOriginalFilename() : "document");
