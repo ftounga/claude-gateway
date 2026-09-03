@@ -99,9 +99,23 @@ export class DocumentsComponent implements OnInit, AfterViewInit, OnDestroy {
     this.stopPolling();
   }
 
+  /**
+   * Choisir un fichier **lance l'extraction** (F-08 / SF-08-03).
+   *
+   * <p>L'écran demandait auparavant un second clic sur « Lancer l'OCR ». Un utilisateur qui
+   * découvrait l'outil choisissait son fichier et attendait : rien ne partait, et comme rien
+   * n'était envoyé, aucune erreur ne s'affichait non plus. Un choix de fichier <b>est</b> une
+   * demande d'extraction — il n'y a pas d'autre geste à attendre.</p>
+   */
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
-    this.selectedFile.set(input.files && input.files.length > 0 ? input.files[0] : null);
+    const file = input.files && input.files.length > 0 ? input.files[0] : null;
+    this.selectedFile.set(file);
+    // Le champ est vidé pour que re-choisir le même fichier redéclenche bien un `change`.
+    input.value = '';
+    if (file) {
+      this.submit();
+    }
   }
 
   submit(): void {
@@ -201,14 +215,24 @@ export class DocumentsComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
+  /**
+   * Message d'échec : dire **ce qui est accepté**, pas seulement que c'est refusé.
+   *
+   * <p>« Type non supporté » laissait l'utilisateur deviner lesquels le sont — et un PDF déclaré
+   * {@code application/octet-stream} par le navigateur tombe ici alors que c'est bien un PDF.</p>
+   */
   private submitErrorMessage(error: HttpErrorResponse): string {
+    const detail = typeof error.error?.message === 'string' ? error.error.message : null;
     if (error.status === 415) {
-      return 'Type de document non supporté.';
+      return detail ?? 'Format refusé. Formats acceptés : PDF, PNG, JPEG, TIFF.';
     }
     if (error.status === 413) {
-      return 'Document trop volumineux.';
+      return detail ?? 'Document trop volumineux (20 Mo au maximum).';
     }
-    return 'Impossible de soumettre le document.';
+    if (error.status === 401) {
+      return 'Votre session a expiré : reconnectez-vous puis réessayez.';
+    }
+    return detail ?? 'Impossible de soumettre le document.';
   }
 
   private notify(message: string, panelClass: string): void {

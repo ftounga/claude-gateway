@@ -19,23 +19,28 @@
       (change)="onFileSelected($event)"
     />
     <div class="documents__submit-row">
-      <button mat-stroked-button type="button" (click)="fileInput.click()">
-        <mat-icon>attach_file</mat-icon>
-        Choisir un fichier
-      </button>
-      <span class="documents__filename" [class.documents__filename--empty]="!selectedFile()">
-        {{ selectedFile()?.name || 'Aucun fichier sélectionné' }}
-      </span>
+      <!-- Un seul geste (SF-08-03) : choisir un fichier lance l'extraction. Le second bouton
+           « Lancer l'OCR » faisait croire à un envoi qui n'avait pas eu lieu. -->
       <button
         mat-flat-button
         color="primary"
         type="button"
-        [disabled]="!selectedFile() || submitting()"
-        (click)="submit()"
+        [disabled]="submitting()"
+        (click)="fileInput.click()"
       >
-        <mat-icon>document_scanner</mat-icon>
-        Lancer l'OCR
+        <mat-icon>attach_file</mat-icon>
+        Choisir un fichier
       </button>
+      <span class="documents__filename" [class.documents__filename--empty]="!submitting()">
+        @if (submitting()) {
+          Envoi de {{ selectedFile()?.name }}…
+        } @else {
+          PDF, PNG, JPEG ou TIFF — 20 Mo au maximum
+        }
+      </span>
+      @if (submitting()) {
+        <mat-spinner diameter="24"></mat-spinner>
+      }
     </div>
   </mat-card>
 
