@@ -104,6 +104,9 @@ public class AtelierSessionService implements RelaySessionInterruptTarget {
      */
     private final RunnerRelayBroadcaster relayBroadcaster;
 
+    /** Réponse de repli quand un run n'a rien produit (SF-28-18) : l'historique reste rejouable. */
+    static final String EMPTY_REPLY = "Je n'ai pas produit de réponse pour ce message.";
+
     /** Sérialisation de la transcription persistée (F-30 SF-30-09) : donnée d'affichage. */
     private static final com.fasterxml.jackson.databind.ObjectMapper MAPPER =
             new com.fasterxml.jackson.databind.ObjectMapper();
@@ -438,7 +441,10 @@ public class AtelierSessionService implements RelaySessionInterruptTarget {
                     .workspaceId(workspaceId)
                     .userId(userId)
                     .role("ASSISTANT")
-                    .content(reply == null ? "" : reply)
+                    // Jamais vide (SF-28-18, décision D5) : les deux moteurs écrivent dans la même
+                    // table, et un message vide laissé ici serait relu par le mode Assistant — que le
+                    // fournisseur refuse alors de servir, condamnant le projet.
+                    .content(reply == null || reply.isBlank() ? EMPTY_REPLY : reply)
                     .terminalJson(serializeTranscript(transcript, usage, interrupted, budgetReached, diffs))
                     .build());
         } catch (RuntimeException ex) {

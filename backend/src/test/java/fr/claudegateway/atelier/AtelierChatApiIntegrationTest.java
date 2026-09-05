@@ -299,4 +299,50 @@ class AtelierChatApiIntegrationTest {
         mockMvc.perform(post("/api/workspaces/" + ws + "/chat/interrupt").contextPath("/api"))
                 .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void truncatedTurnAnswers200WithAnExplicitMessageAndTouchesNoFile() throws Exception {
+        UUID ws = createWorkspace(alice, "notes.txt", "contenu initial");
+        // Le fournisseur a coupé la réponse au plafond de sortie, en plein `write_file` (SF-28-18).
+        stub.enqueueTruncated("Je vais mettre à jour notes.txt.", "write_file");
+
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"réécris entièrement notes.txt\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reply", containsString("rien n'a été exécuté")))
+                .andExpect(jsonPath("$.actions", org.hamcrest.Matchers.hasSize(0)));
+
+        // Le fichier est intact : un contenu tronqué n'est jamais écrit.
+        org.assertj.core.api.Assertions.assertThat(workspaceService.readFile(alice.getId(), ws, "notes.txt"))
+                .isEqualTo("contenu initial");
+    }
+
+    @Test
+    void aTruncatedTurnDoesNotCondemnTheProjectForTheNextMessages() throws Exception {
+        UUID ws = createWorkspace(alice, "notes.txt", "contenu initial");
+        stub.enqueueTruncated("", "write_file");
+
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"premier message\"}"))
+                .andExpect(status().isOk());
+
+        // Le message suivant doit passer : c'est exactement ce qui échouait avant SF-28-18, le
+        // fournisseur refusant de rejouer un message assistant vide.
+        stub.enqueueFinal("Voilà.");
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"deuxième message\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reply", containsString("Voilà")));
+
+        // Aucun message vide n'a été écrit dans l'historique du projet.
+        org.assertj.core.api.Assertions.assertThat(
+                        atelierMessageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(ws, alice.getId()))
+                .allSatisfy(m -> org.assertj.core.api.Assertions.assertThat(m.getContent()).isNotBlank());
+    }
 }

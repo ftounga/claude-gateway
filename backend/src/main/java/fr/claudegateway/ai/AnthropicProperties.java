@@ -14,8 +14,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param version      valeur de l'en-tête {@code anthropic-version}
  * @param defaultModel modèle utilisé lorsque la requête n'en précise pas
  * @param models       liste blanche des modèles sélectionnables
- * @param maxTokens    plafond de tokens de sortie par appel
- * @param timeout      délai maximal d'un appel amont
+ * @param maxTokens      plafond de tokens de sortie par appel de <b>chat</b> (F-02)
+ * @param agentMaxTokens plafond de tokens de sortie par appel de la <b>boucle d'agent</b> (F-28).
+ *                       Distinct de {@code maxTokens} : l'agent transporte le contenu entier d'un
+ *                       fichier dans sa sortie ({@code write_file}), le chat non. Les relier ferait
+ *                       porter au chat, livré et stable, un besoin qui n'est pas le sien.
+ * @param timeout        délai maximal d'un appel amont
  */
 @ConfigurationProperties(prefix = "app.ai.anthropic")
 public record AnthropicProperties(
@@ -25,6 +29,7 @@ public record AnthropicProperties(
         String defaultModel,
         List<String> models,
         Integer maxTokens,
+        Integer agentMaxTokens,
         Duration timeout) {
 
     public AnthropicProperties {
@@ -42,6 +47,11 @@ public record AnthropicProperties(
         }
         if (maxTokens == null || maxTokens <= 0) {
             maxTokens = 4096;
+        }
+        // 16 384 et non 64 000 : au-delà, l'appel doit être streamé vers le fournisseur pour ne pas
+        // heurter les délais HTTP, or la boucle d'agent appelle en non-streamé (SF-28-18, décision D2).
+        if (agentMaxTokens == null || agentMaxTokens <= 0) {
+            agentMaxTokens = 16_384;
         }
         if (timeout == null || timeout.isZero() || timeout.isNegative()) {
             timeout = Duration.ofSeconds(120);

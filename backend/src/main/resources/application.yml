@@ -195,6 +195,10 @@ app:
       default-model: ${ANTHROPIC_DEFAULT_MODEL:claude-opus-4-8}
       models: ${ANTHROPIC_MODELS:claude-opus-4-8,claude-sonnet-5,claude-haiku-4-5}
       max-tokens: ${ANTHROPIC_MAX_TOKENS:4096}
+      # Plafond de sortie de la BOUCLE D'AGENT (F-28 / SF-28-18), distinct de celui du chat : l'agent
+      # transporte le contenu entier d'un fichier dans sa sortie (`write_file`). À 4096, écrire un
+      # fichier de plus de ~12 Ko était structurellement impossible — et la coupure passait inaperçue.
+      agent-max-tokens: ${ANTHROPIC_AGENT_MAX_TOKENS:16384}
       timeout: ${ANTHROPIC_TIMEOUT:PT120S}
   byok:
     # Chiffrement des clés API utilisateur (F-03, OQ-06 : AWS KMS envelope encryption).

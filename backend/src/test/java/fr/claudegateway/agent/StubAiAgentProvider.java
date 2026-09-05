@@ -47,6 +47,22 @@ public class StubAiAgentProvider implements AiAgentProvider {
         script.add(new AgentTurn("", calls, false, 5, 5));
     }
 
+    /**
+     * Empile un tour <b>tronqué</b> (SF-28-18) : le fournisseur a coupé la réponse au plafond de
+     * sortie. Le tour porte un texte d'intention <b>et</b> un appel d'outil, comme le fait l'API dans
+     * ce cas — la boucle doit refuser d'exécuter ce dernier.
+     */
+    public void enqueueTruncated(String text, String toolName) {
+        List<AgentToolCall> calls = new ArrayList<>();
+        calls.add(new AgentToolCall("tool_" + (idSeq++), toolName, mapper.createObjectNode()));
+        script.add(new AgentTurn(text, calls, true, 5, 5, true));
+    }
+
+    /** Empile un tour final <b>sans aucun texte</b> : le tour n'a rien produit (SF-28-18). */
+    public void enqueueEmptyFinal() {
+        script.add(new AgentTurn("", List.of(), true, 5, 5));
+    }
+
     /** Empile le tour final (réponse texte, stop). */
     public void enqueueFinal(String text) {
         script.add(new AgentTurn(text, List.of(), true, 5, 5));
