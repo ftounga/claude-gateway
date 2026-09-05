@@ -53,6 +53,21 @@ public class AtelierChatService implements RelayInterruptTarget {
     /** Agrégat de sortie de commande conservé et rendu au modèle (contrat §5), en octets. */
     private static final int MAX_BASH_OUTPUT_BYTES = 131_072;
     static final String INTERRUPTED_REPLY = "J'ai arrêté le travail en cours à ta demande.";
+    /**
+     * Réponse rendue quand le modèle a été coupé au plafond de sortie (SF-28-18). Elle dit les trois
+     * choses que l'utilisateur doit savoir : ce qui s'est passé, que <b>rien n'a été exécuté</b>, et
+     * quoi faire ensuite. Sans elle, il ne voyait qu'une phrase d'intention suivie de rien.
+     */
+    static final String TRUNCATED_REPLY =
+            "Ma réponse a dépassé la taille maximale autorisée et a été coupée : rien n'a été exécuté. "
+                    + "Demande-moi une modification plus courte, ou de travailler fichier par fichier.";
+    /**
+     * Réponse de repli quand le tour ne produit aucun texte (SF-28-18). Elle n'est pas cosmétique :
+     * l'API refuse un bloc de texte vide, donc un message vide persisté ici rendrait <b>tous</b> les
+     * tours suivants de ce projet impossibles — vérifié, {@code 400 "text content blocks must be
+     * non-empty"}. L'historique ne doit jamais pouvoir contenir un tel message.
+     */
+    static final String EMPTY_REPLY_FALLBACK = "Je n'ai pas produit de réponse pour ce message.";
     static final String BUDGET_REACHED_REPLY =
             "Le temps imparti à ce message est écoulé ; relance-moi pour continuer.";
     /** Garde-fou : longueur max de la consigne système (CLAUDE.md + skills). */
@@ -162,11 +177,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         String userText = rawMessage.trim();
 
         // Historique de l'atelier (texte) + nouveau message utilisateur.
-        List<AgentMessage> messages = new ArrayList<>();
-        for (AtelierMessage past : messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId)) {
-            String role = "ASSISTANT".equalsIgnoreCase(past.getRole()) ? "assistant" : "user";
-            messages.add(new AgentMessage(role, List.of(new AgentContentBlock.Text(past.getContent()))));
-        }
+        List<AgentMessage> messages = new ArrayList<>(
+                replayableHistory(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId)));
         messages.add(AgentMessage.userText(userText));
 
         messageRepository.save(AtelierMessage.builder()
@@ -197,6 +209,14 @@ public class AtelierChatService implements RelayInterruptTarget {
             inputTokens += turn.inputTokens();
             outputTokens += turn.outputTokens();
 
+            // Réponse coupée au plafond de sortie (SF-28-18) : ses blocs sont incomplets. On
+            // n'exécute AUCUN de ses outils — rien ne distingue de façon fiable un `tool_use` complet
+            // d'un `tool_use` coupé au bon endroit, et écrire un fichier au contenu tronqué
+            // remplacerait un échec silencieux par un dégât silencieux (décision D3).
+            if (turn.truncated()) {
+                finalText = TRUNCATED_REPLY;
+                break;
+            }
             if (turn.finished() || turn.toolCalls().isEmpty()) {
                 finalText = turn.text();
                 break;
@@ -250,11 +270,54 @@ public class AtelierChatService implements RelayInterruptTarget {
             quotaService.recordUsage(userId, inputTokens, outputTokens);
         }
 
+        // Jamais de message vide dans l'historique (SF-28-18) : il serait relu au tour suivant et
+        // refusé par le fournisseur, condamnant le projet.
+        String reply = nonEmptyReply(finalText);
         AtelierMessage assistant = messageRepository.save(AtelierMessage.builder()
                 .workspaceId(workspaceId).userId(userId).role("ASSISTANT")
-                .content(finalText == null ? "" : finalText).build());
+                .content(reply).build());
 
-        return new AtelierChatResult(finalText, actions, assistant.getId());
+        return new AtelierChatResult(reply, actions, assistant.getId());
+    }
+
+    /**
+     * Historique <b>rejouable</b> auprès du fournisseur (SF-28-18) : les messages de l'atelier, moins
+     * ceux qu'il refuserait.
+     *
+     * <p>Deux filtres, et deux seulement :</p>
+     * <ul>
+     *   <li>les messages au contenu <b>blanc</b> sont écartés — l'API rejette un bloc de texte vide
+     *       ({@code 400 "text content blocks must be non-empty"}), et un seul suffit à rendre muet
+     *       tout le projet. Ceux déjà écrits en base avant SF-28-18 sont ainsi neutralisés sans
+     *       toucher à la base, ni à ce que l'écran montre de l'historique (décision D4) ;</li>
+     *   <li>les messages <b>assistant en tête</b> sont écartés — une conversation doit commencer par
+     *       un message utilisateur. Le cas ne se produit qu'après le filtre précédent, ou après une
+     *       suppression manuelle.</li>
+     * </ul>
+     *
+     * <p>Deux messages {@code user} consécutifs, eux, sont acceptés par le fournisseur (vérifié) :
+     * retirer un assistant au milieu ne casse donc pas l'échange.</p>
+     */
+    private static List<AgentMessage> replayableHistory(List<AtelierMessage> past) {
+        List<AgentMessage> messages = new ArrayList<>(past.size());
+        for (AtelierMessage message : past) {
+            String content = message.getContent();
+            if (content == null || content.isBlank()) {
+                continue;
+            }
+            boolean assistant = "ASSISTANT".equalsIgnoreCase(message.getRole());
+            if (assistant && messages.isEmpty()) {
+                continue;
+            }
+            messages.add(new AgentMessage(assistant ? "assistant" : "user",
+                    List.of(new AgentContentBlock.Text(content))));
+        }
+        return messages;
+    }
+
+    /** Réponse à persister : celle du tour, ou un texte explicite si le tour n'a rien produit. */
+    private static String nonEmptyReply(String finalText) {
+        return finalText == null || finalText.isBlank() ? EMPTY_REPLY_FALLBACK : finalText;
     }
 
     /**

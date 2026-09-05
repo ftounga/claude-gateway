@@ -53,7 +53,7 @@ class AnthropicManagedAgentProviderTest {
     private void buildProvider(Duration confirmTimeout) {
         AnthropicProperties properties = new AnthropicProperties(
                 "sk-ant-test-key", "https://api.anthropic.com", "2023-06-01",
-                null, null, null, Duration.ofSeconds(5));
+                null, null, null, null, Duration.ofSeconds(5));
         // pollDelay = 0 : polling déterministe sans Thread.sleep réel.
         AtelierAgentProperties agentProperties = new AtelierAgentProperties(
                 false, null, null, null, null, null, null, null, Duration.ZERO, null, null, null,

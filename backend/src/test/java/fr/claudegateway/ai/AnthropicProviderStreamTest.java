@@ -81,7 +81,7 @@ class AnthropicProviderStreamTest {
     private AnthropicProvider providerFor(HttpServer server) {
         AnthropicProperties properties = new AnthropicProperties(
                 "sk-test-key", "http://localhost:" + server.getAddress().getPort(),
-                null, null, null, 1024, Duration.ofSeconds(5));
+                null, null, null, 1024, null, Duration.ofSeconds(5));
         return new AnthropicProvider(properties, RestClient.builder(), new ObjectMapper());
     }
 

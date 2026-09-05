@@ -17,7 +17,7 @@ class AnthropicProviderTest {
     @Test
     void throwsUnavailableWhenApiKeyMissing() {
         AnthropicProperties properties = new AnthropicProperties(
-                "", null, null, null, null, null, Duration.ofSeconds(1));
+                "", null, null, null, null, null, null, Duration.ofSeconds(1));
         AnthropicProvider provider = new AnthropicProvider(properties, RestClient.builder(), new com.fasterxml.jackson.databind.ObjectMapper());
 
         assertThatThrownBy(() -> provider.complete(
@@ -30,7 +30,7 @@ class AnthropicProviderTest {
     void usesByokOverrideKeyEvenWithoutPlatformKey() {
         // Aucune clé plateforme, base URL injoignable (échec réseau rapide).
         AnthropicProperties properties = new AnthropicProperties(
-                "", "http://localhost:1", null, null, null, null, Duration.ofMillis(200));
+                "", "http://localhost:1", null, null, null, null, null, Duration.ofMillis(200));
         AnthropicProvider provider = new AnthropicProvider(properties, RestClient.builder(), new com.fasterxml.jackson.databind.ObjectMapper());
 
         // Une clé BYOK est fournie sur la requête : on dépasse le gate « non configuré » (sinon 503)
@@ -47,7 +47,7 @@ class AnthropicProviderTest {
     @Test
     void uploadFileThrowsUnavailableWhenApiKeyMissing() {
         AnthropicProperties properties = new AnthropicProperties(
-                "", null, null, null, null, null, Duration.ofSeconds(1));
+                "", null, null, null, null, null, null, Duration.ofSeconds(1));
         AnthropicProvider provider = new AnthropicProvider(properties, RestClient.builder(), new com.fasterxml.jackson.databind.ObjectMapper());
 
         assertThatThrownBy(() -> provider.uploadFile(

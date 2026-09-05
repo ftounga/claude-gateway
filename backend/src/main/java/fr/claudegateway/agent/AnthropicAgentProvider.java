@@ -23,7 +23,8 @@ import fr.claudegateway.ai.AnthropicProperties;
 /**
  * Implémentation Anthropic de {@link AiAgentProvider} (F-28) : relaie un tour à {@code POST /v1/messages}
  * avec {@code tools} + {@code system}, et traduit la réponse (blocs {@code text}/{@code tool_use},
- * {@code stop_reason}, {@code usage}) en {@link AgentTurn}. Le mapping fournisseur est confiné ici ;
+ * {@code stop_reason}, {@code usage}) en {@link AgentTurn}. Le plafond de sortie est celui de l'agent
+ * ({@code agent-max-tokens}), pas celui du chat : écrire un fichier consomme la sortie du modèle. Le mapping fournisseur est confiné ici ;
  * le domaine reste neutre. La clé n'est jamais journalisée.
  */
 @Component
@@ -48,7 +49,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
 
         Map<String, Object> body = new HashMap<>();
         body.put("model", request.model());
-        body.put("max_tokens", properties.maxTokens());
+        body.put("max_tokens", properties.agentMaxTokens());
         body.put("messages", toApiMessages(request.messages()));
         if (StringUtils.hasText(request.system())) {
             body.put("system", request.system());
@@ -135,10 +136,14 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         }
         String stopReason = response.path("stop_reason").asText("");
         boolean finished = !"tool_use".equals(stopReason);
+        // « Coupé au plafond » n'est pas « terminé » (SF-28-18) : le fournisseur n'attend plus rien de
+        // nous, mais sa réponse s'arrête au milieu — souvent avant même le bloc `tool_use` annoncé par
+        // la phrase qui précède. La distinguer ici est le seul endroit où l'information existe.
+        boolean truncated = "max_tokens".equals(stopReason);
         JsonNode usage = response.path("usage");
         int inputTokens = usage.path("input_tokens").asInt(0);
         int outputTokens = usage.path("output_tokens").asInt(0);
-        return new AgentTurn(text.toString(), toolCalls, finished, inputTokens, outputTokens);
+        return new AgentTurn(text.toString(), toolCalls, finished, inputTokens, outputTokens, truncated);
     }
 
     /** Clé BYOK fournie pour l'appel, sinon clé plateforme. Jamais journalisée. */
