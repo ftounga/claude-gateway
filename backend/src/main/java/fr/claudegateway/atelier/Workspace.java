@@ -123,6 +123,17 @@ public class Workspace {
     private OffsetDateTime updatedAt;
 
     /**
+     * Frontière de rejeu du fil d'Atelier (F-39 / SF-39-04, décision D5) : les messages antérieurs
+     * ne repartent plus chez le fournisseur. {@code null} — le cas de tous les projets existants —
+     * signifie que tout l'historique est rejoué, exactement comme avant.
+     *
+     * <p>Un « nouveau départ » <b>ne supprime rien</b> : la conversation reste lisible à l'écran,
+     * seule change la mémoire que l'agent en a. C'est ce qui rend le geste réversible.</p>
+     */
+    @Column(name = "chat_thread_started_at")
+    private OffsetDateTime chatThreadStartedAt;
+
+    /**
      * Session sandbox en cours pour ce workspace (F-30 SF-30-04, ADR-014), ou {@code null} si aucune.
      * La sandbox et son système de fichiers survivent d'un message à l'autre : c'est cet identifiant
      * qui les relie.

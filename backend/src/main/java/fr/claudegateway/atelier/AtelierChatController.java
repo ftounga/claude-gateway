@@ -29,6 +29,7 @@ import fr.claudegateway.atelier.dto.AtelierChatRequest;
 import fr.claudegateway.atelier.dto.AtelierChatResponse;
 import fr.claudegateway.atelier.dto.AtelierChatResponse.AtelierAction;
 import fr.claudegateway.atelier.dto.AtelierMessageResponse;
+import fr.claudegateway.atelier.dto.AtelierResumeResponse;
 import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.quota.QuotaExceededException;
 import jakarta.validation.Valid;
@@ -57,14 +58,17 @@ public class AtelierChatController {
     private static final long STREAM_TIMEOUT_MS = 900_000L;
 
     private final AtelierChatService atelierChatService;
+    private final AtelierThreadService atelierThreadService;
     private final CurrentUser currentUser;
     private final AtelierAccessService atelierAccess;
     private final Executor chatStreamExecutor;
 
-    public AtelierChatController(AtelierChatService atelierChatService, CurrentUser currentUser,
+    public AtelierChatController(AtelierChatService atelierChatService,
+            AtelierThreadService atelierThreadService, CurrentUser currentUser,
             AtelierAccessService atelierAccess,
             @Qualifier("chatStreamExecutor") Executor chatStreamExecutor) {
         this.atelierChatService = atelierChatService;
+        this.atelierThreadService = atelierThreadService;
         this.currentUser = currentUser;
         this.atelierAccess = atelierAccess;
         this.chatStreamExecutor = chatStreamExecutor;
@@ -129,6 +133,34 @@ public class AtelierChatController {
         atelierChatService.confirmToolUse(currentUser.requireId(), id, request.toolUseId(),
                 request.allows(), request.reason());
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * État de reprise du fil (F-39 / SF-39-04, décision D5) : ce que le prochain tour rejouera, et
+     * s'il faut poser la question. Par défaut le fil reprend en silence — l'écran n'appelle cette
+     * route que pour savoir s'il doit, exceptionnellement, proposer un choix.
+     *
+     * <p>Isolation {@code user_id} appliquée par le service ({@code requireOwned} : 404 sur un
+     * projet d'autrui).</p>
+     */
+    @GetMapping("/resume")
+    public AtelierResumeResponse resume(@PathVariable UUID id) {
+        atelierAccess.requireAccess();
+        return atelierThreadService.resumeState(currentUser.requireId(), id);
+    }
+
+    /**
+     * Nouveau départ (F-39 / SF-39-04, décision D1) : les tours passés cessent d'être rejoués.
+     *
+     * <p><b>Rien n'est supprimé</b> — {@code GET /workspaces/{id}/chat} continue de renvoyer toute
+     * la conversation. Seule la mémoire que l'agent en a repart de zéro, ce qui rend le geste
+     * réversible : l'utilisateur peut toujours relire, et rien ne l'empêche de reparler du même
+     * sujet.</p>
+     */
+    @PostMapping("/restart")
+    public AtelierResumeResponse restart(@PathVariable UUID id) {
+        atelierAccess.requireAccess();
+        return atelierThreadService.restart(currentUser.requireId(), id);
     }
 
     @GetMapping

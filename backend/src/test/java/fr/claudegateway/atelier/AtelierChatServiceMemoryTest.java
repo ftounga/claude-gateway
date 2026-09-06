@@ -48,6 +48,7 @@ class AtelierChatServiceMemoryTest {
 
     private final UUID userId = UUID.randomUUID();
     private final UUID workspaceId = UUID.randomUUID();
+    private Workspace workspace;
     /** Messages « déjà en base » vus par le tour courant. */
     private final List<AtelierMessage> history = new ArrayList<>();
     /** Messages persistés par le tour courant. */
@@ -64,14 +65,14 @@ class AtelierChatServiceMemoryTest {
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
                 new AtelierProperties(null, null, null, null, null, null, null));
 
-        Workspace workspace = new Workspace();
+        workspace = new Workspace();
         workspace.setId(workspaceId);
         workspace.setUserId(userId);
         workspace.setSource(WorkspaceSource.ARCHIVE);
         when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(workspace);
         when(modelCatalog.defaultModel()).thenReturn("claude-model");
         when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.empty());
-        when(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId))
+        lenient().when(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId))
                 .thenReturn(history);
         when(messageRepository.save(any(AtelierMessage.class))).thenAnswer(invocation -> {
             AtelierMessage message = invocation.getArgument(0);
@@ -187,6 +188,23 @@ class AtelierChatServiceMemoryTest {
         assertThat(replayed).hasSize(3);
         assertThat(replayed.get(1).content().get(0))
                 .isEqualTo(new AgentContentBlock.Text("J'ai lu notes.txt."));
+    }
+
+    @Test
+    void afterAFreshStartTheTurnReplaysNothingFromBeforeTheBoundary() {
+        // SF-39-04 : « repartir à neuf » ne supprime rien — le tour suivant lit simplement à partir
+        // de la frontière, et n'a donc que le nouveau message à envoyer.
+        java.time.OffsetDateTime boundary = java.time.OffsetDateTime.now().minusMinutes(5);
+        workspace.setChatThreadStartedAt(boundary);
+        when(messageRepository.findByWorkspaceIdAndUserIdAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
+                workspaceId, userId, boundary)).thenReturn(List.of());
+        history.add(userMessage("vieille demande"));
+        history.add(assistantMessage("vieille réponse", traceJson("call_old")));
+        agentProvider.enqueueFinal("Nouveau sujet.");
+
+        service.chat(userId, workspaceId, "on reprend à zéro");
+
+        assertThat(agentProvider.lastRequest.messages()).hasSize(1);
     }
 
     @Test

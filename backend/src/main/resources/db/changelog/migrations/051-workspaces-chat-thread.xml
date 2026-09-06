@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      SF-39-04 — Frontiere de rejeu du fil d'Atelier (F-39, lot 2, decision D5).
+      « Repartir a neuf » ne supprime AUCUN message : il deplace une frontiere. Les messages
+      anterieurs restent lisibles a l'ecran ; seul ce qui repart chez le fournisseur change.
+      C'est le choix reversible — une suppression ne le serait pas.
+
+      Colonne nullable : `null` = tout l'historique est rejoue, soit exactement le comportement
+      d'avant SF-39-04 pour tous les projets existants. Reversible (`dropColumn`).
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="051-workspaces-chat-thread-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="workspaces">
+            <column name="chat_thread_started_at" type="timestamp with time zone"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="chat_thread_started_at"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="051-workspaces-chat-thread-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="workspaces">
+            <column name="chat_thread_started_at" type="timestamp with time zone"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="chat_thread_started_at"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
