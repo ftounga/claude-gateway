@@ -85,6 +85,17 @@ app:
     # si elle etait retiree, chaque tour de l'Atelier echouerait. `false` retablit le service ici,
     # sans livraison.
     context-pruning: ${APP_ATELIER_CONTEXT_PRUNING:true}
+    # Plafond de consommation d'UN MESSAGE (F-39 / SF-39-15), en tokens traites — cache compris,
+    # comme le compteur de quota (SF-39-01). Le plafond d'etapes borne le NOMBRE d'allers-retours, le
+    # budget de temps borne la DUREE, et jusqu'ici rien ne bornait ce qu'un seul message pouvait
+    # consommer : le quota est verifie AVANT le tour et enregistre APRES.
+    # Dit en tokens et non en dollars (D-L8-1) : le compteur additionne les tokens servis par le
+    # cache, qu'un taux melange sur-facturerait d'un ordre de grandeur — un plafond de 2 $ ainsi
+    # converti couperait vers la huitieme iteration, c'est-a-dire les tours que le cache venait de
+    # rendre abordables. Defaut calibre sur l'usage reel : contexte maximal observe 900 519 tokens,
+    # tour de 30 iterations estime a ~1,35 M tokens d'entree. En mode Hoste, il est en outre borne
+    # par le quota restant de l'utilisateur.
+    max-turn-tokens: ${APP_ATELIER_MAX_TURN_TOKENS:1500000}
     agent:
       # Managed Agents (F-28 / Phase 2, ADR-013). Flag OFF par défaut : tant que `enabled` est faux
       # et qu'aucune config n'existe, AUCUN appel réseau ni coût runtime (bootstrap inerte).

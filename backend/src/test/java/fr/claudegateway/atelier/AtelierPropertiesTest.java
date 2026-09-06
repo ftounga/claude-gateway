@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 class AtelierPropertiesTest {
 
     private AtelierProperties withMaxIterations(Integer value) {
-        return new AtelierProperties(null, null, null, null, null, null, value, null, null, null);
+        return new AtelierProperties(null, null, null, null, null, null, value, null, null, null, null);
     }
 
     @Test
@@ -40,7 +40,7 @@ class AtelierPropertiesTest {
     // ------------------------------------------------- SF-39-10 : modèle et effort de la boucle
 
     private AtelierProperties withReasoning(String model, String effort) {
-        return new AtelierProperties(null, null, null, null, null, null, null, model, effort, null);
+        return new AtelierProperties(null, null, null, null, null, null, null, model, effort, null, null);
     }
 
     @Test
@@ -82,8 +82,32 @@ class AtelierPropertiesTest {
         // Capacité beta dans un chemin critique : le coupe-circuit rétablit le service sans
         // livraison si le fournisseur retirait l'option (D-L6-11).
         AtelierProperties off =
-                new AtelierProperties(null, null, null, null, null, null, null, null, null, false);
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, false, null);
         assertThat(off.contextPruning()).isFalse();
+    }
+
+    /** Plafond de consommation d'un message (F-39 / SF-39-15). */
+    private static AtelierProperties withTurnCap(Long value) {
+        return new AtelierProperties(null, null, null, null, null, null, null, null, null, null, value);
+    }
+
+    @Test
+    void defaultsToTheMeasuredTurnCeiling() {
+        // Calibré sur l'usage réel du cadrage : contexte maximal observé 900 519 tokens, tour de
+        // 30 itérations estimé à ~1,35 M tokens d'entrée. Un tour ordinaire ne le voit jamais.
+        assertThat(withTurnCap(null).maxTurnTokens())
+                .isEqualTo(AtelierProperties.DEFAULT_MAX_TURN_TOKENS);
+        assertThat(withTurnCap(0L).maxTurnTokens()).isEqualTo(AtelierProperties.DEFAULT_MAX_TURN_TOKENS);
+        assertThat(withTurnCap(-1L).maxTurnTokens()).isEqualTo(AtelierProperties.DEFAULT_MAX_TURN_TOKENS);
+    }
+
+    @Test
+    void capsTheTurnCeilingSoItStaysMeaningful() {
+        // Au-delà, le plafond d'étapes et le budget de temps auraient tranché de toute façon :
+        // mieux vaut une borne lisible qu'un plafond qui n'a jamais l'occasion de s'appliquer.
+        assertThat(withTurnCap(50_000_000L).maxTurnTokens())
+                .isEqualTo(AtelierProperties.MAX_TURN_TOKENS_CEILING);
+        assertThat(withTurnCap(250_000L).maxTurnTokens()).isEqualTo(250_000L);
     }
 
     @Test

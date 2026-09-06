@@ -161,6 +161,34 @@ class AtelierChatApiIntegrationTest {
     }
 
     @Test
+    void whatTheTurnCostIsReturnedAndSurvivesInTheHistory() throws Exception {
+        // F-39 / SF-39-15 : la boucle maison ne relayait aucune consommation — l'acquis §4 n°6
+        // (« coût du tour affiché ») ne valait donc que pour le moteur hébergé, c'est-à-dire pas
+        // pour celui qui exécute réellement.
+        UUID ws = createWorkspace(alice, "a.txt", "x");
+        stub.enqueueFinal("Bonjour.");
+
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"salut\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.inputTokens", is(5)))
+                .andExpect(jsonPath("$.outputTokens", is(5)))
+                .andExpect(jsonPath("$.budgetReached", is(false)));
+
+        // Le relevé se range dans la colonne d'affichage existante (D-L8-6) : au rechargement, le
+        // coût du tour est encore là — et le motif de son arrêt avec lui.
+        mockMvc.perform(get("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[1].terminal.inputTokens", is(5)))
+                .andExpect(jsonPath("$[1].terminal.outputTokens", is(5)))
+                .andExpect(jsonPath("$[1].terminal.budgetReached", is(false)))
+                .andExpect(jsonPath("$[1].terminal.blocks.length()", is(0)));
+    }
+
+    @Test
     void toolTrajectoryIsRememberedForReplayButNeverExposedByTheHistory() throws Exception {
         // SF-39-03 : la trajectoire est une donnée de REJEU. Elle doit être en base pour que le tour
         // suivant ne refasse pas le travail, et absente de la réponse d'historique — l'écran a déjà

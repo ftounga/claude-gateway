@@ -32,6 +32,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                      repose sur une capacité <i>beta</i> du fournisseur ; si elle était retirée,
  *                      chaque tour de l'Atelier échouerait. Le passer à {@code false} rétablit le
  *                      service par variable d'environnement, sans livraison
+ * @param maxTurnTokens plafond de consommation d'un <b>message</b> de la boucle maison
+ *                      (F-39 / SF-39-15), en tokens traités — cache compris, comme le compteur de
+ *                      quota (SF-39-01). Défaut {@code 1 500 000}, calibré sur l'usage réel du
+ *                      cadrage : contexte maximal observé 900 519 tokens, tour de 30 itérations
+ *                      estimé à ~1,35 M tokens d'entrée. Un tour ordinaire ne le voit jamais ; un
+ *                      tour parti en vrille s'y arrête. Exprimé en tokens et non en dollars
+ *                      (décision D-L8-1) : le compteur additionne les tokens servis par le cache,
+ *                      qu'un taux mélangé sur-facturerait d'un ordre de grandeur
  */
 @ConfigurationProperties(prefix = "app.atelier")
 public record AtelierProperties(
@@ -44,7 +52,8 @@ public record AtelierProperties(
         Integer maxIterations,
         String model,
         String effort,
-        Boolean contextPruning) {
+        Boolean contextPruning,
+        Long maxTurnTokens) {
 
     /** Modèle de la boucle maison à défaut de configuration (F-39 / SF-39-10). */
     public static final String DEFAULT_MODEL = "claude-opus-5";
@@ -53,6 +62,14 @@ public record AtelierProperties(
     /** Niveaux d'effort acceptés — même vocabulaire que le chemin Managed Agents (SF-28-17). */
     private static final java.util.Set<String> ALLOWED_EFFORTS =
             java.util.Set.of("low", "medium", "high", "xhigh", "max");
+    /** Plafond de consommation d'un message à défaut de configuration (F-39 / SF-39-15). */
+    public static final long DEFAULT_MAX_TURN_TOKENS = 1_500_000L;
+    /**
+     * Borne haute du plafond de message : au-delà, {@code maxIterations} et le budget de temps
+     * auraient tranché de toute façon. Mieux vaut une borne lisible qu'un plafond qui n'a jamais
+     * l'occasion de s'appliquer — même règle que {@code maxIterations}.
+     */
+    public static final long MAX_TURN_TOKENS_CEILING = 10_000_000L;
 
     public AtelierProperties {
         if (storage == null || storage.isBlank()) {
@@ -88,6 +105,14 @@ public record AtelierProperties(
         }
         if (contextPruning == null) {
             contextPruning = Boolean.TRUE;
+        }
+        // Un plafond absent, nul ou négatif retombe sur le défaut : une faute de configuration ne
+        // doit ni ouvrir la vanne, ni couper tous les tours au premier appel.
+        if (maxTurnTokens == null || maxTurnTokens <= 0L) {
+            maxTurnTokens = DEFAULT_MAX_TURN_TOKENS;
+        }
+        if (maxTurnTokens > MAX_TURN_TOKENS_CEILING) {
+            maxTurnTokens = MAX_TURN_TOKENS_CEILING;
         }
     }
 }
