@@ -122,7 +122,8 @@ class AtelierChatServiceMemoryTest {
         AtelierToolTrace.Call call = trace.steps().get(0).calls().get(0);
         assertThat(call.name()).isEqualTo("read_file");
         assertThat(call.input().path("path").asText()).isEqualTo("notes.txt");
-        assertThat(call.result()).isEqualTo("contenu");
+        // La lecture mémorisée est celle qui a été rendue au modèle : numérotée (SF-39-06).
+        assertThat(call.result()).isEqualTo("     1→contenu\n");
         assertThat(call.error()).isFalse();
     }
 

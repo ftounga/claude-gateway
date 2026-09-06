@@ -254,6 +254,28 @@ class AtelierChatApiIntegrationTest {
     }
 
     @Test
+    void aTargetedEditReallyChangesTheFileAndIsAnnouncedAsAWrite() throws Exception {
+        // SF-39-06 : changer trois caractères ne doit plus imposer de réémettre le fichier entier —
+        // le coût est en tokens de sortie, les plus chers, et une réponse coupée réécrivait un
+        // fichier tronqué.
+        UUID ws = createWorkspace(alice, "notes.txt", "bonjour monde");
+        stub.enqueueToolCall("edit_file", "path", "notes.txt", "old_string", "monde",
+                "new_string", "atelier");
+        stub.enqueueFinal("J'ai remplacé un mot.");
+
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"remplace monde par atelier\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.actions[?(@.type=='write')].path",
+                        org.hamcrest.Matchers.hasItem("notes.txt")));
+
+        org.assertj.core.api.Assertions.assertThat(workspaceService.readFile(alice.getId(), ws, "notes.txt"))
+                .isEqualTo("bonjour atelier");
+    }
+
+    @Test
     void cannotChatOnAnotherUsersWorkspace() throws Exception {
         UUID ws = createWorkspace(alice, "a.txt", "x");
         stub.enqueueFinal("ne devrait pas être atteint");

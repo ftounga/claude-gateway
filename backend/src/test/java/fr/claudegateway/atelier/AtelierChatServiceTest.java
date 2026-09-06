@@ -136,6 +136,62 @@ class AtelierChatServiceTest {
         assertThat(result.messageId()).isNotNull();
     }
 
+    /** Dernier {@code tool_result} transmis au modèle : ce que l'outil a réellement rendu. */
+    private String lastToolResultText() {
+        AgentContentBlock.ToolResult found = null;
+        for (AgentMessage message : agentProvider.lastRequest.messages()) {
+            for (AgentContentBlock block : message.content()) {
+                if (block instanceof AgentContentBlock.ToolResult result) {
+                    found = result;
+                }
+            }
+        }
+        assertThat(found).as("aucun tool_result transmis au modèle").isNotNull();
+        return found.content();
+    }
+
+    @Test
+    void readFileIsNumberedOnTheHostedStorageToo() {
+        // SF-39-06 : la numérotation est calculée côté gateway, donc identique quelle que soit la
+        // cible d'exécution — le prompt ne doit pas dériver selon l'endroit où vivent les fichiers.
+        stubHappyPath();
+        agentProvider.enqueueToolCall("read_file", "path", "notes.txt");
+        agentProvider.enqueueFinal("Lu.");
+
+        service.chat(userId, workspaceId, "lis notes.txt");
+
+        assertThat(lastToolResultText()).isEqualTo("     1→contenu du fichier\n");
+    }
+
+    @Test
+    void editFileRewritesTheFileAndLooksLikeAWriteToTheScreen() {
+        stubHappyPath();
+        when(workspaceService.readFile(userId, workspaceId, "notes.txt")).thenReturn("bonjour monde");
+        agentProvider.enqueueToolCall("edit_file", "path", "notes.txt",
+                "old_string", "monde", "new_string", "atelier");
+        agentProvider.enqueueFinal("Modifié.");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "remplace monde");
+
+        verify(workspaceService).writeFile(userId, workspaceId, "notes.txt", "bonjour atelier");
+        assertThat(result.actions()).extracting(a -> a.type() + ":" + a.path()).contains("write:notes.txt");
+        assertThat(lastToolResultText()).isEqualTo("Fichier modifié : notes.txt (1 remplacement)");
+    }
+
+    @Test
+    void editFileRefusesAnAmbiguousPassageRatherThanEditingAtRandom() {
+        stubHappyPath();
+        when(workspaceService.readFile(userId, workspaceId, "notes.txt")).thenReturn("x x");
+        agentProvider.enqueueToolCall("edit_file", "path", "notes.txt",
+                "old_string", "x", "new_string", "y");
+        agentProvider.enqueueFinal("Refusé.");
+
+        service.chat(userId, workspaceId, "remplace x");
+
+        verify(workspaceService, never()).writeFile(any(), any(), any(), any());
+        assertThat(lastToolResultText()).contains("trouvé 2 fois");
+    }
+
     @Test
     void chatStreamingReturnsSameResultAsSynchronousChat() {
         stubHappyPath();
