@@ -42,6 +42,26 @@ public final class ExclusionRules {
     public static final List<String> DEFAULT_DENY =
             List.of(".env", "*.pem", "id_rsa*", ".aws/", ".kube/config", ".ssh/");
 
+    /**
+     * <b>Bruit de construction</b>, écarté par défaut (F-38 / SF-38-21) : dépendances installées,
+     * artefacts de compilation, caches d'outillage.
+     *
+     * <p>Le banc d'essai a montré pourquoi : un projet fullstack fraîchement construit compte
+     * <b>40 590 fichiers</b>, dont 40 112 dans {@code node_modules}. La liste dépassait les deux
+     * bornes du listage — 20 000 entrées puis 512 Ko — et l'utilisateur recevait <b>4 829 lignes de
+     * dépendances</b> au lieu des 478 fichiers de son projet.</p>
+     *
+     * <p><b>Négociable</b>, contrairement à {@link #DEFAULT_DENY} : ces motifs sont évalués
+     * <b>avant</b> les règles utilisateur, si bien qu'une négation ({@code !node_modules/}) les
+     * annule. On écarte du bruit, on ne protège pas un secret — le contournement doit rester
+     * possible pour qui sait ce qu'il fait.</p>
+     */
+    public static final List<String> DEFAULT_NOISE = List.of(
+            "node_modules/", "target/", "build/", "dist/", "out/",
+            ".angular/", ".next/", ".nuxt/", ".svelte-kit/", ".parcel-cache/",
+            ".gradle/", ".venv/", "venv/", "__pycache__/", ".pytest_cache/",
+            ".mypy_cache/", ".tox/", "vendor/", "coverage/", ".terraform/");
+
     /** Nom du fichier de règles propre au runner. */
     public static final String RUNNER_IGNORE = ".runnerignore";
 
@@ -57,11 +77,24 @@ public final class ExclusionRules {
     /** Longueur maximale d'une ligne de règle ; au-delà, la ligne est ignorée. */
     static final int MAX_RULE_LENGTH = 1_000;
 
+    /**
+     * Bruit de construction, évalué <b>avant</b> les règles utilisateur : une négation explicite
+     * l'annule. Tenu à part de {@link #userRules} pour que le compteur annoncé sur la console dise
+     * le nombre de règles <b>du fichier</b>, et non vingt de plus.
+     */
+    private final List<Rule> noiseRules;
+
     private final List<Rule> userRules;
     private final List<Rule> denyRules;
     private final String source;
 
     private ExclusionRules(List<Rule> userRules, List<Rule> denyRules, String source) {
+        this(compileAll(DEFAULT_NOISE, false, null), userRules, denyRules, source);
+    }
+
+    private ExclusionRules(List<Rule> noiseRules, List<Rule> userRules, List<Rule> denyRules,
+            String source) {
+        this.noiseRules = noiseRules;
         this.userRules = userRules;
         this.denyRules = denyRules;
         this.source = source;
@@ -88,6 +121,7 @@ public final class ExclusionRules {
             file = gitIgnore;
             source = GIT_IGNORE;
         } else {
+            // Aucun fichier de règles : le bruit de construction est écarté quand même (SF-38-21).
             return new ExclusionRules(List.of(), deny, "(aucun)");
         }
         List<String> lines = readLines(file, source, console);
@@ -102,6 +136,15 @@ public final class ExclusionRules {
     /** Règles par défaut plus des règles utilisateur fournies en mémoire (tests). */
     static ExclusionRules of(List<String> userPatterns) {
         return new ExclusionRules(compileAll(userPatterns, false, null),
+                compileAll(DEFAULT_DENY, true, null), "(mémoire)");
+    }
+
+    /**
+     * Règles utilisateur <b>sans le bruit par défaut</b> — pour les tests qui exercent la mécanique
+     * de correspondance elle-même, où vingt motifs de plus fausseraient la lecture.
+     */
+    static ExclusionRules ofWithoutNoise(List<String> userPatterns) {
+        return new ExclusionRules(List.of(), compileAll(userPatterns, false, null),
                 compileAll(DEFAULT_DENY, true, null), "(mémoire)");
     }
 
@@ -153,6 +196,11 @@ public final class ExclusionRules {
      */
     private boolean matches(String path, boolean directory) {
         boolean excluded = false;
+        for (Rule rule : noiseRules) {
+            if (rule.matches(path, directory)) {
+                excluded = !rule.negated();
+            }
+        }
         for (Rule rule : userRules) {
             if (rule.matches(path, directory)) {
                 excluded = !rule.negated();

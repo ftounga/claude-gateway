@@ -102,8 +102,10 @@ class ExclusionRulesTest {
     // ------------------------------------------------- syntaxe des motifs
 
     @Test
+    // Sans le bruit par défaut (SF-38-21) : ce test exerce la MÉCANIQUE des motifs — ancrage,
+    // négation, profondeur — et vingt motifs supplémentaires en fausseraient la lecture.
     void appliqueLesMotifsGitignoreCourants() {
-        ExclusionRules rules = ExclusionRules.of(List.of(
+        ExclusionRules rules = ExclusionRules.ofWithoutNoise(List.of(
                 "# commentaire",
                 "",
                 "*.log",
@@ -191,5 +193,41 @@ class ExclusionRulesTest {
     @Test
     void unCheminVideNEstJamaisExclu() {
         assertFalse(ExclusionRules.defaultsOnly().isExcludedDirectory(""));
+    }
+
+    // --- Bruit de construction écarté par défaut (F-38 / SF-38-21) ---------------------------
+
+    @Test
+    void ecarteLeBruitDeConstructionSansAucuneRegle() {
+        // Le banc d'essai : 40 590 fichiers dont 40 112 dans node_modules, et l'utilisateur
+        // recevait 4 829 lignes de dépendances au lieu des 478 fichiers de son projet.
+        ExclusionRules rules = ExclusionRules.defaultsOnly();
+
+        assertTrue(rules.isExcludedFile("frontend/node_modules/rxjs/index.js"));
+        assertTrue(rules.isExcludedFile("backend/target/classes/App.class"));
+        assertTrue(rules.isExcludedFile("frontend/.angular/cache/x"));
+        assertTrue(rules.isExcludedFile("api/__pycache__/mod.pyc"));
+        // Le projet lui-même reste entier.
+        assertFalse(rules.isExcludedFile("backend/src/main/java/App.java"));
+        assertFalse(rules.isExcludedFile("frontend/src/app/app.ts"));
+        assertFalse(rules.isExcludedFile("CLAUDE.md"));
+    }
+
+    @Test
+    void uneNegationExpliciteAnnuleLeBruitParDefaut() {
+        // Négociable, contrairement à la liste de secrets : on écarte du bruit, on ne protège pas.
+        ExclusionRules rules = ExclusionRules.of(List.of("!node_modules/"));
+
+        assertFalse(rules.isExcludedFile("frontend/node_modules/rxjs/index.js"));
+    }
+
+    @Test
+    void leBruitNeProtegeJamaisUnSecret() {
+        // La liste de secrets reste évaluée en dernier et gagne toujours (D10) : la rendre
+        // négociable serait tout autre chose que d'écarter du bruit.
+        ExclusionRules rules = ExclusionRules.of(List.of("!.env", "!node_modules/"));
+
+        assertTrue(rules.isExcludedFile(".env"));
+        assertFalse(rules.isExcludedFile("frontend/node_modules/rxjs/index.js"));
     }
 }
