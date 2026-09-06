@@ -63,8 +63,9 @@ class BillingApiIntegrationTest {
                         .header("Authorization", "Bearer " + aliceToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.plans", notNullValue()))
-                // Seuls les plans avec un price configuré sont exposés (SOLO, PRO) ; DAILY est un pack, exclu.
-                .andExpect(jsonPath("$.plans.length()", is(2)))
+                // Seuls les plans avec un price configuré sont exposés (SOLO, PRO, BYOK) ; DAILY et
+                // GOLD n'en ont pas en profil de test, ils sont exclus.
+                .andExpect(jsonPath("$.plans.length()", is(3)))
                 .andExpect(jsonPath("$.plans[0].code", notNullValue()))
                 .andExpect(jsonPath("$.plans[0].providerMode", notNullValue()))
                 .andExpect(jsonPath("$.plans[0].tokens", org.hamcrest.Matchers.greaterThan(0)));

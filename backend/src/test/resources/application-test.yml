@@ -37,9 +37,13 @@ app:
       prices:
         SOLO: price_solo_test
         PRO: price_pro_test
+        # F-41 : un price configuré pour l'offre BYOK, sans quoi elle serait filtrée du catalogue
+        # et les tests d'intégration ne verraient jamais le plan qu'ils vérifient.
+        BYOK: price_byok_test
       display-prices:
         SOLO: "24"
         PRO: "99"
+        BYOK: "29"
 logging:
   level:
     fr.claudegateway: DEBUG

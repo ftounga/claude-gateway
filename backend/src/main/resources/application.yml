@@ -290,6 +290,9 @@ app:
         PRO: ${STRIPE_PRICE_PRO:}
         DAILY: ${STRIPE_PRICE_DAILY:}
         GOLD: ${STRIPE_PRICE_GOLD:}
+        # Offre BYOK (F-41) : la plateforme seule, servie par la clé Anthropic du client.
+        # Vide ⇒ le plan n'est ni listé ni souscriptible, comme tout plan sans price.
+        BYOK: ${STRIPE_PRICE_BYOK:}
       # Mapping pack de tokens (top-up, F-21) -> price ID Stripe (paiement one-shot). Par environnement.
       topup-prices:
         DAY: ${STRIPE_PRICE_TOPUP_DAY:}
@@ -300,6 +303,10 @@ app:
         SOLO: ${STRIPE_DISPLAY_PRICE_SOLO:24}
         PRO: ${STRIPE_DISPLAY_PRICE_PRO:99}
         GOLD: ${STRIPE_DISPLAY_PRICE_GOLD:199}
+        # Offre BYOK (F-41) : le client apporte sa clé, la gateway ne paie aucun jeton — elle
+        # ne facture donc que la plateforme. Valeur commerciale réversible, ajustable par
+        # environnement sans changement de code.
+        BYOK: ${APP_BILLING_BYOK_PRICE:29}
       # Option Atelier (F-40) : le droit d'accès à l'Atelier, découplé du plan. Souscrite en
       # supplément d'un plan Solo/Pro, elle ouvre l'Atelier sans changer AUCUN quota — sans elle,
       # y accéder depuis Solo (24 €) imposait de passer à Gold (199 €), une falaise ×8 devant la
@@ -323,6 +330,11 @@ app:
       PRO: ${APP_QUOTA_PRO_TOKENS:5000000}
       DAILY: ${APP_QUOTA_DAILY_TOKENS:500000}
       GOLD: ${APP_QUOTA_GOLD_TOKENS:12000000}
+      # Offre BYOK (F-41) : allocation NULLE, et c'est le contrat de l'offre — les jetons sont
+      # sur le compte Anthropic du client. Ce zéro n'est PAS un abonnement expiré : le pré-vol
+      # de quota le distingue (EntitlementService.isCustomerKeyBilled), sans quoi un client
+      # BYOK payant serait bloqué comme un impayé.
+      BYOK: ${APP_QUOTA_BYOK_TOKENS:0}
     # Plafond de temps de bac à sable Managed Agents (F-28 / SF-28-12) par période, en secondes.
     # Défaut 18000 = 5 h. Garde de coût : au-delà, l'exécution Phase 2 est refusée (sandbox_limit).
     max-sandbox-seconds: ${APP_ATELIER_AGENT_MAX_SANDBOX_SECONDS:18000}

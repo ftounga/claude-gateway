@@ -237,4 +237,48 @@ class QuotaServiceTest {
         assertThatThrownBy(() -> quotaService.assertWithinSandboxLimit(alice))
                 .isInstanceOf(SandboxLimitExceededException.class);
     }
+
+    // ------------------------------------------------ F-41 / SF-41-01 : l'offre BYOK n'a rien à épuiser
+
+    /** Abonnement BYOK en cours : quota 0, mais servi par la clé du client (jamais un impayé). */
+    private void stubByokPlan() {
+        Subscription sub = Subscription.builder()
+                .userId(alice).status(SubscriptionStatus.ACTIVE).planCode(PlanCode.BYOK).build();
+        when(subscriptionService.getOrCreateForUser(alice)).thenReturn(sub);
+        when(entitlementService.isCustomerKeyBilled(sub)).thenReturn(true);
+    }
+
+    @Test
+    void assertWithinQuotaPassesForByokPlanEvenWithConsumptionRecorded() {
+        // Le piège de la feature : quota 0 et consommation déjà enregistrée => `used >= quota` serait
+        // vrai et bloquerait un client parfaitement à jour. La dérogation BYOK doit primer.
+        stubByokPlan();
+
+        assertThatCode(() -> quotaService.assertWithinQuota(alice)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void assertWithinQuotaSkipsCounterLookupForByokPlan() {
+        // Rien à compter : le compteur de période n'est même pas lu (la limite est chez le fournisseur).
+        stubByokPlan();
+
+        quotaService.assertWithinQuota(alice);
+
+        verify(usageCounterRepository, never()).findByUserIdAndPeriodStart(any(), any());
+    }
+
+    @Test
+    void assertWithinQuotaStillThrowsForExpiredSubscriptionResolvingToZero() {
+        // Non-régression du fail-closed : l'AUTRE zéro — celui de l'abonnement expiré — bloque toujours.
+        Subscription canceled = Subscription.builder()
+                .userId(alice).status(SubscriptionStatus.CANCELED).planCode(PlanCode.PRO).build();
+        when(subscriptionService.getOrCreateForUser(alice)).thenReturn(canceled);
+        when(entitlementService.isCustomerKeyBilled(canceled)).thenReturn(false);
+        when(entitlementService.resolveMonthlyTokenQuota(canceled)).thenReturn(0L);
+        when(usageCounterRepository.findByUserIdAndPeriodStart(alice, expectedPeriod))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> quotaService.assertWithinQuota(alice))
+                .isInstanceOf(QuotaExceededException.class);
+    }
 }

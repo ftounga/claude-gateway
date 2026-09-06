@@ -10,5 +10,11 @@ public enum PlanCode {
     PRO,
     DAILY,
     /** Offre Gold (ADR-012) : plan dédié qui débloque l'accès à l'Atelier (F-28). */
-    GOLD
+    GOLD,
+    /**
+     * Offre <b>BYOK</b> (F-41) : la plateforme seule. Accès complet, Atelier compris, mais
+     * <b>aucune allocation de jetons</b> — les appels sont servis par la clé Anthropic du client
+     * (F-03) et facturés sur son propre compte fournisseur (PROJECT.md §11.8).
+     */
+    BYOK
 }
