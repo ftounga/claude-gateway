@@ -299,6 +299,38 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     Sans réponse dans `app.atelier.agent.confirm-timeout` (défaut `PT2M`), la commande est **refusée**.
   - ⚠️ Une session en attente de confirmation émet `session.status_idle` : seul un `idle`
     **non `requires_action`** termine un run, sous peine de clore le tour sans exécuter la commande.
+- **atelier_messages — mémoire de la trajectoire d'outils** (F-39 / SF-39-03, migration `050`).
+  Colonne `tool_trace` (texte, **nullable**) : pour chaque itération du tour, le commentaire de
+  l'agent, ses appels d'outils avec leurs arguments et leurs résultats. **Aucune table nouvelle** —
+  donnée de **REJEU**, lue en bloc avec l'historique et jamais requêtée, exactement comme
+  `terminal_json` (`041`) est la donnée d'**AFFICHAGE**. Elle hérite ainsi de l'isolation `user_id`
+  de la table.
+  - **Bornée en trois endroits** : résultat d'outil conservé à 4 000 caractères (**la fin**, où se
+    trouve le code de sortie), trajectoire d'un tour à 40 000 caractères (étapes les plus anciennes
+    abandonnées), rejeu limité aux **5 derniers tours** — au-delà, les tours sont rejoués en texte
+    seul, comme avant F-39.
+  - **`tool_use` et `tool_result` sont rejoués appariés** : le fournisseur refuse un appel orphelin.
+    Une itération sans résultat exploitable est simplement omise.
+  - `null` (tour sans outil, ou message antérieur à SF-39-03) ⇒ rejeu en texte seul : non-régression
+    complète. Une valeur illisible retombe sur le même comportement, jamais une exception.
+- **workspaces — frontière de rejeu du fil** (F-39 / SF-39-04, migration `051`). Colonne
+  `chat_thread_started_at` (horodatage, **nullable**) : « repartir à neuf » **ne supprime aucun
+  message**, il déplace une frontière — `GET /workspaces/{id}/chat` continue de renvoyer toute la
+  conversation, seul l'historique **rejoué au fournisseur** démarre après la frontière. C'est ce qui
+  rend le geste réversible. `null` = tout l'historique est rejoué, soit le comportement d'avant F-39
+  pour tous les projets existants. Deux routes s'y adossent, toutes deux passant par `requireOwned` :
+  `GET .../chat/resume` (état de reprise, `prompt = NONE|IDLE`, seuil d'inactivité **14 jours**,
+  constante) et `POST .../chat/restart`.
+- **Outillage de la boucle maison — aucune persistance** (F-39 / SF-39-05 et SF-39-06). La panoplie
+  déclarée au modèle suit la **capacité de la cible** : en `RUNNER`, `read_file` / `write_file` /
+  `edit_file` / `bash` (`list_files` et `search_files` retirés — `ls`, `find` et `grep -n` font
+  mieux, et 95 % de l'usage réel mesuré est déjà du `bash`) ; en `SANDBOX`, la panoplie historique
+  plus `edit_file`, car il n'y a pas de `bash` là-bas. La **déclaration** est retirée, pas la
+  capacité : un `list_files` reçu malgré tout reste relayé. `read_file` rend des lignes **numérotées
+  et paginées** (`offset`, `limit` ≤ 2 000) et `edit_file` remplace un passage **exact** — les deux
+  calculés **côté gateway** à partir des primitives runner existantes, donc **sans évolution du
+  protocole**. Une lecture **tronquée** fait refuser l'édition : réécrire un fragment détruirait la
+  fin du fichier, en silence.
 - **atelier_messages — tour interrompu** (F-32 / SF-32-01). **Aucune migration** : la marque d'un tour
   arrêté par l'utilisateur vit dans le document d'affichage `terminal_json` déjà existant (F-30 /
   SF-30-09), sous un champ booléen **additif** `interrupted` — un tour antérieur, qui ne le porte pas,
