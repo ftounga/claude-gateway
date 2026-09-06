@@ -109,6 +109,13 @@ class RunnerRelayStreamIntegrationTest {
                 });
         long resultAtMs = (System.nanoTime() - start) / 1_000_000L;
 
+        // L'issue d'abord : quand l'appel n'atteint pas le relais, le client rend un échec porteur
+        // d'un code (connexion refusée, flux coupé, silence). Asserter les fragments en premier
+        // n'affichait qu'une liste vide, et cachait la seule information utile — la cause.
+        assertThat(result.ok())
+                .as("appel de relais en échec : code=%s, message=%s", result.errorCode(),
+                        result.errorMessage())
+                .isTrue();
         // Ordre préservé, et rien n'est perdu.
         assertThat(chunks).containsExactly("ligne 1\n", "ligne 2\n");
         // Le premier fragment est arrivé pendant que la commande tournait encore, pas à la fin :
@@ -120,7 +127,6 @@ class RunnerRelayStreamIntegrationTest {
         assertThat(chunkTimes.get(1)).isLessThan(resultAtMs);
         // L'agrégat rendu au modèle vient de la ligne `result`, jamais des fragments déjà relayés :
         // les ré-agréger afficherait et compterait la sortie deux fois.
-        assertThat(result.ok()).isTrue();
         assertThat(result.streamed()).isEqualTo("ligne 1\nligne 2\n");
         assertThat(result.exitCode()).isZero();
     }
