@@ -161,6 +161,34 @@ class AtelierChatApiIntegrationTest {
     }
 
     @Test
+    void toolTrajectoryIsRememberedForReplayButNeverExposedByTheHistory() throws Exception {
+        // SF-39-03 : la trajectoire est une donnée de REJEU. Elle doit être en base pour que le tour
+        // suivant ne refasse pas le travail, et absente de la réponse d'historique — l'écran a déjà
+        // sa transcription (`terminal`).
+        UUID ws = createWorkspace(alice, "notes.txt", "contenu initial");
+        stub.enqueueToolCall("read_file", "path", "notes.txt");
+        stub.enqueueFinal("J'ai lu notes.txt.");
+
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"lis notes.txt\"}"))
+                .andExpect(status().isOk());
+
+        String trace = atelierMessageRepository
+                .findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(ws, alice.getId())
+                .stream().filter(m -> "ASSISTANT".equals(m.getRole()))
+                .findFirst().orElseThrow().getToolTrace();
+        org.assertj.core.api.Assertions.assertThat(trace).contains("read_file");
+
+        mockMvc.perform(get("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[1].toolTrace").doesNotExist())
+                .andExpect(jsonPath("$[1].tool_trace").doesNotExist());
+    }
+
+    @Test
     void cannotChatOnAnotherUsersWorkspace() throws Exception {
         UUID ws = createWorkspace(alice, "a.txt", "x");
         stub.enqueueFinal("ne devrait pas être atteint");

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      SF-39-03 — Atelier : mémoire de la trajectoire d'outils d'un tour (F-39, lot 2).
+      L'historique rejoué au fournisseur était du texte seul : les outils appelés et leurs résultats
+      disparaissaient à la fin du tour, et l'agent refaisait au message suivant ce qu'il venait de
+      faire. `tool_trace` porte la trajectoire (itérations, appels, résultats bornés) en document
+      JSON — donnée de REJEU, lue en bloc avec l'historique et jamais requêtée, exactement comme
+      `terminal_json` (041) est la donnée d'AFFICHAGE.
+
+      Colonne nullable : les messages existants restent valides et sont rejoués en texte seul.
+      Réversible (rollback auto).
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="050-atelier-messages-tool-trace-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="atelier_messages">
+            <column name="tool_trace" type="text"/>
+        </addColumn>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <!-- H2 mappe `text` sur CLOB, que la validation de schéma refuse face au `text` de l'entité :
+         on reprend `varchar(1000000)`, comme `content` (037) et `terminal_json` (041). -->
+    <changeSet id="050-atelier-messages-tool-trace-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="atelier_messages">
+            <column name="tool_trace" type="varchar(1000000)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

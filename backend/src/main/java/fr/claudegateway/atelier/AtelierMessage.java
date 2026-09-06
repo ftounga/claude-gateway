@@ -62,4 +62,16 @@ public class AtelierMessage {
      */
     @Column(name = "terminal_json", columnDefinition = "text")
     private String terminalJson;
+
+    /**
+     * Trajectoire d'outils du tour (F-39 / SF-39-03) : appels, arguments et résultats bornés,
+     * sérialisés en JSON. {@code null} quand le tour n'a appelé aucun outil, et pour tous les
+     * messages antérieurs à SF-39-03 — qui restent rejoués en texte seul.
+     *
+     * <p>Donnée de <b>rejeu</b>, jamais d'affichage : elle repart chez le fournisseur au tour
+     * suivant pour que l'agent ne refasse pas ce qu'il vient de faire. Ce que l'utilisateur relit
+     * reste porté par {@code terminal_json}.</p>
+     */
+    @Column(name = "tool_trace", columnDefinition = "text")
+    private String toolTrace;
 }

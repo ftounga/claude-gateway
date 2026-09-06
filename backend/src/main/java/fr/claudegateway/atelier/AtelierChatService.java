@@ -89,6 +89,12 @@ public class AtelierChatService implements RelayInterruptTarget {
     private static final int MAX_SKILLS_ANNOUNCED = 50;
     /** Longueur d'une description de skill dans le catalogue (F-39 / SF-39-02). */
     private static final int SKILL_DESCRIPTION_CHARS = 200;
+    /**
+     * Tours rejoués <b>avec</b> leur trajectoire d'outils (F-39 / SF-39-03, décision D3). Au-delà,
+     * les tours plus anciens sont rejoués en texte seul : la valeur d'une trajectoire décroît vite
+     * avec l'ancienneté, son coût en tokens non.
+     */
+    private static final int REPLAYED_TRACE_TURNS = 5;
     /** Cible d'audit d'une commande (F-38 / SF-38-08) : la ligne du journal, pas un contenu. */
     private static final int AUDIT_TARGET_CHARS = 1_000;
 
@@ -207,6 +213,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         String model = modelCatalog.defaultModel();
 
         List<AtelierAction> actions = new ArrayList<>();
+        /** Trajectoire du tour (SF-39-03), rejouée au message suivant. */
+        List<AtelierToolTrace.Step> trace = new ArrayList<>();
         int inputTokens = 0;
         int outputTokens = 0;
         String finalText = "";
@@ -251,6 +259,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 assistantBlocks.add(new AgentContentBlock.Text(turn.text()));
             }
             List<AgentContentBlock> toolResults = new ArrayList<>();
+            List<AtelierToolTrace.Call> tracedCalls = new ArrayList<>();
             for (AgentToolCall call : turn.toolCalls()) {
                 // Identifiant de corrélation unique de l'appel (contrat de messages runner §1) : celui
                 // du fournisseur, ou un UUID généré s'il manque — et le MÊME partout (bloc tool_use,
@@ -267,9 +276,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                     actions.add(outcome.action());
                 }
                 toolResults.add(new AgentContentBlock.ToolResult(callId, outcome.content(), outcome.isError()));
+                // Mémoire du tour (SF-39-03) : l'appel ET son résultat, appariés — le fournisseur
+                // refuse un tool_use orphelin au rejeu.
+                tracedCalls.add(new AtelierToolTrace.Call(callId, call.name(), call.input(),
+                        AtelierToolTrace.boundResult(outcome.content()), outcome.isError()));
             }
             messages.add(AgentMessage.assistant(assistantBlocks));
             messages.add(AgentMessage.toolResults(toolResults));
+            trace.add(new AtelierToolTrace.Step(turn.text(), List.copyOf(tracedCalls)));
 
             if (interruptedTurns.remove(turnKey(userId, workspaceId))) {
                 // Interruption arrivée pendant les outils de ce tour : on s'arrête sans rappeler le
@@ -293,7 +307,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         String reply = nonEmptyReply(finalText);
         AtelierMessage assistant = messageRepository.save(AtelierMessage.builder()
                 .workspaceId(workspaceId).userId(userId).role("ASSISTANT")
-                .content(reply).build());
+                .content(reply)
+                .toolTrace(new AtelierToolTrace(List.copyOf(trace)).toJson())
+                .build());
 
         return new AtelierChatResult(reply, actions, assistant.getId());
     }
@@ -317,8 +333,10 @@ public class AtelierChatService implements RelayInterruptTarget {
      * retirer un assistant au milieu ne casse donc pas l'échange.</p>
      */
     private static List<AgentMessage> replayableHistory(List<AtelierMessage> past) {
+        int traceFrom = firstTracedIndex(past);
         List<AgentMessage> messages = new ArrayList<>(past.size());
-        for (AtelierMessage message : past) {
+        for (int index = 0; index < past.size(); index++) {
+            AtelierMessage message = past.get(index);
             String content = message.getContent();
             if (content == null || content.isBlank()) {
                 continue;
@@ -327,10 +345,33 @@ public class AtelierChatService implements RelayInterruptTarget {
             if (assistant && messages.isEmpty()) {
                 continue;
             }
+            if (assistant && index >= traceFrom) {
+                // Trajectoire du tour (SF-39-03) rejouée AVANT sa réponse finale : l'agent retrouve
+                // ce qu'il a fait, au lieu de le refaire. Une trajectoire illisible rend une liste
+                // vide et le message retombe sur le texte seul, comme avant.
+                messages.addAll(AtelierToolTrace.fromJson(message.getToolTrace()).replay());
+            }
             messages.add(new AgentMessage(assistant ? "assistant" : "user",
                     List.of(new AgentContentBlock.Text(content))));
         }
         return messages;
+    }
+
+    /**
+     * Index à partir duquel un message assistant est rejoué <b>avec</b> sa trajectoire d'outils
+     * (SF-39-03) : les {@value #REPLAYED_TRACE_TURNS} derniers tours, pas davantage.
+     */
+    private static int firstTracedIndex(List<AtelierMessage> past) {
+        int seen = 0;
+        for (int index = past.size() - 1; index >= 0; index--) {
+            if ("ASSISTANT".equalsIgnoreCase(past.get(index).getRole())) {
+                seen++;
+                if (seen == REPLAYED_TRACE_TURNS) {
+                    return index;
+                }
+            }
+        }
+        return 0;
     }
 
     /** Réponse à persister : celle du tour, ou un texte explicite si le tour n'a rien produit. */
