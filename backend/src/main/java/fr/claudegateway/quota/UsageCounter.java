@@ -76,6 +76,23 @@ public class UsageCounter {
     @Builder.Default
     private long sandboxSeconds = 0L;
 
+    /**
+     * Instant où le seuil d'alerte de consommation (F-42) a été franchi sur cette période.
+     * {@code null} tant qu'il ne l'a pas été. <b>Posé une seule fois</b> : c'est cette colonne qui
+     * garantit qu'un tour d'agent de trente appels n'émet pas trente fois la même alerte.
+     */
+    @Column(name = "quota_alert_raised_at")
+    private OffsetDateTime quotaAlertRaisedAt;
+
+    /**
+     * Instant où l'utilisateur a écarté l'alerte de consommation de cette période (F-42).
+     * {@code null} tant qu'il ne l'a pas écartée. Une alerte écartée ne revient plus avant le mois
+     * suivant — la nouvelle période crée une nouvelle ligne, où les deux marques repartent à
+     * {@code null}.
+     */
+    @Column(name = "quota_alert_dismissed_at")
+    private OffsetDateTime quotaAlertDismissedAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

@@ -42,6 +42,8 @@ class QuotaBonusTest {
     @Mock
     private ByokKeyService byokKeyService;
     @Mock
+    private QuotaAlertService quotaAlertService;
+    @Mock
     private Subscription subscription;
 
     private final Clock clock = Clock.fixed(Instant.parse("2026-07-15T10:00:00Z"), ZoneOffset.UTC);
@@ -53,7 +55,7 @@ class QuotaBonusTest {
     @BeforeEach
     void setUp() {
         quotaService = new QuotaService(usageCounterRepository, subscriptionService, entitlementService,
-                byokKeyService, new QuotaProperties(null, null, null), clock);
+                byokKeyService, quotaAlertService, new QuotaProperties(null, null, null), clock);
     }
 
     private void baseQuota(long quota) {

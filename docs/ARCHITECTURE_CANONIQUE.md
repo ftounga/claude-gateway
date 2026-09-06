@@ -229,11 +229,22 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   (`user_id`, période)** (unique).
   - `usage_counters` : `id (uuid)`, `user_id (uuid)`, `period_start (date ; 1er du mois calendaire UTC)`,
     `input_tokens (bigint)`, `output_tokens (bigint)`, `bonus_tokens (bigint, défaut 0 ; tokens rachetés
-    top-up F-21, migration `032`)`, `created_at`, `updated_at`. Unique `(user_id, period_start)`, index `user_id`.
+    top-up F-21, migration `032`)`, `sandbox_seconds (bigint, défaut 0 ; F-28)`,
+    `quota_alert_raised_at (timestamptz, nullable ; F-42, migration `058`)`,
+    `quota_alert_dismissed_at (timestamptz, nullable ; F-42, migration `058`)`,
+    `created_at`, `updated_at`. Unique `(user_id, period_start)`, index `user_id`.
   - Alimente la vérification de quota **avant** l'appel fournisseur (`ChatService` → `402 quota_exceeded`
     à la limite) et `GET /usage`. Le quota **effectif** = quota mensuel (dérivé de `subscriptions` via la
     configuration `app.quota`, jamais en dur, réversible) **+ `bonus_tokens`** de la période (rachats top-up,
     F-21). V1 = **blocage à la limite** (overage non monétisé, OQ-08 ; variante payante ouverte).
+  - **Alerte de consommation (F-42)** : les deux colonnes `quota_alert_*` portent la marque « déjà
+    prévenu ». Elles vivent ici, et pas dans une table dédiée ni en mémoire, parce que la ligne
+    `(user_id, period_start)` **est** déjà l'unité « un utilisateur, une période » : la marque coûte zéro
+    lecture (le compteur est déjà chargé par `recordUsage`), elle survit au redéploiement et reste
+    cohérente entre les deux replicas (application stateless), et le mois suivant crée une nouvelle ligne
+    qui **ré-arme l'alerte sans code de remise à zéro**. `raised_at` est posé **une seule fois** (unicité
+    de l'émission) ; `dismissed_at` retient que l'utilisateur l'a écartée. L'évaluation est faite après
+    l'incrément et **avant** la sauvegarde — même écriture — et encadrée : elle n'échoue jamais l'appel.
 - **user_api_keys** — clé API personnelle BYOK chiffrée au repos (F-03, migration `030`, OQ-06 : AWS KMS
   envelope encryption). **Une seule clé par utilisateur** (`user_id` unique). **Aucune clé en clair** : seuls
   le blob chiffré et les 4 derniers caractères sont persistés.

@@ -338,6 +338,17 @@ app:
     # Plafond de temps de bac à sable Managed Agents (F-28 / SF-28-12) par période, en secondes.
     # Défaut 18000 = 5 h. Garde de coût : au-delà, l'exécution Phase 2 est refusée (sandbox_limit).
     max-sandbox-seconds: ${APP_ATELIER_AGENT_MAX_SANDBOX_SECONDS:18000}
+    alert:
+      # Alerte de consommation (F-42). Prévenir AVANT le blocage sec : le seuil est la fraction du
+      # quota effectif (abonnement + tokens rachetés) à partir de laquelle l'utilisateur est averti,
+      # une seule fois par période. Valeurs commerciales réversibles, ajustables par environnement
+      # sans changement de code. Hors bornes ]0, 1] ⇒ repli sur 0.8.
+      threshold: ${APP_QUOTA_ALERT_THRESHOLD:0.8}
+      # Pack de recharge proposé en un clic depuis l'alerte (code de TopUpCatalog : DAY, STANDARD).
+      # STANDARD (1 M) par défaut : l'alerte se déclenche à 80 % d'un quota MENSUEL, un pass journée
+      # de 200 k ne tiendrait souvent pas jusqu'à la fin du mois. Un code inconnu n'empêche pas
+      # l'alerte — elle informe, sans bouton de recharge.
+      top-up-pack: ${APP_QUOTA_ALERT_TOPUP_PACK:STANDARD}
   usage:
     report:
       # Rapport d'usage & coût (F-16) : devise, fenêtre d'historique et tarifs estimés.
