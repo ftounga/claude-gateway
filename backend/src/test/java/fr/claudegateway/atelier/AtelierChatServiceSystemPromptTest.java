@@ -91,6 +91,12 @@ class AtelierChatServiceSystemPromptTest {
         });
     }
 
+    /** Issue d'appel runner réussie, forme minimale du contrat §2.4. */
+    private static fr.claudegateway.runner.channel.RunnerCallResult runnerOk(String content) {
+        return new fr.claudegateway.runner.channel.RunnerCallResult(
+                true, content, false, null, 5L, null, null, null, "", false);
+    }
+
     /** Consigne système effectivement envoyée au fournisseur pour un tour trivial. */
     private String systemPrompt() {
         agentProvider.enqueueFinal("fini");
@@ -110,6 +116,25 @@ class AtelierChatServiceSystemPromptTest {
         assertThat(system).contains("- .claude/skills/deploy.md : Déploie le projet sur l'environnement cible.");
         assertThat(system).doesNotContain("SECRET_INTERNE_DU_CORPS");
         assertThat(system).contains("read_file");
+    }
+
+    @Test
+    void onAMachineBackedProjectTheRoleSendsExplorationToBash() {
+        // SF-39-05 : annoncer list_files/search_files là où ils ne sont plus déclarés ne produirait
+        // que des appels perdus. La consigne suit l'outillage réel.
+        Workspace runner = new Workspace();
+        runner.setId(workspaceId);
+        runner.setUserId(userId);
+        runner.setSource(WorkspaceSource.ARCHIVE);
+        runner.setExecutionTarget(WorkspaceExecutionTarget.RUNNER);
+        when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(runner);
+        when(runnerToolGateway.listFiles(any(), any())).thenReturn(runnerOk(""));
+        when(runnerToolGateway.readFile(any(), any(), any())).thenReturn(runnerOk("conventions"));
+
+        String system = systemPrompt();
+
+        assertThat(system).contains("bash (ls, find, grep -n)");
+        assertThat(system).doesNotContain("search_files");
     }
 
     @Test

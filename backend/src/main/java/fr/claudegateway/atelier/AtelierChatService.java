@@ -759,7 +759,7 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     List<AgentTool> buildTools(Workspace workspace) {
         Map<String, Object> stringProp = Map.of("type", "string");
-        List<AgentTool> tools = new ArrayList<>(fileTools(stringProp));
+        List<AgentTool> tools = new ArrayList<>(fileTools(stringProp, workspace.isRunnerTarget()));
         if (workspace.isRunnerTarget()) {
             tools.add(new AgentTool("bash",
                     "Exécute une commande shell sur la machine connectée (runner), depuis la racine "
@@ -771,20 +771,38 @@ public class AtelierChatService implements RelayInterruptTarget {
         return List.copyOf(tools);
     }
 
-    private List<AgentTool> fileTools(Map<String, Object> stringProp) {
-        return List.of(
-                new AgentTool("list_files", "Liste tous les fichiers du projet (chemins relatifs).",
-                        Map.of("type", "object", "properties", Map.of())),
-                new AgentTool("read_file", "Lit le contenu texte d'un fichier du projet.",
-                        Map.of("type", "object", "properties", Map.of("path", stringProp),
-                                "required", List.of("path"))),
-                new AgentTool("write_file", "Écrit (ou remplace) le contenu texte d'un fichier du projet.",
-                        Map.of("type", "object",
-                                "properties", Map.of("path", stringProp, "content", stringProp),
-                                "required", List.of("path", "content"))),
-                new AgentTool("search_files", "Recherche une chaîne dans les fichiers du projet.",
-                        Map.of("type", "object", "properties", Map.of("query", stringProp),
-                                "required", List.of("query"))));
+    /**
+     * Outils fichiers déclarés au modèle (F-39 / SF-39-05, décision D4 du cadrage).
+     *
+     * <p>Quand {@code bash} est disponible — cible {@code RUNNER} — {@code list_files} et
+     * {@code search_files} ne sont <b>pas</b> déclarés : {@code ls}, {@code find} et {@code grep -n}
+     * font strictement mieux (filtres, profondeur, expressions régulières, numéros de ligne), et
+     * l'usage réel mesuré est déjà à 95 % de {@code bash}. Deux définitions de moins, ce sont deux
+     * définitions qu'on ne paie plus à chaque itération dans le préfixe caché.</p>
+     *
+     * <p>En cible {@code SANDBOX}, elles restent : il n'y a pas de {@code bash} là-bas, et les
+     * retirer priverait le modèle de tout moyen d'explorer sans rien lui donner en échange
+     * (décision D1 de la subfeature). Leur sort suit celui de la cible elle-même, en SF-39-16.</p>
+     */
+    private List<AgentTool> fileTools(Map<String, Object> stringProp, boolean bashAvailable) {
+        List<AgentTool> tools = new ArrayList<>();
+        if (!bashAvailable) {
+            tools.add(new AgentTool("list_files", "Liste tous les fichiers du projet (chemins relatifs).",
+                    Map.of("type", "object", "properties", Map.of())));
+        }
+        tools.add(new AgentTool("read_file", "Lit le contenu texte d'un fichier du projet.",
+                Map.of("type", "object", "properties", Map.of("path", stringProp),
+                        "required", List.of("path"))));
+        tools.add(new AgentTool("write_file", "Écrit (ou remplace) le contenu texte d'un fichier du projet.",
+                Map.of("type", "object",
+                        "properties", Map.of("path", stringProp, "content", stringProp),
+                        "required", List.of("path", "content"))));
+        if (!bashAvailable) {
+            tools.add(new AgentTool("search_files", "Recherche une chaîne dans les fichiers du projet.",
+                    Map.of("type", "object", "properties", Map.of("query", stringProp),
+                            "required", List.of("query"))));
+        }
+        return List.copyOf(tools);
     }
 
     /**
@@ -797,11 +815,21 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private String buildSystemPrompt(UUID userId, Workspace workspace) {
         StringBuilder system = new StringBuilder();
-        system.append("Tu es un assistant de développement qui travaille sur le projet de l'utilisateur, ")
-                .append("dans un espace de travail hébergé. Utilise les outils fournis (list_files, read_file, ")
-                .append("write_file, search_files) pour lire et modifier les fichiers du projet. ")
-                .append("Ne fais aucune supposition sur un fichier sans l'avoir lu. Après une modification, ")
-                .append("résume clairement ce que tu as changé.\n\n");
+        // L'énoncé du rôle suit l'outillage réellement déclaré (SF-39-05) : annoncer des outils qui
+        // n'existent pas dans ce projet ne produirait que des appels perdus.
+        if (workspace.isRunnerTarget()) {
+            system.append("Tu es un assistant de développement qui travaille sur le projet de l'utilisateur, ")
+                    .append("sur sa machine. Explore avec bash (ls, find, grep -n) — c'est le bon outil pour ")
+                    .append("lister, chercher et vérifier. Utilise read_file pour lire un fichier que tu vas ")
+                    .append("utiliser, et write_file pour l'écrire. Ne fais aucune supposition sur un fichier ")
+                    .append("sans l'avoir lu. Après une modification, résume clairement ce que tu as changé.\n\n");
+        } else {
+            system.append("Tu es un assistant de développement qui travaille sur le projet de l'utilisateur, ")
+                    .append("dans un espace de travail hébergé. Utilise les outils fournis (list_files, read_file, ")
+                    .append("write_file, search_files) pour lire et modifier les fichiers du projet. ")
+                    .append("Ne fais aucune supposition sur un fichier sans l'avoir lu. Après une modification, ")
+                    .append("résume clairement ce que tu as changé.\n\n");
+        }
 
         // Compteurs d'amorçage : ces lectures sont journalisées en UNE ligne (F-38 / SF-38-08).
         // Les tracer une par une noierait le journal sous des dizaines d'entrées que l'utilisateur
