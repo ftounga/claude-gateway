@@ -465,4 +465,76 @@ class AtelierApiIntegrationTest {
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error", is("atelier_forbidden")));
     }
+
+    // ------------------------------------------------- SF-38-15 : projet sur la machine
+
+    @Test
+    void createsALocalProjectFromANameAlone() throws Exception {
+        mockMvc.perform(post("/api/workspaces/local").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"runner-claude\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("runner-claude"))
+                .andExpect(jsonPath("$.source").value("LOCAL"))
+                // La cible est imposée : pas de bac à sable pour un projet qui vit sur la machine.
+                .andExpect(jsonPath("$.executionTarget").value("RUNNER"))
+                // Aucune arborescence chez nous : elle vit sur la machine.
+                .andExpect(jsonPath("$.files").isEmpty());
+    }
+
+    @Test
+    void refusesALocalProjectWithoutAName() throws Exception {
+        mockMvc.perform(post("/api/workspaces/local").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"  \"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void refusesToWriteIntoTheStorageOfALocalProject() throws Exception {
+        String id = JsonPath.read(mockMvc.perform(post("/api/workspaces/local").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"runner-claude\"}"))
+                .andReturn().getResponse().getContentAsString(), "$.id");
+
+        mockMvc.perform(put("/api/workspaces/" + id + "/file").contextPath("/api")
+                        .param("path", "a.txt")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"x\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("local_workspace_refused"));
+    }
+
+    @Test
+    void refusesToSwitchALocalProjectToTheHostedSandbox() throws Exception {
+        String id = JsonPath.read(mockMvc.perform(post("/api/workspaces/local").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"runner-claude\"}"))
+                .andReturn().getResponse().getContentAsString(), "$.id");
+
+        mockMvc.perform(put("/api/workspaces/" + id + "/execution-target").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"executionTarget\":\"SANDBOX\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("local_workspace_refused"));
+    }
+
+    @Test
+    void cannotSeeAnotherUsersLocalProject() throws Exception {
+        String id = JsonPath.read(mockMvc.perform(post("/api/workspaces/local").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"runner-claude\"}"))
+                .andReturn().getResponse().getContentAsString(), "$.id");
+
+        mockMvc.perform(get("/api/workspaces/" + id).contextPath("/api")
+                        .header("Authorization", bearer(bobToken)))
+                .andExpect(status().isNotFound());
+    }
 }

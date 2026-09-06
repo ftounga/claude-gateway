@@ -26,6 +26,7 @@ import fr.claudegateway.atelier.dto.AtelierEngineResponse;
 import fr.claudegateway.atelier.dto.AtelierImportLibraryRequest;
 import fr.claudegateway.atelier.dto.ExecutionTargetRequest;
 import fr.claudegateway.atelier.dto.FileContentResponse;
+import fr.claudegateway.atelier.dto.CreateLocalWorkspaceRequest;
 import fr.claudegateway.atelier.dto.RenameFileRequest;
 import fr.claudegateway.atelier.dto.RenameWorkspaceRequest;
 import fr.claudegateway.atelier.dto.WorkspaceDetailResponse;
@@ -76,6 +77,23 @@ public class AtelierController {
         CreatedWorkspace created = workspaceService.create(userId, name, readBytes(file));
         return WorkspaceDetailResponse.from(
                 created.workspace(), workspaceService.tree(userId, created.workspace().getId()));
+    }
+
+    /**
+     * Ouvre un projet qui vit <b>déjà sur la machine</b> de l'utilisateur (F-38 / SF-38-15).
+     *
+     * <p>Le corps ne porte qu'un <b>nom</b> : aucun chemin n'est transmis, et aucun ne le sera. Le
+     * dossier se désigne au lancement du runner (<code>--workspace</code>), qui déclarera ensuite sa
+     * racine à l'appairage — la gateway n'apprenant au plus que le nom du dossier.</p>
+     */
+    @PostMapping("/local")
+    public WorkspaceDetailResponse createLocal(@Valid @RequestBody CreateLocalWorkspaceRequest request) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        Workspace workspace = workspaceService.createLocal(userId, request.name());
+        // Un projet local n'a pas d'arborescence chez nous : elle vit sur la machine, et sera lue à
+        // la demande par le runner (SF-38-17). Annoncer autre chose serait mentir.
+        return WorkspaceDetailResponse.from(workspace, List.of());
     }
 
     @GetMapping
