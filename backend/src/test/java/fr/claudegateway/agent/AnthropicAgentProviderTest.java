@@ -15,6 +15,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
+import com.fasterxml.jackson.databind.JsonNode;
+
 import fr.claudegateway.ai.AnthropicProperties;
 
 /**
@@ -121,5 +123,122 @@ class AnthropicAgentProviderTest {
         call();
 
         server.verify();
+    }
+
+    // ------------------------------------------------- SF-39-01 : cache de prompt et comptage
+
+    /** Capture le corps envoyé au fournisseur pour l'inspecter bloc à bloc. */
+    private JsonNode captureBody() {
+        java.util.concurrent.atomic.AtomicReference<String> captured = new java.util.concurrent.atomic.AtomicReference<>();
+        server.expect(requestTo(URL))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> captured.set(
+                        ((org.springframework.mock.http.client.MockClientHttpRequest) request).getBodyAsString()))
+                .andRespond(withSuccess("""
+                        {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                         "usage": {"input_tokens": 1, "output_tokens": 1}}
+                        """, MediaType.APPLICATION_JSON));
+        provider.nextTurn(new AgentTurnRequest("claude-model", "consigne de projet",
+                List.of(AgentMessage.userText("bonjour")),
+                List.of(new AgentTool("read_file", "Lit un fichier",
+                        java.util.Map.of("type", "object"))),
+                null));
+        server.verify();
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readTree(captured.get());
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    @Test
+    void marksTheSystemBlockForCaching() {
+        build(null);
+        JsonNode body = captureBody();
+
+        // Le système passe en liste de blocs — seule forme qui accepte un cache_control — et son
+        // texte est inchangé. Ce marqueur couvre aussi les outils, rendus avant lui.
+        JsonNode system = body.get("system");
+        assertThat(system.isArray()).isTrue();
+        assertThat(system.get(0).get("text").asText()).isEqualTo("consigne de projet");
+        assertThat(system.get(0).path("cache_control").path("type").asText()).isEqualTo("ephemeral");
+    }
+
+    @Test
+    void marksTheLastBlockOfTheLastMessageForCaching() {
+        build(null);
+        JsonNode body = captureBody();
+
+        JsonNode messages = body.get("messages");
+        JsonNode lastBlock = messages.get(messages.size() - 1).get("content").get(0);
+        assertThat(lastBlock.path("cache_control").path("type").asText()).isEqualTo("ephemeral");
+    }
+
+    @Test
+    void staysWithinTheProviderBreakpointLimit() {
+        build(null);
+        String body = captureBody().toString();
+
+        // Le fournisseur en accepte 4 au plus ; on en pose 2 par construction.
+        int markers = body.split("cache_control", -1).length - 1;
+        assertThat(markers).isLessThanOrEqualTo(4).isEqualTo(2);
+    }
+
+    @Test
+    void marksNothingWhenThereIsNoSystemPrompt() {
+        build(null);
+        server.expect(requestTo(URL)).andRespond(withSuccess("""
+                {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                 "usage": {"input_tokens": 1, "output_tokens": 1}}
+                """, MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = provider.nextTurn(new AgentTurnRequest("claude-model", "",
+                List.of(AgentMessage.userText("bonjour")), List.of(), null));
+
+        assertThat(turn.text()).isEqualTo("ok");
+        server.verify();
+    }
+
+    @Test
+    void countsCachedTokensAsInputSoTheQuotaStaysComparable() {
+        build(null);
+        server.expect(requestTo(URL)).andRespond(withSuccess("""
+                {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                 "usage": {"input_tokens": 500, "cache_creation_input_tokens": 2000,
+                           "cache_read_input_tokens": 30000, "output_tokens": 40}}
+                """, MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = call();
+
+        // Le quota mesure ce qui a été TRAITÉ, pas ce que le fournisseur nous facture : ne compter
+        // que `input_tokens` ferait chuter le décompte de ~98 % ici, en silence.
+        assertThat(turn.inputTokens()).isEqualTo(32_500);
+        assertThat(turn.outputTokens()).isEqualTo(40);
+    }
+
+    @Test
+    void keepsCountingExactlyAsBeforeWhenTheResponseHasNoCacheFields() {
+        build(null);
+        server.expect(requestTo(URL)).andRespond(withSuccess("""
+                {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                 "usage": {"input_tokens": 1200, "output_tokens": 40}}
+                """, MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = call();
+
+        assertThat(turn.inputTokens()).isEqualTo(1200);
+    }
+
+    @Test
+    void countsZeroWhenTheResponseCarriesNoUsage() {
+        build(null);
+        server.expect(requestTo(URL)).andRespond(withSuccess("""
+                {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn"}
+                """, MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = call();
+
+        assertThat(turn.inputTokens()).isZero();
+        assertThat(turn.outputTokens()).isZero();
     }
 }

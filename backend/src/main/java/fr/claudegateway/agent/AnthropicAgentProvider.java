@@ -24,13 +24,20 @@ import fr.claudegateway.ai.AnthropicProperties;
  * Implémentation Anthropic de {@link AiAgentProvider} (F-28) : relaie un tour à {@code POST /v1/messages}
  * avec {@code tools} + {@code system}, et traduit la réponse (blocs {@code text}/{@code tool_use},
  * {@code stop_reason}, {@code usage}) en {@link AgentTurn}. Le plafond de sortie est celui de l'agent
- * ({@code agent-max-tokens}), pas celui du chat : écrire un fichier consomme la sortie du modèle. Le mapping fournisseur est confiné ici ;
+ * ({@code agent-max-tokens}), pas celui du chat : écrire un fichier consomme la sortie du modèle.
+ *
+ * <p><b>Cache de prompt</b> (F-39 / SF-39-01) : le préfixe stable de la requête — outils, consigne
+ * système, historique déjà envoyé — porte des marqueurs {@code cache_control}. Sans eux, chaque
+ * itération d'un tour renvoie tout au tarif plein et le volume facturé croît en N².</p> Le mapping fournisseur est confiné ici ;
  * le domaine reste neutre. La clé n'est jamais journalisée.
  */
 @Component
 public class AnthropicAgentProvider implements AiAgentProvider {
 
     private static final Logger log = LoggerFactory.getLogger(AnthropicAgentProvider.class);
+
+    /** Marqueur de cache posé sur le dernier bloc d'un segment stable (F-39 / SF-39-01). */
+    private static final Map<String, Object> CACHE_CONTROL = Map.of("type", "ephemeral");
 
     private final AnthropicProperties properties;
     private final RestClient restClient;
@@ -52,7 +59,10 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         body.put("max_tokens", properties.agentMaxTokens());
         body.put("messages", toApiMessages(request.messages()));
         if (StringUtils.hasText(request.system())) {
-            body.put("system", request.system());
+            // Forme « liste de blocs » : seule forme qui accepte un `cache_control`. Le contenu est
+            // inchangé. L'ordre de rendu du fournisseur étant tools -> system -> messages, ce
+            // marqueur couvre AUSSI les définitions d'outils qui précèdent (SF-39-01, D1).
+            body.put("system", List.of(cached(Map.of("type", "text", "text", request.system()))));
         }
         if (request.tools() != null && !request.tools().isEmpty()) {
             body.put("tools", toApiTools(request.tools()));
@@ -86,16 +96,37 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         return apiTools;
     }
 
+    /**
+     * Traduit l'historique, en posant un marqueur de cache sur le <b>dernier bloc du dernier
+     * message</b> (F-39 / SF-39-01).
+     *
+     * <p>Le marqueur glisse d'une itération à l'autre : celle qui l'écrit paie l'écriture une fois,
+     * toutes les suivantes relisent le segment à une fraction du prix (D2). Sur un tour de 30
+     * itérations, chaque segment est écrit une fois et relu jusqu'à 29 fois.</p>
+     */
     private List<Map<String, Object>> toApiMessages(List<AgentMessage> messages) {
         List<Map<String, Object>> apiMessages = new ArrayList<>(messages.size());
-        for (AgentMessage message : messages) {
+        for (int i = 0; i < messages.size(); i++) {
+            AgentMessage message = messages.get(i);
+            boolean last = i == messages.size() - 1;
             List<Map<String, Object>> blocks = new ArrayList<>(message.content().size());
-            for (AgentContentBlock block : message.content()) {
-                blocks.add(toApiBlock(block));
+            for (int j = 0; j < message.content().size(); j++) {
+                Map<String, Object> block = toApiBlock(message.content().get(j));
+                if (last && j == message.content().size() - 1) {
+                    block = cached(block);
+                }
+                blocks.add(block);
             }
             apiMessages.add(Map.of("role", message.role(), "content", blocks));
         }
         return apiMessages;
+    }
+
+    /** Copie d'un bloc portant le marqueur de cache. Le bloc d'origine reste immuable. */
+    private static Map<String, Object> cached(Map<String, Object> block) {
+        Map<String, Object> marked = new HashMap<>(block);
+        marked.put("cache_control", CACHE_CONTROL);
+        return marked;
     }
 
     private Map<String, Object> toApiBlock(AgentContentBlock block) {
@@ -141,8 +172,16 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         // la phrase qui précède. La distinguer ici est le seul endroit où l'information existe.
         boolean truncated = "max_tokens".equals(stopReason);
         JsonNode usage = response.path("usage");
-        int inputTokens = usage.path("input_tokens").asInt(0);
+        // Les tokens servis par le cache ne sont PAS dans `input_tokens` (SF-39-01, D3). Ne compter
+        // que ce champ ferait chuter le décompte du quota d'environ 90 % sans que rien ne le
+        // signale : le quota mesure ce qui a été TRAITÉ, pas ce que le fournisseur nous facture.
+        int cacheCreation = usage.path("cache_creation_input_tokens").asInt(0);
+        int cacheRead = usage.path("cache_read_input_tokens").asInt(0);
+        int inputTokens = usage.path("input_tokens").asInt(0) + cacheCreation + cacheRead;
         int outputTokens = usage.path("output_tokens").asInt(0);
+        // Un cache qui ne prend pas ne lève aucune erreur : seuls ces compteurs le disent.
+        log.debug("Tour d'agent : {} tokens d'entrée (dont {} écrits en cache, {} lus en cache).",
+                inputTokens, cacheCreation, cacheRead);
         return new AgentTurn(text.toString(), toolCalls, finished, inputTokens, outputTokens, truncated);
     }
 
