@@ -678,3 +678,48 @@
     color: var(--cg-text-secondary);
   }
 }
+
+/* Plan de travail (F-39 / SF-39-13) : au-dessus de la ligne vivante, discret — il informe, il
+   n'attire pas l'œil hors de la sortie qui défile. Espacements multiples de 4px. */
+.terminal-plan {
+  list-style: none;
+  margin: 8px 0 4px;
+  padding: 8px 12px;
+  border-left: 2px solid currentColor;
+  opacity: 0.85;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.terminal-plan-step {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.terminal-plan-mark {
+  flex: 0 0 auto;
+  width: 12px;
+  text-align: center;
+}
+
+.terminal-plan-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.terminal-plan-step[data-status='done'] {
+  opacity: 0.55;
+}
+
+.terminal-plan-step[data-status='done'] .terminal-plan-title {
+  text-decoration: line-through;
+}
+
+.terminal-plan-step[data-status='active'] {
+  font-weight: 600;
+  opacity: 1;
+}

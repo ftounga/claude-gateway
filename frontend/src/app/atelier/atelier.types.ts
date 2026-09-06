@@ -1,4 +1,12 @@
-import { AtelierAction, AtelierEngine, AtelierRole, AtelierAgentStreamAction, AtelierStreamAction, AtelierTerminalBlock } from '../core/models/atelier.models';
+import {
+  AtelierAction,
+  AtelierEngine,
+  AtelierRole,
+  AtelierAgentStreamAction,
+  AtelierPlanStep,
+  AtelierStreamAction,
+  AtelierTerminalBlock,
+} from '../core/models/atelier.models';
 import { AtelierFileDiffView } from './terminal/terminal-diff';
 
 /**
@@ -101,4 +109,14 @@ export interface AtelierExecStreamingItem {
    * zéro qui passerait pour une mesure.
    */
   tokens: number | null;
+
+  /**
+   * Plan de travail du tour (F-39 / SF-39-13). Il porte la liste **complète** : chaque mise à jour
+   * la remplace, elle ne s'y ajoute pas.
+   *
+   * **Optionnel**, et c'est délibéré : un tour sans plan est le cas courant, et le rendre
+   * obligatoire imposerait un `plan: []` à chaque construction — y compris dans les tests qui ne
+   * parlent pas de plan du tout.
+   */
+  plan?: AtelierPlanStep[];
 }

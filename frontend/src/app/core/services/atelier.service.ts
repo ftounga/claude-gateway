@@ -33,6 +33,7 @@ import {
   WorkspaceExecutionTarget,
   WorkspaceSummary,
   WriteFileRequest,
+  AtelierPlanStep,
 } from '../models/atelier.models';
 
 /**
@@ -242,6 +243,8 @@ export class AtelierService {
       outputTokens?: number;
       activeSeconds?: number;
       budgetReached?: boolean;
+      /** Plan de travail relayé au fil de l'eau (F-39 / SF-39-13). */
+      steps?: AtelierPlanStep[];
     };
     try {
       payload = JSON.parse(data);
@@ -275,6 +278,9 @@ export class AtelierService {
       // Consommation cumulée du tour (F-39 / SF-39-15). Additif : un backend antérieur ne l'émet
       // pas, et un appelant qui ne s'y abonne pas l'ignore.
       handlers.onProgress?.(payload.tokens ?? 0);
+    } else if (event === 'plan') {
+      // Plan de travail du tour (F-39 / SF-39-13) : la liste complète, qui remplace la précédente.
+      handlers.onPlan?.(payload.steps ?? []);
     } else if (event === 'done') {
       handlers.onDone({
         reply: payload.reply ?? '',

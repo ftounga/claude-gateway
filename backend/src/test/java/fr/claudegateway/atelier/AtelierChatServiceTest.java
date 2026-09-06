@@ -63,6 +63,7 @@ class AtelierChatServiceTest {
     private static final class RecordingListener implements AtelierProgressListener {
         final List<AtelierStepEvent> actions = new ArrayList<>();
         final List<String> texts = new ArrayList<>();
+        final List<AtelierPlan> plans = new ArrayList<>();
 
         @Override
         public void onAction(AtelierStepEvent step) {
@@ -72,6 +73,11 @@ class AtelierChatServiceTest {
         @Override
         public void onText(String text) {
             texts.add(text);
+        }
+
+        @Override
+        public void onPlan(AtelierPlan plan) {
+            plans.add(plan);
         }
     }
 
@@ -442,5 +448,64 @@ class AtelierChatServiceTest {
 
         assertThat(result.reply()).isEqualTo("Lu.");
         assertThat(result.actions()).hasSize(1);
+    }
+
+    // ------------------------------------------------- SF-39-13 : le plan de travail
+
+    @Test
+    void relaysThePlanToTheScreenAndAcknowledgesItToTheModel() {
+        stubHappyPath();
+        agentProvider.enqueueToolCallWithJson("set_plan", "steps",
+                "[{\"title\":\"Lire\",\"status\":\"active\"},{\"title\":\"Écrire\"}]");
+        agentProvider.enqueueFinal("Fait.");
+        RecordingListener listener = new RecordingListener();
+
+        AtelierChatResult result = service.chatStreaming(userId, workspaceId, "vas-y", listener);
+
+        assertThat(listener.plans).hasSize(1);
+        assertThat(listener.plans.get(0).steps()).extracting(AtelierPlan.Step::title)
+                .containsExactly("Lire", "Écrire");
+        assertThat(result.reply()).isEqualTo("Fait.");
+    }
+
+    @Test
+    void theSecondPlanReplacesTheFirst() {
+        stubHappyPath();
+        agentProvider.enqueueToolCallWithJson("set_plan", "steps", "[{\"title\":\"A\"}]");
+        agentProvider.enqueueToolCallWithJson("set_plan", "steps",
+                "[{\"title\":\"A\",\"status\":\"done\"},{\"title\":\"B\",\"status\":\"active\"}]");
+        agentProvider.enqueueFinal("Fait.");
+        RecordingListener listener = new RecordingListener();
+
+        service.chatStreaming(userId, workspaceId, "vas-y", listener);
+
+        // Remplacement, jamais fusion (D1) : le dernier plan est celui qui vaut.
+        assertThat(listener.plans).hasSize(2);
+        assertThat(listener.plans.get(1).steps()).hasSize(2);
+    }
+
+    @Test
+    void aMalformedPlanNeverBreaksTheTurn() {
+        stubHappyPath();
+        // Ni titre, ni tableau : le tour doit aboutir quand même.
+        agentProvider.enqueueToolCall("set_plan", "steps", "pas un tableau");
+        agentProvider.enqueueFinal("Fait quand même.");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "vas-y");
+
+        assertThat(result.reply()).isEqualTo("Fait quand même.");
+    }
+
+    @Test
+    void aTurnWithoutAPlanIsUnchanged() {
+        stubHappyPath();
+        agentProvider.enqueueToolCall("read_file", "path", "notes.txt");
+        agentProvider.enqueueFinal("Lu.");
+        RecordingListener listener = new RecordingListener();
+
+        AtelierChatResult result = service.chatStreaming(userId, workspaceId, "lis", listener);
+
+        assertThat(listener.plans).isEmpty();
+        assertThat(result.reply()).isEqualTo("Lu.");
     }
 }

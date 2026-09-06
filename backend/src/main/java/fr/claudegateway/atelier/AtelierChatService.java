@@ -279,6 +279,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         String system = buildSystemPrompt(userId, workspace);
         List<AgentTool> tools = buildTools(workspace);
 
+        // Plan du tour (F-39 / SF-39-13) : local, donc jamais partagé entre utilisateurs.
+        java.util.concurrent.atomic.AtomicReference<AtelierPlan> planOfTurn =
+                new java.util.concurrent.atomic.AtomicReference<>(AtelierPlan.EMPTY);
         List<AtelierAction> actions = new ArrayList<>();
         /** Trajectoire du tour (SF-39-03), rejouée au message suivant. */
         List<AtelierToolTrace.Step> trace = new ArrayList<>();
@@ -363,7 +366,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 if (step != null) {
                     listener.onAction(step);
                 }
-                ToolOutcome outcome = executeTool(userId, workspace, callId, call, listener, deadline);
+                ToolOutcome outcome = executeTool(userId, workspace, callId, call, listener, deadline, planOfTurn);
                 if (outcome.action() != null) {
                     actions.add(outcome.action());
                 }
@@ -403,7 +406,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         // sans lui, le coût du tour et le motif de son arrêt disparaîtraient au rechargement — et
         // c'est précisément après un rechargement qu'on se demande pourquoi un tour s'est arrêté.
         AtelierTurnReport report = new AtelierTurnReport(inputTokens, outputTokens, activeSeconds,
-                interrupted, spendCapReached);
+                interrupted, spendCapReached, planOfTurn.get());
         AtelierMessage assistant = messageRepository.save(AtelierMessage.builder()
                 .workspaceId(workspaceId).userId(userId).role("ASSISTANT")
                 .content(reply)
@@ -550,6 +553,25 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
     }
 
+    /**
+     * Applique un appel {@code set_plan} (F-39 / SF-39-13) : le plan est normalisé, relayé à
+     * l'écran, et rendu au modèle sous forme de compte rendu.
+     *
+     * <p>Aucun chemin d'échec : un plan mal formé est corrigé, jamais refusé (décision D2). Le
+     * résultat dit au modèle ce qui a été retenu, ce qui lui permet de se corriger lui-même.</p>
+     */
+    private ToolOutcome applyPlan(AgentToolCall call, AtelierProgressListener listener,
+            java.util.concurrent.atomic.AtomicReference<AtelierPlan> planOfTurn) {
+        JsonNode stepsNode = call.input() == null ? null : call.input().get("steps");
+        AtelierPlan plan = AtelierPlan.from(stepsNode);
+        int submitted = stepsNode != null && stepsNode.isArray() ? stepsNode.size() : 0;
+        // Le plan vit dans le TOUR, jamais dans le service : celui-ci est un singleton partagé par
+        // tous les utilisateurs, et un champ d'instance ferait fuiter le plan de l'un chez l'autre.
+        planOfTurn.set(plan);
+        listener.onPlan(plan);
+        return ToolOutcome.info(plan.acknowledgement(submitted));
+    }
+
     /** Clef de marque d'interruption : l'utilisateur ET le workspace, jamais l'un sans l'autre. */
     private static String turnKey(UUID userId, UUID workspaceId) {
         return userId + ":" + workspaceId;
@@ -604,7 +626,13 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     private ToolOutcome executeTool(UUID userId, Workspace workspace, String callId, AgentToolCall call,
-            AtelierProgressListener listener, long deadline) {
+            AtelierProgressListener listener, long deadline,
+            java.util.concurrent.atomic.AtomicReference<AtelierPlan> planOfTurn) {
+        // Le plan ne s'exécute nulle part : il ne touche ni la machine, ni le stockage. Il est donc
+        // traité AVANT le routage par cible (F-39 / SF-39-13).
+        if ("set_plan".equals(call.name())) {
+            return applyPlan(call, listener, planOfTurn);
+        }
         if (workspace.isRunnerTarget()) {
             return executeToolOnRunner(userId, workspace.getId(), callId, call, listener, deadline);
         }
@@ -948,6 +976,23 @@ public class AtelierChatService implements RelayInterruptTarget {
                             "properties", Map.of("command", stringProp, "cwd", stringProp),
                             "required", List.of("command"))));
         }
+        // Le plan est déclaré sur les DEUX cibles : c'est un outil d'organisation, pas d'exécution
+        // (F-39 / SF-39-13). Rien de ce qu'il fait ne dépend de l'endroit où le code tourne.
+        tools.add(new AgentTool("set_plan",
+                "Pose ou met à jour ton plan de travail pour ce message. Envoie la liste COMPLÈTE des "
+                        + "étapes à chaque appel : elle remplace la précédente. Marque une seule étape "
+                        + "active à la fois, et mets-la à jour dès qu'une étape est terminée. "
+                        + "Utile dès que le travail dépasse deux ou trois étapes ; inutile sinon.",
+                Map.of("type", "object",
+                        "properties", Map.of("steps", Map.of(
+                                "type", "array",
+                                "items", Map.of("type", "object",
+                                        "properties", Map.of(
+                                                "title", Map.of("type", "string"),
+                                                "status", Map.of("type", "string",
+                                                        "enum", List.of("pending", "active", "done"))),
+                                        "required", List.of("title")))),
+                        "required", List.of("steps"))));
         return List.copyOf(tools);
     }
 

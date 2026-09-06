@@ -82,6 +82,14 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Input() localFolder: string | null = null;
 
   /**
+   * Marque d'une étape du plan (F-39 / SF-39-13). Un caractère, pas une icône : le plan s'affiche
+   * dans un terminal, et une puce Material y jurerait.
+   */
+  planMark(status: string): string {
+    return switch_(status);
+  }
+
+  /**
    * Moteur qui anime ce terminal (F-39 / SF-39-08). **Affiché, jamais choisi** : la pastille dit où
    * le code s'exécute, ce qui est la seule chose que l'utilisateur ait à comprendre. Les mots
    * « Assistant » et « Terminal » ont disparu de l'écran avec les modes qu'ils désignaient.
@@ -451,5 +459,17 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    */
   toggleDiff(view: AtelierFileDiffView): void {
     view.expanded = !view.expanded;
+  }
+}
+
+/** Marque d'état : fait, en cours, à faire. */
+function switch_(status: string): string {
+  switch (status) {
+    case 'done':
+      return '\u2713';
+    case 'active':
+      return '\u203A';
+    default:
+      return '\u00B7';
   }
 }

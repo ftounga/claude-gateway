@@ -87,6 +87,14 @@ public interface AtelierProgressListener {
      *
      * @param tokens cumul des tokens traités depuis le début du tour (entrée + sortie)
      */
+    /**
+     * Plan de travail posé ou mis à jour par l'agent (F-39 / SF-39-13). Chaque appel porte le plan
+     * <b>complet</b> : il remplace le précédent, il ne s'y ajoute pas.
+     */
+    default void onPlan(AtelierPlan plan) {
+        // Par défaut, rien : le mode non streamé n'a personne à qui relayer.
+    }
+
     default void onProgress(long tokens) {
         // Aucun relais : mode synchrone.
     }

@@ -353,6 +353,14 @@ export interface AtelierStreamDone {
 }
 
 /** Callbacks du streaming de l'atelier (SF-28-05). */
+
+/** Une étape du plan de travail de l'agent (F-39 / SF-39-13). */
+export interface AtelierPlanStep {
+  title: string;
+  /** `pending` | `active` | `done` — une seule étape est active à la fois. */
+  status: string;
+}
+
 export interface AtelierStreamHandlers {
   onAction: (action: AtelierStreamAction) => void;
   onText: (text: string) => void;
@@ -378,6 +386,12 @@ export interface AtelierStreamHandlers {
    * jusqu'ici. **Optionnel** : un appelant qui ne s'y abonne pas ne voit aucune différence.
    */
   onProgress?: (tokens: number) => void;
+
+  /**
+   * Plan de travail posé ou mis à jour par l'agent (F-39 / SF-39-13). Porte la liste **complète** à
+   * chaque appel : elle remplace la précédente. Additif — un backend antérieur ne l'émet pas.
+   */
+  onPlan?: (steps: AtelierPlanStep[]) => void;
 }
 
 /**
@@ -492,6 +506,12 @@ export interface AtelierAgentStreamHandlers {
    * exactement comme avant.
    */
   onProgress?: (tokens: number) => void;
+
+  /**
+   * Plan de travail posé ou mis à jour par l'agent (F-39 / SF-39-13). Porte la liste **complète** à
+   * chaque appel : elle remplace la précédente. Additif — un backend antérieur ne l'émet pas.
+   */
+  onPlan?: (steps: AtelierPlanStep[]) => void;
   /**
    * Demande d'autorisation à afficher (F-33 / SF-33-02). **Facultatif** : ces événements sont
    * additifs, un appelant qui ne les fournit pas se comporte comme avant F-33.

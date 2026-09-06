@@ -2612,6 +2612,33 @@ describe('AtelierComponent', () => {
     component.workspaces.set([{ ...summary, id: 'w1', source: 'LOCAL' }]);
     expect(component.localFolder()).toBeNull();
   });
+
+  // ------------------------------------------------- SF-39-13 : le plan de travail
+
+  it('shows the plan sent during a turn and replaces it on update', () => {
+    setup();
+    const captured: { onPlan?: (steps: { title: string; status: string }[]) => void } = {};
+    service.streamChat.and.callFake((_id: string, _msg: string, handlers: typeof captured) => {
+      captured.onPlan = handlers.onPlan;
+      return Promise.resolve();
+    });
+    component.activeWorkspaceId.set('w1');
+    // Le plan n'existe que sur la boucle maison : c'est elle qui le pose (F-39 / SF-39-13).
+    component.engine.set('LOCAL_MACHINE');
+    component.draft.set('vas-y');
+    component.send();
+
+    captured.onPlan?.([{ title: 'Lire', status: 'active' }]);
+    expect(component.execStreaming()?.plan).toEqual([{ title: 'Lire', status: 'active' }]);
+
+    // Remplacement, jamais fusion : le dernier plan est celui qui vaut.
+    captured.onPlan?.([
+      { title: 'Lire', status: 'done' },
+      { title: 'Écrire', status: 'active' },
+    ]);
+    expect(component.execStreaming()?.plan).toHaveSize(2);
+    expect(component.execStreaming()?.plan?.[0].status).toBe('done');
+  });
 });
 
 
