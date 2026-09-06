@@ -22,6 +22,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import fr.claudegateway.atelier.WorkspaceService.CreatedWorkspace;
 import fr.claudegateway.atelier.agent.AtelierSessionService;
+import fr.claudegateway.atelier.dto.AtelierEngineResponse;
 import fr.claudegateway.atelier.dto.AtelierImportLibraryRequest;
 import fr.claudegateway.atelier.dto.ExecutionTargetRequest;
 import fr.claudegateway.atelier.dto.FileContentResponse;
@@ -51,16 +52,19 @@ public class AtelierController {
     private final WorkspaceLibraryImportService libraryImportService;
     private final AtelierSessionService sessionService;
     private final GitWorkspaceService gitWorkspaceService;
+    private final AtelierEngineService engineService;
 
     public AtelierController(WorkspaceService workspaceService, CurrentUser currentUser,
             AtelierAccessService atelierAccess, WorkspaceLibraryImportService libraryImportService,
-            AtelierSessionService sessionService, GitWorkspaceService gitWorkspaceService) {
+            AtelierSessionService sessionService, GitWorkspaceService gitWorkspaceService,
+            AtelierEngineService engineService) {
         this.workspaceService = workspaceService;
         this.currentUser = currentUser;
         this.atelierAccess = atelierAccess;
         this.libraryImportService = libraryImportService;
         this.sessionService = sessionService;
         this.gitWorkspaceService = gitWorkspaceService;
+        this.engineService = engineService;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -115,6 +119,17 @@ public class AtelierController {
         workspaceService.requireOwned(userId, id);
         workspaceService.writeFile(userId, id, path, request == null ? "" : request.content());
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Moteur qui anime le terminal de ce projet (F-39 / SF-39-07, décision D1) : l'écran le
+     * <b>lit</b>, il ne le déduit plus. Rend aussi l'état du runner et, le cas échéant, la limite du
+     * bac à sable qui justifie de proposer le runner ici et maintenant (D6).
+     */
+    @GetMapping("/{id}/engine")
+    public AtelierEngineResponse engine(@PathVariable UUID id) {
+        atelierAccess.requireAccess();
+        return AtelierEngineResponse.from(engineService.status(currentUser.requireId(), id));
     }
 
     /**
