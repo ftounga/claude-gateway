@@ -138,7 +138,8 @@ un vrai réseau contraint et un opérateur. Il est donc **parqué** le 2026-09-0
 exécutable — `SMOKE-manuel-bout-en-bout.md` — et sa **planification est demandée au PO** (OQ-13).
 Il ne conditionne plus le statut de F-38 : le code est livré, testé et déployé ; ce qui manque est une
 **constatation terrain**, pas une livraison. Un KO au smoke ouvrira une subfeature correctif ciblée
-(`SF-38-15`…), pas une réouverture en bloc.
+(**`SF-38-22`…** — les numéros 15 à 21 ont été consommés le 2026-09-06 par le lot issu du second
+passage du banc d'essai), pas une réouverture en bloc.
 
 ### Pourquoi `bash` arrive après le point de contrôle
 Un runner qui ne fait que lire et écrire des fichiers apporte déjà l'essentiel (fin des zips)

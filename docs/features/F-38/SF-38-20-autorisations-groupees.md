@@ -10,7 +10,7 @@
 
 ## Statut
 
-`ready`
+`livrée` — PR #247 (backend) et #248 (écran), mergées le 2026-09-06
 
 ## Date de création
 

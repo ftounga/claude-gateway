@@ -10,7 +10,7 @@
 
 ## Statut
 
-`ready` — développement différé, comme SF-38-15
+`livrée` — PR #239, mergée le 2026-09-06
 
 ## Date de création
 

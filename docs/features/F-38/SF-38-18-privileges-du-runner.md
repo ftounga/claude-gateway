@@ -10,7 +10,7 @@
 
 ## Statut
 
-`ready`
+`livrée` — PR #252, mergée le 2026-09-06
 
 ## Date de création
 

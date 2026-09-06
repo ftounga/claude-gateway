@@ -10,7 +10,7 @@
 
 ## Statut
 
-`ready` — **développement différé** jusqu'à la fin de la vague F-39 (voir §Dépendances)
+`livrée` — PR #238, mergée le 2026-09-06
 
 ## Date de création
 
