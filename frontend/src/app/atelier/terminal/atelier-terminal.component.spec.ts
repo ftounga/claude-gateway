@@ -267,9 +267,9 @@ describe('AtelierTerminalComponent', () => {
     expect(fixture.nativeElement.querySelector('.terminal-interrupted')).toBeNull();
   });
 
-  // ---- F-36 / SF-36-04 : plafond de dépense du run atteint ----
+  // ---- F-36 / SF-36-04 + F-39 / SF-39-15 : plafond de dépense du message atteint ----
 
-  it('annonce le plafond de dépense du run, sans parler du quota mensuel', () => {
+  it('annonce le plafond de dépense du message, sans parler du quota mensuel', () => {
     component.messages = [
       {
         id: 'a1',
@@ -284,11 +284,35 @@ describe('AtelierTerminalComponent', () => {
 
     const banner = fixture.nativeElement.querySelector('.terminal-budget') as HTMLElement;
     expect(banner).not.toBeNull();
-    expect(banner.textContent).toContain('Plafond de dépense de ce run');
+    // Le vocabulaire suit l'écran unique (SF-39-08) : « run » nommait le tour du moteur hébergé,
+    // le plafond porte désormais sur LE MESSAGE, quel que soit le moteur.
+    expect(banner.textContent).toContain('Plafond de dépense de ce message');
     // Ce n'est pas le quota mensuel : dire l'un pour l'autre enverrait l'utilisateur au mauvais geste.
     expect(banner.textContent).not.toContain('quota');
     // Le tour reste entier : réponse et coût conservés.
     expect(fixture.nativeElement.querySelector('.terminal-cost')).not.toBeNull();
+  });
+
+  it('dit comment reprendre selon le moteur, sans inventer de sandbox sur la machine', () => {
+    // F-39 / SF-39-15 : le texte de F-36 promettait de reprendre « dans la même sandbox ». Sur la
+    // machine de l'utilisateur il n'y en a pas, et l'y envoyer chercher une explication serait un
+    // faux repère.
+    component.messages = [
+      { id: 'a1', role: 'ASSISTANT', content: 'J\'ai commencé…', actions: [], budgetReached: true },
+    ];
+
+    component.engine = 'HOSTED_SANDBOX';
+    fixture.detectChanges();
+    let hint = fixture.nativeElement.querySelector('.terminal-budget-hint') as HTMLElement;
+    expect(hint.textContent).toContain('sandbox');
+
+    component.engine = 'LOCAL_MACHINE';
+    fixture.detectChanges();
+    hint = fixture.nativeElement.querySelector('.terminal-budget-hint') as HTMLElement;
+    expect(hint.textContent).toContain('votre machine');
+    expect(hint.textContent).not.toContain('sandbox');
+    // Ce qui vaut des deux côtés ne bouge pas : le travail est conservé, relancer débloque.
+    expect(hint.textContent).toContain('conservé');
   });
 
   it('propose le rachat de tokens et émet l\'ouverture de la facturation', () => {

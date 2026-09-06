@@ -308,6 +308,16 @@ qui n'appartient pas à ce lot. Effet immédiat : au rechargement, un tour arrê
 *Corollaire* : `toThreadItem` relit le coût même quand les blocs sont vides — il ne le faisait pas,
 et un tour mesuré mais sans blocs perdait sa mesure.
 
+### D-L8-8 — La bande de plafond dit « ce message », plus « ce run »
+
+F-36 avait écrit « plafond de dépense de ce **run** atteint », et promettait de reprendre « dans la
+**même sandbox** ». Les deux mots appartenaient au chemin Managed Agents. Depuis le lot 4 il n'y a
+qu'un terminal : « run » est un mot d'implémentation que l'utilisateur n'a jamais vu ailleurs dans le
+produit, et sur sa machine il n'y a **pas** de sandbox — l'y envoyer chercher une explication serait
+un faux repère. La bande dit donc « ce **message** » des deux côtés, et adapte sa seule phrase de
+reprise au moteur. Le reste — travail conservé, relancer débloque, rachat en second recours — est
+inchangé. **Réversible** (deux chaînes).
+
 ### D-L8-7 — Emplacement de la mini-spec
 
 Le lot est adressé sous l'étiquette d'orchestration `F-39-lot8`. La mini-spec est rangée en

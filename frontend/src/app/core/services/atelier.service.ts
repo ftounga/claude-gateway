@@ -226,6 +226,11 @@ export class AtelierService {
       tool?: string;
       detail?: string;
       decision?: string;
+      tokens?: number;
+      inputTokens?: number;
+      outputTokens?: number;
+      activeSeconds?: number;
+      budgetReached?: boolean;
     };
     try {
       payload = JSON.parse(data);
@@ -255,11 +260,21 @@ export class AtelierService {
           ? payload.decision
           : 'allow',
       });
+    } else if (event === 'progress') {
+      // Consommation cumulée du tour (F-39 / SF-39-15). Additif : un backend antérieur ne l'émet
+      // pas, et un appelant qui ne s'y abonne pas l'ignore.
+      handlers.onProgress?.(payload.tokens ?? 0);
     } else if (event === 'done') {
       handlers.onDone({
         reply: payload.reply ?? '',
         actions: payload.actions ?? [],
         messageId: payload.messageId ?? '',
+        // Champs additifs (F-39 / SF-39-15) : laissés `undefined` par un backend antérieur, pour
+        // que l'écran n'affiche aucun coût plutôt qu'un « 0 token » qui passerait pour une mesure.
+        inputTokens: payload.inputTokens,
+        outputTokens: payload.outputTokens,
+        activeSeconds: payload.activeSeconds,
+        budgetReached: payload.budgetReached === true,
       });
     } else if (event === 'error') {
       handlers.onError(payload.error ?? 'provider_error');

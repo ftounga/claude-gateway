@@ -1972,6 +1972,121 @@ describe('AtelierComponent', () => {
     expect(item.budgetReached).toBeFalse();
   });
 
+  // ---- F-39 / SF-39-15 : ce que coûte un message de la boucle maison, et son plafond ----
+
+  it('affiche ce qu\'a coûté le tour de la boucle maison (acquis §4 n°6)', () => {
+    // Jusqu'ici la boucle maison ne relevait aucune consommation : l'acquis « coût du tour affiché »
+    // ne valait donc que pour le moteur hébergé, c'est-à-dire pas pour celui qui exécute réellement.
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.engine.set('LOCAL_MACHINE');
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onDone({
+        reply: 'Terminé.',
+        actions: [],
+        messageId: 'm1',
+        inputTokens: 40_000,
+        outputTokens: 2_000,
+        activeSeconds: 137,
+        budgetReached: false,
+      });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Fais un truc');
+    component.send();
+
+    const last = component.messages()[component.messages().length - 1];
+    expect(last.cost).toEqual({ elapsedSeconds: 137, tokens: 42_000 });
+    expect(last.budgetReached).toBeFalse();
+  });
+
+  it('n\'affiche aucun coût quand la consommation n\'a pas été relevée', () => {
+    // Un « 0 token » se lirait comme une mesure. Un backend antérieur n'émet pas ces champs.
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.engine.set('LOCAL_MACHINE');
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onDone({ reply: 'Terminé.', actions: [], messageId: 'm1' });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Fais un truc');
+    component.send();
+
+    const last = component.messages()[component.messages().length - 1];
+    expect(last.cost).toBeUndefined();
+    expect(last.budgetReached).toBeFalse();
+  });
+
+  it('marque le tour de la boucle maison arrêté sur le plafond de dépense', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.engine.set('LOCAL_MACHINE');
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onDone({
+        reply: 'Ce message a atteint son plafond de consommation ; …',
+        actions: [],
+        messageId: 'm1',
+        inputTokens: 1_400_000,
+        outputTokens: 100_000,
+        activeSeconds: 300,
+        budgetReached: true,
+      });
+      return Promise.resolve();
+    });
+
+    component.draft.set('Refais tout le projet');
+    component.send();
+
+    const last = component.messages()[component.messages().length - 1];
+    // Le tour est conservé : il a eu lieu et il est facturé. L'écran le dit, il ne l'efface pas.
+    expect(last.budgetReached).toBeTrue();
+    expect(last.cost?.tokens).toBe(1_500_000);
+  });
+
+  it('remplit la consommation de la ligne vivante pendant le tour', () => {
+    // Acquis §4 n°5 : la ligne vivante affichait les étapes et la durée, jamais les tokens, sur la
+    // boucle maison. Le flux ne les relayait tout simplement pas.
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.engine.set('LOCAL_MACHINE');
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onAction({ type: 'bash', path: 'npm test' });
+      handlers.onProgress?.(12_500);
+      handlers.onProgress?.(31_800);
+      return Promise.resolve();
+    });
+
+    component.draft.set('Lance les tests');
+    component.send();
+
+    expect(component.execStreaming()?.tokens).toBe(31_800);
+  });
+
+  it('relit le coût d\'un tour sans transcription', () => {
+    // La boucle maison relève sa consommation sans persister de blocs (D-L8-6) : un tour mesuré
+    // perdait sa mesure au rechargement.
+    const item = toThreadItem({
+      id: 'm1',
+      role: 'ASSISTANT',
+      content: 'Terminé.',
+      createdAt: '2026-09-06T00:00:00Z',
+      terminal: {
+        blocks: [],
+        omittedBlocks: 0,
+        inputTokens: 40_000,
+        outputTokens: 2_000,
+        activeSeconds: 137,
+        interrupted: false,
+        budgetReached: false,
+      },
+    });
+
+    expect(item.cost).toEqual({ elapsedSeconds: 137, tokens: 42_000 });
+    expect(item.terminal).toBeUndefined();
+  });
+
   // ---- F-34 / SF-34-02 : instructions portées par le projet ----
 
   it('expose le chemin des instructions du projet quand il en porte', () => {

@@ -7,6 +7,7 @@ import {
   AtelierChatResponse,
   AtelierEngineStatus,
   AtelierMessage,
+  AtelierStreamDone,
   FileContent,
   RunnerAuditEntry,
   RunnerKillResult,
@@ -206,6 +207,67 @@ describe('AtelierService', () => {
   it("un appelant sans onOutput ignore l'événement sans erreur (additif, F-38 / SF-38-07)", async () => {
     fakeSseFetch([
       'event:output\ndata:{"output":"bruit"}',
+      'event:done\ndata:{"reply":"Fini.","actions":[],"messageId":"m1"}',
+    ]);
+    let reply = '';
+
+    await service.streamChat('w1', 'go', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: (d) => (reply = d.reply),
+      onError: () => undefined,
+    });
+
+    expect(reply).toBe('Fini.');
+  });
+
+  it("route event:progress et les champs de coût du done d'atelier (F-39 / SF-39-15)", async () => {
+    fakeSseFetch([
+      'event:progress\ndata:{"tokens":12500}',
+      'event:progress\ndata:{"tokens":31800}',
+      'event:done\ndata:{"reply":"Fini.","actions":[],"messageId":"m1","inputTokens":40000,'
+        + '"outputTokens":2000,"activeSeconds":137,"budgetReached":true}',
+    ]);
+    const progress: number[] = [];
+    let done: AtelierStreamDone | null = null;
+
+    await service.streamChat('w1', 'lance les tests', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onProgress: (tokens) => progress.push(tokens),
+      onDone: (d) => (done = d),
+      onError: () => undefined,
+    });
+
+    expect(progress).toEqual([12500, 31800]);
+    const seen = done as AtelierStreamDone | null;
+    expect(seen?.inputTokens).toBe(40000);
+    expect(seen?.outputTokens).toBe(2000);
+    expect(seen?.activeSeconds).toBe(137);
+    expect(seen?.budgetReached).toBeTrue();
+  });
+
+  it("un done sans champs de coût les laisse indéfinis plutôt qu'à zéro (additif)", async () => {
+    // Un backend antérieur ne les émet pas : « pas de mesure » doit rester distinct de « zéro ».
+    fakeSseFetch(['event:done\ndata:{"reply":"Fini.","actions":[],"messageId":"m1"}']);
+    let done: AtelierStreamDone | null = null;
+
+    await service.streamChat('w1', 'go', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: (d) => (done = d),
+      onError: () => undefined,
+    });
+
+    const seen = done as AtelierStreamDone | null;
+    expect(seen?.inputTokens).toBeUndefined();
+    expect(seen?.outputTokens).toBeUndefined();
+    expect(seen?.budgetReached).toBeFalse();
+  });
+
+  it("un appelant sans onProgress ignore l'événement sans erreur (additif)", async () => {
+    fakeSseFetch([
+      'event:progress\ndata:{"tokens":42}',
       'event:done\ndata:{"reply":"Fini.","actions":[],"messageId":"m1"}',
     ]);
     let reply = '';

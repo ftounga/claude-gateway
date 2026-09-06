@@ -126,6 +126,13 @@ describe('F-39 §4 — acquis visuels repris par l\'écran unique', () => {
     component.messages = turn();
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.terminal-cost')).toBeNull();
+
+    // DES DEUX MOTEURS (F-39 / SF-39-15) : la boucle maison ne relevait aucune consommation, si
+    // bien que cet acquis ne valait pas sur le moteur qui exécute réellement.
+    component.engine = 'LOCAL_MACHINE';
+    component.messages = turn({ cost: { elapsedSeconds: 137, tokens: 42_000 } });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.terminal-cost')).not.toBeNull();
   });
 
   // 7 — Transcription conservée (SF-30-02 / SF-30-09), DES DEUX MOTEURS.
