@@ -50,6 +50,19 @@ public final class RunnerMain {
                 ? "Commandes : autorisées (chacune demande votre autorisation à l'écran)"
                 : "Commandes : refusées (--no-bash) — seuls les outils fichiers sont disponibles");
 
+        // Avec quels droits (F-38 / SF-38-18). Le runner agit avec ceux du compte qui l'a lancé —
+        // il n'en bride aucun, et ne prétend pas le faire. Le dire au démarrage évite de le
+        // découvrir en autorisant une commande.
+        Privileges privileges = Privileges.detect();
+        console.info("Compte    : " + privileges.userName()
+                + (privileges.elevated() ? "  (administrateur)" : ""));
+        if (privileges.elevated()) {
+            console.error("Ce runner tourne en root : Claude agira avec les droits de "
+                    + "l'administrateur sur cette machine.");
+            console.info("Lancez-le plutôt avec votre compte habituel, sauf si vous savez pourquoi "
+                    + "vous faites autrement (conteneur, projet appartenant à root).");
+        }
+
         ProxyResolver proxyResolver = ProxyResolver.fromEnv(env);
         if (proxyResolver.hasProxy()) {
             console.info("Proxy d'entreprise détecté (HTTPS_PROXY/HTTP_PROXY).");
@@ -169,7 +182,8 @@ public final class RunnerMain {
     private String pairAndStore(RunnerConfig config, TokenStore tokenStore, HttpClient httpClient) {
         console.info("Appairage auprès de " + config.pairUrl() + "…");
         PairingClient client = new PairingClient(httpClient);
-        StoredToken token = client.pair(config.pairUrl(), config.pairingCode(), config.label());
+        StoredToken token = client.pair(config.pairUrl(), config.pairingCode(), config.label(),
+                workspaceFolderName(config), Privileges.detect().elevated());
         tokenStore.save(token);
         console.info("Appairage réussi — jeton stocké dans " + tokenStore.tokenFile() + ".");
         return token.token();
@@ -183,5 +197,14 @@ public final class RunnerMain {
         // (propriétés système http(s).proxyHost). Le truststore reste géré par la JVM.
         builder.proxy(proxyResolver.hasProxy() ? proxyResolver : ProxySelector.getDefault());
         return builder.build();
+    }
+
+    /**
+     * Nom du dossier de travail — le <b>dernier segment</b>, jamais le chemin absolu (SF-38-15).
+     * C'est ce que la gateway affichera ; elle n'a besoin de rien de plus.
+     */
+    private static String workspaceFolderName(RunnerConfig config) {
+        java.nio.file.Path name = config.workspaceRoot().getFileName();
+        return name == null ? null : name.toString();
     }
 }

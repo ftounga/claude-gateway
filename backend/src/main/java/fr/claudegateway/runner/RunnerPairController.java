@@ -27,7 +27,8 @@ public class RunnerPairController {
 
     @PostMapping("/pair")
     public PairResponse pair(@Valid @RequestBody PairRequest request) {
-        PairedRunner paired = pairingService.redeem(request.code(), request.label(), request.rootName());
+        PairedRunner paired = pairingService.redeem(request.code(), request.label(), request.rootName(),
+                Boolean.TRUE.equals(request.elevated()));
         return new PairResponse(paired.token(), paired.workspaceId(), paired.expiresAt());
     }
 }

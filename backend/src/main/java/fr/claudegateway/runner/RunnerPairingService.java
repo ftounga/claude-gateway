@@ -74,6 +74,15 @@ public class RunnerPairingService {
      */
     @Transactional
     public PairedRunner redeem(String rawCode, String label, String rootName) {
+        return redeem(rawCode, label, rootName, false);
+    }
+
+    /**
+     * Variante qui enregistre en plus les <b>droits</b> sous lesquels le runner tourne
+     * (F-38 / SF-38-18). La gateway ne peut pas les deviner ; c'est le runner qui les déclare.
+     */
+    @Transactional
+    public PairedRunner redeem(String rawCode, String label, String rootName, boolean elevated) {
         String hash = tokenHasher.sha256Hex(normalizeCode(rawCode));
         RunnerPairingCode code = codeRepository.findByCodeHash(hash)
                 .filter(c -> c.isUsableAt(OffsetDateTime.now()))
@@ -83,7 +92,7 @@ public class RunnerPairingService {
         RunnerTokenService.IssuedToken issued =
                 tokenService.issue(code.getUserId(), code.getWorkspaceId(), label);
         // Libellé d'affichage : un échec ici ne doit pas faire échouer l'appairage lui-même.
-        workspaceService.recordRunnerRootName(code.getWorkspaceId(), rootName);
+        workspaceService.recordRunnerDeclaration(code.getWorkspaceId(), rootName, elevated);
         return new PairedRunner(issued.clearToken(), code.getWorkspaceId(), issued.token().getExpiresAt());
     }
 

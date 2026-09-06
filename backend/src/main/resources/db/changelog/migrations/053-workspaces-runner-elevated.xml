@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <!--
+      F-38 / SF-38-18 — Droits sous lesquels le runner appairé tourne.
+
+      La gateway ne peut pas les deviner : c'est le runner qui les déclare à l'appairage. L'écran
+      s'en sert là où l'on autorise une commande — autoriser `rm -rf build` n'a pas le même poids
+      selon les droits sous lesquels la commande s'exécutera.
+
+      Nullable et sans défaut : les projets existants n'ont rien déclaré, et un runner antérieur
+      à cette version n'envoie pas le champ.
+    -->
+    <changeSet id="053-workspaces-runner-elevated" author="claude-gateway">
+        <addColumn tableName="workspaces">
+            <column name="runner_elevated" type="boolean"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="runner_elevated"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

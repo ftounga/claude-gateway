@@ -483,6 +483,14 @@
           />
         }
         <div class="terminal-ask-actions">
+          @if (runnerElevated) {
+            <!-- Rappelé ICI et pas seulement au démarrage du runner (F-38 / SF-38-18, D3) : c'est
+                 au moment d'autoriser que l'information change une décision. -->
+            <p class="terminal-ask-elevated">
+              <mat-icon>shield_person</mat-icon>
+              Cette machine tourne en administrateur : la commande s'exécutera avec ces droits.
+            </p>
+          }
           <button
             mat-flat-button
             color="primary"
