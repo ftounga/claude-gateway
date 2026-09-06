@@ -497,6 +497,23 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     canal s'enregistre sur **son** pod, le mode `RUNNER` suppose toujours un replica unique ou une
     affinité d'ingress.
 
+- **Projet qui vit déjà sur la machine — deux colonnes sur `workspaces`, aucune table neuve**
+  (F-38 / SF-38-15 migration `052`, SF-38-18 migration `053`).
+  - `workspaces.runner_root_name` (`varchar(255)`, **nullable**) — le **nom** de la racine déclarée
+    par le runner à l'appairage, jamais le chemin absolu : la gateway n'apprend pas où le projet vit
+    sur la machine, elle sait seulement comment l'appeler à l'écran. C'est le pendant de la source
+    `LOCAL` : un projet créé en ne donnant qu'un nom, dont la racine est déclarée par le runner.
+  - `workspaces.runner_elevated` (`boolean`, **nullable**, sans défaut) — les **droits** sous
+    lesquels le runner tourne, détectés par lui (uid réel, repli sur le nom du compte) et déclarés à
+    l'appairage. La gateway ne peut pas les deviner. Nullable **et** sans défaut parce qu'un projet
+    antérieur n'a rien déclaré et qu'un runner antérieur à SF-38-18 n'envoie pas le champ — l'absence
+    d'information ne doit pas se lire comme « droits ordinaires ». L'écran s'en sert **là où l'on
+    autorise une commande** : autoriser `rm -rf build` n'a pas le même poids selon les droits sous
+    lesquels elle s'exécutera. **Informatif, jamais une garde** : le runner agit avec les droits du
+    compte qui l'a lancé, et démarrer en root n'est pas interdit (usage conteneur).
+  - Les deux colonnes suivent l'isolation générale : elles vivent sur `workspaces`, lues et écrites
+    sous le `user_id` propriétaire du projet.
+
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 
 Règle d'isolation des données :
