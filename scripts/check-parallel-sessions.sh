@@ -15,6 +15,13 @@
 # worktree lie — contrairement a prune-stale-worktrees.sh, dont le refus (sortie 3) protege
 # d'une operation destructive.
 #
+# « Lecture seule » va jusqu'a l'index : les `git status` d'inspection passent par
+# --no-optional-locks, sans quoi Git rafraichit et REECRIT l'index de chaque worktree visite.
+# Cette ecriture invisible suffirait a faire passer tous les worktrees pour « actifs » aux
+# yeux du garde-fou d'age de prune-stale-worktrees.sh, qui tourne juste apres : le controle
+# neutraliserait silencieusement la purge qu'il est cense proteger (defaut trouve par le
+# cas 13 du test de la purge, SF-SP-02).
+#
 # Signaux qui rendent le verdict BUSY (« session en vol ») :
 #   W1  worktree lie avec une activite de moins de N minutes
 #   W2  checkout principal sale (fichiers non commites)
@@ -178,7 +185,7 @@ say "-- Checkout principal --"
 main_notes=()
 main_busy=0
 
-if main_status="$(git -C "$main_root" status --porcelain 2>/dev/null)"; then
+if main_status="$(git --no-optional-locks -C "$main_root" status --porcelain 2>/dev/null)"; then
     if [[ -n "$main_status" ]]; then
         main_notes+=("W2 sale ($(printf '%s\n' "$main_status" | wc -l) fichier(s) non commite(s))")
         main_busy=1
@@ -249,7 +256,7 @@ for i in "${!wt_paths[@]}"; do
     if [[ -f "$git_common_dir/worktrees/$(basename "$wt")/locked" || "$locked" -eq 1 ]]; then
         reasons+=("locked")
     fi
-    if status_out="$(git -C "$wt" status --porcelain 2>/dev/null)"; then
+    if status_out="$(git --no-optional-locks -C "$wt" status --porcelain 2>/dev/null)"; then
         [[ -n "$status_out" ]] && reasons+=("dirty ($(printf '%s\n' "$status_out" | wc -l) fichier(s))")
     else
         say "  ILLISIBLE $label $tag — statut Git illisible, compte comme occupe par prudence"

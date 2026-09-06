@@ -16,6 +16,11 @@
 # travail). Quatre garde-fous cumulatifs protegent chaque candidat ; un seul en echec
 # suffit a l'ecarter. Le mode par defaut est un DRY-RUN : rien n'est supprime sans --apply.
 #
+# Un CINQUIEME garde-fou, global celui-la (SF-SP-02), s'ajoute en mode --apply : la purge
+# consulte scripts/check-parallel-sessions.sh et refuse de detruire quoi que ce soit tant
+# qu'une session parallele travaille dans le depot. Les quatre premiers garde-fous sont
+# locaux a chaque candidat : aucun ne repond a la question « une vague est-elle en cours ? ».
+#
 # Usage :
 #   scripts/prune-stale-worktrees.sh                 # dry-run (defaut) : affiche le plan
 #   scripts/prune-stale-worktrees.sh --apply         # execute reellement
@@ -23,9 +28,14 @@
 #   scripts/prune-stale-worktrees.sh --no-fetch      # ne pas contacter origin
 #   scripts/prune-stale-worktrees.sh --no-sweep-branches # n'examiner que les branches
 #                                                    # liberees par un retrait de worktree
+#   scripts/prune-stale-worktrees.sh --apply --force-busy # passer outre le garde-fou 5
+#
+# Sorties : 0 succes | 2 usage | 3 lance depuis un worktree lie | 4 base non evaluable
+#           5 session parallele en vol (garde-fou 5)
 #
 # Mini-spec : docs/features/REPO/SF-REPO-02-purge-worktrees-residuels.md
 #             docs/features/worktrees-orphelins/SF-WO-01-balayage-branches-orphelines.md
+#             docs/features/SESSIONS-PARALLELES/SF-SP-02-purge-refusee-si-session-en-vol.md
 
 set -euo pipefail
 
@@ -38,8 +48,15 @@ WORKTREE_PREFIX=".claude/worktrees/"
 # Balayage global des branches locales (SF-WO-01). A 0, on retombe sur le comportement
 # de SF-REPO-02 : seules les branches liberees par un retrait de worktree sont examinees.
 SWEEP_BRANCHES=1
+# Passe outre le garde-fou 5 (session parallele en vol). Volontairement absent du dry-run :
+# le dry-run ne detruit rien, il n'a rien a forcer.
+FORCE_BUSY=0
 # Branches jamais evaluees, jamais supprimees, quelle que soit leur position.
 PROTECTED_BRANCHES=(main master HEAD)
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/git-worktrees.sh
+source "$SCRIPT_DIR/lib/git-worktrees.sh"
 
 # Affiche l'en-tete de commentaire de ce fichier (tout ce qui suit le shebang jusqu'a
 # la premiere ligne non commentee).
@@ -52,6 +69,7 @@ while [[ $# -gt 0 ]]; do
         --apply)              APPLY=1; shift ;;
         --no-fetch)           DO_FETCH=0; shift ;;
         --no-sweep-branches)  SWEEP_BRANCHES=0; shift ;;
+        --force-busy)         FORCE_BUSY=1; shift ;;
         --age-minutes)  AGE_MINUTES="${2:?--age-minutes requiert une valeur}"; shift 2 ;;
         --base)         BASE_REF="${2:?--base requiert une valeur}"; shift 2 ;;
         -h|--help)      usage; exit 0 ;;
@@ -107,45 +125,60 @@ fi
 echo "  mode             : $mode_label"
 echo
 
-# --- Detection d'activite recente -------------------------------------------------------
-# Un agent vivant peut avoir un arbre propre entre deux commits : ce garde-fou repere
-# l'activite recente independamment de l'etat Git.
+# --- Garde-fou 5 : ne rien detruire pendant qu'une session parallele travaille ----------
+# Les quatre garde-fous suivants sont LOCAUX a chaque candidat. Aucun ne repond a la question
+# globale « une vague est-elle en cours ? » — et c'est celle-la qui compte avant d'effacer un
+# repertoire de travail : un agent vivant entre deux SF a un arbre propre, un HEAD merge et
+# peut n'avoir rien ecrit depuis 61 minutes. Les quatre garde-fous passent alors au vert.
 #
-# La mtime du repertoire racine du worktree ne suffit pas : elle ne change que lorsqu'une
-# entree est creee ou supprimee *a la racine*. Un agent editant backend/src/... pendant des
-# heures la laisserait intacte. On teste donc trois signaux, du moins cher au plus cher :
-#   1. la mtime de la racine du worktree ;
-#   2. les metadonnees Git du worktree (index, HEAD, logs/HEAD) — rafraichies par a peu pres
-#      toute commande Git executee dedans, y compris `git status` ;
-#   3. un parcours recursif du contenu, elague des repertoires de build (node_modules,
-#      target, dist, .angular, .git) et arrete des le premier fichier recent (-quit).
-is_recently_active() {
-    local wt="$1" minutes="$2"
-    local threshold="-${minutes} minutes"
-
-    # 1. Racine du worktree.
-    if [[ -n "$(find "$wt" -maxdepth 0 -newermt "$threshold" -print 2>/dev/null)" ]]; then
-        return 0
+# Le controle n'est evalue qu'en --apply : le dry-run ne detruit rien, et doit rester
+# consultable meme pendant une vague — c'est le seul moyen de voir ce que la purge ferait.
+# Il est appele avec --no-gh (une PR ouverte des jours ne doit pas geler le housekeeping ;
+# une branche a PR ouverte porte de toute facon des commits non merges, donc `git cherry` la
+# protege deja) et avec LE MEME seuil d'inactivite, sans quoi un worktree pourrait etre
+# ecarte par un outil et detruit par l'autre.
+if [[ "$APPLY" -eq 1 ]]; then
+    preflight="$SCRIPT_DIR/check-parallel-sessions.sh"
+    if [[ ! -f "$preflight" ]]; then
+        # Defense en profondeur ajoutee par-dessus 4 garde-fous et un dry-run par defaut :
+        # rendre la purge inutilisable parce qu'un fichier manque couterait plus qu'il ne protege.
+        echo "AVERTISSEMENT: $preflight introuvable — garde-fou 'session en vol' non evalue." >&2
+    else
+        set +e
+        preflight_out="$(bash "$preflight" --quiet --no-fetch --no-gh --age-minutes "$AGE_MINUTES" 2>&1)"
+        preflight_code=$?
+        set -e
+        case "$preflight_code" in
+            0)
+                echo "-- Controle de vol : CLEAR --"
+                echo
+                ;;
+            1)
+                if [[ "$FORCE_BUSY" -eq 1 ]]; then
+                    echo "-- Controle de vol : BUSY, FORCE par --force-busy --"
+                    echo "  $preflight_out"
+                    echo
+                else
+                    echo "ERREUR: une session parallele travaille dans ce depot. RIEN n'a ete detruit." >&2
+                    echo "  $preflight_out" >&2
+                    echo "  Detail  : bash $preflight" >&2
+                    echo "  Forcer  : --force-busy" >&2
+                    exit 5
+                fi
+                ;;
+            *)
+                echo "AVERTISSEMENT: controle de vol indisponible (sortie $preflight_code) — garde-fou 5 non evalue." >&2
+                ;;
+        esac
     fi
+fi
 
-    # 2. Metadonnees Git propres a ce worktree.
-    local wt_git_dir="$git_common_dir/worktrees/$(basename "$wt")"
-    local meta
-    for meta in index HEAD logs/HEAD ORIG_HEAD; do
-        if [[ -e "$wt_git_dir/$meta" ]] &&
-           [[ -n "$(find "$wt_git_dir/$meta" -maxdepth 0 -newermt "$threshold" -print 2>/dev/null)" ]]; then
-            return 0
-        fi
-    done
-
-    # 3. Contenu du worktree, hors repertoires de build, arret au premier fichier recent.
-    local hit
-    hit="$(find "$wt" \
-             \( -name node_modules -o -name target -o -name dist \
-                -o -name .angular -o -name .git \) -prune -o \
-             -type f -newermt "$threshold" -print -quit 2>/dev/null)"
-    [[ -n "$hit" ]]
-}
+# --- Detection d'activite recente -------------------------------------------------------
+# Fournie par scripts/lib/git-worktrees.sh (gw_is_recently_active), partagee avec
+# check-parallel-sessions.sh depuis SF-SP-02. Elle vivait ici en copie ; cette copie a deja
+# du etre corrigee une fois (SF-REPO-02, 2026-08-26 : la seule mtime de la racine ne bouge
+# pas quand un agent edite un fichier imbrique). En garder deux exemplaires garantissait que
+# le prochain correctif n'en corrige qu'un.
 
 # --- Etape 2 : enumerer les worktrees --------------------------------------------------
 # `git worktree list --porcelain` produit des blocs separes par une ligne vide :
@@ -219,7 +252,7 @@ flush_worktree() {
     fi
 
     # Garde-fou 2 : activite recente -> probablement une session vivante.
-    if [[ "$AGE_MINUTES" -gt 0 ]] && is_recently_active "$wt" "$AGE_MINUTES"; then
+    if [[ "$AGE_MINUTES" -gt 0 ]] && gw_is_recently_active "$wt" "$AGE_MINUTES" "$repo_root" "$git_common_dir"; then
         skip "recently-active (activite il y a moins de ${AGE_MINUTES} min — session probablement vivante)"
         return 0
     fi
