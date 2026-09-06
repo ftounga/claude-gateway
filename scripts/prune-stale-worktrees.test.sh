@@ -47,10 +47,14 @@ git init --quiet "$SANDBOX/repo"
 git -C "$SANDBOX/repo" symbolic-ref HEAD refs/heads/main
 cd "$SANDBOX/repo"
 git remote add origin "$SANDBOX/origin.git"
+# Comme le depot reel (.gitignore, ligne `.claude/worktrees/`) : sans cela le checkout
+# principal est perpetuellement sale, et le garde-fou 5 (SF-SP-02) refuserait toute purge
+# sur du bruit de test plutot que sur une vraie session parallele.
+printf '.claude/worktrees/\n' > .gitignore
 echo one > f.txt
 mkdir -p deep
 echo live > deep/live.txt
-git add f.txt deep/live.txt
+git add .gitignore f.txt deep/live.txt
 git commit --quiet -m "c1"
 git push --quiet -u origin main 2>/dev/null
 mkdir -p .claude/worktrees
@@ -233,6 +237,108 @@ fi
 git rev-parse --verify --quiet refs/heads/wt-stale >/dev/null \
     && check ko "wt-stale aurait du etre supprimee apres le prune" \
     || check ok "wt-stale supprimee (prune execute avant la purge)"
+
+# --- Garde-fou 5 (SF-SP-02) : la purge refuse de detruire pendant qu'une session vole ----
+# Recule dans le temps un worktree entier — contenu, racine et metadonnees Git. Sans les
+# metadonnees, la moindre commande Git executee dedans le ferait repasser pour « actif ».
+backdate_wt() {
+    local wt="$1" stamp meta
+    stamp="$(date -d '3 hours ago' '+%Y%m%d%H%M')"
+    find "$wt" -exec touch -t "$stamp" {} + 2>/dev/null || true
+    touch -t "$stamp" "$wt"
+    for meta in index HEAD logs/HEAD ORIG_HEAD; do
+        [[ -e ".git/worktrees/$(basename "$wt")/$meta" ]] &&
+            touch -t "$stamp" ".git/worktrees/$(basename "$wt")/$meta"
+    done
+    return 0
+}
+backdate_all() {
+    local d
+    for d in .claude/worktrees/*/; do
+        [[ -d "$d" ]] && backdate_wt "${d%/}"
+    done
+    return 0
+}
+
+echo "[13] garde-fou 5 : session parallele en vol"
+# Controle negatif d'abord : depot au repos, la purge doit fonctionner normalement.
+git worktree add --quiet -b wt-victim-a .claude/worktrees/wf_test-6 HEAD
+backdate_all
+if bash "$SCRIPT" --no-fetch --apply >/dev/null 2>&1; then
+    check ok "controle negatif : purge executee quand aucune session ne vole"
+else
+    check ko "la purge a echoue alors qu'aucune session ne vole"
+fi
+[[ ! -d .claude/worktrees/wf_test-6 ]] \
+    && check ok "controle negatif : le worktree residuel a bien ete retire" \
+    || check ko "wf_test-6 aurait du etre retire"
+
+# Puis une session vivante : victime supprimable + worktree actif (fichier imbrique).
+git worktree add --quiet -b wt-victim-b .claude/worktrees/wf_test-8 HEAD
+git worktree add --quiet -b wt-live .claude/worktrees/wf_test-7 HEAD
+backdate_all
+touch .claude/worktrees/wf_test-7/deep/live.txt
+set +e
+bash "$SCRIPT" --no-fetch --apply >/dev/null 2>&1
+code=$?
+set -e
+[[ "$code" -eq 5 ]] && check ok "sortie 5 (session en vol)" || check ko "sortie $code au lieu de 5"
+[[ -d .claude/worktrees/wf_test-8 ]] \
+    && check ok "RIEN n'a ete detruit : la victime est intacte" \
+    || check ko "un worktree a ete detruit malgre le refus"
+
+# Echappatoire : --force-busy fait aboutir la meme purge.
+set +e
+bash "$SCRIPT" --no-fetch --apply --force-busy >/dev/null 2>&1
+code=$?
+set -e
+[[ "$code" -eq 0 ]] && check ok "--force-busy fait aboutir la purge" || check ko "--force-busy => sortie $code"
+[[ ! -d .claude/worktrees/wf_test-8 ]] \
+    && check ok "la victime est retiree sous --force-busy" || check ko "wf_test-8 non retire"
+[[ -d .claude/worktrees/wf_test-7 ]] \
+    && check ok "le worktree actif reste protege par le garde-fou 2" \
+    || check ko "le worktree actif a ete detruit"
+
+# --- Cas 14 : collision de branche = refus egalement, mais le dry-run reste consultable --
+echo "[14] garde-fou 5 : collision de branche"
+git worktree add --quiet -b wt-shared .claude/worktrees/wf_test-9 HEAD
+git worktree add --quiet --force .claude/worktrees/wf_test-10 wt-shared
+backdate_all
+set +e
+bash "$SCRIPT" --no-fetch --apply >/dev/null 2>&1
+code=$?
+set -e
+[[ "$code" -eq 5 ]] && check ok "sortie 5 (branche partagee par 2 worktrees)" \
+    || check ko "sortie $code au lieu de 5"
+set +e
+bash "$SCRIPT" --no-fetch >/dev/null 2>&1
+code=$?
+set -e
+[[ "$code" -eq 0 ]] \
+    && check ok "le dry-run reste consultable pendant une vague" \
+    || check ko "le dry-run a ete bloque (sortie $code)"
+git worktree remove --force .claude/worktrees/wf_test-10
+git worktree remove --force .claude/worktrees/wf_test-9
+
+# --- Cas 15 : controle de vol indisponible => avertissement, pas blocage -----------------
+# Defense en profondeur : l'absence du controle ne doit pas rendre la purge inutilisable.
+echo "[15] controle de vol introuvable"
+mkdir -p "$SANDBOX/nopreflight/lib"
+cp "$SCRIPT" "$SANDBOX/nopreflight/prune-stale-worktrees.sh"
+cp "$SCRIPT_DIR/lib/git-worktrees.sh" "$SANDBOX/nopreflight/lib/git-worktrees.sh"
+git worktree add --quiet -b wt-victim-c .claude/worktrees/wf_test-11 HEAD
+backdate_all
+touch .claude/worktrees/wf_test-7/deep/live.txt
+set +e
+err="$(bash "$SANDBOX/nopreflight/prune-stale-worktrees.sh" --no-fetch --apply 2>&1 >/dev/null)"
+code=$?
+set -e
+[[ "$code" -eq 0 ]] && check ok "purge executee malgre l'absence du controle" \
+    || check ko "sortie $code : l'absence du controle a bloque la purge"
+grep -q 'AVERTISSEMENT' <<<"$err" \
+    && check ok "avertissement emis sur stderr" || check ko "aucun avertissement emis"
+[[ ! -d .claude/worktrees/wf_test-11 ]] \
+    && check ok "le worktree residuel a bien ete retire" || check ko "wf_test-11 non retire"
 
 echo
 if [[ "$failures" -eq 0 ]]; then
