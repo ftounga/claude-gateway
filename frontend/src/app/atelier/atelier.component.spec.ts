@@ -1718,6 +1718,87 @@ describe('AtelierComponent', () => {
     expect(service.interruptAgentSession).not.toHaveBeenCalled();
   });
 
+  // ---- F-39 / SF-39-09 : le runner proposé au bon moment (D6) ----
+
+  it('reprend la recommandation de runner rendue par la gateway (SF-39-09)', () => {
+    setup();
+    service.getEngine.and.returnValue(of({
+      engine: 'HOSTED_SANDBOX' as const, runnerConnected: false, runnerLastSeenAt: null,
+      recommendRunner: true, recommendReason: 'GIT' as const,
+    }));
+
+    component.selectWorkspace(summary);
+
+    // L'écran ne devine jamais qu'un projet « mérite » le runner : il lit ce que la gateway calcule.
+    expect(component.runnerHint()).toBe('GIT');
+  });
+
+  it('ne propose rien quand la gateway ne recommande pas (SF-39-09)', () => {
+    setup();
+
+    component.selectWorkspace(summary);
+
+    expect(component.runnerHint()).toBeNull();
+  });
+
+  it('ne propose rien sur un relevé de moteur manqué (SF-39-09)', () => {
+    setup();
+    service.getEngine.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
+
+    component.selectWorkspace(summary);
+
+    // Ne rien proposer vaut mieux que proposer au hasard.
+    expect(component.runnerHint()).toBeNull();
+  });
+
+  it('une recommandation sans motif ne dit rien : le motif est le message (SF-39-09)', () => {
+    setup();
+    service.getEngine.and.returnValue(of({
+      engine: 'HOSTED_SANDBOX' as const, runnerConnected: false, runnerLastSeenAt: null,
+      recommendRunner: true, recommendReason: null,
+    }));
+
+    component.selectWorkspace(summary);
+
+    expect(component.runnerHint()).toBeNull();
+  });
+
+  it('classée sans suite, la proposition ne revient pas sur ce projet (D-L4-7)', () => {
+    setup();
+    service.getEngine.and.returnValue(of({
+      engine: 'HOSTED_SANDBOX' as const, runnerConnected: false, runnerLastSeenAt: null,
+      recommendRunner: true, recommendReason: 'FILE_LIMIT' as const,
+    }));
+    component.selectWorkspace(summary);
+    expect(component.runnerHint()).toBe('FILE_LIMIT');
+
+    component.dismissRunnerHint();
+    expect(component.runnerHint()).toBeNull();
+
+    // Rouvrir le même projet ne la remonte pas : « plus tard » a été entendu.
+    component.selectWorkspace(summary);
+    expect(component.runnerHint()).toBeNull();
+  });
+
+  it('un autre projet qui rencontre la même limite la remontre (D-L4-7)', () => {
+    setup();
+    service.getEngine.and.returnValue(of({
+      engine: 'HOSTED_SANDBOX' as const, runnerConnected: false, runnerLastSeenAt: null,
+      recommendRunner: true, recommendReason: 'GIT' as const,
+    }));
+    component.selectWorkspace(summary);
+    component.dismissRunnerHint();
+
+    service.getWorkspace.and.returnValue(of(gitDetail));
+    component.selectWorkspace({
+      id: 'w2', name: 'hello', createdAt: '2026-08-25T00:00:00Z',
+      source: 'GIT', gitRepo: 'octocat/hello',
+    });
+
+    // C'est le besoin qui déclenche la bande, pas un compteur de refus.
+    expect(component.runnerHint()).toBe('GIT');
+  });
+
   // ---- F-32 / SF-32-02 : interrompre un run en cours ----
 
   it('demande l\'interruption du run en cours, une seule fois malgré deux clics', () => {

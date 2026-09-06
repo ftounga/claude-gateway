@@ -42,6 +42,8 @@ import {
   AtelierConfirmRequest,
   AtelierConfirmResolved,
   AtelierEngine,
+  AtelierEngineStatus,
+  AtelierRunnerRecommendation,
   AtelierMessage,
   AtelierTerminalBlock,
   AtelierRole,
@@ -166,6 +168,21 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /** Vrai si le tour part sur la boucle maison (outils relayés vers la machine de l'utilisateur). */
   readonly localEngine = computed(() => this.engine() === 'LOCAL_MACHINE');
+
+  /**
+   * Limite du bac à sable qui justifie de proposer le runner **ici et maintenant** (F-39 / SF-39-09,
+   * décision D6), ou `null` s'il n'y a rien à proposer. Calculée par la gateway (SF-39-07) : l'écran
+   * ne devine jamais qu'un projet est « trop gros ».
+   */
+  readonly runnerHint = signal<AtelierRunnerRecommendation | null>(null);
+
+  /**
+   * Projets pour lesquels la proposition a été classée sans suite pendant cette session (D-L4-7).
+   * Volontairement **non persisté** : la bande n'apparaît que sur une limite réellement rencontrée,
+   * et celui qui la referme aujourd'hui aura peut-être changé d'avis demain — parce que le bac à
+   * sable l'aura gêné entre-temps.
+   */
+  private readonly dismissedRunnerHints = new Set<string>();
 
   /** Tour assistant « en cours » du mode « Terminal » (état + transcription + texte partiel). */
   readonly execStreaming = signal<AtelierExecStreamingItem | null>(null);
@@ -626,6 +643,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.runnerStatus.set(null);
     this.resetFilePanel();
     this.engine.set('HOSTED_SANDBOX');
+    this.runnerHint.set(null);
   }
 
   /** Place un workspace fraîchement créé en tête de liste, l'ouvre, et réinitialise l'écran. */
@@ -662,9 +680,39 @@ export class AtelierComponent implements OnInit, OnDestroy {
   private loadEngine(detail: WorkspaceDetail): void {
     this.engine.set(engineFromTarget(detail));
     this.atelier.getEngine(detail.id).subscribe({
-      next: (status) => this.engine.set(status.engine),
-      error: () => this.engine.set(engineFromTarget(detail)),
+      next: (status) => {
+        this.engine.set(status.engine);
+        this.runnerHint.set(this.hintFor(detail.id, status));
+      },
+      error: () => {
+        this.engine.set(engineFromTarget(detail));
+        // Ne rien proposer vaut mieux que proposer au hasard : sans relevé, aucune bande.
+        this.runnerHint.set(null);
+      },
     });
+  }
+
+  /**
+   * Motif à afficher, ou `null`. Un `recommendRunner` sans motif ne dit rien — le motif **est** le
+   * message — et un projet déjà classé sans suite pendant cette session n'est plus sollicité (D-L4-7).
+   */
+  private hintFor(workspaceId: string, status: AtelierEngineStatus): AtelierRunnerRecommendation | null {
+    if (!status.recommendRunner || this.dismissedRunnerHints.has(workspaceId)) {
+      return null;
+    }
+    return status.recommendReason;
+  }
+
+  /**
+   * Classe la proposition sans suite pour ce projet (F-39 / SF-39-09). Le geste est un « plus tard »,
+   * pas un « jamais » : rien n'est enregistré au-delà de la session.
+   */
+  dismissRunnerHint(): void {
+    const id = this.activeWorkspaceId();
+    if (id) {
+      this.dismissedRunnerHints.add(id);
+    }
+    this.runnerHint.set(null);
   }
 
   /**
