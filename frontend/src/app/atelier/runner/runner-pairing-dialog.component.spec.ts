@@ -106,7 +106,9 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     const command = component.runCommand();
 
     expect(command).toContain('java -jar claude-runner.jar');
-    expect(command).toContain(`--gateway ${window.location.origin}`);
+    // Le préfixe d'API n'est pas décoratif : sans lui, la requête d'appairage atteint le serveur
+    // du frontend, qui répond 405 sur un POST vers une route d'application (F-38 / SF-38-06).
+    expect(command).toContain(`--gateway ${window.location.origin}/api`);
     expect(command).toContain('--workspace /home/moi/projet');
     expect(command).toContain('--code AB12CD');
   });
@@ -167,5 +169,14 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     } else {
       delete (navigator as unknown as { clipboard?: unknown }).clipboard;
     }
+  });
+
+  it("préfixe l'URL de la gateway par /api, faute de quoi l'appairage échoue en 405", () => {
+    setup();
+
+    // Le runner compose `{gateway}/runner/pair` : c'est ce préfixe, et lui seul, qui aiguille la
+    // requête vers le backend plutôt que vers le serveur de l'application.
+    expect(component.gatewayUrl).toBe(`${window.location.origin}/api`);
+    expect(component.gatewayUrl.endsWith('/api')).toBeTrue();
   });
 });
