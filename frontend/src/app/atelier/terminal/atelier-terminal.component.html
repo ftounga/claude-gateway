@@ -75,6 +75,9 @@
         [class.active]="askBeforeBash"
         [disabled]="togglingConfirmation"
         [attr.aria-pressed]="askBeforeBash"
+        [matTooltip]="askBeforeBash
+          ? 'Chaque commande demande votre accord. Désactiver : ne plus jamais demander sur ce projet — l\'audit continue de tout consigner.'
+          : 'Ce projet ne demande plus d\'accord avant d\'exécuter. Activer : redemander à chaque commande.'"
         (click)="toggleAskBeforeBash.emit()"
       >
         <mat-icon>{{ askBeforeBash ? 'shield' : 'security' }}</mat-icon>
