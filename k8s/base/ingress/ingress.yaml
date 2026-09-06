@@ -7,8 +7,16 @@ metadata:
     # Uploads : import de projet ZIP Atelier (F-28) jusqu'à ~150 Mo compressé + marge multipart.
     # Doit rester >= Spring multipart max-request-size (APP_UPLOAD_MAX_REQUEST_SIZE) sinon 413 nginx opaque.
     nginx.ingress.kubernetes.io/proxy-body-size: "155m"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    # Flux SSE de l'Atelier (F-39 / SF-39-17) : un tour reste SILENCIEUX entre deux événements —
+    # pendant un `npm install`, pendant que le modèle réfléchit. À 120 s, nginx coupait la connexion
+    # et l'écran se figeait alors que le travail continuait côté serveur.
+    #
+    # La chaîne de délais doit rester cohérente, et dans cet ordre :
+    #   budget de tour (600 s) < flux SSE (900 s) <= ingress (900 s)
+    # C'est la boucle qui doit rendre la main la première, en disant pourquoi. Ces deux valeurs
+    # suivent STREAM_TIMEOUT_MS d'AtelierChatController : les changer ensemble, ou pas du tout.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "900"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "900"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:

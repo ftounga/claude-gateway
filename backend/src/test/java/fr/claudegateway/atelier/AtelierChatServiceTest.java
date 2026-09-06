@@ -635,4 +635,67 @@ class AtelierChatServiceTest {
 
         assertThat(result.reply()).isEqualTo("Voilà.");
     }
+
+    // ------------------------------------------------- SF-39-17 : un tour long ne se perd plus
+
+    @Test
+    void persistsTheTranscriptSoARefreshStillShowsWhatHappened() {
+        stubHappyPath();
+        agentProvider.enqueueToolCall("read_file", "path", "notes.txt");
+        agentProvider.enqueueFinal("Lu.");
+
+        service.chat(userId, workspaceId, "lis notes.txt");
+
+        ArgumentCaptor<AtelierMessage> saved = ArgumentCaptor.forClass(AtelierMessage.class);
+        verify(messageRepository, atLeastOnce()).save(saved.capture());
+        String json = saved.getAllValues().stream()
+                .map(AtelierMessage::getTerminalJson)
+                .filter(java.util.Objects::nonNull)
+                .findFirst().orElse("");
+        // C'est ce que l'écran relit après un rechargement : sans lui, une coupure de connexion
+        // effaçait tout ce qui s'était passé.
+        assertThat(json).contains("read_file").contains("blocks");
+    }
+
+    @Test
+    void keepsTheEndOfALongOutputBecauseThatIsWhereTheErrorIs() {
+        String head = "a".repeat(6_000);
+        AtelierTurnReport.Block block = new AtelierTurnReport.Block("bash", "mvn test", "t1", null,
+                head + "BUILD FAILURE", true, true, false);
+
+        AtelierTurnReport report = new AtelierTurnReport(10, 10, 1, false, false, AtelierPlan.EMPTY,
+                List.of(block));
+
+        // La fin est conservée : code de sortie, message d'erreur, dernière ligne de pile.
+        assertThat(report.toJson()).contains("BUILD FAILURE").contains("début tronqué");
+    }
+
+    @Test
+    void countsTheBlocksItHadToDrop() {
+        List<AtelierTurnReport.Block> many = new ArrayList<>();
+        for (int i = 0; i < 250; i++) {
+            many.add(new AtelierTurnReport.Block("bash", "cmd " + i, "t" + i, null, "ok", true, false, false));
+        }
+
+        AtelierTurnReport report = new AtelierTurnReport(10, 10, 1, false, false, AtelierPlan.EMPTY, many);
+
+        assertThat(report.blocks()).hasSize(AtelierTurnReport.MAX_BLOCKS);
+        assertThat(report.omittedBlocks()).isEqualTo(50);
+        // Les DERNIERS blocs : quand un tour a été coupé, c'est la fin qui explique pourquoi.
+        assertThat(report.toJson()).contains("cmd 249").doesNotContain("cmd 0\"");
+    }
+
+    @Test
+    void anInterruptedTurnKeepsItsPartialTranscript() {
+        stubHappyPath();
+        agentProvider.enqueueToolCall("read_file", "path", "a.txt");
+        agentProvider.enqueueFinal("Fini.");
+
+        service.chat(userId, workspaceId, "lis");
+
+        ArgumentCaptor<AtelierMessage> saved = ArgumentCaptor.forClass(AtelierMessage.class);
+        verify(messageRepository, atLeastOnce()).save(saved.capture());
+        assertThat(saved.getAllValues()).anySatisfy(m ->
+                assertThat(m.getTerminalJson()).isNotNull());
+    }
 }
