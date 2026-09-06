@@ -4,6 +4,7 @@ import { provideHttpClient } from '@angular/common/http';
 
 import { BillingService } from './billing.service';
 import {
+  AtelierOptionView,
   CheckoutResponse,
   PlansResponse,
   SubscriptionView,
@@ -90,5 +91,54 @@ describe('BillingService', () => {
     expect(req.request.body).toEqual({ packCode: 'STANDARD' });
     req.flush(response);
     expect(received).toEqual(response);
+  });
+
+  // ------------------------------------------------ Option Atelier (F-40 / SF-40-03)
+
+  it('GETs the Atelier option state from /api/billing/atelier-option', () => {
+    const option: AtelierOptionView = {
+      priceEur: '40',
+      entitled: false,
+      includedInPlan: false,
+      status: null,
+      cancelAt: null,
+      available: true,
+    };
+    let received: AtelierOptionView | undefined;
+    service.getAtelierOption().subscribe((r) => (received = r));
+
+    const req = httpMock.expectOne('/api/billing/atelier-option');
+    expect(req.request.method).toBe('GET');
+    req.flush(option);
+    expect(received).toEqual(option);
+  });
+
+  it('POSTs the Atelier option checkout to /api/billing/atelier-option/checkout', () => {
+    const response: CheckoutResponse = { checkoutUrl: 'https://checkout.stripe.com/option' };
+    let received: CheckoutResponse | undefined;
+    service.startAtelierOptionCheckout().subscribe((r) => (received = r));
+
+    const req = httpMock.expectOne('/api/billing/atelier-option/checkout');
+    expect(req.request.method).toBe('POST');
+    req.flush(response);
+    expect(received).toEqual(response);
+  });
+
+  it('POSTs the Atelier option cancellation to /api/billing/atelier-option/cancel', () => {
+    const option: AtelierOptionView = {
+      priceEur: '40',
+      entitled: true,
+      includedInPlan: false,
+      status: 'ACTIVE',
+      cancelAt: '2026-10-03T00:00:00Z',
+      available: true,
+    };
+    let received: AtelierOptionView | undefined;
+    service.cancelAtelierOption().subscribe((r) => (received = r));
+
+    const req = httpMock.expectOne('/api/billing/atelier-option/cancel');
+    expect(req.request.method).toBe('POST');
+    req.flush(option);
+    expect(received).toEqual(option);
   });
 });

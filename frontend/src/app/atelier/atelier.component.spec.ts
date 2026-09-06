@@ -205,6 +205,14 @@ describe('AtelierComponent', () => {
     expect(snackBar.open).not.toHaveBeenCalled();
     // Le statut de clé n'est pas interrogé quand l'accès est refusé.
     expect(apiKeyService.getStatus).not.toHaveBeenCalled();
+
+    // F-40 : le droit n'est plus un plan. L'écran de refus est le point exact où la falaise ×8 se
+    // rencontrait — il doit proposer les DEUX chemins, l'option d'abord, et ne plus dire « réservé ».
+    const text: string = fixture.nativeElement.textContent;
+    expect(text).not.toContain("réservé à l'offre Gold");
+    expect(text).toContain("Ajouter l'option Atelier");
+    expect(text).toContain("Voir l'offre Gold");
+    expect(text).toContain('quota de tokens');
   });
 
   it('charge le mode d\'exécution après un accès accordé et détecte BYOK', () => {

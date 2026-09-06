@@ -118,6 +118,94 @@
     }
   </section>
 
+  <!-- ===== Option Atelier (F-40) : le droit d'Atelier, découplé du plan ===== -->
+  @if (atelierOption(); as option) {
+    <section class="billing__section" aria-label="Option Atelier">
+      <div class="billing__section-head">
+        <h2>Option Atelier</h2>
+        <p>
+          L'Atelier — un espace où Claude lit, écrit et exécute sur votre projet — sans passer à
+          l'offre Gold.
+        </p>
+      </div>
+
+      <article class="billing__card billing__card--option">
+        <div class="billing__option-main">
+          <div class="billing__card-flags">
+            @if (option.includedInPlan) {
+              <span class="billing__flag billing__flag--current">Incluse dans votre offre</span>
+            } @else if (atelierOptionEnding()) {
+              <span class="billing__flag billing__flag--current">Se termine bientôt</span>
+            } @else if (atelierOptionActive()) {
+              <span class="billing__flag billing__flag--reco">Active</span>
+            }
+          </div>
+
+          <h3 class="billing__card-name">Atelier</h3>
+
+          @if (option.includedInPlan) {
+            <p class="billing__card-tokens">
+              Votre offre comprend déjà l'Atelier : l'option n'a pas lieu d'être.
+            </p>
+          } @else {
+            <p class="billing__card-price">
+              <span class="amount">{{ option.priceEur }} €</span><span class="per">/ mois</span>
+            </p>
+            <p class="billing__card-tokens">
+              S'ajoute à votre offre Solo ou Pro. <strong>Votre quota de tokens ne change pas</strong> :
+              l'option ouvre l'accès, elle n'ajoute pas de tokens.
+            </p>
+            @if (atelierOptionEnding() && option.cancelAt) {
+              <p class="billing__card-tokens">
+                Résiliation programmée : votre accès reste ouvert jusqu'au
+                {{ option.cancelAt | date: 'longDate' }}.
+              </p>
+            }
+          }
+        </div>
+
+        <div class="billing__option-action">
+          @if (option.includedInPlan) {
+            <button mat-stroked-button type="button" class="billing__card-cta is-outline" [disabled]="true">
+              Déjà incluse
+            </button>
+          } @else if (atelierOptionEnding()) {
+            <button mat-stroked-button type="button" class="billing__card-cta is-outline" [disabled]="true">
+              Résiliation programmée
+            </button>
+          } @else if (atelierOptionActive()) {
+            <button
+              mat-stroked-button
+              type="button"
+              class="billing__card-cta is-outline"
+              [disabled]="atelierOptionInProgress()"
+              (click)="cancelAtelierOption()"
+            >
+              @if (atelierOptionInProgress()) { Traitement… } @else { Résilier l'option }
+            </button>
+          } @else {
+            <button
+              mat-flat-button
+              color="primary"
+              type="button"
+              class="billing__card-cta"
+              [disabled]="!option.available || atelierOptionInProgress()"
+              (click)="subscribeAtelierOption()"
+            >
+              @if (atelierOptionInProgress()) {
+                Redirection…
+              } @else if (!option.available) {
+                Bientôt disponible
+              } @else {
+                Ajouter l'option
+              }
+            </button>
+          }
+        </div>
+      </article>
+    </section>
+  }
+
   <!-- ===== Recharges ponctuelles (toujours visibles) ===== -->
   @if (topUpPacks().length > 0) {
     <section class="billing__section" aria-label="Recharges ponctuelles">
