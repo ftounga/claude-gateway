@@ -456,6 +456,16 @@ export class AtelierService {
   }
 
   /**
+   * Dépose une **précision** pour le tour en cours (F-39 / SF-39-19).
+   *
+   * <p>Ce n'est pas une interruption : rien ne s'arrête. L'agent la lira au début de son itération
+   * suivante et en tiendra compte pour la suite.</p>
+   */
+  steerChat(id: string, message: string): Observable<void> {
+    return this.http.post<void>(`/api/workspaces/${id}/chat/steer`, { message });
+  }
+
+  /**
    * Répond à une demande d'autorisation du mode **Assistant** (F-38 / SF-38-08) : autorise la
    * commande sur la machine connectée, ou la refuse avec un motif que le modèle recevra. Sans
    * réponse dans le délai imparti, le backend refuse — le silence ne vaut pas autorisation.

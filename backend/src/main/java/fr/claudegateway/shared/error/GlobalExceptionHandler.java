@@ -421,6 +421,16 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("execution_target_runner", ex.getMessage()));
     }
 
+    @ExceptionHandler(fr.claudegateway.atelier.TooManySteersException.class)
+    public ResponseEntity<ErrorResponse> handleTooManySteers(
+            fr.claudegateway.atelier.TooManySteersException ex) {
+        // Trop de precisions deposees pour un meme tour (F-39 / SF-39-19) : un conflit avec l'etat
+        // du tour, pas une panne. Au-dela de quelques-unes, c'est un nouveau tour qu'il faut.
+        log.debug("Depot de precision refuse : file pleine pour ce tour");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("too_many_steers", ex.getMessage()));
+    }
+
     @ExceptionHandler(fr.claudegateway.atelier.StorageExecutionClosedException.class)
     public ResponseEntity<ErrorResponse> handleStorageExecutionClosed(
             fr.claudegateway.atelier.StorageExecutionClosedException ex) {

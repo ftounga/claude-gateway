@@ -64,6 +64,22 @@ public class AtelierRelayController {
                 "cancelled", outcome.cancelled()));
     }
 
+    /**
+     * Dépose une précision sur ce pod (F-39 / SF-39-19). <b>Toujours 200</b>, comme la confirmation :
+     * « ce n'est pas moi qui exécutais » est le cas de tous les pods sauf un, et ce n'est pas une
+     * erreur.
+     */
+    @PostMapping(value = "/steer", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> steer(
+            @RequestBody(required = false) RelayGestureRequests.SteerRequest request) {
+        if (request == null || !request.isValid()) {
+            return ResponseEntity.badRequest().build();
+        }
+        interruptTarget.steerLocally(request.userId(), request.workspaceId(), request.message());
+        log.debug("Précision relayée déposée (workspace={})", request.workspaceId());
+        return ResponseEntity.ok(Map.of("accepted", true));
+    }
+
     /** Pose ou retire la marque d'interruption d'une session Managed Agent (F-32). */
     @PostMapping(value = "/session-interrupt", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> sessionInterrupt(

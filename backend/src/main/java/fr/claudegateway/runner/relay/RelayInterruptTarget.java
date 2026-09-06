@@ -24,6 +24,12 @@ public interface RelayInterruptTarget {
     RelayInterruptOutcome interruptLocally(UUID userId, UUID workspaceId, String reason);
 
     /**
+     * Dépose une précision sur <b>ce</b> pod (F-39 / SF-39-19). Même raison d'être que
+     * {@link #interruptLocally} : la boucle tourne peut-être ailleurs que là où le geste atterrit.
+     */
+    void steerLocally(UUID userId, UUID workspaceId, String message);
+
+    /**
      * Effet mesurable d'une interruption sur un pod : rien du tout sur ceux qui ne faisaient rien,
      * ce qui est le cas courant d'une diffusion.
      */

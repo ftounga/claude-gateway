@@ -198,6 +198,26 @@ public class AtelierChatService implements RelayInterruptTarget {
     private final java.util.Set<String> blanketAllowedTurns =
             java.util.concurrent.ConcurrentHashMap.newKeySet();
 
+    /**
+     * Précisions déposées <b>pendant</b> un tour, en attente d'être lues (F-39 / SF-39-19).
+     *
+     * <p>Ce n'est pas une interruption : on n'arrête rien, on ajoute au contexte. La boucle les
+     * consomme au début de l'itération suivante, à la même frontière sûre où elle regarde déjà
+     * l'interruption et le budget.</p>
+     *
+     * <p>Clefé {@code userId:workspaceId} et vidé à l'ouverture de chaque tour — même parade que
+     * pour le plan (SF-39-13) et la marque d'interruption : ce service est un singleton partagé par
+     * tous les utilisateurs.</p>
+     */
+    private final java.util.Map<String, java.util.List<String>> pendingSteers =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Précisions en attente au plus : au-delà, c'est un nouveau tour qu'il faut, pas des rustines. */
+    static final int MAX_PENDING_STEERS = 5;
+
+    /** Longueur d'une précision : c'est une précision, pas une nouvelle consigne. */
+    static final int MAX_STEER_CHARS = 4_000;
+
     public AtelierChatService(WorkspaceService workspaceService, AtelierMessageRepository messageRepository,
             AiAgentProvider agentProvider, ByokKeyService byokKeyService, QuotaService quotaService,
             fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService,
@@ -301,6 +321,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         interruptedTurns.remove(turnKey(userId, workspaceId));
         // La marque « tout autoriser » ne survit jamais au message qui l'a reçue (SF-38-20).
         blanketAllowedTurns.remove(turnKey(userId, workspaceId));
+        // Les précisions non lues meurent avec le tour (SF-39-19, D3) : les rejouer ferait resurgir
+        // une remarque devenue sans objet, dans un contexte qui a changé.
+        pendingSteers.remove(turnKey(userId, workspaceId));
         long startedAt = System.currentTimeMillis();
         long deadline = startedAt + TURN_BUDGET_MS;
         String userText = rawMessage.trim();
@@ -357,6 +380,12 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // derrière un flux SSE déjà expiré.
                 finalText = BUDGET_REACHED_REPLY;
                 break;
+            }
+            // Précisions déposées pendant le tour (F-39 / SF-39-19) : lues ICI, à la frontière sûre,
+            // et jamais au milieu d'un appel — modifier la conversation pendant qu'elle part au
+            // fournisseur serait la façon la plus sûre de la corrompre (D2).
+            for (String steer : consumeSteers(userId, workspaceId)) {
+                messages.add(AgentMessage.userText(steer));
             }
             // Plafond de consommation du message (F-39 / SF-39-15). On renonce AVANT l'appel qui
             // ferait franchir le plafond, l'itération à venir étant majorée par la plus grosse déjà
@@ -750,6 +779,57 @@ public class AtelierChatService implements RelayInterruptTarget {
 
     /** Issue d'une délégation : le résultat rendu au modèle, et ce qu'elle a consommé. */
     private record ExplorationOutcome(ToolOutcome outcome, int inputTokens, int outputTokens) {
+    }
+
+    /**
+     * Dépose une précision pour le tour en cours (F-39 / SF-39-19). Elle sera lue au début de
+     * l'itération suivante — l'agent la voit donc à l'étape d'après, sans que rien s'arrête.
+     *
+     * <p>Isolation d'abord : un projet qu'on ne possède pas rend 404, jamais un refus qui
+     * révélerait son existence.</p>
+     *
+     * @throws WorkspaceNotFoundException si le workspace n'est pas possédé
+     * @throws InvalidFilePathException si le message est vide ou trop long
+     * @throws TooManySteersException si trop de précisions attendent déjà
+     */
+    public void steer(UUID userId, UUID workspaceId, String rawMessage) {
+        workspaceService.requireOwned(userId, workspaceId);
+        String message = rawMessage == null ? "" : rawMessage.trim();
+        if (message.isEmpty()) {
+            throw new InvalidFilePathException("Message requis.");
+        }
+        if (message.length() > MAX_STEER_CHARS) {
+            throw new InvalidFilePathException(
+                    "Message trop long (" + MAX_STEER_CHARS + " caractères au maximum).");
+        }
+        java.util.List<String> queue = pendingSteers.computeIfAbsent(turnKey(userId, workspaceId),
+                key -> java.util.Collections.synchronizedList(new ArrayList<>()));
+        synchronized (queue) {
+            if (queue.size() >= MAX_PENDING_STEERS) {
+                throw new TooManySteersException(
+                        "Trop de précisions en attente pour ce message ; laissez-le avancer.");
+            }
+            queue.add(message);
+        }
+        // La boucle tourne peut-être sur un autre pod que celui qui reçoit ce dépôt (SF-38-13).
+        relayBroadcaster.broadcastSteer(userId, workspaceId, message);
+    }
+
+    /** Dépose une précision <b>sur ce pod</b> — appelé par le relais interne. */
+    public void steerLocally(UUID userId, UUID workspaceId, String message) {
+        java.util.List<String> queue = pendingSteers.computeIfAbsent(turnKey(userId, workspaceId),
+                key -> java.util.Collections.synchronizedList(new ArrayList<>()));
+        synchronized (queue) {
+            if (queue.size() < MAX_PENDING_STEERS) {
+                queue.add(message);
+            }
+        }
+    }
+
+    /** Précisions en attente, retirées du registre : elles ne sont ajoutées qu'une fois. */
+    private java.util.List<String> consumeSteers(UUID userId, UUID workspaceId) {
+        java.util.List<String> queue = pendingSteers.remove(turnKey(userId, workspaceId));
+        return queue == null ? java.util.List.of() : java.util.List.copyOf(queue);
     }
 
     /** Identifiant d'appel normalisé, tel que la porte l'attend. */

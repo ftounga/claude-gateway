@@ -988,7 +988,13 @@ export class AtelierComponent implements OnInit, OnDestroy {
   send(): void {
     const id = this.activeWorkspaceId();
     const content = this.draft().trim();
-    if (!id || this.submitting() || content.length === 0) {
+    if (!id || content.length === 0) {
+      return;
+    }
+    // Un tour travaille déjà : ce message est une PRÉCISION, pas un second tour (F-39 / SF-39-19).
+    // L'agent la lira au début de son itération suivante ; rien ne s'arrête.
+    if (this.submitting()) {
+      this.steer(id, content);
       return;
     }
     const userItem: AtelierThreadItem = {
@@ -1815,6 +1821,30 @@ export class AtelierComponent implements OnInit, OnDestroy {
     // Même panneau que l'explorateur (F-39 / SF-39-18) : ouvrir le fichier d'instructions ne doit
     // pas non plus détruire le terminal.
     this.openFileExplorer(path);
+  }
+
+  /**
+   * Dépose une précision pour le tour en cours (F-39 / SF-39-19) et l'affiche aussitôt dans le fil,
+   * à sa place chronologique — l'utilisateur doit voir ce qu'il vient de dire, même si l'agent ne
+   * le lira qu'à l'étape suivante.
+   */
+  private steer(id: string, content: string): void {
+    this.draft.set('');
+    this.messages.update((items: AtelierThreadItem[]) => [
+      ...items,
+      {
+        id: `local-steer-${Date.now()}`,
+        role: 'USER' as const,
+        content,
+        actions: [],
+      } as AtelierThreadItem,
+    ]);
+    this.atelier.steerChat(id, content).subscribe({
+      error: (err: unknown) =>
+        this.notifyError(
+          httpErrorMessage(err, "La précision n'a pas pu être transmise. Réessayez."),
+        ),
+    });
   }
 
   /** Charge le contenu d'un fichier dans l'aperçu éditable. */

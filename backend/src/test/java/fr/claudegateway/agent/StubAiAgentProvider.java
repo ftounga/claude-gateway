@@ -24,6 +24,7 @@ public class StubAiAgentProvider implements AiAgentProvider {
     public void reset() {
         script.clear();
         lastRequest = null;
+        duringTurn = null;
         toolNamesSeen.clear();
         idSeq = 0;
     }
@@ -118,9 +119,24 @@ public class StubAiAgentProvider implements AiAgentProvider {
         return script.size();
     }
 
+    /**
+     * Action jouée <b>une seule fois</b>, au premier appel du fournisseur : c'est le moyen de
+     * simuler ce qui arrive PENDANT un tour — un dépôt de précision, un clic — plutôt qu'avant.
+     */
+    public void onTurn(Runnable action) {
+        this.duringTurn = action;
+    }
+
+    private volatile Runnable duringTurn;
+
     @Override
     public AgentTurn nextTurn(AgentTurnRequest request) {
         this.lastRequest = request;
+        Runnable action = duringTurn;
+        if (action != null) {
+            duringTurn = null;
+            action.run();
+        }
         if (request.tools() != null) {
             request.tools().forEach(tool -> toolNamesSeen.add(tool.name()));
         }

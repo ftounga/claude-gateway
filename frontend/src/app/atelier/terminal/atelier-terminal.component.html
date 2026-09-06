@@ -545,13 +545,13 @@
       class="terminal-field"
       name="draft"
       autocomplete="off"
-      placeholder="Décrivez la tâche à exécuter…"
+      [placeholder]="submitting ? 'Précisez pendant qu\'il travaille…' : 'Décrivez la tâche à exécuter…'"
       aria-label="Demande à exécuter"
-      [disabled]="submitting"
+      [disabled]="publishing"
       [ngModel]="draft"
       (ngModelChange)="draftChange.emit($event)"
     />
-    <button mat-button type="submit" [disabled]="submitting || draft.trim().length === 0">
+    <button mat-button type="submit" [disabled]="draft.trim().length === 0">
       Envoyer
     </button>
   </form>
