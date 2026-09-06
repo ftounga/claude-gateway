@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import {
+  AtelierOptionView,
   ChangePlanRequest,
   CheckoutRequest,
   CheckoutResponse,
@@ -52,5 +53,20 @@ export class BillingService {
   startTopUpCheckout(packCode: string): Observable<CheckoutResponse> {
     const body: TopUpCheckoutRequest = { packCode };
     return this.http.post<CheckoutResponse>('/api/billing/topup/checkout', body);
+  }
+
+  /** État de l'option Atelier (F-40) : prix, droit effectif, statut, résiliation programmée. */
+  getAtelierOption(): Observable<AtelierOptionView> {
+    return this.http.get<AtelierOptionView>('/api/billing/atelier-option');
+  }
+
+  /** Souscrit l'option Atelier : renvoie l'URL de paiement de l'abonnement supplémentaire. */
+  startAtelierOptionCheckout(): Observable<CheckoutResponse> {
+    return this.http.post<CheckoutResponse>('/api/billing/atelier-option/checkout', {});
+  }
+
+  /** Résilie l'option Atelier en fin de période : l'accès reste ouvert jusqu'au terme payé. */
+  cancelAtelierOption(): Observable<AtelierOptionView> {
+    return this.http.post<AtelierOptionView>('/api/billing/atelier-option/cancel', {});
   }
 }

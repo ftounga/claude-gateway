@@ -2,12 +2,14 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { HttpErrorResponse } from '@angular/common/http';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { of, throwError } from 'rxjs';
 
 import { BillingComponent } from './billing.component';
 import { BillingService } from '../core/services/billing.service';
 import { UsageService } from '../core/services/usage.service';
 import {
+  AtelierOptionView,
   PlansResponse,
   SubscriptionView,
   TopUpPacksResponse,
@@ -42,8 +44,21 @@ describe('BillingComponent', () => {
   const topUps: TopUpPacksResponse = {
     packs: [{ code: 'STANDARD', label: 'Recharge 1 M tokens', tokens: 1000000 }],
   };
+  /** Option Atelier (F-40) : Solo sans option, paiement configuré. */
+  const optionAvailable: AtelierOptionView = {
+    priceEur: '40',
+    entitled: false,
+    includedInPlan: false,
+    status: null,
+    cancelAt: null,
+    available: true,
+  };
 
-  function setup(queryCheckout: string | null = null, usageFails = false): void {
+  function setup(
+    queryCheckout: string | null = null,
+    usageFails = false,
+    option: AtelierOptionView | null = optionAvailable,
+  ): void {
     billingService = jasmine.createSpyObj<BillingService>('BillingService', [
       'getSubscription',
       'getPlans',
@@ -51,10 +66,18 @@ describe('BillingComponent', () => {
       'getTopUps',
       'startTopUpCheckout',
       'changePlan',
+      'getAtelierOption',
+      'startAtelierOptionCheckout',
+      'cancelAtelierOption',
     ]);
     billingService.getSubscription.and.returnValue(of(subscription));
     billingService.getPlans.and.returnValue(of(plans));
     billingService.getTopUps.and.returnValue(of(topUps));
+    billingService.getAtelierOption.and.returnValue(
+      option
+        ? of(option)
+        : throwError(() => new HttpErrorResponse({ status: 500 })),
+    );
 
     usageService = jasmine.createSpyObj<UsageService>('UsageService', ['getUsage']);
     usageService.getUsage.and.returnValue(
@@ -207,10 +230,14 @@ describe('BillingComponent', () => {
       'getTopUps',
       'startTopUpCheckout',
       'changePlan',
+      'getAtelierOption',
+      'startAtelierOptionCheckout',
+      'cancelAtelierOption',
     ]);
     billingService.getSubscription.and.returnValue(of(subscription));
     billingService.getPlans.and.returnValue(of(plans));
     billingService.getTopUps.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+    billingService.getAtelierOption.and.returnValue(of(optionAvailable));
 
     usageService = jasmine.createSpyObj<UsageService>('UsageService', ['getUsage']);
     usageService.getUsage.and.returnValue(of(usage));
@@ -308,5 +335,139 @@ describe('BillingComponent', () => {
     component.changePlan('SOLO');
 
     expect(component.changeInProgress()).toBeNull();
+  });
+
+  // ------------------------------------------------ Option Atelier (F-40 / SF-40-03)
+
+  /** Rejoue le chargement de l'option avec un état donné, puis rend. */
+  function withOption(option: AtelierOptionView): void {
+    component.atelierOption.set(option);
+    fixture.detectChanges();
+  }
+
+  it('shows the option price returned by the API, never a hard-coded one', () => {
+    setup();
+    expect(fixture.nativeElement.textContent).toContain('40 €');
+
+    withOption({ ...optionAvailable, priceEur: '59' });
+
+    expect(fixture.nativeElement.textContent).toContain('59 €');
+    expect(fixture.nativeElement.textContent).not.toContain('40 €');
+  });
+
+  it('says the option does not change the token quota', () => {
+    setup();
+    expect(fixture.nativeElement.textContent).toContain('quota de tokens ne change pas');
+  });
+
+  it('offers no purchase to a plan that already includes the Atelier', () => {
+    setup();
+    withOption({ ...optionAvailable, entitled: true, includedInPlan: true });
+
+    expect(fixture.nativeElement.textContent).toContain('Incluse dans votre offre');
+    expect(fixture.nativeElement.textContent).not.toContain("Ajouter l'option");
+    expect(component.canSubscribeAtelierOption()).toBeFalse();
+  });
+
+  it('starts the option checkout and redirects to the payment URL', () => {
+    setup();
+    billingService.startAtelierOptionCheckout.and.returnValue(
+      of({ checkoutUrl: 'https://checkout.stripe/option' }),
+    );
+
+    component.subscribeAtelierOption();
+
+    expect(billingService.startAtelierOptionCheckout).toHaveBeenCalled();
+    expect(
+      (component as unknown as { redirect: (u: string) => void }).redirect,
+    ).toHaveBeenCalledWith('https://checkout.stripe/option');
+  });
+
+  it('tells a trial user to subscribe a plan first and refreshes the state', () => {
+    setup();
+    billingService.startAtelierOptionCheckout.and.returnValue(
+      throwError(
+        () => new HttpErrorResponse({ status: 409, error: { error: 'no_active_subscription' } }),
+      ),
+    );
+
+    component.subscribeAtelierOption();
+
+    expect(component.atelierOptionInProgress()).toBeFalse();
+    // Deux appels : celui de l'init, puis la relecture après refus.
+    expect(billingService.getAtelierOption).toHaveBeenCalledTimes(2);
+    expect(
+      (component as unknown as { redirect: (u: string) => void }).redirect,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('disables the button when payment is not configured', () => {
+    setup();
+    withOption({ ...optionAvailable, available: false });
+
+    expect(component.canSubscribeAtelierOption()).toBeFalse();
+    expect(fixture.nativeElement.textContent).toContain('Bientôt disponible');
+  });
+
+  it('hides the section when the option state cannot be loaded', () => {
+    setup(null, false, null);
+
+    expect(component.atelierOption()).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Option Atelier');
+    // L'écran reste utilisable : les offres sont bien là.
+    expect(component.plans().length).toBe(2);
+  });
+
+  it('asks for confirmation before cancelling, and calls nothing when refused', () => {
+    setup();
+    withOption({ ...optionAvailable, entitled: true, status: 'ACTIVE' });
+    const dialog = TestBed.inject(MatDialog);
+    spyOn(dialog, 'open').and.returnValue({ afterClosed: () => of(false) } as MatDialogRef<unknown>);
+
+    component.cancelAtelierOption();
+
+    expect(dialog.open).toHaveBeenCalled();
+    expect(billingService.cancelAtelierOption).not.toHaveBeenCalled();
+  });
+
+  it('cancels the option once confirmed and shows the scheduled end', () => {
+    setup();
+    withOption({ ...optionAvailable, entitled: true, status: 'ACTIVE' });
+    const dialog = TestBed.inject(MatDialog);
+    spyOn(dialog, 'open').and.returnValue({ afterClosed: () => of(true) } as MatDialogRef<unknown>);
+    billingService.cancelAtelierOption.and.returnValue(
+      of({
+        ...optionAvailable,
+        entitled: true,
+        status: 'ACTIVE',
+        cancelAt: '2026-10-03T00:00:00Z',
+      }),
+    );
+
+    component.cancelAtelierOption();
+    fixture.detectChanges();
+
+    expect(billingService.cancelAtelierOption).toHaveBeenCalled();
+    expect(component.atelierOptionEnding()).toBeTrue();
+    expect(component.atelierOptionInProgress()).toBeFalse();
+    expect(fixture.nativeElement.textContent).toContain('Résiliation programmée');
+    expect(fixture.nativeElement.textContent).not.toContain("Résilier l'option");
+  });
+
+  it('surfaces a readable message for each option refusal', () => {
+    setup();
+    const message = (code: string) =>
+      (
+        component as unknown as {
+          atelierOptionErrorMessage: (e: HttpErrorResponse) => string;
+        }
+      ).atelierOptionErrorMessage(new HttpErrorResponse({ status: 409, error: { error: code } }));
+
+    expect(message('no_active_subscription')).toContain('Solo ou Pro');
+    expect(message('atelier_option_included')).toContain('déjà inclus');
+    expect(message('atelier_option_already_active')).toContain('déjà active');
+    expect(message('atelier_option_not_active')).toContain('à résilier');
+    expect(message('billing_unavailable')).toContain('indisponible');
+    expect(message('unexpected_code')).toContain("l'option Atelier");
   });
 });

@@ -124,6 +124,13 @@ a.active {
   max-width: 460px;
 }
 
+.atelier-upsell-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--cg-space-3);
+}
+
 // ---- Indicateur de mode d'exécution (BYOK / Hosted) ----
 .mode-bar {
   display: flex;

@@ -99,6 +99,15 @@
 
   &__card--pack { padding-bottom: var(--cg-space-4); }
 
+  // ---- Option Atelier (F-40) : la carte existante, posée en large plutôt qu'en colonne ----
+  &__card--option {
+    flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap;
+    gap: var(--cg-space-4);
+    &:hover { transform: none; }
+  }
+  &__option-main { min-width: 260px; flex: 1; }
+  &__option-action { min-width: 200px; }
+
   &__feedback {
     display: flex; align-items: center; gap: var(--cg-space-2);
     color: var(--cg-text-secondary); padding: var(--cg-space-4) 0;
@@ -108,4 +117,6 @@
 @media (max-width: 640px) {
   .billing__current { flex-direction: column; }
   .billing__gauge { max-width: none; }
+  .billing__card--option { flex-direction: column; align-items: stretch; }
+  .billing__option-action { min-width: 0; }
 }
