@@ -6,6 +6,10 @@
 # .claude/worktrees/, puis supprime les branches locales devenues orphelines et lance
 # un `git worktree prune` final.
 #
+# Une branche locale est ORPHELINE quand elle n'est plus checked out dans aucun worktree
+# conserve et que `git cherry origin/main <branche>` ne produit aucun commit '+' : tout son
+# contenu est deja dans la base (squash-merge compris), sa suppression ne perd rien.
+#
 # A executer AVANT de lancer une vague de livraison autonome, depuis le checkout principal.
 #
 # Securite : l'operation est destructive (git worktree remove efface le repertoire de
@@ -17,8 +21,11 @@
 #   scripts/prune-stale-worktrees.sh --apply         # execute reellement
 #   scripts/prune-stale-worktrees.sh --age-minutes 0 # desactive le garde-fou d'inactivite
 #   scripts/prune-stale-worktrees.sh --no-fetch      # ne pas contacter origin
+#   scripts/prune-stale-worktrees.sh --no-sweep-branches # n'examiner que les branches
+#                                                    # liberees par un retrait de worktree
 #
 # Mini-spec : docs/features/REPO/SF-REPO-02-purge-worktrees-residuels.md
+#             docs/features/worktrees-orphelins/SF-WO-01-balayage-branches-orphelines.md
 
 set -euo pipefail
 
@@ -28,6 +35,11 @@ AGE_MINUTES=60
 BASE_REF="origin/main"
 # Seuls les worktrees sous ce prefixe (relatif a la racine du depot) sont candidats.
 WORKTREE_PREFIX=".claude/worktrees/"
+# Balayage global des branches locales (SF-WO-01). A 0, on retombe sur le comportement
+# de SF-REPO-02 : seules les branches liberees par un retrait de worktree sont examinees.
+SWEEP_BRANCHES=1
+# Branches jamais evaluees, jamais supprimees, quelle que soit leur position.
+PROTECTED_BRANCHES=(main master HEAD)
 
 # Affiche l'en-tete de commentaire de ce fichier (tout ce qui suit le shebang jusqu'a
 # la premiere ligne non commentee).
@@ -37,8 +49,9 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --apply)        APPLY=1; shift ;;
-        --no-fetch)     DO_FETCH=0; shift ;;
+        --apply)              APPLY=1; shift ;;
+        --no-fetch)           DO_FETCH=0; shift ;;
+        --no-sweep-branches)  SWEEP_BRANCHES=0; shift ;;
         --age-minutes)  AGE_MINUTES="${2:?--age-minutes requiert une valeur}"; shift 2 ;;
         --base)         BASE_REF="${2:?--base requiert une valeur}"; shift 2 ;;
         -h|--help)      usage; exit 0 ;;
@@ -86,6 +99,11 @@ echo "  depot            : $repo_root"
 echo "  base             : $BASE_REF ($base_sha)"
 echo "  prefixe candidat : $WORKTREE_PREFIX"
 echo "  inactivite min.  : ${AGE_MINUTES} min"
+if [[ "$SWEEP_BRANCHES" -eq 1 ]]; then
+    echo "  branches         : balayage global (toutes les branches locales)"
+else
+    echo "  branches         : liberees par un retrait uniquement (--no-sweep-branches)"
+fi
 echo "  mode             : $mode_label"
 echo
 
@@ -134,12 +152,23 @@ is_recently_active() {
 #   worktree <chemin> / HEAD <sha> / branch <ref> | detached / locked [raison]
 removed=0
 skipped=0
-declare -a branches_to_check=()
+# Branches liberees par un worktree planifie au retrait -> candidates a la suppression.
+declare -a freed_branches=()
+# Branches encore checked out dans un worktree CONSERVE (checkout principal compris)
+# -> intouchables : Git refuserait la suppression, et l'agent qui y travaille la perdrait.
+declare -a held_branches=()
 
 current_wt=""
 current_head=""
 current_branch=""
 current_locked=0
+
+# Marque une branche comme detenue par un worktree conserve : le balayage de l'etape 3
+# ne devra jamais y toucher.
+hold_branch() {
+    [[ -n "$1" ]] && held_branches+=("$1")
+    return 0
+}
 
 flush_worktree() {
     [[ -z "$current_wt" ]] && return 0
@@ -147,22 +176,28 @@ flush_worktree() {
     local wt="$current_wt" head="$current_head" branch="$current_branch" locked="$current_locked"
     current_wt=""; current_head=""; current_branch=""; current_locked=0
 
-    # Le checkout principal n'est jamais candidat.
-    [[ "$wt" == "$repo_root" ]] && return 0
+    # Le checkout principal n'est jamais candidat — et sa branche courante est detenue.
+    if [[ "$wt" == "$repo_root" ]]; then
+        hold_branch "$branch"
+        return 0
+    fi
 
-    # Ne cibler que les worktrees sous .claude/worktrees/.
+    # Ne cibler que les worktrees sous .claude/worktrees/. Les autres sont hors perimetre,
+    # donc conserves : leurs branches le sont aussi.
     case "$wt" in
         "$repo_root/$WORKTREE_PREFIX"*) ;;
-        *) return 0 ;;
+        *) hold_branch "$branch"; return 0 ;;
     esac
 
     local label="${wt#"$repo_root"/}"
     local short_head="${head:0:7}"
     local branch_label="${branch:-(detached)}"
 
+    # Ecarter le worktree conserve sa branche : elle reste checked out.
     skip() {
         echo "  SKIP    $label [$short_head $branch_label] — $1"
         skipped=$((skipped + 1))
+        hold_branch "$branch"
     }
 
     # Garde-fou 1 : worktree verrouille -> ne jamais forcer.
@@ -179,6 +214,7 @@ flush_worktree() {
     # Idempotence : repertoire deja disparu -> laisser `git worktree prune` faire le menage.
     if [[ ! -d "$wt" ]]; then
         echo "  PRUNE   $label — repertoire absent, sera nettoye par 'git worktree prune'"
+        [[ -n "$branch" ]] && freed_branches+=("$branch")
         return 0
     fi
 
@@ -210,7 +246,7 @@ flush_worktree() {
         git worktree remove "$wt"
     fi
     removed=$((removed + 1))
-    [[ -n "$branch" ]] && branches_to_check+=("$branch")
+    [[ -n "$branch" ]] && freed_branches+=("$branch")
     return 0
 }
 
@@ -228,49 +264,11 @@ flush_worktree
 
 [[ "$removed" -eq 0 && "$skipped" -eq 0 ]] && echo "  (aucun worktree candidat)"
 
-# --- Etape 3 : purger les branches locales devenues orphelines -------------------------
-echo
-echo "-- Branches liberees --"
-deleted_branches=0
-if [[ "${#branches_to_check[@]}" -eq 0 ]]; then
-    echo "  (aucune)"
-fi
-for branch in "${branches_to_check[@]:-}"; do
-    [[ -z "$branch" ]] && continue
-
-    # Protection en dur des branches structurantes.
-    case "$branch" in
-        main|master|HEAD) echo "  KEEP    $branch — branche protegee"; continue ;;
-    esac
-
-    # Idempotence : branche deja supprimee.
-    if ! branch_sha="$(git rev-parse --verify --quiet "refs/heads/$branch")"; then
-        continue
-    fi
-
-    # Encore checked out dans un worktree ? Ne pas toucher (Git refuserait de toute facon).
-    # En dry-run le worktree d'origine n'a pas ete retire : la verification serait toujours
-    # positive et le rapport annoncerait a tort un KEEP. On ne la fait donc qu'en mode --apply.
-    if [[ "$APPLY" -eq 1 ]] && git worktree list --porcelain | grep -qx "branch refs/heads/$branch"; then
-        echo "  KEEP    $branch — encore checked out dans un worktree"
-        continue
-    fi
-
-    # Un seul commit '+' face a la base = travail non merge -> interdiction de supprimer.
-    ahead="$(git cherry "$BASE_REF" "$branch" | grep -c '^+' || true)"
-    if [[ "$ahead" -ne 0 ]]; then
-        echo "  KEEP    $branch [${branch_sha:0:7}] — $ahead commit(s) non merge(s)"
-        continue
-    fi
-
-    echo "  DELETE  $branch [${branch_sha:0:7}]  (restauration: git branch $branch $branch_sha)"
-    if [[ "$APPLY" -eq 1 ]]; then
-        git branch -D "$branch" >/dev/null
-    fi
-    deleted_branches=$((deleted_branches + 1))
-done
-
-# --- Etape 4 : prune final des enregistrements orphelins --------------------------------
+# --- Etape 3 : prune des enregistrements orphelins --------------------------------------
+# AVANT la purge des branches, pas apres : tant qu'un enregistrement de worktree survit,
+# Git refuse de supprimer la branche qu'il declare checked out — meme si le repertoire a
+# disparu depuis longtemps. Purger d'abord, c'est liberer les branches que l'etape 4 doit
+# pouvoir examiner ; purger apres laisserait `git branch -D` echouer sur ces branches-la.
 echo
 echo "-- Prune des enregistrements orphelins --"
 if [[ "$APPLY" -eq 1 ]]; then
@@ -279,11 +277,96 @@ else
     git worktree prune --dry-run --verbose || true
 fi
 
+# --- Etape 4 : purger les branches locales orphelines -----------------------------------
+# Perimetre du balayage (SF-WO-01) :
+#   - par defaut : TOUTES les branches locales. Les branches deja squash-mergees dont plus
+#     aucun worktree ne depend sont invisibles pour un balayage derive des seuls retraits ;
+#     ce sont pourtant elles qui saturent l'espace de nommage `worktree-wf_*` et font
+#     repartir un agent parallele d'une branche perimee.
+#   - avec --no-sweep-branches : seulement les branches liberees par un retrait (SF-REPO-02),
+#     y compris celles d'un enregistrement perime que l'etape 3 vient de purger.
+#
+# Trois filtres, du moins cher au plus cher : nom protege, detenue par un worktree conserve,
+# puis `git cherry` (le seul qui lance un calcul de patch-id).
+#
+# La detention est calculee a partir du plan ci-dessus, pas d'un `git worktree list` relu :
+# en dry-run le worktree candidat n'a pas encore ete retire, et le relire annoncerait a tort
+# un KEEP pour une branche que le mode --apply supprimerait.
+echo
+echo "-- Branches orphelines --"
+deleted_branches=0
+
+is_held() {
+    local candidate="$1" held
+    for held in "${held_branches[@]:-}"; do
+        [[ "$candidate" == "$held" ]] && return 0
+    done
+    return 1
+}
+
+declare -a branches_to_check=()
+if [[ "$SWEEP_BRANCHES" -eq 1 ]]; then
+    while IFS= read -r branch; do
+        [[ -n "$branch" ]] && branches_to_check+=("$branch")
+    done < <(git for-each-ref --format='%(refname:short)' refs/heads/)
+else
+    branches_to_check=("${freed_branches[@]:-}")
+fi
+
+examined=0
+for branch in "${branches_to_check[@]:-}"; do
+    [[ -z "$branch" ]] && continue
+
+    # Protection en dur des branches structurantes.
+    is_protected=0
+    for protected in "${PROTECTED_BRANCHES[@]}"; do
+        [[ "$branch" == "$protected" ]] && is_protected=1
+    done
+    if [[ "$is_protected" -eq 1 ]]; then
+        echo "  KEEP    $branch — branche protegee"
+        continue
+    fi
+
+    # Idempotence : branche deja supprimee (ou nom invalide).
+    if ! branch_sha="$(git rev-parse --verify --quiet "refs/heads/$branch")"; then
+        continue
+    fi
+
+    # Encore checked out dans un worktree conserve -> intouchable.
+    if is_held "$branch"; then
+        # En balayage global, le silence vaut mieux qu'une ligne par branche detenue :
+        # on ne trace que les branches reellement examinees.
+        [[ "$SWEEP_BRANCHES" -eq 0 ]] && echo "  KEEP    $branch — encore checked out dans un worktree"
+        continue
+    fi
+
+    examined=$((examined + 1))
+
+    # Un seul commit '+' face a la base = travail non merge -> interdiction de supprimer.
+    ahead="$(git cherry "$BASE_REF" "$branch" | grep -c '^+' || true)"
+    if [[ "$ahead" -ne 0 ]]; then
+        echo "  KEEP    $branch [${branch_sha:0:7}] — $ahead commit(s) non merge(s)"
+        continue
+    fi
+
+    # Un refus de Git (branche encore reclamee par un worktree) ne doit pas tuer le run :
+    # il est signale, la branche est conservee, le balayage continue.
+    if [[ "$APPLY" -eq 1 ]] && ! git branch -D "$branch" >/dev/null 2>&1; then
+        echo "  ECHEC   $branch — suppression refusee par Git, branche conservee"
+        continue
+    fi
+    echo "  DELETE  $branch [${branch_sha:0:7}]  (restauration: git branch $branch $branch_sha)"
+    deleted_branches=$((deleted_branches + 1))
+done
+
+[[ "$examined" -eq 0 ]] && echo "  (aucune branche candidate)"
+
 # --- Rapport ----------------------------------------------------------------------------
 echo
 echo "== Resume =="
 echo "  worktrees retires  : $removed"
 echo "  worktrees conserves: $skipped"
+echo "  branches examinees : $examined"
 echo "  branches supprimees: $deleted_branches"
 echo "  $BASE_REF          : $(git rev-parse "$BASE_REF")  (inchange)"
 if [[ "$APPLY" -eq 0 ]]; then

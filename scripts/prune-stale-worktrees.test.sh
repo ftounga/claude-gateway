@@ -166,6 +166,74 @@ grep -q 'REMOVE  .claude/worktrees/wf_test-4' <<<"$out" \
     && check ok "candidat a nouveau avec --age-minutes 0 (propre + merge)" \
     || check ko "wf_test-4 aurait du redevenir candidat avec --age-minutes 0"
 
+# --- Cas 8 : balayage global des branches orphelines detachees ---------------------------
+# SF-WO-01 : une branche squash-mergee dont plus aucun worktree ne depend est invisible pour
+# un balayage derive des seuls retraits de worktree. C'est pourtant le cas majoritaire.
+echo "[8] balayage global : branche orpheline sans worktree"
+git branch orphan-merged HEAD
+# Contrôle negatif : meme forme (aucun worktree), mais un commit propre -> intouchable.
+git branch orphan-ahead HEAD
+git checkout --quiet orphan-ahead
+echo ahead > ahead.txt
+git add ahead.txt
+git commit --quiet -m "travail non merge, hors worktree"
+git checkout --quiet main
+out="$(bash "$SCRIPT" --no-fetch --age-minutes 0)"
+grep -q 'DELETE  orphan-merged' <<<"$out" \
+    && check ok "orphan-merged planifiee au DELETE" \
+    || check ko "orphan-merged non planifiee (balayage global inoperant)"
+grep -q 'KEEP    orphan-ahead .*commit(s) non merge' <<<"$out" \
+    && check ok "orphan-ahead conservee (travail non merge)" \
+    || check ko "orphan-ahead non protegee"
+grep -q 'restauration: git branch orphan-merged' <<<"$out" \
+    && check ok "commande de restauration affichee" || check ko "restauration non affichee"
+
+# --- Cas 9 : branche d'un worktree CONSERVE ---------------------------------------------
+# wt-dirty a 0 commit '+' mais son worktree survit (garde-fou dirty) : la supprimer
+# arracherait la branche sous les pieds de la session qui y travaille.
+echo "[9] branche d'un worktree conserve"
+grep -q 'DELETE  wt-dirty' <<<"$out" \
+    && check ko "wt-dirty planifiee au DELETE alors que son worktree est conserve" \
+    || check ok "wt-dirty non planifiee (detenue par un worktree conserve)"
+grep -q 'KEEP    main' <<<"$out" \
+    && check ok "main explicitement protegee" || check ko "main non protegee"
+
+# --- Cas 10 : --no-sweep-branches restaure le comportement SF-REPO-02 --------------------
+echo "[10] --no-sweep-branches"
+out_nosweep="$(bash "$SCRIPT" --no-fetch --age-minutes 0 --no-sweep-branches)"
+grep -q 'DELETE  orphan-merged' <<<"$out_nosweep" \
+    && check ko "orphan-merged planifiee malgre --no-sweep-branches" \
+    || check ok "orphan-merged ignoree avec --no-sweep-branches"
+
+# --- Cas 11 : --apply du balayage global -------------------------------------------------
+echo "[11] --apply du balayage global"
+bash "$SCRIPT" --no-fetch --age-minutes 0 --apply >/dev/null
+git rev-parse --verify --quiet refs/heads/orphan-merged >/dev/null \
+    && check ko "orphan-merged aurait du etre supprimee" || check ok "orphan-merged supprimee"
+git rev-parse --verify --quiet refs/heads/orphan-ahead >/dev/null \
+    && check ok "orphan-ahead conservee" || check ko "orphan-ahead supprimee a tort"
+git rev-parse --verify --quiet refs/heads/wt-dirty >/dev/null \
+    && check ok "wt-dirty conservee (worktree vivant)" || check ko "wt-dirty supprimee a tort"
+git rev-parse --verify --quiet refs/heads/main >/dev/null \
+    && check ok "main intacte apres balayage global" || check ko "main perdue"
+[[ -f .claude/worktrees/wf_test-3/scratch.txt ]] \
+    && check ok "aucun travail non commite perdu" || check ko "travail non commite perdu"
+
+# --- Cas 12 : enregistrement de worktree perime (repertoire efface a la main) ------------
+# Tant que l'enregistrement survit, Git refuse de supprimer la branche qu'il declare checked
+# out : le prune doit donc passer AVANT la purge des branches, sinon `git branch -D` echoue.
+echo "[12] enregistrement perime : prune avant purge de branche"
+git worktree add --quiet -b wt-stale .claude/worktrees/wf_test-5 HEAD
+rm -rf .claude/worktrees/wf_test-5
+if bash "$SCRIPT" --no-fetch --age-minutes 0 --apply >/dev/null 2>&1; then
+    check ok "run termine sans erreur malgre l'enregistrement perime"
+else
+    check ko "le run a echoue sur l'enregistrement perime"
+fi
+git rev-parse --verify --quiet refs/heads/wt-stale >/dev/null \
+    && check ko "wt-stale aurait du etre supprimee apres le prune" \
+    || check ok "wt-stale supprimee (prune execute avant la purge)"
+
 echo
 if [[ "$failures" -eq 0 ]]; then
     echo "TOUS LES CAS PASSES"
