@@ -21,6 +21,11 @@
 # qu'une session parallele travaille dans le depot. Les quatre premiers garde-fous sont
 # locaux a chaque candidat : aucun ne repond a la question « une vague est-elle en cours ? ».
 #
+# Le mode --branches-only (SF-BO-01) ne touche QU'AUX BRANCHES : aucun worktree n'est retire,
+# aucun enregistrement n'est prunne, et le garde-fou 5 n'est donc pas evalue — supprimer une
+# reference que personne n'a checked out ne detruit aucun repertoire de travail. C'est le seul
+# mode utilisable pendant qu'une vague tourne, et le depot n'est jamais au repos.
+#
 # Usage :
 #   scripts/prune-stale-worktrees.sh                 # dry-run (defaut) : affiche le plan
 #   scripts/prune-stale-worktrees.sh --apply         # execute reellement
@@ -29,6 +34,8 @@
 #   scripts/prune-stale-worktrees.sh --no-sweep-branches # n'examiner que les branches
 #                                                    # liberees par un retrait de worktree
 #   scripts/prune-stale-worktrees.sh --apply --force-busy # passer outre le garde-fou 5
+#   scripts/prune-stale-worktrees.sh --branches-only --apply # branches seules, worktrees
+#                                                    # intacts — utilisable pendant une vague
 #
 # Sorties : 0 succes | 2 usage | 3 lance depuis un worktree lie | 4 base non evaluable
 #           5 session parallele en vol (garde-fou 5)
@@ -36,6 +43,7 @@
 # Mini-spec : docs/features/REPO/SF-REPO-02-purge-worktrees-residuels.md
 #             docs/features/worktrees-orphelins/SF-WO-01-balayage-branches-orphelines.md
 #             docs/features/SESSIONS-PARALLELES/SF-SP-02-purge-refusee-si-session-en-vol.md
+#             docs/features/BRANCHES-ORPHELINES/SF-BO-01-purge-branches-pendant-vague.md
 
 set -euo pipefail
 
@@ -51,6 +59,9 @@ SWEEP_BRANCHES=1
 # Passe outre le garde-fou 5 (session parallele en vol). Volontairement absent du dry-run :
 # le dry-run ne detruit rien, il n'a rien a forcer.
 FORCE_BUSY=0
+# Ne toucher qu'aux branches (SF-BO-01) : aucun worktree retire, aucun enregistrement prunne,
+# garde-fou 5 non evalue. Le seul mode utilisable pendant qu'une vague tourne.
+BRANCHES_ONLY=0
 # Branches jamais evaluees, jamais supprimees, quelle que soit leur position.
 PROTECTED_BRANCHES=(main master HEAD)
 
@@ -70,6 +81,7 @@ while [[ $# -gt 0 ]]; do
         --no-fetch)           DO_FETCH=0; shift ;;
         --no-sweep-branches)  SWEEP_BRANCHES=0; shift ;;
         --force-busy)         FORCE_BUSY=1; shift ;;
+        --branches-only)      BRANCHES_ONLY=1; shift ;;
         --age-minutes)  AGE_MINUTES="${2:?--age-minutes requiert une valeur}"; shift 2 ;;
         --base)         BASE_REF="${2:?--base requiert une valeur}"; shift 2 ;;
         -h|--help)      usage; exit 0 ;;
@@ -79,6 +91,15 @@ done
 
 if ! [[ "$AGE_MINUTES" =~ ^[0-9]+$ ]]; then
     echo "ERREUR: --age-minutes attend un entier >= 0 (recu: '$AGE_MINUTES')" >&2
+    exit 2
+fi
+
+# --branches-only ne retire aucun worktree : la liste de branches derivee des retraits est
+# vide par construction. Combine a --no-sweep-branches, le run n'aurait rien a examiner et
+# rendrait 0 sans avoir rien fait — un outil qui ne fait rien doit le dire, pas mentir.
+if [[ "$BRANCHES_ONLY" -eq 1 && "$SWEEP_BRANCHES" -eq 0 ]]; then
+    echo "ERREUR: --branches-only et --no-sweep-branches s'excluent — sans retrait de worktree," >&2
+    echo "        aucune branche ne serait liberee, le run n'examinerait rien." >&2
     exit 2
 fi
 
@@ -110,12 +131,22 @@ if ! base_sha="$(git rev-parse --verify --quiet "$BASE_REF^{commit}")"; then
 fi
 
 mode_label="DRY-RUN (aucune modification — utiliser --apply pour executer)"
-[[ "$APPLY" -eq 1 ]] && mode_label="APPLY (destructif)"
+if [[ "$APPLY" -eq 1 ]]; then
+    if [[ "$BRANCHES_ONLY" -eq 1 ]]; then
+        mode_label="APPLY (references de branches uniquement)"
+    else
+        mode_label="APPLY (destructif)"
+    fi
+fi
 
 echo "== prune-stale-worktrees =="
 echo "  depot            : $repo_root"
 echo "  base             : $BASE_REF ($base_sha)"
-echo "  prefixe candidat : $WORKTREE_PREFIX"
+if [[ "$BRANCHES_ONLY" -eq 1 ]]; then
+    echo "  perimetre        : BRANCHES SEULES — aucun worktree retire, aucun prune"
+else
+    echo "  prefixe candidat : $WORKTREE_PREFIX"
+fi
 echo "  inactivite min.  : ${AGE_MINUTES} min"
 if [[ "$SWEEP_BRANCHES" -eq 1 ]]; then
     echo "  branches         : balayage global (toutes les branches locales)"
@@ -137,7 +168,12 @@ echo
 # une branche a PR ouverte porte de toute facon des commits non merges, donc `git cherry` la
 # protege deja) et avec LE MEME seuil d'inactivite, sans quoi un worktree pourrait etre
 # ecarte par un outil et detruit par l'autre.
-if [[ "$APPLY" -eq 1 ]]; then
+#
+# En --branches-only, il n'est PAS evalue (SF-BO-01) : ce mode ne retire aucun worktree, donc
+# aucun repertoire de travail ne peut disparaitre sous une session vivante. Ce que le garde-fou
+# protege — des fichiers — n'est pas en jeu ; le faire refuser ici reviendrait a ne jamais
+# pouvoir ranger le depot, puisqu'une vague y tourne presque en permanence.
+if [[ "$APPLY" -eq 1 && "$BRANCHES_ONLY" -eq 0 ]]; then
     preflight="$SCRIPT_DIR/check-parallel-sessions.sh"
     if [[ ! -f "$preflight" ]]; then
         # Defense en profondeur ajoutee par-dessus 4 garde-fous et un dry-run par defaut :
@@ -208,6 +244,15 @@ flush_worktree() {
 
     local wt="$current_wt" head="$current_head" branch="$current_branch" locked="$current_locked"
     current_wt=""; current_head=""; current_branch=""; current_locked=0
+
+    # --branches-only : AUCUN worktree n'est candidat, y compris un enregistrement dont le
+    # repertoire a disparu (il n'est pas prunne non plus, cf. etape 3). Toute branche declaree
+    # checked out par un enregistrement, meme perime, est donc detenue : Git en refuserait la
+    # suppression, et l'annoncer au DELETE mentirait sur ce que --apply ferait.
+    if [[ "$BRANCHES_ONLY" -eq 1 ]]; then
+        hold_branch "$branch"
+        return 0
+    fi
 
     # Le checkout principal n'est jamais candidat — et sa branche courante est detenue.
     if [[ "$wt" == "$repo_root" ]]; then
@@ -283,7 +328,11 @@ flush_worktree() {
     return 0
 }
 
-echo "-- Worktrees --"
+if [[ "$BRANCHES_ONLY" -eq 1 ]]; then
+    echo "-- Worktrees (lecture seule : leurs branches sont protegees) --"
+else
+    echo "-- Worktrees --"
+fi
 while IFS= read -r line; do
     case "$line" in
         "worktree "*) flush_worktree; current_wt="${line#worktree }" ;;
@@ -295,19 +344,32 @@ while IFS= read -r line; do
 done < <(git worktree list --porcelain)
 flush_worktree
 
-[[ "$removed" -eq 0 && "$skipped" -eq 0 ]] && echo "  (aucun worktree candidat)"
+if [[ "$BRANCHES_ONLY" -eq 1 ]]; then
+    echo "  ${#held_branches[@]} branche(s) protegee(s) par un worktree"
+elif [[ "$removed" -eq 0 && "$skipped" -eq 0 ]]; then
+    echo "  (aucun worktree candidat)"
+fi
 
 # --- Etape 3 : prune des enregistrements orphelins --------------------------------------
 # AVANT la purge des branches, pas apres : tant qu'un enregistrement de worktree survit,
 # Git refuse de supprimer la branche qu'il declare checked out — meme si le repertoire a
 # disparu depuis longtemps. Purger d'abord, c'est liberer les branches que l'etape 4 doit
 # pouvoir examiner ; purger apres laisserait `git branch -D` echouer sur ces branches-la.
+#
+# En --branches-only, le prune n'est pas execute : il reecrit des enregistrements de worktrees,
+# et ce mode promet de ne toucher qu'aux branches — une promesse doit etre litterale. La branche
+# d'un enregistrement perime reste donc conservee (elle est detenue) ; elle tombera au premier
+# run complet.
 echo
-echo "-- Prune des enregistrements orphelins --"
-if [[ "$APPLY" -eq 1 ]]; then
-    git worktree prune --verbose || true
+if [[ "$BRANCHES_ONLY" -eq 1 ]]; then
+    echo "-- Prune des enregistrements orphelins : non execute (--branches-only) --"
 else
-    git worktree prune --dry-run --verbose || true
+    echo "-- Prune des enregistrements orphelins --"
+    if [[ "$APPLY" -eq 1 ]]; then
+        git worktree prune --verbose || true
+    else
+        git worktree prune --dry-run --verbose || true
+    fi
 fi
 
 # --- Etape 4 : purger les branches locales orphelines -----------------------------------
@@ -335,6 +397,26 @@ is_held() {
         [[ "$candidate" == "$held" ]] && return 0
     done
     return 1
+}
+
+# Une branche dont la reference vient d'etre ecrite est probablement celle qu'une session
+# vivante vient de creer : elle n'etait pas dans la photo des worktrees prise plus haut, elle
+# n'a aucun commit '+' (elle part de la base), et le balayage la supprimerait sous les pieds
+# de son agent. La fenetre vaut la duree du balayage — deux cents `git cherry`, quelques
+# dizaines de secondes : assez pour que cela arrive.
+#
+# Le signal est la mtime du REFLOG, pas la date du commit de tete : une branche creee a
+# l'instant depuis `main` porte un commit vieux de plusieurs heures. Reflog absent => branche
+# reputee NON recente : sans trace d'ecriture, il n'y a pas d'ecriture recente a proteger.
+#
+# Ce filtre ne sert qu'en --branches-only : dans le mode complet, le garde-fou 5 refuse deja
+# tout run pendant qu'une vague tourne.
+branch_recently_touched() {
+    local branch="$1" minutes="$2"
+    [[ "$minutes" -le 0 ]] && return 1
+    local reflog="$git_common_dir/logs/refs/heads/$branch"
+    [[ -f "$reflog" ]] || return 1
+    [[ -n "$(find "$reflog" -maxdepth 0 -newermt "-${minutes} minutes" -print 2>/dev/null)" ]]
 }
 
 declare -a branches_to_check=()
@@ -373,6 +455,13 @@ for branch in "${branches_to_check[@]:-}"; do
         continue
     fi
 
+    # Reference ecrite recemment -> probablement une branche qu'une session vivante vient de
+    # creer, apres la photo des worktrees. Conservee ; elle sera balayee au run suivant.
+    if [[ "$BRANCHES_ONLY" -eq 1 ]] && branch_recently_touched "$branch" "$AGE_MINUTES"; then
+        echo "  KEEP    $branch [${branch_sha:0:7}] — recently-touched (reference ecrite il y a moins de ${AGE_MINUTES} min)"
+        continue
+    fi
+
     examined=$((examined + 1))
 
     # Un seul commit '+' face a la base = travail non merge -> interdiction de supprimer.
@@ -397,8 +486,12 @@ done
 # --- Rapport ----------------------------------------------------------------------------
 echo
 echo "== Resume =="
-echo "  worktrees retires  : $removed"
-echo "  worktrees conserves: $skipped"
+if [[ "$BRANCHES_ONLY" -eq 1 ]]; then
+    echo "  worktrees          : intacts (--branches-only)"
+else
+    echo "  worktrees retires  : $removed"
+    echo "  worktrees conserves: $skipped"
+fi
 echo "  branches examinees : $examined"
 echo "  branches supprimees: $deleted_branches"
 echo "  $BASE_REF          : $(git rev-parse "$BASE_REF")  (inchange)"
