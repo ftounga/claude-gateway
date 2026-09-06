@@ -62,6 +62,11 @@ app:
     max-total-bytes: ${APP_ATELIER_MAX_TOTAL_BYTES:52428800}
     max-entries: ${APP_ATELIER_MAX_ENTRIES:2000}
     max-file-bytes: ${APP_ATELIER_MAX_FILE_BYTES:2097152}
+    # Plafond d'allers-retours d'un message dans la boucle d'agent (F-28 / SF-28-19).
+    # À 12, un tiers des demandes de l'usage réel était coupé en chemin. Ce n'est pas la borne
+    # de dépense — le budget de temps du tour et le quota le sont — mais elle se baisse ici,
+    # sans livraison, tant que le cache de prompt (R6) n'a pas changé l'arbitrage de coût.
+    max-iterations: ${APP_ATELIER_MAX_ITERATIONS:30}
     agent:
       # Managed Agents (F-28 / Phase 2, ADR-013). Flag OFF par défaut : tant que `enabled` est faux
       # et qu'aucune config n'existe, AUCUN appel réseau ni coût runtime (bootstrap inerte).

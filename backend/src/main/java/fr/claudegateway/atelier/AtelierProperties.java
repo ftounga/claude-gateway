@@ -11,6 +11,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param maxTotalBytes taille décompressée totale maximale d'un zip (anti zip-bomb)
  * @param maxEntries    nombre d'entrées maximal d'un zip (anti zip-bomb)
  * @param maxFileBytes  taille maximale d'un fichier décompressé (anti zip-bomb)
+ * @param maxIterations plafond d'allers-retours d'un message dans la boucle d'agent (F-28 / SF-28-19).
+ *                      Calibré sur l'usage réel : à 12, un tiers des demandes était coupé en chemin.
+ *                      Configurable pour se baisser sans livraison, tant que le cache de prompt (R6)
+ *                      n'a pas changé l'arbitrage de coût.
  */
 @ConfigurationProperties(prefix = "app.atelier")
 public record AtelierProperties(
@@ -19,7 +23,8 @@ public record AtelierProperties(
         String prefix,
         Long maxTotalBytes,
         Integer maxEntries,
-        Long maxFileBytes) {
+        Long maxFileBytes,
+        Integer maxIterations) {
 
     public AtelierProperties {
         if (storage == null || storage.isBlank()) {
@@ -36,6 +41,14 @@ public record AtelierProperties(
         }
         if (maxFileBytes == null || maxFileBytes <= 0) {
             maxFileBytes = 2L * 1024 * 1024; // 2 Mo
+        }
+        if (maxIterations == null || maxIterations <= 0) {
+            maxIterations = 30;
+        }
+        // Au-delà, le budget de temps du tour (10 min) aurait tranché de toute façon : mieux vaut
+        // une borne lisible qu'un plafond qui n'a jamais l'occasion de s'appliquer.
+        if (maxIterations > 100) {
+            maxIterations = 100;
         }
     }
 }

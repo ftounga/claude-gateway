@@ -72,7 +72,9 @@ class AtelierChatServiceRunnerTargetTest {
                 new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
-                fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled());
+                fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
+                // Plafond d'étapes par défaut (30) sauf mention contraire du test (SF-28-19).
+                new AtelierProperties(null, null, null, null, null, null, null));
 
         // Porte de validation (SF-38-08) : ces tests-ci portent sur le routage, pas sur la
         // validation — on autorise donc systématiquement, en relayant quand même la demande à

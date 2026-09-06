@@ -39,8 +39,16 @@ import fr.claudegateway.runner.relay.RunnerRelayBroadcaster;
 @Service
 public class AtelierChatService implements RelayInterruptTarget {
 
-    /** Garde-fou anti-boucle : nombre maximal d'allers-retours par message. */
-    private static final int MAX_ITERATIONS = 12;
+    /**
+     * Garde-fou anti-boucle : nombre maximal d'allers-retours par message, lu dans la configuration
+     * (F-28 / SF-28-19, défaut 30).
+     *
+     * <p>La valeur d'origine — 12 — coupait <b>31 % des demandes</b> de l'usage réel mesuré, dont la
+     * médiane est de 6 outils mais la moyenne de 13,8. Ce n'est pas la borne de dépense : le budget
+     * de temps du tour et le quota le sont, et ils s'appliquent d'abord. Celle-ci protège d'une
+     * boucle qui tournerait en rond.</p>
+     */
+    private final int maxIterations;
     /**
      * Budget de temps d'un tour (F-38 / SF-38-07). Sans lui, 12 itérations × 120 s de {@code bash}
      * dépassent largement la durée de vie du flux SSE : l'émetteur se clôt, l'écran se fige, et la
@@ -109,7 +117,8 @@ public class AtelierChatService implements RelayInterruptTarget {
             fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher,
             RunnerConfirmationGate confirmationGate,
             RunnerAuditService runnerAuditService,
-            RunnerRelayBroadcaster relayBroadcaster) {
+            RunnerRelayBroadcaster relayBroadcaster,
+            AtelierProperties atelierProperties) {
         this.workspaceService = workspaceService;
         this.messageRepository = messageRepository;
         this.agentProvider = agentProvider;
@@ -122,6 +131,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.confirmationGate = confirmationGate;
         this.runnerAuditService = runnerAuditService;
         this.relayBroadcaster = relayBroadcaster;
+        this.maxIterations = atelierProperties.maxIterations();
     }
 
     /**
@@ -193,7 +203,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         int outputTokens = 0;
         String finalText = "";
 
-        for (int iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+        for (int iteration = 0; iteration < maxIterations; iteration++) {
             if (interruptedTurns.remove(turnKey(userId, workspaceId))) {
                 finalText = INTERRUPTED_REPLY;
                 break;
@@ -259,7 +269,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 finalText = INTERRUPTED_REPLY;
                 break;
             }
-            if (iteration == MAX_ITERATIONS - 1) {
+            if (iteration == maxIterations - 1) {
                 finalText = (turn.text() == null || turn.text().isBlank())
                         ? "J'ai atteint la limite d'étapes pour ce message ; relance-moi pour continuer."
                         : turn.text();
