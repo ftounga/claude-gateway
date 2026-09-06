@@ -204,9 +204,17 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     Endpoint **`POST /ask`** (authentifié). Aucune nouvelle table (réutilise `chunks.embedding`).
 - **subscriptions** — abonnement d'un utilisateur (F-09, migration `008`). **Un seul par `user_id`** (unique).
   - `subscriptions` : `id (uuid)`, `user_id (uuid, unique)`, `status (TRIALING|ACTIVE|PAST_DUE|CANCELED|INCOMPLETE)`,
-    `plan_code (nullable ; SOLO|PRO|DAILY)`, `trial_ends_at (nullable)`, `current_period_end (nullable)`,
+    `plan_code (nullable ; SOLO|PRO|DAILY|GOLD)`, `trial_ends_at (nullable)`, `current_period_end (nullable)`,
     `stripe_customer_id (interne, nullable, jamais exposé)`, `stripe_subscription_id (interne, nullable, jamais exposé)`,
-    `created_at`, `updated_at`. Index `user_id`, `stripe_subscription_id`.
+    `atelier_option_status (nullable ; même énumération que status — F-40, migration 054)`,
+    `atelier_option_stripe_subscription_id (interne, nullable, unique, jamais exposé — F-40, migration 054)`,
+    `created_at`, `updated_at`. Index `user_id`, `stripe_subscription_id`, `atelier_option_stripe_subscription_id` (unique).
+  - **Droit d'Atelier (F-40)** : l'accès à l'Atelier n'est plus un test de **plan** (`plan_code = GOLD`)
+    mais un test de **droit**, porté par le plan Gold actif **ou** par l'option Atelier active sur un
+    plan Solo/Pro actif. La règle vit dans `AtelierEntitlementService` (paquet `billing`). L'option
+    est un abonnement fournisseur **distinct** de celui du plan, d'où la seconde colonne
+    d'identifiant : les confondre ferait qu'une résiliation d'option annulerait le plan.
+    L'option ouvre un droit et **jamais** un jeton : les quotas de `app.quota.plans` sont inchangés.
   - **Note** : la table `subscriptions` du schéma initial `001-init-schema` (placeholder legacy `spec.md`,
     `user_id text`, `plan`, sans statut typé ni unicité) a été **remplacée** en `008` par la table V1 conforme
     ci-dessus (même stratégie que `006-messages`).

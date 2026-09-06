@@ -19,6 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import fr.claudegateway.auth.AuthenticatedUser;
 import fr.claudegateway.auth.CurrentUser;
+import fr.claudegateway.billing.AtelierEntitlementService;
 import fr.claudegateway.billing.PlanCode;
 import fr.claudegateway.billing.Subscription;
 import fr.claudegateway.billing.SubscriptionService;
@@ -26,8 +27,12 @@ import fr.claudegateway.billing.SubscriptionStatus;
 import fr.claudegateway.user.UserRole;
 
 /**
- * Tests unitaires du gating de l'Atelier (F-28 / SF-28-06) : accès réservé aux administrateurs
- * (bypass) et aux abonnés Gold actifs ({@code ACTIVE}/{@code PAST_DUE}), fail-closed sinon.
+ * Tests unitaires du gating de l'Atelier (F-28 / SF-28-06, amendé F-40 / SF-40-01) : accès réservé
+ * aux administrateurs (bypass) et aux détenteurs du <b>droit</b> d'Atelier, fail-closed sinon.
+ *
+ * <p>La règle du droit est ici la <b>vraie</b> ({@link AtelierEntitlementService} branché sur un
+ * {@link SubscriptionService} simulé) et non un bouchon : c'est la composition des deux services qui
+ * garde le comportement d'avant F-40, et c'est donc elle qu'on veut voir.</p>
  */
 @ExtendWith(MockitoExtension.class)
 class AtelierAccessServiceTest {
@@ -41,7 +46,7 @@ class AtelierAccessServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new AtelierAccessService(currentUser, subscriptionService);
+        service = new AtelierAccessService(currentUser, new AtelierEntitlementService(subscriptionService));
     }
 
     private AuthenticatedUser principal(UserRole role) {
@@ -50,6 +55,12 @@ class AtelierAccessServiceTest {
 
     private Subscription subscription(PlanCode plan, SubscriptionStatus status) {
         return Subscription.builder().userId(userId).planCode(plan).status(status).build();
+    }
+
+    private Subscription withAtelierOption(PlanCode plan, SubscriptionStatus status,
+            SubscriptionStatus optionStatus) {
+        return Subscription.builder().userId(userId).planCode(plan).status(status)
+                .atelierOptionStatus(optionStatus).build();
     }
 
     @Test
@@ -105,6 +116,27 @@ class AtelierAccessServiceTest {
         when(currentUser.principal()).thenReturn(Optional.of(principal(UserRole.USER)));
         when(subscriptionService.getOrCreateForUser(userId))
                 .thenReturn(subscription(PlanCode.GOLD, SubscriptionStatus.CANCELED));
+
+        assertThat(service.hasAccess()).isFalse();
+        assertThatThrownBy(service::requireAccess).isInstanceOf(AtelierAccessDeniedException.class);
+    }
+
+    @Test
+    void soloWithAtelierOptionIsAllowed() {
+        // F-40 : le droit n'est plus un plan. Solo + option ouvre l'Atelier sans passer par Gold.
+        when(currentUser.principal()).thenReturn(Optional.of(principal(UserRole.USER)));
+        when(subscriptionService.getOrCreateForUser(userId)).thenReturn(
+                withAtelierOption(PlanCode.SOLO, SubscriptionStatus.ACTIVE, SubscriptionStatus.ACTIVE));
+
+        assertThat(service.hasAccess()).isTrue();
+        assertThatCode(service::requireAccess).doesNotThrowAnyException();
+    }
+
+    @Test
+    void soloWithoutAtelierOptionIsDenied() {
+        when(currentUser.principal()).thenReturn(Optional.of(principal(UserRole.USER)));
+        when(subscriptionService.getOrCreateForUser(userId))
+                .thenReturn(subscription(PlanCode.SOLO, SubscriptionStatus.ACTIVE));
 
         assertThat(service.hasAccess()).isFalse();
         assertThatThrownBy(service::requireAccess).isInstanceOf(AtelierAccessDeniedException.class);
