@@ -162,6 +162,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
   readonly tree = signal<string[]>([]);
   readonly messages = signal<AtelierThreadItem[]>([]);
 
+  /**
+   * Reprise du fil (F-39 / SF-39-04, décision D5). Le fil reprend **sans rien demander** : ce signal
+   * ne passe à `true` que lorsque la reprise ne va pas de soi — projet inactif depuis plus de deux
+   * semaines — et l'écran propose alors un choix explicite plutôt que de décider à la place de
+   * l'utilisateur.
+   */
+  readonly resumeChoice = signal(false);
+  /** Date du dernier message du fil, affichée dans la proposition de reprise. */
+  readonly resumeLastMessageAt = signal<string | null>(null);
+  /** Nombre de tours encore rejoués : à zéro, « repartir à neuf » n'aurait rien à faire. */
+  readonly resumeTurns = signal(0);
+
   /** Tour assistant « en cours » (étapes + texte partiel) affiché pendant le streaming (SF-28-05). */
   readonly streaming = signal<AtelierStreamingItem | null>(null);
 
@@ -803,7 +815,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.stopRunnerPolling();
     this.runnerStatus.set(null);
     this.resetFilePanel();
+    this.resumeChoice.set(false);
+    this.resumeLastMessageAt.set(null);
+    this.resumeTurns.set(0);
     this.loadHistory(workspace.id);
+    this.loadResumeState(workspace.id);
     this.refreshTree(workspace.id);
   }
 
@@ -814,6 +830,51 @@ export class AtelierComponent implements OnInit, OnDestroy {
         // page vidait l'écran alors que la sandbox, elle, gardait son état.
         this.messages.set(history.map((m) => toThreadItem(m))),
       error: () => this.notifyError("Impossible de charger l'historique de conversation."),
+    });
+  }
+
+  /**
+   * État de reprise du fil (F-39 / SF-39-04). Un échec est **silencieux** : ne pas savoir s'il faut
+   * proposer un choix ne doit pas empêcher de travailler — le fil reprend, comme avant.
+   */
+  private loadResumeState(id: string): void {
+    this.atelier.getResume(id).subscribe({
+      next: (resume) => {
+        this.resumeTurns.set(resume.turns);
+        this.resumeLastMessageAt.set(resume.lastMessageAt);
+        this.resumeChoice.set(resume.prompt === 'IDLE');
+      },
+      error: () => this.resumeChoice.set(false),
+    });
+  }
+
+  /** « Reprendre le fil » : le comportement par défaut, la bannière disparaît. */
+  keepThread(): void {
+    this.resumeChoice.set(false);
+  }
+
+  /**
+   * « Repartir à neuf » (F-39 / SF-39-04, décision D1) : les tours passés cessent d'être rejoués.
+   * **Rien n'est supprimé** — la conversation reste affichée ; c'est ce qui rend le geste
+   * réversible, et pourquoi il ne demande pas de confirmation destructive.
+   */
+  restartThread(): void {
+    const id = this.activeWorkspaceId();
+    if (!id) {
+      return;
+    }
+    this.atelier.restartThread(id).subscribe({
+      next: (resume) => {
+        this.resumeTurns.set(resume.turns);
+        this.resumeLastMessageAt.set(null);
+        this.resumeChoice.set(false);
+        this.snackBar.open(
+          'Nouveau départ : Claude repart sans le contexte des tours précédents. La conversation reste affichée.',
+          'Fermer',
+          { duration: 5000 },
+        );
+      },
+      error: () => this.notifyError('Impossible de repartir à neuf.'),
     });
   }
 
