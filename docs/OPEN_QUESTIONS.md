@@ -170,3 +170,46 @@ Coût : ~0,50 $/mois par zone.
 **Décision** : laissée en l'état le 2026-08-25. La règle de contournement, sans coût ni risque :
 **toujours écrire `www.ng-itconsulting.com`** dans tout ce qui est diffusé. Confirme et précise
 l'arbitrage « non prioritaire » de F-29 / SF-29-04.
+
+## OQ-13 — Quand joue-t-on le smoke manuel de F-38 (runner), et sur quelle machine ?
+
+**Statut** : **Ouverte — question de planification adressée au product owner (2026-09-06).**
+Ne bloque pas F-38, **Terminée** dans `docs/PRODUCT_SPEC.md`.
+
+**Le contexte**
+
+F-38 (runner local) est livrée — 14 subfeatures, relais inter-pods compris — et **déployée en
+production** depuis le 2026-08-30 (image `staging-b907947`). Tout ce qui pouvait être vérifié sans
+machine tierce l'est par la suite de tests : handshake, registre, confinement, exclusions,
+garde-fous, audit, relais, purge à la suppression de compte.
+
+**Ce qui reste, et pourquoi ce n'est pas un ticket de dev**
+
+Le parcours **bout en bout sur une vraie machine** — appairage réel, WSS sortant, bascule
+long-polling derrière un proxy qui coupe l'`Upgrade`, `Ctrl-C` — n'est pas automatisable au coût
+raisonnable : il demande une **machine tierce hors cluster**, un **réseau d'entreprise réellement
+contraint** (un proxy simulé prouve le code, pas le terrain) et un **opérateur**. Construire le banc
+d'essai correspondant (VM éphémère + proxy + pilotage navigateur) coûterait plus que la feature, pour
+un parcours joué une fois à la mise en service. Il a donc été **sorti du périmètre de dev et parqué**
+sous forme de protocole exécutable : `docs/features/F-38/SMOKE-manuel-bout-en-bout.md` (9 scénarios,
+prérequis, grille de compte rendu).
+
+**Ce qui est demandé au PO**
+
+1. **Une date** et **un opérateur**.
+2. **Une machine** hors cluster avec Java 21 et un projet réel.
+3. **Un accès réseau contraint** pour le scénario S5 (proxy cassant l'`Upgrade`) — à défaut, le
+   scénario est joué en proxy simulé et **noté comme partiel**.
+4. **Un créneau de scale à 2 replicas** pour le scénario S6 (relais inter-pods).
+5. **Un compte de test jetable** (le scénario S9 le supprime).
+
+**Ce qui se passe ensuite**
+
+Tout OK → une ligne d'historique dans `PRODUCT_SPEC.md`, rien d'autre. Un KO → une **subfeature
+correctif ciblée** (`SF-38-15`…), pas une réouverture de F-38 en bloc ; un KO sur **S5** (repli de
+transport) ou **S6** (deux pods) est **bloquant pour la promesse produit** et passe devant le backlog.
+
+**Risque assumé en attendant** : un défaut d'intégration réseau ou de parcours réel resterait
+invisible jusqu'au premier utilisateur du mode `RUNNER`. C'est le prix du parcage — il est accepté
+parce que le mode `RUNNER` n'est pas le premier pas d'un utilisateur (F-39, D6) et que les chemins
+sensibles sont couverts par des tests.

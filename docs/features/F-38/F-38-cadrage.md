@@ -5,9 +5,17 @@
 > contrôle** (les zips disparaissent), pas un point d'arrêt.
 >
 > **Avancement au 2026-08-30 — découpage entièrement livré : 10 subfeatures sur 10 sur `main`**
-> (vague `wave-2026-08-30`) : SF-38-01→10 sont livrées, **point de contrôle SF-38-06 atteint** ;
-> **F-38 est Terminée** dans `docs/PRODUCT_SPEC.md`. Voir le tableau §5 pour le détail (PR et
-> migrations) et l'historique de `docs/PRODUCT_SPEC.md` pour le contenu de chaque livraison.
+> (vague `wave-2026-08-30`) : SF-38-01→10 sont livrées, **point de contrôle SF-38-06 atteint**.
+> Voir le tableau §5 pour le détail (PR et migrations) et l'historique de `docs/PRODUCT_SPEC.md`
+> pour le contenu de chaque livraison.
+>
+> **Clôture au 2026-09-06 — F-38 est Terminée.** Quatre subfeatures ont été ajoutées après la
+> première clôture : SF-38-11 (délai dépassé ≠ annulation, PR #200), SF-38-12 et SF-38-13
+> (**relais inter-pods** complet, PR #201 et #202) et SF-38-14 (purge à la suppression de compte,
+> PR #203). Le chantier est **déployé en production** depuis le 2026-08-30 (image
+> `staging-b907947`). Le seul reliquat — le **smoke manuel bout en bout** — est **parqué** :
+> il n'est pas automatisable, il demande une vraie machine et un opérateur. Protocole :
+> `docs/features/F-38/SMOKE-manuel-bout-en-bout.md` ; planification demandée au PO en **OQ-13**.
 
 ---
 
@@ -97,6 +105,12 @@ Chaque subfeature vise ≤ 2 jours.
 | SF-38-08 | Garde-fous d'exécution et traçabilité | Validation obligatoire par commande (F-33 non désactivable en mode runner), journal d'audit (commandes ET lectures, migration `runner_audit`), coupe-circuit et révocation. | **Livrée** (PR #198, migration `049`) |
 | SF-38-09 | Repli de transport | Long-polling HTTP si un proxy tue le WebSocket. | **Livrée** (PR #199, aucune migration) |
 | SF-38-10 | Exclusions côté runner | `.runnerignore` (repli `.gitignore`) + liste par défaut non désactivable (D10), appliquée avant toute lecture. | **Livrée** (PR #194, remontée avant SF-38-05) |
+| SF-38-11 | Le délai dépassé n'est plus une annulation | Un `bash` coupé par le timeout était rendu comme une interruption utilisateur : issue terminale trompeuse. | **Livrée** (PR #200, aucune migration) |
+| SF-38-12 | Relais inter-pods — appels d'outils | Le registre porte l'adresse du pod ; connecteur interne 8081 authentifié par secret partagé ; `tool_call`/`tool_result` relayés au pod propriétaire de la socket. | **Livrée** (PR #201, aucune migration) |
+| SF-38-13 | Relais inter-pods — flux, annulation, porte | Décision de la porte, annulation, interruption de tour et marque F-32 diffusées aux pairs (Service headless) ; test chronométré : le flux relayé n'est pas bufferisé. | **Livrée** (PR #202, aucune migration) |
+| SF-38-14 | Purge du runner à la suppression de compte | Codes d'appairage, jetons et journal d'audit effacés avec le compte. | **Livrée** (PR #203, aucune migration) |
+| — | **Déploiement en production** | Image `staging-b907947` : migrations 048/049, `APP_RUNNER_REGISTRY=pg-notify`, jar servi par `GET /api/runner/download`, relais 8081, `/api/internal/**` inatteignable depuis l'ingress. | **Fait** le 2026-08-30 |
+| — | **Smoke manuel bout en bout** | Appairage réel, WSS sortant, repli long-polling derrière un proxy, `Ctrl-C`. Non automatisable. | **Parqué** le 2026-09-06 — protocole `SMOKE-manuel-bout-en-bout.md`, planification au PO (OQ-13) |
 
 ### Écarts de séquence assumés
 **SF-38-10 a été remontée juste après SF-38-04, avant SF-38-05** : livrer le routage backend avant les
@@ -105,14 +119,26 @@ SF-38-06 est atteint, et la suite (SF-38-07, SF-38-08, SF-38-09) a été livrée
 C'est le **seul** écart de séquence du lot ; le découpage a été livré en entier, sans subfeature
 abandonnée ni ajoutée.
 
-### Ce qui reste ouvert après la clôture du lot
-Le découpage est épuisé, mais trois limites sont **assumées et tracées** (voir la ligne de clôture dans
-l'historique de `docs/PRODUCT_SPEC.md`) : ⚠️ **pas de relais inter-pods** — le routage n'utilise que
-`findLocal()`, la porte de confirmation est en mémoire et un canal de repli s'enregistre sur **son** pod,
-donc le mode `RUNNER` suppose un **replica unique ou une affinité d'ingress** (§4 reste la cible) ; le
-**fat-jar n'est pas empaqueté** dans l'image backend (`app.runner.jar-path` vide → 404 assumé, l'écran
-propose la commande de construction) ; le parcours **bout en bout sur une vraie machine** — y compris la
-bascule de transport derrière un proxy qui coupe l'`Upgrade` — reste un **smoke manuel**.
+### Ce qui restait ouvert après la clôture du lot — et ce qu'il en reste
+Trois limites avaient été assumées et tracées à la clôture du lot du 2026-08-30. **Deux sont levées** :
+
+- ~~**pas de relais inter-pods**~~ — le routage `findLocal()`, la porte de confirmation en mémoire et
+  les canaux de repli attachés à un seul pod condamnaient le mode `RUNNER` dès le second pod, alors que
+  l'HPA `min 1 / max 4` peut en créer un tout seul. **Levée** par SF-38-12 (registre porteur de
+  l'adresse du pod, connecteur interne 8081 authentifié, relais de `tool_call`/`tool_result`) et
+  SF-38-13 (porte, annulation, interruption F-32 et flux non bufferisé). Cadrage :
+  `CADRAGE-multi-replica.md`.
+- ~~**le fat-jar n'est pas empaqueté**~~ — **levée** au déploiement du 2026-08-30 :
+  `APP_RUNNER_JAR_PATH` sert le jar embarqué dans l'image (`GET /api/runner/download` → 200, 2,5 Mo).
+
+**Reste, et restera hors de la suite de tests** : le parcours **bout en bout sur une vraie machine** —
+appairage réel, connexion WSS sortante, bascule long-polling derrière un proxy qui coupe l'`Upgrade`,
+`Ctrl-C`. Ce n'est pas un manque de code mais un **acte d'exploitation** : il faut une machine tierce,
+un vrai réseau contraint et un opérateur. Il est donc **parqué** le 2026-09-06 sous forme de protocole
+exécutable — `SMOKE-manuel-bout-en-bout.md` — et sa **planification est demandée au PO** (OQ-13).
+Il ne conditionne plus le statut de F-38 : le code est livré, testé et déployé ; ce qui manque est une
+**constatation terrain**, pas une livraison. Un KO au smoke ouvrira une subfeature correctif ciblée
+(`SF-38-15`…), pas une réouverture en bloc.
 
 ### Pourquoi `bash` arrive après le point de contrôle
 Un runner qui ne fait que lire et écrire des fichiers apporte déjà l'essentiel (fin des zips)
