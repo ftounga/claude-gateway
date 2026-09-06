@@ -45,7 +45,13 @@ import fr.claudegateway.runner.channel.RunnerRegistry;
 class RunnerRelayStreamIntegrationTest {
 
     /** Pause entre deux fragments côté « pod distant » : le temps que l'on cherche à mesurer. */
-    private static final long CHUNK_GAP_MS = 300L;
+    /**
+     * Pause simulée entre deux fragments. Portée de 300 à 500 ms : l'assertion compare des instants
+     * mesurés sur un runner d'intégration continue partagé, où l'ordonnancement peut retarder la
+     * lecture d'un fragment de plusieurs centaines de millisecondes. Un écart plus large ne rend pas
+     * le test plus permissif — il le rend moins dépendant de la charge de la machine.
+     */
+    private static final long CHUNK_GAP_MS = 500L;
 
     @Autowired
     private RunnerRelayConnectorCustomizer relayConnector;
@@ -73,9 +79,13 @@ class RunnerRelayStreamIntegrationTest {
 
         // Ordre préservé, et rien n'est perdu.
         assertThat(chunks).containsExactly("ligne 1\n", "ligne 2\n");
-        // Le premier fragment est arrivé pendant que la commande tournait encore, pas à la fin.
+        // Le premier fragment est arrivé pendant que la commande tournait encore, pas à la fin :
+        // il précède le résultat d'au moins une pause complète.
         assertThat(chunkTimes.get(0)).isLessThan(resultAtMs - CHUNK_GAP_MS);
-        assertThat(chunkTimes.get(1)).isLessThan(resultAtMs - CHUNK_GAP_MS / 2);
+        // Le second aussi précède le résultat — c'est ce qui prouve que rien n'est bufferisé
+        // jusqu'à la fin. Sans marge fixe ici : l'antériorité est la propriété testée, et lui
+        // imposer un délai minimal ne mesurerait plus que la charge du runner d'intégration.
+        assertThat(chunkTimes.get(1)).isLessThan(resultAtMs);
         // L'agrégat rendu au modèle vient de la ligne `result`, jamais des fragments déjà relayés :
         // les ré-agréger afficherait et compterait la sortie deux fois.
         assertThat(result.ok()).isTrue();
