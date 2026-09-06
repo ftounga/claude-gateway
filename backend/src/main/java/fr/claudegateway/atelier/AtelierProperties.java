@@ -27,6 +27,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                      lot 6 : la boucle appelle en non-streamé, et monter l'effort avant d'avoir
  *                      câblé timeout et retry échangerait de la profondeur contre des tours coupés
  *                      au budget de temps
+ * @param contextPruning écartement des résultats d'outils périmés d'un tour long
+ *                      (F-39 / SF-39-12), défaut {@code true}. <b>Coupe-circuit</b> : le mécanisme
+ *                      repose sur une capacité <i>beta</i> du fournisseur ; si elle était retirée,
+ *                      chaque tour de l'Atelier échouerait. Le passer à {@code false} rétablit le
+ *                      service par variable d'environnement, sans livraison
  */
 @ConfigurationProperties(prefix = "app.atelier")
 public record AtelierProperties(
@@ -38,7 +43,8 @@ public record AtelierProperties(
         Long maxFileBytes,
         Integer maxIterations,
         String model,
-        String effort) {
+        String effort,
+        Boolean contextPruning) {
 
     /** Modèle de la boucle maison à défaut de configuration (F-39 / SF-39-10). */
     public static final String DEFAULT_MODEL = "claude-opus-5";
@@ -79,6 +85,9 @@ public record AtelierProperties(
         // SF-28-17) : un effort inconnu retombe sur le défaut, il n'arrête pas le démarrage.
         if (effort == null || effort.isBlank() || !ALLOWED_EFFORTS.contains(effort)) {
             effort = DEFAULT_EFFORT;
+        }
+        if (contextPruning == null) {
+            contextPruning = Boolean.TRUE;
         }
     }
 }

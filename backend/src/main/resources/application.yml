@@ -78,6 +78,13 @@ app:
     # livraison. `xhigh` attend le lot 6 : la boucle appelle en NON-streame, et monter l'effort avant
     # d'avoir cable timeout et retry echangerait de la profondeur contre des tours coupes au budget.
     effort: ${APP_ATELIER_EFFORT:high}
+    # Ecartement des resultats d'outils perimes d'un tour long (F-39 / SF-39-12). Ce qui deborde
+    # n'est pas la conversation — deja bornee depuis SF-39-03 — mais l'accumulation des sorties
+    # d'outils DANS UN MEME TOUR : une sortie de commande pese jusqu'a 128 Ko, et un tour en compte
+    # jusqu'a trente. COUPE-CIRCUIT : le mecanisme repose sur une capacite beta du fournisseur ;
+    # si elle etait retiree, chaque tour de l'Atelier echouerait. `false` retablit le service ici,
+    # sans livraison.
+    context-pruning: ${APP_ATELIER_CONTEXT_PRUNING:true}
     agent:
       # Managed Agents (F-28 / Phase 2, ADR-013). Flag OFF par défaut : tant que `enabled` est faux
       # et qu'aucune config n'existe, AUCUN appel réseau ni coût runtime (bootstrap inerte).

@@ -87,7 +87,7 @@ class AtelierChatServiceTest {
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
                 // Plafond d'étapes par défaut (30) sauf mention contraire du test (SF-28-19).
-                new AtelierProperties(null, null, null, null, null, null, null, null, null));
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, null));
     }
 
     /** Workspace d'archive possédé : la source par défaut, celle de tous les tests de ce fichier. */
@@ -395,7 +395,7 @@ class AtelierChatServiceTest {
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
-                new AtelierProperties(null, null, null, null, null, null, max, null, null));
+                new AtelierProperties(null, null, null, null, null, null, max, null, null, null));
     }
 
     @Test
