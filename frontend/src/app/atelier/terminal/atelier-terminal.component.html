@@ -427,6 +427,22 @@
       }
 
       <!--
+        Plan de travail (F-39 / SF-39-13). Au-dessus de la ligne vivante, qui dit ce qui se passe à
+        l'instant : le plan, lui, dit ce qui RESTE. Sur un tour de trente étapes, c'est la différence
+        entre patienter et se demander si quelque chose est bloqué.
+      -->
+      @if (live.plan && live.plan.length > 0) {
+        <ol class="terminal-plan" aria-label="Plan de travail">
+          @for (step of live.plan; track step.title) {
+            <li class="terminal-plan-step" [attr.data-status]="step.status">
+              <span class="terminal-plan-mark" aria-hidden="true">{{ planMark(step.status) }}</span>
+              <span class="terminal-plan-title">{{ step.title }}</span>
+            </li>
+          }
+        </ol>
+      }
+
+      <!--
         Ligne vivante (F-30 / SF-30-13). À LA SUITE de la sortie, là où l'œil est déjà : le spinner
         de la barre du haut est hors du champ de vision pendant qu'on lit défiler les commandes.
         Elle informe et n'agit pas — « Interrompre » reste le seul point d'arrêt, dans l'en-tête.

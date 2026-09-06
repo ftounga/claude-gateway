@@ -281,9 +281,12 @@ class AtelierChatServiceRunnerTargetTest {
         runner.setExecutionTarget(WorkspaceExecutionTarget.RUNNER);
 
         assertThat(service.buildTools(sandbox)).extracting(fr.claudegateway.agent.AgentTool::name)
-                .containsExactly("list_files", "read_file", "write_file", "edit_file", "search_files");
+                // `set_plan` est déclaré sur les DEUX cibles (F-39 / SF-39-13) : c'est un outil
+                // d'organisation, pas d'exécution — rien de ce qu'il fait ne dépend du lieu.
+                .containsExactly("list_files", "read_file", "write_file", "edit_file", "search_files",
+                        "set_plan");
         assertThat(service.buildTools(runner)).extracting(fr.claudegateway.agent.AgentTool::name)
-                .containsExactly("read_file", "write_file", "edit_file", "bash");
+                .containsExactly("read_file", "write_file", "edit_file", "bash", "set_plan");
     }
 
     @Test
@@ -351,7 +354,7 @@ class AtelierChatServiceRunnerTargetTest {
         service.chat(userId, workspaceId, "remplace x par y");
 
         assertThat(service.buildTools(runner)).extracting(fr.claudegateway.agent.AgentTool::name)
-                .containsExactly("read_file", "write_file", "edit_file", "bash");
+                .containsExactly("read_file", "write_file", "edit_file", "bash", "set_plan");
         verify(runnerAuditService).recordCall(eq(userId), eq(workspaceId), anyString(), eq("edit_file"),
                 eq("a.ts"), any());
     }

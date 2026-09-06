@@ -977,7 +977,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.streaming.set({ steps: [], text: '' });
     // La boucle maison s'affiche dans la même vue terminal que le flux d'agent : les étapes du tour
     // sont converties en blocs (commande puis sortie) au fil de l'eau (D-L4-5).
-    this.execStreaming.set({ status: '', blocks: [], text: '', tokens: null });
+    this.execStreaming.set({ status: '', blocks: [], text: '', tokens: null, plan: [] });
     this.startExecTimer();
 
     void this.atelier.streamChat(id, content, {
@@ -1022,6 +1022,12 @@ export class AtelierComponent implements OnInit, OnDestroy {
       onProgress: (tokens) =>
         this.zone.run(() =>
           this.execStreaming.update((current) => (current ? { ...current, tokens } : current)),
+        ),
+      // Plan de travail (F-39 / SF-39-13) : la liste complète REMPLACE la précédente. La ligne
+      // vivante dit ce qui se passe à l'instant ; le plan dit ce qui reste.
+      onPlan: (steps) =>
+        this.zone.run(() =>
+          this.execStreaming.update((current) => (current ? { ...current, plan: steps } : current)),
         ),
       onDone: (done) =>
         this.zone.run(() => {
@@ -1552,7 +1558,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * utilisateur optimiste est retiré (rien n'a été persisté) et un message lisible est affiché.
    */
   private sendExec(id: string, content: string, userItem: AtelierThreadItem): void {
-    this.execStreaming.set({ status: '', blocks: [], text: '', tokens: null });
+    this.execStreaming.set({ status: '', blocks: [], text: '', tokens: null, plan: [] });
     this.startExecTimer();
 
     void this.atelier.streamAgent(id, content, {

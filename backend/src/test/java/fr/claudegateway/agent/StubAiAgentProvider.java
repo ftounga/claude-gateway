@@ -53,6 +53,22 @@ public class StubAiAgentProvider implements AiAgentProvider {
     }
 
     /**
+     * Empile un tour « appel d'outil » dont un argument est une <b>structure JSON</b> (tableau ou
+     * objet) — ce que la forme clé/valeur ne sait pas exprimer.
+     */
+    public void enqueueToolCallWithJson(String toolName, String key, String json) {
+        ObjectNode input = mapper.createObjectNode();
+        try {
+            input.set(key, mapper.readTree(json));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            input.put(key, json); // JSON invalide : on l'envoie tel quel, c'est le cas à tester.
+        }
+        List<AgentToolCall> calls = new ArrayList<>();
+        calls.add(new AgentToolCall("tool_" + (idSeq++), toolName, input));
+        script.add(new AgentTurn("", calls, false, 5, 5));
+    }
+
+    /**
      * Empile un tour « appel d'outil » <b>sans identifiant</b> : certains fournisseurs peuvent
      * renvoyer un {@code tool_use} sans id exploitable, et la boucle doit alors en fabriquer un
      * (F-38 / SF-38-05, contrat de messages §1).

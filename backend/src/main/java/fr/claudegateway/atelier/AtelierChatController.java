@@ -201,6 +201,11 @@ public class AtelierChatController {
                 }
 
                 @Override
+                public void onPlan(fr.claudegateway.atelier.AtelierPlan plan) {
+                    sendPlan(emitter, plan);
+                }
+
+                @Override
                 public void onConfirmRequest(AtelierConfirmRequest request) {
                     sendConfirmRequest(emitter, request);
                 }
@@ -271,6 +276,21 @@ public class AtelierChatController {
      * tuer le tour : comme la sortie de commande, c'est un <b>confort d'affichage</b>, et le tour
      * tourne déjà. On abandonne le relais, pas le travail.
      */
+    /**
+     * Émet le plan de travail du tour (F-39 / SF-39-13). Même règle que la consommation : c'est un
+     * confort d'affichage, un client parti n'arrête pas le travail.
+     */
+    private void sendPlan(SseEmitter emitter, fr.claudegateway.atelier.AtelierPlan plan) {
+        try {
+            emitter.send(SseEmitter.event().name("plan").data(new StreamPlan(
+                    plan.steps().stream()
+                            .map(step -> new StreamPlanStep(step.title(), step.status().label()))
+                            .toList())));
+        } catch (IOException | IllegalStateException ex) {
+            // Client parti : le plan reste persisté avec le tour, et se relit au rechargement.
+        }
+    }
+
     private void sendProgress(SseEmitter emitter, long tokens) {
         try {
             emitter.send(SseEmitter.event().name("progress").data(new StreamProgress(tokens)));
@@ -332,6 +352,14 @@ public class AtelierChatController {
     }
 
     /** Consommation cumulée du tour, relayée au fil de l'eau (F-39 / SF-39-15). */
+    /** Plan de travail relayé au fil de l'eau (F-39 / SF-39-13) : la liste COMPLÈTE à chaque fois. */
+    record StreamPlan(List<StreamPlanStep> steps) {
+    }
+
+    /** Une étape du plan, telle que l'écran l'affiche. */
+    record StreamPlanStep(String title, String status) {
+    }
+
     record StreamProgress(long tokens) {
     }
 

@@ -28,16 +28,33 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * @param interrupted   le tour s'est arrêté sur une demande d'interruption (F-32)
  * @param budgetReached le tour s'est arrêté sur le <b>plafond de consommation</b> — jamais sur le
  *                      budget de temps, qui dit déjà sa cause dans le texte de réponse (D-L8-5)
+ * @param plan          plan de travail du tour (F-39 / SF-39-13), vide si l'agent n'en a pas posé —
+ *                      au rechargement, un tour montre encore ce qui avait été prévu et ce qui a été
+ *                      fait, ce que la seule transcription ne dit pas
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inputTokens,
-        long outputTokens, long activeSeconds, boolean interrupted, boolean budgetReached) {
+        long outputTokens, long activeSeconds, boolean interrupted, boolean budgetReached,
+        List<PlanStep> plan) {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /** Étape de plan telle que l'écran la relit (F-39 / SF-39-13). */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record PlanStep(String title, String status) {
+    }
+
     public AtelierTurnReport(long inputTokens, long outputTokens, long activeSeconds,
             boolean interrupted, boolean budgetReached) {
-        this(List.of(), 0, inputTokens, outputTokens, activeSeconds, interrupted, budgetReached);
+        this(inputTokens, outputTokens, activeSeconds, interrupted, budgetReached, AtelierPlan.EMPTY);
+    }
+
+    public AtelierTurnReport(long inputTokens, long outputTokens, long activeSeconds,
+            boolean interrupted, boolean budgetReached, AtelierPlan plan) {
+        this(List.of(), 0, inputTokens, outputTokens, activeSeconds, interrupted, budgetReached,
+                plan == null ? List.of() : plan.steps().stream()
+                        .map(step -> new PlanStep(step.title(), step.status().label()))
+                        .toList());
     }
 
     /**
@@ -51,7 +68,9 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
      * @return le document JSON, ou {@code null}
      */
     public String toJson() {
-        if (inputTokens <= 0 && outputTokens <= 0 && !interrupted && !budgetReached) {
+        // Un plan posé suffit à justifier un relevé : il porte l'information que l'écran doit
+        // retrouver au rechargement, même si le tour n'a rien consommé de mesurable.
+        if (inputTokens <= 0 && outputTokens <= 0 && !interrupted && !budgetReached && plan.isEmpty()) {
             return null;
         }
         try {
