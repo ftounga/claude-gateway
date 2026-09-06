@@ -103,6 +103,21 @@ public class AtelierChatController {
     }
 
     /**
+     * Dépose une <b>précision</b> pour le tour en cours (F-39 / SF-39-19) : elle sera lue au début
+     * de l'itération suivante, et l'agent en tiendra compte sans que rien s'arrête.
+     *
+     * <p>À ne pas confondre avec l'interruption, juste en dessous : celle-ci arrête le tour, celle-là
+     * l'enrichit. C'est le geste le plus fréquent — préciser sans casser.</p>
+     */
+    @PostMapping("/steer")
+    public ResponseEntity<Void> steer(@PathVariable UUID id,
+            @Valid @RequestBody AtelierChatRequest request) {
+        atelierAccess.requireAccess();
+        atelierChatService.steer(currentUser.requireId(), id, request.message());
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
      * Interrompt le tour d'atelier en cours sur ce projet (F-38 / SF-38-07, même geste que F-32
      * SF-32-02). La commande éventuellement lancée sur la machine de l'utilisateur est <b>tuée</b>,
      * et la boucle s'arrête à la frontière sûre suivante.

@@ -52,6 +52,17 @@ final class RelayGestureRequests {
     }
 
     /** Marque d'interruption d'une session Managed Agent (contrat §6, clef {@code sessionId}). */
+    /**
+     * Précision déposée pendant un tour (F-39 / SF-39-19), relayée au pod qui exécute la boucle.
+     * Ce n'est pas une interruption : on n'arrête rien, on ajoute au contexte.
+     */
+    record SteerRequest(UUID userId, UUID workspaceId, String message) {
+
+        boolean isValid() {
+            return userId != null && workspaceId != null && message != null && !message.isBlank();
+        }
+    }
+
     record SessionInterruptRequest(String sessionId, Boolean mark) {
 
         boolean isValid() {

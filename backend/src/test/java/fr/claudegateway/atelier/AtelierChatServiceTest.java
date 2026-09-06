@@ -698,4 +698,100 @@ class AtelierChatServiceTest {
         assertThat(saved.getAllValues()).anySatisfy(m ->
                 assertThat(m.getTerminalJson()).isNotNull());
     }
+
+    // ------------------------------------------------- SF-39-19 : parler pendant qu'il travaille
+
+    @Test
+    void aSteerDepositedDuringATurnIsReadAtTheNextIteration() {
+        stubHappyPath();
+        // Déposée PENDANT le tour, comme dans la vraie vie : le registre est vidé à l'ouverture
+        // d'un tour (D3), une précision déposée avant n'aurait aucun tour où atterrir.
+        agentProvider.onTurn(() -> service.steer(userId, workspaceId, "en fait, saute les tests"));
+        agentProvider.enqueueToolCall("read_file", "path", "a.txt");
+        agentProvider.enqueueFinal("Compris.");
+
+        service.chat(userId, workspaceId, "construis le projet");
+
+        assertThat(agentProvider.lastRequest.messages().toString()).contains("saute les tests");
+    }
+
+    @Test
+    void aSteerIsAddedOnlyOnce() {
+        stubHappyPath();
+        agentProvider.onTurn(() -> service.steer(userId, workspaceId, "précision unique"));
+        agentProvider.enqueueToolCall("read_file", "path", "a.txt");
+        agentProvider.enqueueToolCall("read_file", "path", "b.txt");
+        agentProvider.enqueueFinal("Fait.");
+
+        service.chat(userId, workspaceId, "vas-y");
+
+        // Consommée : elle ne doit pas être réinjectée à chaque itération.
+        long occurrences = agentProvider.lastRequest.messages().stream()
+                .filter(m -> m.content().toString().contains("précision unique"))
+                .count();
+        assertThat(occurrences).isEqualTo(1);
+    }
+
+    @Test
+    void severalSteersArriveInTheOrderTheyWereDeposited() {
+        stubHappyPath();
+        agentProvider.onTurn(() -> {
+            service.steer(userId, workspaceId, "première");
+            service.steer(userId, workspaceId, "seconde");
+        });
+        agentProvider.enqueueToolCall("read_file", "path", "a.txt");
+        agentProvider.enqueueFinal("Vu.");
+
+        service.chat(userId, workspaceId, "vas-y");
+
+        String sent = agentProvider.lastRequest.messages().toString();
+        assertThat(sent.indexOf("première")).isLessThan(sent.indexOf("seconde"));
+    }
+
+    @Test
+    void theSixthSteerIsRefusedWithoutBreakingAnything() {
+        stubOwnedArchiveWorkspace();
+        for (int i = 0; i < AtelierChatService.MAX_PENDING_STEERS; i++) {
+            service.steer(userId, workspaceId, "précision " + i);
+        }
+
+        assertThatThrownBy(() -> service.steer(userId, workspaceId, "une de trop"))
+                .isInstanceOf(TooManySteersException.class)
+                .hasMessageContaining("laissez-le avancer");
+    }
+
+    @Test
+    void anEmptyOrOversizedSteerIsRefused() {
+        stubOwnedArchiveWorkspace();
+
+        assertThatThrownBy(() -> service.steer(userId, workspaceId, "   "))
+                .isInstanceOf(InvalidFilePathException.class);
+        assertThatThrownBy(() -> service.steer(userId, workspaceId,
+                "x".repeat(AtelierChatService.MAX_STEER_CHARS + 1)))
+                .isInstanceOf(InvalidFilePathException.class);
+    }
+
+    @Test
+    void unreadSteersDoNotSurviveTheTurn() {
+        stubHappyPath();
+        // Déposée au dernier appel du premier tour : elle n'aura plus d'itération pour être lue.
+        agentProvider.onTurn(() -> service.steer(userId, workspaceId, "précision du premier tour"));
+        agentProvider.enqueueFinal("Un.");
+        service.chat(userId, workspaceId, "premier");
+
+        agentProvider.enqueueFinal("Deux.");
+        service.chat(userId, workspaceId, "second");
+
+        // Rejouer une précision au tour suivant la ferait resurgir dans un contexte qui a changé.
+        assertThat(agentProvider.lastRequest.messages().toString())
+                .doesNotContain("précision du premier tour");
+    }
+
+    @Test
+    void aTurnWithoutSteerIsUnchanged() {
+        stubHappyPath();
+        agentProvider.enqueueFinal("Voilà.");
+
+        assertThat(service.chat(userId, workspaceId, "vas-y").reply()).isEqualTo("Voilà.");
+    }
 }

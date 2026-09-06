@@ -43,6 +43,7 @@ public class RunnerRelayBroadcaster {
     static final String CONFIRM_PATH = "/api/internal/runner/confirm";
     static final String INTERRUPT_PATH = "/api/internal/atelier/interrupt";
     static final String SESSION_INTERRUPT_PATH = "/api/internal/atelier/session-interrupt";
+    static final String STEER_PATH = "/api/internal/atelier/steer";
 
     private static final Logger log = LoggerFactory.getLogger(RunnerRelayBroadcaster.class);
     /** Exécuteur borné : une diffusion ne doit jamais pouvoir consommer le pool de requêtes. */
@@ -97,6 +98,19 @@ public class RunnerRelayBroadcaster {
         payload.put("workspaceId", workspaceId.toString());
         payload.put("reason", reason);
         broadcast(INTERRUPT_PATH, payload.toString());
+    }
+
+    /**
+     * Diffuse une précision déposée pendant un tour (F-39 / SF-39-19) : best-effort, comme
+     * l'interruption — l'appelant a déjà déposé localement, et un pair injoignable ne doit pas faire
+     * échouer le geste rendu à l'utilisateur.
+     */
+    public void broadcastSteer(UUID userId, UUID workspaceId, String message) {
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("userId", userId.toString());
+        payload.put("workspaceId", workspaceId.toString());
+        payload.put("message", message);
+        broadcast(STEER_PATH, payload.toString());
     }
 
     /** Diffuse la pose ou le retrait d'une marque d'interruption de session (F-32, contrat §6). */

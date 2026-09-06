@@ -102,6 +102,7 @@ describe('AtelierComponent', () => {
       'setAskBeforeBash',
       'confirmToolUse',
       'confirmChatToolUse',
+      'steerChat',
       'getHistory',
       'getResume',
       'restartThread',
@@ -2732,6 +2733,41 @@ describe('AtelierComponent', () => {
 
     // Autoriser une commande n'autorise pas les suivantes : ce sont deux gestes distincts.
     expect(service.confirmChatToolUse.calls.mostRecent().args[1].allowAll).toBeUndefined();
+  });
+
+  // ------------------------------------------------- SF-39-19 : parler pendant qu'il travaille
+
+  it('deposits a steer instead of opening a second turn while one is running', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.engine.set('LOCAL_MACHINE');
+    service.steerChat.and.returnValue(of(void 0));
+    service.streamChat.and.returnValue(Promise.resolve());
+    // Un tour est déjà en cours.
+    component.submitting.set(true);
+    component.draft.set('en fait, saute les tests');
+
+    component.send();
+
+    expect(service.steerChat).toHaveBeenCalledWith('w1', 'en fait, saute les tests');
+    // Aucun second tour n'est ouvert : c'est une précision, pas une nouvelle demande.
+    expect(service.streamChat).not.toHaveBeenCalled();
+    // Et elle apparaît tout de suite dans le fil : l'utilisateur doit voir ce qu'il vient de dire.
+    expect(component.messages().at(-1)?.content).toBe('en fait, saute les tests');
+    expect(component.draft()).toBe('');
+  });
+
+  it('opens a normal turn when nothing is running', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.engine.set('LOCAL_MACHINE');
+    service.streamChat.and.returnValue(Promise.resolve());
+    component.draft.set('construis le projet');
+
+    component.send();
+
+    expect(service.streamChat).toHaveBeenCalled();
+    expect(service.steerChat).not.toHaveBeenCalled();
   });
 });
 
