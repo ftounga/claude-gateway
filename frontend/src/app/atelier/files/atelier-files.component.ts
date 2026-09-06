@@ -1,5 +1,16 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, HostListener, NgZone, OnInit, computed, inject, signal } from '@angular/core';
+import {
+  Component,
+  EventEmitter,
+  HostListener,
+  Input,
+  NgZone,
+  OnInit,
+  Output,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -74,6 +85,18 @@ const DEFAULT_COMMIT_MESSAGE = 'Modifications depuis l\'Atelier';
   styleUrl: './atelier-files.component.scss',
 })
 export class AtelierFilesComponent implements OnInit {
+
+  /**
+   * Affiché **dans** le terminal plutôt que sur sa propre route (F-39 / SF-39-18).
+   *
+   * <p>La différence n'est pas cosmétique : changer de route détruit le composant du terminal, donc
+   * son flux SSE — et une demande d'autorisation partie dans un flux mort est refusée au bout de
+   * 120 s, sans que personne l'ait vue. En mode panneau, le terminal reste monté derrière.</p>
+   */
+  @Input() embedded = false;
+
+  /** Demande de fermeture du panneau (mode `embedded` uniquement) : personne ne navigue. */
+  @Output() readonly closed = new EventEmitter<void>();
   private readonly atelier = inject(AtelierService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -422,7 +445,11 @@ export class AtelierFilesComponent implements OnInit {
    * @param destination route de destination
    */
   confirmLeave(destination: unknown[], queryParams?: Record<string, string>): void {
-    const go = () => void this.router.navigate(destination, queryParams ? { queryParams } : {});
+    // En panneau, « quitter » ferme la surcouche : naviguer détruirait le terminal qui vit
+    // derrière, et avec lui le tour en cours (F-39 / SF-39-18).
+    const go = this.embedded
+      ? () => this.closed.emit()
+      : () => void this.router.navigate(destination, queryParams ? { queryParams } : {});
     if (this.pendingCount() === 0) {
       go();
       return;
