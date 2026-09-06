@@ -36,6 +36,9 @@ public class StripeBillingProvider implements BillingProvider {
 
     private static final Logger log = LoggerFactory.getLogger(StripeBillingProvider.class);
 
+    /** Métadonnée qui distingue une session/abonnement d'option Atelier (F-40) d'un plan. */
+    private static final String ATELIER_OPTION_KIND = "atelier_option";
+
     private final BillingProperties.Stripe config;
 
     public StripeBillingProvider(BillingProperties properties) {
@@ -139,6 +142,83 @@ public class StripeBillingProvider implements BillingProvider {
     }
 
     @Override
+    public CheckoutSession createAtelierOptionCheckoutSession(AtelierOptionCheckoutCommand command) {
+        if (!config.isConfigured()) {
+            throw new BillingProviderUnavailableException("Fournisseur de paiement non configuré.");
+        }
+        if (!StringUtils.hasText(command.priceId())) {
+            throw new BillingProviderUnavailableException(
+                    "Aucun price ID configuré pour l'option Atelier.");
+        }
+
+        // L'option est un ABONNEMENT mensuel, distinct de celui du plan : le mode ne dépend d'aucun
+        // catalogue, et l'abonnement créé porte ses propres métadonnées — sans elles, les événements
+        // d'abonnement ultérieurs seraient indiscernables de ceux du plan.
+        SessionCreateParams.Builder builder = SessionCreateParams.builder()
+                .setMode(SessionCreateParams.Mode.SUBSCRIPTION)
+                .setSuccessUrl(config.successUrl())
+                .setCancelUrl(config.cancelUrl())
+                .setClientReferenceId(command.userId().toString())
+                .putMetadata("userId", command.userId().toString())
+                .putMetadata("kind", ATELIER_OPTION_KIND)
+                .setSubscriptionData(SessionCreateParams.SubscriptionData.builder()
+                        .putMetadata("userId", command.userId().toString())
+                        .putMetadata("kind", ATELIER_OPTION_KIND)
+                        .build())
+                .addLineItem(SessionCreateParams.LineItem.builder()
+                        .setPrice(command.priceId())
+                        .setQuantity(1L)
+                        .build());
+
+        if (StringUtils.hasText(command.existingCustomerId())) {
+            builder.setCustomer(command.existingCustomerId());
+        } else if (StringUtils.hasText(command.customerEmail())) {
+            builder.setCustomerEmail(command.customerEmail());
+        }
+
+        try {
+            RequestOptions options = RequestOptions.builder()
+                    .setApiKey(config.secretKey())
+                    .build();
+            com.stripe.model.checkout.Session session =
+                    com.stripe.model.checkout.Session.create(builder.build(), options);
+            return new CheckoutSession(session.getUrl(), session.getId());
+        } catch (StripeException ex) {
+            // On ne journalise ni la clé ni le détail brut : message métier neutre.
+            log.warn("Échec de création de la session de souscription à l'option Atelier");
+            throw new BillingProviderException("Échec de création de la session de paiement.", ex);
+        }
+    }
+
+    @Override
+    public OffsetDateTime scheduleSubscriptionCancellation(String providerSubscriptionId) {
+        if (!config.isConfigured()) {
+            throw new BillingProviderUnavailableException("Fournisseur de paiement non configuré.");
+        }
+        if (!StringUtils.hasText(providerSubscriptionId)) {
+            throw new BillingProviderUnavailableException("Abonnement manquant pour la résiliation.");
+        }
+        try {
+            RequestOptions options = RequestOptions.builder()
+                    .setApiKey(config.secretKey())
+                    .build();
+            com.stripe.model.Subscription subscription =
+                    com.stripe.model.Subscription.retrieve(providerSubscriptionId, options);
+            // Fin de période, jamais immédiat : le mois est payé, il est dû jusqu'au bout.
+            com.stripe.model.Subscription updated = subscription.update(
+                    com.stripe.param.SubscriptionUpdateParams.builder()
+                            .setCancelAtPeriodEnd(true)
+                            .build(),
+                    options);
+            return toOffsetDateTime(updated.getCurrentPeriodEnd());
+        } catch (StripeException ex) {
+            // On ne journalise ni la clé ni le détail brut : message métier neutre.
+            log.warn("Échec de la programmation de résiliation d'abonnement Stripe");
+            throw new BillingProviderException("Échec de la résiliation.", ex);
+        }
+    }
+
+    @Override
     public void changeSubscriptionPlan(ChangePlanCommand command) {
         if (!config.isConfigured()) {
             throw new BillingProviderUnavailableException("Fournisseur de paiement non configuré.");
@@ -206,6 +286,21 @@ public class StripeBillingProvider implements BillingProvider {
         UUID userId = parseUserId(session.getClientReferenceId(), metaUserId);
         String kind = session.getMetadata() != null ? session.getMetadata().get("kind") : null;
 
+        // Option Atelier (F-40) : distinguée par la métadonnée kind=atelier_option. L'identifiant
+        // d'abonnement porté ici est celui de l'OPTION, jamais celui du plan.
+        if (ATELIER_OPTION_KIND.equals(kind)) {
+            return new BillingEvent(
+                    BillingEventType.ATELIER_OPTION_COMPLETED,
+                    userId,
+                    session.getCustomer(),
+                    session.getSubscription(),
+                    null,
+                    "active",
+                    null,
+                    event.getId(),
+                    null);
+        }
+
         // Rachat de tokens (top-up, F-21) : distingué par la métadonnée kind=topup.
         if ("topup".equals(kind)) {
             String topupCode = session.getMetadata().get("topupCode");
@@ -246,12 +341,23 @@ public class StripeBillingProvider implements BillingProvider {
         PlanCode planCode = subscription.getMetadata() != null
                 ? parsePlanCode(subscription.getMetadata().get("planCode"))
                 : null;
+        String kind = subscription.getMetadata() != null ? subscription.getMetadata().get("kind") : null;
+
+        // Option Atelier (F-40) : un SECOND abonnement chez le fournisseur. Le traiter comme celui
+        // du plan écraserait le plan — résilier l'option annulerait l'abonnement. La métadonnée est
+        // posée à la création de l'abonnement (subscription_data), donc dès le premier événement.
+        BillingEventType effectiveType = ATELIER_OPTION_KIND.equals(kind)
+                ? (type == BillingEventType.SUBSCRIPTION_DELETED
+                        ? BillingEventType.ATELIER_OPTION_DELETED
+                        : BillingEventType.ATELIER_OPTION_UPDATED)
+                : type;
+
         return new BillingEvent(
-                type,
+                effectiveType,
                 userId,
                 subscription.getCustomer(),
                 subscription.getId(),
-                planCode,
+                ATELIER_OPTION_KIND.equals(kind) ? null : planCode,
                 subscription.getStatus(),
                 toOffsetDateTime(subscription.getCurrentPeriodEnd()),
                 event.getId(),

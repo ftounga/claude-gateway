@@ -10,6 +10,16 @@ public enum BillingEventType {
     CHECKOUT_COMPLETED,
     /** Rachat de tokens (top-up, F-21) finalisé après un Checkout one-shot : crédite le quota. */
     TOPUP_COMPLETED,
+    /**
+     * Souscription de l'<b>option Atelier</b> (F-40) finalisée après un Checkout : ouvre le droit
+     * d'Atelier. Distinct de {@link #CHECKOUT_COMPLETED} parce que l'événement porte l'identifiant
+     * d'un <b>second</b> abonnement ; le confondre avec celui du plan écraserait le plan.
+     */
+    ATELIER_OPTION_COMPLETED,
+    /** Cycle de vie de l'abonnement d'<b>option Atelier</b> mis à jour (statut). */
+    ATELIER_OPTION_UPDATED,
+    /** Abonnement d'<b>option Atelier</b> supprimé/résilié côté fournisseur : le droit se referme. */
+    ATELIER_OPTION_DELETED,
     /** Cycle de vie d'un abonnement mis à jour (statut, période, plan). */
     SUBSCRIPTION_UPDATED,
     /** Abonnement supprimé/annulé côté fournisseur. */

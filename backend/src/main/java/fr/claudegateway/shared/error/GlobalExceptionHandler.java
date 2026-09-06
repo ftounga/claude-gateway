@@ -15,6 +15,9 @@ import org.springframework.web.multipart.support.MissingServletRequestPartExcept
 import fr.claudegateway.admin.AdminForbiddenException;
 import fr.claudegateway.ai.AIProviderException;
 import fr.claudegateway.ai.AIProviderUnavailableException;
+import fr.claudegateway.billing.AtelierOptionAlreadyActiveException;
+import fr.claudegateway.billing.AtelierOptionIncludedInPlanException;
+import fr.claudegateway.billing.AtelierOptionNotActiveException;
 import fr.claudegateway.billing.NoActiveSubscriptionException;
 import fr.claudegateway.billing.UnknownPlanException;
 import fr.claudegateway.billing.provider.BillingProviderException;
@@ -502,6 +505,28 @@ public class GlobalExceptionHandler {
         log.debug("Changement de plan refusé : aucun abonnement actif");
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse("no_active_subscription", ex.getMessage()));
+    }
+
+    @ExceptionHandler(AtelierOptionIncludedInPlanException.class)
+    public ResponseEntity<ErrorResponse> handleAtelierOptionIncluded(AtelierOptionIncludedInPlanException ex) {
+        // Vendre l'option à qui l'a déjà incluse serait lui vendre ce qu'il possède (F-40).
+        log.debug("Souscription d'option Atelier refusée : l'Atelier est déjà inclus à l'offre");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("atelier_option_included", ex.getMessage()));
+    }
+
+    @ExceptionHandler(AtelierOptionAlreadyActiveException.class)
+    public ResponseEntity<ErrorResponse> handleAtelierOptionAlreadyActive(AtelierOptionAlreadyActiveException ex) {
+        log.debug("Souscription d'option Atelier refusée : option déjà active");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("atelier_option_already_active", ex.getMessage()));
+    }
+
+    @ExceptionHandler(AtelierOptionNotActiveException.class)
+    public ResponseEntity<ErrorResponse> handleAtelierOptionNotActive(AtelierOptionNotActiveException ex) {
+        log.debug("Résiliation d'option Atelier refusée : aucune option en cours");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("atelier_option_not_active", ex.getMessage()));
     }
 
     @ExceptionHandler(UnknownPlanException.class)

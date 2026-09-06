@@ -30,6 +30,30 @@ public interface BillingProvider {
     CheckoutSession createTopUpCheckoutSession(TopUpCheckoutCommand command);
 
     /**
+     * Crée une session de paiement hébergée pour l'<b>option Atelier</b> (F-40) : un abonnement
+     * mensuel <b>distinct</b> de celui du plan. La session porte les métadonnées nécessaires
+     * ({@code kind=atelier_option}, {@code userId}) pour que le webhook de paiement finalisé ouvre
+     * le droit du bon utilisateur, sans jamais toucher à son plan.
+     *
+     * @throws BillingProviderUnavailableException si le fournisseur ou le price ID n'est pas configuré
+     * @throws BillingProviderException            en cas d'échec d'appel au fournisseur
+     */
+    CheckoutSession createAtelierOptionCheckoutSession(AtelierOptionCheckoutCommand command);
+
+    /**
+     * Programme la résiliation d'un abonnement <b>en fin de période</b> (F-40 / SF-40-02) : le
+     * service reste dû jusqu'au terme déjà payé, et le fournisseur émettra l'événement de
+     * suppression à ce terme. Ne coupe rien sur-le-champ.
+     *
+     * @param providerSubscriptionId identifiant de l'abonnement fournisseur à résilier
+     * @return le terme auquel la résiliation prendra effet, ou {@code null} si le fournisseur n'en
+     *         annonce pas
+     * @throws BillingProviderUnavailableException si le fournisseur ou l'identifiant n'est pas configuré
+     * @throws BillingProviderException            en cas d'échec d'appel au fournisseur
+     */
+    java.time.OffsetDateTime scheduleSubscriptionCancellation(String providerSubscriptionId);
+
+    /**
      * Change le plan d'un abonnement existant (upgrade/downgrade, F-21 / SF-21-05) : met à jour
      * l'item de l'abonnement vers le nouveau price, avec proratisation. Ne crée pas de nouvel
      * abonnement (à la différence de {@link #createCheckoutSession(CheckoutCommand)}).

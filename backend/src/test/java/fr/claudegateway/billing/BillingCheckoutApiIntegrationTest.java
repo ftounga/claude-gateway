@@ -58,6 +58,7 @@ class BillingCheckoutApiIntegrationTest {
         volatile RuntimeException webhookToThrow;
         volatile String lastChangedSubId;
         volatile String lastChangedPriceId;
+        volatile String lastCanceledSubId;
 
         void reset() {
             sessionToReturn = new CheckoutSession("https://checkout.stripe/test", "cs_1");
@@ -67,6 +68,22 @@ class BillingCheckoutApiIntegrationTest {
             webhookToThrow = null;
             lastChangedSubId = null;
             lastChangedPriceId = null;
+            lastCanceledSubId = null;
+        }
+
+        @Override
+        public CheckoutSession createAtelierOptionCheckoutSession(
+                fr.claudegateway.billing.provider.AtelierOptionCheckoutCommand command) {
+            if (checkoutToThrow != null) {
+                throw checkoutToThrow;
+            }
+            return sessionToReturn;
+        }
+
+        @Override
+        public java.time.OffsetDateTime scheduleSubscriptionCancellation(String providerSubscriptionId) {
+            lastCanceledSubId = providerSubscriptionId;
+            return java.time.OffsetDateTime.now().plusDays(20);
         }
 
         @Override

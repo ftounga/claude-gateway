@@ -87,6 +87,14 @@ public class Subscription {
     @Column(name = "atelier_option_stripe_subscription_id", length = 64)
     private String atelierOptionStripeSubscriptionId;
 
+    /**
+     * Terme d'une option Atelier dont la <b>résiliation est programmée</b> (F-40 / SF-40-02) ;
+     * {@code null} si aucune résiliation n'est en cours. Le statut reste {@code ACTIVE} jusqu'à ce
+     * terme : l'utilisateur a payé le mois, il garde l'Atelier jusqu'au bout.
+     */
+    @Column(name = "atelier_option_cancel_at")
+    private OffsetDateTime atelierOptionCancelAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

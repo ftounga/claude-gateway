@@ -54,6 +54,12 @@ public class WebhookService {
         switch (event.type()) {
             case CHECKOUT_COMPLETED -> applyCheckoutCompleted(event);
             case TOPUP_COMPLETED -> applyTopUpCompleted(event);
+            case ATELIER_OPTION_COMPLETED ->
+                    applyAtelierOptionState(event, SubscriptionStatus.ACTIVE, true);
+            case ATELIER_OPTION_UPDATED ->
+                    applyAtelierOptionState(event, SubscriptionStatus.fromStripe(event.status()), false);
+            case ATELIER_OPTION_DELETED ->
+                    applyAtelierOptionState(event, SubscriptionStatus.CANCELED, true);
             case SUBSCRIPTION_UPDATED -> applySubscriptionUpdate(event);
             case SUBSCRIPTION_DELETED -> applySubscriptionDeleted(event);
             case UNHANDLED -> log.debug("Événement de facturation non géré, ignoré");
@@ -119,7 +125,74 @@ public class WebhookService {
         subscriptionRepository.save(subscription);
     }
 
+    /**
+     * Applique un événement d'<b>option Atelier</b> (F-40) : statut de l'option, et rangement de
+     * l'identifiant du <b>second</b> abonnement dans sa propre colonne.
+     *
+     * <p>Ce chemin ne touche ni {@code plan_code}, ni {@code status}, ni
+     * {@code stripe_subscription_id} : l'option est un supplément, pas un changement d'offre. C'est
+     * la propriété la plus importante de la feature côté webhook, et elle est figée par un test.</p>
+     *
+     * @param clearScheduledCancellation efface le terme programmé — vrai à la souscription (elle
+     *                                   annule une résiliation antérieure) et à la fermeture
+     *                                   effective (le terme est atteint, il n'a plus d'objet)
+     */
+    private void applyAtelierOptionState(BillingEvent event, SubscriptionStatus status,
+            boolean clearScheduledCancellation) {
+        Optional<Subscription> found = resolveForOption(event);
+        if (found.isEmpty()) {
+            log.warn("Événement d'option Atelier sans abonnement correspondant : ignoré");
+            return;
+        }
+        Subscription subscription = found.get();
+        if (StringUtils.hasText(event.stripeCustomerId())) {
+            subscription.setStripeCustomerId(event.stripeCustomerId());
+        }
+        if (StringUtils.hasText(event.stripeSubscriptionId())) {
+            subscription.setAtelierOptionStripeSubscriptionId(event.stripeSubscriptionId());
+        }
+        subscription.setAtelierOptionStatus(status);
+        if (clearScheduledCancellation) {
+            subscription.setAtelierOptionCancelAt(null);
+        }
+        subscriptionRepository.save(subscription);
+    }
+
+    /**
+     * <b>Seconde ligne de défense</b> : applique un événement d'abonnement à l'option quand son
+     * identifiant la désigne, et dit s'il a été consommé. Le fournisseur marque déjà les événements
+     * d'option par métadonnée ({@code kind=atelier_option}) ; ce garde-fou couvre le cas où cette
+     * métadonnée manquerait — sans lui, l'événement tomberait sur le repli « par client » et
+     * écraserait le statut du <b>plan</b> : résilier l'option annulerait l'abonnement.
+     *
+     * <p>Le routage passe ici par l'identifiant d'abonnement fournisseur (index unique) : un index
+     * est une preuve, une convention n'en est pas une.</p>
+     *
+     * @return {@code true} si l'événement portait sur l'option et a été appliqué à elle seule
+     */
+    private boolean applyToAtelierOptionIfConcerned(BillingEvent event, SubscriptionStatus status,
+            boolean clearScheduledCancellation) {
+        if (!StringUtils.hasText(event.stripeSubscriptionId())) {
+            return false;
+        }
+        Optional<Subscription> found = subscriptionRepository
+                .findByAtelierOptionStripeSubscriptionId(event.stripeSubscriptionId());
+        if (found.isEmpty()) {
+            return false;
+        }
+        Subscription subscription = found.get();
+        subscription.setAtelierOptionStatus(status);
+        if (clearScheduledCancellation) {
+            subscription.setAtelierOptionCancelAt(null);
+        }
+        subscriptionRepository.save(subscription);
+        return true;
+    }
+
     private void applySubscriptionUpdate(BillingEvent event) {
+        if (applyToAtelierOptionIfConcerned(event, SubscriptionStatus.fromStripe(event.status()), false)) {
+            return;
+        }
         Optional<Subscription> found = resolve(event);
         if (found.isEmpty()) {
             log.warn("customer.subscription.updated sans abonnement correspondant : ignoré");
@@ -143,6 +216,11 @@ public class WebhookService {
     }
 
     private void applySubscriptionDeleted(BillingEvent event) {
+        // Fin effective d'une option résiliée : le droit se referme, la date programmée s'efface,
+        // et le plan n'est pas touché.
+        if (applyToAtelierOptionIfConcerned(event, SubscriptionStatus.CANCELED, true)) {
+            return;
+        }
         Optional<Subscription> found = resolve(event);
         if (found.isEmpty()) {
             log.warn("customer.subscription.deleted sans abonnement correspondant : ignoré");
@@ -157,6 +235,32 @@ public class WebhookService {
      * Résout l'abonnement ciblé par l'événement, sans jamais élargir au-delà d'un seul utilisateur :
      * on tente d'abord l'identifiant abonnement Stripe, puis le client Stripe, puis le {@code userId}.
      */
+    /**
+     * Résout l'abonnement visé par un événement d'<b>option</b>. Volontairement plus étroit que
+     * {@link #resolve(BillingEvent)} : l'identifiant d'abonnement porté par l'événement est celui de
+     * l'option, et le chercher dans {@code stripe_subscription_id} désignerait le plan d'un autre.
+     * Seuls le client fournisseur et le {@code userId} sont des clés valides ici.
+     */
+    private Optional<Subscription> resolveForOption(BillingEvent event) {
+        if (StringUtils.hasText(event.stripeSubscriptionId())) {
+            Optional<Subscription> byOption = subscriptionRepository
+                    .findByAtelierOptionStripeSubscriptionId(event.stripeSubscriptionId());
+            if (byOption.isPresent()) {
+                return byOption;
+            }
+        }
+        if (event.userId() != null) {
+            Optional<Subscription> byUser = subscriptionRepository.findByUserId(event.userId());
+            if (byUser.isPresent()) {
+                return byUser;
+            }
+        }
+        if (StringUtils.hasText(event.stripeCustomerId())) {
+            return subscriptionRepository.findByStripeCustomerId(event.stripeCustomerId());
+        }
+        return Optional.empty();
+    }
+
     private Optional<Subscription> resolve(BillingEvent event) {
         if (StringUtils.hasText(event.stripeSubscriptionId())) {
             Optional<Subscription> bySub =

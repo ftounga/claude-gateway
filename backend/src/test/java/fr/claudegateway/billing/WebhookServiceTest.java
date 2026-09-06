@@ -21,7 +21,10 @@ import fr.claudegateway.billing.provider.BillingEventType;
 import fr.claudegateway.billing.provider.BillingProvider;
 import fr.claudegateway.quota.QuotaService;
 
-/** Tests unitaires de l'application des événements de facturation (SF-09-02 + SF-21-02 top-up). */
+/**
+ * Tests unitaires de l'application des événements de facturation (SF-09-02 + SF-21-02 top-up +
+ * SF-40-02 option Atelier).
+ */
 class WebhookServiceTest {
 
     private BillingProvider provider;
@@ -45,6 +48,133 @@ class WebhookServiceTest {
                 .userId(userId).status(SubscriptionStatus.TRIALING)
                 .trialEndsAt(OffsetDateTime.now().plusDays(14)).build();
     }
+
+    /** Abonnement Solo actif, avec ou sans option — support des tests d'option (F-40 / SF-40-02). */
+    private Subscription soloFor(UUID userId, SubscriptionStatus optionStatus, String optionSubId) {
+        return Subscription.builder()
+                .userId(userId)
+                .status(SubscriptionStatus.ACTIVE)
+                .planCode(PlanCode.SOLO)
+                .stripeCustomerId("cus_1")
+                .stripeSubscriptionId("sub_plan")
+                .atelierOptionStatus(optionStatus)
+                .atelierOptionStripeSubscriptionId(optionSubId)
+                .build();
+    }
+
+    // ------------------------------------------------ option Atelier (F-40 / SF-40-02)
+
+    @Test
+    void atelierOptionCompletedOpensTheRightWithoutTouchingThePlan() {
+        UUID userId = UUID.randomUUID();
+        Subscription sub = soloFor(userId, null, null);
+        when(repository.findByAtelierOptionStripeSubscriptionId("sub_option")).thenReturn(Optional.empty());
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(sub));
+        when(repository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(provider.parseWebhookEvent("p", "s")).thenReturn(new BillingEvent(
+                BillingEventType.ATELIER_OPTION_COMPLETED, userId, "cus_1", "sub_option",
+                null, "active", null, "evt_opt", null));
+
+        service.handle("p", "s");
+
+        assertThat(sub.getAtelierOptionStatus()).isEqualTo(SubscriptionStatus.ACTIVE);
+        assertThat(sub.getAtelierOptionStripeSubscriptionId()).isEqualTo("sub_option");
+        // Le plan est intact : c'est la propriété la plus importante de la feature côté webhook.
+        assertThat(sub.getPlanCode()).isEqualTo(PlanCode.SOLO);
+        assertThat(sub.getStatus()).isEqualTo(SubscriptionStatus.ACTIVE);
+        assertThat(sub.getStripeSubscriptionId()).isEqualTo("sub_plan");
+    }
+
+    @Test
+    void atelierOptionDeletedClosesTheRightAndLeavesThePlanUntouched() {
+        UUID userId = UUID.randomUUID();
+        Subscription sub = soloFor(userId, SubscriptionStatus.ACTIVE, "sub_option");
+        sub.setAtelierOptionCancelAt(OffsetDateTime.now().plusDays(3));
+        when(repository.findByAtelierOptionStripeSubscriptionId("sub_option")).thenReturn(Optional.of(sub));
+        when(repository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(provider.parseWebhookEvent("p", "s")).thenReturn(new BillingEvent(
+                BillingEventType.ATELIER_OPTION_DELETED, userId, "cus_1", "sub_option",
+                null, "canceled", null, "evt_opt_del", null));
+
+        service.handle("p", "s");
+
+        assertThat(sub.getAtelierOptionStatus()).isEqualTo(SubscriptionStatus.CANCELED);
+        assertThat(sub.getAtelierOptionCancelAt()).isNull();
+        assertThat(sub.getPlanCode()).isEqualTo(PlanCode.SOLO);
+        assertThat(sub.getStatus()).isEqualTo(SubscriptionStatus.ACTIVE);
+    }
+
+    @Test
+    void atelierOptionUpdatedOnlyMovesTheOptionStatus() {
+        UUID userId = UUID.randomUUID();
+        Subscription sub = soloFor(userId, SubscriptionStatus.ACTIVE, "sub_option");
+        when(repository.findByAtelierOptionStripeSubscriptionId("sub_option")).thenReturn(Optional.of(sub));
+        when(repository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(provider.parseWebhookEvent("p", "s")).thenReturn(new BillingEvent(
+                BillingEventType.ATELIER_OPTION_UPDATED, userId, "cus_1", "sub_option",
+                null, "past_due", null, "evt_opt_upd", null));
+
+        service.handle("p", "s");
+
+        assertThat(sub.getAtelierOptionStatus()).isEqualTo(SubscriptionStatus.PAST_DUE);
+        assertThat(sub.getStatus()).isEqualTo(SubscriptionStatus.ACTIVE);
+    }
+
+    @Test
+    void aPlainSubscriptionEventCarryingTheOptionIdNeverTouchesThePlan() {
+        // Seconde ligne de défense : même sans la métadonnée du fournisseur, l'identifiant suffit à
+        // reconnaître l'option. Sans ce garde-fou, le repli « par client » écraserait le plan.
+        UUID userId = UUID.randomUUID();
+        Subscription sub = soloFor(userId, SubscriptionStatus.ACTIVE, "sub_option");
+        when(repository.findByAtelierOptionStripeSubscriptionId("sub_option")).thenReturn(Optional.of(sub));
+        when(repository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(provider.parseWebhookEvent("p", "s")).thenReturn(new BillingEvent(
+                BillingEventType.SUBSCRIPTION_DELETED, userId, "cus_1", "sub_option",
+                null, "canceled", null, "evt_del", null));
+
+        service.handle("p", "s");
+
+        assertThat(sub.getAtelierOptionStatus()).isEqualTo(SubscriptionStatus.CANCELED);
+        assertThat(sub.getStatus()).as("le plan survit à la résiliation de l'option")
+                .isEqualTo(SubscriptionStatus.ACTIVE);
+        verify(repository, never()).findByStripeCustomerId(any());
+    }
+
+    @Test
+    void aPlanEventLeavesTheOptionUntouched() {
+        UUID userId = UUID.randomUUID();
+        Subscription sub = soloFor(userId, SubscriptionStatus.ACTIVE, "sub_option");
+        when(repository.findByAtelierOptionStripeSubscriptionId("sub_plan")).thenReturn(Optional.empty());
+        when(repository.findByStripeSubscriptionId("sub_plan")).thenReturn(Optional.of(sub));
+        when(repository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(provider.parseWebhookEvent("p", "s")).thenReturn(new BillingEvent(
+                BillingEventType.SUBSCRIPTION_UPDATED, userId, "cus_1", "sub_plan",
+                PlanCode.PRO, "active", null, "evt_plan", null));
+
+        service.handle("p", "s");
+
+        assertThat(sub.getPlanCode()).isEqualTo(PlanCode.PRO);
+        assertThat(sub.getAtelierOptionStatus()).as("l'option survit à un changement de plan")
+                .isEqualTo(SubscriptionStatus.ACTIVE);
+        assertThat(sub.getAtelierOptionStripeSubscriptionId()).isEqualTo("sub_option");
+    }
+
+    @Test
+    void anOptionEventWithoutAnyMatchingSubscriptionIsIgnored() {
+        UUID userId = UUID.randomUUID();
+        when(repository.findByAtelierOptionStripeSubscriptionId(any())).thenReturn(Optional.empty());
+        when(repository.findByUserId(userId)).thenReturn(Optional.empty());
+        when(repository.findByStripeCustomerId(any())).thenReturn(Optional.empty());
+        when(provider.parseWebhookEvent("p", "s")).thenReturn(new BillingEvent(
+                BillingEventType.ATELIER_OPTION_COMPLETED, userId, "cus_x", "sub_option",
+                null, "active", null, "evt_opt", null));
+
+        service.handle("p", "s");
+
+        verify(repository, never()).save(any());
+    }
+
+    // ------------------------------------------------------------ plans (SF-09-02)
 
     @Test
     void checkoutCompletedActivatesSubscription() {

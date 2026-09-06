@@ -300,6 +300,16 @@ app:
         SOLO: ${STRIPE_DISPLAY_PRICE_SOLO:24}
         PRO: ${STRIPE_DISPLAY_PRICE_PRO:99}
         GOLD: ${STRIPE_DISPLAY_PRICE_GOLD:199}
+      # Option Atelier (F-40) : le droit d'accès à l'Atelier, découplé du plan. Souscrite en
+      # supplément d'un plan Solo/Pro, elle ouvre l'Atelier sans changer AUCUN quota — sans elle,
+      # y accéder depuis Solo (24 €) imposait de passer à Gold (199 €), une falaise ×8 devant la
+      # seule capacité différenciante du produit.
+      # `atelier-option-price-id` est le price ID Stripe (abonnement mensuel DISTINCT de celui du
+      # plan) : vide ⇒ l'option est dormante et le checkout répond 503, comme pour un plan sans price.
+      # `atelier-option-display-price` est le montant affiché (EUR) — valeur commerciale réversible,
+      # ajustable par environnement sans changement de code ; le vrai débit est porté par le price.
+      atelier-option-price-id: ${STRIPE_PRICE_ATELIER_OPTION:}
+      atelier-option-display-price: ${APP_BILLING_ATELIER_OPTION_PRICE:40}
       # URLs de retour Checkout (frontend). Surchargées par environnement.
       success-url: ${STRIPE_SUCCESS_URL:http://localhost:4200/billing?checkout=success}
       cancel-url: ${STRIPE_CANCEL_URL:http://localhost:4200/billing?checkout=cancel}
