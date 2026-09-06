@@ -36,7 +36,12 @@ import {
 } from '../../chat/library-picker/library-picker-dialog.component';
 import { WorkspaceDetail } from '../../core/models/atelier.models';
 import { AtelierService } from '../../core/services/atelier.service';
-import { WORKSPACE_TEXT_ACCEPT, WORKSPACE_TEXT_EXTENSIONS } from '../atelier.component';
+// Importé depuis atelier.types, la SOURCE, et non depuis atelier.component qui ne fait que
+// ré-exporter : depuis que le composant terminal encastre cet explorateur (SF-39-18), passer par
+// lui créait un CYCLE d'import. TypeScript ne le signale pas, le build passe, et l'une des deux
+// constantes vaut `undefined` à l'exécution selon l'ordre d'évaluation des modules — l'écran
+// Atelier ne se montait plus.
+import { WORKSPACE_TEXT_ACCEPT, WORKSPACE_TEXT_EXTENSIONS } from '../atelier.types';
 import { TreeNode, buildTree } from './file-tree';
 import {
   GitBranchDialogComponent,
