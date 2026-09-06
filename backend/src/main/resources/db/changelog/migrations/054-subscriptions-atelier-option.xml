@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <!--
+      F-40 / SF-40-01 — Portage de l'option Atelier sur l'abonnement.
+
+      Le droit d'accès à l'Atelier cesse d'être un test de PLAN (`plan_code = 'GOLD'`) pour devenir
+      un test de DROIT : porté par le plan Gold, OU par une option souscrite en supplément d'un plan
+      Solo/Pro. L'option vit ici, sur l'unique ligne d'abonnement de l'utilisateur, parce qu'il y en
+      a exactement une (contrainte `unique(user_id)`) : une seule source de vérité pour le droit de
+      facturation, pas de jointure sur le chemin le plus chaud du produit.
+
+      Les deux colonnes sont NULLABLES et sans défaut : aucun abonnement existant n'est modifié, et
+      un abonné Gold conserve exactement le droit qu'il avait avant la migration. `NULL` ≡ pas
+      d'option.
+
+      L'identifiant d'abonnement fournisseur de l'option est DISTINCT de `stripe_subscription_id`
+      (celui du plan) : l'option est un abonnement à part chez le fournisseur, et les confondre
+      ferait qu'une résiliation d'option annulerait le plan. L'index unique sert la résolution du
+      webhook (SF-40-02) et interdit qu'un même abonnement fournisseur soit revendiqué deux fois.
+    -->
+    <changeSet id="054-subscriptions-atelier-option" author="claude-gateway">
+        <addColumn tableName="subscriptions">
+            <column name="atelier_option_status" type="varchar(16)"/>
+            <column name="atelier_option_stripe_subscription_id" type="varchar(64)"/>
+        </addColumn>
+        <createIndex tableName="subscriptions" indexName="ux_subscriptions_atelier_option_sub_id" unique="true">
+            <column name="atelier_option_stripe_subscription_id"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="subscriptions" indexName="ux_subscriptions_atelier_option_sub_id"/>
+            <dropColumn tableName="subscriptions" columnName="atelier_option_stripe_subscription_id"/>
+            <dropColumn tableName="subscriptions" columnName="atelier_option_status"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

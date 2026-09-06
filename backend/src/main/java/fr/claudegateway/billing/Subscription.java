@@ -70,6 +70,23 @@ public class Subscription {
     @Column(name = "stripe_subscription_id", length = 64)
     private String stripeSubscriptionId;
 
+    /**
+     * Statut de l'<b>option Atelier</b> (F-40) souscrite en supplément d'un plan Solo/Pro ;
+     * {@code null} tant qu'aucune option n'a été souscrite. Le droit d'accès à l'Atelier se lit
+     * dans {@code AtelierEntitlementService}, jamais ici : cette colonne ne porte qu'un état.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "atelier_option_status", length = 16)
+    private SubscriptionStatus atelierOptionStatus;
+
+    /**
+     * Identifiant de l'abonnement Stripe de l'option Atelier (interne, jamais exposé). Distinct de
+     * {@link #stripeSubscriptionId} : l'option est un abonnement à part chez le fournisseur, et les
+     * confondre ferait qu'une résiliation d'option annulerait le plan. Peuplé en SF-40-02.
+     */
+    @Column(name = "atelier_option_stripe_subscription_id", length = 64)
+    private String atelierOptionStripeSubscriptionId;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

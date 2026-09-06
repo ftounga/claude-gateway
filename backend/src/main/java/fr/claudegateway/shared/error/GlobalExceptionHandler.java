@@ -78,7 +78,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(AtelierAccessDeniedException.class)
     public ResponseEntity<ErrorResponse> handleAtelierAccessDenied(AtelierAccessDeniedException ex) {
-        log.debug("Accès Atelier refusé : ni admin ni abonné Gold actif");
+        log.debug("Accès Atelier refusé : ni admin ni détenteur du droit d'Atelier (F-40)");
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(new ErrorResponse("atelier_forbidden", ex.getMessage()));
     }
