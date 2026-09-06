@@ -54,11 +54,14 @@ public class AtelierController {
     private final AtelierSessionService sessionService;
     private final GitWorkspaceService gitWorkspaceService;
     private final AtelierEngineService engineService;
+    /** Lecture des fichiers sur la machine de l'utilisateur (F-38 / SF-38-17). */
+    private final fr.claudegateway.runner.browse.RunnerWorkspaceBrowser runnerBrowser;
 
     public AtelierController(WorkspaceService workspaceService, CurrentUser currentUser,
             AtelierAccessService atelierAccess, WorkspaceLibraryImportService libraryImportService,
             AtelierSessionService sessionService, GitWorkspaceService gitWorkspaceService,
-            AtelierEngineService engineService) {
+            AtelierEngineService engineService,
+            fr.claudegateway.runner.browse.RunnerWorkspaceBrowser runnerBrowser) {
         this.workspaceService = workspaceService;
         this.currentUser = currentUser;
         this.atelierAccess = atelierAccess;
@@ -66,6 +69,7 @@ public class AtelierController {
         this.sessionService = sessionService;
         this.gitWorkspaceService = gitWorkspaceService;
         this.engineService = engineService;
+        this.runnerBrowser = runnerBrowser;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -113,6 +117,17 @@ public class AtelierController {
         atelierAccess.requireAccess();
         UUID userId = currentUser.requireId();
         Workspace workspace = workspaceService.requireOwned(userId, id);
+        // Cible RUNNER (F-38 / SF-38-17) : les fichiers vivent sur la machine, et le stockage objet
+        // est vide par construction. Lire là-bas afficherait un projet inexistant.
+        //
+        // Une machine éteinte ne rend PAS le projet inaccessible : ce détail porte aussi son nom, sa
+        // source et sa cible, qui n'ont rien à voir avec les fichiers. On rend donc l'arborescence
+        // vide plutôt qu'une erreur — l'écran sonde déjà l'état du runner (SF-38-06) et sait dire
+        // « hors ligne » sans ambiguïté. La lecture d'un fichier, elle, échoue explicitement : là,
+        // l'utilisateur a demandé un contenu précis, et le silence serait un mensonge.
+        if (workspace.isRunnerTarget()) {
+            return WorkspaceDetailResponse.from(workspace, runnerBrowser.treeOrEmpty(workspace));
+        }
         WorkspaceContent content = gitWorkspaceService.tree(userId, workspace);
         return WorkspaceDetailResponse.from(workspace, content.files(), content.truncated());
     }
@@ -122,6 +137,9 @@ public class AtelierController {
         atelierAccess.requireAccess();
         UUID userId = currentUser.requireId();
         Workspace workspace = workspaceService.requireOwned(userId, id);
+        if (workspace.isRunnerTarget()) {
+            return new FileContentResponse(path, runnerBrowser.readFile(workspace, path));
+        }
         return new FileContentResponse(path, gitWorkspaceService.readFile(userId, workspace, path));
     }
 
