@@ -135,7 +135,7 @@ le reste, et la mémoire conditionne l'utilité.
 | **1 · Cache** | SF-39-01 → 02 | `cache_control` sur consigne système, outils et préfixe d'historique · chargement **paresseux des skills** (descriptions seules, corps à la demande) pour rendre le préfixe stable |
 | **2 · Mémoire** | SF-39-03 → 04 | Rejeu de la trajectoire (`tool_use` / `tool_result`), borné · reprise de fil indépendante de la sandbox (D5) |
 | **3 · Outillage** | SF-39-05 → 06 | Retrait `list_files` / `search_files` · lecture numérotée et paginée · édition ciblée |
-| **4 · Écran unique** | SF-39-07 → 09 | Fusion des deux modes · sélection transparente du moteur · **report intégral des acquis §4** |
+| **4 · Écran unique** ✅ | SF-39-07 → 09 | Fusion des deux modes · sélection transparente du moteur · **report intégral des acquis §4** — livré le 2026-09-06 (PR #226, #227, #228) ; le §4 est désormais **exécutable** (`frontend/src/app/atelier/terminal/acquis-f30.spec.ts`, un test par acquis) |
 | **5 · Raisonnement** | SF-39-10 | `thinking` adaptatif, `effort`, `claude-opus-5` sur la boucle maison |
 | **6 · Tenue longue** | SF-39-11 → 12 | Compaction ou édition de contexte · retry 429/529 · timeout HTTP câblé |
 | **7 · Outillage d'agent** | SF-39-13 → 14 | Liste de tâches visible · sous-agents |
@@ -157,7 +157,7 @@ le reste, et la mémoire conditionne l'utilité.
 
 | Risque | Portée | Traitement |
 |---|---|---|
-| Régression visuelle sur les acquis F-30 | Élevée — c'est l'écran le plus itéré du produit | §4 est une checklist de review bloquante du lot 4 |
+| Régression visuelle sur les acquis F-30 | Élevée — c'est l'écran le plus itéré du produit | ~~Checklist de review~~ → **traité** : `acquis-f30.spec.ts` (SF-39-09, D-L4-8) porte un test par acquis. Une checklist protège une PR ; un test protège six mois de PR |
 | Le cache ne prend pas (préfixe instable) | Le gain de coût s'évapore en silence | Vérifier `usage.cache_read_input_tokens` non nul dans un test d'intégration, pas seulement en production |
 | Deux moteurs à maintenir malgré l'écran unique | Dette durable | Assumé : les Managed Agents restent le seul moyen d'exécuter sans installation |
 | Sous-agents dans la boucle maison (lot 7) | Complexité forte, dépense multipliée | À re-cadrer à son tour ; le budget de session (F-36) doit le borner avant tout dev |
