@@ -478,6 +478,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         return switch (call.name()) {
             case "read_file" -> new AtelierProgressListener.AtelierStepEvent("read", arg(input, "path"));
             case "write_file" -> new AtelierProgressListener.AtelierStepEvent("write", arg(input, "path"));
+            // SF-39-06 (D4) : une édition ciblée est une écriture pour l'écran — c'est ce qui
+            // déclenche le rafraîchissement du fichier ouvert. Le journal, lui, garde le nom réel.
+            case "edit_file" -> new AtelierProgressListener.AtelierStepEvent("write", arg(input, "path"));
             case "list_files" -> new AtelierProgressListener.AtelierStepEvent("list", null);
             case "search_files" -> new AtelierProgressListener.AtelierStepEvent("search", arg(input, "query"));
             // F-38 / SF-38-07 : la commande elle-même est l'information utile à l'écran, tronquée
@@ -600,6 +603,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             case "list_files" -> runnerToolGateway.listFiles(workspaceId, callId);
             case "read_file" -> runnerToolGateway.readFile(workspaceId, callId,
                     requiredArg(input, "path"));
+            case "edit_file" -> editFileOnRunner(workspaceId, callId, input);
             case "write_file" -> runnerToolGateway.writeFile(workspaceId, callId,
                     requiredArg(input, "path"), input.path("content").asText(""));
             case "search_files" -> runnerToolGateway.searchFiles(workspaceId, callId,
@@ -617,7 +621,10 @@ public class AtelierChatService implements RelayInterruptTarget {
     private ToolOutcome runnerOutcome(AgentToolCall call, RunnerCallResult result) {
         JsonNode input = call.input();
         return switch (call.name()) {
-            case "read_file" -> textOutcome(result, new AtelierAction("read", arg(input, "path")));
+            case "read_file" -> readOutcome(result, input);
+            case "edit_file" -> result.ok()
+                    ? new ToolOutcome(result.content(), false, new AtelierAction("write", arg(input, "path")))
+                    : ToolOutcome.error(result.errorMessage());
             // Le `content` renvoyé par le runner est ignoré : seul compte l'aboutissement, et le
             // modèle attend la formulation historique.
             case "write_file" -> result.ok()
@@ -636,7 +643,7 @@ public class AtelierChatService implements RelayInterruptTarget {
     private String auditTarget(AgentToolCall call) {
         JsonNode input = call.input();
         return switch (call.name()) {
-            case "read_file", "write_file" -> arg(input, "path");
+            case "read_file", "write_file", "edit_file" -> arg(input, "path");
             case "search_files" -> arg(input, "query");
             case "bash" -> shorten(arg(input, "command"), AUDIT_TARGET_CHARS);
             default -> null;
@@ -679,6 +686,74 @@ public class AtelierChatService implements RelayInterruptTarget {
         return new ToolOutcome(text.toString(), false, null);
     }
 
+    /**
+     * Lecture d'un fichier de la machine, rendue en lignes numérotées et paginées (SF-39-06). Le
+     * marqueur de troncature du runner est conservé : une lecture partielle doit rester visible,
+     * sans quoi l'agent croirait avoir lu tout le fichier.
+     */
+    private ToolOutcome readOutcome(RunnerCallResult result, JsonNode input) {
+        if (!result.ok()) {
+            return ToolOutcome.error(result.errorMessage());
+        }
+        String page;
+        try {
+            page = AtelierFileText.numbered(result.content(), intArg(input, "offset"), intArg(input, "limit"));
+        } catch (RuntimeException ex) {
+            return ToolOutcome.error(ex.getMessage());
+        }
+        String content = result.truncated() ? page + "\n… (contenu tronqué)" : page;
+        return new ToolOutcome(content, false, new AtelierAction("read", arg(input, "path")));
+    }
+
+    /**
+     * Édition ciblée sur la machine de l'utilisateur (SF-39-06) : lire, remplacer, réécrire — avec
+     * les primitives que le runner expose déjà, donc <b>sans</b> évolution du protocole (D1).
+     *
+     * <p>Une lecture <b>tronquée</b> arrête l'opération (D2) : appliquer un remplacement sur un
+     * fragment puis le réécrire détruirait la fin du fichier, en silence. C'est le seul cas où
+     * l'outil refuse ce que le modèle croit possible, et il le dit.</p>
+     */
+    private RunnerCallResult editFileOnRunner(UUID workspaceId, String callId, JsonNode input) {
+        String path = requiredArg(input, "path");
+        // Identifiant propre pour la lecture interne : deux trames ne partagent jamais une clef de
+        // corrélation (contrat de messages §1). L'appel visible reste l'écriture.
+        RunnerCallResult read = runnerToolGateway.readFile(workspaceId, UUID.randomUUID().toString(), path);
+        if (!read.ok()) {
+            return read;
+        }
+        if (read.truncated()) {
+            return RunnerCallResult.backendError(RunnerErrorCodes.INVALID_INPUT,
+                    "Fichier trop volumineux pour une édition ciblée : la lecture a été tronquée.");
+        }
+        AtelierFileText.Edit edit;
+        try {
+            edit = AtelierFileText.replace(read.content(), requiredArg(input, "old_string"),
+                    input.path("new_string").asText(""), input.path("replace_all").asBoolean(false));
+        } catch (RuntimeException ex) {
+            return RunnerCallResult.backendError(RunnerErrorCodes.INVALID_INPUT, ex.getMessage());
+        }
+        RunnerCallResult written = runnerToolGateway.writeFile(workspaceId, callId, path, edit.content());
+        if (!written.ok()) {
+            return written;
+        }
+        return new RunnerCallResult(true, editedMessage(path, edit.replacements()), false, null,
+                written.durationMs(), written.bytes(), null, null, "", false);
+    }
+
+    /** Message rendu au modèle après une édition ciblée : ce qui a changé, et combien de fois. */
+    private static String editedMessage(String path, int replacements) {
+        return "Fichier modifié : " + path + " (" + replacements + " remplacement"
+                + (replacements > 1 ? "s)" : ")");
+    }
+
+    /** Extrait un argument entier d'un input d'outil, ou {@code null} s'il est absent/illisible. */
+    private static Integer intArg(JsonNode input, String name) {
+        if (input == null || !input.path(name).isInt()) {
+            return null;
+        }
+        return input.path(name).asInt();
+    }
+
     /** Traduit une issue d'appel runner en résultat d'outil dont le contenu est rendu verbatim. */
     private ToolOutcome textOutcome(RunnerCallResult result, AtelierAction action) {
         if (!result.ok()) {
@@ -698,7 +773,18 @@ public class AtelierChatService implements RelayInterruptTarget {
                 case "read_file" -> {
                     String path = requiredArg(input, "path");
                     String content = workspaceService.readFile(userId, workspaceId, path);
-                    yield new ToolOutcome(content, false, new AtelierAction("read", path));
+                    yield new ToolOutcome(AtelierFileText.numbered(content, intArg(input, "offset"),
+                            intArg(input, "limit")), false, new AtelierAction("read", path));
+                }
+                case "edit_file" -> {
+                    String path = requiredArg(input, "path");
+                    AtelierFileText.Edit edit = AtelierFileText.replace(
+                            workspaceService.readFile(userId, workspaceId, path),
+                            requiredArg(input, "old_string"), input.path("new_string").asText(""),
+                            input.path("replace_all").asBoolean(false));
+                    workspaceService.writeFile(userId, workspaceId, path, edit.content());
+                    yield new ToolOutcome(editedMessage(path, edit.replacements()), false,
+                            new AtelierAction("write", path));
                 }
                 case "write_file" -> {
                     String path = requiredArg(input, "path");
@@ -790,13 +876,24 @@ public class AtelierChatService implements RelayInterruptTarget {
             tools.add(new AgentTool("list_files", "Liste tous les fichiers du projet (chemins relatifs).",
                     Map.of("type", "object", "properties", Map.of())));
         }
-        tools.add(new AgentTool("read_file", "Lit le contenu texte d'un fichier du projet.",
-                Map.of("type", "object", "properties", Map.of("path", stringProp),
+        Map<String, Object> intProp = Map.of("type", "integer");
+        tools.add(new AgentTool("read_file",
+                "Lit un fichier du projet en lignes numérotées. Pagine avec offset (première ligne, "
+                        + "1 par défaut) et limit (2000 au plus).",
+                Map.of("type", "object",
+                        "properties", Map.of("path", stringProp, "offset", intProp, "limit", intProp),
                         "required", List.of("path"))));
         tools.add(new AgentTool("write_file", "Écrit (ou remplace) le contenu texte d'un fichier du projet.",
                 Map.of("type", "object",
                         "properties", Map.of("path", stringProp, "content", stringProp),
                         "required", List.of("path", "content"))));
+        tools.add(new AgentTool("edit_file",
+                "Remplace un passage exact dans un fichier du projet. old_string doit être unique, "
+                        + "sinon passe replace_all à true. À préférer à write_file pour modifier un fichier.",
+                Map.of("type", "object",
+                        "properties", Map.of("path", stringProp, "old_string", stringProp,
+                                "new_string", stringProp, "replace_all", Map.of("type", "boolean")),
+                        "required", List.of("path", "old_string", "new_string"))));
         if (!bashAvailable) {
             tools.add(new AgentTool("search_files", "Recherche une chaîne dans les fichiers du projet.",
                     Map.of("type", "object", "properties", Map.of("query", stringProp),

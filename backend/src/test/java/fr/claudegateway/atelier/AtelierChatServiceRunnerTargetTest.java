@@ -134,7 +134,9 @@ class AtelierChatServiceRunnerTargetTest {
         assertThat(result.actions()).extracting(a -> a.type() + ":" + a.path()).contains("read:src/a.ts");
         verify(runnerToolGateway).readFile(eq(workspaceId), anyString(), eq("src/a.ts"));
         verify(workspaceService, never()).readFile(any(), any(), any());
-        assertThat(toolResultText()).isEqualTo("const x = 1;");
+        // SF-39-06 : la lecture est numérotée — sans numéros, l'agent ne peut ni dire où il a vu
+        // quelque chose, ni demander la suite d'un fichier.
+        assertThat(toolResultText()).isEqualTo("     1→const x = 1;\n");
     }
 
     @Test
@@ -147,7 +149,7 @@ class AtelierChatServiceRunnerTargetTest {
 
         service.chat(userId, workspaceId, "lis gros.txt");
 
-        assertThat(toolResultText()).isEqualTo("début\n… (contenu tronqué)");
+        assertThat(toolResultText()).isEqualTo("     1→début\n\n… (contenu tronqué)");
     }
 
     @Test
@@ -279,9 +281,9 @@ class AtelierChatServiceRunnerTargetTest {
         runner.setExecutionTarget(WorkspaceExecutionTarget.RUNNER);
 
         assertThat(service.buildTools(sandbox)).extracting(fr.claudegateway.agent.AgentTool::name)
-                .containsExactly("list_files", "read_file", "write_file", "search_files");
+                .containsExactly("list_files", "read_file", "write_file", "edit_file", "search_files");
         assertThat(service.buildTools(runner)).extracting(fr.claudegateway.agent.AgentTool::name)
-                .containsExactly("read_file", "write_file", "bash");
+                .containsExactly("read_file", "write_file", "edit_file", "bash");
     }
 
     @Test
@@ -297,6 +299,61 @@ class AtelierChatServiceRunnerTargetTest {
 
         assertThat(toolResultText()).isEqualTo("a.ts\nb.ts");
         assertThat(lastToolResult().isError()).isFalse();
+    }
+
+    @Test
+    void editFileReadsThenWritesOnTheMachineWithoutTouchingTheProtocol() {
+        // SF-39-06 (D1) : l'édition ciblée se compose des primitives que le runner expose déjà —
+        // un runner installé n'a rien à mettre à jour.
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.readFile(eq(workspaceId), anyString(), eq("a.ts")))
+                .thenReturn(ok("const a = 1;"));
+        when(runnerToolGateway.writeFile(eq(workspaceId), anyString(), eq("a.ts"), eq("const a = 2;")))
+                .thenReturn(ok(""));
+        agentProvider.enqueueToolCall("edit_file", "path", "a.ts", "old_string", "1", "new_string", "2");
+        agentProvider.enqueueFinal("Modifié.");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "passe a à 2");
+
+        verify(runnerToolGateway).writeFile(eq(workspaceId), anyString(), eq("a.ts"), eq("const a = 2;"));
+        assertThat(toolResultText()).isEqualTo("Fichier modifié : a.ts (1 remplacement)");
+        // L'écran voit une écriture : c'est ce qui rafraîchit le fichier ouvert (D4).
+        assertThat(result.actions()).extracting(a -> a.type() + ":" + a.path()).contains("write:a.ts");
+    }
+
+    @Test
+    void editFileRefusesToWriteBackATruncatedRead() {
+        // SF-39-06 (D2) : appliquer un remplacement sur un fragment puis le réécrire détruirait la
+        // fin du fichier, en silence. C'est le seul refus d'une opération que le modèle croit possible.
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.readFile(eq(workspaceId), anyString(), eq("gros.ts")))
+                .thenReturn(new RunnerCallResult(true, "const a = 1;", true, null, 5L, null, null, null, "", false));
+        agentProvider.enqueueToolCall("edit_file", "path", "gros.ts", "old_string", "1", "new_string", "2");
+        agentProvider.enqueueFinal("Refusé.");
+
+        service.chat(userId, workspaceId, "passe a à 2");
+
+        verify(runnerToolGateway, never()).writeFile(any(), anyString(), anyString(), anyString());
+        assertThat(lastToolResult().isError()).isTrue();
+        assertThat(toolResultText()).contains("tronquée");
+    }
+
+    @Test
+    void editFileIsDeclaredOnTheMachineAndJournaledWithItsPath() {
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        Workspace runner = new Workspace();
+        runner.setExecutionTarget(WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.readFile(eq(workspaceId), anyString(), eq("a.ts"))).thenReturn(ok("x"));
+        when(runnerToolGateway.writeFile(eq(workspaceId), anyString(), eq("a.ts"), eq("y"))).thenReturn(ok(""));
+        agentProvider.enqueueToolCall("edit_file", "path", "a.ts", "old_string", "x", "new_string", "y");
+        agentProvider.enqueueFinal("Modifié.");
+
+        service.chat(userId, workspaceId, "remplace x par y");
+
+        assertThat(service.buildTools(runner)).extracting(fr.claudegateway.agent.AgentTool::name)
+                .containsExactly("read_file", "write_file", "edit_file", "bash");
+        verify(runnerAuditService).recordCall(eq(userId), eq(workspaceId), anyString(), eq("edit_file"),
+                eq("a.ts"), any());
     }
 
     @Test
