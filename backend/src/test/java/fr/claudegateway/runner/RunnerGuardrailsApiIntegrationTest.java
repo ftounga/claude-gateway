@@ -193,16 +193,20 @@ class RunnerGuardrailsApiIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
-    // ---------- D7 : validation non désactivable ----------
+    // ---------- D7, amendée par SF-38-20 : la validation redevient désactivable ----------
 
     @Test
-    void theConfirmationCannotBeSwitchedOffOnARunnerProject() throws Exception {
+    void theConfirmationCanNowBeSwitchedOffOnARunnerProject() throws Exception {
+        // SF-38-08 (D7) l'interdisait. Le banc d'essai a montré le prix de cette rigidité : une
+        // procédure de treize étapes demandait des dizaines de clics, et une garde qu'on subit
+        // finit par être contournée plutôt que respectée. C'est une décision de l'utilisateur sur
+        // SA machine — et ce qui disparaît est le clic, jamais la trace : le journal d'audit
+        // continue de tout consigner, le coupe-circuit reste immédiat.
         mockMvc.perform(put(url("/agent/confirmation")).contextPath("/api")
                         .header("Authorization", "Bearer " + ownerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"enabled\":false}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").value("execution_target_runner"));
+                .andExpect(status().isOk());
     }
 
     @Test

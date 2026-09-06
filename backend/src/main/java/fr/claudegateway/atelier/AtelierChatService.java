@@ -188,6 +188,16 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private final java.util.Set<String> interruptedTurns = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
+    /**
+     * Tours pour lesquels l'utilisateur a autorisé <b>toutes</b> les commandes (F-38 / SF-38-20).
+     *
+     * <p>La portée est le <b>tour</b>, jamais le projet : la marque est effacée à l'ouverture de
+     * chaque message, comme celle d'interruption. C'est ce qui distingue un raccourci d'un
+     * renoncement — on autorise ce qu'on a commencé à voir, pas tout ce qui viendra un jour.</p>
+     */
+    private final java.util.Set<String> blanketAllowedTurns =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     public AtelierChatService(WorkspaceService workspaceService, AtelierMessageRepository messageRepository,
             AiAgentProvider agentProvider, ByokKeyService byokKeyService, QuotaService quotaService,
             fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService,
@@ -289,6 +299,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         // Une interruption demandée alors qu'aucun tour ne tournait ne doit pas tuer celui-ci
         // (même précaution que F-32 SF-32-01).
         interruptedTurns.remove(turnKey(userId, workspaceId));
+        // La marque « tout autoriser » ne survit jamais au message qui l'a reçue (SF-38-20).
+        blanketAllowedTurns.remove(turnKey(userId, workspaceId));
         long startedAt = System.currentTimeMillis();
         long deadline = startedAt + TURN_BUDGET_MS;
         String userText = rawMessage.trim();
@@ -600,6 +612,14 @@ public class AtelierChatService implements RelayInterruptTarget {
      * Les trois gestes d'une interruption, appliqués <b>sur ce pod</b> — appelés par
      * {@link #interruptChat} et par le relais interne, dans le même ordre.
      */
+    /**
+     * Pose la marque « tout autoriser » <b>sur ce pod</b> (F-38 / SF-38-20). Appelée par le clic
+     * local et par le relais interne, pour que la boucle la trouve où qu'elle tourne.
+     */
+    public void allowAllLocally(UUID userId, UUID workspaceId) {
+        blanketAllowedTurns.add(turnKey(userId, workspaceId));
+    }
+
     @Override
     public RelayInterruptOutcome interruptLocally(UUID userId, UUID workspaceId, String reason) {
         interruptedTurns.add(turnKey(userId, workspaceId));
@@ -631,7 +651,33 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     public void confirmToolUse(UUID userId, UUID workspaceId, String toolUseId, boolean allow,
             String reason) {
+        confirmToolUse(userId, workspaceId, toolUseId, allow, reason, false);
+    }
+
+    /**
+     * Variante qui accepte une décision <b>groupée</b> (F-38 / SF-38-20) : « tout autoriser pour ce
+     * message ».
+     *
+     * <p>La marque est posée <b>avant</b> de résoudre la demande en attente, pour que la commande
+     * suivante la trouve déjà là. Elle est aussi <b>diffusée</b> aux pods pairs, par le même chemin
+     * que la décision elle-même : la boucle tourne peut-être ailleurs que là où ce clic atterrit
+     * (SF-38-13).</p>
+     */
+    public void confirmToolUse(UUID userId, UUID workspaceId, String toolUseId, boolean allow,
+            String reason, boolean allowAll) {
         workspaceService.requireOwned(userId, workspaceId);
+        if (allowAll && allow) {
+            blanketAllowedTurns.add(turnKey(userId, workspaceId));
+            relayBroadcaster.broadcastConfirm(userId, workspaceId, callIdOf(toolUseId), true, reason);
+            // La marque est l'essentiel : « tout autoriser » reste valable même si la demande qui
+            // l'a déclenchée vient d'expirer, ou si la boucle n'en attendait plus aucune.
+            try {
+                confirmationGate.resolve(userId, workspaceId, callIdOf(toolUseId), true, reason);
+            } catch (fr.claudegateway.runner.exec.NoPendingConfirmationException ignored) {
+                // Rien n'attendait : la marque vaut pour les commandes à venir.
+            }
+            return;
+        }
         String callId = toolUseId == null ? "" : toolUseId.trim();
         try {
             confirmationGate.resolve(userId, workspaceId, callId, allow, reason);
@@ -706,6 +752,11 @@ public class AtelierChatService implements RelayInterruptTarget {
     private record ExplorationOutcome(ToolOutcome outcome, int inputTokens, int outputTokens) {
     }
 
+    /** Identifiant d'appel normalisé, tel que la porte l'attend. */
+    private static String callIdOf(String toolUseId) {
+        return toolUseId == null ? "" : toolUseId.trim();
+    }
+
     /** Clef de marque d'interruption : l'utilisateur ET le workspace, jamais l'un sans l'autre. */
     private static String turnKey(UUID userId, UUID workspaceId) {
         return userId + ":" + workspaceId;
@@ -768,7 +819,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             return applyPlan(call, listener, planOfTurn);
         }
         if (workspace.isRunnerTarget()) {
-            return executeToolOnRunner(userId, workspace.getId(), callId, call, listener, deadline);
+            return executeToolOnRunner(userId, workspace, callId, call, listener, deadline);
         }
         return executeToolOnStorage(userId, workspace.getId(), call);
     }
@@ -783,11 +834,15 @@ public class AtelierChatService implements RelayInterruptTarget {
      * (D7) — la trame n'est jamais émise avant décision — puis la <b>trace</b> (D11) : une ligne de
      * journal par appel, qu'il ait abouti, échoué ou été refusé.</p>
      */
-    private ToolOutcome executeToolOnRunner(UUID userId, UUID workspaceId, String callId,
+    private ToolOutcome executeToolOnRunner(UUID userId, Workspace workspace, String callId,
             AgentToolCall call, AtelierProgressListener listener, long deadline) {
+        UUID workspaceId = workspace.getId();
         String tool = call.name();
         String target = auditTarget(call);
-        if (requiresConfirmation(tool)) {
+        // Deux façons de ne plus être interrompu, l'une bornée au message, l'autre au projet
+        // (F-38 / SF-38-20). Dans les deux cas, l'audit continue de tout tracer.
+        if (requiresConfirmation(tool, workspace)
+                && !blanketAllowedTurns.contains(turnKey(userId, workspace.getId()))) {
             RunnerConfirmationGate.Outcome decision =
                     askPermission(userId, workspaceId, callId, tool, target, listener);
             if (!decision.decision().allows()) {
@@ -818,16 +873,22 @@ public class AtelierChatService implements RelayInterruptTarget {
 
     /**
      * Vrai si l'action doit être autorisée par l'utilisateur avant d'être émise (F-38 / SF-38-08,
-     * décision D7). En cible {@code RUNNER}, l'exécution de commandes l'est <b>toujours</b> : le
-     * réglage {@code agent_ask_before_bash} n'est pas consulté ici, il n'est pas désactivable.
+     * <b>amendé par SF-38-20</b>).
      *
-     * <p>Les écritures de fichier n'y sont volontairement pas soumises : c'est l'usage central du
-     * mode (l'agent édite le projet), et un clic par écriture pousserait à chercher un contournement
-     * — ce qui affaiblirait la garde. Elles restent tracées, confinées à la racine et révocables
-     * d'un geste (coupe-circuit). Étendre la porte ne coûte qu'une ligne ici.</p>
+     * <p>SF-38-08 avait rendu la porte non désactivable en cible {@code RUNNER}. Le banc d'essai a
+     * montré le prix de cette rigidité : une procédure de treize étapes demande des dizaines de
+     * clics, et une garde qu'on subit finit par être contournée plutôt que respectée. Le réglage
+     * {@code agent_ask_before_bash} du projet est donc <b>consulté</b> — c'est une décision de
+     * l'utilisateur sur sa propre machine, prise en connaissance de cause.</p>
+     *
+     * <p>Ce qui ne change pas : le <b>journal d'audit</b> trace chaque commande, autorisée ou non,
+     * et le <b>coupe-circuit</b> reste immédiat. Ce qui disparaît est le clic, pas la trace.</p>
+     *
+     * <p>Les écritures de fichier n'y sont toujours pas soumises : c'est l'usage central du mode
+     * (l'agent édite le projet), et un clic par écriture pousserait à chercher un contournement.</p>
      */
-    private static boolean requiresConfirmation(String tool) {
-        return "bash".equals(tool);
+    private static boolean requiresConfirmation(String tool, Workspace workspace) {
+        return "bash".equals(tool) && workspace.isAgentAskBeforeBash();
     }
 
     /** Pose la demande d'autorisation à l'écran, attend la décision, puis relaie sa résolution. */

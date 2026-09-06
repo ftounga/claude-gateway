@@ -105,7 +105,11 @@ app:
     # rendre abordables. Defaut calibre sur l'usage reel : contexte maximal observe 900 519 tokens,
     # tour de 30 iterations estime a ~1,35 M tokens d'entree. En mode Hoste, il est en outre borne
     # par le quota restant de l'utilisateur.
-    max-turn-tokens: ${APP_ATELIER_MAX_TURN_TOKENS:1500000}
+    # Relevé de 1,5 M à 4 M le 2026-09-06 (SF-38-20) : 1,5 M avait été calibré sur le contexte
+    # maximal OBSERVÉ (900 519 tokens), et le banc d'essai a coupé une construction à mi-parcours.
+    # Le compteur additionne les tokens TRAITÉS, cache compris : sur un tour long, l'essentiel est
+    # relu au dixième du tarif, et relever le plafond ne multiplie pas la facture d'autant.
+    max-turn-tokens: ${APP_ATELIER_MAX_TURN_TOKENS:4000000}
     agent:
       # Managed Agents (F-28 / Phase 2, ADR-013). Flag OFF par défaut : tant que `enabled` est faux
       # et qu'aucune config n'existe, AUCUN appel réseau ni coût runtime (bootstrap inerte).
