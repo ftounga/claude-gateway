@@ -45,7 +45,7 @@ class WorkspaceServiceTest {
 
     private WorkspaceService serviceWith(long maxTotal, int maxEntries, long maxFile) {
         return new WorkspaceService(workspaceRepository, storage,
-                new AtelierProperties("in-memory", null, "atelier/", maxTotal, maxEntries, maxFile, null, null, null, null, null, null),
+                new AtelierProperties("in-memory", null, "atelier/", maxTotal, maxEntries, maxFile, null, null, null, null, null, null, true),
                 atelierMessageRepository);
     }
 

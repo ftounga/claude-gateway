@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 class AtelierPropertiesTest {
 
     private AtelierProperties withMaxIterations(Integer value) {
-        return new AtelierProperties(null, null, null, null, null, null, value, null, null, null, null, null);
+        return new AtelierProperties(null, null, null, null, null, null, value, null, null, null, null, null, true);
     }
 
     @Test
@@ -40,7 +40,7 @@ class AtelierPropertiesTest {
     // ------------------------------------------------- SF-39-10 : modèle et effort de la boucle
 
     private AtelierProperties withReasoning(String model, String effort) {
-        return new AtelierProperties(null, null, null, null, null, null, null, model, effort, null, null, null);
+        return new AtelierProperties(null, null, null, null, null, null, null, model, effort, null, null, null, true);
     }
 
     @Test
@@ -82,13 +82,13 @@ class AtelierPropertiesTest {
         // Capacité beta dans un chemin critique : le coupe-circuit rétablit le service sans
         // livraison si le fournisseur retirait l'option (D-L6-11).
         AtelierProperties off =
-                new AtelierProperties(null, null, null, null, null, null, null, null, null, false, null, null);
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, false, null, null, true);
         assertThat(off.contextPruning()).isFalse();
     }
 
     /** Plafond de consommation d'un message (F-39 / SF-39-15). */
     private static AtelierProperties withTurnCap(Long value) {
-        return new AtelierProperties(null, null, null, null, null, null, null, null, null, null, value, null);
+        return new AtelierProperties(null, null, null, null, null, null, null, null, null, null, value, null, true);
     }
 
     @Test
@@ -122,19 +122,32 @@ class AtelierPropertiesTest {
     void delegationsDefaultToThreePerMessage() {
         // Au-delà, c'est le travail principal qu'il faut redécouper (F-39 / SF-39-14).
         assertThat(new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
-                null, null).maxDelegations()).isEqualTo(3);
+                null, null, true).maxDelegations()).isEqualTo(3);
     }
 
     @Test
     void delegationsCanBeDisabledEntirely() {
         // Zéro est une valeur légitime : elle retire l'outil de la liste déclarée au modèle.
         assertThat(new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
-                null, 0).maxDelegations()).isZero();
+                null, 0, true).maxDelegations()).isZero();
     }
 
     @Test
     void negativeDelegationsFallBackToTheDefault() {
         assertThat(new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
-                null, -2).maxDelegations()).isEqualTo(3);
+                null, -2, true).maxDelegations()).isEqualTo(3);
+    }
+
+    @Test
+    void storageExecutionIsClosedByDefault() {
+        // Le défaut décrit ce que la production doit faire (F-39 / SF-39-16, D2).
+        assertThat(new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
+                null, null, null).storageExecution()).isFalse();
+    }
+
+    @Test
+    void storageExecutionCanBeReopenedWithoutADeployment() {
+        assertThat(new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
+                null, null, true).storageExecution()).isTrue();
     }
 }

@@ -32,6 +32,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                      repose sur une capacité <i>beta</i> du fournisseur ; si elle était retirée,
  *                      chaque tour de l'Atelier échouerait. Le passer à {@code false} rétablit le
  *                      service par variable d'environnement, sans livraison
+ * @param storageExecution coupe-circuit de la cible {@code SANDBOX} de la boucle maison
+ *                         (F-39 / SF-39-16). <b>Fermé par défaut</b> : depuis le lot 4, l'écran
+ *                         n'emprunte plus ce chemin — un projet sans runner passe par les Managed
+ *                         Agents. Ouvrable par variable d'environnement, sans livraison.
  * @param maxDelegations nombre maximal d'explorations déléguées dans un même message
  *                       (F-39 / SF-39-14, défaut 3). Au-delà, c'est le travail principal qu'il faut
  *                       redécouper — pas la délégation qu'il faut ouvrir.
@@ -57,7 +61,8 @@ public record AtelierProperties(
         String effort,
         Boolean contextPruning,
         Long maxTurnTokens,
-        Integer maxDelegations) {
+        Integer maxDelegations,
+        Boolean storageExecution) {
 
     /** Modèle de la boucle maison à défaut de configuration (F-39 / SF-39-10). */
     public static final String DEFAULT_MODEL = "claude-opus-5";
@@ -112,6 +117,9 @@ public record AtelierProperties(
         }
         // Un plafond absent, nul ou négatif retombe sur le défaut : une faute de configuration ne
         // doit ni ouvrir la vanne, ni couper tous les tours au premier appel.
+        if (storageExecution == null) {
+            storageExecution = false;
+        }
         if (maxDelegations == null || maxDelegations < 0) {
             maxDelegations = 3;
         }

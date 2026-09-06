@@ -421,6 +421,16 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("execution_target_runner", ex.getMessage()));
     }
 
+    @ExceptionHandler(fr.claudegateway.atelier.StorageExecutionClosedException.class)
+    public ResponseEntity<ErrorResponse> handleStorageExecutionClosed(
+            fr.claudegateway.atelier.StorageExecutionClosedException ex) {
+        // La boucle maison sur le stockage n'a plus d'usage produit (F-39 / SF-39-16) : l'ecran
+        // envoie un projet sans runner vers les Managed Agents. Refus avant tout appel fournisseur.
+        log.debug("Boucle maison refusee : projet sans machine connectee");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("storage_execution_closed", ex.getMessage()));
+    }
+
     @ExceptionHandler(fr.claudegateway.runner.browse.RunnerBrowseException.class)
     public ResponseEntity<ErrorResponse> handleRunnerBrowse(
             fr.claudegateway.runner.browse.RunnerBrowseException ex) {
