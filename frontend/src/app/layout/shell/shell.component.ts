@@ -7,11 +7,17 @@ import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AuthService } from '../../core/services/auth.service';
+import { QuotaAlertBannerComponent } from '../quota-alert-banner/quota-alert-banner.component';
 
 /**
  * Coquille applicative (F-19) : barre de navigation persistante enveloppant les pages authentifiées.
  * Expose les sections existantes (Chat, Documents, Q&A, Templates, Rapports, Facturation, Réglages,
  * Profil) et la déconnexion. Charte : barre fond {@code --cg-primary} (design system).
+ *
+ * <p>Porte aussi la bannière d'alerte de consommation (F-42) : elle est ici, et non sur l'écran de
+ * facturation, parce qu'un utilisateur qui approche de son quota est en train de travailler dans le
+ * chat ou l'Atelier. Elle ne rend rien tant qu'aucune alerte n'est levée — aucune route, aucun
+ * guard, aucune redirection n'est ajoutée.</p>
  */
 @Component({
   selector: 'app-shell',
@@ -24,6 +30,7 @@ import { AuthService } from '../../core/services/auth.service';
     MatIconModule,
     MatMenuModule,
     MatTooltipModule,
+    QuotaAlertBannerComponent,
   ],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',

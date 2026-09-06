@@ -1,0 +1,40 @@
+@if (visible()) {
+  @let quota = alert()!;
+  <aside class="quota-alert" role="status">
+    <mat-icon class="quota-alert__icon">error_outline</mat-icon>
+
+    <div class="quota-alert__body">
+      <p class="quota-alert__headline">
+        Vous avez consommé <strong>{{ quota.usedPercent }} %</strong> de votre quota
+        ({{ quota.usedTokens | number }} / {{ quota.quotaTokens | number }} jetons).
+      </p>
+      <p class="quota-alert__detail">
+        Il vous reste <strong>{{ quota.remainingTokens | number }} jetons</strong> jusqu'au
+        {{ quota.periodEnd | date: 'd MMMM y' }}.
+      </p>
+      <mat-progress-bar
+        class="quota-alert__gauge"
+        mode="determinate"
+        [value]="quota.usedPercent"
+        [attr.aria-label]="'Quota consommé : ' + quota.usedPercent + ' %'"
+      ></mat-progress-bar>
+    </div>
+
+    <div class="quota-alert__actions">
+      @if (quota.topUp) {
+        <button
+          mat-flat-button
+          color="primary"
+          type="button"
+          [disabled]="redirecting()"
+          (click)="recharge()"
+        >
+          {{ redirecting() ? 'Redirection…' : 'Recharger — ' + quota.topUp.label }}
+        </button>
+      }
+      <button mat-button type="button" class="quota-alert__dismiss" (click)="dismiss()">
+        Ignorer
+      </button>
+    </div>
+  </aside>
+}
