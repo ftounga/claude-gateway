@@ -10,7 +10,7 @@
 
 ## Statut
 
-`ready`
+`done` — livrée le 2026-09-06 (PR #235 backend, #236 écran)
 
 ## Date de création
 
