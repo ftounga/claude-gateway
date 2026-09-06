@@ -10,10 +10,29 @@ class PlanCatalogTest {
     private final PlanCatalog catalog = new PlanCatalog();
 
     @Test
-    void exposesSoloProDailyAndGoldPlans() {
+    void exposesSoloProDailyGoldAndByokPlans() {
         assertThat(catalog.plans())
                 .extracting(Plan::code)
-                .containsExactlyInAnyOrder(PlanCode.SOLO, PlanCode.PRO, PlanCode.DAILY, PlanCode.GOLD);
+                .containsExactlyInAnyOrder(PlanCode.SOLO, PlanCode.PRO, PlanCode.DAILY, PlanCode.GOLD,
+                        PlanCode.BYOK);
+    }
+
+    @Test
+    void byokPlanIsTheOnlyCustomerKeyPlan() {
+        // F-41 : le seul plan du catalogue dont les appels sont servis par la clé du client. Si un
+        // autre plan basculait en ProviderMode.BYOK, il hériterait silencieusement de la dérogation
+        // de quota — ce test l'interdit.
+        assertThat(catalog.plans())
+                .filteredOn(p -> p.providerMode() == ProviderMode.BYOK)
+                .extracting(Plan::code)
+                .containsExactly(PlanCode.BYOK);
+    }
+
+    @Test
+    void byokPlanIsMonthly() {
+        Plan byok = catalog.plans().stream()
+                .filter(p -> p.code() == PlanCode.BYOK).findFirst().orElseThrow();
+        assertThat(byok.period()).isEqualTo(BillingPeriod.MONTHLY);
     }
 
     @Test

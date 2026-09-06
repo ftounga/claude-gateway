@@ -175,4 +175,45 @@ class AtelierEntitlementServiceTest {
 
         assertThat(service.isEntitled(userId)).isTrue();
     }
+
+    @Nested
+    @DisplayName("Offre BYOK (F-41) — l'Atelier est compris dans la plateforme qu'elle facture")
+    class ByokPlan {
+
+        @Test
+        void byokActiveIncludesAtelier() {
+            // Le client paie la plateforme et apporte ses propres jetons : lui revendre le droit
+            // d'Atelier reviendrait à facturer deux fois la même chose.
+            Subscription byok = subscription(PlanCode.BYOK, SubscriptionStatus.ACTIVE, null);
+
+            assertThat(service.isEntitled(byok)).isTrue();
+            assertThat(service.isIncludedInPlan(byok)).isTrue();
+            assertThat(service.isGrantedByOption(byok)).isFalse();
+        }
+
+        @Test
+        void byokPastDueKeepsAccess() {
+            // Même politique de sursis que les autres plans : une seule politique dans le produit.
+            assertThat(service.isEntitled(subscription(PlanCode.BYOK, SubscriptionStatus.PAST_DUE, null)))
+                    .isTrue();
+        }
+
+        @Test
+        void byokCanceledLosesAccess() {
+            Subscription canceled = subscription(PlanCode.BYOK, SubscriptionStatus.CANCELED, null);
+
+            assertThat(service.isEntitled(canceled)).isFalse();
+            assertThat(service.isIncludedInPlan(canceled)).isFalse();
+        }
+
+        @Test
+        void byokIsNotAnOptionCarrierPlan() {
+            // L'option n'a pas de sens sur BYOK : le droit y est déjà inclus. Une option active ne
+            // doit pas devenir la source du droit — sans quoi l'écran proposerait un achat sans objet.
+            Subscription byok = subscription(PlanCode.BYOK, SubscriptionStatus.ACTIVE,
+                    SubscriptionStatus.ACTIVE);
+
+            assertThat(service.isGrantedByOption(byok)).isFalse();
+        }
+    }
 }

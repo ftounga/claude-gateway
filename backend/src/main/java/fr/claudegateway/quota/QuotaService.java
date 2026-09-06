@@ -20,6 +20,11 @@ import fr.claudegateway.billing.SubscriptionService;
  * <p>Période = mois calendaire UTC : le compteur est remis à zéro (nouvelle ligne) à chaque mois.
  * Le pré-contrôle ne réserve pas de tokens (le coût d'un appel est inconnu à l'avance) : il bloque
  * dès que le cumul de la période a atteint le quota.</p>
+ *
+ * <p><b>Exception BYOK (F-41)</b> : sur une offre servie par la clé du client, la plateforme
+ * n'alloue aucun jeton et n'en contrôle donc aucun. Le pré-contrôle passe sans bloquer — la limite
+ * réelle est celle du compte fournisseur du client. La consommation reste <b>enregistrée</b>
+ * (observabilité et rapport d'usage F-16), elle cesse simplement d'être opposable.</p>
  */
 @Service
 public class QuotaService {
@@ -48,10 +53,20 @@ public class QuotaService {
      *
      * @param userId utilisateur authentifié (contexte de sécurité)
      * @throws QuotaExceededException si le cumul de la période a atteint le quota de l'entitlement
+     *                                (jamais levée sur une offre BYOK en cours : aucun quota plateforme)
      */
     @Transactional(readOnly = true)
     public void assertWithinQuota(UUID userId) {
-        long quota = effectiveQuota(userId);
+        Subscription subscription = subscriptionService.getOrCreateForUser(userId);
+        if (entitlementService.isCustomerKeyBilled(subscription)) {
+            // Offre BYOK (F-41) : les jetons sont sur le compte fournisseur du client, la plateforme
+            // ne lui en alloue aucun. Son quota vaut donc 0 — mais ce zéro-là n'est PAS un impayé :
+            // le laisser tomber dans le test `used >= quota` bloquerait un client parfaitement à jour
+            // dès son premier appel. Il n'y a rien à contrôler ici : la limite est chez le fournisseur.
+            return;
+        }
+        long quota = entitlementService.resolveMonthlyTokenQuota(subscription)
+                + currentPeriodBonus(userId);
         long used = currentPeriodUsage(userId);
         if (used >= quota) {
             throw new QuotaExceededException(

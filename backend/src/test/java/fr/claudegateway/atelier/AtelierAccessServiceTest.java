@@ -150,4 +150,27 @@ class AtelierAccessServiceTest {
         assertThatThrownBy(service::requireAccess).isInstanceOf(AtelierAccessDeniedException.class);
         verify(subscriptionService, never()).getOrCreateForUser(any());
     }
+
+    // ------------------------------------------------ F-41 / SF-41-01 : l'offre BYOK ouvre l'Atelier
+
+    @Test
+    void byokPlanOpensAtelierForARegularUser() {
+        when(currentUser.principal()).thenReturn(Optional.of(principal(UserRole.USER)));
+        when(subscriptionService.getOrCreateForUser(userId))
+                .thenReturn(subscription(PlanCode.BYOK, SubscriptionStatus.ACTIVE));
+
+        assertThat(service.hasAccess()).isTrue();
+        assertThatCode(() -> service.requireAccess()).doesNotThrowAnyException();
+    }
+
+    @Test
+    void canceledByokPlanClosesAtelierAgain() {
+        when(currentUser.principal()).thenReturn(Optional.of(principal(UserRole.USER)));
+        when(subscriptionService.getOrCreateForUser(userId))
+                .thenReturn(subscription(PlanCode.BYOK, SubscriptionStatus.CANCELED));
+
+        assertThat(service.hasAccess()).isFalse();
+        assertThatThrownBy(() -> service.requireAccess())
+                .isInstanceOf(AtelierAccessDeniedException.class);
+    }
 }

@@ -11,10 +11,13 @@ import org.springframework.stereotype.Service;
  * <b>plan</b> ({@code PlanCode == GOLD}) écrit dans le paquet {@code atelier} ; il devient un test
  * de <b>droit</b>, et il vit dans le paquet {@code billing}, à côté de l'abonnement qu'il lit.
  *
- * <p>Le droit est ouvert dans exactement deux cas :</p>
+ * <p>Le droit est ouvert dans exactement trois cas :</p>
  * <ol>
  *   <li>le <b>plan Gold</b> est actif ({@code ACTIVE}/{@code PAST_DUE}) — <i>strictement</i> le
  *       comportement d'avant F-40 : aucune régression de droit n'est acceptable ;</li>
+ *   <li>le <b>plan BYOK</b> est actif (F-41) : le client paie la plateforme et apporte ses propres
+ *       jetons ; l'Atelier fait partie de la plateforme qu'il paie, et lui vendre en plus le droit
+ *       d'Atelier reviendrait à facturer deux fois la même chose ;</li>
  *   <li>l'<b>option Atelier</b> est active ({@code ACTIVE}/{@code PAST_DUE}) <b>et</b> le plan qui
  *       la porte est un {@link PlanCode#SOLO} ou {@link PlanCode#PRO} lui-même actif.</li>
  * </ol>
@@ -35,6 +38,13 @@ public class AtelierEntitlementService {
      * ouvre déjà le droit par lui-même.
      */
     private static final Set<PlanCode> OPTION_CARRIER_PLANS = EnumSet.of(PlanCode.SOLO, PlanCode.PRO);
+
+    /**
+     * Plans qui comprennent l'Atelier par eux-mêmes : {@code GOLD} (ADR-012) et, depuis F-41,
+     * {@code BYOK} — le client y paie la plateforme entière et apporte ses propres jetons.
+     */
+    private static final Set<PlanCode> PLANS_INCLUDING_ATELIER =
+            EnumSet.of(PlanCode.GOLD, PlanCode.BYOK);
 
     private final SubscriptionService subscriptionService;
 
@@ -65,15 +75,16 @@ public class AtelierEntitlementService {
     }
 
     /**
-     * Vrai si le droit vient du <b>plan lui-même</b> (Gold actif) — l'option serait alors inutile.
-     * Sert à l'écran de facturation pour dire « incluse dans votre offre » plutôt que de proposer
-     * un achat sans objet.
+     * Vrai si le droit vient du <b>plan lui-même</b> (Gold, ou BYOK depuis F-41) — l'option serait
+     * alors inutile. Sert à l'écran de facturation pour dire « incluse dans votre offre » plutôt que
+     * de proposer un achat sans objet.
      *
      * @param subscription abonnement de l'utilisateur
      * @return {@code true} si le plan actif inclut l'Atelier
      */
     public boolean isIncludedInPlan(Subscription subscription) {
-        return subscription.getPlanCode() == PlanCode.GOLD && isLive(subscription.getStatus());
+        return PLANS_INCLUDING_ATELIER.contains(subscription.getPlanCode())
+                && isLive(subscription.getStatus());
     }
 
     /**
