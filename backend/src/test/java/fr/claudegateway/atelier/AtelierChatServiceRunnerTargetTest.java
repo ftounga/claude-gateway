@@ -269,7 +269,10 @@ class AtelierChatServiceRunnerTargetTest {
     // ------------------------------------------------------------ outil bash (SF-38-07)
 
     @Test
-    void bashToolIsOfferedOnlyOnRunnerTarget() {
+    void theToolBeltFollowsWhatTheTargetCanActuallyDo() {
+        // SF-39-05 (D4) : là où bash existe, `ls`/`grep` remplacent list_files et search_files —
+        // deux définitions de moins dans le préfixe caché, payées à chaque itération. En SANDBOX,
+        // où il n'y a pas de bash, les retirer priverait le modèle de tout moyen d'explorer.
         Workspace sandbox = new Workspace();
         sandbox.setExecutionTarget(WorkspaceExecutionTarget.SANDBOX);
         Workspace runner = new Workspace();
@@ -278,7 +281,22 @@ class AtelierChatServiceRunnerTargetTest {
         assertThat(service.buildTools(sandbox)).extracting(fr.claudegateway.agent.AgentTool::name)
                 .containsExactly("list_files", "read_file", "write_file", "search_files");
         assertThat(service.buildTools(runner)).extracting(fr.claudegateway.agent.AgentTool::name)
-                .containsExactly("list_files", "read_file", "write_file", "search_files", "bash");
+                .containsExactly("read_file", "write_file", "bash");
+    }
+
+    @Test
+    void anUndeclaredListFilesIsStillRelayedRatherThanRefused() {
+        // SF-39-05 (D2) : on retire la DÉCLARATION, qui coûte des tokens — pas la capacité. Un
+        // modèle qui appelle quand même l'outil obtient une réponse utile, pas « outil inconnu ».
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.listFiles(eq(workspaceId), anyString())).thenReturn(ok("a.ts\nb.ts"));
+        agentProvider.enqueueToolCall("list_files");
+        agentProvider.enqueueFinal("Listé.");
+
+        service.chat(userId, workspaceId, "liste les fichiers");
+
+        assertThat(toolResultText()).isEqualTo("a.ts\nb.ts");
+        assertThat(lastToolResult().isError()).isFalse();
     }
 
     @Test
