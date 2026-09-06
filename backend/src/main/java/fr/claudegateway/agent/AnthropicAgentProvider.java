@@ -7,11 +7,16 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.MissingNode;
@@ -35,6 +40,11 @@ import fr.claudegateway.ai.AnthropicProperties;
  * rendus par le fournisseur sont <b>signés</b> : ils remontent dans {@link AgentTurn#reasoning()} et
  * sont réémis tels quels quand l'appelant les replace dans le message assistant.</p>
  *
+ * <p><b>Tenue longue</b> (F-39 / SF-39-11) : l'appel porte un délai HTTP propre à l'agent, et les
+ * deux refus <b>temporaires</b> du fournisseur ({@code 429}, {@code 529}) sont rejoués selon
+ * {@link AgentRetryPolicy}. Le corps est calculé <b>une fois</b> : un réessai rejoue l'appel, il ne
+ * le reconstruit pas.</p>
+ *
  * <p>Le mapping fournisseur est confiné ici ; le domaine reste neutre. La clé n'est jamais
  * journalisée.</p>
  */
@@ -46,12 +56,57 @@ public class AnthropicAgentProvider implements AiAgentProvider {
     /** Marqueur de cache posé sur le dernier bloc d'un segment stable (F-39 / SF-39-01). */
     private static final Map<String, Object> CACHE_CONTROL = Map.of("type", "ephemeral");
 
+    /**
+     * Attente d'un réessai. Séparée pour que les tests vérifient la <b>règle</b> sans dormir
+     * réellement — le seul point de la boucle qui dépend du temps qui passe.
+     */
+    @FunctionalInterface
+    interface Sleeper {
+        void sleep(long millis) throws InterruptedException;
+    }
+
     private final AnthropicProperties properties;
     private final RestClient restClient;
+    private final AgentRetryPolicy retryPolicy;
+    private final Sleeper sleeper;
 
+    /** Constructeur d'injection — désigné explicitement, la classe en ayant deux. */
+    @Autowired
     public AnthropicAgentProvider(AnthropicProperties properties, RestClient.Builder restClientBuilder) {
+        this(properties, restClientBuilder, requestFactory(properties), Thread::sleep);
+    }
+
+    /**
+     * Variante de construction destinée aux tests.
+     *
+     * @param requestFactory fabrique HTTP à poser sur le client ; {@code null} conserve celle déjà
+     *                       présente sur le {@code builder} — c'est ce qui permet à un serveur
+     *                       simulé de rester en place
+     * @param sleeper        attente d'un réessai
+     */
+    AnthropicAgentProvider(AnthropicProperties properties, RestClient.Builder restClientBuilder,
+            ClientHttpRequestFactory requestFactory, Sleeper sleeper) {
         this.properties = properties;
-        this.restClient = restClientBuilder.baseUrl(properties.baseUrl()).build();
+        RestClient.Builder builder = restClientBuilder.baseUrl(properties.baseUrl());
+        if (requestFactory != null) {
+            builder = builder.requestFactory(requestFactory);
+        }
+        this.restClient = builder.build();
+        this.retryPolicy = new AgentRetryPolicy(properties.agentMaxAttempts());
+        this.sleeper = sleeper;
+    }
+
+    /**
+     * Délais de connexion et de lecture de la boucle d'agent (décision D-L6-1). Jusqu'à cette
+     * subfeature, aucun délai n'était posé : un appel sans réponse bloquait le thread de la boucle
+     * indéfiniment, le budget de tour n'étant vérifié qu'<b>entre</b> deux itérations.
+     */
+    private static ClientHttpRequestFactory requestFactory(AnthropicProperties properties) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        int millis = (int) Math.min(Integer.MAX_VALUE, properties.agentTimeout().toMillis());
+        factory.setConnectTimeout(millis);
+        factory.setReadTimeout(millis);
+        return factory;
     }
 
     @Override
@@ -76,20 +131,76 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         }
         applyReasoning(body, request.reasoning());
 
+        return callWithRetry(request.model(), apiKey, body);
+    }
+
+    /**
+     * Appelle le fournisseur, en rejouant le <b>même</b> corps sur un refus temporaire
+     * (F-39 / SF-39-11).
+     *
+     * <p>Le corps est calculé une fois par l'appelant (décision D-L6-6) : marqueurs
+     * {@code cache_control} et blocs de raisonnement signés sont donc strictement identiques d'une
+     * tentative à l'autre. Le reconstruire ferait glisser le marqueur de cache et transformerait un
+     * réessai en écriture de cache payée deux fois.</p>
+     *
+     * <p>Un dépassement de délai n'est <b>pas</b> rejoué (décision D-L6-3) : l'appel a déjà consommé
+     * une part du budget de tour, et le rejouer échangerait un échec lisible contre un tour qui
+     * meurt au budget — ce que l'utilisateur lit comme une panne.</p>
+     */
+    private AgentTurn callWithRetry(String model, String apiKey, Map<String, Object> body) {
+        long waited = 0L;
+        for (int attempt = 1; ; attempt++) {
+            try {
+                JsonNode response = restClient.post()
+                        .uri("/v1/messages")
+                        .header("x-api-key", apiKey)
+                        .header("anthropic-version", properties.version())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(body)
+                        .retrieve()
+                        .body(JsonNode.class);
+                return toTurn(response);
+            } catch (RestClientResponseException ex) {
+                int status = ex.getStatusCode().value();
+                long delay = AgentRetryPolicy.retryableStatus(status) && retryPolicy.hasAttemptLeft(attempt)
+                        ? retryPolicy.delayMs(attempt, retryAfterHeader(ex), waited)
+                        : AgentRetryPolicy.NO_DELAY;
+                if (delay == AgentRetryPolicy.NO_DELAY) {
+                    throw providerFailure(model, ex);
+                }
+                // Ni la clé ni le corps de la réponse : seulement de quoi comprendre l'attente.
+                log.warn("Fournisseur IA temporairement indisponible (statut={}, modèle={}), "
+                        + "nouvelle tentative dans {} ms (tentative {}).", status, model, delay, attempt);
+                sleep(delay);
+                waited += delay;
+            } catch (RestClientException ex) {
+                throw providerFailure(model, ex);
+            }
+        }
+    }
+
+    /** Message neutre : ni la clé ni la réponse brute du fournisseur ne remontent au client. */
+    private AIProviderException providerFailure(String model, RestClientException ex) {
+        log.warn("Appel agent au fournisseur IA en échec (modèle={})", model);
+        return new AIProviderException("Échec de l'appel au fournisseur IA.", ex);
+    }
+
+    /** Première valeur de l'en-tête {@code Retry-After}, ou {@code null}. */
+    private static String retryAfterHeader(RestClientResponseException ex) {
+        HttpHeaders headers = ex.getResponseHeaders();
+        return headers == null ? null : headers.getFirst(HttpHeaders.RETRY_AFTER);
+    }
+
+    /**
+     * Attente d'un réessai. Une interruption n'est pas avalée : le flag est reposé pour que le
+     * thread de la boucle reste interruptible, et l'échec remonte tout de suite.
+     */
+    private void sleep(long millis) {
         try {
-            JsonNode response = restClient.post()
-                    .uri("/v1/messages")
-                    .header("x-api-key", apiKey)
-                    .header("anthropic-version", properties.version())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(body)
-                    .retrieve()
-                    .body(JsonNode.class);
-            return toTurn(response);
-        } catch (RestClientException ex) {
-            // Message neutre : ni la clé ni la réponse brute du fournisseur ne remontent au client.
-            log.warn("Appel agent au fournisseur IA en échec (modèle={})", request.model());
-            throw new AIProviderException("Échec de l'appel au fournisseur IA.", ex);
+            sleeper.sleep(millis);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new AIProviderException("Appel au fournisseur IA interrompu.", ex);
         }
     }
 
