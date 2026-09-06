@@ -723,3 +723,20 @@
   font-weight: 600;
   opacity: 1;
 }
+
+/* Rappel d'élévation dans la demande d'autorisation (F-38 / SF-38-18) : lisible sans crier —
+   l'information doit peser sur la décision, pas déclencher un réflexe de clic. */
+.terminal-ask-elevated {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+  }
+}

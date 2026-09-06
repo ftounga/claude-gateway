@@ -1,8 +1,11 @@
 # claude-runner — runner d'exécution sur machine connectée (F-38)
 
 Le runner est un **client léger** posé sur la machine où vit le projet. Il ouvre lui-même une
-connexion **sortante** WSS/443 vers la gateway : aucun port entrant, aucun installeur, aucun droit
-administrateur, aucun service en arrière-plan.
+connexion **sortante** WSS/443 vers la gateway : aucun port entrant, aucun installeur, **aucun droit
+administrateur pour l'installer**, aucun service en arrière-plan.
+
+> ⚠ **Avec quels droits le runner agit** — voir la section dédiée plus bas. En résumé : ceux du
+> compte qui l'a lancé, ni plus ni moins. Ne le lancez pas en `root`.
 
 > Périmètre livré : appairage, connexion, heartbeat, reconnexion, arrêt propre (**SF-38-03**),
 > **outils fichiers** `list_files` / `read_file` / `write_file` / `search_files` (**SF-38-04**),
@@ -163,3 +166,37 @@ java -Djavax.net.ssl.trustStore=/chemin/truststore.jks \
 Le jar n'est **pas** empaqueté dans l'image du backend. Quand un jar est déposé sur la gateway au
 chemin `app.runner.jar-path` (`APP_RUNNER_JAR_PATH`), il est servi par `GET /api/runner/download` ;
 sinon cet endpoint répond `404 runner_jar_unavailable`.
+
+---
+
+## Avec quels droits le runner agit
+
+**Le runner s'exécute avec les droits de l'utilisateur qui l'a lancé — rien de plus, rien de
+moins.** Il ne bride aucun privilège et ne prétend pas le faire.
+
+| Situation | `sudo apt install …` |
+|---|---|
+| Lancé par vous, `sudo` demande un mot de passe | **échoue** — pas de terminal pour le saisir |
+| `sudo` configuré `NOPASSWD` | **passe** |
+| Runner lancé en `root` (y compris dans un conteneur) | **passe**, et `sudo` est inutile |
+
+L'échec du premier cas est un **effet de bord**, pas une garde : `BashTool` ferme l'entrée standard
+des processus qu'il lance, si bien qu'aucune commande ne peut lire une saisie interactive. Ne comptez
+pas dessus comme sur une protection.
+
+### Ce qui protège réellement
+
+- **La porte de confirmation** : aucune commande ne part sans un geste de l'utilisateur, et elle
+  n'est pas désactivable en mode runner.
+- **Le journal d'audit** : chaque appel est tracé, y compris les refus.
+- **Les exclusions `.runnerignore`** : un chemin exclu n'est ni listé, ni lisible.
+- **Le coupe-circuit** : révoquer les jetons coupe la liaison immédiatement.
+
+À noter : la racine `--workspace` confine les **outils fichiers**, pas ce qu'une commande `bash`
+touche ensuite. Un shell reste un shell.
+
+### Recommandation
+
+Lancez le runner **avec votre compte habituel**. Si vous le lancez en `root` — dans un conteneur,
+ou sur un projet appartenant à `root` — il vous le dit au démarrage, et l'écran le rappelle au
+moment où vous autorisez une commande.

@@ -37,7 +37,8 @@ import fr.claudegateway.atelier.WorkspaceSource;
 public record WorkspaceDetailResponse(
         UUID id, String name, int fileCount, List<String> files, OffsetDateTime createdAt,
         WorkspaceSource source, String gitRepoUrl, String gitRepo, String gitBranch, boolean truncated,
-        String instructionsPath, boolean askBeforeBash, WorkspaceExecutionTarget executionTarget) {
+        String instructionsPath, boolean askBeforeBash, WorkspaceExecutionTarget executionTarget,
+        String runnerRootName, boolean runnerElevated) {
 
     public static WorkspaceDetailResponse from(Workspace workspace, List<String> files) {
         return from(workspace, files, false);
@@ -48,7 +49,10 @@ public record WorkspaceDetailResponse(
                 workspace.getId(), workspace.getName(), files.size(), files, workspace.getCreatedAt(),
                 workspace.sourceOrDefault(), workspace.getGitRepoUrl(), fullName(workspace),
                 workspace.getGitBranch(), truncated, ProjectInstructions.detectPath(files).orElse(null),
-                workspace.isAgentAskBeforeBash(), workspace.executionTargetOrDefault());
+                workspace.isAgentAskBeforeBash(), workspace.executionTargetOrDefault(),
+                // Ce que le runner a déclaré de lui-même à l'appairage (F-38 / SF-38-15 et 18) :
+                // le nom du dossier, et s'il tourne avec les droits de l'administrateur.
+                workspace.getRunnerRootName(), Boolean.TRUE.equals(workspace.getRunnerElevated()));
     }
 
     /** {@code owner/repo} lisible, ou {@code null} si le workspace n'est pas adossé à un dépôt. */

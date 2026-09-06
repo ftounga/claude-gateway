@@ -140,12 +140,28 @@ public class WorkspaceService {
      */
     @Transactional
     public void recordRunnerRootName(UUID workspaceId, String rootName) {
+        recordRunnerDeclaration(workspaceId, rootName, false);
+    }
+
+    /**
+     * Enregistre ce que le runner déclare de lui-même à l'appairage : le nom du dossier
+     * (F-38 / SF-38-15) et les <b>droits</b> sous lesquels il tourne (SF-38-18).
+     *
+     * <p>L'élévation est enregistrée <b>même quand le nom de dossier manque</b> — un runner peut
+     * tourner en root sans avoir déclaré son dossier, et c'est justement le cas où l'information
+     * compte le plus.</p>
+     */
+    @Transactional
+    public void recordRunnerDeclaration(UUID workspaceId, String rootName, boolean elevated) {
         String segment = lastSegment(rootName);
-        if (segment == null) {
+        if (segment == null && !elevated) {
             return;
         }
         workspaceRepository.findById(workspaceId).ifPresent(workspace -> {
-            workspace.setRunnerRootName(segment);
+            if (segment != null) {
+                workspace.setRunnerRootName(segment);
+            }
+            workspace.setRunnerElevated(elevated);
             workspaceRepository.save(workspace);
         });
     }

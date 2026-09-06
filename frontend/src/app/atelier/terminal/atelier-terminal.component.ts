@@ -82,6 +82,13 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Input() localFolder: string | null = null;
 
   /**
+   * La machine connectée tourne en **administrateur** (F-38 / SF-38-18). Rappelé dans la demande
+   * d'autorisation : autoriser une commande n'a pas le même poids selon les droits sous lesquels
+   * elle s'exécutera.
+   */
+  @Input() runnerElevated = false;
+
+  /**
    * Marque d'une étape du plan (F-39 / SF-39-13). Un caractère, pas une icône : le plan s'affiche
    * dans un terminal, et une puce Material y jurerait.
    */

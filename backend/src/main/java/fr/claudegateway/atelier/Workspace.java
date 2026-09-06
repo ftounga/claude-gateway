@@ -95,6 +95,14 @@ public class Workspace {
     private String runnerRootName;
 
     /**
+     * Vrai si le runner appairé tourne avec les droits de l'<b>administrateur</b>
+     * (F-38 / SF-38-18). Déclaré par le runner : la gateway ne peut pas le deviner. Sert à le dire
+     * là où l'on autorise une commande — c'est le seul endroit où l'information change une décision.
+     */
+    @Column(name = "runner_elevated")
+    private Boolean runnerElevated;
+
+    /**
      * Vrai si le projet est adossé à un dépôt Git (F-31 / SF-31-02). Volontairement null-tolérant :
      * une entité construite hors du builder (tests, désérialisation partielle) n'est pas un projet
      * Git, et le chemin le plus sûr — celui de l'archive — reste le comportement par défaut.

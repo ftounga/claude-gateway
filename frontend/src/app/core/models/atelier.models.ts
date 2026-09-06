@@ -36,6 +36,15 @@ export interface WorkspaceSummary {
    * seulement, jamais le chemin absolu. Absent tant qu'aucune machine ne s'est appairée.
    */
   runnerRootName?: string;
+
+  /**
+   * Vrai si le runner appairé tourne avec les droits de l'**administrateur** (F-38 / SF-38-18).
+   *
+   * <p>Déclaré par le runner : la gateway ne peut pas le deviner. Affiché là où l'on autorise une
+   * commande — autoriser `rm -rf build` n'a pas le même poids selon les droits sous lesquels elle
+   * s'exécutera.</p>
+   */
+  runnerElevated?: boolean;
   /** `owner/repo` pour un projet Git, `null` sinon. */
   gitRepo: string | null;
   /**
@@ -116,6 +125,15 @@ export interface WorkspaceDetail {
    * seulement, jamais le chemin absolu. Absent tant qu'aucune machine ne s'est appairée.
    */
   runnerRootName?: string;
+
+  /**
+   * Vrai si le runner appairé tourne avec les droits de l'**administrateur** (F-38 / SF-38-18).
+   *
+   * <p>Déclaré par le runner : la gateway ne peut pas le deviner. Affiché là où l'on autorise une
+   * commande — autoriser `rm -rf build` n'a pas le même poids selon les droits sous lesquels elle
+   * s'exécutera.</p>
+   */
+  runnerElevated?: boolean;
   /** URL publique du dépôt (jamais le jeton), `null` pour un projet d'archive. */
   gitRepoUrl: string | null;
   /** `owner/repo`, `null` pour un projet d'archive. */

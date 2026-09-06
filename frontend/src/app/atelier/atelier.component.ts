@@ -251,6 +251,12 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * `null` tant qu'aucune machine ne s'est appairée : mieux vaut ne rien dire que d'annoncer un
    * dossier qu'on ne connaît pas encore.
    */
+  /**
+   * Vrai si la machine connectée tourne en **administrateur** (F-38 / SF-38-18). Affiché là où l'on
+   * autorise une commande : c'est le seul endroit où l'information change une décision.
+   */
+  readonly runnerElevated = computed(() => this.activeDetail()?.runnerElevated === true);
+
   readonly localFolder = computed(() => {
     if (!this.localProject()) {
       return null;
@@ -328,9 +334,16 @@ export class AtelierComponent implements OnInit, OnDestroy {
     // `queryParamMap` peut être absent d'un ActivatedRoute simulé : on lit alors l'instantané.
     // Une synchronisation d'affichage ne doit pas empêcher l'écran de s'ouvrir.
     this.route.queryParamMap?.subscribe((params) => {
-      const open = params.get('vue') === 'fichiers';
-      this.filesExplorerOpen.set(open);
-      this.filesExplorerPath.set(open ? params.get('path') : null);
+      // L'URL OUVRE le panneau, elle ne le referme jamais (F-39 / SF-39-18).
+      //
+      // La version d'origine reflétait l'URL dans les deux sens, et refermait donc le panneau que
+      // le clic venait d'ouvrir : `router.navigate` est asynchrone, l'abonnement recevait encore
+      // l'ancienne URL, et remettait le signal à faux. Cliquer sur « Fichiers » ne faisait rien.
+      // La fermeture reste un geste explicite — `closeFileExplorer`, ou le bouton du panneau.
+      if (params.get('vue') === 'fichiers') {
+        this.filesExplorerOpen.set(true);
+        this.filesExplorerPath.set(params.get('path'));
+      }
     });
     this.loadWorkspaces();
   }
