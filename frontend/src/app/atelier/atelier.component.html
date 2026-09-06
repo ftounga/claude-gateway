@@ -18,7 +18,12 @@
      refusée au bout de 120 s sans que personne l'ait vue. -->
 @if (activeWorkspaceId() && filesExplorerOpen()) {
   <div class="files-overlay">
-    <app-atelier-files [embedded]="true" (closed)="closeFileExplorer()"></app-atelier-files>
+    <app-atelier-files
+      [embedded]="true"
+      [embeddedWorkspaceId]="activeWorkspaceId()"
+      [embeddedPath]="filesExplorerPath()"
+      (closed)="closeFileExplorer()"
+    ></app-atelier-files>
   </div>
 }
 

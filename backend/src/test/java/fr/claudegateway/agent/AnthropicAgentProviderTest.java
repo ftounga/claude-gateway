@@ -588,4 +588,46 @@ class AnthropicAgentProviderTest {
         assertThat(bodies).hasSize(2);
         assertThat(bodies.get(1)).isEqualTo(bodies.get(0));
     }
+
+    // ------------------------------------------------- SF-39-20 : la recherche web, relayée
+
+    @Test
+    void declaresTheProviderSideWebToolsAlongsideOurs() {
+        build(null);
+        server.expect(requestTo(URL))
+                .andExpect(jsonPath("$.tools[?(@.name == 'web_search')].type")
+                        .value("web_search_20260209"))
+                .andExpect(jsonPath("$.tools[?(@.name == 'web_fetch')].type")
+                        .value("web_fetch_20260209"))
+                // Les nôtres restent déclarés : les outils serveur s'ajoutent, ils ne remplacent pas.
+                .andExpect(jsonPath("$.tools[?(@.name == 'read_file')]").exists())
+                .andRespond(withSuccess("""
+                        {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                         "usage": {"input_tokens": 1, "output_tokens": 1}}
+                        """, MediaType.APPLICATION_JSON));
+
+        provider.nextTurn(new AgentTurnRequest("claude-model", "consigne",
+                List.of(AgentMessage.userText("cherche")),
+                List.of(new AgentTool("read_file", "Lit un fichier", java.util.Map.of("type", "object"))),
+                null));
+
+        server.verify();
+    }
+
+    @Test
+    void aWebSearchResultIsNotMistakenForAToolWeMustExecute() {
+        build(null);
+        // Les outils serveur s'exécutent CHEZ le fournisseur : leurs blocs de résultat arrivent dans
+        // la même réponse, et la gateway n'a rien à exécuter.
+        respondWith("end_turn", """
+                [{"type": "server_tool_use", "id": "srv_1", "name": "web_search", "input": {}},
+                 {"type": "web_search_tool_result", "tool_use_id": "srv_1", "content": []},
+                 {"type": "text", "text": "D'après le web…"}]""");
+
+        AgentTurn turn = call();
+
+        assertThat(turn.toolCalls()).isEmpty();
+        assertThat(turn.text()).isEqualTo("D'après le web…");
+        assertThat(turn.finished()).isTrue();
+    }
 }
