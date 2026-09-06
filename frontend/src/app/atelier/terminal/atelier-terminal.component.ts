@@ -196,6 +196,13 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Output() openInstructions = new EventEmitter<void>();
   /** Décision sur la demande en attente (F-33 / SF-33-03) : `true` autorise, `false` refuse. */
   @Output() confirmDecision = new EventEmitter<boolean>();
+
+  /**
+   * Autorise toutes les commandes du message en cours (F-38 / SF-38-20). Séparé de
+   * {@link #confirmDecision} : ce n'est pas un cran de plus sur la même échelle, c'est un autre
+   * geste — on autorise la suite d'un travail dont on vient de voir le premier pas.
+   */
+  @Output() confirmAll = new EventEmitter<void>();
   /** Ouverture du champ de motif de refus. */
   @Output() denyWithReason = new EventEmitter<void>();
   /** Saisie du motif de refus (le parent reste propriétaire de l'état). */

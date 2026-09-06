@@ -1256,7 +1256,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * <p>L'invite n'est retirée qu'à la **résolution** relayée par le flux : c'est elle qui prouve que
    * la décision est bien arrivée jusqu'à la session.</p>
    */
-  answerConfirmation(allow: boolean): void {
+  answerConfirmation(allow: boolean, allowAll = false): void {
     const id = this.activeWorkspaceId();
     const pending = this.pendingConfirmation();
     if (!id || !pending || pending.answering) {
@@ -1268,6 +1268,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
       toolUseId: pending.toolUseId,
       decision: (allow ? 'allow' : 'deny') as 'allow' | 'deny',
       reason: !allow && reason.length > 0 ? reason : undefined,
+      // « Tout autoriser pour ce message » (F-38 / SF-38-20) : la portée est le tour, le message
+      // suivant redemandera. La clé n'est posée que si elle vaut quelque chose — un `undefined`
+      // explicite alourdirait le corps envoyé pour ne rien dire.
+      ...(allow && allowAll ? { allowAll: true } : {}),
     };
     // La question est la même des deux côtés, la destination non : boucle maison sur machine
     // connectée (F-38 / SF-38-08) ou session de bac à sable (F-33).

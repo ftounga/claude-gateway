@@ -483,6 +483,15 @@ export interface AtelierConfirmDecision {
   toolUseId: string;
   decision: 'allow' | 'deny';
   reason?: string;
+
+  /**
+   * Autorise **toutes** les commandes de ce message (F-38 / SF-38-20).
+   *
+   * <p>La portée est le **tour**, jamais le projet : le message suivant redemandera. C'est ce qui
+   * distingue un raccourci d'un renoncement — on autorise ce qu'on a commencé à voir. Champ
+   * additif : un backend antérieur l'ignore.</p>
+   */
+  allowAll?: boolean;
 }
 
 /** Réponse de `PUT /api/workspaces/{id}/agent/confirmation` (F-33 / SF-33-01). */

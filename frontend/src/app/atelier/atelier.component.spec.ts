@@ -101,6 +101,7 @@ describe('AtelierComponent', () => {
       'interruptChat',
       'setAskBeforeBash',
       'confirmToolUse',
+      'confirmChatToolUse',
       'getHistory',
       'getResume',
       'restartThread',
@@ -2688,6 +2689,49 @@ describe('AtelierComponent', () => {
 
     expect(component.filesExplorerOpen()).toBeTrue();
     expect(component.filesExplorerPath()).toBe('CLAUDE.md');
+  });
+
+  // ------------------------------------------------- SF-38-20 : tout autoriser pour ce message
+
+  it('sends the blanket approval only when asked for it', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    service.confirmChatToolUse.and.returnValue(of(void 0));
+    component.pendingConfirmation.set({
+      toolUseId: 'tu1',
+      tool: 'bash',
+      detail: 'npm install',
+      reason: '',
+      denying: false,
+      answering: false,
+      source: 'LOCAL_MACHINE',
+    });
+
+    component.answerConfirmation(true, true);
+
+    const decision = service.confirmChatToolUse.calls.mostRecent().args[1];
+    expect(decision.decision).toBe('allow');
+    expect(decision.allowAll).toBeTrue();
+  });
+
+  it('does not send the blanket approval on a plain authorisation', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    service.confirmChatToolUse.and.returnValue(of(void 0));
+    component.pendingConfirmation.set({
+      toolUseId: 'tu1',
+      tool: 'bash',
+      detail: 'npm install',
+      reason: '',
+      denying: false,
+      answering: false,
+      source: 'LOCAL_MACHINE',
+    });
+
+    component.answerConfirmation(true);
+
+    // Autoriser une commande n'autorise pas les suivantes : ce sont deux gestes distincts.
+    expect(service.confirmChatToolUse.calls.mostRecent().args[1].allowAll).toBeUndefined();
   });
 });
 

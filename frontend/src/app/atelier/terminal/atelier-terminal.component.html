@@ -493,6 +493,18 @@
           >
             Autoriser
           </button>
+          <!-- Raccourci borné au MESSAGE (F-38 / SF-38-20) : le suivant redemandera. La première
+               commande, elle, demande toujours — c'est ce qui rend le raccourci honnête. -->
+          <button
+            mat-stroked-button
+            type="button"
+            class="terminal-ask-allow-all"
+            [disabled]="ask.answering"
+            matTooltip="Les commandes suivantes de ce message ne demanderont plus. Le message suivant redemandera."
+            (click)="confirmAll.emit()"
+          >
+            Tout autoriser pour ce message
+          </button>
           @if (ask.denying) {
             <button
               mat-stroked-button
