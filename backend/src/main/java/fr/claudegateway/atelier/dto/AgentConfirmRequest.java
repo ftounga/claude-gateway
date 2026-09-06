@@ -18,7 +18,19 @@ import jakarta.validation.constraints.Size;
 public record AgentConfirmRequest(
         @NotBlank String toolUseId,
         @NotBlank @Pattern(regexp = "(?i)allow|deny") String decision,
-        @Size(max = 500) String reason) {
+        @Size(max = 500) String reason,
+        Boolean allowAll) {
+
+    /**
+     * Vrai si l'utilisateur autorise <b>toutes</b> les commandes de ce message (F-38 / SF-38-20).
+     *
+     * <p>La portée est le <b>tour</b>, jamais le projet : le message suivant redemandera. C'est ce
+     * qui distingue un raccourci d'un renoncement — on autorise ce qu'on a commencé à voir, pas
+     * tout ce qui viendra un jour.</p>
+     */
+    public boolean allowsAll() {
+        return Boolean.TRUE.equals(allowAll) && allows();
+    }
 
     /** Vrai si la décision autorise l'exécution. */
     public boolean allows() {

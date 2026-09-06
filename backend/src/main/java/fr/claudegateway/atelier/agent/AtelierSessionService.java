@@ -821,14 +821,12 @@ public class AtelierSessionService implements RelaySessionInterruptTarget {
     public AgentConfirmationState setAskBeforeBash(UUID userId, UUID workspaceId, boolean enabled) {
         // Isolation EN PREMIER : workspace d'un autre user / inexistant ⇒ 404, aucune écriture.
         Workspace workspace = workspaceService.requireOwned(userId, workspaceId);
-        if (!enabled && workspace.isRunnerTarget()) {
-            // Décision D7 (F-38 / SF-38-08) : non désactivable en cible RUNNER. Accepter la bascule
-            // en silence afficherait « désactivé » alors que la boucle continue de demander — pire
-            // qu'un refus, parce que l'utilisateur croirait le réglage effectif.
-            throw new fr.claudegateway.atelier.ExecutionTargetModeException(
-                    "La validation avant exécution ne peut pas être désactivée sur un projet "
-                            + "exécuté sur votre machine.");
-        }
+        // SF-38-20 amende la décision D7 de SF-38-08 : la validation redevient désactivable, y
+        // compris en cible RUNNER. Le banc d'essai a montré le prix de la rigidité — une procédure
+        // de treize étapes demandait des dizaines de clics, et une garde qu'on subit finit par être
+        // contournée plutôt que respectée. C'est une décision de l'utilisateur sur sa propre
+        // machine ; ce qui disparaît est le clic, jamais la trace : le journal d'audit continue de
+        // tout consigner et le coupe-circuit reste immédiat.
         workspace.setAgentAskBeforeBash(enabled);
         workspaceRepository.save(workspace);
         String sessionId = workspace.getAgentSessionId();

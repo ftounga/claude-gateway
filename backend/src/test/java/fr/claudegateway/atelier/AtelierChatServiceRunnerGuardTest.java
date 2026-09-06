@@ -112,6 +112,11 @@ class AtelierChatServiceRunnerGuardTest {
         workspace.setUserId(userId);
         workspace.setSource(WorkspaceSource.ARCHIVE);
         workspace.setExecutionTarget(target);
+        // La validation avant exécution est posée à la bascule vers RUNNER (SF-38-05) et à la
+        // création d'un projet local (SF-38-15) : c'est l'état réel d'un projet de production.
+        // Depuis SF-38-20, elle est CONSULTÉE — l'oublier ici ferait passer les tests de garde à
+        // côté de ce qu'ils vérifient.
+        workspace.setAgentAskBeforeBash(true);
         when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(workspace);
         return workspace;
     }
@@ -308,5 +313,44 @@ class AtelierChatServiceRunnerGuardTest {
         public void onConfirmResolved(AtelierConfirmResolved event) {
             resolved.add(event);
         }
+    }
+
+    // ------------------------------------------------- SF-38-20 : ne plus cliquer à chaque commande
+
+    @Test
+    void blanketApprovalCoversTheRestOfTheMessageAndNotTheNextOne() {
+        stubWorkspace(WorkspaceExecutionTarget.RUNNER);
+
+        // « Tout autoriser pour ce message » : la marque est posée, la porte n'est plus consultée.
+        service.confirmToolUse(userId, workspaceId, "tool_0", true, null, true);
+        when(runnerToolGateway.bash(eq(workspaceId), anyString(), anyString(), any(), anyLong(), any()))
+                .thenReturn(bashOk("ok\n", 0));
+        agentProvider.enqueueToolCall("bash", "command", "echo un");
+        agentProvider.enqueueToolCall("bash", "command", "echo deux");
+        agentProvider.enqueueFinal("Fait.");
+
+        service.chat(userId, workspaceId, "lance deux commandes");
+
+        // Aucune demande d'autorisation n'a été posée pour ce message.
+        assertThat(listener.requests).isEmpty();
+    }
+
+    @Test
+    void aProjectThatNoLongerAsksSkipsTheGateEntirely() {
+        Workspace workspace = stubWorkspace(WorkspaceExecutionTarget.RUNNER);
+        // « Ne plus jamais demander sur ce projet » (SF-38-20) : le réglage existait déjà en base,
+        // il n'était simplement pas consulté en cible RUNNER.
+        workspace.setAgentAskBeforeBash(false);
+        when(runnerToolGateway.bash(eq(workspaceId), anyString(), eq("echo un"), any(), anyLong(), any()))
+                .thenReturn(bashOk("un\n", 0));
+        agentProvider.enqueueToolCall("bash", "command", "echo un");
+        agentProvider.enqueueFinal("Fait.");
+
+        service.chat(userId, workspaceId, "lance");
+
+        assertThat(listener.requests).isEmpty();
+        // Ce qui disparaît est le clic, jamais la trace.
+        verify(auditService).recordCall(eq(userId), eq(workspaceId), anyString(), eq("bash"),
+                anyString(), any());
     }
 }

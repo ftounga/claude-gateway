@@ -133,7 +133,7 @@ public class AtelierChatController {
             @Valid @RequestBody AgentConfirmRequest request) {
         atelierAccess.requireAccess();
         atelierChatService.confirmToolUse(currentUser.requireId(), id, request.toolUseId(),
-                request.allows(), request.reason());
+                request.allows(), request.reason(), request.allowsAll());
         return ResponseEntity.noContent().build();
     }
 

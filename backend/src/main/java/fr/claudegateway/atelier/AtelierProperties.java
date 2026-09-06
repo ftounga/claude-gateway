@@ -72,7 +72,20 @@ public record AtelierProperties(
     private static final java.util.Set<String> ALLOWED_EFFORTS =
             java.util.Set.of("low", "medium", "high", "xhigh", "max");
     /** Plafond de consommation d'un message à défaut de configuration (F-39 / SF-39-15). */
-    public static final long DEFAULT_MAX_TURN_TOKENS = 1_500_000L;
+    /**
+     * Plafond par défaut, <b>relevé de 1,5 M à 4 M le 2026-09-06</b> (F-38 / SF-38-20).
+     *
+     * <p>1,5 M avait été calibré sur le contexte maximal <b>observé</b> dans l'usage mesuré au
+     * cadrage — 900 519 tokens. Le banc d'essai a montré qu'un vrai travail de construction le
+     * dépasse largement : la construction d'une application fullstack a été coupée à mi-parcours,
+     * après sept étapes de procédure sur treize.</p>
+     *
+     * <p>Ce compteur additionne les tokens <b>traités</b>, cache compris (SF-39-01, D3) : sur un
+     * tour long, l'essentiel est relu du cache au dixième du tarif. Relever le plafond ne multiplie
+     * donc pas la facture dans les mêmes proportions — et le quota reste la borne qui, elle,
+     * mesure ce que l'utilisateur a payé.</p>
+     */
+    public static final long DEFAULT_MAX_TURN_TOKENS = 4_000_000L;
     /**
      * Borne haute du plafond de message : au-delà, {@code maxIterations} et le budget de temps
      * auraient tranché de toute façon. Mieux vaut une borne lisible qu'un plafond qui n'a jamais
