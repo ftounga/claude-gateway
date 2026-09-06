@@ -421,6 +421,17 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("execution_target_runner", ex.getMessage()));
     }
 
+    @ExceptionHandler(fr.claudegateway.runner.browse.RunnerBrowseException.class)
+    public ResponseEntity<ErrorResponse> handleRunnerBrowse(
+            fr.claudegateway.runner.browse.RunnerBrowseException ex) {
+        // Le projet vit sur la machine de l'utilisateur et elle n'est pas joignable (F-38 /
+        // SF-38-17) : c'est un ETAT, pas une panne — et il se repare en lançant le runner. Jamais
+        // une liste vide, qui laisserait croire a un projet vide.
+        log.debug("Lecture sur la machine impossible : runner injoignable ou lecture refusee");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("runner_browse_unavailable", ex.getMessage()));
+    }
+
     @ExceptionHandler(fr.claudegateway.atelier.LocalWorkspaceException.class)
     public ResponseEntity<ErrorResponse> handleLocalWorkspace(
             fr.claudegateway.atelier.LocalWorkspaceException ex) {
