@@ -53,6 +53,22 @@ public class AnthropicAgentProvider implements AiAgentProvider {
 
     private static final Logger log = LoggerFactory.getLogger(AnthropicAgentProvider.class);
 
+    /**
+     * Outils <b>exécutés par le fournisseur</b> — recherche et lecture web (F-39 / SF-39-20).
+     *
+     * <p>Provider-First : Claude sait chercher sur le web, et le fait chez lui. Il n'y a donc ni
+     * boucle à écrire, ni requête sortante à émettre depuis la gateway, ni résultat à exécuter :
+     * les réponses arrivent dans le même message, sous forme de blocs de résultat. Ne pas les
+     * déclarer revenait à priver l'agent d'une capacité qu'il possède déjà — et il le disait :
+     * « je n'ai pas accès au réseau ».</p>
+     *
+     * <p>Déclarés <b>en fin</b> de liste et <b>toujours identiques</b> : le préfixe caché
+     * (SF-39-01) reste stable d'un tour à l'autre.</p>
+     */
+    private static final List<Map<String, Object>> SERVER_TOOLS = List.of(
+            Map.of("type", "web_search_20260209", "name", "web_search"),
+            Map.of("type", "web_fetch_20260209", "name", "web_fetch"));
+
     /** Marqueur de cache posé sur le dernier bloc d'un segment stable (F-39 / SF-39-01). */
     private static final Map<String, Object> CACHE_CONTROL = Map.of("type", "ephemeral");
     /** Stratégie d'édition de contexte du fournisseur (F-39 / SF-39-12). */
@@ -262,13 +278,14 @@ public class AnthropicAgentProvider implements AiAgentProvider {
     }
 
     private List<Map<String, Object>> toApiTools(List<AgentTool> tools) {
-        List<Map<String, Object>> apiTools = new ArrayList<>(tools.size());
+        List<Map<String, Object>> apiTools = new ArrayList<>(tools.size() + 2);
         for (AgentTool tool : tools) {
             apiTools.add(Map.of(
                     "name", tool.name(),
                     "description", tool.description(),
                     "input_schema", tool.inputSchema()));
         }
+        apiTools.addAll(SERVER_TOOLS);
         return apiTools;
     }
 

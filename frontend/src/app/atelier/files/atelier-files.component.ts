@@ -102,6 +102,19 @@ export class AtelierFilesComponent implements OnInit {
 
   /** Demande de fermeture du panneau (mode `embedded` uniquement) : personne ne navigue. */
   @Output() readonly closed = new EventEmitter<void>();
+
+  /**
+   * Projet à ouvrir, fourni par le composant hôte en mode panneau (F-39 / SF-39-18).
+   *
+   * <p>Sur sa propre route, l'explorateur lit l'identifiant dans l'URL. En panneau, il n'y en a pas
+   * forcément : le projet actif est choisi dans la liste, et l'URL peut rester `/atelier`. Le
+   * composant se retrouvait alors sans identifiant, repartait vers la liste, et le panneau
+   * s'affichait <b>vide</b>.</p>
+   */
+  @Input() embeddedWorkspaceId: string | null = null;
+
+  /** Fichier à ouvrir d'emblée en mode panneau — l'équivalent de `?path=` sur la route dédiée. */
+  @Input() embeddedPath: string | null = null;
   private readonly atelier = inject(AtelierService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -203,13 +216,24 @@ export class AtelierFilesComponent implements OnInit {
   private pendingPath: string | null = null;
 
   ngOnInit(): void {
-    const id = this.route.snapshot.paramMap.get('id');
+    // En panneau, l'hôte fournit le projet : l'URL peut ne pas le porter (F-39 / SF-39-18).
+    const id = this.embedded
+        ? this.embeddedWorkspaceId
+        : this.route.snapshot.paramMap.get('id');
     if (!id) {
+      if (this.embedded) {
+        // Rien à afficher — mais surtout, ne pas naviguer : cela détruirait le terminal qui vit
+        // derrière, et avec lui le tour en cours.
+        this.closed.emit();
+        return;
+      }
       this.router.navigate(['/atelier']);
       return;
     }
     this.workspaceId.set(id);
-    this.pendingPath = this.route.snapshot.queryParamMap.get('path');
+    this.pendingPath = this.embedded
+        ? this.embeddedPath
+        : this.route.snapshot.queryParamMap.get('path');
     this.loadWorkspace();
   }
 
