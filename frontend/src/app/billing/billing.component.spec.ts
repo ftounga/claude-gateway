@@ -1,11 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap } from '@angular/router';
+import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { HttpErrorResponse } from '@angular/common/http';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { of, throwError } from 'rxjs';
 
 import { BillingComponent } from './billing.component';
+import { ApiKeyService } from '../core/services/api-key.service';
 import { BillingService } from '../core/services/billing.service';
 import { UsageService } from '../core/services/usage.service';
 import {
@@ -14,6 +15,7 @@ import {
   SubscriptionView,
   TopUpPacksResponse,
 } from '../core/models/billing.models';
+import { ApiKeyStatus } from '../core/models/api-key.models';
 import { UsageView } from '../core/models/usage.models';
 
 describe('BillingComponent', () => {
@@ -21,12 +23,44 @@ describe('BillingComponent', () => {
   let component: BillingComponent;
   let billingService: jasmine.SpyObj<BillingService>;
   let usageService: jasmine.SpyObj<UsageService>;
+  let apiKeyService: jasmine.SpyObj<ApiKeyService>;
 
   const subscription: SubscriptionView = {
     status: 'TRIALING',
     planCode: null,
     trialEndsAt: '2026-07-15T00:00:00Z',
     currentPeriodEnd: null,
+    customerKeyBilled: false,
+  };
+  /** Abonnement BYOK en cours (F-41) : le serveur dit que les jetons sont sur la clé du client. */
+  const byokSubscription: SubscriptionView = {
+    status: 'ACTIVE',
+    planCode: 'BYOK',
+    trialEndsAt: null,
+    currentPeriodEnd: '2026-08-01T00:00:00Z',
+    customerKeyBilled: true,
+  };
+  /** Clé BYOK enregistrée ET active : le mode vaut BYOK. */
+  const activeKey: ApiKeyStatus = {
+    present: true,
+    maskedKey: 'sk-…AB12',
+    last4: 'AB12',
+    provider: 'ANTHROPIC',
+    mode: 'BYOK',
+    validatedAt: '2026-07-01T00:00:00Z',
+    createdAt: '2026-07-01T00:00:00Z',
+  };
+  /** Clé enregistrée mais DÉSACTIVÉE (retour en mode Hosted) : elle ne sert aucun appel. */
+  const inactiveKey: ApiKeyStatus = { ...activeKey, mode: 'HOSTED' };
+  /** Aucune clé enregistrée. */
+  const absentKey: ApiKeyStatus = {
+    present: false,
+    maskedKey: null,
+    last4: null,
+    provider: null,
+    mode: 'HOSTED',
+    validatedAt: null,
+    createdAt: null,
   };
   const plans: PlansResponse = {
     plans: [
@@ -54,10 +88,17 @@ describe('BillingComponent', () => {
     available: true,
   };
 
+  /** Réglages F-41 : abonnement à servir, statut de clé (ou échec de l'appel). */
+  interface ByokSetup {
+    subscription?: SubscriptionView;
+    apiKey?: ApiKeyStatus | 'fails';
+  }
+
   function setup(
     queryCheckout: string | null = null,
     usageFails = false,
     option: AtelierOptionView | null = optionAvailable,
+    byok: ByokSetup = {},
   ): void {
     billingService = jasmine.createSpyObj<BillingService>('BillingService', [
       'getSubscription',
@@ -70,13 +111,21 @@ describe('BillingComponent', () => {
       'startAtelierOptionCheckout',
       'cancelAtelierOption',
     ]);
-    billingService.getSubscription.and.returnValue(of(subscription));
+    billingService.getSubscription.and.returnValue(of(byok.subscription ?? subscription));
     billingService.getPlans.and.returnValue(of(plans));
     billingService.getTopUps.and.returnValue(of(topUps));
     billingService.getAtelierOption.and.returnValue(
       option
         ? of(option)
         : throwError(() => new HttpErrorResponse({ status: 500 })),
+    );
+
+    apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
+    const keyStatus = byok.apiKey ?? absentKey;
+    apiKeyService.getStatus.and.returnValue(
+      keyStatus === 'fails'
+        ? throwError(() => new HttpErrorResponse({ status: 500 }))
+        : of(keyStatus),
     );
 
     usageService = jasmine.createSpyObj<UsageService>('UsageService', ['getUsage']);
@@ -90,6 +139,8 @@ describe('BillingComponent', () => {
         provideNoopAnimations(),
         { provide: BillingService, useValue: billingService },
         { provide: UsageService, useValue: usageService },
+        { provide: ApiKeyService, useValue: apiKeyService },
+        provideRouter([]),
         {
           provide: ActivatedRoute,
           useValue: {
@@ -239,6 +290,9 @@ describe('BillingComponent', () => {
     billingService.getTopUps.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
     billingService.getAtelierOption.and.returnValue(of(optionAvailable));
 
+    apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
+    apiKeyService.getStatus.and.returnValue(of(absentKey));
+
     usageService = jasmine.createSpyObj<UsageService>('UsageService', ['getUsage']);
     usageService.getUsage.and.returnValue(of(usage));
 
@@ -248,6 +302,8 @@ describe('BillingComponent', () => {
         provideNoopAnimations(),
         { provide: BillingService, useValue: billingService },
         { provide: UsageService, useValue: usageService },
+        { provide: ApiKeyService, useValue: apiKeyService },
+        provideRouter([]),
         {
           provide: ActivatedRoute,
           useValue: { snapshot: { queryParamMap: convertToParamMap({}) } },
@@ -286,9 +342,16 @@ describe('BillingComponent', () => {
       planCode: 'SOLO',
       trialEndsAt: null,
       currentPeriodEnd: '2026-08-01T00:00:00Z',
+      customerKeyBilled: false,
     });
     billingService.changePlan.and.returnValue(
-      of({ status: 'ACTIVE', planCode: 'PRO', trialEndsAt: null, currentPeriodEnd: '2026-08-01T00:00:00Z' }),
+      of({
+        status: 'ACTIVE' as const,
+        planCode: 'PRO',
+        trialEndsAt: null,
+        currentPeriodEnd: '2026-08-01T00:00:00Z',
+        customerKeyBilled: false,
+      }),
     );
 
     const pro = component.plans().find((p) => p.code === 'PRO')!;
@@ -327,6 +390,7 @@ describe('BillingComponent', () => {
       planCode: 'PRO',
       trialEndsAt: null,
       currentPeriodEnd: '2026-08-01T00:00:00Z',
+      customerKeyBilled: false,
     });
     billingService.changePlan.and.returnValue(
       throwError(() => new HttpErrorResponse({ status: 409, error: { error: 'no_active_subscription' } })),
@@ -469,5 +533,111 @@ describe('BillingComponent', () => {
     expect(message('atelier_option_not_active')).toContain('à résilier');
     expect(message('billing_unavailable')).toContain('indisponible');
     expect(message('unexpected_code')).toContain("l'option Atelier");
+  });
+
+  // ------------------------------------------------ Offre BYOK (F-41 / SF-41-03)
+
+  it('reminds a BYOK subscriber with no key where to add one', () => {
+    setup(null, false, optionAvailable, { subscription: byokSubscription, apiKey: absentKey });
+
+    expect(component.isCustomerKeyBilled()).toBeTrue();
+    expect(component.showByokKeyReminder()).toBeTrue();
+
+    const html = (fixture.nativeElement as HTMLElement).innerHTML;
+    expect(html).toContain("Votre clé Anthropic n'est pas enregistrée");
+    expect(html).toContain('/settings');
+  });
+
+  it('drops the reminder once an active key is registered', () => {
+    setup(null, false, optionAvailable, { subscription: byokSubscription, apiKey: activeKey });
+
+    expect(component.hasActiveApiKey()).toBeTrue();
+    expect(component.showByokKeyReminder()).toBeFalse();
+  });
+
+  it('still reminds when the key exists but is deactivated', () => {
+    // Une clé désactivée (retour en mode Hosted) ne sert aucun appel : le serveur la traite comme
+    // absente, l'écran doit dire la même chose — sinon il rassurerait à tort.
+    setup(null, false, optionAvailable, { subscription: byokSubscription, apiKey: inactiveKey });
+
+    expect(component.hasActiveApiKey()).toBeFalse();
+    expect(component.showByokKeyReminder()).toBeTrue();
+  });
+
+  it('never reminds a hosted subscriber, key or not', () => {
+    setup(null, false, optionAvailable, { apiKey: absentKey });
+
+    expect(component.isCustomerKeyBilled()).toBeFalse();
+    expect(component.showByokKeyReminder()).toBeFalse();
+  });
+
+  it('keeps the screen usable when the key status cannot be read', () => {
+    // Échec non bloquant : mieux vaut ne rien dire qu'alarmer à tort. Le refus serveur reste, lui.
+    setup(null, false, optionAvailable, { subscription: byokSubscription, apiKey: 'fails' });
+
+    expect(component.apiKeyStatus()).toBeNull();
+    expect(component.showByokKeyReminder()).toBeFalse();
+    expect(component.plans().length).toBe(2);
+  });
+
+  it('never shows a zero quota as a blocked account for a BYOK subscriber', () => {
+    // Le cœur de la subfeature : quota 0 par contrat. `usagePercent` rend 100 et `quotaReached`
+    // est vrai — afficher la jauge servirait « Quota atteint » à un client à jour.
+    setup(null, false, optionAvailable, {
+      subscription: byokSubscription,
+      apiKey: activeKey,
+    });
+
+    const html = (fixture.nativeElement as HTMLElement).innerHTML;
+    expect(html).not.toContain('Quota atteint');
+    expect(html).toContain('aucun quota plateforme');
+  });
+
+  it('says « aucun jeton inclus » on the BYOK offer card, never « 0 tokens inclus »', () => {
+    setup();
+    billingService.getPlans.and.returnValue(
+      of({
+        plans: [
+          ...plans.plans,
+          {
+            code: 'BYOK',
+            label: 'BYOK',
+            providerMode: 'BYOK' as const,
+            period: 'MONTHLY' as const,
+            tokens: 0,
+            priceEur: '29',
+          },
+        ],
+      }),
+    );
+    component.loadPlans();
+    fixture.detectChanges();
+
+    // La carte est cherchée par son nom : un `innerHTML.not.toContain('0 tokens inclus')` passerait
+    // pour un faux ami — « 5 000 000 tokens inclus » contient cette chaîne.
+    const cards = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('article.billing__card'),
+    );
+    const byokCard = cards.find(
+      (c) => c.querySelector('.billing__card-name')?.textContent?.trim() === 'BYOK',
+    )!;
+    const soloCard = cards.find(
+      (c) => c.querySelector('.billing__card-name')?.textContent?.trim() === 'Solo',
+    )!;
+
+    expect(byokCard.textContent).toContain('Aucun jeton inclus');
+    expect(byokCard.textContent).not.toContain('tokens inclus / mois');
+    expect(byokCard.textContent).toContain('Atelier (Claude Code Lite) inclus');
+    // Non-régression : l'offre Hosted voisine garde exactement son libellé.
+    expect(soloCard.textContent).toContain('tokens inclus / mois');
+    expect(soloCard.textContent).not.toContain('Aucun jeton inclus');
+  });
+
+  it('keeps the quota gauge for a hosted subscriber', () => {
+    setup();
+
+    const html = (fixture.nativeElement as HTMLElement).innerHTML;
+    expect(html).toContain('mat-progress-bar');
+    expect(html).not.toContain('aucun quota plateforme');
   });
 });

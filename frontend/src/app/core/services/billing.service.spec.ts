@@ -46,6 +46,7 @@ describe('BillingService', () => {
       planCode: null,
       trialEndsAt: '2026-07-15T00:00:00Z',
       currentPeriodEnd: null,
+      customerKeyBilled: false,
     };
     let received: SubscriptionView | undefined;
     service.getSubscription().subscribe((r) => (received = r));

@@ -1,6 +1,6 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -10,6 +10,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatDialog } from '@angular/material/dialog';
 
+import { ApiKeyService } from '../core/services/api-key.service';
 import { BillingService } from '../core/services/billing.service';
 import { UsageService } from '../core/services/usage.service';
 import { ApiError } from '../core/models/auth.models';
@@ -24,6 +25,7 @@ import {
   SubscriptionView,
   TopUpPack,
 } from '../core/models/billing.models';
+import { ApiKeyStatus } from '../core/models/api-key.models';
 import { UsageView } from '../core/models/usage.models';
 
 /** Métadonnées d'affichage d'un statut d'abonnement (libellé + classe de badge). */
@@ -34,13 +36,15 @@ interface StatusDisplay {
 
 /**
  * Écran de facturation F-09 : abonnement courant, catalogue de plans, souscription via Stripe,
- * recharges ponctuelles (F-21) et **option Atelier** (F-40) — le droit d'Atelier découplé du plan.
+ * recharges ponctuelles (F-21), **option Atelier** (F-40) — le droit d'Atelier découplé du plan —
+ * et **offre BYOK** (F-41) : la plateforme seule, sans jeton inclus.
  */
 @Component({
   selector: 'app-billing',
   imports: [
     DatePipe,
     DecimalPipe,
+    RouterLink,
     MatCardModule,
     MatButtonModule,
     MatIconModule,
@@ -52,6 +56,7 @@ interface StatusDisplay {
 })
 export class BillingComponent implements OnInit {
   private readonly billingService = inject(BillingService);
+  private readonly apiKeyService = inject(ApiKeyService);
   private readonly usageService = inject(UsageService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
@@ -73,6 +78,11 @@ export class BillingComponent implements OnInit {
   readonly atelierOption = signal<AtelierOptionView | null>(null);
   /** Vrai pendant un appel de souscription ou de résiliation de l'option (bouton désactivé). */
   readonly atelierOptionInProgress = signal(false);
+  /**
+   * Statut de la clé BYOK (F-03), ou null tant qu'il n'a pas pu être chargé. Lu ici uniquement pour
+   * savoir s'il faut rappeler à un abonné BYOK de déposer sa clé (F-41 / SF-41-03).
+   */
+  readonly apiKeyStatus = signal<ApiKeyStatus | null>(null);
 
   ngOnInit(): void {
     const checkout = this.route.snapshot.queryParamMap.get('checkout');
@@ -86,6 +96,18 @@ export class BillingComponent implements OnInit {
     this.loadPlans();
     this.loadTopUps();
     this.loadAtelierOption();
+    this.loadApiKeyStatus();
+  }
+
+  /**
+   * Statut de la clé BYOK. Échec **non bloquant** : sans lui, le rappel reste masqué et l'écran de
+   * facturation demeure utilisable — le refus serveur (`byok_key_required`) reste, lui, en place.
+   */
+  loadApiKeyStatus(): void {
+    this.apiKeyService.getStatus().subscribe({
+      next: (status) => this.apiKeyStatus.set(status),
+      error: () => this.apiKeyStatus.set(null),
+    });
   }
 
   /**
@@ -311,6 +333,39 @@ export class BillingComponent implements OnInit {
   /** Vrai quand le quota de la période est atteint ou dépassé. */
   quotaReached(usage: UsageView): boolean {
     return usage.usedTokens >= usage.quotaTokens;
+  }
+
+  // ------------------------------------------------ Offre BYOK (F-41 / SF-41-03)
+
+  /**
+   * Vrai si l'offre en cours est servie par la clé du client. Vient du **serveur** : l'écran ne
+   * compare jamais `planCode` à la chaîne « BYOK », il lit la décision qui gouverne réellement le
+   * comportement — sans quoi les deux divergeraient le jour où le catalogue changerait.
+   */
+  isCustomerKeyBilled(): boolean {
+    return this.subscription()?.customerKeyBilled === true;
+  }
+
+  /** Vrai si une clé BYOK **active** est enregistrée. Une clé désactivée ne sert aucun appel. */
+  hasActiveApiKey(): boolean {
+    const status = this.apiKeyStatus();
+    return !!status && status.present && status.mode === 'BYOK';
+  }
+
+  /**
+   * Vrai quand il faut rappeler à l'abonné BYOK de déposer sa clé : son offre l'exige et aucune clé
+   * active n'existe. Sans elle, chacun de ses appels est refusé (`byok_key_required`, SF-41-02) —
+   * le dire ici évite de le laisser le découvrir dans une conversation.
+   *
+   * <p>Le statut non chargé masque le rappel : mieux vaut ne rien dire qu'alarmer à tort.</p>
+   */
+  showByokKeyReminder(): boolean {
+    return this.isCustomerKeyBilled() && this.apiKeyStatus() !== null && !this.hasActiveApiKey();
+  }
+
+  /** Vrai si le plan du catalogue est l'offre BYOK (carte d'offre : « aucun jeton inclus »). */
+  isByokPlan(plan: Plan): boolean {
+    return plan.providerMode === 'BYOK';
   }
 
   // ------------------------------------------------ Option Atelier (F-40 / SF-40-03)

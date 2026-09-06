@@ -20,6 +20,7 @@ import fr.claudegateway.billing.dto.PlansResponse;
 import fr.claudegateway.billing.dto.SubscriptionResponse;
 import fr.claudegateway.billing.dto.TopUpCheckoutRequest;
 import fr.claudegateway.billing.dto.TopUpPacksResponse;
+import fr.claudegateway.quota.EntitlementService;
 import fr.claudegateway.quota.QuotaProperties;
 import jakarta.validation.Valid;
 
@@ -41,6 +42,7 @@ public class BillingController {
     private final CurrentUser currentUser;
     private final BillingProperties billingProperties;
     private final QuotaProperties quotaProperties;
+    private final EntitlementService entitlementService;
 
     public BillingController(
             PlanCatalog planCatalog,
@@ -51,7 +53,8 @@ public class BillingController {
             AtelierOptionService atelierOptionService,
             CurrentUser currentUser,
             BillingProperties billingProperties,
-            QuotaProperties quotaProperties) {
+            QuotaProperties quotaProperties,
+            EntitlementService entitlementService) {
         this.planCatalog = planCatalog;
         this.subscriptionService = subscriptionService;
         this.checkoutService = checkoutService;
@@ -61,6 +64,7 @@ public class BillingController {
         this.currentUser = currentUser;
         this.billingProperties = billingProperties;
         this.quotaProperties = quotaProperties;
+        this.entitlementService = entitlementService;
     }
 
     /**
@@ -84,7 +88,7 @@ public class BillingController {
     @GetMapping("/subscription")
     public SubscriptionResponse subscription() {
         UUID userId = currentUser.requireId();
-        return SubscriptionResponse.from(subscriptionService.getOrCreateForUser(userId));
+        return describe(subscriptionService.getOrCreateForUser(userId));
     }
 
     /** Crée une session de paiement Stripe pour le plan demandé et renvoie l'URL de redirection. */
@@ -103,7 +107,17 @@ public class BillingController {
     @PostMapping("/subscription/change")
     public SubscriptionResponse changePlan(@Valid @RequestBody ChangePlanRequest request) {
         UUID userId = currentUser.requireId();
-        return SubscriptionResponse.from(subscriptionService.changePlan(userId, request.planCode()));
+        return describe(subscriptionService.changePlan(userId, request.planCode()));
+    }
+
+    /**
+     * Projette un abonnement en réponse d'API, en y joignant le fait que ses appels sont servis par
+     * la clé du client (F-41). C'est le <b>serveur</b> qui tranche : l'écran n'a jamais à déduire
+     * l'offre d'un code de plan.
+     */
+    private SubscriptionResponse describe(Subscription subscription) {
+        return SubscriptionResponse.from(
+                subscription, entitlementService.isCustomerKeyBilled(subscription));
     }
 
     /** Catalogue des packs de tokens rachetables (top-up, F-21). */
