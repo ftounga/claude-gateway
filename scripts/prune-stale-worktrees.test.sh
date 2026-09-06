@@ -340,6 +340,95 @@ grep -q 'AVERTISSEMENT' <<<"$err" \
 [[ ! -d .claude/worktrees/wf_test-11 ]] \
     && check ok "le worktree residuel a bien ete retire" || check ko "wf_test-11 non retire"
 
+# --- Cas 16 a 18 (SF-BO-01) : --branches-only -------------------------------------------
+# Le garde-fou 5 refuse le run ENTIER pendant qu'une vague tourne. Comme le depot n'est
+# jamais au repos, la purge de branches — qui ne detruit aucun repertoire de travail —
+# n'a jamais pu tourner. --branches-only separe les deux operations.
+
+# Recule la mtime de tous les reflogs de branches : sans cela, toute branche creee par le
+# test serait « recently-touched » et conservee. C'est le filtre du cas 17.
+backdate_reflogs() {
+    local stamp
+    stamp="$(date -d '3 hours ago' '+%Y%m%d%H%M')"
+    find .git/logs/refs/heads -type f -exec touch -t "$stamp" {} + 2>/dev/null || true
+    return 0
+}
+
+echo "[16] --branches-only : purger les branches pendant qu'une vague tourne"
+# Une victime supprimable en mode complet, un enregistrement perime, une orpheline detachee.
+git worktree add --quiet -b wt-victim-d .claude/worktrees/wf_test-12 HEAD
+git worktree add --quiet -b wt-stale2 .claude/worktrees/wf_test-13 HEAD
+rm -rf .claude/worktrees/wf_test-13
+git branch bo-orphan HEAD
+backdate_all
+backdate_reflogs
+# Une session vivante : fichier imbrique touche a l'instant.
+touch .claude/worktrees/wf_test-7/deep/live.txt
+
+# Contrôle negatif : le mode complet refuse toujours (le garde-fou 5 reste arme).
+set +e
+bash "$SCRIPT" --no-fetch --apply >/dev/null 2>&1
+code=$?
+set -e
+[[ "$code" -eq 5 ]] \
+    && check ok "contrôle negatif : le mode complet refuse toujours (sortie 5)" \
+    || check ko "sortie $code au lieu de 5 : le garde-fou 5 n'est plus arme"
+
+# Le mode --branches-only, lui, aboutit.
+set +e
+out="$(bash "$SCRIPT" --no-fetch --branches-only --apply 2>&1)"
+code=$?
+set -e
+[[ "$code" -eq 0 ]] \
+    && check ok "--branches-only aboutit malgre la session en vol" \
+    || check ko "sortie $code : --branches-only a ete bloque"
+git rev-parse --verify --quiet refs/heads/bo-orphan >/dev/null \
+    && check ko "bo-orphan aurait du etre supprimee" || check ok "bo-orphan supprimee"
+git rev-parse --verify --quiet refs/heads/orphan-ahead >/dev/null \
+    && check ok "orphan-ahead conservee (travail non merge)" || check ko "orphan-ahead supprimee a tort"
+git rev-parse --verify --quiet refs/heads/main >/dev/null \
+    && check ok "main intacte" || check ko "main perdue"
+[[ -d .claude/worktrees/wf_test-12 ]] \
+    && check ok "AUCUN worktree retire : la victime du mode complet est intacte" \
+    || check ko "wf_test-12 a ete retire alors que --branches-only l'interdit"
+git rev-parse --verify --quiet refs/heads/wt-victim-d >/dev/null \
+    && check ok "la branche d'un worktree vivant est protegee" \
+    || check ko "wt-victim-d supprimee alors que son worktree existe"
+[[ -d .claude/worktrees/wf_test-7 ]] \
+    && check ok "le worktree actif est intact" || check ko "le worktree actif a ete detruit"
+git worktree list --porcelain | grep -q 'wf_test-13' \
+    && check ok "l'enregistrement perime n'est pas prunne" \
+    || check ko "--branches-only a prunne un enregistrement de worktree"
+git rev-parse --verify --quiet refs/heads/wt-stale2 >/dev/null \
+    && check ok "la branche d'un enregistrement perime est conservee" \
+    || check ko "wt-stale2 supprimee alors que son enregistrement survit"
+
+# --- Cas 17 : garde-fou 'recently-touched' ----------------------------------------------
+# Une branche creee par une session vivante APRES la photo des worktrees serait supprimee
+# sous ses pieds : elle n'a aucun commit '+' et n'est detenue par personne.
+echo "[17] garde-fou 'recently-touched' sur les branches"
+backdate_reflogs
+git branch bo-recent HEAD   # reflog ecrit a l'instant
+out="$(bash "$SCRIPT" --no-fetch --branches-only)"
+grep -q 'KEEP    bo-recent .*recently-touched' <<<"$out" \
+    && check ok "branche a la reference fraiche conservee" \
+    || check ko "bo-recent aurait du etre conservee (recently-touched)"
+out="$(bash "$SCRIPT" --no-fetch --branches-only --age-minutes 0)"
+grep -q 'DELETE  bo-recent' <<<"$out" \
+    && check ok "contrôle negatif : --age-minutes 0 la rend candidate" \
+    || check ko "bo-recent non candidate malgre --age-minutes 0"
+
+# --- Cas 18 : combinaison impossible => erreur d'usage -----------------------------------
+echo "[18] --branches-only --no-sweep-branches : erreur d'usage"
+before="$(snapshot)"
+set +e
+bash "$SCRIPT" --no-fetch --branches-only --no-sweep-branches --apply >/dev/null 2>&1
+code=$?
+set -e
+[[ "$code" -eq 2 ]] && check ok "sortie 2 (usage)" || check ko "sortie $code au lieu de 2"
+[[ "$before" == "$(snapshot)" ]] \
+    && check ok "etat Git inchange" || check ko "l'erreur d'usage a modifie l'etat"
+
 echo
 if [[ "$failures" -eq 0 ]]; then
     echo "TOUS LES CAS PASSES"
