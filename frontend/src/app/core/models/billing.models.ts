@@ -42,6 +42,12 @@ export interface SubscriptionView {
   planCode: string | null;
   trialEndsAt: string | null;
   currentPeriodEnd: string | null;
+  /**
+   * Vrai si les appels sont servis — et facturés — par la clé Anthropic du client (offre BYOK en
+   * cours, F-41). Renvoyé par le **serveur** : l'écran ne déduit jamais l'offre du code de plan,
+   * il reflète la décision qui gouverne réellement le comportement (`isCustomerKeyBilled`).
+   */
+  customerKeyBilled: boolean;
 }
 
 /** Requête de création d'une session de paiement. */

@@ -299,4 +299,34 @@ class ByokPlanApiIntegrationTest {
                 .andExpect(jsonPath("$.entitled", is(true)))
                 .andExpect(jsonPath("$.includedInPlan", is(true)));
     }
+
+    @Test
+    void subscriptionTellsTheScreenWhoPaysForTheTokens() throws Exception {
+        // F-41 / SF-41-03 : l'écran ne déduit pas l'offre d'un code de plan — il lit la décision que
+        // le serveur a déjà prise. Sans ce champ, il faudrait la re-dériver, et diverger un jour.
+        giveSubscription(byokUser, PlanCode.BYOK, SubscriptionStatus.ACTIVE);
+        mockMvc.perform(get("/api/billing/subscription").contextPath("/api")
+                        .header("Authorization", "Bearer " + byokToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.customerKeyBilled", is(true)));
+
+        // Offre Hosted : inchangé, la plateforme paie les jetons.
+        giveSubscription(canceledUser, PlanCode.PRO, SubscriptionStatus.ACTIVE);
+        mockMvc.perform(get("/api/billing/subscription").contextPath("/api")
+                        .header("Authorization", "Bearer " + canceledToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.customerKeyBilled", is(false)));
+    }
+
+    @Test
+    void aCanceledByokSubscriptionNoLongerClaimsToBeCustomerKeyBilled() throws Exception {
+        // Sinon l'écran masquerait la jauge de quota à un compte bloqué, et lui cacherait la raison
+        // pour laquelle il est bloqué.
+        giveSubscription(byokUser, PlanCode.BYOK, SubscriptionStatus.CANCELED);
+
+        mockMvc.perform(get("/api/billing/subscription").contextPath("/api")
+                        .header("Authorization", "Bearer " + byokToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.customerKeyBilled", is(false)));
+    }
 }

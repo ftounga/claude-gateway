@@ -11,22 +11,30 @@ import fr.claudegateway.billing.Subscription;
  * {@code stripe_subscription_id}) : ceux-ci sont internes et ne doivent jamais transiter vers le
  * navigateur (PROJECT.md §11.14).</p>
  *
- * @param status           statut courant de l'abonnement
- * @param planCode         code du plan payant, ou {@code null} en essai
- * @param trialEndsAt      fin de l'essai gratuit, ou {@code null}
- * @param currentPeriodEnd fin de la période de facturation courante, ou {@code null}
+ * @param status            statut courant de l'abonnement
+ * @param planCode          code du plan payant, ou {@code null} en essai
+ * @param trialEndsAt       fin de l'essai gratuit, ou {@code null}
+ * @param currentPeriodEnd  fin de la période de facturation courante, ou {@code null}
+ * @param customerKeyBilled vrai si les appels sont servis — et facturés — par la clé du client
+ *                          (offre BYOK en cours, F-41). L'écran s'en sert pour ne pas présenter un
+ *                          quota nul comme un blocage. Le champ porte le résultat du <b>prédicat
+ *                          serveur</b> ({@code EntitlementService.isCustomerKeyBilled}), pas une
+ *                          comparaison de code de plan : le client reflète la décision du serveur au
+ *                          lieu de la re-dériver, et ne peut donc plus s'en écarter.
  */
 public record SubscriptionResponse(
         String status,
         String planCode,
         OffsetDateTime trialEndsAt,
-        OffsetDateTime currentPeriodEnd) {
+        OffsetDateTime currentPeriodEnd,
+        boolean customerKeyBilled) {
 
-    public static SubscriptionResponse from(Subscription subscription) {
+    public static SubscriptionResponse from(Subscription subscription, boolean customerKeyBilled) {
         return new SubscriptionResponse(
                 subscription.getStatus().name(),
                 subscription.getPlanCode() != null ? subscription.getPlanCode().name() : null,
                 subscription.getTrialEndsAt(),
-                subscription.getCurrentPeriodEnd());
+                subscription.getCurrentPeriodEnd(),
+                customerKeyBilled);
     }
 }

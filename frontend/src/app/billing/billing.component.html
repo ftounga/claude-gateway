@@ -29,28 +29,61 @@
       </div>
 
       @if (usage(); as u) {
-        <div class="billing__gauge">
-          <div class="billing__gauge-figures">
-            <span><strong>{{ u.usedTokens | number }}</strong> / {{ u.quotaTokens | number }} tokens</span>
-            @if (quotaReached(u)) {
-              <span class="badge badge--warning">Quota atteint</span>
-            } @else {
-              <span class="billing__gauge-left">{{ u.remainingTokens | number }} restants</span>
-            }
+        @if (isCustomerKeyBilled()) {
+          <!-- Offre BYOK (F-41) : le quota vaut 0 par contrat. Afficher la jauge ici la mettrait à
+               100 % avec le badge « Quota atteint » — le message exact d'un compte bloqué, servi à
+               un client parfaitement à jour. On dit donc qui paie, et la consommation à titre
+               indicatif : ni reste, ni pourcentage, qui n'auraient aucun sens. -->
+          <div class="billing__gauge">
+            <div class="billing__gauge-figures">
+              <span><strong>{{ u.usedTokens | number }}</strong> tokens ce mois-ci</span>
+              <span class="billing__flag billing__flag--current">Votre clé</span>
+            </div>
+            <p class="billing__gauge-period">
+              Servi par votre clé Anthropic · aucun quota plateforme.
+              Période du {{ u.periodStart | date: 'mediumDate' }} au {{ u.periodEnd | date: 'mediumDate' }}
+            </p>
           </div>
-          <mat-progress-bar
-            mode="determinate"
-            [value]="usagePercent(u)"
-            [attr.aria-label]="'Consommation : ' + usagePercent(u) + ' pour cent du quota'"
-          ></mat-progress-bar>
-          <p class="billing__gauge-period">
-            Période du {{ u.periodStart | date: 'mediumDate' }} au {{ u.periodEnd | date: 'mediumDate' }}
-          </p>
-        </div>
+        } @else {
+          <div class="billing__gauge">
+            <div class="billing__gauge-figures">
+              <span><strong>{{ u.usedTokens | number }}</strong> / {{ u.quotaTokens | number }} tokens</span>
+              @if (quotaReached(u)) {
+                <span class="badge badge--warning">Quota atteint</span>
+              } @else {
+                <span class="billing__gauge-left">{{ u.remainingTokens | number }} restants</span>
+              }
+            </div>
+            <mat-progress-bar
+              mode="determinate"
+              [value]="usagePercent(u)"
+              [attr.aria-label]="'Consommation : ' + usagePercent(u) + ' pour cent du quota'"
+            ></mat-progress-bar>
+            <p class="billing__gauge-period">
+              Période du {{ u.periodStart | date: 'mediumDate' }} au {{ u.periodEnd | date: 'mediumDate' }}
+            </p>
+          </div>
+        }
       }
     </section>
   } @else {
     <div class="billing__feedback"><mat-spinner diameter="28"></mat-spinner><span>Chargement…</span></div>
+  }
+
+  <!-- ===== Offre BYOK sans clé (F-41 / SF-41-03) : le rappel actionnable ===== -->
+  @if (showByokKeyReminder()) {
+    <section class="billing__notice" aria-label="Clé Anthropic requise">
+      <div>
+        <h2 class="billing__notice-title">Votre clé Anthropic n'est pas enregistrée</h2>
+        <p class="billing__notice-text">
+          Votre offre utilise votre propre clé : tant qu'elle n'est pas déposée, vos messages sont
+          refusés. Cela prend une minute, et votre offre n'est pas affectée.
+        </p>
+      </div>
+      <a mat-flat-button color="primary" class="billing__notice-cta" routerLink="/settings">
+        Ajouter ma clé
+      </a>
+    </section>
   }
 
   <!-- ===== Abonnements mensuels ===== -->
@@ -97,9 +130,17 @@
             @if (plan.priceEur) {
               <p class="billing__card-price"><span class="amount">{{ plan.priceEur }} €</span><span class="per">/ mois</span></p>
             }
-            <p class="billing__card-tokens">{{ plan.tokens | number }} tokens inclus / mois</p>
-            @if (plan.code === 'GOLD') {
+            @if (isByokPlan(plan)) {
+              <p class="billing__card-tokens">
+                <strong>Aucun jeton inclus</strong> — vos appels passent par votre clé Anthropic et
+                sont facturés sur votre compte.
+              </p>
               <p class="billing__card-feature">Atelier (Claude Code Lite) inclus</p>
+            } @else {
+              <p class="billing__card-tokens">{{ plan.tokens | number }} tokens inclus / mois</p>
+              @if (plan.code === 'GOLD') {
+                <p class="billing__card-feature">Atelier (Claude Code Lite) inclus</p>
+              }
             }
             <button
               mat-flat-button
