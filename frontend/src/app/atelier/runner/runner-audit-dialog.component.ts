@@ -82,6 +82,10 @@ export class RunnerAuditDialogComponent {
         return 'Lecture';
       case 'write_file':
         return 'Écriture';
+      // F-39 / SF-39-06 : l'édition ciblée est une écriture pour l'écran, mais le journal doit
+      // dire ce qui s'est réellement passé — un passage remplacé, pas un fichier réécrit.
+      case 'edit_file':
+        return 'Édition ciblée';
       case 'list_files':
         return 'Listage';
       case 'search_files':
@@ -104,6 +108,8 @@ export class RunnerAuditDialogComponent {
         return 'visibility';
       case 'write_file':
         return 'edit';
+      case 'edit_file':
+        return 'edit_note';
       case 'list_files':
         return 'folder_open';
       case 'search_files':

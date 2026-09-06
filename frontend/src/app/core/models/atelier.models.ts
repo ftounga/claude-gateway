@@ -166,7 +166,10 @@ export interface RunnerPairingCode {
 export interface RunnerAuditEntry {
   id: string;
   callId: string;
-  /** `list_files` | `read_file` | `write_file` | `search_files` | `bash` | `bootstrap` | `kill_switch`. */
+  /**
+   * `list_files` | `read_file` | `write_file` | `edit_file` | `search_files` | `bash` |
+   * `bootstrap` | `kill_switch`.
+   */
   tool: string;
   /** Chemin, terme recherché ou commande. `null` pour un listage. */
   target: string | null;
