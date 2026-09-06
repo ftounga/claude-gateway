@@ -117,4 +117,24 @@ class RunnerWorkspaceBrowserTest {
         verify(auditService).recordCall(eq(workspace.getUserId()), eq(workspace.getId()), any(),
                 eq(RunnerWorkspaceBrowser.SCREEN_READ), eq("a.txt"), any());
     }
+
+    @Test
+    void saysWhenTheListingIsIncompleteRatherThanShowingAnAmputedProject() {
+        // Le banc d'essai : 40 590 fichiers, une liste coupée à 4 829 lignes, et l'utilisateur
+        // cherchant dix minutes un dossier que le système savait ne pas lui avoir envoyé.
+        when(gateway.listFiles(eq(workspace.getId()), any()))
+                .thenReturn(new RunnerCallResult(true, "a.txt\nsrc/App.java", true, null, 5L, null,
+                        null, null, "", false));
+
+        assertThat(browser.tree(workspace))
+                .contains("a.txt", "src/App.java")
+                .anySatisfy(line -> assertThat(line).contains("liste incomplète"));
+    }
+
+    @Test
+    void doesNotAddTheMarkerOnACompleteListing() {
+        when(gateway.listFiles(eq(workspace.getId()), any())).thenReturn(ok("a.txt"));
+
+        assertThat(browser.tree(workspace)).containsExactly("a.txt");
+    }
 }

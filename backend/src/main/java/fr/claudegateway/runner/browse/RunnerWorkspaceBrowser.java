@@ -33,6 +33,14 @@ public class RunnerWorkspaceBrowser {
     static final String SCREEN_LIST = "screen_list_files";
     static final String SCREEN_READ = "screen_read_file";
 
+    /**
+     * Marqueur d'arborescence incomplète (F-38 / SF-38-21), rendu comme un chemin pour n'exiger
+     * aucun changement de contrat : l'écran l'affiche là où il affiche les fichiers, en tête de
+     * liste. Mieux vaut une ligne qui dérange qu'un projet amputé en silence.
+     */
+    public static final String TRUNCATED_MARKER =
+            "⚠ liste incomplète — trop de fichiers ; ajoutez un .runnerignore et relancez le runner";
+
     private final RunnerToolGateway gateway;
     private final RunnerAuditService auditService;
 
@@ -57,7 +65,14 @@ public class RunnerWorkspaceBrowser {
             // Un dossier vide est un état normal — c'est même le point de départ d'un projet neuf.
             return List.of();
         }
-        return List.of(content.split("\n"));
+        List<String> paths = new java.util.ArrayList<>(List.of(content.split("\n")));
+        if (result.truncated()) {
+            // La troncature se DIT (F-38 / SF-38-21). Afficher un projet incomplet en silence a
+            // coûté dix minutes de recherche d'un dossier que le système savait ne pas avoir
+            // envoyé — c'est exactement le mode d'échec que tout ce chantier cherche à supprimer.
+            paths.add(TRUNCATED_MARKER);
+        }
+        return List.copyOf(paths);
     }
 
     /**
