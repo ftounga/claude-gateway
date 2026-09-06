@@ -81,6 +81,14 @@ public class AtelierChatService implements RelayInterruptTarget {
     /** Garde-fou : longueur max de la consigne système (CLAUDE.md + skills). */
     private static final int SYSTEM_MAX_CHARS = 40_000;
     private static final List<String> SKILL_PREFIXES = List.of(".claude/skills/", "skills/");
+    /**
+     * Nombre de skills annoncés dans la consigne (F-39 / SF-39-02, décision D3). Une borne explicite
+     * vaut mieux qu'une coupe au caractère près : le point d'arrêt devient prévisible, donc le
+     * préfixe cacheable.
+     */
+    private static final int MAX_SKILLS_ANNOUNCED = 50;
+    /** Longueur d'une description de skill dans le catalogue (F-39 / SF-39-02). */
+    private static final int SKILL_DESCRIPTION_CHARS = 200;
     /** Cible d'audit d'une commande (F-38 / SF-38-08) : la ligne du journal, pas un contenu. */
     private static final int AUDIT_TARGET_CHARS = 1_000;
 
@@ -765,19 +773,30 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (!tree.isEmpty()) {
             reads++; // Le listage est lui aussi une action menée sur la machine.
         }
-        for (String path : tree) {
-            if (SKILL_PREFIXES.stream().anyMatch(path::startsWith)) {
-                java.util.Optional<String> skill = readOptional(userId, workspace, path);
-                if (skill.isPresent()) {
-                    reads++;
-                    chars += skill.get().length();
-                    system.append("--- Skill : ").append(path).append(" ---\n")
-                            .append(skill.get()).append("\n\n");
-                }
+        List<String> skillPaths = tree.stream().filter(AtelierChatService::isSkillPath).toList();
+        StringBuilder catalog = new StringBuilder();
+        for (String path : skillPaths.stream().limit(MAX_SKILLS_ANNOUNCED).toList()) {
+            java.util.Optional<String> skill = readOptional(userId, workspace, path);
+            if (skill.isEmpty()) {
+                continue; // Skill illisible : ignoré, jamais bloquant pour les autres.
             }
-            if (system.length() > SYSTEM_MAX_CHARS) {
-                break;
+            reads++;
+            chars += skill.get().length();
+            String description = describeSkill(skill.get());
+            catalog.append("- ").append(path);
+            if (!description.isEmpty()) {
+                catalog.append(" : ").append(description);
             }
+            catalog.append('\n');
+        }
+        if (catalog.length() > 0) {
+            system.append("--- Skills du projet (lis le fichier pour le mode d'emploi complet) ---\n")
+                    .append(catalog);
+            if (skillPaths.size() > MAX_SKILLS_ANNOUNCED) {
+                system.append("… et ").append(skillPaths.size() - MAX_SKILLS_ANNOUNCED)
+                        .append(" autre(s) skill(s) non listé(s).\n");
+            }
+            system.append("Ouvre un skill avec read_file au moment où il sert ; ne suppose pas son contenu.\n\n");
         }
         if (workspace.isRunnerTarget()) {
             runnerAuditService.recordBootstrap(userId, workspace.getId(),
@@ -785,6 +804,64 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         String result = system.toString();
         return result.length() > SYSTEM_MAX_CHARS ? result.substring(0, SYSTEM_MAX_CHARS) : result;
+    }
+
+    /** Un fichier du projet est-il un skill ? Mêmes préfixes qu'avant SF-39-02. */
+    private static boolean isSkillPath(String path) {
+        return SKILL_PREFIXES.stream().anyMatch(path::startsWith);
+    }
+
+    /**
+     * Description d'un skill pour le catalogue (F-39 / SF-39-02) : la clef {@code description} de
+     * l'entête YAML si le fichier en a un, sinon sa première ligne utile — titres Markdown et
+     * délimiteurs d'entête exclus, car un titre répète le nom du fichier sans rien apprendre.
+     *
+     * <p>Le résultat est toujours <b>une ligne</b> et borné : le catalogue est le préfixe qu'on
+     * cherche à garder court et stable, une description de dix lignes le ruinerait.</p>
+     *
+     * @return la description, ou une chaîne vide s'il n'y en a pas d'exploitable
+     */
+    static String describeSkill(String body) {
+        if (body == null || body.isBlank()) {
+            return "";
+        }
+        String[] lines = body.split("\n", -1);
+        if (lines[0].strip().equals("---")) {
+            for (int i = 1; i < lines.length; i++) {
+                String line = lines[i];
+                if (line.strip().equals("---")) {
+                    break; // Fin de l'entête : pas de clef description.
+                }
+                if (line.regionMatches(true, 0, "description:", 0, "description:".length())) {
+                    return flatten(unquote(line.substring("description:".length())));
+                }
+            }
+        }
+        for (String line : lines) {
+            String stripped = line.strip();
+            if (stripped.isEmpty() || stripped.equals("---") || stripped.startsWith("#")) {
+                continue;
+            }
+            return flatten(stripped);
+        }
+        return "";
+    }
+
+    /** Retire les guillemets d'une valeur YAML simple ({@code description: "…"}). */
+    private static String unquote(String value) {
+        String text = value.strip();
+        boolean quoted = text.length() >= 2
+                && (text.startsWith("\"") && text.endsWith("\"")
+                        || text.startsWith("'") && text.endsWith("'"));
+        return quoted ? text.substring(1, text.length() - 1) : text;
+    }
+
+    /** Une ligne, espaces normalisés, bornée — avec un « … » quand la coupe a eu lieu. */
+    private static String flatten(String text) {
+        String line = text.replaceAll("\\s+", " ").strip();
+        return line.length() <= SKILL_DESCRIPTION_CHARS
+                ? line
+                : line.substring(0, SKILL_DESCRIPTION_CHARS) + "…";
     }
 
     /** Arborescence pour la consigne système, prise là où les fichiers vivent réellement. */
