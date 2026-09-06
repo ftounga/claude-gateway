@@ -28,8 +28,15 @@ import fr.claudegateway.ai.AnthropicProperties;
  *
  * <p><b>Cache de prompt</b> (F-39 / SF-39-01) : le préfixe stable de la requête — outils, consigne
  * système, historique déjà envoyé — porte des marqueurs {@code cache_control}. Sans eux, chaque
- * itération d'un tour renvoie tout au tarif plein et le volume facturé croît en N².</p> Le mapping fournisseur est confiné ici ;
- * le domaine reste neutre. La clé n'est jamais journalisée.
+ * itération d'un tour renvoie tout au tarif plein et le volume facturé croît en N².</p>
+ *
+ * <p><b>Raisonnement</b> (F-39 / SF-39-10) : le tour peut demander un raisonnement <b>adaptatif</b>
+ * ({@code thinking}) et un niveau d'<b>effort</b> ({@code output_config}). Les blocs de raisonnement
+ * rendus par le fournisseur sont <b>signés</b> : ils remontent dans {@link AgentTurn#reasoning()} et
+ * sont réémis tels quels quand l'appelant les replace dans le message assistant.</p>
+ *
+ * <p>Le mapping fournisseur est confiné ici ; le domaine reste neutre. La clé n'est jamais
+ * journalisée.</p>
  */
 @Component
 public class AnthropicAgentProvider implements AiAgentProvider {
@@ -67,6 +74,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         if (request.tools() != null && !request.tools().isEmpty()) {
             body.put("tools", toApiTools(request.tools()));
         }
+        applyReasoning(body, request.reasoning());
 
         try {
             JsonNode response = restClient.post()
@@ -82,6 +90,27 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             // Message neutre : ni la clé ni la réponse brute du fournisseur ne remontent au client.
             log.warn("Appel agent au fournisseur IA en échec (modèle={})", request.model());
             throw new AIProviderException("Échec de l'appel au fournisseur IA.", ex);
+        }
+    }
+
+    /**
+     * Réglage de raisonnement du tour (F-39 / SF-39-10).
+     *
+     * <p><b>Adaptatif écrit explicitement</b> (décision D-L5-2) : sur le modèle cible, omettre
+     * {@code thinking} revient au même — mais sur le modèle précédent, l'omission veut dire
+     * <b>aucun raisonnement</b>. Un paramètre dont le sens dépend du modèle n'en est pas un.</p>
+     *
+     * <p>L'effort vit dans {@code output_config}, pas à la racine de la requête.</p>
+     */
+    private void applyReasoning(Map<String, Object> body, AgentReasoning reasoning) {
+        if (reasoning == null) {
+            return;
+        }
+        if (reasoning.adaptive()) {
+            body.put("thinking", Map.of("type", "adaptive"));
+        }
+        if (StringUtils.hasText(reasoning.effort())) {
+            body.put("output_config", Map.of("effort", reasoning.effort()));
         }
     }
 
@@ -134,6 +163,19 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             case AgentContentBlock.Text text -> Map.of("type", "text", "text", text.text());
             case AgentContentBlock.ToolUse use -> Map.of(
                     "type", "tool_use", "id", use.id(), "name", use.name(), "input", use.input());
+            // Réémis tels quels (SF-39-10) : la signature n'est vérifiable que par le fournisseur,
+            // et un bloc de raisonnement retouché est un bloc refusé.
+            case AgentContentBlock.Reasoning reasoning -> {
+                Map<String, Object> map = new HashMap<>();
+                map.put("type", "thinking");
+                map.put("thinking", reasoning.text() == null ? "" : reasoning.text());
+                if (StringUtils.hasText(reasoning.signature())) {
+                    map.put("signature", reasoning.signature());
+                }
+                yield map;
+            }
+            case AgentContentBlock.RedactedReasoning redacted -> Map.of(
+                    "type", "redacted_thinking", "data", redacted.data() == null ? "" : redacted.data());
             case AgentContentBlock.ToolResult result -> {
                 Map<String, Object> map = new HashMap<>();
                 map.put("type", "tool_result");
@@ -153,10 +195,19 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         }
         StringBuilder text = new StringBuilder();
         List<AgentToolCall> toolCalls = new ArrayList<>();
+        List<AgentContentBlock> reasoning = new ArrayList<>();
         for (JsonNode block : response.get("content")) {
             String type = block.path("type").asText("");
             if ("text".equals(type)) {
                 text.append(block.path("text").asText(""));
+            } else if ("thinking".equals(type)) {
+                // Le raisonnement n'est PAS la réponse : il ne rejoint jamais `text`. Il est conservé
+                // pour être rejoué au tour suivant, signature comprise (SF-39-10, décision D-L5-3).
+                String signature = block.path("signature").asText("");
+                reasoning.add(new AgentContentBlock.Reasoning(block.path("thinking").asText(""),
+                        signature.isEmpty() ? null : signature));
+            } else if ("redacted_thinking".equals(type)) {
+                reasoning.add(new AgentContentBlock.RedactedReasoning(block.path("data").asText("")));
             } else if ("tool_use".equals(type)) {
                 JsonNode input = block.path("input");
                 toolCalls.add(new AgentToolCall(
@@ -182,7 +233,8 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         // Un cache qui ne prend pas ne lève aucune erreur : seuls ces compteurs le disent.
         log.debug("Tour d'agent : {} tokens d'entrée (dont {} écrits en cache, {} lus en cache).",
                 inputTokens, cacheCreation, cacheRead);
-        return new AgentTurn(text.toString(), toolCalls, finished, inputTokens, outputTokens, truncated);
+        return new AgentTurn(text.toString(), toolCalls, finished, inputTokens, outputTokens, truncated,
+                reasoning);
     }
 
     /** Clé BYOK fournie pour l'appel, sinon clé plateforme. Jamais journalisée. */

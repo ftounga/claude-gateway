@@ -26,7 +26,6 @@ import fr.claudegateway.agent.AgentContentBlock;
 import fr.claudegateway.agent.AgentMessage;
 import fr.claudegateway.agent.AiAgentProvider;
 import fr.claudegateway.agent.StubAiAgentProvider;
-import fr.claudegateway.ai.ModelCatalog;
 import fr.claudegateway.atelier.AtelierChatService.AtelierChatResult;
 import fr.claudegateway.atelier.AtelierProgressListener.AtelierStepEvent;
 import fr.claudegateway.byok.ByokKeyService;
@@ -46,7 +45,6 @@ class AtelierChatServiceTest {
     @Mock private AtelierMessageRepository messageRepository;
     @Mock private ByokKeyService byokKeyService;
     @Mock private QuotaService quotaService;
-    @Mock private ModelCatalog modelCatalog;
     @Mock private fr.claudegateway.git.GitTokenService gitTokenService;
     @Mock private fr.claudegateway.git.GitHubClient gitHubClient;
     /** Cible SANDBOX dans tout ce fichier : le runner ne doit jamais être sollicité (F-38 / SF-38-05). */
@@ -83,13 +81,13 @@ class AtelierChatServiceTest {
         // Le garde-fou Git (F-31 / SF-31-03) est réel : sur un workspace d'archive il ne fait rien,
         // ce qui garantit qu'aucun test existant ne dépend d'un stub complaisant.
         service = new AtelierChatService(workspaceService, messageRepository, (AiAgentProvider) agentProvider,
-                byokKeyService, quotaService, modelCatalog,
+                byokKeyService, quotaService,
                 new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
                 // Plafond d'étapes par défaut (30) sauf mention contraire du test (SF-28-19).
-                new AtelierProperties(null, null, null, null, null, null, null));
+                new AtelierProperties(null, null, null, null, null, null, null, null, null));
     }
 
     /** Workspace d'archive possédé : la source par défaut, celle de tous les tests de ce fichier. */
@@ -103,7 +101,6 @@ class AtelierChatServiceTest {
 
     private void stubHappyPath() {
         stubOwnedArchiveWorkspace();
-        when(modelCatalog.defaultModel()).thenReturn("claude-model");
         when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.empty());
         when(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId))
                 .thenReturn(List.of());
@@ -262,7 +259,6 @@ class AtelierChatServiceTest {
         // SF-28-06 : avec une clé BYOK active, les tokens sont sur le compte de l'utilisateur =>
         // ni contrôle (assertWithinQuota) ni comptabilisation (recordUsage) du quota plateforme.
         stubOwnedArchiveWorkspace();
-        when(modelCatalog.defaultModel()).thenReturn("claude-model");
         when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.of("sk-ant-user-key"));
         when(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId))
                 .thenReturn(List.of());
@@ -394,12 +390,12 @@ class AtelierChatServiceTest {
     /** Reconstruit le service avec un plafond d'étapes donné (F-28 / SF-28-19). */
     private void serviceWithMaxIterations(int max) {
         service = new AtelierChatService(workspaceService, messageRepository, (AiAgentProvider) agentProvider,
-                byokKeyService, quotaService, modelCatalog,
+                byokKeyService, quotaService,
                 new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
-                new AtelierProperties(null, null, null, null, null, null, max));
+                new AtelierProperties(null, null, null, null, null, null, max, null, null));
     }
 
     @Test

@@ -241,4 +241,126 @@ class AnthropicAgentProviderTest {
         assertThat(turn.inputTokens()).isZero();
         assertThat(turn.outputTokens()).isZero();
     }
+
+    // ------------------------------------------------- SF-39-10 : raisonnement adaptatif et effort
+
+    /** Capture le corps d'un tour dont le raisonnement est réglé, sur l'historique fourni. */
+    private JsonNode captureBody(AgentReasoning reasoning, List<AgentMessage> messages) {
+        java.util.concurrent.atomic.AtomicReference<String> captured = new java.util.concurrent.atomic.AtomicReference<>();
+        server.expect(requestTo(URL))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> captured.set(
+                        ((org.springframework.mock.http.client.MockClientHttpRequest) request).getBodyAsString()))
+                .andRespond(withSuccess("""
+                        {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                         "usage": {"input_tokens": 1, "output_tokens": 1}}
+                        """, MediaType.APPLICATION_JSON));
+        provider.nextTurn(new AgentTurnRequest("claude-model", "consigne", messages, List.of(), null, reasoning));
+        server.verify();
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readTree(captured.get());
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    @Test
+    void asksForAdaptiveThinkingAndTheConfiguredEffort() {
+        build(null);
+        JsonNode body = captureBody(new AgentReasoning(true, "xhigh"),
+                List.of(AgentMessage.userText("bonjour")));
+
+        // Écrit explicitement (D-L5-2) : sur un modèle plus ancien, l'omission voudrait dire
+        // « aucun raisonnement ». L'effort vit dans `output_config`, pas à la racine.
+        assertThat(body.path("thinking").path("type").asText()).isEqualTo("adaptive");
+        assertThat(body.path("output_config").path("effort").asText()).isEqualTo("xhigh");
+    }
+
+    @Test
+    void sendsNothingAboutReasoningWhenItIsNotAsked() {
+        build(null);
+        JsonNode body = captureBody(AgentReasoning.none(), List.of(AgentMessage.userText("bonjour")));
+
+        assertThat(body.has("thinking")).isFalse();
+        assertThat(body.has("output_config")).isFalse();
+    }
+
+    @Test
+    void omitsTheEffortWhenNoneIsConfigured() {
+        build(null);
+        JsonNode body = captureBody(new AgentReasoning(true, "  "),
+                List.of(AgentMessage.userText("bonjour")));
+
+        assertThat(body.path("thinking").path("type").asText()).isEqualTo("adaptive");
+        assertThat(body.has("output_config")).isFalse();
+    }
+
+    @Test
+    void rendersReasoningBlocksWithoutMixingThemIntoTheAnswer() {
+        build(null);
+        server.expect(requestTo(URL)).andRespond(withSuccess("""
+                {"content": [{"type": "thinking", "thinking": "je regarde le fichier", "signature": "sig-1"},
+                             {"type": "redacted_thinking", "data": "chiffre"},
+                             {"type": "text", "text": "Voila."}],
+                 "stop_reason": "end_turn", "usage": {"input_tokens": 1, "output_tokens": 1}}
+                """, MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = call();
+
+        // Le raisonnement n'est pas la réponse : `text()` ne doit porter que la réponse.
+        assertThat(turn.text()).isEqualTo("Voila.");
+        assertThat(turn.reasoning()).containsExactly(
+                new AgentContentBlock.Reasoning("je regarde le fichier", "sig-1"),
+                new AgentContentBlock.RedactedReasoning("chiffre"));
+        server.verify();
+    }
+
+    @Test
+    void rendersAReasoningBlockWithoutSignatureAsUnsigned() {
+        build(null);
+        server.expect(requestTo(URL)).andRespond(withSuccess("""
+                {"content": [{"type": "thinking", "thinking": ""}, {"type": "text", "text": "ok"}],
+                 "stop_reason": "end_turn", "usage": {"input_tokens": 1, "output_tokens": 1}}
+                """, MediaType.APPLICATION_JSON));
+
+        AgentTurn turn = call();
+
+        assertThat(turn.reasoning()).containsExactly(new AgentContentBlock.Reasoning("", null));
+    }
+
+    @Test
+    void replaysReasoningBlocksUnchangedAndAheadOfTheRest() {
+        build(null);
+        JsonNode body = captureBody(new AgentReasoning(true, "high"), List.of(
+                AgentMessage.userText("bonjour"),
+                AgentMessage.assistant(List.of(
+                        new AgentContentBlock.Reasoning("je regarde", "sig-1"),
+                        new AgentContentBlock.RedactedReasoning("chiffre"),
+                        new AgentContentBlock.Text("Je lis le fichier."))),
+                AgentMessage.userText("continue")));
+
+        JsonNode assistant = body.get("messages").get(1).get("content");
+        assertThat(assistant.get(0).path("type").asText()).isEqualTo("thinking");
+        assertThat(assistant.get(0).path("thinking").asText()).isEqualTo("je regarde");
+        assertThat(assistant.get(0).path("signature").asText()).isEqualTo("sig-1");
+        assertThat(assistant.get(1).path("type").asText()).isEqualTo("redacted_thinking");
+        assertThat(assistant.get(1).path("data").asText()).isEqualTo("chiffre");
+        assertThat(assistant.get(2).path("type").asText()).isEqualTo("text");
+        // Aucun marqueur de cache sur un bloc de raisonnement, et le plafond du fournisseur (4) tient.
+        assertThat(assistant.get(0).has("cache_control")).isFalse();
+        assertThat(body.toString().split("cache_control", -1).length - 1).isLessThanOrEqualTo(4);
+    }
+
+    @Test
+    void omitsAnAbsentSignatureInsteadOfSendingNull() {
+        build(null);
+        JsonNode body = captureBody(new AgentReasoning(true, "high"), List.of(
+                AgentMessage.userText("bonjour"),
+                AgentMessage.assistant(List.of(new AgentContentBlock.Reasoning("", null))),
+                AgentMessage.userText("continue")));
+
+        JsonNode block = body.get("messages").get(1).get("content").get(0);
+        assertThat(block.has("signature")).isFalse();
+        assertThat(block.path("thinking").asText()).isEmpty();
+    }
 }

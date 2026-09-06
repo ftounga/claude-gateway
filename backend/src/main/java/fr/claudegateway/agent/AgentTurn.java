@@ -22,14 +22,27 @@ import java.util.List;
  * @param outputTokens tokens de sortie consommés par ce tour
  * @param truncated    vrai si la réponse a été coupée au plafond de sortie ({@code max_tokens}) :
  *                     son contenu est incomplet et ne doit être ni exécuté, ni pris pour une réponse
+ * @param reasoning    blocs de raisonnement rendus par ce tour, dans leur ordre d'émission (F-39 /
+ *                     SF-39-10). À remettre <b>en tête</b> du message assistant rejoué à l'itération
+ *                     suivante, sans les modifier : le fournisseur vérifie leur signature
  * @see #truncated()
  */
 public record AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
-        int inputTokens, int outputTokens, boolean truncated) {
+        int inputTokens, int outputTokens, boolean truncated, List<AgentContentBlock> reasoning) {
+
+    public AgentTurn {
+        reasoning = reasoning == null ? List.of() : List.copyOf(reasoning);
+    }
+
+    /** Tour sans raisonnement — forme conservée pour les appelants qui l'attendent. */
+    public AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
+            int inputTokens, int outputTokens, boolean truncated) {
+        this(text, toolCalls, finished, inputTokens, outputTokens, truncated, List.of());
+    }
 
     /** Tour complet (non tronqué) — forme historique, conservée pour les appelants qui l'attendent. */
     public AgentTurn(String text, List<AgentToolCall> toolCalls, boolean finished,
             int inputTokens, int outputTokens) {
-        this(text, toolCalls, finished, inputTokens, outputTokens, false);
+        this(text, toolCalls, finished, inputTokens, outputTokens, false, List.of());
     }
 }

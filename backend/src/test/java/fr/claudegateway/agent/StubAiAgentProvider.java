@@ -37,6 +37,22 @@ public class StubAiAgentProvider implements AiAgentProvider {
     }
 
     /**
+     * Empile un tour « appel d'outil » précédé de <b>blocs de raisonnement signés</b> (F-39 /
+     * SF-39-10) : c'est la forme que rend le fournisseur quand le raisonnement est actif, et celle
+     * que la boucle doit remettre en tête du message assistant rejoué.
+     */
+    public void enqueueToolCallWithReasoning(String toolName, String signature, String... kv) {
+        ObjectNode input = mapper.createObjectNode();
+        for (int i = 0; i + 1 < kv.length; i += 2) {
+            input.put(kv[i], kv[i + 1]);
+        }
+        List<AgentToolCall> calls = new ArrayList<>();
+        calls.add(new AgentToolCall("tool_" + (idSeq++), toolName, input));
+        script.add(new AgentTurn("je regarde", calls, false, 5, 5, false,
+                List.of(new AgentContentBlock.Reasoning("", signature))));
+    }
+
+    /**
      * Empile un tour « appel d'outil » <b>sans identifiant</b> : certains fournisseurs peuvent
      * renvoyer un {@code tool_use} sans id exploitable, et la boucle doit alors en fabriquer un
      * (F-38 / SF-38-05, contrat de messages §1).
