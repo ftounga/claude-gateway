@@ -175,13 +175,16 @@ l'arbitrage « non prioritaire » de F-29 / SF-29-04.
 
 **Statut** : **Ouverte — question de planification adressée au product owner (2026-09-06).**
 Ne bloque pas F-38, **Terminée** dans `docs/PRODUCT_SPEC.md`.
+**Mise à jour du 2026-09-06 (soir)** : le protocole a été **remis au niveau du runner livré** (voir
+« Ce qui a été fait depuis » ci-dessous). La question posée au PO, elle, est inchangée — elle ne se
+répond ni par du code ni par de la documentation.
 
 **Le contexte**
 
-F-38 (runner local) est livrée — 14 subfeatures, relais inter-pods compris — et **déployée en
-production** depuis le 2026-08-30 (image `staging-b907947`). Tout ce qui pouvait être vérifié sans
-machine tierce l'est par la suite de tests : handshake, registre, confinement, exclusions,
-garde-fous, audit, relais, purge à la suppression de compte.
+F-38 (runner local) est livrée — **21 subfeatures**, relais inter-pods compris — et **déployée en
+production** depuis le 2026-08-30 (image `staging-b907947`, antérieure à SF-38-15→21). Tout ce qui
+pouvait être vérifié sans machine tierce l'est par la suite de tests : handshake, registre,
+confinement, exclusions, garde-fous, audit, relais, purge à la suppression de compte.
 
 **Ce qui reste, et pourquoi ce n'est pas un ticket de dev**
 
@@ -191,23 +194,53 @@ raisonnable : il demande une **machine tierce hors cluster**, un **réseau d'ent
 contraint** (un proxy simulé prouve le code, pas le terrain) et un **opérateur**. Construire le banc
 d'essai correspondant (VM éphémère + proxy + pilotage navigateur) coûterait plus que la feature, pour
 un parcours joué une fois à la mise en service. Il a donc été **sorti du périmètre de dev et parqué**
-sous forme de protocole exécutable : `docs/features/F-38/SMOKE-manuel-bout-en-bout.md` (9 scénarios,
-prérequis, grille de compte rendu).
+sous forme de protocole exécutable : `docs/features/F-38/SMOKE-manuel-bout-en-bout.md` (**11
+scénarios**, prérequis, grille de compte rendu).
+
+**Ce qui a été fait depuis (2026-09-06, soir) — et qui ne referme pas la question**
+
+Le protocole avait été écrit **le matin**, avant que le second passage du banc d'essai ne livre
+SF-38-15→21. Joué tel quel, il aurait produit **au moins un KO faux** : son point S4.3 exigeait
+qu'**aucun** réglage ne desserre la porte de confirmation, alors que **SF-38-20 a précisément amendé
+cette décision**. Le protocole est donc à jour : S1 (commande d'appairage avec son `/api`, `bash` par
+défaut), S2 (explorateur qui lit la machine, filtre du bruit de construction, troncature annoncée),
+S4 (les deux gestes d'autorisation groupée — et ce qui, lui, ne se desserre jamais : le journal
+d'audit et le coupe-circuit), **S10** (droits déclarés du runner) et **S11** (projet « sur ma
+machine ») ajoutés, prérequis d'image relevé à la **migration 053**. C'est de la mise à niveau
+documentaire : **le parcours réel n'a toujours pas été joué**.
 
 **Ce qui est demandé au PO**
 
 1. **Une date** et **un opérateur**.
-2. **Une machine** hors cluster avec Java 21 et un projet réel.
+2. **Une machine** hors cluster avec Java 21 et un projet réel (de préférence avec ses dépendances
+   installées — le scénario S2 en a besoin).
 3. **Un accès réseau contraint** pour le scénario S5 (proxy cassant l'`Upgrade`) — à défaut, le
    scénario est joué en proxy simulé et **noté comme partiel**.
 4. **Un créneau de scale à 2 replicas** pour le scénario S6 (relais inter-pods).
 5. **Un compte de test jetable** (le scénario S9 le supprime).
+6. **Nouveau prérequis** : le smoke doit être joué **après un déploiement embarquant SF-38-15→21**
+   (migration 053). L'image de production du 2026-08-30 est antérieure : jouer le protocole dessus
+   donnerait des KO sur S10 et S11 qui ne diraient rien du produit.
+
+**Proposition par défaut, à confirmer ou corriger d'un mot** — faute d'opérateur, elle n'est pas
+appliquée, mais elle transforme une question ouverte en un oui/non :
+
+| Point | Proposition |
+|---|---|
+| Quand | Le **premier créneau calme après le prochain déploiement de production** (celui qui embarque SF-38-15→21). Compter **90 min**. |
+| Qui | Le **PO lui-même** : les deux passages du banc d'essai ont montré que c'est son regard qui trouve les défauts d'usage (quatre subfeatures et deux correctifs le 2026-09-06). |
+| Où | Sa **machine de développement**, projet réel avec dépendances — pas de VM à monter. |
+| S5 | **Proxy simulé** (`HTTPS_PROXY` vers un mandataire qui refuse l'`Upgrade`), noté **partiel**, plutôt que d'attendre indéfiniment un vrai réseau d'entreprise. Le rejouer chez le premier client qui en a un. |
+| S6 | **2 replicas pendant le créneau**, retour à 1 juste après. |
+| S9 | Compte jetable créé pour l'occasion, **joué en dernier**. |
 
 **Ce qui se passe ensuite**
 
 Tout OK → une ligne d'historique dans `PRODUCT_SPEC.md`, rien d'autre. Un KO → une **subfeature
-correctif ciblée** (`SF-38-15`…), pas une réouverture de F-38 en bloc ; un KO sur **S5** (repli de
-transport) ou **S6** (deux pods) est **bloquant pour la promesse produit** et passe devant le backlog.
+correctif ciblée** (**`SF-38-22`…** — les numéros 15 à 21 sont consommés depuis le 2026-09-06), pas
+une réouverture de F-38 en bloc ; sont **bloquants pour la promesse produit** et passent devant le
+backlog : **S5** (repli de transport), **S6** (deux pods), **S4.5** (une commande autorisée en groupe
+absente du journal d'audit) et **S11.4** (un chemin absolu remonté à la gateway).
 
 **Risque assumé en attendant** : un défaut d'intégration réseau ou de parcours réel resterait
 invisible jusqu'au premier utilisateur du mode `RUNNER`. C'est le prix du parcage — il est accepté
