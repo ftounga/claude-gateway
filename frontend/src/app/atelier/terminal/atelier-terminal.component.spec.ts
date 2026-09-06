@@ -342,7 +342,7 @@ describe('AtelierTerminalComponent', () => {
   it("affiche la commande soumise à autorisation et émet la décision", () => {
     component.pendingConfirmation = {
       toolUseId: 'sevt_1',
-      source: 'exec',
+      source: 'HOSTED_SANDBOX',
       tool: 'bash',
       detail: 'rm -rf build',
       answering: false,
@@ -371,7 +371,7 @@ describe('AtelierTerminalComponent', () => {
   it("propose le champ de motif au refus, puis émet le refus", () => {
     component.pendingConfirmation = {
       toolUseId: 'sevt_1',
-      source: 'exec',
+      source: 'HOSTED_SANDBOX',
       tool: 'bash',
       detail: 'rm -rf build',
       answering: false,
@@ -395,7 +395,7 @@ describe('AtelierTerminalComponent', () => {
   it("laisse les actions inertes pendant l'envoi d'une décision", () => {
     component.pendingConfirmation = {
       toolUseId: 'sevt_1',
-      source: 'exec',
+      source: 'HOSTED_SANDBOX',
       tool: 'bash',
       detail: 'ls',
       answering: true,
@@ -905,5 +905,83 @@ describe('AtelierTerminalComponent', () => {
 
       discardPeriodicTasks();
     }));
+  });
+
+  // ---- F-39 / SF-39-08 : moteur affiché, réglages runner portés dans l'écran unique ----
+
+  describe('moteur et cible d\'exécution (F-39 SF-39-08)', () => {
+
+    it('dit « bac à sable hébergé » quand le tour part chez le fournisseur', () => {
+      component.engine = 'HOSTED_SANDBOX';
+      fixture.detectChanges();
+
+      expect(component.engineLabel()).toBe('bac à sable hébergé');
+      expect(component.engineIcon()).toBe('cloud');
+      expect(text()).toContain('bac à sable hébergé');
+      // Les mots « Assistant » et « Terminal » désignaient un moteur : ils ont disparu (D1).
+      expect(text()).not.toContain('Assistant');
+    });
+
+    it('dit « ma machine » et l\'état du runner quand le tour part sur la machine', () => {
+      component.engine = 'LOCAL_MACHINE';
+
+      component.runnerStatus = { connected: true, lastSeenAt: null };
+      expect(component.engineLabel()).toBe('ma machine — connectée');
+
+      component.runnerStatus = { connected: false, lastSeenAt: null };
+      expect(component.engineLabel()).toBe('ma machine — hors ligne');
+
+      // « État inconnu » se dit, il ne se devine pas.
+      component.runnerStatus = null;
+      expect(component.engineLabel()).toBe('ma machine — état inconnu');
+      expect(component.engineIcon()).toBe('dns');
+    });
+
+    it('ne propose pas « Réinitialiser » sur la machine de l\'utilisateur (D-L4-6)', () => {
+      component.engine = 'LOCAL_MACHINE';
+      fixture.detectChanges();
+      // Le geste recrée un environnement hébergé : ici il n'y a rien à recréer.
+      expect(text()).not.toContain('Réinitialiser');
+
+      component.engine = 'HOSTED_SANDBOX';
+      fixture.detectChanges();
+      expect(text()).toContain('Réinitialiser');
+    });
+
+    it('porte le réglage de cible d\'exécution dans l\'écran unique (D-L4-4)', () => {
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.terminal-target-toggle')).not.toBeNull();
+      expect(text()).toContain("Où s'exécutent les outils");
+    });
+
+    it('ne montre les gestes runner qu\'en cible « ma machine »', () => {
+      component.executionTarget = 'SANDBOX';
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.terminal-runner-pair')).toBeNull();
+      expect(fixture.nativeElement.querySelector('.terminal-runner-kill')).toBeNull();
+
+      component.executionTarget = 'RUNNER';
+      fixture.detectChanges();
+
+      // Appairage, journal d'audit et coupe-circuit restent atteignables : sans quoi l'écran unique
+      // ferait régresser les acquis F-38 (§4 du cadrage).
+      expect(fixture.nativeElement.querySelector('.terminal-runner-pair')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('.terminal-runner-audit')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('.terminal-runner-kill')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('.terminal-runner-refresh')).not.toBeNull();
+    });
+
+    it('émet la bascule de cible plutôt que de l\'appliquer lui-même', () => {
+      const emitted: string[] = [];
+      component.executionTargetChange.subscribe((t) => emitted.push(t));
+      fixture.detectChanges();
+
+      component.executionTargetChange.emit('RUNNER');
+
+      // Composant de présentation : la cible qui fait foi est celle que le backend confirme.
+      expect(emitted).toEqual(['RUNNER']);
+      expect(component.executionTarget).toBe('SANDBOX');
+    });
   });
 });

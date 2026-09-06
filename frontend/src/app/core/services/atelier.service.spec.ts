@@ -5,6 +5,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { AtelierService } from './atelier.service';
 import {
   AtelierChatResponse,
+  AtelierEngineStatus,
   AtelierMessage,
   FileContent,
   RunnerAuditEntry,
@@ -498,6 +499,21 @@ describe('AtelierService', () => {
     req.flush(detail);
 
     expect(received?.executionTarget).toBe('RUNNER');
+  });
+
+  it('lit le moteur du projet via GET /api/workspaces/{id}/engine (F-39 SF-39-07)', () => {
+    let received: AtelierEngineStatus | undefined;
+    service.getEngine('w1').subscribe((r) => (received = r));
+
+    const req = httpMock.expectOne('/api/workspaces/w1/engine');
+    expect(req.request.method).toBe('GET');
+    req.flush({
+      engine: 'LOCAL_MACHINE', runnerConnected: true, runnerLastSeenAt: '2026-09-06T09:00:00Z',
+      recommendRunner: false, recommendReason: null,
+    });
+
+    expect(received?.engine).toBe('LOCAL_MACHINE');
+    expect(received?.runnerConnected).toBeTrue();
   });
 
   it('relève l\'état runner via GET /api/workspaces/{id}/runner/status', () => {

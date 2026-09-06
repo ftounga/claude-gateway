@@ -11,6 +11,7 @@ import {
   AtelierConfirmDecision,
   AtelierConfirmationState,
   AtelierChatResponse,
+  AtelierEngineStatus,
   AtelierMessage,
   AtelierResume,
   AtelierStreamAction,
@@ -512,6 +513,15 @@ export class AtelierService {
   setExecutionTarget(id: string, target: WorkspaceExecutionTarget): Observable<WorkspaceDetail> {
     const body: ExecutionTargetRequest = { executionTarget: target };
     return this.http.put<WorkspaceDetail>(`/api/workspaces/${id}/execution-target`, body);
+  }
+
+  /**
+   * Moteur qui anime le terminal de ce projet (F-39 / SF-39-07). L'écran le **lit** : depuis le
+   * lot 4, plus aucune règle de moteur ne vit côté Angular — elle avait déjà été inversée une fois
+   * entre F-31 et F-38 sans qu'aucun test ne puisse le dire.
+   */
+  getEngine(id: string): Observable<AtelierEngineStatus> {
+    return this.http.get<AtelierEngineStatus>(`/api/workspaces/${id}/engine`);
   }
 
   /**

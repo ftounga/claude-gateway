@@ -516,6 +516,34 @@ export interface GitBranches {
  * `GET /api/workspaces/{id}/chat/resume`. Par défaut le fil reprend en silence : `prompt` ne vaut
  * `IDLE` que lorsque la reprise ne va pas de soi et qu'il faut poser la question.
  */
+/**
+ * Moteur qui anime le terminal d'un projet (F-39 / SF-39-07, décisions D1 et D-L4-2). L'utilisateur
+ * ne le choisit **jamais** : la gateway le résout, l'écran le lit. Les noms disent **où le code
+ * s'exécute** — la seule chose que l'utilisateur ait à comprendre.
+ */
+export type AtelierEngine = 'LOCAL_MACHINE' | 'HOSTED_SANDBOX';
+
+/**
+ * Limite du bac à sable qui justifie de proposer le runner (F-39 / SF-39-07, décision D6). Il n'y a
+ * pas de motif « générique » : la proposition ne tombe que sur une limite réellement rencontrée.
+ */
+export type AtelierRunnerRecommendation = 'GIT' | 'FILE_LIMIT';
+
+/**
+ * Moteur d'un projet, réponse de `GET /api/workspaces/{id}/engine` (F-39 / SF-39-07).
+ *
+ * `runnerConnected` est **indépendant** de `engine` : une cible « ma machine » dont le runner est
+ * éteint reste en `LOCAL_MACHINE`, et l'écran dit « runner hors ligne » plutôt que de basculer en
+ * silence vers un bac à sable vide (décision D-L4-1).
+ */
+export interface AtelierEngineStatus {
+  engine: AtelierEngine;
+  runnerConnected: boolean;
+  runnerLastSeenAt: string | null;
+  recommendRunner: boolean;
+  recommendReason: AtelierRunnerRecommendation | null;
+}
+
 export interface AtelierResume {
   /** Messages que le prochain tour rejouera au fournisseur. */
   turns: number;
