@@ -87,6 +87,14 @@ public class Workspace {
     private WorkspaceExecutionTarget executionTarget = WorkspaceExecutionTarget.SANDBOX;
 
     /**
+     * Nom du dossier déclaré par le runner à l'appairage (F-38 / SF-38-15) — le <b>dernier segment
+     * seulement</b>, jamais le chemin absolu. Sert uniquement à l'affichage. Nul tant qu'aucun
+     * runner ne s'est appairé, ou si le runner est antérieur à cette version.
+     */
+    @Column(name = "runner_root_name", length = 255)
+    private String runnerRootName;
+
+    /**
      * Vrai si le projet est adossé à un dépôt Git (F-31 / SF-31-02). Volontairement null-tolérant :
      * une entité construite hors du builder (tests, désérialisation partielle) n'est pas un projet
      * Git, et le chemin le plus sûr — celui de l'archive — reste le comportement par défaut.
@@ -110,6 +118,11 @@ public class Workspace {
     }
 
     /** Vrai si les outils de ce projet s'exécutent sur la machine de l'utilisateur (F-38 / SF-38-05). */
+    /** Vrai si le projet vit sur la machine de l'utilisateur (F-38 / SF-38-15). */
+    public boolean isLocal() {
+        return source == WorkspaceSource.LOCAL;
+    }
+
     public boolean isRunnerTarget() {
         return executionTargetOrDefault() == WorkspaceExecutionTarget.RUNNER;
     }

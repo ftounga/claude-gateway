@@ -18,5 +18,15 @@ public enum WorkspaceSource {
      * copiés dans le stockage objet : le dépôt est cloné dans la sandbox, et le jeton d'accès
      * n'entre jamais dans le conteneur (proxy git côté fournisseur, ADR-015).
      */
-    GIT
+    GIT,
+
+    /**
+     * Projet qui vit <b>déjà sur la machine de l'utilisateur</b> (F-38 / SF-38-15). Ni archive, ni
+     * dépôt : le dossier existe, et c'est le <b>runner</b> qui en déclare la racine à l'appairage —
+     * la gateway n'apprend jamais le chemin absolu, au plus le nom du dossier.
+     *
+     * <p>Le stockage objet n'est jamais alloué pour un tel projet : ses fichiers ne sont ni copiés,
+     * ni synchronisés. Ils sont lus à la demande, sur la machine, par le runner.</p>
+     */
+    LOCAL
 }

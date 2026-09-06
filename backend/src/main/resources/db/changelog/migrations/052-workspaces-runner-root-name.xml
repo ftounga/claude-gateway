@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <!--
+      F-38 / SF-38-15 — Nom du dossier déclaré par le runner à l'appairage.
+
+      Le DERNIER SEGMENT seulement, jamais le chemin absolu : la gateway n'a aucune raison de
+      connaître l'arborescence de la machine de l'utilisateur, et le PathGuard du runner ne remonte
+      déjà que des chemins relatifs. Cette colonne sert uniquement à l'affichage.
+
+      Nullable et sans valeur par défaut : les projets existants n'en ont pas, et un runner antérieur
+      à cette version ne l'envoie pas.
+    -->
+    <changeSet id="052-workspaces-runner-root-name" author="claude-gateway">
+        <addColumn tableName="workspaces">
+            <column name="runner_root_name" type="varchar(255)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="runner_root_name"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

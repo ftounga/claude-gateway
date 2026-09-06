@@ -98,6 +98,75 @@ public class WorkspaceService {
                 .build());
     }
 
+    /**
+     * Crée un projet dont les fichiers vivent <b>déjà sur la machine</b> de l'utilisateur
+     * (F-38 / SF-38-15). Ni archive, ni dépôt, ni préfixe de stockage : rien n'est alloué de ce dont
+     * on ne se servira jamais — ce qui rend le refus d'import <b>structurel</b> plutôt que défensif.
+     *
+     * <p>La cible d'exécution est {@code RUNNER} <b>d'emblée et sans alternative</b> (décision D3) :
+     * un projet local en cible {@code SANDBOX} ouvrirait une session sur un dossier vide et laisserait
+     * croire que le travail a lieu quelque part. La validation d'action est posée dans le même geste,
+     * pour la même raison qu'à la bascule.</p>
+     *
+     * <p>Aucun chemin n'est demandé au client : un navigateur ne peut pas transmettre un chemin du
+     * disque, et la gateway n'a aucune raison de connaître l'arborescence de la machine. Le dossier
+     * se désigne au lancement du runner, et c'est lui qui le déclare (voir {@code runnerRootName}).</p>
+     */
+    @Transactional
+    public Workspace createLocal(UUID userId, String name) {
+        String cleaned = name == null ? "" : name.trim();
+        if (cleaned.isEmpty()) {
+            throw new InvalidArchiveException("Nom de projet requis.");
+        }
+        if (cleaned.length() > MAX_NAME_LENGTH) {
+            throw new InvalidArchiveException("Nom de projet trop long (255 caractères au maximum).");
+        }
+        return workspaceRepository.save(Workspace.builder()
+                .userId(userId)
+                .name(cleaned)
+                .source(WorkspaceSource.LOCAL)
+                .executionTarget(WorkspaceExecutionTarget.RUNNER)
+                .agentAskBeforeBash(true)
+                .build());
+    }
+
+    /**
+     * Enregistre le nom du dossier déclaré par le runner à l'appairage (F-38 / SF-38-15).
+     *
+     * <p>Le <b>dernier segment</b> uniquement : ce que le runner envoie est déjà un nom, mais on ne
+     * fait pas confiance à un client pour ça — un chemin complet serait réduit ici, et jamais
+     * stocké. Best-effort : un appairage ne doit pas échouer parce qu'un libellé d'affichage n'a pas
+     * pu être écrit.</p>
+     */
+    @Transactional
+    public void recordRunnerRootName(UUID workspaceId, String rootName) {
+        String segment = lastSegment(rootName);
+        if (segment == null) {
+            return;
+        }
+        workspaceRepository.findById(workspaceId).ifPresent(workspace -> {
+            workspace.setRunnerRootName(segment);
+            workspaceRepository.save(workspace);
+        });
+    }
+
+    /** Dernier segment d'un chemin, borné — jamais le chemin lui-même. {@code null} si vide. */
+    static String lastSegment(String value) {
+        if (value == null) {
+            return null;
+        }
+        String cleaned = value.trim().replace('\\', '/');
+        while (cleaned.endsWith("/")) {
+            cleaned = cleaned.substring(0, cleaned.length() - 1);
+        }
+        int slash = cleaned.lastIndexOf('/');
+        String segment = slash < 0 ? cleaned : cleaned.substring(slash + 1);
+        if (segment.isBlank()) {
+            return null;
+        }
+        return segment.length() > MAX_NAME_LENGTH ? segment.substring(0, MAX_NAME_LENGTH) : segment;
+    }
+
     /** Workspaces de l'utilisateur (isolation {@code user_id}). */
     public List<Workspace> list(UUID userId) {
         return workspaceRepository.findByUserIdOrderByCreatedAtDesc(userId);
@@ -133,6 +202,13 @@ public class WorkspaceService {
     /** Écrit (ou remplace) le contenu texte d'un fichier du workspace. */
     @Transactional
     public void writeFile(UUID userId, UUID id, String path, String content) {
+        // Les fichiers d'un projet local vivent sur la machine : les écrire ici créerait une seconde
+        // vérité, exactement ce que SF-31-12/13 a coûté trois subfeatures à résoudre sur les projets
+        // Git. Refus AVANT toute écriture (F-38 / SF-38-15).
+        if (requireOwned(userId, id).isLocal()) {
+            throw new LocalWorkspaceException(
+                    "Ce projet vit sur votre machine : ses fichiers s'écrivent par le runner, pas ici.");
+        }
         Workspace workspace = requireOwned(userId, id);
         String rel = normalizeRelPath(path);
         byte[] bytes = (content == null ? "" : content).getBytes(StandardCharsets.UTF_8);
@@ -188,6 +264,12 @@ public class WorkspaceService {
         Workspace workspace = requireOwned(userId, id);
         if (target == null) {
             throw new InvalidArchiveException("Cible d'exécution requise.");
+        }
+        // Un projet local n'existe que sur la machine (F-38 / SF-38-15, D3) : le bac à sable n'a pas
+        // ce dossier, et une session s'y ouvrirait vide. Un refus vaut mieux qu'une bascule qui ment.
+        if (workspace.isLocal() && target != WorkspaceExecutionTarget.RUNNER) {
+            throw new LocalWorkspaceException(
+                    "Ce projet vit sur votre machine : il s'exécute par le runner, pas dans le bac à sable.");
         }
         workspace.setExecutionTarget(target);
         if (target == WorkspaceExecutionTarget.RUNNER) {

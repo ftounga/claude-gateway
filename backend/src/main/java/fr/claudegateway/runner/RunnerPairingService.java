@@ -64,6 +64,16 @@ public class RunnerPairingService {
      */
     @Transactional
     public PairedRunner redeem(String rawCode, String label) {
+        return redeem(rawCode, label, null);
+    }
+
+    /**
+     * Variante qui enregistre en plus le <b>nom du dossier</b> déclaré par le runner
+     * (F-38 / SF-38-15). Le chemin absolu n'est jamais transmis ni stocké : le runner n'envoie que
+     * le dernier segment, et la gateway le réduit de nouveau par précaution.
+     */
+    @Transactional
+    public PairedRunner redeem(String rawCode, String label, String rootName) {
         String hash = tokenHasher.sha256Hex(normalizeCode(rawCode));
         RunnerPairingCode code = codeRepository.findByCodeHash(hash)
                 .filter(c -> c.isUsableAt(OffsetDateTime.now()))
@@ -72,6 +82,8 @@ public class RunnerPairingService {
 
         RunnerTokenService.IssuedToken issued =
                 tokenService.issue(code.getUserId(), code.getWorkspaceId(), label);
+        // Libellé d'affichage : un échec ici ne doit pas faire échouer l'appairage lui-même.
+        workspaceService.recordRunnerRootName(code.getWorkspaceId(), rootName);
         return new PairedRunner(issued.clearToken(), code.getWorkspaceId(), issued.token().getExpiresAt());
     }
 

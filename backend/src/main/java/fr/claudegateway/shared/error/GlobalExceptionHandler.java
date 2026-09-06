@@ -421,6 +421,17 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("execution_target_runner", ex.getMessage()));
     }
 
+    @ExceptionHandler(fr.claudegateway.atelier.LocalWorkspaceException.class)
+    public ResponseEntity<ErrorResponse> handleLocalWorkspace(
+            fr.claudegateway.atelier.LocalWorkspaceException ex) {
+        // Le projet vit sur la machine de l'utilisateur (F-38 / SF-38-15) : ecrire dans le stockage,
+        // basculer sur le bac a sable ou passer par l'API GitHub n'a pas de sens ici. Le message dit
+        // ou le geste doit se faire, pas ce qui a echoue.
+        log.debug("Geste refuse : le projet est local (source LOCAL)");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("local_workspace_refused", ex.getMessage()));
+    }
+
     @ExceptionHandler(GitFileNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleGitFileNotReadable(GitFileNotReadableException ex) {
         // Le fichier existe : le dire évite de faire chercher l'utilisateur, contrairement à un 404.
