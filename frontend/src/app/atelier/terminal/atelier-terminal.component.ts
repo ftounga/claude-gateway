@@ -12,15 +12,20 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { MarkdownPipe } from '../../shared/markdown.pipe';
 
 import {
+  AtelierEngine,
   AtelierTerminalBlock,
   GitPullRequestResult,
   GitPushResult,
+  RunnerStatus,
+  WorkspaceExecutionTarget,
 } from '../../core/models/atelier.models';
 import {
   AtelierExecStreamingItem,
@@ -57,13 +62,45 @@ import {
  */
 @Component({
   selector: 'app-atelier-terminal',
-  imports: [FormsModule, MarkdownPipe, MatButtonModule, MatIconModule, MatProgressSpinnerModule],
+  imports: [
+    FormsModule, MarkdownPipe, MatButtonModule, MatButtonToggleModule, MatIconModule,
+    MatProgressSpinnerModule, MatTooltipModule,
+  ],
   templateUrl: './atelier-terminal.component.html',
   styleUrl: './atelier-terminal.component.scss',
 })
 export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   /** Nom du projet, affiché dans l'en-tête. */
   @Input() projectName = '';
+
+  /**
+   * Moteur qui anime ce terminal (F-39 / SF-39-08). **Affiché, jamais choisi** : la pastille dit où
+   * le code s'exécute, ce qui est la seule chose que l'utilisateur ait à comprendre. Les mots
+   * « Assistant » et « Terminal » ont disparu de l'écran avec les modes qu'ils désignaient.
+   */
+  @Input() engine: AtelierEngine = 'HOSTED_SANDBOX';
+
+  /**
+   * Cible d'exécution du projet (F-38 / SF-38-05). Ce n'est **pas** un mode : c'est un réglage de
+   * projet, qui suit donc l'écran unique plutôt que de disparaître avec l'ancienne mise en page
+   * (décision D-L4-4).
+   */
+  @Input() executionTarget: WorkspaceExecutionTarget = 'SANDBOX';
+
+  /** Bascule de cible en vol : le sélecteur reste inerte le temps de l'aller-retour. */
+  @Input() switchingTarget = false;
+
+  /**
+   * Dernier état runner relevé (F-38 / SF-38-02), ou `null` tant qu'aucun relevé n'a abouti —
+   * « état inconnu » se dit, il ne se devine pas.
+   */
+  @Input() runnerStatus: RunnerStatus | null = null;
+
+  /** Dernière activité du runner, déjà formatée par le parent, ou `null`. */
+  @Input() runnerLastSeenLabel: string | null = null;
+
+  /** Coupe-circuit en vol : le bouton reste inerte le temps de l'aller-retour. */
+  @Input() killingRunner = false;
 
   /** Tours déjà terminés (demande, commentaire, transcription, coût). */
   @Input() messages: AtelierThreadItem[] = [];
@@ -150,6 +187,42 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Output() openBilling = new EventEmitter<void>();
   /** Demande d'ouverture de la pull request de la branche publiée (F-31 / SF-31-05). */
   @Output() openPullRequest = new EventEmitter<void>();
+
+  /** Bascule de la cible d'exécution du projet (F-38 / SF-38-05, D-L4-4). */
+  @Output() executionTargetChange = new EventEmitter<WorkspaceExecutionTarget>();
+  /** Relevé manuel de l'état runner (F-38 / SF-38-06). */
+  @Output() refreshRunner = new EventEmitter<void>();
+  /** Ouverture de l'appairage d'une machine (F-38 / SF-38-01). */
+  @Output() pairRunner = new EventEmitter<void>();
+  /** Ouverture du journal d'activité de la machine (F-38 / SF-38-08). */
+  @Output() openRunnerAudit = new EventEmitter<void>();
+  /** Coupe-circuit : coupe la liaison avec la machine (F-38 / SF-38-08). */
+  @Output() killRunner = new EventEmitter<void>();
+
+  /** Vrai si les outils de ce projet s'exécutent sur la machine de l'utilisateur. */
+  get runnerTarget(): boolean {
+    return this.executionTarget === 'RUNNER';
+  }
+
+  /**
+   * Libellé de la pastille de moteur. Dit **où le code s'exécute**, jamais un nom de mode. En cible
+   * « ma machine », l'état du runner fait partie du libellé : travailler sans savoir que le runner
+   * est éteint est précisément ce qu'on ne veut plus.
+   */
+  engineLabel(): string {
+    if (this.engine !== 'LOCAL_MACHINE') {
+      return 'bac à sable hébergé';
+    }
+    if (this.runnerStatus === null) {
+      return 'ma machine — état inconnu';
+    }
+    return this.runnerStatus.connected ? 'ma machine — connectée' : 'ma machine — hors ligne';
+  }
+
+  /** Icône de la pastille de moteur : le nuage pour l'hébergé, la machine pour le local. */
+  engineIcon(): string {
+    return this.engine === 'LOCAL_MACHINE' ? 'dns' : 'cloud';
+  }
 
   @ViewChild('scrollback') private scrollback?: ElementRef<HTMLElement>;
 

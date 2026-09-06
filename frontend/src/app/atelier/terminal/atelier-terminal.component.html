@@ -5,6 +5,20 @@
       <mat-icon>terminal</mat-icon>
       {{ projectName }} — terminal
     </span>
+    <!-- Pastille de moteur (F-39 / SF-39-08, D1) : dit **où le code s'exécute**, jamais un nom de
+         mode. C'est tout ce qui reste, à l'écran, des anciens « Assistant » et « Terminal ». -->
+    <span
+      class="badge engine-chip"
+      [class.badge--success]="engine === 'LOCAL_MACHINE' && runnerStatus?.connected === true"
+      [class.badge--error]="engine === 'LOCAL_MACHINE' && runnerStatus !== null && runnerStatus.connected === false"
+      [class.badge--neutral]="engine !== 'LOCAL_MACHINE' || runnerStatus === null"
+    >
+      <mat-icon class="engine-chip-icon">{{ engineIcon() }}</mat-icon>
+      {{ engineLabel() }}
+      @if (runnerLastSeenLabel && engine === 'LOCAL_MACHINE') {
+        <span class="engine-last-seen">— {{ runnerLastSeenLabel }}</span>
+      }
+    </span>
     <span class="terminal-bar-actions">
       @if (submitting) {
         <mat-progress-spinner
@@ -79,16 +93,86 @@
           Publier
         </button>
       }
-      <button mat-button type="button" [disabled]="submitting" (click)="resetSandbox.emit()">
-        <mat-icon>restart_alt</mat-icon>
-        Réinitialiser
-      </button>
+      <!-- Réinitialiser recrée un environnement **hébergé** (F-30 / SF-30-06) : sur la machine de
+           l'utilisateur il n'y a rien à recréer, et un bouton qui ne fait rien est pire qu'un bouton
+           absent (D-L4-6). L'acquis est conservé là où il a un sens. -->
+      @if (engine === 'HOSTED_SANDBOX') {
+        <button mat-button type="button" [disabled]="submitting" (click)="resetSandbox.emit()">
+          <mat-icon>restart_alt</mat-icon>
+          Réinitialiser
+        </button>
+      }
       <button mat-button type="button" (click)="quit.emit()">
         <mat-icon>close</mat-icon>
         Quitter
       </button>
     </span>
   </header>
+
+  <!-- Cible d'exécution du projet (F-38 / SF-38-05) et gestes runner. **Pas un mode** : un réglage
+       de projet, qui suit donc l'écran unique (D-L4-4). Les faire disparaître avec l'ancienne mise
+       en page rendrait appairage, journal d'audit et coupe-circuit inatteignables — une régression
+       des acquis F-38 rappelés au §4 du cadrage. -->
+  <div class="terminal-target">
+    <span class="terminal-target-label">Où s'exécutent les outils</span>
+    <mat-button-toggle-group
+      class="terminal-target-toggle"
+      aria-label="Cible d'exécution des outils"
+      [value]="executionTarget"
+      [disabled]="switchingTarget || submitting"
+      (change)="executionTargetChange.emit($event.value)"
+    >
+      <mat-button-toggle value="SANDBOX">
+        <mat-icon>cloud</mat-icon>
+        Bac à sable hébergé
+      </mat-button-toggle>
+      <mat-button-toggle value="RUNNER">
+        <mat-icon>dns</mat-icon>
+        Ma machine
+      </mat-button-toggle>
+    </mat-button-toggle-group>
+
+    @if (runnerTarget) {
+      <button
+        mat-icon-button
+        type="button"
+        class="terminal-runner-refresh"
+        matTooltip="Actualiser l'état du runner. État relevé toutes les 15 s, et non en temps réel : la passerelle considère un runner connecté tant que son dernier signe de vie date de moins de 90 s."
+        aria-label="Actualiser l'état du runner"
+        (click)="refreshRunner.emit()"
+      >
+        <mat-icon>refresh</mat-icon>
+      </button>
+      <button mat-stroked-button type="button" class="terminal-runner-pair" (click)="pairRunner.emit()">
+        <mat-icon>settings_ethernet</mat-icon>
+        Connecter une machine
+      </button>
+      <!-- Journal d'activité (F-38 / SF-38-08) : ce qui a été lu, écrit et exécuté. -->
+      <button
+        mat-icon-button
+        type="button"
+        class="terminal-runner-audit"
+        matTooltip="Journal d'activité de la machine"
+        aria-label="Journal d'activité de la machine"
+        (click)="openRunnerAudit.emit()"
+      >
+        <mat-icon>history</mat-icon>
+      </button>
+      <!-- Coupe-circuit (F-38 / SF-38-08) : le bouton qu'on cherche quand ça se passe mal. -->
+      <button
+        mat-icon-button
+        type="button"
+        class="terminal-runner-kill"
+        color="warn"
+        matTooltip="Couper la liaison avec la machine"
+        aria-label="Couper la liaison avec la machine"
+        [disabled]="killingRunner"
+        (click)="killRunner.emit()"
+      >
+        <mat-icon>power_settings_new</mat-icon>
+      </button>
+    }
+  </div>
 
   @if (pushResult; as push) {
     <!-- Résultat de la dernière publication. Conservé à l'écran : le lien d'ouverture de pull

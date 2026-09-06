@@ -1,23 +1,14 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, NgZone, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
-import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
-import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatDialog } from '@angular/material/dialog';
-import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
-import { MatInputModule } from '@angular/material/input';
 import { MatListModule } from '@angular/material/list';
 import { MatMenuModule } from '@angular/material/menu';
-import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { MatToolbarModule } from '@angular/material/toolbar';
-import { MatTooltipModule } from '@angular/material/tooltip';
 
-import { MarkdownPipe } from '../shared/markdown.pipe';
-import { MessageSegmentsPipe } from '../shared/message-segments.pipe';
 import { httpErrorMessage, MAX_UPLOAD_BYTES, oversizeMessage } from '../shared/http-error.util';
 import { AtelierTerminalComponent } from './terminal/atelier-terminal.component';
 import {
@@ -31,7 +22,6 @@ import {
   ConfirmDialogComponent,
   ConfirmDialogData,
 } from '../chat/confirm-dialog/confirm-dialog.component';
-import { CopyBlockComponent } from '../chat/copy-block/copy-block.component';
 import {
   TextPromptDialogComponent,
   TextPromptDialogData,
@@ -51,6 +41,7 @@ import {
   AtelierAgentStreamActionResult,
   AtelierConfirmRequest,
   AtelierConfirmResolved,
+  AtelierEngine,
   AtelierMessage,
   AtelierTerminalBlock,
   AtelierRole,
@@ -70,11 +61,11 @@ import {
   RunnerAuditDialogComponent,
   RunnerAuditDialogData,
 } from './runner/runner-audit-dialog.component';
+import { chatStepsToBlocks } from './terminal/chat-steps';
 
 // Les types et constantes du fil vivent dans `atelier.types` (F-30 SF-30-07) : la vue terminal les
 // consomme aussi, et les garder ici créerait une dépendance circulaire. Réexportés pour compatibilité.
 import {
-  AtelierAgentMode,
   AtelierExecStreamingItem,
   AtelierPendingConfirmation,
   AtelierStreamingItem,
@@ -84,7 +75,6 @@ import {
   WORKSPACE_TEXT_EXTENSIONS,
 } from './atelier.types';
 export type {
-  AtelierAgentMode,
   AtelierThreadItem,
   AtelierStreamingItem,
   AtelierExecStreamingItem,
@@ -112,22 +102,12 @@ export const RUNNER_STATUS_POLL_MS = 15_000;
 @Component({
   selector: 'app-atelier',
   imports: [
-    FormsModule,
-    MatToolbarModule,
     MatListModule,
-    MatFormFieldModule,
-    MatInputModule,
     MatButtonModule,
-    MatButtonToggleModule,
     MatIconModule,
     MatMenuModule,
-    MatProgressBarModule,
     MatProgressSpinnerModule,
-    MatTooltipModule,
     RouterLink,
-    MarkdownPipe,
-    MessageSegmentsPipe,
-    CopyBlockComponent,
     AtelierTerminalComponent,
   ],
   templateUrl: './atelier.component.html',
@@ -178,10 +158,14 @@ export class AtelierComponent implements OnInit, OnDestroy {
   readonly streaming = signal<AtelierStreamingItem | null>(null);
 
   /**
-   * Mode de l'agent (SF-28-11). « Assistant » (défaut, Phase 1) : Claude lit/édite les fichiers.
-   * « Terminal » (Phase 2) : Claude exécute réellement (bash, tests, build) dans un sandbox hébergé.
+   * Moteur qui anime le terminal du projet ouvert (F-39 / SF-39-08, décision D1). **Lu** auprès de
+   * la gateway (`GET /engine`), jamais choisi ni déduit ici : la règle vivait à quatre endroits de
+   * ce composant et avait déjà été inversée une fois entre F-31 et F-38.
    */
-  readonly agentMode = signal<AtelierAgentMode>('edit');
+  readonly engine = signal<AtelierEngine>('HOSTED_SANDBOX');
+
+  /** Vrai si le tour part sur la boucle maison (outils relayés vers la machine de l'utilisateur). */
+  readonly localEngine = computed(() => this.engine() === 'LOCAL_MACHINE');
 
   /** Tour assistant « en cours » du mode « Terminal » (état + transcription + texte partiel). */
   readonly execStreaming = signal<AtelierExecStreamingItem | null>(null);
@@ -245,20 +229,6 @@ export class AtelierComponent implements OnInit, OnDestroy {
   private runnerStatusTimer: ReturnType<typeof setInterval> | null = null;
 
   /**
-   * Le mode **Assistant** est écarté sur un projet Git… sauf en cible `RUNNER` : le dépôt est alors
-   * cloné sur la machine de l'utilisateur, et la boucle tool-use y lit réellement les fichiers
-   * (SF-38-05 lève le garde-fou `requireArchiveChatMode`).
-   */
-  readonly assistantModeDisabled = computed(() => this.activeIsGit() && !this.runnerTarget());
-
-  /**
-   * Le mode **Terminal** s'appuie sur les Managed Agents, qui exécutent les outils chez le
-   * fournisseur : impossible à rerouter vers une machine (décision D2). Le backend refuse d'ouvrir
-   * la session (409 `execution_target_runner`) — autant le dire avant le premier message.
-   */
-  readonly terminalModeDisabled = computed(() => this.runnerTarget());
-
-  /**
    * Chemin du fichier d'instructions du projet (F-34 / SF-34-02), ou `null` s'il n'en porte pas.
    * Le chemin vient du backend : l'écran ne devine jamais quel fichier fait foi.
    */
@@ -303,12 +273,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
   readonly openingPullRequest = signal(false);
 
   ngOnInit(): void {
-    // Projet et mode demandés par l'URL (F-30 SF-30-10) : `/atelier/{id}?mode=terminal`. Les deux
-    // sont optionnels — `/atelier` seul garde exactement son comportement d'origine.
+    // Projet demandé par l'URL (F-30 SF-30-10) : `/atelier/{id}`. Le paramètre `?mode=terminal` des
+    // liens antérieurs est **accepté et ignoré** — il n'y a plus qu'un terminal (F-39 / SF-39-08),
+    // mais un lien déjà partagé doit continuer d'ouvrir le bon projet.
     this.requestedWorkspaceId = this.route.snapshot.paramMap.get('id');
-    if (this.route.snapshot.queryParamMap.get('mode') === 'terminal') {
-      this.agentMode.set('exec');
-    }
     this.loadWorkspaces();
   }
 
@@ -328,7 +296,6 @@ export class AtelierComponent implements OnInit, OnDestroy {
     }
     const found = list.find((w) => w.id === id);
     if (!found) {
-      this.agentMode.set('edit');
       this.notifyError('Projet introuvable.');
       return;
     }
@@ -640,15 +607,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Quitte la vue terminal. Sur un projet Git, le mode Assistant n'existe pas (il lirait un stockage
-   * vide) : quitter, c'est donc refermer le projet plutôt que basculer vers un mode indisponible.
+   * Quitte le terminal (F-39 / SF-39-08). Il n'y a plus d'autre mode vers lequel basculer : quitter,
+   * c'est refermer le projet et revenir à la liste.
    */
   leaveTerminal(): void {
-    if (this.activeIsGit()) {
-      this.closeWorkspace();
-      return;
-    }
-    this.setAgentMode('edit');
+    this.closeWorkspace();
   }
 
   /** Referme le projet ouvert et revient à la liste. */
@@ -662,7 +625,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.stopRunnerPolling();
     this.runnerStatus.set(null);
     this.resetFilePanel();
-    this.agentMode.set('edit');
+    this.engine.set('HOSTED_SANDBOX');
   }
 
   /** Place un workspace fraîchement créé en tête de liste, l'ouvre, et réinitialise l'écran. */
@@ -684,27 +647,24 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.pushResult.set(null);
     this.pullRequest.set(null);
     this.resetFilePanel();
-    this.alignModeWithSource(workspace);
+    this.loadEngine(workspace);
     this.syncRunnerPolling();
   }
 
   /**
-   * Un projet Git n'a de sens qu'en mode Terminal (F-31 / SF-31-03) : le mode Assistant travaille sur
-   * le stockage objet, vide ici. On aligne le mode sur la source plutôt que de laisser l'utilisateur
-   * découvrir le refus au premier message.
+   * Relève le moteur du projet auprès de la gateway (F-39 / SF-39-07). C'est **elle** qui tranche :
+   * l'écran ne déduit plus rien de la source ni de la cible.
    *
-   * <p>Exception depuis F-38 : en cible `RUNNER`, c'est l'inverse — le dépôt vit sur la machine de
-   * l'utilisateur (le mode Assistant y lit réellement), et c'est le mode Terminal qui n'existe pas
-   * (D2). La cible prime donc sur la source.</p>
+   * <p>Un relevé manqué ne doit jamais fermer l'Atelier : on retombe alors sur la cible déjà connue
+   * du détail du projet, qui donne exactement la même réponse dans tous les cas nominaux — c'est un
+   * repli, pas une seconde règle.</p>
    */
-  private alignModeWithSource(detail: WorkspaceDetail): void {
-    if (detail.executionTarget === 'RUNNER') {
-      this.agentMode.set('edit');
-      return;
-    }
-    if (detail.source === 'GIT') {
-      this.agentMode.set('exec');
-    }
+  private loadEngine(detail: WorkspaceDetail): void {
+    this.engine.set(engineFromTarget(detail));
+    this.atelier.getEngine(detail.id).subscribe({
+      next: (status) => this.engine.set(status.engine),
+      error: () => this.engine.set(engineFromTarget(detail)),
+    });
   }
 
   /**
@@ -883,7 +843,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
       next: (detail) => {
         this.tree.set(detail.files);
         this.activeDetail.set(detail);
-        this.alignModeWithSource(detail);
+        this.loadEngine(detail);
         // Le statut runner n'a de sens qu'en cible RUNNER : le sondage suit la cible du projet.
         this.syncRunnerPolling();
       },
@@ -912,14 +872,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.draft.set('');
     this.submitting.set(true);
 
-    // Mode « Terminal » (Phase 2, SF-28-11) : délègue au flux d'agent (sandbox hébergé). Le mode
-    // « Assistant » (défaut, Phase 1) reste strictement inchangé ci-dessous.
-    if (this.agentMode() === 'exec') {
+    // Le moteur décide du chemin d'envoi (F-39 / SF-39-08) — jamais l'utilisateur, qui a saisi la
+    // même demande dans le même terminal quel que soit l'endroit où elle s'exécutera.
+    if (!this.localEngine()) {
       this.sendExec(id, content, userItem);
       return;
     }
 
     this.streaming.set({ steps: [], text: '' });
+    // La boucle maison s'affiche dans la même vue terminal que le flux d'agent : les étapes du tour
+    // sont converties en blocs (commande puis sortie) au fil de l'eau (D-L4-5).
+    this.execStreaming.set({ status: '', blocks: [], text: '', tokens: null });
+    this.startExecTimer();
 
     void this.atelier.streamChat(id, content, {
       onAction: (action) =>
@@ -927,10 +891,14 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.streaming.update((current) =>
             current ? { ...current, steps: [...current.steps, action] } : current,
           );
+          this.mirrorLocalSteps();
         }),
       onText: (text) =>
         this.zone.run(() => {
           this.streaming.update((current) =>
+            current ? { ...current, text: current.text + text } : current,
+          );
+          this.execStreaming.update((current) =>
             current ? { ...current, text: current.text + text } : current,
           );
         }),
@@ -947,16 +915,23 @@ export class AtelierComponent implements OnInit, OnDestroy {
             steps[steps.length - 1] = { ...last, output: (last.output ?? '') + chunk };
             return { ...current, steps };
           });
+          this.mirrorLocalSteps();
         }),
       // Autorisation demandée avant d'exécuter sur la machine connectée (F-38 / SF-38-08) : le
       // tour est en pause tant que rien n'est décidé, et le silence vaut refus.
-      onConfirmRequest: (request) => this.zone.run(() => this.showConfirmation(request, 'edit')),
+      onConfirmRequest: (request) =>
+        this.zone.run(() => this.showConfirmation(request, 'LOCAL_MACHINE')),
       onConfirmResolved: (resolved) => this.zone.run(() => this.clearConfirmation(resolved)),
       onDone: (done) =>
         this.zone.run(() => {
           this.submitting.set(false);
           this.interrupting.set(false);
+          // La transcription est reprise dans le tour final : sans cela, tout ce qui a défilé
+          // pendant le tour disparaîtrait de l'écran (acquis F-30 SF-30-02).
+          const transcript = this.execStreaming()?.blocks ?? [];
+          this.stopExecTimer();
           this.streaming.set(null);
+          this.execStreaming.set(null);
           // Plus rien n'attend de décision : une invite restée à l'écran serait un piège.
           this.pendingConfirmation.set(null);
           this.messages.update((current) => [
@@ -966,6 +941,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
               role: 'ASSISTANT',
               content: done.reply,
               actions: done.actions ?? [],
+              terminal: transcript.length > 0 ? transcript : undefined,
+              // Pas de `cost` : la boucle maison ne relève pas la consommation d'un tour. Afficher
+              // une durée seule, sans tokens, ferait passer une absence de mesure pour une mesure
+              // (même règle qu'un relevé manqué côté agent, F-30 SF-30-05).
             },
           ]);
           // Un tour a pu écrire des fichiers : rafraîchir l'arborescence (et l'aperçu ouvert).
@@ -979,13 +958,29 @@ export class AtelierComponent implements OnInit, OnDestroy {
         this.zone.run(() => {
           this.submitting.set(false);
           this.interrupting.set(false);
+          this.stopExecTimer();
           this.streaming.set(null);
+          this.execStreaming.set(null);
           this.pendingConfirmation.set(null);
           // Retire le message utilisateur optimiste : rien n'a été persisté côté serveur.
           this.messages.update((current) => current.filter((m) => m.id !== userItem.id));
           this.notifyError(this.streamErrorMessage(code));
         }),
     });
+  }
+
+  /**
+   * Recopie les étapes de la boucle maison dans la transcription terminal (F-39 / SF-39-08).
+   *
+   * <p>Les deux flux de l'Atelier n'ont pas la même forme ; c'est ici qu'ils se rejoignent, pour que
+   * les acquis §4 de F-30 — commande puis sortie, repli des sorties longues, ligne vivante,
+   * transcription conservée — valent des deux côtés.</p>
+   */
+  private mirrorLocalSteps(): void {
+    const steps = this.streaming()?.steps ?? [];
+    this.execStreaming.update((current) =>
+      current ? { ...current, blocks: chatStepsToBlocks(steps) } : current,
+    );
   }
 
   /** Traduit un code d'erreur de flux en message utilisateur lisible (SF-28-05). */
@@ -1012,6 +1007,12 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * comme interrompu.</p>
    */
   interruptRun(): void {
+    // Un seul bouton « Interrompre » à l'écran (F-39 / SF-39-08) : c'est le moteur qui décide à qui
+    // la demande s'adresse. Les deux chemins existent déjà et n'ont pas la même destination.
+    if (this.localEngine()) {
+      this.interruptLocalRun();
+      return;
+    }
     const id = this.activeWorkspaceId();
     if (!id || !this.submitting() || this.interrupting()) {
       return;
@@ -1028,11 +1029,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Interrompt le tour du mode **Assistant** en cours (F-38 / SF-38-07). Utile surtout en cible
+   * Interrompt le tour de la **boucle maison** en cours (F-38 / SF-38-07). Utile surtout en cible
    * `RUNNER`, où une commande peut tourner plusieurs minutes sur la machine de l'utilisateur : sans
    * ce bouton, la seule sortie serait de fermer l'onglet en laissant la commande derrière soi.
    */
-  interruptAssistantRun(): void {
+  interruptLocalRun(): void {
     const id = this.activeWorkspaceId();
     if (!id || !this.submitting() || this.interrupting()) {
       return;
@@ -1068,7 +1069,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * flux**, là où l'utilisateur regarde déjà défiler la sortie : une modale masquerait précisément
    * les commandes précédentes, qui sont ce qui permet de juger.
    */
-  private showConfirmation(request: AtelierConfirmRequest, source: AtelierAgentMode): void {
+  private showConfirmation(request: AtelierConfirmRequest, source: AtelierEngine): void {
     this.pendingConfirmation.set({
       toolUseId: request.toolUseId,
       tool: request.tool,
@@ -1129,9 +1130,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
       decision: (allow ? 'allow' : 'deny') as 'allow' | 'deny',
       reason: !allow && reason.length > 0 ? reason : undefined,
     };
-    // La question est la même dans les deux modes, la destination non : mode Assistant sur machine
-    // connectée (F-38 / SF-38-08) ou session sandbox (F-33).
-    const answer = pending.source === 'edit'
+    // La question est la même des deux côtés, la destination non : boucle maison sur machine
+    // connectée (F-38 / SF-38-08) ou session de bac à sable (F-33).
+    const answer = pending.source === 'LOCAL_MACHINE'
       ? this.atelier.confirmChatToolUse(id, decision)
       : this.atelier.confirmToolUse(id, decision);
     answer
@@ -1211,7 +1212,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
         this.switchingTarget.set(false);
         this.activeDetail.set(detail);
         this.tree.set(detail.files);
-        this.alignModeWithTarget(detail);
+        // La cible vient de changer : le moteur en découle, on le redemande à la gateway.
+        this.loadEngine(detail);
         this.syncRunnerPolling();
       },
       error: (err: unknown) => {
@@ -1306,7 +1308,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
         if (detail) {
           const updated = { ...detail, executionTarget: result.executionTarget };
           this.activeDetail.set(updated);
-          this.alignModeWithTarget(updated);
+          this.loadEngine(updated);
         }
         this.pendingConfirmation.set(null);
         this.runnerStatus.set(null);
@@ -1384,19 +1386,6 @@ export class AtelierComponent implements OnInit, OnDestroy {
     }
   }
 
-  /**
-   * En cible `RUNNER`, le mode Terminal n'est pas disponible (D2) : on retombe sur l'Assistant, qui
-   * lit et écrit sur la machine via le runner. Symétrique de {@link alignModeWithSource}.
-   */
-  private alignModeWithTarget(detail: WorkspaceDetail): void {
-    if (detail.executionTarget === 'RUNNER' && this.agentMode() === 'exec') {
-      this.agentMode.set('edit');
-      this.snackBar.open(
-        'Cible « ma machine » : le mode Terminal (sandbox hébergé) n\'y est pas disponible.',
-        'Fermer', { duration: 6000 });
-    }
-  }
-
   /** Message de bascule : dit franchement quand le réglage ne vaut que pour la prochaine sandbox. */
   private confirmationToggleMessage(enabled: boolean, appliesNow: boolean): string {
     const state = enabled
@@ -1444,36 +1433,6 @@ export class AtelierComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Bascule le mode de l'agent (« Assistant » ⇄ « Terminal »), sauf pendant un envoi en cours.
-   *
-   * <p>Sur un projet Git (F-31 / SF-31-03), le mode Assistant est refusé côté backend : il lit le
-   * stockage objet, vide sur ce type de projet. On reste donc en Terminal, où le dépôt est
-   * réellement cloné — plutôt que d'envoyer l'utilisateur vers une erreur.</p>
-   */
-  setAgentMode(mode: AtelierAgentMode): void {
-    if (this.submitting()) {
-      return;
-    }
-    if (mode === 'exec' && this.terminalModeDisabled()) {
-      // Cible « ma machine » : les Managed Agents exécuteraient les outils chez le fournisseur (D2).
-      this.agentMode.set('edit');
-      this.notifyError(
-        'Les outils de ce projet s\'exécutent sur votre machine : le mode Terminal (sandbox hébergé) '
-        + 'n\'y est pas disponible.',
-      );
-      return;
-    }
-    if (mode === 'edit' && this.assistantModeDisabled()) {
-      this.agentMode.set('exec');
-      this.notifyError(
-        'Ce projet est adossé à un dépôt Git : le mode Terminal est le seul où le dépôt est disponible.',
-      );
-      return;
-    }
-    this.agentMode.set(mode);
-  }
-
-  /**
    * Envoie le message courant en mode **Terminal** (SF-28-11) : relaie l'état de session, les étapes
    * d'outils (bash, tests…) et le commentaire au fil de l'eau, puis ajoute la réponse finale et la
    * liste des fichiers modifiés, et rafraîchit l'arborescence. Le flux tourne hors zone Angular
@@ -1512,7 +1471,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
             current ? { ...current, text: current.text + text } : current,
           );
         }),
-      onConfirmRequest: (request) => this.zone.run(() => this.showConfirmation(request, 'exec')),
+      onConfirmRequest: (request) => this.zone.run(() => this.showConfirmation(request, 'HOSTED_SANDBOX')),
       onConfirmResolved: (resolved) => this.zone.run(() => this.clearConfirmation(resolved)),
       onDone: (done) =>
         this.zone.run(() => {
@@ -1568,9 +1527,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
   private mapAgentError(code: string): string {
     switch (code) {
       case 'forbidden':
-        return "Le mode Terminal est réservé à l'offre Gold.";
+        return "L'exécution est réservée à l'offre Gold.";
       case 'agent_disabled':
-        return 'Le mode Terminal est momentanément indisponible.';
+        return "L'exécution est momentanément indisponible.";
       case 'workspace_not_found':
         return 'Projet introuvable.';
       case 'credit_exhausted':
@@ -1776,6 +1735,15 @@ export class AtelierComponent implements OnInit, OnDestroy {
   }
 }
 
+
+/**
+ * Moteur déduit de la cible d'exécution (F-39 / SF-39-08) — **repli seulement**, quand le relevé
+ * `GET /engine` n'a pas abouti. La règle de référence vit côté gateway (SF-39-07) ; celle-ci existe
+ * pour qu'un aller-retour manqué n'empêche pas d'ouvrir un projet, jamais pour la doubler.
+ */
+function engineFromTarget(detail: WorkspaceDetail): AtelierEngine {
+  return detail.executionTarget === 'RUNNER' ? 'LOCAL_MACHINE' : 'HOSTED_SANDBOX';
+}
 
 /** Ouvre un bloc terminal pour une commande relayée (F-30 SF-30-02). */
 function openBlock(action: AtelierAgentStreamAction): AtelierTerminalBlock {

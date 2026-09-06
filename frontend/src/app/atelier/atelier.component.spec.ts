@@ -105,6 +105,7 @@ describe('AtelierComponent', () => {
       'restartThread',
       'setExecutionTarget',
       'getRunnerStatus',
+      'getEngine',
       'createRunnerPairingCode',
       'downloadRunnerJar',
     ]);
@@ -114,8 +115,15 @@ describe('AtelierComponent', () => {
 
     // Valeurs par défaut : la liste est chargée à l'init.
     service.listWorkspaces.and.returnValue(of([summary]));
+    // Aucun runner par défaut : le sondage d'état ne doit jamais faire tomber un test d'écran.
+    service.getRunnerStatus.and.returnValue(of({ connected: false, lastSeenAt: null }));
     service.getWorkspace.and.returnValue(of(detail));
     service.getHistory.and.returnValue(of([]));
+    // Projet d'archive en bac à sable : la gateway rend donc le moteur hébergé (SF-39-07).
+    service.getEngine.and.returnValue(of({
+      engine: 'HOSTED_SANDBOX' as const, runnerConnected: false, runnerLastSeenAt: null,
+      recommendRunner: false, recommendReason: null,
+    }));
     // SF-39-04 : par défaut, la reprise du fil ne demande rien.
     service.getResume.and.returnValue(
       of({ turns: 0, lastMessageAt: null, threadStartedAt: null, prompt: 'NONE' as const }),
@@ -153,6 +161,7 @@ describe('AtelierComponent', () => {
       'createPullRequest',
       'listWorkspaces',
       'getWorkspace',
+      'getEngine',
       'getFile',
       'writeFile',
       'importLibrary',
@@ -222,6 +231,7 @@ describe('AtelierComponent', () => {
       'createPullRequest',
       'listWorkspaces',
       'getWorkspace',
+      'getEngine',
       'getFile',
       'writeFile',
       'importLibrary',
@@ -264,6 +274,7 @@ describe('AtelierComponent', () => {
       'createPullRequest',
       'listWorkspaces',
       'getWorkspace',
+      'getEngine',
       'getFile',
       'writeFile',
       'importLibrary',
@@ -405,6 +416,9 @@ describe('AtelierComponent', () => {
   it('streams a message: relays a step then replaces it with the final reply and refreshes the tree', () => {
     setup();
     component.activeWorkspaceId.set('w1');
+    // Boucle maison : c'est le moteur « ma machine » qui emprunte `chat/stream`
+    // (F-39 / SF-39-08). Le moteur n'est plus un mode, il conditionne le chemin d'envoi.
+    component.engine.set('LOCAL_MACHINE');
     // Le flux relaie une étape « read », un commentaire, puis la réponse finale.
     service.streamChat.and.callFake((_id, _message, handlers) => {
       handlers.onAction({ type: 'read', path: 'src/main.ts' });
@@ -439,6 +453,9 @@ describe('AtelierComponent', () => {
   it('accumulates streamed steps and partial text on the in-progress turn', () => {
     setup();
     component.activeWorkspaceId.set('w1');
+    // Boucle maison : c'est le moteur « ma machine » qui emprunte `chat/stream`
+    // (F-39 / SF-39-08). Le moteur n'est plus un mode, il conditionne le chemin d'envoi.
+    component.engine.set('LOCAL_MACHINE');
     // Ne termine pas le flux : on inspecte l'état « en cours ».
     service.streamChat.and.callFake((_id, _message, handlers) => {
       handlers.onAction({ type: 'read', path: 'a.txt' });
@@ -461,6 +478,9 @@ describe('AtelierComponent', () => {
   it("attache la sortie d'une commande à l'étape bash en cours (F-38 / SF-38-07)", () => {
     setup();
     component.activeWorkspaceId.set('w1');
+    // Boucle maison : c'est le moteur « ma machine » qui emprunte `chat/stream`
+    // (F-39 / SF-39-08). Le moteur n'est plus un mode, il conditionne le chemin d'envoi.
+    component.engine.set('LOCAL_MACHINE');
     service.streamChat.and.callFake((_id, _message, handlers) => {
       handlers.onAction({ type: 'read', path: 'a.txt' });
       handlers.onAction({ type: 'bash', path: 'npm test' });
@@ -481,12 +501,15 @@ describe('AtelierComponent', () => {
   it("demande l'interruption du tour Assistant en cours (F-38 / SF-38-07)", () => {
     setup();
     component.activeWorkspaceId.set('w1');
+    // Boucle maison : c'est le moteur « ma machine » qui emprunte `chat/stream`
+    // (F-39 / SF-39-08). Le moteur n'est plus un mode, il conditionne le chemin d'envoi.
+    component.engine.set('LOCAL_MACHINE');
     service.interruptChat.and.returnValue(of(void 0));
     service.streamChat.and.callFake(() => Promise.resolve()); // tour laissé en cours
     component.draft.set('lance');
     component.send();
 
-    component.interruptAssistantRun();
+    component.interruptLocalRun();
 
     expect(service.interruptChat).toHaveBeenCalledWith('w1');
     expect(snackBar.open).toHaveBeenCalled();
@@ -495,8 +518,11 @@ describe('AtelierComponent', () => {
   it("n'interrompt rien quand aucun tour n'est en cours (F-38 / SF-38-07)", () => {
     setup();
     component.activeWorkspaceId.set('w1');
+    // Boucle maison : c'est le moteur « ma machine » qui emprunte `chat/stream`
+    // (F-39 / SF-39-08). Le moteur n'est plus un mode, il conditionne le chemin d'envoi.
+    component.engine.set('LOCAL_MACHINE');
 
-    component.interruptAssistantRun();
+    component.interruptLocalRun();
 
     expect(service.interruptChat).not.toHaveBeenCalled();
   });
@@ -504,6 +530,9 @@ describe('AtelierComponent', () => {
   it('does not send when the draft is blank', () => {
     setup();
     component.activeWorkspaceId.set('w1');
+    // Boucle maison : c'est le moteur « ma machine » qui emprunte `chat/stream`
+    // (F-39 / SF-39-08). Le moteur n'est plus un mode, il conditionne le chemin d'envoi.
+    component.engine.set('LOCAL_MACHINE');
     component.draft.set('   ');
     component.send();
     expect(service.streamChat).not.toHaveBeenCalled();
@@ -512,6 +541,9 @@ describe('AtelierComponent', () => {
   it('removes the optimistic user turn and notifies when the stream fails', () => {
     setup();
     component.activeWorkspaceId.set('w1');
+    // Boucle maison : c'est le moteur « ma machine » qui emprunte `chat/stream`
+    // (F-39 / SF-39-08). Le moteur n'est plus un mode, il conditionne le chemin d'envoi.
+    component.engine.set('LOCAL_MACHINE');
     service.streamChat.and.callFake((_id, _message, handlers) => {
       handlers.onError('internal_error');
       return Promise.resolve();
@@ -529,6 +561,9 @@ describe('AtelierComponent', () => {
   it('shows a quota message when the stream reports quota_exceeded', () => {
     setup();
     component.activeWorkspaceId.set('w1');
+    // Boucle maison : c'est le moteur « ma machine » qui emprunte `chat/stream`
+    // (F-39 / SF-39-08). Le moteur n'est plus un mode, il conditionne le chemin d'envoi.
+    component.engine.set('LOCAL_MACHINE');
     service.streamChat.and.callFake((_id, _message, handlers) => {
       handlers.onError('quota_exceeded');
       return Promise.resolve();
@@ -542,9 +577,12 @@ describe('AtelierComponent', () => {
     expect(component.messages().length).toBe(0);
   });
 
-  it('mode Assistant (défaut) : send() appelle streamChat, pas streamAgent (non-régression)', () => {
+  it('moteur « ma machine » : send() appelle streamChat, pas streamAgent (F-39 SF-39-08)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
+    // Boucle maison : c'est le moteur « ma machine » qui emprunte `chat/stream`
+    // (F-39 / SF-39-08). Le moteur n'est plus un mode, il conditionne le chemin d'envoi.
+    component.engine.set('LOCAL_MACHINE');
     service.streamChat.and.callFake((_id, _message, handlers) => {
       handlers.onDone({ reply: 'ok', actions: [], messageId: 'm1' });
       return Promise.resolve();
@@ -555,13 +593,12 @@ describe('AtelierComponent', () => {
 
     expect(service.streamChat).toHaveBeenCalled();
     expect(service.streamAgent).not.toHaveBeenCalled();
-    expect(component.agentMode()).toBe('edit');
   });
 
-  it('mode Terminal : send() appelle streamAgent (pas streamChat) et ajoute la réponse finale', () => {
+  it('moteur « bac à sable » : send() appelle streamAgent (pas streamChat) et ajoute la réponse finale', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     // Le flux relaie un état, une commande bash, un commentaire, puis la réponse finale.
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onStatus('running');
@@ -599,7 +636,7 @@ describe('AtelierComponent', () => {
   it('mode Terminal : accumule l\'état, les étapes d\'outil et le texte partiel du tour en cours', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     // Ne termine pas le flux : on inspecte l'état « en cours ».
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onStatus('running');
@@ -624,7 +661,7 @@ describe('AtelierComponent', () => {
   it('mode Terminal : onError(forbidden) affiche le message Gold sans ajouter de message assistant', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onError('forbidden');
       return Promise.resolve();
@@ -644,7 +681,7 @@ describe('AtelierComponent', () => {
   it('mode Terminal : onError(session_timeout) affiche un message de délai dépassé', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onError('session_timeout');
       return Promise.resolve();
@@ -658,18 +695,21 @@ describe('AtelierComponent', () => {
     expect(component.messages().length).toBe(0);
   });
 
-  it('ne change pas de mode pendant un envoi en cours', () => {
+  it('ne change pas de cible d\'exécution pendant un envoi en cours (F-39 SF-39-08)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     // Flux qui ne se termine pas : submitting reste vrai.
     service.streamAgent.and.callFake(() => Promise.resolve());
     component.draft.set('Tâche');
     component.send();
     expect(component.submitting()).toBeTrue();
 
-    component.setAgentMode('edit');
-    expect(component.agentMode()).toBe('exec');
+    // Il n'y a plus de mode à basculer ; ce qui reste réglable, c'est *où* les outils s'exécutent —
+    // et le changer au milieu d'un tour enverrait les écritures ailleurs qu'attendu.
+    component.setExecutionTarget('RUNNER');
+
+    expect(service.setExecutionTarget).not.toHaveBeenCalled();
   });
 
   it('opens a file into the editable preview', () => {
@@ -773,7 +813,7 @@ describe('AtelierComponent', () => {
   it('mode Terminal : apparie la sortie à sa commande par toolUseId (F-30)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onAction({ tool: 'bash', detail: 'npm test', toolUseId: 'tu_1' });
       handlers.onAction({ tool: 'bash', detail: 'npm run build', toolUseId: 'tu_2' });
@@ -795,7 +835,7 @@ describe('AtelierComponent', () => {
   it('mode Terminal : sans toolUseId, la sortie va à la dernière commande sans sortie (F-30)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onAction({ tool: 'bash', detail: 'npm test', toolUseId: null });
       handlers.onActionResult({ tool: 'bash', toolUseId: null, output: '12 passing', error: false });
@@ -814,7 +854,7 @@ describe('AtelierComponent', () => {
   it('mode Terminal : une sortie sans commande connue crée un bloc orphelin (jamais perdue, F-30)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onActionResult({ tool: 'bash', toolUseId: 'inconnu', output: 'orpheline', error: false });
       return Promise.resolve();
@@ -832,7 +872,7 @@ describe('AtelierComponent', () => {
   it('mode Terminal : une sortie en échec marque le bloc en erreur (F-30)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onAction({ tool: 'bash', detail: 'npm run build', toolUseId: 'tu_1' });
       handlers.onActionResult({
@@ -853,7 +893,7 @@ describe('AtelierComponent', () => {
   it('mode Terminal : une sortie longue est repliée puis dépliable (F-30)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     const long = Array.from({ length: 30 }, (_, i) => `ligne ${i + 1}`).join('\n');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onAction({ tool: 'bash', detail: 'npm install', toolUseId: 'tu_1' });
@@ -876,7 +916,7 @@ describe('AtelierComponent', () => {
   it('mode Terminal : la transcription reste dans le fil après la fin du run (F-30)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onAction({ tool: 'bash', detail: 'npm test', toolUseId: 'tu_1' });
       handlers.onActionResult({ tool: 'bash', toolUseId: 'tu_1', output: '12 passing', error: false });
@@ -903,32 +943,20 @@ describe('AtelierComponent', () => {
   });
   // ---- F-30 SF-30-03 : modes « Assistant » et « Terminal » ----
 
-  it('affiche les modes « Assistant » et « Terminal », plus « Édition » / « Exécution » (F-30)', () => {
+  it('le sélecteur de mode a disparu de l\'écran (F-39 SF-39-08, D1)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
     fixture.detectChanges();
 
-    const selector: HTMLElement = fixture.nativeElement.querySelector('.mode-selector');
-    expect(selector.textContent).toContain('Assistant');
-    expect(selector.textContent).toContain('Terminal');
-    expect(selector.textContent).not.toContain('Édition');
-    expect(selector.textContent).not.toContain('Exécution');
+    // Les mots « Assistant » et « Terminal » désignaient un moteur : ils n'ont plus de référent.
+    expect(fixture.nativeElement.querySelector('.mode-selector')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.mode-toggle')).toBeNull();
   });
 
-  it('signale le mode Terminal comme capacité Gold par un badge (F-30)', () => {
+  it('les messages d\'erreur ne nomment plus un mode (F-39 SF-39-08)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    fixture.detectChanges();
-
-    const badge: HTMLElement = fixture.nativeElement.querySelector('.mode-badge');
-    expect(badge).not.toBeNull();
-    expect(badge.textContent!.trim()).toBe('Gold');
-  });
-
-  it('les messages d\'erreur du flux reprennent le nom « Terminal » (F-30)', () => {
-    setup();
-    component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onError('agent_disabled');
       return Promise.resolve();
@@ -938,14 +966,14 @@ describe('AtelierComponent', () => {
     component.send();
 
     expect(snackBar.open.calls.mostRecent().args[0]).toBe(
-      'Le mode Terminal est momentanément indisponible.',
+      "L'exécution est momentanément indisponible.",
     );
   });
 
-  it('le mode Terminal refusé (non-Gold) renvoie vers l\'offre Gold (F-30)', () => {
+  it('l\'exécution refusée (non-Gold) renvoie vers l\'offre Gold (F-30, reformulé SF-39-08)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onError('forbidden');
       return Promise.resolve();
@@ -955,22 +983,25 @@ describe('AtelierComponent', () => {
     component.send();
 
     expect(snackBar.open.calls.mostRecent().args[0]).toBe(
-      "Le mode Terminal est réservé à l'offre Gold.",
+      "L'exécution est réservée à l'offre Gold.",
     );
   });
 
-  it('les valeurs techniques de mode restent inchangées (non-régression F-30)', () => {
+  it('le moteur nomme où le code s\'exécute (F-39 SF-39-08, D-L4-2)', () => {
     setup();
-    expect(component.agentMode()).toBe('edit');
-    component.setAgentMode('exec');
-    expect(component.agentMode()).toBe('exec');
+
+    component.engine.set('LOCAL_MACHINE');
+    expect(component.localEngine()).toBeTrue();
+
+    component.engine.set('HOSTED_SANDBOX');
+    expect(component.localEngine()).toBeFalse();
   });
   // ---- F-30 SF-30-06 : réinitialiser la sandbox ----
 
   it('réinitialise la sandbox après confirmation (F-30)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     dialog.open.and.returnValue({ afterClosed: () => of(true) } as MatDialogRef<unknown, unknown>);
     service.resetAgentSession.and.returnValue(of(void 0));
 
@@ -983,7 +1014,7 @@ describe('AtelierComponent', () => {
   it('n\'appelle rien si le dialogue est fermé sans confirmer (F-30)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     dialog.open.and.returnValue({ afterClosed: () => of(false) } as MatDialogRef<unknown, unknown>);
 
     component.resetSandbox();
@@ -994,7 +1025,7 @@ describe('AtelierComponent', () => {
   it('affiche un message lisible si la réinitialisation échoue (F-30)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     dialog.open.and.returnValue({ afterClosed: () => of(true) } as MatDialogRef<unknown, unknown>);
     service.resetAgentSession.and.returnValue(
       throwError(() => new HttpErrorResponse({ status: 500 })),
@@ -1010,7 +1041,7 @@ describe('AtelierComponent', () => {
   it('traduit un 404 en « Projet introuvable. » (F-30)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     dialog.open.and.returnValue({ afterClosed: () => of(true) } as MatDialogRef<unknown, unknown>);
     service.resetAgentSession.and.returnValue(
       throwError(() => new HttpErrorResponse({ status: 404 })),
@@ -1024,7 +1055,7 @@ describe('AtelierComponent', () => {
   it('refuse la réinitialisation pendant un envoi en cours (F-30)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     component.submitting.set(true);
 
     component.resetSandbox();
@@ -1037,7 +1068,7 @@ describe('AtelierComponent', () => {
   it('affiche durée et tokens sur le tour terminé (F-30)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onDone({
         reply: 'Terminé.',
@@ -1066,7 +1097,7 @@ describe('AtelierComponent', () => {
   it('n\'affiche aucun coût quand la consommation est inconnue (F-30)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       // Relevé best-effort manqué côté backend : zéro = inconnu, pas « 0 token ».
       handlers.onDone({
@@ -1089,45 +1120,44 @@ describe('AtelierComponent', () => {
   });
   // ---- F-30 SF-30-07 : vue terminal immersive ----
 
-  it('passer en mode Terminal ouvre la vue immersive sans envoyer de message (F-30)', () => {
+  it('un projet ouvert est un terminal, quel que soit le moteur (F-39 SF-39-08, D1)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    fixture.detectChanges();
-    // Mode Assistant : écran habituel, pas de terminal.
-    expect(fixture.nativeElement.querySelector('app-atelier-terminal')).toBeNull();
-    expect(fixture.nativeElement.querySelector('.atelier-layout')).not.toBeNull();
 
-    component.setAgentMode('exec');
-    fixture.detectChanges();
+    for (const engine of ['HOSTED_SANDBOX', 'LOCAL_MACHINE'] as const) {
+      component.engine.set(engine);
+      fixture.detectChanges();
 
-    // La vue terminal remplace l'écran : ni liste de projets, ni fil conversationnel.
-    expect(fixture.nativeElement.querySelector('app-atelier-terminal')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('.atelier-layout')).toBeNull();
+      // La vue terminal occupe l'écran : ni liste de projets, ni fil conversationnel.
+      expect(fixture.nativeElement.querySelector('app-atelier-terminal')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('.atelier-layout')).toBeNull();
+    }
+    // Ouvrir le terminal n'envoie rien : c'est un écran, pas un tour.
     expect(service.streamAgent).not.toHaveBeenCalled();
     expect(service.streamChat).not.toHaveBeenCalled();
   });
 
-  it('quitter la vue terminal restaure l\'écran habituel sans perdre la conversation (F-30)', () => {
+  it('quitter le terminal referme le projet et revient à la liste (F-39 SF-39-08)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
     component.messages.set([
       { id: 'm1', role: 'USER', content: 'lance les tests', actions: [] },
     ]);
-    component.setAgentMode('exec');
     fixture.detectChanges();
 
-    component.setAgentMode('edit');
+    component.leaveTerminal();
     fixture.detectChanges();
 
+    // Il n'y a plus d'autre mode vers lequel basculer : quitter, c'est refermer.
+    expect(component.activeWorkspaceId()).toBeNull();
     expect(fixture.nativeElement.querySelector('app-atelier-terminal')).toBeNull();
     expect(fixture.nativeElement.querySelector('.atelier-layout')).not.toBeNull();
-    expect(component.messages().length).toBe(1);
   });
 
   it('sans projet sélectionné, la vue terminal ne s\'ouvre pas (F-30)', () => {
     setup();
     component.activeWorkspaceId.set(null);
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('app-atelier-terminal')).toBeNull();
@@ -1135,7 +1165,7 @@ describe('AtelierComponent', () => {
   it('credit_exhausted affiche un message qui n\'invite pas à réessayer (F-30 SF-30-08)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onError('credit_exhausted');
       return Promise.resolve();
@@ -1324,10 +1354,10 @@ describe('AtelierComponent', () => {
 
     component.openGitRepoDialog();
 
-    expect(component.agentMode()).toBe('exec');
+    expect(component.engine()).toBe('HOSTED_SANDBOX');
   });
 
-  it("refuse le mode Assistant sur un projet Git et l'explique", () => {
+  it("un projet Git en bac à sable tourne sur le bac à sable, sans rien refuser (SF-39-08)", () => {
     setup();
     service.getWorkspace.and.returnValue(of(gitDetail));
     component.selectWorkspace({
@@ -1338,19 +1368,18 @@ describe('AtelierComponent', () => {
       gitRepo: 'octocat/hello',
     });
 
-    component.setAgentMode('edit');
-
-    expect(component.agentMode()).toBe('exec');
-    expect(snackBar.open.calls.mostRecent().args[0]).toContain('Terminal');
+    // Le moteur est lu, jamais choisi : il n'y a plus de mode indisponible à expliquer.
+    expect(service.getEngine).toHaveBeenCalledWith('w2');
+    expect(component.engine()).toBe('HOSTED_SANDBOX');
   });
 
   it("laisse le mode Assistant disponible sur un projet d'archive", () => {
     setup();
     component.selectWorkspace(summary);
 
-    component.setAgentMode('edit');
+    component.engine.set('LOCAL_MACHINE');
 
-    expect(component.agentMode()).toBe('edit');
+    expect(component.engine()).toBe('LOCAL_MACHINE');
   });
 
   it("expose le troncage d'arborescence d'un dépôt volumineux", () => {
@@ -1575,27 +1604,120 @@ describe('AtelierComponent', () => {
     expect(component.pullRequest()).toBeNull();
   });
 
-  it("quitter le terminal referme un projet Git au lieu d'un mode indisponible", () => {
+  it("quitter le terminal referme un projet Git et oublie la dernière publication", () => {
     setup();
     openGitProject();
 
     component.leaveTerminal();
 
     expect(component.activeWorkspaceId()).toBeNull();
-    expect(component.agentMode()).toBe('edit');
     expect(component.pushResult()).toBeNull();
   });
 
-  it("quitter le terminal d'un projet d'archive revient au mode Assistant", () => {
+  it("quitter le terminal d'un projet d'archive le referme aussi (F-39 SF-39-08)", () => {
     setup();
     component.selectWorkspace(summary);
-    component.setAgentMode('exec');
 
     component.leaveTerminal();
 
-    expect(component.agentMode()).toBe('edit');
-    expect(component.activeWorkspaceId()).toBe('w1');
+    // Même geste pour les deux sources : il n'existe plus de mode de repli.
+    expect(component.activeWorkspaceId()).toBeNull();
   });
+  // ---- F-39 / SF-39-08 : écran unique, moteur transparent ----
+
+  it('lit le moteur auprès de la gateway à l\'ouverture d\'un projet (SF-39-08)', () => {
+    setup();
+    service.getEngine.and.returnValue(of({
+      engine: 'LOCAL_MACHINE' as const, runnerConnected: true, runnerLastSeenAt: null,
+      recommendRunner: false, recommendReason: null,
+    }));
+
+    component.selectWorkspace(summary);
+
+    expect(service.getEngine).toHaveBeenCalledWith('w1');
+    expect(component.engine()).toBe('LOCAL_MACHINE');
+  });
+
+  it('un relevé de moteur manqué n\'empêche pas d\'ouvrir le projet (SF-39-08)', () => {
+    setup();
+    service.getWorkspace.and.returnValue(of({ ...detail, executionTarget: 'RUNNER' as const }));
+    service.getEngine.and.returnValue(throwError(() => new HttpErrorResponse({ status: 503 })));
+
+    component.selectWorkspace(summary);
+
+    // Repli sur la cible déjà connue : le projet s'ouvre, et il s'ouvre au bon endroit.
+    expect(component.activeWorkspaceId()).toBe('w1');
+    expect(component.engine()).toBe('LOCAL_MACHINE');
+    fixture.destroy();
+  });
+
+  it('relit le moteur après une bascule de cible d\'exécution (SF-39-08)', () => {
+    setup();
+    component.selectWorkspace(summary);
+    service.getEngine.calls.reset();
+    service.getRunnerStatus.and.returnValue(of({ connected: false, lastSeenAt: null }));
+    service.setExecutionTarget.and.returnValue(
+      of({ ...detail, executionTarget: 'RUNNER' as const }));
+
+    component.setExecutionTarget('RUNNER');
+
+    // La cible décide du moteur : la changer sans relire laisserait l'écran sur l'ancien.
+    expect(service.getEngine).toHaveBeenCalledWith('w1');
+    // Le sondage d'état runner vient de démarrer : le laisser tourner ferait fuir un intervalle.
+    fixture.destroy();
+  });
+
+  it('conserve la transcription d\'un tour de boucle maison dans le fil (acquis F-30 SF-30-02)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.engine.set('LOCAL_MACHINE');
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onAction({ type: 'bash', path: 'npm test' });
+      handlers.onOutput?.('2 tests passés\n');
+      handlers.onDone({ reply: 'Tout passe.', actions: [], messageId: 'm-1' });
+      return Promise.resolve();
+    });
+
+    component.draft.set('lance les tests');
+    component.send();
+
+    const last = component.messages()[component.messages().length - 1];
+    expect(last.terminal!.length).toBe(1);
+    expect(last.terminal![0].command).toBe('npm test');
+    expect(last.terminal![0].output).toBe('2 tests passés\n');
+    // Rien ne défile plus : le tour terminé porte ce qui s'est passé.
+    expect(component.execStreaming()).toBeNull();
+  });
+
+  it('n\'annonce aucun coût sur un tour de boucle maison (consommation non relevée)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.engine.set('LOCAL_MACHINE');
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onDone({ reply: 'ok', actions: [], messageId: 'm-1' });
+      return Promise.resolve();
+    });
+
+    component.draft.set('vas-y');
+    component.send();
+
+    // Une durée sans tokens se lirait comme une mesure : mieux vaut ne rien dire (F-30 SF-30-05).
+    expect(component.messages()[1].cost).toBeUndefined();
+  });
+
+  it('interrompt le bon moteur selon le tour en cours (SF-39-08)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.engine.set('LOCAL_MACHINE');
+    component.submitting.set(true);
+    service.interruptChat.and.returnValue(of(void 0));
+
+    component.interruptRun();
+
+    expect(service.interruptChat).toHaveBeenCalledWith('w1');
+    expect(service.interruptAgentSession).not.toHaveBeenCalled();
+  });
+
   // ---- F-32 / SF-32-02 : interrompre un run en cours ----
 
   it('demande l\'interruption du run en cours, une seule fois malgré deux clics', () => {
@@ -1683,7 +1805,7 @@ describe('AtelierComponent', () => {
   it('marque le tour arrêté sur le plafond de dépense du run', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onDone({
         reply: 'J\'ai commencé…',
@@ -1710,7 +1832,7 @@ describe('AtelierComponent', () => {
   it('ne marque aucun plafond quand le flux ne le signale pas', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onDone({
         reply: 'Terminé.',
@@ -1839,7 +1961,7 @@ describe('AtelierComponent', () => {
   /** Lance un run qui pose une demande d'autorisation et ne se termine pas. */
   function runAwaitingConfirmation(): void {
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onAction({ tool: 'bash', detail: 'rm -rf build' });
       handlers.onConfirmRequest!({ toolUseId: 'sevt_1', tool: 'bash', detail: 'rm -rf build' });
@@ -1907,7 +2029,7 @@ describe('AtelierComponent', () => {
   it('F-33 : la résolution retire l\'invite, et un refus par expiration est annoncé', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onConfirmRequest!({ toolUseId: 'sevt_1', tool: 'bash', detail: 'rm -rf build' });
       handlers.onConfirmResolved!({ toolUseId: 'sevt_1', decision: 'timeout' });
@@ -1938,7 +2060,7 @@ describe('AtelierComponent', () => {
   it('F-33 : la fin du run retire une invite restée en attente', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onConfirmRequest!({ toolUseId: 'sevt_1', tool: 'bash', detail: 'ls' });
       handlers.onDone({
@@ -1976,7 +2098,7 @@ describe('AtelierComponent', () => {
   it('F-33 : un projet sans l\'option ne pose aucune invite (non-régression)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onAction({ tool: 'bash', detail: 'npm test' });
       handlers.onDone({
@@ -2055,7 +2177,7 @@ describe('AtelierComponent', () => {
   it('mode Terminal : les modifications du tour rejoignent le fil, repliées (F-37)', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onDone({
         reply: "C'est fait.",
@@ -2092,7 +2214,7 @@ describe('AtelierComponent', () => {
   it('mode Terminal : un flux sans modifications laisse le tour tel qu\'avant F-37', () => {
     setup();
     component.activeWorkspaceId.set('w1');
-    component.setAgentMode('exec');
+    component.engine.set('HOSTED_SANDBOX');
     service.streamAgent.and.callFake((_id, _message, handlers) => {
       handlers.onDone({
         reply: 'Rien à changer.',
@@ -2242,7 +2364,8 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
 
   function setupWithUrl(id: string | null, mode: string | null) {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
-      'createWorkspace', 'listWorkspaces', 'getWorkspace', 'getFile', 'writeFile',
+      'createWorkspace', 'listWorkspaces', 'getWorkspace',
+      'getEngine', 'getFile', 'writeFile',
       'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory', 'getResume', 'restartThread',
     ]);
     const apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
@@ -2263,6 +2386,10 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
     service.listWorkspaces.and.returnValue(of([urlSummary]));
     service.getWorkspace.and.returnValue(of(urlDetail));
     service.getHistory.and.returnValue(of([]));
+    service.getEngine.and.returnValue(of({
+      engine: 'HOSTED_SANDBOX' as const, runnerConnected: false, runnerLastSeenAt: null,
+      recommendRunner: false, recommendReason: null,
+    }));
     // SF-39-04 : par défaut, la reprise du fil ne demande rien.
     service.getResume.and.returnValue(
       of({ turns: 0, lastMessageAt: null, threadStartedAt: null, prompt: 'NONE' as const }),
@@ -2295,18 +2422,18 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
     return fixture;
   }
 
-  it('sélectionne le projet nommé dans l\'URL', () => {
+  it('sélectionne le projet nommé dans l\'URL et l\'ouvre dans le terminal', () => {
     const fixture = setupWithUrl('w1', null);
 
     expect(fixture.componentInstance.activeWorkspaceId()).toBe('w1');
-    expect(fixture.componentInstance.agentMode()).toBe('edit');
+    // F-39 / SF-39-08 : un projet ouvert EST un terminal, sans qu'aucun mode ne soit demandé.
+    expect(fixture.nativeElement.querySelector('app-atelier-terminal')).not.toBeNull();
   });
 
-  it('ouvre directement le terminal avec ?mode=terminal', () => {
+  it('accepte et ignore ?mode=terminal des liens antérieurs (F-30 SF-30-10)', () => {
     const fixture = setupWithUrl('w1', 'terminal');
 
     expect(fixture.componentInstance.activeWorkspaceId()).toBe('w1');
-    expect(fixture.componentInstance.agentMode()).toBe('exec');
     expect(fixture.nativeElement.querySelector('app-atelier-terminal')).not.toBeNull();
   });
 
@@ -2314,7 +2441,7 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
     const fixture = setupWithUrl(null, null);
 
     expect(fixture.componentInstance.activeWorkspaceId()).toBeNull();
-    expect(fixture.componentInstance.agentMode()).toBe('edit');
+    expect(fixture.nativeElement.querySelector('app-atelier-terminal')).toBeNull();
     expect(snackBar.open).not.toHaveBeenCalled();
   });
 
@@ -2322,8 +2449,7 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
     const fixture = setupWithUrl('inconnu', 'terminal');
 
     expect(fixture.componentInstance.activeWorkspaceId()).toBeNull();
-    // Le mode revient à Assistant : ouvrir un terminal sans projet n'aurait aucun sens.
-    expect(fixture.componentInstance.agentMode()).toBe('edit');
+    expect(fixture.nativeElement.querySelector('app-atelier-terminal')).toBeNull();
     expect(snackBar.open.calls.mostRecent().args[0]).toBe('Projet introuvable.');
   });
 
@@ -2355,7 +2481,8 @@ describe('AtelierComponent — écrans runner (F-38 SF-38-06)', () => {
 
   function setup(detail: WorkspaceDetail = sandboxDetail): void {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
-      'createWorkspace', 'listWorkspaces', 'getWorkspace', 'getFile', 'writeFile',
+      'createWorkspace', 'listWorkspaces', 'getWorkspace',
+      'getEngine', 'getFile', 'writeFile',
       'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory', 'getResume', 'restartThread',
       'setExecutionTarget', 'getRunnerStatus', 'createRunnerPairingCode', 'downloadRunnerJar',
     ]);
@@ -2371,6 +2498,13 @@ describe('AtelierComponent — écrans runner (F-38 SF-38-06)', () => {
     service.listWorkspaces.and.returnValue(of([runnerSummary]));
     service.getWorkspace.and.returnValue(of(detail));
     service.getHistory.and.returnValue(of([]));
+    // Le moteur vient de la gateway (SF-39-07) : ici, il suit la cible du projet sous test.
+    service.getEngine.and.returnValue(of({
+      engine: detail.executionTarget === 'RUNNER'
+        ? ('LOCAL_MACHINE' as const) : ('HOSTED_SANDBOX' as const),
+      runnerConnected: true, runnerLastSeenAt: null,
+      recommendRunner: false, recommendReason: null,
+    }));
     // SF-39-04 : par défaut, la reprise du fil ne demande rien.
     service.getResume.and.returnValue(
       of({ turns: 0, lastMessageAt: null, threadStartedAt: null, prompt: 'NONE' as const }),
@@ -2476,21 +2610,19 @@ describe('AtelierComponent — écrans runner (F-38 SF-38-06)', () => {
     fixture.destroy();
   });
 
-  it('refuse le mode Terminal en cible RUNNER (Managed Agents non reroutables)', () => {
+  it('un projet en cible RUNNER tourne sur la machine de l\'utilisateur (F-39 SF-39-08)', () => {
     setup(runnerDetail);
-    expect(component.terminalModeDisabled()).toBeTrue();
 
-    component.setAgentMode('exec');
-
-    expect(component.agentMode()).toBe('edit');
-    expect(snackBar.open.calls.mostRecent().args[0]).toContain('mode Terminal');
+    // Le moteur est lu auprès de la gateway, plus déduit de la source ni de la cible.
+    expect(service.getEngine).toHaveBeenCalledWith('w1');
+    expect(component.engine()).toBe('LOCAL_MACHINE');
     fixture.destroy();
   });
 
-  it('autorise le mode Assistant sur un projet Git en cible RUNNER', () => {
+  it('un projet Git en cible RUNNER tourne aussi sur la machine (le dépôt y est cloné)', () => {
     setup(runnerGitDetail);
-    expect(component.assistantModeDisabled()).toBeFalse();
-    expect(component.agentMode()).toBe('edit');
+
+    expect(component.engine()).toBe('LOCAL_MACHINE');
     fixture.destroy();
   });
 
@@ -2545,7 +2677,8 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
 
   function setup(): void {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
-      'createWorkspace', 'listWorkspaces', 'getWorkspace', 'getFile', 'writeFile',
+      'createWorkspace', 'listWorkspaces', 'getWorkspace',
+      'getEngine', 'getFile', 'writeFile',
       'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory', 'getResume', 'restartThread',
       'setExecutionTarget', 'getRunnerStatus', 'createRunnerPairingCode', 'downloadRunnerJar',
       'confirmToolUse', 'confirmChatToolUse', 'killRunner', 'getRunnerAudit', 'interruptChat',
@@ -2561,6 +2694,11 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
     service.listWorkspaces.and.returnValue(of([summary]));
     service.getWorkspace.and.returnValue(of(runnerDetail));
     service.getHistory.and.returnValue(of([]));
+    // Projet en cible « ma machine » : la gateway rend donc la boucle maison (SF-39-07).
+    service.getEngine.and.returnValue(of({
+      engine: 'LOCAL_MACHINE' as const, runnerConnected: true, runnerLastSeenAt: null,
+      recommendRunner: false, recommendReason: null,
+    }));
     // SF-39-04 : par défaut, la reprise du fil ne demande rien.
     service.getResume.and.returnValue(
       of({ turns: 0, lastMessageAt: null, threadStartedAt: null, prompt: 'NONE' as const }),
@@ -2596,18 +2734,18 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
     component.send();
   }
 
-  it("pose l'invite d'autorisation dans le fil Assistant", () => {
+  it("pose l'invite d'autorisation sur le tour de la boucle maison", () => {
     setup();
     runAwaitingConfirmation();
 
     const pending = component.pendingConfirmation();
     expect(pending).not.toBeNull();
-    expect(pending!.source).toBe('edit');
+    expect(pending!.source).toBe('LOCAL_MACHINE');
     expect(pending!.detail).toBe('npm test');
     fixture.destroy();
   });
 
-  it('envoie la décision du mode Assistant sur /chat/confirm, pas sur la session sandbox', () => {
+  it('envoie la décision de la boucle maison sur /chat/confirm, pas sur la session sandbox', () => {
     setup();
     runAwaitingConfirmation();
     service.confirmChatToolUse.and.returnValue(of(void 0));

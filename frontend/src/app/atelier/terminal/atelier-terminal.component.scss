@@ -29,6 +29,54 @@
   font-size: 13px;
 }
 
+// Pastille de moteur (F-39 / SF-39-08) : dit où le code s'exécute. Reprend les classes `badge` de
+// la charte — aucune couleur nouvelle n'est introduite.
+.engine-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  margin-left: var(--cg-space-2);
+  font-family: var(--cg-font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.engine-chip-icon {
+  font-size: 14px;
+  width: 14px;
+  height: 14px;
+}
+
+.engine-last-seen {
+  opacity: 0.8;
+}
+
+// Cible d'exécution et gestes runner (F-38, portés dans l'écran unique — D-L4-4).
+.terminal-target {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-bottom: 1px solid var(--cg-navy-2);
+  color: var(--cg-divider);
+  font-size: 12px;
+
+  button {
+    color: var(--cg-divider);
+  }
+}
+
+.terminal-target-label {
+  font-family: var(--cg-font-mono);
+  font-size: 11px;
+  text-transform: lowercase;
+}
+
+.terminal-target-toggle {
+  font-size: 12px;
+}
+
 .terminal-bar-actions {
   display: flex;
   align-items: center;

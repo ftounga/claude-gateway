@@ -1,11 +1,5 @@
-import { AtelierAction, AtelierRole, AtelierAgentStreamAction, AtelierStreamAction, AtelierTerminalBlock } from '../core/models/atelier.models';
+import { AtelierAction, AtelierEngine, AtelierRole, AtelierAgentStreamAction, AtelierStreamAction, AtelierTerminalBlock } from '../core/models/atelier.models';
 import { AtelierFileDiffView } from './terminal/terminal-diff';
-
-/**
- * Mode de l'agent. Valeurs techniques inchangées (F-30 SF-30-03) : `edit` = mode **Assistant**
- * (Phase 1, lecture/écriture), `exec` = mode **Terminal** (Phase 2, sandbox hébergé).
- */
-export type AtelierAgentMode = 'edit' | 'exec';
 
 /**
  * Extensions texte/code acceptées à l'ajout d'un fichier depuis le PC (SF-28-13). Le workspace est
@@ -81,12 +75,12 @@ export interface AtelierPendingConfirmation {
   tool: string;
   detail: string;
   /**
-   * D'où vient la demande : `exec` = sandbox hébergé (F-33), `edit` = machine connectée
-   * (F-38 / SF-38-08). Les deux modes posent la même question mais **la réponse ne part pas au
-   * même endroit** — répondre au mauvais laisserait la commande en attente jusqu'à son refus
-   * automatique.
+   * D'où vient la demande : `HOSTED_SANDBOX` = bac à sable hébergé (F-33), `LOCAL_MACHINE` =
+   * machine connectée (F-38 / SF-38-08). Les deux moteurs posent la même question mais **la réponse
+   * ne part pas au même endroit** — répondre au mauvais laisserait la commande en attente jusqu'à
+   * son refus automatique.
    */
-  source: AtelierAgentMode;
+  source: AtelierEngine;
   answering: boolean;
   /** Champ de motif ouvert : le refus se fait en un clic, le motif est un second geste, facultatif. */
   denying: boolean;
