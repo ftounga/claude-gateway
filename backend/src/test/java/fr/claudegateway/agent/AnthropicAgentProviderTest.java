@@ -4,19 +4,26 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
+import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import fr.claudegateway.ai.AIProviderException;
 import fr.claudegateway.ai.AnthropicProperties;
 
 /**
@@ -30,14 +37,22 @@ class AnthropicAgentProviderTest {
 
     private MockRestServiceServer server;
     private AnthropicAgentProvider provider;
+    /** Attentes réellement demandées par la boucle de réessai (SF-39-11), en millisecondes. */
+    private final List<Long> waits = new ArrayList<>();
 
     private void build(Integer agentMaxTokens) {
+        build(agentMaxTokens, 3);
+    }
+
+    private void build(Integer agentMaxTokens, Integer agentMaxAttempts) {
         AnthropicProperties properties = new AnthropicProperties(
                 "sk-ant-test-key", "https://api.anthropic.com", "2023-06-01",
-                null, null, 4096, agentMaxTokens, Duration.ofSeconds(5));
+                null, null, 4096, agentMaxTokens, Duration.ofSeconds(5), Duration.ofSeconds(5),
+                agentMaxAttempts);
         RestClient.Builder builder = RestClient.builder();
+        // La fabrique du serveur simulé doit rester en place : d'où le `null` (SF-39-11).
         server = MockRestServiceServer.bindTo(builder).build();
-        provider = new AnthropicAgentProvider(properties, builder);
+        provider = new AnthropicAgentProvider(properties, builder, null, waits::add);
     }
 
     private AgentTurn call() {
@@ -362,5 +377,149 @@ class AnthropicAgentProviderTest {
         JsonNode block = body.get("messages").get(1).get("content").get(0);
         assertThat(block.has("signature")).isFalse();
         assertThat(block.path("thinking").asText()).isEmpty();
+    }
+
+    // --- Tenue longue : délai HTTP et réessai des refus temporaires (F-39 / SF-39-11) ------------
+
+    /** Réponse d'échec, avec ou sans en-tête {@code Retry-After}. */
+    private void respondWithStatus(int status, String retryAfterSeconds) {
+        var response = withStatus(HttpStatusCode.valueOf(status));
+        if (retryAfterSeconds != null) {
+            response = response.header(HttpHeaders.RETRY_AFTER, retryAfterSeconds);
+        }
+        server.expect(ExpectedCount.once(), requestTo(URL))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(response);
+    }
+
+    private void respondWithSuccess() {
+        server.expect(ExpectedCount.once(), requestTo(URL))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                         "usage": {"input_tokens": 1, "output_tokens": 1}}
+                        """, MediaType.APPLICATION_JSON));
+    }
+
+    @Test
+    void retriesAfterATooManyRequestsRefusal() {
+        build(null);
+        respondWithStatus(429, null);
+        respondWithSuccess();
+
+        AgentTurn turn = call();
+
+        assertThat(turn.text()).isEqualTo("ok");
+        // Deux appels : le refus temporaire n'a pas tué le tour.
+        server.verify();
+        assertThat(waits).hasSize(1);
+    }
+
+    @Test
+    void retriesAfterAnOverloadedRefusal() {
+        build(null);
+        respondWithStatus(529, null);
+        respondWithSuccess();
+
+        assertThat(call().text()).isEqualTo("ok");
+        server.verify();
+    }
+
+    @Test
+    void givesUpOnceTheAttemptsAreExhausted() {
+        build(null, 3);
+        respondWithStatus(429, null);
+        respondWithStatus(429, null);
+        respondWithStatus(429, null);
+
+        assertThatThrownBy(this::call).isInstanceOf(AIProviderException.class);
+
+        // Exactement trois appels : la borne de tentatives est celle de la configuration.
+        server.verify();
+        assertThat(waits).hasSize(2);
+    }
+
+    @Test
+    void neverRetriesAPermanentRefusal() {
+        build(null);
+        respondWithStatus(400, null);
+
+        assertThatThrownBy(this::call).isInstanceOf(AIProviderException.class);
+
+        // Un seul appel : rejouer un 400 ne ferait que le reproduire.
+        server.verify();
+        assertThat(waits).isEmpty();
+    }
+
+    @Test
+    void neverRetriesAServerErrorBecauseTheCallMayHaveBeenProcessed() {
+        build(null);
+        respondWithStatus(500, null);
+
+        assertThatThrownBy(this::call).isInstanceOf(AIProviderException.class);
+
+        server.verify();
+        assertThat(waits).isEmpty();
+    }
+
+    @Test
+    void honoursTheRetryAfterHeader() {
+        build(null);
+        respondWithStatus(429, "2");
+        respondWithSuccess();
+
+        call();
+
+        assertThat(waits).containsExactly(2_000L);
+    }
+
+    @Test
+    void capsAnOutlandishRetryAfterHeader() {
+        build(null);
+        respondWithStatus(429, "999");
+        respondWithSuccess();
+
+        call();
+
+        assertThat(waits).containsExactly(AgentRetryPolicy.MAX_DELAY_MS);
+    }
+
+    @Test
+    void fallsBackToBackoffWhenTheRetryAfterHeaderIsNotReadable() {
+        build(null);
+        // Forme « date HTTP » : non interprétée, car elle exigerait une horloge commune.
+        respondWithStatus(429, "Wed, 21 Oct 2026 07:28:00 GMT");
+        respondWithSuccess();
+
+        call();
+
+        assertThat(waits).hasSize(1);
+        assertThat(waits.get(0))
+                .isBetween(AgentRetryPolicy.INITIAL_DELAY_MS / 2, AgentRetryPolicy.INITIAL_DELAY_MS);
+    }
+
+    @Test
+    void replaysTheExactSameBodyOnRetry() {
+        build(null);
+        List<String> bodies = new ArrayList<>();
+        server.expect(ExpectedCount.once(), requestTo(URL))
+                .andExpect(request -> bodies.add(
+                        ((org.springframework.mock.http.client.MockClientHttpRequest) request).getBodyAsString()))
+                .andRespond(withStatus(HttpStatusCode.valueOf(429)));
+        server.expect(ExpectedCount.once(), requestTo(URL))
+                .andExpect(request -> bodies.add(
+                        ((org.springframework.mock.http.client.MockClientHttpRequest) request).getBodyAsString()))
+                .andRespond(withSuccess("""
+                        {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                         "usage": {"input_tokens": 1, "output_tokens": 1}}
+                        """, MediaType.APPLICATION_JSON));
+
+        provider.nextTurn(new AgentTurnRequest("claude-model", "consigne",
+                List.of(AgentMessage.userText("bonjour")), List.of(), null,
+                new AgentReasoning(true, "high")));
+
+        // Marqueurs de cache et blocs signés identiques : un réessai rejoue, il ne reconstruit pas.
+        assertThat(bodies).hasSize(2);
+        assertThat(bodies.get(1)).isEqualTo(bodies.get(0));
     }
 }

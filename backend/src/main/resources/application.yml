@@ -216,6 +216,15 @@ app:
       # fichier de plus de ~12 Ko était structurellement impossible — et la coupure passait inaperçue.
       agent-max-tokens: ${ANTHROPIC_AGENT_MAX_TOKENS:16384}
       timeout: ${ANTHROPIC_TIMEOUT:PT120S}
+      # Délai HTTP de la BOUCLE D'AGENT (F-39 / SF-39-11), distinct de celui du chat : la boucle
+      # appelle en non-streamé, en raisonnement adaptatif, avec jusqu'à agent-max-tokens de sortie.
+      # À 120 s, des appels parfaitement légitimes seraient coupés — et un appel coupé côté client
+      # reste facturé côté fournisseur.
+      agent-timeout: ${ANTHROPIC_AGENT_TIMEOUT:PT5M}
+      # Tentatives d'un appel de la boucle d'agent (F-39 / SF-39-11). Ne s'applique qu'aux refus
+      # TEMPORAIRES du fournisseur (429 trop de requêtes, 529 surchargé) : un 500 n'est jamais
+      # rejoué, la série d'outils du tour pourrait être exécutée deux fois.
+      agent-max-attempts: ${ANTHROPIC_AGENT_MAX_ATTEMPTS:3}
   byok:
     # Chiffrement des clés API utilisateur (F-03, OQ-06 : AWS KMS envelope encryption).
     # kms-key-id vide => BYOK dormant (l'ajout de clé renvoie 503), sauf si local-key est fourni.
