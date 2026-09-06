@@ -41,6 +41,15 @@ import fr.claudegateway.runner.relay.RunnerRelayBroadcaster;
 public class AtelierChatService implements RelayInterruptTarget {
 
     /**
+     * Journal du service (F-39 / SF-39-17). Deux lignes par tour — ouverture, fermeture — au niveau
+     * {@code info}, et <b>aucun contenu</b> : ni commande, ni sortie, ni chemin. C'est la règle de
+     * l'audit runner (SF-38-08), et elle vaut ici : le journal dit ce qui s'est passé, pas ce qui a
+     * été lu. Une ligne par itération noierait le journal sous des dizaines d'entrées par message.
+     */
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(AtelierChatService.class);
+
+    /**
      * Garde-fou anti-boucle : nombre maximal d'allers-retours par message, lu dans la configuration
      * (F-28 / SF-28-19, défaut 30).
      *
@@ -308,6 +317,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         List<AtelierAction> actions = new ArrayList<>();
         /** Trajectoire du tour (SF-39-03), rejouée au message suivant. */
         List<AtelierToolTrace.Step> trace = new ArrayList<>();
+        /** Transcription rendue à l'écran au rechargement (SF-39-17), bornée à la persistance. */
+        List<AtelierTurnReport.Block> transcript = new ArrayList<>();
         int inputTokens = 0;
         int outputTokens = 0;
         /** Plus grosse itération observée dans ce tour : majorant de la suivante (D-L8-2). */
@@ -318,7 +329,12 @@ public class AtelierChatService implements RelayInterruptTarget {
         int delegations = 0;
         String finalText = "";
 
+        log.info("Tour d'atelier ouvert (workspace={}, cible={}, plafond={} étapes)",
+                workspaceId, workspace.executionTargetOrDefault(), maxIterations);
+        int iterationsUsed = 0;
+
         for (int iteration = 0; iteration < maxIterations; iteration++) {
+            iterationsUsed = iteration + 1;
             if (interruptedTurns.remove(turnKey(userId, workspaceId))) {
                 finalText = INTERRUPTED_REPLY;
                 interrupted = true;
@@ -419,6 +435,12 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // refuse un tool_use orphelin au rejeu.
                 tracedCalls.add(new AtelierToolTrace.Call(callId, call.name(), call.input(),
                         AtelierToolTrace.boundResult(outcome.content()), outcome.isError()));
+                // Transcription du tour (SF-39-17) : ce que l'écran relit après un rechargement.
+                // Elle ne l'était pas, et une coupure de connexion effaçait tout ce qui s'était
+                // passé — l'acquis §4 n°7 de F-30 ne valait pas pour le moteur qui exécute.
+                transcript.add(new AtelierTurnReport.Block(call.name(), auditTarget(call), callId,
+                        null, outcome.content() == null ? "" : outcome.content(),
+                        outcome.content() != null, outcome.isError(), false));
             }
             messages.add(AgentMessage.assistant(assistantBlocks));
             messages.add(AgentMessage.toolResults(toolResults));
@@ -444,13 +466,16 @@ public class AtelierChatService implements RelayInterruptTarget {
 
         // Jamais de message vide dans l'historique (SF-28-18) : il serait relu au tour suivant et
         // refusé par le fournisseur, condamnant le projet.
+        log.info("Tour d'atelier terminé : {} étape(s), {} s, {} tokens — arrêt : {}",
+                iterationsUsed, Math.max(0L, (System.currentTimeMillis() - startedAt) / 1000L),
+                inputTokens + outputTokens, stopCause(interrupted, spendCapReached, finalText));
         String reply = nonEmptyReply(finalText);
         long activeSeconds = Math.max(0L, (System.currentTimeMillis() - startedAt) / 1000L);
         // Relevé du tour rangé dans la colonne d'affichage existante (F-39 / SF-39-15, D-L8-6) :
         // sans lui, le coût du tour et le motif de son arrêt disparaîtraient au rechargement — et
         // c'est précisément après un rechargement qu'on se demande pourquoi un tour s'est arrêté.
         AtelierTurnReport report = new AtelierTurnReport(inputTokens, outputTokens, activeSeconds,
-                interrupted, spendCapReached, planOfTurn.get());
+                interrupted, spendCapReached, planOfTurn.get(), List.copyOf(transcript));
         AtelierMessage assistant = messageRepository.save(AtelierMessage.builder()
                 .workspaceId(workspaceId).userId(userId).role("ASSISTANT")
                 .content(reply)
@@ -520,6 +545,26 @@ public class AtelierChatService implements RelayInterruptTarget {
             }
         }
         return 0;
+    }
+
+    /**
+     * Cause d'arrêt du tour, en un mot, pour le journal (SF-39-17). Déduite des drapeaux et des
+     * réponses de repli — jamais du texte du modèle, qui n'a rien à faire dans un journal serveur.
+     */
+    private static String stopCause(boolean interrupted, boolean spendCapReached, String finalText) {
+        if (interrupted) {
+            return "interruption";
+        }
+        if (spendCapReached) {
+            return "plafond de consommation";
+        }
+        if (BUDGET_REACHED_REPLY.equals(finalText)) {
+            return "budget de temps";
+        }
+        if (TRUNCATED_REPLY.equals(finalText)) {
+            return "réponse coupée au plafond de sortie";
+        }
+        return "réponse rendue";
     }
 
     /** Réponse à persister : celle du tour, ou un texte explicite si le tour n'a rien produit. */
