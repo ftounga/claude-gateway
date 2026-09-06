@@ -149,3 +149,14 @@ a.active {
     text-decoration: underline;
   }
 }
+
+/* Explorateur en surcouche (F-39 / SF-39-18) : plein écran par-dessus le terminal, qui reste monté
+   derrière — c'est ce qui garde vivant le flux du tour. Les demandes d'autorisation, elles,
+   s'affichent encore au-dessus (MatDialog, z-index Material supérieur). */
+.files-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  overflow: auto;
+  background: var(--mat-sys-surface, #fff);
+}

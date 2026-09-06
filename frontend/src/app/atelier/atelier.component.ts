@@ -10,6 +10,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { httpErrorMessage, MAX_UPLOAD_BYTES, oversizeMessage } from '../shared/http-error.util';
+import { AtelierFilesComponent } from './files/atelier-files.component';
 import { AtelierTerminalComponent } from './terminal/atelier-terminal.component';
 import {
   blockLabel as blockLabelOf,
@@ -111,6 +112,7 @@ export const RUNNER_STATUS_POLL_MS = 15_000;
     MatProgressSpinnerModule,
     RouterLink,
     AtelierTerminalComponent,
+    AtelierFilesComponent,
   ],
   templateUrl: './atelier.component.html',
   styleUrl: './atelier.component.scss',
@@ -230,6 +232,15 @@ export class AtelierComponent implements OnInit, OnDestroy {
   /** Vrai si les outils du projet s'exécutent sur la machine de l'utilisateur. */
   readonly runnerTarget = computed(() => this.executionTarget() === 'RUNNER');
 
+  /**
+   * Explorateur de fichiers affiché en surcouche (F-39 / SF-39-18). Le terminal reste monté
+   * derrière : c'est ce qui garde vivant le flux du tour en cours.
+   */
+  readonly filesExplorerOpen = signal(false);
+
+  /** Fichier à ouvrir dans le panneau, le cas échéant (F-34 / SF-34-02). */
+  readonly filesExplorerPath = signal<string | null>(null);
+
   /** Vrai si le projet actif vit sur la machine de l'utilisateur (F-38 / SF-38-16). */
   readonly localProject = computed(
     () => this.workspaces().find((w) => w.id === this.activeWorkspaceId())?.source === 'LOCAL',
@@ -311,6 +322,16 @@ export class AtelierComponent implements OnInit, OnDestroy {
     // liens antérieurs est **accepté et ignoré** — il n'y a plus qu'un terminal (F-39 / SF-39-08),
     // mais un lien déjà partagé doit continuer d'ouvrir le bon projet.
     this.requestedWorkspaceId = this.route.snapshot.paramMap.get('id');
+    // Panneau demandé par l'URL (F-39 / SF-39-18) : `?vue=fichiers`, éventuellement `&path=…`.
+    // L'état vit dans un paramètre de REQUÊTE, pas dans la route — c'est ce qui permet au bouton
+    // « précédent » de refermer le panneau sans détruire le terminal.
+    // `queryParamMap` peut être absent d'un ActivatedRoute simulé : on lit alors l'instantané.
+    // Une synchronisation d'affichage ne doit pas empêcher l'écran de s'ouvrir.
+    this.route.queryParamMap?.subscribe((params) => {
+      const open = params.get('vue') === 'fichiers';
+      this.filesExplorerOpen.set(open);
+      this.filesExplorerPath.set(open ? params.get('path') : null);
+    });
     this.loadWorkspaces();
   }
 
@@ -1728,13 +1749,38 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.filesPanelOpen.update((open) => !open);
   }
 
-  /** Ouvre la page « Explorateur de fichiers » du workspace actif (SF-28-15). */
-  openFileExplorer(): void {
+  /**
+   * Ouvre l'explorateur **par-dessus le terminal**, sans changer de route (F-39 / SF-39-18).
+   *
+   * <p>C'est tout le correctif : changer de route détruisait `AtelierComponent`, donc le flux SSE du
+   * tour en cours — et une demande d'autorisation partie dans un flux mort était refusée au bout de
+   * 120 s, sans que personne l'ait vue. Un paramètre de requête, lui, ne détruit rien : l'URL reste
+   * partageable et le bouton « précédent » utile, sans le prix.</p>
+   */
+  openFileExplorer(path?: string): void {
     const id = this.activeWorkspaceId();
     if (!id) {
       return;
     }
-    this.router.navigate(['/atelier', id, 'fichiers']);
+    this.filesExplorerPath.set(path ?? null);
+    this.filesExplorerOpen.set(true);
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { vue: 'fichiers', path: path ?? null },
+      queryParamsHandling: 'merge',
+      replaceUrl: false,
+    });
+  }
+
+  /** Referme le panneau et rend la main au terminal, resté monté derrière. */
+  closeFileExplorer(): void {
+    this.filesExplorerOpen.set(false);
+    this.filesExplorerPath.set(null);
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { vue: null, path: null },
+      queryParamsHandling: 'merge',
+    });
   }
 
   /**
@@ -1749,7 +1795,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
     if (!id || !path) {
       return;
     }
-    this.router.navigate(['/atelier', id, 'fichiers'], { queryParams: { path } });
+    // Même panneau que l'explorateur (F-39 / SF-39-18) : ouvrir le fichier d'instructions ne doit
+    // pas non plus détruire le terminal.
+    this.openFileExplorer(path);
   }
 
   /** Charge le contenu d'un fichier dans l'aperçu éditable. */

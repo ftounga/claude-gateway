@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { ActivatedRoute, Router, provideRouter } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router, provideRouter } from '@angular/router';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, throwError } from 'rxjs';
@@ -2117,9 +2117,11 @@ describe('AtelierComponent', () => {
 
     component.openInstructions();
 
-    expect(navigate).toHaveBeenCalledWith(['/atelier', 'w1', 'fichiers'], {
-      queryParams: { path: '.atelier/instructions.md' },
-    });
+    // Depuis SF-39-18, le fichier d'instructions s'ouvre dans le MÊME panneau que l'explorateur :
+    // changer de route détruirait le terminal, et avec lui le flux du tour en cours.
+    expect(component.filesExplorerOpen()).toBeTrue();
+    expect(component.filesExplorerPath()).toBe('.atelier/instructions.md');
+    expect(navigate.calls.mostRecent().args[0]).toEqual([]);
   });
 
   it("ne navigue nulle part si le projet ne porte pas d'instructions", () => {
@@ -2639,6 +2641,54 @@ describe('AtelierComponent', () => {
     expect(component.execStreaming()?.plan).toHaveSize(2);
     expect(component.execStreaming()?.plan?.[0].status).toBe('done');
   });
+
+  // ------------------------------------------------- SF-39-18 : l'explorateur ne tue plus le tour
+
+  it('opens the file explorer as an overlay, without navigating away from the terminal', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+
+    const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+    component.openFileExplorer();
+
+    // Le panneau s'ouvre, le terminal reste monté : c'est ce qui garde vivant le flux du tour.
+    expect(component.filesExplorerOpen()).toBeTrue();
+    // Aucune navigation de ROUTE : seul un paramètre de requête change.
+    expect(navigate.calls.mostRecent().args[0]).toEqual([]);
+    expect(
+      (navigate.calls.mostRecent().args[1] as { queryParams: Record<string, unknown> })
+        .queryParams['vue'],
+    ).toBe('fichiers');
+  });
+
+  it('closes the overlay and clears the query parameter', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+    component.openFileExplorer();
+
+    component.closeFileExplorer();
+
+    expect(component.filesExplorerOpen()).toBeFalse();
+    expect(
+      (navigate.calls.mostRecent().args[1] as { queryParams: Record<string, unknown> })
+        .queryParams['vue'],
+    ).toBeNull();
+  });
+
+  it('opens a given file in the same overlay rather than on its own route', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+    // Même panneau que l'explorateur : ouvrir un fichier — celui d'instructions compris — ne doit
+    // pas non plus détruire le terminal (F-39 / SF-39-18).
+    component.openFileExplorer('CLAUDE.md');
+
+    expect(component.filesExplorerOpen()).toBeTrue();
+    expect(component.filesExplorerPath()).toBe('CLAUDE.md');
+  });
 });
 
 
@@ -2699,6 +2749,8 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
               paramMap: { get: (k: string) => (k === 'id' ? id : null) },
               queryParamMap: { get: (k: string) => (k === 'mode' ? mode : null) },
             },
+            // Panneau d'explorateur piloté par `?vue=` (F-39 / SF-39-18) : aucun ici.
+            queryParamMap: of({ get: () => null } as unknown as ParamMap),
           },
         },
       ],

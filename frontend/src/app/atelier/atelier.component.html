@@ -13,6 +13,15 @@
 } @else {
 <!-- Vue terminal immersive (F-30 SF-30-07, généralisée par F-39 SF-39-08) : un projet ouvert EST un
      terminal, quel que soit le moteur qui l'anime — ni liste de projets, ni bulles de conversation. -->
+<!-- Explorateur en surcouche (F-39 / SF-39-18) : le terminal reste MONTÉ derrière, et son flux avec.
+     Changer de route le détruisait, et une demande d'autorisation partie dans un flux mort était
+     refusée au bout de 120 s sans que personne l'ait vue. -->
+@if (activeWorkspaceId() && filesExplorerOpen()) {
+  <div class="files-overlay">
+    <app-atelier-files [embedded]="true" (closed)="closeFileExplorer()"></app-atelier-files>
+  </div>
+}
+
 @if (activeWorkspaceId()) {
   <app-atelier-terminal
     [projectName]="activeName()"
