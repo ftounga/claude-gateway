@@ -25,6 +25,9 @@ export const DEFAULT_WORKSPACE_PATH = '/chemin/vers/le/projet';
 /** Commande de construction du fat-jar, proposée quand la gateway ne publie pas de binaire. */
 export const RUNNER_BUILD_COMMAND = './mvnw -pl runner package';
 
+/** Préfixe sous lequel l'API est servie — le même que celui utilisé par tous les appels du front. */
+const API_PREFIX = '/api';
+
 /** Nom du fichier téléchargé, aligné sur le `Content-Disposition` du backend (SF-38-03). */
 const JAR_FILENAME = 'claude-runner.jar';
 
@@ -93,8 +96,21 @@ export class RunnerPairingDialogComponent implements OnDestroy {
 
   readonly buildCommand = RUNNER_BUILD_COMMAND;
 
-  /** Origine de cette gateway : la vraie, jamais devinée ni codée en dur. */
-  readonly gatewayUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  /**
+   * URL de la gateway à passer au runner : l'origine réelle de cette page, **suivie du préfixe
+   * d'API**.
+   *
+   * <p>Le `/api` n'est pas décoratif : le runner compose ses appels en `{gateway}/runner/pair` et
+   * `{gateway}/runner/ws`, or l'API vit derrière ce préfixe (`context-path` du backend, et route
+   * d'ingress). Sans lui, la requête d'appairage atteint le serveur du **frontend**, qui répond
+   * `405` sur un POST vers une route d'application — une erreur d'autant plus déroutante qu'elle
+   * ressemble à une panne de la gateway.</p>
+   *
+   * <p>L'origine reste lue de la page, jamais devinée ni codée en dur : seul le préfixe est
+   * constant, et il l'est déjà partout ailleurs dans ce frontend.</p>
+   */
+  readonly gatewayUrl =
+    typeof window !== 'undefined' ? `${window.location.origin}${API_PREFIX}` : '';
 
   /** Vrai tant que le code affiché est exploitable (généré et non expiré). */
   readonly codeUsable = computed(() => this.pairingCode() !== null && this.secondsLeft() > 0);
