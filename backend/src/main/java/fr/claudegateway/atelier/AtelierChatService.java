@@ -201,8 +201,15 @@ public class AtelierChatService implements RelayInterruptTarget {
         String userText = rawMessage.trim();
 
         // Historique de l'atelier (texte) + nouveau message utilisateur.
-        List<AgentMessage> messages = new ArrayList<>(
-                replayableHistory(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId)));
+        // L'historique rejoué démarre à la frontière du fil (SF-39-04) : après un « nouveau
+        // départ », les tours d'avant restent lisibles à l'écran mais ne repartent plus chez le
+        // fournisseur.
+        List<AgentMessage> messages = new ArrayList<>(replayableHistory(
+                workspace.getChatThreadStartedAt() == null
+                        ? messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId)
+                        : messageRepository
+                                .findByWorkspaceIdAndUserIdAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
+                                        workspaceId, userId, workspace.getChatThreadStartedAt())));
         messages.add(AgentMessage.userText(userText));
 
         messageRepository.save(AtelierMessage.builder()

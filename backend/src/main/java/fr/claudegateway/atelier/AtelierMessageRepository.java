@@ -12,6 +12,14 @@ public interface AtelierMessageRepository extends JpaRepository<AtelierMessage, 
 
     List<AtelierMessage> findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(UUID workspaceId, UUID userId);
 
+    /**
+     * Messages postérieurs à la frontière de rejeu du fil (F-39 / SF-39-04) : ce que l'agent a
+     * encore en mémoire après un « nouveau départ ». Filtrée sur {@code user_id} comme toutes les
+     * lectures de cette table.
+     */
+    List<AtelierMessage> findByWorkspaceIdAndUserIdAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
+            UUID workspaceId, UUID userId, java.time.OffsetDateTime since);
+
     /** Purge à la suppression du compte (SF-11-03). */
     void deleteByUserId(UUID userId);
 

@@ -189,6 +189,71 @@ class AtelierChatApiIntegrationTest {
     }
 
     @Test
+    void resumeSaysNothingToAskOnAFreshProjectAndCountsTheThread() throws Exception {
+        // SF-39-04 : par défaut le fil reprend en silence. L'écran n'appelle cette route que pour
+        // savoir s'il doit, exceptionnellement, proposer un choix.
+        UUID ws = createWorkspace(alice, "a.txt", "x");
+        stub.enqueueFinal("Bonjour.");
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"salut\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/workspaces/" + ws + "/chat/resume").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.prompt", is("NONE")))
+                .andExpect(jsonPath("$.turns", is(2)))
+                .andExpect(jsonPath("$.threadStartedAt").doesNotExist());
+    }
+
+    @Test
+    void aFreshStartStopsTheReplayWithoutDeletingTheConversation() throws Exception {
+        // SF-39-04 (décision D1) : la frontière déplace la MÉMOIRE, pas la conversation.
+        UUID ws = createWorkspace(alice, "a.txt", "x");
+        stub.enqueueFinal("Bonjour.");
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"salut\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat/restart").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.turns", is(0)))
+                .andExpect(jsonPath("$.threadStartedAt").exists());
+
+        // Rien n'a été supprimé : l'écran retrouve toute la conversation.
+        mockMvc.perform(get("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()", is(2)));
+
+        // Et le tour suivant ne rejoue rien d'avant la frontière : seul le nouveau message part.
+        stub.enqueueFinal("Nouveau sujet.");
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"message\":\"on repart\"}"))
+                .andExpect(status().isOk());
+        org.assertj.core.api.Assertions.assertThat(stub.lastRequest.messages()).hasSize(1);
+    }
+
+    @Test
+    void resumeAndRestartAreInvisibleOnAnotherUsersWorkspace() throws Exception {
+        UUID ws = createWorkspace(alice, "a.txt", "x");
+
+        mockMvc.perform(get("/api/workspaces/" + ws + "/chat/resume").contextPath("/api")
+                        .header("Authorization", bearer(bobToken)))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/workspaces/" + ws + "/chat/restart").contextPath("/api")
+                        .header("Authorization", bearer(bobToken)))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     void cannotChatOnAnotherUsersWorkspace() throws Exception {
         UUID ws = createWorkspace(alice, "a.txt", "x");
         stub.enqueueFinal("ne devrait pas être atteint");
