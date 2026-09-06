@@ -54,7 +54,12 @@ public final class RunnerConfig {
         String code = pick(cli, "code", env, "CLAUDE_RUNNER_CODE");
         String label = pick(cli, "label", env, "CLAUDE_RUNNER_LABEL");
         String heartbeat = pick(cli, "heartbeat-interval", env, "CLAUDE_RUNNER_HEARTBEAT_INTERVAL");
-        String allowBash = pick(cli, "allow-bash", env, "CLAUDE_RUNNER_ALLOW_BASH");
+        // Exécution de commandes (F-38 / SF-38-19) : autorisée PAR DÉFAUT, et `--no-bash` la
+        // restreint. Le drapeau d'origine était une seconde serrure devant une porte déjà
+        // verrouillée — la porte de confirmation, elle, n'est pas désactivable. `--allow-bash`
+        // reste accepté sans effet : une ligne de commande valide hier ne doit pas échouer demain.
+        String noBash = pick(cli, "no-bash", env, "CLAUDE_RUNNER_NO_BASH");
+        pick(cli, "allow-bash", env, "CLAUDE_RUNNER_ALLOW_BASH"); // toléré, sans effet (D2)
         String transport = pick(cli, "transport", env, "CLAUDE_RUNNER_TRANSPORT");
 
         if (gateway == null) {
@@ -95,7 +100,8 @@ public final class RunnerConfig {
         }
 
         return new RunnerConfig(normalizedGateway, root, normalizedCode, normalizedLabel, hb,
-                isTrue(allowBash), Transport.parse(transport));
+                // Entre deux consignes contradictoires, on retient la plus restrictive (D3).
+                !isTrue(noBash), Transport.parse(transport));
     }
 
     /** URL absolue de l'endpoint d'appairage, {@code {gateway}/runner/pair}. */
@@ -159,7 +165,9 @@ public final class RunnerConfig {
     /**
      * Exécution de commandes autorisée sur cette machine (F-38 / SF-38-07). <b>Faux par défaut</b> :
      * démarrer un runner autorise la lecture et l'écriture de fichiers, pas l'exécution de commandes
-     * arbitraires. Le drapeau se pose avec {@code --allow-bash} ou {@code CLAUDE_RUNNER_ALLOW_BASH=true}.
+     * arbitraires — <b>autorisée par défaut</b> depuis SF-38-19, chaque commande restant soumise à
+     * la porte de confirmation, qui n'est pas désactivable. La restriction se pose avec
+     * {@code --no-bash} ou {@code CLAUDE_RUNNER_NO_BASH=true}.
      */
     public boolean allowBash() {
         return allowBash;
@@ -207,7 +215,8 @@ public final class RunnerConfig {
      * Arguments qui n'attendent pas de valeur : {@code --allow-bash} seul vaut {@code true}, sans
      * avaler l'argument suivant. La forme {@code --allow-bash=false} reste acceptée.
      */
-    private static final java.util.Set<String> BOOLEAN_FLAGS = java.util.Set.of("allow-bash");
+    private static final java.util.Set<String> BOOLEAN_FLAGS =
+            java.util.Set.of("allow-bash", "no-bash");
 
     private static Map<String, String> parseArgs(String[] args) {
         Map<String, String> map = new HashMap<>();

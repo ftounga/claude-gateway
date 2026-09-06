@@ -163,39 +163,60 @@ class RunnerConfigTest {
         assertEquals(10, cfg.heartbeatInterval().toSeconds());
     }
 
-    // --- Exécution de commandes : opt-in explicite (F-38 / SF-38-07) ------------------------
+    // --- Exécution de commandes : autorisée par défaut (F-38 / SF-38-19) --------------------
 
     @Test
-    void bash_disabled_by_default() {
-        assertFalse(RunnerConfig.resolve(baseArgs(), Map.of()).allowBash(),
-                "Démarrer un runner n'autorise pas l'exécution de commandes");
+    void bash_allowed_by_default() {
+        // Le mode runner existe POUR exécuter sur la machine. Le drapeau d'origine était une
+        // seconde serrure devant une porte déjà verrouillée : la porte de confirmation, elle,
+        // n'est pas désactivable.
+        assertTrue(RunnerConfig.resolve(baseArgs(), Map.of()).allowBash(),
+                "Un runner exécute des commandes par défaut, chacune soumise à confirmation");
     }
 
     @Test
-    void allow_bash_flag_without_value() {
+    void no_bash_flag_restricts_to_reading() {
         // Drapeau sans valeur : il ne doit pas avaler l'argument suivant.
         RunnerConfig cfg = RunnerConfig.resolve(new String[] {
                 "--gateway", "https://gw.example.com/api",
                 "--workspace", workspace.toString(),
-                "--allow-bash",
+                "--no-bash",
                 "--label", "poste-dev"
         }, Map.of());
 
-        assertTrue(cfg.allowBash());
+        assertFalse(cfg.allowBash());
         assertEquals("poste-dev", cfg.label());
     }
 
     @Test
-    void allow_bash_flag_with_explicit_false() {
-        assertFalse(RunnerConfig.resolve(baseArgs("--allow-bash=false"), Map.of()).allowBash());
+    void no_bash_from_environment() {
+        assertFalse(RunnerConfig.resolve(baseArgs(), Map.of("CLAUDE_RUNNER_NO_BASH", "true"))
+                .allowBash());
+        // Valeur mal formée : traitée comme absente, le runner démarre et exécute.
+        assertTrue(RunnerConfig.resolve(baseArgs(), Map.of("CLAUDE_RUNNER_NO_BASH", "peut-etre"))
+                .allowBash());
     }
 
     @Test
-    void allow_bash_from_environment() {
-        assertTrue(RunnerConfig.resolve(baseArgs(), Map.of("CLAUDE_RUNNER_ALLOW_BASH", "true"))
-                .allowBash());
-        assertFalse(RunnerConfig.resolve(baseArgs(), Map.of("CLAUDE_RUNNER_ALLOW_BASH", "non"))
-                .allowBash());
+    void allow_bash_is_still_accepted_and_does_nothing() {
+        // Compatibilité (D2) : une ligne de commande valide hier ne doit pas échouer demain —
+        // celles copiées d'un écran, d'un script ou d'une note.
+        assertTrue(RunnerConfig.resolve(baseArgs("--allow-bash"), Map.of()).allowBash());
+        assertTrue(RunnerConfig.resolve(baseArgs("--allow-bash=false"), Map.of()).allowBash());
+    }
+
+    @Test
+    void the_restriction_wins_over_the_authorisation() {
+        // Deux consignes contradictoires, c'est une erreur d'opérateur : on retient la plus
+        // stricte (D3).
+        RunnerConfig cfg = RunnerConfig.resolve(new String[] {
+                "--gateway", "https://gw.example.com/api",
+                "--workspace", workspace.toString(),
+                "--allow-bash",
+                "--no-bash"
+        }, Map.of());
+
+        assertFalse(cfg.allowBash());
     }
 
     // ------------------------------------------------ repli de transport (SF-38-09)

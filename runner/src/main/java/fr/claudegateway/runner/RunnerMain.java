@@ -37,13 +37,18 @@ public final class RunnerMain {
             console.error(e.getMessage());
             console.info("Usage : java -jar claude-runner.jar --gateway <url> --workspace <racine> "
                     + "--code <code-appairage> [--label <libellé>] [--heartbeat-interval <s>] "
-                    + "[--allow-bash] [--transport auto|websocket|polling]");
+                    + "[--no-bash] [--transport auto|websocket|polling]");
             return 2;
         }
 
         console.info("Runner claude-gateway (F-38).");
         console.info("Gateway   : " + config.gatewayBaseUrl());
         console.info("Workspace : " + config.workspaceRoot());
+        // Le mode est dit dans les DEUX sens (F-38 / SF-38-19, D4) : le défaut d'avant venait de ce
+        // qu'un runner restreint ne se signalait pas — on le découvrait au premier refus.
+        console.info(config.allowBash()
+                ? "Commandes : autorisées (chacune demande votre autorisation à l'écran)"
+                : "Commandes : refusées (--no-bash) — seuls les outils fichiers sont disponibles");
 
         ProxyResolver proxyResolver = ProxyResolver.fromEnv(env);
         if (proxyResolver.hasProxy()) {
