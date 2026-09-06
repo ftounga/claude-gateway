@@ -136,7 +136,7 @@ le reste, et la mémoire conditionne l'utilité.
 | **2 · Mémoire** | SF-39-03 → 04 | Rejeu de la trajectoire (`tool_use` / `tool_result`), borné · reprise de fil indépendante de la sandbox (D5) |
 | **3 · Outillage** | SF-39-05 → 06 | Retrait `list_files` / `search_files` · lecture numérotée et paginée · édition ciblée |
 | **4 · Écran unique** ✅ | SF-39-07 → 09 | Fusion des deux modes · sélection transparente du moteur · **report intégral des acquis §4** — livré le 2026-09-06 (PR #226, #227, #228) ; le §4 est désormais **exécutable** (`frontend/src/app/atelier/terminal/acquis-f30.spec.ts`, un test par acquis) |
-| **5 · Raisonnement** | SF-39-10 | `thinking` adaptatif, `effort`, `claude-opus-5` sur la boucle maison |
+| **5 · Raisonnement** ✅ | SF-39-10 | `thinking` adaptatif, `effort`, `claude-opus-5` sur la boucle maison — livré le 2026-09-06 (PR #230) ; `effort` reste à `high` tant que la tenue longue (lot 6) n'est pas traitée, la boucle appelant en non-streamé |
 | **6 · Tenue longue** | SF-39-11 → 12 | Compaction ou édition de contexte · retry 429/529 · timeout HTTP câblé |
 | **7 · Outillage d'agent** | SF-39-13 → 14 | Liste de tâches visible · sous-agents |
 | **8 · Coût visible** | SF-39-15 | Plafond de dépense par message, affiché |
