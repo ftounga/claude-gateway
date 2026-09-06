@@ -12,6 +12,7 @@ import {
   AtelierConfirmationState,
   AtelierChatResponse,
   AtelierMessage,
+  AtelierResume,
   AtelierStreamAction,
   AtelierStreamHandlers,
   CreateGitWorkspaceRequest,
@@ -484,6 +485,22 @@ export class AtelierService {
   /** Historique de conversation du workspace. */
   getHistory(id: string): Observable<AtelierMessage[]> {
     return this.http.get<AtelierMessage[]>(`/api/workspaces/${id}/chat`);
+  }
+
+  /**
+   * État de reprise du fil (F-39 / SF-39-04). Appelé à l'ouverture d'un projet : il ne sert qu'à
+   * savoir s'il faut, exceptionnellement, proposer un choix — la reprise, elle, est silencieuse.
+   */
+  getResume(id: string): Observable<AtelierResume> {
+    return this.http.get<AtelierResume>(`/api/workspaces/${id}/chat/resume`);
+  }
+
+  /**
+   * Nouveau départ (F-39 / SF-39-04) : les tours passés cessent d'être rejoués. **Rien n'est
+   * supprimé** — la conversation reste affichée, seule la mémoire de l'agent repart de zéro.
+   */
+  restartThread(id: string): Observable<AtelierResume> {
+    return this.http.post<AtelierResume>(`/api/workspaces/${id}/chat/restart`, null);
   }
 
   /**

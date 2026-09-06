@@ -791,3 +791,39 @@ a.active {
   align-items: center;
   gap: var(--cg-space-2);
 }
+
+/* Proposition de reprise du fil (F-39 / SF-39-04) : une bande d'information dans le fil, pas une
+   modale — elle informe sans bloquer, et disparaît dès qu'on a choisi. */
+.resume-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-3);
+  padding: var(--cg-space-3);
+  margin-bottom: var(--cg-space-3);
+  border: 1px solid var(--cg-divider);
+  border-left: 4px solid var(--cg-accent);
+  border-radius: 8px;
+  background: var(--cg-surface);
+}
+
+.resume-choice mat-icon {
+  color: var(--cg-accent);
+}
+
+.resume-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-1);
+  flex: 1;
+  color: var(--cg-text-primary);
+}
+
+.resume-text span {
+  color: var(--cg-text-secondary);
+}
+
+.resume-actions {
+  display: flex;
+  gap: var(--cg-space-2);
+  align-items: center;
+}

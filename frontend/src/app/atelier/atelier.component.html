@@ -299,6 +299,28 @@
       <div class="atelier-body">
         <!-- Flux unique de conversation -->
         <div class="message-thread">
+          <!-- Reprise du fil (F-39 / SF-39-04, D5) : la reprise est silencieuse par défaut ; on ne
+               demande que lorsqu'elle ne va pas de soi — projet inactif depuis plus de deux semaines. -->
+          @if (resumeChoice()) {
+            <div class="resume-choice" role="status">
+              <mat-icon aria-hidden="true">history_toggle_off</mat-icon>
+              <div class="resume-text">
+                <strong>Ce projet n'a pas bougé depuis un moment.</strong>
+                <span>
+                  Claude a encore en tête les {{ resumeTurns() }} derniers échanges. Vous pouvez
+                  reprendre le fil, ou repartir sans ce contexte — rien ne sera supprimé.
+                </span>
+              </div>
+              <div class="resume-actions">
+                <button mat-stroked-button type="button" (click)="restartThread()">
+                  Repartir à neuf
+                </button>
+                <button mat-flat-button color="primary" type="button" (click)="keepThread()">
+                  Reprendre le fil
+                </button>
+              </div>
+            </div>
+          }
           @if (messages().length === 0) {
             <div class="thread-empty">
               <mat-icon>chat_bubble_outline</mat-icon>

@@ -507,3 +507,18 @@ export interface GitBranches {
   current: string;
   defaultBranch: string;
 }
+
+/**
+ * État de reprise du fil d'Atelier (F-39 / SF-39-04, décision D5), réponse de
+ * `GET /api/workspaces/{id}/chat/resume`. Par défaut le fil reprend en silence : `prompt` ne vaut
+ * `IDLE` que lorsque la reprise ne va pas de soi et qu'il faut poser la question.
+ */
+export interface AtelierResume {
+  /** Messages que le prochain tour rejouera au fournisseur. */
+  turns: number;
+  lastMessageAt: string | null;
+  /** Frontière posée par un « nouveau départ », ou `null` si aucun. */
+  threadStartedAt: string | null;
+  /** `NONE` — ne rien demander ; `IDLE` — projet inactif, proposer le choix. */
+  prompt: 'NONE' | 'IDLE';
+}

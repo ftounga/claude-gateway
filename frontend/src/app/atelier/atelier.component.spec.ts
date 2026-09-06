@@ -101,6 +101,8 @@ describe('AtelierComponent', () => {
       'setAskBeforeBash',
       'confirmToolUse',
       'getHistory',
+      'getResume',
+      'restartThread',
       'setExecutionTarget',
       'getRunnerStatus',
       'createRunnerPairingCode',
@@ -114,6 +116,10 @@ describe('AtelierComponent', () => {
     service.listWorkspaces.and.returnValue(of([summary]));
     service.getWorkspace.and.returnValue(of(detail));
     service.getHistory.and.returnValue(of([]));
+    // SF-39-04 : par défaut, la reprise du fil ne demande rien.
+    service.getResume.and.returnValue(
+      of({ turns: 0, lastMessageAt: null, threadStartedAt: null, prompt: 'NONE' as const }),
+    );
     apiKeyService.getStatus.and.returnValue(of(hostedStatus));
 
     TestBed.configureTestingModule({
@@ -153,6 +159,8 @@ describe('AtelierComponent', () => {
       'chat',
       'streamChat',
       'getHistory',
+      'getResume',
+      'restartThread',
     ]);
     apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
     apiKeyService.getStatus.and.returnValue(of(hostedStatus));
@@ -220,6 +228,8 @@ describe('AtelierComponent', () => {
       'chat',
       'streamChat',
       'getHistory',
+      'getResume',
+      'restartThread',
     ]);
     apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
     apiKeyService.getStatus.and.returnValue(of(hostedStatus));
@@ -260,6 +270,8 @@ describe('AtelierComponent', () => {
       'chat',
       'streamChat',
       'getHistory',
+      'getResume',
+      'restartThread',
     ]);
     apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
     apiKeyService.getStatus.and.returnValue(of(hostedStatus));
@@ -378,6 +390,9 @@ describe('AtelierComponent', () => {
       { id: 'm1', role: 'USER', content: 'Salut', createdAt: '2026-07-11T00:00:00Z' },
     ];
     service.getHistory.and.returnValue(of(history));
+    service.getResume.and.returnValue(
+      of({ turns: 0, lastMessageAt: null, threadStartedAt: null, prompt: 'NONE' as const }),
+    );
 
     component.selectWorkspace(summary);
 
@@ -2145,6 +2160,77 @@ describe('AtelierComponent', () => {
 
     expect(item.diffs).toBeUndefined();
   });
+  // --- Reprise du fil (F-39 / SF-39-04) ------------------------------------------------------
+
+  it('ne propose aucun choix de reprise sur un projet actif', () => {
+    setup();
+    component.selectWorkspace({ ...summary, id: 'w-resume' });
+
+    expect(service.getResume).toHaveBeenCalledWith('w-resume');
+    expect(component.resumeChoice()).toBeFalse();
+  });
+
+  it('propose le choix de reprise sur un projet inactif', () => {
+    setup();
+    service.getResume.and.returnValue(
+      of({
+        turns: 6,
+        lastMessageAt: '2026-08-01T10:00:00Z',
+        threadStartedAt: null,
+        prompt: 'IDLE' as const,
+      }),
+    );
+
+    component.selectWorkspace({ ...summary, id: 'w-resume' });
+
+    expect(component.resumeChoice()).toBeTrue();
+    expect(component.resumeTurns()).toBe(6);
+  });
+
+  it('« reprendre le fil » ferme la proposition sans rien appeler', () => {
+    setup();
+    service.getResume.and.returnValue(
+      of({ turns: 3, lastMessageAt: null, threadStartedAt: null, prompt: 'IDLE' as const }),
+    );
+    component.selectWorkspace({ ...summary, id: 'w-resume' });
+
+    component.keepThread();
+
+    expect(component.resumeChoice()).toBeFalse();
+    expect(service.restartThread).not.toHaveBeenCalled();
+  });
+
+  it('« repartir à neuf » appelle le service, ferme la proposition et le dit', () => {
+    setup();
+    service.getResume.and.returnValue(
+      of({ turns: 3, lastMessageAt: null, threadStartedAt: null, prompt: 'IDLE' as const }),
+    );
+    service.restartThread.and.returnValue(
+      of({
+        turns: 0,
+        lastMessageAt: null,
+        threadStartedAt: '2026-09-06T00:00:00Z',
+        prompt: 'NONE' as const,
+      }),
+    );
+    component.selectWorkspace({ ...summary, id: 'w-resume' });
+
+    component.restartThread();
+
+    expect(service.restartThread).toHaveBeenCalledWith('w-resume');
+    expect(component.resumeChoice()).toBeFalse();
+    expect(component.resumeTurns()).toBe(0);
+    expect(snackBar.open).toHaveBeenCalled();
+  });
+
+  it('un état de reprise illisible ne bloque pas le travail', () => {
+    setup();
+    service.getResume.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+
+    component.selectWorkspace({ ...summary, id: 'w-resume' });
+
+    expect(component.resumeChoice()).toBeFalse();
+  });
 });
 
 
@@ -2157,7 +2243,7 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
   function setupWithUrl(id: string | null, mode: string | null) {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace', 'listWorkspaces', 'getWorkspace', 'getFile', 'writeFile',
-      'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory',
+      'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory', 'getResume', 'restartThread',
     ]);
     const apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
@@ -2177,6 +2263,10 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
     service.listWorkspaces.and.returnValue(of([urlSummary]));
     service.getWorkspace.and.returnValue(of(urlDetail));
     service.getHistory.and.returnValue(of([]));
+    // SF-39-04 : par défaut, la reprise du fil ne demande rien.
+    service.getResume.and.returnValue(
+      of({ turns: 0, lastMessageAt: null, threadStartedAt: null, prompt: 'NONE' as const }),
+    );
     apiKeyService.getStatus.and.returnValue(of(urlStatus));
 
     TestBed.resetTestingModule();
@@ -2266,7 +2356,7 @@ describe('AtelierComponent — écrans runner (F-38 SF-38-06)', () => {
   function setup(detail: WorkspaceDetail = sandboxDetail): void {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace', 'listWorkspaces', 'getWorkspace', 'getFile', 'writeFile',
-      'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory',
+      'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory', 'getResume', 'restartThread',
       'setExecutionTarget', 'getRunnerStatus', 'createRunnerPairingCode', 'downloadRunnerJar',
     ]);
     const apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
@@ -2281,6 +2371,10 @@ describe('AtelierComponent — écrans runner (F-38 SF-38-06)', () => {
     service.listWorkspaces.and.returnValue(of([runnerSummary]));
     service.getWorkspace.and.returnValue(of(detail));
     service.getHistory.and.returnValue(of([]));
+    // SF-39-04 : par défaut, la reprise du fil ne demande rien.
+    service.getResume.and.returnValue(
+      of({ turns: 0, lastMessageAt: null, threadStartedAt: null, prompt: 'NONE' as const }),
+    );
     service.getRunnerStatus.and.returnValue(
       of({ connected: true, lastSeenAt: new Date().toISOString() }));
 
@@ -2452,7 +2546,7 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
   function setup(): void {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace', 'listWorkspaces', 'getWorkspace', 'getFile', 'writeFile',
-      'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory',
+      'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory', 'getResume', 'restartThread',
       'setExecutionTarget', 'getRunnerStatus', 'createRunnerPairingCode', 'downloadRunnerJar',
       'confirmToolUse', 'confirmChatToolUse', 'killRunner', 'getRunnerAudit', 'interruptChat',
     ]);
@@ -2467,6 +2561,10 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
     service.listWorkspaces.and.returnValue(of([summary]));
     service.getWorkspace.and.returnValue(of(runnerDetail));
     service.getHistory.and.returnValue(of([]));
+    // SF-39-04 : par défaut, la reprise du fil ne demande rien.
+    service.getResume.and.returnValue(
+      of({ turns: 0, lastMessageAt: null, threadStartedAt: null, prompt: 'NONE' as const }),
+    );
     service.getRunnerStatus.and.returnValue(of({ connected: true, lastSeenAt: null }));
 
     TestBed.configureTestingModule({
@@ -2592,4 +2690,5 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
       .toEqual({ workspaceId: 'w1', workspaceName: 'projet' });
     fixture.destroy();
   });
+
 });
