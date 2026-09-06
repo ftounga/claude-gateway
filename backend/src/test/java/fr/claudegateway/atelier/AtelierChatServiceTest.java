@@ -87,7 +87,9 @@ class AtelierChatServiceTest {
                 new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
-                fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled());
+                fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
+                // Plafond d'étapes par défaut (30) sauf mention contraire du test (SF-28-19).
+                new AtelierProperties(null, null, null, null, null, null, null));
     }
 
     /** Workspace d'archive possédé : la source par défaut, celle de tous les tests de ce fichier. */
@@ -329,5 +331,61 @@ class AtelierChatServiceTest {
         return AtelierMessage.builder()
                 .id(UUID.randomUUID()).workspaceId(UUID.randomUUID()).userId(UUID.randomUUID())
                 .role(role).content(content).build();
+    }
+
+    // ------------------------------------------------- SF-28-19 : plafond d'étapes calibré
+
+    /** Reconstruit le service avec un plafond d'étapes donné (F-28 / SF-28-19). */
+    private void serviceWithMaxIterations(int max) {
+        service = new AtelierChatService(workspaceService, messageRepository, (AiAgentProvider) agentProvider,
+                byokKeyService, quotaService, modelCatalog,
+                new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
+                        gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
+                runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
+                fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
+                new AtelierProperties(null, null, null, null, null, null, max));
+    }
+
+    @Test
+    void aTwentyStepTaskCompletesWithTheDefaultCeiling() {
+        stubHappyPath();
+        // 20 lectures puis la réponse : ce tour était coupé à 12 avant SF-28-19, alors que 31 % des
+        // demandes réelles dépassent ce seuil.
+        for (int i = 0; i < 20; i++) {
+            agentProvider.enqueueToolCall("read_file", "path", "f" + i + ".txt");
+        }
+        agentProvider.enqueueFinal("J'ai tout lu.");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "lis les 20 fichiers");
+
+        assertThat(result.reply()).isEqualTo("J'ai tout lu.");
+        assertThat(result.actions()).hasSize(20);
+    }
+
+    @Test
+    void stopsAtTheConfiguredCeilingAndKeepsTheWorkAlreadyDone() {
+        stubHappyPath();
+        serviceWithMaxIterations(3);
+        for (int i = 0; i < 10; i++) {
+            agentProvider.enqueueToolCall("read_file", "path", "f" + i + ".txt");
+        }
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "lis tout");
+
+        assertThat(result.reply()).contains("limite d'étapes");
+        // Le travail déjà fait n'est pas perdu : les 3 lectures sont rendues.
+        assertThat(result.actions()).hasSize(3);
+    }
+
+    @Test
+    void shortTurnsAreUnaffectedByTheHigherCeiling() {
+        stubHappyPath();
+        agentProvider.enqueueToolCall("read_file", "path", "notes.txt");
+        agentProvider.enqueueFinal("Lu.");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "lis notes.txt");
+
+        assertThat(result.reply()).isEqualTo("Lu.");
+        assertThat(result.actions()).hasSize(1);
     }
 }

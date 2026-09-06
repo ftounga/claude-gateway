@@ -79,7 +79,9 @@ class AtelierChatServiceRunnerGuardTest {
                 new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, gate, auditService,
-                fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled());
+                fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
+                // Plafond d'étapes par défaut (30) sauf mention contraire du test (SF-28-19).
+                new AtelierProperties(null, null, null, null, null, null, null));
 
         when(modelCatalog.defaultModel()).thenReturn("claude-model");
         when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.empty());

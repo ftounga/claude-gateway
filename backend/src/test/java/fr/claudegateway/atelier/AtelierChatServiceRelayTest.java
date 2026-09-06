@@ -74,7 +74,9 @@ class AtelierChatServiceRelayTest {
                         gitHubClient,
                         new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, auditService,
-                relayBroadcaster);
+                relayBroadcaster,
+                // Plafond d'étapes par défaut (30) : ce fichier ne teste que le relais (SF-28-19).
+                new AtelierProperties(null, null, null, null, null, null, null));
     }
 
     // ------------------------------------------------------------------- interruption
