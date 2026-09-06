@@ -7,7 +7,8 @@ administrateur, aucun service en arrière-plan.
 > Périmètre livré : appairage, connexion, heartbeat, reconnexion, arrêt propre (**SF-38-03**),
 > **outils fichiers** `list_files` / `read_file` / `write_file` / `search_files` (**SF-38-04**),
 > exclusions `.runnerignore` (**SF-38-10**) et **exécution de commandes** `bash` (**SF-38-07**,
-> désactivée par défaut — voir `--allow-bash`).
+> **autorisée par défaut** depuis **SF-38-19** — chaque commande demande votre autorisation à
+> l'écran ; `--no-bash` restreint le runner à la lecture).
 
 ## Construire
 
