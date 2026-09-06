@@ -64,6 +64,11 @@ chaque itération renvoie consigne système (jusqu'à 40 000 caractères), histo
 plein. Estimation sur 30 itérations : **~6,75 $ le message sans cache, ~1,27 $ avec**. C'est le
 levier de rentabilité — pas les plafonds. Un plafond de dépense **par message**, affiché comme
 l'est déjà le budget de session (F-36), viendra ensuite.
+*Livré au lot 8 (SF-39-15)*, avec une nuance que ce paragraphe ne pouvait pas anticiper : une fois le
+cache en place, le compteur de tokens **cesse de valoir un montant** — il additionne les tokens servis
+par le cache, facturés au dixième. Le plafond est donc dit en **tokens traités** (défaut 1 500 000,
+borné par le quota restant) et non en dollars, faute de quoi il couperait les tours que ce même cache
+venait de rendre abordables (**D-L8-1**).
 
 **D4 — Outillage `bash`-first.** Retrait de `list_files` et `search_files`, que `bash` fait mieux
 (`ls`, `grep` avec expressions régulières et filtres). Conservation de `read_file` / `write_file`,
@@ -139,7 +144,7 @@ le reste, et la mémoire conditionne l'utilité.
 | **5 · Raisonnement** ✅ | SF-39-10 | `thinking` adaptatif, `effort`, `claude-opus-5` sur la boucle maison — livré le 2026-09-06 (PR #230) ; `effort` **reste à `high`** après le lot 6 : la boucle appelle toujours en **non-streamé**, et c'est le passage au flux — non le timeout — qui débloquerait `xhigh` |
 | **6 · Tenue longue** ✅ | SF-39-11 → 12 | Délai HTTP câblé · réessai `429`/`529` avec `Retry-After`, gigue et budget d'attente borné · **édition de contexte** (`clear_tool_uses`) plutôt que compaction — livré le 2026-09-06 (PR #232, #233) ; le choix est tracé en **D-L6-7** : l'édition est sans état, quand la compaction imposerait de persister ses blocs, or la boucle reconstruit `messages` depuis l'historique à chaque message |
 | **7 · Outillage d'agent** | SF-39-13 → 14 | Liste de tâches visible · sous-agents |
-| **8 · Coût visible** | SF-39-15 | Plafond de dépense par message, affiché |
+| **8 · Coût visible** ✅ | SF-39-15 | Plafond de consommation par message · consommation relayée pendant le tour et affichée à sa fin — livré le 2026-09-06 (PR #235, #236) ; le plafond est dit en **tokens traités** et non en dollars (**D-L8-1**) : le compteur additionne les tokens servis par le cache, qu'un taux mélangé sur-facturerait d'un ordre de grandeur, coupant précisément les tours que le lot 1 venait de rendre abordables. Effet de bord assumé et voulu : les acquis §4 n°5 et n°6 valent désormais **des deux moteurs** |
 | **9 · Nettoyage** | SF-39-16 | Retrait de la cible `SANDBOX` de la boucle maison (D7), si décidé |
 
 ---
