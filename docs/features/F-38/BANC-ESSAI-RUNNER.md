@@ -1,6 +1,6 @@
 # Banc d'essai — Runner local (F-38)
 
-**Date de rédaction** : 2026-09-06 · **Statut** : à exécuter
+**Date de rédaction** : 2026-09-06 · **Statut** : **exécuté deux fois le 2026-09-06** — ce qu'il a produit est au §8
 **Rédigé avant** la livraison de la vague F-39, délibérément : un banc d'essai écrit après coup teste
 ce que le produit fait, pas ce qu'il doit faire.
 
@@ -261,6 +261,63 @@ Ajouter une troisième copie relancerait la même bataille.
 
 ### 7.3 Points à trancher après l'essai
 
-- Un projet `LOCAL` doit-il pouvoir changer de machine, ou reste-t-il lié à une seule ?
-- Que voit l'écran quand le runner d'un projet `LOCAL` est déconnecté depuis longtemps ?
-- Le `.runnerignore` doit-il avoir des exclusions par défaut (`.env`, `node_modules`, `.git`) ?
+Les trois points ont été instruits à la clôture du 2026-09-06. **Deux sont tranchés, un reste ouvert.**
+
+- **Un projet `LOCAL` doit-il pouvoir changer de machine, ou reste-t-il lié à une seule ?**
+  → **Toujours ouvert.** Rien ne l'interdit dans le code : un nouveau code d'appairage échangé
+  depuis une autre machine délivre un **jeton de plus** sur le même workspace et réécrit
+  `runner_root_name` / `runner_elevated` avec ce que le nouveau runner déclare. Mais **aucun écran
+  ne le dit et aucun test ne le fige** — c'est un comportement subi, pas une décision. À trancher
+  avant qu'un utilisateur ne le découvre seul, notamment : que devient le jeton de l'ancienne
+  machine, et l'écran doit-il montrer *les* runners d'un projet plutôt que *le* runner.
+- **Que voit l'écran quand le runner d'un projet `LOCAL` est déconnecté depuis longtemps ?**
+  → **Tranché par SF-38-17** (PR #240) : « Projet hors ligne : lancez le runner pour parcourir les
+  fichiers » — jamais une arborescence vide, qui laisserait croire que le projet a été effacé.
+  La consultation hors ligne, si elle devient un besoin avéré, sera un **cache explicite et
+  consenti**, pas un effet de bord de l'architecture.
+- **Le `.runnerignore` doit-il avoir des exclusions par défaut (`.env`, `node_modules`, `.git`) ?**
+  → **Tranché par SF-38-21** (PR #251) : oui pour le **bruit de construction** — vingt motifs
+  (`node_modules`, `target`, `build`, `dist`, `.angular`, `.gradle`, `.venv`, `__pycache__`,
+  `vendor`, `coverage`, `.terraform`…) actifs sans aucun fichier de règles. Et **négociables** :
+  ils sont évalués **avant** les règles de l'utilisateur, si bien qu'un `!node_modules/` explicite
+  les annule. La liste de **secrets** de SF-38-10 reste, elle, non désactivable — on écarte du
+  bruit, on ne protège pas un secret de la même façon.
+
+---
+
+## 8. Ce que les deux passages ont produit (clôture, 2026-09-06)
+
+Le banc d'essai a été **joué deux fois le 2026-09-06**. Il a tenu la promesse du §1 : l'application
+fullstack a fini par être construite sur la machine de l'utilisateur — sept étapes de procédure,
+**2,9 Mo écrits sur le disque** — mais pas du premier coup, et **aucun** des défauts rencontrés
+n'était visible en CI.
+
+**Premier passage — avant même la première commande.** Les deux constats du §3 se sont vérifiés sur
+pièces : un projet runner ne se créait que par un détour (§3.1) et l'explorateur lisait un stockage
+objet vide par construction (§3.2). Trois subfeatures en sont sorties le matin même —
+**SF-38-15** source `LOCAL`, le runner déclare la racine et la gateway n'apprend jamais le chemin
+absolu (PR #238, migration `052`) ; **SF-38-16** écran « sur ma machine » (PR #239) ; **SF-38-17**
+explorateur branché sur `list_files` / `read_file` du runner au lieu de copier le projet chez nous
+(PR #240), c'est-à-dire la recommandation du §7.2 retenue telle quelle.
+
+**Second passage — le scénario joué en entier.** Huit défauts, dans l'ordre où ils sont tombés :
+
+| # | Ce que le banc d'essai a montré | Réponse | PR |
+|---|---|---|---|
+| 1 | La commande d'appairage copiée depuis l'écran menait au **frontend**, pas à l'API : `405` au premier geste | correctif — l'écran compose `--gateway <origine>/api` | #244 |
+| 2 | Le runner refusait d'exécuter : « redémarre-le avec `--allow-bash` », alors que le mode runner **existe pour exécuter** | **SF-38-19** — exécution par défaut, `--no-bash` pour restreindre à la lecture ; la garde réelle est la porte de confirmation | #249 |
+| 3-4 | Un tour long se perdait : écran figé sans message, et un rechargement ne rendait que la dernière ligne | **SF-39-17** — chaîne de délais *tour 600 s < flux 900 s ≤ ingress 900 s*, transcription enfin persistée **sur la boucle maison** | #245 |
+| 5 | Basculer sur l'explorateur **pendant** un tour détruisait le composant terminal, donc le flux SSE : un geste normal tuait le travail en cours | **SF-39-18** — l'explorateur devient un **panneau dans la vue**, ouvert par un paramètre de requête | #246 (correctif #250) |
+| 6 | Treize étapes de procédure, plusieurs commandes chacune, **une demande d'autorisation à cliquer par commande** | **SF-38-20** — « Tout autoriser pour ce message » et projet qui ne demande plus ; amende D7 de SF-38-08 **sans toucher** au journal d'audit ni au coupe-circuit : c'est le clic qui disparaît, jamais la trace | #247, #248 |
+| 7 | L'explorateur montrait **40 112** fichiers de `node_modules` pour **478** de projet, et se **taisait** en tronquant — dix minutes à chercher un dossier que le système savait ne pas avoir envoyé | **SF-38-21** — bruit de construction écarté par défaut (négociable), troncature annoncée | #251 |
+| 8 | Rien ne disait **avec quels droits** le runner agit (question posée pendant la préparation ; le README était ambigu) | **SF-38-18** — droits détectés par le runner, déclarés à l'appairage, affichés là où l'on autorise une commande ; informatif, jamais une garde | #252 (migration `053`) |
+
+**Ce que cela dit du banc d'essai lui-même.** Neuf subfeatures et trois correctifs dans la journée,
+et pas un seul de ces défauts n'aurait été trouvé par la suite de tests : ils demandent tous une
+vraie machine, un vrai projet et un tour qui **dure**. C'est la raison de le rejouer après chaque
+lot qui touche au runner ou à la boucle maison.
+
+**Ce qui reste hors de sa portée** : le smoke d'**exploitation** — appairage sur une machine tierce,
+repli long-polling derrière un proxy qui coupe l'`Upgrade`, `Ctrl-C` — protocole
+`SMOKE-manuel-bout-en-bout.md`, remis au niveau du lot livré le 2026-09-06, planification demandée
+au PO en **OQ-13**.

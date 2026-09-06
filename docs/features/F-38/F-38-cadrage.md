@@ -112,6 +112,28 @@ Chaque subfeature vise ≤ 2 jours.
 | — | **Déploiement en production** | Image `staging-b907947` : migrations 048/049, `APP_RUNNER_REGISTRY=pg-notify`, jar servi par `GET /api/runner/download`, relais 8081, `/api/internal/**` inatteignable depuis l'ingress. | **Fait** le 2026-08-30 |
 | — | **Smoke manuel bout en bout** | Appairage réel, WSS sortant, repli long-polling derrière un proxy, `Ctrl-C`. Non automatisable. | **Parqué** le 2026-09-06 — protocole `SMOKE-manuel-bout-en-bout.md`, planification au PO (OQ-13) |
 
+### Second lot — subfeatures nées du banc d'essai (2026-09-06)
+
+Le découpage ci-dessus a été livré en entier le 2026-08-30. Le **banc d'essai**
+(`BANC-ESSAI-RUNNER.md`), joué deux fois le 2026-09-06, a rouvert F-38 sur sept subfeatures de
+plus : elles ne viennent pas d'un cadrage mais de ce que le produit a fait sur une vraie machine.
+
+| ID | Subfeature | Contenu | Statut |
+|----|-----------|---------|--------|
+| SF-38-15 | Source `LOCAL` — un projet qui vit déjà sur la machine | Troisième source à côté de `ARCHIVE` et `GIT` : le **runner** déclare la racine (nom du dossier seulement, jamais le chemin absolu), `executionTarget = RUNNER` imposé, aucun préfixe de stockage alloué. | **Livrée** (PR #238, migration `052`) |
+| SF-38-16 | Écran « sur ma machine » | Choix de la source à la création, code d'appairage et commande de lancement donnés dans la foulée. | **Livrée** (PR #239) |
+| SF-38-17 | L'explorateur lit la machine, il ne la copie pas | Explorateur branché sur `list_files` / `read_file` du runner plutôt que sur le stockage objet : une seule source de vérité, aucun code utilisateur copié chez nous, « projet hors ligne » quand le runner est éteint. | **Livrée** (PR #240) |
+| SF-38-20 | Autorisations groupées | « Tout autoriser pour ce message » et projet qui ne demande plus. Amende **D7 de SF-38-08** sans toucher au journal d'audit ni au coupe-circuit : c'est le clic qui disparaît, jamais la trace. | **Livrée** (PR #247 backend, #248 écran) |
+| SF-38-19 | Le runner exécute par défaut | `--allow-bash` inversé en `--no-bash` (le drapeau ancien reste accepté, sans effet). La garde réelle est la porte de confirmation, pas un drapeau au lancement. | **Livrée** (PR #249) |
+| SF-38-21 | Un explorateur qui montre le projet, pas ses dépendances | Vingt motifs de **bruit de construction** écartés par défaut, **négociables** (évalués avant les règles utilisateur, `!node_modules/` les annule) — la liste de secrets de SF-38-10 reste, elle, non désactivable ; troncature du listage **annoncée** au lieu d'un projet incomplet en silence. | **Livrée** (PR #251) |
+| SF-38-18 | Dire avec quels droits le runner agit | uid réel détecté par le runner, déclaré à l'appairage, affiché là où l'on autorise une commande. **Informatif, jamais une garde** : démarrer en root n'est pas interdit (usage conteneur). | **Livrée** (PR #252, migration `053`) |
+| — | **Correctifs du lot** | Commande d'appairage affichée sans le préfixe `/api` (#244) ; test chronométré de SF-38-13 qui mesurait la charge du runner CI et non la propriété visée (#253). | **Livrés** le 2026-09-06 |
+
+**Écart de séquence assumé, et dit** : SF-38-21 est partie du banc d'essai **sans mini-spec
+préalable** — la séquence de `CLAUDE.md` demande l'inverse. Le document
+`SF-38-21-explorateur-filtre.md` a été reconstitué à partir du code livré et porte en tête la
+mention qu'il a été écrit après coup.
+
 ### Écarts de séquence assumés
 **SF-38-10 a été remontée juste après SF-38-04, avant SF-38-05** : livrer le routage backend avant les
 exclusions aurait laissé exister sur `main` un socle de lecture **sans filtre**. Le point de contrôle
