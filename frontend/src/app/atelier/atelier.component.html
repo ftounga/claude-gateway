@@ -60,6 +60,7 @@
     [askBeforeBash]="askBeforeBash()"
     [togglingConfirmation]="togglingConfirmation()"
     (confirmDecision)="answerConfirmation($event)"
+    (confirmAll)="answerConfirmation(true, true)"
     (denyWithReason)="startDenying()"
     (reasonChange)="setConfirmationReason($event)"
     (toggleAskBeforeBash)="toggleAskBeforeBash()"
