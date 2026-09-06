@@ -319,6 +319,20 @@ export interface AtelierStreamDone {
   reply: string;
   actions: AtelierAction[];
   messageId: string;
+  /**
+   * Consommation du tour, cache compris (F-39 / SF-39-15). **Optionnelle** : un backend antérieur
+   * ne l'émet pas, et l'écran n'affiche alors aucun coût — mieux vaut ne rien dire qu'annoncer
+   * « 0 token » (même règle qu'un relevé manqué côté agent, F-30 / SF-30-05).
+   */
+  inputTokens?: number;
+  outputTokens?: number;
+  /** Durée d'horloge du tour, en secondes (F-39 / SF-39-15). */
+  activeSeconds?: number;
+  /**
+   * Le tour s'est arrêté sur le **plafond de consommation** de ce message (F-39 / SF-39-15) —
+   * jamais sur le budget de temps, qui dit déjà sa cause dans `reply`.
+   */
+  budgetReached?: boolean;
 }
 
 /** Callbacks du streaming de l'atelier (SF-28-05). */
@@ -341,6 +355,12 @@ export interface AtelierStreamHandlers {
   onConfirmRequest?: (request: AtelierConfirmRequest) => void;
   /** Demande tranchée (ici, ailleurs, ou par expiration) : l'invite n'a plus lieu d'être. */
   onConfirmResolved?: (resolved: AtelierConfirmResolved) => void;
+  /**
+   * Consommation **cumulée** du tour, relayée après chaque itération (F-39 / SF-39-15). C'est ce
+   * qui remplit les tokens de la ligne vivante (acquis §4 n°5), muette sur la boucle maison
+   * jusqu'ici. **Optionnel** : un appelant qui ne s'y abonne pas ne voit aucune différence.
+   */
+  onProgress?: (tokens: number) => void;
 }
 
 /**

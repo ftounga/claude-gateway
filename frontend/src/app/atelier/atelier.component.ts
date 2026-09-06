@@ -970,6 +970,12 @@ export class AtelierComponent implements OnInit, OnDestroy {
       onConfirmRequest: (request) =>
         this.zone.run(() => this.showConfirmation(request, 'LOCAL_MACHINE')),
       onConfirmResolved: (resolved) => this.zone.run(() => this.clearConfirmation(resolved)),
+      // Consommation relevée après chaque itération (F-39 / SF-39-15) : la ligne vivante affichait
+      // les étapes et la durée, jamais les tokens, sur le moteur qui exécute réellement.
+      onProgress: (tokens) =>
+        this.zone.run(() =>
+          this.execStreaming.update((current) => (current ? { ...current, tokens } : current)),
+        ),
       onDone: (done) =>
         this.zone.run(() => {
           this.submitting.set(false);
@@ -977,11 +983,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
           // La transcription est reprise dans le tour final : sans cela, tout ce qui a défilé
           // pendant le tour disparaîtrait de l'écran (acquis F-30 SF-30-02).
           const transcript = this.execStreaming()?.blocks ?? [];
+          // La durée est relevée par le backend (F-39 / SF-39-15) ; le chronomètre d'écran sert de
+          // repli quand le champ manque — un backend antérieur ne l'émet pas.
+          const elapsed = done.activeSeconds ?? this.execElapsedSeconds();
           this.stopExecTimer();
           this.streaming.set(null);
           this.execStreaming.set(null);
           // Plus rien n'attend de décision : une invite restée à l'écran serait un piège.
           this.pendingConfirmation.set(null);
+          // Consommation à zéro = relevé manqué : on n'affiche alors aucun chiffre, plutôt qu'un
+          // « 0 token » qui passerait pour une mesure (même règle qu'un relevé manqué côté agent,
+          // F-30 SF-30-05).
+          const tokens = (done.inputTokens ?? 0) + (done.outputTokens ?? 0);
           this.messages.update((current) => [
             ...current,
             {
@@ -990,9 +1003,13 @@ export class AtelierComponent implements OnInit, OnDestroy {
               content: done.reply,
               actions: done.actions ?? [],
               terminal: transcript.length > 0 ? transcript : undefined,
-              // Pas de `cost` : la boucle maison ne relève pas la consommation d'un tour. Afficher
-              // une durée seule, sans tokens, ferait passer une absence de mesure pour une mesure
-              // (même règle qu'un relevé manqué côté agent, F-30 SF-30-05).
+              // Ce qu'a coûté le tour (acquis §4 n°6, SF-30-05) : la boucle maison ne le relevait
+              // pas, si bien que l'acquis ne valait pas sur le moteur qui exécute réellement.
+              cost: tokens > 0 ? { elapsedSeconds: elapsed, tokens } : undefined,
+              // Plafond de consommation de CE message atteint (F-39 / SF-39-15) : le travail est
+              // conservé, et l'écran le dit — un arrêt au milieu sans explication serait le pire
+              // des deux mondes.
+              budgetReached: done.budgetReached === true,
             },
           ]);
           // Un tour a pu écrire des fichiers : rafraîchir l'arborescence (et l'aperçu ouvert).
@@ -1883,6 +1900,12 @@ export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
   if (diffs.length > 0) {
     item.diffs = diffs;
   }
+  // Le coût vit lui aussi hors des blocs (F-39 / SF-39-15) : la boucle maison relève sa
+  // consommation sans persister de transcription, et un tour mesuré perdait sa mesure ici.
+  const tokens = (stored.inputTokens ?? 0) + (stored.outputTokens ?? 0);
+  if (tokens > 0) {
+    item.cost = { elapsedSeconds: stored.activeSeconds ?? 0, tokens };
+  }
   if (!Array.isArray(stored.blocks) || stored.blocks.length === 0) {
     return item;
   }
@@ -1896,9 +1919,5 @@ export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
     error: block.error === true,
     expanded: false,
   }));
-  const tokens = (stored.inputTokens ?? 0) + (stored.outputTokens ?? 0);
-  if (tokens > 0) {
-    item.cost = { elapsedSeconds: stored.activeSeconds ?? 0, tokens };
-  }
   return item;
 }

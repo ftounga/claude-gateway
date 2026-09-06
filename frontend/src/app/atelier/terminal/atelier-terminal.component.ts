@@ -254,6 +254,23 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     return this.engine === 'LOCAL_MACHINE' ? 'dns' : 'cloud';
   }
 
+  /**
+   * Ce qu'on fait après un tour arrêté sur le plafond de dépense (F-36 / SF-36-04, étendu à la
+   * boucle maison par F-39 / SF-39-15).
+   *
+   * <p>Le texte de F-36 promettait de reprendre « dans la même sandbox » : sur la machine de
+   * l'utilisateur il n'y a pas de sandbox, et lui parler d'un environnement qui n'existe pas
+   * l'enverrait chercher une explication au mauvais endroit. Le reste — travail conservé, relancer
+   * débloque — vaut des deux côtés.</p>
+   */
+  budgetHint(): string {
+    const tail =
+      this.engine === 'LOCAL_MACHINE'
+        ? 'la suite repart d’un plafond neuf, sur votre machine.'
+        : 'la suite repart d’un plafond neuf, dans la même sandbox.';
+    return `Le travail déjà fait est conservé. Renvoyez un message pour continuer : ${tail}`;
+  }
+
   @ViewChild('scrollback') private scrollback?: ElementRef<HTMLElement>;
 
   /** Hauteur de contenu au dernier défilement : évite de forcer le scroll à chaque cycle. */
