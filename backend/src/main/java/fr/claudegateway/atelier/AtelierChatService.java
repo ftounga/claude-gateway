@@ -57,6 +57,8 @@ public class AtelierChatService implements RelayInterruptTarget {
      * qu'un seul message pouvait consommer.
      */
     private final long maxTurnTokens;
+    /** Plafond d'explorations déléguées par message (F-39 / SF-39-14). */
+    private final int maxDelegations;
     /**
      * Budget de temps d'un tour (F-38 / SF-38-07). Sans lui, 12 itérations × 120 s de {@code bash}
      * dépassent largement la durée de vie du flux SSE : l'émetteur se clôt, l'écran se fige, et la
@@ -111,6 +113,13 @@ public class AtelierChatService implements RelayInterruptTarget {
      * avec l'ancienneté, son coût en tokens non.
      */
     private static final int REPLAYED_TRACE_TURNS = 5;
+    /**
+     * Outils confiés à une sous-boucle d'exploration (F-39 / SF-39-14) : la lecture, et rien
+     * d'autre. Ni écriture, ni {@code bash}, ni plan, ni délégation récursive.
+     */
+    private static final java.util.Set<String> READ_ONLY_TOOLS =
+            java.util.Set.of("read_file", "list_files", "search_files");
+
     /** Cible d'audit d'une commande (F-38 / SF-38-08) : la ligne du journal, pas un contenu. */
     private static final int AUDIT_TARGET_CHARS = 1_000;
     /**
@@ -190,6 +199,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.relayBroadcaster = relayBroadcaster;
         this.maxIterations = atelierProperties.maxIterations();
         this.maxTurnTokens = atelierProperties.maxTurnTokens();
+        this.maxDelegations = atelierProperties.maxDelegations();
         this.model = atelierProperties.model();
         this.reasoning = new AgentReasoning(true, atelierProperties.effort());
         this.contextPolicy = Boolean.TRUE.equals(atelierProperties.contextPruning())
@@ -291,6 +301,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         long largestIterationTokens = 0L;
         boolean interrupted = false;
         boolean spendCapReached = false;
+        /** Explorations déjà déléguées dans ce message (F-39 / SF-39-14). */
+        int delegations = 0;
         String finalText = "";
 
         for (int iteration = 0; iteration < maxIterations; iteration++) {
@@ -366,7 +378,26 @@ public class AtelierChatService implements RelayInterruptTarget {
                 if (step != null) {
                     listener.onAction(step);
                 }
-                ToolOutcome outcome = executeTool(userId, workspace, callId, call, listener, deadline, planOfTurn);
+                ToolOutcome outcome;
+                if ("explore".equals(call.name())) {
+                    // Délégation (F-39 / SF-39-14) : bornée en nombre, et sa consommation revient
+                    // dans les compteurs du TOUR — déléguer ne doit jamais permettre de passer sous
+                    // le plafond par message (D4).
+                    if (delegations >= maxDelegations) {
+                        outcome = ToolOutcome.error("Limite de délégations atteinte pour ce message ("
+                                + maxDelegations + ") : poursuis toi-même.");
+                    } else {
+                        delegations++;
+                        ExplorationOutcome explored =
+                                explore(userId, workspace, call, model, apiKey, deadline);
+                        inputTokens += explored.inputTokens();
+                        outputTokens += explored.outputTokens();
+                        listener.onProgress((long) inputTokens + outputTokens);
+                        outcome = explored.outcome();
+                    }
+                } else {
+                    outcome = executeTool(userId, workspace, callId, call, listener, deadline, planOfTurn);
+                }
                 if (outcome.action() != null) {
                     actions.add(outcome.action());
                 }
@@ -570,6 +601,51 @@ public class AtelierChatService implements RelayInterruptTarget {
         planOfTurn.set(plan);
         listener.onPlan(plan);
         return ToolOutcome.info(plan.acknowledgement(submitted));
+    }
+
+    /**
+     * Exécute une délégation d'exploration (F-39 / SF-39-14) : une sous-boucle en lecture seule dont
+     * <b>seule la réponse</b> revient ici. Ce qu'elle a lu reste chez elle — c'est tout l'intérêt.
+     *
+     * <p>Sa consommation est rendue à l'appelant pour être <b>ajoutée à celle du tour</b> (D4) :
+     * elle n'a ni quota propre, ni plafond propre. Une panne dans la sous-boucle devient un résultat
+     * d'outil en erreur, jamais un échec du tour principal : c'est une aide, et quand elle échoue,
+     * l'agent doit pouvoir faire le travail lui-même.</p>
+     */
+    private ExplorationOutcome explore(UUID userId, Workspace workspace, AgentToolCall call,
+            String model, String apiKey, long deadline) {
+        String question = call.input() == null ? null : call.input().path("question").asText(null);
+        if (question == null || question.isBlank()) {
+            return new ExplorationOutcome(ToolOutcome.error("Question requise pour explorer."), 0, 0);
+        }
+        String scope = call.input().path("path").asText(null);
+        // Outils de la sous-boucle : lecture seule, et cela vaut aussi en cible RUNNER (D2).
+        List<AgentTool> readTools = buildTools(workspace).stream()
+                .filter(tool -> READ_ONLY_TOOLS.contains(tool.name()))
+                .toList();
+        try {
+            AtelierExploration.Result result = AtelierExploration.run(agentProvider, model, apiKey,
+                    question.trim(), scope, readTools,
+                    subCall -> {
+                        ToolOutcome outcome = READ_ONLY_TOOLS.contains(subCall.name())
+                                ? executeTool(userId, workspace, UUID.randomUUID().toString(), subCall,
+                                        AtelierProgressListener.NOOP, deadline,
+                                        new java.util.concurrent.atomic.AtomicReference<>(AtelierPlan.EMPTY))
+                                : ToolOutcome.error("Outil indisponible en exploration : " + subCall.name());
+                        return new AtelierExploration.ExecutedTool(outcome.content(), outcome.isError());
+                    },
+                    () -> interruptedTurns.contains(turnKey(userId, workspace.getId()))
+                            || System.currentTimeMillis() >= deadline);
+            return new ExplorationOutcome(ToolOutcome.info(result.answer()),
+                    result.inputTokens(), result.outputTokens());
+        } catch (RuntimeException ex) {
+            return new ExplorationOutcome(
+                    ToolOutcome.error("L'exploration a échoué ; poursuis toi-même."), 0, 0);
+        }
+    }
+
+    /** Issue d'une délégation : le résultat rendu au modèle, et ce qu'elle a consommé. */
+    private record ExplorationOutcome(ToolOutcome outcome, int inputTokens, int outputTokens) {
     }
 
     /** Clef de marque d'interruption : l'utilisateur ET le workspace, jamais l'un sans l'autre. */
@@ -975,6 +1051,19 @@ public class AtelierChatService implements RelayInterruptTarget {
                     Map.of("type", "object",
                             "properties", Map.of("command", stringProp, "cwd", stringProp),
                             "required", List.of("command"))));
+        }
+        // L'exploration est déclarée sur les deux cibles, et seulement si elle est autorisée
+        // (F-39 / SF-39-14). Elle absorbe le volume de lecture qui, sinon, remplit le contexte du
+        // travail principal.
+        if (maxDelegations > 0) {
+            tools.add(new AgentTool("explore",
+                    "Délègue une exploration en LECTURE SEULE à un agent qui ne voit pas cette "
+                            + "conversation : il lit, cherche, et te rend une réponse courte. Utile "
+                            + "quand répondre demande de parcourir beaucoup de fichiers dont tu n'as "
+                            + "pas besoin ensuite. Il ne peut ni écrire, ni exécuter de commande.",
+                    Map.of("type", "object",
+                            "properties", Map.of("question", stringProp, "path", stringProp),
+                            "required", List.of("question"))));
         }
         // Le plan est déclaré sur les DEUX cibles : c'est un outil d'organisation, pas d'exécution
         // (F-39 / SF-39-13). Rien de ce qu'il fait ne dépend de l'endroit où le code tourne.

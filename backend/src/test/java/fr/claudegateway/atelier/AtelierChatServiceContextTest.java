@@ -81,7 +81,7 @@ class AtelierChatServiceContextTest {
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
-                new AtelierProperties(null, null, null, null, null, null, null, null, null, contextPruning, null));
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, contextPruning, null, null));
     }
 
     @Test

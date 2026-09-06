@@ -67,6 +67,11 @@ app:
     # de dépense — le budget de temps du tour et le quota le sont — mais elle se baisse ici,
     # sans livraison, tant que le cache de prompt (R6) n'a pas changé l'arbitrage de coût.
     max-iterations: ${APP_ATELIER_MAX_ITERATIONS:30}
+    # Explorations déléguées par message (F-39 / SF-39-14). Une sous-boucle en LECTURE SEULE
+    # absorbe le volume de lecture qui, sinon, remplit le contexte du travail principal. Sa
+    # dépense appartient au tour : déléguer ne permet jamais de passer sous le plafond par
+    # message. `0` retire l'outil de la liste déclarée au modèle.
+    max-delegations: ${APP_ATELIER_MAX_DELEGATIONS:3}
     # Raisonnement de la BOUCLE MAISON (F-39 / SF-39-10) — a ne pas confondre avec le bloc `agent`
     # ci-dessous, qui regle le chemin Managed Agents.
     # Le modele est un reglage a elle : il etait emprunte au catalogue du chat (F-02), si bien que

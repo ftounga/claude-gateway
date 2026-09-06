@@ -54,7 +54,7 @@ class AtelierChatServiceReasoningTest {
     @BeforeEach
     void setUp() {
         agentProvider = new StubAiAgentProvider();
-        buildService(new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null));
+        buildService(new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null));
 
         Workspace workspace = new Workspace();
         workspace.setId(workspaceId);
@@ -107,7 +107,7 @@ class AtelierChatServiceReasoningTest {
     @Test
     void honoursTheConfiguredModelAndEffort() {
         buildService(new AtelierProperties(null, null, null, null, null, null, null,
-                "claude-opus-4-8", "xhigh", null, null));
+                "claude-opus-4-8", "xhigh", null, null, null));
         agentProvider.enqueueFinal("Bonjour.");
 
         service.chat(userId, workspaceId, "bonjour");
