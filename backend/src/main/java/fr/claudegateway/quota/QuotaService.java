@@ -5,6 +5,8 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,10 +34,13 @@ import fr.claudegateway.byok.ByokKeyService;
 @Service
 public class QuotaService {
 
+    private static final Logger log = LoggerFactory.getLogger(QuotaService.class);
+
     private final UsageCounterRepository usageCounterRepository;
     private final SubscriptionService subscriptionService;
     private final EntitlementService entitlementService;
     private final ByokKeyService byokKeyService;
+    private final QuotaAlertService quotaAlertService;
     private final QuotaProperties quotaProperties;
     private final Clock clock;
 
@@ -44,12 +49,14 @@ public class QuotaService {
             SubscriptionService subscriptionService,
             EntitlementService entitlementService,
             ByokKeyService byokKeyService,
+            QuotaAlertService quotaAlertService,
             QuotaProperties quotaProperties,
             Clock clock) {
         this.usageCounterRepository = usageCounterRepository;
         this.subscriptionService = subscriptionService;
         this.entitlementService = entitlementService;
         this.byokKeyService = byokKeyService;
+        this.quotaAlertService = quotaAlertService;
         this.quotaProperties = quotaProperties;
         this.clock = clock;
     }
@@ -111,7 +118,25 @@ public class QuotaService {
                 .orElseGet(() -> createCounter(userId, periodStart));
         counter.setInputTokens(counter.getInputTokens() + input);
         counter.setOutputTokens(counter.getOutputTokens() + output);
+        raiseQuotaAlertIfNeeded(userId, counter);
         usageCounterRepository.save(counter);
+    }
+
+    /**
+     * Juge le seuil d'alerte de consommation (F-42) sur le compteur fraîchement incrémenté, avant sa
+     * sauvegarde : la marque éventuelle part dans la <b>même</b> écriture que la consommation.
+     *
+     * <p>Encadré volontairement : une alerte manquée est un défaut d'information, une consommation
+     * perdue ou un appel en échec seraient un défaut de facturation et d'expérience. L'alerte
+     * informe, elle ne bloque jamais — l'ordre de gravité est explicite ici.</p>
+     */
+    private void raiseQuotaAlertIfNeeded(UUID userId, UsageCounter counter) {
+        try {
+            quotaAlertService.evaluateAfterUsage(userId, counter);
+        } catch (RuntimeException alertFailure) {
+            log.warn("Évaluation du seuil d'alerte de quota impossible pour l'utilisateur {} :"
+                    + " la consommation est enregistrée, l'alerte est ignorée.", userId, alertFailure);
+        }
     }
 
     /**

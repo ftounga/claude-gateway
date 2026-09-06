@@ -48,6 +48,9 @@ class QuotaServiceTest {
     @Mock
     private ByokKeyService byokKeyService;
 
+    @Mock
+    private QuotaAlertService quotaAlertService;
+
     private QuotaService quotaService;
 
     private final UUID alice = UUID.randomUUID();
@@ -60,7 +63,7 @@ class QuotaServiceTest {
     @BeforeEach
     void setUp() {
         quotaService = new QuotaService(usageCounterRepository, subscriptionService,
-                entitlementService, byokKeyService, quotaProperties, clock);
+                entitlementService, byokKeyService, quotaAlertService, quotaProperties, clock);
     }
 
     private void stubQuota(long quota) {
@@ -140,6 +143,41 @@ class QuotaServiceTest {
     void recordUsageIgnoresZeroConsumption() {
         quotaService.recordUsage(alice, 0, 0);
         verify(usageCounterRepository, never()).save(any());
+    }
+
+    @Test
+    void recordUsageAsksTheAlertServiceToJudgeTheThreshold() {
+        UsageCounter existing = counter(100, 50);
+        when(usageCounterRepository.findByUserIdAndPeriodStart(alice, expectedPeriod))
+                .thenReturn(Optional.of(existing));
+        when(usageCounterRepository.save(any(UsageCounter.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        quotaService.recordUsage(alice, 10, 5);
+
+        // Le seuil est jugé sur le compteur DÉJÀ incrémenté (F-42) : 110 + 55.
+        verify(quotaAlertService).evaluateAfterUsage(alice, existing);
+        assertThat(existing.totalTokens()).isEqualTo(165);
+    }
+
+    /**
+     * F-42 — l'alerte informe, elle ne bloque jamais. Une évaluation de seuil qui échoue ne doit ni
+     * faire remonter d'exception à l'appelant, ni faire perdre la consommation : une alerte manquée
+     * est un défaut d'information, une consommation perdue serait un défaut de facturation.
+     */
+    @Test
+    void recordUsageStillSavesConsumptionWhenTheAlertEvaluationFails() {
+        UsageCounter existing = counter(100, 50);
+        when(usageCounterRepository.findByUserIdAndPeriodStart(alice, expectedPeriod))
+                .thenReturn(Optional.of(existing));
+        when(usageCounterRepository.save(any(UsageCounter.class))).thenAnswer(inv -> inv.getArgument(0));
+        org.mockito.Mockito.doThrow(new IllegalStateException("alerte indisponible"))
+                .when(quotaAlertService).evaluateAfterUsage(any(), any());
+
+        assertThatCode(() -> quotaService.recordUsage(alice, 10, 5)).doesNotThrowAnyException();
+
+        assertThat(existing.getInputTokens()).isEqualTo(110);
+        assertThat(existing.getOutputTokens()).isEqualTo(55);
+        verify(usageCounterRepository).save(existing);
     }
 
     @Test

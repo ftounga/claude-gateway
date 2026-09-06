@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <!--
+      F-42 / SF-42-01 — La marque « seuil de consommation franchi », posée une seule fois.
+
+      Le point difficile de l'alerte n'est pas de la calculer, c'est de ne l'émettre QU'UNE FOIS.
+      Un utilisateur qui reçoit trente fois le même avertissement pendant un tour d'agent ne le lira
+      plus jamais. Il faut donc retenir quelque part que l'alerte est déjà partie — et le retenir
+      ailleurs qu'en mémoire : l'application est stateless et tourne sur deux replicas, une marque en
+      mémoire se perdrait au redéploiement et divergerait entre les pods.
+
+      La ligne `usage_counters(user_id, period_start)` EST déjà l'unité « un utilisateur, une
+      période ». Elle est déjà unique en base, et déjà chargée puis sauvegardée par `recordUsage`
+      après chaque appel : la marque n'y coûte ni lecture ni écriture supplémentaire. Et comme le
+      mois suivant crée une nouvelle ligne, l'alerte se ré-arme toute seule, sans code de remise à
+      zéro.
+
+      Deux colonnes, parce que deux faits distincts :
+        - `quota_alert_raised_at`    : le seuil a été franchi. Posé une fois, jamais réécrit —
+                                       c'est lui qui garantit l'unicité de l'émission.
+        - `quota_alert_dismissed_at` : l'utilisateur a lu et écarté l'alerte. Sans lui, la bannière
+                                       resterait affichée jusqu'à la fin du mois sans moyen de la
+                                       fermer, et deviendrait aussi invisible qu'une alerte répétée.
+
+      Nullables et sans défaut : aucun compteur existant n'est modifié, et un compteur antérieur se
+      relit comme « aucune alerte » — exactement son état d'aujourd'hui.
+    -->
+    <changeSet id="058-usage-counters-quota-alert" author="claude-gateway">
+        <addColumn tableName="usage_counters">
+            <column name="quota_alert_raised_at" type="timestamptz"/>
+            <column name="quota_alert_dismissed_at" type="timestamptz"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="usage_counters" columnName="quota_alert_raised_at"/>
+            <dropColumn tableName="usage_counters" columnName="quota_alert_dismissed_at"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
