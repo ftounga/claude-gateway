@@ -72,7 +72,7 @@ class AtelierChatServiceRunnerTargetTest {
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
                 // Plafond d'étapes par défaut (30) sauf mention contraire du test (SF-28-19).
-                new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null));
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null));
 
         // Porte de validation (SF-38-08) : ces tests-ci portent sur le routage, pas sur la
         // validation — on autorise donc systématiquement, en relayant quand même la demande à
@@ -283,10 +283,12 @@ class AtelierChatServiceRunnerTargetTest {
         assertThat(service.buildTools(sandbox)).extracting(fr.claudegateway.agent.AgentTool::name)
                 // `set_plan` est déclaré sur les DEUX cibles (F-39 / SF-39-13) : c'est un outil
                 // d'organisation, pas d'exécution — rien de ce qu'il fait ne dépend du lieu.
+                // `explore` et `set_plan` sont déclarés sur les DEUX cibles (F-39 / SF-39-13 et 14) :
+                // ce sont des outils d'organisation et de lecture, pas d'exécution.
                 .containsExactly("list_files", "read_file", "write_file", "edit_file", "search_files",
-                        "set_plan");
+                        "explore", "set_plan");
         assertThat(service.buildTools(runner)).extracting(fr.claudegateway.agent.AgentTool::name)
-                .containsExactly("read_file", "write_file", "edit_file", "bash", "set_plan");
+                .containsExactly("read_file", "write_file", "edit_file", "bash", "explore", "set_plan");
     }
 
     @Test
@@ -354,7 +356,7 @@ class AtelierChatServiceRunnerTargetTest {
         service.chat(userId, workspaceId, "remplace x par y");
 
         assertThat(service.buildTools(runner)).extracting(fr.claudegateway.agent.AgentTool::name)
-                .containsExactly("read_file", "write_file", "edit_file", "bash", "set_plan");
+                .containsExactly("read_file", "write_file", "edit_file", "bash", "explore", "set_plan");
         verify(runnerAuditService).recordCall(eq(userId), eq(workspaceId), anyString(), eq("edit_file"),
                 eq("a.ts"), any());
     }

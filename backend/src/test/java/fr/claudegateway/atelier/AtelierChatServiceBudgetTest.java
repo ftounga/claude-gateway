@@ -106,7 +106,7 @@ class AtelierChatServiceBudgetTest {
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
                 new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
-                        maxTurnTokens));
+                        maxTurnTokens, null));
     }
 
     private void hostedWithRemainingQuota(long remainingTokens) {

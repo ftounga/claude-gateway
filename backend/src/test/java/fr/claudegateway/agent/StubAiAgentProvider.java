@@ -18,10 +18,13 @@ public class StubAiAgentProvider implements AiAgentProvider {
     private final Deque<AgentTurn> script = new ArrayDeque<>();
     private int idSeq = 0;
     public volatile AgentTurnRequest lastRequest;
+    /** Tous les noms d'outils offerts, tous appels confondus — pour vérifier ce qu'a vu une sous-boucle. */
+    public final java.util.Set<String> toolNamesSeen = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public void reset() {
         script.clear();
         lastRequest = null;
+        toolNamesSeen.clear();
         idSeq = 0;
     }
 
@@ -118,6 +121,9 @@ public class StubAiAgentProvider implements AiAgentProvider {
     @Override
     public AgentTurn nextTurn(AgentTurnRequest request) {
         this.lastRequest = request;
+        if (request.tools() != null) {
+            request.tools().forEach(tool -> toolNamesSeen.add(tool.name()));
+        }
         AgentTurn next = script.poll();
         if (next != null) {
             return next;

@@ -93,7 +93,7 @@ class AtelierChatServiceTest {
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
                 // Plafond d'étapes par défaut (30) sauf mention contraire du test (SF-28-19).
-                new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null));
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null));
     }
 
     /** Workspace d'archive possédé : la source par défaut, celle de tous les tests de ce fichier. */
@@ -404,7 +404,7 @@ class AtelierChatServiceTest {
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
-                new AtelierProperties(null, null, null, null, null, null, max, null, null, null, null));
+                new AtelierProperties(null, null, null, null, null, null, max, null, null, null, null, null));
     }
 
     @Test
@@ -507,5 +507,79 @@ class AtelierChatServiceTest {
 
         assertThat(listener.plans).isEmpty();
         assertThat(result.reply()).isEqualTo("Lu.");
+    }
+
+    // ------------------------------------------------- SF-39-14 : déléguer la lecture
+
+    @Test
+    void delegatesAnExplorationAndBringsBackOnlyItsAnswer() {
+        stubHappyPath();
+        agentProvider.enqueueToolCall("explore", "question", "où est défini AppConfig ?");
+        // Ce que la sous-boucle fait, et ce qu'elle conclut.
+        agentProvider.enqueueToolCall("read_file", "path", "src/AppConfig.java");
+        agentProvider.enqueueFinal("Dans src/AppConfig.java, ligne 12.");
+        // Puis la boucle principale conclut.
+        agentProvider.enqueueFinal("AppConfig est dans src/AppConfig.java:12.");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "où est AppConfig ?");
+
+        assertThat(result.reply()).contains("src/AppConfig.java");
+        // Le contexte principal ne porte QUE la réponse : le contenu du fichier lu par la
+        // sous-boucle n'y entre jamais — c'est tout l'intérêt de la délégation.
+        List<AgentMessage> sent = agentProvider.lastRequest.messages();
+        assertThat(sent.toString()).doesNotContain("contenu du fichier");
+    }
+
+    @Test
+    void countsWhatTheExplorationConsumedInTheTurn() {
+        stubHappyPath();
+        agentProvider.enqueueToolCall("explore", "question", "cherche");
+        agentProvider.enqueueFinal("Trouvé.");
+        agentProvider.enqueueFinal("Voilà.");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "cherche");
+
+        // La sous-boucle n'a ni quota propre ni plafond propre : sa dépense appartient au tour (D4).
+        assertThat(result.inputTokens()).isGreaterThan(5L);
+    }
+
+    @Test
+    void refusesTheFourthDelegationWithoutBreakingTheTurn() {
+        stubHappyPath();
+        for (int i = 0; i < 4; i++) {
+            agentProvider.enqueueToolCall("explore", "question", "question " + i);
+            agentProvider.enqueueFinal("réponse " + i);
+        }
+        agentProvider.enqueueFinal("Terminé.");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "explore beaucoup");
+
+        // Le refus est un résultat d'outil, pas une panne : le tour aboutit.
+        assertThat(result.reply()).isNotBlank();
+    }
+
+    @Test
+    void anEmptyQuestionIsAToolErrorNotATurnFailure() {
+        stubHappyPath();
+        agentProvider.enqueueToolCall("explore", "question", "   ");
+        agentProvider.enqueueFinal("Je poursuis moi-même.");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "explore");
+
+        assertThat(result.reply()).isEqualTo("Je poursuis moi-même.");
+    }
+
+    @Test
+    void theExplorationOnlyEverGetsReadTools() {
+        stubHappyPath();
+        agentProvider.enqueueToolCall("explore", "question", "cherche");
+        agentProvider.enqueueFinal("Trouvé.");
+        agentProvider.enqueueFinal("Voilà.");
+
+        service.chat(userId, workspaceId, "cherche");
+
+        // Le dernier appel est celui de la boucle principale ; on vérifie qu'aucune requête n'a
+        // jamais offert d'outil d'écriture ou d'exécution à la sous-boucle.
+        assertThat(agentProvider.toolNamesSeen).doesNotContain("bash");
     }
 }
