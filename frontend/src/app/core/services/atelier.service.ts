@@ -56,6 +56,17 @@ export class AtelierService {
   }
 
   /**
+   * Ouvre un projet qui vit **déjà sur la machine** de l'utilisateur (F-38 / SF-38-15).
+   *
+   * <p>Le corps ne porte qu'un **nom** : aucun chemin n'est transmis, et aucun ne le sera. Un
+   * navigateur ne peut pas donner un chemin du disque, et la gateway n'a aucune raison de connaître
+   * l'arborescence de la machine — le dossier se désigne au lancement du runner.</p>
+   */
+  createLocalWorkspace(name: string): Observable<WorkspaceDetail> {
+    return this.http.post<WorkspaceDetail>('/api/workspaces/local', { name });
+  }
+
+  /**
    * Ouvre un projet sur un dépôt GitHub (F-31 / SF-31-02). Aucun secret ne transite : le jeton
    * d'accès a été enregistré séparément (réglages) et n'est manipulé que côté backend.
    */

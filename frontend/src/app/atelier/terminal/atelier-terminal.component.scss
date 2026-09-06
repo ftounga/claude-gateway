@@ -29,6 +29,27 @@
   font-size: 13px;
 }
 
+/* Dossier de la machine (F-38 / SF-38-16) : discret, à côté du titre — une localisation, pas un
+   titre concurrent. Espacements multiples de 4px (design system). */
+.terminal-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  font-size: 12px;
+  opacity: 0.72;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+  }
+}
+
 // Pastille de moteur (F-39 / SF-39-08) : dit où le code s'exécute. Reprend les classes `badge` de
 // la charte — aucune couleur nouvelle n'est introduite.
 .engine-chip {

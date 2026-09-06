@@ -75,6 +75,13 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Input() projectName = '';
 
   /**
+   * Dossier de la machine, tel que le runner l'a déclaré (F-38 / SF-38-16). Affiché à côté du nom
+   * du projet quand il est connu : c'est le seul endroit où l'utilisateur voit **où** son travail
+   * a lieu. `null` tant qu'aucune machine ne s'est appairée.
+   */
+  @Input() localFolder: string | null = null;
+
+  /**
    * Moteur qui anime ce terminal (F-39 / SF-39-08). **Affiché, jamais choisi** : la pastille dit où
    * le code s'exécute, ce qui est la seule chose que l'utilisateur ait à comprendre. Les mots
    * « Assistant » et « Terminal » ont disparu de l'écran avec les modes qu'ils désignaient.
