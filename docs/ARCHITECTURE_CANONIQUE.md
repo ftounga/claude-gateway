@@ -331,6 +331,32 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   calculés **côté gateway** à partir des primitives runner existantes, donc **sans évolution du
   protocole**. Une lecture **tronquée** fait refuser l'édition : réécrire un fragment détruirait la
   fin du fichier, en silence.
+- **Transcription d'un tour de la boucle maison — aucune migration** (F-39 / SF-39-17). Le document
+  d'affichage `terminal_json` (F-30 / SF-30-09) est désormais écrit **par les deux moteurs** : jusque-là
+  seul le chemin **Managed Agents** le persistait, c'est-à-dire **pas celui qui exécute réellement**
+  depuis F-38 — un rechargement ne rendait alors que la dernière ligne visible. **Aucune table, aucune
+  colonne** : le format existe et l'isolation `user_id` vient de `atelier_messages`.
+  - **Bornée à l'écriture** : 200 blocs par tour, 4 000 caractères par sortie, **la fin conservée** —
+    c'est là que se trouvent le code de sortie et le message d'erreur ; garder le début mémoriserait la
+    question sans la réponse. Même règle que la troncature de `tool_trace` (SF-39-03), et pour la même
+    raison. Les blocs écartés sont **comptés et dits** à l'écran, jamais silencieusement perdus.
+  - ⚠️ **Chaîne de délais, invariant d'exploitation** : `budget de tour (600 s) < flux SSE (900 s) ≤
+    ingress (900 s)`. Un flux SSE reste **silencieux** entre deux événements (pendant un `npm install`,
+    pendant que le modèle réfléchit) : un `proxy-read-timeout` plus court que le tour coupe la
+    connexion alors que le travail continue côté serveur, et l'écran se fige **sans erreur**. Les
+    annotations `nginx.ingress.kubernetes.io/proxy-read-timeout` et `proxy-send-timeout`
+    (`k8s/base/ingress/ingress.yaml`) suivent `STREAM_TIMEOUT_MS` d'`AtelierChatController` : les
+    changer **ensemble, ou pas du tout**. C'est la boucle qui doit rendre la main la première, en
+    disant pourquoi.
+  - **Journal serveur, sans contenu** : deux lignes `info` par tour (ouverture, fermeture avec la cause
+    d'arrêt) — ni commande, ni sortie, ni chemin de fichier. Une ligne par itération noierait le journal.
+- **Explorateur en panneau — aucune persistance** (F-39 / SF-39-18). L'explorateur de fichiers s'ouvre
+  **dans** la vue Atelier via un **paramètre de requête**, jamais un segment de route : Angular détruit
+  un composant quand la **route** change, et détruire `AtelierComponent` emportait le **flux SSE du tour
+  en cours** — l'autorisation d'exécuter (F-33) partait alors dans un flux inexistant et la porte
+  tranchait seule en **refus** au bout de `confirm-timeout`. La route dédiée `/atelier/:id/fichiers`
+  **survit** (favoris, liens partagés), aucun terminal n'y étant monté. **Aucune table, aucune colonne,
+  aucun changement serveur.**
 - **atelier_messages — tour interrompu** (F-32 / SF-32-01). **Aucune migration** : la marque d'un tour
   arrêté par l'utilisateur vit dans le document d'affichage `terminal_json` déjà existant (F-30 /
   SF-30-09), sous un champ booléen **additif** `interrupted` — un tour antérieur, qui ne le porte pas,

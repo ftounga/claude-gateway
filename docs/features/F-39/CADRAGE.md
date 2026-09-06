@@ -1,6 +1,6 @@
 # Cadrage — F-39 · L'Atelier comme harnais
 
-**Date** : 2026-09-06 · **Statut** : cadré, découpage à valider
+**Date** : 2026-09-06 · **Statut** : **livré** le 2026-09-06 — 18 subfeatures, les 9 lots du découpage plus deux subfeatures nées du banc d'essai (SF-39-17, SF-39-18)
 **Origine** : `docs/features/F-28/AUDIT-parite-claude-code.md` + audit de l'**usage réel** (§2)
 
 ---
@@ -143,9 +143,10 @@ le reste, et la mémoire conditionne l'utilité.
 | **4 · Écran unique** ✅ | SF-39-07 → 09 | Fusion des deux modes · sélection transparente du moteur · **report intégral des acquis §4** — livré le 2026-09-06 (PR #226, #227, #228) ; le §4 est désormais **exécutable** (`frontend/src/app/atelier/terminal/acquis-f30.spec.ts`, un test par acquis) |
 | **5 · Raisonnement** ✅ | SF-39-10 | `thinking` adaptatif, `effort`, `claude-opus-5` sur la boucle maison — livré le 2026-09-06 (PR #230) ; `effort` **reste à `high`** après le lot 6 : la boucle appelle toujours en **non-streamé**, et c'est le passage au flux — non le timeout — qui débloquerait `xhigh` |
 | **6 · Tenue longue** ✅ | SF-39-11 → 12 | Délai HTTP câblé · réessai `429`/`529` avec `Retry-After`, gigue et budget d'attente borné · **édition de contexte** (`clear_tool_uses`) plutôt que compaction — livré le 2026-09-06 (PR #232, #233) ; le choix est tracé en **D-L6-7** : l'édition est sans état, quand la compaction imposerait de persister ses blocs, or la boucle reconstruit `messages` depuis l'historique à chaque message |
-| **7 · Outillage d'agent** | SF-39-13 → 14 | Liste de tâches visible · sous-agents |
+| **7 · Outillage d'agent** ✅ | SF-39-13 → 14 | Liste de tâches visible (`set_plan`) · délégation en **lecture seule** (`explore`) — livré le 2026-09-06 (PR #241, #242) ; le plan est **remplacé, jamais fusionné** (D1) et vit dans le **tour**, jamais dans un champ du service ; la délégation est **séquentielle** (D1) et sa dépense **appartient au tour** (D4), sans quoi déléguer contournerait le plafond de SF-39-15 |
 | **8 · Coût visible** ✅ | SF-39-15 | Plafond de consommation par message · consommation relayée pendant le tour et affichée à sa fin — livré le 2026-09-06 (PR #235, #236) ; le plafond est dit en **tokens traités** et non en dollars (**D-L8-1**) : le compteur additionne les tokens servis par le cache, qu'un taux mélangé sur-facturerait d'un ordre de grandeur, coupant précisément les tours que le lot 1 venait de rendre abordables. Effet de bord assumé et voulu : les acquis §4 n°5 et n°6 valent désormais **des deux moteurs** |
-| **9 · Nettoyage** | SF-39-16 | Retrait de la cible `SANDBOX` de la boucle maison (D7), si décidé |
+| **9 · Nettoyage** ✅ | SF-39-16 | Cible `SANDBOX` **fermée par coupe-circuit** plutôt que supprimée — livré le 2026-09-06 (PR #243) : `app.atelier.storage-execution` ferme le chemin sans détruire le socle sur lequel une trentaine de tests exercent toute la boucle |
+| **Banc d'essai** ✅ | SF-39-17 → 18 | **Hors cadrage initial** : deux défauts qu'aucun test ne montrait, trouvés en faisant travailler le harnais sur un vrai projet (`docs/features/F-38/BANC-ESSAI-RUNNER.md`) — **SF-39-17** un tour long ne se perd plus (chaîne de délais *tour 600 < flux 900 ≤ ingress 900*, transcription persistée **sur la boucle maison**, journal serveur sans contenu ; PR #245) et **SF-39-18** l'explorateur devient un **panneau dans la vue** ouvert par un paramètre de requête, parce qu'y naviguer détruisait le composant terminal et le flux SSE du tour (PR #246, correctif de cycle d'import #250). L'acquis §4 n°7 de F-30 ne valait pas sur le moteur qui exécute réellement : le §4 n'est vérifié que là où un test le porte |
 
 ---
 

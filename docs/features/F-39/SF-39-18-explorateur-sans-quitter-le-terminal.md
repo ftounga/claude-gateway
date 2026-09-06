@@ -10,7 +10,7 @@
 
 ## Statut
 
-`ready`
+`done` — livrée le 2026-09-06 (PR #246, correctif de cycle d'import PR #250)
 
 ## Date de création
 
