@@ -25,7 +25,6 @@ import org.mockito.quality.Strictness;
 
 import fr.claudegateway.agent.AiAgentProvider;
 import fr.claudegateway.agent.StubAiAgentProvider;
-import fr.claudegateway.ai.ModelCatalog;
 import fr.claudegateway.byok.ByokKeyService;
 import fr.claudegateway.quota.QuotaService;
 import fr.claudegateway.runner.audit.RunnerAuditService;
@@ -51,7 +50,6 @@ class AtelierChatServiceRelayTest {
     @Mock private AtelierMessageRepository messageRepository;
     @Mock private ByokKeyService byokKeyService;
     @Mock private QuotaService quotaService;
-    @Mock private ModelCatalog modelCatalog;
     @Mock private fr.claudegateway.git.GitTokenService gitTokenService;
     @Mock private fr.claudegateway.git.GitHubClient gitHubClient;
     @Mock private RunnerToolGateway runnerToolGateway;
@@ -69,14 +67,13 @@ class AtelierChatServiceRelayTest {
     void setUp() {
         service = new AtelierChatService(workspaceService, messageRepository,
                 (AiAgentProvider) new StubAiAgentProvider(), byokKeyService, quotaService,
-                modelCatalog,
                 new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
                         gitHubClient,
                         new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, auditService,
                 relayBroadcaster,
                 // Plafond d'étapes par défaut (30) : ce fichier ne teste que le relais (SF-28-19).
-                new AtelierProperties(null, null, null, null, null, null, null));
+                new AtelierProperties(null, null, null, null, null, null, null, null, null));
     }
 
     // ------------------------------------------------------------------- interruption

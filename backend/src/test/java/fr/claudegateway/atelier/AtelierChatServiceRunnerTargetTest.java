@@ -27,7 +27,6 @@ import fr.claudegateway.agent.AgentContentBlock;
 import fr.claudegateway.agent.AgentMessage;
 import fr.claudegateway.agent.AiAgentProvider;
 import fr.claudegateway.agent.StubAiAgentProvider;
-import fr.claudegateway.ai.ModelCatalog;
 import fr.claudegateway.atelier.AtelierChatService.AtelierChatResult;
 import fr.claudegateway.byok.ByokKeyService;
 import fr.claudegateway.quota.QuotaService;
@@ -50,7 +49,6 @@ class AtelierChatServiceRunnerTargetTest {
     @Mock private AtelierMessageRepository messageRepository;
     @Mock private ByokKeyService byokKeyService;
     @Mock private QuotaService quotaService;
-    @Mock private ModelCatalog modelCatalog;
     @Mock private fr.claudegateway.git.GitTokenService gitTokenService;
     @Mock private fr.claudegateway.git.GitHubClient gitHubClient;
     @Mock private RunnerToolGateway runnerToolGateway;
@@ -68,13 +66,13 @@ class AtelierChatServiceRunnerTargetTest {
     void setUp() {
         agentProvider = new StubAiAgentProvider();
         service = new AtelierChatService(workspaceService, messageRepository, (AiAgentProvider) agentProvider,
-                byokKeyService, quotaService, modelCatalog,
+                byokKeyService, quotaService,
                 new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
                 // Plafond d'étapes par défaut (30) sauf mention contraire du test (SF-28-19).
-                new AtelierProperties(null, null, null, null, null, null, null));
+                new AtelierProperties(null, null, null, null, null, null, null, null, null));
 
         // Porte de validation (SF-38-08) : ces tests-ci portent sur le routage, pas sur la
         // validation — on autorise donc systématiquement, en relayant quand même la demande à
@@ -85,7 +83,6 @@ class AtelierChatServiceRunnerTargetTest {
                     fr.claudegateway.runner.exec.RunnerConfirmationGate.Decision.ALLOW, null);
         });
 
-        when(modelCatalog.defaultModel()).thenReturn("claude-model");
         when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.empty());
         when(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId))
                 .thenReturn(List.of());

@@ -27,7 +27,6 @@ import fr.claudegateway.agent.AgentContentBlock;
 import fr.claudegateway.agent.AgentMessage;
 import fr.claudegateway.agent.AiAgentProvider;
 import fr.claudegateway.agent.StubAiAgentProvider;
-import fr.claudegateway.ai.ModelCatalog;
 import fr.claudegateway.atelier.AtelierProgressListener.AtelierConfirmRequest;
 import fr.claudegateway.atelier.AtelierProgressListener.AtelierConfirmResolved;
 import fr.claudegateway.byok.ByokKeyService;
@@ -54,7 +53,6 @@ class AtelierChatServiceRunnerGuardTest {
     @Mock private AtelierMessageRepository messageRepository;
     @Mock private ByokKeyService byokKeyService;
     @Mock private QuotaService quotaService;
-    @Mock private ModelCatalog modelCatalog;
     @Mock private fr.claudegateway.git.GitTokenService gitTokenService;
     @Mock private fr.claudegateway.git.GitHubClient gitHubClient;
     @Mock private RunnerToolGateway runnerToolGateway;
@@ -75,15 +73,14 @@ class AtelierChatServiceRunnerGuardTest {
         gate = new RunnerConfirmationGate(200L); // Silence = refus rapide, pour les tests d'échéance.
         listener = new RecordingListener();
         service = new AtelierChatService(workspaceService, messageRepository,
-                (AiAgentProvider) agentProvider, byokKeyService, quotaService, modelCatalog,
+                (AiAgentProvider) agentProvider, byokKeyService, quotaService,
                 new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, gate, auditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
                 // Plafond d'étapes par défaut (30) sauf mention contraire du test (SF-28-19).
-                new AtelierProperties(null, null, null, null, null, null, null));
+                new AtelierProperties(null, null, null, null, null, null, null, null, null));
 
-        when(modelCatalog.defaultModel()).thenReturn("claude-model");
         when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.empty());
         when(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId))
                 .thenReturn(List.of());

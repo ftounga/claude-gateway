@@ -17,7 +17,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import fr.claudegateway.agent.AiAgentProvider;
 import fr.claudegateway.agent.StubAiAgentProvider;
-import fr.claudegateway.ai.ModelCatalog;
 import fr.claudegateway.byok.ByokKeyService;
 import fr.claudegateway.quota.QuotaService;
 
@@ -37,7 +36,6 @@ class AtelierChatServiceSystemPromptTest {
     @Mock private AtelierMessageRepository messageRepository;
     @Mock private ByokKeyService byokKeyService;
     @Mock private QuotaService quotaService;
-    @Mock private ModelCatalog modelCatalog;
     @Mock private fr.claudegateway.git.GitTokenService gitTokenService;
     @Mock private fr.claudegateway.git.GitHubClient gitHubClient;
     @Mock private fr.claudegateway.runner.exec.RunnerToolGateway runnerToolGateway;
@@ -66,19 +64,18 @@ class AtelierChatServiceSystemPromptTest {
     void setUp() {
         agentProvider = new StubAiAgentProvider();
         service = new AtelierChatService(workspaceService, messageRepository, (AiAgentProvider) agentProvider,
-                byokKeyService, quotaService, modelCatalog,
+                byokKeyService, quotaService,
                 new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
-                new AtelierProperties(null, null, null, null, null, null, null));
+                new AtelierProperties(null, null, null, null, null, null, null, null, null));
 
         Workspace workspace = new Workspace();
         workspace.setId(workspaceId);
         workspace.setUserId(userId);
         workspace.setSource(WorkspaceSource.ARCHIVE);
         when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(workspace);
-        when(modelCatalog.defaultModel()).thenReturn("claude-model");
         when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.empty());
         when(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId))
                 .thenReturn(List.of());

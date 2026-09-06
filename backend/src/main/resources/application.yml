@@ -67,6 +67,17 @@ app:
     # de dépense — le budget de temps du tour et le quota le sont — mais elle se baisse ici,
     # sans livraison, tant que le cache de prompt (R6) n'a pas changé l'arbitrage de coût.
     max-iterations: ${APP_ATELIER_MAX_ITERATIONS:30}
+    # Raisonnement de la BOUCLE MAISON (F-39 / SF-39-10) — a ne pas confondre avec le bloc `agent`
+    # ci-dessous, qui regle le chemin Managed Agents.
+    # Le modele est un reglage a elle : il etait emprunte au catalogue du chat (F-02), si bien que
+    # changer le modele propose aux utilisateurs changeait en silence celui qui execute des commandes
+    # sur leur machine.
+    model: ${APP_ATELIER_MODEL:claude-opus-5}
+    # Effort de raisonnement : low | medium | high | xhigh | max. `high` est le defaut du
+    # fournisseur — le poser ici ne change rien au comportement, et rend le levier reglable sans
+    # livraison. `xhigh` attend le lot 6 : la boucle appelle en NON-streame, et monter l'effort avant
+    # d'avoir cable timeout et retry echangerait de la profondeur contre des tours coupes au budget.
+    effort: ${APP_ATELIER_EFFORT:high}
     agent:
       # Managed Agents (F-28 / Phase 2, ADR-013). Flag OFF par défaut : tant que `enabled` est faux
       # et qu'aucune config n'existe, AUCUN appel réseau ni coût runtime (bootstrap inerte).

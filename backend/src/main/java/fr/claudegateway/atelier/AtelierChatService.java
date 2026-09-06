@@ -11,12 +11,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import fr.claudegateway.agent.AgentContentBlock;
 import fr.claudegateway.agent.AgentMessage;
+import fr.claudegateway.agent.AgentReasoning;
 import fr.claudegateway.agent.AgentTool;
 import fr.claudegateway.agent.AgentToolCall;
 import fr.claudegateway.agent.AgentTurn;
 import fr.claudegateway.agent.AgentTurnRequest;
 import fr.claudegateway.agent.AiAgentProvider;
-import fr.claudegateway.ai.ModelCatalog;
 import fr.claudegateway.atelier.dto.AtelierChatResponse.AtelierAction;
 import fr.claudegateway.byok.ByokKeyService;
 import fr.claudegateway.quota.QuotaService;
@@ -103,7 +103,14 @@ public class AtelierChatService implements RelayInterruptTarget {
     private final AiAgentProvider agentProvider;
     private final ByokKeyService byokKeyService;
     private final QuotaService quotaService;
-    private final ModelCatalog modelCatalog;
+    /**
+     * Modèle de la boucle maison (F-39 / SF-39-10) : un réglage à elle, et non plus le modèle par
+     * défaut du catalogue de <b>chat</b> (F-02) — deux features distinctes ne partagent pas un
+     * réglage par hasard.
+     */
+    private final String model;
+    /** Raisonnement demandé à chaque itération d'un tour (F-39 / SF-39-10). */
+    private final AgentReasoning reasoning;
     private final fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService;
     private final RunnerToolGateway runnerToolGateway;
     private final fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher;
@@ -125,7 +132,6 @@ public class AtelierChatService implements RelayInterruptTarget {
 
     public AtelierChatService(WorkspaceService workspaceService, AtelierMessageRepository messageRepository,
             AiAgentProvider agentProvider, ByokKeyService byokKeyService, QuotaService quotaService,
-            ModelCatalog modelCatalog,
             fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService,
             RunnerToolGateway runnerToolGateway,
             fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher,
@@ -138,7 +144,6 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.agentProvider = agentProvider;
         this.byokKeyService = byokKeyService;
         this.quotaService = quotaService;
-        this.modelCatalog = modelCatalog;
         this.gitWorkspaceService = gitWorkspaceService;
         this.runnerToolGateway = runnerToolGateway;
         this.runnerCallDispatcher = runnerCallDispatcher;
@@ -146,6 +151,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.runnerAuditService = runnerAuditService;
         this.relayBroadcaster = relayBroadcaster;
         this.maxIterations = atelierProperties.maxIterations();
+        this.model = atelierProperties.model();
+        this.reasoning = new AgentReasoning(true, atelierProperties.effort());
     }
 
     /**
@@ -217,7 +224,6 @@ public class AtelierChatService implements RelayInterruptTarget {
 
         String system = buildSystemPrompt(userId, workspace);
         List<AgentTool> tools = buildTools(workspace);
-        String model = modelCatalog.defaultModel();
 
         List<AtelierAction> actions = new ArrayList<>();
         /** Trajectoire du tour (SF-39-03), rejouée au message suivant. */
@@ -238,7 +244,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 break;
             }
             AgentTurn turn = agentProvider.nextTurn(
-                    new AgentTurnRequest(model, system, messages, tools, apiKey));
+                    new AgentTurnRequest(model, system, messages, tools, apiKey, reasoning));
             inputTokens += turn.inputTokens();
             outputTokens += turn.outputTokens();
 
@@ -262,6 +268,11 @@ public class AtelierChatService implements RelayInterruptTarget {
 
             // Rejoue le message assistant (texte + tool_use) puis exécute chaque outil.
             List<AgentContentBlock> assistantBlocks = new ArrayList<>();
+            // Le raisonnement d'abord, tel quel (SF-39-10, décision D-L5-3) : le fournisseur exige de
+            // retrouver ses blocs signés, inchangés et dans l'ordre, sur le dernier tour d'assistant
+            // quand on lui renvoie les tool_result. Ils vivent le temps du tour et ne sont jamais
+            // persistés : d'un message à l'autre, le raisonnement des tours passés n'est plus rejoué.
+            assistantBlocks.addAll(turn.reasoning());
             if (turn.text() != null && !turn.text().isBlank()) {
                 assistantBlocks.add(new AgentContentBlock.Text(turn.text()));
             }
