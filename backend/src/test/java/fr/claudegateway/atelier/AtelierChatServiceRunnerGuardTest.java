@@ -79,7 +79,7 @@ class AtelierChatServiceRunnerGuardTest {
                 runnerToolGateway, runnerCallDispatcher, gate, auditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
                 // Plafond d'étapes par défaut (30) sauf mention contraire du test (SF-28-19).
-                new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null));
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null, true));
 
         when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.empty());
         // Quota lu pour dériver le plafond de consommation du message (F-39 / SF-39-15).

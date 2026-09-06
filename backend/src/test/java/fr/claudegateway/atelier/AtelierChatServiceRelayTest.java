@@ -73,7 +73,7 @@ class AtelierChatServiceRelayTest {
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, auditService,
                 relayBroadcaster,
                 // Plafond d'étapes par défaut (30) : ce fichier ne teste que le relais (SF-28-19).
-                new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null));
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null, true));
     }
 
     // ------------------------------------------------------------------- interruption

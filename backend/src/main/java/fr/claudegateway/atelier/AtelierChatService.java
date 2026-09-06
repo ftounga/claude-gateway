@@ -59,6 +59,8 @@ public class AtelierChatService implements RelayInterruptTarget {
     private final long maxTurnTokens;
     /** Plafond d'explorations déléguées par message (F-39 / SF-39-14). */
     private final int maxDelegations;
+    /** Coupe-circuit de la cible {@code SANDBOX} de la boucle maison (F-39 / SF-39-16). */
+    private final boolean storageExecution;
     /**
      * Budget de temps d'un tour (F-38 / SF-38-07). Sans lui, 12 itérations × 120 s de {@code bash}
      * dépassent largement la durée de vie du flux SSE : l'émetteur se clôt, l'écran se fige, et la
@@ -200,6 +202,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.maxIterations = atelierProperties.maxIterations();
         this.maxTurnTokens = atelierProperties.maxTurnTokens();
         this.maxDelegations = atelierProperties.maxDelegations();
+        this.storageExecution = atelierProperties.storageExecution();
         this.model = atelierProperties.model();
         this.reasoning = new AgentReasoning(true, atelierProperties.effort());
         this.contextPolicy = Boolean.TRUE.equals(atelierProperties.contextPruning())
@@ -243,6 +246,16 @@ public class AtelierChatService implements RelayInterruptTarget {
         // Le garde-fou ne vaut QUE pour la cible SANDBOX (F-38 / SF-38-05) : en cible RUNNER, les
         // outils s'exécutent sur la machine de l'utilisateur, où le dépôt est réellement cloné. Un
         // projet Git + RUNNER est donc légitime — le refuser serait un faux positif.
+        // Cible SANDBOX sur la boucle maison (F-39 / SF-39-16) : chemin fermé par défaut. Depuis le
+        // lot 4, l'écran ne l'emprunte plus — un projet sans runner passe par les Managed Agents.
+        // Refus AVANT tout appel fournisseur et avant le contrôle de quota : aucun token consommé,
+        // aucun message persisté. Posé APRÈS `requireOwned` (D3) : un projet d'autrui rend 404, et
+        // jamais un refus qui révélerait son existence.
+        if (!workspace.isRunnerTarget() && !storageExecution) {
+            throw new StorageExecutionClosedException(
+                    "Ce projet n'a pas de machine connectée : son terminal passe par le bac à sable "
+                            + "hébergé.");
+        }
         if (!workspace.isRunnerTarget()) {
             gitWorkspaceService.requireArchiveChatMode(workspace);
         }

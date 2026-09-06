@@ -93,7 +93,7 @@ class AtelierChatServiceTest {
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
                 // Plafond d'étapes par défaut (30) sauf mention contraire du test (SF-28-19).
-                new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null));
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null, true));
     }
 
     /** Workspace d'archive possédé : la source par défaut, celle de tous les tests de ce fichier. */
@@ -404,7 +404,7 @@ class AtelierChatServiceTest {
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
-                new AtelierProperties(null, null, null, null, null, null, max, null, null, null, null, null));
+                new AtelierProperties(null, null, null, null, null, null, max, null, null, null, null, null, true));
     }
 
     @Test
@@ -581,5 +581,58 @@ class AtelierChatServiceTest {
         // Le dernier appel est celui de la boucle principale ; on vérifie qu'aucune requête n'a
         // jamais offert d'outil d'écriture ou d'exécution à la sous-boucle.
         assertThat(agentProvider.toolNamesSeen).doesNotContain("bash");
+    }
+
+    // ------------------------------------------------- SF-39-16 : fermeture de la cible SANDBOX
+
+    /** Reconstruit le service avec le coupe-circuit de la cible SANDBOX **fermé** (défaut de prod). */
+    private void serviceWithStorageExecutionClosed() {
+        service = new AtelierChatService(workspaceService, messageRepository, (AiAgentProvider) agentProvider,
+                byokKeyService, quotaService,
+                new fr.claudegateway.atelier.git.GitWorkspaceService(workspaceService, gitTokenService,
+                        gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
+                runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
+                fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
+                        null, null, false));
+    }
+
+    @Test
+    void refusesTheHomeLoopOnAProjectWithoutAConnectedMachine() {
+        stubOwnedArchiveWorkspace();
+        serviceWithStorageExecutionClosed();
+
+        assertThatThrownBy(() -> service.chat(userId, workspaceId, "vas-y"))
+                .isInstanceOf(StorageExecutionClosedException.class)
+                .hasMessageContaining("bac à sable");
+
+        // Refus AVANT tout appel fournisseur et avant le contrôle de quota : rien n'est consommé,
+        // rien n'est persisté.
+        assertThat(agentProvider.lastRequest).isNull();
+        verify(messageRepository, never()).save(any(AtelierMessage.class));
+        verify(quotaService, never()).assertWithinQuota(any());
+    }
+
+    @Test
+    void anotherUsersProjectStillAnswersNotFoundRatherThanRefused() {
+        // L'ordre des gardes est une règle de confidentialité : un refus posé en premier dirait
+        // « ce projet existe » à quelqu'un qui n'en est pas propriétaire (D3).
+        serviceWithStorageExecutionClosed();
+        when(workspaceService.requireOwned(userId, workspaceId))
+                .thenThrow(new WorkspaceNotFoundException("Workspace introuvable"));
+
+        assertThatThrownBy(() -> service.chat(userId, workspaceId, "vas-y"))
+                .isInstanceOf(WorkspaceNotFoundException.class);
+    }
+
+    @Test
+    void theOpenedCircuitBreakerRestoresTheFormerBehaviourExactly() {
+        // Non-régression : ouvert, c'est le comportement d'avant, à l'identique.
+        stubHappyPath();
+        agentProvider.enqueueFinal("Voilà.");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "vas-y");
+
+        assertThat(result.reply()).isEqualTo("Voilà.");
     }
 }

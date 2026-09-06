@@ -41,6 +41,13 @@ import fr.claudegateway.user.UserRole;
  * outils fichiers sur le workspace, sous isolation {@code user_id}. Le fournisseur d'agent est un stub
  * scriptable (aucun réseau).
  */
+/*
+ * Ces tests exercent la boucle maison de bout en bout sur un projet d'archive, chemin que le
+ * produit n'emprunte plus depuis le lot 4 (F-39 / SF-39-16). Le coupe-circuit est ouvert ici, et
+ * seulement ici : c'est le socle de test de la boucle, pas un usage.
+ */
+@org.springframework.test.context.TestPropertySource(
+        properties = "app.atelier.storage-execution=true")
 @SpringBootTest(properties = "spring.main.allow-bean-definition-overriding=true")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")

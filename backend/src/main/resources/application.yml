@@ -72,6 +72,11 @@ app:
     # dépense appartient au tour : déléguer ne permet jamais de passer sous le plafond par
     # message. `0` retire l'outil de la liste déclarée au modèle.
     max-delegations: ${APP_ATELIER_MAX_DELEGATIONS:3}
+    # Coupe-circuit de la cible SANDBOX de la boucle maison (F-39 / SF-39-16). FERMÉ par
+    # défaut : depuis le lot 4, l'écran ne l'emprunte plus — un projet sans runner passe par
+    # les Managed Agents. Le code reste, parce qu'il est le socle de test de toute la boucle ;
+    # c'est la porte produit qui se ferme. `true` rétablit le chemin, sans livraison.
+    storage-execution: ${APP_ATELIER_STORAGE_EXECUTION:false}
     # Raisonnement de la BOUCLE MAISON (F-39 / SF-39-10) — a ne pas confondre avec le bloc `agent`
     # ci-dessous, qui regle le chemin Managed Agents.
     # Le modele est un reglage a elle : il etait emprunte au catalogue du chat (F-02), si bien que

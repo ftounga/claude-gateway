@@ -43,6 +43,13 @@ import fr.claudegateway.user.UserRole;
  * {@code POST /api/workspaces/git}, gating Gold, authentification, cas d'erreur et isolation
  * {@code user_id}. GitHub est remplacé par un stub — aucun appel réseau.
  */
+/*
+ * Le refus du mode « Assistant » sur un projet Git (SF-31-03) se vérifie sur la boucle maison en
+ * cible SANDBOX : le coupe-circuit de SF-39-16 est donc ouvert ici, sans quoi c'est lui qui
+ * répondrait, et le garde-fou testé ne serait jamais atteint.
+ */
+@org.springframework.test.context.TestPropertySource(
+        properties = "app.atelier.storage-execution=true")
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
