@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import fr.claudegateway.agent.AgentContentBlock;
+import fr.claudegateway.agent.AgentContextPolicy;
 import fr.claudegateway.agent.AgentMessage;
 import fr.claudegateway.agent.AgentReasoning;
 import fr.claudegateway.agent.AgentTool;
@@ -97,6 +98,22 @@ public class AtelierChatService implements RelayInterruptTarget {
     private static final int REPLAYED_TRACE_TURNS = 5;
     /** Cible d'audit d'une commande (F-38 / SF-38-08) : la ligne du journal, pas un contenu. */
     private static final int AUDIT_TARGET_CHARS = 1_000;
+    /**
+     * Contexte d'entrée à partir duquel les résultats d'outils périmés sont écartés
+     * (F-39 / SF-39-12). Large devant un tour ordinaire, très en deçà de la fenêtre du modèle : ce
+     * qui déborde n'est pas la conversation, c'est l'accumulation des sorties d'outils <b>dans un
+     * même tour</b> — une seule sortie de commande pèse jusqu'à {@value #MAX_BASH_OUTPUT_BYTES}
+     * octets, et un tour en compte jusqu'à trente.
+     */
+    private static final int CONTEXT_TRIGGER_INPUT_TOKENS = 200_000;
+    /** Résultats d'outils toujours conservés : ce sur quoi l'agent travaille à l'instant. */
+    private static final int CONTEXT_KEEP_TOOL_RESULTS = 3;
+    /**
+     * Plancher d'écartement (F-39 / SF-39-12, décision D-L6-9). Une édition modifie le préfixe et
+     * invalide donc le cache de prompt à partir du point édité : sans plancher, on paierait une
+     * réécriture complète du cache pour quelques centaines de tokens gagnés.
+     */
+    private static final int CONTEXT_CLEAR_AT_LEAST_INPUT_TOKENS = 20_000;
 
     private final WorkspaceService workspaceService;
     private final AtelierMessageRepository messageRepository;
@@ -111,6 +128,12 @@ public class AtelierChatService implements RelayInterruptTarget {
     private final String model;
     /** Raisonnement demandé à chaque itération d'un tour (F-39 / SF-39-10). */
     private final AgentReasoning reasoning;
+    /**
+     * Politique de contexte appliquée à chaque itération d'un tour (F-39 / SF-39-12). Elle dit une
+     * intention — écarter les résultats d'outils périmés — que le fournisseur traduit ; le mécanisme
+     * lui-même n'existe que dans {@code AnthropicAgentProvider}.
+     */
+    private final AgentContextPolicy contextPolicy;
     private final fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService;
     private final RunnerToolGateway runnerToolGateway;
     private final fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher;
@@ -153,6 +176,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.maxIterations = atelierProperties.maxIterations();
         this.model = atelierProperties.model();
         this.reasoning = new AgentReasoning(true, atelierProperties.effort());
+        this.contextPolicy = Boolean.TRUE.equals(atelierProperties.contextPruning())
+                ? new AgentContextPolicy(true, CONTEXT_TRIGGER_INPUT_TOKENS,
+                        CONTEXT_KEEP_TOOL_RESULTS, CONTEXT_CLEAR_AT_LEAST_INPUT_TOKENS)
+                : AgentContextPolicy.none();
     }
 
     /**
@@ -244,7 +271,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 break;
             }
             AgentTurn turn = agentProvider.nextTurn(
-                    new AgentTurnRequest(model, system, messages, tools, apiKey, reasoning));
+                    new AgentTurnRequest(model, system, messages, tools, apiKey, reasoning, contextPolicy));
             inputTokens += turn.inputTokens();
             outputTokens += turn.outputTokens();
 

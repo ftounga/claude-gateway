@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 class AtelierPropertiesTest {
 
     private AtelierProperties withMaxIterations(Integer value) {
-        return new AtelierProperties(null, null, null, null, null, null, value, null, null);
+        return new AtelierProperties(null, null, null, null, null, null, value, null, null, null);
     }
 
     @Test
@@ -40,7 +40,7 @@ class AtelierPropertiesTest {
     // ------------------------------------------------- SF-39-10 : modèle et effort de la boucle
 
     private AtelierProperties withReasoning(String model, String effort) {
-        return new AtelierProperties(null, null, null, null, null, null, null, model, effort);
+        return new AtelierProperties(null, null, null, null, null, null, null, model, effort, null);
     }
 
     @Test
@@ -68,6 +68,22 @@ class AtelierPropertiesTest {
     @Test
     void fallsBackToTheDefaultModelWhenTheConfiguredOneIsBlank() {
         assertThat(withReasoning("   ", null).model()).isEqualTo("claude-opus-5");
+    }
+
+    // ------------------------------------------- SF-39-12 : écartement des résultats périmés
+
+    @Test
+    void prunesStaleToolResultsByDefault() {
+        assertThat(withMaxIterations(null).contextPruning()).isTrue();
+    }
+
+    @Test
+    void honoursTheCircuitBreaker() {
+        // Capacité beta dans un chemin critique : le coupe-circuit rétablit le service sans
+        // livraison si le fournisseur retirait l'option (D-L6-11).
+        AtelierProperties off =
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, false);
+        assertThat(off.contextPruning()).isFalse();
     }
 
     @Test

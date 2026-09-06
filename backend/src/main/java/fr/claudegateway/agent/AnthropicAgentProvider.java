@@ -55,6 +55,10 @@ public class AnthropicAgentProvider implements AiAgentProvider {
 
     /** Marqueur de cache posé sur le dernier bloc d'un segment stable (F-39 / SF-39-01). */
     private static final Map<String, Object> CACHE_CONTROL = Map.of("type", "ephemeral");
+    /** Stratégie d'édition de contexte du fournisseur (F-39 / SF-39-12). */
+    private static final String CLEAR_TOOL_USES_EDIT = "clear_tool_uses_20250919";
+    /** En-tête beta exigé par l'édition de contexte (F-39 / SF-39-12). */
+    private static final String CONTEXT_MANAGEMENT_BETA = "context-management-2025-06-27";
 
     /**
      * Attente d'un réessai. Séparée pour que les tests vérifient la <b>règle</b> sans dormir
@@ -130,8 +134,35 @@ public class AnthropicAgentProvider implements AiAgentProvider {
             body.put("tools", toApiTools(request.tools()));
         }
         applyReasoning(body, request.reasoning());
+        boolean contextEditing = applyContextPolicy(body, request.contextPolicy());
 
-        return callWithRetry(request.model(), apiKey, body);
+        return callWithRetry(request.model(), apiKey, body, contextEditing);
+    }
+
+    /**
+     * Édition de contexte du tour (F-39 / SF-39-12) : demande au fournisseur d'écarter les résultats
+     * d'outils périmés quand le contexte d'entrée dépasse le seuil.
+     *
+     * <p>C'est ici, et <b>nulle part ailleurs</b>, que le nom du mécanisme est écrit : le domaine
+     * exprime une intention ({@link AgentContextPolicy}), pas une option d'API (décision D-L6-10).</p>
+     *
+     * <p>{@code clear_tool_inputs} n'est volontairement pas demandé (décision D-L6-8) : savoir qu'on
+     * a lancé une commande il y a vingt itérations tient en quelques tokens et évite de la relancer ;
+     * c'est sa <b>sortie</b> qui pèse.</p>
+     *
+     * @return vrai si l'appel doit porter l'en-tête beta correspondant
+     */
+    private boolean applyContextPolicy(Map<String, Object> body, AgentContextPolicy policy) {
+        if (policy == null || !policy.pruneToolResults()) {
+            return false;
+        }
+        body.put("context_management", Map.of("edits", List.of(Map.of(
+                "type", CLEAR_TOOL_USES_EDIT,
+                "trigger", Map.of("type", "input_tokens", "value", policy.triggerInputTokens()),
+                "keep", Map.of("type", "tool_uses", "value", policy.keepRecentToolResults()),
+                "clear_at_least",
+                Map.of("type", "input_tokens", "value", policy.clearAtLeastInputTokens())))));
+        return true;
     }
 
     /**
@@ -147,15 +178,20 @@ public class AnthropicAgentProvider implements AiAgentProvider {
      * une part du budget de tour, et le rejouer échangerait un échec lisible contre un tour qui
      * meurt au budget — ce que l'utilisateur lit comme une panne.</p>
      */
-    private AgentTurn callWithRetry(String model, String apiKey, Map<String, Object> body) {
+    private AgentTurn callWithRetry(String model, String apiKey, Map<String, Object> body,
+            boolean contextEditing) {
         long waited = 0L;
         for (int attempt = 1; ; attempt++) {
             try {
-                JsonNode response = restClient.post()
+                RestClient.RequestBodySpec spec = restClient.post()
                         .uri("/v1/messages")
                         .header("x-api-key", apiKey)
                         .header("anthropic-version", properties.version())
-                        .contentType(MediaType.APPLICATION_JSON)
+                        .contentType(MediaType.APPLICATION_JSON);
+                if (contextEditing) {
+                    spec = spec.header("anthropic-beta", CONTEXT_MANAGEMENT_BETA);
+                }
+                JsonNode response = spec
                         .body(body)
                         .retrieve()
                         .body(JsonNode.class);
@@ -344,8 +380,24 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         // Un cache qui ne prend pas ne lève aucune erreur : seuls ces compteurs le disent.
         log.debug("Tour d'agent : {} tokens d'entrée (dont {} écrits en cache, {} lus en cache).",
                 inputTokens, cacheCreation, cacheRead);
+        logAppliedContextEdits(response);
         return new AgentTurn(text.toString(), toolCalls, finished, inputTokens, outputTokens, truncated,
                 reasoning);
+    }
+
+    /**
+     * Journalise les éditions de contexte réellement appliquées par le fournisseur
+     * (F-39 / SF-39-12). Comme pour le cache, une édition ne lève aucune erreur : sans ces
+     * compteurs, rien ne dirait si le mécanisme a servi, ni ce qu'il a fait gagner.
+     */
+    private void logAppliedContextEdits(JsonNode response) {
+        if (!log.isDebugEnabled()) {
+            return;
+        }
+        for (JsonNode edit : response.path("context_management").path("applied_edits")) {
+            // Rendue telle quelle : un type inconnu d'une version future se lit encore.
+            log.debug("Édition de contexte appliquée : {}", edit);
+        }
     }
 
     /** Clé BYOK fournie pour l'appel, sinon clé plateforme. Jamais journalisée. */

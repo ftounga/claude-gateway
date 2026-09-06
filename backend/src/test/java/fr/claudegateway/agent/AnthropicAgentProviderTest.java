@@ -379,6 +379,72 @@ class AnthropicAgentProviderTest {
         assertThat(block.path("thinking").asText()).isEmpty();
     }
 
+    // --- Édition de contexte (F-39 / SF-39-12) ---------------------------------------------------
+
+    /** Corps et en-têtes d'un tour porteur d'une politique de contexte donnée. */
+    private JsonNode captureBodyWithContext(AgentContextPolicy policy, List<String> betaHeaders) {
+        java.util.concurrent.atomic.AtomicReference<String> captured = new java.util.concurrent.atomic.AtomicReference<>();
+        server.expect(requestTo(URL))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(request -> {
+                    captured.set(((org.springframework.mock.http.client.MockClientHttpRequest) request)
+                            .getBodyAsString());
+                    List<String> beta = request.getHeaders().get("anthropic-beta");
+                    if (beta != null) {
+                        betaHeaders.addAll(beta);
+                    }
+                })
+                .andRespond(withSuccess("""
+                        {"content": [{"type": "text", "text": "ok"}], "stop_reason": "end_turn",
+                         "usage": {"input_tokens": 1, "output_tokens": 1},
+                         "context_management": {"applied_edits": [
+                            {"type": "clear_tool_uses_20250919", "cleared_tool_uses": 8,
+                             "cleared_input_tokens": 50000}]}}
+                        """, MediaType.APPLICATION_JSON));
+        AgentTurn turn = provider.nextTurn(new AgentTurnRequest("claude-model", "consigne",
+                List.of(AgentMessage.userText("bonjour")), List.of(), null, null, policy));
+        // Une réponse portant des éditions appliquées se traduit normalement : rien n'est altéré.
+        assertThat(turn.text()).isEqualTo("ok");
+        assertThat(turn.inputTokens()).isEqualTo(1);
+        server.verify();
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readTree(captured.get());
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
+    }
+
+    @Test
+    void asksTheProviderToClearStaleToolResults() {
+        build(null);
+        List<String> betaHeaders = new ArrayList<>();
+        JsonNode body = captureBodyWithContext(
+                new AgentContextPolicy(true, 200_000, 3, 20_000), betaHeaders);
+
+        JsonNode edit = body.path("context_management").path("edits").get(0);
+        assertThat(edit.path("type").asText()).isEqualTo("clear_tool_uses_20250919");
+        assertThat(edit.path("trigger").path("type").asText()).isEqualTo("input_tokens");
+        assertThat(edit.path("trigger").path("value").asInt()).isEqualTo(200_000);
+        assertThat(edit.path("keep").path("type").asText()).isEqualTo("tool_uses");
+        assertThat(edit.path("keep").path("value").asInt()).isEqualTo(3);
+        assertThat(edit.path("clear_at_least").path("type").asText()).isEqualTo("input_tokens");
+        assertThat(edit.path("clear_at_least").path("value").asInt()).isEqualTo(20_000);
+        // Les paramètres d'appel restent : c'est la SORTIE d'une commande qui pèse (D-L6-8).
+        assertThat(edit.has("clear_tool_inputs")).isFalse();
+        assertThat(betaHeaders).contains("context-management-2025-06-27");
+    }
+
+    @Test
+    void sendsNoContextManagementWhenThePolicyIsInactive() {
+        build(null);
+        List<String> betaHeaders = new ArrayList<>();
+        JsonNode body = captureBodyWithContext(AgentContextPolicy.none(), betaHeaders);
+
+        // Ni le champ ni l'en-tête beta : le corps est exactement celui d'avant SF-39-12.
+        assertThat(body.has("context_management")).isFalse();
+        assertThat(betaHeaders).isEmpty();
+    }
+
     // --- Tenue longue : délai HTTP et réessai des refus temporaires (F-39 / SF-39-11) ------------
 
     /** Réponse d'échec, avec ou sans en-tête {@code Retry-After}. */
