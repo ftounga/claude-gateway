@@ -51,6 +51,13 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private final int maxIterations;
     /**
+     * Plafond de consommation d'un <b>message</b> (F-39 / SF-39-15), en tokens traités. Voir
+     * {@link AtelierTurnBudget} pour le raisonnement : le nombre d'itérations borne les
+     * allers-retours, le budget de temps borne la durée, et jusqu'ici <b>rien</b> ne bornait ce
+     * qu'un seul message pouvait consommer.
+     */
+    private final long maxTurnTokens;
+    /**
      * Budget de temps d'un tour (F-38 / SF-38-07). Sans lui, 12 itérations × 120 s de {@code bash}
      * dépassent largement la durée de vie du flux SSE : l'émetteur se clôt, l'écran se fige, et la
      * boucle continue d'exécuter des commandes sur la machine de l'utilisateur. Le budget garantit
@@ -79,6 +86,14 @@ public class AtelierChatService implements RelayInterruptTarget {
     static final String EMPTY_REPLY_FALLBACK = "Je n'ai pas produit de réponse pour ce message.";
     static final String BUDGET_REACHED_REPLY =
             "Le temps imparti à ce message est écoulé ; relance-moi pour continuer.";
+    /**
+     * Réponse rendue quand le tour s'arrête sur le <b>plafond de consommation</b> du message
+     * (F-39 / SF-39-15). Volontairement distincte de {@link #BUDGET_REACHED_REPLY} : les confondre
+     * ferait proposer « racheter des tokens » à quelqu'un que la montre a arrêté (décision D-L8-5).
+     */
+    static final String SPEND_CAP_REPLY =
+            "Ce message a atteint son plafond de consommation ; le travail déjà fait est conservé, "
+                    + "relance-moi pour continuer.";
     /** Garde-fou : longueur max de la consigne système (CLAUDE.md + skills). */
     private static final int SYSTEM_MAX_CHARS = 40_000;
     private static final List<String> SKILL_PREFIXES = List.of(".claude/skills/", "skills/");
@@ -174,6 +189,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.runnerAuditService = runnerAuditService;
         this.relayBroadcaster = relayBroadcaster;
         this.maxIterations = atelierProperties.maxIterations();
+        this.maxTurnTokens = atelierProperties.maxTurnTokens();
         this.model = atelierProperties.model();
         this.reasoning = new AgentReasoning(true, atelierProperties.effort());
         this.contextPolicy = Boolean.TRUE.equals(atelierProperties.contextPruning())
@@ -225,13 +241,24 @@ public class AtelierChatService implements RelayInterruptTarget {
         // SF-28-06). En Hosted, comportement historique : contrôle avant + comptabilisation après.
         String apiKey = byokKeyService.resolveActiveApiKey(userId).orElse(null);
         boolean hosted = apiKey == null;
+        // Plafond de consommation de CE message (F-39 / SF-39-15). En Hosted il est borné par le
+        // quota restant de l'utilisateur du contexte de sécurité — un message ne consomme jamais
+        // plus que ce qui a été payé, règle de F-36 transposée à la boucle maison. En BYOK, les
+        // tokens sont sur le compte du client et aucun quota n'est tenu (SF-28-06) : seul le
+        // réglage s'applique.
+        AtelierTurnBudget turnBudget;
         if (hosted) {
             quotaService.assertWithinQuota(userId);
+            turnBudget = AtelierTurnBudget.hosted(maxTurnTokens,
+                    quotaService.currentUsage(userId).remainingTokens());
+        } else {
+            turnBudget = AtelierTurnBudget.byok(maxTurnTokens);
         }
         // Une interruption demandée alors qu'aucun tour ne tournait ne doit pas tuer celui-ci
         // (même précaution que F-32 SF-32-01).
         interruptedTurns.remove(turnKey(userId, workspaceId));
-        long deadline = System.currentTimeMillis() + TURN_BUDGET_MS;
+        long startedAt = System.currentTimeMillis();
+        long deadline = startedAt + TURN_BUDGET_MS;
         String userText = rawMessage.trim();
 
         // Historique de l'atelier (texte) + nouveau message utilisateur.
@@ -257,11 +284,16 @@ public class AtelierChatService implements RelayInterruptTarget {
         List<AtelierToolTrace.Step> trace = new ArrayList<>();
         int inputTokens = 0;
         int outputTokens = 0;
+        /** Plus grosse itération observée dans ce tour : majorant de la suivante (D-L8-2). */
+        long largestIterationTokens = 0L;
+        boolean interrupted = false;
+        boolean spendCapReached = false;
         String finalText = "";
 
         for (int iteration = 0; iteration < maxIterations; iteration++) {
             if (interruptedTurns.remove(turnKey(userId, workspaceId))) {
                 finalText = INTERRUPTED_REPLY;
+                interrupted = true;
                 break;
             }
             if (System.currentTimeMillis() >= deadline) {
@@ -270,10 +302,25 @@ public class AtelierChatService implements RelayInterruptTarget {
                 finalText = BUDGET_REACHED_REPLY;
                 break;
             }
+            // Plafond de consommation du message (F-39 / SF-39-15). On renonce AVANT l'appel qui
+            // ferait franchir le plafond, l'itération à venir étant majorée par la plus grosse déjà
+            // observée : rien ici ne peut refuser un appel une fois parti, et le constater après
+            // coup autoriserait une itération entière au-delà du plafond (D-L8-2). La première
+            // itération n'est jamais refusée (D-L8-3).
+            if (turnBudget.exceededBy((long) inputTokens + outputTokens, largestIterationTokens)) {
+                finalText = SPEND_CAP_REPLY;
+                spendCapReached = true;
+                break;
+            }
             AgentTurn turn = agentProvider.nextTurn(
                     new AgentTurnRequest(model, system, messages, tools, apiKey, reasoning, contextPolicy));
             inputTokens += turn.inputTokens();
             outputTokens += turn.outputTokens();
+            largestIterationTokens =
+                    Math.max(largestIterationTokens, (long) turn.inputTokens() + turn.outputTokens());
+            // Consommation relayée au fil de l'eau : c'est ce qui fait apparaître les tokens dans la
+            // ligne vivante du terminal (acquis §4 n°5), jusqu'ici muette sur la boucle maison.
+            listener.onProgress((long) inputTokens + outputTokens);
 
             // Réponse coupée au plafond de sortie (SF-28-18) : ses blocs sont incomplets. On
             // n'exécute AUCUN de ses outils — rien ne distingue de façon fiable un `tool_use` complet
@@ -334,6 +381,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // Interruption arrivée pendant les outils de ce tour : on s'arrête sans rappeler le
                 // fournisseur — l'appel runner en vol a déjà reçu son tool_cancel.
                 finalText = INTERRUPTED_REPLY;
+                interrupted = true;
                 break;
             }
             if (iteration == maxIterations - 1) {
@@ -350,13 +398,21 @@ public class AtelierChatService implements RelayInterruptTarget {
         // Jamais de message vide dans l'historique (SF-28-18) : il serait relu au tour suivant et
         // refusé par le fournisseur, condamnant le projet.
         String reply = nonEmptyReply(finalText);
+        long activeSeconds = Math.max(0L, (System.currentTimeMillis() - startedAt) / 1000L);
+        // Relevé du tour rangé dans la colonne d'affichage existante (F-39 / SF-39-15, D-L8-6) :
+        // sans lui, le coût du tour et le motif de son arrêt disparaîtraient au rechargement — et
+        // c'est précisément après un rechargement qu'on se demande pourquoi un tour s'est arrêté.
+        AtelierTurnReport report = new AtelierTurnReport(inputTokens, outputTokens, activeSeconds,
+                interrupted, spendCapReached);
         AtelierMessage assistant = messageRepository.save(AtelierMessage.builder()
                 .workspaceId(workspaceId).userId(userId).role("ASSISTANT")
                 .content(reply)
                 .toolTrace(new AtelierToolTrace(List.copyOf(trace)).toJson())
+                .terminalJson(report.toJson())
                 .build());
 
-        return new AtelierChatResult(reply, actions, assistant.getId());
+        return new AtelierChatResult(reply, actions, assistant.getId(), inputTokens, outputTokens,
+                activeSeconds, spendCapReached);
     }
 
     /**
@@ -1103,8 +1159,25 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
     }
 
-    /** Résultat d'un tour d'atelier. */
-    public record AtelierChatResult(String reply, List<AtelierAction> actions, UUID messageId) {
+    /**
+     * Résultat d'un tour d'atelier.
+     *
+     * @param reply         réponse finale rendue à l'utilisateur
+     * @param actions       fichiers lus/écrits pendant le tour
+     * @param messageId     identifiant du message assistant persisté
+     * @param inputTokens   tokens d'entrée du tour, cache compris (F-39 / SF-39-15)
+     * @param outputTokens  tokens de sortie du tour
+     * @param activeSeconds durée d'horloge du tour, en secondes
+     * @param budgetReached le tour s'est arrêté sur le <b>plafond de consommation</b> du message —
+     *                      jamais sur le budget de temps, qui dit déjà sa cause dans {@code reply}
+     */
+    public record AtelierChatResult(String reply, List<AtelierAction> actions, UUID messageId,
+            long inputTokens, long outputTokens, long activeSeconds, boolean budgetReached) {
+
+        /** Forme historique, conservée pour les appelants (et les tests) qui l'attendent. */
+        public AtelierChatResult(String reply, List<AtelierAction> actions, UUID messageId) {
+            this(reply, actions, messageId, 0L, 0L, 0L, false);
+        }
     }
 
     /** Issue interne d'un outil : contenu renvoyé au modèle, indicateur d'erreur, action pour l'UI. */

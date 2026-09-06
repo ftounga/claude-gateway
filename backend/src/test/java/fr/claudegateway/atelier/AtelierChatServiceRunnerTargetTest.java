@@ -72,7 +72,7 @@ class AtelierChatServiceRunnerTargetTest {
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
                 // Plafond d'étapes par défaut (30) sauf mention contraire du test (SF-28-19).
-                new AtelierProperties(null, null, null, null, null, null, null, null, null, null));
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null));
 
         // Porte de validation (SF-38-08) : ces tests-ci portent sur le routage, pas sur la
         // validation — on autorise donc systématiquement, en relayant quand même la demande à
@@ -84,6 +84,9 @@ class AtelierChatServiceRunnerTargetTest {
         });
 
         when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.empty());
+        // Quota lu pour dériver le plafond de consommation du message (F-39 / SF-39-15).
+        org.mockito.Mockito.lenient().when(quotaService.currentUsage(userId)).thenReturn(
+                new fr.claudegateway.quota.UsageSnapshot(0L, 12_000_000L, 12_000_000L, null, null));
         when(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId))
                 .thenReturn(List.of());
         when(messageRepository.save(any(AtelierMessage.class))).thenAnswer(invocation -> {

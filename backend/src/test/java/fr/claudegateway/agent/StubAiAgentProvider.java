@@ -84,6 +84,21 @@ public class StubAiAgentProvider implements AiAgentProvider {
         script.add(new AgentTurn(text, List.of(), true, 5, 5));
     }
 
+    /**
+     * Empile un tour « appel d'outil » à la <b>consommation choisie</b> (F-39 / SF-39-15) : le
+     * plafond de consommation d'un message se teste sur des itérations dont on connaît le poids.
+     */
+    public void enqueueToolCallCosting(String toolName, int inputTokens, int outputTokens) {
+        List<AgentToolCall> calls = new ArrayList<>();
+        calls.add(new AgentToolCall("tool_" + (idSeq++), toolName, mapper.createObjectNode()));
+        script.add(new AgentTurn("", calls, false, inputTokens, outputTokens));
+    }
+
+    /** Nombre de tours encore en attente : dit ce que la boucle n'a PAS consommé. */
+    public int remaining() {
+        return script.size();
+    }
+
     @Override
     public AgentTurn nextTurn(AgentTurnRequest request) {
         this.lastRequest = request;

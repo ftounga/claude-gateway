@@ -78,7 +78,9 @@ public class AtelierChatController {
     public AtelierChatResponse chat(@PathVariable UUID id, @Valid @RequestBody AtelierChatRequest request) {
         atelierAccess.requireAccess();
         AtelierChatResult result = atelierChatService.chat(currentUser.requireId(), id, request.message());
-        return new AtelierChatResponse(result.reply(), result.actions(), result.messageId());
+        return new AtelierChatResponse(result.reply(), result.actions(), result.messageId(),
+                result.inputTokens(), result.outputTokens(), result.activeSeconds(),
+                result.budgetReached());
     }
 
     /**
@@ -194,6 +196,11 @@ public class AtelierChatController {
                 }
 
                 @Override
+                public void onProgress(long tokens) {
+                    sendProgress(emitter, tokens);
+                }
+
+                @Override
                 public void onConfirmRequest(AtelierConfirmRequest request) {
                     sendConfirmRequest(emitter, request);
                 }
@@ -205,7 +212,9 @@ public class AtelierChatController {
             };
             AtelierChatResult result = atelierChatService.chatStreaming(userId, workspaceId, message, listener);
             emitter.send(SseEmitter.event().name("done")
-                    .data(new StreamDone(result.reply(), result.actions(), result.messageId())));
+                    .data(new StreamDone(result.reply(), result.actions(), result.messageId(),
+                            result.inputTokens(), result.outputTokens(), result.activeSeconds(),
+                            result.budgetReached())));
             emitter.complete();
         } catch (AtelierAccessDeniedException ex) {
             sendError(emitter, "forbidden");
@@ -258,6 +267,19 @@ public class AtelierChatController {
     }
 
     /**
+     * Émet la consommation cumulée du tour (F-39 / SF-39-15). Une déconnexion du client ne doit pas
+     * tuer le tour : comme la sortie de commande, c'est un <b>confort d'affichage</b>, et le tour
+     * tourne déjà. On abandonne le relais, pas le travail.
+     */
+    private void sendProgress(SseEmitter emitter, long tokens) {
+        try {
+            emitter.send(SseEmitter.event().name("progress").data(new StreamProgress(tokens)));
+        } catch (IOException | IllegalStateException ex) {
+            // Client parti : la consommation reste relevée et persistée avec le tour.
+        }
+    }
+
+    /**
      * Émet une demande d'autorisation (F-38 / SF-38-08). Une déconnexion du client interrompt le
      * relais : sans écran pour trancher, la commande ne doit pas être lancée « en attendant ».
      */
@@ -299,7 +321,18 @@ public class AtelierChatController {
     record StreamOutput(String output) {
     }
 
-    record StreamDone(String reply, List<AtelierAction> actions, UUID messageId) {
+    /**
+     * Fin de tour relayée au client. Les quatre derniers champs sont <b>additifs</b>
+     * (F-39 / SF-39-15) : un écran qui les ignore se comporte exactement comme avant.
+     * {@code budgetReached} dit que le tour s'est arrêté sur le <b>plafond de consommation</b> du
+     * message — jamais sur le budget de temps, qui dit déjà sa cause dans {@code reply}.
+     */
+    record StreamDone(String reply, List<AtelierAction> actions, UUID messageId, long inputTokens,
+            long outputTokens, long activeSeconds, boolean budgetReached) {
+    }
+
+    /** Consommation cumulée du tour, relayée au fil de l'eau (F-39 / SF-39-15). */
+    record StreamProgress(long tokens) {
     }
 
     record StreamError(String error) {

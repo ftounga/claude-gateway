@@ -87,7 +87,7 @@ class AtelierChatServiceTest {
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
                 // Plafond d'étapes par défaut (30) sauf mention contraire du test (SF-28-19).
-                new AtelierProperties(null, null, null, null, null, null, null, null, null, null));
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null));
     }
 
     /** Workspace d'archive possédé : la source par défaut, celle de tous les tests de ce fichier. */
@@ -102,6 +102,9 @@ class AtelierChatServiceTest {
     private void stubHappyPath() {
         stubOwnedArchiveWorkspace();
         when(byokKeyService.resolveActiveApiKey(userId)).thenReturn(Optional.empty());
+        // Quota lu pour dériver le plafond de consommation du message (F-39 / SF-39-15).
+        org.mockito.Mockito.lenient().when(quotaService.currentUsage(userId)).thenReturn(
+                new fr.claudegateway.quota.UsageSnapshot(0L, 12_000_000L, 12_000_000L, null, null));
         when(messageRepository.findByWorkspaceIdAndUserIdOrderByCreatedAtAsc(workspaceId, userId))
                 .thenReturn(List.of());
         // Le repo renvoie un message porteur d'un id (utilisé pour le messageId assistant).
@@ -395,7 +398,7 @@ class AtelierChatServiceTest {
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
-                new AtelierProperties(null, null, null, null, null, null, max, null, null, null));
+                new AtelierProperties(null, null, null, null, null, null, max, null, null, null, null));
     }
 
     @Test

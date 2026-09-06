@@ -74,6 +74,23 @@ public interface AtelierProgressListener {
         // Aucun relais : la sortie reste dans l'agrégat rendu au modèle.
     }
 
+    /**
+     * Notifie la consommation <b>cumulée</b> du tour après chaque itération (F-39 / SF-39-15).
+     *
+     * <p>C'est la moitié « visible » du lot 8 : jusqu'ici la boucle maison ne relayait aucune
+     * consommation, si bien que la ligne vivante (acquis §4 n°5, SF-30-13) affichait des étapes et
+     * une durée mais jamais de tokens — sur le moteur qui exécute réellement. Le compteur est celui
+     * du quota, cache compris (SF-39-01).</p>
+     *
+     * <p>Volontairement <b>par défaut neutre</b> : additif, les implémentations antérieures (mode
+     * synchrone, tests) restent valides sans changement.</p>
+     *
+     * @param tokens cumul des tokens traités depuis le début du tour (entrée + sortie)
+     */
+    default void onProgress(long tokens) {
+        // Aucun relais : mode synchrone.
+    }
+
     /** Listener neutre : n'émet rien (mode synchrone historique). */
     AtelierProgressListener NOOP = new AtelierProgressListener() {
         @Override
