@@ -9,7 +9,12 @@
  * Provenance des fichiers d'un projet (F-31 / SF-31-02) : archive `.zip` téléversée, ou dépôt Git
  * cloné dans l'espace d'exécution. Les écrans sont communs ; seuls les gestes disponibles diffèrent.
  */
-export type WorkspaceSource = 'ARCHIVE' | 'GIT';
+/**
+ * Provenance des fichiers d'un projet. `LOCAL` (F-38 / SF-38-15) : le projet vit **déjà sur la
+ * machine** de l'utilisateur — ni archive, ni dépôt. C'est le runner qui en déclare la racine à
+ * l'appairage ; la gateway n'apprend au plus que le nom du dossier.
+ */
+export type WorkspaceSource = 'ARCHIVE' | 'GIT' | 'LOCAL';
 
 /**
  * Cible d'exécution des outils d'un projet (F-38 / SF-38-05, décision D1) : le **sandbox hébergé**
@@ -25,6 +30,12 @@ export interface WorkspaceSummary {
   name: string;
   createdAt: string;
   source: WorkspaceSource;
+
+  /**
+   * Nom du dossier déclaré par le runner à l'appairage (F-38 / SF-38-16) — le dernier segment
+   * seulement, jamais le chemin absolu. Absent tant qu'aucune machine ne s'est appairée.
+   */
+  runnerRootName?: string;
   /** `owner/repo` pour un projet Git, `null` sinon. */
   gitRepo: string | null;
   /**
@@ -99,6 +110,12 @@ export interface WorkspaceDetail {
   files: string[];
   createdAt: string;
   source: WorkspaceSource;
+
+  /**
+   * Nom du dossier déclaré par le runner à l'appairage (F-38 / SF-38-16) — le dernier segment
+   * seulement, jamais le chemin absolu. Absent tant qu'aucune machine ne s'est appairée.
+   */
+  runnerRootName?: string;
   /** URL publique du dépôt (jamais le jeton), `null` pour un projet d'archive. */
   gitRepoUrl: string | null;
   /** `owner/repo`, `null` pour un projet d'archive. */

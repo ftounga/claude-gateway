@@ -16,6 +16,7 @@
 @if (activeWorkspaceId()) {
   <app-atelier-terminal
     [projectName]="activeName()"
+    [localFolder]="localFolder()"
     [engine]="engine()"
     [executionTarget]="executionTarget()"
     [switchingTarget]="switchingTarget()"
@@ -89,6 +90,15 @@
         Nouveau projet
       </button>
       <mat-menu #newProjectMenu="matMenu">
+        <!--
+          « Sur ma machine » en premier (F-38 / SF-38-16) : c'est le cas où le projet existe déjà,
+          et les deux autres n'ont alors aucun sens. Aucun chemin n'est demandé — le dossier se
+          désigne au lancement du runner.
+        -->
+        <button mat-menu-item type="button" (click)="openLocalProjectDialog()">
+          <mat-icon>computer</mat-icon>
+          Sur ma machine
+        </button>
         <button mat-menu-item type="button" (click)="openGitRepoDialog()">
           <mat-icon>hub</mat-icon>
           Ouvrir un dépôt GitHub
@@ -102,7 +112,8 @@
 
     @if (workspaces().length === 0) {
       <p class="sidebar-empty">
-        Aucun projet. Ouvrez un dépôt GitHub, ou importez une archive .zip.
+        Aucun projet. Ouvrez-en un sur votre machine, sur un dépôt GitHub, ou importez une
+        archive .zip.
       </p>
     } @else {
       <mat-nav-list class="workspace-list">

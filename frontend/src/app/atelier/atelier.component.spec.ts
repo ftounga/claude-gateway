@@ -84,6 +84,7 @@ describe('AtelierComponent', () => {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace',
       'createGitWorkspace',
+      'createLocalWorkspace',
       'pushBranch',
       'createPullRequest',
       'listWorkspaces',
@@ -2549,6 +2550,68 @@ describe('AtelierComponent', () => {
 
     expect(component.resumeChoice()).toBeFalse();
   });
+  // ------------------------------------------------- SF-38-16 : projet sur ma machine
+
+  it('creates a local project from a name alone, then opens pairing', () => {
+    setup();
+    const localDetail = { ...detail, id: 'w-local', source: 'LOCAL' as const, executionTarget: 'RUNNER' as const };
+    service.createLocalWorkspace.and.returnValue(of(localDetail));
+    // Le dialogue sert deux fois : la saisie du nom, puis l'écran d'appairage.
+    dialog.open.and.returnValue({
+      afterClosed: () => of('runner-claude'),
+    } as MatDialogRef<unknown, unknown>);
+
+    component.openLocalProjectDialog();
+
+    // Un NOM, et rien d'autre : aucun chemin ne transite.
+    expect(service.createLocalWorkspace).toHaveBeenCalledWith('runner-claude');
+    expect(component.activeWorkspaceId()).toBe('w-local');
+    // L'appairage s'enchaîne : un projet local sans machine n'a nulle part où travailler.
+    expect(dialog.open).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not create anything when the name dialog is dismissed', () => {
+    setup();
+    dialog.open.and.returnValue({
+      afterClosed: () => of(undefined),
+    } as MatDialogRef<unknown, unknown>);
+
+    component.openLocalProjectDialog();
+
+    expect(service.createLocalWorkspace).not.toHaveBeenCalled();
+  });
+
+  it('reports a creation failure without leaving the button spinning', () => {
+    setup();
+    service.createLocalWorkspace.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 500 })),
+    );
+    dialog.open.and.returnValue({
+      afterClosed: () => of('runner-claude'),
+    } as MatDialogRef<unknown, unknown>);
+
+    component.openLocalProjectDialog();
+
+    expect(snackBar.open).toHaveBeenCalled();
+    expect(component.creating()).toBeFalse();
+  });
+
+  it('shows the machine folder only once the runner has declared it', () => {
+    setup();
+    fixture.detectChanges();
+    component.activeWorkspaceId.set('w1');
+    // Projet d'archive : aucun dossier de machine à afficher.
+    expect(component.localFolder()).toBeNull();
+
+    component.workspaces.set([
+      { ...summary, id: 'w1', source: 'LOCAL', runnerRootName: 'runner-claude' },
+    ]);
+    expect(component.localFolder()).toBe('runner-claude');
+
+    // Projet local dont aucune machine ne s'est encore appairée : rien plutôt qu'un nom inventé.
+    component.workspaces.set([{ ...summary, id: 'w1', source: 'LOCAL' }]);
+    expect(component.localFolder()).toBeNull();
+  });
 });
 
 
@@ -3024,5 +3087,6 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
       .toEqual({ workspaceId: 'w1', workspaceName: 'projet' });
     fixture.destroy();
   });
+
 
 });

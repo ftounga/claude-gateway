@@ -5,6 +5,14 @@
       <mat-icon>terminal</mat-icon>
       {{ projectName }} — terminal
     </span>
+    <!-- Dossier de la machine (F-38 / SF-38-16) : dit OÙ le travail a lieu, une fois le runner
+         appairé. Rien n'est affiché tant qu'aucune machine ne l'a déclaré. -->
+    @if (localFolder) {
+      <span class="terminal-folder" [title]="'Dossier sur votre machine : ' + localFolder">
+        <mat-icon>folder</mat-icon>
+        {{ localFolder }}
+      </span>
+    }
     <!-- Pastille de moteur (F-39 / SF-39-08, D1) : dit **où le code s'exécute**, jamais un nom de
          mode. C'est tout ce qui reste, à l'écran, des anciens « Assistant » et « Terminal ». -->
     <span
