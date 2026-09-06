@@ -19,6 +19,13 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
 
     Optional<Subscription> findByStripeCustomerId(String stripeCustomerId);
 
+    /**
+     * Abonnement dont l'<b>option Atelier</b> (F-40) porte cet identifiant fournisseur. L'index est
+     * unique : un identifiant d'abonnement fournisseur désigne au plus une ligne, ce qui rend cette
+     * résolution plus étroite que le repli « par client » réservé au plan.
+     */
+    Optional<Subscription> findByAtelierOptionStripeSubscriptionId(String atelierOptionStripeSubscriptionId);
+
     /** Suppression RGPD : l'abonnement d'un utilisateur (isolation {@code user_id}). */
     void deleteByUserId(UUID userId);
 }

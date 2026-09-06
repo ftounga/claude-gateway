@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
+import fr.claudegateway.billing.provider.AtelierOptionCheckoutCommand;
 import fr.claudegateway.billing.provider.BillingProviderUnavailableException;
 import fr.claudegateway.billing.provider.CheckoutCommand;
 import fr.claudegateway.billing.provider.StripeBillingProvider;
@@ -23,7 +24,8 @@ class StripeBillingProviderTest {
     private StripeBillingProvider provider(String secretKey, String webhookSecret) {
         return new StripeBillingProvider(new BillingProperties(14, new BillingProperties.Stripe(
                 secretKey, webhookSecret, Map.of("PRO", "price_pro"),
-                Map.of("STANDARD", "price_topup"), null, null, Map.of())));
+                Map.of("STANDARD", "price_topup"), null, null, Map.of(),
+                "price_atelier_option", "40")));
     }
 
     @Test
@@ -59,6 +61,55 @@ class StripeBillingProviderTest {
                 UUID.randomUUID(), "a@b.co", null, "STANDARD", "");
         assertThatThrownBy(() -> provider("sk_test", "whsec").createTopUpCheckoutSession(cmd))
                 .isInstanceOf(BillingProviderUnavailableException.class);
+    }
+
+    // ------------------------------------------------ option Atelier (F-40 / SF-40-02)
+
+    @Test
+    void atelierOptionCheckoutFailsWhenNotConfigured() {
+        AtelierOptionCheckoutCommand cmd = new AtelierOptionCheckoutCommand(
+                UUID.randomUUID(), "a@b.co", null, "price_atelier_option");
+        assertThatThrownBy(() -> provider("", "whsec").createAtelierOptionCheckoutSession(cmd))
+                .isInstanceOf(BillingProviderUnavailableException.class);
+    }
+
+    @Test
+    void atelierOptionCheckoutFailsWhenPriceIdBlank() {
+        AtelierOptionCheckoutCommand cmd = new AtelierOptionCheckoutCommand(
+                UUID.randomUUID(), "a@b.co", null, "");
+        assertThatThrownBy(() -> provider("sk_test", "whsec").createAtelierOptionCheckoutSession(cmd))
+                .isInstanceOf(BillingProviderUnavailableException.class);
+    }
+
+    @Test
+    void scheduledCancellationFailsWhenNotConfigured() {
+        assertThatThrownBy(() -> provider("", "whsec").scheduleSubscriptionCancellation("sub_1"))
+                .isInstanceOf(BillingProviderUnavailableException.class);
+    }
+
+    @Test
+    void scheduledCancellationFailsWhenSubscriptionIdBlank() {
+        assertThatThrownBy(() -> provider("sk_test", "whsec").scheduleSubscriptionCancellation(""))
+                .isInstanceOf(BillingProviderUnavailableException.class);
+    }
+
+    @Test
+    void atelierOptionPriceIsReadFromConfiguration() {
+        // Le price ID de l'option ne se déduit d'aucun plan : il est nommément configuré.
+        assertThat(provider("sk_test", "whsec")).isNotNull();
+        assertThat(new BillingProperties(14, new BillingProperties.Stripe(
+                "sk", "wh", Map.of(), Map.of(), null, null, Map.of(), "price_opt", "40"))
+                .stripe().isAtelierOptionConfigured()).isTrue();
+        assertThat(new BillingProperties(14, new BillingProperties.Stripe(
+                "sk", "wh", Map.of(), Map.of(), null, null, Map.of(), "", "40"))
+                .stripe().isAtelierOptionConfigured()).isFalse();
+        assertThat(new BillingProperties(14, new BillingProperties.Stripe(
+                "", "wh", Map.of(), Map.of(), null, null, Map.of(), "price_opt", "40"))
+                .stripe().isAtelierOptionConfigured()).isFalse();
+        // Défaut de la feature : 40 €/mois, même si la configuration ne le dit pas.
+        assertThat(new BillingProperties(14, new BillingProperties.Stripe(
+                "sk", "wh", Map.of(), Map.of(), null, null, Map.of(), "price_opt", null))
+                .stripe().atelierOptionDisplayPrice()).isEqualTo("40");
     }
 
     @Test

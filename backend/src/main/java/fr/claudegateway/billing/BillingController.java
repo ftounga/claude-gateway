@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.auth.AuthenticatedUser;
 import fr.claudegateway.auth.CurrentUser;
+import fr.claudegateway.billing.dto.AtelierOptionResponse;
 import fr.claudegateway.billing.dto.ChangePlanRequest;
 import fr.claudegateway.billing.dto.CheckoutRequest;
 import fr.claudegateway.billing.dto.CheckoutResponse;
@@ -36,6 +37,7 @@ public class BillingController {
     private final CheckoutService checkoutService;
     private final TopUpCatalog topUpCatalog;
     private final TopUpService topUpService;
+    private final AtelierOptionService atelierOptionService;
     private final CurrentUser currentUser;
     private final BillingProperties billingProperties;
     private final QuotaProperties quotaProperties;
@@ -46,6 +48,7 @@ public class BillingController {
             CheckoutService checkoutService,
             TopUpCatalog topUpCatalog,
             TopUpService topUpService,
+            AtelierOptionService atelierOptionService,
             CurrentUser currentUser,
             BillingProperties billingProperties,
             QuotaProperties quotaProperties) {
@@ -54,6 +57,7 @@ public class BillingController {
         this.checkoutService = checkoutService;
         this.topUpCatalog = topUpCatalog;
         this.topUpService = topUpService;
+        this.atelierOptionService = atelierOptionService;
         this.currentUser = currentUser;
         this.billingProperties = billingProperties;
         this.quotaProperties = quotaProperties;
@@ -115,5 +119,35 @@ public class BillingController {
                 .orElseThrow(() -> new IllegalStateException("Aucun utilisateur authentifié"));
         return CheckoutResponse.from(
                 topUpService.createTopUpCheckout(user.id(), user.email(), request.packCode()));
+    }
+
+    /**
+     * État de l'<b>option Atelier</b> (F-40) : prix d'affichage, droit effectif, droit déjà inclus à
+     * l'offre (Gold), statut de l'option et terme d'une résiliation programmée.
+     */
+    @GetMapping("/atelier-option")
+    public AtelierOptionResponse atelierOption() {
+        return AtelierOptionResponse.from(atelierOptionService.describe(currentUser.requireId()));
+    }
+
+    /**
+     * Souscrit l'option Atelier : crée la session de paiement de l'abonnement <b>supplémentaire</b>
+     * et renvoie l'URL de redirection. 409 si l'Atelier est déjà inclus à l'offre, si aucun plan
+     * porteur Solo/Pro n'est actif, ou si l'option l'est déjà ; 503 si le paiement n'est pas configuré.
+     */
+    @PostMapping("/atelier-option/checkout")
+    public CheckoutResponse atelierOptionCheckout() {
+        AuthenticatedUser user = currentUser.principal()
+                .orElseThrow(() -> new IllegalStateException("Aucun utilisateur authentifié"));
+        return CheckoutResponse.from(atelierOptionService.startCheckout(user.id(), user.email()));
+    }
+
+    /**
+     * Résilie l'option Atelier <b>en fin de période</b> : le droit reste ouvert jusqu'au terme déjà
+     * payé. 409 si aucune option n'est en cours.
+     */
+    @PostMapping("/atelier-option/cancel")
+    public AtelierOptionResponse cancelAtelierOption() {
+        return AtelierOptionResponse.from(atelierOptionService.cancel(currentUser.requireId()));
     }
 }

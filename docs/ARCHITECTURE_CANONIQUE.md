@@ -208,6 +208,7 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `stripe_customer_id (interne, nullable, jamais exposé)`, `stripe_subscription_id (interne, nullable, jamais exposé)`,
     `atelier_option_status (nullable ; même énumération que status — F-40, migration 054)`,
     `atelier_option_stripe_subscription_id (interne, nullable, unique, jamais exposé — F-40, migration 054)`,
+    `atelier_option_cancel_at (nullable ; terme d'une résiliation programmée — F-40, migration 055)`,
     `created_at`, `updated_at`. Index `user_id`, `stripe_subscription_id`, `atelier_option_stripe_subscription_id` (unique).
   - **Droit d'Atelier (F-40)** : l'accès à l'Atelier n'est plus un test de **plan** (`plan_code = GOLD`)
     mais un test de **droit**, porté par le plan Gold actif **ou** par l'option Atelier active sur un
@@ -215,6 +216,12 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     est un abonnement fournisseur **distinct** de celui du plan, d'où la seconde colonne
     d'identifiant : les confondre ferait qu'une résiliation d'option annulerait le plan.
     L'option ouvre un droit et **jamais** un jeton : les quotas de `app.quota.plans` sont inchangés.
+    Endpoints d'option : **`GET /billing/atelier-option`**, **`POST /billing/atelier-option/checkout`**,
+    **`POST /billing/atelier-option/cancel`** (authentifiés) ; activation et fermeture appliquées par le
+    webhook signé **`POST /webhook/stripe`**, qui route les événements d'option **avant** sa résolution
+    générique — sans quoi le repli « par client » écraserait le statut du plan. Résiliation **en fin de
+    période** : le statut reste `ACTIVE` jusqu'au terme déjà payé. Prix d'affichage et price ID en
+    configuration (`APP_BILLING_ATELIER_OPTION_PRICE`, défaut 40 € ; `STRIPE_PRICE_ATELIER_OPTION`).
   - **Note** : la table `subscriptions` du schéma initial `001-init-schema` (placeholder legacy `spec.md`,
     `user_id text`, `plan`, sans statut typé ni unicité) a été **remplacée** en `008` par la table V1 conforme
     ci-dessus (même stratégie que `006-messages`).

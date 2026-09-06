@@ -23,7 +23,7 @@ public record BillingProperties(
             trialDays = 5;
         }
         if (stripe == null) {
-            stripe = new Stripe(null, null, Map.of(), Map.of(), null, null, Map.of());
+            stripe = new Stripe(null, null, Map.of(), Map.of(), null, null, Map.of(), null, null);
         }
     }
 
@@ -37,6 +37,9 @@ public record BillingProperties(
      * @param topupPrices   code de pack de tokens (top-up, F-21) → price ID Stripe
      * @param successUrl    URL de retour après paiement réussi
      * @param cancelUrl     URL de retour après annulation
+     * @param displayPrices code de plan → montant d'affichage EUR (cosmétique, SF-21-05)
+     * @param atelierOptionPriceId     price ID de l'<b>option Atelier</b> (F-40) — vide => option non souscriptible
+     * @param atelierOptionDisplayPrice montant d'affichage EUR de l'option Atelier (cosmétique, défaut 40)
      */
     public record Stripe(
             String secretKey,
@@ -45,7 +48,9 @@ public record BillingProperties(
             Map<String, String> topupPrices,
             String successUrl,
             String cancelUrl,
-            Map<String, String> displayPrices) {
+            Map<String, String> displayPrices,
+            String atelierOptionPriceId,
+            String atelierOptionDisplayPrice) {
 
         public Stripe {
             if (prices == null) {
@@ -62,6 +67,11 @@ public record BillingProperties(
             }
             if (cancelUrl == null || cancelUrl.isBlank()) {
                 cancelUrl = "http://localhost:4200/billing?checkout=cancel";
+            }
+            if (atelierOptionDisplayPrice == null || atelierOptionDisplayPrice.isBlank()) {
+                // Le défaut de la feature (40 €/mois) vit aussi ici : une configuration incomplète
+                // ne doit pas afficher un prix vide à côté d'un bouton d'achat.
+                atelierOptionDisplayPrice = "40";
             }
         }
 
@@ -83,6 +93,14 @@ public record BillingProperties(
         /** Montant d'affichage (EUR) du plan pour la page de facturation, ou {@code null} si absent. */
         public String displayPrice(PlanCode code) {
             return displayPrices == null ? null : displayPrices.get(code.name());
+        }
+
+        /**
+         * Vrai si l'option Atelier (F-40) est réellement souscriptible : fournisseur configuré
+         * <b>et</b> price ID d'option renseigné. Sans les deux, l'option est dormante (503).
+         */
+        public boolean isAtelierOptionConfigured() {
+            return isConfigured() && atelierOptionPriceId != null && !atelierOptionPriceId.isBlank();
         }
     }
 }

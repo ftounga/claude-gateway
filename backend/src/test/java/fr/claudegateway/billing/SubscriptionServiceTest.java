@@ -96,7 +96,7 @@ class SubscriptionServiceTest {
 
     private SubscriptionService serviceWithProvider(BillingProvider provider) {
         BillingProperties props = new BillingProperties(5, new BillingProperties.Stripe(
-                "sk", "wh", Map.of("PRO", "price_pro"), Map.of(), null, null, Map.of()));
+                "sk", "wh", Map.of("PRO", "price_pro"), Map.of(), null, null, Map.of(), null, null));
         return new SubscriptionService(repository, props, new PlanCatalog(), provider);
     }
 
@@ -118,6 +118,33 @@ class SubscriptionServiceTest {
         assertThat(captor.getValue().stripeSubscriptionId()).isEqualTo("sub_123");
         assertThat(captor.getValue().newPriceId()).isEqualTo("price_pro");
         assertThat(result.getPlanCode()).isEqualTo(PlanCode.PRO);
+    }
+
+    @Test
+    void changePlanLeavesTheAtelierOptionAlone() {
+        // F-40 / SF-40-02 : l'option est un abonnement à part. Changer de plan ne doit ni la
+        // révoquer ni la reconduire — deux engagements, deux cycles de vie.
+        UUID userId = UUID.randomUUID();
+        BillingProvider provider = mock(BillingProvider.class);
+        SubscriptionService svc = serviceWithProvider(provider);
+        Subscription optionary = Subscription.builder()
+                .userId(userId).status(SubscriptionStatus.ACTIVE).planCode(PlanCode.SOLO)
+                .stripeSubscriptionId("sub_plan")
+                .atelierOptionStatus(SubscriptionStatus.ACTIVE)
+                .atelierOptionStripeSubscriptionId("sub_option")
+                .build();
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(optionary));
+        when(repository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Subscription result = svc.changePlan(userId, "PRO");
+
+        assertThat(result.getPlanCode()).isEqualTo(PlanCode.PRO);
+        assertThat(result.getAtelierOptionStatus()).isEqualTo(SubscriptionStatus.ACTIVE);
+        assertThat(result.getAtelierOptionStripeSubscriptionId()).isEqualTo("sub_option");
+        // Le changement de plan porte sur l'abonnement du PLAN, jamais sur celui de l'option.
+        ArgumentCaptor<ChangePlanCommand> captor = ArgumentCaptor.forClass(ChangePlanCommand.class);
+        verify(provider).changeSubscriptionPlan(captor.capture());
+        assertThat(captor.getValue().stripeSubscriptionId()).isEqualTo("sub_plan");
     }
 
     @Test

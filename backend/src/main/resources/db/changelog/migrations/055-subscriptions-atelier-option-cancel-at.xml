@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <!--
+      F-40 / SF-40-02 — Terme d'une option Atelier dont la résiliation est programmée.
+
+      Résilier ne coupe pas le droit sur-le-champ : l'utilisateur a payé le mois, il garde l'Atelier
+      jusqu'au terme (`cancel_at_period_end` chez le fournisseur). Le statut de l'option reste donc
+      ACTIVE, et c'est cette date qui dit qu'une fin est programmée — sans elle, l'écran ne pourrait
+      rien montrer après le clic, et l'utilisateur douterait d'avoir résilié.
+
+      Effacée quand la fermeture devient effective (`customer.subscription.deleted`), qui pose
+      `atelier_option_status = CANCELED`.
+
+      Nullable et sans défaut : aucune option existante n'est concernée.
+    -->
+    <changeSet id="055-subscriptions-atelier-option-cancel-at" author="claude-gateway">
+        <addColumn tableName="subscriptions">
+            <column name="atelier_option_cancel_at" type="timestamptz"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="subscriptions" columnName="atelier_option_cancel_at"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
