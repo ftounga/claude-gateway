@@ -21,6 +21,7 @@ import { MarkdownPipe } from '../../shared/markdown.pipe';
 
 import {
   AtelierEngine,
+  AtelierRunnerRecommendation,
   AtelierTerminalBlock,
   GitPullRequestResult,
   GitPushResult,
@@ -101,6 +102,13 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   /** Coupe-circuit en vol : le bouton reste inerte le temps de l'aller-retour. */
   @Input() killingRunner = false;
+
+  /**
+   * Limite du bac à sable qui justifie de proposer le runner (F-39 / SF-39-09, décision D6), ou
+   * `null` s'il n'y a rien à proposer. Le runner est le chemin **recommandé**, jamais le premier
+   * pas : la bande ne tombe qu'au moment où le bac à sable devient réellement la limite.
+   */
+  @Input() runnerHint: AtelierRunnerRecommendation | null = null;
 
   /** Tours déjà terminés (demande, commentaire, transcription, coût). */
   @Input() messages: AtelierThreadItem[] = [];
@@ -198,6 +206,28 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Output() openRunnerAudit = new EventEmitter<void>();
   /** Coupe-circuit : coupe la liaison avec la machine (F-38 / SF-38-08). */
   @Output() killRunner = new EventEmitter<void>();
+  /** « Plus tard » sur la proposition de runner (F-39 / SF-39-09). */
+  @Output() dismissRunnerHint = new EventEmitter<void>();
+
+  /**
+   * Ce que l'utilisateur gagne à connecter sa machine, dit **au moment où il en a besoin**
+   * (D-L4-9). « Installez le runner » décrit une corvée ; ceci décrit un bénéfice.
+   *
+   * <p>Rend {@code null} sur un motif inconnu — une version future du backend peut en ajouter, et un
+   * libellé manquant ne doit pas casser l'écran ni produire une bande vide.</p>
+   */
+  runnerHintText(): string | null {
+    switch (this.runnerHint) {
+      case 'GIT':
+        return "Ce projet vient d'un dépôt Git. Sur votre machine, Claude travaille sur votre clone "
+          + 'local — vos branches, vos outils, vos variables d\'environnement.';
+      case 'FILE_LIMIT':
+        return 'Ce projet dépasse ce que le bac à sable monte : Claude n\'y voit qu\'une partie des '
+          + 'fichiers. Sur votre machine, il les voit tous.';
+      default:
+        return null;
+    }
+  }
 
   /** Vrai si les outils de ce projet s'exécutent sur la machine de l'utilisateur. */
   get runnerTarget(): boolean {

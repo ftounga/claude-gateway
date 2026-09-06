@@ -22,6 +22,8 @@
     [runnerStatus]="runnerStatus()"
     [runnerLastSeenLabel]="runnerLastSeenLabel()"
     [killingRunner]="killingRunner()"
+    [runnerHint]="runnerHint()"
+    (dismissRunnerHint)="dismissRunnerHint()"
     (executionTargetChange)="setExecutionTarget($event)"
     (refreshRunner)="refreshRunnerStatus()"
     (pairRunner)="openRunnerPairing()"

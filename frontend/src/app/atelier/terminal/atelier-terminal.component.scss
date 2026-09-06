@@ -51,6 +51,39 @@
   opacity: 0.8;
 }
 
+// Proposition du runner (F-39 / SF-39-09) : mise en valeur Gold de la charte — c'est une
+// opportunité, pas une erreur. Aucune couleur nouvelle : l'accent orange déjà en place.
+.terminal-hint-runner {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-bottom: 1px solid var(--cg-navy-2);
+  border-left: 3px solid var(--cg-accent);
+  color: var(--cg-divider);
+  font-size: 13px;
+}
+
+.terminal-hint-runner-icon {
+  color: var(--cg-accent);
+  flex-shrink: 0;
+}
+
+.terminal-hint-runner-text {
+  flex: 1;
+}
+
+.terminal-hint-runner-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  flex-shrink: 0;
+
+  button {
+    font-size: 12px;
+  }
+}
+
 // Cible d'exécution et gestes runner (F-38, portés dans l'écran unique — D-L4-4).
 .terminal-target {
   display: flex;

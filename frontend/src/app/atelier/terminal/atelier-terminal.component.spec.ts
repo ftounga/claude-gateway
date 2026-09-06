@@ -984,4 +984,70 @@ describe('AtelierTerminalComponent', () => {
       expect(component.executionTarget).toBe('SANDBOX');
     });
   });
+
+  // ---- F-39 / SF-39-09 : le runner proposé au moment où le bac à sable devient la limite ----
+
+  describe('proposition du runner (F-39 SF-39-09, D6)', () => {
+
+    it('dit ce qu\'on gagne sur un projet Git, pas ce qu\'il faut installer (D-L4-9)', () => {
+      component.runnerHint = 'GIT';
+      fixture.detectChanges();
+
+      const hint: HTMLElement = fixture.nativeElement.querySelector('.terminal-hint-runner');
+      expect(hint).not.toBeNull();
+      expect(hint.textContent).toContain('clone local');
+      // « Installez le runner » décrirait une corvée : la bande décrit un bénéfice.
+      expect(hint.textContent).not.toContain('Installez');
+    });
+
+    it('dit ce que le bac à sable ne montre pas quand le projet le dépasse', () => {
+      component.runnerHint = 'FILE_LIMIT';
+      fixture.detectChanges();
+
+      const hint: HTMLElement = fixture.nativeElement.querySelector('.terminal-hint-runner');
+      expect(hint.textContent).toContain("qu'une partie des fichiers");
+    });
+
+    it('ne propose rien sans motif : le motif est le message', () => {
+      component.runnerHint = null;
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.terminal-hint-runner')).toBeNull();
+      expect(component.runnerHintText()).toBeNull();
+    });
+
+    it('reste muet sur un motif inconnu d\'une version future', () => {
+      // Un libellé manquant ne doit casser ni l'écran, ni produire une bande vide.
+      component.runnerHint = 'CE_QUI_VIENDRA' as never;
+      fixture.detectChanges();
+
+      expect(component.runnerHintText()).toBeNull();
+      expect(fixture.nativeElement.querySelector('.terminal-hint-runner')).toBeNull();
+    });
+
+    it('« Connecter une machine » ouvre l\'appairage déjà en place', () => {
+      const emitted: number[] = [];
+      component.pairRunner.subscribe(() => emitted.push(1));
+      component.runnerHint = 'GIT';
+      fixture.detectChanges();
+
+      fixture.nativeElement.querySelector('.terminal-hint-runner-pair').click();
+
+      expect(emitted.length).toBe(1);
+    });
+
+    it('« Plus tard » remonte au parent, qui décide de la suite', () => {
+      const emitted: number[] = [];
+      component.dismissRunnerHint.subscribe(() => emitted.push(1));
+      component.runnerHint = 'GIT';
+      fixture.detectChanges();
+
+      const later: HTMLButtonElement = Array.from(
+        fixture.nativeElement.querySelectorAll('.terminal-hint-runner button'),
+      ).find((b) => (b as HTMLElement).textContent!.includes('Plus tard')) as HTMLButtonElement;
+      later.click();
+
+      expect(emitted.length).toBe(1);
+    });
+  });
 });
