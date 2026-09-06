@@ -321,3 +321,41 @@ travaille depuis le navigateur sur un projet distant.
 **Conséquences** : la validation d'action (F-33) devient obligatoire en mode runner ; exclusions
 `.runnerignore` côté runner (les secrets ne quittent pas la machine) ; audit des lectures et des
 commandes. Livraison SF-38-01→10 ; SF-38-01 pose l'identité (appairage + jetons).
+
+---
+
+## ADR-017 — Le bac à sable est le mode d'entrée, gelé fonctionnellement
+
+**Date** : 2026-09-06
+**Statut** : Acceptée
+
+**Contexte.** Deux moteurs animent l'Atelier : les **Managed Agents** (bac à sable du fournisseur,
+cible `SANDBOX`, défaut des projets `ARCHIVE` et `GIT`) et la **boucle maison** (cible `RUNNER`,
+imposée par la contrainte fournisseur de SF-38-05 D2 — un agent managé ne peut pas router ses outils
+vers la machine de l'utilisateur).
+
+Depuis la vague F-39, tout l'investissement de harnais est allé à la boucle maison : cache de prompt,
+mémoire de trajectoire, outillage `bash`-first, plan, sous-agents, dépôt de message pendant un tour
+(SF-39-19), autorisations groupées (SF-38-20), plafond de dépense, exclusions par défaut. Chacune de
+ces mini-specs place explicitement le chemin Managed Agents **hors périmètre**.
+
+L'écart n'est donc pas accidentel, mais il n'était écrit nulle part. Le risque est double : qu'une
+prochaine vague réinvestisse dans `SANDBOX` par réflexe de symétrie, et que le mode par lequel on
+**découvre** le produit devienne silencieusement le moins bon.
+
+**Décision.**
+
+1. La cible `SANDBOX` **reste** : c'est le seul chemin sans rien installer — ni jar, ni Java, ni
+   poste allumé. C'est la porte d'entrée du produit, et son coût est déjà payé (F-31 entière :
+   branches, commit, push, pull request, MCP GitHub).
+2. Elle est **gelée fonctionnellement**. Toute nouveauté de harnais va à la boucle maison. On y
+   corrige les défauts et les régressions ; on n'y porte pas les capacités nouvelles.
+3. L'écran **dit** la limite au moment où elle est rencontrée, jamais avant — c'est déjà le
+   comportement livré par SF-39-09 : la bande ne tombe que sur un motif réel (`GIT`, `FILE_LIMIT`),
+   nomme le bénéfice plutôt que la fonctionnalité, et propose « Connecter une machine » ou
+   « Plus tard ».
+
+**Conséquences.** Une demande de portage d'une capacité de harnais vers `SANDBOX` est refusée par
+défaut et renvoyée à cet ADR ; l'inverse — un défaut constaté sur `SANDBOX` — reste recevable. La
+divergence entre les deux moteurs est désormais une **décision**, avec sa raison, et non un état de
+fait qu'on redécouvre à chaque vague.
