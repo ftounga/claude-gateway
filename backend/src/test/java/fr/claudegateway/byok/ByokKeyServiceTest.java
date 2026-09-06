@@ -161,6 +161,43 @@ class ByokKeyServiceTest {
         assertThat(service().resolveActiveApiKey(userId)).isEmpty();
     }
 
+    // ------------------------------------------------ F-41 / SF-41-02 : la variante exigeante
+
+    @Test
+    void requireActiveApiKeyReturnsTheDecryptedKey() {
+        UserApiKey key = UserApiKey.builder().userId(userId).active(true)
+                .provider(ByokProvider.ANTHROPIC).keyLast4("AB12")
+                .encryptedDataKey("edk").cipherIv("iv").ciphertext("ct").build();
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(key));
+        when(cipher.decrypt(new EncryptedKey("edk", "iv", "ct"))).thenReturn("sk-ant-decrypted");
+
+        assertThat(service().requireActiveApiKey(userId)).isEqualTo("sk-ant-decrypted");
+    }
+
+    @Test
+    void requireActiveApiKeyRefusesWhenAbsent() {
+        when(repository.findByUserId(userId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service().requireActiveApiKey(userId))
+                .isInstanceOf(ByokKeyRequiredException.class)
+                // Le message doit dire QUOI FAIRE et OÙ : un refus qu'on ne peut pas corriger n'en est pas un.
+                .hasMessageContaining("Paramètres");
+    }
+
+    @Test
+    void requireActiveApiKeyRefusesWhenKeyIsDeactivated() {
+        // Clé présente mais désactivée (l'utilisateur est repassé en mode Hosted, SF-03-03) : elle ne
+        // sert aucun appel, donc elle vaut absente. Rien n'est déchiffré au passage.
+        UserApiKey key = UserApiKey.builder().userId(userId).active(false)
+                .provider(ByokProvider.ANTHROPIC).keyLast4("AB12")
+                .encryptedDataKey("edk").cipherIv("iv").ciphertext("ct").build();
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(key));
+
+        assertThatThrownBy(() -> service().requireActiveApiKey(userId))
+                .isInstanceOf(ByokKeyRequiredException.class);
+        verify(cipher, never()).decrypt(any());
+    }
+
     @Test
     void setModeByokActivatesExistingKey() {
         UserApiKey key = UserApiKey.builder().userId(userId).active(false)

@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import fr.claudegateway.billing.Subscription;
 import fr.claudegateway.billing.SubscriptionService;
+import fr.claudegateway.byok.ByokKeyService;
 
 /**
  * Cœur du contrôle de quota (F-10). Vérifie l'entitlement <b>avant</b> chaque appel au fournisseur
@@ -24,7 +25,9 @@ import fr.claudegateway.billing.SubscriptionService;
  * <p><b>Exception BYOK (F-41)</b> : sur une offre servie par la clé du client, la plateforme
  * n'alloue aucun jeton et n'en contrôle donc aucun. Le pré-contrôle passe sans bloquer — la limite
  * réelle est celle du compte fournisseur du client. La consommation reste <b>enregistrée</b>
- * (observabilité et rapport d'usage F-16), elle cesse simplement d'être opposable.</p>
+ * (observabilité et rapport d'usage F-16), elle cesse simplement d'être opposable. En contrepartie,
+ * le pré-contrôle exige alors que cette clé <b>existe</b> : sans elle, l'appel repartirait sur la
+ * clé de la plateforme (SF-41-02).</p>
  */
 @Service
 public class QuotaService {
@@ -32,6 +35,7 @@ public class QuotaService {
     private final UsageCounterRepository usageCounterRepository;
     private final SubscriptionService subscriptionService;
     private final EntitlementService entitlementService;
+    private final ByokKeyService byokKeyService;
     private final QuotaProperties quotaProperties;
     private final Clock clock;
 
@@ -39,11 +43,13 @@ public class QuotaService {
             UsageCounterRepository usageCounterRepository,
             SubscriptionService subscriptionService,
             EntitlementService entitlementService,
+            ByokKeyService byokKeyService,
             QuotaProperties quotaProperties,
             Clock clock) {
         this.usageCounterRepository = usageCounterRepository;
         this.subscriptionService = subscriptionService;
         this.entitlementService = entitlementService;
+        this.byokKeyService = byokKeyService;
         this.quotaProperties = quotaProperties;
         this.clock = clock;
     }
@@ -52,8 +58,10 @@ public class QuotaService {
      * Vérifie que l'utilisateur peut encore consommer sur la période courante.
      *
      * @param userId utilisateur authentifié (contexte de sécurité)
-     * @throws QuotaExceededException si le cumul de la période a atteint le quota de l'entitlement
-     *                                (jamais levée sur une offre BYOK en cours : aucun quota plateforme)
+     * @throws QuotaExceededException   si le cumul de la période a atteint le quota de l'entitlement
+     *                                  (jamais levée sur une offre BYOK en cours : aucun quota plateforme)
+     * @throws fr.claudegateway.byok.ByokKeyRequiredException si l'offre est BYOK et qu'aucune clé
+     *                                  active n'est enregistrée (F-41 / SF-41-02)
      */
     @Transactional(readOnly = true)
     public void assertWithinQuota(UUID userId) {
@@ -63,6 +71,14 @@ public class QuotaService {
             // ne lui en alloue aucun. Son quota vaut donc 0 — mais ce zéro-là n'est PAS un impayé :
             // le laisser tomber dans le test `used >= quota` bloquerait un client parfaitement à jour
             // dès son premier appel. Il n'y a rien à contrôler ici : la limite est chez le fournisseur.
+            //
+            // En revanche il y a une condition à poser (SF-41-02) : cette clé doit exister. Sans elle,
+            // l'appel repartirait sur la clé de la PLATEFORME — c'est ce que fait `.orElse(null)` chez
+            // tous les appelants — et un client qui ne paie aucun jeton consommerait ceux de la
+            // gateway. Le refus est posé ici, sur le pré-vol commun aux quatre chemins servis, plutôt
+            // qu'aux trois endroits où la clé est résolue : un chemin ajouté demain hérite du
+            // garde-fou au lieu de l'oublier.
+            byokKeyService.requireActiveApiKey(userId);
             return;
         }
         long quota = entitlementService.resolveMonthlyTokenQuota(subscription)

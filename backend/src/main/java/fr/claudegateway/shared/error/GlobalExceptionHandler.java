@@ -24,6 +24,7 @@ import fr.claudegateway.billing.provider.BillingProviderException;
 import fr.claudegateway.billing.provider.BillingProviderUnavailableException;
 import fr.claudegateway.billing.provider.WebhookVerificationException;
 import fr.claudegateway.byok.ByokDisabledException;
+import fr.claudegateway.byok.ByokKeyRequiredException;
 import fr.claudegateway.byok.ByokModeException;
 import fr.claudegateway.byok.InvalidApiKeyException;
 import fr.claudegateway.auth.EmailAlreadyUsedException;
@@ -333,6 +334,16 @@ public class GlobalExceptionHandler {
         log.debug("Bascule mode BYOK refusée : aucune clé enregistrée");
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse("byok_mode_conflict", ex.getMessage()));
+    }
+
+    @ExceptionHandler(ByokKeyRequiredException.class)
+    public ResponseEntity<ErrorResponse> handleByokKeyRequired(ByokKeyRequiredException ex) {
+        // 409 et non 402 : le client a payé son abonnement — l'envoyer sur la page de facturation
+        // lui ferait chercher un problème qui n'y est pas. Il lui manque une clé, et le message dit
+        // où la déposer. Aucun détail de clé n'est journalisé (F-41 / SF-41-02).
+        log.debug("Appel refusé : offre BYOK sans clé active enregistrée");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("byok_key_required", ex.getMessage()));
     }
 
     @ExceptionHandler(ByokDisabledException.class)

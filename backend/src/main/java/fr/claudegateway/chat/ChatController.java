@@ -26,6 +26,7 @@ import fr.claudegateway.chat.dto.ChatResponse;
 import fr.claudegateway.chat.dto.MessageResponse;
 import fr.claudegateway.chat.dto.ModelsResponse;
 import fr.claudegateway.ocr.DocumentNotFoundException;
+import fr.claudegateway.byok.ByokKeyRequiredException;
 import fr.claudegateway.quota.QuotaExceededException;
 import jakarta.validation.Valid;
 
@@ -91,6 +92,12 @@ public class ChatController {
                     request.model(), request.attachmentIds(), request.libraryDocumentIds());
         } catch (QuotaExceededException ex) {
             sendError(emitter, "quota_exceeded");
+            return;
+        } catch (ByokKeyRequiredException ex) {
+            // Offre BYOK sans clé (F-41 / SF-41-02) : refus NOMMÉ dans le flux. Sans ce catch il
+            // tomberait dans le `catch (RuntimeException)` ci-dessous et sortirait en
+            // `internal_error` — un message qui n'apprend rien et qu'on ne peut pas corriger.
+            sendError(emitter, "byok_key_required");
             return;
         } catch (UnsupportedModelException ex) {
             sendError(emitter, "unsupported_model");

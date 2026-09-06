@@ -34,6 +34,7 @@ import fr.claudegateway.atelier.dto.AgentConfirmationRequest;
 import fr.claudegateway.atelier.dto.AgentConfirmationResponse;
 import fr.claudegateway.atelier.dto.AtelierAgentRequest;
 import fr.claudegateway.auth.CurrentUser;
+import fr.claudegateway.byok.ByokKeyRequiredException;
 import fr.claudegateway.quota.QuotaExceededException;
 import fr.claudegateway.quota.SandboxLimitExceededException;
 import fr.claudegateway.shared.error.ErrorResponse;
@@ -177,6 +178,10 @@ public class AtelierAgentController {
         } catch (SandboxLimitExceededException ex) {
             // Pré-vol plafond de bac à sable atteint : aucune session créée, erreur dans le flux.
             sendError(emitter, "sandbox_limit");
+        } catch (ByokKeyRequiredException ex) {
+            // Offre BYOK sans clé (F-41 / SF-41-02) : refus posé par le même pré-vol, donc AVANT
+            // toute création de session — aucun coût engagé. Nommé dans le flux, jamais un 500.
+            sendError(emitter, "byok_key_required");
         } catch (AtelierAgentDisabledException ex) {
             sendError(emitter, "agent_disabled");
         } catch (AgentSessionTimeoutException ex) {

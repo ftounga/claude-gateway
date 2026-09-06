@@ -125,6 +125,27 @@ public class ByokKeyService {
                         key.getEncryptedDataKey(), key.getCipherIv(), key.getCiphertext())));
     }
 
+    /**
+     * Résout la clé BYOK <b>active</b> de l'utilisateur, ou <b>refuse</b> si elle manque (F-41 /
+     * SF-41-02). Variante exigeante de {@link #resolveActiveApiKey(UUID)}, destinée aux offres où la
+     * clé du client est la <i>seule</i> façon de servir l'appel : là, une absence de clé ne peut plus
+     * retomber silencieusement sur la clé de la plateforme.
+     *
+     * <p>Une clé enregistrée mais <b>désactivée</b> (l'utilisateur est repassé en mode Hosted,
+     * SF-03-03) est traitée comme absente : elle ne sert aucun appel.</p>
+     *
+     * @param userId utilisateur du contexte de sécurité (isolation : jamais un paramètre client)
+     * @return la clé déchiffrée à la volée (jamais persistée, jamais journalisée)
+     * @throws ByokKeyRequiredException si aucune clé active n'est enregistrée
+     */
+    @Transactional(readOnly = true)
+    public String requireActiveApiKey(UUID userId) {
+        return resolveActiveApiKey(userId)
+                .orElseThrow(() -> new ByokKeyRequiredException(
+                        "Votre offre BYOK utilise votre propre clé Anthropic, mais aucune clé n'est "
+                                + "enregistrée. Ajoutez-la depuis Paramètres, section « Clé API »."));
+    }
+
     /** Supprime la clé de l'utilisateur (idempotent). */
     @Transactional
     public void deleteKey(UUID userId) {

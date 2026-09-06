@@ -29,6 +29,11 @@ import fr.claudegateway.ai.ChatCompletionResult;
 import fr.claudegateway.ai.ProviderFileReference;
 import fr.claudegateway.ai.ProviderFileUpload;
 import fr.claudegateway.auth.JwtService;
+import fr.claudegateway.byok.ByokKeyCipher;
+import fr.claudegateway.byok.ByokProvider;
+import fr.claudegateway.byok.EncryptedKey;
+import fr.claudegateway.byok.UserApiKey;
+import fr.claudegateway.byok.UserApiKeyRepository;
 import fr.claudegateway.billing.provider.AtelierOptionCheckoutCommand;
 import fr.claudegateway.billing.provider.BillingEvent;
 import fr.claudegateway.billing.provider.BillingProvider;
@@ -138,6 +143,12 @@ class ByokPlanApiIntegrationTest {
     private UsageCounterRepository usageCounterRepository;
 
     @Autowired
+    private UserApiKeyRepository userApiKeyRepository;
+
+    @Autowired
+    private ByokKeyCipher cipher;
+
+    @Autowired
     private JwtService jwtService;
 
     @Autowired
@@ -151,6 +162,7 @@ class ByokPlanApiIntegrationTest {
     @BeforeEach
     void setUp() {
         usageCounterRepository.deleteAll();
+        userApiKeyRepository.deleteAll();
         subscriptionRepository.deleteAll();
         userRepository.deleteAll();
 
@@ -163,6 +175,20 @@ class ByokPlanApiIntegrationTest {
                 .email("resilie@example.com").emailVerified(true)
                 .provider(AuthProvider.LOCAL).role(UserRole.USER).build());
         canceledToken = jwtService.generateToken(canceledUser);
+    }
+
+    /**
+     * Dépose une clé BYOK active. Depuis SF-41-02, une offre BYOK <b>sans</b> clé est refusée
+     * (409 {@code byok_key_required}) : les scénarios de quota ci-dessous doivent donc partir d'un
+     * client complet, sinon ils mesureraient l'autre refus.
+     */
+    private void giveActiveKey(User user) {
+        EncryptedKey encrypted = cipher.encrypt("sk-ant-cle-du-client-4321");
+        userApiKeyRepository.save(UserApiKey.builder()
+                .userId(user.getId()).provider(ByokProvider.ANTHROPIC).active(true)
+                .encryptedDataKey(encrypted.encryptedDataKey())
+                .cipherIv(encrypted.iv()).ciphertext(encrypted.ciphertext())
+                .keyLast4("4321").build());
     }
 
     private void giveSubscription(User user, PlanCode plan, SubscriptionStatus status) {
@@ -211,6 +237,7 @@ class ByokPlanApiIntegrationTest {
     @Test
     void byokSubscriberIsNeverBlockedByTheZeroTokenQuota() throws Exception {
         giveSubscription(byokUser, PlanCode.BYOK, SubscriptionStatus.ACTIVE);
+        giveActiveKey(byokUser);
         // Consommation déjà enregistrée : sans la distinction F-41, `used (500) >= quota (0)` bloquerait.
         recordConsumption(byokUser, 500L);
 
@@ -240,6 +267,7 @@ class ByokPlanApiIntegrationTest {
         // Isolation : l'abonnement BYOK d'un utilisateur ne débloque personne d'autre. Les deux
         // comptes vivent côte à côte, chacun résolu depuis SON user_id (contexte de sécurité).
         giveSubscription(byokUser, PlanCode.BYOK, SubscriptionStatus.ACTIVE);
+        giveActiveKey(byokUser);
         giveSubscription(canceledUser, PlanCode.BYOK, SubscriptionStatus.CANCELED);
 
         mockMvc.perform(post("/api/chat").contextPath("/api")

@@ -31,6 +31,7 @@ import fr.claudegateway.atelier.dto.AtelierChatResponse.AtelierAction;
 import fr.claudegateway.atelier.dto.AtelierMessageResponse;
 import fr.claudegateway.atelier.dto.AtelierResumeResponse;
 import fr.claudegateway.auth.CurrentUser;
+import fr.claudegateway.byok.ByokKeyRequiredException;
 import fr.claudegateway.quota.QuotaExceededException;
 import jakarta.validation.Valid;
 
@@ -240,6 +241,9 @@ public class AtelierChatController {
             sendError(emitter, "forbidden");
         } catch (QuotaExceededException ex) {
             sendError(emitter, "quota_exceeded");
+        } catch (ByokKeyRequiredException ex) {
+            // Offre BYOK sans clé (F-41 / SF-41-02) : refus nommé dans le flux, jamais `internal_error`.
+            sendError(emitter, "byok_key_required");
         } catch (WorkspaceNotFoundException ex) {
             sendError(emitter, "workspace_not_found");
         } catch (AIProviderUnavailableException ex) {
