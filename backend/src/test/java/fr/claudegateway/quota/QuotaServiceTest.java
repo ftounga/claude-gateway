@@ -26,6 +26,8 @@ import fr.claudegateway.billing.PlanCode;
 import fr.claudegateway.billing.Subscription;
 import fr.claudegateway.billing.SubscriptionService;
 import fr.claudegateway.billing.SubscriptionStatus;
+import fr.claudegateway.byok.ByokKeyRequiredException;
+import fr.claudegateway.byok.ByokKeyService;
 
 /**
  * Tests unitaires du contrôle de quota (SF-10-01) : pré-contrôle, enregistrement de consommation
@@ -43,6 +45,9 @@ class QuotaServiceTest {
     @Mock
     private EntitlementService entitlementService;
 
+    @Mock
+    private ByokKeyService byokKeyService;
+
     private QuotaService quotaService;
 
     private final UUID alice = UUID.randomUUID();
@@ -55,7 +60,7 @@ class QuotaServiceTest {
     @BeforeEach
     void setUp() {
         quotaService = new QuotaService(usageCounterRepository, subscriptionService,
-                entitlementService, quotaProperties, clock);
+                entitlementService, byokKeyService, quotaProperties, clock);
     }
 
     private void stubQuota(long quota) {
@@ -253,6 +258,7 @@ class QuotaServiceTest {
         // Le piège de la feature : quota 0 et consommation déjà enregistrée => `used >= quota` serait
         // vrai et bloquerait un client parfaitement à jour. La dérogation BYOK doit primer.
         stubByokPlan();
+        when(byokKeyService.requireActiveApiKey(alice)).thenReturn("sk-ant-user-key");
 
         assertThatCode(() -> quotaService.assertWithinQuota(alice)).doesNotThrowAnyException();
     }
@@ -261,6 +267,7 @@ class QuotaServiceTest {
     void assertWithinQuotaSkipsCounterLookupForByokPlan() {
         // Rien à compter : le compteur de période n'est même pas lu (la limite est chez le fournisseur).
         stubByokPlan();
+        when(byokKeyService.requireActiveApiKey(alice)).thenReturn("sk-ant-user-key");
 
         quotaService.assertWithinQuota(alice);
 
@@ -280,5 +287,48 @@ class QuotaServiceTest {
 
         assertThatThrownBy(() -> quotaService.assertWithinQuota(alice))
                 .isInstanceOf(QuotaExceededException.class);
+    }
+
+    // ------------------------------------------------ F-41 / SF-41-02 : l'offre BYOK exige la clé
+
+    @Test
+    void assertWithinQuotaDemandsTheKeyOnAByokPlan() {
+        // Sans clé, l'appel repartirait sur la clé de la PLATEFORME (`.orElse(null)` chez tous les
+        // appelants) : un client qui ne paie aucun jeton consommerait ceux de la gateway.
+        stubByokPlan();
+        when(byokKeyService.requireActiveApiKey(alice))
+                .thenThrow(new ByokKeyRequiredException("Aucune clé enregistrée."));
+
+        assertThatThrownBy(() -> quotaService.assertWithinQuota(alice))
+                .isInstanceOf(ByokKeyRequiredException.class);
+    }
+
+    @Test
+    void assertWithinQuotaNeverDemandsAKeyOnAHostedPlan() {
+        // Non-régression Hosted : un abonné Solo sans clé est servi par la clé plateforme, comme avant.
+        stubQuota(1_000L);
+        when(usageCounterRepository.findByUserIdAndPeriodStart(alice, expectedPeriod))
+                .thenReturn(Optional.of(counter(10, 10)));
+
+        quotaService.assertWithinQuota(alice);
+
+        verify(byokKeyService, never()).requireActiveApiKey(any());
+    }
+
+    @Test
+    void expiredByokSubscriptionIsRefusedOnTheSubscriptionBeforeTheKey() {
+        // Ordre des refus : l'abonnement d'abord. Parler de sa clé à un abonné résilié le ferait
+        // travailler pour rien.
+        Subscription canceledByok = Subscription.builder()
+                .userId(alice).status(SubscriptionStatus.CANCELED).planCode(PlanCode.BYOK).build();
+        when(subscriptionService.getOrCreateForUser(alice)).thenReturn(canceledByok);
+        when(entitlementService.isCustomerKeyBilled(canceledByok)).thenReturn(false);
+        when(entitlementService.resolveMonthlyTokenQuota(canceledByok)).thenReturn(0L);
+        when(usageCounterRepository.findByUserIdAndPeriodStart(alice, expectedPeriod))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> quotaService.assertWithinQuota(alice))
+                .isInstanceOf(QuotaExceededException.class);
+        verify(byokKeyService, never()).requireActiveApiKey(any());
     }
 }

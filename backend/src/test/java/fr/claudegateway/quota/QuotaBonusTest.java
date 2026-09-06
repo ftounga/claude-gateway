@@ -24,6 +24,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import fr.claudegateway.billing.Subscription;
 import fr.claudegateway.billing.SubscriptionService;
+import fr.claudegateway.byok.ByokKeyService;
 
 /**
  * Tests unitaires du rachat de tokens dans le quota (F-21 / SF-21-01) : le bonus de la période élargit
@@ -39,6 +40,8 @@ class QuotaBonusTest {
     @Mock
     private EntitlementService entitlementService;
     @Mock
+    private ByokKeyService byokKeyService;
+    @Mock
     private Subscription subscription;
 
     private final Clock clock = Clock.fixed(Instant.parse("2026-07-15T10:00:00Z"), ZoneOffset.UTC);
@@ -50,7 +53,7 @@ class QuotaBonusTest {
     @BeforeEach
     void setUp() {
         quotaService = new QuotaService(usageCounterRepository, subscriptionService, entitlementService,
-                new QuotaProperties(null, null, null), clock);
+                byokKeyService, new QuotaProperties(null, null, null), clock);
     }
 
     private void baseQuota(long quota) {
