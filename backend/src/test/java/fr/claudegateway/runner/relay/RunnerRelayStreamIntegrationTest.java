@@ -7,6 +7,7 @@ import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -61,6 +62,37 @@ class RunnerRelayStreamIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    /**
+     * Attend que le connecteur de relais soit <b>réellement lié</b> avant d'appeler.
+     *
+     * <p>Sans cela, le test est une course perdue d'avance en intégration continue :
+     * {@code relayPort()} retombe sur le port <em>configuré</em> tant que Tomcat n'a pas fini de
+     * lier le second connecteur, et l'appel part vers un port qui n'écoute pas encore. La liste de
+     * fragments revenait vide — un échec qui ressemblait à un problème de temps, et n'en était pas
+     * un : le relais n'avait simplement jamais reçu l'appel.</p>
+     */
+    @BeforeEach
+    void waitForTheRelayConnectorToBeBound() {
+        long deadline = System.currentTimeMillis() + 10_000L;
+        while (System.currentTimeMillis() < deadline) {
+            try (java.net.Socket probe = new java.net.Socket()) {
+                probe.connect(new java.net.InetSocketAddress("127.0.0.1", relayConnector.relayPort()),
+                        200);
+                return; // Le port répond : le connecteur est prêt.
+            } catch (java.io.IOException notYet) {
+                try {
+                    Thread.sleep(50L);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }
+        throw new IllegalStateException(
+                "Le connecteur de relais n'écoute toujours pas après 10 s : ce n'est pas le "
+                        + "comportement testé ici qui est en cause, mais son environnement.");
+    }
 
     @Test
     void chunksReachTheCallerWhileTheRemotePodIsStillWorking() {
