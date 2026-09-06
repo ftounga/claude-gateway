@@ -64,6 +64,10 @@ describe('RunnerAuditDialogComponent', () => {
     expect(component.isFailure(entry)).toBeTrue();
     expect(component.toolLabel({ ...entry, tool: 'read_file' })).toBe('Lecture');
     expect(component.toolLabel({ ...entry, tool: 'bootstrap' })).toBe('Consigne système');
+    // F-39 / SF-39-06 : le journal distingue un passage remplacé d'un fichier réécrit, même si
+    // l'écran, lui, traite les deux comme une écriture.
+    expect(component.toolLabel({ ...entry, tool: 'edit_file' })).toBe('Édition ciblée');
+    expect(component.toolIcon({ ...entry, tool: 'edit_file' })).toBe('edit_note');
     // Un outil inconnu s'affiche tel quel plutôt que de disparaître du journal.
     expect(component.toolLabel({ ...entry, tool: 'inconnu' })).toBe('inconnu');
     expect(component.outcomeLabel({ ...entry, outcome: 'OK' })).toBe('Effectué');
