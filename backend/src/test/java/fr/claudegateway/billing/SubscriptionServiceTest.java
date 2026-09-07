@@ -96,7 +96,8 @@ class SubscriptionServiceTest {
 
     private SubscriptionService serviceWithProvider(BillingProvider provider) {
         BillingProperties props = new BillingProperties(5, new BillingProperties.Stripe(
-                "sk", "wh", Map.of("PRO", "price_pro"), Map.of(), null, null, Map.of(), null, null));
+                "sk", "wh", Map.of("PRO", "price_pro"), Map.of(), null, null, Map.of(), null, null,
+                Map.of(), Map.of()));
         return new SubscriptionService(repository, props, new PlanCatalog(), provider);
     }
 

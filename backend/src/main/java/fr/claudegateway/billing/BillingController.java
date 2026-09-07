@@ -69,17 +69,24 @@ public class BillingController {
 
     /**
      * Plans proposés à la souscription : uniquement ceux ayant un price Stripe configuré, enrichis du
-     * quota mensuel et du montant d'affichage (SF-21-05). Le price ID Stripe reste interne.
+     * quota mensuel, du montant d'affichage (SF-21-05) et de l'engagement annuel quand il est
+     * proposé (F-43). Le price ID Stripe reste interne.
+     *
+     * <p>Le quota exposé reste l'allocation <b>mensuelle</b> du plan, y compris pour un plan
+     * proposé à l'année : {@code tokensForPlan} ne connaît que le {@link PlanCode}, jamais la
+     * périodicité. C'est délibéré — l'engagement est annuel, l'allocation reste mensuelle.</p>
      */
     @GetMapping("/plans")
     public PlansResponse plans() {
+        BillingProperties.Stripe stripe = billingProperties.stripe();
         List<PlanResponse> plans = planCatalog.plans().stream()
-                .filter(plan -> org.springframework.util.StringUtils.hasText(
-                        billingProperties.stripe().priceId(plan.code())))
+                .filter(plan -> org.springframework.util.StringUtils.hasText(stripe.priceId(plan.code())))
                 .map(plan -> PlanResponse.of(
                         plan,
                         quotaProperties.tokensForPlan(plan.code()),
-                        billingProperties.stripe().displayPrice(plan.code())))
+                        stripe.displayPrice(plan.code()),
+                        stripe.yearlyDisplayPrice(plan.code()),
+                        stripe.isYearlyAvailable(plan)))
                 .toList();
         return new PlansResponse(plans);
     }
