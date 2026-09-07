@@ -16,6 +16,16 @@ RUN ./mvnw dependency:go-offline -q
 COPY runner/src/ src/
 RUN ./mvnw clean package -DskipTests -q
 
+# Paquet autonome Windows (F-44 / SF-44-01) : le runner AVEC sa propre JVM, pour les postes où
+# aucun Java 21 n'est installable — le cas rencontré chez un client le 2026-09-07 (poste
+# d'entreprise en Java 8, pas de droits administrateur).
+#
+# Construit ICI, sur Linux : `jlink` sait cibler Windows si on lui donne les `jmods` du JDK
+# Windows. Aucune machine Windows, aucune matrice d'intégration continue.
+COPY runner/package-windows.sh ./
+RUN apk add --no-cache curl zip unzip \
+    && ./package-windows.sh target/claude-runner.jar target
+
 # ---- Build du backend ----
 FROM eclipse-temurin:21-jdk-alpine AS build
 WORKDIR /app
@@ -37,6 +47,8 @@ USER appuser
 COPY --from=build /app/target/*.jar app.jar
 # Servi par GET /runner/download quand APP_RUNNER_JAR_PATH pointe ce chemin.
 COPY --from=runner-build /runner/target/claude-runner.jar claude-runner.jar
+# Paquet autonome Windows (F-44), servi à côté du jar — il ne le remplace pas.
+COPY --from=runner-build /runner/target/claude-runner-windows-x64.zip claude-runner-windows-x64.zip
 
 EXPOSE 8080
 
