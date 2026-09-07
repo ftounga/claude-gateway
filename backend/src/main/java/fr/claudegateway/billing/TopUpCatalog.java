@@ -19,7 +19,11 @@ import org.springframework.util.StringUtils;
 public class TopUpCatalog {
 
     private static final List<TopUpPack> PACKS = List.of(
-            new TopUpPack("DAY", "Pass journée — 200 k tokens", 200_000L),
+            // Le CODE reste « DAY » : il voyage dans les métadonnées Stripe des paiements déjà
+            // encaissés et dans APP_QUOTA_ALERT_TOPUP_PACK. Seul le nom change (SF-21-06), pour
+            // qu'il cesse d'être l'homonyme du plan « Pass journée » retiré par SF-09-04 — c'est
+            // cette confusion qui avait masqué, des mois durant, que ce plan n'avait aucun prix.
+            new TopUpPack("DAY", "Recharge 200 k tokens", 200_000L),
             new TopUpPack("STANDARD", "Recharge — 1 M tokens", 1_000_000L));
 
     /** Liste immuable des packs du catalogue. */

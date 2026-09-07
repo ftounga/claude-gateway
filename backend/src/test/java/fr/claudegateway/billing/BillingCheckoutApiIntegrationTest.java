@@ -252,7 +252,7 @@ class BillingCheckoutApiIntegrationTest {
         mockMvc.perform(get("/api/billing/topups").contextPath("/api")
                         .header("Authorization", "Bearer " + aliceToken))
                 .andExpect(status().isOk())
-                // Deux packs disponibles (Pass journée + Recharge), ordre non contraint.
+                // Deux packs disponibles (Recharge 200 k + Recharge 1 M), ordre non contraint.
                 .andExpect(jsonPath("$.packs[*].code", org.hamcrest.Matchers.hasItems("DAY", "STANDARD")))
                 .andExpect(jsonPath("$.packs[*].tokens", org.hamcrest.Matchers.hasItems(200000, 1000000)));
     }
@@ -321,7 +321,7 @@ class BillingCheckoutApiIntegrationTest {
         mockMvc.perform(get("/api/billing/plans").contextPath("/api")
                         .header("Authorization", "Bearer " + aliceToken))
                 .andExpect(status().isOk())
-                // Seuls SOLO/PRO ont un price configuré (test) ; DAILY (Pass journée) est exclu.
+                // Seuls SOLO/PRO ont un price configuré (test) ; DAILY est hors catalogue (SF-09-04).
                 .andExpect(jsonPath("$.plans[*].code", org.hamcrest.Matchers.hasItems("SOLO", "PRO")))
                 .andExpect(jsonPath("$.plans[*].code",
                         org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("DAILY"))))
