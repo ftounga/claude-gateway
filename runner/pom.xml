@@ -54,6 +54,38 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.13.0</version>
+                <executions>
+                    <!--
+                        SF-38-22 — Le lanceur est compilé pour Java 8, tout le reste pour Java 21.
+                        C'est la seule façon de dire « il vous faut Java 21 » à une JVM 8 : sur
+                        celle-ci, aucune classe compilée en 21 ne se charge, donc la vérification ne
+                        peut pas vivre dans le code applicatif — il n'est jamais atteint.
+                    -->
+                    <execution>
+                        <id>default-compile</id>
+                        <configuration>
+                            <excludes>
+                                <exclude>**/RunnerLauncher.java</exclude>
+                            </excludes>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>compile-launcher-for-java8</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>compile</goal>
+                        </goals>
+                        <configuration>
+                            <release>8</release>
+                            <includes>
+                                <include>**/RunnerLauncher.java</include>
+                            </includes>
+                            <!-- La cible 8 est dépréciée sur un JDK 21 : l'avertissement est
+                                 attendu, il n'annonce pas un défaut. -->
+                            <showDeprecation>false</showDeprecation>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
 
             <plugin>
@@ -78,7 +110,7 @@
                             <transformers>
                                 <transformer
                                         implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>fr.claudegateway.runner.RunnerMain</mainClass>
+                                    <mainClass>fr.claudegateway.runner.RunnerLauncher</mainClass>
                                 </transformer>
                                 <transformer
                                         implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
