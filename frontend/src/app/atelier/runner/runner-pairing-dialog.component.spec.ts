@@ -117,13 +117,14 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     // Le préfixe d'API n'est pas décoratif : sans lui, la requête d'appairage atteint le serveur
     // du frontend, qui répond 405 sur un POST vers une route d'application (F-38 / SF-38-06).
     expect(command).toContain(`--gateway ${window.location.origin}/api`);
-    expect(command).toContain('--workspace /home/moi/projet');
+    // Guillemets : sans eux, Git Bash mange les antislashs d'un chemin Windows (SF-38-23).
+    expect(command).toContain('--workspace "/home/moi/projet"');
     expect(command).toContain('--code AB12CD');
   });
 
   it('propose un chemin d\'exemple tant que rien n\'est saisi', () => {
     setup();
-    expect(component.runCommand()).toContain(`--workspace ${DEFAULT_WORKSPACE_PATH}`);
+    expect(component.runCommand()).toContain(`--workspace "${DEFAULT_WORKSPACE_PATH}"`);
   });
 
   it('traite un 404 de téléchargement comme un état normal, sans erreur technique', () => {
