@@ -293,6 +293,16 @@ app:
         # Offre BYOK (F-41) : la plateforme seule, servie par la clé Anthropic du client.
         # Vide ⇒ le plan n'est ni listé ni souscriptible, comme tout plan sans price.
         BYOK: ${STRIPE_PRICE_BYOK:}
+      # Mapping plan -> price ID Stripe ANNUEL (F-43). Un engagement annuel encaissé d'avance :
+      # trésorerie et rétention. Vide ⇒ le plan n'est proposé qu'au mois, exactement comme un plan
+      # sans price n'est pas proposé du tout. Le pass journée (DAILY) n'y figure pas : c'est un
+      # paiement UNIQUE, il ne s'annualise pas.
+      # ATTENTION : ces price IDs doivent pointer des prix Stripe de récurrence ANNUELLE — la
+      # gateway ne vérifie pas la récurrence côté fournisseur, elle relaie le price qu'on lui donne.
+      yearly-prices:
+        SOLO: ${STRIPE_PRICE_SOLO_YEARLY:}
+        PRO: ${STRIPE_PRICE_PRO_YEARLY:}
+        GOLD: ${STRIPE_PRICE_GOLD_YEARLY:}
       # Mapping pack de tokens (top-up, F-21) -> price ID Stripe (paiement one-shot). Par environnement.
       topup-prices:
         DAY: ${STRIPE_PRICE_TOPUP_DAY:}
@@ -303,10 +313,23 @@ app:
         SOLO: ${STRIPE_DISPLAY_PRICE_SOLO:24}
         PRO: ${STRIPE_DISPLAY_PRICE_PRO:99}
         GOLD: ${STRIPE_DISPLAY_PRICE_GOLD:199}
+        # Pass journée (F-43, anomalie corrigée) : le plan avait un quota (500 k) et un price ID,
+        # mais AUCUN prix d'affichage — l'écran de facturation n'avait donc rien à montrer à côté de
+        # son bouton d'achat. Valeur commerciale réversible, à revoir par le PO.
+        DAILY: ${STRIPE_DISPLAY_PRICE_DAILY:9}
         # Offre BYOK (F-41) : le client apporte sa clé, la gateway ne paie aucun jeton — elle
         # ne facture donc que la plateforme. Valeur commerciale réversible, ajustable par
         # environnement sans changement de code.
         BYOK: ${APP_BILLING_BYOK_PRICE:29}
+      # Montants d'affichage (EUR) ANNUELS (F-43). Défaut : DIX MOIS PAYÉS sur douze (≈ −17 %) à
+      # partir des mensuels 24 / 99 / 199. Ce sont des DÉFAUTS, pas une formule : la remise n'est
+      # calculée nulle part dans le code, pour que le PO puisse passer à onze mois payés ou faire
+      # une promotion sur un seul plan sans redéploiement. Cosmétique, comme display-prices : le
+      # débit réel est porté par le price annuel.
+      yearly-display-prices:
+        SOLO: ${STRIPE_DISPLAY_PRICE_SOLO_YEARLY:240}
+        PRO: ${STRIPE_DISPLAY_PRICE_PRO_YEARLY:990}
+        GOLD: ${STRIPE_DISPLAY_PRICE_GOLD_YEARLY:1990}
       # Option Atelier (F-40) : le droit d'accès à l'Atelier, découplé du plan. Souscrite en
       # supplément d'un plan Solo/Pro, elle ouvre l'Atelier sans changer AUCUN quota — sans elle,
       # y accéder depuis Solo (24 €) imposait de passer à Gold (199 €), une falaise ×8 devant la
@@ -325,6 +348,9 @@ app:
     # Valeurs commerciales réversibles, ajustables par environnement sans changement de code.
     # V1 = blocage à la limite (pas d'overage monétisé — OQ-08 ouverte pour la variante payante).
     trial-tokens: ${APP_QUOTA_TRIAL_TOKENS:200000}
+    # Ces allocations sont MENSUELLES, y compris pour un abonné engagé à l'année (F-43) :
+    # l'engagement est annuel, l'allocation reste mensuelle. Ne PAS y ajouter d'entrée annuelle —
+    # un abonné Pro pourrait consommer douze mois de jetons dès le premier.
     plans:
       SOLO: ${APP_QUOTA_SOLO_TOKENS:1000000}
       PRO: ${APP_QUOTA_PRO_TOKENS:5000000}

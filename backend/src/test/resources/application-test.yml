@@ -40,10 +40,20 @@ app:
         # F-41 : un price configuré pour l'offre BYOK, sans quoi elle serait filtrée du catalogue
         # et les tests d'intégration ne verraient jamais le plan qu'ils vérifient.
         BYOK: price_byok_test
+      # F-43 : un price annuel pour SOLO seulement. PRO n'en a pas : c'est ce qui permet aux tests
+      # de vérifier qu'un plan sans engagement annuel reste proposé au mois, sans jamais afficher
+      # d'offre annuelle. BYOK a un price annuel MAIS pas de prix d'affichage annuel : c'est le cas
+      # « offre à moitié configurée », qui ne doit surtout pas être proposée.
+      yearly-prices:
+        SOLO: price_solo_yearly_test
+        BYOK: price_byok_yearly_test
       display-prices:
         SOLO: "24"
         PRO: "99"
         BYOK: "29"
+        DAILY: "9"
+      yearly-display-prices:
+        SOLO: "240"
 logging:
   level:
     fr.claudegateway: DEBUG
