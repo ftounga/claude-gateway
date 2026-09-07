@@ -62,6 +62,6 @@ class ToolRouterTest {
 
     private ToolRouter router(boolean allowBash) {
         PathGuard guard = new PathGuard(root);
-        return new ToolRouter(new FileTools(guard), new BashTool(guard, allowBash));
+        return new ToolRouter(new FileTools(guard), new BashTool(guard, allowBash, ShellElection.elect()));
     }
 }

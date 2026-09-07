@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <!--
+      F-38 / SF-38-27 — Genre d'interpréteur élu par le runner.
+
+      La consigne système envoyée au modèle en cible RUNNER dicte la syntaxe d'exploration
+      (`ls`, `find`, `grep -n`). Sur un poste Windows sans bash, cette syntaxe n'existe pas : le
+      modèle recevait l'ordre d'employer des commandes que la machine ne connaît pas. Le runner élit
+      désormais son interpréteur et le déclare dans sa trame `ready` ; la consigne suit.
+
+      Pourquoi une colonne plutôt qu'une carte en mémoire : la trame arrive sur le pod qui porte la
+      socket, alors que la consigne est construite par le pod qui sert le message — et ce n'est pas
+      forcément le même (HPA min 1 / max 4, SF-38-12).
+
+      Nullable et sans défaut : un projet sans runner, ou un runner antérieur à cette version, ne
+      déclare rien — et la consigne garde alors son texte POSIX actuel.
+    -->
+    <changeSet id="063-workspaces-runner-shell" author="claude-gateway">
+        <addColumn tableName="workspaces">
+            <column name="runner_shell" type="varchar(16)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="runner_shell"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

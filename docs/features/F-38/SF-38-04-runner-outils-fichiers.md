@@ -34,6 +34,9 @@
 1. À l'ouverture de la socket, le runner émet une trame `ready` :
    `{"type":"ready","protocol":1,"runnerVersion":"…","capabilities":["files"],"os":"linux"}`.
    (`bash` n'est **pas** annoncé : il arrive en SF-38-07.)
+   *Complété en SF-38-27* : la trame porte aussi `"shell":"posix"|"powershell"|"cmd"`, le genre
+   d'interpréteur que le runner a élu. Champ **facultatif** — un runner antérieur ne l'envoie pas,
+   et la gateway n'enregistre alors rien.
 2. La gateway émet `{"type":"tool_call","id":"toolu_…","tool":"read_file","input":{…},"timeoutMs":30000}`.
    Le runner **parse le champ `type`** (Jackson) — plus aucune heuristique sur le texte de la trame.
 3. L'appel est exécuté sur un **thread worker dédié** (jamais le thread heartbeat, jamais le thread

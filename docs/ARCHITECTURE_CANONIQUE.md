@@ -549,8 +549,8 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     canal s'enregistre sur **son** pod, le mode `RUNNER` suppose toujours un replica unique ou une
     affinité d'ingress.
 
-- **Projet qui vit déjà sur la machine — deux colonnes sur `workspaces`, aucune table neuve**
-  (F-38 / SF-38-15 migration `052`, SF-38-18 migration `053`).
+- **Projet qui vit déjà sur la machine — trois colonnes sur `workspaces`, aucune table neuve**
+  (F-38 / SF-38-15 migration `052`, SF-38-18 migration `053`, SF-38-27 migration `063`).
   - `workspaces.runner_root_name` (`varchar(255)`, **nullable**) — le **nom** de la racine déclarée
     par le runner à l'appairage, jamais le chemin absolu : la gateway n'apprend pas où le projet vit
     sur la machine, elle sait seulement comment l'appeler à l'écran. C'est le pendant de la source
@@ -563,8 +563,19 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     autorise une commande** : autoriser `rm -rf build` n'a pas le même poids selon les droits sous
     lesquels elle s'exécutera. **Informatif, jamais une garde** : le runner agit avec les droits du
     compte qui l'a lancé, et démarrer en root n'est pas interdit (usage conteneur).
-  - Les deux colonnes suivent l'isolation générale : elles vivent sur `workspaces`, lues et écrites
-    sous le `user_id` propriétaire du projet.
+  - `workspaces.runner_shell` (`varchar(16)`, **nullable**, sans défaut) — le **genre
+    d'interpréteur** que le runner a élu au démarrage (`posix`, `powershell` ou `cmd`) et déclaré
+    dans sa trame `ready`. La **consigne système** en cible `RUNNER` en dépend : elle dicte au
+    modèle une syntaxe d'exploration, et `bash` y est son seul outil pour explorer (SF-39-05) —
+    dicter `ls`/`find`/`grep -n` à un poste qui n'a que `cmd.exe` faisait échouer chaque
+    exploration. Déclarée dans `ready` et **non** à l'appairage : l'appairage n'a lieu qu'une fois,
+    la trame part à chaque connexion. Persistée plutôt que gardée en mémoire parce que la consigne
+    est construite par le pod qui sert le message, pas par celui qui porte la socket (HPA
+    `min 1 / max 4`). Écriture sous **liste blanche stricte** : une valeur hors des trois genres
+    n'entre pas en base.
+  - Les trois colonnes suivent l'isolation générale : elles vivent sur `workspaces`, lues et écrites
+    sous le `user_id` propriétaire du projet — l'écriture depuis le canal runner se fait sur le
+    `workspace_id` de la **session authentifiée**, jamais sur un identifiant lu dans une trame.
 
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 

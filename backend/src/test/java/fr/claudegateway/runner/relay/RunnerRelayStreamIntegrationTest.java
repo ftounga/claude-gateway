@@ -141,7 +141,7 @@ class RunnerRelayStreamIntegrationTest {
         @Bean
         @Primary
         RunnerCallDispatcher slowDispatcher(RunnerRegistry registry, ObjectMapper objectMapper) {
-            return new RunnerCallDispatcher(registry, objectMapper, 5_000L) {
+            return new RunnerCallDispatcher(registry, objectMapper, (id, shell) -> { }, 5_000L) {
                 @Override
                 public RunnerCallResult call(UUID workspaceId, String callId, String tool,
                         JsonNode input, long timeoutMs, Consumer<String> onChunk) {

@@ -61,10 +61,13 @@ class RunnerCallDispatcherTest {
     private RunnerCallDispatcher dispatcher;
     private ExecutorService executor;
 
+    /** Ce que le runner a déclaré comme interpréteur (F-38 / SF-38-27) : {@code null} si rien. */
+    private final Map<UUID, String> recordedShells = new HashMap<>();
+
     @BeforeEach
     void setUp() {
         // Grâce raccourcie : le contrat impose 5 000 ms en production, inutilisable dans un test.
-        dispatcher = new RunnerCallDispatcher(registry, objectMapper, 120L);
+        dispatcher = new RunnerCallDispatcher(registry, objectMapper, recordedShells::put, 120L);
         executor = Executors.newSingleThreadExecutor();
         when(session.getAttributes()).thenReturn(attributes);
         when(session.isOpen()).thenReturn(true);
@@ -250,6 +253,59 @@ class RunnerCallDispatcherTest {
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.UNSUPPORTED_TOOL);
         verify(session, never()).sendMessage(any());
+    }
+
+    @Test
+    void recordsTheInterpreterTheRunnerElected() throws Exception {
+        // F-38 / SF-38-27 : la consigne système est construite par le pod qui sert le message, pas
+        // par celui qui porte la socket. Le genre déclaré doit donc quitter la mémoire de ce pod.
+        dispatcher.onFrame(identity, "ready", objectMapper.readTree(
+                "{\"type\":\"ready\",\"protocol\":1,\"capabilities\":[\"files\",\"bash\"],"
+                        + "\"shell\":\"powershell\"}"));
+
+        assertThat(recordedShells).containsEntry(workspaceId, "powershell");
+    }
+
+    @Test
+    void recordsNothingWhenTheRunnerDeclaresNoInterpreter() throws Exception {
+        // Runner antérieur à SF-38-27 : le champ est absent, et rien ne doit être écrit.
+        dispatcher.onFrame(identity, "ready", objectMapper.readTree(
+                "{\"type\":\"ready\",\"protocol\":1,\"capabilities\":[\"files\"]}"));
+
+        assertThat(recordedShells).isEmpty();
+    }
+
+    @Test
+    void recordsNothingWhenTheDeclaredInterpreterIsNotAString() throws Exception {
+        dispatcher.onFrame(identity, "ready", objectMapper.readTree(
+                "{\"type\":\"ready\",\"protocol\":1,\"capabilities\":[\"files\"],\"shell\":42}"));
+
+        assertThat(recordedShells).isEmpty();
+    }
+
+    @Test
+    void aFailedRecordingNeverBreaksTheRunnerConnection() throws Exception {
+        RunnerCallDispatcher fragile = new RunnerCallDispatcher(registry, objectMapper,
+                (id, shell) -> {
+                    throw new IllegalStateException("base injoignable");
+                }, 120L);
+        com.fasterxml.jackson.databind.JsonNode ready = objectMapper.readTree(
+                "{\"type\":\"ready\",\"protocol\":1,\"capabilities\":[\"files\",\"bash\"],"
+                        + "\"shell\":\"posix\"}");
+
+        // L'enregistrement est best-effort ; la liaison, elle, ne l'est pas.
+        org.assertj.core.api.Assertions
+                .assertThatCode(() -> fragile.onFrame(identity, "ready", ready))
+                .doesNotThrowAnyException();
+
+        // Et la capacité `bash` a bien été retenue malgré l'échec d'écriture : l'appel échoue faute
+        // de socket, jamais parce que l'outil serait « non annoncé ».
+        when(registry.findLocal(workspaceId)).thenReturn(Optional.of(new RunnerConnection(
+                workspaceId, userId, tokenId, "node-1", OffsetDateTime.now())));
+        fragile.attach(session, identity);
+        RunnerCallResult result = fragile.call(workspaceId, "toolu_1", "bash",
+                objectMapper.readTree("{\"command\":\"ls\"}"), 10L);
+        assertThat(result.errorCode()).isNotEqualTo(RunnerErrorCodes.UNSUPPORTED_TOOL);
     }
 
     @Test
