@@ -110,7 +110,7 @@ Chaque subfeature vise ≤ 2 jours.
 | SF-38-13 | Relais inter-pods — flux, annulation, porte | Décision de la porte, annulation, interruption de tour et marque F-32 diffusées aux pairs (Service headless) ; test chronométré : le flux relayé n'est pas bufferisé. | **Livrée** (PR #202, aucune migration) |
 | SF-38-14 | Purge du runner à la suppression de compte | Codes d'appairage, jetons et journal d'audit effacés avec le compte. | **Livrée** (PR #203, aucune migration) |
 | — | **Déploiement en production** | Image `staging-b907947` : migrations 048/049, `APP_RUNNER_REGISTRY=pg-notify`, jar servi par `GET /api/runner/download`, relais 8081, `/api/internal/**` inatteignable depuis l'ingress. | **Fait** le 2026-08-30 |
-| — | **Smoke manuel bout en bout** | Appairage réel, WSS sortant, repli long-polling derrière un proxy, `Ctrl-C`. Non automatisable. | **Parqué** le 2026-09-06 — protocole `SMOKE-manuel-bout-en-bout.md`, planification au PO (OQ-13) |
+| — | **Smoke manuel bout en bout** | Appairage réel, WSS sortant, repli long-polling derrière un proxy, `Ctrl-C`. Non automatisable. | **Parqué** le 2026-09-06 — protocole `SMOKE-manuel-bout-en-bout.md` (**16 scénarios** depuis sa remise à niveau du 2026-09-08), planification au PO (**OQ-13**, relancée le 2026-09-08) |
 
 ### Second lot — subfeatures nées du banc d'essai (2026-09-06)
 
@@ -157,11 +157,20 @@ Trois limites avaient été assumées et tracées à la clôture du lot du 2026-
 appairage réel, connexion WSS sortante, bascule long-polling derrière un proxy qui coupe l'`Upgrade`,
 `Ctrl-C`. Ce n'est pas un manque de code mais un **acte d'exploitation** : il faut une machine tierce,
 un vrai réseau contraint et un opérateur. Il est donc **parqué** le 2026-09-06 sous forme de protocole
-exécutable — `SMOKE-manuel-bout-en-bout.md` — et sa **planification est demandée au PO** (OQ-13).
+exécutable — `SMOKE-manuel-bout-en-bout.md` — et sa **planification est demandée au PO** (OQ-13,
+**relancée le 2026-09-08**).
 Il ne conditionne plus le statut de F-38 : le code est livré, testé et déployé ; ce qui manque est une
 **constatation terrain**, pas une livraison. Un KO au smoke ouvrira une subfeature correctif ciblée
-(**`SF-38-22`…** — les numéros 15 à 21 ont été consommés le 2026-09-06 par le lot issu du second
-passage du banc d'essai), pas une réouverture en bloc.
+(**`SF-38-28`…** — les numéros **15 à 27** ont été consommés : le lot issu du second passage du banc
+d'essai le 2026-09-06, puis SF-38-22 → SF-38-27 les 2026-09-07 et 2026-09-08, issues du **premier
+lancement chez un client**), pas une réouverture en bloc.
+
+**Mise à jour du 2026-09-08** : le protocole a été remis au niveau du runner livré **une seconde
+fois** — prérequis d'image porté à la migration **063**, machine **Windows** demandée (quatre des six
+derniers correctifs ne se manifestent que là), avertissement en tête de **S5** (le contrôle de vol de
+SF-38-25 s'exécute désormais *avant* l'appairage et ne doit pas être lu comme un repli cassé), et
+cinq scénarios ajoutés — **S12** à **S16**, le dernier couvrant **F-44** (paquet autonome Windows),
+que le protocole ignorait entièrement.
 
 ### Pourquoi `bash` arrive après le point de contrôle
 Un runner qui ne fait que lire et écrire des fichiers apporte déjà l'essentiel (fin des zips)

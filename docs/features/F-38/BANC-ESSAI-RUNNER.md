@@ -319,5 +319,6 @@ lot qui touche au runner ou à la boucle maison.
 
 **Ce qui reste hors de sa portée** : le smoke d'**exploitation** — appairage sur une machine tierce,
 repli long-polling derrière un proxy qui coupe l'`Upgrade`, `Ctrl-C` — protocole
-`SMOKE-manuel-bout-en-bout.md`, remis au niveau du lot livré le 2026-09-06, planification demandée
-au PO en **OQ-13**.
+`SMOKE-manuel-bout-en-bout.md`, remis au niveau du lot livré le 2026-09-06 **puis le 2026-09-08**
+(SF-38-22 → SF-38-27 et F-44, 16 scénarios), planification demandée au PO en **OQ-13** — **relancée le
+2026-09-08**.

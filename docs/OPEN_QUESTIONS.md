@@ -173,18 +173,33 @@ l'arbitrage « non prioritaire » de F-29 / SF-29-04.
 
 ## OQ-13 — Quand joue-t-on le smoke manuel de F-38 (runner), et sur quelle machine ?
 
-**Statut** : **Ouverte — question de planification adressée au product owner (2026-09-06).**
-Ne bloque pas F-38, **Terminée** dans `docs/PRODUCT_SPEC.md`.
-**Mise à jour du 2026-09-06 (soir)** : le protocole a été **remis au niveau du runner livré** (voir
-« Ce qui a été fait depuis » ci-dessous). La question posée au PO, elle, est inchangée — elle ne se
-répond ni par du code ni par de la documentation.
+**Statut** : **Ouverte — question de planification adressée au product owner (2026-09-06),
+relancée le 2026-09-08.** Ne bloque pas F-38, **Terminée** dans `docs/PRODUCT_SPEC.md`.
+**Mise à jour du 2026-09-06 (soir)** : le protocole a été **remis au niveau du runner livré**.
+**Mise à jour du 2026-09-08** : il l'a été **une seconde fois** — six subfeatures de plus
+(SF-38-22 → SF-38-27) **et une feature entière** (**F-44**, le paquet autonome Windows) sont passées
+entre-temps ; deux d'entre elles auraient produit un **KO faux**, et F-44 laissait un scénario
+manquant. Voir « Ce que la relance du 2026-09-08 change ». La question posée au PO, elle,
+est **inchangée depuis le 2026-09-06** — elle ne se répond ni par du code ni par de la documentation,
+seulement par **une date et un opérateur**.
+
+> **Ce que cette entrée demande, en une phrase** : un créneau de **110 minutes**, un **opérateur**,
+> et une **machine Windows** hors cluster — après un déploiement embarquant la migration **063** et
+> **F-44**. Tout le reste est prêt et à jour.
 
 **Le contexte**
 
-F-38 (runner local) est livrée — **21 subfeatures**, relais inter-pods compris — et **déployée en
-production** depuis le 2026-08-30 (image `staging-b907947`, antérieure à SF-38-15→21). Tout ce qui
-pouvait être vérifié sans machine tierce l'est par la suite de tests : handshake, registre,
-confinement, exclusions, garde-fous, audit, relais, purge à la suppression de compte.
+F-38 (runner local) est livrée — **27 subfeatures** au 2026-09-08, relais inter-pods compris — et
+**déployée en production** depuis le 2026-08-30 (image `staging-b907947`, antérieure à SF-38-15→27).
+Tout ce qui pouvait être vérifié sans machine tierce l'est par la suite de tests : handshake,
+registre, confinement, exclusions, garde-fous, audit, relais, purge à la suppression de compte.
+
+**Le délai lui-même produit de la valeur, et coûte** : depuis que la question est posée, six
+subfeatures de plus sont nées d'un **vrai poste client** (SF-38-22 → SF-38-27, les 2026-09-07 et
+2026-09-08) — prérequis Java, chemin Windows, panne réseau lisible, contrôle de vol, console
+exacte, interpréteur élu. **Aucune** n'était visible en intégration continue ; **toutes** l'auraient
+été par ce smoke. C'est l'argument le plus court en faveur du créneau : le protocole ne coûte pas
+110 minutes, il les **économise** sur le prochain premier lancement.
 
 **Ce qui reste, et pourquoi ce n'est pas un ticket de dev**
 
@@ -194,8 +209,8 @@ raisonnable : il demande une **machine tierce hors cluster**, un **réseau d'ent
 contraint** (un proxy simulé prouve le code, pas le terrain) et un **opérateur**. Construire le banc
 d'essai correspondant (VM éphémère + proxy + pilotage navigateur) coûterait plus que la feature, pour
 un parcours joué une fois à la mise en service. Il a donc été **sorti du périmètre de dev et parqué**
-sous forme de protocole exécutable : `docs/features/F-38/SMOKE-manuel-bout-en-bout.md` (**11
-scénarios**, prérequis, grille de compte rendu).
+sous forme de protocole exécutable : `docs/features/F-38/SMOKE-manuel-bout-en-bout.md` (**16
+scénarios** depuis la remise à niveau du 2026-09-08, prérequis, grille de compte rendu).
 
 **Ce qui a été fait depuis (2026-09-06, soir) — et qui ne referme pas la question**
 
@@ -209,6 +224,36 @@ d'audit et le coupe-circuit), **S10** (droits déclarés du runner) et **S11** (
 machine ») ajoutés, prérequis d'image relevé à la **migration 053**. C'est de la mise à niveau
 documentaire : **le parcours réel n'a toujours pas été joué**.
 
+**Ce que la relance du 2026-09-08 change (et qui ne referme toujours pas la question)**
+
+Le même défaut qu'en septembre s'est reproduit, pour la même raison de fond : **un protocole ne
+compile pas**, donc rien ne le prévient quand le produit bouge sous lui. Corrigé une seconde fois :
+
+1. **Prérequis d'image relevé** : migration **063** (`workspaces.runner_shell`), et non plus 053.
+   Trois signes vérifiables sont listés en P1, un par lot livré.
+2. **Un KO faux évité** — le plus coûteux du lot : **SF-38-25 pose un contrôle de vol réseau *avant*
+   l'appairage**. Derrière un proxy qui bloque **tout** le sortant, le runner s'arrête désormais
+   avant d'avoir rien tenté. Un opérateur jouant **S5** (repli de transport) sans le savoir lirait
+   cet arrêt comme « le repli est cassé » — un KO **bloquant** au sens du protocole — et ouvrirait
+   une subfeature correctif contre un comportement **voulu**. Une note en tête de S5 le dit.
+3. **Un angle mort de couverture** : SF-38-22, 23, 26 et 27 ne se manifestent **que sous Windows**
+   (JVM trop ancienne, `C:\Users\…` avalé par Git Bash, ponctuation rendue `?` en cp850, absence de
+   `ls`/`grep` dans `cmd.exe`). Joué sur Linux ou macOS, le protocole n'en verrait **aucun** et
+   rendrait un « tout OK » trompeur. D'où le prérequis **P3bis**, et une demande de plus au PO
+   (point 7 ci-dessous).
+4. **Une feature entière absente du protocole** : **F-44** (livrée le 2026-09-07) donne au poste
+   Windows un **paquet autonome embarquant sa propre JVM**, que l'écran propose désormais **en
+   premier** — la commande devient `claude-runner.cmd …`, sans `java -jar`. Le protocole ne
+   connaissait que le jar. Conséquence directe : **S12** (prérequis Java) est **sans objet** sur ce
+   format — l'y jouer produirait un KO contre une feature qui fait exactement son travail —, et le
+   scénario que **seule une vraie machine** peut jouer (un Windows verrouillé exécute-t-il le paquet
+   sans droits admin, JVM système absente ?) n'existait nulle part.
+5. **Cinq scénarios ajoutés** — S12 (prérequis Java nommé, *format jar seulement*), S13 (chemin
+   Windows entre guillemets), S14 (contrôle de vol et pannes qui ne se racontent plus par `null`),
+   S15 (interpréteur élu, déclaré, et consigne système accordée), **S16** (le paquet autonome F-44).
+   Numérotation stable : ajoutés **à la fin**, joués **au début** (l'ordre recommandé du §3 le dit).
+6. **Numéro du prochain correctif** : `SF-38-28` — les numéros **15 à 27** sont consommés.
+
 **Ce qui est demandé au PO**
 
 1. **Une date** et **un opérateur**.
@@ -218,18 +263,30 @@ documentaire : **le parcours réel n'a toujours pas été joué**.
    scénario est joué en proxy simulé et **noté comme partiel**.
 4. **Un créneau de scale à 2 replicas** pour le scénario S6 (relais inter-pods).
 5. **Un compte de test jetable** (le scénario S9 le supprime).
-6. **Nouveau prérequis** : le smoke doit être joué **après un déploiement embarquant SF-38-15→21**
-   (migration 053). L'image de production du 2026-08-30 est antérieure : jouer le protocole dessus
-   donnerait des KO sur S10 et S11 qui ne diraient rien du produit.
+6. **Prérequis d'image (relevé le 2026-09-08)** : le smoke doit être joué **après un déploiement
+   embarquant SF-38-15→27**, c'est-à-dire au moins la migration **063** (`workspaces.runner_shell`)
+   — le seuil annoncé le 2026-09-06 était 053. L'image de production du 2026-08-30 est antérieure
+   aux deux : jouer le protocole dessus donnerait des KO sur S10 à S15 qui ne diraient rien du
+   produit.
+7. **Une machine Windows (nouveau, 2026-09-08)** : quatre des six derniers correctifs ne se
+   manifestent que là, et **F-44** n'existe que là. Un passage sur Linux ou macOS reste utile, mais
+   **S13, S15 et S16 y sont notés « non joué »** — pas « OK ». Poste avec **Git pour Windows** de
+   préférence (S15 attend l'élection de Git Bash) et, pour S12, un moyen de pointer temporairement un
+   **JDK antérieur à 21**.
+8. **Les deux formats de téléchargement (nouveau, 2026-09-08)** : le **paquet autonome** pour S16, le
+   **jar** pour S12. Le format retenu se note dans le compte rendu — il change la commande
+   d'appairage et rend S12 sans objet.
 
 **Proposition par défaut, à confirmer ou corriger d'un mot** — faute d'opérateur, elle n'est pas
 appliquée, mais elle transforme une question ouverte en un oui/non :
 
 | Point | Proposition |
 |---|---|
-| Quand | Le **premier créneau calme après le prochain déploiement de production** (celui qui embarque SF-38-15→21). Compter **90 min**. |
-| Qui | Le **PO lui-même** : les deux passages du banc d'essai ont montré que c'est son regard qui trouve les défauts d'usage (quatre subfeatures et deux correctifs le 2026-09-06). |
-| Où | Sa **machine de développement**, projet réel avec dépendances — pas de VM à monter. |
+| Quand | Le **premier créneau calme après le prochain déploiement de production** (celui qui embarque SF-38-15→**27** et **F-44**, migration 063). Compter **90 min** — **110** avec les cinq scénarios ajoutés le 2026-09-08 et le double téléchargement. |
+| Qui | Le **PO lui-même** : les deux passages du banc d'essai ont montré que c'est son regard qui trouve les défauts d'usage (quatre subfeatures et deux correctifs le 2026-09-06), et le **premier lancement client** en a produit six de plus les 2026-09-07/08. |
+| Où | **Un poste Windows** avec un projet réel et ses dépendances — c'est le poste type d'un client, et la seule machine où S13 et S15 existent. À défaut, sa machine de développement habituelle, en notant S13 et S15 « non joué ». |
+| S12 | Un **JDK antérieur à 21** pointé le temps d'un lancement (`JAVA_HOME`), plutôt qu'une machine dédiée. Format **jar** obligatoire pour ce point. |
+| S16 | Joué **en premier**, avec le **paquet autonome** (~39 Mo) : c'est le format qu'un client Windows recevra. Bascule sur le **jar** ensuite, pour S12. |
 | S5 | **Proxy simulé** (`HTTPS_PROXY` vers un mandataire qui refuse l'`Upgrade`), noté **partiel**, plutôt que d'attendre indéfiniment un vrai réseau d'entreprise. Le rejouer chez le premier client qui en a un. |
 | S6 | **2 replicas pendant le créneau**, retour à 1 juste après. |
 | S9 | Compte jetable créé pour l'occasion, **joué en dernier**. |
@@ -237,10 +294,13 @@ appliquée, mais elle transforme une question ouverte en un oui/non :
 **Ce qui se passe ensuite**
 
 Tout OK → une ligne d'historique dans `PRODUCT_SPEC.md`, rien d'autre. Un KO → une **subfeature
-correctif ciblée** (**`SF-38-22`…** — les numéros 15 à 21 sont consommés depuis le 2026-09-06), pas
+correctif ciblée** (**`SF-38-28`…** — les numéros **15 à 27** sont consommés depuis le 2026-09-08), pas
 une réouverture de F-38 en bloc ; sont **bloquants pour la promesse produit** et passent devant le
 backlog : **S5** (repli de transport), **S6** (deux pods), **S4.5** (une commande autorisée en groupe
-absente du journal d'audit) et **S11.4** (un chemin absolu remonté à la gateway).
+absente du journal d'audit), **S11.4** (un chemin absolu remonté à la gateway) et, depuis le
+2026-09-08, **S14.5** (le contrôle de vol de SF-38-25 qui refuse de démarrer alors que la gateway
+répond : une porte posée avant tout le reste, dont le faux positif n'abîme pas le produit mais
+l'empêche de partir).
 
 **Risque assumé en attendant** : un défaut d'intégration réseau ou de parcours réel resterait
 invisible jusqu'au premier utilisateur du mode `RUNNER`. C'est le prix du parcage — il est accepté
