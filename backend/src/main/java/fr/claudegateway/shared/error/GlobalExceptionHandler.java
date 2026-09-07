@@ -19,7 +19,9 @@ import fr.claudegateway.billing.AtelierOptionAlreadyActiveException;
 import fr.claudegateway.billing.AtelierOptionIncludedInPlanException;
 import fr.claudegateway.billing.AtelierOptionNotActiveException;
 import fr.claudegateway.billing.NoActiveSubscriptionException;
+import fr.claudegateway.billing.UnknownBillingPeriodException;
 import fr.claudegateway.billing.UnknownPlanException;
+import fr.claudegateway.billing.YearlyBillingUnavailableException;
 import fr.claudegateway.billing.provider.BillingProviderException;
 import fr.claudegateway.billing.provider.BillingProviderUnavailableException;
 import fr.claudegateway.billing.provider.WebhookVerificationException;
@@ -538,6 +540,22 @@ public class GlobalExceptionHandler {
         log.debug("Résiliation d'option Atelier refusée : aucune option en cours");
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse("atelier_option_not_active", ex.getMessage()));
+    }
+
+    @ExceptionHandler(UnknownBillingPeriodException.class)
+    public ResponseEntity<ErrorResponse> handleUnknownBillingPeriod(UnknownBillingPeriodException ex) {
+        log.debug("Achat refusé : périodicité de facturation non achetable");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("validation_error", ex.getMessage()));
+    }
+
+    @ExceptionHandler(YearlyBillingUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleYearlyUnavailable(YearlyBillingUnavailableException ex) {
+        // Replier vers le price mensuel serait la voie confortable, et ferait payer au client autre
+        // chose que ce qu'il a demandé : on refuse explicitement (F-43).
+        log.debug("Achat refusé : engagement annuel non proposé pour ce plan");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("yearly_not_available", ex.getMessage()));
     }
 
     @ExceptionHandler(UnknownPlanException.class)

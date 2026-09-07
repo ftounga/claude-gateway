@@ -120,6 +120,12 @@ public class WebhookService {
         if (event.planCode() != null) {
             subscription.setPlanCode(event.planCode());
         }
+        // F-43 : l'engagement s'inscrit ici, au PAIEMENT CONFIRMÉ, jamais au clic — un checkout
+        // annuel abandonné ne doit pas laisser un abonnement affiché comme annuel. Un événement qui
+        // ne porte pas de périodicité n'en change aucune (voir BillingEvent : null = « ne dit rien »).
+        if (event.billingPeriod() != null) {
+            subscription.setBillingPeriod(event.billingPeriod());
+        }
         subscription.setStatus(SubscriptionStatus.ACTIVE);
         subscription.setCurrentPeriodEnd(resolvePeriodEnd(event, subscription));
         subscriptionRepository.save(subscription);
@@ -207,6 +213,9 @@ public class WebhookService {
         }
         if (event.planCode() != null) {
             subscription.setPlanCode(event.planCode());
+        }
+        if (event.billingPeriod() != null) {
+            subscription.setBillingPeriod(event.billingPeriod());
         }
         subscription.setStatus(SubscriptionStatus.fromStripe(event.status()));
         if (event.currentPeriodEnd() != null) {

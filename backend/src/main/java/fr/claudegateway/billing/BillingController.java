@@ -98,23 +98,27 @@ public class BillingController {
         return describe(subscriptionService.getOrCreateForUser(userId));
     }
 
-    /** Crée une session de paiement Stripe pour le plan demandé et renvoie l'URL de redirection. */
+    /**
+     * Crée une session de paiement Stripe pour le plan et la périodicité demandés, et renvoie l'URL
+     * de redirection. La périodicité est optionnelle (F-43) : absente, elle vaut {@code MONTHLY}.
+     */
     @PostMapping("/checkout")
     public CheckoutResponse checkout(@Valid @RequestBody CheckoutRequest request) {
         AuthenticatedUser user = currentUser.principal()
                 .orElseThrow(() -> new IllegalStateException("Aucun utilisateur authentifié"));
-        return CheckoutResponse.from(
-                checkoutService.createCheckout(user.id(), user.email(), request.planCode()));
+        return CheckoutResponse.from(checkoutService.createCheckout(
+                user.id(), user.email(), request.planCode(), request.period()));
     }
 
     /**
-     * Change le plan de l'abonnement existant (upgrade/downgrade, SF-21-05). 409 si aucun abonnement
-     * actif (souscrire d'abord) ; 400 si plan inconnu.
+     * Change le plan et/ou la <b>périodicité</b> de l'abonnement existant (upgrade/downgrade,
+     * SF-21-05 ; mensuel ↔ annuel, F-43). 409 si aucun abonnement actif (souscrire d'abord) ou si
+     * l'annuel est demandé sur un plan qui n'en propose pas ; 400 si plan ou périodicité inconnus.
      */
     @PostMapping("/subscription/change")
     public SubscriptionResponse changePlan(@Valid @RequestBody ChangePlanRequest request) {
         UUID userId = currentUser.requireId();
-        return describe(subscriptionService.changePlan(userId, request.planCode()));
+        return describe(subscriptionService.changePlan(userId, request.planCode(), request.period()));
     }
 
     /**

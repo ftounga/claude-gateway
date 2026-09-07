@@ -3,6 +3,7 @@ package fr.claudegateway.billing.provider;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+import fr.claudegateway.billing.BillingPeriod;
 import fr.claudegateway.billing.PlanCode;
 
 /**
@@ -19,6 +20,8 @@ import fr.claudegateway.billing.PlanCode;
  * @param currentPeriodEnd     fin de période de facturation, ou {@code null}
  * @param eventId              identifiant de l'événement fournisseur (idempotence), ou {@code null}
  * @param topupCode            code du pack de tokens racheté (pour {@code TOPUP_COMPLETED}), ou {@code null}
+ * @param billingPeriod        périodicité d'engagement portée par l'événement (F-43), ou {@code null}
+ *                             si l'événement n'en dit rien
  */
 public record BillingEvent(
         BillingEventType type,
@@ -29,7 +32,27 @@ public record BillingEvent(
         String status,
         OffsetDateTime currentPeriodEnd,
         String eventId,
-        String topupCode) {
+        String topupCode,
+        BillingPeriod billingPeriod) {
+
+    /**
+     * Événement sans périodicité (F-09, avant F-43). Le {@code null} porte exactement la bonne
+     * sémantique : un événement qui ne dit rien de la périodicité — un top-up, une option Atelier,
+     * ou tout événement émis avant F-43 — ne doit en <b>changer aucune</b>.
+     */
+    public BillingEvent(
+            BillingEventType type,
+            UUID userId,
+            String stripeCustomerId,
+            String stripeSubscriptionId,
+            PlanCode planCode,
+            String status,
+            OffsetDateTime currentPeriodEnd,
+            String eventId,
+            String topupCode) {
+        this(type, userId, stripeCustomerId, stripeSubscriptionId, planCode, status,
+                currentPeriodEnd, eventId, topupCode, null);
+    }
 
     /** Fabrique un événement non géré (ignoré par le service). */
     public static BillingEvent unhandled() {

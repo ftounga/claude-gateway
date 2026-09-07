@@ -333,4 +333,54 @@ class WebhookServiceTest {
         verify(quotaService, never()).creditBonusTokens(any(), any(Long.class));
         verify(processedEventRepository, never()).saveAndFlush(any());
     }
+    // ------------------------------------------------ F-43 / SF-43-02 — engagement annuel
+
+    @Test
+    void checkoutCompletedRecordsTheYearlyCommitment() {
+        UUID userId = UUID.randomUUID();
+        Subscription trial = trialFor(userId);
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(trial));
+        when(repository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(provider.parseWebhookEvent(any(), any())).thenReturn(new BillingEvent(
+                BillingEventType.CHECKOUT_COMPLETED, userId, "cus_1", "sub_1", PlanCode.SOLO,
+                "active", null, "evt_1", null, BillingPeriod.YEARLY));
+
+        service.handle("{}", "sig");
+
+        assertThat(trial.getBillingPeriod()).isEqualTo(BillingPeriod.YEARLY);
+        assertThat(trial.getPlanCode()).isEqualTo(PlanCode.SOLO);
+        assertThat(trial.getStatus()).isEqualTo(SubscriptionStatus.ACTIVE);
+    }
+
+    @Test
+    void anEventWithoutAPeriodNeverRewritesAnExistingCommitment() {
+        // Le null de BillingEvent.billingPeriod signifie « cet événement ne dit rien de la
+        // périodicité ». Le lire comme « mensuel » dégraderait en silence un abonné annuel — c'est
+        // le cas de TOUS les événements émis avant F-43, et de ceux qui n'en portent pas.
+        UUID userId = UUID.randomUUID();
+        Subscription yearly = Subscription.builder()
+                .userId(userId).status(SubscriptionStatus.ACTIVE).planCode(PlanCode.SOLO)
+                .billingPeriod(BillingPeriod.YEARLY)
+                .stripeCustomerId("cus_1").stripeSubscriptionId("sub_1").build();
+        when(repository.findByStripeSubscriptionId("sub_1")).thenReturn(Optional.of(yearly));
+        when(repository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(provider.parseWebhookEvent(any(), any())).thenReturn(new BillingEvent(
+                BillingEventType.SUBSCRIPTION_UPDATED, userId, "cus_1", "sub_1", PlanCode.SOLO,
+                "active", OffsetDateTime.now().plusMonths(1), "evt_2", null));
+
+        service.handle("{}", "sig");
+
+        assertThat(yearly.getBillingPeriod()).isEqualTo(BillingPeriod.YEARLY);
+    }
+
+    @Test
+    void aTrialNeverCarriesACommitmentUntilAPaymentConfirmsIt() {
+        // Un checkout annuel abandonné ne doit pas laisser l'abonnement affiché comme annuel :
+        // l'engagement s'inscrit au paiement confirmé, jamais au clic.
+        UUID userId = UUID.randomUUID();
+        Subscription trial = trialFor(userId);
+
+        assertThat(trial.getBillingPeriod()).isNull();
+    }
+
 }

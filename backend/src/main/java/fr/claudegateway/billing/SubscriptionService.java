@@ -27,16 +27,19 @@ public class SubscriptionService {
     private final BillingProperties properties;
     private final PlanCatalog planCatalog;
     private final BillingProvider billingProvider;
+    private final BillingPeriodSelection periodSelection;
 
     public SubscriptionService(
             SubscriptionRepository subscriptionRepository,
             BillingProperties properties,
             PlanCatalog planCatalog,
-            BillingProvider billingProvider) {
+            BillingProvider billingProvider,
+            BillingPeriodSelection periodSelection) {
         this.subscriptionRepository = subscriptionRepository;
         this.properties = properties;
         this.planCatalog = planCatalog;
         this.billingProvider = billingProvider;
+        this.periodSelection = periodSelection;
     }
 
     /**
@@ -66,11 +69,35 @@ public class SubscriptionService {
      */
     @Transactional
     public Subscription changePlan(UUID userId, String planCodeRaw) {
+        return changePlan(userId, planCodeRaw, null);
+    }
+
+    /**
+     * Change le plan <b>et/ou la périodicité</b> de l'abonnement existant (F-43 / SF-43-02). Passer
+     * de mensuel à annuel — ou changer d'offre et de périodicité d'un seul geste — remplace le price
+     * de l'abonnement fournisseur par le price cible. La proratisation reste celle du fournisseur :
+     * aucune règle de prorata maison n'est ajoutée.
+     *
+     * @param userId      utilisateur authentifié (contexte de sécurité — isolation)
+     * @param planCodeRaw code du plan cible fourni par le client
+     * @param periodRaw   périodicité demandée ({@code MONTHLY} / {@code YEARLY}) ; absente ⇒ mensuel
+     * @return l'abonnement mis à jour
+     * @throws UnknownPlanException              plan absent/inconnu ou sans price configuré
+     * @throws UnknownBillingPeriodException     périodicité inconnue ou non achetable
+     * @throws YearlyBillingUnavailableException annuel demandé sur un plan qui n'en propose pas
+     * @throws NoActiveSubscriptionException     aucun abonnement payant actif (encore en essai)
+     */
+    @Transactional
+    public Subscription changePlan(UUID userId, String planCodeRaw, String periodRaw) {
         PlanCode target = parsePlan(planCodeRaw);
-        if (!planCatalog.contains(target)) {
-            throw new UnknownPlanException("Plan inconnu : " + planCodeRaw);
-        }
-        String newPriceId = properties.stripe().priceId(target);
+        Plan plan = planCatalog.plans().stream()
+                .filter(p -> p.code() == target)
+                .findFirst()
+                .orElseThrow(() -> new UnknownPlanException("Plan inconnu : " + planCodeRaw));
+        // La périodicité est validée AVANT tout appel au fournisseur : un refus ne doit jamais
+        // laisser derrière lui un abonnement à moitié changé chez Stripe.
+        BillingPeriod period = periodSelection.resolveFor(plan, periodRaw);
+        String newPriceId = periodSelection.priceId(plan, period);
         if (!StringUtils.hasText(newPriceId)) {
             throw new UnknownPlanException("Aucun price configuré pour le plan " + target + ".");
         }
@@ -83,6 +110,7 @@ public class SubscriptionService {
                 new ChangePlanCommand(subscription.getStripeSubscriptionId(), newPriceId));
         // Reflet local optimiste ; le webhook customer.subscription.updated confirmera l'état Stripe.
         subscription.setPlanCode(target);
+        subscription.setBillingPeriod(period);
         return subscriptionRepository.save(subscription);
     }
 

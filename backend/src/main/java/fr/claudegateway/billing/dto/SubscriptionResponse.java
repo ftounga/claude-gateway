@@ -15,6 +15,10 @@ import fr.claudegateway.billing.Subscription;
  * @param planCode          code du plan payant, ou {@code null} en essai
  * @param trialEndsAt       fin de l'essai gratuit, ou {@code null}
  * @param currentPeriodEnd  fin de la période de facturation courante, ou {@code null}
+ * @param billingPeriod     périodicité d'<b>engagement</b> ({@code MONTHLY}, {@code YEARLY},
+ *                          {@code DAILY}), ou {@code null} si aucun engagement n'est enregistré
+ *                          (essai, ou abonnement antérieur à F-43). Ne dit <b>rien</b> du quota :
+ *                          l'allocation de jetons reste mensuelle quelle que soit sa valeur.
  * @param customerKeyBilled vrai si les appels sont servis — et facturés — par la clé du client
  *                          (offre BYOK en cours, F-41). L'écran s'en sert pour ne pas présenter un
  *                          quota nul comme un blocage. Le champ porte le résultat du <b>prédicat
@@ -27,7 +31,8 @@ public record SubscriptionResponse(
         String planCode,
         OffsetDateTime trialEndsAt,
         OffsetDateTime currentPeriodEnd,
-        boolean customerKeyBilled) {
+        boolean customerKeyBilled,
+        String billingPeriod) {
 
     public static SubscriptionResponse from(Subscription subscription, boolean customerKeyBilled) {
         return new SubscriptionResponse(
@@ -35,6 +40,9 @@ public record SubscriptionResponse(
                 subscription.getPlanCode() != null ? subscription.getPlanCode().name() : null,
                 subscription.getTrialEndsAt(),
                 subscription.getCurrentPeriodEnd(),
-                customerKeyBilled);
+                customerKeyBilled,
+                subscription.getBillingPeriod() != null
+                        ? subscription.getBillingPeriod().name()
+                        : null);
     }
 }

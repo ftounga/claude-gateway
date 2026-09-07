@@ -54,6 +54,19 @@ public class Subscription {
     @Column(name = "plan_code", length = 32)
     private PlanCode planCode;
 
+    /**
+     * Périodicité d'<b>engagement</b> de l'abonnement (F-43) ; {@code null} tant qu'aucun paiement
+     * n'a été confirmé (essai, ou abonnement antérieur à F-43 — voir la migration 062).
+     *
+     * <p><b>Ne dicte aucun quota.</b> Cette colonne porte le rythme d'encaissement, pas
+     * l'allocation : {@code EntitlementService.resolveMonthlyTokenQuota} ne la lit pas, et la
+     * période de consommation reste le mois calendaire UTC. L'engagement est annuel, l'allocation
+     * reste mensuelle.</p>
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "billing_period", length = 16)
+    private BillingPeriod billingPeriod;
+
     /** Fin de l'essai gratuit ; {@code null} si l'utilisateur n'est jamais passé par un essai. */
     @Column(name = "trial_ends_at")
     private OffsetDateTime trialEndsAt;

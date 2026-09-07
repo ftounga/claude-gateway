@@ -59,6 +59,7 @@ class BillingCheckoutApiIntegrationTest {
         volatile String lastChangedSubId;
         volatile String lastChangedPriceId;
         volatile String lastCanceledSubId;
+        volatile CheckoutCommand lastCheckoutCommand;
 
         void reset() {
             sessionToReturn = new CheckoutSession("https://checkout.stripe/test", "cs_1");
@@ -69,6 +70,7 @@ class BillingCheckoutApiIntegrationTest {
             lastChangedSubId = null;
             lastChangedPriceId = null;
             lastCanceledSubId = null;
+            lastCheckoutCommand = null;
         }
 
         @Override
@@ -99,6 +101,7 @@ class BillingCheckoutApiIntegrationTest {
 
         @Override
         public CheckoutSession createCheckoutSession(CheckoutCommand command) {
+            lastCheckoutCommand = command;
             if (checkoutToThrow != null) {
                 throw checkoutToThrow;
             }
@@ -354,4 +357,139 @@ class BillingCheckoutApiIntegrationTest {
         assertThat(stubBillingProvider.lastChangedSubId).isEqualTo("sub_alice");
         assertThat(stubBillingProvider.lastChangedPriceId).isEqualTo("price_pro_test");
     }
+    // ------------------------------------------------ F-43 / SF-43-02 — souscrire à l'année
+
+    private static String checkoutBody(String planCode, String period) {
+        return period == null
+                ? "{\"planCode\":\"" + planCode + "\"}"
+                : "{\"planCode\":\"" + planCode + "\",\"period\":\"" + period + "\"}";
+    }
+
+    @Test
+    void checkoutWithoutAPeriodStillBuysTheMonthlyPrice() throws Exception {
+        // Non-régression du contrat d'origine : le frontend actuel n'envoie aucune périodicité.
+        mockMvc.perform(post("/api/billing/checkout").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(checkoutBody("SOLO", null)))
+                .andExpect(status().isOk());
+
+        assertThat(stubBillingProvider.lastCheckoutCommand.period()).isEqualTo(BillingPeriod.MONTHLY);
+        assertThat(stubBillingProvider.lastCheckoutCommand.priceId()).isEqualTo("price_solo_test");
+    }
+
+    @Test
+    void checkoutWithTheYearlyPeriodBuysTheYearlyPrice() throws Exception {
+        mockMvc.perform(post("/api/billing/checkout").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(checkoutBody("SOLO", "YEARLY")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.checkoutUrl", containsString("checkout.stripe")));
+
+        assertThat(stubBillingProvider.lastCheckoutCommand.period()).isEqualTo(BillingPeriod.YEARLY);
+        assertThat(stubBillingProvider.lastCheckoutCommand.priceId()).isEqualTo("price_solo_yearly_test");
+    }
+
+    @Test
+    void checkoutRefusesTheYearlyPeriodOnAPlanWithoutAYearlyOffer() throws Exception {
+        // PRO n'a pas de price annuel en profil de test : 409, et le fournisseur n'est pas appelé.
+        mockMvc.perform(post("/api/billing/checkout").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(checkoutBody("PRO", "YEARLY")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error", is("yearly_not_available")));
+
+        assertThat(stubBillingProvider.lastCheckoutCommand).isNull();
+    }
+
+    @Test
+    void checkoutRefusesAnUnknownPeriod() throws Exception {
+        mockMvc.perform(post("/api/billing/checkout").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(checkoutBody("SOLO", "WEEKLY")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error", is("validation_error")));
+
+        assertThat(stubBillingProvider.lastCheckoutCommand).isNull();
+    }
+
+    @Test
+    void changePlanToTheYearlyPeriodSendsTheYearlyPriceAndIsVisibleOnTheSubscription() throws Exception {
+        Subscription active = subscriptionRepository.save(Subscription.builder()
+                .userId(alice.getId()).status(SubscriptionStatus.ACTIVE).planCode(PlanCode.PRO)
+                .stripeSubscriptionId("sub_alice").build());
+
+        mockMvc.perform(post("/api/billing/subscription/change").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(checkoutBody("SOLO", "YEARLY")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.billingPeriod", is("YEARLY")))
+                .andExpect(jsonPath("$.planCode", is("SOLO")))
+                // Les identifiants fournisseur restent internes, engagement annuel ou pas.
+                .andExpect(jsonPath("$.stripeSubscriptionId").doesNotExist());
+
+        assertThat(stubBillingProvider.lastChangedPriceId).isEqualTo("price_solo_yearly_test");
+        assertThat(subscriptionRepository.findById(active.getId()).orElseThrow().getBillingPeriod())
+                .isEqualTo(BillingPeriod.YEARLY);
+    }
+
+    @Test
+    void aRefusedYearlyChangeLeavesTheSubscriptionUntouched() throws Exception {
+        Subscription active = subscriptionRepository.save(Subscription.builder()
+                .userId(alice.getId()).status(SubscriptionStatus.ACTIVE).planCode(PlanCode.SOLO)
+                .billingPeriod(BillingPeriod.MONTHLY)
+                .stripeSubscriptionId("sub_alice").build());
+
+        mockMvc.perform(post("/api/billing/subscription/change").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(checkoutBody("PRO", "YEARLY")))
+                .andExpect(status().isConflict());
+
+        Subscription reloaded = subscriptionRepository.findById(active.getId()).orElseThrow();
+        assertThat(reloaded.getPlanCode()).isEqualTo(PlanCode.SOLO);
+        assertThat(reloaded.getBillingPeriod()).isEqualTo(BillingPeriod.MONTHLY);
+        assertThat(stubBillingProvider.lastChangedPriceId).isNull();
+    }
+
+    @Test
+    void subscriptionExposesNoCommitmentUntilOneIsRecorded() throws Exception {
+        mockMvc.perform(get("/api/billing/subscription").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("TRIALING")))
+                .andExpect(jsonPath("$.billingPeriod").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    void oneUsersYearlyCommitmentNeverReachesAnother() throws Exception {
+        User bob = userRepository.save(User.builder()
+                .email("bob-yearly@example.com").emailVerified(true)
+                .provider(AuthProvider.LOCAL).role(UserRole.USER).build());
+        String bobToken = jwtService.generateToken(bob);
+        subscriptionRepository.save(Subscription.builder()
+                .userId(alice.getId()).status(SubscriptionStatus.ACTIVE).planCode(PlanCode.SOLO)
+                .stripeSubscriptionId("sub_alice").build());
+
+        mockMvc.perform(post("/api/billing/subscription/change").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(checkoutBody("SOLO", "YEARLY")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.billingPeriod", is("YEARLY")));
+
+        // Bob n'a rien souscrit : son abonnement ne porte aucun engagement, et son quota est intact.
+        mockMvc.perform(get("/api/billing/subscription").contextPath("/api")
+                        .header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.billingPeriod").value(org.hamcrest.Matchers.nullValue()));
+
+        assertThat(subscriptionRepository.findByUserId(bob.getId()).orElseThrow().getBillingPeriod())
+                .isNull();
+    }
+
 }
