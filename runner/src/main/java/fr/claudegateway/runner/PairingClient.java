@@ -73,7 +73,8 @@ public final class PairingClient {
         try {
             response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         } catch (IOException e) {
-            throw new PairingException("Appel d'appairage impossible (" + pairUrl + ") : " + e.getMessage(), -1);
+            throw new PairingException("Appel d'appairage impossible (" + pairUrl + ") : "
+                    + Failures.describeWithHint(e), -1);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new PairingException("Appairage interrompu", -1);

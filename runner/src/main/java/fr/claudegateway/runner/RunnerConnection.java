@@ -117,7 +117,7 @@ public final class RunnerConnection {
                     Thread.currentThread().interrupt();
                     break;
                 } catch (RuntimeException e) {
-                    console.warn("Connexion échouée : " + e.getMessage());
+                    console.warn("Connexion échouée : " + Failures.describeWithHint(e));
                     fallbackPolicy.recordTransportFailure();
                 }
                 if (!running.get()) {
@@ -178,7 +178,7 @@ public final class RunnerConnection {
                     && handshake.getResponse().statusCode() == 401) {
                 throw new AuthRejectedException("Jeton refusé par la gateway (401)");
             }
-            throw new RunnerException(cause.getMessage() == null ? cause.toString() : cause.getMessage(), cause);
+            throw new RunnerException(Failures.describe(cause), cause);
         }
         console.info("Runner connecté.");
         // La file d'émission est branchée sur la socket courante avant toute trame sortante.
@@ -290,7 +290,7 @@ public final class RunnerConnection {
 
         @Override
         public void onError(WebSocket ws, Throwable error) {
-            console.warn("Erreur de connexion : " + error.getMessage());
+            console.warn("Erreur de connexion : " + Failures.describe(error));
             releaseChannel();
             latch.countDown();
         }

@@ -98,7 +98,7 @@ public final class PollingConnection {
                     return;
                 }
                 Duration delay = backoff.nextDelay();
-                console.warn("Long-poll impossible (" + e.getMessage() + ") — nouvelle tentative dans "
+                console.warn("Long-poll impossible (" + Failures.describe(e) + ") — nouvelle tentative dans "
                         + delay.toSeconds() + " s…");
                 if (!sleep(delay)) {
                     return;

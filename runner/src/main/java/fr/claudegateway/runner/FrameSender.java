@@ -77,7 +77,7 @@ public final class FrameSender implements AutoCloseable {
         } catch (TimeoutException e) {
             console.warn("Émission trop lente — trame abandonnée.");
         } catch (Exception e) {
-            console.warn("Émission impossible : " + e.getMessage());
+            console.warn("Émission impossible : " + Failures.describe(e));
         }
     }
 }
