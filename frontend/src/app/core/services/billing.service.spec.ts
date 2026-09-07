@@ -28,7 +28,10 @@ describe('BillingService', () => {
   it('GETs the plan catalog from /api/billing/plans', () => {
     const plans: PlansResponse = {
       plans: [
-        { code: 'PRO', label: 'Pro', providerMode: 'HOSTED', period: 'MONTHLY', tokens: 5000000, priceEur: '99' },
+        {
+          code: 'PRO', label: 'Pro', providerMode: 'HOSTED', period: 'MONTHLY',
+          tokens: 5000000, priceEur: '99', yearlyPriceEur: '990', yearlyAvailable: true,
+        },
       ],
     };
     let received: PlansResponse | undefined;
@@ -47,6 +50,7 @@ describe('BillingService', () => {
       trialEndsAt: '2026-07-15T00:00:00Z',
       currentPeriodEnd: null,
       customerKeyBilled: false,
+      billingPeriod: null,
     };
     let received: SubscriptionView | undefined;
     service.getSubscription().subscribe((r) => (received = r));
@@ -64,9 +68,41 @@ describe('BillingService', () => {
 
     const req = httpMock.expectOne('/api/billing/checkout');
     expect(req.request.method).toBe('POST');
+    // Sans périodicité, le corps reste celui d'avant F-43 : le champ n'est même pas envoyé.
     expect(req.request.body).toEqual({ planCode: 'PRO' });
     req.flush(response);
     expect(received).toEqual(response);
+  });
+
+  it('POSTs the requested billing period alongside the plan (F-43)', () => {
+    service.startCheckout('PRO', 'YEARLY').subscribe();
+
+    const req = httpMock.expectOne('/api/billing/checkout');
+    expect(req.request.body).toEqual({ planCode: 'PRO', period: 'YEARLY' });
+    req.flush({ checkoutUrl: 'https://checkout.stripe.com/y' });
+  });
+
+  it('POSTs the requested billing period on a plan change (F-43)', () => {
+    service.changePlan('SOLO', 'YEARLY').subscribe();
+
+    const req = httpMock.expectOne('/api/billing/subscription/change');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ planCode: 'SOLO', period: 'YEARLY' });
+    req.flush({
+      status: 'ACTIVE', planCode: 'SOLO', trialEndsAt: null,
+      currentPeriodEnd: '2027-08-01T00:00:00Z', customerKeyBilled: false, billingPeriod: 'YEARLY',
+    });
+  });
+
+  it('omits the period from a plan change when none is requested (F-43)', () => {
+    service.changePlan('SOLO').subscribe();
+
+    const req = httpMock.expectOne('/api/billing/subscription/change');
+    expect(req.request.body).toEqual({ planCode: 'SOLO' });
+    req.flush({
+      status: 'ACTIVE', planCode: 'SOLO', trialEndsAt: null,
+      currentPeriodEnd: '2026-09-01T00:00:00Z', customerKeyBilled: false, billingPeriod: 'MONTHLY',
+    });
   });
 
   it('GETs the top-up pack catalog from /api/billing/topups', () => {

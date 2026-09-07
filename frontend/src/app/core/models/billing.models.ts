@@ -3,8 +3,14 @@
 /** Mode fournisseur d'un plan. */
 export type ProviderMode = 'HOSTED' | 'BYOK';
 
-/** Périodicité de facturation d'un plan. */
-export type BillingPeriod = 'MONTHLY' | 'DAILY';
+/** Périodicité de facturation (F-09, étendue par F-43). */
+export type BillingPeriod = 'MONTHLY' | 'DAILY' | 'YEARLY';
+
+/**
+ * Périodicité **achetable** (F-43). `DAILY` en est absente à dessein : c'est la nature du pass
+ * journée, imposée par le catalogue, jamais un choix d'achat — le serveur la refuse en entrée.
+ */
+export type BillingPeriodChoice = 'MONTHLY' | 'YEARLY';
 
 /** Statut d'un abonnement. */
 export type SubscriptionStatus =
@@ -20,15 +26,28 @@ export interface Plan {
   label: string;
   providerMode: ProviderMode;
   period: BillingPeriod;
-  /** Allocation mensuelle de tokens du plan. */
+  /**
+   * Allocation **mensuelle** de tokens du plan — y compris pour un plan proposé à l'année (F-43) :
+   * l'engagement est annuel, l'allocation reste mensuelle.
+   */
   tokens: number;
-  /** Montant d'affichage en EUR (ex. "24"), ou null si non configuré. */
+  /** Montant d'affichage mensuel en EUR (ex. "24"), ou null si non configuré. */
   priceEur: string | null;
+  /** Montant d'affichage **annuel** en EUR (ex. "240"), ou null si l'annuel n'est pas proposé. */
+  yearlyPriceEur: string | null;
+  /**
+   * Vrai si ce plan est réellement souscriptible à l'année. Renvoyé par le **serveur** : l'écran ne
+   * déduit jamais la disponibilité de la présence d'un prix — le serveur exige aussi un price
+   * payable, que l'écran ne voit pas.
+   */
+  yearlyAvailable: boolean;
 }
 
-/** Requête de changement de plan d'un abonnement existant (upgrade/downgrade, SF-21-05). */
+/** Requête de changement de plan et/ou de périodicité (SF-21-05, F-43). */
 export interface ChangePlanRequest {
   planCode: string;
+  /** Périodicité cible ; absente, le serveur retient le mensuel. */
+  period?: BillingPeriodChoice;
 }
 
 /** Réponse du catalogue de plans. */
@@ -48,11 +67,19 @@ export interface SubscriptionView {
    * il reflète la décision qui gouverne réellement le comportement (`isCustomerKeyBilled`).
    */
   customerKeyBilled: boolean;
+  /**
+   * Périodicité d'**engagement** de l'abonnement (F-43), ou null si aucun engagement n'est
+   * enregistré (essai, ou abonnement antérieur à F-43). Ne dit **rien** du quota : l'allocation
+   * reste mensuelle quelle que soit sa valeur.
+   */
+  billingPeriod: BillingPeriod | null;
 }
 
 /** Requête de création d'une session de paiement. */
 export interface CheckoutRequest {
   planCode: string;
+  /** Périodicité d'engagement souhaitée ; absente, le serveur retient le mensuel (F-43). */
+  period?: BillingPeriodChoice;
 }
 
 /** Réponse de création d'une session : URL de redirection Stripe. */

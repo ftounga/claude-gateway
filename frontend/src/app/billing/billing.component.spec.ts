@@ -31,6 +31,7 @@ describe('BillingComponent', () => {
     trialEndsAt: '2026-07-15T00:00:00Z',
     currentPeriodEnd: null,
     customerKeyBilled: false,
+    billingPeriod: null,
   };
   /** Abonnement BYOK en cours (F-41) : le serveur dit que les jetons sont sur la clé du client. */
   const byokSubscription: SubscriptionView = {
@@ -39,6 +40,7 @@ describe('BillingComponent', () => {
     trialEndsAt: null,
     currentPeriodEnd: '2026-08-01T00:00:00Z',
     customerKeyBilled: true,
+    billingPeriod: 'MONTHLY',
   };
   /** Clé BYOK enregistrée ET active : le mode vaut BYOK. */
   const activeKey: ApiKeyStatus = {
@@ -62,10 +64,34 @@ describe('BillingComponent', () => {
     validatedAt: null,
     createdAt: null,
   };
+  /**
+   * Catalogue de référence. SOLO est proposé à l'année (24 → 240, soit dix mois payés) ; PRO ne
+   * l'est pas — c'est ce contraste qui permet de vérifier qu'une offre sans engagement annuel
+   * reste visible et achetable au mois quand la bascule est sur Annuel.
+   */
   const plans: PlansResponse = {
     plans: [
-      { code: 'SOLO', label: 'Solo', providerMode: 'HOSTED', period: 'MONTHLY', tokens: 1000000, priceEur: '24' },
-      { code: 'PRO', label: 'Pro', providerMode: 'HOSTED', period: 'MONTHLY', tokens: 5000000, priceEur: '99' },
+      {
+        code: 'SOLO', label: 'Solo', providerMode: 'HOSTED', period: 'MONTHLY',
+        tokens: 1000000, priceEur: '24', yearlyPriceEur: '240', yearlyAvailable: true,
+      },
+      {
+        code: 'PRO', label: 'Pro', providerMode: 'HOSTED', period: 'MONTHLY',
+        tokens: 5000000, priceEur: '99', yearlyPriceEur: null, yearlyAvailable: false,
+      },
+    ],
+  };
+  /** Catalogue sans aucune offre annuelle : l'écran doit rester exactement celui d'avant F-43. */
+  const monthlyOnlyPlans: PlansResponse = {
+    plans: plans.plans.map((plan) => ({ ...plan, yearlyPriceEur: null, yearlyAvailable: false })),
+  };
+  /** Pass journée (F-43) : il a enfin un prix d'affichage, et sa propre périodicité. */
+  const dailyPassPlans: PlansResponse = {
+    plans: [
+      {
+        code: 'DAILY', label: 'Pass journée', providerMode: 'HOSTED', period: 'DAILY',
+        tokens: 500000, priceEur: '9', yearlyPriceEur: null, yearlyAvailable: false,
+      },
     ],
   };
   const usage: UsageView = {
@@ -99,6 +125,7 @@ describe('BillingComponent', () => {
     usageFails = false,
     option: AtelierOptionView | null = optionAvailable,
     byok: ByokSetup = {},
+    catalog: PlansResponse = plans,
   ): void {
     billingService = jasmine.createSpyObj<BillingService>('BillingService', [
       'getSubscription',
@@ -112,7 +139,7 @@ describe('BillingComponent', () => {
       'cancelAtelierOption',
     ]);
     billingService.getSubscription.and.returnValue(of(byok.subscription ?? subscription));
-    billingService.getPlans.and.returnValue(of(plans));
+    billingService.getPlans.and.returnValue(of(catalog));
     billingService.getTopUps.and.returnValue(of(topUps));
     billingService.getAtelierOption.and.returnValue(
       option
@@ -175,7 +202,9 @@ describe('BillingComponent', () => {
 
     component.subscribe('PRO');
 
-    expect(billingService.startCheckout).toHaveBeenCalledWith('PRO');
+    // Appelée sans périodicité, la méthode n'en invente aucune : le service omet alors le champ et
+    // le serveur retient le mensuel. C'est le chemin du contrat d'origine, préservé tel quel.
+    expect(billingService.startCheckout).toHaveBeenCalledWith('PRO', undefined);
     expect(
       (component as unknown as { redirect: (u: string) => void }).redirect,
     ).toHaveBeenCalledWith('https://checkout.stripe/x');
@@ -330,7 +359,9 @@ describe('BillingComponent', () => {
     expect(component.planActionLabel(pro)).toBe('Souscrire');
     component.onPlanAction(pro);
 
-    expect(billingService.startCheckout).toHaveBeenCalledWith('PRO');
+    // Depuis F-43, l'écran dit explicitement ce qu'il achète plutôt que de s'en remettre au défaut
+    // du serveur : la périodicité accompagne toujours le plan.
+    expect(billingService.startCheckout).toHaveBeenCalledWith('PRO', 'MONTHLY');
     expect(billingService.changePlan).not.toHaveBeenCalled();
   });
 
@@ -343,6 +374,7 @@ describe('BillingComponent', () => {
       trialEndsAt: null,
       currentPeriodEnd: '2026-08-01T00:00:00Z',
       customerKeyBilled: false,
+      billingPeriod: 'MONTHLY' as const,
     });
     billingService.changePlan.and.returnValue(
       of({
@@ -351,6 +383,7 @@ describe('BillingComponent', () => {
         trialEndsAt: null,
         currentPeriodEnd: '2026-08-01T00:00:00Z',
         customerKeyBilled: false,
+        billingPeriod: 'MONTHLY' as const,
       }),
     );
 
@@ -362,7 +395,7 @@ describe('BillingComponent', () => {
 
     component.onPlanAction(pro);
 
-    expect(billingService.changePlan).toHaveBeenCalledWith('PRO');
+    expect(billingService.changePlan).toHaveBeenCalledWith('PRO', 'MONTHLY');
     expect(billingService.startCheckout).not.toHaveBeenCalled();
     expect(component.subscription()?.planCode).toBe('PRO');
     expect(component.changeInProgress()).toBeNull();
@@ -376,7 +409,10 @@ describe('BillingComponent', () => {
     // Ajoute une offre GOLD : sa carte doit porter la mention.
     component.plans.set([
       ...plans.plans,
-      { code: 'GOLD', label: 'Gold', providerMode: 'HOSTED', period: 'MONTHLY', tokens: 12000000, priceEur: '199' },
+      {
+        code: 'GOLD', label: 'Gold', providerMode: 'HOSTED', period: 'MONTHLY',
+        tokens: 12000000, priceEur: '199', yearlyPriceEur: '1990', yearlyAvailable: true,
+      },
     ]);
     fixture.detectChanges();
 
@@ -391,6 +427,7 @@ describe('BillingComponent', () => {
       trialEndsAt: null,
       currentPeriodEnd: '2026-08-01T00:00:00Z',
       customerKeyBilled: false,
+      billingPeriod: 'MONTHLY' as const,
     });
     billingService.changePlan.and.returnValue(
       throwError(() => new HttpErrorResponse({ status: 409, error: { error: 'no_active_subscription' } })),
@@ -606,6 +643,8 @@ describe('BillingComponent', () => {
             period: 'MONTHLY' as const,
             tokens: 0,
             priceEur: '29',
+            yearlyPriceEur: null,
+            yearlyAvailable: false,
           },
         ],
       }),
@@ -640,4 +679,190 @@ describe('BillingComponent', () => {
     expect(html).toContain('mat-progress-bar');
     expect(html).not.toContain('aucun quota plateforme');
   });
+  // ------------------------------------------------ F-43 / SF-43-03 — bascule mensuel / annuel
+
+  describe('engagement annuel (F-43)', () => {
+    function toggle(): HTMLElement | null {
+      return fixture.nativeElement.querySelector('.billing__period-toggle');
+    }
+
+    function soloPlan() {
+      return component.plans().find((p) => p.code === 'SOLO')!;
+    }
+
+    function proPlan() {
+      return component.plans().find((p) => p.code === 'PRO')!;
+    }
+
+    it('ne rend aucune bascule quand aucune offre annuelle n\'est proposée', () => {
+      // Sans offre annuelle, l'écran doit être exactement celui d'avant F-43 : un contrôle inerte
+      // vaut moins que pas de contrôle du tout.
+      setup(null, false, optionAvailable, {}, monthlyOnlyPlans);
+
+      expect(component.hasYearlyOffer()).toBeFalse();
+      expect(toggle()).toBeNull();
+    });
+
+    it('rend la bascule dès qu\'une offre annuelle existe, positionnée sur Mensuel', () => {
+      setup();
+
+      expect(component.hasYearlyOffer()).toBeTrue();
+      expect(toggle()).not.toBeNull();
+      // L'utilisateur choisit d'aller vers l'engagement ; on ne l'y met pas d'office.
+      expect(component.selectedPeriod()).toBe('MONTHLY');
+    });
+
+    it('affiche le prix annuel et son équivalent mensuel en position Annuel', () => {
+      setup();
+      component.selectPeriod('YEARLY');
+
+      expect(component.displayPrice(soloPlan())).toBe('240');
+      expect(component.pricePeriodLabel(soloPlan())).toBe('/ an');
+      expect(component.monthlyEquivalent(soloPlan())).toBe(20);
+    });
+
+    it('garde le prix mensuel d\'une offre non annualisable, même en position Annuel', () => {
+      setup();
+      component.selectPeriod('YEARLY');
+
+      expect(component.displayPrice(proPlan())).toBe('99');
+      expect(component.pricePeriodLabel(proPlan())).toBe('/ mois');
+      expect(component.monthlyEquivalent(proPlan())).toBeNull();
+    });
+
+    it('calcule l\'économie en mois offerts plutôt que de l\'écrire en dur', () => {
+      setup();
+      component.selectPeriod('YEARLY');
+
+      // 24 × 12 − 240 = 48, soit exactement 2 mois de 24 €.
+      expect(component.savingsLabel(soloPlan())).toBe('2 mois offerts');
+    });
+
+    it('exprime l\'économie en pourcentage quand le compte ne tombe pas juste', () => {
+      setup();
+      component.selectPeriod('YEARLY');
+      const plan = { ...soloPlan(), priceEur: '24', yearlyPriceEur: '250' };
+
+      // 24 × 12 − 250 = 38, soit 1,58 mois : pas un compte rond, donc un pourcentage.
+      expect(component.savingsLabel(plan)).toBe('−13 %');
+    });
+
+    it('n\'affiche aucune économie quand les prix sont illisibles ou la remise nulle', () => {
+      setup();
+      component.selectPeriod('YEARLY');
+
+      expect(component.savingsLabel({ ...soloPlan(), priceEur: null })).toBeNull();
+      expect(component.savingsLabel({ ...soloPlan(), yearlyPriceEur: 'gratuit' })).toBeNull();
+      // Remise nulle : mieux vaut ne rien dire que d'annoncer « 0 mois offerts ».
+      expect(component.savingsLabel({ ...soloPlan(), yearlyPriceEur: '288' })).toBeNull();
+      // Prix annuel plus cher que douze mensualités : surtout ne pas parler d'économie.
+      expect(component.savingsLabel({ ...soloPlan(), yearlyPriceEur: '400' })).toBeNull();
+    });
+
+    it('n\'affiche aucune économie tant que la bascule est sur Mensuel', () => {
+      setup();
+
+      expect(component.savingsLabel(soloPlan())).toBeNull();
+      expect(component.monthlyEquivalent(soloPlan())).toBeNull();
+    });
+
+    it('achète à l\'année seulement l\'offre qui le propose', () => {
+      setup();
+      component.selectPeriod('YEARLY');
+
+      expect(component.periodFor(soloPlan())).toBe('YEARLY');
+      // PRO n'a pas d'offre annuelle : il reste achetable AU MOIS, jamais inachetable.
+      expect(component.periodFor(proPlan())).toBe('MONTHLY');
+    });
+
+    it('transmet la périodicité au checkout pour un utilisateur sans abonnement', () => {
+      setup();
+      billingService.startCheckout.and.returnValue(of({ checkoutUrl: 'https://checkout.stripe/y' }));
+      component.selectPeriod('YEARLY');
+
+      component.onPlanAction(soloPlan());
+
+      expect(billingService.startCheckout).toHaveBeenCalledWith('SOLO', 'YEARLY');
+    });
+
+    it('transmet la périodicité au changement de plan pour un abonné', () => {
+      setup();
+      component.subscription.set({
+        status: 'ACTIVE', planCode: 'PRO', trialEndsAt: null,
+        currentPeriodEnd: '2026-08-01T00:00:00Z', customerKeyBilled: false, billingPeriod: 'MONTHLY',
+      });
+      billingService.changePlan.and.returnValue(of({
+        status: 'ACTIVE', planCode: 'SOLO', trialEndsAt: null,
+        currentPeriodEnd: '2027-08-01T00:00:00Z', customerKeyBilled: false, billingPeriod: 'YEARLY',
+      }));
+      component.selectPeriod('YEARLY');
+
+      component.onPlanAction(soloPlan());
+
+      expect(billingService.changePlan).toHaveBeenCalledWith('SOLO', 'YEARLY');
+      expect(component.subscription()?.billingPeriod).toBe('YEARLY');
+    });
+
+    it('ramène la bascule sur Mensuel quand le serveur refuse l\'annuel', () => {
+      // L'offre a pu être dépubliée pendant que l'écran était ouvert : laisser la bascule sur une
+      // position qui ne mène nulle part enfermerait l'utilisateur dans un bouton qui échoue.
+      setup();
+      component.selectPeriod('YEARLY');
+      billingService.getPlans.calls.reset();
+      billingService.startCheckout.and.returnValue(throwError(() => new HttpErrorResponse({
+        status: 409, error: { error: 'yearly_not_available', message: 'non proposé' },
+      })));
+
+      component.onPlanAction(soloPlan());
+
+      expect(component.selectedPeriod()).toBe('MONTHLY');
+      expect(billingService.getPlans).toHaveBeenCalled();
+      expect(component.checkoutInProgress()).toBeNull();
+    });
+
+    it('continue d\'afficher un quota MENSUEL en position Annuel', () => {
+      // La règle produit de F-43, vérifiée là où l'utilisateur pourrait croire l'inverse.
+      setup();
+      component.selectPeriod('YEARLY');
+      fixture.detectChanges();
+
+      const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(text).toContain('tokens inclus / mois');
+      expect(text).toContain('Votre quota de tokens reste mensuel');
+      expect(component.tokensSuffix(soloPlan())).toBe(' / mois');
+    });
+
+    it('affiche le prix du pass journée avec sa propre périodicité', () => {
+      // Anomalie corrigée par F-43 : le pass journée n'avait aucun prix à afficher.
+      setup(null, false, optionAvailable, {}, dailyPassPlans);
+      const pass = component.plans()[0];
+
+      expect(component.displayPrice(pass)).toBe('9');
+      expect(component.pricePeriodLabel(pass)).toBe('la journée');
+      // « 500 000 tokens inclus / mois » sur un pass de 24 h n'aurait aucun sens.
+      expect(component.tokensSuffix(pass)).toBe('');
+    });
+
+    it('dit à un abonné annuel qu\'il est engagé à l\'année', () => {
+      setup();
+      expect(component.commitmentLabel()).toBeNull();
+
+      component.subscription.set({
+        status: 'ACTIVE', planCode: 'SOLO', trialEndsAt: null,
+        currentPeriodEnd: '2027-08-01T00:00:00Z', customerKeyBilled: false, billingPeriod: 'YEARLY',
+      });
+
+      expect(component.commitmentLabel()).toBe('engagement annuel');
+    });
+
+    it('ignore une désélection de la bascule', () => {
+      setup();
+      component.selectPeriod('YEARLY');
+
+      component.selectPeriod(null);
+
+      expect(component.selectedPeriod()).toBe('YEARLY');
+    });
+  });
+
 });

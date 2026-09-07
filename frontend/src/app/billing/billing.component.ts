@@ -7,6 +7,7 @@ import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatDialog } from '@angular/material/dialog';
 
@@ -20,6 +21,7 @@ import {
 } from '../chat/confirm-dialog/confirm-dialog.component';
 import {
   AtelierOptionView,
+  BillingPeriodChoice,
   Plan,
   SubscriptionStatus,
   SubscriptionView,
@@ -50,6 +52,7 @@ interface StatusDisplay {
     MatIconModule,
     MatProgressBarModule,
     MatProgressSpinnerModule,
+    MatButtonToggleModule,
   ],
   templateUrl: './billing.component.html',
   styleUrl: './billing.component.scss',
@@ -83,6 +86,11 @@ export class BillingComponent implements OnInit {
    * savoir s'il faut rappeler à un abonné BYOK de déposer sa clé (F-41 / SF-41-03).
    */
   readonly apiKeyStatus = signal<ApiKeyStatus | null>(null);
+  /**
+   * Périodicité choisie pour les achats (F-43). Mensuel par défaut : l'utilisateur choisit d'aller
+   * vers l'engagement annuel, on ne l'y met pas d'office.
+   */
+  readonly selectedPeriod = signal<BillingPeriodChoice>('MONTHLY');
 
   ngOnInit(): void {
     const checkout = this.route.snapshot.queryParamMap.get('checkout');
@@ -156,21 +164,16 @@ export class BillingComponent implements OnInit {
     });
   }
 
-  subscribe(planCode: string): void {
+  subscribe(planCode: string, period?: BillingPeriodChoice): void {
     if (this.checkoutInProgress()) {
       return;
     }
     this.checkoutInProgress.set(planCode);
-    this.billingService.startCheckout(planCode).subscribe({
+    this.billingService.startCheckout(planCode, period).subscribe({
       next: (res) => this.redirect(res.checkoutUrl),
       error: (error: HttpErrorResponse) => {
         this.checkoutInProgress.set(null);
-        const apiError = error.error as ApiError | undefined;
-        const message =
-          apiError?.error === 'billing_unavailable'
-            ? 'La facturation est momentanément indisponible.'
-            : 'Impossible de démarrer le paiement.';
-        this.notify(message, 'snack-error');
+        this.notify(this.purchaseErrorMessage(error, 'Impossible de démarrer le paiement.'), 'snack-error');
       },
     });
   }
@@ -199,12 +202,12 @@ export class BillingComponent implements OnInit {
    * Change le plan de l'abonnement existant (upgrade/downgrade, SF-21-05). Ne redirige pas : Stripe
    * met à jour l'abonnement avec proratisation ; on rafraîchit l'abonnement affiché.
    */
-  changePlan(planCode: string): void {
+  changePlan(planCode: string, period?: BillingPeriodChoice): void {
     if (this.changeInProgress()) {
       return;
     }
     this.changeInProgress.set(planCode);
-    this.billingService.changePlan(planCode).subscribe({
+    this.billingService.changePlan(planCode, period).subscribe({
       next: (sub) => {
         this.changeInProgress.set(null);
         this.subscription.set(sub);
@@ -212,14 +215,31 @@ export class BillingComponent implements OnInit {
       },
       error: (error: HttpErrorResponse) => {
         this.changeInProgress.set(null);
-        const apiError = error.error as ApiError | undefined;
-        const message =
-          apiError?.error === 'no_active_subscription'
-            ? "Souscrivez d'abord un abonnement pour pouvoir en changer."
-            : 'Impossible de changer de plan.';
-        this.notify(message, 'snack-error');
+        this.notify(this.purchaseErrorMessage(error, 'Impossible de changer de plan.'), 'snack-error');
       },
     });
+  }
+
+  /**
+   * Traduit un refus d'achat en message actionnable. Le cas `yearly_not_available` ramène en plus la
+   * bascule sur Mensuel et recharge le catalogue : l'offre annuelle a pu être dépubliée pendant que
+   * l'écran était ouvert, et laisser la bascule sur une position qui ne mène nulle part enfermerait
+   * l'utilisateur dans un bouton qui échoue à chaque clic.
+   */
+  private purchaseErrorMessage(error: HttpErrorResponse, fallback: string): string {
+    const apiError = error.error as ApiError | undefined;
+    switch (apiError?.error) {
+      case 'yearly_not_available':
+        this.selectedPeriod.set('MONTHLY');
+        this.loadPlans();
+        return "Cette offre n'est pas proposée à l'année.";
+      case 'billing_unavailable':
+        return 'La facturation est momentanément indisponible.';
+      case 'no_active_subscription':
+        return "Souscrivez d'abord un abonnement pour pouvoir en changer.";
+      default:
+        return fallback;
+    }
   }
 
   /** Vrai si l'utilisateur a un abonnement payant actif (peut donc upgrader/downgrader). */
@@ -255,10 +275,11 @@ export class BillingComponent implements OnInit {
     if (this.isCurrentPlan(plan)) {
       return;
     }
+    const period = this.periodFor(plan);
     if (this.hasActiveSubscription()) {
-      this.changePlan(plan.code);
+      this.changePlan(plan.code, period);
     } else {
-      this.subscribe(plan.code);
+      this.subscribe(plan.code, period);
     }
   }
 
@@ -291,6 +312,107 @@ export class BillingComponent implements OnInit {
   /** Libellé de périodicité d'un plan. */
   periodLabel(period: string): string {
     return period === 'DAILY' ? 'Pass journée' : 'par mois';
+  }
+
+  // ------------------------------------------------ Engagement annuel (F-43 / SF-43-03)
+
+  /**
+   * Vrai si au moins une offre est proposée à l'année. Sans cela, aucune bascule n'est rendue :
+   * un contrôle inerte vaut moins que pas de contrôle du tout.
+   */
+  hasYearlyOffer(): boolean {
+    return this.plans().some((plan) => plan.yearlyAvailable);
+  }
+
+  /** Bascule Mensuel / Annuel. Ignore une valeur vide (désélection du groupe). */
+  selectPeriod(period: BillingPeriodChoice | null): void {
+    if (period) {
+      this.selectedPeriod.set(period);
+    }
+  }
+
+  /** Vrai si l'annuel est demandé **et** proposé pour cette offre. */
+  isYearlyFor(plan: Plan): boolean {
+    return this.selectedPeriod() === 'YEARLY' && plan.yearlyAvailable;
+  }
+
+  /**
+   * Périodicité réellement achetée pour cette offre. Une offre sans engagement annuel reste
+   * achetable au mois, même quand la bascule est sur Annuel — sinon un clic sur la bascule la
+   * rendrait inachetable.
+   */
+  periodFor(plan: Plan): BillingPeriodChoice {
+    return this.isYearlyFor(plan) ? 'YEARLY' : 'MONTHLY';
+  }
+
+  /** Montant affiché sur la carte, selon la périodicité effective de cette offre. */
+  displayPrice(plan: Plan): string | null {
+    return this.isYearlyFor(plan) ? plan.yearlyPriceEur : plan.priceEur;
+  }
+
+  /** Suffixe du montant : « / an », « la journée », ou « / mois ». */
+  pricePeriodLabel(plan: Plan): string {
+    if (this.isYearlyFor(plan)) {
+      return '/ an';
+    }
+    return plan.period === 'DAILY' ? 'la journée' : '/ mois';
+  }
+
+  /**
+   * Équivalent mensuel d'un prix annuel, arrondi à l'entier. C'est la seule façon de comparer
+   * honnêtement 240 € à 24 € : sans lui, la bascule remplacerait un petit nombre par un grand.
+   */
+  monthlyEquivalent(plan: Plan): number | null {
+    if (!this.isYearlyFor(plan)) {
+      return null;
+    }
+    const yearly = Number(plan.yearlyPriceEur);
+    return Number.isFinite(yearly) && yearly > 0 ? Math.round(yearly / 12) : null;
+  }
+
+  /**
+   * Économie réalisée, exprimée en mois offerts quand le compte tombe juste, en pourcentage sinon.
+   *
+   * Elle est **calculée** à partir des deux prix renvoyés par le serveur, jamais écrite en dur : le
+   * taux de remise vit en configuration serveur, et le figer ici ferait mentir l'écran le jour où le
+   * product owner le changerait sans redéployer le frontend.
+   */
+  savingsLabel(plan: Plan): string | null {
+    if (!this.isYearlyFor(plan)) {
+      return null;
+    }
+    const monthly = Number(plan.priceEur);
+    const yearly = Number(plan.yearlyPriceEur);
+    if (!Number.isFinite(monthly) || !Number.isFinite(yearly) || monthly <= 0 || yearly <= 0) {
+      return null;
+    }
+    const saved = monthly * 12 - yearly;
+    if (saved <= 0) {
+      return null;
+    }
+    const freeMonths = saved / monthly;
+    if (Number.isInteger(freeMonths)) {
+      return `${freeMonths} mois offert${freeMonths > 1 ? 's' : ''}`;
+    }
+    return `−${Math.round((saved / (monthly * 12)) * 100)} %`;
+  }
+
+  /**
+   * Suffixe du nombre de jetons inclus. Toujours « / mois » pour un abonnement — **y compris en
+   * position Annuel**, et c'est délibéré : c'est le seul écran où l'utilisateur pourrait croire
+   * qu'un engagement annuel lui donne douze mois de jetons d'avance. Un pass journée n'a pas de
+   * périodicité à afficher, son stock est celui du pass.
+   */
+  tokensSuffix(plan: Plan): string {
+    return plan.period === 'DAILY' ? '' : ' / mois';
+  }
+
+  /**
+   * Libellé d'engagement de l'abonnement en cours, ou `null`. Sans lui, rien à l'écran ne dirait à
+   * un abonné annuel qu'il l'est.
+   */
+  commitmentLabel(): string | null {
+    return this.subscription()?.billingPeriod === 'YEARLY' ? 'engagement annuel' : null;
   }
 
   /** Nombre de jours restants d'essai (null hors essai), pour l'affichage du statut courant. */
