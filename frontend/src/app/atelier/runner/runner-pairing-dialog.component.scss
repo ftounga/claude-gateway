@@ -49,6 +49,28 @@
   line-height: 1.5;
 }
 
+/* Choix du format de runner (F-44 / SF-44-02). Les jetons du design system uniquement. */
+.pairing-formats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-1);
+  margin: 0 0 var(--cg-space-2);
+}
+
+.pairing-format-title {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cg-text-primary);
+}
+
+.pairing-format-detail {
+  display: block;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--cg-text-secondary);
+}
+
 .pairing-error {
   margin: 0 0 var(--cg-space-2);
   color: var(--cg-error);

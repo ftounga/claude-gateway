@@ -4,6 +4,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, throwError } from 'rxjs';
+import { RunnerDownloadFormats } from '../../core/models/atelier.models';
 
 import { AtelierService } from '../../core/services/atelier.service';
 import {
@@ -19,11 +20,17 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
   let snackBar: jasmine.SpyObj<MatSnackBar>;
   let dialogRef: jasmine.SpyObj<MatDialogRef<RunnerPairingDialogComponent>>;
 
-  function setup(): void {
+  function setup(formats: RunnerDownloadFormats = { jar: true, windowsPackage: true }): void {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createRunnerPairingCode',
       'downloadRunnerJar',
+      'downloadRunnerWindowsPackage',
+      'runnerDownloadFormats',
     ]);
+    // Le composant demande les formats disponibles dès sa construction (F-44 / SF-44-02) : sans
+    // cette réponse, aucun test de ce fichier ne peut instancier le dialogue. Défaut = les deux
+    // formats servis, qui est l'état d'une gateway à jour.
+    service.runnerDownloadFormats.and.returnValue(of(formats));
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     dialogRef = jasmine.createSpyObj<MatDialogRef<RunnerPairingDialogComponent>>('MatDialogRef', [
       'close',
@@ -99,6 +106,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
 
   it('compose la commande avec l\'origine, le chemin saisi et le code', () => {
     setup();
+    component.format.set('jar');
     service.createRunnerPairingCode.and.returnValue(of(codeExpiringIn(300)));
     component.generateCode();
     component.workspacePath.set('  /home/moi/projet  ');
@@ -120,6 +128,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
 
   it('traite un 404 de téléchargement comme un état normal, sans erreur technique', () => {
     setup();
+    component.format.set('jar');
     service.downloadRunnerJar.and.returnValue(
       throwError(() => new HttpErrorResponse({ status: 404 })));
 
@@ -132,6 +141,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
 
   it('signale un vrai échec de téléchargement', () => {
     setup();
+    component.format.set('jar');
     service.downloadRunnerJar.and.returnValue(
       throwError(() => new HttpErrorResponse({ status: 500 })));
 
@@ -142,8 +152,59 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
       .toBe('Le téléchargement du runner a échoué.');
   });
 
+  it('propose le paquet autonome par défaut et compose sa commande sans « java »', () => {
+    // F-44 / SF-44-02 : sur le paquet, préfixer par `java` rappellerait la JVM du système —
+    // celle-là même qui manque ou qui est trop ancienne. C'est tout l'objet de la feature.
+    setup();
+    service.createRunnerPairingCode.and.returnValue(of(codeExpiringIn(300)));
+    component.generateCode();
+
+    expect(component.format()).toBe('windows');
+    expect(component.usesWindowsPackage()).toBeTrue();
+    expect(component.runCommand()).toContain('claude-runner.cmd --gateway');
+    expect(component.runCommand()).not.toContain('java -jar');
+  });
+
+  it('télécharge le paquet sous son propre nom', () => {
+    setup();
+    service.downloadRunnerWindowsPackage.and.returnValue(of(new Blob(['zip'])));
+    const anchor = document.createElement('a');
+    spyOn(anchor, 'click');
+    spyOn(document, 'createElement').and.returnValue(anchor);
+
+    component.downloadJar();
+
+    expect(service.downloadRunnerWindowsPackage).toHaveBeenCalled();
+    expect(service.downloadRunnerJar).not.toHaveBeenCalled();
+    expect(anchor.download).toBe('claude-runner-windows-x64.zip');
+  });
+
+  it('retombe sur le jar quand la gateway n\'empaquette pas le format Windows', () => {
+    // D3 : une gateway déployée avant F-44 n'a pas le paquet. L'écran doit le masquer, pas offrir
+    // un lien qui répondrait 404.
+    setup({ jar: true, windowsPackage: false });
+
+    expect(component.windowsPackageAvailable()).toBeFalse();
+    expect(component.format()).toBe('jar');
+    expect(component.usesWindowsPackage()).toBeFalse();
+    expect(component.runCommand()).toContain('java -jar claude-runner.jar');
+  });
+
+  it('retombe sur le jar si la disponibilité des formats est illisible', () => {
+    setup();
+    service.runnerDownloadFormats.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 500 })));
+    // Un nouveau composant, construit avec le service en échec.
+    const rebuilt = TestBed.createComponent(RunnerPairingDialogComponent);
+    rebuilt.detectChanges();
+
+    expect(rebuilt.componentInstance.format()).toBe('jar');
+    expect(rebuilt.componentInstance.windowsPackageAvailable()).toBeFalse();
+  });
+
   it('enregistre le binaire quand la passerelle le sert', () => {
     setup();
+    component.format.set('jar');
     service.downloadRunnerJar.and.returnValue(of(new Blob(['jar'])));
     const anchor = document.createElement('a');
     spyOn(anchor, 'click');

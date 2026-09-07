@@ -89,9 +89,34 @@
         </div>
       </div>
     } @else {
-      <p class="pairing-hint">
-        Un seul fichier, aucun installeur, aucun droit administrateur. <strong>Java 21 ou plus récent</strong> est requis sur la machine : vérifiez avec <code>java -version</code>.
-      </p>
+      <!-- Choix du format (F-44 / SF-44-02). Le paquet autonome d'abord : c'est celui qui ne
+           suppose rien du poste. Le jar reste visible — il est le meilleur format pour qui a déjà
+           Java, et lui faire télécharger 39 Mo pour en utiliser 2,5 serait absurde. -->
+      @if (windowsPackageAvailable()) {
+        <mat-radio-group
+          class="pairing-formats"
+          [value]="format()"
+          (change)="format.set($event.value)"
+          aria-label="Format du runner"
+        >
+          <mat-radio-button value="windows">
+            <span class="pairing-format-title">Windows, sans rien installer</span>
+            <span class="pairing-format-detail">
+              ~39 Mo, contient Java. Décompressez, puis lancez <code>claude-runner.cmd</code>.
+            </span>
+          </mat-radio-button>
+          <mat-radio-button value="jar">
+            <span class="pairing-format-title">Fichier <code>.jar</code></span>
+            <span class="pairing-format-detail">
+              2,5 Mo, nécessite <strong>Java 21 ou plus récent</strong> déjà installé.
+            </span>
+          </mat-radio-button>
+        </mat-radio-group>
+      } @else {
+        <p class="pairing-hint">
+          Un seul fichier, aucun installeur, aucun droit administrateur. <strong>Java 21 ou plus récent</strong> est requis sur la machine : vérifiez avec <code>java -version</code>.
+        </p>
+      }
     }
 
     <button
@@ -106,7 +131,11 @@
       } @else {
         <mat-icon>download</mat-icon>
       }
-      Télécharger le runner (.jar)
+      @if (usesWindowsPackage()) {
+        Télécharger le runner pour Windows (~39 Mo)
+      } @else {
+        Télécharger le runner (.jar)
+      }
     </button>
   </section>
 

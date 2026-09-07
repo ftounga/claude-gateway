@@ -417,6 +417,10 @@ app:
     # `GET /runner/download`. Vide par défaut → l'endpoint répond 404 `runner_jar_unavailable`
     # (le jar n'est pas empaqueté dans l'image du backend, il est déposé côté déploiement).
     jar-path: ${APP_RUNNER_JAR_PATH:}
+    # Paquet autonome Windows (F-44) : le runner AVEC sa propre JVM, pour les postes où aucun
+    # Java 21 n'est installable. Empaqueté dans l'image à côté du jar ; vide ⇒ le format n'est
+    # pas proposé, l'écran le masque au lieu d'offrir un lien mort.
+    windows-package-path: ${APP_RUNNER_WINDOWS_PACKAGE_PATH:}
     heartbeat:
       # Fenêtre de fraîcheur du dernier heartbeat pour le statut « runner connecté » : au-delà, le
       # runner est considéré déconnecté si le registre ne le voit pas. Adossé à `last_seen_at` (base

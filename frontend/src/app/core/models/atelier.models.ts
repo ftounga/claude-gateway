@@ -188,6 +188,18 @@ export interface RunnerStatus {
  * (`app.runner.pairing-code-ttl`, 5 min par défaut) : il n'apparaît qu'ici, n'est jamais réexposé
  * par l'API, et ne doit donc être ni stocké ni ré-affiché après consommation.
  */
+/**
+ * Formats de runner disponibles sur la gateway (F-44 / SF-44-02).
+ *
+ * `windowsPackage` porte le paquet autonome — le runner et sa propre JVM — pour les postes où
+ * aucun Java 21 n'est installable. Une gateway déployée avant F-44 renvoie `false` : l'écran
+ * masque alors ce format au lieu d'offrir un lien mort.
+ */
+export interface RunnerDownloadFormats {
+  jar: boolean;
+  windowsPackage: boolean;
+}
+
 export interface RunnerPairingCode {
   code: string;
   expiresAt: string;
