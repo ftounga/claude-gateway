@@ -27,6 +27,9 @@ data:
   # F-38 — Chemin du fat-jar du runner dans l'image (empaqueté par backend/Dockerfile). Sans lui,
   # `GET /runner/download` répond 404 et le bouton de téléchargement de l'écran d'appairage échoue.
   APP_RUNNER_JAR_PATH: "/app/claude-runner.jar"
+  # Paquet autonome Windows (F-44) : le runner AVEC sa propre JVM, pour les postes
+  # d'entreprise ou aucun Java 21 n'est installable. Empaquete dans l'image a cote du jar.
+  APP_RUNNER_WINDOWS_PACKAGE_PATH: "/app/claude-runner-windows-x64.zip"
   # Phase 2 Atelier (Managed Agents / exécution de code, ADR-013) : activée. L'accès reste gardé
   # par offre Gold/ADMIN (SF-28-06) et la session est éphémère (runtime borné). ⚠️ Ouvrir aux
   # abonnés Gold au-delà de l'admin nécessite les plafonds de dépense de SF-28-12.
