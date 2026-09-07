@@ -60,7 +60,9 @@ public class StripeBillingProvider implements BillingProvider {
                     "Aucun price ID configuré pour le plan " + command.plan().code() + ".");
         }
 
-        SessionCreateParams.Mode mode = command.plan().period() == BillingPeriod.DAILY
+        // Le mode se lit sur la périodicité ACHETÉE (F-43), pas sur celle du catalogue : un plan
+        // mensuel acheté à l'année reste un abonnement, un pass journée reste un paiement unique.
+        SessionCreateParams.Mode mode = command.period() == BillingPeriod.DAILY
                 ? SessionCreateParams.Mode.PAYMENT
                 : SessionCreateParams.Mode.SUBSCRIPTION;
 
@@ -71,6 +73,9 @@ public class StripeBillingProvider implements BillingProvider {
                 .setClientReferenceId(command.userId().toString())
                 .putMetadata("userId", command.userId().toString())
                 .putMetadata("planCode", command.plan().code().name())
+                // La périodicité voyage en métadonnée jusqu'au webhook, comme le code de plan :
+                // c'est le paiement confirmé qui l'inscrit sur l'abonnement, jamais le clic.
+                .putMetadata("billingPeriod", command.period().name())
                 .addLineItem(SessionCreateParams.LineItem.builder()
                         .setPrice(command.priceId())
                         .setQuantity(1L)
@@ -319,6 +324,9 @@ public class StripeBillingProvider implements BillingProvider {
         PlanCode planCode = session.getMetadata() != null
                 ? parsePlanCode(session.getMetadata().get("planCode"))
                 : null;
+        BillingPeriod billingPeriod = session.getMetadata() != null
+                ? parseBillingPeriod(session.getMetadata().get("billingPeriod"))
+                : null;
         return new BillingEvent(
                 BillingEventType.CHECKOUT_COMPLETED,
                 userId,
@@ -328,7 +336,8 @@ public class StripeBillingProvider implements BillingProvider {
                 "active",
                 null,
                 event.getId(),
-                null);
+                null,
+                billingPeriod);
     }
 
     private BillingEvent fromSubscription(Event event, BillingEventType type) {
@@ -371,6 +380,22 @@ public class StripeBillingProvider implements BillingProvider {
         }
         try {
             return UUID.fromString(raw);
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
+    /**
+     * Périodicité portée par une métadonnée (F-43). Une valeur absente ou illisible rend
+     * {@code null} — et {@code null} signifie « l'événement ne dit rien », donc « ne change rien » :
+     * une métadonnée corrompue ne doit jamais réécrire l'engagement d'un abonné.
+     */
+    private static BillingPeriod parseBillingPeriod(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        try {
+            return BillingPeriod.valueOf(raw);
         } catch (IllegalArgumentException ex) {
             return null;
         }

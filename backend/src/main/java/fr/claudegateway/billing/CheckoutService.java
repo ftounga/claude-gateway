@@ -20,17 +20,17 @@ public class CheckoutService {
     private final PlanCatalog planCatalog;
     private final SubscriptionService subscriptionService;
     private final BillingProvider billingProvider;
-    private final BillingProperties properties;
+    private final BillingPeriodSelection periodSelection;
 
     public CheckoutService(
             PlanCatalog planCatalog,
             SubscriptionService subscriptionService,
             BillingProvider billingProvider,
-            BillingProperties properties) {
+            BillingPeriodSelection periodSelection) {
         this.planCatalog = planCatalog;
         this.subscriptionService = subscriptionService;
         this.billingProvider = billingProvider;
-        this.properties = properties;
+        this.periodSelection = periodSelection;
     }
 
     /**
@@ -43,14 +43,36 @@ public class CheckoutService {
      * @throws UnknownPlanException code de plan absent/inconnu du catalogue
      */
     public CheckoutSession createCheckout(UUID userId, String email, String planCodeRaw) {
-        Plan plan = resolvePlan(planCodeRaw);
-        Subscription subscription = subscriptionService.getOrCreateForUser(userId);
-        String priceId = properties.stripe().priceId(plan.code());
+        return createCheckout(userId, email, planCodeRaw, null);
+    }
 
+    /**
+     * Crée une session de paiement pour le plan et la <b>périodicité</b> demandés (F-43).
+     *
+     * <p>La périodicité est résolue et validée <b>avant</b> tout appel au fournisseur : demander
+     * l'annuel sur un plan qui n'en propose pas est refusé, jamais replié en silence vers le price
+     * mensuel — le client cliquerait « à l'année » et serait débité au mois.</p>
+     *
+     * @param userId       utilisateur authentifié (contexte de sécurité)
+     * @param email        email de l'utilisateur (pré-remplissage Checkout)
+     * @param planCodeRaw  code de plan fourni par le client
+     * @param periodRaw    périodicité demandée ({@code MONTHLY} / {@code YEARLY}) ; absente ⇒ mensuel
+     * @return la session de paiement (URL de redirection)
+     * @throws UnknownPlanException              code de plan absent/inconnu du catalogue
+     * @throws UnknownBillingPeriodException     périodicité inconnue ou non achetable
+     * @throws YearlyBillingUnavailableException annuel demandé sur un plan qui n'en propose pas
+     */
+    public CheckoutSession createCheckout(UUID userId, String email, String planCodeRaw, String periodRaw) {
+        Plan plan = resolvePlan(planCodeRaw);
+        BillingPeriod period = periodSelection.resolveFor(plan, periodRaw);
+        String priceId = periodSelection.priceId(plan, period);
+
+        Subscription subscription = subscriptionService.getOrCreateForUser(userId);
         CheckoutCommand command = new CheckoutCommand(
-                userId, email, subscription.getStripeCustomerId(), plan, priceId);
+                userId, email, subscription.getStripeCustomerId(), plan, priceId, period);
         return billingProvider.createCheckoutSession(command);
     }
+
 
     private Plan resolvePlan(String planCodeRaw) {
         PlanCode code = parse(planCodeRaw);

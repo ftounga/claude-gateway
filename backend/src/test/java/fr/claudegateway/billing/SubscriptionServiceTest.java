@@ -34,8 +34,10 @@ class SubscriptionServiceTest {
     @BeforeEach
     void setUp() {
         repository = org.mockito.Mockito.mock(SubscriptionRepository.class);
-        service = new SubscriptionService(repository, new BillingProperties(14, null), new PlanCatalog(),
-                org.mockito.Mockito.mock(fr.claudegateway.billing.provider.BillingProvider.class));
+        BillingProperties defaults = new BillingProperties(14, null);
+        service = new SubscriptionService(repository, defaults, new PlanCatalog(),
+                org.mockito.Mockito.mock(fr.claudegateway.billing.provider.BillingProvider.class),
+                new BillingPeriodSelection(defaults));
     }
 
     @Test
@@ -73,8 +75,10 @@ class SubscriptionServiceTest {
     @Test
     void usesConfiguredTrialDuration() {
         UUID userId = UUID.randomUUID();
-        SubscriptionService sevenDayService = new SubscriptionService(repository, new BillingProperties(7, null),
-                new PlanCatalog(), org.mockito.Mockito.mock(fr.claudegateway.billing.provider.BillingProvider.class));
+        BillingProperties sevenDays = new BillingProperties(7, null);
+        SubscriptionService sevenDayService = new SubscriptionService(repository, sevenDays,
+                new PlanCatalog(), org.mockito.Mockito.mock(fr.claudegateway.billing.provider.BillingProvider.class),
+                new BillingPeriodSelection(sevenDays));
         when(repository.findByUserId(userId)).thenReturn(Optional.empty());
         when(repository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -96,9 +100,11 @@ class SubscriptionServiceTest {
 
     private SubscriptionService serviceWithProvider(BillingProvider provider) {
         BillingProperties props = new BillingProperties(5, new BillingProperties.Stripe(
-                "sk", "wh", Map.of("PRO", "price_pro"), Map.of(), null, null, Map.of(), null, null,
-                Map.of(), Map.of()));
-        return new SubscriptionService(repository, props, new PlanCatalog(), provider);
+                "sk", "wh", Map.of("PRO", "price_pro", "SOLO", "price_solo"), Map.of(), null, null,
+                Map.of(), null, null,
+                Map.of("SOLO", "price_solo_yearly"), Map.of("SOLO", "240")));
+        return new SubscriptionService(repository, props, new PlanCatalog(), provider,
+                new BillingPeriodSelection(props));
     }
 
     @Test
@@ -119,6 +125,58 @@ class SubscriptionServiceTest {
         assertThat(captor.getValue().stripeSubscriptionId()).isEqualTo("sub_123");
         assertThat(captor.getValue().newPriceId()).isEqualTo("price_pro");
         assertThat(result.getPlanCode()).isEqualTo(PlanCode.PRO);
+        // Non-régression F-43 : un changement de plan sans périodicité reste mensuel.
+        assertThat(result.getBillingPeriod()).isEqualTo(BillingPeriod.MONTHLY);
+    }
+
+    // ---- Changement de PÉRIODICITÉ (F-43 / SF-43-02) ----
+
+    @Test
+    void changePlanToTheYearlyPeriodSendsTheYearlyPriceAndRecordsTheCommitment() {
+        UUID userId = UUID.randomUUID();
+        BillingProvider provider = mock(BillingProvider.class);
+        SubscriptionService svc = serviceWithProvider(provider);
+        Subscription active = Subscription.builder()
+                .userId(userId).status(SubscriptionStatus.ACTIVE).planCode(PlanCode.SOLO)
+                .billingPeriod(BillingPeriod.MONTHLY)
+                .stripeSubscriptionId("sub_123").build();
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(active));
+        when(repository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Subscription result = svc.changePlan(userId, "SOLO", "YEARLY");
+
+        ArgumentCaptor<ChangePlanCommand> captor = ArgumentCaptor.forClass(ChangePlanCommand.class);
+        verify(provider).changeSubscriptionPlan(captor.capture());
+        assertThat(captor.getValue().newPriceId()).isEqualTo("price_solo_yearly");
+        assertThat(result.getBillingPeriod()).isEqualTo(BillingPeriod.YEARLY);
+        assertThat(result.getPlanCode()).isEqualTo(PlanCode.SOLO);
+    }
+
+    @Test
+    void changePlanRefusesTheYearlyPeriodOnAPlanWithoutAYearlyOfferAndTouchesNothing() {
+        UUID userId = UUID.randomUUID();
+        BillingProvider provider = mock(BillingProvider.class);
+        SubscriptionService svc = serviceWithProvider(provider);
+
+        assertThatThrownBy(() -> svc.changePlan(userId, "PRO", "YEARLY"))
+                .isInstanceOf(YearlyBillingUnavailableException.class);
+
+        // Le refus tombe AVANT tout appel au fournisseur : jamais d'abonnement à moitié changé.
+        verify(provider, never()).changeSubscriptionPlan(any());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void changePlanRefusesAnUnknownPeriodAndTouchesNothing() {
+        UUID userId = UUID.randomUUID();
+        BillingProvider provider = mock(BillingProvider.class);
+        SubscriptionService svc = serviceWithProvider(provider);
+
+        assertThatThrownBy(() -> svc.changePlan(userId, "SOLO", "WEEKLY"))
+                .isInstanceOf(UnknownBillingPeriodException.class);
+
+        verify(provider, never()).changeSubscriptionPlan(any());
+        verify(repository, never()).save(any());
     }
 
     @Test

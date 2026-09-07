@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <!--
+      F-43 / SF-43-02 — Périodicité d'engagement de l'abonnement (MONTHLY / YEARLY / DAILY).
+
+      Ce que cette colonne dit, et ce qu'elle ne dit PAS : elle porte le rythme d'ENCAISSEMENT,
+      jamais l'allocation de jetons. Le quota reste MENSUEL quelle que soit sa valeur — il est
+      résolu par EntitlementService à partir du seul plan, et consommé par mois calendaire UTC.
+      Un quota annuel exposerait à une consommation intégrale dès le premier mois.
+
+      Nullable et SANS défaut, volontairement : aucun abonnement existant n'est réécrit. Écrire
+      MONTHLY partout serait une affirmation invérifiable — on ne sait pas ce qui a été souscrit
+      avant que la colonne existe. NULL se lit « aucun engagement enregistré », ce qui est exact,
+      et couvre aussi les essais (pas d'engagement tant qu'il n'y a pas de paiement).
+
+      Peuplée par le webhook de paiement confirmé et par un changement de plan explicite.
+    -->
+    <changeSet id="062-subscriptions-billing-period" author="claude-gateway">
+        <addColumn tableName="subscriptions">
+            <column name="billing_period" type="varchar(16)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="subscriptions" columnName="billing_period"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
