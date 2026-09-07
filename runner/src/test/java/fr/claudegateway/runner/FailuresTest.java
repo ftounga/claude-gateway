@@ -111,6 +111,24 @@ class FailuresTest {
     }
 
     @Test
+    @DisplayName("la non-résolution NIO est reconnue comme un problème de nom")
+    void theNioFlavourOfDnsFailureIsRecognised() {
+        // Le client HTTP de la JVM ne remonte pas UnknownHostException mais
+        // UnresolvedAddressException : c'est cette forme-là qu'a rencontrée le poste d'entreprise
+        // qui ne résolvait pas les noms publics.
+        // Et surtout : enveloppée dans une ConnectException, comme le fait réellement la JVM. Sans
+        // recherche du plus spécifique d'abord, la piste « sortie bloquée » l'emporterait et
+        // enverrait chercher un proxy alors que c'est le DNS qui est muet.
+        String hint = Failures.hint(new ConnectException(
+                "no further information"));
+        assertTrue(hint.contains("Sortie réseau"), hint);
+
+        ConnectException wrapped = new ConnectException("no further information");
+        wrapped.initCause(new java.nio.channels.UnresolvedAddressException());
+        assertTrue(Failures.hint(wrapped).contains("résolu"), Failures.hint(wrapped));
+    }
+
+    @Test
     @DisplayName("la piste réseau rappelle les variables que le runner lit vraiment")
     void theNetworkHintNamesTheVariablesWeRead() {
         String hint = Failures.hint(new ConnectException("Connection timed out"));

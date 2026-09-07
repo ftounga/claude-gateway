@@ -3,6 +3,7 @@ package fr.claudegateway.runner;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
+import java.nio.channels.UnresolvedAddressException;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import javax.net.ssl.SSLException;
@@ -74,15 +75,25 @@ public final class Failures {
      * <p>Toujours une <b>question</b>, jamais une conclusion (D1).</p>
      */
     public static String hint(Throwable error) {
+        // Deux passes, du PLUS SPÉCIFIQUE au plus général. La pile réseau de la JVM enveloppe une
+        // non-résolution dans une ConnectException : chercher en une seule passe rendrait la piste
+        // « sortie bloquée » avant d'avoir vu le vrai motif, et enverrait chercher un proxy quand
+        // c'est le DNS qui est muet.
         for (Throwable current = error; current != null; current = current.getCause()) {
             if (current instanceof SSLException) {
                 return "Certificat non reconnu par Java — un proxy interceptant le TLS ? "
                         + "Le truststore d'entreprise se déclare par "
                         + "-Djavax.net.ssl.trustStore=<fichier>.";
             }
-            if (current instanceof UnknownHostException) {
+            // UnresolvedAddressException : la forme que prend la non-résolution dans la pile NIO
+            // du client HTTP de la JVM. C'est elle, et non UnknownHostException, qui est remontée
+            // quand un poste d'entreprise ne résout pas les noms publics — le cas rencontré.
+            if (current instanceof UnknownHostException
+                    || current instanceof UnresolvedAddressException) {
                 return "Nom d'hôte non résolu — DNS, ou proxy d'entreprise obligatoire ?";
             }
+        }
+        for (Throwable current = error; current != null; current = current.getCause()) {
             if (current instanceof ConnectException || current instanceof SocketTimeoutException) {
                 return "Sortie réseau bloquée ? Le runner lit HTTPS_PROXY, HTTP_PROXY et NO_PROXY ; "
                         + "un proxy configuré ailleurs (fichier PAC, réglage Windows) lui est "

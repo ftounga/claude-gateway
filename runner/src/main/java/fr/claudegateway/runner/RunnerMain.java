@@ -69,6 +69,17 @@ public final class RunnerMain {
         }
         HttpClient httpClient = buildHttpClient(proxyResolver);
 
+        // Contrôle de vol (SF-38-25) : la gateway est-elle joignable depuis CE terminal ? La question
+        // se pose avant l'appairage, parce que sa réponse n'a rien de métier — et qu'un échec réseau
+        // survenu au milieu de l'appairage mêlait deux sujets sans rapport (D4).
+        String unreachable = new NetworkPreflight(httpClient, OperatingSystem.current())
+                .check(config.gatewayBaseUrl());
+        if (unreachable != null) {
+            console.error(unreachable);
+            return 5;
+        }
+        console.info("Réseau    : gateway joignable");
+
         Path home = Path.of(System.getProperty("user.home", "."));
         TokenStore tokenStore = new TokenStore(config.workspaceRoot(), home);
 
