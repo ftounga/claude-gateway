@@ -173,8 +173,13 @@ export class RunnerPairingDialogComponent implements OnDestroy {
     const launcher = this.usesWindowsPackage()
       ? 'claude-runner.cmd'
       : `java -jar ${JAR_FILENAME}`;
+    // Guillemets autour du chemin (F-38 / SF-38-23) : sans eux, Git Bash interprète les antislashs
+    // d'un chemin Windows comme des échappements — « C:\Users\moi » arrive au runner en
+    // « C:Usersmoi », que Windows résout ensuite comme un chemin RELATIF au lecteur C:. C'est le
+    // deuxième obstacle rencontré par un client, juste après le prérequis Java. Les guillemets ne
+    // gênent aucun shell, et suppriment le piège pour tous ceux qui copient la commande.
     return `${launcher} --gateway ${this.gatewayUrl}`
-      + ` --workspace ${path} --code ${code}`;
+      + ` --workspace "${path}" --code ${code}`;
   });
 
   /** Vrai quand le format retenu est le paquet autonome, et qu'il est réellement disponible. */

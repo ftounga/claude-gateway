@@ -72,7 +72,8 @@ public final class RunnerConfig {
         }
         Path root = Path.of(workspace).toAbsolutePath().normalize();
         if (!Files.exists(root)) {
-            throw new ConfigException("--workspace n'existe pas : " + root);
+            throw new ConfigException("--workspace n'existe pas : " + root
+                    + swallowedSeparatorsHint(workspace));
         }
         if (!Files.isDirectory(root)) {
             throw new ConfigException("--workspace n'est pas un dossier : " + root);
@@ -189,6 +190,35 @@ public final class RunnerConfig {
         }
         String v = value.trim().toLowerCase(java.util.Locale.ROOT);
         return v.equals("true") || v.equals("1") || v.equals("yes") || v.equals("oui");
+    }
+
+    /**
+     * Explique le cas où le <b>shell</b> a mangé les antislashs d'un chemin Windows, ou chaîne vide
+     * si ce n'est pas ce qui s'est produit (F-38 / SF-38-23).
+     *
+     * <p>Rencontré chez un client : {@code --workspace C:\Users\moi\projet} tapé sous Git Bash
+     * arrive ici en {@code C:Usersmoiprojet}, parce que {@code \U} et {@code \m} y sont des
+     * séquences d'échappement. Windows lit alors « lecteur C:, chemin <b>relatif</b> » et le résout
+     * depuis le dossier courant — le message affichait donc un chemin doublé que l'utilisateur
+     * n'avait jamais tapé, sans rien dire de son origine.</p>
+     *
+     * <p>On ne <b>corrige</b> rien : reconstruire les séparateurs serait deviner, et un runner qui
+     * devine sa racine d'exécution est un runner qui écrira un jour au mauvais endroit (D2).</p>
+     */
+    static String swallowedSeparatorsHint(String workspace) {
+        // Une lettre de lecteur immédiatement suivie d'autre chose qu'un séparateur : la signature
+        // exacte du symptôme. « C:\Users » et « C:/Users » ne la déclenchent pas, ni un chemin Unix.
+        if (workspace == null || !workspace.matches("^[A-Za-z]:[^\\\\/].*")) {
+            return "";
+        }
+        return System.lineSeparator() + System.lineSeparator()
+                + "Le chemin semble avoir perdu ses séparateurs : « " + workspace + " »."
+                + System.lineSeparator()
+                + "Sous Git Bash, les antislashs d'un chemin Windows sont interprétés comme des "
+                + "échappements." + System.lineSeparator()
+                + "Entourez le chemin de guillemets :  --workspace \"C:\\Users\\...\\projet\""
+                + System.lineSeparator()
+                + "ou utilisez des barres obliques :   --workspace C:/Users/.../projet";
     }
 
     private static String normalizeGateway(String raw) {
