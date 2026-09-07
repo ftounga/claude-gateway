@@ -86,8 +86,8 @@ public final class ToolDispatcher implements AutoCloseable {
 
     /**
      * Trame d'annonce émise juste après l'ouverture de la socket. Le runner y déclare ses capacités
-     * réelles : {@code files} toujours, {@code bash} seulement si l'exécution de commandes a été
-     * autorisée au démarrage ({@code --allow-bash}, SF-38-07).
+     * réelles : {@code files} toujours, {@code bash} sauf si l'exécution de commandes a été
+     * restreinte au démarrage ({@code --no-bash}, SF-38-19).
      *
      * <p>Elle porte aussi, depuis SF-38-27, le <b>genre d'interpréteur élu</b> ({@code shell}) : la
      * consigne système en dépend, puisqu'elle dicte au modèle la syntaxe d'exploration. Le genre

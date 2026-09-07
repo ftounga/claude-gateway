@@ -164,11 +164,14 @@ public final class RunnerConfig {
     }
 
     /**
-     * Exécution de commandes autorisée sur cette machine (F-38 / SF-38-07). <b>Faux par défaut</b> :
-     * démarrer un runner autorise la lecture et l'écriture de fichiers, pas l'exécution de commandes
-     * arbitraires — <b>autorisée par défaut</b> depuis SF-38-19, chaque commande restant soumise à
-     * la porte de confirmation, qui n'est pas désactivable. La restriction se pose avec
-     * {@code --no-bash} ou {@code CLAUDE_RUNNER_NO_BASH=true}.
+     * Exécution de commandes autorisée sur cette machine. <b>Vrai par défaut</b> depuis SF-38-19 :
+     * le mode runner existe pour exécuter sur la machine, et la garde réelle n'est pas un drapeau au
+     * lancement mais la porte de confirmation, qui n'est pas désactivable. La restriction se pose
+     * avec {@code --no-bash} ou {@code CLAUDE_RUNNER_NO_BASH=true}.
+     *
+     * <p>{@code --allow-bash}, l'opt-in d'origine (SF-38-07), reste <b>accepté sans effet</b> pour
+     * ne pas casser les lignes de commande antérieures ; aucun message utilisateur ne le cite plus
+     * (SF-38-26).</p>
      */
     public boolean allowBash() {
         return allowBash;

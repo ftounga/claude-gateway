@@ -19,7 +19,7 @@ import com.fasterxml.jackson.databind.JsonNode;
  *
  * <p>C'est la brique la plus sensible du lot. Les gardes, dans l'ordre où elles s'appliquent :</p>
  * <ol>
- *   <li><b>Opt-in machine</b> : sans {@code --allow-bash}, l'outil répond {@code unsupported_tool}
+ *   <li><b>Opt-out machine</b> : sous {@code --no-bash}, l'outil répond {@code unsupported_tool}
  *       et rien n'est exécuté. La capacité n'est alors même pas annoncée à la gateway (contrat §2.1),
  *       qui refuse donc l'appel avant émission — mais le refus qui fait foi est celui d'ici.</li>
  *   <li><b>Une commande à la fois</b> : un sémaphore à un jeton. La boucle tool-use est séquentielle,
@@ -59,7 +59,7 @@ public final class BashTool {
 
     /**
      * @param guard   confinement des chemins ({@code cwd}) à la racine {@code --workspace}
-     * @param enabled exécution autorisée sur cette machine ({@code --allow-bash})
+     * @param enabled exécution autorisée sur cette machine (vrai sauf {@code --no-bash}, SF-38-19)
      * @param shell   interpréteur élu au démarrage (F-38 / SF-38-27) — l'outil ne choisit plus
      *                lui-même, il exécute sous celui que la machine a réellement
      */

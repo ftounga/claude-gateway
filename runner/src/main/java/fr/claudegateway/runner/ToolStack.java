@@ -18,8 +18,10 @@ public final class ToolStack {
     }
 
     /**
-     * Monte la pile et annonce en clair, sur la console, ce que la machine expose : la racine, l'état
-     * de l'exécution de commandes et les exclusions actives (décision D5 — le runner est observable).
+     * Monte la pile et annonce en clair, sur la console, ce que ce montage-ci apporte : la racine
+     * confinée, l'interpréteur élu et les exclusions actives (décision D5 — le runner est
+     * observable). L'état de l'exécution de commandes, lui, appartient au démarrage et à
+     * {@code RunnerMain} seul (SF-38-26, D1).
      */
     public static ToolStack create(RunnerConfig config, Console console, FrameSender sender) {
         ExclusionRules exclusions = ExclusionRules.load(config.workspaceRoot(), console);
@@ -30,10 +32,15 @@ public final class ToolStack {
         BashTool bash = new BashTool(guard, config.allowBash(), shell);
         ToolRouter tools = new ToolRouter(new FileTools(guard), bash);
 
+        // Ce bloc annonce ce que RunnerMain ne peut pas connaître : la racine confinée, l'interpréteur
+        // élu, les exclusions chargées. Il ne dit RIEN de l'exécution de commandes (SF-38-26, D1) —
+        // cet état vient de la configuration, RunnerMain l'a déjà dit, et le répéter ici le disait
+        // une fois par transport, en attribuant l'état à `--allow-bash`, sans effet depuis SF-38-19.
+        //
+        // La répétition des trois lignes ci-dessous au repli long-polling est, elle, VOULUE : elles
+        // attestent que le second transport monte les mêmes gardes que la socket, ce qui est la
+        // raison d'être de cette classe.
         console.info("Outils fichiers actifs, confinés à : " + config.workspaceRoot());
-        console.info(bash.enabled()
-                ? "Exécution de commandes ACTIVÉE (--allow-bash) — les commandes tournent avec vos droits."
-                : "Exécution de commandes désactivée (relancez avec --allow-bash pour l'autoriser).");
         console.info("Interpréteur : " + shell.description());
         console.info("Exclusions : " + exclusions.userRuleCount() + " règle(s) issues de "
                 + exclusions.source() + " + liste par défaut non désactivable ("
