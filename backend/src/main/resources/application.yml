@@ -288,15 +288,13 @@ app:
       prices:
         SOLO: ${STRIPE_PRICE_SOLO:}
         PRO: ${STRIPE_PRICE_PRO:}
-        DAILY: ${STRIPE_PRICE_DAILY:}
         GOLD: ${STRIPE_PRICE_GOLD:}
         # Offre BYOK (F-41) : la plateforme seule, servie par la clé Anthropic du client.
         # Vide ⇒ le plan n'est ni listé ni souscriptible, comme tout plan sans price.
         BYOK: ${STRIPE_PRICE_BYOK:}
       # Mapping plan -> price ID Stripe ANNUEL (F-43). Un engagement annuel encaissé d'avance :
       # trésorerie et rétention. Vide ⇒ le plan n'est proposé qu'au mois, exactement comme un plan
-      # sans price n'est pas proposé du tout. Le pass journée (DAILY) n'y figure pas : c'est un
-      # paiement UNIQUE, il ne s'annualise pas.
+      # sans price n'est pas proposé du tout.
       # ATTENTION : ces price IDs doivent pointer des prix Stripe de récurrence ANNUELLE — la
       # gateway ne vérifie pas la récurrence côté fournisseur, elle relaie le price qu'on lui donne.
       yearly-prices:
@@ -316,7 +314,6 @@ app:
         # Pass journée (F-43, anomalie corrigée) : le plan avait un quota (500 k) et un price ID,
         # mais AUCUN prix d'affichage — l'écran de facturation n'avait donc rien à montrer à côté de
         # son bouton d'achat. Valeur commerciale réversible, à revoir par le PO.
-        DAILY: ${STRIPE_DISPLAY_PRICE_DAILY:9}
         # Offre BYOK (F-41) : le client apporte sa clé, la gateway ne paie aucun jeton — elle
         # ne facture donc que la plateforme. Valeur commerciale réversible, ajustable par
         # environnement sans changement de code.
@@ -354,6 +351,8 @@ app:
     plans:
       SOLO: ${APP_QUOTA_SOLO_TOKENS:1000000}
       PRO: ${APP_QUOTA_PRO_TOKENS:5000000}
+      # DAILY : plan RETIRE du catalogue (SF-09-04). L'allocation reste declaree pour qu'un
+      # abonnement historique qui porterait ce code garde son quota au lieu de tomber a zero.
       DAILY: ${APP_QUOTA_DAILY_TOKENS:500000}
       GOLD: ${APP_QUOTA_GOLD_TOKENS:12000000}
       # Offre BYOK (F-41) : allocation NULLE, et c'est le contrat de l'offre — les jetons sont

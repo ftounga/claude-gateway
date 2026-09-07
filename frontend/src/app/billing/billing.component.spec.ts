@@ -85,15 +85,6 @@ describe('BillingComponent', () => {
   const monthlyOnlyPlans: PlansResponse = {
     plans: plans.plans.map((plan) => ({ ...plan, yearlyPriceEur: null, yearlyAvailable: false })),
   };
-  /** Pass journée (F-43) : il a enfin un prix d'affichage, et sa propre périodicité. */
-  const dailyPassPlans: PlansResponse = {
-    plans: [
-      {
-        code: 'DAILY', label: 'Pass journée', providerMode: 'HOSTED', period: 'DAILY',
-        tokens: 500000, priceEur: '9', yearlyPriceEur: null, yearlyAvailable: false,
-      },
-    ],
-  };
   const usage: UsageView = {
     usedTokens: 4200,
     quotaTokens: 200000,
@@ -832,15 +823,16 @@ describe('BillingComponent', () => {
       expect(component.tokensSuffix(soloPlan())).toBe(' / mois');
     });
 
-    it('affiche le prix du pass journée avec sa propre périodicité', () => {
-      // Anomalie corrigée par F-43 : le pass journée n'avait aucun prix à afficher.
-      setup(null, false, optionAvailable, {}, dailyPassPlans);
-      const pass = component.plans()[0];
+    it('nomme encore le pass journée d\'un abonnement historique', () => {
+      // SF-09-04 : le plan est retiré du catalogue, mais un abonnement existant peut porter ce
+      // code — l'écran doit savoir le nommer plutôt que d'afficher « par mois » pour un pass.
+      // Les deux autres libellés reçoivent un plan DU CATALOGUE : ils n'ont plus de cas journalier.
+      setup();
 
-      expect(component.displayPrice(pass)).toBe('9');
-      expect(component.pricePeriodLabel(pass)).toBe('la journée');
-      // « 500 000 tokens inclus / mois » sur un pass de 24 h n'aurait aucun sens.
-      expect(component.tokensSuffix(pass)).toBe('');
+      expect(component.periodLabel('DAILY')).toBe('Pass journée');
+      expect(component.periodLabel('MONTHLY')).toBe('par mois');
+      expect(component.pricePeriodLabel(soloPlan())).toBe('/ mois');
+      expect(component.tokensSuffix(soloPlan())).toBe(' / mois');
     });
 
     it('dit à un abonné annuel qu\'il est engagé à l\'année', () => {

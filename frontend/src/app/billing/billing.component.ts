@@ -309,7 +309,11 @@ export class BillingComponent implements OnInit {
     }
   }
 
-  /** Libellé de périodicité d'un plan. */
+  /**
+   * Libellé de périodicité. `DAILY` est conservé ici, et seulement ici : le plan a été retiré du
+   * catalogue (SF-09-04) mais un abonnement historique peut encore porter ce code, et l'écran doit
+   * savoir le nommer plutôt que d'afficher « par mois » pour un pass.
+   */
   periodLabel(period: string): string {
     return period === 'DAILY' ? 'Pass journée' : 'par mois';
   }
@@ -355,7 +359,8 @@ export class BillingComponent implements OnInit {
     if (this.isYearlyFor(plan)) {
       return '/ an';
     }
-    return plan.period === 'DAILY' ? 'la journée' : '/ mois';
+    // Plus de branche « la journée » : aucun plan du catalogue n'est facturé au jour (SF-09-04).
+    return '/ mois';
   }
 
   /**
@@ -400,11 +405,11 @@ export class BillingComponent implements OnInit {
   /**
    * Suffixe du nombre de jetons inclus. Toujours « / mois » pour un abonnement — **y compris en
    * position Annuel**, et c'est délibéré : c'est le seul écran où l'utilisateur pourrait croire
-   * qu'un engagement annuel lui donne douze mois de jetons d'avance. Un pass journée n'a pas de
-   * périodicité à afficher, son stock est celui du pass.
+   * qu'un engagement annuel lui donne douze mois de jetons d'avance.
    */
   tokensSuffix(plan: Plan): string {
-    return plan.period === 'DAILY' ? '' : ' / mois';
+    // Tout plan du catalogue alloue ses jetons au mois depuis le retrait du pass (SF-09-04).
+    return ' / mois';
   }
 
   /**

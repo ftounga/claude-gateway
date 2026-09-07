@@ -10,11 +10,26 @@ class PlanCatalogTest {
     private final PlanCatalog catalog = new PlanCatalog();
 
     @Test
-    void exposesSoloProDailyGoldAndByokPlans() {
+    void exposesSoloProGoldAndByokPlans() {
         assertThat(catalog.plans())
                 .extracting(Plan::code)
-                .containsExactlyInAnyOrder(PlanCode.SOLO, PlanCode.PRO, PlanCode.DAILY, PlanCode.GOLD,
-                        PlanCode.BYOK);
+                .containsExactlyInAnyOrder(PlanCode.SOLO, PlanCode.PRO, PlanCode.GOLD, PlanCode.BYOK);
+    }
+
+    @Test
+    void dailyIsNoLongerACatalogPlan() {
+        // SF-09-04 : le pass journée n'a jamais eu de price ID Stripe, donc n'a jamais été vendable.
+        // Son retrait devient une décision explicite, au lieu d'un effet de bord de configuration.
+        assertThat(catalog.plans()).extracting(Plan::code).doesNotContain(PlanCode.DAILY);
+        assertThat(catalog.contains(PlanCode.DAILY)).isFalse();
+    }
+
+    @Test
+    void theDailyCodeItselfSurvivesForExistingSubscriptions() {
+        // SF-09-04 / D1 : subscriptions.plan_code est un varchar sans contrainte d'énumération.
+        // Retirer la constante ferait échouer la LECTURE d'un abonnement qui la porte — un incident,
+        // alors que l'objectif est seulement de ne plus la VENDRE.
+        assertThat(PlanCode.valueOf("DAILY")).isEqualTo(PlanCode.DAILY);
     }
 
     @Test
@@ -44,11 +59,11 @@ class PlanCatalogTest {
     }
 
     @Test
-    void dailyPlanIsADayPass() {
-        Plan daily = catalog.plans().stream()
-                .filter(p -> p.code() == PlanCode.DAILY).findFirst().orElseThrow();
-        assertThat(daily.period()).isEqualTo(BillingPeriod.DAILY);
-        assertThat(daily.providerMode()).isEqualTo(ProviderMode.HOSTED);
+    void noCatalogPlanIsBilledByTheDay() {
+        // Remplace dailyPlanIsADayPass, devenu sans objet avec le retrait du pass journée
+        // (SF-09-04). Ce qui reste à figer est l'inverse : aucun plan du catalogue n'est facturé à
+        // la journée. La périodicité DAILY appartient désormais au seul pack de recharge.
+        assertThat(catalog.plans()).extracting(Plan::period).doesNotContain(BillingPeriod.DAILY);
     }
 
     @Test
