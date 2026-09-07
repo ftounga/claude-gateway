@@ -8,6 +8,14 @@ package fr.claudegateway.billing;
 public enum PlanCode {
     SOLO,
     PRO,
+    /**
+     * Pass journée — <b>retiré du catalogue</b> le 2026-09-07 (SF-09-04) : il n'a jamais eu de price
+     * ID Stripe, donc n'a jamais été vendable. La constante est <b>conservée</b> parce que
+     * {@code subscriptions.plan_code} est un {@code varchar(32)} sans contrainte d'énumération : la
+     * retirer ferait échouer la lecture d'un abonnement qui la porterait, transformant un retrait
+     * commercial en incident. Ne pas confondre avec le <b>pack de recharge</b> {@code DAY} de
+     * {@code TopUpCatalog}, qui porte le même nom commercial et qui, lui, se vend.
+     */
     DAILY,
     /** Offre Gold (ADR-012) : plan dédié qui débloque l'accès à l'Atelier (F-28). */
     GOLD,

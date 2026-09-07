@@ -153,21 +153,15 @@ class CheckoutServiceTest {
     }
 
     @Test
-    void dailyPassKeepsItsOwnPeriodWithoutTheClientAskingForIt() {
-        UUID userId = UUID.randomUUID();
-        withExistingSubscription(userId);
-
-        service.createCheckout(userId, "a@b.co", "DAILY", null);
-
-        CheckoutCommand cmd = captureCommand();
-        assertThat(cmd.priceId()).isEqualTo("price_daily");
-        assertThat(cmd.period()).isEqualTo(BillingPeriod.DAILY);
-    }
-
-    @Test
-    void dailyPassCannotBeBoughtForAYear() {
+    void theDayPassCannotBeBoughtAtAll() {
+        // Remplace dailyPassKeepsItsOwnPeriodWithoutTheClientAskingForIt et
+        // dailyPassCannotBeBoughtForAYear (SF-09-04). Le pass journée est retiré du catalogue : il
+        // n'y a plus de périodicité à préserver ni d'engagement annuel à refuser — il n'y a plus
+        // rien à acheter, et le fournisseur ne doit jamais être appelé.
+        assertThatThrownBy(() -> service.createCheckout(UUID.randomUUID(), "a@b.co", "DAILY", null))
+                .isInstanceOf(UnknownPlanException.class);
         assertThatThrownBy(() -> service.createCheckout(UUID.randomUUID(), "a@b.co", "DAILY", "YEARLY"))
-                .isInstanceOf(YearlyBillingUnavailableException.class);
+                .isInstanceOf(UnknownPlanException.class);
         verify(billingProvider, never()).createCheckoutSession(any());
     }
 }

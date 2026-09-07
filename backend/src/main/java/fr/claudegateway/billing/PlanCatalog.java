@@ -20,7 +20,6 @@ public class PlanCatalog {
     private static final List<Plan> PLANS = List.of(
             new Plan(PlanCode.SOLO, "Solo", ProviderMode.HOSTED, BillingPeriod.MONTHLY),
             new Plan(PlanCode.PRO, "Pro", ProviderMode.HOSTED, BillingPeriod.MONTHLY),
-            new Plan(PlanCode.DAILY, "Pass journée", ProviderMode.HOSTED, BillingPeriod.DAILY),
             new Plan(PlanCode.GOLD, "Gold", ProviderMode.HOSTED, BillingPeriod.MONTHLY),
             new Plan(PlanCode.BYOK, "BYOK", ProviderMode.BYOK, BillingPeriod.MONTHLY));
 
