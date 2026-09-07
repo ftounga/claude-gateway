@@ -6,7 +6,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -55,15 +54,19 @@ public final class BashTool {
 
     private final PathGuard guard;
     private final boolean enabled;
+    private final ShellElection shell;
     private final Semaphore slot = new Semaphore(1);
 
     /**
      * @param guard   confinement des chemins ({@code cwd}) à la racine {@code --workspace}
      * @param enabled exécution autorisée sur cette machine ({@code --allow-bash})
+     * @param shell   interpréteur élu au démarrage (F-38 / SF-38-27) — l'outil ne choisit plus
+     *                lui-même, il exécute sous celui que la machine a réellement
      */
-    public BashTool(PathGuard guard, boolean enabled) {
+    public BashTool(PathGuard guard, boolean enabled, ShellElection shell) {
         this.guard = guard;
         this.enabled = enabled;
+        this.shell = shell;
     }
 
     /** Vrai si cette machine autorise l'exécution de commandes (capacité {@code bash} annoncée). */
@@ -148,12 +151,16 @@ public final class BashTool {
         return new ToolOutcome(true, "", budget.truncated(), budget.bytes(), null, null, exitCode);
     }
 
-    /** Ligne de commande passée à l'interpréteur du système, sans découpage maison des arguments. */
-    static List<String> shellCommand(String command) {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-        return os.contains("win")
-                ? List.of("cmd.exe", "/c", command)
-                : List.of("/bin/sh", "-c", command);
+    /**
+     * Ligne de commande passée à l'interpréteur <b>élu</b>, sans découpage maison des arguments.
+     *
+     * <p>Avant SF-38-27, ce choix se faisait ici, sur {@code os.name} : {@code cmd.exe} dès qu'il
+     * contenait « win ». La consigne système, elle, dicte {@code ls}/{@code find}/{@code grep -n} —
+     * et sur cette cible {@code bash} est le seul outil d'exploration déclaré. Le choix est remonté
+     * au démarrage, où l'on peut chercher un bash POSIX <b>et</b> le déclarer à la gateway.</p>
+     */
+    List<String> shellCommand(String command) {
+        return shell.commandLine(command);
     }
 
     /**

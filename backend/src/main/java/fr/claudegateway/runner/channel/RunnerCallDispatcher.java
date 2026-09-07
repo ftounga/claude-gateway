@@ -78,6 +78,7 @@ public class RunnerCallDispatcher {
 
     private final RunnerRegistry registry;
     private final ObjectMapper objectMapper;
+    private final fr.claudegateway.atelier.RunnerShellRecorder shellRecorder;
     private final long graceMs;
 
     private final Map<UUID, RunnerOutbound> outbound = new ConcurrentHashMap<>();
@@ -85,9 +86,11 @@ public class RunnerCallDispatcher {
     private final Map<UUID, Set<String>> capabilities = new ConcurrentHashMap<>();
 
     public RunnerCallDispatcher(RunnerRegistry registry, ObjectMapper objectMapper,
+            fr.claudegateway.atelier.RunnerShellRecorder shellRecorder,
             @Value("${app.runner.call.grace-ms:5000}") long graceMs) {
         this.registry = registry;
         this.objectMapper = objectMapper;
+        this.shellRecorder = shellRecorder;
         this.graceMs = graceMs > 0 ? graceMs : DEFAULT_GRACE_MS;
     }
 
@@ -326,7 +329,32 @@ public class RunnerCallDispatcher {
             });
         }
         capabilities.put(identity.workspaceId(), declared.isEmpty() ? DEFAULT_CAPABILITIES : declared);
+        recordDeclaredShell(identity, frame);
         log.debug("Runner prêt (workspace={}, capacités={})", identity.workspaceId(), declared);
+    }
+
+    /**
+     * Retient le <b>genre d'interpréteur</b> que le runner déclare (F-38 / SF-38-27).
+     *
+     * <p>Il ne peut pas rester en mémoire à côté des capacités : la consigne système est construite
+     * par le pod qui sert le message, qui n'est pas forcément celui qui porte la socket
+     * (HPA {@code min 1 / max 4}, SF-38-12). Il est donc persisté sur le projet — pour le
+     * {@code workspaceId} <b>de la session</b>, jamais pour un identifiant lu dans la trame.</p>
+     *
+     * <p>Best-effort, comme le reste de {@code ready} : une écriture qui échoue ne doit pas couper
+     * une liaison runner par ailleurs saine.</p>
+     */
+    private void recordDeclaredShell(RunnerIdentity identity, JsonNode frame) {
+        JsonNode node = frame.path("shell");
+        if (!node.isTextual()) {
+            return; // Runner antérieur à SF-38-27 : rien n'est déclaré, rien n'est écrit.
+        }
+        try {
+            shellRecorder.recordRunnerShell(identity.workspaceId(), node.asText());
+        } catch (RuntimeException e) {
+            log.warn("Interpréteur déclaré non enregistré (workspace={}) : {}",
+                    identity.workspaceId(), e.getMessage());
+        }
     }
 
     private void onToolResult(RunnerIdentity identity, JsonNode frame) {

@@ -37,6 +37,14 @@ class BashToolTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /**
+     * Interpréteur élu pour ces tests (F-38 / SF-38-27). L'outil ne choisit plus lui-même : on lui
+     * donne l'élection, et ces cas s'exécutent tous sous un shell POSIX — c'est ce que garantit le
+     * {@code @DisabledOnOs(WINDOWS)} de la classe.
+     */
+    private static final ShellElection POSIX_SHELL =
+            ShellElection.elect(OperatingSystem.LINUX, System.getenv(), Files::isExecutable);
+
     @TempDir
     Path root;
 
@@ -116,7 +124,7 @@ class BashToolTest {
 
     @Test
     void refuseLexecutionQuandLaMachineNeLaPasAutorisee() {
-        ToolOutcome outcome = new BashTool(new PathGuard(root), false).run(command("echo x"), context);
+        ToolOutcome outcome = new BashTool(new PathGuard(root), false, POSIX_SHELL).run(command("echo x"), context);
 
         assertFalse(outcome.ok());
         assertEquals("unsupported_tool", outcome.errorCode());
@@ -204,7 +212,7 @@ class BashToolTest {
     }
 
     private BashTool enabled() {
-        return new BashTool(new PathGuard(root), true);
+        return new BashTool(new PathGuard(root), true, POSIX_SHELL);
     }
 
     private static ObjectNode command(String command) {

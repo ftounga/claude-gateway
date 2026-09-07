@@ -138,6 +138,81 @@ class AtelierChatServiceSystemPromptTest {
     }
 
     @Test
+    void onAWindowsMachineWithoutBashTheRoleSpeaksPowerShell() {
+        // F-38 / SF-38-27 : le runner a élu PowerShell faute de bash. Continuer à dicter
+        // `ls`/`find`/`grep -n` ferait échouer chaque exploration — et sur cette cible, bash est
+        // le seul outil d'exploration déclaré.
+        String system = systemPromptOfRunnerProjectDeclaring("powershell");
+
+        assertThat(system).contains("Get-ChildItem");
+        assertThat(system).contains("Select-String");
+        assertThat(system).doesNotContain("bash (ls, find, grep -n)");
+    }
+
+    @Test
+    void onAMachineWithOnlyCmdTheRoleSaysThereIsNoGrep() {
+        String system = systemPromptOfRunnerProjectDeclaring("cmd");
+
+        assertThat(system).contains("cmd.exe");
+        assertThat(system).contains("dir /s /b");
+        assertThat(system).contains("findstr");
+        assertThat(system).doesNotContain("bash (ls, find, grep -n)");
+    }
+
+    @Test
+    void anUndeclaredInterpreterKeepsThePosixWording() {
+        // Runner antérieur à SF-38-27, ou projet dont aucun runner ne s'est encore connecté :
+        // la consigne ne change pas, et elle reste juste sur toute machine Unix.
+        String system = systemPromptOfRunnerProjectDeclaring(null);
+
+        assertThat(system).contains("bash (ls, find, grep -n)");
+    }
+
+    @Test
+    void anUnknownDeclaredInterpreterFallsBackToPosixInsteadOfLeakingIntoThePrompt() {
+        // La valeur vient d'un client : hors liste blanche, elle ne doit ni changer la consigne ni
+        // y apparaître (décision D6).
+        String system = systemPromptOfRunnerProjectDeclaring("<script>fish</script>");
+
+        assertThat(system).contains("bash (ls, find, grep -n)");
+        assertThat(system).doesNotContain("fish");
+    }
+
+    @Test
+    void aHostedProjectIgnoresTheDeclaredInterpreter() {
+        // Cible SANDBOX : il n'y a pas de machine, donc pas d'interpréteur. La colonne, même
+        // renseignée par un ancien appairage, ne doit rien changer ici.
+        Workspace hosted = new Workspace();
+        hosted.setId(workspaceId);
+        hosted.setUserId(userId);
+        hosted.setSource(WorkspaceSource.ARCHIVE);
+        hosted.setRunnerShell("cmd");
+        when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(hosted);
+        when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
+        lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
+                .thenThrow(new InvalidFilePathException("absent"));
+
+        String system = systemPrompt();
+
+        assertThat(system).contains("list_files, read_file, write_file, search_files");
+        assertThat(system).doesNotContain("cmd.exe");
+    }
+
+    /** Consigne d'un projet en cible {@code RUNNER} dont le runner a déclaré {@code shell}. */
+    private String systemPromptOfRunnerProjectDeclaring(String declaredShell) {
+        Workspace runner = new Workspace();
+        runner.setId(workspaceId);
+        runner.setUserId(userId);
+        runner.setSource(WorkspaceSource.ARCHIVE);
+        runner.setExecutionTarget(WorkspaceExecutionTarget.RUNNER);
+        runner.setRunnerShell(declaredShell);
+        when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(runner);
+        when(runnerToolGateway.listFiles(any(), any())).thenReturn(runnerOk(""));
+        when(runnerToolGateway.readFile(any(), any(), any())).thenReturn(runnerOk("conventions"));
+        return systemPrompt();
+    }
+
+    @Test
     void projectConventionsAreStillInlinedInFull() {
         when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
         when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))

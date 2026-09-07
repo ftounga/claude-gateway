@@ -1342,9 +1342,14 @@ public class AtelierChatService implements RelayInterruptTarget {
         // L'énoncé du rôle suit l'outillage réellement déclaré (SF-39-05) : annoncer des outils qui
         // n'existent pas dans ce projet ne produirait que des appels perdus.
         if (workspace.isRunnerTarget()) {
+            // La syntaxe d'exploration suit l'interpréteur que le runner a élu et déclaré
+            // (F-38 / SF-38-27). Dicter `ls`/`find`/`grep -n` à un poste qui n'a que `cmd.exe`
+            // faisait échouer chaque exploration — et sur cette cible, bash est le SEUL moyen
+            // d'explorer, puisque list_files et search_files n'y sont pas déclarés (SF-39-05).
             system.append("Tu es un assistant de développement qui travaille sur le projet de l'utilisateur, ")
-                    .append("sur sa machine. Explore avec bash (ls, find, grep -n) — c'est le bon outil pour ")
-                    .append("lister, chercher et vérifier. Utilise read_file pour lire un fichier que tu vas ")
+                    .append("sur sa machine. ")
+                    .append(RunnerShell.resolve(workspace.getRunnerShell()).explorationGuidance())
+                    .append(" Utilise read_file pour lire un fichier que tu vas ")
                     .append("utiliser, et write_file pour l'écrire. Ne fais aucune supposition sur un fichier ")
                     .append("sans l'avoir lu. Après une modification, résume clairement ce que tu as changé.\n\n");
         } else {

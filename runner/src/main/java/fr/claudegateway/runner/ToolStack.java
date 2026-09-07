@@ -24,18 +24,22 @@ public final class ToolStack {
     public static ToolStack create(RunnerConfig config, Console console, FrameSender sender) {
         ExclusionRules exclusions = ExclusionRules.load(config.workspaceRoot(), console);
         PathGuard guard = new PathGuard(config.workspaceRoot(), exclusions);
-        BashTool bash = new BashTool(guard, config.allowBash());
+        // L'interpréteur est élu ici, une fois, et non redécidé à chaque commande (SF-38-27) : c'est
+        // le même point de montage qui garantit que les deux transports exécutent sous le même shell.
+        ShellElection shell = ShellElection.elect();
+        BashTool bash = new BashTool(guard, config.allowBash(), shell);
         ToolRouter tools = new ToolRouter(new FileTools(guard), bash);
 
         console.info("Outils fichiers actifs, confinés à : " + config.workspaceRoot());
         console.info(bash.enabled()
                 ? "Exécution de commandes ACTIVÉE (--allow-bash) — les commandes tournent avec vos droits."
                 : "Exécution de commandes désactivée (relancez avec --allow-bash pour l'autoriser).");
+        console.info("Interpréteur : " + shell.description());
         console.info("Exclusions : " + exclusions.userRuleCount() + " règle(s) issues de "
                 + exclusions.source() + " + liste par défaut non désactivable ("
                 + String.join(", ", ExclusionRules.DEFAULT_DENY) + ").");
 
-        return new ToolStack(new ToolDispatcher(tools, tools.capabilities(), sender, console));
+        return new ToolStack(new ToolDispatcher(tools, tools.capabilities(), shell, sender, console));
     }
 
     public ToolDispatcher dispatcher() {

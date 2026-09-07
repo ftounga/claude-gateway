@@ -103,6 +103,18 @@ public class Workspace {
     private Boolean runnerElevated;
 
     /**
+     * Genre d'interpréteur <b>élu</b> par le runner et déclaré dans sa trame {@code ready}
+     * (F-38 / SF-38-27) : {@code posix}, {@code powershell} ou {@code cmd}. La consigne système en
+     * cible {@code RUNNER} dicte une syntaxe d'exploration ({@code ls}/{@code find}/{@code grep -n})
+     * qui n'existe pas partout ; cette colonne est ce qui lui permet de dire la vérité.
+     *
+     * <p>Nul tant qu'aucun runner ne s'est connecté, ou si le runner est antérieur à cette version —
+     * la consigne garde alors son texte POSIX, qui est correct sur toute machine Unix.</p>
+     */
+    @Column(name = "runner_shell", length = 16)
+    private String runnerShell;
+
+    /**
      * Vrai si le projet est adossé à un dépôt Git (F-31 / SF-31-02). Volontairement null-tolérant :
      * une entité construite hors du builder (tests, désérialisation partielle) n'est pas un projet
      * Git, et le chemin le plus sûr — celui de l'archive — reste le comportement par défaut.

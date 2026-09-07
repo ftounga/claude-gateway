@@ -32,7 +32,7 @@ class RunnerPollingSessionsTest {
     @BeforeEach
     void setUp() {
         registry = new InMemoryRunnerRegistry();
-        dispatcher = new RunnerCallDispatcher(registry, new ObjectMapper(), 100L);
+        dispatcher = new RunnerCallDispatcher(registry, new ObjectMapper(), (id, shell) -> { }, 100L);
         sessions = new RunnerPollingSessions(registry, dispatcher, 60_000L);
     }
 

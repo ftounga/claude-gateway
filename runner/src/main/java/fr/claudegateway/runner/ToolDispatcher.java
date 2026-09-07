@@ -44,6 +44,7 @@ public final class ToolDispatcher implements AutoCloseable {
 
     private final ToolExecutor tools;
     private final List<String> capabilities;
+    private final ShellElection shell;
     private final FrameSender sender;
     private final Console console;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -53,17 +54,21 @@ public final class ToolDispatcher implements AutoCloseable {
 
     /** Aiguilleur annonçant les seuls outils fichiers (compatibilité : tests et appels historiques). */
     public ToolDispatcher(ToolExecutor tools, FrameSender sender, Console console) {
-        this(tools, List.of("files"), sender, console);
+        this(tools, List.of("files"), null, sender, console);
     }
 
     /**
      * @param capabilities capacités annoncées dans la trame {@code ready} (contrat §2.1) ;
      *                     {@code bash} n'y figure que si la machine l'a autorisé (SF-38-07)
+     * @param shell        interpréteur élu au démarrage (SF-38-27), déclaré dans la même trame ;
+     *                     {@code null} quand l'aiguilleur est monté sans élection (tests, chemins
+     *                     historiques) — le champ est alors absent, comme chez un runner ancien
      */
-    public ToolDispatcher(ToolExecutor tools, List<String> capabilities, FrameSender sender,
-            Console console) {
+    public ToolDispatcher(ToolExecutor tools, List<String> capabilities, ShellElection shell,
+            FrameSender sender, Console console) {
         this.tools = tools;
         this.capabilities = List.copyOf(capabilities);
+        this.shell = shell;
         this.sender = sender;
         this.console = console;
         AtomicInteger counter = new AtomicInteger();
@@ -83,6 +88,12 @@ public final class ToolDispatcher implements AutoCloseable {
      * Trame d'annonce émise juste après l'ouverture de la socket. Le runner y déclare ses capacités
      * réelles : {@code files} toujours, {@code bash} seulement si l'exécution de commandes a été
      * autorisée au démarrage ({@code --allow-bash}, SF-38-07).
+     *
+     * <p>Elle porte aussi, depuis SF-38-27, le <b>genre d'interpréteur élu</b> ({@code shell}) : la
+     * consigne système en dépend, puisqu'elle dicte au modèle la syntaxe d'exploration. Le genre
+     * seulement — le chemin du binaire est une information sur la machine, elle n'a rien à faire
+     * ici. La déclaration voyage dans {@code ready} et non dans l'appairage : l'appairage n'a lieu
+     * qu'une fois, alors que celle-ci doit rester vraie à chaque lancement (décision D4).</p>
      */
     public String readyFrame(String runnerVersion) {
         ObjectNode frame = mapper.createObjectNode();
@@ -92,6 +103,9 @@ public final class ToolDispatcher implements AutoCloseable {
         com.fasterxml.jackson.databind.node.ArrayNode declared = frame.putArray("capabilities");
         capabilities.forEach(declared::add);
         frame.put("os", System.getProperty("os.name", "unknown").toLowerCase(Locale.ROOT));
+        if (shell != null) {
+            frame.put("shell", shell.declaredName());
+        }
         return write(frame);
     }
 

@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -238,8 +239,8 @@ class ToolDispatcherTest {
     @Test
     void annonceLaCapaciteBashQuandLaMachineLAutorise() throws Exception {
         PathGuard guard = new PathGuard(root);
-        ToolRouter tools = new ToolRouter(new FileTools(guard), new BashTool(guard, true));
-        try (ToolDispatcher withBash = new ToolDispatcher(tools, tools.capabilities(), sender,
+        ToolRouter tools = new ToolRouter(new FileTools(guard), new BashTool(guard, true, ShellElection.elect()));
+        try (ToolDispatcher withBash = new ToolDispatcher(tools, tools.capabilities(), ShellElection.elect(), sender,
                 new Console())) {
             JsonNode ready = MAPPER.readTree(withBash.readyFrame("1.2.3"));
 
@@ -250,11 +251,36 @@ class ToolDispatcherTest {
     }
 
     @Test
+    void declareLeGenreDInterpreteurEluDansLaTrameReady() throws Exception {
+        PathGuard guard = new PathGuard(root);
+        ToolRouter tools = new ToolRouter(new FileTools(guard), new BashTool(guard, true, ShellElection.elect()));
+        try (ToolDispatcher withBash = new ToolDispatcher(tools, tools.capabilities(), ShellElection.elect(), sender,
+                new Console())) {
+            JsonNode ready = MAPPER.readTree(withBash.readyFrame("1.2.3"));
+
+            // C'est ce champ que la consigne système suit (SF-38-27) : sans lui, elle dicterait
+            // `ls`/`find`/`grep -n` à un poste qui n'a que `cmd.exe`.
+            assertEquals(ShellElection.elect().declaredName(), ready.path("shell").asText());
+            assertTrue(List.of("posix", "powershell", "cmd").contains(ready.path("shell").asText()),
+                    "Seuls trois genres sont déclarables — la gateway rejette tout le reste");
+        }
+    }
+
+    @Test
+    void nAnnoncePasDInterpreteurQuandAucuneElectionNAEuLieu() throws Exception {
+        // Chemin historique (aiguilleur monté sans élection) : le champ est absent, exactement
+        // comme chez un runner antérieur à SF-38-27. La gateway n'enregistre alors rien.
+        JsonNode ready = MAPPER.readTree(dispatcher.readyFrame("1.2.3"));
+
+        assertTrue(ready.path("shell").isMissingNode());
+    }
+
+    @Test
     @DisabledOnOs(OS.WINDOWS)
     void diffuseLaSortieDeBashAvantSaTrameTerminale() throws Exception {
         PathGuard guard = new PathGuard(root);
-        ToolRouter tools = new ToolRouter(new FileTools(guard), new BashTool(guard, true));
-        try (ToolDispatcher withBash = new ToolDispatcher(tools, tools.capabilities(), sender,
+        ToolRouter tools = new ToolRouter(new FileTools(guard), new BashTool(guard, true, ShellElection.elect()));
+        try (ToolDispatcher withBash = new ToolDispatcher(tools, tools.capabilities(), ShellElection.elect(), sender,
                 new Console())) {
             withBash.onToolCall(toolCall("toolu_bash", "bash",
                     input("command", "echo un; echo deux 1>&2"), 30_000));
@@ -282,8 +308,8 @@ class ToolDispatcherTest {
     @DisabledOnOs(OS.WINDOWS)
     void uneAnnulationDeBashTueLeProcessusEtNeProduitQuUneTrameTerminale() throws Exception {
         PathGuard guard = new PathGuard(root);
-        ToolRouter tools = new ToolRouter(new FileTools(guard), new BashTool(guard, true));
-        try (ToolDispatcher withBash = new ToolDispatcher(tools, tools.capabilities(), sender,
+        ToolRouter tools = new ToolRouter(new FileTools(guard), new BashTool(guard, true, ShellElection.elect()));
+        try (ToolDispatcher withBash = new ToolDispatcher(tools, tools.capabilities(), ShellElection.elect(), sender,
                 new Console())) {
             withBash.onToolCall(toolCall("toolu_kill", "bash", input("command", "sleep 30"), 30_000));
             Thread.sleep(300);

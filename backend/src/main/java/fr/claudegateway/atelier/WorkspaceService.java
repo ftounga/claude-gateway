@@ -25,7 +25,7 @@ import fr.claudegateway.atelier.storage.WorkspaceStorage;
  * {@link WorkspaceStorage} (Provider Independence).
  */
 @Service
-public class WorkspaceService {
+public class WorkspaceService implements RunnerShellRecorder {
 
     /** Longueur maximale du nom d'un projet : borne de la colonne `workspaces.name`. */
     private static final int MAX_NAME_LENGTH = 255;
@@ -162,6 +162,32 @@ public class WorkspaceService {
                 workspace.setRunnerRootName(segment);
             }
             workspace.setRunnerElevated(elevated);
+            workspaceRepository.save(workspace);
+        });
+    }
+
+    /**
+     * Enregistre le <b>genre d'interpréteur</b> que le runner a élu et déclaré dans sa trame
+     * {@code ready} (F-38 / SF-38-27). La consigne système en dépend : elle dicte au modèle une
+     * syntaxe d'exploration, et cette syntaxe n'est pas la même sous bash et sous {@code cmd.exe}.
+     *
+     * <p>Trois gardes, dans cet ordre : <b>liste blanche</b> (une valeur inconnue n'écrit rien),
+     * <b>écriture seulement si la valeur change</b> (la trame arrive à chaque connexion, pas
+     * question d'écrire à chaque fois), et <b>best-effort</b> — un projet disparu ne fait pas
+     * échouer une connexion runner.</p>
+     */
+    @Override
+    @Transactional
+    public void recordRunnerShell(UUID workspaceId, String declared) {
+        RunnerShell shell = RunnerShell.fromDeclared(declared).orElse(null);
+        if (shell == null) {
+            return;
+        }
+        workspaceRepository.findById(workspaceId).ifPresent(workspace -> {
+            if (shell.declared().equals(workspace.getRunnerShell())) {
+                return;
+            }
+            workspace.setRunnerShell(shell.declared());
             workspaceRepository.save(workspace);
         });
     }
