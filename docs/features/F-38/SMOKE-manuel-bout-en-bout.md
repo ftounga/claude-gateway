@@ -75,8 +75,15 @@ Chaque scénario se solde par **OK / KO / non joué**, avec une observation en u
    autorisées »** (SF-38-19 : l'exécution est le **défaut**, `--no-bash` la restriction) et le
    compte sous lequel il tourne (S10) —, la connexion **sortante** WSS s'établit (aucun port
    entrant ouvert), l'écran passe à **« runner connecté »** en quelques secondes.
-4. Arrêter puis **relancer sans `--code`** : le jeton persisté suffit, pas de réappairage.
-5. Rejouer le **même code** : il doit être **refusé** (usage unique).
+4. **Lisibilité de la console (SF-38-26)** — c'est le **seul** point du protocole qu'aucun test ne
+   peut couvrir : il faut une vraie console Windows. Sur `cmd.exe` ou PowerShell (page de code
+   **cp850** en France, vérifiable par `chcp`), relire les lignes de démarrage : **aucun `?`** ne
+   doit apparaître à la place d'un caractère, les accents doivent être corrects, et les points de
+   suspension rendus `...`. Un `Appairage aupr?s de ...` est un **KO**.
+   L'état d'exécution doit par ailleurs n'être annoncé **qu'une fois** (« Commandes : … »), et
+   **aucune** ligne ne doit citer `--allow-bash`, qui n'a plus d'effet depuis SF-38-19.
+5. Arrêter puis **relancer sans `--code`** : le jeton persisté suffit, pas de réappairage.
+6. Rejouer le **même code** : il doit être **refusé** (usage unique).
 
 ### S2 — Fichiers, racine, exclusions et explorateur
 1. Dans l'Atelier, workspace en cible **`RUNNER`** : demander la lecture d'un fichier du projet → contenu réel de la machine, **aucun `.zip`** dans le parcours.

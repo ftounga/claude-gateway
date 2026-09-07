@@ -195,7 +195,10 @@ class RunnerToolGatewayTest {
                 RunnerToolGateway.BASH_TIMEOUT_MS, null);
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.UNSUPPORTED_TOOL);
-        assertThat(result.errorMessage()).contains("--allow-bash");
+        // Le drapeau nommé doit être celui qui AGIT (SF-38-26, D4) : --allow-bash n'a plus d'effet
+        // depuis SF-38-19, et le conseiller renvoyait l'utilisateur vers une relance sans effet.
+        assertThat(result.errorMessage()).contains("--no-bash");
+        assertThat(result.errorMessage()).doesNotContain("--allow-bash");
     }
 
     private static RunnerCallResult bashOk() {

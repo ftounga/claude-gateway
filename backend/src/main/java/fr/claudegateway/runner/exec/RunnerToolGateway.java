@@ -108,7 +108,7 @@ public class RunnerToolGateway {
      * <p>Ce que cette méthode fait <b>avant</b> d'émettre quoi que ce soit : borner la commande,
      * ramener un éventuel {@code cwd} à un chemin relatif (le runner revérifie et fait foi, D6), et
      * clamper le délai. Ce qu'elle ne fait pas : décider si la commande a le droit d'être lancée —
-     * c'est la machine qui tranche (opt-in {@code --allow-bash}), et ce sera la validation par
+     * c'est la machine qui tranche (opt-out {@code --no-bash}, SF-38-19), et ce sera la validation par
      * commande de SF-38-08 côté gateway.</p>
      *
      * @param timeoutMs délai souhaité, clampé dans {@code [1 000 ; 120 000]} ms
@@ -134,8 +134,11 @@ public class RunnerToolGateway {
                 router.call(workspaceId, callId, "bash", input, effective, onOutput);
         return RunnerErrorCodes.UNSUPPORTED_TOOL.equals(result.errorCode())
                 ? RunnerCallResult.backendError(RunnerErrorCodes.UNSUPPORTED_TOOL,
+                        // Le drapeau nommé ici doit être celui qui AGIT : --allow-bash n'a plus
+                        // d'effet depuis SF-38-19, et le conseiller envoyait l'utilisateur relancer
+                        // une commande qui n'aurait rien changé (SF-38-26, D4).
                         "L'exécution de commandes n'est pas activée sur ce runner. "
-                                + "Redémarre-le avec --allow-bash pour l'autoriser.")
+                                + "Redémarre-le sans --no-bash pour l'autoriser.")
                 : result;
     }
 

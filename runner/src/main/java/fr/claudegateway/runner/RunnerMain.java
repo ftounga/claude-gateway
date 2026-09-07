@@ -45,10 +45,10 @@ public final class RunnerMain {
         console.info("Gateway   : " + config.gatewayBaseUrl());
         console.info("Workspace : " + config.workspaceRoot());
         // Le mode est dit dans les DEUX sens (F-38 / SF-38-19, D4) : le défaut d'avant venait de ce
-        // qu'un runner restreint ne se signalait pas — on le découvrait au premier refus.
-        console.info(config.allowBash()
-                ? "Commandes : autorisées (chacune demande votre autorisation à l'écran)"
-                : "Commandes : refusées (--no-bash) — seuls les outils fichiers sont disponibles");
+        // qu'un runner restreint ne se signalait pas — on le découvrait au premier refus. Et il est
+        // dit ICI, une seule fois (SF-38-26, D1) : il vient de la configuration, il est connu avant
+        // toute connexion, et il ne changera plus de la vie du processus.
+        commandModeLines(config.allowBash()).forEach(console::info);
 
         // Avec quels droits (F-38 / SF-38-18). Le runner agit avec ceux du compte qui l'a lancé —
         // il n'en bride aucun, et ne prétend pas le faire. Le dire au démarrage évite de le
@@ -146,6 +146,29 @@ public final class RunnerMain {
         } finally {
             stopped.countDown();
         }
+    }
+
+    /**
+     * Ce que la console dit de l'exécution de commandes, et l'<b>unique</b> endroit qui le dit
+     * (F-38 / SF-38-26, D1).
+     *
+     * <p>Elle ne cite que le drapeau qui <b>agit</b>. Jusqu'ici la pile d'outils annonçait un second
+     * message attribuant l'état à {@code --allow-bash}, qui n'a plus d'effet depuis SF-38-19 : dans
+     * la branche restreinte, l'utilisateur recevait donc une consigne de réparation qui ne répare
+     * pas — relancer avec {@code --allow-bash} en gardant {@code --no-bash} ne change rien, la
+     * restriction l'emporte (SF-38-19, D3).</p>
+     *
+     * <p>{@code --allow-bash} reste accepté sans effet et <b>sans avertissement</b> : la
+     * compatibilité des lignes de commande d'hier n'est pas touchée, seule leur description l'est.</p>
+     */
+    static java.util.List<String> commandModeLines(boolean allowBash) {
+        if (allowBash) {
+            return java.util.List.of(
+                    "Commandes : autorisées — chacune demande votre autorisation à l'écran.");
+        }
+        return java.util.List.of(
+                "Commandes : refusées (--no-bash) — seuls les outils fichiers sont disponibles.",
+                "Relancez sans --no-bash pour autoriser l'exécution de commandes.");
     }
 
     /**
