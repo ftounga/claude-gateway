@@ -153,6 +153,15 @@ variable d'environnement) : option Atelier à 40 €, plan BYOK à 29 €, seuil
 annuelle de deux mois. Ce sont des **valeurs de départ**, pas des décisions figées.
 
 
+## Runner autonome (proposé 2026-09-07, après un échec d'installation chez un client)
+
+| ID | Feature | Description | Statut |
+|----|---------|-------------|--------|
+| F-44 | Runner sans prérequis Java (Windows x64) | Le runner est un `.jar` : il ne contient que du **bytecode**, et suppose une JVM 21 déjà présente sur le poste. Le 2026-09-07, cette supposition a échoué au premier contact chez un client — poste d'entreprise en **Java 8**, JVM imposée par la DSI, pas de droits administrateur. SF-38-22 a rendu l'échec **lisible** ; F-44 le **supprime** : un paquet ZIP contenant l'application **et sa propre JVM réduite** (`jlink`), qu'aucun Java système ne conditionne. **Décision de périmètre : Windows x64 seulement.** Les postes verrouillés sont les postes Windows d'entreprise ; un développeur macOS ou Linux a déjà un JDK, et le `.jar` de 2,5 Mo reste le meilleur format pour lui. Les deux formats **coexistent** — on n'échange pas un public contre un autre. **Point technique qui rend la feature abordable** : le runtime Windows se construit **depuis Linux** (`jlink --module-path <jdk-windows>/jmods`), donc **aucune matrice CI Windows** ; mesuré le 2026-09-07 : **39 Mo** compressés. **Hors périmètre** : macOS et Linux (à ouvrir si un client bute), les installeurs natifs `.msi`/`.pkg` (ils demandent les droits admin qu'on cherche à éviter), et GraalVM `native-image` (son seul gain est un démarrage instantané, sans valeur pour un processus connecté des heures, contre un risque réel : toute classe instanciée par réflexion doit être déclarée, et un oubli ne se voit que chez le client). | **À faire** |
+
+**Découpage** : **SF-44-01** construire le paquet (build croisé, structure, test) ; **SF-44-02** le servir et le proposer à l'écran.
+
+
 ## Features V3 (backlog — hors périmètre actuel)
 
 | ID | Feature | Description | Cible |
