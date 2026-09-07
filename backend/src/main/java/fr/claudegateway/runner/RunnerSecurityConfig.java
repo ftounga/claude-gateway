@@ -44,6 +44,10 @@ public class RunnerSecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/runner/ws").permitAll()
                         // Téléchargement du binaire runner (SF-38-03) : client public, sans secret.
                         .requestMatchers(HttpMethod.GET, "/runner/download").permitAll()
+                        // Paquet autonome Windows (F-44 / SF-44-02) : même nature que le jar
+                        // — un client public, sans jeton ni secret. L'appairage vient après.
+                        .requestMatchers(HttpMethod.GET, "/runner/download/windows").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/runner/download/formats").permitAll()
                         // Repli long-polling (SF-38-09) : le jeton runner voyage dans l'en-tête
                         // X-Runner-Token et est vérifié PAR LE CONTRÔLEUR (RunnerPollController) —
                         // aucun filtre HTTP ne sait lire un jeton runner, et rien n'est posé dans le

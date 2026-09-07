@@ -7,6 +7,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatRadioModule } from '@angular/material/radio';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
@@ -30,6 +31,8 @@ const API_PREFIX = '/api';
 
 /** Nom du fichier téléchargé, aligné sur le `Content-Disposition` du backend (SF-38-03). */
 const JAR_FILENAME = 'claude-runner.jar';
+/** Paquet autonome Windows (F-44) : le runner ET sa propre JVM. */
+const WINDOWS_PACKAGE_FILENAME = 'claude-runner-windows-x64.zip';
 
 /**
  * Écran d'appairage d'une machine (F-38 / SF-38-06). Trois étapes dans un seul dialogue :
@@ -57,6 +60,7 @@ const JAR_FILENAME = 'claude-runner.jar';
     MatIconModule,
     MatInputModule,
     MatProgressSpinnerModule,
+    MatRadioModule,
     MatTooltipModule,
   ],
   templateUrl: './runner-pairing-dialog.component.html',
@@ -66,6 +70,23 @@ export class RunnerPairingDialogComponent implements OnDestroy {
   private readonly atelier = inject(AtelierService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialogRef = inject<MatDialogRef<RunnerPairingDialogComponent>>(MatDialogRef);
+
+  constructor() {
+    // D3 : on demande ce qui existe AVANT de le proposer. En cas d'échec de la lecture, on retombe
+    // sur le jar seul — le format historique, toujours servi : ne rien proposer serait pire.
+    this.atelier.runnerDownloadFormats().subscribe({
+      next: (formats) => {
+        this.windowsPackageAvailable.set(formats.windowsPackage);
+        if (!formats.windowsPackage) {
+          this.format.set('jar');
+        }
+      },
+      error: () => {
+        this.windowsPackageAvailable.set(false);
+        this.format.set('jar');
+      },
+    });
+  }
   readonly data = inject<RunnerPairingDialogData>(MAT_DIALOG_DATA);
 
   /** Code d'appairage en cours, ou `null` : jamais rechargé, jamais ré-affiché après expiration. */
@@ -85,6 +106,19 @@ export class RunnerPairingDialogComponent implements OnDestroy {
    * normal — on montre la commande de construction plutôt qu'une erreur.
    */
   readonly jarUnavailable = signal(false);
+
+  /**
+   * Format choisi (F-44 / SF-44-02). `windows` par défaut : c'est celui qui ne suppose rien du
+   * poste, et le cas d'entreprise est celui où l'installation échoue.
+   */
+  readonly format = signal<'windows' | 'jar'>('windows');
+
+  /**
+   * Disponibilité des deux formats sur cette gateway. Lue au chargement pour **masquer** un format
+   * absent plutôt que d'offrir un lien qui répondrait 404 : une gateway déployée avant F-44
+   * n'empaquette pas le paquet Windows, et doit rester utilisable avec le seul jar.
+   */
+  readonly windowsPackageAvailable = signal(false);
 
   /** Racine du projet sur la machine, saisie par l'utilisateur ; sert seulement à la commande. */
   readonly workspacePath = signal('');
@@ -134,9 +168,18 @@ export class RunnerPairingDialogComponent implements OnDestroy {
   readonly runCommand = computed(() => {
     const path = this.workspacePath().trim() || DEFAULT_WORKSPACE_PATH;
     const code = this.codeUsable() ? this.pairingCode()!.code : '<code-appairage>';
-    return `java -jar ${JAR_FILENAME} --gateway ${this.gatewayUrl}`
+    // Le paquet autonome s'exécute par son lanceur : il ne faut surtout pas préfixer par `java`,
+    // qui rappellerait la JVM du système — celle-là même qui manque ou qui est trop ancienne.
+    const launcher = this.usesWindowsPackage()
+      ? 'claude-runner.cmd'
+      : `java -jar ${JAR_FILENAME}`;
+    return `${launcher} --gateway ${this.gatewayUrl}`
       + ` --workspace ${path} --code ${code}`;
   });
+
+  /** Vrai quand le format retenu est le paquet autonome, et qu'il est réellement disponible. */
+  readonly usesWindowsPackage = computed(
+    () => this.format() === 'windows' && this.windowsPackageAvailable());
 
   /** Demande un nouveau code d'appairage ; remplace celui affiché, le cas échéant. */
   generateCode(): void {
@@ -172,12 +215,16 @@ export class RunnerPairingDialogComponent implements OnDestroy {
     if (this.downloading()) {
       return;
     }
+    const windows = this.usesWindowsPackage();
     this.downloading.set(true);
-    this.atelier.downloadRunnerJar().subscribe({
+    const request = windows
+      ? this.atelier.downloadRunnerWindowsPackage()
+      : this.atelier.downloadRunnerJar();
+    request.subscribe({
       next: (blob) => {
         this.downloading.set(false);
         this.jarUnavailable.set(false);
-        this.saveBlob(blob);
+        this.saveBlob(blob, windows ? WINDOWS_PACKAGE_FILENAME : JAR_FILENAME);
       },
       error: (err: unknown) => {
         this.downloading.set(false);
@@ -221,11 +268,11 @@ export class RunnerPairingDialogComponent implements OnDestroy {
   }
 
   /** Déclenche l'enregistrement du blob téléchargé sous le nom attendu par la commande affichée. */
-  private saveBlob(blob: Blob): void {
+  private saveBlob(blob: Blob, filename: string): void {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = JAR_FILENAME;
+    anchor.download = filename;
     anchor.click();
     URL.revokeObjectURL(url);
   }

@@ -27,6 +27,7 @@ import {
   GitPushResult,
   RunnerAuditEntry,
   RunnerKillResult,
+  RunnerDownloadFormats,
   RunnerPairingCode,
   RunnerStatus,
   WorkspaceDetail,
@@ -592,5 +593,22 @@ export class AtelierService {
    */
   downloadRunnerJar(): Observable<Blob> {
     return this.http.get('/api/runner/download', { responseType: 'blob' });
+  }
+
+  /**
+   * Télécharge le **paquet autonome Windows** (F-44 / SF-44-02) : le runner accompagné de sa propre
+   * JVM, pour les postes où aucun Java 21 n'est installable. Endpoint public comme le jar.
+   */
+  downloadRunnerWindowsPackage(): Observable<Blob> {
+    return this.http.get('/api/runner/download/windows', { responseType: 'blob' });
+  }
+
+  /**
+   * Formats de runner réellement disponibles sur cette gateway (F-44 / SF-44-02). L'écran les lit
+   * pour **masquer** un format absent plutôt que d'offrir un lien qui répondrait 404 — une gateway
+   * déployée avant F-44 n'empaquette pas le paquet Windows.
+   */
+  runnerDownloadFormats(): Observable<RunnerDownloadFormats> {
+    return this.http.get<RunnerDownloadFormats>('/api/runner/download/formats');
   }
 }
