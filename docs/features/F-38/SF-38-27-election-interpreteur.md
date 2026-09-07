@@ -10,7 +10,7 @@
 
 ## Statut
 
-`ready`
+`livrée`
 
 ## Date de création
 
