@@ -103,7 +103,8 @@ public class RunnerRelayClient {
             // Connexion refusée, DNS en échec, timeout de connexion : le pod n'est pas là.
             log.warn("Relais injoignable (node={}, workspace={}, appel={}, outil={}) : {}",
                     node.nodeId(), workspaceId, callId, tool, ex.getClass().getSimpleName());
-            return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE);
+            return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE,
+                    "Le pair est injoignable (" + ex.getClass().getSimpleName() + ").");
         }
     }
 
@@ -135,12 +136,18 @@ public class RunnerRelayClient {
         int status = response.getStatusCode().value();
         if (status == 401) {
             warnUnauthorized();
-            return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE);
+            // Le statut voyage dans le message : un pair qui REFUSE et un pair INJOIGNABLE rendent
+            // le même code, et sans cette précision les deux sont indiscernables dans un rapport
+            // d'incident comme dans un échec de test.
+            return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE,
+                    "Le pair a refusé le relais (401 : secret de relais rejeté).");
         }
         if (status != 200) {
             log.warn("Relais refusé par le pair (statut={}, workspace={}, appel={}, outil={})", status,
                     workspaceId, callId, tool);
-            return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE);
+            return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE,
+                    "Le pair a refusé le relais (statut HTTP " + status
+                            + (status == 404 ? " : requête reçue hors du port de relais)." : ")."));
         }
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(response.getBody(), StandardCharsets.UTF_8))) {
