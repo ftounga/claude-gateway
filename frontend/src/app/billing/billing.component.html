@@ -18,7 +18,12 @@
           </p>
           <p class="billing__current-hint">Choisissez une offre ci-dessous pour continuer sans interruption.</p>
         } @else if (sub.planCode) {
-          <h2 class="billing__current-title">Offre {{ sub.planCode }}</h2>
+          <h2 class="billing__current-title">
+            Offre {{ sub.planCode }}
+            @if (commitmentLabel(); as commitment) {
+              <span class="billing__commitment">· {{ commitment }}</span>
+            }
+          </h2>
           @if (sub.currentPeriodEnd) {
             <p class="billing__current-sub">Renouvellement le {{ sub.currentPeriodEnd | date: 'longDate' }}</p>
           }
@@ -86,12 +91,37 @@
     </section>
   }
 
-  <!-- ===== Abonnements mensuels ===== -->
-  <section class="billing__section" aria-label="Abonnements mensuels">
-    <div class="billing__section-head">
-      <h2>Abonnements mensuels</h2>
-      <p>Un stock de tokens renouvelé chaque mois. Changez d'offre à tout moment (proratisé).</p>
+  <!-- ===== Abonnements (mensuels ou annuels selon la bascule, F-43) ===== -->
+  <section class="billing__section" aria-label="Abonnements">
+    <div class="billing__section-head billing__section-head--split">
+      <div>
+        <h2>Abonnements</h2>
+        <p>Un stock de tokens renouvelé chaque mois. Changez d'offre à tout moment (proratisé).</p>
+      </div>
+
+      <!-- Bascule de périodicité (F-43). Rendue uniquement si une offre annuelle existe :
+           un contrôle inerte vaut moins que pas de contrôle du tout. -->
+      @if (hasYearlyOffer()) {
+        <mat-button-toggle-group
+          class="billing__period-toggle"
+          aria-label="Périodicité de facturation"
+          [value]="selectedPeriod()"
+          (change)="selectPeriod($event.value)"
+        >
+          <mat-button-toggle value="MONTHLY">Mensuel</mat-button-toggle>
+          <mat-button-toggle value="YEARLY">Annuel</mat-button-toggle>
+        </mat-button-toggle-group>
+      }
     </div>
+
+    @if (selectedPeriod() === 'YEARLY') {
+      <!-- Dit explicitement ce que l'engagement annuel ne change pas. Sans cette phrase, la seule
+           lecture possible de « 240 € / an » serait « douze mois de jetons d'avance ». -->
+      <p class="billing__period-note">
+        Vous payez l'année d'avance. <strong>Votre quota de tokens reste mensuel</strong> et se
+        renouvelle chaque mois, exactement comme sur une offre mensuelle.
+      </p>
+    }
 
     @if (loading()) {
       <div class="billing__feedback"><mat-spinner diameter="28"></mat-spinner><span>Chargement des offres…</span></div>
@@ -125,10 +155,24 @@
             <div class="billing__card-flags">
               @if (isRecommended(plan)) { <span class="billing__flag billing__flag--reco">Recommandé</span> }
               @if (isCurrentPlan(plan)) { <span class="billing__flag billing__flag--current">Offre actuelle</span> }
+              @if (savingsLabel(plan); as savings) {
+                <span class="billing__flag billing__flag--saving">{{ savings }}</span>
+              }
             </div>
             <h3 class="billing__card-name">{{ plan.label }}</h3>
-            @if (plan.priceEur) {
-              <p class="billing__card-price"><span class="amount">{{ plan.priceEur }} €</span><span class="per">/ mois</span></p>
+            @if (displayPrice(plan); as price) {
+              <p class="billing__card-price">
+                <span class="amount">{{ price }} €</span>
+                <span class="per">{{ pricePeriodLabel(plan) }}</span>
+              </p>
+              @if (monthlyEquivalent(plan); as perMonth) {
+                <p class="billing__card-equivalent">soit {{ perMonth }} € par mois</p>
+              }
+              <!-- L'offre reste VISIBLE et achetable au mois en position Annuel : la masquer ferait
+                   disparaître une offre valable d'un simple clic sur une bascule. -->
+              @if (selectedPeriod() === 'YEARLY' && !plan.yearlyAvailable) {
+                <p class="billing__card-equivalent">Mensuel uniquement</p>
+              }
             }
             @if (isByokPlan(plan)) {
               <p class="billing__card-tokens">
@@ -137,7 +181,9 @@
               </p>
               <p class="billing__card-feature">Atelier (Claude Code Lite) inclus</p>
             } @else {
-              <p class="billing__card-tokens">{{ plan.tokens | number }} tokens inclus / mois</p>
+              <p class="billing__card-tokens">
+                {{ plan.tokens | number }} tokens inclus{{ tokensSuffix(plan) }}
+              </p>
               @if (plan.code === 'GOLD') {
                 <p class="billing__card-feature">Atelier (Claude Code Lite) inclus</p>
               }

@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 
 import {
   AtelierOptionView,
+  BillingPeriodChoice,
   ChangePlanRequest,
   CheckoutRequest,
   CheckoutResponse,
@@ -32,15 +33,20 @@ export class BillingService {
     return this.http.get<SubscriptionView>('/api/billing/subscription');
   }
 
-  /** Crée une session de paiement Stripe et renvoie l'URL de redirection. */
-  startCheckout(planCode: string): Observable<CheckoutResponse> {
-    const body: CheckoutRequest = { planCode };
+  /**
+   * Crée une session de paiement Stripe et renvoie l'URL de redirection.
+   *
+   * La périodicité est **omise** du corps quand elle n'est pas fournie : le serveur retient alors le
+   * mensuel, et le contrat d'origine reste envoyé à l'octet près.
+   */
+  startCheckout(planCode: string, period?: BillingPeriodChoice): Observable<CheckoutResponse> {
+    const body: CheckoutRequest = period ? { planCode, period } : { planCode };
     return this.http.post<CheckoutResponse>('/api/billing/checkout', body);
   }
 
-  /** Change le plan de l'abonnement existant (upgrade/downgrade, SF-21-05). */
-  changePlan(planCode: string): Observable<SubscriptionView> {
-    const body: ChangePlanRequest = { planCode };
+  /** Change le plan et/ou la périodicité de l'abonnement existant (SF-21-05, F-43). */
+  changePlan(planCode: string, period?: BillingPeriodChoice): Observable<SubscriptionView> {
+    const body: ChangePlanRequest = period ? { planCode, period } : { planCode };
     return this.http.post<SubscriptionView>('/api/billing/subscription/change', body);
   }
 
