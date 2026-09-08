@@ -300,7 +300,7 @@ absolu (PR #238, migration `052`) ; **SF-38-16** écran « sur ma machine » (PR
 explorateur branché sur `list_files` / `read_file` du runner au lieu de copier le projet chez nous
 (PR #240), c'est-à-dire la recommandation du §7.2 retenue telle quelle.
 
-**Second passage — le scénario joué en entier.** Huit défauts, dans l'ordre où ils sont tombés :
+**Second passage — le scénario joué en entier.** Dix défauts, dans l'ordre où ils sont tombés :
 
 | # | Ce que le banc d'essai a montré | Réponse | PR |
 |---|---|---|---|
@@ -311,8 +311,10 @@ explorateur branché sur `list_files` / `read_file` du runner au lieu de copier 
 | 6 | Treize étapes de procédure, plusieurs commandes chacune, **une demande d'autorisation à cliquer par commande** | **SF-38-20** — « Tout autoriser pour ce message » et projet qui ne demande plus ; amende D7 de SF-38-08 **sans toucher** au journal d'audit ni au coupe-circuit : c'est le clic qui disparaît, jamais la trace | #247, #248 |
 | 7 | L'explorateur montrait **40 112** fichiers de `node_modules` pour **478** de projet, et se **taisait** en tronquant — dix minutes à chercher un dossier que le système savait ne pas avoir envoyé | **SF-38-21** — bruit de construction écarté par défaut (négociable), troncature annoncée | #251 |
 | 8 | Rien ne disait **avec quels droits** le runner agit (question posée pendant la préparation ; le README était ambigu) | **SF-38-18** — droits détectés par le runner, déclarés à l'appairage, affichés là où l'on autorise une commande ; informatif, jamais une garde | #252 (migration `053`) |
+| 9 | Le terminal **n'acceptait aucune autre question pendant un tour** : dix minutes à regarder l'agent partir dans une mauvaise direction sans pouvoir le lui dire — *« Pourtant Claude Code le permet. »* | **SF-39-19** — le champ reste actif, le message est **déposé** pour le tour en cours et consommé à la frontière sûre de l'itération suivante ; ce n'est pas une interruption, on ajoute au contexte sans rien casser | #260 |
+| 10 | Deux signalements sans rapport, tombés ensemble : le **panneau de fichiers s'ouvrait vide** (il lisait son projet dans l'URL, restée `/atelier` en mode panneau depuis SF-39-18) ; et l'agent répondait **« je n'ai pas accès au réseau »** — c'était vrai, et il contournait par `curl` du runner | correctifs — l'hôte passe le projet au panneau, qui **se ferme** à défaut plutôt que de naviguer et tuer le tour ; `web_search` / `web_fetch`, outils **serveur** du fournisseur, sont **déclarés** (Provider-First : relayer, pas réimplémenter) | #262 |
 
-**Ce que cela dit du banc d'essai lui-même.** Neuf subfeatures et trois correctifs dans la journée,
+**Ce que cela dit du banc d'essai lui-même.** Dix subfeatures et quatre correctifs dans la journée,
 et pas un seul de ces défauts n'aurait été trouvé par la suite de tests : ils demandent tous une
 vraie machine, un vrai projet et un tour qui **dure**. C'est la raison de le rejouer après chaque
 lot qui touche au runner ou à la boucle maison.
