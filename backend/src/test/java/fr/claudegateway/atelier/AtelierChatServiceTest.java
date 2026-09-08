@@ -581,6 +581,11 @@ class AtelierChatServiceTest {
         // Le dernier appel est celui de la boucle principale ; on vérifie qu'aucune requête n'a
         // jamais offert d'outil d'écriture ou d'exécution à la sous-boucle.
         assertThat(agentProvider.toolNamesSeen).doesNotContain("bash");
+        // SF-39-20 : et ce qu'elle A, dit positivement. L'assertion négative ci-dessus restait vraie
+        // sur une panoplie vide — c'est ainsi que l'exploration a pu se retrouver avec un seul
+        // outil en cible RUNNER sans qu'aucun test bronche. La panoplie est la même ici (D2).
+        assertThat(agentProvider.toolBelts.get(1))
+                .containsExactly("list_files", "read_file", "search_files");
     }
 
     // ------------------------------------------------- SF-39-16 : fermeture de la cible SANDBOX

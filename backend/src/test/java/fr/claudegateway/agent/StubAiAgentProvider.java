@@ -20,12 +20,22 @@ public class StubAiAgentProvider implements AiAgentProvider {
     public volatile AgentTurnRequest lastRequest;
     /** Tous les noms d'outils offerts, tous appels confondus — pour vérifier ce qu'a vu une sous-boucle. */
     public final java.util.Set<String> toolNamesSeen = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /**
+     * Panoplie offerte à <b>chaque</b> appel, dans l'ordre (F-39 / SF-39-20). L'ensemble agrégé
+     * {@link #toolNamesSeen} ne sait dire que ce qui a été offert <i>quelque part</i> : il ne
+     * distingue pas la boucle principale de sa sous-boucle, et ne peut donc porter qu'une assertion
+     * négative — laquelle reste vraie sur une panoplie vide. C'est exactement ce qui a laissé
+     * l'exploration se retrouver avec un seul outil sans qu'aucun test bronche.
+     */
+    public final List<List<String>> toolBelts =
+            java.util.Collections.synchronizedList(new ArrayList<>());
 
     public void reset() {
         script.clear();
         lastRequest = null;
         duringTurn = null;
         toolNamesSeen.clear();
+        toolBelts.clear();
         idSeq = 0;
     }
 
@@ -137,9 +147,14 @@ public class StubAiAgentProvider implements AiAgentProvider {
             duringTurn = null;
             action.run();
         }
+        List<String> belt = new ArrayList<>();
         if (request.tools() != null) {
-            request.tools().forEach(tool -> toolNamesSeen.add(tool.name()));
+            request.tools().forEach(tool -> {
+                toolNamesSeen.add(tool.name());
+                belt.add(tool.name());
+            });
         }
+        toolBelts.add(List.copyOf(belt));
         AgentTurn next = script.poll();
         if (next != null) {
             return next;

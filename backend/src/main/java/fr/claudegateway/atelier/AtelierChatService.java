@@ -127,6 +127,15 @@ public class AtelierChatService implements RelayInterruptTarget {
     /**
      * Outils confiés à une sous-boucle d'exploration (F-39 / SF-39-14) : la lecture, et rien
      * d'autre. Ni écriture, ni {@code bash}, ni plan, ni délégation récursive.
+     *
+     * <p>Cet ensemble est <b>la panoplie</b> de la sous-boucle, plus un filtre appliqué à celle du
+     * travail principal (F-39 / SF-39-20, décision D1). La nuance a coûté la capacité entière :
+     * dériver l'outillage d'une boucle depuis celui d'une autre le rend tributaire d'une décision
+     * étrangère, et le jour où SF-39-05 a retiré {@code list_files} et {@code search_files} de la
+     * panoplie principale en cible {@code RUNNER}, l'exploration a perdu les deux tiers de la sienne
+     * sans qu'une ligne la concernant soit touchée — il ne lui restait que {@code read_file}, donc
+     * la capacité de lire un fichier dont elle connaît déjà le chemin exact, et rien pour le
+     * trouver.</p>
      */
     private static final java.util.Set<String> READ_ONLY_TOOLS =
             java.util.Set.of("read_file", "list_files", "search_files");
@@ -752,10 +761,11 @@ public class AtelierChatService implements RelayInterruptTarget {
             return new ExplorationOutcome(ToolOutcome.error("Question requise pour explorer."), 0, 0);
         }
         String scope = call.input().path("path").asText(null);
-        // Outils de la sous-boucle : lecture seule, et cela vaut aussi en cible RUNNER (D2).
-        List<AgentTool> readTools = buildTools(workspace).stream()
-                .filter(tool -> READ_ONLY_TOOLS.contains(tool.name()))
-                .toList();
+        // Outils de la sous-boucle : lecture seule, et cela vaut aussi en cible RUNNER (D2 de
+        // SF-39-14). Sa panoplie est CONSTRUITE, jamais dérivée de celle du travail principal
+        // (SF-39-20, D1) : elle est la même sur les deux cibles, et n'y perd rien quand la panoplie
+        // principale change.
+        List<AgentTool> readTools = explorationTools();
         try {
             AtelierExploration.Result result = AtelierExploration.run(agentProvider, model, apiKey,
                     question.trim(), scope, readTools,
@@ -1327,6 +1337,28 @@ public class AtelierChatService implements RelayInterruptTarget {
                             "required", List.of("query"))));
         }
         return List.copyOf(tools);
+    }
+
+    /**
+     * Panoplie de la sous-boucle d'exploration (F-39 / SF-39-20) : {@code list_files},
+     * {@code read_file}, {@code search_files} — <b>les mêmes sur les deux cibles</b> (décision D2).
+     *
+     * <p>Elle ne dépend <b>pas</b> du workspace, et c'est tout le correctif. La version précédente
+     * filtrait la panoplie du travail principal ; en cible {@code RUNNER}, où SF-39-05 a retiré
+     * {@code list_files} et {@code search_files} au profit de {@code bash} — que l'exploration n'a
+     * pas le droit d'appeler (D2 de SF-39-14, la porte de confirmation) —, il n'en restait
+     * qu'un. La sous-boucle pouvait lire un chemin qu'on lui donnait, jamais en trouver un.</p>
+     *
+     * <p>Les définitions sont reprises de {@link #fileTools} plutôt que réécrites : la sous-boucle
+     * doit lire un fichier exactement comme le travail principal — pagination comprise
+     * (SF-39-06) —, et deux descriptions à maintenir en parallèle finiraient par diverger.
+     * {@code bashAvailable} est passé à {@code false} parce que la sous-boucle n'a jamais de
+     * {@code bash} : ce n'est pas la cible qu'on décrit ici, c'est elle.</p>
+     */
+    private List<AgentTool> explorationTools() {
+        return fileTools(Map.of("type", "string"), false).stream()
+                .filter(tool -> READ_ONLY_TOOLS.contains(tool.name()))
+                .toList();
     }
 
     /**
