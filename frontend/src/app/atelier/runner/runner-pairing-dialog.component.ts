@@ -143,6 +143,46 @@ export function proxyExportCommand(platform: RunnerHostPlatform, proxyUrl: strin
     : `export HTTPS_PROXY=${proxyUrl}`;
 }
 
+/**
+ * Étape du parcours de mise en service (F-45 / SF-45-05).
+ *
+ * <p>Les quatre étapes sont celles qui existaient déjà ; ce qui change est qu'une seule est
+ * <b>dépliée</b> à la fois. Le dialogue avait doublé de volume avec F-45 — quatre étapes et un arbre
+ * de lecture à trois branches dans une seule colonne — et se lisait moins bien qu'avant d'avoir été
+ * amélioré.</p>
+ */
+export type PairingStep = 'network' | 'code' | 'download' | 'launch';
+
+/**
+ * Ce que l'utilisateur déclare avoir lu dans son terminal à l'étape 1 (F-45 / SF-45-05, décision D2).
+ *
+ * <p>C'est une <b>déclaration</b>, pas une mesure : le navigateur ne peut pas lire le terminal, et
+ * c'est la limite assumée de F-45. Mais les trois branches affichées ensemble sont, par
+ * construction, fausses aux deux tiers pour celui qui les lit — il n'a obtenu qu'un seul des trois
+ * résultats.</p>
+ */
+export type NetworkVerdict = 'unknown' | 'reachable' | 'proxy-auth' | 'no-answer';
+
+/**
+ * Libellé de l'interpréteur élu par le runner (F-38 / SF-38-27), <b>écrit en dur par valeur</b>
+ * (F-45 / SF-45-05, décision D8).
+ *
+ * <p>La valeur vient à l'origine d'une trame du runner. Elle est déjà filtrée par liste blanche côté
+ * gateway ; elle n'est en plus <b>jamais</b> rendue telle quelle. Une valeur inattendue ne produit
+ * rien du tout — la conclusion omet la ligne plutôt que d'écrire « inconnu », qui se lirait comme un
+ * défaut alors qu'un runner antérieur à SF-38-27 n'a simplement rien déclaré.</p>
+ */
+const SHELL_LABELS: Record<string, string> = {
+  posix: 'bash',
+  powershell: 'PowerShell',
+  cmd: 'cmd.exe',
+};
+
+/** Libellé affichable de l'interpréteur déclaré, ou `null` s'il n'y en a pas à afficher. */
+export function shellLabel(declared: string | null | undefined): string | null {
+  return declared ? SHELL_LABELS[declared] ?? null : null;
+}
+
 /** Nom du fichier de la fiche DSI, tel qu'il arrive dans les téléchargements (F-45 / SF-45-03). */
 export const IT_SHEET_FILENAME = 'runner-acces-reseau-dsi.txt';
 
@@ -375,6 +415,27 @@ export class RunnerPairingDialogComponent implements OnDestroy {
   /** Dernier signe de vie relevé, ou `null` si aucun runner ne s'est jamais signalé. */
   readonly runnerLastSeenAt = signal<string | null>(null);
 
+  /**
+   * Interpréteur élu par le runner et déclaré à la gateway (F-38 / SF-38-27), relevé avec l'état
+   * (F-45 / SF-45-05). `null` tant qu'aucun runner ne l'a déclaré.
+   */
+  readonly runnerShell = signal<string | null>(null);
+
+  /**
+   * Étape dépliée, ou `null` quand elles le sont toutes (c'est l'état de la conclusion).
+   *
+   * <p>Replier n'est pas verrouiller : tout en-tête reste cliquable à tout moment. Le seul obstacle
+   * que l'utilisateur ne peut pas lever seul — le `407` — se lève côté DSI ; bloquer le parcours
+   * ferait de ce dialogue un piège pendant que le remède arrive (D3).</p>
+   */
+  readonly step = signal<PairingStep | null>('network');
+
+  /** Ce que l'utilisateur déclare avoir lu à l'étape 1 (D2). */
+  readonly networkVerdict = signal<NetworkVerdict>('unknown');
+
+  /** Vrai dès que le runner a été récupéré — téléchargé ici, ou déclaré déjà présent. */
+  readonly runnerObtained = signal(false);
+
   private countdown: ReturnType<typeof setInterval> | null = null;
 
   private statusPoll: ReturnType<typeof setInterval> | null = null;
@@ -536,6 +597,95 @@ export class RunnerPairingDialogComponent implements OnDestroy {
       : seen.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   });
 
+  /** Libellé de l'interpréteur élu, ou `null` : la conclusion omet alors la ligne (D8). */
+  readonly shellLabel = computed(() => shellLabel(this.runnerShell()));
+
+  /** Vrai quand une étape est dépliée. Une seule l'est à la fois. */
+  isOpen(step: PairingStep): boolean {
+    return this.step() === step;
+  }
+
+  /**
+   * Déplie une étape, ou replie celle qui l'était déjà. Aucun état n'est perdu en repliant : le
+   * parcours vit dans les signaux du composant, pas dans le gabarit.
+   */
+  toggleStep(step: PairingStep): void {
+    this.step.set(this.isOpen(step) ? null : step);
+  }
+
+  /**
+   * Vrai quand l'étape est <b>faite</b>. Déduit d'un fait à chaque fois qu'il en existe un — code
+   * généré, runner récupéré, machine vue (D5). L'étape 1 est la seule sans fait disponible : le
+   * navigateur ne lit pas le terminal, c'est donc la déclaration de l'utilisateur qui la conclut.
+   */
+  stepDone(step: PairingStep): boolean {
+    switch (step) {
+      case 'network':
+        return this.networkVerdict() === 'reachable';
+      case 'code':
+        return this.codeUsable();
+      case 'download':
+        return this.runnerObtained();
+      case 'launch':
+        return this.runnerConnected();
+    }
+  }
+
+  /**
+   * Ce que l'en-tête replié rapporte de l'étape, ou une chaîne vide quand il n'y a aucun fait à
+   * rapporter. C'est la phrase entière qu'un test doit pouvoir affirmer.
+   */
+  stepSummary(step: PairingStep): string {
+    switch (step) {
+      case 'network':
+        switch (this.networkVerdict()) {
+          case 'reachable':
+            return 'Ce terminal atteint la passerelle.';
+          case 'proxy-auth':
+            return 'Un proxy exige une authentification — voir la fiche pour votre DSI.';
+          case 'no-answer':
+            return 'Aucune réponse : le proxy n\'est pas déclaré dans ce terminal.';
+          default:
+            return '';
+        }
+      case 'code':
+        if (this.codeUsable()) {
+          return `Code généré, valable encore ${this.countdownLabel()}.`;
+        }
+        return this.codeExpired() ? 'Code expiré.' : '';
+      case 'download':
+        return this.runnerObtained() ? 'Runner récupéré.' : '';
+      case 'launch':
+        return this.machineLabel();
+    }
+  }
+
+  /**
+   * Enregistre ce que l'utilisateur a lu dans son terminal (D2). Seul un `200` fait avancer : les
+   * deux autres branches renvoient <b>ailleurs</b> — un relais local, ou la DSI —, et faire mine de
+   * poursuivre reviendrait à envoyer télécharger 39 Mo qu'on ne pourra pas appairer.
+   */
+  declareNetworkResult(verdict: NetworkVerdict): void {
+    this.networkVerdict.set(verdict);
+    if (verdict === 'reachable') {
+      this.step.set('code');
+    }
+  }
+
+  /** Ramène l'étape 1 à ses trois choix : une déclaration se révise. */
+  resetNetworkResult(): void {
+    this.networkVerdict.set('unknown');
+  }
+
+  /**
+   * L'utilisateur a déjà le runner (téléchargé à une session précédente, ou reçu par sa DSI) :
+   * l'étape est faite sans rien télécharger.
+   */
+  markRunnerObtained(): void {
+    this.runnerObtained.set(true);
+    this.step.set('launch');
+  }
+
   /** Vrai quand le format retenu est l'un des deux paquets macOS, et qu'il est disponible. */
   readonly usesMacosPackage = computed(() => {
     const selected = this.selectedPackage();
@@ -592,6 +742,8 @@ export class RunnerPairingDialogComponent implements OnDestroy {
         this.generating.set(false);
         this.pairingCode.set(code);
         this.startCountdown();
+        // Le code expire en 5 minutes : l'étape suivante s'ouvre d'elle-même (F-45 / SF-45-05).
+        this.step.set('download');
       },
       error: (err: unknown) => {
         this.generating.set(false);
@@ -628,6 +780,7 @@ export class RunnerPairingDialogComponent implements OnDestroy {
         this.downloading.set(false);
         this.jarUnavailable.set(false);
         this.saveBlob(blob, PACKAGE_FILENAMES[selected ?? 'jar']);
+        this.markRunnerObtained();
       },
       error: (err: unknown) => {
         this.downloading.set(false);
@@ -690,8 +843,15 @@ export class RunnerPairingDialogComponent implements OnDestroy {
     this.atelier.getRunnerStatus(this.data.workspaceId).subscribe({
       next: (status) => {
         this.runnerLastSeenAt.set(status.lastSeenAt);
+        // Champ additif (F-45 / SF-45-05) : une gateway antérieure ne l'envoie pas, et la
+        // conclusion omet alors la ligne plutôt que d'écrire « inconnu ».
+        this.runnerShell.set(status.shell ?? null);
         if (status.connected) {
           this.runnerConnected.set(true);
+          // La conclusion REMPLACE le parcours : c'est la seule information attendue depuis le
+          // début, et la laisser en bas de l'étape 4 la rendait invisible sur un portable (D6).
+          // Rien n'est perdu — tout en-tête reste cliquable.
+          this.step.set(null);
           // La question posée par ce dialogue — « l'appairage a-t-il marché ? » — a sa réponse.
           // Continuer à interroger serait de la surveillance, pas de l'installation (D3).
           this.stopStatusPoll();

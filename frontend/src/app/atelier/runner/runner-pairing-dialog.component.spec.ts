@@ -18,6 +18,7 @@ import {
   RUNNER_STATUS_POLL_MS,
   RunnerHostPlatform,
   RunnerPairingDialogComponent,
+  shellLabel,
   WINDOWS_WORKSPACE_PATH,
   detectHostPlatform,
   itDepartmentSheet,
@@ -425,18 +426,25 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     expect(component.relayExportCommand).toContain('$env:HTTPS_PROXY');
   });
 
-  it('affiche les trois branches de lecture et le remède du 407', () => {
+  it('propose les trois issues du diagnostic, et le remède du 407 une fois déclaré', () => {
     setup(EVERY_FORMAT, 'windows');
-    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    const text = () => (fixture.nativeElement as HTMLElement).textContent ?? '';
 
-    expect(text).toContain('Vérifier l\'accès réseau');
-    expect(text).toContain('200');
-    expect(text).toContain('407');
-    expect(text).toContain('relais local');
-    expect(text).toContain('NTLM');
-    expect(text).toContain('Kerberos');
-    // La limite est assumée à l'écran plutôt que cachée (D7).
-    expect(text).toContain('ne lit pas la configuration proxy du poste');
+    // Avant déclaration : la question et ses trois issues, pas les branches (SF-45-05, D2).
+    expect(text()).toContain('Vérifier l\'accès réseau');
+    expect(text()).toContain('Qu\'affiche votre terminal ?');
+    expect(text()).toContain('200');
+    expect(text()).toContain('407');
+    expect(text()).not.toContain('relais local');
+    // La limite est assumée à l'écran plutôt que cachée (SF-45-01, D7).
+    expect(text()).toContain('ne lit pas la configuration proxy du poste');
+
+    component.declareNetworkResult('proxy-auth');
+    fixture.detectChanges();
+
+    expect(text()).toContain('relais local');
+    expect(text()).toContain('NTLM');
+    expect(text()).toContain('Kerberos');
   });
 
   it('place la vérification réseau avant le téléchargement du runner', () => {
@@ -621,6 +629,8 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
 
   it('affiche la tolérance de 90 s plutôt que de promettre du temps réel', () => {
     setup();
+    component.toggleStep('launch');
+    fixture.detectChanges();
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
 
     expect(text).toContain('En attente de la machine');
@@ -725,12 +735,214 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     expect(IT_SHEET_FILENAME).toBe('runner-acces-reseau-dsi.txt');
   });
 
-  it('affiche le bloc « Pour votre DSI » dans l\'étape réseau', () => {
+  it('affiche le bloc « Pour votre DSI » sous une branche en échec, et seulement là', () => {
     setup();
-    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    const text = () => (fixture.nativeElement as HTMLElement).textContent ?? '';
 
-    expect(text).toContain('Pour votre DSI');
-    expect(text).toContain('Copier la fiche');
-    expect(text).toContain('Télécharger');
+    // D4 : la fiche n'a d'objet que s'il y a quelque chose à demander à la DSI.
+    expect(text()).not.toContain('Pour votre DSI');
+
+    component.declareNetworkResult('proxy-auth');
+    fixture.detectChanges();
+
+    expect(text()).toContain('Pour votre DSI');
+    expect(text()).toContain('Copier la fiche');
+    expect(text()).toContain('Télécharger');
+
+    // Déclarer 200 ouvre l'étape 2 ; on rouvre l'étape 1 pour vérifier que la fiche a disparu.
+    component.declareNetworkResult('reachable');
+    component.toggleStep('network');
+    fixture.detectChanges();
+
+    expect(text()).not.toContain('Pour votre DSI');
+  });
+  // ---------------------------------------------------------------------------------------------
+  // F-45 / SF-45-05 — le parcours guidé : une étape à la fois, et une conclusion visible.
+  // ---------------------------------------------------------------------------------------------
+
+  /** Texte rendu, espaces normalisés — les gabarits Angular en insèrent beaucoup. */
+  function renderedText(): string {
+    return ((fixture.nativeElement as HTMLElement).textContent ?? '').replace(/\s+/g, ' ');
+  }
+
+  it('ouvre la première étape et replie les autres', () => {
+    setup();
+
+    expect(component.step()).toBe('network');
+    expect(component.isOpen('network')).toBeTrue();
+    expect(component.isOpen('code')).toBeFalse();
+    // Les en-têtes des quatre étapes restent rendus : on voit où l'on en est.
+    const titles = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.pairing-step-title'),
+    );
+    expect(titles.length).toBe(4);
+    // Le corps de l'étape 2 n'est pas rendu tant qu'elle est repliée.
+    expect(renderedText()).not.toContain('Générer un nouveau code');
+  });
+
+  it('déplie l\'étape cliquée et replie celle qui l\'était', () => {
+    setup();
+
+    component.toggleStep('download');
+
+    expect(component.isOpen('download')).toBeTrue();
+    expect(component.isOpen('network')).toBeFalse();
+  });
+
+  it('replie l\'étape déjà ouverte, sans rien perdre du parcours', () => {
+    setup();
+    component.declareNetworkResult('proxy-auth');
+
+    component.toggleStep('network');
+
+    expect(component.step()).toBeNull();
+    // Replier n'efface pas la déclaration : le parcours vit dans les signaux, pas dans le gabarit.
+    expect(component.networkVerdict()).toBe('proxy-auth');
+  });
+
+  it('ne déplie aucune branche tant que l\'utilisateur n\'a rien déclaré', () => {
+    setup();
+
+    expect(component.networkVerdict()).toBe('unknown');
+    expect(component.stepDone('network')).toBeFalse();
+    expect(component.stepSummary('network')).toBe('');
+    expect(renderedText()).not.toContain('could not resolve host');
+  });
+
+  it('fait avancer sur un 200, et sur lui seul', () => {
+    setup();
+
+    component.declareNetworkResult('reachable');
+
+    expect(component.stepDone('network')).toBeTrue();
+    expect(component.step()).toBe('code');
+    expect(component.stepSummary('network')).toContain('atteint la passerelle');
+  });
+
+  it('reste sur l\'étape réseau quand le diagnostic échoue, sans rien verrouiller', () => {
+    setup();
+
+    component.declareNetworkResult('proxy-auth');
+
+    // D3 : le 407 se lève côté DSI ; bloquer le parcours ferait de ce dialogue un piège.
+    expect(component.step()).toBe('network');
+    expect(component.stepDone('network')).toBeFalse();
+    expect(component.stepSummary('network')).toContain('proxy');
+    component.toggleStep('launch');
+    expect(component.isOpen('launch')).toBeTrue();
+  });
+
+  it('déplie les commandes de proxy quand aucun code n\'est revenu', () => {
+    setup();
+
+    component.declareNetworkResult('no-answer');
+    fixture.detectChanges();
+
+    const text = renderedText();
+    expect(text).toContain('could not resolve host');
+    expect(text).toContain(component.proxyDiscoveryCommand);
+    expect(text).toContain(component.proxyExportCommand);
+    expect(component.stepSummary('network')).toContain('Aucune réponse');
+  });
+
+  it('permet de revenir au diagnostic : une déclaration se révise', () => {
+    setup();
+    component.declareNetworkResult('no-answer');
+
+    component.resetNetworkResult();
+    fixture.detectChanges();
+
+    expect(component.networkVerdict()).toBe('unknown');
+    expect(renderedText()).toContain('Qu\'affiche votre terminal ?');
+  });
+
+  it('marque le code comme fait et ouvre l\'étape du runner', () => {
+    setup();
+    service.createRunnerPairingCode.and.returnValue(of(codeExpiringIn(300)));
+
+    component.generateCode();
+
+    expect(component.stepDone('code')).toBeTrue();
+    expect(component.stepSummary('code')).toContain('Code généré');
+    expect(component.step()).toBe('download');
+  });
+
+  it('marque le runner comme récupéré après un téléchargement réussi', () => {
+    setup();
+    component.format.set('jar');
+    service.downloadRunnerJar.and.returnValue(of(new Blob(['x'])));
+
+    component.downloadJar();
+
+    expect(component.stepDone('download')).toBeTrue();
+    expect(component.stepSummary('download')).toContain('Runner récupéré');
+    expect(component.step()).toBe('launch');
+  });
+
+  it('accepte « j\'ai déjà le runner » sans rien télécharger', () => {
+    setup();
+
+    component.markRunnerObtained();
+
+    expect(component.stepDone('download')).toBeTrue();
+    expect(service.downloadRunnerJar).not.toHaveBeenCalled();
+    expect(service.downloadRunnerWindowsPackage).not.toHaveBeenCalled();
+    expect(component.step()).toBe('launch');
+  });
+
+  it('replie tout et conclut dès que la machine est vue', () => {
+    jasmine.clock().install();
+    try {
+      setup();
+      const seenAt = new Date('2026-09-08T09:41:00Z').toISOString();
+      service.getRunnerStatus.and.returnValue(
+        of({ connected: true, lastSeenAt: seenAt, shell: 'posix' }));
+
+      jasmine.clock().tick(RUNNER_STATUS_POLL_MS);
+      fixture.detectChanges();
+
+      // D6 : la conclusion REMPLACE le parcours — elle ne s'ajoute pas en bas de l'étape 4.
+      expect(component.step()).toBeNull();
+      expect(component.stepDone('launch')).toBeTrue();
+      const text = renderedText();
+      expect(text).toContain('Machine connectée');
+      expect(text).toContain('projet');
+      expect(text).toContain('bash');
+      expect(text).toContain(component.lastSeenLabel()!);
+      // Rien n'est verrouillé : chaque étape reste rouvrable.
+      component.toggleStep('code');
+      expect(component.isOpen('code')).toBeTrue();
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it('nomme chaque interpréteur par un libellé écrit en dur, jamais par la valeur reçue', () => {
+    // D8 : la valeur vient à l'origine d'une trame du runner ; elle n'est jamais rendue telle quelle.
+    expect(shellLabel('posix')).toBe('bash');
+    expect(shellLabel('powershell')).toBe('PowerShell');
+    expect(shellLabel('cmd')).toBe('cmd.exe');
+    expect(shellLabel('zsh-maison')).toBeNull();
+    expect(shellLabel(null)).toBeNull();
+    expect(shellLabel(undefined)).toBeNull();
+  });
+
+  it('omet la ligne d\'interpréteur quand aucun runner ne l\'a déclaré', () => {
+    jasmine.clock().install();
+    try {
+      setup();
+      service.getRunnerStatus.and.returnValue(
+        of({ connected: true, lastSeenAt: new Date().toISOString() }));
+
+      jasmine.clock().tick(RUNNER_STATUS_POLL_MS);
+      fixture.detectChanges();
+
+      // Jamais « inconnu » : un runner antérieur à SF-38-27 n'a simplement rien déclaré.
+      expect(component.shellLabel()).toBeNull();
+      expect(renderedText()).not.toContain('Interpréteur');
+      expect(renderedText()).toContain('Machine connectée');
+    } finally {
+      jasmine.clock().uninstall();
+    }
   });
 });

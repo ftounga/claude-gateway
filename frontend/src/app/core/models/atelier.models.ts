@@ -180,6 +180,15 @@ export interface RunnerStatus {
   connected: boolean;
   /** Dernier signe de vie observé, ou `null` si aucun runner ne s'est jamais signalé. */
   lastSeenAt: string | null;
+  /**
+   * Genre d'interpréteur **élu** par le runner et déclaré à la gateway (F-38 / SF-38-27), relevé
+   * avec l'état depuis F-45 / SF-45-05 : `posix`, `powershell` ou `cmd`.
+   *
+   * Champ **additif** et facultatif : une gateway antérieure ne l'envoie pas, un runner antérieur
+   * n'en a jamais déclaré. L'écran **omet la ligne** dans ce cas — jamais « inconnu », qui se
+   * lirait comme un défaut.
+   */
+  shell?: string | null;
 }
 
 /**
