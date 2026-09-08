@@ -604,9 +604,22 @@ export class AtelierService {
   }
 
   /**
-   * Formats de runner réellement disponibles sur cette gateway (F-44 / SF-44-02). L'écran les lit
-   * pour **masquer** un format absent plutôt que d'offrir un lien qui répondrait 404 — une gateway
-   * déployée avant F-44 n'empaquette pas le paquet Windows.
+   * Télécharge le **paquet autonome macOS** (F-44 / SF-44-03), pour l'architecture demandée. Même
+   * nature que le paquet Windows : le runner et sa propre JVM, pour un poste Mac d'entreprise sans
+   * droits administrateur ni JDK.
+   *
+   * <p>Côté API, ce sont bien **deux routes** distinctes (D1) ; l'argument n'est que la plomberie
+   * qui choisit laquelle appeler.</p>
+   */
+  downloadRunnerMacosPackage(arch: 'aarch64' | 'x64'): Observable<Blob> {
+    return this.http.get(`/api/runner/download/macos-${arch}`, { responseType: 'blob' });
+  }
+
+  /**
+   * Formats de runner réellement disponibles sur cette gateway (F-44 / SF-44-02, étendu par
+   * SF-44-03). L'écran les lit pour **masquer** un format absent plutôt que d'offrir un lien qui
+   * répondrait 404 — une gateway déployée avant F-44 n'empaquette aucun paquet, une gateway
+   * déployée entre SF-44-02 et SF-44-03 n'a que celui de Windows.
    */
   runnerDownloadFormats(): Observable<RunnerDownloadFormats> {
     return this.http.get<RunnerDownloadFormats>('/api/runner/download/formats');

@@ -89,22 +89,43 @@
         </div>
       </div>
     } @else {
-      <!-- Choix du format (F-44 / SF-44-02). Le paquet autonome d'abord : c'est celui qui ne
-           suppose rien du poste. Le jar reste visible — il est le meilleur format pour qui a déjà
-           Java, et lui faire télécharger 39 Mo pour en utiliser 2,5 serait absurde. -->
-      @if (windowsPackageAvailable()) {
+      <!-- Choix du format (F-44 / SF-44-02, étendu par SF-44-03). Les paquets autonomes d'abord :
+           ce sont ceux qui ne supposent rien du poste. Le jar reste visible — il est le meilleur
+           format pour qui a déjà Java, et lui faire télécharger 39 Mo pour en utiliser 2,5 serait
+           absurde. Un format que cette gateway ne sert pas n'apparaît pas du tout. -->
+      @if (anyPackageAvailable()) {
         <mat-radio-group
           class="pairing-formats"
           [value]="format()"
           (change)="format.set($event.value)"
           aria-label="Format du runner"
         >
-          <mat-radio-button value="windows">
-            <span class="pairing-format-title">Windows, sans rien installer</span>
-            <span class="pairing-format-detail">
-              ~39 Mo, contient Java. Décompressez, puis lancez <code>claude-runner.cmd</code>.
-            </span>
-          </mat-radio-button>
+          @if (windowsPackageAvailable()) {
+            <mat-radio-button value="windows">
+              <span class="pairing-format-title">Windows, sans rien installer</span>
+              <span class="pairing-format-detail">
+                ~39 Mo, contient Java. Décompressez, puis lancez <code>claude-runner.cmd</code>.
+              </span>
+            </mat-radio-button>
+          }
+          @if (macosAarch64Available()) {
+            <mat-radio-button value="macos-aarch64">
+              <span class="pairing-format-title">Mac Apple Silicon (M1 à M4)</span>
+              <span class="pairing-format-detail">
+                ~39 Mo, contient Java. Décompressez, puis lancez
+                <code>./claude-runner.command</code>.
+              </span>
+            </mat-radio-button>
+          }
+          @if (macosX64Available()) {
+            <mat-radio-button value="macos-x64">
+              <span class="pairing-format-title">Mac Intel</span>
+              <span class="pairing-format-detail">
+                ~40 Mo, contient Java. Décompressez, puis lancez
+                <code>./claude-runner.command</code>.
+              </span>
+            </mat-radio-button>
+          }
           <mat-radio-button value="jar">
             <span class="pairing-format-title">Fichier <code>.jar</code></span>
             <span class="pairing-format-detail">
@@ -112,6 +133,15 @@
             </span>
           </mat-radio-button>
         </mat-radio-group>
+
+        @if (usesMacosPackage()) {
+          <!-- Le navigateur ne sait pas distinguer Apple Silicon d'Intel : on présélectionne le
+               plus probable et on donne le moyen de vérifier (D4). -->
+          <p class="pairing-hint">
+            Dans le doute : menu <strong>Pomme</strong> › <strong>À propos de ce Mac</strong>.
+            « Puce Apple » = Apple Silicon, « Processeur Intel » = Intel.
+          </p>
+        }
       } @else {
         <p class="pairing-hint">
           Un seul fichier, aucun installeur, aucun droit administrateur. <strong>Java 21 ou plus récent</strong> est requis sur la machine : vérifiez avec <code>java -version</code>.
@@ -131,11 +161,7 @@
       } @else {
         <mat-icon>download</mat-icon>
       }
-      @if (usesWindowsPackage()) {
-        Télécharger le runner pour Windows (~39 Mo)
-      } @else {
-        Télécharger le runner (.jar)
-      }
+      {{ downloadLabel() }}
     </button>
   </section>
 

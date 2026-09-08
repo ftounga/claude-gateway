@@ -189,15 +189,19 @@ export interface RunnerStatus {
  * par l'API, et ne doit donc être ni stocké ni ré-affiché après consommation.
  */
 /**
- * Formats de runner disponibles sur la gateway (F-44 / SF-44-02).
+ * Formats de runner disponibles sur la gateway (F-44 / SF-44-02, étendu par SF-44-03).
  *
- * `windowsPackage` porte le paquet autonome — le runner et sa propre JVM — pour les postes où
- * aucun Java 21 n'est installable. Une gateway déployée avant F-44 renvoie `false` : l'écran
- * masque alors ce format au lieu d'offrir un lien mort.
+ * Les champs autres que `jar` portent les **paquets autonomes** — le runner et sa propre JVM —
+ * pour les postes où aucun Java 21 n'est installable : Windows, puis macOS Apple Silicon et Intel.
+ * Une gateway déployée avant F-44 les renvoie tous à `false`, une gateway déployée entre SF-44-02
+ * et SF-44-03 n'a que celui de Windows : l'écran masque alors les formats absents au lieu d'offrir
+ * un lien mort.
  */
 export interface RunnerDownloadFormats {
   jar: boolean;
   windowsPackage: boolean;
+  macosAarch64Package: boolean;
+  macosX64Package: boolean;
 }
 
 export interface RunnerPairingCode {
