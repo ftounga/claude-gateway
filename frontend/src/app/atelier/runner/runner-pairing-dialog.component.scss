@@ -71,6 +71,72 @@
   color: var(--cg-text-secondary);
 }
 
+/* Arbre de lecture du contrôle d'accès réseau (F-45 / SF-45-01). Les trois branches sont visibles
+   ensemble : l'utilisateur lit son résultat et descend à la ligne correspondante. */
+.pairing-tree {
+  list-style: none;
+  margin: 0 0 var(--cg-space-2);
+  padding: 0;
+}
+
+.pairing-branch {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) 0;
+
+  & + & {
+    border-top: 1px solid var(--cg-divider);
+  }
+}
+
+.pairing-branch-key {
+  flex: none;
+  min-width: 44px;
+  padding: var(--cg-space-1) var(--cg-space-2);
+  border-radius: 4px;
+  font-family: var(--cg-font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  color: #fff;
+}
+
+.pairing-branch-ok {
+  background: var(--cg-success);
+}
+
+.pairing-branch-warn {
+  background: var(--cg-accent);
+}
+
+.pairing-branch-error {
+  background: var(--cg-error);
+}
+
+.pairing-branch-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.pairing-branch-title {
+  margin: 0 0 var(--cg-space-1);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cg-text-primary);
+}
+
+.pairing-branch-text {
+  margin: 0 0 var(--cg-space-2);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+
+  code {
+    font-family: var(--cg-font-mono);
+  }
+}
+
 .pairing-error {
   margin: 0 0 var(--cg-space-2);
   color: var(--cg-error);

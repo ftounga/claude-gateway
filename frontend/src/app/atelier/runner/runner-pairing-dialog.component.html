@@ -2,13 +2,131 @@
 <mat-dialog-content>
   <p class="pairing-intro">
     Le runner tourne sur votre machine et ouvre lui-même la connexion vers cette passerelle : aucun
-    port à ouvrir. Il s'affiche en clair et s'arrête au <code>Ctrl-C</code>.
+    port à ouvrir <strong>en entrée</strong> — il lui faut en revanche une <strong>sortie
+    HTTPS</strong>, que l'étape 1 vérifie. Il s'affiche en clair et s'arrête au <code>Ctrl-C</code>.
     Projet appairé : <strong>{{ data.workspaceName }}</strong>.
   </p>
 
-  <!-- Étape 1 — le code d'appairage (usage unique, TTL court) -->
+  <!-- Étape 1 — la sortie réseau (F-45 / SF-45-01). Avant le code et avant les 39 Mo : chez le
+       client du 2026-09-07, les quatre obstacles se sont tous découverts APRÈS le téléchargement.
+       Avant le code aussi, et pas seulement avant le téléchargement : le code expire en 5 minutes,
+       moins de temps qu'il n'en faut pour retrouver un proxy d'entreprise (D1). -->
   <section class="pairing-step">
-    <h3 class="pairing-step-title"><span class="pairing-step-number">1</span> Générer un code</h3>
+    <h3 class="pairing-step-title">
+      <span class="pairing-step-number">1</span> Vérifier l'accès réseau
+    </h3>
+
+    <p class="pairing-hint">
+      Le runner sort vers cette passerelle en <strong>HTTPS</strong> : rien n'est à ouvrir en entrée,
+      c'est le <strong>sortant</strong> qui bloque sur un poste d'entreprise. Cette page ne peut pas
+      le vérifier à votre place — un navigateur ne lit pas la configuration proxy du poste. Collez
+      cette commande dans le terminal <strong>où vous lancerez le runner</strong>.
+    </p>
+
+    <div class="pairing-command">
+      <code>{{ networkCheckCommand }}</code>
+      <button
+        mat-icon-button
+        type="button"
+        matTooltip="Copier la commande"
+        aria-label="Copier la commande de vérification réseau"
+        (click)="copy(networkCheckCommand, 'Commande')"
+      >
+        <mat-icon>content_copy</mat-icon>
+      </button>
+    </div>
+
+    <ul class="pairing-tree">
+      <li class="pairing-branch">
+        <span class="pairing-branch-key pairing-branch-ok">200</span>
+        <div class="pairing-branch-body">
+          <p class="pairing-branch-title">Ce terminal atteint la passerelle.</p>
+          <p class="pairing-branch-text">Poursuivez à l'étape 2.</p>
+        </div>
+      </li>
+
+      <li class="pairing-branch">
+        <span class="pairing-branch-key pairing-branch-warn">407</span>
+        <div class="pairing-branch-body">
+          <p class="pairing-branch-title">
+            Un proxy répond et exige une authentification.
+          </p>
+          <p class="pairing-branch-text">
+            Si elle est <strong>intégrée</strong> (NTLM ou Kerberos), le runner ne pourra pas la
+            porter : la JVM n'a aucun support SSPI, et l'authentification <code>Basic</code> est
+            désactivée sur les tunnels HTTPS depuis Java 8u111. Le remède est un
+            <strong>relais local</strong> — <code>px</code> ou <code>cntlm</code> — qui porte
+            l'authentification intégrée et expose, lui, un proxy sans authentification. Une fois
+            lancé, déclarez-le dans le terminal :
+          </p>
+          <div class="pairing-command">
+            <code>{{ relayExportCommand }}</code>
+            <button
+              mat-icon-button
+              type="button"
+              matTooltip="Copier la commande"
+              aria-label="Copier la déclaration du relais local"
+              (click)="copy(relayExportCommand, 'Commande')"
+            >
+              <mat-icon>content_copy</mat-icon>
+            </button>
+          </div>
+        </div>
+      </li>
+
+      <li class="pairing-branch">
+        <span class="pairing-branch-key pairing-branch-error">—</span>
+        <div class="pairing-branch-body">
+          <p class="pairing-branch-title">
+            Aucun code, ou <code>could not resolve host</code> / <code>failed to connect</code>.
+          </p>
+          <p class="pairing-branch-text">
+            Le proxy de votre poste n'est pas déclaré dans <em>ce</em> terminal : il l'est côté
+            système, et un shell ne le lit pas. C'est pourquoi votre navigateur atteint cette page
+            alors que la commande échoue. Retrouvez-le :
+          </p>
+          <div class="pairing-command">
+            <code>{{ proxyDiscoveryCommand }}</code>
+            <button
+              mat-icon-button
+              type="button"
+              matTooltip="Copier la commande"
+              aria-label="Copier la commande de recherche du proxy"
+              (click)="copy(proxyDiscoveryCommand, 'Commande')"
+            >
+              <mat-icon>content_copy</mat-icon>
+            </button>
+          </div>
+          <p class="pairing-branch-text">Puis déclarez-le, avant de lancer le runner :</p>
+          <div class="pairing-command">
+            <code>{{ proxyExportCommand }}</code>
+            <button
+              mat-icon-button
+              type="button"
+              matTooltip="Copier la commande"
+              aria-label="Copier la déclaration du proxy"
+              (click)="copy(proxyExportCommand, 'Commande')"
+            >
+              <mat-icon>content_copy</mat-icon>
+            </button>
+          </div>
+          @if (onWindows) {
+            <p class="pairing-branch-text">
+              Dans l'invite de commandes plutôt que PowerShell :
+              <code>set HTTPS_PROXY=http://hote:port</code>. Si
+              <code>netsh</code> ne renvoie rien, le proxy vient peut-être d'un fichier
+              <code>.pac</code> : son adresse est écrite en clair dans le fichier, sur une ligne
+              <code>PROXY hote:port</code>.
+            </p>
+          }
+        </div>
+      </li>
+    </ul>
+  </section>
+
+  <!-- Étape 2 — le code d'appairage (usage unique, TTL court) -->
+  <section class="pairing-step">
+    <h3 class="pairing-step-title"><span class="pairing-step-number">2</span> Générer un code</h3>
 
     @if (codeUsable()) {
       <div class="pairing-code-box">
@@ -60,9 +178,9 @@
     </button>
   </section>
 
-  <!-- Étape 2 — le binaire -->
+  <!-- Étape 3 — le binaire -->
   <section class="pairing-step">
-    <h3 class="pairing-step-title"><span class="pairing-step-number">2</span> Récupérer le runner</h3>
+    <h3 class="pairing-step-title"><span class="pairing-step-number">3</span> Récupérer le runner</h3>
 
     @if (jarUnavailable()) {
       <!-- 404 : état de déploiement normal, pas une panne. On donne la commande de construction. -->
@@ -165,9 +283,9 @@
     </button>
   </section>
 
-  <!-- Étape 3 — la commande à coller -->
+  <!-- Étape 4 — la commande à coller -->
   <section class="pairing-step">
-    <h3 class="pairing-step-title"><span class="pairing-step-number">3</span> Lancer le runner</h3>
+    <h3 class="pairing-step-title"><span class="pairing-step-number">4</span> Lancer le runner</h3>
 
     <mat-form-field appearance="outline" class="pairing-field" subscriptSizing="dynamic">
       <mat-label>Racine du projet sur la machine</mat-label>
