@@ -23,8 +23,17 @@ RUN ./mvnw clean package -DskipTests -q
 # Construit ICI, sur Linux : `jlink` sait cibler Windows si on lui donne les `jmods` du JDK
 # Windows. Aucune machine Windows, aucune matrice d'intégration continue.
 COPY runner/package-windows.sh ./
-RUN apk add --no-cache curl zip unzip \
+RUN apk add --no-cache curl zip unzip tar \
     && ./package-windows.sh target/claude-runner.jar target
+
+# Paquets autonomes macOS (F-44 / SF-44-03), une archive par architecture. Même technique croisée
+# depuis Linux : aucune machine Apple. Deux archives et non une, parce qu'un poste Mac d'entreprise
+# verrouillé peut être Intel — et que c'est précisément le poste qu'on ne renouvelle pas.
+#
+# .tar.gz et non .zip : le zip perdrait le bit exécutable de runtime/bin/java et du lanceur.
+COPY runner/package-macos.sh ./
+RUN ./package-macos.sh target/claude-runner.jar target aarch64 \
+    && ./package-macos.sh target/claude-runner.jar target x64
 
 # ---- Build du backend ----
 FROM eclipse-temurin:21-jdk-alpine AS build
@@ -49,6 +58,9 @@ COPY --from=build /app/target/*.jar app.jar
 COPY --from=runner-build /runner/target/claude-runner.jar claude-runner.jar
 # Paquet autonome Windows (F-44), servi à côté du jar — il ne le remplace pas.
 COPY --from=runner-build /runner/target/claude-runner-windows-x64.zip claude-runner-windows-x64.zip
+# Paquets autonomes macOS (F-44 / SF-44-03), servis à côté des deux autres.
+COPY --from=runner-build /runner/target/claude-runner-macos-aarch64.tar.gz claude-runner-macos-aarch64.tar.gz
+COPY --from=runner-build /runner/target/claude-runner-macos-x64.tar.gz claude-runner-macos-x64.tar.gz
 
 EXPOSE 8080
 

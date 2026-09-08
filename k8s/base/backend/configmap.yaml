@@ -30,6 +30,11 @@ data:
   # Paquet autonome Windows (F-44) : le runner AVEC sa propre JVM, pour les postes
   # d'entreprise ou aucun Java 21 n'est installable. Empaquete dans l'image a cote du jar.
   APP_RUNNER_WINDOWS_PACKAGE_PATH: "/app/claude-runner-windows-x64.zip"
+  # Paquets autonomes macOS (F-44 / SF-44-03) : meme chose pour les Mac d'entreprise verrouilles,
+  # une archive par architecture. tar.gz et non zip — le zip perdrait le bit executable de
+  # runtime/bin/java et du lanceur, et le paquet serait inutilisable apres decompression.
+  APP_RUNNER_MACOS_AARCH64_PACKAGE_PATH: "/app/claude-runner-macos-aarch64.tar.gz"
+  APP_RUNNER_MACOS_X64_PACKAGE_PATH: "/app/claude-runner-macos-x64.tar.gz"
   # Phase 2 Atelier (Managed Agents / exécution de code, ADR-013) : activée. L'accès reste gardé
   # par offre Gold/ADMIN (SF-28-06) et la session est éphémère (runtime borné). ⚠️ Ouvrir aux
   # abonnés Gold au-delà de l'admin nécessite les plafonds de dépense de SF-28-12.

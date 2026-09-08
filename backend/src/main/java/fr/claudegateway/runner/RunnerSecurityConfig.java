@@ -47,6 +47,13 @@ public class RunnerSecurityConfig {
                         // Paquet autonome Windows (F-44 / SF-44-02) : même nature que le jar
                         // — un client public, sans jeton ni secret. L'appairage vient après.
                         .requestMatchers(HttpMethod.GET, "/runner/download/windows").permitAll()
+                        // Paquets autonomes macOS (F-44 / SF-44-03), Apple Silicon et Intel : même
+                        // nature encore — un client public. Déclarés un par un plutôt qu'en
+                        // `/runner/download/**` : une autorisation par joker couvrirait d'avance
+                        // toute route future de ce préfixe, y compris celle qui ne devrait pas
+                        // l'être.
+                        .requestMatchers(HttpMethod.GET, "/runner/download/macos-aarch64").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/runner/download/macos-x64").permitAll()
                         .requestMatchers(HttpMethod.GET, "/runner/download/formats").permitAll()
                         // Repli long-polling (SF-38-09) : le jeton runner voyage dans l'en-tête
                         // X-Runner-Token et est vérifié PAR LE CONTRÔLEUR (RunnerPollController) —
