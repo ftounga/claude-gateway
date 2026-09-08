@@ -119,24 +119,6 @@
   min-width: 0;
 }
 
-.pairing-branch-title {
-  margin: 0 0 var(--cg-space-1);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--cg-text-primary);
-}
-
-.pairing-branch-text {
-  margin: 0 0 var(--cg-space-2);
-  color: var(--cg-text-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-
-  code {
-    font-family: var(--cg-font-mono);
-  }
-}
-
 .pairing-error {
   margin: 0 0 var(--cg-space-2);
   color: var(--cg-error);
@@ -199,14 +181,16 @@
   background: var(--cg-surface-2);
 }
 
-.pairing-note-title {
+.pairing-note-title,
+.pairing-branch-title {
   margin: 0 0 var(--cg-space-1);
   font-size: 13px;
   font-weight: 600;
   color: var(--cg-text-primary);
 }
 
-.pairing-note-text {
+.pairing-note-text,
+.pairing-branch-text {
   margin: 0 0 var(--cg-space-2);
   color: var(--cg-text-secondary);
   font-size: 12px;
@@ -249,4 +233,23 @@
 
 .pairing-action {
   margin-top: var(--cg-space-1);
+}
+
+/* État de la machine (F-45 / SF-45-02). Neutre en attente, vert une fois la machine vue. */
+.pairing-machine {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  margin-bottom: var(--cg-space-2);
+  border: 1px solid var(--cg-divider);
+  border-radius: 8px;
+  background: var(--cg-surface-2);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+}
+
+.pairing-machine-on {
+  color: var(--cg-success);
+  font-weight: 500;
 }
