@@ -93,6 +93,14 @@ export interface AtelierPendingConfirmation {
   /** Champ de motif ouvert : le refus se fait en un clic, le motif est un second geste, facultatif. */
   denying: boolean;
   reason: string;
+  /**
+   * Instant (epoch ms) où la demande expirera, quand la gateway l'a annoncé (F-47 / SF-47-02).
+   * `null` quand le délai n'est pas connu — le bac à sable ne le porte pas, et un ancien backend
+   * non plus : l'écran n'affiche alors aucun compte à rebours plutôt qu'un chiffre inventé.
+   */
+  deadline: number | null;
+  /** Durée totale annoncée, en millisecondes : sert à dire l'expiration (« dans les 2 minutes »). */
+  timeoutMs: number | null;
 }
 
 /**

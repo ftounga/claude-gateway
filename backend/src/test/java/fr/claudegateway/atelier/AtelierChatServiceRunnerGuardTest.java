@@ -137,6 +137,9 @@ class AtelierChatServiceRunnerGuardTest {
         verify(runnerToolGateway).bash(eq(workspaceId), anyString(), eq("npm test"), any(), anyLong(), any());
         assertThat(listener.requests).extracting(AtelierConfirmRequest::tool).containsExactly("bash");
         assertThat(listener.requests.get(0).detail()).isEqualTo("npm test");
+        // Le délai voyage avec la demande (F-47 / SF-47-02) : l'écran peut afficher le temps
+        // restant au lieu de laisser deux minutes s'écouler en silence.
+        assertThat(listener.requests.get(0).timeoutMs()).isEqualTo(gate.timeoutMs());
         assertThat(listener.resolved).extracting(AtelierConfirmResolved::decision).containsExactly("allow");
         // Corrélation : la demande, la trame et la ligne d'audit portent le MÊME identifiant.
         assertThat(listener.requests.get(0).toolUseId()).isEqualTo(listener.resolved.get(0).toolUseId());

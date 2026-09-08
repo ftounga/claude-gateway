@@ -322,6 +322,39 @@ export class AtelierComponent implements OnInit, OnDestroy {
   /** Bascule de l'option « demander avant d'exécuter » en vol : le bouton reste inerte. */
   readonly togglingConfirmation = signal(false);
 
+  /**
+   * Millisecondes restant à la demande d'autorisation en attente (F-47 / SF-47-02), rafraîchies
+   * chaque seconde. `null` quand rien n'attend, ou quand la gateway n'a pas annoncé de délai — les
+   * deux minutes s'écoulaient jusqu'ici en silence, sans que rien ne dise qu'un délai courait.
+   */
+  readonly confirmationRemainingMs = signal<number | null>(null);
+
+  /** Minuteur du compte à rebours ; jamais plus d'un à la fois. */
+  private confirmationTimer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Temps restant, en clair, pour l'invite et le rappel. `null` quand aucun délai n'est connu :
+   * l'écran n'affiche alors rien, plutôt qu'un chiffre inventé.
+   */
+  readonly confirmationCountdown = computed(() => {
+    const remaining = this.confirmationRemainingMs();
+    if (remaining === null) {
+      return null;
+    }
+    if (remaining <= 0) {
+      return 'Le délai est écoulé';
+    }
+    const seconds = Math.ceil(remaining / 1000);
+    if (seconds < 60) {
+      return `Il reste ${seconds} s pour répondre`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const rest = seconds % 60;
+    return rest === 0
+      ? `Il reste ${minutes} min pour répondre`
+      : `Il reste ${minutes} min ${rest} s pour répondre`;
+  });
+
   /** Vrai si le projet ouvert demande l'autorisation avant chaque commande (F-33 / SF-33-01). */
   readonly askBeforeBash = computed(() => this.activeDetail()?.askBeforeBash === true);
 
@@ -1101,7 +1134,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.streaming.set(null);
           this.execStreaming.set(null);
           // Plus rien n'attend de décision : une invite restée à l'écran serait un piège.
-          this.pendingConfirmation.set(null);
+          this.clearPendingConfirmation();
           // Consommation à zéro = relevé manqué : on n'affiche alors aucun chiffre, plutôt qu'un
           // « 0 token » qui passerait pour une mesure (même règle qu'un relevé manqué côté agent,
           // F-30 SF-30-05).
@@ -1137,7 +1170,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.stopExecTimer();
           this.streaming.set(null);
           this.execStreaming.set(null);
-          this.pendingConfirmation.set(null);
+          this.clearPendingConfirmation();
           // Retire le message utilisateur optimiste : rien n'a été persisté côté serveur.
           this.messages.update((current) => current.filter((m) => m.id !== userItem.id));
           this.notifyError(this.streamErrorMessage(code));
@@ -1254,8 +1287,69 @@ export class AtelierComponent implements OnInit, OnDestroy {
       answering: false,
       denying: false,
       reason: '',
+      // Le délai vient de la gateway (F-47 / SF-47-02), il n'est jamais deviné ici : le coder en
+      // dur ferait mentir l'écran le jour où la configuration change.
+      deadline: request.timeoutMs ? Date.now() + request.timeoutMs : null,
+      timeoutMs: request.timeoutMs ?? null,
     });
+    this.startConfirmationCountdown();
     this.nudgeRender();
+  }
+
+  /**
+   * Retire l'invite **et** arrête son compte à rebours (F-47 / SF-47-02). Un seul point de sortie :
+   * l'invite disparaît de sept endroits (décision, expiration, fin de tour, erreur, coupe-circuit),
+   * et un minuteur oublié à l'un d'eux décompterait dans le vide.
+   */
+  private clearPendingConfirmation(): void {
+    this.pendingConfirmation.set(null);
+    this.stopConfirmationCountdown();
+  }
+
+  /**
+   * Démarre (ou redémarre) le compte à rebours de la demande en attente (F-47 / SF-47-02). Sans
+   * délai annoncé, aucun minuteur n'est lancé : l'écran préfère se taire qu'inventer un chiffre.
+   */
+  private startConfirmationCountdown(): void {
+    this.stopConfirmationCountdown();
+    const deadline = this.pendingConfirmation()?.deadline ?? null;
+    if (deadline === null) {
+      return;
+    }
+    this.confirmationRemainingMs.set(Math.max(0, deadline - Date.now()));
+    this.confirmationTimer = setInterval(() => {
+      this.zone.run(() => {
+        const current = this.pendingConfirmation()?.deadline ?? null;
+        if (current === null) {
+          this.stopConfirmationCountdown();
+          return;
+        }
+        const remaining = Math.max(0, current - Date.now());
+        this.confirmationRemainingMs.set(remaining);
+        if (remaining === 0) {
+          // Plus rien à décompter, mais « Le délai est écoulé » reste affiché : la résolution du
+          // serveur suit d'un instant et c'est elle qui retirera l'invite.
+          this.clearConfirmationTimer();
+        }
+        // Le flux se tait pendant toute l'attente : sans forçage, le compte à rebours ne serait
+        // pas plus peint que l'invite elle-même (même cause qu'en SF-47-01).
+        this.nudgeRender();
+      });
+    }, 1000);
+  }
+
+  /** Arrête le compte à rebours ; idempotent (décision prise, nouvelle demande, écran fermé). */
+  private stopConfirmationCountdown(): void {
+    this.clearConfirmationTimer();
+    this.confirmationRemainingMs.set(null);
+  }
+
+  /** Coupe le minuteur sans effacer le temps affiché — utile à l'échéance, où « 0 » veut dire quelque chose. */
+  private clearConfirmationTimer(): void {
+    if (this.confirmationTimer !== null) {
+      clearInterval(this.confirmationTimer);
+      this.confirmationTimer = null;
+    }
   }
 
   /**
@@ -1307,10 +1401,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
     if (pending && pending.toolUseId !== resolved.toolUseId) {
       return;
     }
-    this.pendingConfirmation.set(null);
+    const timeoutMs = pending?.timeoutMs ?? null;
+    this.clearPendingConfirmation();
     if (resolved.decision === 'timeout') {
+      // « Commande refusée » se lisait comme un refus DU SYSTÈME — c'est exactement ce qu'a compris
+      // l'utilisateur de l'incident du 2026-09-08, qui a parlé d'un problème de permissions. Rien
+      // n'a été refusé : une question est restée sans réponse (F-47 / SF-47-02).
       this.snackBar.open(
-        'Commande refusée : aucune réponse dans le délai imparti.', 'Fermer', { duration: 6000 });
+        `Personne n'a répondu à la demande d'autorisation ${delayLabel(timeoutMs)} : la commande `
+          + "n'a pas été exécutée.",
+        'Fermer',
+        { duration: 8000 },
+      );
     }
     // Même silence qu'à la pose (F-47 / SF-47-01) : la résolution arrive elle aussi sans qu'aucun
     // autre événement ne suive, et sans forçage l'invite resterait affichée après coup.
@@ -1363,7 +1465,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
         error: (err: unknown) => {
           // La demande n'est plus à trancher (déjà expirée, session close) : retirer l'invite plutôt
           // que de laisser l'utilisateur cliquer dans le vide.
-          this.pendingConfirmation.set(null);
+          this.clearPendingConfirmation();
           this.notifyError(this.confirmErrorMessage(err));
         },
       });
@@ -1533,7 +1635,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.activeDetail.set(updated);
           this.loadEngine(updated);
         }
-        this.pendingConfirmation.set(null);
+        this.clearPendingConfirmation();
         this.runnerStatus.set(null);
         this.syncRunnerPolling();
         this.snackBar.open(
@@ -1701,7 +1803,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.submitting.set(false);
           this.interrupting.set(false);
           // Plus rien n'attend de décision : une invite restée à l'écran serait un piège.
-          this.pendingConfirmation.set(null);
+          this.clearPendingConfirmation();
           // La transcription est reprise dans le tour final : sans cela, tout ce qui a défilé
           // pendant le run disparaîtrait de l'écran (F-30 SF-30-02).
           const transcript = this.execStreaming()?.blocks ?? [];
@@ -1736,7 +1838,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
         this.zone.run(() => {
           this.submitting.set(false);
           this.interrupting.set(false);
-          this.pendingConfirmation.set(null);
+          this.clearPendingConfirmation();
           this.stopExecTimer();
           this.execStreaming.set(null);
           // Retire le message utilisateur optimiste : rien n'a été persisté côté serveur.
@@ -1826,6 +1928,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.stopExecTimer();
     this.stopRunnerPolling();
+    // Un compte à rebours laissé tourner survivrait à l'écran qu'il décompte (F-47 / SF-47-02).
+    this.stopConfirmationCountdown();
   }
 
   /** Ouvre/ferme le panneau « Fichiers ». */
@@ -2129,4 +2233,20 @@ export function toThreadItem(message: AtelierMessage): AtelierThreadItem {
     expanded: false,
   }));
   return item;
+}
+
+/**
+ * Durée annoncée par la gateway, dite en clair (F-47 / SF-47-02) : « dans les 2 minutes ». Sans
+ * délai connu, on se replie sur « dans le délai imparti » plutôt que d'inventer une durée.
+ */
+export function delayLabel(timeoutMs: number | null): string {
+  if (timeoutMs === null || timeoutMs <= 0) {
+    return 'dans le délai imparti';
+  }
+  const seconds = Math.round(timeoutMs / 1000);
+  if (seconds < 60) {
+    return `dans les ${seconds} secondes`;
+  }
+  const minutes = Math.round(seconds / 60);
+  return minutes === 1 ? 'dans la minute' : `dans les ${minutes} minutes`;
 }

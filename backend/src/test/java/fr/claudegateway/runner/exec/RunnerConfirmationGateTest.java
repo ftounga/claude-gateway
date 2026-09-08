@@ -43,6 +43,21 @@ class RunnerConfirmationGateTest {
     }
 
     @Test
+    void theGateAnnouncesTheDelayItWaits() {
+        // F-47 / SF-47-02 : le délai est dit à l'écran, jamais codé en dur côté client.
+        assertThat(new RunnerConfirmationGate(45_000L).timeoutMs()).isEqualTo(45_000L);
+    }
+
+    @Test
+    void anUnusableDelayFallsBackOnTheDefaultOne() {
+        // Non-régression : un réglage à zéro ou négatif ne doit pas rendre la porte passante.
+        assertThat(new RunnerConfirmationGate(0L).timeoutMs())
+                .isEqualTo(RunnerConfirmationGate.DEFAULT_TIMEOUT_MS);
+        assertThat(new RunnerConfirmationGate(-1L).timeoutMs())
+                .isEqualTo(RunnerConfirmationGate.DEFAULT_TIMEOUT_MS);
+    }
+
+    @Test
     void anExplicitAllowAuthorises() throws Exception {
         RunnerConfirmationGate gate = new RunnerConfirmationGate(5_000L);
         Future<Outcome> pending = awaitAsync(gate, "toolu_1");

@@ -372,6 +372,8 @@ describe('AtelierTerminalComponent', () => {
       answering: false,
       denying: false,
       reason: '',
+      deadline: null,
+      timeoutMs: null,
     };
     fixture.detectChanges();
 
@@ -401,6 +403,8 @@ describe('AtelierTerminalComponent', () => {
       answering: false,
       denying: true,
       reason: '',
+      deadline: null,
+      timeoutMs: null,
     };
     fixture.detectChanges();
 
@@ -425,6 +429,8 @@ describe('AtelierTerminalComponent', () => {
       answering: true,
       denying: false,
       reason: '',
+      deadline: null,
+      timeoutMs: null,
     };
     fixture.detectChanges();
 
@@ -1086,6 +1092,8 @@ describe('AtelierTerminalComponent', () => {
         answering: false,
         denying: false,
         reason: '',
+        deadline: null,
+        timeoutMs: null,
       };
       fixture.detectChanges();
       const ask: HTMLElement = fixture.nativeElement.querySelector('.terminal-ask');
@@ -1094,6 +1102,43 @@ describe('AtelierTerminalComponent', () => {
       component.revealPendingAsk();
 
       expect(scrollSpy).toHaveBeenCalled();
+    });
+
+    it('affiche le temps restant quand la gateway l\'a annoncé (F-47 / SF-47-02)', () => {
+      component.pendingConfirmation = {
+        toolUseId: 'tu_1',
+        tool: 'bash',
+        detail: 'npm test',
+        source: 'LOCAL_MACHINE',
+        answering: false,
+        denying: false,
+        reason: '',
+        deadline: null,
+        timeoutMs: null,
+      };
+      component.confirmationCountdown = 'Il reste 1 min 47 s pour répondre';
+      fixture.detectChanges();
+
+      expect(text()).toContain('Il reste 1 min 47 s pour répondre');
+    });
+
+    it("n'affiche aucun temps restant quand aucun délai n'est connu", () => {
+      component.pendingConfirmation = {
+        toolUseId: 'tu_1',
+        tool: 'bash',
+        detail: 'npm test',
+        source: 'HOSTED_SANDBOX',
+        answering: false,
+        denying: false,
+        reason: '',
+        deadline: null,
+        timeoutMs: null,
+      };
+      component.confirmationCountdown = null;
+      fixture.detectChanges();
+
+      // Le bac à sable ne porte pas de délai : rien n'est affiché plutôt qu'un chiffre inventé.
+      expect(fixture.nativeElement.querySelector('.terminal-ask-countdown')).toBeNull();
     });
 
     it("ne lève pas quand aucune invite n'est posée", () => {

@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ApplicationRef } from '@angular/core';
-import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ActivatedRoute, ParamMap, Router, provideRouter } from '@angular/router';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
@@ -9,7 +9,7 @@ import { of, throwError } from 'rxjs';
 
 import { MAX_UPLOAD_BYTES } from '../shared/http-error.util';
 
-import { AtelierComponent, toThreadItem } from './atelier.component';
+import { AtelierComponent, delayLabel, toThreadItem } from './atelier.component';
 import { AtelierService } from '../core/services/atelier.service';
 import { ApiKeyService } from '../core/services/api-key.service';
 import { ApiKeyStatus } from '../core/models/api-key.models';
@@ -2250,8 +2250,13 @@ describe('AtelierComponent', () => {
     component.send();
 
     expect(component.pendingConfirmation()).toBeNull();
+    // Reformulé en F-47 / SF-47-02 : « Commande refusée » se lisait comme un refus DU SYSTÈME.
     expect(snackBar.open).toHaveBeenCalledWith(
-      'Commande refusée : aucune réponse dans le délai imparti.', 'Fermer', { duration: 6000 });
+      "Personne n'a répondu à la demande d'autorisation dans le délai imparti : la commande n'a "
+        + 'pas été exécutée.',
+      'Fermer',
+      { duration: 8000 },
+    );
   });
 
   // ---------------------------- F-47 / SF-47-01 : l'invite est peinte, et rappelee
@@ -2320,6 +2325,112 @@ describe('AtelierComponent', () => {
 
     expect(component.filesExplorerOpen()).toBeFalse();
   }));
+
+  // ---------------------------- F-47 / SF-47-02 : le temps restant, l'expiration dite
+
+  it('F-47 : le temps restant est calculé depuis le délai annoncé, et décroît', fakeAsync(() => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.engine.set('HOSTED_SANDBOX');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onConfirmRequest!({
+        toolUseId: 'sevt_1', tool: 'bash', detail: 'rm -rf build', timeoutMs: 120_000,
+      });
+      return Promise.resolve();
+    });
+    component.draft.set('nettoie');
+    component.send();
+
+    expect(component.confirmationCountdown()).toBe('Il reste 2 min pour répondre');
+
+    tick(61_000);
+    expect(component.confirmationCountdown()).toBe('Il reste 59 s pour répondre');
+
+    // Le minuteur ne doit pas survivre au test : la décision le coupe, la destruction aussi.
+    component.pendingConfirmation.set(null);
+    tick(2_000);
+    fixture.destroy();
+    flush();
+  }));
+
+  it("F-47 : aucun compte à rebours quand la gateway n'annonce pas de délai", () => {
+    setup();
+    // Le bac à sable (F-33) ne porte pas de délai : le fournisseur le tient, pas la gateway.
+    runAwaitingConfirmation();
+
+    expect(component.pendingConfirmation()!.deadline).toBeNull();
+    expect(component.confirmationCountdown()).toBeNull();
+  });
+
+  it('F-47 : le compte à rebours ne descend jamais sous zéro', fakeAsync(() => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.engine.set('HOSTED_SANDBOX');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onConfirmRequest!({
+        toolUseId: 'sevt_1', tool: 'bash', detail: 'rm -rf build', timeoutMs: 3_000,
+      });
+      return Promise.resolve();
+    });
+    component.draft.set('nettoie');
+    component.send();
+
+    tick(10_000);
+
+    expect(component.confirmationCountdown()).toBe('Le délai est écoulé');
+    fixture.destroy();
+    flush();
+  }));
+
+  it("F-47 : l'expiration est dite pour ce qu'elle est, pas comme un refus", fakeAsync(() => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.engine.set('HOSTED_SANDBOX');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onConfirmRequest!({
+        toolUseId: 'sevt_1', tool: 'bash', detail: 'rm -rf build', timeoutMs: 120_000,
+      });
+      handlers.onConfirmResolved!({ toolUseId: 'sevt_1', decision: 'timeout' });
+      return Promise.resolve();
+    });
+    component.draft.set('nettoie');
+    component.send();
+
+    const message = snackBar.open.calls.mostRecent().args[0] as string;
+    expect(message).toContain("Personne n'a répondu");
+    expect(message).toContain('dans les 2 minutes');
+    // « Commande refusée » se lisait comme un refus DU SYSTÈME : c'est ce mot qui devait partir.
+    expect(message).not.toContain('Commande refusée');
+    // La décision arrête le compte à rebours : plus rien ne décompte dans le vide.
+    expect(component.confirmationCountdown()).toBeNull();
+    tick(2_000);
+    fixture.destroy();
+    flush();
+  }));
+
+  it("F-47 : sans délai connu, l'expiration se replie sur « dans le délai imparti »", () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.engine.set('HOSTED_SANDBOX');
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onConfirmRequest!({ toolUseId: 'sevt_1', tool: 'bash', detail: 'rm -rf build' });
+      handlers.onConfirmResolved!({ toolUseId: 'sevt_1', decision: 'timeout' });
+      return Promise.resolve();
+    });
+    component.draft.set('nettoie');
+    component.send();
+
+    expect(snackBar.open.calls.mostRecent().args[0] as string)
+      .toContain('dans le délai imparti');
+  });
+
+  it('F-47 : la durée annoncée est dite en clair', () => {
+    expect(delayLabel(120_000)).toBe('dans les 2 minutes');
+    expect(delayLabel(60_000)).toBe('dans la minute');
+    expect(delayLabel(30_000)).toBe('dans les 30 secondes');
+    expect(delayLabel(null)).toBe('dans le délai imparti');
+    expect(delayLabel(0)).toBe('dans le délai imparti');
+  });
 
   it('F-47 : « Voir la demande » sans terminal monté ne lève pas', fakeAsync(() => {
     setup();
@@ -2790,6 +2901,8 @@ describe('AtelierComponent', () => {
       tool: 'bash',
       detail: 'npm install',
       reason: '',
+      deadline: null,
+      timeoutMs: null,
       denying: false,
       answering: false,
       source: 'LOCAL_MACHINE',
@@ -2811,6 +2924,8 @@ describe('AtelierComponent', () => {
       tool: 'bash',
       detail: 'npm install',
       reason: '',
+      deadline: null,
+      timeoutMs: null,
       denying: false,
       answering: false,
       source: 'LOCAL_MACHINE',
