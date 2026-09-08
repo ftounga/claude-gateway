@@ -143,6 +143,89 @@ export function proxyExportCommand(platform: RunnerHostPlatform, proxyUrl: strin
     : `export HTTPS_PROXY=${proxyUrl}`;
 }
 
+/** Nom du fichier de la fiche DSI, tel qu'il arrive dans les téléchargements (F-45 / SF-45-03). */
+export const IT_SHEET_FILENAME = 'runner-acces-reseau-dsi.txt';
+
+/**
+ * Fiche <b>« Pour votre DSI »</b> (F-45 / SF-45-03) : la demande d'ouverture réseau, écrite.
+ *
+ * <p>Chez le client du 2026-09-07, la moitié des trois heures s'est passée à <b>reconstituer</b>
+ * cette demande — quel domaine, quel port, dans quel sens, et pourquoi « HTTPS est déjà ouvert » ne
+ * suffisait pas. Ces informations sont connues du produit ; les faire retrouver à un utilisateur,
+ * c'est lui faire deviner ce qu'on sait.</p>
+ *
+ * <p>Fonction <b>pure</b> et générée côté écran : tout son contenu vient de l'origine de la page ou
+ * du comportement constant du runner. Un endpoint n'ajouterait qu'une route à maintenir (D1).</p>
+ *
+ * <p>Elle est faite pour <b>sortir de l'écran</b> — collée dans un ticket. Elle ne contient donc
+ * <b>aucune</b> donnée du projet : ni code d'appairage, ni nom de projet, ni chemin du poste (D6).</p>
+ *
+ * @param origin origine de la page, telle que `window.location.origin`
+ * @param generatedAt date de génération, injectée pour rester testable
+ */
+export function itDepartmentSheet(origin: string, generatedAt: Date): string {
+  let host = origin;
+  let port = '';
+  let secure = true;
+  try {
+    const url = new URL(origin);
+    host = url.hostname;
+    secure = url.protocol === 'https:';
+    // D3 : le port vient de l'origine, jamais d'une constante. `443` en dur serait faux en
+    // développement, et faux le jour où la passerelle est servie ailleurs.
+    port = url.port || (secure ? '443' : '80');
+  } catch {
+    // Une fiche imparfaite vaut mieux qu'un bouton mort : on garde l'origine telle quelle.
+    port = 'inconnu';
+  }
+  const web = secure ? 'HTTPS' : 'HTTP';
+  const socket = secure ? 'WSS' : 'WS';
+  return [
+    'Mise en service du runner Claude Gateway — demande d\'ouverture réseau',
+    '',
+    'SENS DES FLUX',
+    '  Sortant uniquement. Aucun port entrant à ouvrir, aucune règle de NAT,',
+    '  aucune exposition du poste de travail. C\'est le poste qui appelle.',
+    '',
+    'À AUTORISER EN SORTIE',
+    `  Domaine    : ${host}`,
+    `  Port       : ${port} (TCP)`,
+    `  Protocoles : ${web} et ${socket}`,
+    '',
+    `  ${socket} emprunte le MÊME hôte et le MÊME port que ${web} : la connexion`,
+    `  commence par une requête ${web} que le serveur bascule en ${socket}`,
+    '  (en-tête Upgrade). Un équipement qui autorise ' + web + ' mais refuse',
+    '  l\'Upgrade WebSocket ne coupe pas le service : le runner bascule sur un',
+    `  repli en long-polling ${web}, fonctionnel mais plus lent.`,
+    '',
+    'PROXY D\'ENTREPRISE',
+    '  Le runner lit HTTPS_PROXY, HTTP_PROXY et NO_PROXY.',
+    '',
+    '  Il ne sait PAS porter une authentification proxy INTÉGRÉE (NTLM,',
+    '  Kerberos) : la JVM n\'a aucun support SSPI, et l\'authentification Basic',
+    '  est désactivée sur les tunnels CONNECT depuis Java 8u111. Ce n\'est pas',
+    '  un défaut du runner et aucune version ne le corrigera.',
+    '',
+    '  Si le proxy exige une authentification intégrée, deux issues :',
+    `    1. exclure ${host} de l'authentification proxy ;`,
+    '    2. laisser l\'utilisateur passer par un relais local (px, cntlm) qui',
+    '       porte l\'authentification et expose un proxy sans authentification',
+    '       sur 127.0.0.1.',
+    '',
+    'INTERCEPTION TLS',
+    '  Si le proxy déchiffre le TLS, le certificat de l\'autorité interne doit',
+    '  être connu de la JVM du runner :',
+    '    -Djavax.net.ssl.trustStore=<fichier>',
+    '',
+    'CE QUI N\'EST PAS DEMANDÉ',
+    '  Aucun droit administrateur, aucun service installé, aucune tâche',
+    '  planifiée. Le runner s\'exécute sous le compte de l\'utilisateur, s\'affiche',
+    '  en clair dans son terminal et s\'arrête au Ctrl-C.',
+    '',
+    `Fiche générée le ${generatedAt.toLocaleString('fr-FR')} depuis ${origin}.`,
+  ].join('\n');
+}
+
 /**
  * Devine le système depuis l'`User-Agent`. Volontairement grossier : il ne sert qu'à **présélectionner**
  * une option que l'utilisateur voit et peut changer d'un clic — jamais à masquer quoi que ce soit.
@@ -336,6 +419,13 @@ export class RunnerPairingDialogComponent implements OnDestroy {
 
   /** Vrai quand la page est consultée depuis Windows : l'invite de commandes y coexiste avec PowerShell. */
   readonly onWindows = this.hostPlatform === 'windows';
+
+  /**
+   * Fiche à transmettre à la DSI (F-45 / SF-45-03). Construite depuis l'**origine de la page**, pas
+   * depuis `gatewayUrl` : c'est un domaine et un port qu'une DSI ouvre, pas un préfixe d'API.
+   */
+  readonly itSheet = itDepartmentSheet(
+    typeof window !== 'undefined' ? window.location.origin : '', new Date());
 
   /** Vrai tant que le code affiché est exploitable (généré et non expiré). */
   readonly codeUsable = computed(() => this.pairingCode() !== null && this.secondsLeft() > 0);
@@ -552,6 +642,15 @@ export class RunnerPairingDialogComponent implements OnDestroy {
         });
       },
     });
+  }
+
+  /**
+   * Enregistre la fiche DSI en texte brut (F-45 / SF-45-03). Texte et non PDF : une DSI colle ces
+   * lignes dans un ticket, et le texte brut passe partout (D2). La copie reste offerte à côté —
+   * les deux actions sont indépendantes, si l'une est bloquée l'autre reste utile.
+   */
+  downloadItSheet(): void {
+    this.saveBlob(new Blob([this.itSheet], { type: 'text/plain;charset=utf-8' }), IT_SHEET_FILENAME);
   }
 
   /** Copie un texte dans le presse-papiers, avec un repli lisible si l'API est indisponible. */
