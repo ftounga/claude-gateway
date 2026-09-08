@@ -1,376 +1,585 @@
 <h2 mat-dialog-title>Connecter une machine</h2>
 <mat-dialog-content>
-  <p class="pairing-intro">
-    Le runner tourne sur votre machine et ouvre lui-même la connexion vers cette passerelle : aucun
-    port à ouvrir <strong>en entrée</strong> — il lui faut en revanche une <strong>sortie
-    HTTPS</strong>, que l'étape 1 vérifie. Il s'affiche en clair et s'arrête au <code>Ctrl-C</code>.
-    Projet appairé : <strong>{{ data.workspaceName }}</strong>.
-  </p>
+  <!-- La conclusion (F-45 / SF-45-05, D6). Elle REMPLACE le parcours : c'est la seule information
+       attendue depuis le début, et elle vivait jusqu'ici en bas de l'étape 4, invisible sur un
+       portable. Les étapes restent repliées dessous, et rouvrables d'un clic. -->
+  @if (runnerConnected()) {
+    <section class="pairing-conclusion" role="status">
+      <mat-icon class="pairing-conclusion-icon">check_circle</mat-icon>
+      <div>
+        <p class="pairing-conclusion-title">Machine connectée</p>
+        <dl class="pairing-conclusion-facts">
+          <dt>Projet</dt>
+          <dd>{{ data.workspaceName }}</dd>
+          @if (shellLabel(); as shell) {
+            <!-- L'interpréteur élu par le runner (SF-38-27) : c'est lui qui exécutera les commandes,
+                 et il n'est pas le même sur toutes les machines. -->
+            <dt>Interpréteur</dt>
+            <dd>{{ shell }}</dd>
+          }
+          @if (lastSeenLabel(); as seen) {
+            <dt>Dernier signe de vie</dt>
+            <dd>{{ seen }}</dd>
+          }
+        </dl>
+        <p class="pairing-conclusion-text">
+          La machine reste connectée tant que le runner tourne. Vous pouvez fermer cette fenêtre :
+          il n'y a pas de nouvel appairage à faire au prochain lancement.
+        </p>
+      </div>
+    </section>
+  } @else {
+    <p class="pairing-intro">
+      Le runner tourne sur votre machine et ouvre lui-même la connexion vers cette passerelle : aucun
+      port à ouvrir <strong>en entrée</strong> — il lui faut en revanche une <strong>sortie
+      HTTPS</strong>, que l'étape 1 vérifie. Il s'affiche en clair et s'arrête au <code>Ctrl-C</code>.
+      Projet appairé : <strong>{{ data.workspaceName }}</strong>.
+    </p>
+  }
 
   <!-- Étape 1 — la sortie réseau (F-45 / SF-45-01). Avant le code et avant les 39 Mo : chez le
        client du 2026-09-07, les quatre obstacles se sont tous découverts APRÈS le téléchargement.
        Avant le code aussi, et pas seulement avant le téléchargement : le code expire en 5 minutes,
        moins de temps qu'il n'en faut pour retrouver un proxy d'entreprise (D1). -->
   <section class="pairing-step">
-    <h3 class="pairing-step-title">
-      <span class="pairing-step-number">1</span> Vérifier l'accès réseau
+    <h3 class="pairing-step-heading">
+      <button
+        type="button"
+        class="pairing-step-head"
+        [attr.aria-expanded]="isOpen('network')"
+        (click)="toggleStep('network')"
+      >
+        <span class="pairing-step-number" [class.pairing-step-number-done]="stepDone('network')">
+          @if (stepDone('network')) {
+            <mat-icon class="pairing-step-check">check</mat-icon>
+          } @else {
+            1
+          }
+        </span>
+        <span class="pairing-step-head-text">
+          <span class="pairing-step-title">Vérifier l'accès réseau</span>
+          @if (stepSummary('network'); as summary) {
+            <span class="pairing-step-summary">{{ summary }}</span>
+          }
+        </span>
+        <mat-icon class="pairing-step-chevron">
+          {{ isOpen('network') ? 'expand_less' : 'expand_more' }}
+        </mat-icon>
+      </button>
     </h3>
 
-    <p class="pairing-hint">
-      Le runner sort vers cette passerelle en <strong>HTTPS</strong> : rien n'est à ouvrir en entrée,
-      c'est le <strong>sortant</strong> qui bloque sur un poste d'entreprise. Cette page ne peut pas
-      le vérifier à votre place — un navigateur ne lit pas la configuration proxy du poste. Collez
-      cette commande dans le terminal <strong>où vous lancerez le runner</strong>.
-    </p>
-
-    <div class="pairing-command">
-      <code>{{ networkCheckCommand }}</code>
-      <button
-        mat-icon-button
-        type="button"
-        matTooltip="Copier la commande"
-        aria-label="Copier la commande de vérification réseau"
-        (click)="copy(networkCheckCommand, 'Commande')"
-      >
-        <mat-icon>content_copy</mat-icon>
-      </button>
-    </div>
-
-    <ul class="pairing-tree">
-      <li class="pairing-branch">
-        <span class="pairing-branch-key pairing-branch-ok">200</span>
-        <div class="pairing-branch-body">
-          <p class="pairing-branch-title">Ce terminal atteint la passerelle.</p>
-          <p class="pairing-branch-text">Poursuivez à l'étape 2.</p>
-        </div>
-      </li>
-
-      <li class="pairing-branch">
-        <span class="pairing-branch-key pairing-branch-warn">407</span>
-        <div class="pairing-branch-body">
-          <p class="pairing-branch-title">
-            Un proxy répond et exige une authentification.
-          </p>
-          <p class="pairing-branch-text">
-            Si elle est <strong>intégrée</strong> (NTLM ou Kerberos), le runner ne pourra pas la
-            porter : la JVM n'a aucun support SSPI, et l'authentification <code>Basic</code> est
-            désactivée sur les tunnels HTTPS depuis Java 8u111. Le remède est un
-            <strong>relais local</strong> — <code>px</code> ou <code>cntlm</code> — qui porte
-            l'authentification intégrée et expose, lui, un proxy sans authentification. Une fois
-            lancé, déclarez-le dans le terminal :
-          </p>
-          <div class="pairing-command">
-            <code>{{ relayExportCommand }}</code>
-            <button
-              mat-icon-button
-              type="button"
-              matTooltip="Copier la commande"
-              aria-label="Copier la déclaration du relais local"
-              (click)="copy(relayExportCommand, 'Commande')"
-            >
-              <mat-icon>content_copy</mat-icon>
-            </button>
-          </div>
-        </div>
-      </li>
-
-      <li class="pairing-branch">
-        <span class="pairing-branch-key pairing-branch-error">—</span>
-        <div class="pairing-branch-body">
-          <p class="pairing-branch-title">
-            Aucun code, ou <code>could not resolve host</code> / <code>failed to connect</code>.
-          </p>
-          <p class="pairing-branch-text">
-            Le proxy de votre poste n'est pas déclaré dans <em>ce</em> terminal : il l'est côté
-            système, et un shell ne le lit pas. C'est pourquoi votre navigateur atteint cette page
-            alors que la commande échoue. Retrouvez-le :
-          </p>
-          <div class="pairing-command">
-            <code>{{ proxyDiscoveryCommand }}</code>
-            <button
-              mat-icon-button
-              type="button"
-              matTooltip="Copier la commande"
-              aria-label="Copier la commande de recherche du proxy"
-              (click)="copy(proxyDiscoveryCommand, 'Commande')"
-            >
-              <mat-icon>content_copy</mat-icon>
-            </button>
-          </div>
-          <p class="pairing-branch-text">Puis déclarez-le, avant de lancer le runner :</p>
-          <div class="pairing-command">
-            <code>{{ proxyExportCommand }}</code>
-            <button
-              mat-icon-button
-              type="button"
-              matTooltip="Copier la commande"
-              aria-label="Copier la déclaration du proxy"
-              (click)="copy(proxyExportCommand, 'Commande')"
-            >
-              <mat-icon>content_copy</mat-icon>
-            </button>
-          </div>
-          @if (onWindows) {
-            <p class="pairing-branch-text">
-              Dans l'invite de commandes plutôt que PowerShell :
-              <code>set HTTPS_PROXY=http://hote:port</code>. Si
-              <code>netsh</code> ne renvoie rien, le proxy vient peut-être d'un fichier
-              <code>.pac</code> : son adresse est écrite en clair dans le fichier, sur une ligne
-              <code>PROXY hote:port</code>.
-            </p>
-          }
-        </div>
-      </li>
-    </ul>
-
-    <!-- Fiche « Pour votre DSI » (F-45 / SF-45-03). Le 407 est le seul des quatre obstacles qu'un
-         utilisateur ne peut pas resoudre seul : il DOIT passer par sa DSI. Sans demande ecrite,
-         cet aller-retour se fait a l'oral, incomplet — c'est ce qui a coute la moitie des trois
-         heures chez le client. La fiche ne porte AUCUNE donnee du projet : elle est faite pour
-         sortir de l'ecran. -->
-    <div class="pairing-note">
-      <mat-icon class="pairing-inline-icon">business</mat-icon>
-      <div>
-        <p class="pairing-note-title">Pour votre DSI</p>
-        <p class="pairing-note-text">
-          Une authentification proxy intégrée ne se contourne pas depuis votre poste : elle se lève
-          côté réseau. Cette fiche dit ce qu'il faut autoriser — domaine, port, sens du flux — et ce
-          que la machine virtuelle Java ne sait pas porter. Elle ne contient aucune information sur
-          votre projet.
+    @if (isOpen('network')) {
+      <div class="pairing-step-body">
+        <p class="pairing-hint">
+          Le runner sort vers cette passerelle en <strong>HTTPS</strong> : rien n'est à ouvrir en
+          entrée, c'est le <strong>sortant</strong> qui bloque sur un poste d'entreprise. Cette page
+          ne peut pas le vérifier à votre place — un navigateur ne lit pas la configuration proxy du
+          poste. Collez cette commande dans le terminal <strong>où vous lancerez le runner</strong>.
         </p>
-        <div class="pairing-note-actions">
+
+        <div class="pairing-command">
+          <code>{{ networkCheckCommand }}</code>
           <button
-            mat-stroked-button
+            mat-icon-button
             type="button"
-            (click)="copy(itSheet, 'Fiche')"
+            matTooltip="Copier la commande"
+            aria-label="Copier la commande de vérification réseau"
+            (click)="copy(networkCheckCommand, 'Commande')"
           >
             <mat-icon>content_copy</mat-icon>
-            Copier la fiche
-          </button>
-          <button mat-stroked-button type="button" (click)="downloadItSheet()">
-            <mat-icon>download</mat-icon>
-            Télécharger (.txt)
           </button>
         </div>
+
+        <!-- L'arbre de lecture ne s'affiche plus en entier : l'utilisateur DIT ce qu'il a obtenu, et
+             seule sa branche se déplie (D2). Les trois affichées ensemble sont, par construction,
+             fausses aux deux tiers pour celui qui les lit. -->
+        @if (networkVerdict() === 'unknown') {
+          <p class="pairing-question">Qu'affiche votre terminal ?</p>
+          <div class="pairing-choices">
+            <button
+              mat-stroked-button
+              type="button"
+              (click)="declareNetworkResult('reachable')"
+            >
+              <code>200</code>
+            </button>
+            <button
+              mat-stroked-button
+              type="button"
+              (click)="declareNetworkResult('proxy-auth')"
+            >
+              <code>407</code>
+            </button>
+            <button
+              mat-stroked-button
+              type="button"
+              (click)="declareNetworkResult('no-answer')"
+            >
+              Aucun code
+            </button>
+          </div>
+          <p class="pairing-hint">
+            Un autre code à trois chiffres (<code>401</code>, <code>404</code>, <code>500</code>…)
+            vient de la passerelle elle-même : le terminal sort, poursuivez comme pour
+            <code>200</code>.
+          </p>
+        } @else {
+          <ul class="pairing-tree">
+            @if (networkVerdict() === 'reachable') {
+              <li class="pairing-branch">
+                <span class="pairing-branch-key pairing-branch-ok">200</span>
+                <div class="pairing-branch-body">
+                  <p class="pairing-branch-title">Ce terminal atteint la passerelle.</p>
+                  <p class="pairing-branch-text">
+                    C'est ce terminal qui devra lancer le runner — pas un autre : les variables de
+                    proxy ne se transmettent pas d'une fenêtre à l'autre.
+                  </p>
+                </div>
+              </li>
+            }
+
+            @if (networkVerdict() === 'proxy-auth') {
+              <li class="pairing-branch">
+                <span class="pairing-branch-key pairing-branch-warn">407</span>
+                <div class="pairing-branch-body">
+                  <p class="pairing-branch-title">
+                    Un proxy répond et exige une authentification.
+                  </p>
+                  <p class="pairing-branch-text">
+                    Si elle est <strong>intégrée</strong> (NTLM ou Kerberos), le runner ne pourra pas
+                    la porter : la JVM n'a aucun support SSPI, et l'authentification
+                    <code>Basic</code> est désactivée sur les tunnels HTTPS depuis Java 8u111. Le
+                    remède est un <strong>relais local</strong> — <code>px</code> ou
+                    <code>cntlm</code> — qui porte l'authentification intégrée et expose, lui, un
+                    proxy sans authentification. Une fois lancé, déclarez-le dans le terminal :
+                  </p>
+                  <div class="pairing-command">
+                    <code>{{ relayExportCommand }}</code>
+                    <button
+                      mat-icon-button
+                      type="button"
+                      matTooltip="Copier la commande"
+                      aria-label="Copier la déclaration du relais local"
+                      (click)="copy(relayExportCommand, 'Commande')"
+                    >
+                      <mat-icon>content_copy</mat-icon>
+                    </button>
+                  </div>
+                </div>
+              </li>
+            }
+
+            @if (networkVerdict() === 'no-answer') {
+              <li class="pairing-branch">
+                <span class="pairing-branch-key pairing-branch-error">—</span>
+                <div class="pairing-branch-body">
+                  <p class="pairing-branch-title">
+                    Aucun code, ou <code>could not resolve host</code> /
+                    <code>failed to connect</code>.
+                  </p>
+                  <p class="pairing-branch-text">
+                    Le proxy de votre poste n'est pas déclaré dans <em>ce</em> terminal : il l'est
+                    côté système, et un shell ne le lit pas. C'est pourquoi votre navigateur atteint
+                    cette page alors que la commande échoue. Retrouvez-le :
+                  </p>
+                  <div class="pairing-command">
+                    <code>{{ proxyDiscoveryCommand }}</code>
+                    <button
+                      mat-icon-button
+                      type="button"
+                      matTooltip="Copier la commande"
+                      aria-label="Copier la commande de recherche du proxy"
+                      (click)="copy(proxyDiscoveryCommand, 'Commande')"
+                    >
+                      <mat-icon>content_copy</mat-icon>
+                    </button>
+                  </div>
+                  <p class="pairing-branch-text">Puis déclarez-le, avant de lancer le runner :</p>
+                  <div class="pairing-command">
+                    <code>{{ proxyExportCommand }}</code>
+                    <button
+                      mat-icon-button
+                      type="button"
+                      matTooltip="Copier la commande"
+                      aria-label="Copier la déclaration du proxy"
+                      (click)="copy(proxyExportCommand, 'Commande')"
+                    >
+                      <mat-icon>content_copy</mat-icon>
+                    </button>
+                  </div>
+                  @if (onWindows) {
+                    <p class="pairing-branch-text">
+                      Dans l'invite de commandes plutôt que PowerShell :
+                      <code>set HTTPS_PROXY=http://hote:port</code>. Si
+                      <code>netsh</code> ne renvoie rien, le proxy vient peut-être d'un fichier
+                      <code>.pac</code> : son adresse est écrite en clair dans le fichier, sur une
+                      ligne <code>PROXY hote:port</code>.
+                    </p>
+                  }
+                </div>
+              </li>
+            }
+          </ul>
+
+          <!-- Fiche « Pour votre DSI » (F-45 / SF-45-03). Elle n'apparaît que sous les deux branches
+               en échec (D4) : elle n'a d'objet que s'il y a quelque chose à demander. Le 407 est le
+               seul des quatre obstacles qu'un utilisateur ne peut pas résoudre seul. La fiche ne
+               porte AUCUNE donnée du projet : elle est faite pour sortir de l'écran. -->
+          @if (networkVerdict() !== 'reachable') {
+            <div class="pairing-note">
+              <mat-icon class="pairing-inline-icon">business</mat-icon>
+              <div>
+                <p class="pairing-note-title">Pour votre DSI</p>
+                <p class="pairing-note-text">
+                  Une authentification proxy intégrée ne se contourne pas depuis votre poste : elle
+                  se lève côté réseau. Cette fiche dit ce qu'il faut autoriser — domaine, port, sens
+                  du flux — et ce que la machine virtuelle Java ne sait pas porter. Elle ne contient
+                  aucune information sur votre projet.
+                </p>
+                <div class="pairing-note-actions">
+                  <button mat-stroked-button type="button" (click)="copy(itSheet, 'Fiche')">
+                    <mat-icon>content_copy</mat-icon>
+                    Copier la fiche
+                  </button>
+                  <button mat-stroked-button type="button" (click)="downloadItSheet()">
+                    <mat-icon>download</mat-icon>
+                    Télécharger (.txt)
+                  </button>
+                </div>
+              </div>
+            </div>
+          }
+
+          <button
+            mat-button
+            type="button"
+            class="pairing-reset"
+            (click)="resetNetworkResult()"
+          >
+            <mat-icon>undo</mat-icon>
+            Revenir au diagnostic
+          </button>
+        }
       </div>
-    </div>
+    }
   </section>
 
   <!-- Étape 2 — le code d'appairage (usage unique, TTL court) -->
   <section class="pairing-step">
-    <h3 class="pairing-step-title"><span class="pairing-step-number">2</span> Générer un code</h3>
+    <h3 class="pairing-step-heading">
+      <button
+        type="button"
+        class="pairing-step-head"
+        [attr.aria-expanded]="isOpen('code')"
+        (click)="toggleStep('code')"
+      >
+        <span class="pairing-step-number" [class.pairing-step-number-done]="stepDone('code')">
+          @if (stepDone('code')) {
+            <mat-icon class="pairing-step-check">check</mat-icon>
+          } @else {
+            2
+          }
+        </span>
+        <span class="pairing-step-head-text">
+          <span class="pairing-step-title">Générer un code</span>
+          @if (stepSummary('code'); as summary) {
+            <span class="pairing-step-summary">{{ summary }}</span>
+          }
+        </span>
+        <mat-icon class="pairing-step-chevron">
+          {{ isOpen('code') ? 'expand_less' : 'expand_more' }}
+        </mat-icon>
+      </button>
+    </h3>
 
-    @if (codeUsable()) {
-      <div class="pairing-code-box">
-        <code class="pairing-code">{{ pairingCode()!.code }}</code>
-        <button
-          mat-icon-button
-          type="button"
-          matTooltip="Copier le code"
-          aria-label="Copier le code d'appairage"
-          (click)="copy(pairingCode()!.code, 'Code')"
-        >
-          <mat-icon>content_copy</mat-icon>
-        </button>
-      </div>
-      <p class="pairing-countdown">
-        <mat-icon class="pairing-inline-icon">timer</mat-icon>
-        Valable encore {{ countdownLabel() }} — à usage unique.
-      </p>
-    } @else if (codeExpired()) {
-      <p class="pairing-expired">
-        <mat-icon class="pairing-inline-icon">timer_off</mat-icon>
-        Code expiré. Un code n'est valable que quelques minutes et ne sert qu'une fois.
-      </p>
-    } @else {
-      <p class="pairing-hint">
-        Le code est valable quelques minutes et ne sert qu'une seule fois. Il n'est affiché qu'ici :
-        fermer cette fenêtre le perd définitivement.
-      </p>
-    }
-
-    @if (generationError(); as error) {
-      <p class="pairing-error">{{ error }}</p>
-    }
-
-    <button
-      mat-flat-button
-      color="primary"
-      type="button"
-      class="pairing-action"
-      [disabled]="generating()"
-      (click)="generateCode()"
-    >
-      @if (generating()) {
-        <mat-progress-spinner mode="indeterminate" [diameter]="18"></mat-progress-spinner>
-      } @else {
-        <mat-icon>key</mat-icon>
-      }
-      {{ pairingCode() ? 'Générer un nouveau code' : 'Générer un code' }}
-    </button>
-  </section>
-
-  <!-- Étape 3 — le binaire -->
-  <section class="pairing-step">
-    <h3 class="pairing-step-title"><span class="pairing-step-number">3</span> Récupérer le runner</h3>
-
-    @if (jarUnavailable()) {
-      <!-- 404 : état de déploiement normal, pas une panne. On donne la commande de construction. -->
-      <div class="pairing-note">
-        <mat-icon class="pairing-inline-icon">info</mat-icon>
-        <div>
-          <p class="pairing-note-title">Binaire non publié sur cette passerelle.</p>
-          <p class="pairing-note-text">
-            Construisez-le depuis le dépôt ; le fichier apparaît dans
-            <code>runner/target/claude-runner.jar</code>.
-          </p>
-          <div class="pairing-command">
-            <code>{{ buildCommand }}</code>
+    @if (isOpen('code')) {
+      <div class="pairing-step-body">
+        @if (codeUsable()) {
+          <div class="pairing-code-box">
+            <code class="pairing-code">{{ pairingCode()!.code }}</code>
             <button
               mat-icon-button
               type="button"
-              matTooltip="Copier la commande"
-              aria-label="Copier la commande de construction"
-              (click)="copy(buildCommand, 'Commande')"
+              matTooltip="Copier le code"
+              aria-label="Copier le code d'appairage"
+              (click)="copy(pairingCode()!.code, 'Code')"
             >
               <mat-icon>content_copy</mat-icon>
             </button>
           </div>
-        </div>
-      </div>
-    } @else {
-      <!-- Choix du format (F-44 / SF-44-02, étendu par SF-44-03). Les paquets autonomes d'abord :
-           ce sont ceux qui ne supposent rien du poste. Le jar reste visible — il est le meilleur
-           format pour qui a déjà Java, et lui faire télécharger 39 Mo pour en utiliser 2,5 serait
-           absurde. Un format que cette gateway ne sert pas n'apparaît pas du tout. -->
-      @if (anyPackageAvailable()) {
-        <mat-radio-group
-          class="pairing-formats"
-          [value]="format()"
-          (change)="format.set($event.value)"
-          aria-label="Format du runner"
-        >
-          @if (windowsPackageAvailable()) {
-            <mat-radio-button value="windows">
-              <span class="pairing-format-title">Windows, sans rien installer</span>
-              <span class="pairing-format-detail">
-                ~39 Mo, contient Java. Décompressez, puis lancez <code>claude-runner.cmd</code>.
-              </span>
-            </mat-radio-button>
-          }
-          @if (macosAarch64Available()) {
-            <mat-radio-button value="macos-aarch64">
-              <span class="pairing-format-title">Mac Apple Silicon (M1 à M4)</span>
-              <span class="pairing-format-detail">
-                ~39 Mo, contient Java. Décompressez, puis lancez
-                <code>./claude-runner.command</code>.
-              </span>
-            </mat-radio-button>
-          }
-          @if (macosX64Available()) {
-            <mat-radio-button value="macos-x64">
-              <span class="pairing-format-title">Mac Intel</span>
-              <span class="pairing-format-detail">
-                ~40 Mo, contient Java. Décompressez, puis lancez
-                <code>./claude-runner.command</code>.
-              </span>
-            </mat-radio-button>
-          }
-          <mat-radio-button value="jar">
-            <span class="pairing-format-title">Fichier <code>.jar</code></span>
-            <span class="pairing-format-detail">
-              2,5 Mo, nécessite <strong>Java 21 ou plus récent</strong> déjà installé.
-            </span>
-          </mat-radio-button>
-        </mat-radio-group>
-
-        @if (usesMacosPackage()) {
-          <!-- Le navigateur ne sait pas distinguer Apple Silicon d'Intel : on présélectionne le
-               plus probable et on donne le moyen de vérifier (D4). -->
+          <p class="pairing-countdown">
+            <mat-icon class="pairing-inline-icon">timer</mat-icon>
+            Valable encore {{ countdownLabel() }} — à usage unique.
+          </p>
+        } @else if (codeExpired()) {
+          <p class="pairing-expired">
+            <mat-icon class="pairing-inline-icon">timer_off</mat-icon>
+            Code expiré. Un code n'est valable que quelques minutes et ne sert qu'une fois.
+          </p>
+        } @else {
           <p class="pairing-hint">
-            Dans le doute : menu <strong>Pomme</strong> › <strong>À propos de ce Mac</strong>.
-            « Puce Apple » = Apple Silicon, « Processeur Intel » = Intel.
+            Le code est valable quelques minutes et ne sert qu'une seule fois. Il n'est affiché
+            qu'ici : fermer cette fenêtre le perd définitivement.
           </p>
         }
-      } @else {
-        <p class="pairing-hint">
-          Un seul fichier, aucun installeur, aucun droit administrateur. <strong>Java 21 ou plus récent</strong> est requis sur la machine : vérifiez avec <code>java -version</code>.
-        </p>
-      }
-    }
 
-    <button
-      mat-stroked-button
-      type="button"
-      class="pairing-action"
-      [disabled]="downloading()"
-      (click)="downloadJar()"
-    >
-      @if (downloading()) {
-        <mat-progress-spinner mode="indeterminate" [diameter]="18"></mat-progress-spinner>
-      } @else {
-        <mat-icon>download</mat-icon>
-      }
-      {{ downloadLabel() }}
-    </button>
+        @if (generationError(); as error) {
+          <p class="pairing-error">{{ error }}</p>
+        }
+
+        <button
+          mat-flat-button
+          color="primary"
+          type="button"
+          class="pairing-action"
+          [disabled]="generating()"
+          (click)="generateCode()"
+        >
+          @if (generating()) {
+            <mat-progress-spinner mode="indeterminate" [diameter]="18"></mat-progress-spinner>
+          } @else {
+            <mat-icon>key</mat-icon>
+          }
+          {{ pairingCode() ? 'Générer un nouveau code' : 'Générer un code' }}
+        </button>
+      </div>
+    }
+  </section>
+
+  <!-- Étape 3 — le binaire -->
+  <section class="pairing-step">
+    <h3 class="pairing-step-heading">
+      <button
+        type="button"
+        class="pairing-step-head"
+        [attr.aria-expanded]="isOpen('download')"
+        (click)="toggleStep('download')"
+      >
+        <span class="pairing-step-number" [class.pairing-step-number-done]="stepDone('download')">
+          @if (stepDone('download')) {
+            <mat-icon class="pairing-step-check">check</mat-icon>
+          } @else {
+            3
+          }
+        </span>
+        <span class="pairing-step-head-text">
+          <span class="pairing-step-title">Récupérer le runner</span>
+          @if (stepSummary('download'); as summary) {
+            <span class="pairing-step-summary">{{ summary }}</span>
+          }
+        </span>
+        <mat-icon class="pairing-step-chevron">
+          {{ isOpen('download') ? 'expand_less' : 'expand_more' }}
+        </mat-icon>
+      </button>
+    </h3>
+
+    @if (isOpen('download')) {
+      <div class="pairing-step-body">
+        @if (jarUnavailable()) {
+          <!-- 404 : état de déploiement normal, pas une panne. On donne la commande de construction. -->
+          <div class="pairing-note">
+            <mat-icon class="pairing-inline-icon">info</mat-icon>
+            <div>
+              <p class="pairing-note-title">Binaire non publié sur cette passerelle.</p>
+              <p class="pairing-note-text">
+                Construisez-le depuis le dépôt ; le fichier apparaît dans
+                <code>runner/target/claude-runner.jar</code>.
+              </p>
+              <div class="pairing-command">
+                <code>{{ buildCommand }}</code>
+                <button
+                  mat-icon-button
+                  type="button"
+                  matTooltip="Copier la commande"
+                  aria-label="Copier la commande de construction"
+                  (click)="copy(buildCommand, 'Commande')"
+                >
+                  <mat-icon>content_copy</mat-icon>
+                </button>
+              </div>
+            </div>
+          </div>
+        } @else {
+          <!-- Choix du format (F-44 / SF-44-02, étendu par SF-44-03). Les paquets autonomes d'abord :
+               ce sont ceux qui ne supposent rien du poste. Le jar reste visible — il est le meilleur
+               format pour qui a déjà Java, et lui faire télécharger 39 Mo pour en utiliser 2,5 serait
+               absurde. Un format que cette gateway ne sert pas n'apparaît pas du tout. -->
+          @if (anyPackageAvailable()) {
+            <mat-radio-group
+              class="pairing-formats"
+              [value]="format()"
+              (change)="format.set($event.value)"
+              aria-label="Format du runner"
+            >
+              @if (windowsPackageAvailable()) {
+                <mat-radio-button value="windows">
+                  <span class="pairing-format-title">Windows, sans rien installer</span>
+                  <span class="pairing-format-detail">
+                    ~39 Mo, contient Java. Décompressez, puis lancez <code>claude-runner.cmd</code>.
+                  </span>
+                </mat-radio-button>
+              }
+              @if (macosAarch64Available()) {
+                <mat-radio-button value="macos-aarch64">
+                  <span class="pairing-format-title">Mac Apple Silicon (M1 à M4)</span>
+                  <span class="pairing-format-detail">
+                    ~39 Mo, contient Java. Décompressez, puis lancez
+                    <code>./claude-runner.command</code>.
+                  </span>
+                </mat-radio-button>
+              }
+              @if (macosX64Available()) {
+                <mat-radio-button value="macos-x64">
+                  <span class="pairing-format-title">Mac Intel</span>
+                  <span class="pairing-format-detail">
+                    ~40 Mo, contient Java. Décompressez, puis lancez
+                    <code>./claude-runner.command</code>.
+                  </span>
+                </mat-radio-button>
+              }
+              <mat-radio-button value="jar">
+                <span class="pairing-format-title">Fichier <code>.jar</code></span>
+                <span class="pairing-format-detail">
+                  2,5 Mo, nécessite <strong>Java 21 ou plus récent</strong> déjà installé.
+                </span>
+              </mat-radio-button>
+            </mat-radio-group>
+
+            @if (usesMacosPackage()) {
+              <!-- Le navigateur ne sait pas distinguer Apple Silicon d'Intel : on présélectionne le
+                   plus probable et on donne le moyen de vérifier (D4). -->
+              <p class="pairing-hint">
+                Dans le doute : menu <strong>Pomme</strong> › <strong>À propos de ce Mac</strong>.
+                « Puce Apple » = Apple Silicon, « Processeur Intel » = Intel.
+              </p>
+            }
+          } @else {
+            <p class="pairing-hint">
+              Un seul fichier, aucun installeur, aucun droit administrateur.
+              <strong>Java 21 ou plus récent</strong> est requis sur la machine : vérifiez avec
+              <code>java -version</code>.
+            </p>
+          }
+        }
+
+        <div class="pairing-note-actions">
+          <button
+            mat-stroked-button
+            type="button"
+            class="pairing-action"
+            [disabled]="downloading()"
+            (click)="downloadJar()"
+          >
+            @if (downloading()) {
+              <mat-progress-spinner mode="indeterminate" [diameter]="18"></mat-progress-spinner>
+            } @else {
+              <mat-icon>download</mat-icon>
+            }
+            {{ downloadLabel() }}
+          </button>
+          <!-- Le runner a pu être récupéré à une session précédente, ou fourni par la DSI : rien
+               n'oblige à le retélécharger pour avancer. -->
+          <button
+            mat-button
+            type="button"
+            class="pairing-action"
+            (click)="markRunnerObtained()"
+          >
+            J'ai déjà le runner
+          </button>
+        </div>
+      </div>
+    }
   </section>
 
   <!-- Étape 4 — la commande à coller -->
   <section class="pairing-step">
-    <h3 class="pairing-step-title"><span class="pairing-step-number">4</span> Lancer le runner</h3>
-
-    <mat-form-field appearance="outline" class="pairing-field" subscriptSizing="dynamic">
-      <mat-label>Racine du projet sur la machine</mat-label>
-      <!-- Le chemin d'exemple suit le format retenu (F-45 / SF-45-02) : un chemin Unix sous un
-           bouton « pour Windows » invitait à recopier une forme qui ne marche pas. Placeholder et
-           non valeur : le runner refuse tout accès hors de la racine annoncée, et pré-remplir un
-           dossier inexistant ne ferait que déplacer l'échec après le lancement. -->
-      <input
-        matInput
-        maxlength="200"
-        [placeholder]="examplePath()"
-        [ngModel]="workspacePath()"
-        (ngModelChange)="workspacePath.set($event)"
-      />
-      <mat-hint>
-        Le runner refuse tout accès au-dessus de ce dossier. Ce chemin reste dans votre navigateur.
-      </mat-hint>
-    </mat-form-field>
-
-    <div class="pairing-command">
-      <code>{{ runCommand() }}</code>
+    <h3 class="pairing-step-heading">
       <button
-        mat-icon-button
         type="button"
-        matTooltip="Copier la commande"
-        aria-label="Copier la commande de lancement"
-        (click)="copy(runCommand(), 'Commande')"
+        class="pairing-step-head"
+        [attr.aria-expanded]="isOpen('launch')"
+        (click)="toggleStep('launch')"
       >
-        <mat-icon>content_copy</mat-icon>
+        <span class="pairing-step-number" [class.pairing-step-number-done]="stepDone('launch')">
+          @if (stepDone('launch')) {
+            <mat-icon class="pairing-step-check">check</mat-icon>
+          } @else {
+            4
+          }
+        </span>
+        <span class="pairing-step-head-text">
+          <span class="pairing-step-title">Lancer le runner</span>
+          @if (stepSummary('launch'); as summary) {
+            <span class="pairing-step-summary">{{ summary }}</span>
+          }
+        </span>
+        <mat-icon class="pairing-step-chevron">
+          {{ isOpen('launch') ? 'expand_less' : 'expand_more' }}
+        </mat-icon>
       </button>
-    </div>
+    </h3>
 
-    <p class="pairing-hint">
-      Le runner échange le code contre un jeton et le réutilise ensuite : il n'y a pas de nouvel
-      appairage à chaque lancement.
-    </p>
+    @if (isOpen('launch')) {
+      <div class="pairing-step-body">
+        <mat-form-field appearance="outline" class="pairing-field" subscriptSizing="dynamic">
+          <mat-label>Racine du projet sur la machine</mat-label>
+          <!-- Le chemin d'exemple suit le format retenu (F-45 / SF-45-02) : un chemin Unix sous un
+               bouton « pour Windows » invitait à recopier une forme qui ne marche pas. Placeholder et
+               non valeur : le runner refuse tout accès hors de la racine annoncée, et pré-remplir un
+               dossier inexistant ne ferait que déplacer l'échec après le lancement. -->
+          <input
+            matInput
+            maxlength="200"
+            [placeholder]="examplePath()"
+            [ngModel]="workspacePath()"
+            (ngModelChange)="workspacePath.set($event)"
+          />
+          <mat-hint>
+            Le runner refuse tout accès au-dessus de ce dossier. Ce chemin reste dans votre
+            navigateur.
+          </mat-hint>
+        </mat-form-field>
 
-    <!-- État de la machine (F-45 / SF-45-02) : relevé, pas poussé. Le backend calcule cet état avec
-         une tolérance de 90 s sur le heartbeat — un temps réel affiché serait un mensonge. -->
-    <div class="pairing-machine" [class.pairing-machine-on]="runnerConnected()" role="status">
-      @if (runnerConnected()) {
-        <mat-icon class="pairing-inline-icon">check_circle</mat-icon>
-      } @else {
-        <mat-progress-spinner mode="indeterminate" [diameter]="16"></mat-progress-spinner>
-      }
-      <span>{{ machineLabel() }}</span>
-    </div>
-    <p class="pairing-hint">
-      L'état est relevé toutes les 5 secondes, avec une tolérance de 90 secondes côté passerelle :
-      une machine arrêtée au <code>Ctrl-C</code> peut rester annoncée connectée jusqu'à ce délai.
-    </p>
+        <div class="pairing-command">
+          <code>{{ runCommand() }}</code>
+          <button
+            mat-icon-button
+            type="button"
+            matTooltip="Copier la commande"
+            aria-label="Copier la commande de lancement"
+            (click)="copy(runCommand(), 'Commande')"
+          >
+            <mat-icon>content_copy</mat-icon>
+          </button>
+        </div>
+
+        <p class="pairing-hint">
+          Le runner échange le code contre un jeton et le réutilise ensuite : il n'y a pas de nouvel
+          appairage à chaque lancement.
+        </p>
+
+        <!-- État de la machine (F-45 / SF-45-02) : relevé, pas poussé. Le backend calcule cet état avec
+             une tolérance de 90 s sur le heartbeat — un temps réel affiché serait un mensonge. -->
+        <div class="pairing-machine" [class.pairing-machine-on]="runnerConnected()" role="status">
+          @if (runnerConnected()) {
+            <mat-icon class="pairing-inline-icon">check_circle</mat-icon>
+          } @else {
+            <mat-progress-spinner mode="indeterminate" [diameter]="16"></mat-progress-spinner>
+          }
+          <span>{{ machineLabel() }}</span>
+        </div>
+        <p class="pairing-hint">
+          L'état est relevé toutes les 5 secondes, avec une tolérance de 90 secondes côté passerelle :
+          une machine arrêtée au <code>Ctrl-C</code> peut rester annoncée connectée jusqu'à ce délai.
+        </p>
+      </div>
+    }
   </section>
 </mat-dialog-content>
 <mat-dialog-actions align="end">
-  <button mat-stroked-button type="button" (click)="close()">Fermer</button>
+  <button mat-stroked-button type="button" (click)="close()">
+    {{ runnerConnected() ? 'Terminer' : 'Fermer' }}
+  </button>
 </mat-dialog-actions>

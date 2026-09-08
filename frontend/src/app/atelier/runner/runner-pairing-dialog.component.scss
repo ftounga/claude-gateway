@@ -13,25 +13,65 @@
 }
 
 .pairing-step {
-  padding: var(--cg-space-3) 0;
   border-top: 1px solid var(--cg-divider);
 }
 
-.pairing-step-title {
+/* Parcours guidé (F-45 / SF-45-05) : une étape dépliée à la fois. L'en-tête reste cliquable même
+   replié — replier n'est pas verrouiller. */
+.pairing-step-heading {
+  margin: 0;
+}
+
+.pairing-step-head {
   display: flex;
   align-items: center;
   gap: var(--cg-space-2);
-  margin: 0 0 var(--cg-space-2);
+  width: 100%;
+  padding: var(--cg-space-3) 0;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.pairing-step-head-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.pairing-step-title {
+  display: block;
   font-family: var(--cg-font-heading);
   font-size: 16px;
   font-weight: 600;
   color: var(--cg-text-primary);
 }
 
+/* Ce que l'étape repliée rapporte : le seul fait qui compte, sur une ligne. */
+.pairing-step-summary {
+  display: block;
+  margin-top: var(--cg-space-1);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pairing-step-chevron {
+  flex: none;
+  color: var(--cg-text-secondary);
+}
+
+.pairing-step-body {
+  padding-bottom: var(--cg-space-3);
+}
+
 .pairing-step-number {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: none;
   width: 24px;
   height: 24px;
   border-radius: 50%;
@@ -40,6 +80,92 @@
   font-family: var(--cg-font-body);
   font-size: 13px;
   font-weight: 600;
+}
+
+/* Étape faite : la coche remplace le numéro — on lit son avancement, pas un compteur. */
+.pairing-step-number-done {
+  background: var(--cg-success);
+}
+
+.pairing-step-check {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}
+
+/* Le diagnostic de l'étape 1 : trois issues, une seule dépliée (F-45 / SF-45-05, D2). */
+.pairing-question {
+  margin: 0 0 var(--cg-space-2);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cg-text-primary);
+}
+
+.pairing-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cg-space-2);
+  margin-bottom: var(--cg-space-2);
+
+  code {
+    font-family: var(--cg-font-mono);
+  }
+}
+
+.pairing-reset {
+  margin-top: var(--cg-space-1);
+}
+
+/* La conclusion (F-45 / SF-45-05, D6) : elle remplace le parcours, elle ne s'y ajoute pas. */
+.pairing-conclusion {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-3);
+  margin-bottom: var(--cg-space-3);
+  border: 1px solid var(--cg-success);
+  border-radius: 8px;
+  background: var(--cg-surface-2);
+}
+
+.pairing-conclusion-icon {
+  flex: none;
+  color: var(--cg-success);
+}
+
+.pairing-conclusion-title {
+  margin: 0 0 var(--cg-space-2);
+  font-family: var(--cg-font-heading);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--cg-success);
+}
+
+.pairing-conclusion-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--cg-space-1) var(--cg-space-2);
+  margin: 0 0 var(--cg-space-2);
+  font-size: 12px;
+  line-height: 1.5;
+
+  dt {
+    color: var(--cg-text-secondary);
+  }
+
+  dd {
+    margin: 0;
+    color: var(--cg-text-primary);
+    font-weight: 500;
+    word-break: break-word;
+  }
+}
+
+.pairing-conclusion-text {
+  margin: 0;
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .pairing-hint {
@@ -71,8 +197,8 @@
   color: var(--cg-text-secondary);
 }
 
-/* Arbre de lecture du contrôle d'accès réseau (F-45 / SF-45-01). Les trois branches sont visibles
-   ensemble : l'utilisateur lit son résultat et descend à la ligne correspondante. */
+/* Arbre de lecture du contrôle d'accès réseau (F-45 / SF-45-01). Depuis SF-45-05, seule la branche
+   déclarée par l'utilisateur est rendue : les deux autres sont fausses pour lui. */
 .pairing-tree {
   list-style: none;
   margin: 0 0 var(--cg-space-2);
@@ -201,7 +327,8 @@
   }
 }
 
-/* Actions de la fiche DSI (F-45 / SF-45-03) : copier et télécharger, indépendantes l'une de l'autre. */
+/* Deux actions de même rang, côte à côte : la fiche DSI (copier / télécharger, F-45 / SF-45-03) et
+   la récupération du runner (télécharger / « j'ai déjà le runner », SF-45-05). */
 .pairing-note-actions {
   display: flex;
   flex-wrap: wrap;
