@@ -55,6 +55,14 @@
 > accordée), **S16** (le paquet autonome, F-44) —, toujours **à la fin**, selon la même convention de
 > numérotation stable.
 
+> **Révision du 2026-09-08 (soir) — macOS entre dans le périmètre de F-44 (SF-44-03).** Le protocole
+> écrivait, en tête de **S16**, qu'un poste macOS « a déjà un JDK » et que le paquet autonome n'y
+> existait pas. Une intervention chez le **même client**, sur un poste Mac d'entreprise verrouillé —
+> ni droits administrateur, ni Homebrew, ni JDK — a démenti l'hypothèse. La gateway sert désormais
+> **quatre** formats (jar, Windows, macOS Apple Silicon, macOS Intel) et l'écran **présélectionne
+> celui du poste qui consulte**. Un **S17** est ajouté, jumeau de S16 côté Mac ; **P4bis** est
+> corrigé ; la note de S16 cesse d'affirmer ce qui a été démenti.
+
 ---
 
 ## 1 — Pourquoi ce reliquat n'est pas automatisable
@@ -90,20 +98,20 @@ fois** à la mise en service.
 | P3 | Machine | Poste ou VM **hors cluster**, Java 21 (`java -version` → 21), un projet réel sous une racine dédiée. Un projet avec des **dépendances installées** (`node_modules`, `target`, `.venv`) est préférable : S2 en a besoin. **Windows fortement recommandé** (voir P3bis). |
 | P3bis | Système de la machine | **Quatre des six derniers correctifs — SF-38-22, 23, 26, 27 — ne se manifestent que sous Windows** : trace JVM d'une version trop ancienne, chemin `C:\Users\…` avalé par Git Bash, ponctuation rendue `?` sur une console cp850, absence de `ls`/`grep` dans `cmd.exe`. Joué sur Linux ou macOS, le protocole **ne les verrait pas** et rendrait un « tout OK » qui ne couvre pas le poste type d'un client. Le passage de référence se fait donc **sur Windows** ; un passage Unix reste utile mais **S13 et S15 y sont notés « non joué »**, jamais « OK ». Idéalement un poste avec **Git pour Windows** installé (S15 attend l'élection de Git Bash). |
 | P4 | Jar | `GET /api/runner/download` depuis l'écran d'appairage (~2,5 Mo). Repli : `./mvnw -pl runner package`. Un **404 au téléchargement n'est pas une panne** : la gateway n'a alors pas empaqueté le jar, et l'écran bascule de lui-même sur la commande de construction. |
-| P4bis | Format de téléchargement (**F-44**, ajouté le 2026-09-08) | Depuis F-44, l'écran propose **deux formats** et retient le **paquet autonome Windows** par défaut sur un poste Windows (`GET /api/runner/download/windows`, ~39 Mo, JVM embarquée) ; la commande devient alors `claude-runner.cmd --gateway … --workspace "…" --code …`, **sans `java -jar`**. **Le format retenu se note dans le compte rendu** : il change la commande de S1, rend **S12 sans objet** (il n'y a plus de prérequis Java) et conditionne **S16**. Le passage de référence joue **les deux** : le paquet pour S16, le jar pour S12. Un **404** sur l'un des deux formats n'est pas une panne — la gateway ne l'a pas empaqueté, et l'écran bascule de lui-même. |
+| P4bis | Format de téléchargement (**F-44**, ajouté le 2026-09-08, corrigé le soir même pour macOS) | Depuis F-44, l'écran propose **quatre formats** — jar, paquet Windows, paquet macOS Apple Silicon, paquet macOS Intel — et **présélectionne celui du poste qui consulte la page** (Windows → paquet Windows, Mac → Apple Silicon, tout le reste → jar) ; un format que la gateway ne sert pas **n'apparaît pas**. Sur un poste Windows, le défaut est donc le **paquet autonome** (`GET /api/runner/download/windows`, ~39 Mo, JVM embarquée) ; la commande devient alors `claude-runner.cmd --gateway … --workspace "…" --code …`, **sans `java -jar`**. Sur un poste Mac, le défaut est le paquet **Apple Silicon** et la commande devient `./claude-runner.command --gateway …`. **Le format retenu se note dans le compte rendu** : il change la commande de S1, rend **S12 sans objet** (il n'y a plus de prérequis Java) et conditionne **S16** (Windows) ou **S17** (Mac). Le passage de référence joue **les deux** sur sa plateforme : le paquet pour S16/S17, le jar pour S12. Un **404** sur l'un des deux formats n'est pas une panne — la gateway ne l'a pas empaqueté, et l'écran bascule de lui-même. |
 | P5 | Réseau contraint (S5 seulement) | Un accès sortant passant par un proxy qui **casse l'`Upgrade`**. À défaut d'un vrai proxy d'entreprise : `HTTPS_PROXY` vers un mandataire configuré pour refuser l'`Upgrade` — **noter dans le compte rendu** que le proxy était simulé, le scénario reste alors *partiel*. |
 | P6 | Accès cluster (S6 seulement) | Droit de porter le déploiement backend à **2 replicas** puis de revenir à 1. |
 
 ## 3 — Scénarios
 
-**Ordre d'exécution recommandé** : **S16** (choisir le format de téléchargement — il commande la
-commande de S1) → **S12** (le runner refuse une JVM trop ancienne ; *format jar seulement*) →
+**Ordre d'exécution recommandé** : **S16** *(poste Windows)* ou **S17** *(poste Mac)* — choisir le
+format de téléchargement, il commande la commande de S1 → **S12** (le runner refuse une JVM trop ancienne ; *format jar seulement*) →
 **S14** (le contrôle de vol réseau, qui s'exécute lui aussi avant l'appairage) → **S11** (créer le
 projet « sur ma machine ») → **S13** (la commande d'appairage et son chemin Windows) → **S1**
 (appairer) → **S15** (l'interpréteur élu) → **S10** (les droits annoncés) → **S2** → **S3** → **S4**
 → **S5** → **S6** → **S7** → **S8** → **S9** (destructif, en dernier).
 
-Les cinq scénarios ajoutés le 2026-09-08 (**S12** à **S16**) portent des numéros de fin mais se
+Les six scénarios ajoutés le 2026-09-08 (**S12** à **S17**) portent des numéros de fin mais se
 jouent **au début** : ils couvrent ce qui se passe *avant* la première connexion. La numérotation
 reste stable pour que les renvois écrits ailleurs continuent de désigner les mêmes scénarios.
 
@@ -317,9 +325,12 @@ Chaque scénario se solde par **OK / KO / non joué**, avec une observation en u
    d'un autre type (ou en forçant un autre interpréteur) → la consigne suit le nouveau `shell`
    déclaré, elle ne reste pas figée sur le premier appairage.
 
-### S16 — Le paquet autonome Windows, sans prérequis Java (F-44)
-> **Non joué** hors Windows x64 : le paquet n'existe que là, et c'est un choix de périmètre assumé —
-> un poste macOS ou Linux a déjà un JDK et garde le jar de 2,5 Mo.
+### S16 — Le paquet autonome Windows, sans prérequis Java (F-44 / SF-44-01, SF-44-02)
+> **Non joué** hors Windows x64. Sur un Mac, c'est **S17** qui s'applique — le jumeau de ce
+> scénario. **Linux** reste sans paquet, et c'est un choix de périmètre assumé : aucun poste Linux
+> verrouillé au point de n'avoir aucun JDK n'a été rencontré, et le jar de 2,5 Mo y reste le bon
+> format. *(La même phrase valait pour macOS jusqu'au 2026-09-08 ; un poste Mac d'entreprise sans
+> droits administrateur ni JDK l'a démentie — d'où SF-44-03 et S17.)*
 >
 > **C'est le scénario que seule une vraie machine peut jouer** : la construction croisée est vérifiée
 > en intégration continue, mais **rien ne prouve en CI qu'un Windows verrouillé exécute le paquet**.
@@ -342,6 +353,46 @@ Chaque scénario se solde par **OK / KO / non joué**, avec une observation en u
    runner comme un autre. Rejouer au minimum **S1.4** (lisibilité de la console), **S14.1** (contrôle
    de vol) et **S15.1** (interpréteur élu) sous ce format — ce sont les trois annonces de démarrage,
    et elles passent par un lanceur différent.
+
+### S17 — Le paquet autonome macOS, sans prérequis Java (F-44 / SF-44-03)
+> **Non joué** hors macOS. Jumeau de **S16**, et pour la même raison : la construction croisée est
+> vérifiée au build — `jlink` depuis Linux sur les `jmods` d'un JDK Temurin macOS, `bin/java` en
+> Mach-O arm64 resp. x86_64 —, mais **rien ne prouve en intégration continue qu'un Mac verrouillé
+> exécute le paquet**. C'est la situation qui a produit SF-44-03 : poste Mac d'entreprise, ni droits
+> administrateur, ni Homebrew, ni JDK.
+>
+> **Noter l'architecture du poste** (menu Pomme › À propos de ce Mac : « Puce Apple » ou
+> « Processeur Intel ») : les deux archives existent, et un compte rendu qui ne dit pas laquelle a
+> été jouée ne se relit pas.
+
+1. Sur l'écran d'appairage, depuis un **Mac**, le format **présélectionné** est **Mac Apple
+   Silicon**. Un écran qui présélectionne le paquet **Windows** sur un Mac est un **KO** : c'est
+   exactement le défaut que SF-44-03 corrige. Les quatre formats restent visibles et changeables.
+2. Sur un Mac **Intel**, basculer sur « Mac Intel » : la présélection est une valeur par défaut, pas
+   une contrainte, et le navigateur ne sait pas distinguer les deux architectures.
+3. La **commande affichée** est `./claude-runner.command --gateway … --workspace "…" --code …`.
+   Elle ne doit **pas** être préfixée par `java -jar`, qui rappellerait la JVM système — celle-là
+   même qui manque. Un `java` dans la commande du paquet autonome est un **KO**.
+4. Décompresser le `.tar.gz` **sans droits administrateur**, dans un dossier utilisateur. **Vérifier
+   que le lanceur est resté exécutable** (`ls -l claude-runner/claude-runner.command` → `x`) : c'est
+   la raison d'être du `tar.gz` — un zip aurait perdu ce bit, et le paquet aurait échoué *ici*,
+   après le téléchargement. Un lanceur non exécutable est un **KO**.
+5. Lancer la commande **sur un poste où `java -version` échoue ou rend une version antérieure à 21**
+   — c'est toute la promesse. Le vérifier explicitement : ouvrir un terminal, constater l'absence
+   (ou l'ancienneté) du Java système, **puis** lancer le paquet.
+6. **Gatekeeper** : le lanceur lève lui-même la quarantaine (`xattr -dr com.apple.quarantine`). Le
+   premier lancement doit aboutir **sans** passer par Réglages › Confidentialité et sécurité ›
+   « Ouvrir quand même ». Un avertissement de développeur non identifié qui **bloque** le démarrage
+   est un **KO** ; le paquet n'est pas notarisé (hors périmètre, faute de compte Apple Developer),
+   mais il doit démarrer.
+7. Une archive téléchargée pour la **mauvaise architecture** échoue par un message du système
+   (`Bad CPU type in executable`). Ce n'est **pas** un KO du produit : c'est le cas que l'écran
+   documente au point 2. Le noter en observation.
+8. Aucun **installeur**, aucune **invite d'élévation**, aucune écriture hors du dossier décompressé.
+9. **Le reste du protocole s'applique tel quel** : une fois appairé, un runner issu du paquet est un
+   runner comme un autre. Rejouer au minimum **S1.4** (lisibilité de la console), **S14.1** (contrôle
+   de vol) et **S15.1** (interpréteur élu) sous ce format — trois annonces de démarrage qui passent
+   par un lanceur différent. **S13** (chemin Windows) reste « non joué » sur un Mac.
 
 ## 4 — Compte rendu attendu
 
@@ -369,11 +420,12 @@ Les autres KO se traitent au fil de l'eau.
 
 ## 5 — Résultats
 
-Colonnes ajoutées le 2026-09-08 : **S12** à **S16**, plus **Système** et **Format**. Les deux
-dernières ne sont pas décoratives : un passage hors Windows ne couvre ni S13, ni S15, ni S16, et le
-**format** retenu (jar ou paquet autonome) rend S12 sans objet et change la commande de S1. Un compte
-rendu qui ne les porte pas ne se relit pas six mois plus tard.
+Colonnes ajoutées le 2026-09-08 : **S12** à **S17**, plus **Système** et **Format**. Les deux
+dernières ne sont pas décoratives : un passage hors Windows ne couvre ni S13, ni S15, ni S16 ; un
+passage hors macOS ne couvre pas S17 ; et le **format** retenu (jar ou paquet autonome, et pour un
+Mac son architecture) rend S12 sans objet et change la commande de S1. Un compte rendu qui ne les
+porte pas ne se relit pas six mois plus tard.
 
-| Date | Opérateur | Système | Format | Image | Proxy | S1 | S2 | S3 | S4 | S5 | S6 | S7 | S8 | S9 | S10 | S11 | S12 | S13 | S14 | S15 | S16 | Observations |
-|------|-----------|---------|--------|-------|-------|----|----|----|----|----|----|----|----|----|-----|-----|-----|-----|-----|-----|-----|--------------|
-| _à planifier_ | | | | | | | | | | | | | | | | | | | | | | |
+| Date | Opérateur | Système | Format | Image | Proxy | S1 | S2 | S3 | S4 | S5 | S6 | S7 | S8 | S9 | S10 | S11 | S12 | S13 | S14 | S15 | S16 | S17 | Observations |
+|------|-----------|---------|--------|-------|-------|----|----|----|----|----|----|----|----|----|-----|-----|-----|-----|-----|-----|-----|-----|--------------|
+| _à planifier_ | | | | | | | | | | | | | | | | | | | | | | | |

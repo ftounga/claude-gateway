@@ -174,7 +174,7 @@ l'arbitrage « non prioritaire » de F-29 / SF-29-04.
 ## OQ-13 — Quand joue-t-on le smoke manuel de F-38 (runner), et sur quelle machine ?
 
 **Statut** : **Ouverte — question de planification adressée au product owner (2026-09-06),
-relancée le 2026-09-08.** Ne bloque pas F-38, **Terminée** dans `docs/PRODUCT_SPEC.md`.
+relancée le 2026-09-08, complétée le soir même (SF-44-03, macOS).** Ne bloque pas F-38, **Terminée** dans `docs/PRODUCT_SPEC.md`.
 **Mise à jour du 2026-09-06 (soir)** : le protocole a été **remis au niveau du runner livré**.
 **Mise à jour du 2026-09-08** : il l'a été **une seconde fois** — six subfeatures de plus
 (SF-38-22 → SF-38-27) **et une feature entière** (**F-44**, le paquet autonome Windows) sont passées
@@ -209,7 +209,7 @@ raisonnable : il demande une **machine tierce hors cluster**, un **réseau d'ent
 contraint** (un proxy simulé prouve le code, pas le terrain) et un **opérateur**. Construire le banc
 d'essai correspondant (VM éphémère + proxy + pilotage navigateur) coûterait plus que la feature, pour
 un parcours joué une fois à la mise en service. Il a donc été **sorti du périmètre de dev et parqué**
-sous forme de protocole exécutable : `docs/features/F-38/SMOKE-manuel-bout-en-bout.md` (**16
+sous forme de protocole exécutable : `docs/features/F-38/SMOKE-manuel-bout-en-bout.md` (**17
 scénarios** depuis la remise à niveau du 2026-09-08, prérequis, grille de compte rendu).
 
 **Ce qui a été fait depuis (2026-09-06, soir) — et qui ne referme pas la question**
@@ -253,6 +253,14 @@ compile pas**, donc rien ne le prévient quand le produit bouge sous lui. Corrig
    S15 (interpréteur élu, déclaré, et consigne système accordée), **S16** (le paquet autonome F-44).
    Numérotation stable : ajoutés **à la fin**, joués **au début** (l'ordre recommandé du §3 le dit).
 6. **Numéro du prochain correctif** : `SF-38-28` — les numéros **15 à 27** sont consommés.
+7. **Complément du même jour (soir) — macOS** : **SF-44-03** fait entrer le Mac dans le périmètre de
+   F-44. L'hypothèse qui fondait son exclusion — « un développeur macOS a déjà un JDK » — a été
+   démentie par un poste Mac d'entreprise verrouillé chez le **même client** (ni droits
+   administrateur, ni Homebrew, ni JDK). La gateway sert désormais **quatre** formats et l'écran
+   **présélectionne celui du poste qui consulte**. Un **S17** est ajouté, jumeau de S16 côté Mac —
+   avec ce que macOS a en propre : le bit exécutable du lanceur (raison d'être du `tar.gz`), la
+   quarantaine Gatekeeper levée par le lanceur, et les **deux architectures**. **P4bis** est corrigé,
+   et la note de S16 cesse d'affirmer ce qui vient d'être démenti.
 
 **Ce qui est demandé au PO**
 
@@ -268,13 +276,20 @@ compile pas**, donc rien ne le prévient quand le produit bouge sous lui. Corrig
    — le seuil annoncé le 2026-09-06 était 053. L'image de production du 2026-08-30 est antérieure
    aux deux : jouer le protocole dessus donnerait des KO sur S10 à S15 qui ne diraient rien du
    produit.
+7bis. **Un Mac, pour un second passage court (nouveau, 2026-09-08 soir)** : **S17** n'existe que
+   là, et il porte la même promesse invérifiable en intégration continue que S16 — un poste
+   verrouillé, sans droits administrateur ni JVM système, exécute-t-il le paquet ? Compter **20
+   minutes** en plus du passage Windows, sur le poste Mac de n'importe qui — l'architecture (Apple
+   Silicon ou Intel) se note au compte rendu. Ce n'est **pas** un passage complet : le reste du
+   protocole a déjà été joué sous Windows.
 7. **Une machine Windows (nouveau, 2026-09-08)** : quatre des six derniers correctifs ne se
    manifestent que là, et **F-44** n'existe que là. Un passage sur Linux ou macOS reste utile, mais
-   **S13, S15 et S16 y sont notés « non joué »** — pas « OK ». Poste avec **Git pour Windows** de
+   **S13, S15 et S16 y sont notés « non joué »** — pas « OK » ; sur un Mac, c'est **S17** qui se
+   joue à la place de S16. Poste avec **Git pour Windows** de
    préférence (S15 attend l'élection de Git Bash) et, pour S12, un moyen de pointer temporairement un
    **JDK antérieur à 21**.
-8. **Les deux formats de téléchargement (nouveau, 2026-09-08)** : le **paquet autonome** pour S16, le
-   **jar** pour S12. Le format retenu se note dans le compte rendu — il change la commande
+8. **Les deux formats de téléchargement (nouveau, 2026-09-08)** : le **paquet autonome** pour S16
+   (ou S17 sur un Mac), le **jar** pour S12. Le format retenu se note dans le compte rendu — il change la commande
    d'appairage et rend S12 sans objet.
 
 **Proposition par défaut, à confirmer ou corriger d'un mot** — faute d'opérateur, elle n'est pas
@@ -287,6 +302,7 @@ appliquée, mais elle transforme une question ouverte en un oui/non :
 | Où | **Un poste Windows** avec un projet réel et ses dépendances — c'est le poste type d'un client, et la seule machine où S13 et S15 existent. À défaut, sa machine de développement habituelle, en notant S13 et S15 « non joué ». |
 | S12 | Un **JDK antérieur à 21** pointé le temps d'un lancement (`JAVA_HOME`), plutôt qu'une machine dédiée. Format **jar** obligatoire pour ce point. |
 | S16 | Joué **en premier**, avec le **paquet autonome** (~39 Mo) : c'est le format qu'un client Windows recevra. Bascule sur le **jar** ensuite, pour S12. |
+| S17 | **Un second passage court, ~20 min, sur un Mac**, séparé du passage Windows et postérieur à lui : décompresser le `tar.gz`, vérifier que le lanceur est resté exécutable, lancer sans droits administrateur, constater que Gatekeeper ne bloque pas. L'architecture (Apple Silicon / Intel) se note. Le reste du protocole n'est pas rejoué. |
 | S5 | **Proxy simulé** (`HTTPS_PROXY` vers un mandataire qui refuse l'`Upgrade`), noté **partiel**, plutôt que d'attendre indéfiniment un vrai réseau d'entreprise. Le rejouer chez le premier client qui en a un. |
 | S6 | **2 replicas pendant le créneau**, retour à 1 juste après. |
 | S9 | Compte jetable créé pour l'occasion, **joué en dernier**. |
