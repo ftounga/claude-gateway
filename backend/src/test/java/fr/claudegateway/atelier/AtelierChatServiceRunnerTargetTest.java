@@ -508,6 +508,67 @@ class AtelierChatServiceRunnerTargetTest {
         verify(runnerCallDispatcher, never()).cancelWorkspace(any(), anyString());
     }
 
+    // ------------------------------------- SF-39-20 : l'exploration retrouve de quoi chercher
+
+    @Test
+    void theExplorationKeepsListAndSearchWhereTheMainLoopTradedThemForBash() {
+        // SF-39-05 (D4) retire list_files/search_files de la panoplie principale en cible RUNNER ;
+        // SF-39-14 (D2) interdit bash à la sous-boucle. Prises ensemble, elles ne lui laissaient
+        // qu'un outil : lire un chemin qu'on lui donne, jamais en trouver un.
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        agentProvider.enqueueToolCall("explore", "question", "où est AppConfig ?");
+        agentProvider.enqueueFinal("Dans src/AppConfig.java."); // la sous-boucle conclut
+        agentProvider.enqueueFinal("Trouvé.");                  // puis la boucle principale
+
+        service.chat(userId, workspaceId, "où est AppConfig ?");
+
+        // Assertion POSITIVE sur la panoplie du deuxième appel — celui de la sous-boucle. C'est son
+        // absence qui a laissé passer le défaut : « ne contient pas bash » reste vrai sur un
+        // ensemble vide.
+        assertThat(agentProvider.toolBelts.get(1))
+                .containsExactly("list_files", "read_file", "search_files");
+        // Et le travail principal garde exactement la sienne : D4 n'est pas défaite (non-régression).
+        assertThat(agentProvider.toolBelts.get(0))
+                .containsExactly("read_file", "write_file", "edit_file", "bash", "explore", "set_plan");
+    }
+
+    @Test
+    void whatTheExplorationSearchesIsRelayedToTheMachineAndJournaled() {
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.searchFiles(eq(workspaceId), anyString(), eq("AppConfig")))
+                .thenReturn(ok("src/AppConfig.java:12: class AppConfig"));
+        agentProvider.enqueueToolCall("explore", "question", "où est AppConfig ?");
+        agentProvider.enqueueToolCall("search_files", "query", "AppConfig");
+        agentProvider.enqueueFinal("src/AppConfig.java:12");
+        agentProvider.enqueueFinal("Trouvé : src/AppConfig.java:12.");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "où est AppConfig ?");
+
+        verify(runnerToolGateway).searchFiles(eq(workspaceId), anyString(), eq("AppConfig"));
+        assertThat(result.reply()).contains("src/AppConfig.java:12");
+        // Ce que la sous-boucle touche sur la machine se trace comme le reste (D4) : ce sont
+        // justement les appels que l'utilisateur ne voit pas passer à l'écran.
+        verify(runnerAuditService).recordCall(eq(userId), eq(workspaceId), anyString(),
+                eq("search_files"), eq("AppConfig"), any());
+    }
+
+    @Test
+    void anExplorationThatReachesForBashIsRefusedWithoutBreakingTheTurn() {
+        // D3 : rendre de quoi chercher n'assouplit en rien l'interdiction d'exécuter. Rien ne part
+        // sur la machine, et surtout aucune porte de confirmation ne s'ouvre pour une commande
+        // venue d'un agent dont l'utilisateur ignore l'existence.
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        agentProvider.enqueueToolCall("explore", "question", "les tests passent ?");
+        agentProvider.enqueueToolCall("bash", "command", "npm test");
+        agentProvider.enqueueFinal("Je ne peux pas exécuter de commande.");
+        agentProvider.enqueueFinal("Je poursuis moi-même.");
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "les tests passent ?");
+
+        verify(runnerToolGateway, never()).bash(any(), anyString(), anyString(), any(), anyLong(), any());
+        assertThat(result.reply()).isEqualTo("Je poursuis moi-même.");
+    }
+
     private static RunnerCallResult bashOk(String streamed, int exitCode, boolean truncated) {
         return new RunnerCallResult(true, "", false, exitCode, 12L, null, null, null, streamed, truncated);
     }
