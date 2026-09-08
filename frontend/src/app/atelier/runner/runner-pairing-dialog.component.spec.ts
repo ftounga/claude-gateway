@@ -344,6 +344,80 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     expect(component.runCommand()).toContain('java -jar claude-runner.jar');
   });
 
+  // ---------------------------------------------------------------------------------------------
+  // F-46 / SF-46-02 — la commande de reprise
+  // ---------------------------------------------------------------------------------------------
+
+  it('donne une commande de reprise sans passerelle, sans racine et sans code', () => {
+    // Le geste quotidien n'est pas l'appairage : c'est la reprise. Depuis SF-46-01, le runner a
+    // mémorisé la passerelle et la racine — la commande des fois suivantes n'a plus à les porter.
+    setup(EVERY_FORMAT, 'other');
+    component.format.set('jar');
+    component.workspacePath.set('  /home/moi/projet  ');
+
+    const resume = component.resumeCommand();
+
+    expect(resume).not.toContain('--gateway');
+    expect(resume).not.toContain('--workspace');
+    expect(resume).not.toContain('--code');
+    // Guillemets, comme la commande d'installation : le piège des antislashs est le même (SF-38-23).
+    expect(resume).toBe('cd "/home/moi/projet" && java -jar claude-runner.jar');
+  });
+
+  it('reprend le chemin d\'exemple tant que rien n\'est saisi', () => {
+    setup();
+
+    expect(component.resumeCommand()).toContain(`cd "${WINDOWS_WORKSPACE_PATH}"`);
+  });
+
+  it('reprend avec le lanceur du paquet Windows, jamais avec « java »', () => {
+    setup();
+
+    expect(component.resumeCommand()).toContain('&& claude-runner.cmd');
+    expect(component.resumeCommand()).not.toContain('java -jar');
+  });
+
+  it('reprend avec le lanceur du paquet macOS', () => {
+    setup(EVERY_FORMAT, 'macos');
+
+    expect(component.resumeCommand()).toContain('&& ./claude-runner.command');
+    expect(component.resumeCommand()).toContain(`cd "${MACOS_WORKSPACE_PATH}"`);
+  });
+
+  it('laisse la commande de reprise intacte quand le code a expiré', () => {
+    // Un code expiré abîme la commande d'installation — c'est voulu. Il n'a aucune raison
+    // d'abîmer celle qui ne s'en sert pas.
+    setup();
+    service.createRunnerPairingCode.and.returnValue(of(codeExpiringIn(-1)));
+    component.generateCode();
+    component.workspacePath.set('C:\\Users\\moi\\projet');
+
+    expect(component.runCommand()).toContain('--code <code-appairage>');
+    expect(component.resumeCommand()).toBe('cd "C:\\Users\\moi\\projet" && claude-runner.cmd');
+  });
+
+  it('annonce le double-clic sur un paquet, et nomme son lanceur', () => {
+    setup();
+
+    expect(component.doubleClickAvailable()).toBeTrue();
+    expect(component.launcherFilename()).toBe('claude-runner.cmd');
+
+    // Le jar seul ne se double-clique pas utilement : il lui faudrait la JVM du système, celle-là
+    // même que le paquet existe pour remplacer.
+    component.format.set('jar');
+
+    expect(component.doubleClickAvailable()).toBeFalse();
+  });
+
+  it('ne promet aucun double-clic sur un format que la gateway ne sert pas', () => {
+    setup({ ...EVERY_FORMAT, macosX64Package: false }, 'macos');
+    component.format.set('macos-x64');
+
+    expect(component.selectedPackage()).toBeNull();
+    expect(component.doubleClickAvailable()).toBeFalse();
+    expect(component.resumeCommand()).toContain('java -jar claude-runner.jar');
+  });
+
   it('lit le système depuis l\'User-Agent, tablettes exclues', () => {
     expect(detectHostPlatform('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')).toBe('windows');
     expect(detectHostPlatform('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)')).toBe('macos');

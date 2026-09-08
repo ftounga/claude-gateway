@@ -508,26 +508,64 @@ export class RunnerPairingDialogComponent implements OnDestroy {
    * silencieusement à l'appairage.
    */
   readonly runCommand = computed(() => {
-    const path = this.workspacePath().trim() || this.examplePath();
     const code = this.codeUsable() ? this.pairingCode()!.code : '<code-appairage>';
-    // Le paquet autonome s'exécute par son lanceur : il ne faut surtout pas préfixer par `java`,
-    // qui rappellerait la JVM du système — celle-là même qui manque ou qui est trop ancienne.
-    // Sur macOS le lanceur est un `.command` exécutable, d'où le `./` : l'archive est un `.tar.gz`
-    // précisément pour que le bit exécutable survive à la décompression.
-    const selected = this.selectedPackage();
-    const launcher = selected === 'windows'
-      ? 'claude-runner.cmd'
-      : selected !== null
-        ? './claude-runner.command'
-        : `java -jar ${JAR_FILENAME}`;
     // Guillemets autour du chemin (F-38 / SF-38-23) : sans eux, Git Bash interprète les antislashs
     // d'un chemin Windows comme des échappements — « C:\Users\moi » arrive au runner en
     // « C:Usersmoi », que Windows résout ensuite comme un chemin RELATIF au lecteur C:. C'est le
     // deuxième obstacle rencontré par un client, juste après le prérequis Java. Les guillemets ne
     // gênent aucun shell, et suppriment le piège pour tous ceux qui copient la commande.
-    return `${launcher} --gateway ${this.gatewayUrl}`
-      + ` --workspace "${path}" --code ${code}`;
+    return `${this.launcher()} --gateway ${this.gatewayUrl}`
+      + ` --workspace "${this.commandPath()}" --code ${code}`;
   });
+
+  /**
+   * La commande des **fois suivantes** (F-46 / SF-46-02).
+   *
+   * <p>Depuis SF-46-01, l'appairage mémorise la passerelle et la racine à côté du jeton : un
+   * lancement sans argument, depuis le projet, suffit. C'est ce geste-là que l'utilisateur répète
+   * tous les matins — l'écran n'affichait pourtant que celui du <b>premier</b> jour, code
+   * d'appairage compris.</p>
+   *
+   * <p>Elle ne dépend d'aucun code : un code expiré n'a aucune raison de rendre illisible une
+   * commande qui ne s'en sert pas (D2).</p>
+   */
+  readonly resumeCommand = computed(
+    () => `cd "${this.commandPath()}" && ${this.launcher()}`);
+
+  /**
+   * Vrai quand le paquet retenu est réellement servi : son lanceur démarre alors au **double-clic**,
+   * sans qu'aucune commande soit tapée (F-46 / SF-46-02). La mention n'a de sens que là — un `.jar`
+   * seul ne se double-clique pas utilement, il lui faudrait la JVM du système, celle-là même que le
+   * paquet existe pour remplacer.
+   */
+  readonly doubleClickAvailable = computed(() => this.selectedPackage() !== null);
+
+  /** Nom du lanceur du paquet retenu, cité dans la mention du double-clic. */
+  readonly launcherFilename = computed(() =>
+    this.selectedPackage() === 'windows' ? 'claude-runner.cmd' : 'claude-runner.command');
+
+  /**
+   * Chemin employé par les **deux** commandes : celui qui est saisi, sinon l'exemple. Une commande
+   * visiblement incomplète vaut mieux qu'une commande faussement prête (D1 de SF-45-02).
+   */
+  private commandPath(): string {
+    return this.workspacePath().trim() || this.examplePath();
+  }
+
+  /**
+   * Ce par quoi la commande commence, et le même pour les deux : deux lanceurs différents pour une
+   * seule machine seraient une invitation à l'erreur. Le paquet autonome s'exécute par **son**
+   * lanceur — surtout pas préfixé de `java`, qui rappellerait la JVM du système, celle qui manque ou
+   * qui est trop ancienne. Sur macOS le lanceur est un `.command` exécutable, d'où le `./` :
+   * l'archive est un `.tar.gz` précisément pour que le bit exécutable survive à la décompression.
+   */
+  private launcher(): string {
+    const selected = this.selectedPackage();
+    if (selected === 'windows') {
+      return 'claude-runner.cmd';
+    }
+    return selected !== null ? './claude-runner.command' : `java -jar ${JAR_FILENAME}`;
+  }
 
   /**
    * Paquet autonome retenu **et réellement servi**, ou `null` quand c'est le jar qui sera

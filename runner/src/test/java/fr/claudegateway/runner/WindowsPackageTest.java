@@ -65,6 +65,25 @@ class WindowsPackageTest {
 
     @Test
     @EnabledIf("packageWasBuilt")
+    @DisplayName("double-cliqué, le lanceur ne se referme pas sur un refus (F-46 / SF-46-02)")
+    void theLauncherKeepsItsWindowOpenAfterADoubleClick() throws IOException {
+        String cmd = entryAsText("claude-runner/claude-runner.cmd");
+
+        // Le lanceur existe pour être double-cliqué, et un double-clic ne transmet aucun argument :
+        // depuis SF-46-01 la configuration mémorisée prend le relais. Reste le cas où le runner
+        // refuse (jamais appairé, jeton expiré) — sans cette garde, la fenêtre se refermerait sur
+        // le message, et le refus le plus soigné du monde ne serait jamais lu.
+        assertTrue(cmd.contains("%cmdcmdline%"),
+                "le lanceur doit savoir s'il a été double-cliqué : " + cmd);
+        assertTrue(cmd.contains("pause"),
+                "le lanceur doit retenir sa fenêtre après un échec au double-clic : " + cmd);
+        // Et seulement là : une pause inconditionnelle bloquerait tout appel depuis un terminal.
+        assertTrue(cmd.contains("if errorlevel 1"),
+                "la pause doit être conditionnée à l'échec : " + cmd);
+    }
+
+    @Test
+    @EnabledIf("packageWasBuilt")
     @DisplayName("le paquet reste sous 60 Mo")
     void thePackageStaysDownloadable() throws IOException {
         long megabytes = Files.size(PACKAGE) / (1024 * 1024);
