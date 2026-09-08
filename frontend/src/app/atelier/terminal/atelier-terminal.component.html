@@ -472,6 +472,14 @@
           Claude demande à exécuter cette commande
         </p>
         <pre class="terminal-ask-command">{{ ask.detail || ask.tool }}</pre>
+        @if (confirmationCountdown) {
+          <!-- Le délai courait en silence (F-47 / SF-47-02) : deux minutes s'écoulaient sans que
+               rien ne dise qu'elles s'écoulaient. -->
+          <p class="terminal-ask-countdown">
+            <mat-icon class="terminal-ask-countdown-icon">timer</mat-icon>
+            {{ confirmationCountdown }}
+          </p>
+        }
         @if (ask.denying) {
           <input
             type="text"

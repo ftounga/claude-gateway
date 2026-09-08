@@ -740,3 +740,20 @@
     height: 18px;
   }
 }
+
+// Temps restant à une demande d'autorisation (F-47 / SF-47-02) : discret sous la commande, il dit
+// qu'un délai court — ce que rien ne disait jusqu'ici.
+.terminal-ask-countdown {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  margin: 0 0 var(--cg-space-2);
+  font-size: 12px;
+  color: var(--cg-orange-2);
+}
+
+.terminal-ask-countdown-icon {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}

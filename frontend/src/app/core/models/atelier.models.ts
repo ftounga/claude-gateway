@@ -510,6 +510,12 @@ export interface AtelierConfirmRequest {
   toolUseId: string;
   tool: string;
   detail: string;
+  /**
+   * Délai au bout duquel la demande expire, en millisecondes (F-47 / SF-47-02). **Additif** : le
+   * flux du bac à sable (F-33) ne le porte pas — le délai y appartient au fournisseur, et inventer
+   * une valeur serait pire que de n'en donner aucune. Absent ⇒ aucun compte à rebours affiché.
+   */
+  timeoutMs?: number;
 }
 
 /**

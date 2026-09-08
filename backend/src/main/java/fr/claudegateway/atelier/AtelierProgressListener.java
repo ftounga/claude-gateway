@@ -49,8 +49,12 @@ public interface AtelierProgressListener {
      *                  runner et de la ligne d'audit ; aucun second identifiant n'est créé
      * @param tool      outil concerné ({@code bash})
      * @param detail    ce qui est soumis à décision (la commande), tronqué pour l'affichage
+     * @param timeoutMs délai au bout duquel la demande expire (F-47 / SF-47-02), pour que l'écran
+     *                  puisse afficher le temps restant plutôt que de laisser deux minutes
+     *                  s'écouler en silence. {@code 0} quand le délai n'est pas connu — l'écran
+     *                  n'affiche alors aucun compte à rebours
      */
-    record AtelierConfirmRequest(String toolUseId, String tool, String detail) {
+    record AtelierConfirmRequest(String toolUseId, String tool, String detail, long timeoutMs) {
     }
 
     /**

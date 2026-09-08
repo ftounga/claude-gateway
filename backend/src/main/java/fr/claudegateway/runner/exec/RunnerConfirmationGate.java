@@ -49,6 +49,17 @@ public class RunnerConfirmationGate {
     }
 
     /**
+     * Délai au bout duquel une demande sans réponse est refusée, en millisecondes (F-47 / SF-47-02).
+     *
+     * <p>Exposé pour être <b>dit à l'écran</b> : sans cela, le client devrait coder 120 000 ms en
+     * dur et mentirait le jour où la configuration change. C'est la porte qui tient le délai, c'est
+     * elle qui l'annonce.</p>
+     */
+    public long timeoutMs() {
+        return timeoutMs;
+    }
+
+    /**
      * Enregistre une demande d'autorisation puis <b>attend</b> la décision. Bloquant par
      * construction : la boucle tool-use ne peut pas continuer sans savoir si elle a le droit.
      *
@@ -67,6 +78,12 @@ public class RunnerConfirmationGate {
             return new Outcome(Decision.DENY, "Demande d'autorisation déjà en cours.");
         }
         try {
+            // Trace de l'EMISSION (F-47 / SF-47-02), et pas seulement de l'expiration : le
+            // diagnostic de l'incident du 2026-09-08 a dû déduire que la demande était partie,
+            // faute d'une ligne qui le dise. Rien de la commande n'est journalisé — elle peut
+            // porter un secret, et un journal de production n'est pas l'endroit pour l'apprendre.
+            log.info("Autorisation demandée (workspace={}, call={}) : décision attendue sous {} ms",
+                    workspaceId, callId, timeoutMs);
             onRegistered.run();
             return entry.future().get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException ex) {

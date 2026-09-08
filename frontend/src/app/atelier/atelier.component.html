@@ -30,6 +30,11 @@
     <mat-icon class="atelier-ask-recall-icon">shield</mat-icon>
     <span class="atelier-ask-recall-text">
       Claude attend votre autorisation pour exécuter une commande.
+      @if (confirmationCountdown(); as countdown) {
+        <!-- Le temps restant est dit ICI aussi (F-47 / SF-47-02) : le rappel est parfois la seule
+             chose visible, quand un panneau couvre le flux. -->
+        <span class="atelier-ask-recall-countdown">{{ countdown }}</span>
+      }
     </span>
     <button
       mat-flat-button
@@ -95,6 +100,7 @@
     [pendingConfirmation]="pendingConfirmation()"
     [askBeforeBash]="askBeforeBash()"
     [togglingConfirmation]="togglingConfirmation()"
+    [confirmationCountdown]="confirmationCountdown()"
     (confirmDecision)="answerConfirmation($event)"
     (confirmAll)="answerConfirmation(true, true)"
     (denyWithReason)="startDenying()"

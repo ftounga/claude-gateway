@@ -237,6 +237,7 @@ describe('F-39 §4 — acquis visuels repris par l\'écran unique', () => {
     component.pendingConfirmation = {
       toolUseId: 'tu_1', tool: 'bash', detail: 'rm -rf /tmp/x',
       source: 'LOCAL_MACHINE', answering: false, denying: false, reason: '',
+      deadline: null, timeoutMs: null,
     };
     fixture.detectChanges();
 

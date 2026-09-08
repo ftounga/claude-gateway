@@ -239,6 +239,8 @@ export class AtelierService {
       tool?: string;
       detail?: string;
       decision?: string;
+      /** Délai d'expiration d'une demande d'autorisation, en ms (F-47 / SF-47-02). */
+      timeoutMs?: number;
       tokens?: number;
       inputTokens?: number;
       outputTokens?: number;
@@ -267,6 +269,12 @@ export class AtelierService {
         toolUseId: payload.toolUseId ?? '',
         tool: payload.tool ?? '',
         detail: payload.detail ?? '',
+        // Délai relayé par la gateway (F-47 / SF-47-02). La clé n'est posée que si elle vaut
+        // quelque chose : tout ce qui n'est pas un nombre strictement positif est traité comme
+        // absent — mieux vaut aucun compte à rebours qu'un compte à rebours faux.
+        ...(typeof payload.timeoutMs === 'number' && payload.timeoutMs > 0
+          ? { timeoutMs: payload.timeoutMs }
+          : {}),
       });
     } else if (event === 'confirm_resolved') {
       handlers.onConfirmResolved?.({
@@ -373,6 +381,8 @@ export class AtelierService {
       budgetReached?: boolean;
       diffs?: AtelierFileDiff[];
       decision?: string;
+      /** Délai d'expiration d'une demande d'autorisation, en ms (F-47 / SF-47-02). */
+      timeoutMs?: number;
       tokens?: number;
     };
     try {
@@ -426,6 +436,12 @@ export class AtelierService {
         toolUseId: payload.toolUseId ?? '',
         tool: payload.tool ?? '',
         detail: payload.detail ?? '',
+        // Délai relayé par la gateway (F-47 / SF-47-02). La clé n'est posée que si elle vaut
+        // quelque chose : tout ce qui n'est pas un nombre strictement positif est traité comme
+        // absent — mieux vaut aucun compte à rebours qu'un compte à rebours faux.
+        ...(typeof payload.timeoutMs === 'number' && payload.timeoutMs > 0
+          ? { timeoutMs: payload.timeoutMs }
+          : {}),
       });
     } else if (event === 'confirm_resolved') {
       handlers.onConfirmResolved?.({

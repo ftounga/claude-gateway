@@ -191,6 +191,13 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   /** Bascule de l'option en vol : le bouton reste inerte le temps de l'enregistrement. */
   @Input() togglingConfirmation = false;
 
+  /**
+   * Temps restant à la demande d'autorisation, déjà mis en mots par le parent (F-47 / SF-47-02).
+   * `null` quand la gateway n'a annoncé aucun délai : l'invite n'affiche alors rien plutôt qu'un
+   * chiffre inventé. Le composant reste une vue — il ne compte pas, il montre.
+   */
+  @Input() confirmationCountdown: string | null = null;
+
   @Output() draftChange = new EventEmitter<string>();
   @Output() send = new EventEmitter<void>();
   @Output() quit = new EventEmitter<void>();

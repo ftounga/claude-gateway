@@ -985,8 +985,8 @@ public class AtelierChatService implements RelayInterruptTarget {
     private RunnerConfirmationGate.Outcome askPermission(UUID userId, UUID workspaceId, String callId,
             String tool, String detail, AtelierProgressListener listener) {
         RunnerConfirmationGate.Outcome outcome = confirmationGate.await(userId, workspaceId, callId,
-                () -> listener.onConfirmRequest(
-                        new AtelierProgressListener.AtelierConfirmRequest(callId, tool, detail)));
+                () -> listener.onConfirmRequest(new AtelierProgressListener.AtelierConfirmRequest(
+                        callId, tool, detail, confirmationGate.timeoutMs())));
         listener.onConfirmResolved(new AtelierProgressListener.AtelierConfirmResolved(
                 callId, outcome.decision().label()));
         return outcome;

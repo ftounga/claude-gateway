@@ -5,6 +5,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { AtelierService } from './atelier.service';
 import {
   AtelierChatResponse,
+  AtelierConfirmRequest,
   AtelierEngineStatus,
   AtelierMessage,
   AtelierStreamDone,
@@ -634,6 +635,45 @@ describe('AtelierService', () => {
       { toolUseId: 'toolu_1', tool: 'bash', detail: 'npm test' },
       { toolUseId: 'toolu_1', decision: 'timeout' },
     ]);
+  });
+
+  it("relaie le délai de la porte quand la gateway l'annonce (F-47 / SF-47-02)", async () => {
+    fakeSseFetch([
+      'event:confirm_request\ndata:{"toolUseId":"toolu_1","tool":"bash","detail":"npm test",'
+        + '"timeoutMs":120000}',
+      'event:done\ndata:{"reply":"Fini.","actions":[],"messageId":"m1"}',
+    ]);
+    const seen: AtelierConfirmRequest[] = [];
+
+    await service.streamChat('w1', 'lance', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+      onConfirmRequest: (r) => seen.push(r),
+    });
+
+    expect(seen[0].timeoutMs).toBe(120000);
+  });
+
+  it("laisse le délai absent quand il n'a pas de sens (F-47 / SF-47-02)", async () => {
+    fakeSseFetch([
+      'event:confirm_request\ndata:{"toolUseId":"toolu_1","tool":"bash","detail":"npm test",'
+        + '"timeoutMs":0}',
+      'event:done\ndata:{"reply":"Fini.","actions":[],"messageId":"m1"}',
+    ]);
+    const seen: AtelierConfirmRequest[] = [];
+
+    await service.streamChat('w1', 'lance', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+      onConfirmRequest: (r) => seen.push(r),
+    });
+
+    // Mieux vaut aucun compte à rebours qu'un compte à rebours faux.
+    expect(seen[0].timeoutMs).toBeUndefined();
   });
 
   it("un appelant sans onConfirmRequest ignore l'événement sans erreur (F-38 / SF-38-08)", async () => {
