@@ -10,7 +10,7 @@
 
 ## Statut
 
-`ready`
+`done` — PR #299 (backend) et #300 (écran), mergées le 2026-09-08
 
 ## Date de création
 
