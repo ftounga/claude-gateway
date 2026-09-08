@@ -18,6 +18,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceNotFoundException;
 import fr.claudegateway.atelier.WorkspaceService;
 import fr.claudegateway.runner.RunnerStatusService.RunnerStatus;
@@ -26,6 +27,10 @@ import fr.claudegateway.runner.channel.RunnerRegistry;
 /**
  * Tests du calcul de l'état runner (F-38 / SF-38-02) : présence du registre OU fraîcheur du dernier
  * heartbeat, et vérification d'appartenance du workspace (isolation {@code user_id}).
+ *
+ * <p>Depuis F-45 / SF-45-05, le statut porte aussi le genre d'interpréteur élu par le runner
+ * (SF-38-27), <b>normalisé</b> : la colonne est alimentée par une trame venue d'un client, et une
+ * valeur hors liste blanche ne doit pas sortir de la gateway.</p>
  */
 @ExtendWith(MockitoExtension.class)
 class RunnerStatusServiceTest {
@@ -45,6 +50,15 @@ class RunnerStatusServiceTest {
                 Duration.ofSeconds(90));
     }
 
+    /**
+     * Le service lit désormais le workspace <b>retourné</b> par {@code requireOwned} : c'est le même
+     * appel d'isolation qu'avant, dont la valeur de retour cessait simplement d'être utilisée.
+     */
+    private void givenWorkspace(String runnerShell) {
+        when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(Workspace.builder()
+                .id(workspaceId).userId(userId).name("Projet").runnerShell(runnerShell).build());
+    }
+
     private RunnerToken tokenLastSeen(OffsetDateTime lastSeenAt) {
         return RunnerToken.builder()
                 .userId(userId).workspaceId(workspaceId)
@@ -55,6 +69,7 @@ class RunnerStatusServiceTest {
 
     @Test
     void connectedWhenRegistrySeesConnectionEvenWithoutHeartbeat() {
+        givenWorkspace(null);
         when(registry.isConnected(workspaceId)).thenReturn(true);
         when(tokenRepository.findByUserIdAndWorkspaceIdOrderByCreatedAtDesc(userId, workspaceId))
                 .thenReturn(List.of());
@@ -67,6 +82,7 @@ class RunnerStatusServiceTest {
 
     @Test
     void connectedWhenHeartbeatFreshThoughRegistryEmpty() {
+        givenWorkspace(null);
         // Cas cross-replica : la socket vit sur l'autre pod, le registre local ne la voit pas, mais
         // le heartbeat a rafraichi last_seen_at dans la base partagee.
         when(registry.isConnected(workspaceId)).thenReturn(false);
@@ -82,6 +98,7 @@ class RunnerStatusServiceTest {
 
     @Test
     void disconnectedWhenRegistryEmptyAndHeartbeatStale() {
+        givenWorkspace(null);
         when(registry.isConnected(workspaceId)).thenReturn(false);
         OffsetDateTime stale = OffsetDateTime.now().minusMinutes(5);
         when(tokenRepository.findByUserIdAndWorkspaceIdOrderByCreatedAtDesc(userId, workspaceId))
@@ -95,6 +112,7 @@ class RunnerStatusServiceTest {
 
     @Test
     void disconnectedWhenNeverSeen() {
+        givenWorkspace(null);
         when(registry.isConnected(workspaceId)).thenReturn(false);
         when(tokenRepository.findByUserIdAndWorkspaceIdOrderByCreatedAtDesc(userId, workspaceId))
                 .thenReturn(List.of(tokenLastSeen(null)));
@@ -103,6 +121,41 @@ class RunnerStatusServiceTest {
 
         assertThat(status.connected()).isFalse();
         assertThat(status.lastSeenAt()).isNull();
+    }
+
+    // ---------- Interpréteur élu (F-45 / SF-45-05) ----------
+
+    @Test
+    void statusCarriesDeclaredShell() {
+        when(registry.isConnected(workspaceId)).thenReturn(true);
+        when(tokenRepository.findByUserIdAndWorkspaceIdOrderByCreatedAtDesc(userId, workspaceId))
+                .thenReturn(List.of());
+        givenWorkspace("powershell");
+
+        assertThat(service().status(userId, workspaceId).shell()).isEqualTo("powershell");
+    }
+
+    @Test
+    void statusHasNoShellWhenNoRunnerEverDeclaredOne() {
+        // Runner anterieur a SF-38-27, ou machine jamais connectee : l'ecran doit OMETTRE la ligne,
+        // pas afficher un defaut.
+        when(registry.isConnected(workspaceId)).thenReturn(false);
+        when(tokenRepository.findByUserIdAndWorkspaceIdOrderByCreatedAtDesc(userId, workspaceId))
+                .thenReturn(List.of());
+        givenWorkspace(null);
+
+        assertThat(service().status(userId, workspaceId).shell()).isNull();
+    }
+
+    @Test
+    void statusDropsAShellOutsideTheWhitelist() {
+        // La colonne est alimentee par une trame client : une valeur inconnue ne sort pas d'ici.
+        when(registry.isConnected(workspaceId)).thenReturn(false);
+        when(tokenRepository.findByUserIdAndWorkspaceIdOrderByCreatedAtDesc(userId, workspaceId))
+                .thenReturn(List.of());
+        givenWorkspace("zsh-maison");
+
+        assertThat(service().status(userId, workspaceId).shell()).isNull();
     }
 
     @Test
