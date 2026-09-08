@@ -36,18 +36,19 @@ détectera **jamais** le proxy tout seul : il **demande**, **guide** et **interp
 | **SF-45-02** | Cohérence Windows de l'écran : le format choisi pilote le chemin d'exemple et la commande ; état « en attente de la machine / machine connectée » | Frontend |
 | **SF-45-03** | Fiche « Pour votre DSI » générée par l'écran (domaine, 443, HTTPS **et** WSS, sortant uniquement, aucun port entrant, mention NTLM/Kerberos non porté par la JVM) | Frontend |
 | **SF-45-04** | Le contrôle de vol du runner **reconnaît le `407`** et nomme le remède | Runner |
+| **SF-45-05** | Le parcours guidé de mise en service : une étape dépliée à la fois, les autres repliées sur leur en-tête avec ce qu'elles ont produit, et une **conclusion** quand la machine répond ; le relevé d'état nomme l'interpréteur élu | Frontend + Backend (champ additif `shell`) |
 
 ## Cohérence de périmètre (vérifiée avant dev)
 
 | Point | Verdict |
 |-------|---------|
-| Feature référencée dans `docs/PRODUCT_SPEC.md` | Oui — ligne F-45, 4 SF cadrées le 2026-09-08 |
+| Feature référencée dans `docs/PRODUCT_SPEC.md` | Oui — ligne F-45, **5 SF** : 4 cadrées le 2026-09-08 au matin, SF-45-05 ajoutée à la réouverture du soir |
 | Périmètre V1 « gateway pure » (`docs/PROJECT.md`) | Oui — aucun OCR/RAG/pgvector/Textract, aucune capacité IA |
 | Gateway-First | Oui — l'écran **explique** et le runner **décrit** ; rien n'est exécuté à la place du poste |
 | Provider Independence (`AIProvider`) | Sans objet — aucun appel fournisseur dans F-45 |
 | Isolation `user_id` | Sans objet côté nouvelles données ; SF-45-02 consomme `GET /api/workspaces/{id}/runner/status`, **déjà** filtré par `user_id` (SF-38-02) |
-| Nouvelles tables / migration Liquibase | **Aucune**, sur les 4 SF |
-| Nouvel endpoint backend | **Aucun** — F-45 est entièrement écran + runner |
+| Nouvelles tables / migration Liquibase | **Aucune**, sur les 5 SF |
+| Nouvel endpoint backend | **Aucun créé** — SF-45-05 ajoute un champ **additif** `shell` au relevé d'état existant `GET /api/workspaces/{id}/runner/status` (SF-38-02) ; le reste de F-45 est écran + runner |
 | V3 / multi-LLM runtime | Non concerné |
 
 ## Hors périmètre (F-45 entière)
