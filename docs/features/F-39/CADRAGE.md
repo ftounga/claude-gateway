@@ -1,6 +1,6 @@
 # Cadrage — F-39 · L'Atelier comme harnais
 
-**Date** : 2026-09-06 · **Statut** : **livré** le 2026-09-06, **rouvert puis reclos le 2026-09-08** — **19 subfeatures** : les 9 lots du découpage, plus **trois** subfeatures nées du banc d'essai (SF-39-17, SF-39-18, **SF-39-19**) et un correctif de suivi (PR #262). Le cadrage prévoyait 16 subfeatures ; les trois dernières viennent toutes du même endroit — faire travailler le harnais sur un vrai projet, ce qu'aucun test ne remplace.
+**Date** : 2026-09-06 · **Statut** : **livré** le 2026-09-06, **rouvert puis reclos le 2026-09-08** — **20 subfeatures** : les 9 lots du découpage, plus **trois** subfeatures nées du banc d'essai (SF-39-17, SF-39-18, **SF-39-19**), un correctif de suivi (PR #262) et **SF-39-20**, née non pas du banc d'essai mais de la **rencontre de deux décisions** de ce cadrage même. Le cadrage prévoyait 16 subfeatures ; les trois du banc d'essai viennent toutes du même endroit — faire travailler le harnais sur un vrai projet, ce qu'aucun test ne remplace. La vingtième vient d'ailleurs : de deux décisions du cadrage qui, appliquées chacune à sa place, se sont annulées.
 **Origine** : `docs/features/F-28/AUDIT-parite-claude-code.md` + audit de l'**usage réel** (§2)
 
 ---
@@ -148,6 +148,30 @@ le reste, et la mémoire conditionne l'utilité.
 | **9 · Nettoyage** ✅ | SF-39-16 | Cible `SANDBOX` **fermée par coupe-circuit** plutôt que supprimée — livré le 2026-09-06 (PR #243) : `app.atelier.storage-execution` ferme le chemin sans détruire le socle sur lequel une trentaine de tests exercent toute la boucle |
 | **Banc d'essai** ✅ | SF-39-17 → 18 | **Hors cadrage initial** : deux défauts qu'aucun test ne montrait, trouvés en faisant travailler le harnais sur un vrai projet (`docs/features/F-38/BANC-ESSAI-RUNNER.md`) — **SF-39-17** un tour long ne se perd plus (chaîne de délais *tour 600 < flux 900 ≤ ingress 900*, transcription persistée **sur la boucle maison**, journal serveur sans contenu ; PR #245) et **SF-39-18** l'explorateur devient un **panneau dans la vue** ouvert par un paramètre de requête, parce qu'y naviguer détruisait le composant terminal et le flux SSE du tour (PR #246, correctif de cycle d'import #250). L'acquis §4 n°7 de F-30 ne valait pas sur le moteur qui exécute réellement : le §4 n'est vérifié que là où un test le porte |
 | **Banc d'essai (suite)** ✅ | SF-39-19 | **Hors cadrage initial**, même origine : *« pendant que le terminal est en cours il n'accepte aucune autre question. Pourtant Claude Code le permet. »* — **SF-39-19** le champ de saisie reste actif pendant un tour et le message est **déposé** pour le tour en cours (`POST /chat/steer`), consommé à la **frontière sûre** de l'itération suivante, là où la boucle regarde déjà l'interruption, le budget de temps et le plafond de dépense (PR #260). Ce n'est **pas** une interruption (F-32, SF-38-07 arrêtent le tour) : on ajoute au contexte sans rien casser — le geste qu'on fait le plus souvent. Bornes 4 000 caractères × 5, registre clefé `userId:workspaceId` diffusé aux pods pairs par le chemin de l'interruption, précisions non lues abandonnées avec le tour. Puis un **correctif de suivi** (PR #262) : le panneau de fichiers de SF-39-18 s'ouvrait **vide** hors de sa propre route — il lisait le projet dans l'URL, or en panneau l'URL reste `/atelier` — et l'agent disait vrai quand il se croyait **sans réseau** : `web_search` / `web_fetch` sont des outils **serveur** du fournisseur, nous ne les déclarions pas. Provider-First dans sa forme la plus littérale (`PROJECT.md` §3.3) : relayer, pas réimplémenter |
+| **Composition** ✅ | SF-39-20 | **Hors cadrage initial, et d'une autre origine que les trois précédentes** : non pas le banc d'essai, mais la **rencontre de deux décisions de ce cadrage**. D4 retire `list_files`/`search_files` en cible `RUNNER` au profit de `bash` ; D2 de SF-39-14 interdit `bash` à la sous-boucle d'exploration. Chacune juste, leur **intersection vide** : la panoplie de la sous-boucle, *dérivée par filtrage* de celle du travail principal, se réduisait à `read_file` sur la cible qui porte 95 % de l'usage — lire un chemin qu'on lui donne, jamais en trouver un, tandis que sa consigne lui promettait de chercher. Corrigé à la cause : `explorationTools()` **construit** cette panoplie (`list_files`, `read_file`, `search_files`, les mêmes sur les deux cibles) au lieu de la dériver — un outillage dérivé est tributaire d'une décision étrangère (PR #297) |
+
+
+### Ce que le lot 7 devait au lot 3 — et que personne n'avait écrit
+
+**SF-39-20** (2026-09-08, PR #297) ne corrige aucun défaut d'implémentation : elle corrige un
+**défaut de composition** entre deux décisions de ce cadrage.
+
+**D4** retire `list_files` et `search_files` de la panoplie déclarée en cible `RUNNER`, `bash` faisant
+mieux. **D2 de SF-39-14** interdit `bash` à la sous-boucle d'exploration, sa porte de confirmation ne
+pouvant demander à l'utilisateur d'autoriser une commande venue d'un agent dont il ignore l'existence.
+Chacune est juste ; leur intersection était vide. La panoplie de la sous-boucle étant **dérivée par
+filtrage** de celle du travail principal, il ne lui restait, sur la cible qui porte 95 % de l'usage
+réel, que `read_file` : lire un chemin qu'on lui donne, jamais en trouver un.
+
+Ce que le cadrage n'avait pas dit, et qui vaut au-delà de ce cas : **un lot peut retirer une capacité
+qu'un lot ultérieur suppose acquise**. L'ordre des lots avait été discuté (§5, « l'ordre n'est pas
+négociable sur les trois premiers ») du point de vue des dépendances *positives* — le cache
+conditionne l'économie, la mémoire conditionne l'utilité. Les dépendances *négatives*, elles, ne se
+lisent nulle part : rien n'annonçait que le lot 3 retirait à l'avance ce dont le lot 7 aurait besoin.
+
+Correctif structurel plutôt que ponctuel (D1 de SF-39-20) : la panoplie de l'exploration est
+désormais **construite**, jamais dérivée de celle d'une autre boucle. Un outillage dérivé est
+tributaire d'une décision étrangère ; un outillage énoncé ne l'est pas.
 
 ---
 

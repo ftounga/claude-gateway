@@ -10,7 +10,7 @@
 
 ## Statut
 
-`in-review`
+`done` — livrée le 2026-09-08 (PR #297)
 
 ## Date de création
 
@@ -115,20 +115,20 @@ condition de cesser de dériver l'outillage de l'une depuis celui de l'autre.
 
 ## Critères d'acceptation
 
-- [ ] En cible `RUNNER`, la sous-boucle d'exploration reçoit **`list_files`, `read_file`,
+- [x] En cible `RUNNER`, la sous-boucle d'exploration reçoit **`list_files`, `read_file`,
       `search_files`** — vérifié par une assertion **positive** sur les outils réellement envoyés au
       fournisseur.
-- [ ] En cible `SANDBOX`, elle reçoit la même panoplie de trois outils (comportement inchangé).
-- [ ] La sous-boucle ne reçoit **jamais** `bash`, `write_file`, `edit_file`, `set_plan` ni `explore`.
-- [ ] Un `list_files` demandé par la sous-boucle en cible `RUNNER` est **relayé à la machine** et sa
+- [x] En cible `SANDBOX`, elle reçoit la même panoplie de trois outils (comportement inchangé).
+- [x] La sous-boucle ne reçoit **jamais** `bash`, `write_file`, `edit_file`, `set_plan` ni `explore`.
+- [x] Un `list_files` demandé par la sous-boucle en cible `RUNNER` est **relayé à la machine** et sa
       sortie revient à la sous-boucle.
-- [ ] Un `search_files` demandé par la sous-boucle en cible `RUNNER` est relayé de même.
-- [ ] Un appel de la sous-boucle qui touche la machine est **journalisé** au journal d'audit.
-- [ ] La panoplie de la **boucle principale** est inchangée sur les deux cibles (non-régression D4).
-- [ ] Les bornes de SF-39-14 sont inchangées (3 délégations, 10 itérations, 4 000 caractères).
-- [ ] Isolation `user_id` inchangée : la sous-boucle travaille sur un workspace **déjà possédé**,
+- [x] Un `search_files` demandé par la sous-boucle en cible `RUNNER` est relayé de même.
+- [x] Un appel de la sous-boucle qui touche la machine est **journalisé** au journal d'audit.
+- [x] La panoplie de la **boucle principale** est inchangée sur les deux cibles (non-régression D4).
+- [x] Les bornes de SF-39-14 sont inchangées (3 délégations, 10 itérations, 4 000 caractères).
+- [x] Isolation `user_id` inchangée : la sous-boucle travaille sur un workspace **déjà possédé**,
       vérifié en amont du tour.
-- [ ] Zéro régression : un tour sans `explore` est inchangé.
+- [x] Zéro régression : un tour sans `explore` est inchangé.
 
 ---
 
@@ -200,17 +200,17 @@ contrat de la délégation depuis SF-39-14 (seule sa réponse remonte).
 
 ### Tests unitaires (backend)
 
-- [ ] En cible `RUNNER`, la sous-boucle reçoit exactement `list_files`, `read_file`, `search_files`
+- [x] En cible `RUNNER`, la sous-boucle reçoit exactement `list_files`, `read_file`, `search_files`
       (assertion **positive** sur les outils de la requête envoyée au fournisseur).
-- [ ] En cible `SANDBOX`, la sous-boucle reçoit la même panoplie.
-- [ ] La sous-boucle ne reçoit ni `bash`, ni `write_file`, ni `edit_file`, ni `set_plan`, ni
+- [x] En cible `SANDBOX`, la sous-boucle reçoit la même panoplie.
+- [x] La sous-boucle ne reçoit ni `bash`, ni `write_file`, ni `edit_file`, ni `set_plan`, ni
       `explore` (assertion négative conservée).
-- [ ] La panoplie de la boucle principale est inchangée sur les deux cibles.
-- [ ] Un `list_files` de la sous-boucle en cible `RUNNER` appelle `RunnerToolGateway.listFiles` et sa
+- [x] La panoplie de la boucle principale est inchangée sur les deux cibles.
+- [x] Un `list_files` de la sous-boucle en cible `RUNNER` appelle `RunnerToolGateway.listFiles` et sa
       sortie revient dans la conversation de la sous-boucle.
-- [ ] Un `search_files` de la sous-boucle en cible `RUNNER` appelle `RunnerToolGateway.searchFiles`.
-- [ ] Un appel de la sous-boucle est enregistré au journal d'audit.
-- [ ] Un outil hors panoplie appelé par la sous-boucle rend une erreur d'outil, sans arrêter le tour.
+- [x] Un `search_files` de la sous-boucle en cible `RUNNER` appelle `RunnerToolGateway.searchFiles`.
+- [x] Un appel de la sous-boucle est enregistré au journal d'audit.
+- [x] Un outil hors panoplie appelé par la sous-boucle rend une erreur d'outil, sans arrêter le tour.
 
 ### Tests d'intégration
 
