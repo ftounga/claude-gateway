@@ -120,6 +120,27 @@ class RunnerStatusApiIntegrationTest {
     }
 
     @Test
+    void ownerSeesTheElectedShellWhenTheRunnerDeclaredOne() throws Exception {
+        // F-45 / SF-45-05 : la donnee existe depuis la migration 063 (SF-38-27), elle n'etait pas
+        // exposee. L'ecran d'appairage s'en sert pour conclure la mise en service.
+        adminWorkspace.setRunnerShell("posix");
+        workspaceRepository.save(adminWorkspace);
+
+        mockMvc.perform(get(statusUrl(adminWorkspace.getId())).contextPath("/api")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.shell").value("posix"));
+    }
+
+    @Test
+    void statusOmitsTheShellWhenNoRunnerDeclaredOne() throws Exception {
+        mockMvc.perform(get(statusUrl(adminWorkspace.getId())).contextPath("/api")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.shell").doesNotExist());
+    }
+
+    @Test
     void statusForAnotherUsersWorkspaceIsNotFound() throws Exception {
         mockMvc.perform(get(statusUrl(adminWorkspace.getId())).contextPath("/api")
                         .header("Authorization", "Bearer " + otherToken))

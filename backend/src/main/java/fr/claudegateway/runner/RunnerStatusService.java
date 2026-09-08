@@ -10,6 +10,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import fr.claudegateway.atelier.RunnerShell;
+import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceService;
 import fr.claudegateway.runner.channel.RunnerRegistry;
 
@@ -45,7 +47,7 @@ public class RunnerStatusService {
     /** État runner du workspace, pour son propriétaire. */
     @Transactional(readOnly = true)
     public RunnerStatus status(UUID userId, UUID workspaceId) {
-        workspaceService.requireOwned(userId, workspaceId);
+        Workspace workspace = workspaceService.requireOwned(userId, workspaceId);
         Optional<OffsetDateTime> lastSeen = tokenRepository
                 .findByUserIdAndWorkspaceIdOrderByCreatedAtDesc(userId, workspaceId).stream()
                 .map(RunnerToken::getLastSeenAt)
@@ -55,10 +57,32 @@ public class RunnerStatusService {
                 .map(seen -> seen.isAfter(OffsetDateTime.now().minus(staleAfter)))
                 .orElse(false);
         boolean connected = registry.isConnected(workspaceId) || heartbeatFresh;
-        return new RunnerStatus(connected, lastSeen.orElse(null));
+        return new RunnerStatus(connected, lastSeen.orElse(null), declaredShell(workspace));
     }
 
-    /** État runner : connecté ou non, dernière activité observée (peut être {@code null}). */
-    public record RunnerStatus(boolean connected, OffsetDateTime lastSeenAt) {
+    /**
+     * Genre d'interpréteur élu par le runner (F-38 / SF-38-27), <b>normalisé</b>, ou {@code null}
+     * (F-45 / SF-45-05, décision D7).
+     *
+     * <p>La colonne {@code workspaces.runner_shell} est alimentée par une trame venue d'un client :
+     * elle repasse par la liste blanche de {@link RunnerShell} avant de sortir de la gateway, si
+     * bien qu'une valeur inconnue — base d'une version antérieure, écriture manuelle — devient
+     * {@code null} plutôt que d'être relayée telle quelle à l'écran.</p>
+     *
+     * <p>{@code null} et non « inconnu » : un runner antérieur à SF-38-27 n'a rien déclaré, et
+     * l'écran doit alors <b>omettre la ligne</b>, pas afficher un défaut.</p>
+     */
+    private static String declaredShell(Workspace workspace) {
+        return RunnerShell.fromDeclared(workspace.getRunnerShell())
+                .map(RunnerShell::declared)
+                .orElse(null);
+    }
+
+    /**
+     * État runner : connecté ou non, dernière activité observée (peut être {@code null}), et genre
+     * d'interpréteur élu par le runner ({@code posix} / {@code powershell} / {@code cmd}, ou
+     * {@code null} si aucun runner ne l'a déclaré).
+     */
+    public record RunnerStatus(boolean connected, OffsetDateTime lastSeenAt, String shell) {
     }
 }
