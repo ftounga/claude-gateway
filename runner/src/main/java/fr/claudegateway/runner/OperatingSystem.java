@@ -84,4 +84,33 @@ public enum OperatingSystem {
                         + "Ce sont les variables que le runner lit, avec NO_PROXY.";
         }
     }
+
+    /**
+     * Commande qui déclare un proxy <b>donné</b> dans le terminal courant (F-45 / SF-45-04).
+     *
+     * <p>Complète {@link #proxyInstructions()}, qui montre comment <b>trouver</b> le proxy du poste :
+     * ici l'adresse est déjà connue — c'est celle d'un relais local — et il ne reste qu'à l'annoncer
+     * au runner.</p>
+     *
+     * <p>Jamais vide : un système inconnu reçoit l'affectation de variable, qui est ce que le runner
+     * lit réellement.</p>
+     *
+     * @param proxyUrl adresse du proxy à déclarer, par exemple {@code http://127.0.0.1:3128}
+     */
+    public String declareProxy(String proxyUrl) {
+        switch (this) {
+            case WINDOWS:
+                // PowerShell d'abord : c'est le shell par defaut de Windows depuis 2017, et la forme
+                // `set` de l'invite de commandes echoue silencieusement quand on la colle dedans.
+                return "$env:HTTPS_PROXY=\"" + proxyUrl + "\"     (PowerShell)"
+                        + System.lineSeparator()
+                        + "set HTTPS_PROXY=" + proxyUrl + "        (invite de commandes)";
+            case MACOS:
+            case LINUX:
+                return "export HTTPS_PROXY=" + proxyUrl;
+            case OTHER:
+            default:
+                return "HTTPS_PROXY=" + proxyUrl;
+        }
+    }
 }

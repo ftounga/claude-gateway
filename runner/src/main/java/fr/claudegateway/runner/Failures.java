@@ -5,6 +5,7 @@ import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.nio.channels.UnresolvedAddressException;
 import java.util.IdentityHashMap;
+import java.util.Locale;
 import java.util.Map;
 import javax.net.ssl.SSLException;
 
@@ -31,7 +32,42 @@ public final class Failures {
     /** Au-delà, on répète du bruit dans un message que quelqu'un doit lire dans une console. */
     private static final int MAX_CAUSES = 3;
 
+    /** Statut HTTP « authentification proxy requise » (F-45 / SF-45-04). */
+    public static final int PROXY_AUTH_REQUIRED = 407;
+
     private Failures() {
+    }
+
+    /**
+     * Vrai quand une exception porte la <b>signature d'un 407</b> (F-45 / SF-45-04).
+     *
+     * <p>Sur une cible en HTTPS, un proxy qui exige une authentification refuse le tunnel
+     * {@code CONNECT} : la JVM lève alors une {@code IOException} — {@code "Tunnel failed, got: 407"}
+     * — et il n'existe <b>jamais</b> de {@code HttpResponse} à inspecter. C'est la seule forme sous
+     * laquelle le cas rencontré chez le client se présente.</p>
+     *
+     * <p>Reconnaissance volontairement <b>resserrée</b> : {@code 407} seul apparaîtrait dans un
+     * numéro de port ou une taille. On exige qu'il voisine avec « proxy » ou « tunnel », ou bien la
+     * mention explicite d'une authentification proxy.</p>
+     */
+    public static boolean isProxyAuthRequired(Throwable error) {
+        Map<Throwable, Boolean> seen = new IdentityHashMap<>();
+        for (Throwable current = error;
+                current != null && seen.put(current, Boolean.TRUE) == null;
+                current = current.getCause()) {
+            String message = current.getMessage();
+            if (message == null) {
+                continue;
+            }
+            String text = message.toLowerCase(Locale.ROOT);
+            if (text.contains("proxy authentication")) {
+                return true;
+            }
+            if (text.contains("407") && (text.contains("proxy") || text.contains("tunnel"))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -75,6 +111,13 @@ public final class Failures {
      * <p>Toujours une <b>question</b>, jamais une conclusion (D1).</p>
      */
     public static String hint(Throwable error) {
+        // Le 407 d'abord : il ne decrit pas une panne de transport mais un refus explicite, et son
+        // remede n'a rien a voir avec les autres (F-45 / SF-45-04).
+        if (isProxyAuthRequired(error)) {
+            return "Authentification proxy exigee (407) — le runner ne porte ni NTLM ni Kerberos "
+                    + "(la JVM n'a pas de support SSPI). Exclusion du domaine cote DSI, ou relais "
+                    + "local (px, cntlm) declare dans HTTPS_PROXY.";
+        }
         // Deux passes, du PLUS SPÉCIFIQUE au plus général. La pile réseau de la JVM enveloppe une
         // non-résolution dans une ConnectException : chercher en une seule passe rendrait la piste
         // « sortie bloquée » avant d'avoir vu le vrai motif, et enverrait chercher un proxy quand

@@ -8,9 +8,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
+import java.net.Authenticator;
+import java.net.CookieHandler;
 import java.net.InetSocketAddress;
+import java.net.ProxySelector;
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.WebSocket;
 import java.time.Duration;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -107,6 +118,189 @@ class NetworkPreflightTest {
 
         assertTrue(instructions.contains("AutoConfigURL"), instructions);
         assertTrue(instructions.contains(".pac"), instructions);
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // F-45 / SF-45-04 - le 407 : la seule reponse qui ne vient pas de la gateway.
+    // ---------------------------------------------------------------------------------------------
+
+    @Test
+    @DisplayName("un 407 fait echouer le controle : c'est le proxy qui repond, pas la gateway")
+    void aProxyAuthChallengeFailsThePreflight() throws IOException {
+        String base = startServer(407, "Proxy Authentication Required");
+
+        String message = preflight(OperatingSystem.WINDOWS).check(base);
+
+        assertNotNull(message, "un 407 ne doit pas passer pour une gateway joignable");
+        assertTrue(message.contains("407"), message);
+        assertTrue(message.contains("proxy"), message);
+        // D1 : dire QUI refuse. Sans cela, on cherche la panne du mauvais cote.
+        assertTrue(message.contains("Ce n'est pas la gateway qui repond"), message);
+    }
+
+    @Test
+    @DisplayName("le message du 407 nomme la limite de la JVM et ses deux issues")
+    void theProxyAuthMessageNamesTheJvmLimitAndBothWaysOut() throws IOException {
+        String base = startServer(407, "nope");
+
+        String message = preflight(OperatingSystem.WINDOWS).check(base);
+
+        // D3 : aucune version du runner ne corrigera cela - la cause est dans la JVM.
+        assertTrue(message.contains("NTLM"), message);
+        assertTrue(message.contains("Kerberos"), message);
+        assertTrue(message.contains("SSPI"), message);
+        assertTrue(message.contains("8u111"), message);
+        assertTrue(message.contains("quelle que soit sa version"), message);
+        // D4 : deux issues, parce qu'une exclusion de domaine se refuse.
+        assertTrue(message.contains("DSI"), message);
+        assertTrue(message.contains("cntlm"), message);
+        assertTrue(message.contains("127.0.0.1:3128"), message);
+        // Les gestes du systeme courant, jamais ceux d'un autre.
+        assertTrue(message.contains("$env:HTTPS_PROXY"), message);
+        // Aucun identifiant : le message ne recopie jamais une URL porteuse de « user:mot@hote ».
+        assertFalse(message.contains("@"), message);
+    }
+
+    @Test
+    @DisplayName("un 401 reste joignable : c'est la gateway qui parle, pas le proxy")
+    void anUnauthorizedGatewayIsStillReachable() throws IOException {
+        // Non-regression de D1 (SF-38-25) : seul le 407 fait exception, parce que seul le 407 vient
+        // d'un intermediaire qui n'a rien transmis.
+        assertNull(preflight().check(startServer(401, "nope")));
+    }
+
+    @Test
+    @DisplayName("un tunnel CONNECT refuse est reconnu comme un 407, sans reponse a inspecter")
+    void aRefusedTunnelIsRecognisedAsProxyAuth() {
+        // D2 : sur une cible en HTTPS, le proxy refuse le CONNECT et la JVM leve une IOException -
+        // il n'existe JAMAIS de HttpResponse. C'est la forme reellement rencontree chez le client.
+        NetworkPreflight preflight = new NetworkPreflight(
+                new ThrowingHttpClient(new IOException("Tunnel failed, got: 407")),
+                OperatingSystem.LINUX);
+
+        String message = preflight.check("https://portal.exemple.fr/api");
+
+        assertNotNull(message);
+        assertTrue(message.contains("SSPI"), message);
+        assertTrue(message.contains("export HTTPS_PROXY=http://127.0.0.1:3128"), message);
+    }
+
+    @Test
+    @DisplayName("une panne sans signature 407 garde le message reseau existant")
+    void anOrdinaryFailureKeepsItsOwnMessage() {
+        NetworkPreflight preflight = new NetworkPreflight(
+                new ThrowingHttpClient(new IOException("Connection reset")),
+                OperatingSystem.LINUX);
+
+        String message = preflight.check("https://portal.exemple.fr/api");
+
+        assertTrue(message.contains("pas joignable"), message);
+        assertFalse(message.contains("SSPI"), message);
+    }
+
+    @Test
+    @DisplayName("declarer un proxy connu : la syntaxe du systeme, jamais rien")
+    void declaringAKnownProxyUsesTheShellOfTheHost() {
+        assertTrue(OperatingSystem.WINDOWS.declareProxy("http://127.0.0.1:3128")
+                .contains("$env:HTTPS_PROXY"));
+        // L'invite de commandes coexiste avec PowerShell : la forme `set` y est la seule qui marche.
+        assertTrue(OperatingSystem.WINDOWS.declareProxy("http://127.0.0.1:3128").contains("set "));
+        assertEquals("export HTTPS_PROXY=http://x:1",
+                OperatingSystem.MACOS.declareProxy("http://x:1"));
+        assertEquals("export HTTPS_PROXY=http://x:1",
+                OperatingSystem.LINUX.declareProxy("http://x:1"));
+        assertFalse(OperatingSystem.OTHER.declareProxy("http://x:1").isBlank());
+    }
+
+    private NetworkPreflight preflight(OperatingSystem os) {
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(2))
+                .build();
+        return new NetworkPreflight(client, os);
+    }
+
+    /**
+     * Client HTTP qui echoue toujours de la meme facon. Seul moyen d'eprouver le chemin ou le proxy
+     * refuse le tunnel : cette exception ne se provoque pas avec un serveur local, puisque justement
+     * aucune reponse n'existe.
+     */
+    private static final class ThrowingHttpClient extends HttpClient {
+
+        private final IOException failure;
+
+        private ThrowingHttpClient(IOException failure) {
+            this.failure = failure;
+        }
+
+        @Override
+        public <T> HttpResponse<T> send(HttpRequest request, HttpResponse.BodyHandler<T> handler)
+                throws IOException {
+            throw failure;
+        }
+
+        @Override
+        public <T> CompletableFuture<HttpResponse<T>> sendAsync(
+                HttpRequest request, HttpResponse.BodyHandler<T> handler) {
+            return CompletableFuture.failedFuture(failure);
+        }
+
+        @Override
+        public <T> CompletableFuture<HttpResponse<T>> sendAsync(
+                HttpRequest request,
+                HttpResponse.BodyHandler<T> handler,
+                HttpResponse.PushPromiseHandler<T> pushPromiseHandler) {
+            return CompletableFuture.failedFuture(failure);
+        }
+
+        @Override
+        public Optional<CookieHandler> cookieHandler() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Optional<Duration> connectTimeout() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Redirect followRedirects() {
+            return Redirect.NEVER;
+        }
+
+        @Override
+        public Optional<ProxySelector> proxy() {
+            return Optional.empty();
+        }
+
+        @Override
+        public SSLContext sslContext() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public SSLParameters sslParameters() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public Optional<Authenticator> authenticator() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Version version() {
+            return Version.HTTP_1_1;
+        }
+
+        @Override
+        public Optional<Executor> executor() {
+            return Optional.empty();
+        }
+
+        @Override
+        public WebSocket.Builder newWebSocketBuilder() {
+            throw new UnsupportedOperationException();
+        }
     }
 
     private NetworkPreflight preflight() {

@@ -15,14 +15,25 @@ import java.time.Duration;
  * n'a rien de métier : le poste ne sort pas sur Internet. Ce qui n'a rien à voir avec l'appairage ne
  * doit pas échouer pendant l'appairage (D4).</p>
  *
- * <p><b>Toute</b> réponse HTTP vaut « joignable », y compris un 404 (D1) : le contrôle répond à une
- * seule question — « ce terminal sort-il jusqu'à cette adresse ? ». Juger le code en ferait un test
- * de santé, qui bloquerait un runner parfaitement fonctionnel le jour où un endpoint change.</p>
+ * <p>Toute réponse <b>de la gateway</b> vaut « joignable », y compris un 404 (D1) : le contrôle
+ * répond à une seule question — « ce terminal sort-il jusqu'à cette adresse ? ». Juger le code en
+ * ferait un test de santé, qui bloquerait un runner parfaitement fonctionnel le jour où un endpoint
+ * change.</p>
+ *
+ * <p><b>Le 407 est l'exception</b> (F-45 / SF-45-04) : il ne vient pas de la gateway mais du
+ * <b>proxy</b>, qui n'a rien transmis. Le compter comme un succès laisserait le runner échouer trois
+ * lignes plus loin, à l'appairage — exactement ce que ce contrôle existe pour éviter.</p>
  */
 public final class NetworkPreflight {
 
     /** Au-delà, on fait attendre quelqu'un devant un terminal muet. */
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
+
+    /** Statut du proxy qui exige une authentification : la réponse ne vient pas de la gateway. */
+    private static final int PROXY_AUTH_REQUIRED = Failures.PROXY_AUTH_REQUIRED;
+
+    /** Proxy exposé par défaut par un relais local d'authentification (`px`, `cntlm`). */
+    private static final String LOCAL_RELAY = "http://127.0.0.1:3128";
 
     private final HttpClient httpClient;
     private final OperatingSystem os;
@@ -43,16 +54,69 @@ public final class NetworkPreflight {
                 .GET()
                 .build();
         try {
-            // La réponse n'est pas lue : son existence suffit. On ne consomme pas un corps dont on
-            // n'a que faire, sur un lien peut-être lent.
-            httpClient.send(request, HttpResponse.BodyHandlers.discarding());
-            return null;
+            // Le corps n'est pas lu : son existence suffit. On ne consomme pas un contenu dont on
+            // n'a que faire, sur un lien peut-être lent. Le STATUT, lui, est désormais regardé —
+            // pour le seul 407, qui ne vient pas du serveur qu'on cherche à joindre (SF-45-04).
+            HttpResponse<Void> response =
+                    httpClient.send(request, HttpResponse.BodyHandlers.discarding());
+            return response.statusCode() == PROXY_AUTH_REQUIRED ? proxyAuthMessage(gateway) : null;
         } catch (IOException unreachable) {
-            return message(gateway, unreachable);
+            // Sur une cible en HTTPS, le proxy refuse le tunnel CONNECT et la JVM lève une
+            // IOException : il n'y a JAMAIS de réponse à inspecter. Ne traiter que le statut ne
+            // couvrirait donc pas le cas réellement rencontré chez le client (D2).
+            return Failures.isProxyAuthRequired(unreachable)
+                    ? proxyAuthMessage(gateway)
+                    : message(gateway, unreachable);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             return null; // Interruption : ce n'est pas un verdict réseau, on laisse la suite décider.
         }
+    }
+
+    /**
+     * Message du 407 : ce qui refuse, pourquoi aucune version du runner n'y changera rien, et les
+     * <b>deux</b> issues — l'une côté DSI, l'autre côté poste.
+     */
+    private String proxyAuthMessage(String gateway) {
+        String nl = System.lineSeparator();
+        return "Le proxy d'entreprise refuse la connexion : 407, authentification requise ("
+                + gateway + ")." + nl
+                + nl
+                + "Ce n'est pas la gateway qui repond, c'est le proxy : il n'a rien transmis." + nl
+                + nl
+                // D3 : sans cette phrase, le premier reflexe est de chercher une mise a jour, puis
+                // d'ouvrir un ticket au produit. La cause est dans la JVM.
+                + "Si ce proxy exige une authentification INTEGREE (NTLM ou Kerberos), le runner ne"
+                + nl
+                + "pourra pas la porter, quelle que soit sa version : la machine virtuelle Java n'a"
+                + nl
+                + "aucun support SSPI, et l'authentification Basic est desactivee sur les tunnels"
+                + nl
+                + "CONNECT depuis Java 8u111." + nl
+                + nl
+                // D4 : « faites ouvrir sans authentification » se refuse dans beaucoup
+                // d'entreprises ; le relais local, lui, ne demande rien a personne.
+                + "Deux issues :" + nl
+                + "  1. faire exclure ce domaine de l'authentification proxy par votre DSI ;" + nl
+                + "  2. lancer un relais local qui porte l'authentification integree et expose, lui,"
+                + nl
+                + "     un proxy SANS authentification (px, cntlm), puis le declarer ici :" + nl
+                + indent(os.declareProxy(LOCAL_RELAY)) + nl
+                + nl
+                + "L'ecran « Connecter une machine » produit la fiche a transmettre a votre DSI.";
+    }
+
+    /** Décale un bloc de commandes, pour qu'il se distingue du texte dans une console. */
+    private static String indent(String block) {
+        String nl = System.lineSeparator();
+        StringBuilder text = new StringBuilder();
+        for (String line : block.split("\\R", -1)) {
+            if (text.length() > 0) {
+                text.append(nl);
+            }
+            text.append("       ").append(line);
+        }
+        return text.toString();
     }
 
     /** Message en trois parties : ce qui a échoué, la piste, les gestes du système courant. */
