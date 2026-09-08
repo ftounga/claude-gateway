@@ -302,6 +302,18 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   @ViewChild('scrollback') private scrollback?: ElementRef<HTMLElement>;
 
+  /** Invite d'autorisation affichée dans le flux (F-33 / SF-33-03), quand il y en a une. */
+  @ViewChild('askBlock') private askBlock?: ElementRef<HTMLElement>;
+
+  /**
+   * Ramène l'invite d'autorisation dans le champ de vision (F-47 / SF-47-01), sur demande du rappel
+   * persistant. Sans effet quand aucune invite n'est posée : le rappel et l'invite peuvent
+   * disparaître entre le clic et son traitement.
+   */
+  revealPendingAsk(): void {
+    this.askBlock?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
   /** Hauteur de contenu au dernier défilement : évite de forcer le scroll à chaque cycle. */
   private lastScrollHeight = 0;
 

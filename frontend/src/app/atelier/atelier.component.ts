@@ -1,5 +1,15 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, NgZone, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import {
+  ApplicationRef,
+  Component,
+  NgZone,
+  OnDestroy,
+  OnInit,
+  ViewChild,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
@@ -124,7 +134,15 @@ export class AtelierComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly snackBar = inject(MatSnackBar);
   private readonly zone = inject(NgZone);
+  private readonly appRef = inject(ApplicationRef);
   private readonly dialog = inject(MatDialog);
+
+  /**
+   * Vue terminal montée (F-47 / SF-47-01) : c'est elle qui sait où se trouve l'invite d'autorisation
+   * dans son flux, et donc elle seule qui peut l'y ramener. Absente tant qu'aucun projet n'est
+   * ouvert — le rappel ne suppose jamais qu'elle existe.
+   */
+  @ViewChild(AtelierTerminalComponent) private terminalView?: AtelierTerminalComponent;
 
   /** Attribut `accept` du sélecteur de fichier PC (texte/code uniquement, SF-28-13). */
   readonly workspaceTextAccept = WORKSPACE_TEXT_ACCEPT;
@@ -1237,6 +1255,46 @@ export class AtelierComponent implements OnInit, OnDestroy {
       denying: false,
       reason: '',
     });
+    this.nudgeRender();
+  }
+
+  /**
+   * Force un cycle de rendu (F-47 / SF-47-01).
+   *
+   * <p><b>Pourquoi.</b> Le flux <b>se tait</b> juste après une demande d'autorisation : le serveur
+   * attend la décision, donc plus aucune microtâche ne survient — et Angular, en mode zone, ne relit
+   * les gabarits qu'à la fin d'un lot de microtâches. Mesuré en production : le signal est bien
+   * positionné, mais le gabarit n'est pas relu (1297 lectures avant le {@code set}, 1297 après,
+   * 1298 dès qu'un {@code tick()} est forcé). L'invite était donc émise, reçue, posée… et jamais
+   * peinte, jusqu'à ce qu'un autre événement passe par là. C'est le seul événement du flux suivi
+   * d'un silence : tous les autres sont suivis d'un événement dont la lecture relance le rendu.</p>
+   *
+   * <p>Un {@code setTimeout(0)} relancerait lui aussi un cycle, mais en repassant par zone.js —
+   * c'est-à-dire par le mécanisme qui vient précisément de ne pas se déclencher.</p>
+   */
+  private nudgeRender(): void {
+    try {
+      this.appRef.tick();
+    } catch {
+      // Cycle déjà en cours (tick ré-entrant) : il n'y a rien à forcer, le cycle qui tourne lira le
+      // signal de toute façon. Surtout, l'invite est posée — la faire échouer ici serait pire que
+      // le défaut qu'on corrige.
+    }
+  }
+
+  /**
+   * Ramène l'utilisateur à la demande d'autorisation en attente (F-47 / SF-47-01) : ferme le
+   * panneau superposé s'il en masque le flux, puis fait défiler l'invite dans le champ de vision.
+   *
+   * <p>Le rappel ne porte <b>aucun</b> bouton de décision : autoriser reste un geste pris devant la
+   * commande, à côté de ce qui permet de la juger (F-33 / SF-33-03).</p>
+   */
+  focusPendingConfirmation(): void {
+    if (this.filesExplorerOpen()) {
+      this.closeFileExplorer();
+    }
+    // Le terminal est peut-être resté masqué : laisser le gabarit se recomposer avant de défiler.
+    setTimeout(() => this.terminalView?.revealPendingAsk());
   }
 
   /**
@@ -1254,6 +1312,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
       this.snackBar.open(
         'Commande refusée : aucune réponse dans le délai imparti.', 'Fermer', { duration: 6000 });
     }
+    // Même silence qu'à la pose (F-47 / SF-47-01) : la résolution arrive elle aussi sans qu'aucun
+    // autre événement ne suive, et sans forçage l'invite resterait affichée après coup.
+    this.nudgeRender();
   }
 
   /** Ouvre le champ de motif : refuser tient en un clic, motiver est un second geste, facultatif. */

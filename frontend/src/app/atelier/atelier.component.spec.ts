@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { ApplicationRef } from '@angular/core';
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ActivatedRoute, ParamMap, Router, provideRouter } from '@angular/router';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
@@ -2253,6 +2254,84 @@ describe('AtelierComponent', () => {
       'Commande refusée : aucune réponse dans le délai imparti.', 'Fermer', { duration: 6000 });
   });
 
+  // ---------------------------- F-47 / SF-47-01 : l'invite est peinte, et rappelee
+
+  it("F-47 : la pose de l'invite force un cycle de rendu (bac à sable)", () => {
+    setup();
+    const tickSpy = spyOn(TestBed.inject(ApplicationRef), 'tick');
+
+    runAwaitingConfirmation();
+
+    // Sans ce forçage, le gabarit n'est relu qu'au prochain événement du flux — or le flux se tait :
+    // le serveur attend la décision. C'est exactement le défaut observé en production.
+    expect(tickSpy).toHaveBeenCalled();
+  });
+
+  it('F-47 : la résolution force elle aussi un cycle de rendu', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    component.engine.set('HOSTED_SANDBOX');
+    let captured!: Parameters<AtelierService['streamAgent']>[2];
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      captured = handlers;
+      handlers.onConfirmRequest!({ toolUseId: 'sevt_1', tool: 'bash', detail: 'rm -rf build' });
+      return Promise.resolve();
+    });
+    component.draft.set('nettoie');
+    component.send();
+
+    const tickSpy = spyOn(TestBed.inject(ApplicationRef), 'tick');
+    captured.onConfirmResolved!({ toolUseId: 'sevt_1', decision: 'timeout' });
+
+    expect(tickSpy).toHaveBeenCalled();
+  });
+
+  it("F-47 : un cycle de rendu déjà en cours ne fait pas échouer la pose de l'invite", () => {
+    setup();
+    spyOn(TestBed.inject(ApplicationRef), 'tick').and.throwError(
+      'ApplicationRef.tick is called recursively');
+
+    runAwaitingConfirmation();
+
+    // Le forçage est un confort, pas une condition : l'invite reste posée quoi qu'il arrive.
+    expect(component.pendingConfirmation()).not.toBeNull();
+  });
+
+  it("F-47 : le rappel persistant n'est dans le DOM que tant qu'une décision est attendue", () => {
+    setup();
+    expect(fixture.nativeElement.querySelector('.atelier-ask-recall')).toBeNull();
+
+    runAwaitingConfirmation();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.atelier-ask-recall')).not.toBeNull();
+
+    component.pendingConfirmation.set(null);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.atelier-ask-recall')).toBeNull();
+  });
+
+  it("F-47 : « Voir la demande » ferme le panneau superposé", fakeAsync(() => {
+    setup();
+    runAwaitingConfirmation();
+    component.filesExplorerOpen.set(true);
+
+    component.focusPendingConfirmation();
+    tick();
+
+    expect(component.filesExplorerOpen()).toBeFalse();
+  }));
+
+  it('F-47 : « Voir la demande » sans terminal monté ne lève pas', fakeAsync(() => {
+    setup();
+    component.activeWorkspaceId.set(null);
+    fixture.detectChanges();
+
+    expect(() => {
+      component.focusPendingConfirmation();
+      tick();
+    }).not.toThrow();
+  }));
+
   it('F-33 : une réponse refusée par le serveur retire l\'invite avec un message lisible', () => {
     setup();
     runAwaitingConfirmation();
@@ -3213,6 +3292,16 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
 
     expect(component.pendingConfirmation()).toBeNull();
     expect(snackBar.open).toHaveBeenCalled();
+    fixture.destroy();
+  });
+
+  it("F-47 : la pose de l'invite force un cycle de rendu (machine connectée)", () => {
+    setup();
+    const tickSpy = spyOn(TestBed.inject(ApplicationRef), 'tick');
+
+    runAwaitingConfirmation();
+
+    expect(tickSpy).toHaveBeenCalled();
     fixture.destroy();
   });
 
