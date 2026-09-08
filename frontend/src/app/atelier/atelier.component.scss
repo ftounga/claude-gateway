@@ -167,3 +167,31 @@ a.active {
   overflow: auto;
   background: var(--mat-sys-surface, #fff);
 }
+
+// Rappel persistant d'une autorisation en attente (F-47 / SF-47-01). Au-dessus de l'explorateur en
+// surcouche (z-index 900) : c'est tout l'objet du rappel — se voir quel que soit le panneau ouvert.
+.atelier-ask-recall {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  // Mêmes couleurs que l'invite elle-même (F-33) : le rappel et la demande doivent se lire comme
+  // une seule chose, pas comme deux messages différents.
+  background: var(--cg-navy-2);
+  border-bottom: 1px solid var(--cg-orange-2);
+  color: var(--cg-surface);
+}
+
+.atelier-ask-recall-icon {
+  color: var(--cg-orange-2);
+}
+
+.atelier-ask-recall-text {
+  flex: 1;
+  font-size: 14px;
+}

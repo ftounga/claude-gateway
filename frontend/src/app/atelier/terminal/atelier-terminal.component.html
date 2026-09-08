@@ -466,7 +466,7 @@
     @if (pendingConfirmation; as ask) {
       <!-- Demande d'autorisation (F-33 / SF-33-03). Dans le flux, pas dans une modale : les
            commandes précédentes restent lisibles, et ce sont elles qui permettent de juger. -->
-      <div class="terminal-ask" role="alertdialog" aria-label="Autorisation demandée">
+      <div #askBlock class="terminal-ask" role="alertdialog" aria-label="Autorisation demandée">
         <p class="terminal-ask-title">
           <mat-icon class="terminal-ask-icon">shield</mat-icon>
           Claude demande à exécuter cette commande

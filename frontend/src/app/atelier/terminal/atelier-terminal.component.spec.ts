@@ -1074,4 +1074,33 @@ describe('AtelierTerminalComponent', () => {
       expect(emitted.length).toBe(1);
     });
   });
+  // ---------------------------- F-47 / SF-47-01 : ramener l'invite dans le champ de vision
+
+  describe("rappel d'une autorisation en attente (F-47 / SF-47-01)", () => {
+    it("fait défiler l'invite quand une décision est attendue", () => {
+      component.pendingConfirmation = {
+        toolUseId: 'tu_1',
+        tool: 'bash',
+        detail: 'npm test',
+        source: 'LOCAL_MACHINE',
+        answering: false,
+        denying: false,
+        reason: '',
+      };
+      fixture.detectChanges();
+      const ask: HTMLElement = fixture.nativeElement.querySelector('.terminal-ask');
+      const scrollSpy = spyOn(ask, 'scrollIntoView');
+
+      component.revealPendingAsk();
+
+      expect(scrollSpy).toHaveBeenCalled();
+    });
+
+    it("ne lève pas quand aucune invite n'est posée", () => {
+      fixture.detectChanges();
+
+      // Le rappel et l'invite peuvent disparaître entre le clic et son traitement.
+      expect(() => component.revealPendingAsk()).not.toThrow();
+    });
+  });
 });
