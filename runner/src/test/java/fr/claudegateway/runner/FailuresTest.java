@@ -139,6 +139,48 @@ class FailuresTest {
         assertTrue(hint.contains("PAC"), hint);
     }
 
+    // F-45 / SF-45-04 - la signature du 407, reconnue partout ou une exception remonte.
+
+    @Test
+    @DisplayName("un tunnel refuse en 407 est reconnu comme une authentification proxy")
+    void aRefusedTunnelIsProxyAuthentication() {
+        // La forme exacte que prend le cas rencontre chez le client : la JVM ne produit aucune
+        // reponse a inspecter, seulement ce message.
+        assertTrue(Failures.isProxyAuthRequired(new IOException("Tunnel failed, got: 407")));
+        assertTrue(Failures.isProxyAuthRequired(new IOException("Proxy Authentication Required")));
+        assertTrue(Failures.isProxyAuthRequired(
+                new IOException("enveloppe", new IOException("tunnel failed, got: 407"))));
+    }
+
+    @Test
+    @DisplayName("un 407 isole ne suffit pas : ce pourrait etre un numero de port")
+    void aBare407IsNotEnough() {
+        // Reconnaissance resserree : sans « proxy » ni « tunnel » a cote, 407 ne prouve rien.
+        assertFalse(Failures.isProxyAuthRequired(new IOException("Connect to host:407 failed")));
+        assertFalse(Failures.isProxyAuthRequired(new IOException("Connection reset")));
+        assertFalse(Failures.isProxyAuthRequired(null));
+    }
+
+    @Test
+    @DisplayName("la piste du 407 nomme le remede, et prime sur les autres")
+    void theProxyAuthHintNamesTheWayOut() {
+        String hint = Failures.hint(new IOException("Tunnel failed, got: 407"));
+
+        assertTrue(hint.contains("NTLM"), hint);
+        assertTrue(hint.contains("Kerberos"), hint);
+        assertTrue(hint.contains("SSPI"), hint);
+        assertTrue(hint.contains("cntlm"), hint);
+    }
+
+    @Test
+    @DisplayName("les pistes existantes sont conservees : l'ajout du 407 est purement additif")
+    void theExistingHintsAreUntouched() {
+        assertTrue(Failures.hint(new UnknownHostException("portal.example.com")).contains("résolu"));
+        assertTrue(Failures.hint(new ConnectException("Connection timed out"))
+                .contains("Sortie réseau"));
+        assertTrue(Failures.hint(new IOException("autre chose")).isEmpty());
+    }
+
     @Test
     @DisplayName("une exception absente ne produit jamais de vide")
     void aNullThrowableStillSaysSomething() {
