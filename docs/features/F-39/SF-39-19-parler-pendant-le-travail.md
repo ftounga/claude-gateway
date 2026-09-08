@@ -10,7 +10,7 @@
 
 ## Statut
 
-`ready`
+`done` — livrée le 2026-09-06 (PR #260). Correctif de suivi le même jour (PR #262) : le panneau de fichiers ouvert par SF-39-18 s'ouvrait vide hors de sa propre route, et l'agent n'avait effectivement aucun accès réseau — `web_search` / `web_fetch` du fournisseur n'étaient pas déclarés.
 
 ## Date de création
 
