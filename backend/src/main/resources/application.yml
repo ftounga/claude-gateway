@@ -421,6 +421,12 @@ app:
     # Java 21 n'est installable. Empaqueté dans l'image à côté du jar ; vide ⇒ le format n'est
     # pas proposé, l'écran le masque au lieu d'offrir un lien mort.
     windows-package-path: ${APP_RUNNER_WINDOWS_PACKAGE_PATH:}
+    # Paquets autonomes macOS (F-44 / SF-44-03), une entrée par architecture. Même raison qu'en
+    # Windows : un poste Mac d'entreprise verrouillé n'a ni droits administrateur, ni Homebrew, ni
+    # JDK. Vide ⇒ le format n'est pas proposé — une gateway déployée avant SF-44-03 reste
+    # utilisable avec les formats qu'elle sert déjà.
+    macos-aarch64-package-path: ${APP_RUNNER_MACOS_AARCH64_PACKAGE_PATH:}
+    macos-x64-package-path: ${APP_RUNNER_MACOS_X64_PACKAGE_PATH:}
     heartbeat:
       # Fenêtre de fraîcheur du dernier heartbeat pour le statut « runner connecté » : au-delà, le
       # runner est considéré déconnecté si le registre ne le voit pas. Adossé à `last_seen_at` (base
