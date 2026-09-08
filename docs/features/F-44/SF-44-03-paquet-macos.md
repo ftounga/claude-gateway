@@ -10,7 +10,7 @@
 
 ## Statut
 
-`ready`
+`livrée` — 2026-09-08 (PR **#288** backend, PR **#289** écran ; aucune migration)
 
 ## Date de création
 
@@ -98,22 +98,22 @@ un paquet** : ce serait rappeler la JVM du système, celle-là même qui manque.
 
 ## Critères d'acceptation
 
-- [ ] `GET /runner/download` et `GET /runner/download/windows` sont **inchangés** (non-régression).
-- [ ] `GET /runner/download/macos-aarch64` sert l'archive sous le nom `claude-runner-macos-aarch64.tar.gz`.
-- [ ] `GET /runner/download/macos-x64` sert l'archive sous le nom `claude-runner-macos-x64.tar.gz`.
-- [ ] Un paquet macOS absent donne un **404 `runner_package_unavailable`** dont le **message** nomme
+- [x] `GET /runner/download` et `GET /runner/download/windows` sont **inchangés** (non-régression).
+- [x] `GET /runner/download/macos-aarch64` sert l'archive sous le nom `claude-runner-macos-aarch64.tar.gz`.
+- [x] `GET /runner/download/macos-x64` sert l'archive sous le nom `claude-runner-macos-x64.tar.gz`.
+- [x] Un paquet macOS absent donne un **404 `runner_package_unavailable`** dont le **message** nomme
       la plateforme et l'architecture — et n'emporte pas les autres formats.
-- [ ] Les deux nouvelles routes sont **publiques** et passent par la chaîne `/runner/**`.
-- [ ] `GET /runner/download/formats` expose `macosAarch64Package` et `macosX64Package` sans modifier
+- [x] Les deux nouvelles routes sont **publiques** et passent par la chaîne `/runner/**`.
+- [x] `GET /runner/download/formats` expose `macosAarch64Package` et `macosX64Package` sans modifier
       les champs existants.
-- [ ] Le `Dockerfile` construit les deux paquets macOS et les dépose dans l'image ; le build
+- [x] Le `Dockerfile` construit les deux paquets macOS et les dépose dans l'image ; le build
       **échoue** plutôt que de livrer une archive tronquée (garde déjà présente dans le script).
-- [ ] La configuration k8s pointe les deux nouveaux chemins.
-- [ ] L'écran propose les formats macOS quand ils sont servis, les **masque** sinon.
-- [ ] Le format présélectionné suit le système qui consulte la page.
-- [ ] La commande affichée pour un paquet macOS est `./claude-runner.command …` et ne contient
+- [x] La configuration k8s pointe les deux nouveaux chemins.
+- [x] L'écran propose les formats macOS quand ils sont servis, les **masque** sinon.
+- [x] Le format présélectionné suit le système qui consulte la page.
+- [x] La commande affichée pour un paquet macOS est `./claude-runner.command …` et ne contient
       **jamais** `java -jar`.
-- [ ] **Design system** : couleurs et polices de `DESIGN_SYSTEM.md`, aucun `window.confirm`.
+- [x] **Design system** : couleurs et polices de `DESIGN_SYSTEM.md`, aucun `window.confirm`.
 
 ---
 
@@ -180,21 +180,21 @@ n'est ouverte par cette subfeature.
 
 ### Tests unitaires / intégration backend
 
-- [ ] Chaque route macOS sert son archive avec le bon `Content-Disposition`.
-- [ ] Chaque route macOS rend un 404 `runner_package_unavailable` quand le chemin est vide, absent
+- [x] Chaque route macOS sert son archive avec le bon `Content-Disposition`.
+- [x] Chaque route macOS rend un 404 `runner_package_unavailable` quand le chemin est vide, absent
       ou illisible — et le message nomme l'architecture.
-- [ ] Un paquet macOS absent n'empêche ni le jar ni le paquet Windows d'être servis.
-- [ ] Les deux routes répondent **sans authentification**.
-- [ ] `GET /download/formats` rend les quatre booléens, chacun suivant la présence réelle du fichier.
-- [ ] Non-régression : `/download` et `/download/windows` inchangés.
+- [x] Un paquet macOS absent n'empêche ni le jar ni le paquet Windows d'être servis.
+- [x] Les deux routes répondent **sans authentification**.
+- [x] `GET /download/formats` rend les quatre booléens, chacun suivant la présence réelle du fichier.
+- [x] Non-régression : `/download` et `/download/windows` inchangés.
 
 ### Tests frontend
 
-- [ ] Les formats macOS sont proposés quand la gateway les sert, masqués sinon.
-- [ ] La présélection suit le système (Windows / Mac / autre).
-- [ ] La commande d'un paquet macOS est `./claude-runner.command …` et ne contient pas `java -jar`.
-- [ ] Le téléchargement macOS appelle la bonne route et enregistre le bon nom de fichier.
-- [ ] Non-régression : le comportement Windows et jar est inchangé.
+- [x] Les formats macOS sont proposés quand la gateway les sert, masqués sinon.
+- [x] La présélection suit le système (Windows / Mac / autre).
+- [x] La commande d'un paquet macOS est `./claude-runner.command …` et ne contient pas `java -jar`.
+- [x] Le téléchargement macOS appelle la bonne route et enregistre le bon nom de fichier.
+- [x] Non-régression : le comportement Windows et jar est inchangé.
 
 ### Isolation workspace
 
@@ -246,4 +246,17 @@ proposer un format que la gateway ne sert pas encore.
 La construction croisée est vérifiée au build ; **rien ne prouve en intégration continue qu'un Mac
 verrouillé exécute le paquet** — même angle mort que pour Windows, relevé le 2026-09-08 et porté par
 le scénario **S16** du smoke manuel de F-38. Cette subfeature ajoute le **S17** correspondant pour
-macOS. Sa planification reste **OQ-13**.
+macOS. Sa planification reste **OQ-13**, qui demande désormais un **second passage court (~20 min)
+sur un Mac**, séparé du passage Windows.
+
+---
+
+## Ce qui a été livré (2026-09-08)
+
+| PR | Contenu | Vérification |
+|---|---|---|
+| **#288** | Deux routes macOS, `permitAll` explicites, deux chemins configurables, `formats` à quatre booléens, `Dockerfile`, ConfigMap k8s | **1588** tests backend verts, dont 5 nouveaux ; `package-macos.sh` **exécuté** pour les deux architectures — `bin/java` Mach-O arm64 resp. x86_64, `jdk.crypto.ec` présent, bit exécutable du lanceur survivant à la décompression |
+| **#289** | Quatre formats à l'écran, présélection par poste, commande `./claude-runner.command`, service et modèle | **685** tests frontend verts, dont 6 nouveaux ; build de production propre |
+
+Tous les critères d'acceptation ci-dessus sont couverts. Aucun écart avec la mini-spec ; aucune
+décision prise hors des D1→D7.
