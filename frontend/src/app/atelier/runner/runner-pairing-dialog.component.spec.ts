@@ -9,11 +9,16 @@ import { RunnerDownloadFormats } from '../../core/models/atelier.models';
 import { AtelierService } from '../../core/services/atelier.service';
 import {
   DEFAULT_WORKSPACE_PATH,
+  LOCAL_RELAY_PROXY_URL,
+  NETWORK_CHECK_PATH,
   RUNNER_BUILD_COMMAND,
   RUNNER_HOST_PLATFORM,
   RunnerHostPlatform,
   RunnerPairingDialogComponent,
   detectHostPlatform,
+  networkCheckCommand,
+  proxyDiscoveryCommand,
+  proxyExportCommand,
 } from './runner-pairing-dialog.component';
 
 describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
@@ -343,5 +348,121 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     // requête vers le backend plutôt que vers le serveur de l'application.
     expect(component.gatewayUrl).toBe(`${window.location.origin}/api`);
     expect(component.gatewayUrl.endsWith('/api')).toBeTrue();
+  });
+  // ---------------------------------------------------------------------------------------------
+  // F-45 / SF-45-01 — étape « Vérifier l'accès réseau », avant le code et avant le téléchargement.
+  // ---------------------------------------------------------------------------------------------
+
+  it('propose curl.exe sur Windows — dans PowerShell, `curl` est un alias d\'Invoke-WebRequest', () => {
+    setup(EVERY_FORMAT, 'windows');
+
+    const command = component.networkCheckCommand;
+
+    expect(command).toContain('curl.exe ');
+    // Invoke-WebRequest emprunterait le proxy SYSTÈME et réussirait là où le runner échoue (D4).
+    expect(command).not.toContain('Invoke-WebRequest');
+    expect(command).toContain('-o NUL');
+    expect(command).not.toContain('/dev/null');
+  });
+
+  it('propose curl sur macOS', () => {
+    setup(EVERY_FORMAT, 'macos');
+
+    expect(component.networkCheckCommand).toContain('curl -sS');
+    expect(component.networkCheckCommand).not.toContain('curl.exe');
+    expect(component.networkCheckCommand).toContain('-o /dev/null');
+  });
+
+  it('propose la commande générique sur un poste ni Windows ni Mac', () => {
+    setup(EVERY_FORMAT, 'other');
+
+    expect(component.networkCheckCommand).toContain('curl -sS');
+    expect(component.networkCheckCommand).toContain('-o /dev/null');
+  });
+
+  it('vise exactement l\'adresse que le contrôle de vol du runner interroge', () => {
+    setup();
+
+    // D5 : deux adresses différentes autoriseraient un verdict vert à l'écran et rouge au lancement.
+    expect(component.networkCheckCommand).toContain(
+      `${window.location.origin}/api${NETWORK_CHECK_PATH}`);
+    expect(NETWORK_CHECK_PATH).toBe('/runner/download/formats');
+  });
+
+  it('donne à chaque système sa commande de découverte du proxy, jamais rien', () => {
+    expect(proxyDiscoveryCommand('windows')).toBe('netsh winhttp show proxy');
+    expect(proxyDiscoveryCommand('macos')).toBe('scutil --proxy');
+    // Un système non reconnu reçoit le geste générique : les variables sont ce que le runner lit.
+    expect(proxyDiscoveryCommand('other')).toContain('proxy');
+    expect(proxyDiscoveryCommand('other').length).toBeGreaterThan(0);
+  });
+
+  it('déclare le proxy avec la syntaxe du shell du poste', () => {
+    expect(proxyExportCommand('windows', 'http://hote:port')).toBe(
+      '$env:HTTPS_PROXY="http://hote:port"');
+    expect(proxyExportCommand('macos', 'http://hote:port')).toBe(
+      'export HTTPS_PROXY=http://hote:port');
+    expect(proxyExportCommand('other', 'http://hote:port')).toBe(
+      'export HTTPS_PROXY=http://hote:port');
+  });
+
+  it('nomme le relais local comme remède au 407, sur le shell du poste', () => {
+    setup(EVERY_FORMAT, 'windows');
+
+    expect(LOCAL_RELAY_PROXY_URL).toBe('http://127.0.0.1:3128');
+    expect(component.relayExportCommand).toContain('127.0.0.1:3128');
+    expect(component.relayExportCommand).toContain('$env:HTTPS_PROXY');
+  });
+
+  it('affiche les trois branches de lecture et le remède du 407', () => {
+    setup(EVERY_FORMAT, 'windows');
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+    expect(text).toContain('Vérifier l\'accès réseau');
+    expect(text).toContain('200');
+    expect(text).toContain('407');
+    expect(text).toContain('relais local');
+    expect(text).toContain('NTLM');
+    expect(text).toContain('Kerberos');
+    // La limite est assumée à l'écran plutôt que cachée (D7).
+    expect(text).toContain('ne lit pas la configuration proxy du poste');
+  });
+
+  it('place la vérification réseau avant le téléchargement du runner', () => {
+    setup();
+    const titles = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.pairing-step-title'),
+    ).map((el) => el.textContent?.replace(/\s+/g, ' ').trim() ?? '');
+
+    expect(titles[0]).toContain('Vérifier l\'accès réseau');
+    // Avant le code, et pas seulement avant le téléchargement : le code expire en 5 min (D1).
+    expect(titles[1]).toContain('Générer un code');
+    expect(titles[2]).toContain('Récupérer le runner');
+    expect(titles[3]).toContain('Lancer le runner');
+  });
+
+  it('copie la commande de vérification comme les autres commandes', async () => {
+    setup();
+    const descriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const writeText = jasmine.createSpy('writeText').and.returnValue(Promise.resolve());
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+
+    component.copy(component.networkCheckCommand, 'Commande');
+    await Promise.resolve();
+
+    expect(writeText).toHaveBeenCalledWith(component.networkCheckCommand);
+    if (descriptor) {
+      Object.defineProperty(navigator, 'clipboard', descriptor);
+    } else {
+      delete (navigator as unknown as { clipboard?: unknown }).clipboard;
+    }
+  });
+
+  it('ne déclenche aucun appel réseau supplémentaire au chargement', () => {
+    setup();
+
+    // L'étape est du TEXTE : le poste exécute la commande, la page ne la joue pas à sa place (D2).
+    expect(service.runnerDownloadFormats).toHaveBeenCalledTimes(1);
+    expect(networkCheckCommand('windows', 'https://x/api')).toContain('https://x/api');
   });
 });

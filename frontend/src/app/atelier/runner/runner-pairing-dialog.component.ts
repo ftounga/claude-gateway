@@ -67,6 +67,66 @@ const PACKAGE_FILENAMES: Record<RunnerFormat, string> = {
 export type RunnerHostPlatform = 'windows' | 'macos' | 'other';
 
 /**
+ * Chemin interrogé par le contrôle d'accès réseau proposé à l'écran (F-45 / SF-45-01).
+ *
+ * <p>C'est <b>exactement</b> celui que le contrôle de vol du runner interroge au démarrage
+ * ({@code NetworkPreflight}, F-38 / SF-38-25) : il est public, sans authentification, et deux
+ * adresses différentes autoriseraient un verdict vert à l'écran et rouge au lancement (D5).</p>
+ */
+export const NETWORK_CHECK_PATH = '/runner/download/formats';
+
+/**
+ * Proxy exposé par un relais local d'authentification, proposé comme remède au `407` (D2 de la
+ * feature) : le relais porte l'authentification intégrée que la JVM ne sait pas porter, et n'en
+ * demande aucune. `3128` est le port qu'exposent par défaut `px` comme `cntlm`.
+ */
+export const LOCAL_RELAY_PROXY_URL = 'http://127.0.0.1:3128';
+
+/**
+ * Commande de vérification de la sortie réseau, adaptée au système d'où la page est consultée
+ * (F-45 / SF-45-01).
+ *
+ * <p>Deux partis pris, tous deux dictés par ce qui échoue réellement sur un poste d'entreprise :</p>
+ * <ul>
+ *   <li><b>`curl.exe` et non `curl` sous Windows</b> : dans PowerShell, `curl` est un <b>alias</b> de
+ *       `Invoke-WebRequest`, dont les options n'ont rien à voir — la commande échouerait sur une
+ *       erreur de paramètre que personne ne relierait au réseau (D3).</li>
+ *   <li><b>`curl` et non `Invoke-WebRequest`</b> : ce dernier emprunte le proxy <b>système</b>, donc
+ *       réussirait là où le runner échoue et masquerait la panne. `curl` lit `HTTPS_PROXY` /
+ *       `HTTP_PROXY` / `NO_PROXY`, exactement ce que lit le runner (D4).</li>
+ * </ul>
+ */
+export function networkCheckCommand(platform: RunnerHostPlatform, gatewayUrl: string): string {
+  const url = `${gatewayUrl}${NETWORK_CHECK_PATH}`;
+  return platform === 'windows'
+    ? `curl.exe -sS -o NUL -w "%{http_code}\\n" ${url}`
+    : `curl -sS -o /dev/null -w "%{http_code}\\n" ${url}`;
+}
+
+/**
+ * Comment <b>retrouver</b> le proxy du poste. Le produit dit où regarder, il ne va pas chercher :
+ * lire le registre ou interpréter un fichier PAC reviendrait à exécuter la configuration réseau
+ * d'un poste d'entreprise. Jamais vide — un système inconnu reçoit le geste générique.
+ */
+export function proxyDiscoveryCommand(platform: RunnerHostPlatform): string {
+  switch (platform) {
+    case 'windows':
+      return 'netsh winhttp show proxy';
+    case 'macos':
+      return 'scutil --proxy';
+    default:
+      return 'env | grep -i proxy';
+  }
+}
+
+/** Comment <b>déclarer</b> un proxy dans le terminal courant, sur le système consulté. */
+export function proxyExportCommand(platform: RunnerHostPlatform, proxyUrl: string): string {
+  return platform === 'windows'
+    ? `$env:HTTPS_PROXY="${proxyUrl}"`
+    : `export HTTPS_PROXY=${proxyUrl}`;
+}
+
+/**
  * Devine le système depuis l'`User-Agent`. Volontairement grossier : il ne sert qu'à **présélectionner**
  * une option que l'utilisateur voit et peut changer d'un clic — jamais à masquer quoi que ce soit.
  *
@@ -224,6 +284,29 @@ export class RunnerPairingDialogComponent implements OnDestroy {
    */
   readonly gatewayUrl =
     typeof window !== 'undefined' ? `${window.location.origin}${API_PREFIX}` : '';
+
+  /**
+   * Commande de vérification de la sortie réseau (F-45 / SF-45-01), à coller dans le terminal
+   * <b>où le runner sera lancé</b>.
+   *
+   * <p>Elle n'est pas exécutée par la page, et ne peut pas l'être utilement : une requête partie du
+   * navigateur prouverait que <b>le navigateur</b> sort — ce qui est déjà acquis, l'utilisateur lit
+   * cette page. Le poste du client d'où vient cette feature avait exactement ce profil : navigateur
+   * d'accord, terminal muet (D2).</p>
+   */
+  readonly networkCheckCommand = networkCheckCommand(this.hostPlatform, this.gatewayUrl);
+
+  /** Comment retrouver le proxy du poste, sur le système consulté. */
+  readonly proxyDiscoveryCommand = proxyDiscoveryCommand(this.hostPlatform);
+
+  /** Comment déclarer le proxy trouvé dans le terminal courant. */
+  readonly proxyExportCommand = proxyExportCommand(this.hostPlatform, 'http://hote:port');
+
+  /** Comment déclarer le relais local, remède au `407` d'un proxy à authentification intégrée. */
+  readonly relayExportCommand = proxyExportCommand(this.hostPlatform, LOCAL_RELAY_PROXY_URL);
+
+  /** Vrai quand la page est consultée depuis Windows : l'invite de commandes y coexiste avec PowerShell. */
+  readonly onWindows = this.hostPlatform === 'windows';
 
   /** Vrai tant que le code affiché est exploitable (généré et non expiré). */
   readonly codeUsable = computed(() => this.pairingCode() !== null && this.secondsLeft() > 0);
