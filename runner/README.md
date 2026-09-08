@@ -39,12 +39,40 @@ inutile tant que le jeton est valide et non révoqué.
 
 `Ctrl-C` ferme la connexion et arrête le processus proprement.
 
+## Reprendre (F-46 / SF-46-01)
+
+Une fois l'appairage réussi, **plus aucun argument n'est nécessaire** :
+
+```bash
+cd /chemin/vers/le/projet
+java -jar claude-runner.jar
+```
+
+L'appairage a mémorisé l'adresse de la passerelle et la racine du projet dans
+`<workspace>/.claude-runner/session.json`, avec une copie dans `~/.claude-runner/session.json` —
+c'est elle qui rend la reprise possible **hors** du dossier du projet, et notamment au **double-clic**
+du lanceur d'un paquet autonome. Ces fichiers ne contiennent **aucun secret** : le jeton reste dans
+`token.json`, là où il a été écrit.
+
+La recherche part du répertoire courant, remonte ses **parents** (donc un sous-dossier du projet
+convient), puis se replie sur `~/.claude-runner`. Précédence :
+**argument CLI > variable d'environnement > mémoire de reprise**.
+
+Le runner **refuse explicitement** — sans jamais redemander un code en silence — quand :
+
+| Situation | Ce qu'il dit |
+|---|---|
+| Rien de mémorisé | Les deux gestes : relancer depuis le projet, ou reprendre la commande dans l'application |
+| Jeton expiré | La **date** d'expiration, et de relancer avec `--code` |
+| Jeton absent | Qu'aucun jeton n'existe pour cette racine, et de relancer avec `--code` |
+| Racine mémorisée disparue | Le chemin mémorisé, et de préciser `--workspace` |
+
 ## Options
 
 | Option CLI | Variable d'environnement | Défaut | Rôle |
 |---|---|---|---|
-| `--gateway` | `CLAUDE_RUNNER_GATEWAY` | — (requis) | URL de la gateway, `/api` inclus |
-| `--workspace` | `CLAUDE_RUNNER_WORKSPACE` | — (requis) | Racine du projet ; le runner refuse tout accès au-dessus |
+| `--gateway` | `CLAUDE_RUNNER_GATEWAY` | mémoire de reprise (F-46) | URL de la gateway, `/api` inclus |
+| `--workspace` | `CLAUDE_RUNNER_WORKSPACE` | mémoire de reprise (F-46) | Racine du projet ; le runner refuse tout accès au-dessus |
 | `--code` | `CLAUDE_RUNNER_CODE` | — (requis au premier appairage) | Code d'appairage à usage unique |
 | `--label` | `CLAUDE_RUNNER_LABEL` | aucun | Libellé du jeton affiché dans l'UI (≤ 100 caractères) |
 | `--heartbeat-interval` | `CLAUDE_RUNNER_HEARTBEAT_INTERVAL` | `30` (s) | Période du heartbeat |
@@ -137,7 +165,8 @@ affiche alors la source et le nombre de règles retenues.
 ## Jeton
 
 Persisté dans `<workspace>/.claude-runner/token.json` (repli `~/.claude-runner/token.json`),
-en permissions `600`. Un jeton refusé par la gateway (révoqué ou expiré) est **effacé** : le
+en permissions `600`. Le fichier voisin `session.json` (F-46) ne porte que la passerelle et la
+racine — **jamais** le jeton. Un jeton refusé par la gateway (révoqué ou expiré) est **effacé** : le
 prochain lancement redemande un `--code`. Un jeton peut être révoqué à tout moment depuis l'UI.
 
 ## Proxy et truststore d'entreprise

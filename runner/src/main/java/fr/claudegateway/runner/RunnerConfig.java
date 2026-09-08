@@ -30,9 +30,11 @@ public final class RunnerConfig {
     private final Duration heartbeatInterval;
     private final boolean allowBash;
     private final Transport transport;
+    private final Path resumedFrom;
 
     private RunnerConfig(String gatewayBaseUrl, Path workspaceRoot, String pairingCode,
-            String label, Duration heartbeatInterval, boolean allowBash, Transport transport) {
+            String label, Duration heartbeatInterval, boolean allowBash, Transport transport,
+            Path resumedFrom) {
         this.gatewayBaseUrl = gatewayBaseUrl;
         this.workspaceRoot = workspaceRoot;
         this.pairingCode = pairingCode;
@@ -40,13 +42,27 @@ public final class RunnerConfig {
         this.heartbeatInterval = heartbeatInterval;
         this.allowBash = allowBash;
         this.transport = transport;
+        this.resumedFrom = resumedFrom;
+    }
+
+    /**
+     * Analyse et valide la configuration sans mémoire de reprise : la forme d'origine, conservée
+     * pour les appelants qui fournissent tout explicitement.
+     */
+    public static RunnerConfig resolve(String[] args, Map<String, String> env) {
+        return resolve(args, env, null);
     }
 
     /**
      * Analyse et valide la configuration. En cas de paramètre invalide ou manquant, lève une
      * {@link ConfigException} portant le code de sortie {@code 2} (erreur d'usage).
+     *
+     * <p>Précédence (F-46 / SF-46-01) : <b>argument CLI &gt; variable d'environnement &gt; mémoire de
+     * reprise</b>. La mémoire est le dernier recours — une commande explicite n'est jamais réécrite
+     * par un fichier, et un poste où l'on a tapé quelque chose fait ce qui est tapé (D1).</p>
      */
-    public static RunnerConfig resolve(String[] args, Map<String, String> env) {
+    public static RunnerConfig resolve(String[] args, Map<String, String> env,
+            SessionMemory.Located memory) {
         Map<String, String> cli = parseArgs(args);
 
         String gateway = pick(cli, "gateway", env, "CLAUDE_RUNNER_GATEWAY");
@@ -62,13 +78,32 @@ public final class RunnerConfig {
         pick(cli, "allow-bash", env, "CLAUDE_RUNNER_ALLOW_BASH"); // toléré, sans effet (D2)
         String transport = pick(cli, "transport", env, "CLAUDE_RUNNER_TRANSPORT");
 
+        // Reprise (F-46 / SF-46-01) : ce que la mémoire complète, et seulement ce qui manque. Une
+        // mémoire relue n'est pas plus crue qu'une ligne de commande — elle repasse par les mêmes
+        // validations plus bas, sinon un fichier édité à la main contournerait tout (D5).
+        Path resumedFrom = null;
+        if (memory != null) {
+            if (gateway == null) {
+                gateway = memory.memory().gateway();
+                resumedFrom = memory.file();
+            }
+            if (workspace == null) {
+                Path remembered = memory.resolveRoot()
+                        .orElseThrow(() -> new ConfigException(ResumeMessages.rootGone(memory)));
+                workspace = remembered.toString();
+                resumedFrom = memory.file();
+            }
+        }
+
         if (gateway == null) {
-            throw new ConfigException("--gateway est requis (URL de la gateway, ex: https://host/api)");
+            throw new ConfigException("--gateway est requis (URL de la gateway, ex: https://host/api)"
+                    + ResumeMessages.noMemoryHint());
         }
         String normalizedGateway = normalizeGateway(gateway);
 
         if (workspace == null) {
-            throw new ConfigException("--workspace est requis (racine du projet à exposer)");
+            throw new ConfigException("--workspace est requis (racine du projet à exposer)"
+                    + ResumeMessages.noMemoryHint());
         }
         Path root = Path.of(workspace).toAbsolutePath().normalize();
         if (!Files.exists(root)) {
@@ -102,7 +137,7 @@ public final class RunnerConfig {
 
         return new RunnerConfig(normalizedGateway, root, normalizedCode, normalizedLabel, hb,
                 // Entre deux consignes contradictoires, on retient la plus restrictive (D3).
-                !isTrue(noBash), Transport.parse(transport));
+                !isTrue(noBash), Transport.parse(transport), resumedFrom);
     }
 
     /** URL absolue de l'endpoint d'appairage, {@code {gateway}/runner/pair}. */
@@ -148,6 +183,15 @@ public final class RunnerConfig {
 
     public Path workspaceRoot() {
         return workspaceRoot;
+    }
+
+    /**
+     * Fichier de mémoire ayant fourni tout ou partie de la configuration (F-46 / SF-46-01), ou
+     * {@code null} quand tout venait de la ligne de commande ou de l'environnement. Sert à le
+     * <b>dire</b> au démarrage : une configuration venue d'un fichier doit être traçable à l'écran.
+     */
+    public Path resumedFrom() {
+        return resumedFrom;
     }
 
     /** Code d'appairage, ou {@code null} si absent (auquel cas un jeton stocké est requis). */

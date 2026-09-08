@@ -61,6 +61,30 @@ public final class TokenStore {
         }
     }
 
+    /**
+     * Date d'expiration du jeton stocké <b>lorsqu'il est présent mais périmé</b> ; vide dans tous
+     * les autres cas (absent, corrompu, encore valable).
+     *
+     * <p>{@link #load()} confond volontairement ces situations — il n'a qu'une question à trancher :
+     * peut-on s'en servir. Le <b>message</b> de refus, lui, a besoin de les distinguer (F-46 /
+     * SF-46-01) : « expiré le 3 septembre » et « jamais appairé ici » n'appellent pas le même
+     * geste.</p>
+     */
+    public Optional<OffsetDateTime> expiredAt() {
+        if (!Files.isReadable(tokenFile)) {
+            return Optional.empty();
+        }
+        try {
+            StoredToken token = mapper.readValue(tokenFile.toFile(), StoredToken.class);
+            if (token == null || token.expiresAt() == null || !token.isExpired(OffsetDateTime.now())) {
+                return Optional.empty();
+            }
+            return Optional.of(token.expiresAt());
+        } catch (IOException e) {
+            return Optional.empty();
+        }
+    }
+
     /** Écrit le jeton sur disque, en créant le dossier et en restreignant les permissions. */
     public void save(StoredToken token) {
         try {
