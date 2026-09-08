@@ -10,7 +10,7 @@
 
 ## Statut
 
-`in-review`
+`done` — PR #303, mergée le 2026-09-08
 
 ## Date de création
 
