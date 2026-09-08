@@ -542,6 +542,7 @@
           </mat-hint>
         </mat-form-field>
 
+        <p class="pairing-command-label">La première fois</p>
         <div class="pairing-command">
           <code>{{ runCommand() }}</code>
           <button
@@ -555,10 +556,35 @@
           </button>
         </div>
 
+        <!-- La commande de reprise (F-46 / SF-46-02). Celle du dessus ne sert qu'un jour ; celle-ci
+             est le geste quotidien. Elle ne porte ni passerelle, ni racine, ni code : l'appairage
+             les a mémorisés à côté du jeton (SF-46-01). -->
+        <p class="pairing-command-label">Les fois suivantes</p>
+        <div class="pairing-command">
+          <code>{{ resumeCommand() }}</code>
+          <button
+            mat-icon-button
+            type="button"
+            matTooltip="Copier la commande de reprise"
+            aria-label="Copier la commande de reprise"
+            (click)="copy(resumeCommand(), 'Commande de reprise')"
+          >
+            <mat-icon>content_copy</mat-icon>
+          </button>
+        </div>
+
         <p class="pairing-hint">
-          Le runner échange le code contre un jeton et le réutilise ensuite : il n'y a pas de nouvel
-          appairage à chaque lancement.
+          Le runner échange le code contre un jeton et mémorise la passerelle et la racine du
+          projet : les lancements suivants n'ont plus besoin d'aucun argument, et le code ne sert
+          qu'une fois.
         </p>
+
+        @if (doubleClickAvailable()) {
+          <p class="pairing-hint">
+            Sur une machine déjà appairée, un <strong>double-clic</strong> sur
+            <code>{{ launcherFilename() }}</code> suffit : il n'y a plus rien à taper.
+          </p>
+        }
 
         <!-- État de la machine (F-45 / SF-45-02) : relevé, pas poussé. Le backend calcule cet état avec
              une tolérance de 90 s sur le heartbeat — un temps réel affiché serait un mensonge. -->

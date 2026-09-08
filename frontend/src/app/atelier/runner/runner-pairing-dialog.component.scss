@@ -335,6 +335,16 @@
   gap: var(--cg-space-2);
 }
 
+/* Deux commandes à l'étape 4 (F-46 / SF-46-02) : celle du premier jour et celle de tous les autres.
+   Sans étiquette, deux blocs sombres consécutifs se lisent comme une seule commande coupée en deux. */
+.pairing-command-label {
+  margin: 0 0 var(--cg-space-1);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
 .pairing-command {
   display: flex;
   align-items: center;

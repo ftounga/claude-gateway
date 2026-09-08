@@ -62,7 +62,13 @@ cp "$JAR" "${WORK}/pkg/claude-runner/claude-runner.jar"
 
 # CRLF explicite : un .cmd en LF est refusé par certains shells Windows. C'est le genre de détail
 # qui transforme un paquet correct en « ça ne marche pas » chez le client.
-printf '@echo off\r\nsetlocal\r\nrem Runner autonome (F-44) : la JVM du paquet, jamais celle du systeme.\r\n"%%~dp0runtime\\bin\\java.exe" -jar "%%~dp0claude-runner.jar" %%*\r\n' \
+#
+# Double-clic (F-46 / SF-46-02) : le lanceur existe pour ça, et un double-clic ne transmet aucun
+# argument — depuis SF-46-01 le runner reprend alors la configuration mémorisée à l'appairage. Reste
+# le cas où il refuse (jamais appairé, jeton expiré) : la fenêtre se refermerait sur le message.
+# `%cmdcmdline%` contient le nom du .cmd quand il a été double-cliqué, jamais quand il est appelé
+# depuis un terminal déjà ouvert — la pause n'est donc posée que là où elle sert.
+printf '@echo off\r\nsetlocal\r\nrem Runner autonome (F-44) : la JVM du paquet, jamais celle du systeme.\r\nrem Double-clic (F-46) : aucun argument, la configuration memorisee prend le relais.\r\necho "%%cmdcmdline%%" | find /i "%%~nx0" >nul && set CLAUDE_RUNNER_DOUBLECLIC=1\r\n"%%~dp0runtime\\bin\\java.exe" -jar "%%~dp0claude-runner.jar" %%*\r\nif errorlevel 1 if defined CLAUDE_RUNNER_DOUBLECLIC pause\r\n' \
     > "${WORK}/pkg/claude-runner/claude-runner.cmd"
 
 echo "→ Archive"
