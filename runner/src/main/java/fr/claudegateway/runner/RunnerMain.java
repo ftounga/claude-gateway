@@ -30,18 +30,32 @@ public final class RunnerMain {
     }
 
     int execute(String[] args, java.util.Map<String, String> env) {
+        return execute(args, env, Path.of(System.getProperty("user.dir", ".")),
+                Path.of(System.getProperty("user.home", ".")));
+    }
+
+    int execute(String[] args, java.util.Map<String, String> env, Path currentDir, Path home) {
+        // Reprise (F-46 / SF-46-01) : la mémoire est cherchée AVANT la résolution, puisque c'est
+        // elle qui peut fournir la racine — on ne peut donc pas partir du workspace pour la trouver.
+        SessionMemory.Located memory = SessionMemory.locate(currentDir, home).orElse(null);
+
         RunnerConfig config;
         try {
-            config = RunnerConfig.resolve(args, env);
+            config = RunnerConfig.resolve(args, env, memory);
         } catch (RunnerConfig.ConfigException e) {
             console.error(e.getMessage());
             console.info("Usage : java -jar claude-runner.jar --gateway <url> --workspace <racine> "
                     + "--code <code-appairage> [--label <libellé>] [--heartbeat-interval <s>] "
                     + "[--no-bash] [--transport auto|websocket|polling]");
+            console.info("Reprise : java -jar claude-runner.jar — sans argument, depuis un projet "
+                    + "déjà appairé.");
             return 2;
         }
 
         console.info("Runner claude-gateway (F-38).");
+        if (config.resumedFrom() != null) {
+            console.info(ResumeMessages.resumedFrom(config.resumedFrom()));
+        }
         console.info("Gateway   : " + config.gatewayBaseUrl());
         console.info("Workspace : " + config.workspaceRoot());
         // Le mode est dit dans les DEUX sens (F-38 / SF-38-19, D4) : le défaut d'avant venait de ce
@@ -80,12 +94,11 @@ public final class RunnerMain {
         }
         console.info("Réseau    : gateway joignable");
 
-        Path home = Path.of(System.getProperty("user.home", "."));
         TokenStore tokenStore = new TokenStore(config.workspaceRoot(), home);
 
         String token;
         try {
-            token = obtainToken(config, tokenStore, httpClient);
+            token = obtainToken(config, tokenStore, httpClient, home);
         } catch (RunnerConfig.ConfigException e) {
             console.error(e.getMessage());
             return 2;
@@ -126,7 +139,7 @@ public final class RunnerMain {
             if (config.pairingCode() != null) {
                 console.info("Réappairage avec le code fourni…");
                 try {
-                    String fresh = pairAndStore(config, tokenStore, httpClient);
+                    String fresh = pairAndStore(config, tokenStore, httpClient, home);
                     runSession(fresh, config, console, httpClient, connection, fallbackPolicy, polling,
                             shuttingDown);
                     return 0;
@@ -200,27 +213,53 @@ public final class RunnerMain {
         fallback.run();
     }
 
-    private String obtainToken(RunnerConfig config, TokenStore tokenStore, HttpClient httpClient) {
+    private String obtainToken(RunnerConfig config, TokenStore tokenStore, HttpClient httpClient,
+            Path home) {
         Optional<StoredToken> stored = tokenStore.load();
         if (stored.isPresent()) {
             console.info("Jeton runner réutilisé (" + tokenStore.tokenFile() + ").");
             return stored.get().token();
         }
         if (config.pairingCode() == null) {
-            throw new RunnerConfig.ConfigException(
-                    "Aucun jeton stocké et aucun --code fourni : impossible de s'appairer.");
+            // Expiré et « jamais appairé ici » n'appellent pas le même geste : le message les
+            // distingue (F-46 / SF-46-01). Et dans les deux cas il DIT ce qui manque — aucun code
+            // n'est redemandé en silence, aucun appairage n'est tenté sans code (D3).
+            throw new RunnerConfig.ConfigException(ResumeMessages.cannotResume(
+                    tokenStore.tokenFile(), tokenStore.expiredAt().orElse(null)));
         }
-        return pairAndStore(config, tokenStore, httpClient);
+        return pairAndStore(config, tokenStore, httpClient, home);
     }
 
-    private String pairAndStore(RunnerConfig config, TokenStore tokenStore, HttpClient httpClient) {
+    private String pairAndStore(RunnerConfig config, TokenStore tokenStore, HttpClient httpClient,
+            Path home) {
         console.info("Appairage auprès de " + config.pairUrl() + "…");
         PairingClient client = new PairingClient(httpClient);
         StoredToken token = client.pair(config.pairUrl(), config.pairingCode(), config.label(),
                 workspaceFolderName(config), Privileges.detect().elevated());
         tokenStore.save(token);
         console.info("Appairage réussi — jeton stocké dans " + tokenStore.tokenFile() + ".");
+        rememberSession(config, home);
         return token.token();
+    }
+
+    /**
+     * Mémorise de quoi <b>reprendre</b> (F-46 / SF-46-01) : la passerelle et la racine, écrites à
+     * côté du jeton et sous le compte de l'utilisateur — jamais le jeton lui-même.
+     *
+     * <p>Best-effort assumé : un appairage qui vient de réussir ne doit pas échouer parce qu'un
+     * dossier est en lecture seule. On le dit, et on continue (D4).</p>
+     */
+    private void rememberSession(RunnerConfig config, Path home) {
+        SessionMemory memory = new SessionMemory(config.gatewayBaseUrl(),
+                config.workspaceRoot().toString(), java.time.OffsetDateTime.now());
+        java.util.List<Path> written = SessionMemory.remember(memory, config.workspaceRoot(), home);
+        if (written.isEmpty()) {
+            console.warn("Impossible de mémoriser la configuration de reprise : le prochain "
+                    + "lancement redemandera --gateway et --workspace.");
+            return;
+        }
+        console.info("Reprise mémorisée (" + written.get(0)
+                + ") — relancez ensuite sans aucun argument.");
     }
 
     private static HttpClient buildHttpClient(ProxyResolver proxyResolver) {
