@@ -5,8 +5,10 @@
 #   1. lit le proxy du systeme (scutil --proxy, fichier PAC compris) et le declare
 #   2. teste l'acces a la gateway et LIT le code de retour (200 / 407 / echec reseau)
 #   3. si 407 : verifie si l'authentification integree passe, et monte un relais local
-#   4. installe un JDK 21 dans le dossier utilisateur si aucun n'est present (aucun droit admin)
-#   5. telecharge le runner et le lance
+#   4. demande a la gateway ce qu'elle sert : si un paquet autonome existe pour cette machine
+#      (F-44 / SF-44-03), il embarque sa propre JVM et AUCUN Java n'est installe ; sinon, repli
+#      sur le .jar avec un JDK 21 pose dans le dossier utilisateur (aucun droit admin)
+#   5. demande le projet et le code d'appairage, puis lance le runner
 #
 # Aucune etape n'exige les droits administrateur. Tout est ecrit sous ~/.claude-runner.
 #
@@ -231,94 +233,131 @@ fi
 export HTTPS_PROXY="$PROXY"
 export HTTP_PROXY="$PROXY"
 
-# ------------------------------------------------------------ 4. Java 21
+# ------------------------------------------- 4. le runner : paquet ou jar
 
-step "4/5  Java 21"
+step "4/5  Runner"
 
-java_major() { # $1 = binaire java ; ecrit la version majeure, ou rien
-  "$1" -version 2>&1 | awk -F'"' '/version/ {split($2,v,"."); print (v[1]=="1")?v[2]:v[1]; exit}'
-}
+case "$(uname -m)" in
+    arm64) PKG_KEY="macosAarch64Package"; PKG_ROUTE="macos-aarch64"; ADOPT_ARCH="aarch64" ;;
+    *)     PKG_KEY="macosX64Package";     PKG_ROUTE="macos-x64";     ADOPT_ARCH="x64" ;;
+esac
 
+# La gateway dit elle-meme ce qu'elle sert (F-44 / SF-44-02) : une passerelle anterieure aux
+# paquets macOS n'annonce que le jar, et ce script doit rester utilisable devant elle.
+FORMATS=$(curl -fsS --max-time 30 "${GATEWAY%/}/runner/download/formats" 2>/dev/null || true)
+USE_PACKAGE="no"
+case "$FORMATS" in
+    *"\"${PKG_KEY}\":true"*) USE_PACKAGE="yes" ;;
+esac
+
+PKG_LAUNCHER=""
 JAVA_BIN=""
-if [ -x "${JDK_DIR}/bin/java" ]; then
-  JAVA_BIN="${JDK_DIR}/bin/java"
-elif command -v java >/dev/null 2>&1; then
-  JAVA_BIN=$(command -v java)
-fi
 
-MAJOR=""
-[ -n "$JAVA_BIN" ] && MAJOR=$(java_major "$JAVA_BIN")
+if [ "$USE_PACKAGE" = "yes" ]; then
+    ok "La passerelle sert un paquet autonome pour cette machine ($PKG_ROUTE)."
+    note "Il embarque sa propre JVM : aucun Java a installer."
 
-if [ -n "$MAJOR" ] && [ "$MAJOR" -ge 21 ] 2>/dev/null; then
-  ok "Java $MAJOR present : $JAVA_BIN"
+    curl -fsSL --max-time 600 "${GATEWAY%/}/runner/download/${PKG_ROUTE}" -o "${HOME_DIR}/runner.tar.gz" \
+        || die "Telechargement du paquet impossible depuis ${GATEWAY%/}/runner/download/${PKG_ROUTE}"
+
+    SIZE=$(wc -c < "${HOME_DIR}/runner.tar.gz")
+    if [ "$SIZE" -lt 20000000 ]; then
+        die "Paquet tronque (${SIZE} octets) — le proxy a probablement rendu une page de blocage."
+    fi
+
+    rm -rf "${HOME_DIR}/claude-runner"
+    tar -xzf "${HOME_DIR}/runner.tar.gz" -C "$HOME_DIR" || die "Archive du runner illisible."
+    rm -f "${HOME_DIR}/runner.tar.gz"
+
+    PKG_LAUNCHER="${HOME_DIR}/claude-runner/claude-runner.command"
+    [ -x "$PKG_LAUNCHER" ] || die "Lanceur absent ou non executable : $PKG_LAUNCHER"
+
+    # Le lanceur leve lui-meme la quarantaine, mais il doit d'abord pouvoir demarrer.
+    xattr -dr com.apple.quarantine "${HOME_DIR}/claude-runner" 2>/dev/null || true
+
+    ok "Paquet installe : ${HOME_DIR}/claude-runner ($(du -sh "${HOME_DIR}/claude-runner" | awk '{print $1}'))"
 else
-  [ -n "$MAJOR" ] && warn "Java $MAJOR present, mais le runner exige Java 21." \
-                  || warn "Aucun Java trouve sur ce poste."
-  note "Installation d'un JDK 21 dans $JDK_DIR (aucun droit administrateur)…"
+    warn "Cette passerelle ne sert pas de paquet macOS — repli sur le .jar, qui exige Java 21."
 
-  case "$(uname -m)" in
-    arm64) ADOPT_ARCH="aarch64" ;;
-    *)     ADOPT_ARCH="x64" ;;
-  esac
-  ADOPT_URL="https://api.adoptium.net/v3/binary/latest/21/ga/mac/${ADOPT_ARCH}/jdk/hotspot/normal/eclipse"
+    java_major() { # $1 = binaire java ; ecrit la version majeure, ou rien
+        "$1" -version 2>&1 | awk -F'"' '/version/ {split($2,v,"."); print (v[1]=="1")?v[2]:v[1]; exit}'
+    }
 
-  mkdir -p "$JDK_DIR"
-  curl -fsSL --max-time 600 "$ADOPT_URL" -o "${HOME_DIR}/jdk.tar.gz" \
-    || die "Telechargement du JDK impossible. Verifiez que api.adoptium.net est autorise."
+    if [ -x "${JDK_DIR}/Contents/Home/bin/java" ]; then
+        JAVA_BIN="${JDK_DIR}/Contents/Home/bin/java"
+    elif [ -x "${JDK_DIR}/bin/java" ]; then
+        JAVA_BIN="${JDK_DIR}/bin/java"
+    elif command -v java >/dev/null 2>&1; then
+        JAVA_BIN=$(command -v java)
+    fi
 
-  tar -xzf "${HOME_DIR}/jdk.tar.gz" -C "$JDK_DIR" --strip-components=1 \
-    || die "Archive JDK illisible."
-  rm -f "${HOME_DIR}/jdk.tar.gz"
+    MAJOR=""
+    [ -n "$JAVA_BIN" ] && MAJOR=$(java_major "$JAVA_BIN")
 
-  # Sur macOS, l'arborescence du JDK est Contents/Home.
-  if [ -x "${JDK_DIR}/Contents/Home/bin/java" ]; then
-    JAVA_BIN="${JDK_DIR}/Contents/Home/bin/java"
-  elif [ -x "${JDK_DIR}/bin/java" ]; then
-    JAVA_BIN="${JDK_DIR}/bin/java"
-  else
-    die "JDK installe mais binaire java introuvable sous $JDK_DIR"
-  fi
+    if [ -n "$MAJOR" ] && [ "$MAJOR" -ge 21 ] 2>/dev/null; then
+        ok "Java $MAJOR present : $JAVA_BIN"
+    else
+        [ -n "$MAJOR" ] && warn "Java $MAJOR present, mais le runner exige Java 21." \
+                        || warn "Aucun Java trouve sur ce poste."
+        note "Installation d'un JDK 21 dans $JDK_DIR (aucun droit administrateur)..."
 
-  # macOS met en quarantaine ce qui vient du reseau : sans cela, le premier lancement est refuse.
-  xattr -dr com.apple.quarantine "$JDK_DIR" 2>/dev/null || true
+        ADOPT_URL="https://api.adoptium.net/v3/binary/latest/21/ga/mac/${ADOPT_ARCH}/jdk/hotspot/normal/eclipse"
+        mkdir -p "$JDK_DIR"
+        curl -fsSL --max-time 600 "$ADOPT_URL" -o "${HOME_DIR}/jdk.tar.gz" \
+            || die "Telechargement du JDK impossible. Verifiez que api.adoptium.net est autorise."
+        tar -xzf "${HOME_DIR}/jdk.tar.gz" -C "$JDK_DIR" --strip-components=1 \
+            || die "Archive JDK illisible."
+        rm -f "${HOME_DIR}/jdk.tar.gz"
 
-  ok "Java $(java_major "$JAVA_BIN") installe : $JAVA_BIN"
+        if [ -x "${JDK_DIR}/Contents/Home/bin/java" ]; then
+            JAVA_BIN="${JDK_DIR}/Contents/Home/bin/java"
+        elif [ -x "${JDK_DIR}/bin/java" ]; then
+            JAVA_BIN="${JDK_DIR}/bin/java"
+        else
+            die "JDK installe mais binaire java introuvable sous $JDK_DIR"
+        fi
+
+        # macOS met en quarantaine ce qui vient du reseau : sans cela, le premier lancement est refuse.
+        xattr -dr com.apple.quarantine "$JDK_DIR" 2>/dev/null || true
+        ok "Java $(java_major "$JAVA_BIN") installe : $JAVA_BIN"
+    fi
+
+    curl -fsSL --max-time 300 "${GATEWAY%/}/runner/download" -o "$JAR" \
+        || die "Telechargement du runner impossible depuis ${GATEWAY%/}/runner/download"
+    ok "Runner telecharge : $JAR ($(du -h "$JAR" | awk '{print $1}'))"
 fi
 
-# ------------------------------------------------- 5. le runner, et on lance
+# ------------------------------------------------- 5. projet, code, lancement
 
-step "5/5  Runner"
-
-curl -fsSL --max-time 300 "${GATEWAY%/}/runner/download" -o "$JAR" \
-  || die "Telechargement du runner impossible depuis ${GATEWAY%/}/runner/download"
-ok "Runner telecharge : $JAR ($(du -h "$JAR" | awk '{print $1}'))"
+step "5/5  Appairage"
 
 if [ -z "$WORKSPACE" ]; then
-  printf "\n  Racine du projet sur cette machine : "
-  read -r WORKSPACE
+    printf "\n  Racine du projet sur cette machine : "
+    read -r WORKSPACE
 fi
 WORKSPACE="${WORKSPACE/#\~/$HOME}"
 [ -d "$WORKSPACE" ] || die "Ce dossier n'existe pas : $WORKSPACE"
 
 if [ -z "$CODE" ]; then
-  printf "  Code d'appairage (genere dans l'application, valable quelques minutes) : "
-  read -r CODE
+    printf "  Code d'appairage (genere dans l'application, valable quelques minutes) : "
+    read -r CODE
 fi
 [ -n "$CODE" ] || die "Aucun code d'appairage fourni."
 
 printf "\n%s==>%s Tout est en place. Lancement du runner.\n" "$BOLD" "$OFF"
 note "Proxy    : ${HTTPS_PROXY:-aucun}"
-note "Java     : $JAVA_BIN"
+note "Runner   : $([ "$USE_PACKAGE" = "yes" ] && echo "paquet autonome (JVM incluse)" || echo "jar + $JAVA_BIN")"
 note "Projet   : $WORKSPACE"
 note "Ctrl-C arrete le runner (et le relais local s'il a ete lance)."
 printf "\n"
 
 # Pas de `exec` : il remplacerait ce processus, et le relais local ne serait plus arrete
 # a la sortie (le trap disparaitrait avec le shell).
-"$JAVA_BIN" -jar "$JAR" \
-  --gateway "$GATEWAY" \
-  --workspace "$WORKSPACE" \
-  --code "$CODE"
+if [ "$USE_PACKAGE" = "yes" ]; then
+    "$PKG_LAUNCHER" --gateway "$GATEWAY" --workspace "$WORKSPACE" --code "$CODE"
+else
+    "$JAVA_BIN" -jar "$JAR" --gateway "$GATEWAY" --workspace "$WORKSPACE" --code "$CODE"
+fi
 RUNNER_RC=$?
 
 printf "\n%s==>%s Runner arrete (code %s).\n" "$BOLD" "$OFF" "$RUNNER_RC"
