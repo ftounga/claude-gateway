@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
+import { Component, InjectionToken, OnDestroy, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -12,7 +12,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AtelierService } from '../../core/services/atelier.service';
-import { RunnerPairingCode } from '../../core/models/atelier.models';
+import { RunnerDownloadFormats, RunnerPairingCode } from '../../core/models/atelier.models';
 
 /** Données d'ouverture du dialogue : le projet à appairer. */
 export interface RunnerPairingDialogData {
@@ -29,10 +29,73 @@ export const RUNNER_BUILD_COMMAND = './mvnw -pl runner package';
 /** Préfixe sous lequel l'API est servie — le même que celui utilisé par tous les appels du front. */
 const API_PREFIX = '/api';
 
+/**
+ * État de repli : le jar seul. C'est celui d'une gateway antérieure à F-44, et celui qu'on retient
+ * quand la disponibilité des formats est illisible — le jar est le format historique, toujours servi.
+ */
+const NO_PACKAGE: RunnerDownloadFormats = {
+  jar: true,
+  windowsPackage: false,
+  macosAarch64Package: false,
+  macosX64Package: false,
+};
+
 /** Nom du fichier téléchargé, aligné sur le `Content-Disposition` du backend (SF-38-03). */
 const JAR_FILENAME = 'claude-runner.jar';
 /** Paquet autonome Windows (F-44) : le runner ET sa propre JVM. */
 const WINDOWS_PACKAGE_FILENAME = 'claude-runner-windows-x64.zip';
+/** Paquets autonomes macOS (F-44 / SF-44-03) : `.tar.gz`, seul format qui garde le bit exécutable. */
+const MACOS_AARCH64_PACKAGE_FILENAME = 'claude-runner-macos-aarch64.tar.gz';
+const MACOS_X64_PACKAGE_FILENAME = 'claude-runner-macos-x64.tar.gz';
+
+/** Format de runner proposé par l'écran. `jar` est le seul qui suppose une JVM sur le poste. */
+export type RunnerFormat = 'windows' | 'macos-aarch64' | 'macos-x64' | 'jar';
+
+/**
+ * Nom sous lequel chaque format est enregistré. Il doit correspondre au `Content-Disposition` du
+ * backend **et** au nom que la commande affichée suppose : un fichier renommé au téléchargement
+ * ferait échouer l'étape suivante.
+ */
+const PACKAGE_FILENAMES: Record<RunnerFormat, string> = {
+  windows: WINDOWS_PACKAGE_FILENAME,
+  'macos-aarch64': MACOS_AARCH64_PACKAGE_FILENAME,
+  'macos-x64': MACOS_X64_PACKAGE_FILENAME,
+  jar: JAR_FILENAME,
+};
+
+/** Système d'où la page est consultée — le seul indice fiable pour présélectionner un format. */
+export type RunnerHostPlatform = 'windows' | 'macos' | 'other';
+
+/**
+ * Devine le système depuis l'`User-Agent`. Volontairement grossier : il ne sert qu'à **présélectionner**
+ * une option que l'utilisateur voit et peut changer d'un clic — jamais à masquer quoi que ce soit.
+ *
+ * <p>iPhone et iPad sont renvoyés vers `other` : Safari sur iPad annonce `Macintosh`, et on ne fait
+ * pas tourner un runner sur une tablette.</p>
+ */
+export function detectHostPlatform(userAgent: string): RunnerHostPlatform {
+  const agent = userAgent.toLowerCase();
+  if (agent.includes('iphone') || agent.includes('ipad')) {
+    return 'other';
+  }
+  if (agent.includes('windows')) {
+    return 'windows';
+  }
+  if (agent.includes('mac os') || agent.includes('macintosh')) {
+    return 'macos';
+  }
+  return 'other';
+}
+
+/**
+ * Système d'où la page est consultée, injecté plutôt que lu en dur : le composant n'a pas à
+ * connaître `navigator`, et un test peut décrire le poste qu'il simule au lieu de maquiller
+ * l'environnement du navigateur qui l'exécute.
+ */
+export const RUNNER_HOST_PLATFORM = new InjectionToken<RunnerHostPlatform>('RUNNER_HOST_PLATFORM', {
+  providedIn: 'root',
+  factory: () => detectHostPlatform(typeof navigator === 'undefined' ? '' : navigator.userAgent),
+});
 
 /**
  * Écran d'appairage d'une machine (F-38 / SF-38-06). Trois étapes dans un seul dialogue :
@@ -71,18 +134,19 @@ export class RunnerPairingDialogComponent implements OnDestroy {
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialogRef = inject<MatDialogRef<RunnerPairingDialogComponent>>(MatDialogRef);
 
+  /** Système d'où la page est consultée : il ne sert qu'à présélectionner un format. */
+  private readonly hostPlatform = inject(RUNNER_HOST_PLATFORM);
+
   constructor() {
     // D3 : on demande ce qui existe AVANT de le proposer. En cas d'échec de la lecture, on retombe
     // sur le jar seul — le format historique, toujours servi : ne rien proposer serait pire.
     this.atelier.runnerDownloadFormats().subscribe({
       next: (formats) => {
-        this.windowsPackageAvailable.set(formats.windowsPackage);
-        if (!formats.windowsPackage) {
-          this.format.set('jar');
-        }
+        this.formats.set(formats);
+        this.format.set(this.preferredFormat(formats));
       },
       error: () => {
-        this.windowsPackageAvailable.set(false);
+        this.formats.set(NO_PACKAGE);
         this.format.set('jar');
       },
     });
@@ -108,17 +172,32 @@ export class RunnerPairingDialogComponent implements OnDestroy {
   readonly jarUnavailable = signal(false);
 
   /**
-   * Format choisi (F-44 / SF-44-02). `windows` par défaut : c'est celui qui ne suppose rien du
-   * poste, et le cas d'entreprise est celui où l'installation échoue.
+   * Format choisi (F-44). La valeur initiale suit le **système d'où la page est consultée**, avant
+   * même de savoir ce que la gateway sert : c'est le seul moment où l'écran peut se tromper, et il
+   * se corrige dès la réponse de `formats`.
    */
-  readonly format = signal<'windows' | 'jar'>('windows');
+  readonly format = signal<RunnerFormat>(
+    this.hostPlatform === 'macos' ? 'macos-aarch64' : 'windows');
 
   /**
-   * Disponibilité des deux formats sur cette gateway. Lue au chargement pour **masquer** un format
+   * Disponibilité des formats sur cette gateway. Lue au chargement pour **masquer** un format
    * absent plutôt que d'offrir un lien qui répondrait 404 : une gateway déployée avant F-44
-   * n'empaquette pas le paquet Windows, et doit rester utilisable avec le seul jar.
+   * n'empaquette aucun paquet, et doit rester utilisable avec le seul jar.
    */
-  readonly windowsPackageAvailable = signal(false);
+  readonly formats = signal<RunnerDownloadFormats>(NO_PACKAGE);
+
+  /** Conservé tel quel : le reste de l'écran et les tests raisonnent format par format. */
+  readonly windowsPackageAvailable = computed(() => this.formats().windowsPackage);
+
+  /** Paquet macOS Apple Silicon servi par cette gateway. */
+  readonly macosAarch64Available = computed(() => this.formats().macosAarch64Package);
+
+  /** Paquet macOS Intel servi par cette gateway. */
+  readonly macosX64Available = computed(() => this.formats().macosX64Package);
+
+  /** Vrai dès qu'un paquet autonome, quel qu'il soit, est servi : l'écran propose alors un choix. */
+  readonly anyPackageAvailable = computed(
+    () => this.windowsPackageAvailable() || this.macosAarch64Available() || this.macosX64Available());
 
   /** Racine du projet sur la machine, saisie par l'utilisateur ; sert seulement à la commande. */
   readonly workspacePath = signal('');
@@ -170,9 +249,14 @@ export class RunnerPairingDialogComponent implements OnDestroy {
     const code = this.codeUsable() ? this.pairingCode()!.code : '<code-appairage>';
     // Le paquet autonome s'exécute par son lanceur : il ne faut surtout pas préfixer par `java`,
     // qui rappellerait la JVM du système — celle-là même qui manque ou qui est trop ancienne.
-    const launcher = this.usesWindowsPackage()
+    // Sur macOS le lanceur est un `.command` exécutable, d'où le `./` : l'archive est un `.tar.gz`
+    // précisément pour que le bit exécutable survive à la décompression.
+    const selected = this.selectedPackage();
+    const launcher = selected === 'windows'
       ? 'claude-runner.cmd'
-      : `java -jar ${JAR_FILENAME}`;
+      : selected !== null
+        ? './claude-runner.command'
+        : `java -jar ${JAR_FILENAME}`;
     // Guillemets autour du chemin (F-38 / SF-38-23) : sans eux, Git Bash interprète les antislashs
     // d'un chemin Windows comme des échappements — « C:\Users\moi » arrive au runner en
     // « C:Usersmoi », que Windows résout ensuite comme un chemin RELATIF au lecteur C:. C'est le
@@ -182,9 +266,71 @@ export class RunnerPairingDialogComponent implements OnDestroy {
       + ` --workspace "${path}" --code ${code}`;
   });
 
-  /** Vrai quand le format retenu est le paquet autonome, et qu'il est réellement disponible. */
-  readonly usesWindowsPackage = computed(
-    () => this.format() === 'windows' && this.windowsPackageAvailable());
+  /**
+   * Paquet autonome retenu **et réellement servi**, ou `null` quand c'est le jar qui sera
+   * téléchargé. Cette double condition est le cœur de D3 : un format choisi mais absent de la
+   * gateway ne doit jamais produire ni bouton ni commande.
+   */
+  readonly selectedPackage = computed<Exclude<RunnerFormat, 'jar'> | null>(() => {
+    const format = this.format();
+    if (format === 'windows') {
+      return this.windowsPackageAvailable() ? 'windows' : null;
+    }
+    if (format === 'macos-aarch64') {
+      return this.macosAarch64Available() ? 'macos-aarch64' : null;
+    }
+    if (format === 'macos-x64') {
+      return this.macosX64Available() ? 'macos-x64' : null;
+    }
+    return null;
+  });
+
+  /** Vrai quand le format retenu est le paquet Windows, et qu'il est réellement disponible. */
+  readonly usesWindowsPackage = computed(() => this.selectedPackage() === 'windows');
+
+  /** Vrai quand le format retenu est l'un des deux paquets macOS, et qu'il est disponible. */
+  readonly usesMacosPackage = computed(() => {
+    const selected = this.selectedPackage();
+    return selected === 'macos-aarch64' || selected === 'macos-x64';
+  });
+
+  /** Libellé du bouton de téléchargement, qui doit dire ce qu'on va réellement obtenir. */
+  readonly downloadLabel = computed(() => {
+    switch (this.selectedPackage()) {
+      case 'windows':
+        return 'Télécharger le runner pour Windows (~39 Mo)';
+      case 'macos-aarch64':
+        return 'Télécharger le runner pour Mac Apple Silicon (~39 Mo)';
+      case 'macos-x64':
+        return 'Télécharger le runner pour Mac Intel (~40 Mo)';
+      default:
+        return 'Télécharger le runner (.jar)';
+    }
+  });
+
+  /**
+   * Format présélectionné : celui du système d'où la page est consultée, s'il est servi ici.
+   *
+   * <p>Sur un Mac, c'est **Apple Silicon** — le navigateur ne sait pas distinguer les deux
+   * architectures de façon fiable (Safari comme Chrome annoncent `MacIntel` sur un M3), et l'option
+   * Intel reste visible d'un clic (D4). Tout ce qui n'est ni Windows ni Mac — Linux compris —
+   * retombe sur le jar : ces postes ont un JDK, et 39 Mo pour en utiliser 2,5 serait absurde.</p>
+   */
+  private preferredFormat(formats: RunnerDownloadFormats): RunnerFormat {
+    const platform = this.hostPlatform;
+    if (platform === 'windows' && formats.windowsPackage) {
+      return 'windows';
+    }
+    if (platform === 'macos') {
+      if (formats.macosAarch64Package) {
+        return 'macos-aarch64';
+      }
+      if (formats.macosX64Package) {
+        return 'macos-x64';
+      }
+    }
+    return 'jar';
+  }
 
   /** Demande un nouveau code d'appairage ; remplace celui affiché, le cas échéant. */
   generateCode(): void {
@@ -220,16 +366,20 @@ export class RunnerPairingDialogComponent implements OnDestroy {
     if (this.downloading()) {
       return;
     }
-    const windows = this.usesWindowsPackage();
+    const selected = this.selectedPackage();
     this.downloading.set(true);
-    const request = windows
+    const request = selected === 'windows'
       ? this.atelier.downloadRunnerWindowsPackage()
-      : this.atelier.downloadRunnerJar();
+      : selected === 'macos-aarch64'
+        ? this.atelier.downloadRunnerMacosPackage('aarch64')
+        : selected === 'macos-x64'
+          ? this.atelier.downloadRunnerMacosPackage('x64')
+          : this.atelier.downloadRunnerJar();
     request.subscribe({
       next: (blob) => {
         this.downloading.set(false);
         this.jarUnavailable.set(false);
-        this.saveBlob(blob, windows ? WINDOWS_PACKAGE_FILENAME : JAR_FILENAME);
+        this.saveBlob(blob, PACKAGE_FILENAMES[selected ?? 'jar']);
       },
       error: (err: unknown) => {
         this.downloading.set(false);

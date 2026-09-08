@@ -10,7 +10,10 @@ import { AtelierService } from '../../core/services/atelier.service';
 import {
   DEFAULT_WORKSPACE_PATH,
   RUNNER_BUILD_COMMAND,
+  RUNNER_HOST_PLATFORM,
+  RunnerHostPlatform,
   RunnerPairingDialogComponent,
+  detectHostPlatform,
 } from './runner-pairing-dialog.component';
 
 describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
@@ -20,11 +23,28 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
   let snackBar: jasmine.SpyObj<MatSnackBar>;
   let dialogRef: jasmine.SpyObj<MatDialogRef<RunnerPairingDialogComponent>>;
 
-  function setup(formats: RunnerDownloadFormats = { jar: true, windowsPackage: true }): void {
+  /** Gateway à jour : les quatre formats servis (F-44 / SF-44-03). */
+  const EVERY_FORMAT: RunnerDownloadFormats = {
+    jar: true,
+    windowsPackage: true,
+    macosAarch64Package: true,
+    macosX64Package: true,
+  };
+
+  /**
+   * Le poste d'où la page est consultée est **injecté** : sans cela, ces tests dépendraient du
+   * navigateur qui les exécute (Chrome headless sous Linux en intégration continue), et
+   * n'affirmeraient rien de stable sur la présélection.
+   */
+  function setup(
+    formats: RunnerDownloadFormats = EVERY_FORMAT,
+    hostPlatform: RunnerHostPlatform = 'windows',
+  ): void {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createRunnerPairingCode',
       'downloadRunnerJar',
       'downloadRunnerWindowsPackage',
+      'downloadRunnerMacosPackage',
       'runnerDownloadFormats',
     ]);
     // Le composant demande les formats disponibles dès sa construction (F-44 / SF-44-02) : sans
@@ -44,6 +64,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
         { provide: MatSnackBar, useValue: snackBar },
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: MAT_DIALOG_DATA, useValue: { workspaceId: 'w1', workspaceName: 'projet' } },
+        { provide: RUNNER_HOST_PLATFORM, useValue: hostPlatform },
       ],
     });
 
@@ -180,12 +201,18 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     expect(anchor.download).toBe('claude-runner-windows-x64.zip');
   });
 
-  it('retombe sur le jar quand la gateway n\'empaquette pas le format Windows', () => {
-    // D3 : une gateway déployée avant F-44 n'a pas le paquet. L'écran doit le masquer, pas offrir
+  it('retombe sur le jar quand la gateway n\'empaquette aucun paquet', () => {
+    // D3 : une gateway déployée avant F-44 n'a aucun paquet. L'écran doit les masquer, pas offrir
     // un lien qui répondrait 404.
-    setup({ jar: true, windowsPackage: false });
+    setup({
+      jar: true,
+      windowsPackage: false,
+      macosAarch64Package: false,
+      macosX64Package: false,
+    });
 
     expect(component.windowsPackageAvailable()).toBeFalse();
+    expect(component.anyPackageAvailable()).toBeFalse();
     expect(component.format()).toBe('jar');
     expect(component.usesWindowsPackage()).toBeFalse();
     expect(component.runCommand()).toContain('java -jar claude-runner.jar');
@@ -231,6 +258,82 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     } else {
       delete (navigator as unknown as { clipboard?: unknown }).clipboard;
     }
+  });
+
+  // ---------------------------------------------------------------------------------------------
+  // F-44 / SF-44-03 — les paquets macOS
+  // ---------------------------------------------------------------------------------------------
+
+  it('présélectionne Apple Silicon sur un Mac et compose sa commande sans « java »', () => {
+    // D4 : le navigateur ne sait pas distinguer arm64 d'Intel ; on présélectionne le majoritaire.
+    // Et comme sur Windows, préfixer par `java` rappellerait la JVM du système — celle qui manque.
+    setup(EVERY_FORMAT, 'macos');
+    service.createRunnerPairingCode.and.returnValue(of(codeExpiringIn(300)));
+    component.generateCode();
+
+    expect(component.format()).toBe('macos-aarch64');
+    expect(component.usesMacosPackage()).toBeTrue();
+    expect(component.usesWindowsPackage()).toBeFalse();
+    expect(component.runCommand()).toContain('./claude-runner.command --gateway');
+    expect(component.runCommand()).not.toContain('java -jar');
+    expect(component.runCommand()).toContain('--code AB12CD');
+  });
+
+  it('bascule sur Intel quand Apple Silicon n\'est pas servi', () => {
+    setup({ ...EVERY_FORMAT, macosAarch64Package: false }, 'macos');
+
+    expect(component.format()).toBe('macos-x64');
+    expect(component.macosAarch64Available()).toBeFalse();
+    expect(component.runCommand()).toContain('./claude-runner.command');
+  });
+
+  it('télécharge chaque paquet macOS par sa propre route, sous son propre nom', () => {
+    setup(EVERY_FORMAT, 'macos');
+    service.downloadRunnerMacosPackage.and.returnValue(of(new Blob(['tgz'])));
+    const anchor = document.createElement('a');
+    spyOn(anchor, 'click');
+    spyOn(document, 'createElement').and.returnValue(anchor);
+
+    component.downloadJar();
+
+    expect(service.downloadRunnerMacosPackage).toHaveBeenCalledWith('aarch64');
+    expect(anchor.download).toBe('claude-runner-macos-aarch64.tar.gz');
+
+    component.format.set('macos-x64');
+    component.downloadJar();
+
+    expect(service.downloadRunnerMacosPackage).toHaveBeenCalledWith('x64');
+    expect(anchor.download).toBe('claude-runner-macos-x64.tar.gz');
+    expect(service.downloadRunnerJar).not.toHaveBeenCalled();
+  });
+
+  it('retombe sur le jar sur un poste qui n\'est ni Windows ni Mac', () => {
+    // Linux reste hors périmètre de F-44 : ces postes ont un JDK, et 39 Mo pour en utiliser 2,5
+    // serait absurde. Les paquets restent proposés — c'est la présélection qui change.
+    setup(EVERY_FORMAT, 'other');
+
+    expect(component.format()).toBe('jar');
+    expect(component.anyPackageAvailable()).toBeTrue();
+    expect(component.runCommand()).toContain('java -jar claude-runner.jar');
+  });
+
+  it('ne propose jamais un format que la gateway ne sert pas', () => {
+    // Le format retenu ET servi : les deux conditions, sans quoi le bouton mènerait à un 404.
+    setup({ ...EVERY_FORMAT, macosX64Package: false }, 'macos');
+    component.format.set('macos-x64');
+
+    expect(component.selectedPackage()).toBeNull();
+    expect(component.usesMacosPackage()).toBeFalse();
+    expect(component.runCommand()).toContain('java -jar claude-runner.jar');
+  });
+
+  it('lit le système depuis l\'User-Agent, tablettes exclues', () => {
+    expect(detectHostPlatform('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')).toBe('windows');
+    expect(detectHostPlatform('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)')).toBe('macos');
+    expect(detectHostPlatform('Mozilla/5.0 (X11; Linux x86_64)')).toBe('other');
+    // Safari sur iPad annonce « Macintosh » ; on ne fait pas tourner un runner sur une tablette.
+    expect(detectHostPlatform('Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)')).toBe('other');
+    expect(detectHostPlatform('')).toBe('other');
   });
 
   it("préfixe l'URL de la gateway par /api, faute de quoi l'appairage échoue en 405", () => {
