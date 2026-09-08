@@ -289,10 +289,14 @@
 
     <mat-form-field appearance="outline" class="pairing-field" subscriptSizing="dynamic">
       <mat-label>Racine du projet sur la machine</mat-label>
+      <!-- Le chemin d'exemple suit le format retenu (F-45 / SF-45-02) : un chemin Unix sous un
+           bouton « pour Windows » invitait à recopier une forme qui ne marche pas. Placeholder et
+           non valeur : le runner refuse tout accès hors de la racine annoncée, et pré-remplir un
+           dossier inexistant ne ferait que déplacer l'échec après le lancement. -->
       <input
         matInput
         maxlength="200"
-        [placeholder]="'/chemin/vers/le/projet'"
+        [placeholder]="examplePath()"
         [ngModel]="workspacePath()"
         (ngModelChange)="workspacePath.set($event)"
       />
@@ -317,6 +321,21 @@
     <p class="pairing-hint">
       Le runner échange le code contre un jeton et le réutilise ensuite : il n'y a pas de nouvel
       appairage à chaque lancement.
+    </p>
+
+    <!-- État de la machine (F-45 / SF-45-02) : relevé, pas poussé. Le backend calcule cet état avec
+         une tolérance de 90 s sur le heartbeat — un temps réel affiché serait un mensonge. -->
+    <div class="pairing-machine" [class.pairing-machine-on]="runnerConnected()" role="status">
+      @if (runnerConnected()) {
+        <mat-icon class="pairing-inline-icon">check_circle</mat-icon>
+      } @else {
+        <mat-progress-spinner mode="indeterminate" [diameter]="16"></mat-progress-spinner>
+      }
+      <span>{{ machineLabel() }}</span>
+    </div>
+    <p class="pairing-hint">
+      L'état est relevé toutes les 5 secondes, avec une tolérance de 90 secondes côté passerelle :
+      une machine arrêtée au <code>Ctrl-C</code> peut rester annoncée connectée jusqu'à ce délai.
     </p>
   </section>
 </mat-dialog-content>

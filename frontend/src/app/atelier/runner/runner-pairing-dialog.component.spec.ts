@@ -10,11 +10,14 @@ import { AtelierService } from '../../core/services/atelier.service';
 import {
   DEFAULT_WORKSPACE_PATH,
   LOCAL_RELAY_PROXY_URL,
+  MACOS_WORKSPACE_PATH,
   NETWORK_CHECK_PATH,
   RUNNER_BUILD_COMMAND,
   RUNNER_HOST_PLATFORM,
+  RUNNER_STATUS_POLL_MS,
   RunnerHostPlatform,
   RunnerPairingDialogComponent,
+  WINDOWS_WORKSPACE_PATH,
   detectHostPlatform,
   networkCheckCommand,
   proxyDiscoveryCommand,
@@ -51,7 +54,11 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
       'downloadRunnerWindowsPackage',
       'downloadRunnerMacosPackage',
       'runnerDownloadFormats',
+      'getRunnerStatus',
     ]);
+    // F-45 / SF-45-02 : le dialogue relève l'état de la machine dès sa construction. Défaut =
+    // « pas encore vue », l'état d'un projet dont le runner n'a pas encore été lancé.
+    service.getRunnerStatus.and.returnValue(of({ connected: false, lastSeenAt: null }));
     // Le composant demande les formats disponibles dès sa construction (F-44 / SF-44-02) : sans
     // cette réponse, aucun test de ce fichier ne peut instancier le dialogue. Défaut = les deux
     // formats servis, qui est l'état d'une gateway à jour.
@@ -149,8 +156,10 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
   });
 
   it('propose un chemin d\'exemple tant que rien n\'est saisi', () => {
+    // Le poste par défaut de ces tests est Windows, et le format retenu le paquet Windows : le
+    // chemin d'exemple suit donc le format (F-45 / SF-45-02).
     setup();
-    expect(component.runCommand()).toContain(`--workspace "${DEFAULT_WORKSPACE_PATH}"`);
+    expect(component.runCommand()).toContain(`--workspace "${WINDOWS_WORKSPACE_PATH}"`);
   });
 
   it('traite un 404 de téléchargement comme un état normal, sans erreur technique', () => {
@@ -464,5 +473,155 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     // L'étape est du TEXTE : le poste exécute la commande, la page ne la joue pas à sa place (D2).
     expect(service.runnerDownloadFormats).toHaveBeenCalledTimes(1);
     expect(networkCheckCommand('windows', 'https://x/api')).toContain('https://x/api');
+  });
+  // ---------------------------------------------------------------------------------------------
+  // F-45 / SF-45-02 — le format pilote le chemin, et l'écran dit si la machine s'est connectée.
+  // ---------------------------------------------------------------------------------------------
+
+  it('affiche un chemin Windows sous le paquet Windows', () => {
+    setup(EVERY_FORMAT, 'windows');
+
+    expect(component.examplePath()).toBe(WINDOWS_WORKSPACE_PATH);
+    expect(component.examplePath()).toContain('C:\\');
+    // Guillemets conservés : sans eux, Git Bash mange les antislashs (SF-38-23).
+    expect(component.runCommand()).toContain(`--workspace "${WINDOWS_WORKSPACE_PATH}"`);
+  });
+
+  it('affiche un chemin macOS sous un paquet macOS', () => {
+    setup(EVERY_FORMAT, 'macos');
+
+    expect(component.examplePath()).toBe(MACOS_WORKSPACE_PATH);
+    expect(component.examplePath()).toContain('/Users/');
+  });
+
+  it('fait suivre le poste consulté quand le format est le jar, qui ne dit rien du système', () => {
+    // D1 : un paquet Windows ne s'exécute que sur Windows — information certaine. Le jar, lui, ne
+    // porte aucun système ; c'est alors le poste d'où la page est consultée qui décide.
+    setup(EVERY_FORMAT, 'other');
+    expect(component.format()).toBe('jar');
+    expect(component.examplePath()).toBe(DEFAULT_WORKSPACE_PATH);
+  });
+
+  it('donne un chemin Windows au jar consulté depuis Windows', () => {
+    setup({ ...EVERY_FORMAT, windowsPackage: false }, 'windows');
+
+    expect(component.selectedPackage()).toBeNull();
+    expect(component.examplePath()).toBe(WINDOWS_WORKSPACE_PATH);
+  });
+
+  it('met le chemin d\'exemple à jour quand le format change', () => {
+    setup(EVERY_FORMAT, 'windows');
+    expect(component.examplePath()).toBe(WINDOWS_WORKSPACE_PATH);
+
+    component.format.set('macos-aarch64');
+
+    expect(component.examplePath()).toBe(MACOS_WORKSPACE_PATH);
+  });
+
+  it('ne remplace jamais un chemin saisi par l\'utilisateur', () => {
+    setup(EVERY_FORMAT, 'windows');
+    component.workspacePath.set('/home/moi/projet');
+
+    component.format.set('macos-x64');
+
+    expect(component.workspacePath()).toBe('/home/moi/projet');
+    expect(component.runCommand()).toContain('--workspace "/home/moi/projet"');
+  });
+
+  it('relève l\'état de la machine dès l\'ouverture et reste en attente', () => {
+    setup();
+
+    expect(service.getRunnerStatus).toHaveBeenCalledWith('w1');
+    expect(component.runnerConnected()).toBeFalse();
+    expect(component.machineLabel()).toContain('En attente de la machine');
+  });
+
+  it('bascule sur « machine connectée » et cesse alors d\'interroger', () => {
+    jasmine.clock().install();
+    try {
+      setup();
+      const seenAt = new Date('2026-09-08T09:41:00Z').toISOString();
+      service.getRunnerStatus.and.returnValue(of({ connected: true, lastSeenAt: seenAt }));
+
+      jasmine.clock().tick(RUNNER_STATUS_POLL_MS);
+
+      expect(component.runnerConnected()).toBeTrue();
+      expect(component.machineLabel()).toContain('Machine connectée');
+      expect(component.lastSeenLabel()).not.toBeNull();
+
+      // D3 : la question posée par ce dialogue a sa réponse ; continuer serait de la surveillance.
+      const callsSoFar = service.getRunnerStatus.calls.count();
+      jasmine.clock().tick(RUNNER_STATUS_POLL_MS * 3);
+      expect(service.getRunnerStatus.calls.count()).toBe(callsSoFar);
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it('reste silencieux sur un relevé en échec, et retente', () => {
+    jasmine.clock().install();
+    try {
+      setup();
+      service.getRunnerStatus.and.returnValue(
+        throwError(() => new HttpErrorResponse({ status: 500 })));
+
+      jasmine.clock().tick(RUNNER_STATUS_POLL_MS);
+
+      // D4 : ce dialogue est déjà celui où quelque chose ne marche pas ; un rouge de plus ferait
+      // chercher au mauvais endroit.
+      expect(snackBar.open).not.toHaveBeenCalled();
+      expect(component.runnerConnected()).toBeFalse();
+
+      const callsSoFar = service.getRunnerStatus.calls.count();
+      jasmine.clock().tick(RUNNER_STATUS_POLL_MS);
+      expect(service.getRunnerStatus.calls.count()).toBeGreaterThan(callsSoFar);
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it('arrête le relevé sur un refus, qui ne se réparera pas tout seul', () => {
+    jasmine.clock().install();
+    try {
+      setup();
+      service.getRunnerStatus.and.returnValue(
+        throwError(() => new HttpErrorResponse({ status: 403 })));
+
+      jasmine.clock().tick(RUNNER_STATUS_POLL_MS);
+      const callsSoFar = service.getRunnerStatus.calls.count();
+      jasmine.clock().tick(RUNNER_STATUS_POLL_MS * 3);
+
+      expect(service.getRunnerStatus.calls.count()).toBe(callsSoFar);
+      expect(snackBar.open).not.toHaveBeenCalled();
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it('arrête les deux minuteurs à la destruction du dialogue', () => {
+    jasmine.clock().install();
+    try {
+      setup();
+      service.createRunnerPairingCode.and.returnValue(of(codeExpiringIn(300)));
+      component.generateCode();
+
+      fixture.destroy();
+      const callsSoFar = service.getRunnerStatus.calls.count();
+      const secondsLeft = component.secondsLeft();
+      jasmine.clock().tick(RUNNER_STATUS_POLL_MS * 3);
+
+      expect(service.getRunnerStatus.calls.count()).toBe(callsSoFar);
+      expect(component.secondsLeft()).toBe(secondsLeft);
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it('affiche la tolérance de 90 s plutôt que de promettre du temps réel', () => {
+    setup();
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+    expect(text).toContain('En attente de la machine');
+    expect(text).toContain('90 secondes');
   });
 });

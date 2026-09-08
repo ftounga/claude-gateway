@@ -23,6 +23,23 @@ export interface RunnerPairingDialogData {
 /** Chemin d'exemple affiché tant que l'utilisateur n'a pas saisi la racine de son projet. */
 export const DEFAULT_WORKSPACE_PATH = '/chemin/vers/le/projet';
 
+/**
+ * Chemins d'exemple par système (F-45 / SF-45-02). Un chemin Unix affiché sous un bouton
+ * « Télécharger le runner pour Windows » invite à recopier une forme qui ne marchera pas — c'est
+ * là que commence le troisième obstacle rencontré chez le client, le chemin avalé par Git Bash.
+ */
+export const WINDOWS_WORKSPACE_PATH = 'C:\\Users\\moi\\projets\\mon-projet';
+export const MACOS_WORKSPACE_PATH = '/Users/moi/projets/mon-projet';
+
+/**
+ * Période du relevé d'état de la machine (F-45 / SF-45-02).
+ *
+ * <p>Le backend calcule cet état avec une tolérance de <b>90 s</b> sur le dernier heartbeat
+ * (`app.runner.heartbeat.stale-after`) : interroger plus souvent ne le rendrait pas plus frais,
+ * seulement plus coûteux.</p>
+ */
+export const RUNNER_STATUS_POLL_MS = 5000;
+
 /** Commande de construction du fat-jar, proposée quand la gateway ne publie pas de binaire. */
 export const RUNNER_BUILD_COMMAND = './mvnw -pl runner package';
 
@@ -210,6 +227,10 @@ export class RunnerPairingDialogComponent implements OnDestroy {
         this.format.set('jar');
       },
     });
+    // F-45 / SF-45-02 : une fois la commande lancée, rien à l'écran ne disait si la machine s'était
+    // appairée. L'information existait déjà côté gateway ; il suffisait de la relever.
+    this.readRunnerStatus();
+    this.statusPoll = setInterval(() => this.readRunnerStatus(), RUNNER_STATUS_POLL_MS);
   }
   readonly data = inject<RunnerPairingDialogData>(MAT_DIALOG_DATA);
 
@@ -265,7 +286,15 @@ export class RunnerPairingDialogComponent implements OnDestroy {
   /** Secondes restantes avant expiration du code, recalculées chaque seconde. */
   readonly secondsLeft = signal(0);
 
+  /** Vrai dès qu'un runner a été vu sur ce projet (F-45 / SF-45-02). */
+  readonly runnerConnected = signal(false);
+
+  /** Dernier signe de vie relevé, ou `null` si aucun runner ne s'est jamais signalé. */
+  readonly runnerLastSeenAt = signal<string | null>(null);
+
   private countdown: ReturnType<typeof setInterval> | null = null;
+
+  private statusPoll: ReturnType<typeof setInterval> | null = null;
 
   readonly buildCommand = RUNNER_BUILD_COMMAND;
 
@@ -328,7 +357,7 @@ export class RunnerPairingDialogComponent implements OnDestroy {
    * silencieusement à l'appairage.
    */
   readonly runCommand = computed(() => {
-    const path = this.workspacePath().trim() || DEFAULT_WORKSPACE_PATH;
+    const path = this.workspacePath().trim() || this.examplePath();
     const code = this.codeUsable() ? this.pairingCode()!.code : '<code-appairage>';
     // Le paquet autonome s'exécute par son lanceur : il ne faut surtout pas préfixer par `java`,
     // qui rappellerait la JVM du système — celle-là même qui manque ou qui est trop ancienne.
@@ -370,6 +399,52 @@ export class RunnerPairingDialogComponent implements OnDestroy {
 
   /** Vrai quand le format retenu est le paquet Windows, et qu'il est réellement disponible. */
   readonly usesWindowsPackage = computed(() => this.selectedPackage() === 'windows');
+
+  /**
+   * Chemin d'exemple, piloté par le **format retenu** (F-45 / SF-45-02).
+   *
+   * <p>Un paquet Windows ne s'exécute que sur Windows : le format est alors une information
+   * <b>certaine</b>, plus forte que l'`User-Agent`. Le `.jar`, lui, ne dit rien du système — c'est
+   * justement son intérêt ; dans ce seul cas, le poste d'où la page est consultée décide (D1).</p>
+   *
+   * <p>Il reste un <b>exemple</b> : affiché en `placeholder`, jamais pré-rempli. Pré-remplir
+   * `C:\Users\moi\…` enverrait une commande vers un dossier inexistant chez la moitié des
+   * utilisateurs, et le runner refuse tout accès en dehors de la racine annoncée (D2).</p>
+   */
+  readonly examplePath = computed(() => {
+    const selected = this.selectedPackage();
+    if (selected === 'windows') {
+      return WINDOWS_WORKSPACE_PATH;
+    }
+    if (selected !== null) {
+      return MACOS_WORKSPACE_PATH;
+    }
+    return this.hostPlatform === 'windows' ? WINDOWS_WORKSPACE_PATH : DEFAULT_WORKSPACE_PATH;
+  });
+
+  /**
+   * Ce que l'écran dit de la machine. Un seul libellé plutôt que trois morceaux assemblés dans le
+   * gabarit : c'est la phrase entière qu'un test doit pouvoir affirmer.
+   */
+  readonly machineLabel = computed(() => {
+    if (!this.runnerConnected()) {
+      return 'En attente de la machine…';
+    }
+    const seen = this.lastSeenLabel();
+    return seen ? `Machine connectée — dernier signe de vie à ${seen}` : 'Machine connectée';
+  });
+
+  /** Heure du dernier signe de vie, ou `null` quand elle est absente ou illisible. */
+  readonly lastSeenLabel = computed(() => {
+    const raw = this.runnerLastSeenAt();
+    if (!raw) {
+      return null;
+    }
+    const seen = new Date(raw);
+    return Number.isNaN(seen.getTime())
+      ? null
+      : seen.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  });
 
   /** Vrai quand le format retenu est l'un des deux paquets macOS, et qu'il est disponible. */
   readonly usesMacosPackage = computed(() => {
@@ -503,6 +578,39 @@ export class RunnerPairingDialogComponent implements OnDestroy {
 
   ngOnDestroy(): void {
     this.stopCountdown();
+    this.stopStatusPoll();
+  }
+
+  /**
+   * Relève l'état de la machine. **Silencieux en cas d'échec** : ce dialogue est déjà celui où
+   * quelque chose ne marche pas, et un rouge sur un aller-retour manqué ferait chercher au mauvais
+   * endroit. Un `403` ou un `404` ne se réparant pas tout seuls, le minuteur s'arrête plutôt que de
+   * battre à vide (D4).
+   */
+  private readRunnerStatus(): void {
+    this.atelier.getRunnerStatus(this.data.workspaceId).subscribe({
+      next: (status) => {
+        this.runnerLastSeenAt.set(status.lastSeenAt);
+        if (status.connected) {
+          this.runnerConnected.set(true);
+          // La question posée par ce dialogue — « l'appairage a-t-il marché ? » — a sa réponse.
+          // Continuer à interroger serait de la surveillance, pas de l'installation (D3).
+          this.stopStatusPoll();
+        }
+      },
+      error: (err: unknown) => {
+        if (err instanceof HttpErrorResponse && (err.status === 403 || err.status === 404)) {
+          this.stopStatusPoll();
+        }
+      },
+    });
+  }
+
+  private stopStatusPoll(): void {
+    if (this.statusPoll !== null) {
+      clearInterval(this.statusPoll);
+      this.statusPoll = null;
+    }
   }
 
   /** Déclenche l'enregistrement du blob téléchargé sous le nom attendu par la commande affichée. */
