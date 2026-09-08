@@ -122,6 +122,38 @@
         </div>
       </li>
     </ul>
+
+    <!-- Fiche « Pour votre DSI » (F-45 / SF-45-03). Le 407 est le seul des quatre obstacles qu'un
+         utilisateur ne peut pas resoudre seul : il DOIT passer par sa DSI. Sans demande ecrite,
+         cet aller-retour se fait a l'oral, incomplet — c'est ce qui a coute la moitie des trois
+         heures chez le client. La fiche ne porte AUCUNE donnee du projet : elle est faite pour
+         sortir de l'ecran. -->
+    <div class="pairing-note">
+      <mat-icon class="pairing-inline-icon">business</mat-icon>
+      <div>
+        <p class="pairing-note-title">Pour votre DSI</p>
+        <p class="pairing-note-text">
+          Une authentification proxy intégrée ne se contourne pas depuis votre poste : elle se lève
+          côté réseau. Cette fiche dit ce qu'il faut autoriser — domaine, port, sens du flux — et ce
+          que la machine virtuelle Java ne sait pas porter. Elle ne contient aucune information sur
+          votre projet.
+        </p>
+        <div class="pairing-note-actions">
+          <button
+            mat-stroked-button
+            type="button"
+            (click)="copy(itSheet, 'Fiche')"
+          >
+            <mat-icon>content_copy</mat-icon>
+            Copier la fiche
+          </button>
+          <button mat-stroked-button type="button" (click)="downloadItSheet()">
+            <mat-icon>download</mat-icon>
+            Télécharger (.txt)
+          </button>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- Étape 2 — le code d'appairage (usage unique, TTL court) -->

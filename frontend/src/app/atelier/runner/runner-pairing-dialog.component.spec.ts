@@ -9,6 +9,7 @@ import { RunnerDownloadFormats } from '../../core/models/atelier.models';
 import { AtelierService } from '../../core/services/atelier.service';
 import {
   DEFAULT_WORKSPACE_PATH,
+  IT_SHEET_FILENAME,
   LOCAL_RELAY_PROXY_URL,
   MACOS_WORKSPACE_PATH,
   NETWORK_CHECK_PATH,
@@ -19,6 +20,7 @@ import {
   RunnerPairingDialogComponent,
   WINDOWS_WORKSPACE_PATH,
   detectHostPlatform,
+  itDepartmentSheet,
   networkCheckCommand,
   proxyDiscoveryCommand,
   proxyExportCommand,
@@ -623,5 +625,112 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
 
     expect(text).toContain('En attente de la machine');
     expect(text).toContain('90 secondes');
+  });
+  // ---------------------------------------------------------------------------------------------
+  // F-45 / SF-45-03 — la fiche « Pour votre DSI », generee par l'ecran.
+  // ---------------------------------------------------------------------------------------------
+
+  /** Date fixe : la fiche porte sa date de generation, qui ne doit pas rendre les tests instables. */
+  const GENERATED_AT = new Date('2026-09-08T10:00:00Z');
+
+  it('nomme le domaine et le port de la page consultée', () => {
+    const sheet = itDepartmentSheet('https://portal.exemple.fr', GENERATED_AT);
+
+    expect(sheet).toContain('portal.exemple.fr');
+    // D3 : 443 vient du protocole de l'origine, jamais d'une constante ecrite en dur.
+    expect(sheet).toContain('443');
+  });
+
+  it('reprend un port explicite plutôt que de supposer 443', () => {
+    expect(itDepartmentSheet('https://portal.exemple.fr:8443', GENERATED_AT)).toContain('8443');
+  });
+
+  it('dit HTTP et WS sur une origine non chiffrée, jamais HTTPS ni WSS', () => {
+    const sheet = itDepartmentSheet('http://localhost:4200', GENERATED_AT);
+
+    expect(sheet).toContain('4200');
+    // La ligne des protocoles, et elle seule : HTTPS_PROXY reste cité plus bas, c'est le nom d'une
+    // variable d'environnement et non le protocole à ouvrir.
+    expect(sheet).toContain('Protocoles : HTTP et WS');
+    expect(sheet).not.toContain('Protocoles : HTTPS');
+    expect(sheet).not.toContain('WSS');
+  });
+
+  it('décrit un flux sortant, sans aucun port entrant', () => {
+    const sheet = itDepartmentSheet('https://portal.exemple.fr', GENERATED_AT);
+
+    expect(sheet).toContain('Sortant uniquement');
+    expect(sheet).toContain('Aucun port entrant');
+  });
+
+  it('nomme la limite de la JVM et les deux issues possibles', () => {
+    const sheet = itDepartmentSheet('https://portal.exemple.fr', GENERATED_AT);
+
+    // D5 : une contrainte du produit, pas un bogue — la DSI est la seule a pouvoir la lever.
+    expect(sheet).toContain('NTLM');
+    expect(sheet).toContain('Kerberos');
+    expect(sheet).toContain('SSPI');
+    expect(sheet).toContain('8u111');
+    expect(sheet).toContain('exclure portal.exemple.fr');
+    expect(sheet).toContain('relais local');
+  });
+
+  it('prévient du repli long-polling et de l\'interception TLS', () => {
+    const sheet = itDepartmentSheet('https://portal.exemple.fr', GENERATED_AT);
+
+    // D4 : un pare-feu applicatif peut autoriser HTTPS et refuser l'Upgrade WebSocket.
+    expect(sheet).toContain('Upgrade');
+    expect(sheet).toContain('long-polling');
+    expect(sheet).toContain('trustStore');
+  });
+
+  it('dit qu\'aucun droit administrateur n\'est requis', () => {
+    const sheet = itDepartmentSheet('https://portal.exemple.fr', GENERATED_AT);
+
+    expect(sheet).toContain('Aucun droit administrateur');
+    expect(sheet).toContain('Ctrl-C');
+  });
+
+  it('reste une fiche utilisable même sur une origine illisible', () => {
+    const sheet = itDepartmentSheet('pas-une-url', GENERATED_AT);
+
+    // Une fiche imparfaite vaut mieux qu'un bouton mort.
+    expect(sheet.length).toBeGreaterThan(0);
+    expect(sheet).toContain('NTLM');
+  });
+
+  it('ne divulgue rien du projet : ni code, ni nom, ni chemin', () => {
+    // D6 : la fiche est faite pour sortir de l'ecran, collee dans un ticket. C'est le genre de
+    // fuite qui s'ajoute par inadvertance a la premiere evolution — d'ou ce test.
+    setup();
+    service.createRunnerPairingCode.and.returnValue(of(codeExpiringIn(300, 'ZZ99YY')));
+    component.generateCode();
+    component.workspacePath.set('/home/moi/dossier-confidentiel');
+
+    expect(component.itSheet).not.toContain('ZZ99YY');
+    expect(component.itSheet).not.toContain('projet');
+    expect(component.itSheet).not.toContain('dossier-confidentiel');
+    expect(component.itSheet).not.toContain('w1');
+  });
+
+  it('enregistre la fiche sous un nom de fichier explicite', () => {
+    setup();
+    const anchor = document.createElement('a');
+    spyOn(anchor, 'click');
+    spyOn(document, 'createElement').and.returnValue(anchor);
+
+    component.downloadItSheet();
+
+    expect(anchor.download).toBe(IT_SHEET_FILENAME);
+    expect(IT_SHEET_FILENAME).toBe('runner-acces-reseau-dsi.txt');
+  });
+
+  it('affiche le bloc « Pour votre DSI » dans l\'étape réseau', () => {
+    setup();
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+    expect(text).toContain('Pour votre DSI');
+    expect(text).toContain('Copier la fiche');
+    expect(text).toContain('Télécharger');
   });
 });

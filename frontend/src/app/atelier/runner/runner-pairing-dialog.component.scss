@@ -201,6 +201,13 @@
   }
 }
 
+/* Actions de la fiche DSI (F-45 / SF-45-03) : copier et télécharger, indépendantes l'une de l'autre. */
+.pairing-note-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cg-space-2);
+}
+
 .pairing-command {
   display: flex;
   align-items: center;
