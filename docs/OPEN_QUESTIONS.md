@@ -322,3 +322,52 @@ l'empêche de partir).
 invisible jusqu'au premier utilisateur du mode `RUNNER`. C'est le prix du parcage — il est accepté
 parce que le mode `RUNNER` n'est pas le premier pas d'un utilisateur (F-39, D6) et que les chemins
 sensibles sont couverts par des tests.
+
+---
+
+## OQ-14 — En cible `RUNNER`, la porte de confirmation doit-elle rester **activée par défaut** ?
+
+**Statut** : **Ouverte — question de sécurité adressée au product owner (cadrage F-47, 2026-09-08),
+toujours ouverte au 2026-09-09.** Ne bloque pas F-47, **Terminée** dans `docs/PRODUCT_SPEC.md` :
+les deux subfeatures livrées ont rendu l'invite impossible à manquer, elles n'ont **rien changé** au
+réglage par défaut — délibérément.
+
+**La question, en une phrase**
+
+Sur une machine que l'utilisateur a lui-même connectée, avec son propre appairage, dans un workspace
+qu'il a lui-même désigné, la première commande doit-elle encore attendre un clic ?
+
+**Ce qui est déjà tranché autour d'elle**
+
+- **SF-38-08 / D7** : la porte n'était pas désactivable en cible `RUNNER`. Raisonnement juste, non
+  confronté à l'usage.
+- **SF-38-20** : amendement — deux gestes, « Tout autoriser pour ce **message** » (la première
+  commande demande toujours) et « Ne plus demander sur ce **projet** » (`agent_ask_before_bash`,
+  réglage persistant). **La porte est donc déjà désactivable par projet.** Ce qui reste en question
+  est sa **valeur de départ**, celle que subit l'utilisateur qui n'a encore rien réglé.
+- **SF-38-19** : l'**exécution**, elle, est activée par défaut — le mode runner existe pour exécuter.
+  L'asymétrie entre les deux défauts est précisément ce que la question interroge.
+- **F-33 / SF-33-03** : l'invite vit **dans le flux**, pas en modale. Décision inchangée par F-47.
+
+**Ce que F-47 a changé, et ce qu'elle n'a pas changé**
+
+F-47 a corrigé le vrai défaut du 2026-09-08 : l'invite était émise et reçue, mais **jamais peinte**
+(aucun cycle de rendu après sa pose, le flux se taisant juste derrière). Elle est désormais peinte à
+l'instant où elle arrive, rappelée tant qu'elle attend, son temps restant s'affiche, et l'expiration
+est dite pour ce qu'elle est. **Le coût de la porte est donc devenu visible** — deux minutes qui
+s'écoulaient en silence sont maintenant deux minutes qu'on voit courir. C'est ce qui rend la
+question posable sans la trancher : on ne desserre pas une garde pour compenser un défaut d'affichage.
+
+**Ce que chaque réponse coûte**
+
+- **Garder activée** : un clic au premier usage sur chaque projet, sur une machine où l'utilisateur
+  est déjà chez lui. Le coût est faible depuis SF-38-20, mais il tombe **au pire moment** — le tout
+  premier contact, celui qui décide de l'adoption.
+- **Désactiver par défaut** : l'agent exécute sans demander sur une machine réelle, dès la première
+  commande. Le journal d'audit et le coupe-circuit restent, eux, **non désactivables** — mais ils
+  constatent, ils n'empêchent pas.
+
+**Pourquoi elle n'est pas tranchée par un agent**
+
+C'est un arbitrage sécurité / adoption sur du code exécuté sur la machine d'un tiers. Il revient au
+product owner, explicitement, et se documente en ADR le jour où il est rendu.
