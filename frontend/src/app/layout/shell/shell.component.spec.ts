@@ -98,6 +98,16 @@ describe('ShellComponent', () => {
     expect(shell.querySelector('main.app-content router-outlet')).not.toBeNull();
   });
 
+  // ---- F-54 SF-54-02 : la bulle d'aide vit dans la coquille, donc côté authentifié ----
+  it("porte la bulle d'aide produit, panneau fermé au départ", () => {
+    const shell = fixture.nativeElement as HTMLElement;
+
+    expect(shell.querySelector('app-help-chat-widget')).not.toBeNull();
+    expect(shell.querySelector('.help-widget__bubble')).not.toBeNull();
+    // Le panneau ne s'ouvre qu'au clic : la bulle n'encombre pas l'écran par défaut.
+    expect(shell.querySelector('.help-panel')).toBeNull();
+  });
+
   // ---- F-29 SF-29-01 : garde-fou anti-régression sur la marque de la coquille ----
   it('affiche la marque « Claude Portal » sans le terme « Proxy »', () => {
     const brand = (fixture.nativeElement as HTMLElement).querySelector('.brand');
