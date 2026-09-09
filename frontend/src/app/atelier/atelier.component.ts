@@ -333,6 +333,12 @@ export class AtelierComponent implements OnInit, OnDestroy {
   private confirmationTimer: ReturnType<typeof setInterval> | null = null;
 
   /**
+   * Reprise du cycle de rendu programmée sur la macrotâche suivante (F-47 / SF-47-03) ; jamais plus
+   * d'une en vol. `null` quand aucune n'attend.
+   */
+  private renderNudgeRetry: ReturnType<typeof setTimeout> | null = null;
+
+  /**
    * Temps restant, en clair, pour l'invite et le rappel. `null` quand aucun délai n'est connu :
    * l'écran n'affiche alors rien, plutôt qu'un chiffre inventé.
    */
@@ -1363,16 +1369,44 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * peinte, jusqu'à ce qu'un autre événement passe par là. C'est le seul événement du flux suivi
    * d'un silence : tous les autres sont suivis d'un événement dont la lecture relance le rendu.</p>
    *
-   * <p>Un {@code setTimeout(0)} relancerait lui aussi un cycle, mais en repassant par zone.js —
-   * c'est-à-dire par le mécanisme qui vient précisément de ne pas se déclencher.</p>
+   * <p><b>Deux passes</b> (F-47 / SF-47-03). La passe synchrone peint dans le cas courant. Elle
+   * peut cependant être <b>refusée</b> — {@code ApplicationRef.tick()} lève quand un cycle tourne
+   * déjà — ou n'avoir <b>rien repeint</b> ; rien ne distingue de l'extérieur un succès d'un no-op.
+   * Le pari d'origine (« le cycle qui tourne lira le signal de toute façon ») ne tient que s'il n'a
+   * pas déjà traversé cette vue : s'il l'a fait, plus rien ne repeint et le flux se tait pour deux
+   * minutes. Une seconde passe est donc programmée sur la <b>macrotâche</b> suivante — une
+   * macrotâche ne peut pas s'imbriquer dans un cycle en cours, elle n'est donc jamais refusée pour
+   * cette raison, et elle rend en prime la zone instable, ce qui déclenche un cycle de plus.</p>
    */
   private nudgeRender(): void {
+    this.runRenderCycle();
+    if (this.renderNudgeRetry !== null) {
+      // Une reprise est déjà en vol : deux demandes rapprochées (invite puis compte à rebours) ne
+      // doivent pas empiler deux cycles pour le même repaint.
+      return;
+    }
+    this.renderNudgeRetry = setTimeout(() => {
+      this.renderNudgeRetry = null;
+      this.runRenderCycle();
+    });
+  }
+
+  /** Une passe de rendu, dont l'échec ne remonte jamais à l'utilisateur (F-47 / SF-47-01). */
+  private runRenderCycle(): void {
     try {
       this.appRef.tick();
     } catch {
-      // Cycle déjà en cours (tick ré-entrant) : il n'y a rien à forcer, le cycle qui tourne lira le
-      // signal de toute façon. Surtout, l'invite est posée — la faire échouer ici serait pire que
-      // le défaut qu'on corrige.
+      // Cycle déjà en cours (tick ré-entrant) : rien à forcer maintenant. Surtout, l'invite est
+      // posée — la faire échouer ici serait pire que le défaut qu'on corrige. La reprise
+      // programmée sur la macrotâche suivante repassera, elle, hors de tout cycle.
+    }
+  }
+
+  /** Annule la reprise de rendu en attente ; idempotent. */
+  private cancelRenderNudgeRetry(): void {
+    if (this.renderNudgeRetry !== null) {
+      clearTimeout(this.renderNudgeRetry);
+      this.renderNudgeRetry = null;
     }
   }
 
@@ -1930,6 +1964,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.stopRunnerPolling();
     // Un compte à rebours laissé tourner survivrait à l'écran qu'il décompte (F-47 / SF-47-02).
     this.stopConfirmationCountdown();
+    // Un cycle de rendu programmé sur un écran détruit ne repeint rien (F-47 / SF-47-03).
+    this.cancelRenderNudgeRetry();
   }
 
   /** Ouvre/ferme le panneau « Fichiers ». */

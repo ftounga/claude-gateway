@@ -2302,6 +2302,47 @@ describe('AtelierComponent', () => {
     expect(component.pendingConfirmation()).not.toBeNull();
   });
 
+  // ------------------- F-47 / SF-47-03 : la peinture, prouvée plutôt que supposée
+  //
+  // Les tests de SF-47-01 espionnent `ApplicationRef.tick` et vérifient qu'il a été APPELÉ ; aucun
+  // ne vérifiait qu'une invite était PEINTE. Ceux qui suivent n'appellent volontairement aucun
+  // `detectChanges()` : c'est le code de l'écran qui doit peindre, sans qu'aucun événement ne suive.
+  //
+  // La vue est rattachée à l'`ApplicationRef` comme elle l'est en production (bootstrap →
+  // `router-outlet` → écran). Sans ce rattachement, `tick()` ne parcourt aucune vue et le test ne
+  // prouverait rien : il passerait même avec le forçage retiré.
+  function attachLikeProduction(): void {
+    TestBed.inject(ApplicationRef).attachView(fixture.componentRef.hostView);
+  }
+
+  it("F-47 : l'invite est peinte sans qu'aucun événement du flux ne suive (bac à sable)", () => {
+    setup();
+    attachLikeProduction();
+
+    runAwaitingConfirmation();
+
+    // Aucun `fixture.detectChanges()` ici : c'est tout l'objet du test.
+    expect(fixture.nativeElement.querySelector('.terminal-ask')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.atelier-ask-recall')).not.toBeNull();
+  });
+
+  it("F-47 : l'invite est peinte au plus tard à la macrotâche suivante", fakeAsync(() => {
+    setup();
+    // Vue NON rattachée : la passe synchrone ne parcourt aucune vue et ne peint rien — exactement
+    // ce qui arrive quand `tick()` est refusé (cycle déjà en cours) ou n'a rien à repeindre.
+    runAwaitingConfirmation();
+    expect(fixture.nativeElement.querySelector('.terminal-ask')).toBeNull();
+
+    TestBed.inject(ApplicationRef).attachView(fixture.componentRef.hostView);
+    // La reprise programmée sur la macrotâche suivante, et elle seule : aucun événement du flux.
+    tick();
+
+    expect(fixture.nativeElement.querySelector('.terminal-ask')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.atelier-ask-recall')).not.toBeNull();
+    fixture.destroy();
+    flush();
+  }));
+
   it("F-47 : le rappel persistant n'est dans le DOM que tant qu'une décision est attendue", () => {
     setup();
     expect(fixture.nativeElement.querySelector('.atelier-ask-recall')).toBeNull();
@@ -3417,6 +3458,20 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
     runAwaitingConfirmation();
 
     expect(tickSpy).toHaveBeenCalled();
+    fixture.destroy();
+  });
+
+  // F-47 / SF-47-03 — le moteur de l'incident du 2026-09-08. Aucun `detectChanges()` : c'est le
+  // code de l'écran qui doit peindre, et la vue est rattachée à l'`ApplicationRef` comme elle l'est
+  // en production — sans quoi `tick()` ne parcourt aucune vue et le test ne prouverait rien.
+  it("F-47 : l'invite est peinte sans qu'aucun événement du flux ne suive (machine connectée)", () => {
+    setup();
+    TestBed.inject(ApplicationRef).attachView(fixture.componentRef.hostView);
+
+    runAwaitingConfirmation();
+
+    expect(fixture.nativeElement.querySelector('.terminal-ask')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.atelier-ask-recall')).not.toBeNull();
     fixture.destroy();
   });
 
