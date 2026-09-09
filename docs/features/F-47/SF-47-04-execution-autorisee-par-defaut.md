@@ -10,7 +10,7 @@
 
 ## Statut
 
-`in-progress`
+`done` — PR #311, mergee le 2026-09-10
 
 ## Date de création
 
