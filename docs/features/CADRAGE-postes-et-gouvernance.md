@@ -87,10 +87,12 @@ continuer de dire *quel projet* a exécuté quoi.
 
 **`RunnerIdentity`** devient `(tokenId, userId, hostId)`, et le projet voyage **par appel**.
 
-**Migration des données existantes** : chaque workspace en cible `RUNNER` déjà appairé engendre un
-poste dont la racine est celle du workspace, et devient son unique projet. Aucun ré-appairage
-imposé : les jetons existants restent valides, rattachés au poste créé. C'est la condition pour ne
-pas casser les clients déjà installés — dont le premier, installé cette semaine.
+**Migration des données existantes — écartée le 2026-09-10 par le PO** : *« pour les clients
+existants on invalidera leur jeton. Fais comme si tu n'avais pas de contrainte. »* Les projets de
+test (`cagip`, `cagip2`, `cagip3`) sont supprimés, les jetons runner invalidés, et le modèle est
+écrit **sans compromis de compatibilité**. C'est un allègement considérable : pas de reprise de
+données, pas de double lecture, pas de colonne de transition. Le seul coût est un ré-appairage —
+assumé, puisqu'il ne concerne qu'un poste de test.
 
 ---
 
@@ -151,8 +153,8 @@ revenir au modèle, comme le fait déjà la porte de confirmation. Sans eux, il 
 
 - **Ampleur** : 51 fichiers backend touchent `workspaceId`, `RunnerIdentity` change de forme, trois
   tables changent de clé. C'est le plus gros changement structurel depuis la création du mode runner.
-- **Un client est déjà installé** : la migration doit être silencieuse pour lui. Aucun
-  ré-appairage, aucun jeton invalidé.
+- ~~Un client est déjà installé~~ — **levé** : le PO a tranché pour la table rase (jetons invalidés,
+  projets de test supprimés). Le modèle s'écrit sans dette de compatibilité.
 - **Le confinement est une promesse de sécurité** : le régime A l'affaiblit. Le trancher à la légère
   serait le seul vrai danger de ce chantier.
 - **Multi-pods** : `RunnerRegistry`, le relais inter-pods et la porte de confirmation sont indexés
