@@ -38,7 +38,7 @@ class RunnerConfigResumeTest {
         RunnerConfig config = RunnerConfig.resolve(new String[] {}, Map.of(), remembered());
 
         assertEquals("https://portal.example.com/api", config.gatewayBaseUrl());
-        assertEquals(workspace.toAbsolutePath().normalize(), config.workspaceRoot());
+        assertEquals(workspace.toAbsolutePath().normalize(), config.hostRoot());
         assertEquals(SessionMemory.fileIn(workspace), config.resumedFrom());
         assertNull(config.pairingCode(), "une reprise n'invente aucun code d'appairage");
     }
@@ -52,7 +52,7 @@ class RunnerConfigResumeTest {
         }, Map.of(), remembered());
 
         assertEquals("https://impose.example.com/api", config.gatewayBaseUrl());
-        assertEquals(other.toAbsolutePath().normalize(), config.workspaceRoot());
+        assertEquals(other.toAbsolutePath().normalize(), config.hostRoot());
         assertNull(config.resumedFrom(), "rien ne vient de la mémoire : ne pas l'annoncer");
     }
 
@@ -64,7 +64,7 @@ class RunnerConfigResumeTest {
 
         assertEquals("https://portal.example.com/api", config.gatewayBaseUrl(),
                 "la mémoire complète le champ absent");
-        assertEquals(other.toAbsolutePath().normalize(), config.workspaceRoot());
+        assertEquals(other.toAbsolutePath().normalize(), config.hostRoot());
     }
 
     @Test

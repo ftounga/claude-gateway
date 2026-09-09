@@ -33,10 +33,39 @@ class RunnerConfigTest {
     void resolves_from_cli_only() {
         RunnerConfig cfg = RunnerConfig.resolve(baseArgs("--label", " poste-dev "), Map.of());
         assertEquals("https://portal.example.com/api", cfg.gatewayBaseUrl());
-        assertEquals(workspace.toAbsolutePath().normalize(), cfg.workspaceRoot());
+        assertEquals(workspace.toAbsolutePath().normalize(), cfg.hostRoot());
         assertEquals("AB2C3D4E", cfg.pairingCode());
         assertEquals("poste-dev", cfg.label());
         assertEquals(30, cfg.heartbeatInterval().toSeconds());
+    }
+
+    /**
+     * F-48 / SF-48-02 — la racine est celle du <b>poste</b>, et {@code --root} le dit. L'ancien
+     * {@code --workspace} désigne exactement la même chose : une ligne de commande valide hier ne
+     * doit pas échouer demain, et les paquets déjà distribués la portent.
+     */
+    @Test
+    void root_and_workspace_designate_the_same_host_root() {
+        RunnerConfig withRoot = RunnerConfig.resolve(new String[] {
+                "--gateway", "https://portal.example.com/api",
+                "--root", workspace.toString(),
+                "--code", "AB2C3D4E"}, Map.of());
+        RunnerConfig withWorkspace = RunnerConfig.resolve(baseArgs(), Map.of());
+
+        assertEquals(workspace.toAbsolutePath().normalize(), withRoot.hostRoot());
+        assertEquals(withWorkspace.hostRoot(), withRoot.hostRoot());
+    }
+
+    @Test
+    void root_wins_over_the_historical_workspace_flag() {
+        // Deux drapeaux pour la même chose : le nouveau tranche, sans quoi l'ordre déciderait.
+        RunnerConfig cfg = RunnerConfig.resolve(new String[] {
+                "--gateway", "https://portal.example.com/api",
+                "--workspace", workspace.getParent().toString(),
+                "--root", workspace.toString(),
+                "--code", "AB2C3D4E"}, Map.of());
+
+        assertEquals(workspace.toAbsolutePath().normalize(), cfg.hostRoot());
     }
 
     @Test
