@@ -42,7 +42,7 @@ public final class ToolDispatcher implements AutoCloseable {
     /** Longueur maximale de l'identifiant de corrélation (contrat §1). */
     static final int MAX_ID_LENGTH = 64;
 
-    private final ToolExecutor tools;
+    private final ToolScopes scopes;
     private final List<String> capabilities;
     private final ShellElection shell;
     private final FrameSender sender;
@@ -54,7 +54,7 @@ public final class ToolDispatcher implements AutoCloseable {
 
     /** Aiguilleur annonçant les seuls outils fichiers (compatibilité : tests et appels historiques). */
     public ToolDispatcher(ToolExecutor tools, FrameSender sender, Console console) {
-        this(tools, List.of("files"), null, sender, console);
+        this(ToolScopes.fixed(tools), List.of("files"), null, sender, console);
     }
 
     /**
@@ -64,9 +64,9 @@ public final class ToolDispatcher implements AutoCloseable {
      *                     {@code null} quand l'aiguilleur est monté sans élection (tests, chemins
      *                     historiques) — le champ est alors absent, comme chez un runner ancien
      */
-    public ToolDispatcher(ToolExecutor tools, List<String> capabilities, ShellElection shell,
+    public ToolDispatcher(ToolScopes scopes, List<String> capabilities, ShellElection shell,
             FrameSender sender, Console console) {
-        this.tools = tools;
+        this.scopes = scopes;
         this.capabilities = List.copyOf(capabilities);
         this.shell = shell;
         this.sender = sender;
@@ -126,15 +126,32 @@ public final class ToolDispatcher implements AutoCloseable {
             timeoutMs = DEFAULT_TIMEOUT_MS;
         }
         JsonNode input = frame.get("input");
+        // Le PROJET du tour (F-48 / SF-48-02). Un champ absent vaut la racine du poste : c'est le
+        // cas d'un poste qui n'héberge qu'un projet, et celui d'une gateway antérieure à F-48.
+        String project = frame.path("project").isTextual() ? frame.path("project").asText() : "";
 
         Call call = new Call(id);
         if (inFlight.putIfAbsent(id, call) != null) {
             // Identifiant déjà en vol : le contrat garantit son unicité, on ne rejoue rien.
             return;
         }
+
+        // Le confinement est résolu AVANT toute exécution, et un projet inexploitable termine
+        // l'appel ici : rien ne doit tourner tant qu'on ne sait pas dans quel dossier le borner.
+        ToolExecutor tools;
+        try {
+            tools = scopes.forProject(project);
+        } catch (ToolException e) {
+            complete(call, ToolOutcome.error(e.code(), e.getMessage()));
+            return;
+        } catch (RuntimeException e) {
+            complete(call, ToolOutcome.error("internal", "Projet inexploitable sur cette machine."));
+            return;
+        }
+
         int effectiveTimeoutMs = timeoutMs;
         try {
-            call.worker = workers.submit(() -> run(call, tool, input, effectiveTimeoutMs));
+            call.worker = workers.submit(() -> run(call, tools, tool, input, effectiveTimeoutMs));
             call.deadline = clock.schedule(() -> onTimeout(call), timeoutMs, TimeUnit.MILLISECONDS);
         } catch (RejectedExecutionException e) {
             complete(call, ToolOutcome.error("internal", "Runner en cours d'arrêt."));
@@ -188,7 +205,7 @@ public final class ToolDispatcher implements AutoCloseable {
         clock.shutdownNow();
     }
 
-    private void run(Call call, String tool, JsonNode input, int timeoutMs) {
+    private void run(Call call, ToolExecutor tools, String tool, JsonNode input, int timeoutMs) {
         ToolOutcome outcome;
         try {
             outcome = tools.execute(tool, input, new CallContext(call, timeoutMs));

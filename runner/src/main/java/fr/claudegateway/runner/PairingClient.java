@@ -44,6 +44,16 @@ public final class PairingClient {
      */
     public StoredToken pair(String pairUrl, String code, String label, String rootName,
             boolean elevated) {
+        return pair(pairUrl, code, label, rootName, null, elevated);
+    }
+
+    /**
+     * Variante qui declare en plus le <b>systeme</b> de la machine (F-48 / SF-48-01). La gateway le
+     * range sur le POSTE : il decrit une machine, pas un projet, et il sert a la reconnaitre dans la
+     * liste de ses postes.
+     */
+    public StoredToken pair(String pairUrl, String code, String label, String rootName, String os,
+            boolean elevated) {
         ObjectNode body = mapper.createObjectNode();
         body.put("code", code);
         if (label != null && !label.isBlank()) {
@@ -51,6 +61,9 @@ public final class PairingClient {
         }
         if (rootName != null && !rootName.isBlank()) {
             body.put("rootName", rootName);
+        }
+        if (os != null && !os.isBlank()) {
+            body.put("os", os);
         }
         if (elevated) {
             body.put("elevated", true);

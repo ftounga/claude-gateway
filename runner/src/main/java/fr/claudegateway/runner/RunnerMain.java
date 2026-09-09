@@ -44,10 +44,12 @@ public final class RunnerMain {
             config = RunnerConfig.resolve(args, env, memory);
         } catch (RunnerConfig.ConfigException e) {
             console.error(e.getMessage());
-            console.info("Usage : java -jar claude-runner.jar --gateway <url> --workspace <racine> "
+            console.info("Usage : java -jar claude-runner.jar --gateway <url> --root <racine du poste> "
                     + "--code <code-appairage> [--label <libellé>] [--heartbeat-interval <s>] "
                     + "[--no-bash] [--transport auto|websocket|polling]");
-            console.info("Reprise : java -jar claude-runner.jar — sans argument, depuis un projet "
+            console.info("La racine du poste est le dossier sous lequel vivent vos projets "
+                    + "(par exemple ~/dev) : un seul appairage y suffit pour tous.");
+            console.info("Reprise : java -jar claude-runner.jar — sans argument, depuis un poste "
                     + "déjà appairé.");
             return 2;
         }
@@ -57,7 +59,8 @@ public final class RunnerMain {
             console.info(ResumeMessages.resumedFrom(config.resumedFrom()));
         }
         console.info("Gateway   : " + config.gatewayBaseUrl());
-        console.info("Workspace : " + config.workspaceRoot());
+        console.info("Poste     : " + config.hostRoot() + " (racine — chaque tour est confiné au "
+                + "dossier du projet qu'il vise)");
         // Le mode est dit dans les DEUX sens (F-38 / SF-38-19, D4) : le défaut d'avant venait de ce
         // qu'un runner restreint ne se signalait pas — on le découvrait au premier refus. Et il est
         // dit ICI, une seule fois (SF-38-26, D1) : il vient de la configuration, il est connu avant
@@ -94,7 +97,7 @@ public final class RunnerMain {
         }
         console.info("Réseau    : gateway joignable");
 
-        TokenStore tokenStore = new TokenStore(config.workspaceRoot(), home);
+        TokenStore tokenStore = new TokenStore(config.hostRoot(), home);
 
         String token;
         try {
@@ -235,7 +238,9 @@ public final class RunnerMain {
         console.info("Appairage auprès de " + config.pairUrl() + "…");
         PairingClient client = new PairingClient(httpClient);
         StoredToken token = client.pair(config.pairUrl(), config.pairingCode(), config.label(),
-                workspaceFolderName(config), Privileges.detect().elevated());
+                workspaceFolderName(config),
+                System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT),
+                Privileges.detect().elevated());
         tokenStore.save(token);
         console.info("Appairage réussi — jeton stocké dans " + tokenStore.tokenFile() + ".");
         rememberSession(config, home);
@@ -251,8 +256,8 @@ public final class RunnerMain {
      */
     private void rememberSession(RunnerConfig config, Path home) {
         SessionMemory memory = new SessionMemory(config.gatewayBaseUrl(),
-                config.workspaceRoot().toString(), java.time.OffsetDateTime.now());
-        java.util.List<Path> written = SessionMemory.remember(memory, config.workspaceRoot(), home);
+                config.hostRoot().toString(), java.time.OffsetDateTime.now());
+        java.util.List<Path> written = SessionMemory.remember(memory, config.hostRoot(), home);
         if (written.isEmpty()) {
             console.warn("Impossible de mémoriser la configuration de reprise : le prochain "
                     + "lancement redemandera --gateway et --workspace.");
@@ -273,11 +278,11 @@ public final class RunnerMain {
     }
 
     /**
-     * Nom du dossier de travail — le <b>dernier segment</b>, jamais le chemin absolu (SF-38-15).
+     * Nom de la racine du POSTE — le <b>dernier segment</b>, jamais le chemin absolu (SF-38-15).
      * C'est ce que la gateway affichera ; elle n'a besoin de rien de plus.
      */
     private static String workspaceFolderName(RunnerConfig config) {
-        java.nio.file.Path name = config.workspaceRoot().getFileName();
+        java.nio.file.Path name = config.hostRoot().getFileName();
         return name == null ? null : name.toString();
     }
 }

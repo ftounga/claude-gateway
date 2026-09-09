@@ -11,14 +11,20 @@ import java.util.Map;
  * Configuration du runner (F-38 / SF-38-03), résolue à partir des arguments CLI et de
  * l'environnement. Priorité : <b>argument CLI &gt; variable d'environnement</b>.
  *
- * <p>Arguments : {@code --gateway <url>}, {@code --workspace <racine>}, {@code --code <code>},
+ * <p>Arguments : {@code --gateway <url>}, {@code --root <racine du poste>}, {@code --code <code>},
  * {@code --label <libellé>}, {@code --heartbeat-interval <secondes>},
  * {@code --transport auto|websocket|polling}. Équivalents d'environnement :
- * {@code CLAUDE_RUNNER_GATEWAY}, {@code CLAUDE_RUNNER_WORKSPACE}, {@code CLAUDE_RUNNER_CODE},
+ * {@code CLAUDE_RUNNER_GATEWAY}, {@code CLAUDE_RUNNER_ROOT}, {@code CLAUDE_RUNNER_CODE},
  * {@code CLAUDE_RUNNER_LABEL}, {@code CLAUDE_RUNNER_HEARTBEAT_INTERVAL},
  * {@code CLAUDE_RUNNER_TRANSPORT}.</p>
  *
- * <p>Cette classe ne fait aucune I/O réseau : elle valide le format et l'existence du workspace, et
+ * <p><b>La racine est celle du poste</b> depuis F-48 / SF-48-02 : le dossier sous lequel vivent les
+ * projets, et non plus un projet. {@code --workspace} (et {@code CLAUDE_RUNNER_WORKSPACE}) restent
+ * acceptés et désignent la même chose — une ligne de commande valide hier ne doit pas échouer
+ * demain. Le confinement d'un tour, lui, est plus étroit que cette racine : il se referme sur le
+ * sous-dossier que la gateway désigne à chaque appel ({@link ProjectScopes}).</p>
+ *
+ * <p>Cette classe ne fait aucune I/O réseau : elle valide le format et l'existence de la racine, et
  * dérive l'URI WSS. Elle est intégralement testable unitairement.</p>
  */
 public final class RunnerConfig {
@@ -66,7 +72,13 @@ public final class RunnerConfig {
         Map<String, String> cli = parseArgs(args);
 
         String gateway = pick(cli, "gateway", env, "CLAUDE_RUNNER_GATEWAY");
-        String workspace = pick(cli, "workspace", env, "CLAUDE_RUNNER_WORKSPACE");
+        // La racine est celle du POSTE depuis F-48 / SF-48-02 : une machine, un runner, et les
+        // projets dessous. `--root` le dit ; `--workspace` reste accepté et désigne la même chose —
+        // une ligne de commande valide hier ne doit pas échouer demain.
+        String workspace = pick(cli, "root", env, "CLAUDE_RUNNER_ROOT");
+        if (workspace == null) {
+            workspace = pick(cli, "workspace", env, "CLAUDE_RUNNER_WORKSPACE");
+        }
         String code = pick(cli, "code", env, "CLAUDE_RUNNER_CODE");
         String label = pick(cli, "label", env, "CLAUDE_RUNNER_LABEL");
         String heartbeat = pick(cli, "heartbeat-interval", env, "CLAUDE_RUNNER_HEARTBEAT_INTERVAL");
@@ -102,16 +114,17 @@ public final class RunnerConfig {
         String normalizedGateway = normalizeGateway(gateway);
 
         if (workspace == null) {
-            throw new ConfigException("--workspace est requis (racine du projet à exposer)"
+            throw new ConfigException("--root est requis (racine du poste : le dossier sous lequel "
+                    + "vivent vos projets, par exemple ~/dev)"
                     + ResumeMessages.noMemoryHint());
         }
         Path root = Path.of(workspace).toAbsolutePath().normalize();
         if (!Files.exists(root)) {
-            throw new ConfigException("--workspace n'existe pas : " + root
+            throw new ConfigException("--root n'existe pas : " + root
                     + swallowedSeparatorsHint(workspace));
         }
         if (!Files.isDirectory(root)) {
-            throw new ConfigException("--workspace n'est pas un dossier : " + root);
+            throw new ConfigException("--root n'est pas un dossier : " + root);
         }
 
         String normalizedCode = (code == null || code.isBlank()) ? null : code.trim().toUpperCase();
@@ -181,7 +194,12 @@ public final class RunnerConfig {
         return gatewayBaseUrl;
     }
 
-    public Path workspaceRoot() {
+    /**
+     * Racine du <b>poste</b> (F-48 / SF-48-02) : le dossier sous lequel vivent les projets. Le
+     * confinement d'un tour est plus étroit — il se referme sur le sous-dossier que la gateway
+     * désigne à chaque appel ({@link ProjectScopes}).
+     */
+    public Path hostRoot() {
         return workspaceRoot;
     }
 

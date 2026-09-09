@@ -48,11 +48,14 @@ class ToolStackAnnouncementTest {
 
     @Test
     void mounting_the_stack_still_announces_root_shell_and_exclusions() {
-        // Ces trois lignes restent, et restent répétées à chaque transport : elles attestent que le
-        // repli long-polling monte les mêmes gardes que la socket (D1).
+        // Ces lignes restent, et restent répétées à chaque transport : elles attestent que le repli
+        // long-polling monte les mêmes gardes que la socket (D1).
         String announced = String.join("\n", mount(false));
 
-        assertTrue(announced.contains("Outils fichiers actifs"), announced);
+        // Depuis F-48 / SF-48-02, la racine annoncée est celle du POSTE, et le montage dit
+        // explicitement que le confinement d'un tour est plus étroit qu'elle.
+        assertTrue(announced.contains("Racine du poste :"), announced);
+        assertTrue(announced.contains("confiné au dossier du projet"), announced);
         assertTrue(announced.contains("Interpréteur :"), announced);
         assertTrue(announced.contains("Exclusions :"), announced);
     }

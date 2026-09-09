@@ -240,7 +240,7 @@ class ToolDispatcherTest {
     void annonceLaCapaciteBashQuandLaMachineLAutorise() throws Exception {
         PathGuard guard = new PathGuard(root);
         ToolRouter tools = new ToolRouter(new FileTools(guard), new BashTool(guard, true, ShellElection.elect()));
-        try (ToolDispatcher withBash = new ToolDispatcher(tools, tools.capabilities(), ShellElection.elect(), sender,
+        try (ToolDispatcher withBash = new ToolDispatcher(ToolScopes.fixed(tools), tools.capabilities(), ShellElection.elect(), sender,
                 new Console())) {
             JsonNode ready = MAPPER.readTree(withBash.readyFrame("1.2.3"));
 
@@ -254,7 +254,7 @@ class ToolDispatcherTest {
     void declareLeGenreDInterpreteurEluDansLaTrameReady() throws Exception {
         PathGuard guard = new PathGuard(root);
         ToolRouter tools = new ToolRouter(new FileTools(guard), new BashTool(guard, true, ShellElection.elect()));
-        try (ToolDispatcher withBash = new ToolDispatcher(tools, tools.capabilities(), ShellElection.elect(), sender,
+        try (ToolDispatcher withBash = new ToolDispatcher(ToolScopes.fixed(tools), tools.capabilities(), ShellElection.elect(), sender,
                 new Console())) {
             JsonNode ready = MAPPER.readTree(withBash.readyFrame("1.2.3"));
 
@@ -280,7 +280,7 @@ class ToolDispatcherTest {
     void diffuseLaSortieDeBashAvantSaTrameTerminale() throws Exception {
         PathGuard guard = new PathGuard(root);
         ToolRouter tools = new ToolRouter(new FileTools(guard), new BashTool(guard, true, ShellElection.elect()));
-        try (ToolDispatcher withBash = new ToolDispatcher(tools, tools.capabilities(), ShellElection.elect(), sender,
+        try (ToolDispatcher withBash = new ToolDispatcher(ToolScopes.fixed(tools), tools.capabilities(), ShellElection.elect(), sender,
                 new Console())) {
             withBash.onToolCall(toolCall("toolu_bash", "bash",
                     input("command", "echo un; echo deux 1>&2"), 30_000));
@@ -309,7 +309,7 @@ class ToolDispatcherTest {
     void uneAnnulationDeBashTueLeProcessusEtNeProduitQuUneTrameTerminale() throws Exception {
         PathGuard guard = new PathGuard(root);
         ToolRouter tools = new ToolRouter(new FileTools(guard), new BashTool(guard, true, ShellElection.elect()));
-        try (ToolDispatcher withBash = new ToolDispatcher(tools, tools.capabilities(), ShellElection.elect(), sender,
+        try (ToolDispatcher withBash = new ToolDispatcher(ToolScopes.fixed(tools), tools.capabilities(), ShellElection.elect(), sender,
                 new Console())) {
             withBash.onToolCall(toolCall("toolu_kill", "bash", input("command", "sleep 30"), 30_000));
             Thread.sleep(300);
@@ -343,6 +343,69 @@ class ToolDispatcherTest {
         } finally {
             slow.close();
         }
+    }
+
+    // ------------------------- le projet du tour (F-48 / SF-48-02) -------------------------
+
+    /**
+     * Le champ {@code project} de la trame borne l'appel. C'est le point où le régime de confinement
+     * retenu par le cadrage devient effectif : la gateway <i>désigne</i> un sous-dossier, et c'est ce
+     * processus qui <i>referme</i> la garde dessus.
+     */
+    @Test
+    void leProjetDeLaTrameBorneLAppel() throws Exception {
+        Files.createDirectories(root.resolve("projet-a"));
+        Files.writeString(root.resolve("projet-a/a.txt"), "A");
+
+        try (ToolDispatcher scoped = scopedDispatcher()) {
+            ObjectNode call = toolCall("toolu_p1", "read_file", input("path", "a.txt"), 30_000);
+            call.put("project", "projet-a");
+            scoped.onToolCall(call);
+
+            JsonNode result = nextFrame();
+            assertTrue(result.path("ok").asBoolean());
+            assertEquals("A", result.path("content").asText());
+        }
+    }
+
+    @Test
+    void unProjetNeLitPasSonVoisinMemeSousLaMemeRacine() throws Exception {
+        Files.createDirectories(root.resolve("projet-a"));
+        Files.createDirectories(root.resolve("projet-b"));
+        Files.writeString(root.resolve("projet-b/secret.txt"), "B");
+
+        try (ToolDispatcher scoped = scopedDispatcher()) {
+            ObjectNode call = toolCall("toolu_p2", "read_file",
+                    input("path", "../projet-b/secret.txt"), 30_000);
+            call.put("project", "projet-a");
+            scoped.onToolCall(call);
+
+            JsonNode result = nextFrame();
+            assertFalse(result.path("ok").asBoolean());
+            assertEquals("path_outside_root", result.path("error").path("code").asText());
+        }
+    }
+
+    @Test
+    void unProjetInexploitableTermineLAppelSansRienExecuter() throws Exception {
+        try (ToolDispatcher scoped = scopedDispatcher()) {
+            ObjectNode call = toolCall("toolu_p3", "read_file", input("path", "a.txt"), 30_000);
+            call.put("project", "projet-fantome");
+            scoped.onToolCall(call);
+
+            JsonNode result = nextFrame();
+            assertFalse(result.path("ok").asBoolean());
+            assertEquals("not_found", result.path("error").path("code").asText());
+            assertNull(frames.poll(500, TimeUnit.MILLISECONDS),
+                    "Exactement une trame terminale, et aucune exécution");
+        }
+    }
+
+    /** Aiguilleur monté sur la racine du POSTE, avec confinement par projet. */
+    private ToolDispatcher scopedDispatcher() {
+        ProjectScopes scopes = new ProjectScopes(root, false, ShellElection.elect(), new Console());
+        return new ToolDispatcher(scopes, scopes.capabilities(), ShellElection.elect(), sender,
+                new Console());
     }
 
     /** Dispatcher branché sur un outil volontairement lent, pour tester annulation et timeout. */
