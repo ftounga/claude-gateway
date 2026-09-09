@@ -7,6 +7,7 @@ import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AuthService } from '../../core/services/auth.service';
+import { HelpChatWidgetComponent } from '../../help/help-chat-widget/help-chat-widget.component';
 import { QuotaAlertBannerComponent } from '../quota-alert-banner/quota-alert-banner.component';
 
 /**
@@ -18,6 +19,10 @@ import { QuotaAlertBannerComponent } from '../quota-alert-banner/quota-alert-ban
  * facturation, parce qu'un utilisateur qui approche de son quota est en train de travailler dans le
  * chat ou l'Atelier. Elle ne rend rien tant qu'aucune alerte n'est levée — aucune route, aucun
  * guard, aucune redirection n'est ajoutée.</p>
+ *
+ * <p>Porte enfin la bulle d'aide produit (F-54). Elle est ici parce que la coquille <b>est</b> la
+ * zone authentifiée : la réserver aux comptes connectés devient structurel, au lieu d'un test
+ * d'authentification recopié dans un gabarit. Aucune route n'est ajoutée ni modifiée.</p>
  */
 @Component({
   selector: 'app-shell',
@@ -31,6 +36,7 @@ import { QuotaAlertBannerComponent } from '../quota-alert-banner/quota-alert-ban
     MatMenuModule,
     MatTooltipModule,
     QuotaAlertBannerComponent,
+    HelpChatWidgetComponent,
   ],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',

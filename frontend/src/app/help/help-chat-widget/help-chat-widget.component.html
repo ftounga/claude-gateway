@@ -1,0 +1,100 @@
+<div class="help-widget">
+  @if (panelOpen()) {
+    <section class="help-panel mat-elevation-z4" aria-label="Aide produit">
+      <header class="help-panel__header">
+        <mat-icon class="help-panel__header-icon">support_agent</mat-icon>
+        <span class="help-panel__title">Aide</span>
+        <button
+          mat-icon-button
+          type="button"
+          class="help-panel__close"
+          aria-label="Fermer l'aide"
+          (click)="closePanel()"
+        >
+          <mat-icon>close</mat-icon>
+        </button>
+      </header>
+
+      <p class="help-panel__scope">
+        Je réponds sur l'utilisation du produit, à partir de sa documentation. Je ne vois ni vos
+        projets, ni vos fichiers.
+      </p>
+
+      <div class="help-panel__suggestions">
+        @for (suggestion of suggestions; track suggestion) {
+          <button
+            mat-stroked-button
+            type="button"
+            class="help-panel__suggestion"
+            [disabled]="loading()"
+            (click)="askSuggestion(suggestion)"
+          >
+            {{ suggestion }}
+          </button>
+        }
+      </div>
+
+      <div class="help-panel__content">
+        @if (loading()) {
+          <p class="help-panel__loading">
+            <mat-spinner diameter="20"></mat-spinner>
+            <span>Je cherche dans la documentation…</span>
+          </p>
+        }
+
+        @if (answer(); as text) {
+          <div class="help-panel__answer" [innerHTML]="text | markdown"></div>
+        }
+
+        @if (errorMessage(); as message) {
+          <p class="help-panel__error">
+            <mat-icon>error_outline</mat-icon>
+            <span>{{ message }}</span>
+          </p>
+        }
+      </div>
+
+      <form class="help-panel__form" (ngSubmit)="send()">
+        <mat-form-field appearance="outline" class="help-panel__field">
+          <mat-label>Votre question</mat-label>
+          <textarea
+            matInput
+            rows="2"
+            name="question"
+            [ngModel]="question()"
+            (ngModelChange)="question.set($event)"
+            [disabled]="loading()"
+            (keydown.enter)="$event.preventDefault(); send()"
+          ></textarea>
+          <mat-hint align="end" [class.help-panel__counter--over]="tooLong()">
+            {{ question().length }}/{{ maxLength }}
+          </mat-hint>
+        </mat-form-field>
+
+        <button
+          mat-flat-button
+          color="primary"
+          type="submit"
+          class="help-panel__send"
+          aria-label="Envoyer la question"
+          matTooltip="Envoyer"
+          [disabled]="!canSend()"
+        >
+          <mat-icon>send</mat-icon>
+        </button>
+      </form>
+    </section>
+  }
+
+  <button
+    mat-fab
+    color="primary"
+    type="button"
+    class="help-widget__bubble"
+    [attr.aria-label]="panelOpen() ? 'Fermer l\'aide' : 'Ouvrir l\'aide'"
+    [attr.aria-expanded]="panelOpen()"
+    (click)="togglePanel()"
+  >
+    <mat-icon>{{ panelOpen() ? 'close' : 'help_outline' }}</mat-icon>
+  </button>
+</div>
