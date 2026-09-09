@@ -42,12 +42,15 @@ class AtelierChatServiceSystemPromptTest {
     @Mock private fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher;
     @Mock private fr.claudegateway.runner.exec.RunnerConfirmationGate confirmationGate;
     @Mock private fr.claudegateway.runner.audit.RunnerAuditService runnerAuditService;
+    @Mock private fr.claudegateway.runner.host.RunnerHostService runnerHostService;
 
     private StubAiAgentProvider agentProvider;
     private AtelierChatService service;
 
     private final UUID userId = UUID.randomUUID();
     private final UUID workspaceId = UUID.randomUUID();
+    /** Poste du projet (F-48 / SF-48-01) : c'est lui qui porte l'interpréteur élu. */
+    private final UUID hostId = UUID.randomUUID();
 
     private static final String SKILL_BODY = """
             ---
@@ -69,6 +72,7 @@ class AtelierChatServiceSystemPromptTest {
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
+                runnerHostService,
                 new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null, true));
 
         Workspace workspace = new Workspace();
@@ -186,7 +190,8 @@ class AtelierChatServiceSystemPromptTest {
         hosted.setId(workspaceId);
         hosted.setUserId(userId);
         hosted.setSource(WorkspaceSource.ARCHIVE);
-        hosted.setRunnerShell("cmd");
+        // Un interpréteur déclaré vit désormais sur le POSTE (F-48 / SF-48-01) ; ce projet
+        // hébergé n'en a aucun, et la consigne garde son texte POSIX.
         when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(hosted);
         when(workspaceService.tree(userId, workspaceId)).thenReturn(List.of());
         lenient().when(workspaceService.readFile(userId, workspaceId, "CLAUDE.md"))
@@ -205,7 +210,8 @@ class AtelierChatServiceSystemPromptTest {
         runner.setUserId(userId);
         runner.setSource(WorkspaceSource.ARCHIVE);
         runner.setExecutionTarget(WorkspaceExecutionTarget.RUNNER);
-        runner.setRunnerShell(declaredShell);
+        runner.setHostId(hostId);
+        when(runnerHostService.declaredShell(hostId)).thenReturn(declaredShell);
         when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(runner);
         when(runnerToolGateway.listFiles(any(), any())).thenReturn(runnerOk(""));
         when(runnerToolGateway.readFile(any(), any(), any())).thenReturn(runnerOk("conventions"));

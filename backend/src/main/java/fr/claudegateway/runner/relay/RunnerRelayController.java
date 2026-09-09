@@ -74,15 +74,15 @@ public class RunnerRelayController {
         if (request == null || !request.isValid()) {
             return ResponseEntity.badRequest().build();
         }
-        log.debug("Relais entrant (origine={}, workspace={}, appel={}, outil={})", origin,
-                request.workspaceId(), request.callId(), request.tool());
+        log.debug("Relais entrant (origine={}, poste={}, appel={}, outil={})", origin,
+                request.hostId(), request.callId(), request.tool());
 
         StreamingResponseBody body = output -> {
             NdjsonSink sink = new NdjsonSink(output);
-            RunnerCallResult result = dispatcher.call(request.workspaceId(), request.callId(),
+            RunnerCallResult result = dispatcher.call(request.target(), request.callId(),
                     request.tool(), request.input(), request.timeoutMs(), sink::writeChunk);
             sink.writeResult(result);
-            log.debug("Relais servi (workspace={}, appel={}, ok={}, code={})", request.workspaceId(),
+            log.debug("Relais servi (poste={}, appel={}, ok={}, code={})", request.hostId(),
                     request.callId(), result.ok(), result.errorCode());
         };
         return ResponseEntity.ok()

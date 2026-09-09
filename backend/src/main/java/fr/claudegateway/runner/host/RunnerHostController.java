@@ -1,0 +1,184 @@
+package fr.claudegateway.runner.host;
+
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import fr.claudegateway.atelier.AtelierAccessService;
+import fr.claudegateway.atelier.WorkspaceService;
+import fr.claudegateway.auth.CurrentUser;
+import fr.claudegateway.runner.RunnerKillSwitchService;
+import fr.claudegateway.runner.RunnerPairingCodeRepository;
+import fr.claudegateway.runner.RunnerPairingService;
+import fr.claudegateway.runner.RunnerPairingService.PairingCode;
+import fr.claudegateway.runner.RunnerStatusService;
+import fr.claudegateway.runner.RunnerTokenRepository;
+import fr.claudegateway.runner.RunnerTokenService;
+import fr.claudegateway.runner.dto.PairingCodeResponse;
+import fr.claudegateway.runner.dto.RunnerKillResponse;
+import fr.claudegateway.runner.dto.RunnerStatusResponse;
+import fr.claudegateway.runner.dto.RunnerTokenResponse;
+import fr.claudegateway.runner.host.dto.RunnerHostRequest;
+import fr.claudegateway.runner.host.dto.RunnerHostResponse;
+import jakarta.validation.Valid;
+
+/**
+ * Gestion des <b>postes</b> d'un utilisateur (F-48 / SF-48-01) : créer une machine, l'appairer
+ * <b>une seule fois</b>, voir son état, révoquer ses jetons, la couper.
+ *
+ * <p>Ces endpoints sont <b>JWT</b> (chaîne principale) et gardés par l'accès Atelier. Ils vivent
+ * sous {@code /runner-hosts/**} — volontairement <b>hors</b> du préfixe {@code /runner/**}, qui est
+ * la chaîne du protocole runner et refuse tout ce qui n'y est pas explicitement listé :
+ * un jeton runner n'y donne aucun droit, et un JWT utilisateur n'ouvre aucun canal d'exécution.</p>
+ *
+ * <p>L'identité vient du {@link CurrentUser}, jamais d'un paramètre.</p>
+ */
+@RestController
+@RequestMapping("/runner-hosts")
+public class RunnerHostController {
+
+    private final RunnerHostService hostService;
+    private final RunnerPairingService pairingService;
+    private final RunnerTokenService tokenService;
+    private final RunnerStatusService statusService;
+    private final RunnerKillSwitchService killSwitchService;
+    private final RunnerTokenRepository tokenRepository;
+    private final RunnerPairingCodeRepository pairingCodes;
+    private final WorkspaceService workspaceService;
+    private final AtelierAccessService atelierAccess;
+    private final CurrentUser currentUser;
+
+    public RunnerHostController(RunnerHostService hostService, RunnerPairingService pairingService,
+            RunnerTokenService tokenService, RunnerStatusService statusService,
+            RunnerKillSwitchService killSwitchService, RunnerTokenRepository tokenRepository,
+            RunnerPairingCodeRepository pairingCodes, WorkspaceService workspaceService,
+            AtelierAccessService atelierAccess, CurrentUser currentUser) {
+        this.hostService = hostService;
+        this.pairingService = pairingService;
+        this.tokenService = tokenService;
+        this.statusService = statusService;
+        this.killSwitchService = killSwitchService;
+        this.tokenRepository = tokenRepository;
+        this.pairingCodes = pairingCodes;
+        this.workspaceService = workspaceService;
+        this.atelierAccess = atelierAccess;
+        this.currentUser = currentUser;
+    }
+
+    /** Crée un poste au nom libre. */
+    @PostMapping
+    public RunnerHostResponse create(@Valid @RequestBody RunnerHostRequest request) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        RunnerHost host = hostService.create(userId, request.name());
+        return RunnerHostResponse.from(host, false);
+    }
+
+    /** Postes de l'utilisateur, avec leur état de connexion. */
+    @GetMapping
+    public List<RunnerHostResponse> list() {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        return hostService.list(userId).stream()
+                .map(host -> RunnerHostResponse.from(host,
+                        statusService.statusOf(userId, host).connected()))
+                .toList();
+    }
+
+    /** Détail d'un poste possédé. */
+    @GetMapping("/{hostId}")
+    public RunnerHostResponse get(@PathVariable UUID hostId) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        RunnerHost host = hostService.requireOwned(userId, hostId);
+        return RunnerHostResponse.from(host, statusService.statusOf(userId, host).connected());
+    }
+
+    /** Renomme un poste. */
+    @PutMapping("/{hostId}")
+    public RunnerHostResponse rename(@PathVariable UUID hostId,
+            @Valid @RequestBody RunnerHostRequest request) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        RunnerHost host = hostService.rename(userId, hostId, request.name());
+        return RunnerHostResponse.from(host, statusService.statusOf(userId, host).connected());
+    }
+
+    /**
+     * Supprime un poste : coupe sa liaison, efface ses jetons et ses codes, <b>détache</b> ses
+     * projets. Les projets survivent — ils ne sont pas les fichiers, ils sont la conversation.
+     */
+    @DeleteMapping("/{hostId}")
+    public ResponseEntity<Void> delete(@PathVariable UUID hostId) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        hostService.requireOwned(userId, hostId);
+        killSwitchService.kill(userId, hostId);
+        workspaceService.detachAllFromHost(userId, hostId);
+        tokenRepository.deleteByHostId(hostId);
+        pairingCodes.deleteByHostId(hostId);
+        hostService.delete(userId, hostId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Génère le code d'appairage du poste — un seul suffit pour toute la machine. */
+    @PostMapping("/{hostId}/pairing-code")
+    public PairingCodeResponse createPairingCode(@PathVariable UUID hostId) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        PairingCode code = pairingService.createPairingCode(userId, hostId);
+        return new PairingCodeResponse(code.code(), code.expiresAt());
+    }
+
+    /** Jetons runner de ce poste (métadonnées seulement, jamais la valeur). */
+    @GetMapping("/{hostId}/tokens")
+    public List<RunnerTokenResponse> listTokens(@PathVariable UUID hostId) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        return tokenService.list(userId, hostId).stream()
+                .map(RunnerTokenResponse::from)
+                .toList();
+    }
+
+    /** État « runner connecté / déconnecté » du poste. */
+    @GetMapping("/{hostId}/status")
+    public RunnerStatusResponse status(@PathVariable UUID hostId) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        return RunnerStatusResponse.from(statusService.hostStatus(userId, hostId));
+    }
+
+    /**
+     * Révoque un jeton runner <b>et coupe sa liaison sur-le-champ</b> (F-38 / SF-38-08) : sans cela,
+     * la socket ouverte sous ce jeton continuait de servir les appels. Idempotent.
+     */
+    @DeleteMapping("/{hostId}/tokens/{tokenId}")
+    public ResponseEntity<Void> revokeToken(@PathVariable UUID hostId, @PathVariable UUID tokenId) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        killSwitchService.revokeToken(userId, hostId, tokenId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * <b>Coupe-circuit</b> (F-38 / SF-38-08) : révoque tous les jetons du poste, coupe la liaison en
+     * cours et ramène <b>tous ses projets</b> à la cible {@code SANDBOX}. Idempotent — couper une
+     * liaison déjà coupée n'est pas une erreur.
+     */
+    @PostMapping("/{hostId}/kill")
+    public RunnerKillResponse kill(@PathVariable UUID hostId) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        hostService.requireOwned(userId, hostId);
+        return RunnerKillResponse.from(killSwitchService.kill(userId, hostId));
+    }
+}

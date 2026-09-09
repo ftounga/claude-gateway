@@ -25,7 +25,9 @@ import fr.claudegateway.runner.audit.RunnerAuditOutcome;
 import fr.claudegateway.runner.audit.RunnerAuditService;
 import fr.claudegateway.runner.channel.RunnerCallResult;
 import fr.claudegateway.runner.channel.RunnerErrorCodes;
+import fr.claudegateway.runner.channel.RunnerTarget;
 import fr.claudegateway.runner.exec.RunnerConfirmationGate;
+import fr.claudegateway.runner.exec.RunnerTargets;
 import fr.claudegateway.runner.exec.RunnerToolGateway;
 import fr.claudegateway.runner.relay.RelayInterruptTarget;
 import fr.claudegateway.runner.relay.RunnerRelayBroadcaster;
@@ -188,6 +190,8 @@ public class AtelierChatService implements RelayInterruptTarget {
      * Inerte tant que le relais n'est pas configuré : le chemin mono-pod reste le chemin par défaut.
      */
     private final RunnerRelayBroadcaster relayBroadcaster;
+    /** Postes (F-48 / SF-48-01) : l'interpréteur élu est une propriété de la MACHINE, pas du projet. */
+    private final fr.claudegateway.runner.host.RunnerHostService runnerHostService;
 
     /**
      * Tours pour lesquels une interruption a été demandée (F-38 / SF-38-07, même geste que F-32).
@@ -235,6 +239,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             RunnerConfirmationGate confirmationGate,
             RunnerAuditService runnerAuditService,
             RunnerRelayBroadcaster relayBroadcaster,
+            fr.claudegateway.runner.host.RunnerHostService runnerHostService,
             AtelierProperties atelierProperties) {
         this.workspaceService = workspaceService;
         this.messageRepository = messageRepository;
@@ -247,6 +252,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         this.confirmationGate = confirmationGate;
         this.runnerAuditService = runnerAuditService;
         this.relayBroadcaster = relayBroadcaster;
+        this.runnerHostService = runnerHostService;
         this.maxIterations = atelierProperties.maxIterations();
         this.maxTurnTokens = atelierProperties.maxTurnTokens();
         this.maxDelegations = atelierProperties.maxDelegations();
@@ -927,6 +933,8 @@ public class AtelierChatService implements RelayInterruptTarget {
     private ToolOutcome executeToolOnRunner(UUID userId, Workspace workspace, String callId,
             AgentToolCall call, AtelierProgressListener listener, long deadline) {
         UUID workspaceId = workspace.getId();
+        // Cible d'exécution : le POSTE et le chemin du projet sous sa racine (F-48 / SF-48-01).
+        RunnerTarget runnerTarget = RunnerTargets.of(workspace);
         String tool = call.name();
         String target = auditTarget(call);
         // Deux façons de ne plus être interrompu, l'une bornée au message, l'autre au projet
@@ -938,7 +946,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             if (!decision.decision().allows()) {
                 // Refus AVANT émission (contrat §6) : rien n'est parti sur la machine, et le modèle
                 // reçoit le motif pour proposer autre chose plutôt que de rester bloqué.
-                runnerAuditService.recordDenied(userId, workspaceId, callId, tool, target,
+                runnerAuditService.recordDenied(userId, runnerTarget, callId, tool, target,
                         decision.decision() == RunnerConfirmationGate.Decision.TIMEOUT
                                 ? RunnerAuditOutcome.TIMEOUT
                                 : RunnerAuditOutcome.DENIED);
@@ -947,7 +955,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         RunnerCallResult result;
         try {
-            result = callRunner(workspaceId, callId, call, listener, deadline);
+            result = callRunner(runnerTarget, callId, call, listener, deadline);
         } catch (RuntimeException ex) {
             // Argument manquant ou malformé : rien n'est parti, mais la tentative est tracée — le
             // journal doit dire ce que le modèle a essayé, pas seulement ce qui a abouti.
@@ -957,7 +965,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (result == null) {
             return ToolOutcome.error("Outil inconnu : " + tool);
         }
-        runnerAuditService.recordCall(userId, workspaceId, callId, tool, target, result);
+        runnerAuditService.recordCall(userId, runnerTarget, callId, tool, target, result);
         return runnerOutcome(call, result);
     }
 
@@ -1003,21 +1011,21 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /** Émet l'appel vers le runner ; {@code null} si l'outil demandé n'existe pas. */
-    private RunnerCallResult callRunner(UUID workspaceId, String callId, AgentToolCall call,
+    private RunnerCallResult callRunner(RunnerTarget target, String callId, AgentToolCall call,
             AtelierProgressListener listener, long deadline) {
         JsonNode input = call.input();
         return switch (call.name()) {
-            case "list_files" -> runnerToolGateway.listFiles(workspaceId, callId);
-            case "read_file" -> runnerToolGateway.readFile(workspaceId, callId,
+            case "list_files" -> runnerToolGateway.listFiles(target, callId);
+            case "read_file" -> runnerToolGateway.readFile(target, callId,
                     requiredArg(input, "path"));
-            case "edit_file" -> editFileOnRunner(workspaceId, callId, input);
-            case "write_file" -> runnerToolGateway.writeFile(workspaceId, callId,
+            case "edit_file" -> editFileOnRunner(target, callId, input);
+            case "write_file" -> runnerToolGateway.writeFile(target, callId,
                     requiredArg(input, "path"), input.path("content").asText(""));
-            case "search_files" -> runnerToolGateway.searchFiles(workspaceId, callId,
+            case "search_files" -> runnerToolGateway.searchFiles(target, callId,
                     requiredArg(input, "query"));
             // Le délai est ramené au budget de tour restant : une commande ne doit jamais pouvoir
             // survivre au tour qui l'a lancée.
-            case "bash" -> runnerToolGateway.bash(workspaceId, callId, requiredArg(input, "command"),
+            case "bash" -> runnerToolGateway.bash(target, callId, requiredArg(input, "command"),
                     input.path("cwd").asText(null), deadline - System.currentTimeMillis(),
                     listener::onOutput);
             default -> null;
@@ -1120,11 +1128,11 @@ public class AtelierChatService implements RelayInterruptTarget {
      * fragment puis le réécrire détruirait la fin du fichier, en silence. C'est le seul cas où
      * l'outil refuse ce que le modèle croit possible, et il le dit.</p>
      */
-    private RunnerCallResult editFileOnRunner(UUID workspaceId, String callId, JsonNode input) {
+    private RunnerCallResult editFileOnRunner(RunnerTarget target, String callId, JsonNode input) {
         String path = requiredArg(input, "path");
         // Identifiant propre pour la lecture interne : deux trames ne partagent jamais une clef de
         // corrélation (contrat de messages §1). L'appel visible reste l'écriture.
-        RunnerCallResult read = runnerToolGateway.readFile(workspaceId, UUID.randomUUID().toString(), path);
+        RunnerCallResult read = runnerToolGateway.readFile(target, UUID.randomUUID().toString(), path);
         if (!read.ok()) {
             return read;
         }
@@ -1139,7 +1147,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         } catch (RuntimeException ex) {
             return RunnerCallResult.backendError(RunnerErrorCodes.INVALID_INPUT, ex.getMessage());
         }
-        RunnerCallResult written = runnerToolGateway.writeFile(workspaceId, callId, path, edit.content());
+        RunnerCallResult written = runnerToolGateway.writeFile(target, callId, path, edit.content());
         if (!written.ok()) {
             return written;
         }
@@ -1380,7 +1388,8 @@ public class AtelierChatService implements RelayInterruptTarget {
             // d'explorer, puisque list_files et search_files n'y sont pas déclarés (SF-39-05).
             system.append("Tu es un assistant de développement qui travaille sur le projet de l'utilisateur, ")
                     .append("sur sa machine. ")
-                    .append(RunnerShell.resolve(workspace.getRunnerShell()).explorationGuidance())
+                    .append(RunnerShell.resolve(runnerHostService.declaredShell(workspace.getHostId()))
+                            .explorationGuidance())
                     .append(" Utilise read_file pour lire un fichier que tu vas ")
                     .append("utiliser, et write_file pour l'écrire. Ne fais aucune supposition sur un fichier ")
                     .append("sans l'avoir lu. Après une modification, résume clairement ce que tu as changé.\n\n");
@@ -1436,7 +1445,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             system.append("Ouvre un skill avec read_file au moment où il sert ; ne suppose pas son contenu.\n\n");
         }
         if (workspace.isRunnerTarget()) {
-            runnerAuditService.recordBootstrap(userId, workspace.getId(),
+            runnerAuditService.recordBootstrap(userId, RunnerTargets.of(workspace),
                     UUID.randomUUID().toString(), reads, chars);
         }
         String result = system.toString();
@@ -1506,7 +1515,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         try {
             if (workspace.isRunnerTarget()) {
                 RunnerCallResult result = runnerToolGateway.listFiles(
-                        workspace.getId(), UUID.randomUUID().toString());
+                        RunnerTargets.of(workspace), UUID.randomUUID().toString());
                 return result.ok() ? List.of(result.content().split("\n")) : List.of();
             }
             return workspaceService.tree(userId, workspace.getId());
@@ -1520,7 +1529,7 @@ public class AtelierChatService implements RelayInterruptTarget {
         try {
             if (workspace.isRunnerTarget()) {
                 RunnerCallResult result = runnerToolGateway.readFile(
-                        workspace.getId(), UUID.randomUUID().toString(), path);
+                        RunnerTargets.of(workspace), UUID.randomUUID().toString(), path);
                 return result.ok() ? java.util.Optional.of(result.content()) : java.util.Optional.empty();
             }
             return java.util.Optional.of(workspaceService.readFile(userId, workspace.getId(), path));

@@ -9,6 +9,8 @@ import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.runner.audit.RunnerAuditService;
 import fr.claudegateway.runner.channel.RunnerCallResult;
 import fr.claudegateway.runner.channel.RunnerErrorCodes;
+import fr.claudegateway.runner.channel.RunnerTarget;
+import fr.claudegateway.runner.exec.RunnerTargets;
 import fr.claudegateway.runner.exec.RunnerToolGateway;
 
 /**
@@ -56,8 +58,9 @@ public class RunnerWorkspaceBrowser {
      */
     public List<String> tree(Workspace workspace) {
         String callId = UUID.randomUUID().toString();
-        RunnerCallResult result = gateway.listFiles(workspace.getId(), callId);
-        auditService.recordCall(workspace.getUserId(), workspace.getId(), callId, SCREEN_LIST, null,
+        RunnerTarget target = RunnerTargets.of(workspace);
+        RunnerCallResult result = gateway.listFiles(target, callId);
+        auditService.recordCall(workspace.getUserId(), target, callId, SCREEN_LIST, null,
                 result);
         requireOk(result);
         String content = result.content() == null ? "" : result.content();
@@ -100,8 +103,9 @@ public class RunnerWorkspaceBrowser {
      */
     public String readFile(Workspace workspace, String path) {
         String callId = UUID.randomUUID().toString();
-        RunnerCallResult result = gateway.readFile(workspace.getId(), callId, path);
-        auditService.recordCall(workspace.getUserId(), workspace.getId(), callId, SCREEN_READ, path,
+        RunnerTarget target = RunnerTargets.of(workspace);
+        RunnerCallResult result = gateway.readFile(target, callId, path);
+        auditService.recordCall(workspace.getUserId(), target, callId, SCREEN_READ, path,
                 result);
         requireOk(result);
         return result.truncated()

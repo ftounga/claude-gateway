@@ -69,6 +69,8 @@ class AccountServiceTest {
     @Mock
     private fr.claudegateway.runner.audit.RunnerAuditRepository runnerAuditRepository;
     @Mock
+    private fr.claudegateway.runner.host.RunnerHostRepository runnerHostRepository;
+    @Mock
     private fr.claudegateway.atelier.WorkspaceRepository workspaceRepository;
     @Mock
     private fr.claudegateway.atelier.WorkspaceService workspaceService;
@@ -85,7 +87,8 @@ class AccountServiceTest {
         return new AccountService(userService, subscriptionRepository, usageCounterRepository,
                 conversationRepository, messageRepository, uploadedFileRepository, userApiKeyRepository,
                 gitTokenService, templateRepository, runnerTokenRepository, runnerPairingCodeRepository,
-                runnerAuditRepository, workspaceRepository, workspaceService, atelierMessageRepository,
+                runnerAuditRepository, runnerHostRepository, workspaceRepository, workspaceService,
+                atelierMessageRepository,
                 documentRepository, chunkRepository, messageLibraryDocumentRepository);
     }
 

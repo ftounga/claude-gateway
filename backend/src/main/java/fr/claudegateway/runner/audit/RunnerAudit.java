@@ -45,8 +45,18 @@ public class RunnerAudit {
     @Column(name = "user_id", nullable = false, updatable = false)
     private UUID userId;
 
-    @Column(name = "workspace_id", nullable = false, updatable = false)
+    /**
+     * Projet concerné (F-48 / SF-48-01) : le journal doit continuer de dire <b>quel projet</b> a
+     * exécuté quoi, même si le runner appartient désormais à une machine. {@code null} pour les
+     * gestes qui visent la machine entière (coupe-circuit) : les rattacher à un projet arbitraire
+     * serait un mensonge dans le seul document censé dire la vérité.
+     */
+    @Column(name = "workspace_id", updatable = false)
     private UUID workspaceId;
+
+    /** Poste sur lequel l'appel a été exécuté (= {@code runner_hosts.id}), F-48 / SF-48-01. */
+    @Column(name = "host_id", updatable = false)
+    private UUID hostId;
 
     /** Jeton du runner qui a servi l'appel, ou {@code null} si l'appel n'a jamais été émis. */
     @Column(name = "token_id", updatable = false)

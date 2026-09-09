@@ -14,4 +14,7 @@ public interface RunnerPairingCodeRepository extends JpaRepository<RunnerPairing
 
     /** Purge à la suppression du compte (SF-38-14) : aucun code ne survit à son propriétaire. */
     void deleteByUserId(UUID userId);
+
+    /** Purge à la suppression d'un poste (F-48) : aucun code ne survit à sa machine. */
+    void deleteByHostId(UUID hostId);
 }

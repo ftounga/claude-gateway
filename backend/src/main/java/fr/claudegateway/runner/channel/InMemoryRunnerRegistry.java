@@ -18,23 +18,23 @@ import org.springframework.stereotype.Component;
         matchIfMissing = true)
 public class InMemoryRunnerRegistry implements RunnerRegistry {
 
-    private final Map<UUID, RunnerConnection> byWorkspace = new ConcurrentHashMap<>();
+    private final Map<UUID, RunnerConnection> byHost = new ConcurrentHashMap<>();
 
     @Override
     public void register(RunnerConnection connection) {
-        byWorkspace.put(connection.workspaceId(), connection);
+        byHost.put(connection.hostId(), connection);
     }
 
     @Override
-    public void unregister(UUID workspaceId, UUID tokenId) {
+    public void unregister(UUID hostId, UUID tokenId) {
         // Ne retire que si la connexion courante est bien celle de ce jeton (garde anti-course).
-        byWorkspace.computeIfPresent(workspaceId,
-                (ws, current) -> current.tokenId().equals(tokenId) ? null : current);
+        byHost.computeIfPresent(hostId,
+                (host, current) -> current.tokenId().equals(tokenId) ? null : current);
     }
 
     @Override
-    public Optional<RunnerConnection> findLocal(UUID workspaceId) {
-        return Optional.ofNullable(byWorkspace.get(workspaceId));
+    public Optional<RunnerConnection> findLocal(UUID hostId) {
+        return Optional.ofNullable(byHost.get(hostId));
     }
 
     /**
@@ -42,12 +42,12 @@ public class InMemoryRunnerRegistry implements RunnerRegistry {
      * relais inter-pods n'est donc possible ni nécessaire (F-38 / SF-38-12).
      */
     @Override
-    public Optional<RemoteRunnerNode> findRemote(UUID workspaceId) {
+    public Optional<RemoteRunnerNode> findRemote(UUID hostId) {
         return Optional.empty();
     }
 
     @Override
-    public boolean isConnected(UUID workspaceId) {
-        return byWorkspace.containsKey(workspaceId);
+    public boolean isConnected(UUID hostId) {
+        return byHost.containsKey(hostId);
     }
 }

@@ -20,6 +20,8 @@ import fr.claudegateway.atelier.WorkspaceRepository;
 import fr.claudegateway.auth.JwtService;
 import fr.claudegateway.runner.channel.RunnerConnection;
 import fr.claudegateway.runner.channel.RunnerRegistry;
+import fr.claudegateway.runner.host.RunnerHost;
+import fr.claudegateway.runner.host.RunnerHostRepository;
 import fr.claudegateway.user.AuthProvider;
 import fr.claudegateway.user.User;
 import fr.claudegateway.user.UserRepository;
@@ -43,6 +45,8 @@ class RunnerStatusApiIntegrationTest {
     @Autowired
     private WorkspaceRepository workspaceRepository;
     @Autowired
+    private RunnerHostRepository hostRepository;
+    @Autowired
     private RunnerTokenRepository runnerTokenRepository;
     @Autowired
     private RunnerTokenService tokenService;
@@ -54,28 +58,34 @@ class RunnerStatusApiIntegrationTest {
     private User admin;
     private String adminToken;
     private Workspace adminWorkspace;
+    /** Poste de l'utilisateur : le projet en hérite son état runner (F-48 / SF-48-01). */
+    private RunnerHost adminHost;
     private User other;
     private String otherToken;
     private User plainUser;
     private String plainToken;
     private Workspace plainWorkspace;
+    private RunnerHost plainHost;
 
     @BeforeEach
     void setUp() {
         runnerTokenRepository.deleteAll();
         workspaceRepository.deleteAll();
+        hostRepository.deleteAll();
         userRepository.deleteAll();
 
         admin = seedUser("admin-status@example.com", UserRole.ADMIN);
         adminToken = jwtService.generateToken(admin);
-        adminWorkspace = seedWorkspace(admin.getId());
+        adminHost = seedHost(admin.getId());
+        adminWorkspace = seedWorkspace(admin.getId(), adminHost);
 
         other = seedUser("other-status@example.com", UserRole.ADMIN);
         otherToken = jwtService.generateToken(other);
 
         plainUser = seedUser("plain-status@example.com", UserRole.USER);
         plainToken = jwtService.generateToken(plainUser);
-        plainWorkspace = seedWorkspace(plainUser.getId());
+        plainHost = seedHost(plainUser.getId());
+        plainWorkspace = seedWorkspace(plainUser.getId(), plainHost);
     }
 
     private User seedUser(String email, UserRole role) {
@@ -84,8 +94,13 @@ class RunnerStatusApiIntegrationTest {
                 .provider(AuthProvider.LOCAL).role(role).build());
     }
 
-    private Workspace seedWorkspace(UUID userId) {
-        return workspaceRepository.save(Workspace.builder().userId(userId).name("Projet").build());
+    private RunnerHost seedHost(UUID userId) {
+        return hostRepository.save(RunnerHost.builder().userId(userId).name("Poste").build());
+    }
+
+    private Workspace seedWorkspace(UUID userId, RunnerHost host) {
+        return workspaceRepository.save(Workspace.builder().userId(userId).name("Projet")
+                .hostId(host.getId()).projectPath("projet").build());
     }
 
     private String statusUrl(UUID workspaceId) {
@@ -106,7 +121,7 @@ class RunnerStatusApiIntegrationTest {
     @Test
     void statusReflectsRegisteredConnection() throws Exception {
         UUID tokenId = UUID.randomUUID();
-        runnerRegistry.register(new RunnerConnection(adminWorkspace.getId(), admin.getId(),
+        runnerRegistry.register(new RunnerConnection(adminHost.getId(), admin.getId(),
                 tokenId, "node-test", OffsetDateTime.now()));
         try {
             mockMvc.perform(get(statusUrl(adminWorkspace.getId())).contextPath("/api")
@@ -115,7 +130,7 @@ class RunnerStatusApiIntegrationTest {
                     .andExpect(jsonPath("$.connected").value(true));
         } finally {
             // Nettoyage : le registre in-memory est un singleton partagé entre tests.
-            runnerRegistry.unregister(adminWorkspace.getId(), tokenId);
+            runnerRegistry.unregister(adminHost.getId(), tokenId);
         }
     }
 
@@ -123,8 +138,8 @@ class RunnerStatusApiIntegrationTest {
     void ownerSeesTheElectedShellWhenTheRunnerDeclaredOne() throws Exception {
         // F-45 / SF-45-05 : la donnee existe depuis la migration 063 (SF-38-27), elle n'etait pas
         // exposee. L'ecran d'appairage s'en sert pour conclure la mise en service.
-        adminWorkspace.setRunnerShell("posix");
-        workspaceRepository.save(adminWorkspace);
+        adminHost.setShell("posix");
+        hostRepository.save(adminHost);
 
         mockMvc.perform(get(statusUrl(adminWorkspace.getId())).contextPath("/api")
                         .header("Authorization", "Bearer " + adminToken))
@@ -172,7 +187,7 @@ class RunnerStatusApiIntegrationTest {
 
     @Test
     void webSocketHandshakeWithValidTokenReachesHandshake() throws Exception {
-        String clear = tokenService.issue(admin.getId(), adminWorkspace.getId(), "poste").clearToken();
+        String clear = tokenService.issue(admin.getId(), adminHost.getId(), "poste").clearToken();
         // Jeton valide : l'interceptor authentifie et laisse le handshake se poursuivre. Sans en-tête
         // Upgrade, le handshake échoue en 400 — ce qui prouve qu'on a passé sécurité ET interceptor.
         mockMvc.perform(get("/api/runner/ws").contextPath("/api").param("token", clear))

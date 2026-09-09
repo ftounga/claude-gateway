@@ -16,12 +16,15 @@ public interface RunnerTokenRepository extends JpaRepository<RunnerToken, UUID> 
 
     Optional<RunnerToken> findByTokenHash(String tokenHash);
 
-    /** Lecture isolée : un jeton n'est visible que par son propriétaire, sur ce workspace. */
-    List<RunnerToken> findByUserIdAndWorkspaceIdOrderByCreatedAtDesc(UUID userId, UUID workspaceId);
+    /** Lecture isolée : un jeton n'est visible que par son propriétaire, sur ce poste. */
+    List<RunnerToken> findByUserIdAndHostIdOrderByCreatedAtDesc(UUID userId, UUID hostId);
 
     /** Lecture isolée d'un jeton précis (le propriétaire uniquement). */
     Optional<RunnerToken> findByIdAndUserId(UUID id, UUID userId);
 
     /** Purge à la suppression du compte (SF-38-14) : aucun jeton ne survit à son propriétaire. */
     void deleteByUserId(UUID userId);
+
+    /** Purge à la suppression d'un poste (F-48) : aucun jeton ne survit à sa machine. */
+    void deleteByHostId(UUID hostId);
 }

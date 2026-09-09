@@ -44,6 +44,8 @@ class RunnerAccountDeletionApiIntegrationTest {
     @Autowired
     private WorkspaceRepository workspaceRepository;
     @Autowired
+    private fr.claudegateway.runner.host.RunnerHostRepository hostRepository;
+    @Autowired
     private RunnerTokenRepository tokenRepository;
     @Autowired
     private RunnerPairingCodeRepository pairingCodeRepository;
@@ -59,10 +61,13 @@ class RunnerAccountDeletionApiIntegrationTest {
     private User owner;
     private String ownerJwt;
     private UUID ownerWorkspaceId;
+    /** Poste du propriétaire (F-48 / SF-48-01) : le jeton runner y est rattaché. */
+    private UUID ownerHostId;
     private String ownerClearToken;
 
     private User other;
     private UUID otherWorkspaceId;
+    private UUID otherHostId;
     private String otherClearToken;
 
     @BeforeEach
@@ -70,15 +75,18 @@ class RunnerAccountDeletionApiIntegrationTest {
         auditRepository.deleteAll();
         tokenRepository.deleteAll();
         pairingCodeRepository.deleteAll();
+        hostRepository.deleteAll();
 
         owner = userRepository.save(user("runner-purge-owner-" + UUID.randomUUID() + "@example.com"));
         ownerJwt = jwtService.generateToken(owner);
         ownerWorkspaceId = workspaceRepository.save(workspace(owner.getId())).getId();
-        ownerClearToken = seed(owner.getId(), ownerWorkspaceId);
+        ownerHostId = hostRepository.save(host(owner.getId())).getId();
+        ownerClearToken = seed(owner.getId(), ownerHostId, ownerWorkspaceId);
 
         other = userRepository.save(user("runner-purge-other-" + UUID.randomUUID() + "@example.com"));
         otherWorkspaceId = workspaceRepository.save(workspace(other.getId())).getId();
-        otherClearToken = seed(other.getId(), otherWorkspaceId);
+        otherHostId = hostRepository.save(host(other.getId())).getId();
+        otherClearToken = seed(other.getId(), otherHostId, otherWorkspaceId);
     }
 
     @Test
@@ -124,11 +132,11 @@ class RunnerAccountDeletionApiIntegrationTest {
                 .andExpect(status().isNoContent());
     }
 
-    private String seed(UUID userId, UUID workspaceId) {
-        String clear = tokenService.issue(userId, workspaceId, "poste").clearToken();
-        pairingService.createPairingCode(userId, workspaceId);
+    private String seed(UUID userId, UUID hostId, UUID workspaceId) {
+        String clear = tokenService.issue(userId, hostId, "poste").clearToken();
+        pairingService.createPairingCode(userId, hostId);
         auditRepository.save(RunnerAudit.builder()
-                .userId(userId).workspaceId(workspaceId)
+                .userId(userId).hostId(hostId).workspaceId(workspaceId)
                 .callId("toolu_" + UUID.randomUUID()).tool("bash").target("echo ok")
                 .outcome(RunnerAuditOutcome.OK.name()).createdAt(OffsetDateTime.now())
                 .build());
@@ -142,5 +150,10 @@ class RunnerAccountDeletionApiIntegrationTest {
 
     private static Workspace workspace(UUID userId) {
         return Workspace.builder().userId(userId).name("projet").createdAt(OffsetDateTime.now()).build();
+    }
+
+    private static fr.claudegateway.runner.host.RunnerHost host(UUID userId) {
+        return fr.claudegateway.runner.host.RunnerHost.builder().userId(userId).name("poste")
+                .createdAt(OffsetDateTime.now()).updatedAt(OffsetDateTime.now()).build();
     }
 }

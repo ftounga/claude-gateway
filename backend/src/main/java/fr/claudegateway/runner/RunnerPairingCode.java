@@ -19,8 +19,9 @@ import lombok.Setter;
 
 /**
  * Code d'appairage à usage unique et expirant (F-38 / SF-38-01). Généré par l'utilisateur pour un
- * de ses workspaces, il est échangé par le runner contre un {@link RunnerToken} via
- * {@code POST /runner/pair}.
+ * de ses <b>postes</b> (F-48 / SF-48-01), il est échangé par le runner contre un {@link RunnerToken}
+ * via {@code POST /runner/pair}. <b>Un seul</b> par machine : ouvrir un projet de plus sous la même
+ * racine n'en demande aucun autre.
  *
  * <p>La valeur en clair n'est jamais persistée : seul son empreinte {@code SHA-256}
  * ({@link #codeHash}) est stockée. Le clair n'existe que dans la réponse HTTP de génération.</p>
@@ -44,9 +45,9 @@ public class RunnerPairingCode {
     @Column(name = "user_id", nullable = false, updatable = false)
     private UUID userId;
 
-    /** Workspace visé par l'appairage (= {@code workspaces.id}). */
-    @Column(name = "workspace_id", nullable = false, updatable = false)
-    private UUID workspaceId;
+    /** Poste visé par l'appairage (= {@code runner_hosts.id}), F-48 / SF-48-01. */
+    @Column(name = "host_id", nullable = false, updatable = false)
+    private UUID hostId;
 
     /** Empreinte SHA-256 (hex) du code d'appairage. Jamais le clair. */
     @Column(name = "code_hash", nullable = false, length = 64, updatable = false)

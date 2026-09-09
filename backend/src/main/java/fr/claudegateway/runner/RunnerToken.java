@@ -18,8 +18,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Jeton d'authentification d'un runner (F-38 / SF-38-01), lié à un utilisateur et à un workspace,
- * expirant et révocable. Il authentifiera le canal WebSocket du runner (SF-38-02).
+ * Jeton d'authentification d'un runner (F-38 / SF-38-01), lié à un utilisateur et à un <b>poste</b>
+ * (F-48 / SF-48-01), expirant et révocable. Il authentifiera le canal WebSocket du runner (SF-38-02).
  *
  * <p>Le jeton ouvre un canal d'exécution : on ne stocke que son empreinte {@code SHA-256}
  * ({@link #tokenHash}), jamais le clair. Le clair n'existe que dans la réponse HTTP de
@@ -44,9 +44,12 @@ public class RunnerToken {
     @Column(name = "user_id", nullable = false, updatable = false)
     private UUID userId;
 
-    /** Workspace auquel le runner est rattaché (= {@code workspaces.id}). */
-    @Column(name = "workspace_id", nullable = false, updatable = false)
-    private UUID workspaceId;
+    /**
+     * Poste auquel le runner est rattaché (= {@code runner_hosts.id}). Une machine, une racine, un
+     * jeton — le projet, lui, voyage par appel (F-48 / SF-48-01).
+     */
+    @Column(name = "host_id", nullable = false, updatable = false)
+    private UUID hostId;
 
     /** Empreinte SHA-256 (hex) du jeton. Unique. Jamais le clair. */
     @Column(name = "token_hash", nullable = false, unique = true, length = 64, updatable = false)

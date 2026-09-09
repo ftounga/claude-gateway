@@ -42,6 +42,6 @@ public class RunnerTokenAuthenticator {
                 .filter(token -> token.isValidAt(OffsetDateTime.now()))
                 // Le propriétaire doit exister : un compte supprimé n'authentifie plus rien (SF-38-14).
                 .filter(token -> userRepository.existsById(token.getUserId()))
-                .map(token -> new RunnerIdentity(token.getId(), token.getUserId(), token.getWorkspaceId()));
+                .map(token -> new RunnerIdentity(token.getId(), token.getUserId(), token.getHostId()));
     }
 }

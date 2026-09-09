@@ -3,7 +3,6 @@ package fr.claudegateway.runner.exec;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import java.util.function.Consumer;
 
 import org.springframework.stereotype.Service;
@@ -13,13 +12,18 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import fr.claudegateway.runner.channel.RunnerCallResult;
 import fr.claudegateway.runner.channel.RunnerErrorCodes;
+import fr.claudegateway.runner.channel.RunnerTarget;
 import fr.claudegateway.runner.relay.RunnerCallRouter;
 
 /**
  * Façade métier des outils fichiers exécutés <b>sur la machine de l'utilisateur</b> (F-38 / SF-38-05).
  * C'est le seul point par lequel le domaine (la boucle tool-use de l'Atelier) parle au runner : il
- * ne connaît ni WebSocket, ni trame, ni {@code id} de corrélation — seulement quatre opérations et
+ * ne connaît ni WebSocket, ni trame, ni {@code id} de corrélation — seulement quelques opérations et
  * une issue.
+ *
+ * <p>Depuis F-48 / SF-48-01, la cible d'un appel est un {@link RunnerTarget} : le <b>poste</b> qui
+ * exécute, et le <b>projet</b> qui travaille sous sa racine. Le projet part dans la trame et le
+ * runner referme son confinement dessus — la garantie reste locale.</p>
  *
  * <p>Depuis SF-38-12, elle passe par {@link RunnerCallRouter} et non plus par le dispatcher : c'est
  * le routeur qui sait si la socket du runner vit sur ce pod ou sur un autre. La façade, elle, ne
@@ -55,24 +59,24 @@ public class RunnerToolGateway {
     }
 
     /** Liste les fichiers du projet sur la machine (exclusions du runner déjà appliquées, SF-38-10). */
-    public RunnerCallResult listFiles(UUID workspaceId, String callId) {
-        return router.call(workspaceId, callId, "list_files", objectMapper.createObjectNode(),
+    public RunnerCallResult listFiles(RunnerTarget target, String callId) {
+        return router.call(target, callId, "list_files", objectMapper.createObjectNode(),
                 FILE_TOOL_TIMEOUT_MS);
     }
 
     /** Lit un fichier du projet sur la machine. */
-    public RunnerCallResult readFile(UUID workspaceId, String callId, String path) {
+    public RunnerCallResult readFile(RunnerTarget target, String callId, String path) {
         String rel = normalizePath(path);
         if (rel == null) {
             return invalid("Chemin de fichier invalide.");
         }
         ObjectNode input = objectMapper.createObjectNode();
         input.put("path", rel);
-        return router.call(workspaceId, callId, "read_file", input, FILE_TOOL_TIMEOUT_MS);
+        return router.call(target, callId, "read_file", input, FILE_TOOL_TIMEOUT_MS);
     }
 
     /** Écrit un fichier du projet sur la machine. */
-    public RunnerCallResult writeFile(UUID workspaceId, String callId, String path, String content) {
+    public RunnerCallResult writeFile(RunnerTarget target, String callId, String path, String content) {
         String rel = normalizePath(path);
         if (rel == null) {
             return invalid("Chemin de fichier invalide.");
@@ -84,7 +88,7 @@ public class RunnerToolGateway {
         ObjectNode input = objectMapper.createObjectNode();
         input.put("path", rel);
         input.put("content", text);
-        return router.call(workspaceId, callId, "write_file", input, FILE_TOOL_TIMEOUT_MS);
+        return router.call(target, callId, "write_file", input, FILE_TOOL_TIMEOUT_MS);
     }
 
     /**
@@ -92,14 +96,14 @@ public class RunnerToolGateway {
      * lui-même l'arborescence. Une recherche par N lectures ferait traverser le réseau à tout le
      * projet, pour un résultat que la machine calcule sur place.
      */
-    public RunnerCallResult searchFiles(UUID workspaceId, String callId, String query) {
+    public RunnerCallResult searchFiles(RunnerTarget target, String callId, String query) {
         String needle = query == null ? "" : query.strip();
         if (needle.isEmpty() || needle.length() > MAX_QUERY_CHARS) {
             return invalid("Terme de recherche invalide.");
         }
         ObjectNode input = objectMapper.createObjectNode();
         input.put("query", needle);
-        return router.call(workspaceId, callId, "search_files", input, FILE_TOOL_TIMEOUT_MS);
+        return router.call(target, callId, "search_files", input, FILE_TOOL_TIMEOUT_MS);
     }
 
     /**
@@ -114,7 +118,7 @@ public class RunnerToolGateway {
      * @param timeoutMs délai souhaité, clampé dans {@code [1 000 ; 120 000]} ms
      * @param onOutput  relais de la sortie au fil de l'eau, ou {@code null}
      */
-    public RunnerCallResult bash(UUID workspaceId, String callId, String command, String cwd,
+    public RunnerCallResult bash(RunnerTarget target, String callId, String command, String cwd,
             long timeoutMs, Consumer<String> onOutput) {
         String cmd = command == null ? "" : command.strip();
         if (cmd.isEmpty() || cmd.length() > MAX_COMMAND_CHARS || cmd.indexOf('\0') >= 0) {
@@ -131,7 +135,7 @@ public class RunnerToolGateway {
         }
         long effective = Math.max(MIN_BASH_TIMEOUT_MS, Math.min(BASH_TIMEOUT_MS, timeoutMs));
         RunnerCallResult result =
-                router.call(workspaceId, callId, "bash", input, effective, onOutput);
+                router.call(target, callId, "bash", input, effective, onOutput);
         return RunnerErrorCodes.UNSUPPORTED_TOOL.equals(result.errorCode())
                 ? RunnerCallResult.backendError(RunnerErrorCodes.UNSUPPORTED_TOOL,
                         // Le drapeau nommé ici doit être celui qui AGIT : --allow-bash n'a plus

@@ -87,32 +87,30 @@ public class Workspace {
     private WorkspaceExecutionTarget executionTarget = WorkspaceExecutionTarget.SANDBOX;
 
     /**
-     * Nom du dossier déclaré par le runner à l'appairage (F-38 / SF-38-15) — le <b>dernier segment
-     * seulement</b>, jamais le chemin absolu. Sert uniquement à l'affichage. Nul tant qu'aucun
-     * runner ne s'est appairé, ou si le runner est antérieur à cette version.
-     */
-    @Column(name = "runner_root_name", length = 255)
-    private String runnerRootName;
-
-    /**
-     * Vrai si le runner appairé tourne avec les droits de l'<b>administrateur</b>
-     * (F-38 / SF-38-18). Déclaré par le runner : la gateway ne peut pas le deviner. Sert à le dire
-     * là où l'on autorise une commande — c'est le seul endroit où l'information change une décision.
-     */
-    @Column(name = "runner_elevated")
-    private Boolean runnerElevated;
-
-    /**
-     * Genre d'interpréteur <b>élu</b> par le runner et déclaré dans sa trame {@code ready}
-     * (F-38 / SF-38-27) : {@code posix}, {@code powershell} ou {@code cmd}. La consigne système en
-     * cible {@code RUNNER} dicte une syntaxe d'exploration ({@code ls}/{@code find}/{@code grep -n})
-     * qui n'existe pas partout ; cette colonne est ce qui lui permet de dire la vérité.
+     * <b>Poste</b> sur lequel ce projet vit (= {@code runner_hosts.id}), F-48 / SF-48-01.
      *
-     * <p>Nul tant qu'aucun runner ne s'est connecté, ou si le runner est antérieur à cette version —
-     * la consigne garde alors son texte POSIX, qui est correct sur toute machine Unix.</p>
+     * <p>C'est le déplacement d'unité de F-48 : la racine, le runner et l'appairage appartiennent
+     * désormais à la machine, et le projet n'est qu'un dossier dessous. Les colonnes
+     * {@code runner_root_name}, {@code runner_elevated} et {@code runner_shell} (migrations 052, 053
+     * et 063) ont déménagé sur {@code runner_hosts} pour cette raison : elles décrivaient une
+     * machine, pas un projet.</p>
+     *
+     * <p>{@code null} tant que le projet n'est rattaché à aucun poste — un projet en cible
+     * {@code SANDBOX} n'en a aucun besoin.</p>
      */
-    @Column(name = "runner_shell", length = 16)
-    private String runnerShell;
+    @Column(name = "host_id")
+    private UUID hostId;
+
+    /**
+     * Chemin du projet <b>relatif à la racine du poste</b> (F-48 / SF-48-01), séparateur {@code /}.
+     * La chaîne vide désigne la racine elle-même — un poste peut n'héberger qu'un projet.
+     *
+     * <p>C'est cette valeur qui voyage dans chaque {@code tool_call} et sur laquelle le runner
+     * referme son confinement : le régime retenu est <b>local</b> (décision n° 2 du cadrage, non
+     * réversible), donc la gateway l'indique et c'est le processus local qui refuse d'en sortir.</p>
+     */
+    @Column(name = "project_path", length = 512)
+    private String projectPath;
 
     /**
      * Vrai si le projet est adossé à un dépôt Git (F-31 / SF-31-02). Volontairement null-tolérant :

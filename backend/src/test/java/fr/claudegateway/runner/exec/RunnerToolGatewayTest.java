@@ -38,7 +38,10 @@ class RunnerToolGatewayTest {
     private RunnerCallRouter router;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final UUID workspaceId = UUID.randomUUID();
+    /** Cible d'un appel (F-48 / SF-48-01) : le poste, le projet, et son chemin sous la racine. */
+    private final fr.claudegateway.runner.channel.RunnerTarget target =
+            new fr.claudegateway.runner.channel.RunnerTarget(UUID.randomUUID(), UUID.randomUUID(),
+                    "projet");
 
     private RunnerToolGateway gateway() {
         when(router.call(any(), anyString(), anyString(), any(), anyLong()))
@@ -49,7 +52,7 @@ class RunnerToolGatewayTest {
     private JsonNode capturedInput(String expectedTool) {
         ArgumentCaptor<JsonNode> input = ArgumentCaptor.forClass(JsonNode.class);
         ArgumentCaptor<Long> timeout = ArgumentCaptor.forClass(Long.class);
-        verify(router).call(org.mockito.ArgumentMatchers.eq(workspaceId), anyString(),
+        verify(router).call(org.mockito.ArgumentMatchers.eq(target), anyString(),
                 org.mockito.ArgumentMatchers.eq(expectedTool), input.capture(), timeout.capture());
         assertThat(timeout.getValue()).isEqualTo(RunnerToolGateway.FILE_TOOL_TIMEOUT_MS);
         return input.getValue();
@@ -57,21 +60,21 @@ class RunnerToolGatewayTest {
 
     @Test
     void listFilesSendsAnEmptyInputWithTheContractTimeout() {
-        gateway().listFiles(workspaceId, "toolu_1");
+        gateway().listFiles(target, "toolu_1");
 
         assertThat(capturedInput("list_files").isObject()).isTrue();
     }
 
     @Test
     void readFileNormalisesThePathBeforeSendingIt() {
-        gateway().readFile(workspaceId, "toolu_1", "./src//a.ts");
+        gateway().readFile(target, "toolu_1", "./src//a.ts");
 
         assertThat(capturedInput("read_file").path("path").asText()).isEqualTo("src/a.ts");
     }
 
     @Test
     void readFileRefusesAPathThatLeavesTheRoot() {
-        RunnerCallResult result = gateway().readFile(workspaceId, "toolu_1", "../etc/passwd");
+        RunnerCallResult result = gateway().readFile(target, "toolu_1", "../etc/passwd");
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.INVALID_INPUT);
         verify(router, never()).call(any(), anyString(), anyString(), any(), anyLong());
@@ -79,7 +82,7 @@ class RunnerToolGatewayTest {
 
     @Test
     void readFileRefusesAnAbsolutePath() {
-        RunnerCallResult result = gateway().readFile(workspaceId, "toolu_1", "/etc/passwd");
+        RunnerCallResult result = gateway().readFile(target, "toolu_1", "/etc/passwd");
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.INVALID_INPUT);
         verify(router, never()).call(any(), anyString(), anyString(), any(), anyLong());
@@ -89,7 +92,7 @@ class RunnerToolGatewayTest {
     void writeFileRefusesAContentBeyondTheContractBound() {
         String tooBig = "a".repeat(RunnerToolGateway.MAX_WRITE_BYTES + 1);
 
-        RunnerCallResult result = gateway().writeFile(workspaceId, "toolu_1", "a.txt", tooBig);
+        RunnerCallResult result = gateway().writeFile(target, "toolu_1", "a.txt", tooBig);
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.INVALID_INPUT);
         verify(router, never()).call(any(), anyString(), anyString(), any(), anyLong());
@@ -97,7 +100,7 @@ class RunnerToolGatewayTest {
 
     @Test
     void writeFileSendsPathAndContent() {
-        gateway().writeFile(workspaceId, "toolu_1", "src/a.ts", "const x = 1;");
+        gateway().writeFile(target, "toolu_1", "src/a.ts", "const x = 1;");
 
         JsonNode input = capturedInput("write_file");
         assertThat(input.path("path").asText()).isEqualTo("src/a.ts");
@@ -106,14 +109,14 @@ class RunnerToolGatewayTest {
 
     @Test
     void searchFilesSendsASingleQuery() {
-        gateway().searchFiles(workspaceId, "toolu_1", "  TODO  ");
+        gateway().searchFiles(target, "toolu_1", "  TODO  ");
 
         assertThat(capturedInput("search_files").path("query").asText()).isEqualTo("TODO");
     }
 
     @Test
     void searchFilesRefusesAnEmptyQuery() {
-        RunnerCallResult result = gateway().searchFiles(workspaceId, "toolu_1", "   ");
+        RunnerCallResult result = gateway().searchFiles(target, "toolu_1", "   ");
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.INVALID_INPUT);
         verify(router, never()).call(any(), anyString(), anyString(), any(), anyLong());
@@ -131,7 +134,7 @@ class RunnerToolGatewayTest {
     private JsonNode capturedBashInput(long expectedTimeoutMs) {
         ArgumentCaptor<JsonNode> input = ArgumentCaptor.forClass(JsonNode.class);
         ArgumentCaptor<Long> timeout = ArgumentCaptor.forClass(Long.class);
-        verify(router).call(org.mockito.ArgumentMatchers.eq(workspaceId), anyString(),
+        verify(router).call(org.mockito.ArgumentMatchers.eq(target), anyString(),
                 org.mockito.ArgumentMatchers.eq("bash"), input.capture(), timeout.capture(), any());
         assertThat(timeout.getValue()).isEqualTo(expectedTimeoutMs);
         return input.getValue();
@@ -139,7 +142,7 @@ class RunnerToolGatewayTest {
 
     @Test
     void bashSendsTheCommandWithTheContractTimeout() {
-        bashGateway(bashOk()).bash(workspaceId, "toolu_1", "  npm test  ", null,
+        bashGateway(bashOk()).bash(target, "toolu_1", "  npm test  ", null,
                 RunnerToolGateway.BASH_TIMEOUT_MS, null);
 
         JsonNode input = capturedBashInput(RunnerToolGateway.BASH_TIMEOUT_MS);
@@ -149,7 +152,7 @@ class RunnerToolGatewayTest {
 
     @Test
     void bashNormalisesTheWorkingDirectoryBeforeSending() {
-        bashGateway(bashOk()).bash(workspaceId, "toolu_1", "ls", "./src\\app/",
+        bashGateway(bashOk()).bash(target, "toolu_1", "ls", "./src\\app/",
                 RunnerToolGateway.BASH_TIMEOUT_MS, null);
 
         assertThat(capturedBashInput(RunnerToolGateway.BASH_TIMEOUT_MS).path("cwd").asText())
@@ -158,7 +161,7 @@ class RunnerToolGatewayTest {
 
     @Test
     void bashRefusesAnEscapingWorkingDirectoryBeforeSending() {
-        RunnerCallResult result = bashGateway(bashOk()).bash(workspaceId, "toolu_1", "ls",
+        RunnerCallResult result = bashGateway(bashOk()).bash(target, "toolu_1", "ls",
                 "../ailleurs", RunnerToolGateway.BASH_TIMEOUT_MS, null);
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.INVALID_INPUT);
@@ -169,9 +172,9 @@ class RunnerToolGatewayTest {
     void bashRefusesAnEmptyOrOversizedCommandBeforeSending() {
         RunnerToolGateway gateway = bashGateway(bashOk());
 
-        assertThat(gateway.bash(workspaceId, "toolu_1", "   ", null, 1_000L, null).errorCode())
+        assertThat(gateway.bash(target, "toolu_1", "   ", null, 1_000L, null).errorCode())
                 .isEqualTo(RunnerErrorCodes.INVALID_INPUT);
-        assertThat(gateway.bash(workspaceId, "toolu_2",
+        assertThat(gateway.bash(target, "toolu_2",
                 "x".repeat(RunnerToolGateway.MAX_COMMAND_CHARS + 1), null, 1_000L, null).errorCode())
                 .isEqualTo(RunnerErrorCodes.INVALID_INPUT);
         verify(router, never()).call(any(), anyString(), anyString(), any(), anyLong(), any());
@@ -179,11 +182,11 @@ class RunnerToolGatewayTest {
 
     @Test
     void bashClampsTheTimeoutBetweenTheFloorAndTheContractCeiling() {
-        bashGateway(bashOk()).bash(workspaceId, "toolu_1", "ls", null, 10L, null);
+        bashGateway(bashOk()).bash(target, "toolu_1", "ls", null, 10L, null);
         capturedBashInput(RunnerToolGateway.MIN_BASH_TIMEOUT_MS);
 
         org.mockito.Mockito.reset(router);
-        bashGateway(bashOk()).bash(workspaceId, "toolu_2", "ls", null, 3_600_000L, null);
+        bashGateway(bashOk()).bash(target, "toolu_2", "ls", null, 3_600_000L, null);
         capturedBashInput(RunnerToolGateway.BASH_TIMEOUT_MS);
     }
 
@@ -191,7 +194,7 @@ class RunnerToolGatewayTest {
     void anUnsupportedBashSaysHowToEnableItOnTheMachine() {
         RunnerCallResult refused = RunnerCallResult.backendError(RunnerErrorCodes.UNSUPPORTED_TOOL);
 
-        RunnerCallResult result = bashGateway(refused).bash(workspaceId, "toolu_1", "ls", null,
+        RunnerCallResult result = bashGateway(refused).bash(target, "toolu_1", "ls", null,
                 RunnerToolGateway.BASH_TIMEOUT_MS, null);
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.UNSUPPORTED_TOOL);

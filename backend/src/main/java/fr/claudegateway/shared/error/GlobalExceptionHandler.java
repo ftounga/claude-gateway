@@ -467,6 +467,35 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("storage_execution_closed", ex.getMessage()));
     }
 
+    @ExceptionHandler(fr.claudegateway.runner.host.RunnerHostNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleRunnerHostNotFound(
+            fr.claudegateway.runner.host.RunnerHostNotFoundException ex) {
+        // Poste inconnu OU poste d'autrui : indiscernables (F-48 / SF-48-01). Un 403 dirait que le
+        // poste existe, ce qui est déjà une information sur la machine de quelqu'un d'autre.
+        log.debug("Poste runner introuvable ou non possede");
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("not_found", ex.getMessage()));
+    }
+
+    @ExceptionHandler(fr.claudegateway.runner.host.InvalidHostNameException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidHostName(
+            fr.claudegateway.runner.host.InvalidHostNameException ex) {
+        log.debug("Nom de poste refuse");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("invalid_host_name", ex.getMessage()));
+    }
+
+    @ExceptionHandler(fr.claudegateway.runner.host.InvalidProjectPathException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidProjectPath(
+            fr.claudegateway.runner.host.InvalidProjectPathException ex) {
+        // Chemin de projet qui sortirait de la racine du poste (F-48 / SF-48-01). La garde qui fait
+        // foi reste celle du runner ; celle-ci refuse simplement d'ecrire en base une valeur
+        // qu'aucun runner n'accepterait.
+        log.debug("Chemin de projet sous la racine du poste refuse");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("invalid_project_path", ex.getMessage()));
+    }
+
     @ExceptionHandler(fr.claudegateway.runner.browse.RunnerBrowseException.class)
     public ResponseEntity<ErrorResponse> handleRunnerBrowse(
             fr.claudegateway.runner.browse.RunnerBrowseException ex) {

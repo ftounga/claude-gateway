@@ -27,6 +27,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import fr.claudegateway.runner.channel.RemoteRunnerNode;
 import fr.claudegateway.runner.channel.RunnerCallResult;
 import fr.claudegateway.runner.channel.RunnerErrorCodes;
+import fr.claudegateway.runner.channel.RunnerTarget;
 
 /**
  * Client du relais interne, côté <b>pod appelant</b> (F-38 / SF-38-12, contrat du relais §3).
@@ -80,9 +81,10 @@ public class RunnerRelayClient {
      * @param node      pod distant, adresse issue du registre (jamais dérivée d'un {@code nodeId})
      * @param onChunk   consommateur des fragments de flux, ou {@code null}
      */
-    public RunnerCallResult call(RemoteRunnerNode node, UUID workspaceId, String callId, String tool,
-            JsonNode input, long timeoutMs, Consumer<String> onChunk) {
+    public RunnerCallResult call(RemoteRunnerNode node, RunnerTarget target, String callId,
+            String tool, JsonNode input, long timeoutMs, Consumer<String> onChunk) {
         URI uri = URI.create(node.baseUrl() + CALL_PATH);
+        UUID hostId = target.hostId();
         try {
             RunnerCallResult result = restClient.post()
                     .uri(uri)
@@ -90,19 +92,19 @@ public class RunnerRelayClient {
                     .header(RunnerRelayAuthFilter.ORIGIN_HEADER, originId)
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.APPLICATION_NDJSON)
-                    .body(payload(workspaceId, callId, tool, input, timeoutMs))
-                    .exchange((request, response) -> read(response, onChunk, workspaceId, callId, tool));
+                    .body(payload(target, callId, tool, input, timeoutMs))
+                    .exchange((request, response) -> read(response, onChunk, hostId, callId, tool));
             if (RunnerErrorCodes.RUNNER_TIMEOUT.equals(result.errorCode())) {
                 // Le pair est resté muet au-delà du délai de lecture : il tient peut-être encore une
                 // commande sur la machine de l'utilisateur. On lui demande de l'arrêter, best-effort
                 // et sans jamais retenter (contrat du relais §7).
-                cancelQuietly(node, workspaceId);
+                cancelQuietly(node, target.workspaceId());
             }
             return result;
         } catch (RuntimeException ex) {
             // Connexion refusée, DNS en échec, timeout de connexion : le pod n'est pas là.
-            log.warn("Relais injoignable (node={}, workspace={}, appel={}, outil={}) : {}",
-                    node.nodeId(), workspaceId, callId, tool, ex.getClass().getSimpleName());
+            log.warn("Relais injoignable (node={}, poste={}, appel={}, outil={}) : {}",
+                    node.nodeId(), hostId, callId, tool, ex.getClass().getSimpleName());
             return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE,
                     "Le pair est injoignable (" + ex.getClass().getSimpleName() + ").");
         }
@@ -115,15 +117,19 @@ public class RunnerRelayClient {
      */
     private void cancelQuietly(RemoteRunnerNode node, UUID workspaceId) {
         ObjectNode payload = objectMapper.createObjectNode();
+        // L'annulation vise le PROJET : plusieurs projets d'un même poste peuvent tourner en
+        // parallèle, et l'appel abandonné n'est celui que de l'un d'eux (F-48 / SF-48-01).
         payload.put("workspaceId", workspaceId.toString());
         payload.put("reason", "timeout");
         peerClient.post(node.baseUrl(), CANCEL_PATH, payload.toString());
     }
 
-    private String payload(UUID workspaceId, String callId, String tool, JsonNode input,
+    private String payload(RunnerTarget target, String callId, String tool, JsonNode input,
             long timeoutMs) {
         ObjectNode node = objectMapper.createObjectNode();
-        node.put("workspaceId", workspaceId.toString());
+        node.put("hostId", target.hostId().toString());
+        node.put("workspaceId", target.workspaceId().toString());
+        node.put("project", target.safeProjectPath());
         node.put("callId", callId);
         node.put("tool", tool);
         node.set("input", input == null || !input.isObject() ? objectMapper.createObjectNode() : input);
@@ -132,7 +138,7 @@ public class RunnerRelayClient {
     }
 
     private RunnerCallResult read(ClientHttpResponse response, Consumer<String> onChunk,
-            UUID workspaceId, String callId, String tool) throws IOException {
+            UUID hostId, String callId, String tool) throws IOException {
         int status = response.getStatusCode().value();
         if (status == 401) {
             warnUnauthorized();
@@ -143,8 +149,8 @@ public class RunnerRelayClient {
                     "Le pair a refusé le relais (401 : secret de relais rejeté).");
         }
         if (status != 200) {
-            log.warn("Relais refusé par le pair (statut={}, workspace={}, appel={}, outil={})", status,
-                    workspaceId, callId, tool);
+            log.warn("Relais refusé par le pair (statut={}, poste={}, appel={}, outil={})", status,
+                    hostId, callId, tool);
             return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE,
                     "Le pair a refusé le relais (statut HTTP " + status
                             + (status == 404 ? " : requête reçue hors du port de relais)." : ")."));
@@ -160,7 +166,7 @@ public class RunnerRelayClient {
                 try {
                     node = objectMapper.readTree(line);
                 } catch (IOException ex) {
-                    log.warn("Ligne de relais illisible (workspace={}, appel={})", workspaceId, callId);
+                    log.warn("Ligne de relais illisible (poste={}, appel={})", hostId, callId);
                     return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE);
                 }
                 String type = node.path("type").asText("");
@@ -173,16 +179,16 @@ public class RunnerRelayClient {
                 // Tout autre type est ignoré : un pair d'une version plus récente peut en ajouter.
             }
         } catch (SocketTimeoutException ex) {
-            log.warn("Relais silencieux au-delà du délai (workspace={}, appel={}, outil={})",
-                    workspaceId, callId, tool);
+            log.warn("Relais silencieux au-delà du délai (poste={}, appel={}, outil={})",
+                    hostId, callId, tool);
             return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_TIMEOUT);
         } catch (IOException ex) {
-            log.warn("Flux de relais coupé avant l'issue (workspace={}, appel={}, outil={})",
-                    workspaceId, callId, tool);
+            log.warn("Flux de relais coupé avant l'issue (poste={}, appel={}, outil={})",
+                    hostId, callId, tool);
             return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_UNAVAILABLE);
         }
         // Flux terminé sans ligne `result` : le pod distant est parti avec la socket du runner.
-        log.warn("Relais terminé sans issue (workspace={}, appel={}, outil={})", workspaceId, callId,
+        log.warn("Relais terminé sans issue (poste={}, appel={}, outil={})", hostId, callId,
                 tool);
         return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_UNAVAILABLE);
     }

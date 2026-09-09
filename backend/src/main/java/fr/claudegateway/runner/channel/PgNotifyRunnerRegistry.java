@@ -132,14 +132,14 @@ public class PgNotifyRunnerRegistry implements RunnerRegistry {
 
     @Override
     public void register(RunnerConnection connection) {
-        local.put(connection.workspaceId(), connection);
-        notifyEvent(EVENT_CONNECT, connection.workspaceId());
+        local.put(connection.hostId(), connection);
+        notifyEvent(EVENT_CONNECT, connection.hostId());
     }
 
     @Override
-    public void unregister(UUID workspaceId, UUID tokenId) {
+    public void unregister(UUID hostId, UUID tokenId) {
         RunnerConnection[] removed = new RunnerConnection[1];
-        local.computeIfPresent(workspaceId, (ws, current) -> {
+        local.computeIfPresent(hostId, (host, current) -> {
             if (current.tokenId().equals(tokenId)) {
                 removed[0] = current;
                 return null;
@@ -147,18 +147,18 @@ public class PgNotifyRunnerRegistry implements RunnerRegistry {
             return current;
         });
         if (removed[0] != null) {
-            notifyEvent(EVENT_DISCONNECT, workspaceId);
+            notifyEvent(EVENT_DISCONNECT, hostId);
         }
     }
 
     @Override
-    public Optional<RunnerConnection> findLocal(UUID workspaceId) {
-        return Optional.ofNullable(local.get(workspaceId));
+    public Optional<RunnerConnection> findLocal(UUID hostId) {
+        return Optional.ofNullable(local.get(hostId));
     }
 
     @Override
-    public Optional<RemoteRunnerNode> findRemote(UUID workspaceId) {
-        RemotePresence presence = freshRemote(workspaceId);
+    public Optional<RemoteRunnerNode> findRemote(UUID hostId) {
+        RemotePresence presence = freshRemote(hostId);
         if (presence == null || presence.address().isBlank()) {
             return Optional.empty();
         }
@@ -166,8 +166,8 @@ public class PgNotifyRunnerRegistry implements RunnerRegistry {
     }
 
     @Override
-    public boolean isConnected(UUID workspaceId) {
-        return local.containsKey(workspaceId) || freshRemote(workspaceId) != null;
+    public boolean isConnected(UUID hostId) {
+        return local.containsKey(hostId) || freshRemote(hostId) != null;
     }
 
     /**
@@ -175,13 +175,13 @@ public class PgNotifyRunnerRegistry implements RunnerRegistry {
      * la lecture : un pod disparu sans DISCONNECT (OOMKilled, évincé) ne doit pas laisser croire
      * indéfiniment qu'un runner est joignable.
      */
-    private RemotePresence freshRemote(UUID workspaceId) {
-        RemotePresence presence = remote.get(workspaceId);
+    private RemotePresence freshRemote(UUID hostId) {
+        RemotePresence presence = remote.get(hostId);
         if (presence == null) {
             return null;
         }
         if (isStale(presence)) {
-            remote.remove(workspaceId, presence);
+            remote.remove(hostId, presence);
             return null;
         }
         return presence;
@@ -194,12 +194,12 @@ public class PgNotifyRunnerRegistry implements RunnerRegistry {
     /** Ré-annonce des connexions locales + purge des présences distantes périmées. */
     private void announceAndExpire() {
         try {
-            remote.forEach((workspaceId, presence) -> {
+            remote.forEach((hostId, presence) -> {
                 if (isStale(presence)) {
-                    remote.remove(workspaceId, presence);
+                    remote.remove(hostId, presence);
                 }
             });
-            local.keySet().forEach(workspaceId -> notifyEvent(EVENT_CONNECT, workspaceId));
+            local.keySet().forEach(hostId -> notifyEvent(EVENT_CONNECT, hostId));
         } catch (RuntimeException ex) {
             // Le planificateur ne doit jamais s'arrêter sur une erreur ponctuelle.
             log.warn("Ré-annonce de présence runner en échec : {}", ex.getMessage());
@@ -207,14 +207,14 @@ public class PgNotifyRunnerRegistry implements RunnerRegistry {
     }
 
     /**
-     * Diffuse un événement de présence aux autres replicas. {@code workspaceId} est {@code null} pour
-     * un {@code SYNC_REQUEST}, qui ne vise aucun workspace en particulier.
+     * Diffuse un événement de présence aux autres replicas. {@code hostId} est {@code null} pour
+     * un {@code SYNC_REQUEST}, qui ne vise aucun poste en particulier.
      */
-    private void notifyEvent(String event, UUID workspaceId) {
+    private void notifyEvent(String event, UUID hostId) {
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("event", event);
-        if (workspaceId != null) {
-            payload.put("workspaceId", workspaceId.toString());
+        if (hostId != null) {
+            payload.put("hostId", hostId.toString());
         }
         payload.put("nodeId", nodeId);
         payload.put("address", selfAddress);
@@ -267,16 +267,16 @@ public class PgNotifyRunnerRegistry implements RunnerRegistry {
             if (EVENT_SYNC_REQUEST.equals(event)) {
                 // Un pod vient de démarrer : on lui rend nos connexions locales. On ne rediffuse
                 // JAMAIS le SYNC_REQUEST lui-même — sinon deux pods s'en renverraient sans fin.
-                local.keySet().forEach(workspaceId -> notifyEvent(EVENT_CONNECT, workspaceId));
+                local.keySet().forEach(hostId -> notifyEvent(EVENT_CONNECT, hostId));
                 return;
             }
-            UUID workspaceId = UUID.fromString(node.path("workspaceId").asText());
+            UUID hostId = UUID.fromString(node.path("hostId").asText());
             if (EVENT_CONNECT.equals(event)) {
-                remote.put(workspaceId,
+                remote.put(hostId,
                         new RemotePresence(emitter, node.path("address").asText(""), Instant.now()));
             } else if (EVENT_DISCONNECT.equals(event)) {
-                remote.computeIfPresent(workspaceId,
-                        (ws, current) -> current.nodeId().equals(emitter) ? null : current);
+                remote.computeIfPresent(hostId,
+                        (host, current) -> current.nodeId().equals(emitter) ? null : current);
             }
         } catch (Exception e) {
             log.warn("Notification runner illisible ignoree: {}", e.getMessage());

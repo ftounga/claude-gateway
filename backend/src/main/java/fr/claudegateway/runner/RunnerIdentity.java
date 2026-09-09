@@ -7,6 +7,11 @@ import java.util.UUID;
  * plateforme, distinct de l'{@code AuthenticatedUser} (JWT utilisateur) : il n'est jamais posé dans
  * le {@code SecurityContext} de la chaîne principale et ne transite que par la chaîne dédiée
  * {@code /runner/**}. Consommé par le canal WebSocket (SF-38-02).
+ *
+ * <p>Depuis F-48 / SF-48-01, un runner est rattaché à un <b>poste</b> et non plus à un projet : une
+ * machine, une racine, un appairage. Le <b>projet</b> ne fait donc plus partie de l'identité — il
+ * voyage <b>par appel</b>, dans la trame {@code tool_call}, et c'est le runner qui referme son
+ * confinement dessus (SF-48-02, régime local).</p>
  */
-public record RunnerIdentity(UUID tokenId, UUID userId, UUID workspaceId) {
+public record RunnerIdentity(UUID tokenId, UUID userId, UUID hostId) {
 }

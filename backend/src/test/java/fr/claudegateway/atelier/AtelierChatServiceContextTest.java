@@ -39,6 +39,7 @@ class AtelierChatServiceContextTest {
     @Mock private fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher;
     @Mock private fr.claudegateway.runner.exec.RunnerConfirmationGate confirmationGate;
     @Mock private fr.claudegateway.runner.audit.RunnerAuditService runnerAuditService;
+    @Mock private fr.claudegateway.runner.host.RunnerHostService runnerHostService;
 
     private StubAiAgentProvider agentProvider;
     private AtelierChatService service;
@@ -81,6 +82,7 @@ class AtelierChatServiceContextTest {
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
+                runnerHostService,
                 new AtelierProperties(null, null, null, null, null, null, null, null, null, contextPruning, null, null, true));
     }
 

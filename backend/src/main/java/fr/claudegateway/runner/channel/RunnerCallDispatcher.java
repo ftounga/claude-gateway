@@ -26,13 +26,13 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import fr.claudegateway.runner.RunnerIdentity;
 
 /**
- * Routeur d'appels d'outils vers le runner d'un workspace (F-38 / SF-38-05, contrat de messages §7).
+ * Routeur d'appels d'outils vers le runner d'un poste (F-38 / SF-38-05, contrat de messages §7).
  *
  * <p>C'est <b>ici</b> que vivent les sockets : le {@link RunnerRegistry} ne porte que la
  * <i>présence</i> (il en fabrique aussi pour des connexions hébergées par un autre replica, sans
  * socket), donc {@link RunnerConnection} n'est pas modifié. Le dispatcher tient deux cartes :</p>
  * <ul>
- *   <li>{@code workspaceId -> session décorée} — alimentée à l'établissement, purgée à la fermeture ;</li>
+ *   <li>{@code hostId -> session décorée} — alimentée à l'établissement, purgée à la fermeture ;</li>
  *   <li>{@code id -> appel en vol} — l'{@code id} est l'identifiant {@code tool_use} du fournisseur.</li>
  * </ul>
  *
@@ -78,7 +78,7 @@ public class RunnerCallDispatcher {
 
     private final RunnerRegistry registry;
     private final ObjectMapper objectMapper;
-    private final fr.claudegateway.atelier.RunnerShellRecorder shellRecorder;
+    private final fr.claudegateway.runner.host.RunnerShellRecorder shellRecorder;
     private final long graceMs;
 
     private final Map<UUID, RunnerOutbound> outbound = new ConcurrentHashMap<>();
@@ -86,7 +86,7 @@ public class RunnerCallDispatcher {
     private final Map<UUID, Set<String>> capabilities = new ConcurrentHashMap<>();
 
     public RunnerCallDispatcher(RunnerRegistry registry, ObjectMapper objectMapper,
-            fr.claudegateway.atelier.RunnerShellRecorder shellRecorder,
+            fr.claudegateway.runner.host.RunnerShellRecorder shellRecorder,
             @Value("${app.runner.call.grace-ms:5000}") long graceMs) {
         this.registry = registry;
         this.objectMapper = objectMapper;
@@ -98,7 +98,7 @@ public class RunnerCallDispatcher {
 
     /**
      * Enveloppe la session dans un décorateur sérialisant les écritures et la retient pour ce
-     * workspace. Le décorateur est aussi déposé dans les attributs de la session : le
+     * poste. Le décorateur est aussi déposé dans les attributs de la session : le
      * {@code heartbeat_ack} emprunte ainsi exactement la même instance (contrat §7).
      */
     public void attach(WebSocketSession session, RunnerIdentity identity) {
@@ -107,35 +107,35 @@ public class RunnerCallDispatcher {
         WebSocketRunnerOutbound channel = new WebSocketRunnerOutbound(decorated);
         session.getAttributes().put(OUTBOUND_SESSION_ATTRIBUTE, decorated);
         session.getAttributes().put(OUTBOUND_CHANNEL_ATTRIBUTE, channel);
-        outbound.put(identity.workspaceId(), channel);
+        outbound.put(identity.hostId(), channel);
     }
 
     /**
-     * Branche un canal de <b>repli long-polling</b> (F-38 / SF-38-09) sur ce workspace : le
+     * Branche un canal de <b>repli long-polling</b> (F-38 / SF-38-09) sur ce poste : le
      * dispatcher émet ses {@code tool_call} de la même façon, ils attendent simplement dans une file
      * qu'un {@code POST /runner/poll} vienne les chercher. Un canal précédent (socket WS ou polling
      * plus ancien) est remplacé — c'est le même runner qui change de tuyau.
      */
     public void attachChannel(RunnerIdentity identity, RunnerOutbound channel) {
-        outbound.put(identity.workspaceId(), channel);
+        outbound.put(identity.hostId(), channel);
     }
 
     /**
      * Débranche un canal (quel que soit son transport) et termine ses appels en vol. Ne fait rien si
-     * le canal courant du workspace n'est plus celui-ci : une connexion plus récente ne doit pas être
+     * le canal courant du poste n'est plus celui-ci : une connexion plus récente ne doit pas être
      * effacée par la fin tardive de l'ancienne (garde anti-course, même esprit que
      * {@link RunnerRegistry#unregister}).
      */
-    public void detachChannel(UUID workspaceId, RunnerOutbound channel) {
-        if (!outbound.remove(workspaceId, channel)) {
+    public void detachChannel(UUID hostId, RunnerOutbound channel) {
+        if (!outbound.remove(hostId, channel)) {
             return;
         }
-        capabilities.remove(workspaceId);
-        failAllOf(workspaceId);
+        capabilities.remove(hostId);
+        failAllOf(hostId);
     }
 
     /**
-     * Retire la session de ce workspace et termine <b>tous ses appels en vol</b> en
+     * Retire la session de ce poste et termine <b>tous ses appels en vol</b> en
      * {@code runner_unavailable}. Appelée avant {@code registry.unregister} : au moment où la
      * présence disparaît, plus aucun appel n'attend une socket morte.
      *
@@ -149,7 +149,7 @@ public class RunnerCallDispatcher {
         if (stored instanceof RunnerOutbound channel) {
             // Fermeture d'une socket déjà remplacée par une reconnexion (ou par un repli
             // long-polling) : detachChannel ne casse rien de la connexion vivante.
-            detachChannel(identity.workspaceId(), channel);
+            detachChannel(identity.hostId(), channel);
         }
     }
 
@@ -166,20 +166,20 @@ public class RunnerCallDispatcher {
     // ---------------------------------------------------------------- émission
 
     /**
-     * Émet un {@code tool_call} vers le runner du workspace et <b>attend</b> son {@code tool_result}.
-     * Bloquant par construction : la boucle tool-use est séquentielle et ne peut pas continuer sans
-     * le résultat.
+     * Émet un {@code tool_call} vers le runner du <b>poste</b> et <b>attend</b> son
+     * {@code tool_result}. Bloquant par construction : la boucle tool-use est séquentielle et ne peut
+     * pas continuer sans le résultat.
      *
-     * @param workspaceId workspace ciblé (déjà vérifié possédé par l'appelant — isolation)
+     * @param target      poste ciblé et projet concerné (déjà vérifiés possédés — isolation)
      * @param callId      identifiant de corrélation (= {@code tool_use} du fournisseur), non vide
      * @param tool        nom d'outil, exactement celui exposé au modèle (aucun préfixe)
      * @param input       arguments, copiés verbatim dans la trame
      * @param timeoutMs   délai armé côté runner ; le backend attend {@code timeoutMs + 5 000 ms}
      * @return l'issue de l'appel, jamais {@code null} — une erreur de transport est une issue
      */
-    public RunnerCallResult call(UUID workspaceId, String callId, String tool, JsonNode input,
+    public RunnerCallResult call(RunnerTarget target, String callId, String tool, JsonNode input,
             long timeoutMs) {
-        return call(workspaceId, callId, tool, input, timeoutMs, null);
+        return call(target, callId, tool, input, timeoutMs, null);
     }
 
     /**
@@ -192,32 +192,34 @@ public class RunnerCallDispatcher {
      * lever. Il est <b>détaché</b> dès que le résultat est traité, pour qu'aucun fragment tardif ne
      * parte alors que l'appelant a repris la main.</p>
      */
-    public RunnerCallResult call(UUID workspaceId, String callId, String tool, JsonNode input,
+    public RunnerCallResult call(RunnerTarget target, String callId, String tool, JsonNode input,
             long timeoutMs, java.util.function.Consumer<String> onChunk) {
-        if (registry.findLocal(workspaceId).isEmpty()) {
+        UUID hostId = target.hostId();
+        if (registry.findLocal(hostId).isEmpty()) {
             // isConnected() peut être vrai cross-replica : la socket vit alors sur l'autre pod.
-            return RunnerCallResult.backendError(registry.isConnected(workspaceId)
+            return RunnerCallResult.backendError(registry.isConnected(hostId)
                     ? RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE
                     : RunnerErrorCodes.RUNNER_UNAVAILABLE);
         }
-        RunnerOutbound session = outbound.get(workspaceId);
+        RunnerOutbound session = outbound.get(hostId);
         if (session == null || !session.isOpen()) {
             return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_UNAVAILABLE);
         }
-        if (!capabilitiesOf(workspaceId).contains(capabilityFor(tool))) {
+        if (!capabilitiesOf(hostId).contains(capabilityFor(tool))) {
             return RunnerCallResult.backendError(RunnerErrorCodes.UNSUPPORTED_TOOL);
         }
 
-        InFlightCall pending = new InFlightCall(workspaceId, new CompletableFuture<>(), onChunk);
+        InFlightCall pending =
+                new InFlightCall(hostId, target.workspaceId(), new CompletableFuture<>(), onChunk);
         if (inFlight.putIfAbsent(callId, pending) != null) {
             return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_PROTOCOL_ERROR,
                     "Identifiant d'appel déjà utilisé.");
         }
         try {
-            session.send(toolCallFrame(callId, tool, input, timeoutMs));
+            session.send(toolCallFrame(callId, tool, input, timeoutMs, target.safeProjectPath()));
         } catch (IOException | RuntimeException ex) {
             inFlight.remove(callId);
-            log.debug("Émission tool_call impossible (workspace={}, outil={})", workspaceId, tool);
+            log.debug("Émission tool_call impossible (poste={}, outil={})", hostId, tool);
             return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_UNAVAILABLE);
         }
 
@@ -225,7 +227,7 @@ public class RunnerCallDispatcher {
             return pending.future().get(timeoutMs + graceMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException ex) {
             sendQuietly(session, cancelFrame(callId, "timeout"));
-            log.info("Runner silencieux (workspace={}, outil={}) : appel abandonné", workspaceId, tool);
+            log.info("Runner silencieux (poste={}, outil={}) : appel abandonné", hostId, tool);
             return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_TIMEOUT);
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
@@ -242,34 +244,64 @@ public class RunnerCallDispatcher {
     }
 
     /**
-     * Demande l'annulation de tous les appels en vol d'un workspace (F-38 / SF-38-07, interruption
-     * utilisateur — même geste que F-32). Émet un {@code tool_cancel} par appel ; le runner tue le
-     * processus et émet <b>quand même</b> sa trame terminale (contrat §2.5), qui débloque l'appelant
-     * normalement. Le backend ne complète donc rien lui-même : pas de résultat inventé.
+     * Demande l'annulation de tous les appels en vol <b>d'un projet</b> (F-38 / SF-38-07,
+     * interruption utilisateur — même geste que F-32). Émet un {@code tool_cancel} par appel ; le
+     * runner tue le processus et émet <b>quand même</b> sa trame terminale (contrat §2.5), qui
+     * débloque l'appelant normalement. Le backend ne complète donc rien lui-même : pas de résultat
+     * inventé.
+     *
+     * <p>Le filtre reste le <b>projet</b> et non le poste, alors même que la liaison, elle, est
+     * celle du poste (F-48 / SF-48-01) : plusieurs projets d'une même machine peuvent tourner en
+     * parallèle, et interrompre un tour ne doit pas tuer celui du voisin.</p>
      *
      * @return le nombre d'appels effectivement visés
      */
     public int cancelWorkspace(UUID workspaceId, String reason) {
-        RunnerOutbound session = outbound.get(workspaceId);
-        if (session == null) {
-            return 0;
-        }
         int cancelled = 0;
         for (Map.Entry<String, InFlightCall> entry : inFlight.entrySet()) {
-            if (entry.getValue().workspaceId().equals(workspaceId)) {
-                sendQuietly(session, cancelFrame(entry.getKey(), reason));
-                cancelled++;
+            InFlightCall pending = entry.getValue();
+            if (!workspaceId.equals(pending.workspaceId())) {
+                continue;
             }
+            RunnerOutbound session = outbound.get(pending.hostId());
+            if (session == null) {
+                continue;
+            }
+            sendQuietly(session, cancelFrame(entry.getKey(), reason));
+            cancelled++;
         }
         if (cancelled > 0) {
-            log.info("Annulation demandée sur {} appel(s) en vol (workspace={}, motif={})", cancelled,
+            log.info("Annulation demandée sur {} appel(s) en vol (projet={}, motif={})", cancelled,
                     workspaceId, reason);
         }
         return cancelled;
     }
 
     /**
-     * <b>Coupe la liaison</b> avec le runner d'un workspace, sur-le-champ (F-38 / SF-38-08) :
+     * Même geste, mais pour <b>tout un poste</b> : ce que la coupure de liaison doit faire, puisque
+     * la socket qui disparaît est celle de la machine entière.
+     */
+    private int cancelHost(UUID hostId, String reason) {
+        RunnerOutbound session = outbound.get(hostId);
+        if (session == null) {
+            return 0;
+        }
+        int cancelled = 0;
+        for (Map.Entry<String, InFlightCall> entry : inFlight.entrySet()) {
+            if (entry.getValue().hostId().equals(hostId)) {
+                sendQuietly(session, cancelFrame(entry.getKey(), reason));
+                cancelled++;
+            }
+        }
+        if (cancelled > 0) {
+            log.info("Annulation demandée sur {} appel(s) en vol (poste={}, motif={})", cancelled,
+                    hostId, reason);
+        }
+        return cancelled;
+    }
+
+    /**
+     * <b>Coupe la liaison</b> avec le runner d'un poste, sur-le-champ (F-38 / SF-38-08) :
      * annulation des appels en vol, fermeture de la socket, puis terminaison de ce qui attendait
      * encore. Utilisé par la révocation d'un jeton et par le coupe-circuit.
      *
@@ -280,23 +312,23 @@ public class RunnerCallDispatcher {
      *
      * @return vrai si une socket locale a effectivement été fermée
      */
-    public boolean disconnect(UUID workspaceId, String reason) {
-        RunnerOutbound session = outbound.get(workspaceId);
+    public boolean disconnect(UUID hostId, String reason) {
+        RunnerOutbound session = outbound.get(hostId);
         if (session == null) {
             return false;
         }
-        cancelWorkspace(workspaceId, reason);
+        cancelHost(hostId, reason);
         // Selon le transport : fermeture de la socket, ou fermeture du canal long-polling (qui se
         // retire lui-même du registre et débranche ses appels en vol).
         session.close();
-        failAllOf(workspaceId);
-        log.info("Liaison runner coupée (workspace={}, motif={})", workspaceId, reason);
+        failAllOf(hostId);
+        log.info("Liaison runner coupée (poste={}, motif={})", hostId, reason);
         return true;
     }
 
-    /** Jeton du runner <b>local</b> de ce workspace, s'il y en a un (audit, révocation ciblée). */
-    public java.util.Optional<UUID> localTokenId(UUID workspaceId) {
-        return registry.findLocal(workspaceId).map(RunnerConnection::tokenId);
+    /** Jeton du runner <b>local</b> de ce poste, s'il y en a un (audit, révocation ciblée). */
+    public java.util.Optional<UUID> localTokenId(UUID hostId) {
+        return registry.findLocal(hostId).map(RunnerConnection::tokenId);
     }
 
     // ---------------------------------------------------------------- réception
@@ -304,7 +336,7 @@ public class RunnerCallDispatcher {
     /**
      * Aiguille une trame entrante autre que le heartbeat (contrat §2). L'identité vient
      * <b>toujours</b> de la session (jamais d'un champ du message) : une trame ne peut pas terminer
-     * l'appel d'un autre workspace. Toute trame inattendue est ignorée en silence — c'est ce qui
+     * l'appel d'un autre poste. Toute trame inattendue est ignorée en silence — c'est ce qui
      * permet à un runner plus ancien de cohabiter avec un backend plus récent (contrat §0).
      */
     public void onFrame(RunnerIdentity identity, String type, JsonNode frame) {
@@ -313,8 +345,8 @@ public class RunnerCallDispatcher {
             case "tool_result" -> onToolResult(identity, frame);
             case "tool_stream" -> onToolStream(identity, frame);
             case "protocol_error" -> onProtocolError(identity, frame);
-            default -> log.debug("Trame runner de type inconnu ignorée (workspace={})",
-                    identity.workspaceId());
+            default -> log.debug("Trame runner de type inconnu ignorée (poste={})",
+                    identity.hostId());
         }
     }
 
@@ -328,9 +360,9 @@ public class RunnerCallDispatcher {
                 }
             });
         }
-        capabilities.put(identity.workspaceId(), declared.isEmpty() ? DEFAULT_CAPABILITIES : declared);
+        capabilities.put(identity.hostId(), declared.isEmpty() ? DEFAULT_CAPABILITIES : declared);
         recordDeclaredShell(identity, frame);
-        log.debug("Runner prêt (workspace={}, capacités={})", identity.workspaceId(), declared);
+        log.debug("Runner prêt (poste={}, capacités={})", identity.hostId(), declared);
     }
 
     /**
@@ -338,8 +370,8 @@ public class RunnerCallDispatcher {
      *
      * <p>Il ne peut pas rester en mémoire à côté des capacités : la consigne système est construite
      * par le pod qui sert le message, qui n'est pas forcément celui qui porte la socket
-     * (HPA {@code min 1 / max 4}, SF-38-12). Il est donc persisté sur le projet — pour le
-     * {@code workspaceId} <b>de la session</b>, jamais pour un identifiant lu dans la trame.</p>
+     * (HPA {@code min 1 / max 4}, SF-38-12). Il est donc persisté sur le poste — pour le
+     * {@code hostId} <b>de la session</b>, jamais pour un identifiant lu dans la trame.</p>
      *
      * <p>Best-effort, comme le reste de {@code ready} : une écriture qui échoue ne doit pas couper
      * une liaison runner par ailleurs saine.</p>
@@ -350,10 +382,10 @@ public class RunnerCallDispatcher {
             return; // Runner antérieur à SF-38-27 : rien n'est déclaré, rien n'est écrit.
         }
         try {
-            shellRecorder.recordRunnerShell(identity.workspaceId(), node.asText());
+            shellRecorder.recordRunnerShell(identity.hostId(), node.asText());
         } catch (RuntimeException e) {
-            log.warn("Interpréteur déclaré non enregistré (workspace={}) : {}",
-                    identity.workspaceId(), e.getMessage());
+            log.warn("Interpréteur déclaré non enregistré (poste={}) : {}",
+                    identity.hostId(), e.getMessage());
         }
     }
 
@@ -381,7 +413,7 @@ public class RunnerCallDispatcher {
     }
 
     private void onProtocolError(RunnerIdentity identity, JsonNode frame) {
-        log.warn("protocol_error reçu du runner (workspace={}, code={})", identity.workspaceId(),
+        log.warn("protocol_error reçu du runner (poste={}, code={})", identity.hostId(),
                 frame.path("code").asText("?"));
         InFlightCall pending = pendingFor(identity, frame);
         if (pending != null) {
@@ -393,7 +425,7 @@ public class RunnerCallDispatcher {
 
     /**
      * Appel en vol référencé par la trame, ou {@code null} s'il n'y en a pas — id absent, id inconnu,
-     * ou appel appartenant à un <b>autre workspace</b> que celui de la session (isolation).
+     * ou appel appartenant à un <b>autre poste</b> que celui de la session (isolation).
      */
     private InFlightCall pendingFor(RunnerIdentity identity, JsonNode frame) {
         String id = frame.path("id").asText(null);
@@ -402,11 +434,11 @@ public class RunnerCallDispatcher {
         }
         InFlightCall pending = inFlight.get(id);
         if (pending == null) {
-            log.debug("Trame runner sans appel en vol (workspace={})", identity.workspaceId());
+            log.debug("Trame runner sans appel en vol (poste={})", identity.hostId());
             return null;
         }
-        if (!pending.workspaceId().equals(identity.workspaceId())) {
-            log.warn("Trame runner rattachée à un autre workspace : ignorée");
+        if (!pending.hostId().equals(identity.hostId())) {
+            log.warn("Trame runner rattachée à un autre poste : ignorée");
             return null;
         }
         return pending;
@@ -440,8 +472,8 @@ public class RunnerCallDispatcher {
 
     // ------------------------------------------------------------------ outils
 
-    private Set<String> capabilitiesOf(UUID workspaceId) {
-        return capabilities.getOrDefault(workspaceId, DEFAULT_CAPABILITIES);
+    private Set<String> capabilitiesOf(UUID hostId) {
+        return capabilities.getOrDefault(hostId, DEFAULT_CAPABILITIES);
     }
 
     /** Capacité requise par un outil (contrat §2.1) : {@code bash} pour la commande, sinon fichiers. */
@@ -449,11 +481,22 @@ public class RunnerCallDispatcher {
         return "bash".equals(tool) ? "bash" : "files";
     }
 
-    private String toolCallFrame(String callId, String tool, JsonNode input, long timeoutMs) {
+    /**
+     * Trame {@code tool_call} (contrat §2.2), enrichie par F-48 / SF-48-01 du champ {@code project}.
+     *
+     * <p>Le projet voyage <b>par appel</b> parce que le runner est désormais appairé à une machine
+     * et non à un dossier : c'est cette valeur — le chemin relatif du projet sous la racine du poste,
+     * {@code ""} pour la racine — sur laquelle le runner referme son confinement à chaque appel
+     * (SF-48-02). Elle est toujours émise, y compris vide : un champ absent laisserait le runner
+     * choisir, et le confinement ne se déduit pas.</p>
+     */
+    private String toolCallFrame(String callId, String tool, JsonNode input, long timeoutMs,
+            String projectPath) {
         ObjectNode frame = objectMapper.createObjectNode();
         frame.put("type", "tool_call");
         frame.put("id", callId);
         frame.put("tool", tool);
+        frame.put("project", projectPath);
         frame.set("input", input == null || !input.isObject() ? objectMapper.createObjectNode() : input);
         frame.put("timeoutMs", timeoutMs);
         return frame.toString();
@@ -476,10 +519,10 @@ public class RunnerCallDispatcher {
         }
     }
 
-    /** Termine tous les appels en vol d'un workspace (socket fermée). */
-    private void failAllOf(UUID workspaceId) {
+    /** Termine tous les appels en vol d'un poste (socket fermée). */
+    private void failAllOf(UUID hostId) {
         inFlight.forEach((id, pending) -> {
-            if (pending.workspaceId().equals(workspaceId)) {
+            if (pending.hostId().equals(hostId)) {
                 pending.detachRelay();
                 pending.future().complete(
                         RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_UNAVAILABLE));
@@ -494,16 +537,19 @@ public class RunnerCallDispatcher {
     }
 
     /**
-     * Appel en vol : le workspace qui l'a émis (garde d'isolation à la réception), la promesse de
-     * résultat, et l'agrégat des trames {@code tool_stream} reçues avant le résultat.
+     * Appel en vol : le <b>poste</b> qui l'exécute (garde d'isolation à la réception, et voie de
+     * retour des annulations), le <b>projet</b> qui l'a demandé (F-48 / SF-48-01 — c'est lui que
+     * vise une interruption de tour), la promesse de résultat, et l'agrégat des trames
+     * {@code tool_stream} reçues avant le résultat.
      */
-    private record InFlightCall(UUID workspaceId, CompletableFuture<RunnerCallResult> future,
+    private record InFlightCall(UUID hostId, UUID workspaceId,
+            CompletableFuture<RunnerCallResult> future,
             StringBuilder stream, AtomicBoolean truncatedFlag,
             java.util.concurrent.atomic.AtomicReference<java.util.function.Consumer<String>> relay) {
 
-        InFlightCall(UUID workspaceId, CompletableFuture<RunnerCallResult> future,
+        InFlightCall(UUID hostId, UUID workspaceId, CompletableFuture<RunnerCallResult> future,
                 java.util.function.Consumer<String> onChunk) {
-            this(workspaceId, future, new StringBuilder(), new AtomicBoolean(false),
+            this(hostId, workspaceId, future, new StringBuilder(), new AtomicBoolean(false),
                     new java.util.concurrent.atomic.AtomicReference<>(onChunk));
         }
 

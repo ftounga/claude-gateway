@@ -71,7 +71,7 @@ class RunnerWebSocketHandlerTest {
         ArgumentCaptor<RunnerConnection> captor = ArgumentCaptor.forClass(RunnerConnection.class);
         verify(registry).register(captor.capture());
         RunnerConnection registered = captor.getValue();
-        org.assertj.core.api.Assertions.assertThat(registered.workspaceId()).isEqualTo(workspaceId);
+        org.assertj.core.api.Assertions.assertThat(registered.hostId()).isEqualTo(workspaceId);
         org.assertj.core.api.Assertions.assertThat(registered.tokenId()).isEqualTo(tokenId);
         verify(heartbeatService).touch(tokenId);
     }

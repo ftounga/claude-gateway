@@ -1,0 +1,159 @@
+package fr.claudegateway.runner.host;
+
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import fr.claudegateway.atelier.RunnerShell;
+
+/**
+ * Cycle de vie des postes (F-48 / SF-48-01) : création, listing, suppression, et enregistrement de
+ * ce que le runner <b>déclare</b> de sa machine.
+ *
+ * <p>Toute lecture et toute écriture filtrent {@code user_id} : un poste appartient à un seul
+ * compte, et un identifiant de poste venu du client ne suffit jamais à y toucher.</p>
+ */
+@Service
+public class RunnerHostService implements RunnerShellRecorder {
+
+    private static final int MAX_OS_LENGTH = 64;
+
+    private final RunnerHostRepository repository;
+
+    public RunnerHostService(RunnerHostRepository repository) {
+        this.repository = repository;
+    }
+
+    /** Crée un poste au nom libre. Le nom est requis : c'est ce qui le rend reconnaissable. */
+    @Transactional
+    public RunnerHost create(UUID userId, String name) {
+        return repository.save(RunnerHost.builder()
+                .userId(userId)
+                .name(requireName(name))
+                .build());
+    }
+
+    /** Postes de l'utilisateur, les plus récents d'abord. */
+    @Transactional(readOnly = true)
+    public List<RunnerHost> list(UUID userId) {
+        return repository.findByUserIdOrderByCreatedAtDesc(userId);
+    }
+
+    /**
+     * Poste possédé par l'utilisateur.
+     *
+     * @throws RunnerHostNotFoundException s'il est inconnu ou appartient à quelqu'un d'autre — les
+     *                                     deux cas sont indiscernables (pas d'oracle d'existence)
+     */
+    @Transactional(readOnly = true)
+    public RunnerHost requireOwned(UUID userId, UUID hostId) {
+        return repository.findByIdAndUserId(hostId, userId)
+                .orElseThrow(() -> new RunnerHostNotFoundException("Poste introuvable : " + hostId));
+    }
+
+    /** Renomme un poste possédé. */
+    @Transactional
+    public RunnerHost rename(UUID userId, UUID hostId, String name) {
+        RunnerHost host = requireOwned(userId, hostId);
+        host.setName(requireName(name));
+        return host;
+    }
+
+    /**
+     * Supprime un poste possédé. Les jetons, codes et rattachements de projets sont nettoyés par
+     * l'appelant ({@code RunnerHostController}) : ce service ne connaît ni les uns ni les autres.
+     */
+    @Transactional
+    public void delete(UUID userId, UUID hostId) {
+        repository.delete(requireOwned(userId, hostId));
+    }
+
+    /**
+     * Enregistre ce que le runner déclare de sa machine à l'appairage (F-38 / SF-38-15 et 18,
+     * déplacé sur le poste par F-48).
+     *
+     * <p>La <b>racine</b> est réduite à son dernier segment : l'arborescence de la machine de
+     * l'utilisateur n'a aucune raison d'entrer dans la base, et le confinement du runner ne remonte
+     * déjà que des chemins relatifs.</p>
+     */
+    @Transactional
+    public void recordDeclaration(UUID hostId, String rootName, String os, boolean elevated) {
+        repository.findById(hostId).ifPresent(host -> {
+            String segment = lastSegment(rootName);
+            if (segment != null) {
+                host.setRootName(segment);
+            }
+            String system = shorten(os, MAX_OS_LENGTH);
+            if (system != null) {
+                host.setOs(system);
+            }
+            host.setElevated(elevated);
+            host.setLastSeenAt(OffsetDateTime.now());
+        });
+    }
+
+    /**
+     * Enregistre le genre d'interpréteur élu par le runner (F-38 / SF-38-27), déplacé du projet vers
+     * le poste : c'est une propriété de la machine, et elle vaut pour tous ses projets.
+     *
+     * <p>Hors liste blanche, la valeur est <b>ignorée</b> plutôt que relayée : elle vient d'un
+     * client, et la consigne système garde alors son texte POSIX.</p>
+     */
+    @Transactional
+    @Override
+    public void recordRunnerShell(UUID hostId, String declared) {
+        RunnerShell.fromDeclared(declared).ifPresent(shell ->
+                repository.findById(hostId).ifPresent(host -> host.setShell(shell.declared())));
+    }
+
+    /**
+     * Genre d'interpréteur déclaré par le runner de ce poste, ou {@code null} — poste inconnu, non
+     * rattaché, ou runner qui n'a rien déclaré. La consigne système retombe alors sur son texte
+     * POSIX, correct sur toute machine Unix.
+     */
+    @Transactional(readOnly = true)
+    public String declaredShell(UUID hostId) {
+        if (hostId == null) {
+            return null;
+        }
+        return repository.findById(hostId).map(RunnerHost::getShell).orElse(null);
+    }
+
+    private static String requireName(String name) {
+        String trimmed = name == null ? "" : name.trim();
+        if (trimmed.isEmpty()) {
+            throw new InvalidHostNameException("Le nom du poste est requis.");
+        }
+        return trimmed.length() > RunnerHost.MAX_NAME_LENGTH
+                ? trimmed.substring(0, RunnerHost.MAX_NAME_LENGTH)
+                : trimmed;
+    }
+
+    /** Dernier segment d'un chemin, quel que soit le séparateur ; {@code null} si rien d'exploitable. */
+    static String lastSegment(String rawRoot) {
+        if (rawRoot == null) {
+            return null;
+        }
+        String cleaned = rawRoot.trim().replace('\\', '/');
+        while (cleaned.endsWith("/")) {
+            cleaned = cleaned.substring(0, cleaned.length() - 1);
+        }
+        int slash = cleaned.lastIndexOf('/');
+        String segment = slash >= 0 ? cleaned.substring(slash + 1) : cleaned;
+        return shorten(segment, 255);
+    }
+
+    private static String shorten(String value, int max) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        return trimmed.length() > max ? trimmed.substring(0, max) : trimmed;
+    }
+}
