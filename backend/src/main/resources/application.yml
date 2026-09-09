@@ -242,6 +242,10 @@ app:
       # Modèle par défaut + liste blanche des modèles sélectionnables (OQ-04 contournée par config).
       default-model: ${ANTHROPIC_DEFAULT_MODEL:claude-opus-4-8}
       models: ${ANTHROPIC_MODELS:claude-opus-4-8,claude-sonnet-5,claude-haiku-4-5}
+      # Modèle des appels UTILITAIRES de la plateforme (aide produit F-54) : courts, fréquents, sans
+      # enjeu de raisonnement. Doit appartenir à `models`, sinon le catalogue se replie sur le modèle
+      # par défaut plutôt que d'échouer.
+      fast-model: ${ANTHROPIC_FAST_MODEL:claude-haiku-4-5}
       max-tokens: ${ANTHROPIC_MAX_TOKENS:4096}
       # Plafond de sortie de la BOUCLE D'AGENT (F-28 / SF-28-18), distinct de celui du chat : l'agent
       # transporte le contenu entier d'un fichier dans sa sortie (`write_file`). À 4096, écrire un
@@ -340,6 +344,16 @@ app:
       # URLs de retour Checkout (frontend). Surchargées par environnement.
       success-url: ${STRIPE_SUCCESS_URL:http://localhost:4200/billing?checkout=success}
       cancel-url: ${STRIPE_CANCEL_URL:http://localhost:4200/billing?checkout=cancel}
+  help:
+    # Chatbot d'aide produit (F-54). L'aide NE CONSOMME PAS le quota de l'utilisateur : facturer la
+    # question « pourquoi ça ne démarre pas ? » découragerait exactement la question qu'on veut qu'il
+    # pose. L'appel reste donc à la charge de la plateforme, et ces bornes le tiennent.
+    # Compteur EN MÉMOIRE, donc par pod : sous HPA le plafond effectif est max-questions × pods.
+    # C'est un garde-fou de coût, pas une règle de facturation.
+    max-questions: ${APP_HELP_MAX_QUESTIONS:20}
+    window: ${APP_HELP_WINDOW:PT60M}
+    # Une réponse d'aide fait 3 à 6 phrases : la borne est une garantie de coût autant qu'un style.
+    max-tokens: ${APP_HELP_MAX_TOKENS:512}
   quota:
     # Quotas d'entitlement (F-10) : allocation mensuelle de tokens par état d'abonnement/plan.
     # Valeurs commerciales réversibles, ajustables par environnement sans changement de code.

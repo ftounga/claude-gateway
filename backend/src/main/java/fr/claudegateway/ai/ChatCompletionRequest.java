@@ -13,29 +13,43 @@ import java.util.List;
  * @param apiKey      clé fournisseur à utiliser pour CET appel (mode BYOK, F-03) ; {@code null} => clé
  *                    plateforme (mode Hosted). Provider-neutre : jamais journalisée, jamais persistée.
  * @param system      consigne système optionnelle (top-level {@code system} de l'API) ; {@code null} => aucune.
+ * @param maxTokens   plafond de tokens de sortie de CET appel ; {@code null} => le plafond configuré du
+ *                    fournisseur s'applique. Provider-neutre : borner sa sortie est une propriété
+ *                    générique d'une complétion, pas un détail Anthropic. Introduit par F-54 pour que
+ *                    l'aide produit reste courte sans toucher au plafond du chat (F-02).
  */
 public record ChatCompletionRequest(String model, List<ChatMessage> messages,
-        List<ProviderAttachment> attachments, String apiKey, String system) {
+        List<ProviderAttachment> attachments, String apiKey, String system, Integer maxTokens) {
 
     public ChatCompletionRequest {
         if (attachments == null) {
             attachments = List.of();
         }
+        // Une valeur non positive n'est pas une borne : elle est traitée comme « pas de préférence ».
+        if (maxTokens != null && maxTokens <= 0) {
+            maxTokens = null;
+        }
+    }
+
+    /** Complétion sans plafond de sortie propre (celui du fournisseur s'applique). */
+    public ChatCompletionRequest(String model, List<ChatMessage> messages,
+            List<ProviderAttachment> attachments, String apiKey, String system) {
+        this(model, messages, attachments, apiKey, system, null);
     }
 
     /** Complétion sans consigne système. */
     public ChatCompletionRequest(String model, List<ChatMessage> messages,
             List<ProviderAttachment> attachments, String apiKey) {
-        this(model, messages, attachments, apiKey, null);
+        this(model, messages, attachments, apiKey, null, null);
     }
 
     /** Complétion avec la clé plateforme (mode Hosted). */
     public ChatCompletionRequest(String model, List<ChatMessage> messages, List<ProviderAttachment> attachments) {
-        this(model, messages, attachments, null, null);
+        this(model, messages, attachments, null, null, null);
     }
 
     /** Complétion sans pièce jointe, clé plateforme. */
     public ChatCompletionRequest(String model, List<ChatMessage> messages) {
-        this(model, messages, List.of(), null, null);
+        this(model, messages, List.of(), null, null, null);
     }
 }
