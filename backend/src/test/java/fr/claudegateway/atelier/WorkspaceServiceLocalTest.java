@@ -66,7 +66,10 @@ class WorkspaceServiceLocalTest {
         // La cible est imposée : un projet local en bac à sable ouvrirait une session sur un dossier
         // vide et laisserait croire que le travail a lieu quelque part (D3).
         assertThat(created.executionTargetOrDefault()).isEqualTo(WorkspaceExecutionTarget.RUNNER);
-        assertThat(created.isAgentAskBeforeBash()).isTrue();
+        // L'exécution est autorisée par défaut (F-47 / SF-47-04, décision du PO du 2026-09-10 qui
+        // tranche OQ-14) : la première commande n'attend plus un clic sur une machine que
+        // l'utilisateur a lui-même connectée.
+        assertThat(created.isAgentAskBeforeBash()).isFalse();
         // Rien n'est alloué de ce dont on ne se servira jamais (D4).
         verify(storage, never()).putFile(any(), any(), any());
     }
@@ -131,6 +134,33 @@ class WorkspaceServiceLocalTest {
                 WorkspaceExecutionTarget.RUNNER);
 
         assertThat(result.executionTargetOrDefault()).isEqualTo(WorkspaceExecutionTarget.RUNNER);
+    }
+
+    @Test
+    void doesNotArmTheConfirmationGateWhenSwitchingToRunner() {
+        when(workspaceRepository.findByIdAndUserId(workspaceId, userId))
+                .thenReturn(java.util.Optional.of(localWorkspace()));
+
+        Workspace result = service.setExecutionTarget(userId, workspaceId,
+                WorkspaceExecutionTarget.RUNNER);
+
+        // La bascule armait la porte à chaque passage en cible RUNNER (SF-38-08, D7). Le laisser
+        // en place rendrait le nouveau défaut inopérant dès la première bascule (F-47 / SF-47-04).
+        assertThat(result.isAgentAskBeforeBash()).isFalse();
+    }
+
+    @Test
+    void leavesTheConfirmationGateArmedWhenTheUserHadArmedIt() {
+        Workspace armed = localWorkspace();
+        armed.setAgentAskBeforeBash(true);
+        when(workspaceRepository.findByIdAndUserId(workspaceId, userId))
+                .thenReturn(java.util.Optional.of(armed));
+
+        Workspace result = service.setExecutionTarget(userId, workspaceId,
+                WorkspaceExecutionTarget.RUNNER);
+
+        // On ne désarme pas plus qu'on n'arme dans le dos de l'utilisateur : le réglage est le sien.
+        assertThat(result.isAgentAskBeforeBash()).isTrue();
     }
 
     @Test

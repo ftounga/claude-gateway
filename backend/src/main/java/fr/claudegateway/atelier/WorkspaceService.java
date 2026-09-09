@@ -126,7 +126,12 @@ public class WorkspaceService implements RunnerShellRecorder {
                 .name(cleaned)
                 .source(WorkspaceSource.LOCAL)
                 .executionTarget(WorkspaceExecutionTarget.RUNNER)
-                .agentAskBeforeBash(true)
+                // L'exécution est AUTORISÉE PAR DÉFAUT (F-47 / SF-47-04, décision du PO du
+                // 2026-09-10 qui tranche OQ-14). Sur une machine que l'utilisateur a lui-même
+                // connectée, avec son propre appairage, dans un dossier qu'il a lui-même désigné,
+                // la première commande n'attend plus un clic. La porte reste activable projet par
+                // projet ; le journal d'audit et le coupe-circuit, eux, ne se désactivent pas.
+                .agentAskBeforeBash(false)
                 .build());
     }
 
@@ -314,13 +319,13 @@ public class WorkspaceService implements RunnerShellRecorder {
                     "Ce projet vit sur votre machine : il s'exécute par le runner, pas dans le bac à sable.");
         }
         workspace.setExecutionTarget(target);
-        if (target == WorkspaceExecutionTarget.RUNNER) {
-            // Décision D7 (F-38 / SF-38-08) : la validation avant exécution devient obligatoire dès
-            // que les commandes tournent sur une vraie machine. `always_allow` est acceptable dans
-            // un conteneur jetable, pas ici — on la pose donc au moment de la bascule, plutôt que de
-            // compter sur un réglage que l'utilisateur n'a jamais activé.
-            workspace.setAgentAskBeforeBash(true);
-        }
+        // La bascule ne touche PLUS au réglage « demander avant d'exécuter » (F-47 / SF-47-04).
+        // La décision D7 (F-38 / SF-38-08) l'armait à chaque passage en cible RUNNER ; son motif —
+        // `always_allow` acceptable dans un conteneur jetable, pas sur une vraie machine — est
+        // précisément celui que le PO a tranché dans l'autre sens le 2026-09-10. La laisser en
+        // place rendrait le nouveau défaut inopérant dès la première bascule, et réarmerait la
+        // porte DANS LE DOS d'un utilisateur qui l'avait éteinte — au retour d'un coupe-circuit,
+        // qui repasse le projet en SANDBOX puis, au ré-appairage, en RUNNER.
         return workspaceRepository.save(workspace);
     }
 

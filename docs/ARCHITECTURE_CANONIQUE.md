@@ -497,10 +497,15 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     refusés** dans ce mode (D2 : ils exécutent chez Anthropic, impossible à rerouter) → `409
     execution_target_runner`. Le garde-fou « projet Git en lecture seule » ne vaut plus que pour
     `SANDBOX` : un projet `GIT` + `RUNNER` est légitime (le dépôt est cloné sur la machine).
-  - **Effet de bord sur `workspaces.agent_ask_before_bash`** (migration `044`, F-33) : le passage en cible
-    `RUNNER` **force la colonne à `true`** et sa désactivation est refusée (`409 execution_target_runner`) —
-    `always_allow` est acceptable dans un conteneur jetable, pas sur une vraie machine (D7). Le
-    coupe-circuit `POST /workspaces/{id}/runner/kill` **ramène la colonne à `SANDBOX`**.
+  - **`workspaces.agent_ask_before_bash`** (migration `044`, F-33) : **`false` par défaut**, et le
+    passage en cible `RUNNER` **n'y touche plus**. La décision D7 de SF-38-08 forçait la colonne à
+    `true` à chaque bascule et en refusait la désactivation (`409 execution_target_runner`) ; SF-38-20
+    a rouvert la désactivation, et **F-47 / SF-47-04** a retiré le forçage — le PO a tranché `OQ-14`
+    le 2026-09-10 : l'exécution est **autorisée par défaut** sur une machine que l'utilisateur a
+    lui-même connectée (ADR-018). La porte reste **activable par projet** ; le **journal d'audit** et
+    le **coupe-circuit** restent non désactivables. Le coupe-circuit
+    `POST /workspaces/{id}/runner/kill` **ramène la cible à `SANDBOX`**, sans plus modifier ce
+    réglage.
   - Endpoint **`PUT /workspaces/{id}/execution-target`** (JWT, accès Atelier, `requireOwned` d'abord :
     **404** sur le workspace d'autrui, **400** sur valeur inconnue) ; `executionTarget` est exposé en champ
     **additif** dans le détail et la liste des workspaces.
