@@ -76,7 +76,7 @@ public class AnthropicProvider implements AIProvider {
 
         Map<String, Object> body = new HashMap<>();
         body.put("model", request.model());
-        body.put("max_tokens", properties.maxTokens());
+        body.put("max_tokens", resolveMaxTokens(request));
         body.put("messages", toApiMessages(request.messages()));
         if (request.system() != null && !request.system().isBlank()) {
             body.put("system", request.system());
@@ -115,7 +115,7 @@ public class AnthropicProvider implements AIProvider {
 
         Map<String, Object> body = new HashMap<>();
         body.put("model", request.model());
-        body.put("max_tokens", properties.maxTokens());
+        body.put("max_tokens", resolveMaxTokens(request));
         body.put("messages", toApiMessages(request.messages()));
         if (request.system() != null && !request.system().isBlank()) {
             body.put("system", request.system());
@@ -244,6 +244,15 @@ public class AnthropicProvider implements AIProvider {
             return overrideApiKey;
         }
         return properties.apiKey();
+    }
+
+    /**
+     * Plafond de sortie de l'appel : celui que la requête impose s'il est fourni (F-54), sinon le
+     * plafond de chat configuré. Un appelant qui n'exprime pas de préférence retrouve exactement le
+     * comportement d'avant.
+     */
+    private int resolveMaxTokens(ChatCompletionRequest request) {
+        return request.maxTokens() != null ? request.maxTokens() : properties.maxTokens();
     }
 
     private static org.springframework.http.HttpHeaders fileHeaders(String mediaType) {

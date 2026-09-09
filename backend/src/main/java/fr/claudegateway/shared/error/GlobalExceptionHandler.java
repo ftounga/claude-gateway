@@ -55,6 +55,7 @@ import fr.claudegateway.git.InvalidGitBranchException;
 import fr.claudegateway.git.InvalidGitRepositoryException;
 import fr.claudegateway.git.InvalidGitTokenException;
 import fr.claudegateway.ocr.DocumentNotFoundException;
+import fr.claudegateway.help.HelpRateLimitExceededException;
 import fr.claudegateway.quota.QuotaExceededException;
 import fr.claudegateway.quota.SandboxLimitExceededException;
 import fr.claudegateway.rag.provider.EmbeddingProviderException;
@@ -267,6 +268,15 @@ public class GlobalExceptionHandler {
         log.debug("Appel refusé : quota de consommation atteint");
         return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED)
                 .body(new ErrorResponse("quota_exceeded", ex.getMessage()));
+    }
+
+    @ExceptionHandler(HelpRateLimitExceededException.class)
+    public ResponseEntity<ErrorResponse> handleHelpRateLimited(HelpRateLimitExceededException ex) {
+        // 429 et non 402 : l'aide ne touche pas au quota de l'utilisateur (F-54). Rien à payer,
+        // juste à attendre. La question posée n'est jamais journalisée.
+        log.debug("Question d'aide refusée : plafond de débit atteint pour cet utilisateur");
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(new ErrorResponse("help_rate_limited", ex.getMessage()));
     }
 
     @ExceptionHandler(SandboxLimitExceededException.class)

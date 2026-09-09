@@ -26,4 +26,15 @@ public class AnthropicModelCatalog implements ModelCatalog {
     public List<String> availableModels() {
         return properties.models();
     }
+
+    /**
+     * Modèle rapide configuré ({@code app.ai.anthropic.fast-model}). S'il n'est pas dans la liste
+     * blanche des modèles sélectionnables, on se replie sur le modèle par défaut plutôt que d'échouer
+     * : une configuration approximative ne doit pas priver la plateforme de ses appels utilitaires.
+     */
+    @Override
+    public String fastModel() {
+        String fast = properties.fastModel();
+        return supports(fast) ? fast : defaultModel();
+    }
 }

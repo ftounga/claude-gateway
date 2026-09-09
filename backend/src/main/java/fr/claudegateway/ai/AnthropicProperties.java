@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.List;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 /**
  * Configuration du fournisseur Anthropic (mode Hosted). Toutes les valeurs sont externalisées ;
@@ -13,6 +14,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param baseUrl      base de l'API Anthropic
  * @param version      valeur de l'en-tête {@code anthropic-version}
  * @param defaultModel modèle utilisé lorsque la requête n'en précise pas
+ * @param fastModel    modèle rapide et économique des appels utilitaires de la plateforme (aide
+ *                     produit, F-54). Doit appartenir à {@code models} ; sinon le catalogue se replie
+ *                     sur {@code defaultModel}
  * @param models       liste blanche des modèles sélectionnables
  * @param maxTokens      plafond de tokens de sortie par appel de <b>chat</b> (F-02)
  * @param agentMaxTokens plafond de tokens de sortie par appel de la <b>boucle d'agent</b> (F-28).
@@ -37,6 +41,7 @@ public record AnthropicProperties(
         String baseUrl,
         String version,
         String defaultModel,
+        String fastModel,
         List<String> models,
         Integer maxTokens,
         Integer agentMaxTokens,
@@ -55,6 +60,23 @@ public record AnthropicProperties(
      */
     private static final int MAX_AGENT_ATTEMPTS = 5;
 
+    /** Modèle rapide à défaut de configuration (F-54). */
+    public static final String DEFAULT_FAST_MODEL = "claude-haiku-4-5";
+
+    /**
+     * Constructeur de compatibilité, sans modèle rapide (celui par défaut s'applique). Évite de
+     * réécrire les appelants antérieurs à F-54 pour un réglage qu'ils n'expriment pas.
+     */
+    public AnthropicProperties(String apiKey, String baseUrl, String version, String defaultModel,
+            List<String> models, Integer maxTokens, Integer agentMaxTokens, Duration timeout,
+            Duration agentTimeout, Integer agentMaxAttempts) {
+        this(apiKey, baseUrl, version, defaultModel, null, models, maxTokens, agentMaxTokens,
+                timeout, agentTimeout, agentMaxAttempts);
+    }
+
+    // Le record porte un second constructeur (compatibilité pré-F-54) : la liaison de configuration
+    // doit désigner explicitement le constructeur canonique, sans quoi elle serait ambiguë.
+    @ConstructorBinding
     public AnthropicProperties {
         if (baseUrl == null || baseUrl.isBlank()) {
             baseUrl = "https://api.anthropic.com";
@@ -64,6 +86,9 @@ public record AnthropicProperties(
         }
         if (defaultModel == null || defaultModel.isBlank()) {
             defaultModel = "claude-opus-4-8";
+        }
+        if (fastModel == null || fastModel.isBlank()) {
+            fastModel = DEFAULT_FAST_MODEL;
         }
         if (models == null || models.isEmpty()) {
             models = List.of("claude-opus-4-8", "claude-sonnet-5", "claude-haiku-4-5");
