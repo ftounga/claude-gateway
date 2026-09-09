@@ -56,6 +56,7 @@ class AtelierChatServiceRelayTest {
     @Mock private fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher;
     @Mock private RunnerConfirmationGate confirmationGate;
     @Mock private RunnerAuditService auditService;
+    @Mock private fr.claudegateway.runner.host.RunnerHostService runnerHostService;
     @Mock private RunnerRelayBroadcaster relayBroadcaster;
 
     private AtelierChatService service;
@@ -72,6 +73,7 @@ class AtelierChatServiceRelayTest {
                         new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, auditService,
                 relayBroadcaster,
+                runnerHostService,
                 // Plafond d'étapes par défaut (30) : ce fichier ne teste que le relais (SF-28-19).
                 new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null, true));
     }

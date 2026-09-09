@@ -16,6 +16,7 @@ import fr.claudegateway.runner.channel.RunnerCallDispatcher;
 import fr.claudegateway.runner.channel.RunnerCallResult;
 import fr.claudegateway.runner.channel.RunnerErrorCodes;
 import fr.claudegateway.runner.channel.RunnerRegistry;
+import fr.claudegateway.runner.channel.RunnerTarget;
 
 /**
  * Décide <b>où</b> exécuter un appel d'outil (F-38 / SF-38-12) : ici, chez le pod voisin, ou nulle
@@ -26,6 +27,10 @@ import fr.claudegateway.runner.channel.RunnerRegistry;
  * second saut est donc inexprimable : un appel relayé ne peut pas être relayé une nouvelle fois, et
  * cette garantie tient à la structure du code, pas à un compteur de sauts qu'il faudrait penser à
  * décrémenter.</p>
+ *
+ * <p>Depuis F-48 / SF-48-01, la clef du routage est le <b>poste</b> : c'est la machine qui tient la
+ * socket, et tous ses projets l'empruntent. Le projet, lui, ne sert qu'à isoler les appels en vol et
+ * à dire au runner où se confiner.</p>
  *
  * <p>Trois cas, dans cet ordre :</p>
  * <ol>
@@ -55,26 +60,34 @@ public class RunnerCallRouter {
     }
 
     /** Appel sans relais de flux. */
-    public RunnerCallResult call(UUID workspaceId, String callId, String tool, JsonNode input,
+    public RunnerCallResult call(RunnerTarget target, String callId, String tool, JsonNode input,
             long timeoutMs) {
-        return call(workspaceId, callId, tool, input, timeoutMs, null);
+        return call(target, callId, tool, input, timeoutMs, null);
     }
 
     /** Appel avec relais de flux : {@code onChunk} reçoit les fragments, local ou distant. */
-    public RunnerCallResult call(UUID workspaceId, String callId, String tool, JsonNode input,
+    public RunnerCallResult call(RunnerTarget target, String callId, String tool, JsonNode input,
             long timeoutMs, Consumer<String> onChunk) {
 
-        if (registry.findLocal(workspaceId).isPresent()) {
-            return dispatcher.call(workspaceId, callId, tool, input, timeoutMs, onChunk);
+        if (target == null || target.hostId() == null) {
+            // Projet non rattaché à un poste (F-48 / SF-48-01) : il n'y a pas de machine à
+            // atteindre. C'est bien « indisponible », et le message le dit — pas une exception qui
+            // ferait échouer un tour que l'utilisateur peut réparer en deux clics.
+            return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_UNAVAILABLE,
+                    "Ce projet n'est rattaché à aucun poste : connectez une machine pour l'exécuter.");
         }
-        RemoteRunnerNode remote = relayTarget(workspaceId);
+        UUID hostId = target.hostId();
+        if (registry.findLocal(hostId).isPresent()) {
+            return dispatcher.call(target, callId, tool, input, timeoutMs, onChunk);
+        }
+        RemoteRunnerNode remote = relayTarget(hostId);
         if (remote != null) {
-            log.debug("Appel relayé vers un pod pair (node={}, workspace={}, outil={})",
-                    remote.nodeId(), workspaceId, tool);
+            log.debug("Appel relayé vers un pod pair (node={}, poste={}, outil={})",
+                    remote.nodeId(), hostId, tool);
             return relayClient.getObject()
-                    .call(remote, workspaceId, callId, tool, input, timeoutMs, onChunk);
+                    .call(remote, target, callId, tool, input, timeoutMs, onChunk);
         }
-        return RunnerCallResult.backendError(registry.isConnected(workspaceId)
+        return RunnerCallResult.backendError(registry.isConnected(hostId)
                 ? RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE
                 : RunnerErrorCodes.RUNNER_UNAVAILABLE);
     }
@@ -84,11 +97,11 @@ public class RunnerCallRouter {
      * adresse inconnue (présence non convergée), ou adresse égale à la nôtre — auquel cas relayer
      * reviendrait à s'appeler soi-même pour se voir répondre la même chose.
      */
-    private RemoteRunnerNode relayTarget(UUID workspaceId) {
+    private RemoteRunnerNode relayTarget(UUID hostId) {
         if (!properties.isEnabled() || relayClient.getIfAvailable() == null) {
             return null;
         }
-        Optional<RemoteRunnerNode> remote = registry.findRemote(workspaceId);
+        Optional<RemoteRunnerNode> remote = registry.findRemote(hostId);
         if (remote.isEmpty() || remote.get().baseUrl().isBlank()) {
             return null;
         }

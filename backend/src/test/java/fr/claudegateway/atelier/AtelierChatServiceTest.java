@@ -52,6 +52,7 @@ class AtelierChatServiceTest {
     @Mock private fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher;
     @Mock private fr.claudegateway.runner.exec.RunnerConfirmationGate confirmationGate;
     @Mock private fr.claudegateway.runner.audit.RunnerAuditService runnerAuditService;
+    @Mock private fr.claudegateway.runner.host.RunnerHostService runnerHostService;
 
     private StubAiAgentProvider agentProvider;
     private AtelierChatService service;
@@ -92,6 +93,7 @@ class AtelierChatServiceTest {
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
+                runnerHostService,
                 // Plafond d'étapes par défaut (30) sauf mention contraire du test (SF-28-19).
                 new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null, true));
     }
@@ -404,6 +406,7 @@ class AtelierChatServiceTest {
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
+                runnerHostService,
                 new AtelierProperties(null, null, null, null, null, null, max, null, null, null, null, null, true));
     }
 
@@ -598,6 +601,7 @@ class AtelierChatServiceTest {
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
+                runnerHostService,
                 new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
                         null, null, false));
     }

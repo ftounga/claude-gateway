@@ -23,8 +23,8 @@ import org.springframework.test.web.servlet.MvcResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import fr.claudegateway.atelier.Workspace;
-import fr.claudegateway.atelier.WorkspaceRepository;
+import fr.claudegateway.runner.host.RunnerHost;
+import fr.claudegateway.runner.host.RunnerHostRepository;
 import fr.claudegateway.auth.JwtService;
 import fr.claudegateway.user.AuthProvider;
 import fr.claudegateway.user.User;
@@ -47,7 +47,7 @@ class RunnerPairingApiIntegrationTest {
     @Autowired
     private UserRepository userRepository;
     @Autowired
-    private WorkspaceRepository workspaceRepository;
+    private RunnerHostRepository hostRepository;
     @Autowired
     private RunnerTokenRepository runnerTokenRepository;
     @Autowired
@@ -61,30 +61,30 @@ class RunnerPairingApiIntegrationTest {
 
     private User admin;          // accès Atelier via bypass ADMIN
     private String adminToken;
-    private Workspace adminWorkspace;
+    private RunnerHost adminHost;
     private User other;          // autre utilisateur (ADMIN aussi, pour tester l'isolation par workspace)
     private String otherToken;
     private User plainUser;      // USER sans accès Atelier
     private String plainToken;
-    private Workspace plainWorkspace;
+    private RunnerHost plainHost;
 
     @BeforeEach
     void setUp() {
         runnerTokenRepository.deleteAll();
         pairingCodeRepository.deleteAll();
-        workspaceRepository.deleteAll();
+        hostRepository.deleteAll();
         userRepository.deleteAll();
 
         admin = seedUser("admin@example.com", UserRole.ADMIN);
         adminToken = jwtService.generateToken(admin);
-        adminWorkspace = seedWorkspace(admin.getId());
+        adminHost = seedHost(admin.getId());
 
         other = seedUser("other@example.com", UserRole.ADMIN);
         otherToken = jwtService.generateToken(other);
 
         plainUser = seedUser("plain@example.com", UserRole.USER);
         plainToken = jwtService.generateToken(plainUser);
-        plainWorkspace = seedWorkspace(plainUser.getId());
+        plainHost = seedHost(plainUser.getId());
     }
 
     private User seedUser(String email, UserRole role) {
@@ -93,16 +93,16 @@ class RunnerPairingApiIntegrationTest {
                 .provider(AuthProvider.LOCAL).role(role).build());
     }
 
-    private Workspace seedWorkspace(UUID userId) {
-        return workspaceRepository.save(Workspace.builder().userId(userId).name("Projet").build());
+    private RunnerHost seedHost(UUID userId) {
+        return hostRepository.save(RunnerHost.builder().userId(userId).name("Poste").build());
     }
 
-    private String pairingCodeUrl(UUID workspaceId) {
-        return "/api/workspaces/" + workspaceId + "/runner/pairing-code";
+    private String pairingCodeUrl(UUID hostId) {
+        return "/api/runner-hosts/" + hostId + "/pairing-code";
     }
 
     private String generatePairingCode() throws Exception {
-        MvcResult result = mockMvc.perform(post(pairingCodeUrl(adminWorkspace.getId())).contextPath("/api")
+        MvcResult result = mockMvc.perform(post(pairingCodeUrl(adminHost.getId())).contextPath("/api")
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").exists())
@@ -127,15 +127,15 @@ class RunnerPairingApiIntegrationTest {
     }
 
     @Test
-    void generatingCodeForAnotherUsersWorkspaceIsNotFound() throws Exception {
-        mockMvc.perform(post(pairingCodeUrl(adminWorkspace.getId())).contextPath("/api")
+    void generatingCodeForAnotherUsersHostIsNotFound() throws Exception {
+        mockMvc.perform(post(pairingCodeUrl(adminHost.getId())).contextPath("/api")
                         .header("Authorization", "Bearer " + otherToken))
                 .andExpect(status().isNotFound());
     }
 
     @Test
     void generatingCodeWithoutAtelierAccessIsForbidden() throws Exception {
-        mockMvc.perform(post(pairingCodeUrl(plainWorkspace.getId())).contextPath("/api")
+        mockMvc.perform(post(pairingCodeUrl(plainHost.getId())).contextPath("/api")
                         .header("Authorization", "Bearer " + plainToken))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error").value("atelier_forbidden"));
@@ -150,7 +150,7 @@ class RunnerPairingApiIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON).content(pairBody(code)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.token").exists())
-                .andExpect(jsonPath("$.workspaceId").value(adminWorkspace.getId().toString()))
+                .andExpect(jsonPath("$.hostId").value(adminHost.getId().toString()))
                 .andReturn();
 
         JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -186,7 +186,7 @@ class RunnerPairingApiIntegrationTest {
     void expiredCodeIsUnauthorized() throws Exception {
         // Code inséré directement, déjà expiré : l'empreinte correspond au clair "EXPIRED2".
         pairingCodeRepository.save(RunnerPairingCode.builder()
-                .userId(admin.getId()).workspaceId(adminWorkspace.getId())
+                .userId(admin.getId()).hostId(adminHost.getId())
                 .codeHash(tokenHasher.sha256Hex("EXPIRED2"))
                 .expiresAt(OffsetDateTime.now().minusMinutes(1))
                 .build());
@@ -214,28 +214,28 @@ class RunnerPairingApiIntegrationTest {
         UUID tokenId = runnerTokenRepository.findAll().get(0).getId();
 
         // Le propriétaire voit son jeton.
-        mockMvc.perform(get("/api/workspaces/" + adminWorkspace.getId() + "/runner/tokens").contextPath("/api")
+        mockMvc.perform(get("/api/runner-hosts/" + adminHost.getId() + "/tokens").contextPath("/api")
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].revoked").value(false));
 
         // Un autre utilisateur ne voit pas ce workspace (404).
-        mockMvc.perform(get("/api/workspaces/" + adminWorkspace.getId() + "/runner/tokens").contextPath("/api")
+        mockMvc.perform(get("/api/runner-hosts/" + adminHost.getId() + "/tokens").contextPath("/api")
                         .header("Authorization", "Bearer " + otherToken))
                 .andExpect(status().isNotFound());
 
         // Un autre utilisateur ne peut pas révoquer ce jeton (404).
-        mockMvc.perform(delete("/api/workspaces/" + adminWorkspace.getId() + "/runner/tokens/" + tokenId)
+        mockMvc.perform(delete("/api/runner-hosts/" + adminHost.getId() + "/tokens/" + tokenId)
                         .contextPath("/api").header("Authorization", "Bearer " + otherToken))
                 .andExpect(status().isNotFound());
         assertThat(runnerTokenRepository.findById(tokenId).orElseThrow().getRevokedAt()).isNull();
 
         // Le propriétaire révoque (204), puis re-révoque (idempotent, 204).
-        mockMvc.perform(delete("/api/workspaces/" + adminWorkspace.getId() + "/runner/tokens/" + tokenId)
+        mockMvc.perform(delete("/api/runner-hosts/" + adminHost.getId() + "/tokens/" + tokenId)
                         .contextPath("/api").header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isNoContent());
-        mockMvc.perform(delete("/api/workspaces/" + adminWorkspace.getId() + "/runner/tokens/" + tokenId)
+        mockMvc.perform(delete("/api/runner-hosts/" + adminHost.getId() + "/tokens/" + tokenId)
                         .contextPath("/api").header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isNoContent());
         assertThat(runnerTokenRepository.findById(tokenId).orElseThrow().getRevokedAt()).isNotNull();
@@ -257,7 +257,7 @@ class RunnerPairingApiIntegrationTest {
     @Test
     void pairingCodeEndpointRequiresJwt() throws Exception {
         // L'endpoint de génération (chaîne principale) reste protégé : 401 sans JWT.
-        mockMvc.perform(post(pairingCodeUrl(adminWorkspace.getId())).contextPath("/api"))
+        mockMvc.perform(post(pairingCodeUrl(adminHost.getId())).contextPath("/api"))
                 .andExpect(status().isUnauthorized());
     }
 }

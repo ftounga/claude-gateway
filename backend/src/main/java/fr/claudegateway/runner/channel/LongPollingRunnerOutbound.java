@@ -40,7 +40,7 @@ public final class LongPollingRunnerOutbound implements RunnerOutbound {
     @SuppressWarnings("StringOperationCanBeSimplified")
     private static final String CLOSE_SENTINEL = new String("runner-channel-closed");
 
-    private final UUID workspaceId;
+    private final UUID hostId;
     private final UUID tokenId;
     private final UUID userId;
     private final Instant connectedAt = Instant.now();
@@ -55,16 +55,16 @@ public final class LongPollingRunnerOutbound implements RunnerOutbound {
      *                terminaison des appels en vol) — la fermeture peut venir du coupe-circuit, d'un
      *                {@code /runner/disconnect} ou du balayage d'inactivité
      */
-    public LongPollingRunnerOutbound(UUID workspaceId, UUID userId, UUID tokenId,
+    public LongPollingRunnerOutbound(UUID hostId, UUID userId, UUID tokenId,
             Consumer<LongPollingRunnerOutbound> onClose) {
-        this.workspaceId = workspaceId;
+        this.hostId = hostId;
         this.userId = userId;
         this.tokenId = tokenId;
         this.onClose = onClose;
     }
 
-    public UUID workspaceId() {
-        return workspaceId;
+    public UUID hostId() {
+        return hostId;
     }
 
     public UUID tokenId() {

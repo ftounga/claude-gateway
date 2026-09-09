@@ -58,6 +58,7 @@ class AtelierChatServiceRunnerGuardTest {
     @Mock private RunnerToolGateway runnerToolGateway;
     @Mock private fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher;
     @Mock private RunnerAuditService auditService;
+    @Mock private fr.claudegateway.runner.host.RunnerHostService runnerHostService;
 
     private StubAiAgentProvider agentProvider;
     private RunnerConfirmationGate gate;
@@ -66,6 +67,11 @@ class AtelierChatServiceRunnerGuardTest {
 
     private final UUID userId = UUID.randomUUID();
     private final UUID workspaceId = UUID.randomUUID();
+    /** Poste sur lequel ce projet vit (F-48 / SF-48-01) : le runner est appairé à la MACHINE. */
+    private final UUID hostId = UUID.randomUUID();
+    /** Cible d'un appel : le poste, le projet, et son chemin sous la racine du poste. */
+    private final fr.claudegateway.runner.channel.RunnerTarget runnerTarget =
+            new fr.claudegateway.runner.channel.RunnerTarget(hostId, workspaceId, "projet");
 
     @BeforeEach
     void setUp() {
@@ -78,6 +84,7 @@ class AtelierChatServiceRunnerGuardTest {
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, gate, auditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
+                runnerHostService,
                 // Plafond d'étapes par défaut (30) sauf mention contraire du test (SF-28-19).
                 new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null, true));
 
@@ -94,8 +101,8 @@ class AtelierChatServiceRunnerGuardTest {
             }
             return saved;
         });
-        when(runnerToolGateway.listFiles(eq(workspaceId), anyString())).thenReturn(ok(""));
-        when(runnerToolGateway.readFile(eq(workspaceId), anyString(), anyString())).thenReturn(ok(""));
+        when(runnerToolGateway.listFiles(eq(runnerTarget), anyString())).thenReturn(ok(""));
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), anyString())).thenReturn(ok(""));
     }
 
     private static RunnerCallResult ok(String content) {
@@ -110,6 +117,9 @@ class AtelierChatServiceRunnerGuardTest {
         Workspace workspace = new Workspace();
         workspace.setId(workspaceId);
         workspace.setUserId(userId);
+        // Le projet vit sur un POSTE, dans un sous-dossier de sa racine (F-48 / SF-48-01).
+        workspace.setHostId(hostId);
+        workspace.setProjectPath("projet");
         workspace.setSource(WorkspaceSource.ARCHIVE);
         workspace.setExecutionTarget(target);
         // La validation avant exécution est posée à la bascule vers RUNNER (SF-38-05) et à la
@@ -127,14 +137,14 @@ class AtelierChatServiceRunnerGuardTest {
     void anAuthorisedCommandReachesTheMachineAndIsAudited() {
         stubWorkspace(WorkspaceExecutionTarget.RUNNER);
         listener.answer(true, null);
-        when(runnerToolGateway.bash(eq(workspaceId), anyString(), eq("npm test"), any(), anyLong(), any()))
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), eq("npm test"), any(), anyLong(), any()))
                 .thenReturn(bashOk("ok\n", 0));
         agentProvider.enqueueToolCall("bash", "command", "npm test");
         agentProvider.enqueueFinal("Fait.");
 
         service.chatStreaming(userId, workspaceId, "lance les tests", listener);
 
-        verify(runnerToolGateway).bash(eq(workspaceId), anyString(), eq("npm test"), any(), anyLong(), any());
+        verify(runnerToolGateway).bash(eq(runnerTarget), anyString(), eq("npm test"), any(), anyLong(), any());
         assertThat(listener.requests).extracting(AtelierConfirmRequest::tool).containsExactly("bash");
         assertThat(listener.requests.get(0).detail()).isEqualTo("npm test");
         // Le délai voyage avec la demande (F-47 / SF-47-02) : l'écran peut afficher le temps
@@ -143,7 +153,7 @@ class AtelierChatServiceRunnerGuardTest {
         assertThat(listener.resolved).extracting(AtelierConfirmResolved::decision).containsExactly("allow");
         // Corrélation : la demande, la trame et la ligne d'audit portent le MÊME identifiant.
         assertThat(listener.requests.get(0).toolUseId()).isEqualTo(listener.resolved.get(0).toolUseId());
-        verify(auditService).recordCall(eq(userId), eq(workspaceId),
+        verify(auditService).recordCall(eq(userId), eq(runnerTarget),
                 eq(listener.requests.get(0).toolUseId()), eq("bash"), eq("npm test"), any());
     }
 
@@ -161,7 +171,7 @@ class AtelierChatServiceRunnerGuardTest {
         assertThat(lastToolResult().content())
                 .isEqualTo("Commande refusée par l'utilisateur. Motif : trop risqué");
         assertThat(listener.resolved).extracting(AtelierConfirmResolved::decision).containsExactly("deny");
-        verify(auditService).recordDenied(eq(userId), eq(workspaceId), anyString(), eq("bash"),
+        verify(auditService).recordDenied(eq(userId), eq(runnerTarget), anyString(), eq("bash"),
                 eq("rm -rf build"), eq(RunnerAuditOutcome.DENIED));
     }
 
@@ -179,16 +189,16 @@ class AtelierChatServiceRunnerGuardTest {
         assertThat(lastToolResult().content())
                 .isEqualTo("Commande refusée : aucune autorisation n'a été donnée dans le délai imparti.");
         assertThat(listener.resolved).extracting(AtelierConfirmResolved::decision).containsExactly("timeout");
-        verify(auditService).recordDenied(eq(userId), eq(workspaceId), anyString(), eq("bash"),
+        verify(auditService).recordDenied(eq(userId), eq(runnerTarget), anyString(), eq("bash"),
                 anyString(), eq(RunnerAuditOutcome.TIMEOUT));
     }
 
     @Test
     void readingAndWritingAreNotHeldBehindAPrompt() {
         stubWorkspace(WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.readFile(eq(workspaceId), anyString(), eq("src/a.ts")))
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("src/a.ts")))
                 .thenReturn(ok("const x = 1;"));
-        when(runnerToolGateway.writeFile(eq(workspaceId), anyString(), eq("src/a.ts"), anyString()))
+        when(runnerToolGateway.writeFile(eq(runnerTarget), anyString(), eq("src/a.ts"), anyString()))
                 .thenReturn(ok(""));
         agentProvider.enqueueToolCall("read_file", "path", "src/a.ts");
         agentProvider.enqueueToolCall("write_file", "path", "src/a.ts", "content", "const x = 2;");
@@ -197,9 +207,9 @@ class AtelierChatServiceRunnerGuardTest {
         service.chatStreaming(userId, workspaceId, "édite", listener);
 
         assertThat(listener.requests).isEmpty();
-        verify(auditService).recordCall(eq(userId), eq(workspaceId), anyString(), eq("read_file"),
+        verify(auditService).recordCall(eq(userId), eq(runnerTarget), anyString(), eq("read_file"),
                 eq("src/a.ts"), any());
-        verify(auditService).recordCall(eq(userId), eq(workspaceId), anyString(), eq("write_file"),
+        verify(auditService).recordCall(eq(userId), eq(runnerTarget), anyString(), eq("write_file"),
                 eq("src/a.ts"), any());
     }
 
@@ -228,15 +238,15 @@ class AtelierChatServiceRunnerGuardTest {
         stubWorkspace(WorkspaceExecutionTarget.RUNNER);
         // La consigne système relit CLAUDE.md + tous les skills à CHAQUE message : une ligne par
         // fichier noierait le journal sous des dizaines d'entrées non demandées.
-        when(runnerToolGateway.listFiles(eq(workspaceId), anyString()))
+        when(runnerToolGateway.listFiles(eq(runnerTarget), anyString()))
                 .thenReturn(ok(".claude/skills/a.md\n.claude/skills/b.md\nsrc/a.ts"));
-        when(runnerToolGateway.readFile(eq(workspaceId), anyString(), anyString())).thenReturn(ok("x"));
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), anyString())).thenReturn(ok("x"));
         agentProvider.enqueueFinal("Bonjour.");
 
         service.chat(userId, workspaceId, "salut");
 
         ArgumentCaptor<Integer> reads = ArgumentCaptor.forClass(Integer.class);
-        verify(auditService).recordBootstrap(eq(userId), eq(workspaceId), anyString(),
+        verify(auditService).recordBootstrap(eq(userId), eq(runnerTarget), anyString(),
                 reads.capture(), anyLong());
         assertThat(reads.getValue()).isEqualTo(4); // CLAUDE.md + listage + 2 skills
         // Et surtout : aucune ligne d'appel pour ces lectures d'amorçage.
@@ -246,7 +256,7 @@ class AtelierChatServiceRunnerGuardTest {
     @Test
     void aFailedCallIsAuditedToo() {
         stubWorkspace(WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.readFile(eq(workspaceId), anyString(), eq("absent.txt")))
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("absent.txt")))
                 .thenReturn(new RunnerCallResult(false, "", false, null, 3L, null, "not_found",
                         "Fichier introuvable : absent.txt", "", false));
         agentProvider.enqueueToolCall("read_file", "path", "absent.txt");
@@ -254,7 +264,7 @@ class AtelierChatServiceRunnerGuardTest {
 
         service.chat(userId, workspaceId, "lis absent.txt");
 
-        verify(auditService).recordCall(eq(userId), eq(workspaceId), anyString(), eq("read_file"),
+        verify(auditService).recordCall(eq(userId), eq(runnerTarget), anyString(), eq("read_file"),
                 eq("absent.txt"), any());
         assertThat(lastToolResult().isError()).isTrue();
     }
@@ -326,7 +336,7 @@ class AtelierChatServiceRunnerGuardTest {
 
         // « Tout autoriser pour ce message » : la marque est posée, la porte n'est plus consultée.
         service.confirmToolUse(userId, workspaceId, "tool_0", true, null, true);
-        when(runnerToolGateway.bash(eq(workspaceId), anyString(), anyString(), any(), anyLong(), any()))
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), anyString(), any(), anyLong(), any()))
                 .thenReturn(bashOk("ok\n", 0));
         agentProvider.enqueueToolCall("bash", "command", "echo un");
         agentProvider.enqueueToolCall("bash", "command", "echo deux");
@@ -344,7 +354,7 @@ class AtelierChatServiceRunnerGuardTest {
         // « Ne plus jamais demander sur ce projet » (SF-38-20) : le réglage existait déjà en base,
         // il n'était simplement pas consulté en cible RUNNER.
         workspace.setAgentAskBeforeBash(false);
-        when(runnerToolGateway.bash(eq(workspaceId), anyString(), eq("echo un"), any(), anyLong(), any()))
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), eq("echo un"), any(), anyLong(), any()))
                 .thenReturn(bashOk("un\n", 0));
         agentProvider.enqueueToolCall("bash", "command", "echo un");
         agentProvider.enqueueFinal("Fait.");
@@ -353,7 +363,7 @@ class AtelierChatServiceRunnerGuardTest {
 
         assertThat(listener.requests).isEmpty();
         // Ce qui disparaît est le clic, jamais la trace.
-        verify(auditService).recordCall(eq(userId), eq(workspaceId), anyString(), eq("bash"),
+        verify(auditService).recordCall(eq(userId), eq(runnerTarget), anyString(), eq("bash"),
                 anyString(), any());
     }
 }

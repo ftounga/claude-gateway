@@ -32,6 +32,7 @@ class RunnerWorkspaceBrowserTest {
 
     private RunnerWorkspaceBrowser browser;
     private Workspace workspace;
+    private fr.claudegateway.runner.channel.RunnerTarget target;
 
     @BeforeEach
     void setUp() {
@@ -41,6 +42,10 @@ class RunnerWorkspaceBrowserTest {
         workspace.setUserId(UUID.randomUUID());
         workspace.setSource(WorkspaceSource.LOCAL);
         workspace.setExecutionTarget(WorkspaceExecutionTarget.RUNNER);
+        // Le projet vit sur un POSTE, dans un sous-dossier de sa racine (F-48 / SF-48-01).
+        workspace.setHostId(UUID.randomUUID());
+        workspace.setProjectPath("projet");
+        target = fr.claudegateway.runner.exec.RunnerTargets.of(workspace);
     }
 
     private static RunnerCallResult ok(String content) {
@@ -49,7 +54,7 @@ class RunnerWorkspaceBrowserTest {
 
     @Test
     void readsTheTreeFromTheMachine() {
-        when(gateway.listFiles(eq(workspace.getId()), any())).thenReturn(ok("a.txt\nsrc/App.java"));
+        when(gateway.listFiles(eq(target), any())).thenReturn(ok("a.txt\nsrc/App.java"));
 
         assertThat(browser.tree(workspace)).containsExactly("a.txt", "src/App.java");
     }
@@ -57,14 +62,14 @@ class RunnerWorkspaceBrowserTest {
     @Test
     void returnsAnEmptyTreeForAnEmptyFolder() {
         // Un dossier vide est un état normal : c'est même le point de départ d'un projet neuf.
-        when(gateway.listFiles(eq(workspace.getId()), any())).thenReturn(ok(""));
+        when(gateway.listFiles(eq(target), any())).thenReturn(ok(""));
 
         assertThat(browser.tree(workspace)).isEmpty();
     }
 
     @Test
     void saysTheProjectIsOfflineRatherThanShowingAnEmptyTree() {
-        when(gateway.listFiles(eq(workspace.getId()), any()))
+        when(gateway.listFiles(eq(target), any()))
                 .thenReturn(RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_UNAVAILABLE));
 
         assertThatThrownBy(() -> browser.tree(workspace))
@@ -76,7 +81,7 @@ class RunnerWorkspaceBrowserTest {
     void keepsTheProjectReachableWhenTheMachineIsAsleep() {
         // Le détail du projet porte aussi son nom, sa source et sa cible : une machine éteinte ne
         // doit pas rendre la page inaccessible. L'écran, lui, sait déjà dire « hors ligne ».
-        when(gateway.listFiles(eq(workspace.getId()), any()))
+        when(gateway.listFiles(eq(target), any()))
                 .thenReturn(RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_UNAVAILABLE));
 
         assertThat(browser.treeOrEmpty(workspace)).isEmpty();
@@ -85,7 +90,7 @@ class RunnerWorkspaceBrowserTest {
     @Test
     void reportsARefusalWithTheReasonGivenByTheRunner() {
         // Fichier exclu par .runnerignore : la garde est celle du runner, pas une seconde règle ici.
-        when(gateway.readFile(eq(workspace.getId()), any(), eq(".env")))
+        when(gateway.readFile(eq(target), any(), eq(".env")))
                 .thenReturn(RunnerCallResult.backendError("excluded", "Chemin exclu : .env"));
 
         assertThatThrownBy(() -> browser.readFile(workspace, ".env"))
@@ -95,26 +100,26 @@ class RunnerWorkspaceBrowserTest {
 
     @Test
     void readsAFileAndMarksTruncation() {
-        when(gateway.readFile(eq(workspace.getId()), any(), eq("a.txt"))).thenReturn(ok("contenu"));
+        when(gateway.readFile(eq(target), any(), eq("a.txt"))).thenReturn(ok("contenu"));
         assertThat(browser.readFile(workspace, "a.txt")).isEqualTo("contenu");
 
-        when(gateway.readFile(eq(workspace.getId()), any(), eq("gros.txt")))
+        when(gateway.readFile(eq(target), any(), eq("gros.txt")))
                 .thenReturn(new RunnerCallResult(true, "début", true, null, 5L, null, null, null, "", false));
         assertThat(browser.readFile(workspace, "gros.txt")).contains("tronqué");
     }
 
     @Test
     void auditsEveryScreenReadUnderItsOwnToolName() {
-        when(gateway.listFiles(eq(workspace.getId()), any())).thenReturn(ok("a.txt"));
-        when(gateway.readFile(eq(workspace.getId()), any(), eq("a.txt"))).thenReturn(ok("x"));
+        when(gateway.listFiles(eq(target), any())).thenReturn(ok("a.txt"));
+        when(gateway.readFile(eq(target), any(), eq("a.txt"))).thenReturn(ok("x"));
 
         browser.tree(workspace);
         browser.readFile(workspace, "a.txt");
 
         // Le journal doit distinguer ce que l'ÉCRAN a lu de ce que l'AGENT a décidé de lire.
-        verify(auditService).recordCall(eq(workspace.getUserId()), eq(workspace.getId()), any(),
+        verify(auditService).recordCall(eq(workspace.getUserId()), eq(target), any(),
                 eq(RunnerWorkspaceBrowser.SCREEN_LIST), eq(null), any());
-        verify(auditService).recordCall(eq(workspace.getUserId()), eq(workspace.getId()), any(),
+        verify(auditService).recordCall(eq(workspace.getUserId()), eq(target), any(),
                 eq(RunnerWorkspaceBrowser.SCREEN_READ), eq("a.txt"), any());
     }
 
@@ -122,7 +127,7 @@ class RunnerWorkspaceBrowserTest {
     void saysWhenTheListingIsIncompleteRatherThanShowingAnAmputedProject() {
         // Le banc d'essai : 40 590 fichiers, une liste coupée à 4 829 lignes, et l'utilisateur
         // cherchant dix minutes un dossier que le système savait ne pas lui avoir envoyé.
-        when(gateway.listFiles(eq(workspace.getId()), any()))
+        when(gateway.listFiles(eq(target), any()))
                 .thenReturn(new RunnerCallResult(true, "a.txt\nsrc/App.java", true, null, 5L, null,
                         null, null, "", false));
 
@@ -133,7 +138,7 @@ class RunnerWorkspaceBrowserTest {
 
     @Test
     void doesNotAddTheMarkerOnACompleteListing() {
-        when(gateway.listFiles(eq(workspace.getId()), any())).thenReturn(ok("a.txt"));
+        when(gateway.listFiles(eq(target), any())).thenReturn(ok("a.txt"));
 
         assertThat(browser.tree(workspace)).containsExactly("a.txt");
     }

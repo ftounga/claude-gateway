@@ -82,7 +82,9 @@ class RunnerRelayClientTest {
     }
 
     private RunnerCallResult call(RemoteRunnerNode node, java.util.function.Consumer<String> onChunk) {
-        return client.call(node, workspaceId, "toolu_1", "bash", objectMapper.createObjectNode(),
+        return client.call(node, new fr.claudegateway.runner.channel.RunnerTarget(workspaceId,
+                java.util.UUID.randomUUID(), "projet"), "toolu_1", "bash",
+                objectMapper.createObjectNode(),
                 30_000L, onChunk);
     }
 

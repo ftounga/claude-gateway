@@ -14,6 +14,7 @@ import fr.claudegateway.runner.channel.RunnerCallResult;
 import fr.claudegateway.runner.channel.RunnerConnection;
 import fr.claudegateway.runner.channel.RunnerErrorCodes;
 import fr.claudegateway.runner.channel.RunnerRegistry;
+import fr.claudegateway.runner.channel.RunnerTarget;
 
 /**
  * Journal d'audit des actions du runner (F-38 / SF-38-08, décision D11). Écrit une ligne par appel
@@ -24,9 +25,14 @@ import fr.claudegateway.runner.channel.RunnerRegistry;
  * est absorbée ici. Un journal indisponible ne doit pas empêcher de travailler ; l'inverse serait
  * pire que l'absence de trace.</p>
  *
- * <p><b>Isolation</b> : {@code user_id} vient toujours du propriétaire du workspace (vérifié en
- * amont par {@code requireOwned}), {@code token_id} du registre local — jamais d'un champ de
- * message reçu du runner.</p>
+ * <p><b>Le projet reste la clef de lecture</b> (F-48 / SF-48-01) : le runner appartient désormais à
+ * une machine, mais la question à laquelle ce journal répond n'a pas changé — « qu'est-ce qui a été
+ * lu, écrit et exécuté <i>pour ce projet</i> ». Le poste est enregistré en plus, jamais à la
+ * place.</p>
+ *
+ * <p><b>Isolation</b> : {@code user_id} vient toujours du propriétaire du projet (vérifié en amont
+ * par {@code requireOwned}), {@code token_id} du registre local — jamais d'un champ de message reçu
+ * du runner.</p>
  */
 @Service
 public class RunnerAuditService {
@@ -62,17 +68,18 @@ public class RunnerAuditService {
      * Journalise l'issue d'un appel routé vers le runner. L'issue est déduite du résultat lui-même
      * (contrat §4) : ni l'appelant ni le runner ne choisissent la valeur écrite.
      */
-    public void recordCall(UUID userId, UUID workspaceId, String callId, String tool, String target,
-            RunnerCallResult result) {
-        record(userId, workspaceId, callId, tool, target, outcomeOf(result),
-                result.ok() ? null : result.errorCode(), result.exitCode(), result.durationMs(),
-                result.bytes());
+    public void recordCall(UUID userId, RunnerTarget target, String callId, String tool,
+            String auditTarget, RunnerCallResult result) {
+        record(userId, target.workspaceId(), target.hostId(), callId, tool, auditTarget,
+                outcomeOf(result), result.ok() ? null : result.errorCode(), result.exitCode(),
+                result.durationMs(), result.bytes());
     }
 
     /** Journalise un appel <b>refusé avant émission</b> (validation d'action, D7). */
-    public void recordDenied(UUID userId, UUID workspaceId, String callId, String tool, String target,
-            RunnerAuditOutcome outcome) {
-        record(userId, workspaceId, callId, tool, target, outcome, "denied", null, 0L, null);
+    public void recordDenied(UUID userId, RunnerTarget target, String callId, String tool,
+            String auditTarget, RunnerAuditOutcome outcome) {
+        record(userId, target.workspaceId(), target.hostId(), callId, tool, auditTarget, outcome,
+                "denied", null, 0L, null);
     }
 
     /**
@@ -84,23 +91,27 @@ public class RunnerAuditService {
      * @param reads  nombre de fichiers effectivement lus
      * @param chars  total des caractères lus
      */
-    public void recordBootstrap(UUID userId, UUID workspaceId, String callId, int reads, long chars) {
+    public void recordBootstrap(UUID userId, RunnerTarget target, String callId, int reads,
+            long chars) {
         if (reads <= 0) {
             return; // Rien n'a été lu : une ligne vide n'apprendrait rien.
         }
-        record(userId, workspaceId, callId, TOOL_BOOTSTRAP,
+        record(userId, target.workspaceId(), target.hostId(), callId, TOOL_BOOTSTRAP,
                 "consigne système (" + reads + " lecture(s))", RunnerAuditOutcome.OK, null, null, 0L,
                 chars);
     }
 
-    /** Journalise un coupe-circuit (F-38 / SF-38-08). */
-    public void recordKillSwitch(UUID userId, UUID workspaceId, int revokedTokens) {
-        record(userId, workspaceId, UUID.randomUUID().toString(), TOOL_KILL_SWITCH,
+    /**
+     * Journalise un coupe-circuit (F-38 / SF-38-08). Geste de <b>machine</b> depuis F-48 : il coupe
+     * le poste, pas un projet — la ligne n'en cite donc aucun.
+     */
+    public void recordKillSwitch(UUID userId, UUID hostId, int revokedTokens) {
+        record(userId, null, hostId, UUID.randomUUID().toString(), TOOL_KILL_SWITCH,
                 "coupe-circuit (" + revokedTokens + " jeton(s) révoqué(s))", RunnerAuditOutcome.OK,
                 null, null, 0L, null);
     }
 
-    /** Dernières lignes du journal d'un workspace <b>possédé</b>, du plus récent au plus ancien. */
+    /** Dernières lignes du journal d'un projet <b>possédé</b>, du plus récent au plus ancien. */
     @Transactional(readOnly = true)
     public List<RunnerAudit> list(UUID userId, UUID workspaceId, Integer limit) {
         workspaceService.requireOwned(userId, workspaceId); // 404 si non possédé — isolation d'abord
@@ -111,14 +122,16 @@ public class RunnerAuditService {
 
     // ------------------------------------------------------------------ interne
 
-    private void record(UUID userId, UUID workspaceId, String callId, String tool, String target,
-            RunnerAuditOutcome outcome, String errorCode, Integer exitCode, long durationMs,
-            Long bytes) {
+    private void record(UUID userId, UUID workspaceId, UUID hostId, String callId, String tool,
+            String target, RunnerAuditOutcome outcome, String errorCode, Integer exitCode,
+            long durationMs, Long bytes) {
         try {
             repository.save(RunnerAudit.builder()
                     .userId(userId)
                     .workspaceId(workspaceId)
-                    .tokenId(registry.findLocal(workspaceId).map(RunnerConnection::tokenId).orElse(null))
+                    .hostId(hostId)
+                    .tokenId(hostId == null ? null
+                            : registry.findLocal(hostId).map(RunnerConnection::tokenId).orElse(null))
                     .callId(shorten(callId, MAX_CALL_ID_CHARS))
                     .tool(shorten(tool, MAX_TOOL_CHARS))
                     .target(shorten(target, MAX_TARGET_CHARS))
@@ -130,7 +143,7 @@ public class RunnerAuditService {
                     .build());
         } catch (RuntimeException ex) {
             // Le tour continue : une trace manquante est un défaut, un tour interrompu est une panne.
-            log.warn("Écriture du journal d'audit runner impossible (workspace={}, outil={})",
+            log.warn("Écriture du journal d'audit runner impossible (projet={}, outil={})",
                     workspaceId, tool);
         }
     }

@@ -23,14 +23,19 @@ import fr.claudegateway.atelier.WorkspaceNotFoundException;
 import fr.claudegateway.atelier.WorkspaceService;
 import fr.claudegateway.runner.RunnerStatusService.RunnerStatus;
 import fr.claudegateway.runner.channel.RunnerRegistry;
+import fr.claudegateway.runner.host.RunnerHost;
+import fr.claudegateway.runner.host.RunnerHostService;
 
 /**
- * Tests du calcul de l'état runner (F-38 / SF-38-02) : présence du registre OU fraîcheur du dernier
- * heartbeat, et vérification d'appartenance du workspace (isolation {@code user_id}).
+ * Calcul de l'état runner (F-38 / SF-38-02) : présence du registre OU fraîcheur du dernier
+ * heartbeat, sous double vérification d'appartenance (isolation {@code user_id}).
  *
- * <p>Depuis F-45 / SF-45-05, le statut porte aussi le genre d'interpréteur élu par le runner
- * (SF-38-27), <b>normalisé</b> : la colonne est alimentée par une trame venue d'un client, et une
- * valeur hors liste blanche ne doit pas sortir de la gateway.</p>
+ * <p>Depuis F-48 / SF-48-01, l'état est celui d'un <b>poste</b>, et un projet en hérite de celui de
+ * la machine à laquelle il est rattaché. Un projet rattaché à rien répond « déconnecté » — c'est
+ * l'état d'un projet neuf, pas une erreur.</p>
+ *
+ * <p>Le genre d'interpréteur élu (SF-38-27) sort <b>normalisé</b> : la valeur est alimentée par une
+ * trame venue d'un client, et une valeur hors liste blanche ne doit pas sortir de la gateway.</p>
  */
 @ExtendWith(MockitoExtension.class)
 class RunnerStatusServiceTest {
@@ -41,54 +46,61 @@ class RunnerStatusServiceTest {
     private RunnerRegistry registry;
     @Mock
     private WorkspaceService workspaceService;
+    @Mock
+    private RunnerHostService hostService;
 
     private final UUID userId = UUID.randomUUID();
     private final UUID workspaceId = UUID.randomUUID();
+    private final UUID hostId = UUID.randomUUID();
 
     private RunnerStatusService service() {
-        return new RunnerStatusService(tokenRepository, registry, workspaceService,
+        return new RunnerStatusService(tokenRepository, registry, workspaceService, hostService,
                 Duration.ofSeconds(90));
     }
 
-    /**
-     * Le service lit désormais le workspace <b>retourné</b> par {@code requireOwned} : c'est le même
-     * appel d'isolation qu'avant, dont la valeur de retour cessait simplement d'être utilisée.
-     */
-    private void givenWorkspace(String runnerShell) {
+    /** Projet rattaché à un poste dont le runner a déclaré (ou non) son interpréteur. */
+    private void givenAttachedProject(String declaredShell) {
         when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(Workspace.builder()
-                .id(workspaceId).userId(userId).name("Projet").runnerShell(runnerShell).build());
+                .id(workspaceId).userId(userId).name("Projet").hostId(hostId).projectPath("app")
+                .build());
+        when(hostService.requireOwned(userId, hostId)).thenReturn(RunnerHost.builder()
+                .id(hostId).userId(userId).name("Poste").shell(declaredShell).build());
     }
 
     private RunnerToken tokenLastSeen(OffsetDateTime lastSeenAt) {
         return RunnerToken.builder()
-                .userId(userId).workspaceId(workspaceId)
+                .userId(userId).hostId(hostId)
                 .tokenHash("h").expiresAt(OffsetDateTime.now().plusDays(1))
                 .lastSeenAt(lastSeenAt)
                 .build();
     }
 
+    private void givenTokens(RunnerToken... tokens) {
+        when(tokenRepository.findByUserIdAndHostIdOrderByCreatedAtDesc(userId, hostId))
+                .thenReturn(List.of(tokens));
+    }
+
     @Test
     void connectedWhenRegistrySeesConnectionEvenWithoutHeartbeat() {
-        givenWorkspace(null);
-        when(registry.isConnected(workspaceId)).thenReturn(true);
-        when(tokenRepository.findByUserIdAndWorkspaceIdOrderByCreatedAtDesc(userId, workspaceId))
-                .thenReturn(List.of());
+        givenAttachedProject(null);
+        when(registry.isConnected(hostId)).thenReturn(true);
+        givenTokens();
 
         RunnerStatus status = service().status(userId, workspaceId);
 
         assertThat(status.connected()).isTrue();
         assertThat(status.lastSeenAt()).isNull();
+        assertThat(status.hostId()).isEqualTo(hostId);
     }
 
     @Test
     void connectedWhenHeartbeatFreshThoughRegistryEmpty() {
-        givenWorkspace(null);
+        givenAttachedProject(null);
         // Cas cross-replica : la socket vit sur l'autre pod, le registre local ne la voit pas, mais
         // le heartbeat a rafraichi last_seen_at dans la base partagee.
-        when(registry.isConnected(workspaceId)).thenReturn(false);
+        when(registry.isConnected(hostId)).thenReturn(false);
         OffsetDateTime fresh = OffsetDateTime.now().minusSeconds(10);
-        when(tokenRepository.findByUserIdAndWorkspaceIdOrderByCreatedAtDesc(userId, workspaceId))
-                .thenReturn(List.of(tokenLastSeen(fresh)));
+        givenTokens(tokenLastSeen(fresh));
 
         RunnerStatus status = service().status(userId, workspaceId);
 
@@ -98,11 +110,10 @@ class RunnerStatusServiceTest {
 
     @Test
     void disconnectedWhenRegistryEmptyAndHeartbeatStale() {
-        givenWorkspace(null);
-        when(registry.isConnected(workspaceId)).thenReturn(false);
+        givenAttachedProject(null);
+        when(registry.isConnected(hostId)).thenReturn(false);
         OffsetDateTime stale = OffsetDateTime.now().minusMinutes(5);
-        when(tokenRepository.findByUserIdAndWorkspaceIdOrderByCreatedAtDesc(userId, workspaceId))
-                .thenReturn(List.of(tokenLastSeen(stale)));
+        givenTokens(tokenLastSeen(stale));
 
         RunnerStatus status = service().status(userId, workspaceId);
 
@@ -112,10 +123,9 @@ class RunnerStatusServiceTest {
 
     @Test
     void disconnectedWhenNeverSeen() {
-        givenWorkspace(null);
-        when(registry.isConnected(workspaceId)).thenReturn(false);
-        when(tokenRepository.findByUserIdAndWorkspaceIdOrderByCreatedAtDesc(userId, workspaceId))
-                .thenReturn(List.of(tokenLastSeen(null)));
+        givenAttachedProject(null);
+        when(registry.isConnected(hostId)).thenReturn(false);
+        givenTokens(tokenLastSeen(null));
 
         RunnerStatus status = service().status(userId, workspaceId);
 
@@ -123,14 +133,27 @@ class RunnerStatusServiceTest {
         assertThat(status.lastSeenAt()).isNull();
     }
 
-    // ---------- Interpréteur élu (F-45 / SF-45-05) ----------
+    @Test
+    void aProjectAttachedToNoHostIsSimplyDisconnected() {
+        // F-48 / SF-48-01 : l'état d'un projet qu'on vient de créer. L'écran doit pouvoir le dire,
+        // donc ce n'est ni une erreur ni un 404 — et aucun jeton n'est lu pour rien.
+        when(workspaceService.requireOwned(userId, workspaceId)).thenReturn(Workspace.builder()
+                .id(workspaceId).userId(userId).name("Projet").build());
+
+        RunnerStatus status = service().status(userId, workspaceId);
+
+        assertThat(status.connected()).isFalse();
+        assertThat(status.hostId()).isNull();
+        verify(tokenRepository, never()).findByUserIdAndHostIdOrderByCreatedAtDesc(any(), any());
+    }
+
+    // ---------- Interpréteur élu (F-45 / SF-45-05), désormais porté par le POSTE ----------
 
     @Test
-    void statusCarriesDeclaredShell() {
-        when(registry.isConnected(workspaceId)).thenReturn(true);
-        when(tokenRepository.findByUserIdAndWorkspaceIdOrderByCreatedAtDesc(userId, workspaceId))
-                .thenReturn(List.of());
-        givenWorkspace("powershell");
+    void statusCarriesTheShellDeclaredByTheMachine() {
+        givenAttachedProject("powershell");
+        when(registry.isConnected(hostId)).thenReturn(true);
+        givenTokens();
 
         assertThat(service().status(userId, workspaceId).shell()).isEqualTo("powershell");
     }
@@ -139,10 +162,9 @@ class RunnerStatusServiceTest {
     void statusHasNoShellWhenNoRunnerEverDeclaredOne() {
         // Runner anterieur a SF-38-27, ou machine jamais connectee : l'ecran doit OMETTRE la ligne,
         // pas afficher un defaut.
-        when(registry.isConnected(workspaceId)).thenReturn(false);
-        when(tokenRepository.findByUserIdAndWorkspaceIdOrderByCreatedAtDesc(userId, workspaceId))
-                .thenReturn(List.of());
-        givenWorkspace(null);
+        givenAttachedProject(null);
+        when(registry.isConnected(hostId)).thenReturn(false);
+        givenTokens();
 
         assertThat(service().status(userId, workspaceId).shell()).isNull();
     }
@@ -150,10 +172,9 @@ class RunnerStatusServiceTest {
     @Test
     void statusDropsAShellOutsideTheWhitelist() {
         // La colonne est alimentee par une trame client : une valeur inconnue ne sort pas d'ici.
-        when(registry.isConnected(workspaceId)).thenReturn(false);
-        when(tokenRepository.findByUserIdAndWorkspaceIdOrderByCreatedAtDesc(userId, workspaceId))
-                .thenReturn(List.of());
-        givenWorkspace("zsh-maison");
+        givenAttachedProject("zsh-maison");
+        when(registry.isConnected(hostId)).thenReturn(false);
+        givenTokens();
 
         assertThat(service().status(userId, workspaceId).shell()).isNull();
     }
@@ -166,6 +187,17 @@ class RunnerStatusServiceTest {
 
         assertThatThrownBy(() -> service().status(userId, workspaceId))
                 .isInstanceOf(WorkspaceNotFoundException.class);
-        verify(tokenRepository, never()).findByUserIdAndWorkspaceIdOrderByCreatedAtDesc(any(), any());
+        verify(tokenRepository, never()).findByUserIdAndHostIdOrderByCreatedAtDesc(any(), any());
+    }
+
+    @Test
+    void hostStatusRequiresHostOwnership() {
+        // Le poste d'autrui est traité comme introuvable : jamais d'oracle d'existence.
+        when(hostService.requireOwned(userId, hostId))
+                .thenThrow(new fr.claudegateway.runner.host.RunnerHostNotFoundException("introuvable"));
+
+        assertThatThrownBy(() -> service().hostStatus(userId, hostId))
+                .isInstanceOf(fr.claudegateway.runner.host.RunnerHostNotFoundException.class);
+        verify(tokenRepository, never()).findByUserIdAndHostIdOrderByCreatedAtDesc(any(), any());
     }
 }

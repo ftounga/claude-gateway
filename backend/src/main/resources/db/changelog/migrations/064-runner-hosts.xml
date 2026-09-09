@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-48 / SF-48-01 — Le POSTE devient l'unité du mode runner.
+
+      Jusqu'ici : un projet = un dossier = un runner = un appairage. Un développeur n'a pas un
+      projet, il a une machine avec un dossier de travail dessous. Le poste (`runner_hosts`) porte
+      donc désormais la racine, l'appairage, le jeton et la connexion ; les projets deviennent des
+      sous-dossiers de cette racine, chacun avec sa conversation et ses réglages.
+
+      TABLE RASE (décision du PO, 2026-09-10) : les jetons existants sont invalidés, aucune donnée
+      n'est reprise, aucune colonne de transition n'est créée, aucune double lecture n'est écrite.
+      Les trois tables runner sont donc VIDÉES avant de changer de clef — c'est ce qui permet de
+      poser `host_id` NOT NULL sans valeur par défaut mensongère. Le seul coût est un
+      ré-appairage, qui ne concerne qu'un poste de test.
+
+      Réversible : chaque changeSet porte son rollback. Le rollback rend le SCHÉMA, pas les données
+      supprimées — elles étaient de toute façon déclarées jetables.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="064-runner-hosts-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="runner_hosts">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="name" type="varchar(100)"><constraints nullable="false"/></column>
+            <column name="root_name" type="varchar(255)"/>
+            <column name="os" type="varchar(64)"/>
+            <column name="shell" type="varchar(16)"/>
+            <column name="elevated" type="boolean"/>
+            <column name="last_seen_at" type="timestamptz"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="runner_hosts" indexName="idx_runner_hosts_user">
+            <column name="user_id"/>
+        </createIndex>
+        <rollback><dropTable tableName="runner_hosts"/></rollback>
+    </changeSet>
+
+    <changeSet id="064-runner-hosts-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="runner_hosts">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="name" type="varchar(100)"><constraints nullable="false"/></column>
+            <column name="root_name" type="varchar(255)"/>
+            <column name="os" type="varchar(64)"/>
+            <column name="shell" type="varchar(16)"/>
+            <column name="elevated" type="boolean"/>
+            <column name="last_seen_at" type="timestamp with time zone"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="runner_hosts" indexName="idx_runner_hosts_user">
+            <column name="user_id"/>
+        </createIndex>
+        <rollback><dropTable tableName="runner_hosts"/></rollback>
+    </changeSet>
+
+    <!--
+      Table rase : on vide AVANT de changer les clefs. Un jeton lié à un projet n'a plus de sens
+      dans un modèle où il appartient à une machine, et le PO a explicitement écarté la reprise.
+    -->
+    <changeSet id="064-runner-truncate" author="claude-gateway">
+        <delete tableName="runner_audit"/>
+        <delete tableName="runner_tokens"/>
+        <delete tableName="runner_pairing_codes"/>
+        <rollback/>
+    </changeSet>
+
+    <!-- runner_tokens : le jeton appartient au poste, plus au projet. -->
+    <changeSet id="064-runner-tokens-host" author="claude-gateway">
+        <dropIndex tableName="runner_tokens" indexName="idx_runner_tokens_user_workspace"/>
+        <dropColumn tableName="runner_tokens" columnName="workspace_id"/>
+        <addColumn tableName="runner_tokens">
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+        </addColumn>
+        <createIndex tableName="runner_tokens" indexName="idx_runner_tokens_user_host">
+            <column name="user_id"/>
+            <column name="host_id"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="runner_tokens" indexName="idx_runner_tokens_user_host"/>
+            <dropColumn tableName="runner_tokens" columnName="host_id"/>
+            <addColumn tableName="runner_tokens">
+                <column name="workspace_id" type="uuid"/>
+            </addColumn>
+        </rollback>
+    </changeSet>
+
+    <!-- runner_pairing_codes : un code appaire une machine, une seule fois. -->
+    <changeSet id="064-runner-pairing-codes-host" author="claude-gateway">
+        <dropColumn tableName="runner_pairing_codes" columnName="workspace_id"/>
+        <addColumn tableName="runner_pairing_codes">
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="runner_pairing_codes" columnName="host_id"/>
+            <addColumn tableName="runner_pairing_codes">
+                <column name="workspace_id" type="uuid"/>
+            </addColumn>
+        </rollback>
+    </changeSet>
+
+    <!--
+      runner_audit CONSERVE workspace_id : le journal doit continuer de dire QUEL PROJET a exécuté
+      quoi. Il gagne le poste, parce que la même question se pose aussi par machine.
+    -->
+    <changeSet id="064-runner-audit-host" author="claude-gateway">
+        <addColumn tableName="runner_audit">
+            <column name="host_id" type="uuid"/>
+        </addColumn>
+        <!--
+          `workspace_id` devient NULLABLE : certains gestes n'appartiennent à aucun projet — le
+          coupe-circuit, par exemple, coupe la MACHINE. Les tracer sous un projet arbitraire serait
+          un mensonge dans le seul document censé dire la vérité sur ce qui s'est passé.
+        -->
+        <dropNotNullConstraint tableName="runner_audit" columnName="workspace_id" columnDataType="uuid"/>
+        <createIndex tableName="runner_audit" indexName="idx_runner_audit_user_host_created">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="created_at"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="runner_audit" indexName="idx_runner_audit_user_host_created"/>
+            <dropColumn tableName="runner_audit" columnName="host_id"/>
+            <addNotNullConstraint tableName="runner_audit" columnName="workspace_id"
+                                  columnDataType="uuid"/>
+        </rollback>
+    </changeSet>
+
+    <!--
+      workspaces : les colonnes `runner_*` DÉMÉNAGENT vers le poste (migrations 052, 053, 063), et
+      le projet gagne son rattachement — le poste et son chemin relatif sous la racine.
+
+      `project_path` peut être vide : un projet PEUT être la racine elle-même. Il n'est jamais nul
+      pour un projet rattaché, parce que le confinement du runner s'y adosse (SF-48-02).
+    -->
+    <changeSet id="064-workspaces-host" author="claude-gateway">
+        <dropColumn tableName="workspaces" columnName="runner_root_name"/>
+        <dropColumn tableName="workspaces" columnName="runner_elevated"/>
+        <dropColumn tableName="workspaces" columnName="runner_shell"/>
+        <addColumn tableName="workspaces">
+            <column name="host_id" type="uuid"/>
+            <column name="project_path" type="varchar(512)"/>
+        </addColumn>
+        <createIndex tableName="workspaces" indexName="idx_workspaces_host">
+            <column name="host_id"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="workspaces" indexName="idx_workspaces_host"/>
+            <dropColumn tableName="workspaces" columnName="host_id"/>
+            <dropColumn tableName="workspaces" columnName="project_path"/>
+            <addColumn tableName="workspaces">
+                <column name="runner_root_name" type="varchar(255)"/>
+                <column name="runner_elevated" type="boolean"/>
+                <column name="runner_shell" type="varchar(16)"/>
+            </addColumn>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

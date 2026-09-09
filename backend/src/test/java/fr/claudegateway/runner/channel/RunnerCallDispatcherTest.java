@@ -52,10 +52,13 @@ class RunnerCallDispatcherTest {
     private WebSocketSession session;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final UUID hostId = UUID.randomUUID();
+    /** Projet demandeur (F-48 / SF-48-01) : plusieurs peuvent tourner sur le même poste. */
     private final UUID workspaceId = UUID.randomUUID();
+    private final RunnerTarget target = new RunnerTarget(hostId, workspaceId, "projet");
     private final UUID userId = UUID.randomUUID();
     private final UUID tokenId = UUID.randomUUID();
-    private final RunnerIdentity identity = new RunnerIdentity(tokenId, userId, workspaceId);
+    private final RunnerIdentity identity = new RunnerIdentity(tokenId, userId, hostId);
     private final Map<String, Object> attributes = new HashMap<>();
 
     private RunnerCallDispatcher dispatcher;
@@ -80,8 +83,8 @@ class RunnerCallDispatcherTest {
 
     /** Runner présent et hébergé par ce nœud. */
     private void withLocalRunner() {
-        when(registry.findLocal(workspaceId)).thenReturn(Optional.of(new RunnerConnection(
-                workspaceId, userId, tokenId, "node-1", OffsetDateTime.now())));
+        when(registry.findLocal(hostId)).thenReturn(Optional.of(new RunnerConnection(
+                hostId, userId, tokenId, "node-1", OffsetDateTime.now())));
         dispatcher.attach(session, identity);
     }
 
@@ -105,7 +108,7 @@ class RunnerCallDispatcherTest {
         respondWith("{\"type\":\"tool_result\",\"id\":\"toolu_1\",\"ok\":true,"
                 + "\"content\":\"bonjour\",\"durationMs\":12,\"bytes\":7}");
 
-        RunnerCallResult result = dispatcher.call(workspaceId, "toolu_1", "read_file",
+        RunnerCallResult result = dispatcher.call(target, "toolu_1", "read_file",
                 objectMapper.readTree("{\"path\":\"src/a.ts\"}"), 30_000L);
 
         JsonNode frame = sentFrame();
@@ -127,7 +130,7 @@ class RunnerCallDispatcherTest {
                 + "\"error\":{\"code\":\"not_found\",\"message\":\"Fichier introuvable : src/a.ts\"},"
                 + "\"durationMs\":3}");
 
-        RunnerCallResult result = dispatcher.call(workspaceId, "toolu_1", "read_file",
+        RunnerCallResult result = dispatcher.call(target, "toolu_1", "read_file",
                 objectMapper.readTree("{\"path\":\"src/a.ts\"}"), 30_000L);
 
         assertThat(result.ok()).isFalse();
@@ -139,10 +142,10 @@ class RunnerCallDispatcherTest {
     void refusesImmediatelyWhenTheSocketLivesOnAnotherReplica() throws Exception {
         // Contrat §8 : isConnected() est vrai cross-replica, findLocal() ne l'est pas. Aucun relais
         // inter-pods n'existe en v1 : il faut échouer tout de suite, pas attendre un silence.
-        when(registry.findLocal(workspaceId)).thenReturn(Optional.empty());
-        when(registry.isConnected(workspaceId)).thenReturn(true);
+        when(registry.findLocal(hostId)).thenReturn(Optional.empty());
+        when(registry.isConnected(hostId)).thenReturn(true);
 
-        RunnerCallResult result = dispatcher.call(workspaceId, "toolu_1", "list_files",
+        RunnerCallResult result = dispatcher.call(target, "toolu_1", "list_files",
                 objectMapper.createObjectNode(), 30_000L);
 
         assertThat(result.ok()).isFalse();
@@ -152,10 +155,10 @@ class RunnerCallDispatcherTest {
 
     @Test
     void reportsUnavailableWhenNoRunnerIsConnectedAtAll() {
-        when(registry.findLocal(workspaceId)).thenReturn(Optional.empty());
-        when(registry.isConnected(workspaceId)).thenReturn(false);
+        when(registry.findLocal(hostId)).thenReturn(Optional.empty());
+        when(registry.isConnected(hostId)).thenReturn(false);
 
-        RunnerCallResult result = dispatcher.call(workspaceId, "toolu_1", "list_files",
+        RunnerCallResult result = dispatcher.call(target, "toolu_1", "list_files",
                 objectMapper.createObjectNode(), 30_000L);
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.RUNNER_UNAVAILABLE);
@@ -165,7 +168,7 @@ class RunnerCallDispatcherTest {
     void abandonsAndCancelsWhenTheRunnerStaysSilent() throws Exception {
         withLocalRunner();
 
-        RunnerCallResult result = dispatcher.call(workspaceId, "toolu_1", "read_file",
+        RunnerCallResult result = dispatcher.call(target, "toolu_1", "read_file",
                 objectMapper.readTree("{\"path\":\"a.ts\"}"), 10L);
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.RUNNER_TIMEOUT);
@@ -188,7 +191,7 @@ class RunnerCallDispatcherTest {
             return null;
         }).when(session).sendMessage(any(TextMessage.class));
 
-        RunnerCallResult result = dispatcher.call(workspaceId, "toolu_1", "read_file",
+        RunnerCallResult result = dispatcher.call(target, "toolu_1", "read_file",
                 objectMapper.readTree("{\"path\":\"a.ts\"}"), 10L);
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.RUNNER_TIMEOUT);
@@ -205,7 +208,7 @@ class RunnerCallDispatcherTest {
         }).when(session).sendMessage(any(TextMessage.class));
 
         Future<RunnerCallResult> pending = executor.submit(() -> dispatcher.call(
-                workspaceId, "toolu_1", "read_file", objectMapper.readTree("{\"path\":\"a.ts\"}"),
+                target, "toolu_1", "read_file", objectMapper.readTree("{\"path\":\"a.ts\"}"),
                 60_000L));
         assertThat(sent.await(2, TimeUnit.SECONDS)).isTrue();
 
@@ -224,7 +227,7 @@ class RunnerCallDispatcherTest {
             return null;
         }).when(session).sendMessage(any(TextMessage.class));
 
-        RunnerCallResult result = dispatcher.call(workspaceId, "toolu_1", "read_file",
+        RunnerCallResult result = dispatcher.call(target, "toolu_1", "read_file",
                 objectMapper.readTree("{\"path\":\"a.ts\"}"), 10L);
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.RUNNER_PROTOCOL_ERROR);
@@ -236,7 +239,7 @@ class RunnerCallDispatcherTest {
         // `content` est une STRING obligatoire quand ok=true : un objet n'est pas « un contenu vide ».
         respondWith("{\"type\":\"tool_result\",\"id\":\"toolu_1\",\"ok\":true,\"content\":{\"a\":1}}");
 
-        RunnerCallResult result = dispatcher.call(workspaceId, "toolu_1", "read_file",
+        RunnerCallResult result = dispatcher.call(target, "toolu_1", "read_file",
                 objectMapper.readTree("{\"path\":\"a.ts\"}"), 10L);
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.RUNNER_PROTOCOL_ERROR);
@@ -248,7 +251,7 @@ class RunnerCallDispatcherTest {
         dispatcher.onFrame(identity, "ready", objectMapper.readTree(
                 "{\"type\":\"ready\",\"protocol\":1,\"capabilities\":[\"files\"]}"));
 
-        RunnerCallResult result = dispatcher.call(workspaceId, "toolu_1", "bash",
+        RunnerCallResult result = dispatcher.call(target, "toolu_1", "bash",
                 objectMapper.readTree("{\"command\":\"ls\"}"), 120_000L);
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.UNSUPPORTED_TOOL);
@@ -263,7 +266,7 @@ class RunnerCallDispatcherTest {
                 "{\"type\":\"ready\",\"protocol\":1,\"capabilities\":[\"files\",\"bash\"],"
                         + "\"shell\":\"powershell\"}"));
 
-        assertThat(recordedShells).containsEntry(workspaceId, "powershell");
+        assertThat(recordedShells).containsEntry(hostId, "powershell");
     }
 
     @Test
@@ -300,10 +303,10 @@ class RunnerCallDispatcherTest {
 
         // Et la capacité `bash` a bien été retenue malgré l'échec d'écriture : l'appel échoue faute
         // de socket, jamais parce que l'outil serait « non annoncé ».
-        when(registry.findLocal(workspaceId)).thenReturn(Optional.of(new RunnerConnection(
-                workspaceId, userId, tokenId, "node-1", OffsetDateTime.now())));
+        when(registry.findLocal(hostId)).thenReturn(Optional.of(new RunnerConnection(
+                hostId, userId, tokenId, "node-1", OffsetDateTime.now())));
         fragile.attach(session, identity);
-        RunnerCallResult result = fragile.call(workspaceId, "toolu_1", "bash",
+        RunnerCallResult result = fragile.call(target, "toolu_1", "bash",
                 objectMapper.readTree("{\"command\":\"ls\"}"), 10L);
         assertThat(result.errorCode()).isNotEqualTo(RunnerErrorCodes.UNSUPPORTED_TOOL);
     }
@@ -370,7 +373,7 @@ class RunnerCallDispatcherTest {
             return null;
         }).when(session).sendMessage(any(TextMessage.class));
 
-        RunnerCallResult result = dispatcher.call(workspaceId, "toolu_1", "bash",
+        RunnerCallResult result = dispatcher.call(target, "toolu_1", "bash",
                 objectMapper.readTree("{\"command\":\"ls\"}"), 5_000L, relayed::add);
 
         assertThat(result.ok()).isTrue();
@@ -392,7 +395,7 @@ class RunnerCallDispatcherTest {
         }).when(session).sendMessage(any(TextMessage.class));
 
         // Le client SSE est parti : le relais lève, la commande continue quand même d'être agrégée.
-        RunnerCallResult result = dispatcher.call(workspaceId, "toolu_1", "bash",
+        RunnerCallResult result = dispatcher.call(target, "toolu_1", "bash",
                 objectMapper.readTree("{\"command\":\"ls\"}"), 5_000L, chunk -> {
                     throw new IllegalStateException("flux client fermé");
                 });
@@ -410,7 +413,7 @@ class RunnerCallDispatcherTest {
             return null; // le runner ne répond pas : l'appel reste en vol
         }).when(session).sendMessage(any(TextMessage.class));
 
-        Future<RunnerCallResult> pending = executor.submit(() -> dispatcher.call(workspaceId,
+        Future<RunnerCallResult> pending = executor.submit(() -> dispatcher.call(target,
                 "toolu_1", "bash", objectMapper.readTree("{\"command\":\"sleep 300\"}"), 5_000L, null));
         assertThat(emitted.await(5, TimeUnit.SECONDS)).isTrue();
 
@@ -437,11 +440,11 @@ class RunnerCallDispatcherTest {
             emitted.countDown();
             return null;
         }).when(session).sendMessage(any(TextMessage.class));
-        Future<RunnerCallResult> pending = executor.submit(() -> dispatcher.call(workspaceId,
+        Future<RunnerCallResult> pending = executor.submit(() -> dispatcher.call(target,
                 "toolu_1", "bash", objectMapper.readTree("{\"command\":\"ls\"}"), 5_000L, null));
         assertThat(emitted.await(5, TimeUnit.SECONDS)).isTrue();
 
-        // Isolation : le workspace d'un autre utilisateur n'annule rien ici.
+        // Isolation : le projet d'un autre utilisateur n'annule rien ici.
         assertThat(dispatcher.cancelWorkspace(UUID.randomUUID(), "user_interrupt")).isZero();
         pending.cancel(true);
     }
@@ -452,13 +455,13 @@ class RunnerCallDispatcherTest {
     void aCallRoutedToALongPollingChannelIsQueuedInsteadOfWritten() throws Exception {
         // Le dispatcher ne sait pas quel transport porte le runner : le tool_call doit partir de la
         // même façon vers une file de long-polling que vers une socket.
-        when(registry.findLocal(workspaceId)).thenReturn(Optional.of(new RunnerConnection(
-                workspaceId, userId, tokenId, "node-1", OffsetDateTime.now())));
+        when(registry.findLocal(hostId)).thenReturn(Optional.of(new RunnerConnection(
+                hostId, userId, tokenId, "node-1", OffsetDateTime.now())));
         LongPollingRunnerOutbound channel =
-                new LongPollingRunnerOutbound(workspaceId, userId, tokenId, null);
+                new LongPollingRunnerOutbound(hostId, userId, tokenId, null);
         dispatcher.attachChannel(identity, channel);
 
-        Future<RunnerCallResult> pending = executor.submit(() -> dispatcher.call(workspaceId,
+        Future<RunnerCallResult> pending = executor.submit(() -> dispatcher.call(target,
                 "toolu_poll", "read_file", objectMapper.readTree("{\"path\":\"a.txt\"}"), 300L));
 
         java.util.List<String> frames = channel.drain(java.time.Duration.ofSeconds(5));
@@ -477,13 +480,13 @@ class RunnerCallDispatcherTest {
 
     @Test
     void closingALongPollingChannelFailsItsInFlightCalls() throws Exception {
-        when(registry.findLocal(workspaceId)).thenReturn(Optional.of(new RunnerConnection(
-                workspaceId, userId, tokenId, "node-1", OffsetDateTime.now())));
+        when(registry.findLocal(hostId)).thenReturn(Optional.of(new RunnerConnection(
+                hostId, userId, tokenId, "node-1", OffsetDateTime.now())));
         LongPollingRunnerOutbound channel =
-                new LongPollingRunnerOutbound(workspaceId, userId, tokenId,
-                        c -> dispatcher.detachChannel(workspaceId, c));
+                new LongPollingRunnerOutbound(hostId, userId, tokenId,
+                        c -> dispatcher.detachChannel(hostId, c));
         dispatcher.attachChannel(identity, channel);
-        Future<RunnerCallResult> pending = executor.submit(() -> dispatcher.call(workspaceId,
+        Future<RunnerCallResult> pending = executor.submit(() -> dispatcher.call(target,
                 "toolu_lost", "read_file", objectMapper.readTree("{\"path\":\"a.txt\"}"), 60_000L));
         assertThat(channel.drain(java.time.Duration.ofSeconds(5))).hasSize(1);
 

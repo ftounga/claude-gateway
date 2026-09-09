@@ -44,12 +44,16 @@ class RunnerAuditServiceTest {
     private final UUID userId = UUID.randomUUID();
     private final UUID workspaceId = UUID.randomUUID();
     private final UUID tokenId = UUID.randomUUID();
+    /** Le POSTE qui exécute (F-48 / SF-48-01) ; le projet, lui, voyage dans la cible. */
+    private final UUID hostId = UUID.randomUUID();
+    private final fr.claudegateway.runner.channel.RunnerTarget target =
+            new fr.claudegateway.runner.channel.RunnerTarget(hostId, workspaceId, "projet");
 
     @BeforeEach
     void setUp() {
         service = new RunnerAuditService(repository, registry, workspaceService);
-        when(registry.findLocal(workspaceId)).thenReturn(Optional.of(new RunnerConnection(
-                workspaceId, userId, tokenId, "node-1", java.time.OffsetDateTime.now())));
+        when(registry.findLocal(hostId)).thenReturn(Optional.of(new RunnerConnection(
+                hostId, userId, tokenId, "node-1", java.time.OffsetDateTime.now())));
     }
 
     private RunnerAudit captureSaved() {
@@ -60,7 +64,7 @@ class RunnerAuditServiceTest {
 
     @Test
     void aSuccessfulCallIsRecordedWithItsMeasures() {
-        service.recordCall(userId, workspaceId, "toolu_1", "bash", "npm test",
+        service.recordCall(userId, target, "toolu_1", "bash", "npm test",
                 new RunnerCallResult(true, "", false, 0, 42L, 128L, null, null, "ok\n", false));
 
         RunnerAudit saved = captureSaved();
@@ -77,7 +81,7 @@ class RunnerAuditServiceTest {
 
     @Test
     void theRunnerErrorMessageIsNeverStoredOnlyItsCode() {
-        service.recordCall(userId, workspaceId, "toolu_2", "read_file", "src/a.ts",
+        service.recordCall(userId, target, "toolu_2", "read_file", "src/a.ts",
                 new RunnerCallResult(false, "", false, null, 3L, null, "not_found",
                         "Fichier introuvable : src/a.ts", "", false));
 
@@ -108,7 +112,7 @@ class RunnerAuditServiceTest {
     void aTargetTooLongIsTruncatedRatherThanRefused() {
         String command = "echo " + "x".repeat(2_000);
 
-        service.recordCall(userId, workspaceId, "toolu_3", "bash", command,
+        service.recordCall(userId, target, "toolu_3", "bash", command,
                 new RunnerCallResult(true, "", false, 0, 1L, null, null, null, "", false));
 
         assertThat(captureSaved().getTarget()).hasSize(1_000);
@@ -116,7 +120,7 @@ class RunnerAuditServiceTest {
 
     @Test
     void aRefusedCallIsRecordedAsDenied() {
-        service.recordDenied(userId, workspaceId, "toolu_4", "bash", "rm -rf /",
+        service.recordDenied(userId, target, "toolu_4", "bash", "rm -rf /",
                 RunnerAuditOutcome.DENIED);
 
         RunnerAudit saved = captureSaved();
@@ -126,13 +130,13 @@ class RunnerAuditServiceTest {
 
     @Test
     void bootstrapReadsProduceASingleLineAndNothingWhenNoneWereRead() {
-        service.recordBootstrap(userId, workspaceId, "boot-1", 4, 1_234L);
+        service.recordBootstrap(userId, target, "boot-1", 4, 1_234L);
         RunnerAudit saved = captureSaved();
         assertThat(saved.getTool()).isEqualTo("bootstrap");
         assertThat(saved.getTarget()).isEqualTo("consigne système (4 lecture(s))");
         assertThat(saved.getBytes()).isEqualTo(1_234L);
 
-        service.recordBootstrap(userId, workspaceId, "boot-2", 0, 0L);
+        service.recordBootstrap(userId, target, "boot-2", 0, 0L);
         verify(repository, org.mockito.Mockito.times(1)).save(any());
     }
 
@@ -140,7 +144,7 @@ class RunnerAuditServiceTest {
     void anImpossibleWriteNeverInterruptsTheTurn() {
         when(repository.save(any())).thenThrow(new RuntimeException("base indisponible"));
 
-        assertThatCode(() -> service.recordCall(userId, workspaceId, "toolu_5", "bash", "ls",
+        assertThatCode(() -> service.recordCall(userId, target, "toolu_5", "bash", "ls",
                 new RunnerCallResult(true, "", false, 0, 1L, null, null, null, "", false)))
                 .doesNotThrowAnyException();
     }
@@ -167,9 +171,9 @@ class RunnerAuditServiceTest {
 
     @Test
     void noLocalRunnerMeansNoTokenRatherThanNoLine() {
-        when(registry.findLocal(workspaceId)).thenReturn(Optional.empty());
+        when(registry.findLocal(hostId)).thenReturn(Optional.empty());
 
-        service.recordDenied(userId, workspaceId, "toolu_6", "bash", "ls", RunnerAuditOutcome.TIMEOUT);
+        service.recordDenied(userId, target, "toolu_6", "bash", "ls", RunnerAuditOutcome.TIMEOUT);
 
         RunnerAudit saved = captureSaved();
         assertThat(saved.getTokenId()).isNull();

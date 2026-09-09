@@ -55,12 +55,18 @@ class AtelierChatServiceRunnerTargetTest {
     @Mock private fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher;
     @Mock private fr.claudegateway.runner.exec.RunnerConfirmationGate confirmationGate;
     @Mock private fr.claudegateway.runner.audit.RunnerAuditService runnerAuditService;
+    @Mock private fr.claudegateway.runner.host.RunnerHostService runnerHostService;
 
     private StubAiAgentProvider agentProvider;
     private AtelierChatService service;
 
     private final UUID userId = UUID.randomUUID();
     private final UUID workspaceId = UUID.randomUUID();
+    /** Poste sur lequel ce projet vit (F-48 / SF-48-01) : le runner est appairé à la MACHINE. */
+    private final UUID hostId = UUID.randomUUID();
+    /** Cible d'un appel : le poste, le projet, et son chemin sous la racine du poste. */
+    private final fr.claudegateway.runner.channel.RunnerTarget runnerTarget =
+            new fr.claudegateway.runner.channel.RunnerTarget(hostId, workspaceId, "projet");
 
     @BeforeEach
     void setUp() {
@@ -71,6 +77,7 @@ class AtelierChatServiceRunnerTargetTest {
                         gitHubClient, new fr.claudegateway.git.GitProperties(null, null, null, null, null, null)),
                 runnerToolGateway, runnerCallDispatcher, confirmationGate, runnerAuditService,
                 fr.claudegateway.runner.relay.RunnerRelayBroadcaster.disabled(),
+                runnerHostService,
                 // Plafond d'étapes par défaut (30) sauf mention contraire du test (SF-28-19).
                 new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null, true));
 
@@ -97,8 +104,8 @@ class AtelierChatServiceRunnerTargetTest {
             return saved;
         });
         // Consigne système : par défaut le runner ne renvoie rien d'exploitable.
-        when(runnerToolGateway.listFiles(eq(workspaceId), anyString())).thenReturn(ok(""));
-        when(runnerToolGateway.readFile(eq(workspaceId), anyString(), anyString()))
+        when(runnerToolGateway.listFiles(eq(runnerTarget), anyString())).thenReturn(ok(""));
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), anyString()))
                 .thenReturn(RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_UNAVAILABLE));
     }
 
@@ -110,6 +117,9 @@ class AtelierChatServiceRunnerTargetTest {
         Workspace workspace = new Workspace();
         workspace.setId(workspaceId);
         workspace.setUserId(userId);
+        // Le projet vit sur un POSTE, dans un sous-dossier de sa racine (F-48 / SF-48-01).
+        workspace.setHostId(hostId);
+        workspace.setProjectPath("projet");
         workspace.setSource(source);
         workspace.setExecutionTarget(target);
         if (source == WorkspaceSource.GIT) {
@@ -124,7 +134,7 @@ class AtelierChatServiceRunnerTargetTest {
     @Test
     void readFileGoesToTheRunnerAndNeverToObjectStorage() {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.readFile(eq(workspaceId), anyString(), eq("src/a.ts")))
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("src/a.ts")))
                 .thenReturn(ok("const x = 1;"));
         agentProvider.enqueueToolCall("read_file", "path", "src/a.ts");
         agentProvider.enqueueFinal("Lu.");
@@ -132,7 +142,7 @@ class AtelierChatServiceRunnerTargetTest {
         AtelierChatResult result = service.chat(userId, workspaceId, "lis src/a.ts");
 
         assertThat(result.actions()).extracting(a -> a.type() + ":" + a.path()).contains("read:src/a.ts");
-        verify(runnerToolGateway).readFile(eq(workspaceId), anyString(), eq("src/a.ts"));
+        verify(runnerToolGateway).readFile(eq(runnerTarget), anyString(), eq("src/a.ts"));
         verify(workspaceService, never()).readFile(any(), any(), any());
         // SF-39-06 : la lecture est numérotée — sans numéros, l'agent ne peut ni dire où il a vu
         // quelque chose, ni demander la suite d'un fichier.
@@ -142,7 +152,7 @@ class AtelierChatServiceRunnerTargetTest {
     @Test
     void aTruncatedContentIsAnnouncedToTheModel() {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.readFile(eq(workspaceId), anyString(), eq("gros.txt")))
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("gros.txt")))
                 .thenReturn(new RunnerCallResult(true, "début", true, null, 5L, null, null, null, "", false));
         agentProvider.enqueueToolCall("read_file", "path", "gros.txt");
         agentProvider.enqueueFinal("Lu.");
@@ -155,7 +165,7 @@ class AtelierChatServiceRunnerTargetTest {
     @Test
     void writeFileKeepsTheHistoricalWordingAndIgnoresTheRunnerContent() {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.writeFile(eq(workspaceId), anyString(), eq("a.txt"), eq("hop")))
+        when(runnerToolGateway.writeFile(eq(runnerTarget), anyString(), eq("a.txt"), eq("hop")))
                 .thenReturn(ok("peu importe"));
         agentProvider.enqueueToolCall("write_file", "path", "a.txt", "content", "hop");
         agentProvider.enqueueFinal("Écrit.");
@@ -170,14 +180,14 @@ class AtelierChatServiceRunnerTargetTest {
     @Test
     void searchIsASingleRunnerCallNotOneReadPerFile() {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.searchFiles(eq(workspaceId), anyString(), eq("TODO")))
+        when(runnerToolGateway.searchFiles(eq(runnerTarget), anyString(), eq("TODO")))
                 .thenReturn(ok("src/a.ts:3: // TODO"));
         agentProvider.enqueueToolCall("search_files", "query", "TODO");
         agentProvider.enqueueFinal("Trouvé.");
 
         service.chat(userId, workspaceId, "cherche TODO");
 
-        verify(runnerToolGateway, times(1)).searchFiles(eq(workspaceId), anyString(), eq("TODO"));
+        verify(runnerToolGateway, times(1)).searchFiles(eq(runnerTarget), anyString(), eq("TODO"));
         verify(workspaceService, never()).tree(any(), any());
         assertThat(toolResultText()).isEqualTo("src/a.ts:3: // TODO");
     }
@@ -185,7 +195,7 @@ class AtelierChatServiceRunnerTargetTest {
     @Test
     void aRunnerErrorIsReturnedToTheModelAsAToolError() {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.readFile(eq(workspaceId), anyString(), eq("a.ts")))
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("a.ts")))
                 .thenReturn(RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_UNAVAILABLE));
         agentProvider.enqueueToolCall("read_file", "path", "a.ts");
         agentProvider.enqueueFinal("Tant pis.");
@@ -200,11 +210,11 @@ class AtelierChatServiceRunnerTargetTest {
     @Test
     void theSystemPromptIsReadThroughTheRunner() {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.listFiles(eq(workspaceId), anyString()))
+        when(runnerToolGateway.listFiles(eq(runnerTarget), anyString()))
                 .thenReturn(ok(".claude/skills/deploy.md\nsrc/a.ts"));
-        when(runnerToolGateway.readFile(eq(workspaceId), anyString(), eq("CLAUDE.md")))
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("CLAUDE.md")))
                 .thenReturn(ok("# Conventions maison"));
-        when(runnerToolGateway.readFile(eq(workspaceId), anyString(), eq(".claude/skills/deploy.md")))
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq(".claude/skills/deploy.md")))
                 .thenReturn(ok("Skill de déploiement"));
         agentProvider.enqueueFinal("Bonjour.");
 
@@ -240,7 +250,7 @@ class AtelierChatServiceRunnerTargetTest {
     @Test
     void aToolCallWithoutProviderIdStillCorrelates() {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.listFiles(eq(workspaceId), anyString())).thenReturn(ok("a.ts"));
+        when(runnerToolGateway.listFiles(eq(runnerTarget), anyString())).thenReturn(ok("a.ts"));
         agentProvider.enqueueToolCallWithoutId("list_files");
         agentProvider.enqueueFinal("Fini.");
 
@@ -296,7 +306,7 @@ class AtelierChatServiceRunnerTargetTest {
         // SF-39-05 (D2) : on retire la DÉCLARATION, qui coûte des tokens — pas la capacité. Un
         // modèle qui appelle quand même l'outil obtient une réponse utile, pas « outil inconnu ».
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.listFiles(eq(workspaceId), anyString())).thenReturn(ok("a.ts\nb.ts"));
+        when(runnerToolGateway.listFiles(eq(runnerTarget), anyString())).thenReturn(ok("a.ts\nb.ts"));
         agentProvider.enqueueToolCall("list_files");
         agentProvider.enqueueFinal("Listé.");
 
@@ -311,16 +321,16 @@ class AtelierChatServiceRunnerTargetTest {
         // SF-39-06 (D1) : l'édition ciblée se compose des primitives que le runner expose déjà —
         // un runner installé n'a rien à mettre à jour.
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.readFile(eq(workspaceId), anyString(), eq("a.ts")))
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("a.ts")))
                 .thenReturn(ok("const a = 1;"));
-        when(runnerToolGateway.writeFile(eq(workspaceId), anyString(), eq("a.ts"), eq("const a = 2;")))
+        when(runnerToolGateway.writeFile(eq(runnerTarget), anyString(), eq("a.ts"), eq("const a = 2;")))
                 .thenReturn(ok(""));
         agentProvider.enqueueToolCall("edit_file", "path", "a.ts", "old_string", "1", "new_string", "2");
         agentProvider.enqueueFinal("Modifié.");
 
         AtelierChatResult result = service.chat(userId, workspaceId, "passe a à 2");
 
-        verify(runnerToolGateway).writeFile(eq(workspaceId), anyString(), eq("a.ts"), eq("const a = 2;"));
+        verify(runnerToolGateway).writeFile(eq(runnerTarget), anyString(), eq("a.ts"), eq("const a = 2;"));
         assertThat(toolResultText()).isEqualTo("Fichier modifié : a.ts (1 remplacement)");
         // L'écran voit une écriture : c'est ce qui rafraîchit le fichier ouvert (D4).
         assertThat(result.actions()).extracting(a -> a.type() + ":" + a.path()).contains("write:a.ts");
@@ -331,7 +341,7 @@ class AtelierChatServiceRunnerTargetTest {
         // SF-39-06 (D2) : appliquer un remplacement sur un fragment puis le réécrire détruirait la
         // fin du fichier, en silence. C'est le seul refus d'une opération que le modèle croit possible.
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.readFile(eq(workspaceId), anyString(), eq("gros.ts")))
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("gros.ts")))
                 .thenReturn(new RunnerCallResult(true, "const a = 1;", true, null, 5L, null, null, null, "", false));
         agentProvider.enqueueToolCall("edit_file", "path", "gros.ts", "old_string", "1", "new_string", "2");
         agentProvider.enqueueFinal("Refusé.");
@@ -348,8 +358,8 @@ class AtelierChatServiceRunnerTargetTest {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
         Workspace runner = new Workspace();
         runner.setExecutionTarget(WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.readFile(eq(workspaceId), anyString(), eq("a.ts"))).thenReturn(ok("x"));
-        when(runnerToolGateway.writeFile(eq(workspaceId), anyString(), eq("a.ts"), eq("y"))).thenReturn(ok(""));
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("a.ts"))).thenReturn(ok("x"));
+        when(runnerToolGateway.writeFile(eq(runnerTarget), anyString(), eq("a.ts"), eq("y"))).thenReturn(ok(""));
         agentProvider.enqueueToolCall("edit_file", "path", "a.ts", "old_string", "x", "new_string", "y");
         agentProvider.enqueueFinal("Modifié.");
 
@@ -357,14 +367,14 @@ class AtelierChatServiceRunnerTargetTest {
 
         assertThat(service.buildTools(runner)).extracting(fr.claudegateway.agent.AgentTool::name)
                 .containsExactly("read_file", "write_file", "edit_file", "bash", "explore", "set_plan");
-        verify(runnerAuditService).recordCall(eq(userId), eq(workspaceId), anyString(), eq("edit_file"),
+        verify(runnerAuditService).recordCall(eq(userId), eq(runnerTarget), anyString(), eq("edit_file"),
                 eq("a.ts"), any());
     }
 
     @Test
     void bashAssemblesStreamedOutputAndExitCodeForTheModel() {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.bash(eq(workspaceId), anyString(), eq("npm test"), any(), anyLong(), any()))
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), eq("npm test"), any(), anyLong(), any()))
                 .thenReturn(bashOk("ok 1\nok 2\n", 0, false));
         agentProvider.enqueueToolCall("bash", "command", "npm test");
         agentProvider.enqueueFinal("Tests passés.");
@@ -378,7 +388,7 @@ class AtelierChatServiceRunnerTargetTest {
     @Test
     void aNonZeroExitCodeIsStillASuccessfulCall() {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.bash(eq(workspaceId), anyString(), eq("false"), any(), anyLong(), any()))
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), eq("false"), any(), anyLong(), any()))
                 .thenReturn(bashOk("", 1, false));
         agentProvider.enqueueToolCall("bash", "command", "false");
         agentProvider.enqueueFinal("Échec constaté.");
@@ -393,7 +403,7 @@ class AtelierChatServiceRunnerTargetTest {
     @Test
     void aTruncatedOutputIsMarkedForTheModel() {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.bash(eq(workspaceId), anyString(), eq("cat gros.log"), any(), anyLong(), any()))
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), eq("cat gros.log"), any(), anyLong(), any()))
                 .thenReturn(bashOk("début…", 0, true));
         agentProvider.enqueueToolCall("bash", "command", "cat gros.log");
         agentProvider.enqueueFinal("Vu.");
@@ -406,7 +416,7 @@ class AtelierChatServiceRunnerTargetTest {
     @Test
     void aFailedBashCallIsReturnedAsAnErrorToolResult() {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.bash(eq(workspaceId), anyString(), anyString(), any(), anyLong(), any()))
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), anyString(), any(), anyLong(), any()))
                 .thenReturn(RunnerCallResult.backendError(RunnerErrorCodes.UNSUPPORTED_TOOL,
                         "L'exécution de commandes n'est pas activée sur ce runner."));
         agentProvider.enqueueToolCall("bash", "command", "rm -rf /");
@@ -422,7 +432,7 @@ class AtelierChatServiceRunnerTargetTest {
     void theBashStepCarriesTheCommandTruncatedForTheScreen() {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
         String longCommand = "echo " + "x".repeat(500);
-        when(runnerToolGateway.bash(eq(workspaceId), anyString(), eq(longCommand), any(), anyLong(), any()))
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), eq(longCommand), any(), anyLong(), any()))
                 .thenReturn(bashOk("", 0, false));
         agentProvider.enqueueToolCall("bash", "command", longCommand);
         agentProvider.enqueueFinal("Fait.");
@@ -440,7 +450,7 @@ class AtelierChatServiceRunnerTargetTest {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
         // Le relais est le consommateur passé à la passerelle : on le déclenche depuis le stub, comme
         // le ferait une trame tool_stream arrivant pendant l'exécution.
-        when(runnerToolGateway.bash(eq(workspaceId), anyString(), anyString(), any(), anyLong(), any()))
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), anyString(), any(), anyLong(), any()))
                 .thenAnswer(invocation -> {
                     java.util.function.Consumer<String> relay = invocation.getArgument(5);
                     relay.accept("ligne 1\n");
@@ -459,7 +469,7 @@ class AtelierChatServiceRunnerTargetTest {
     @Test
     void bashTimeoutIsCappedByTheRemainingTurnBudget() {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.bash(eq(workspaceId), anyString(), anyString(), any(), anyLong(), any()))
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), anyString(), any(), anyLong(), any()))
                 .thenReturn(bashOk("", 0, false));
         agentProvider.enqueueToolCall("bash", "command", "sleep 1");
         agentProvider.enqueueFinal("Fini.");
@@ -467,7 +477,7 @@ class AtelierChatServiceRunnerTargetTest {
         service.chat(userId, workspaceId, "lance");
 
         org.mockito.ArgumentCaptor<Long> timeout = org.mockito.ArgumentCaptor.forClass(Long.class);
-        verify(runnerToolGateway).bash(eq(workspaceId), anyString(), anyString(), any(),
+        verify(runnerToolGateway).bash(eq(runnerTarget), anyString(), anyString(), any(),
                 timeout.capture(), any());
         // Le délai proposé ne dépasse jamais ce qu'il reste du tour (la passerelle le clampe ensuite
         // à 120 000 ms) : une commande ne peut pas survivre au tour qui l'a lancée.
@@ -478,7 +488,7 @@ class AtelierChatServiceRunnerTargetTest {
     @Test
     void anInterruptionStopsTheLoopAndCancelsTheRunnerCall() {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.bash(eq(workspaceId), anyString(), anyString(), any(), anyLong(), any()))
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), anyString(), any(), anyLong(), any()))
                 .thenAnswer(invocation -> {
                     // Interruption demandée pendant que la commande tourne.
                     service.interruptChat(userId, workspaceId);
@@ -494,7 +504,7 @@ class AtelierChatServiceRunnerTargetTest {
         verify(runnerCallDispatcher).cancelWorkspace(workspaceId, "user_interrupt");
         // La seconde commande n'a jamais été lancée : la boucle s'est arrêtée à la frontière sûre.
         verify(runnerToolGateway, times(1))
-                .bash(eq(workspaceId), anyString(), anyString(), any(), anyLong(), any());
+                .bash(eq(runnerTarget), anyString(), anyString(), any(), anyLong(), any());
     }
 
     @Test
@@ -535,7 +545,7 @@ class AtelierChatServiceRunnerTargetTest {
     @Test
     void whatTheExplorationSearchesIsRelayedToTheMachineAndJournaled() {
         stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
-        when(runnerToolGateway.searchFiles(eq(workspaceId), anyString(), eq("AppConfig")))
+        when(runnerToolGateway.searchFiles(eq(runnerTarget), anyString(), eq("AppConfig")))
                 .thenReturn(ok("src/AppConfig.java:12: class AppConfig"));
         agentProvider.enqueueToolCall("explore", "question", "où est AppConfig ?");
         agentProvider.enqueueToolCall("search_files", "query", "AppConfig");
@@ -544,11 +554,11 @@ class AtelierChatServiceRunnerTargetTest {
 
         AtelierChatResult result = service.chat(userId, workspaceId, "où est AppConfig ?");
 
-        verify(runnerToolGateway).searchFiles(eq(workspaceId), anyString(), eq("AppConfig"));
+        verify(runnerToolGateway).searchFiles(eq(runnerTarget), anyString(), eq("AppConfig"));
         assertThat(result.reply()).contains("src/AppConfig.java:12");
         // Ce que la sous-boucle touche sur la machine se trace comme le reste (D4) : ce sont
         // justement les appels que l'utilisateur ne voit pas passer à l'écran.
-        verify(runnerAuditService).recordCall(eq(userId), eq(workspaceId), anyString(),
+        verify(runnerAuditService).recordCall(eq(userId), eq(runnerTarget), anyString(),
                 eq("search_files"), eq("AppConfig"), any());
     }
 

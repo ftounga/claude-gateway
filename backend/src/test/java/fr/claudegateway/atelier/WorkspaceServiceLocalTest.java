@@ -82,37 +82,6 @@ class WorkspaceServiceLocalTest {
                 .isInstanceOf(InvalidArchiveException.class);
     }
 
-    @Test
-    void keepsOnlyTheLastSegmentOfWhatTheRunnerDeclares() {
-        // Le runner n'envoie qu'un nom, mais on ne fait pas confiance à un client pour ça : un
-        // chemin absolu est réduit ici, et n'est jamais stocké.
-        assertThat(WorkspaceService.lastSegment("/home/francky/dev/runner-claude")).isEqualTo("runner-claude");
-        assertThat(WorkspaceService.lastSegment("C:\\Users\\f\\projets\\demo")).isEqualTo("demo");
-        assertThat(WorkspaceService.lastSegment("~/dev/runner-claude/")).isEqualTo("runner-claude");
-        assertThat(WorkspaceService.lastSegment("runner-claude")).isEqualTo("runner-claude");
-        assertThat(WorkspaceService.lastSegment("   ")).isNull();
-        assertThat(WorkspaceService.lastSegment(null)).isNull();
-        assertThat(WorkspaceService.lastSegment("/" + "y".repeat(300))).hasSize(255);
-    }
-
-    @Test
-    void recordsTheRootNameDeclaredAtPairing() {
-        Workspace workspace = localWorkspace();
-        when(workspaceRepository.findById(workspaceId)).thenReturn(java.util.Optional.of(workspace));
-
-        service.recordRunnerRootName(workspaceId, "/home/francky/dev/runner-claude");
-
-        ArgumentCaptor<Workspace> saved = ArgumentCaptor.forClass(Workspace.class);
-        verify(workspaceRepository).save(saved.capture());
-        assertThat(saved.getValue().getRunnerRootName()).isEqualTo("runner-claude");
-    }
-
-    @Test
-    void ignoresAnAbsentRootNameSoOlderRunnersStillPair() {
-        service.recordRunnerRootName(workspaceId, null);
-
-        verify(workspaceRepository, never()).save(any(Workspace.class));
-    }
 
     @Test
     void refusesToSwitchALocalProjectToTheHostedSandbox() {

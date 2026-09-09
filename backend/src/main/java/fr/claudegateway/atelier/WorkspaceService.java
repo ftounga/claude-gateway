@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import fr.claudegateway.atelier.storage.WorkspaceStorage;
+import fr.claudegateway.runner.host.RunnerProjectPath;
 
 /**
  * Cœur de l'Atelier (F-28) : création d'un workspace à partir d'un zip décompressé de façon sûre
@@ -25,7 +26,7 @@ import fr.claudegateway.atelier.storage.WorkspaceStorage;
  * {@link WorkspaceStorage} (Provider Independence).
  */
 @Service
-public class WorkspaceService implements RunnerShellRecorder {
+public class WorkspaceService {
 
     /** Longueur maximale du nom d'un projet : borne de la colonne `workspaces.name`. */
     private static final int MAX_NAME_LENGTH = 255;
@@ -110,7 +111,7 @@ public class WorkspaceService implements RunnerShellRecorder {
      *
      * <p>Aucun chemin n'est demandé au client : un navigateur ne peut pas transmettre un chemin du
      * disque, et la gateway n'a aucune raison de connaître l'arborescence de la machine. Le dossier
-     * se désigne au lancement du runner, et c'est lui qui le déclare (voir {@code runnerRootName}).</p>
+     * se désigne au lancement du runner, et c'est lui qui déclare la racine de son POSTE (F-48).</p>
      */
     @Transactional
     public Workspace createLocal(UUID userId, String name) {
@@ -136,82 +137,49 @@ public class WorkspaceService implements RunnerShellRecorder {
     }
 
     /**
-     * Enregistre le nom du dossier déclaré par le runner à l'appairage (F-38 / SF-38-15).
+     * <b>Rattache</b> un projet à un poste (F-48 / SF-48-01) : la machine qui l'exécute, et le
+     * chemin du projet <b>relatif à la racine</b> de cette machine.
      *
-     * <p>Le <b>dernier segment</b> uniquement : ce que le runner envoie est déjà un nom, mais on ne
-     * fait pas confiance à un client pour ça — un chemin complet serait réduit ici, et jamais
-     * stocké. Best-effort : un appairage ne doit pas échouer parce qu'un libellé d'affichage n'a pas
-     * pu être écrit.</p>
+     * <p>C'est le geste qui remplace l'appairage par dossier. Le poste est appairé une fois ;
+     * ouvrir un projet de plus sous sa racine ne demande plus qu'un rattachement — ni code, ni
+     * runner, ni connexion supplémentaires.</p>
+     *
+     * <p>Le chemin est normalisé et refusé s'il sort de la racine ({@link RunnerProjectPath}). Ce
+     * n'est pas la garde de sécurité : celle qui fait foi reste celle du runner (décision n° 2 du
+     * cadrage, non réversible). C'est le refus d'écrire en base une valeur qu'aucun runner
+     * n'accepterait.</p>
+     *
+     * @param hostId      poste, déjà vérifié possédé par l'appelant, ou {@code null} pour détacher
+     * @param projectPath chemin relatif ; {@code null} ou vide = la racine du poste
      */
     @Transactional
-    public void recordRunnerRootName(UUID workspaceId, String rootName) {
-        recordRunnerDeclaration(workspaceId, rootName, false);
+    public Workspace attachToHost(UUID userId, UUID id, UUID hostId, String projectPath) {
+        Workspace workspace = requireOwned(userId, id);
+        if (hostId == null) {
+            workspace.setHostId(null);
+            workspace.setProjectPath(null);
+            return workspace;
+        }
+        workspace.setHostId(hostId);
+        workspace.setProjectPath(RunnerProjectPath.normalize(projectPath));
+        return workspace;
+    }
+
+    /** Projets rattachés à un poste (isolation {@code user_id}). */
+    public List<Workspace> listByHost(UUID userId, UUID hostId) {
+        return workspaceRepository.findByUserIdAndHostId(userId, hostId);
     }
 
     /**
-     * Enregistre ce que le runner déclare de lui-même à l'appairage : le nom du dossier
-     * (F-38 / SF-38-15) et les <b>droits</b> sous lesquels il tourne (SF-38-18).
-     *
-     * <p>L'élévation est enregistrée <b>même quand le nom de dossier manque</b> — un runner peut
-     * tourner en root sans avoir déclaré son dossier, et c'est justement le cas où l'information
-     * compte le plus.</p>
+     * Détache tous les projets d'un poste supprimé. Ils ne disparaissent pas : un projet survit à
+     * la machine sur laquelle il tournait, et son historique de conversation avec.
      */
     @Transactional
-    public void recordRunnerDeclaration(UUID workspaceId, String rootName, boolean elevated) {
-        String segment = lastSegment(rootName);
-        if (segment == null && !elevated) {
-            return;
+    public void detachAllFromHost(UUID userId, UUID hostId) {
+        for (Workspace workspace : workspaceRepository.findByUserIdAndHostId(userId, hostId)) {
+            workspace.setHostId(null);
+            workspace.setProjectPath(null);
         }
-        workspaceRepository.findById(workspaceId).ifPresent(workspace -> {
-            if (segment != null) {
-                workspace.setRunnerRootName(segment);
-            }
-            workspace.setRunnerElevated(elevated);
-            workspaceRepository.save(workspace);
-        });
-    }
-
-    /**
-     * Enregistre le <b>genre d'interpréteur</b> que le runner a élu et déclaré dans sa trame
-     * {@code ready} (F-38 / SF-38-27). La consigne système en dépend : elle dicte au modèle une
-     * syntaxe d'exploration, et cette syntaxe n'est pas la même sous bash et sous {@code cmd.exe}.
-     *
-     * <p>Trois gardes, dans cet ordre : <b>liste blanche</b> (une valeur inconnue n'écrit rien),
-     * <b>écriture seulement si la valeur change</b> (la trame arrive à chaque connexion, pas
-     * question d'écrire à chaque fois), et <b>best-effort</b> — un projet disparu ne fait pas
-     * échouer une connexion runner.</p>
-     */
-    @Override
-    @Transactional
-    public void recordRunnerShell(UUID workspaceId, String declared) {
-        RunnerShell shell = RunnerShell.fromDeclared(declared).orElse(null);
-        if (shell == null) {
-            return;
-        }
-        workspaceRepository.findById(workspaceId).ifPresent(workspace -> {
-            if (shell.declared().equals(workspace.getRunnerShell())) {
-                return;
-            }
-            workspace.setRunnerShell(shell.declared());
-            workspaceRepository.save(workspace);
-        });
-    }
-
-    /** Dernier segment d'un chemin, borné — jamais le chemin lui-même. {@code null} si vide. */
-    static String lastSegment(String value) {
-        if (value == null) {
-            return null;
-        }
-        String cleaned = value.trim().replace('\\', '/');
-        while (cleaned.endsWith("/")) {
-            cleaned = cleaned.substring(0, cleaned.length() - 1);
-        }
-        int slash = cleaned.lastIndexOf('/');
-        String segment = slash < 0 ? cleaned : cleaned.substring(slash + 1);
-        if (segment.isBlank()) {
-            return null;
-        }
-        return segment.length() > MAX_NAME_LENGTH ? segment.substring(0, MAX_NAME_LENGTH) : segment;
     }
 
     /** Workspaces de l'utilisateur (isolation {@code user_id}). */

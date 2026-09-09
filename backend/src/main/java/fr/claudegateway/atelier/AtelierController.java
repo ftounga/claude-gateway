@@ -24,6 +24,7 @@ import fr.claudegateway.atelier.WorkspaceService.CreatedWorkspace;
 import fr.claudegateway.atelier.agent.AtelierSessionService;
 import fr.claudegateway.atelier.dto.AtelierEngineResponse;
 import fr.claudegateway.atelier.dto.AtelierImportLibraryRequest;
+import fr.claudegateway.atelier.dto.AttachHostRequest;
 import fr.claudegateway.atelier.dto.ExecutionTargetRequest;
 import fr.claudegateway.atelier.dto.FileContentResponse;
 import fr.claudegateway.atelier.dto.CreateLocalWorkspaceRequest;
@@ -56,12 +57,15 @@ public class AtelierController {
     private final AtelierEngineService engineService;
     /** Lecture des fichiers sur la machine de l'utilisateur (F-38 / SF-38-17). */
     private final fr.claudegateway.runner.browse.RunnerWorkspaceBrowser runnerBrowser;
+    /** Postes de l'utilisateur (F-48 / SF-48-01) : vérifie qu'un rattachement vise bien le sien. */
+    private final fr.claudegateway.runner.host.RunnerHostService runnerHostService;
 
     public AtelierController(WorkspaceService workspaceService, CurrentUser currentUser,
             AtelierAccessService atelierAccess, WorkspaceLibraryImportService libraryImportService,
             AtelierSessionService sessionService, GitWorkspaceService gitWorkspaceService,
             AtelierEngineService engineService,
-            fr.claudegateway.runner.browse.RunnerWorkspaceBrowser runnerBrowser) {
+            fr.claudegateway.runner.browse.RunnerWorkspaceBrowser runnerBrowser,
+            fr.claudegateway.runner.host.RunnerHostService runnerHostService) {
         this.workspaceService = workspaceService;
         this.currentUser = currentUser;
         this.atelierAccess = atelierAccess;
@@ -70,6 +74,7 @@ public class AtelierController {
         this.gitWorkspaceService = gitWorkspaceService;
         this.engineService = engineService;
         this.runnerBrowser = runnerBrowser;
+        this.runnerHostService = runnerHostService;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -180,6 +185,40 @@ public class AtelierController {
         UUID userId = currentUser.requireId();
         Workspace workspace = workspaceService.setExecutionTarget(userId, id, request.executionTarget());
         return WorkspaceDetailResponse.from(workspace, workspaceService.tree(userId, id));
+    }
+
+    /**
+     * <b>Rattache</b> le projet à un poste (F-48 / SF-48-01) : la machine qui l'exécute, et son
+     * chemin relatif sous la racine de cette machine. {@code hostId} nul détache le projet.
+     *
+     * <p>C'est ce geste qui remplace l'appairage par dossier : un poste appairé une fois accueille
+     * autant de projets qu'il porte de sous-dossiers, sans code, ni runner, ni connexion de plus.</p>
+     *
+     * <p>Le poste est vérifié <b>possédé</b> avant tout (404 sinon) : un identifiant de poste venu
+     * du client ne rattache jamais un projet à la machine d'un autre.</p>
+     */
+    @PutMapping("/{id}/host")
+    public WorkspaceDetailResponse attachHost(@PathVariable UUID id,
+            @Valid @RequestBody AttachHostRequest request) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        if (request.hostId() != null) {
+            runnerHostService.requireOwned(userId, request.hostId());
+        }
+        Workspace workspace =
+                workspaceService.attachToHost(userId, id, request.hostId(), request.projectPath());
+        return WorkspaceDetailResponse.from(workspace, treeOf(userId, workspace));
+    }
+
+    /**
+     * Arborescence à joindre à la vue du projet : celle de la machine en cible {@code RUNNER}, celle
+     * du stockage sinon. Une machine hors ligne rend une liste vide plutôt qu'une erreur — l'écran
+     * dit « hors ligne » lui-même.
+     */
+    private List<String> treeOf(UUID userId, Workspace workspace) {
+        return workspace.isRunnerTarget()
+                ? runnerBrowser.treeOrEmpty(workspace)
+                : workspaceService.tree(userId, workspace.getId());
     }
 
     /**

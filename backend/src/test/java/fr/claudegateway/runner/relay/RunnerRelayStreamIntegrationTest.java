@@ -102,7 +102,10 @@ class RunnerRelayStreamIntegrationTest {
         List<Long> chunkTimes = new CopyOnWriteArrayList<>();
         long start = System.nanoTime();
 
-        RunnerCallResult result = relayClient.call(node, UUID.randomUUID(), "toolu_flux", "bash",
+        RunnerCallResult result = relayClient.call(node,
+                new fr.claudegateway.runner.channel.RunnerTarget(UUID.randomUUID(), UUID.randomUUID(),
+                        "projet"),
+                "toolu_flux", "bash",
                 objectMapper.createObjectNode(), 30_000L, chunk -> {
                     chunks.add(chunk);
                     chunkTimes.add((System.nanoTime() - start) / 1_000_000L);
@@ -143,7 +146,8 @@ class RunnerRelayStreamIntegrationTest {
         RunnerCallDispatcher slowDispatcher(RunnerRegistry registry, ObjectMapper objectMapper) {
             return new RunnerCallDispatcher(registry, objectMapper, (id, shell) -> { }, 5_000L) {
                 @Override
-                public RunnerCallResult call(UUID workspaceId, String callId, String tool,
+                public RunnerCallResult call(fr.claudegateway.runner.channel.RunnerTarget target,
+                        String callId, String tool,
                         JsonNode input, long timeoutMs, Consumer<String> onChunk) {
                     emit(onChunk, "ligne 1\n");
                     sleep();

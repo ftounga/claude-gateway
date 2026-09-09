@@ -73,8 +73,8 @@ class RunnerRelayApiIntegrationTest {
             headers.set(RunnerRelayAuthFilter.SECRET_HEADER, secret);
         }
         String body = """
-                {"workspaceId":"%s","callId":"toolu_1","tool":"list_files","input":{},"timeoutMs":30000}
-                """.formatted(UUID.randomUUID());
+                {"hostId":"%s","workspaceId":"%s","project":"projet","callId":"toolu_1","tool":"list_files","input":{},"timeoutMs":30000}
+                """.formatted(UUID.randomUUID(), UUID.randomUUID());
         return restTemplate.exchange("http://localhost:" + port + PATH, HttpMethod.POST,
                 new HttpEntity<>(body, headers), String.class);
     }

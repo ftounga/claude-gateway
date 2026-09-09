@@ -12,8 +12,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
-import fr.claudegateway.atelier.Workspace;
-import fr.claudegateway.atelier.WorkspaceRepository;
+import fr.claudegateway.runner.host.RunnerHost;
+import fr.claudegateway.runner.host.RunnerHostRepository;
 import fr.claudegateway.user.AuthProvider;
 import fr.claudegateway.user.User;
 import fr.claudegateway.user.UserRepository;
@@ -38,27 +38,27 @@ class RunnerTokenServiceTest {
     @Autowired
     private UserRepository userRepository;
     @Autowired
-    private WorkspaceRepository workspaceRepository;
+    private RunnerHostRepository hostRepository;
 
     private UUID userId;
-    private UUID workspaceId;
+    private UUID hostId;
 
     @BeforeEach
     void setUp() {
         tokenRepository.deleteAll();
-        workspaceRepository.deleteAll();
+        hostRepository.deleteAll();
         userRepository.deleteAll();
         User user = userRepository.save(User.builder()
                 .email("u@example.com").emailVerified(true)
                 .provider(AuthProvider.LOCAL).role(UserRole.ADMIN).build());
         userId = user.getId();
-        workspaceId = workspaceRepository.save(
-                Workspace.builder().userId(userId).name("Projet").build()).getId();
+        hostId = hostRepository.save(
+                RunnerHost.builder().userId(userId).name("Poste").build()).getId();
     }
 
     @Test
     void issuedTokenIsStoredHashedNotInClear() {
-        RunnerTokenService.IssuedToken issued = tokenService.issue(userId, workspaceId, "poste");
+        RunnerTokenService.IssuedToken issued = tokenService.issue(userId, hostId, "poste");
         assertThat(issued.clearToken()).isNotBlank();
         assertThat(issued.token().getTokenHash())
                 .isEqualTo(tokenHasher.sha256Hex(issued.clearToken()))
@@ -68,11 +68,11 @@ class RunnerTokenServiceTest {
 
     @Test
     void authenticatorResolvesValidToken() {
-        RunnerTokenService.IssuedToken issued = tokenService.issue(userId, workspaceId, null);
+        RunnerTokenService.IssuedToken issued = tokenService.issue(userId, hostId, null);
         Optional<RunnerIdentity> identity = authenticator.authenticate(issued.clearToken());
         assertThat(identity).isPresent();
         assertThat(identity.get().userId()).isEqualTo(userId);
-        assertThat(identity.get().workspaceId()).isEqualTo(workspaceId);
+        assertThat(identity.get().hostId()).isEqualTo(hostId);
     }
 
     @Test
@@ -85,7 +85,7 @@ class RunnerTokenServiceTest {
     void authenticatorRejectsExpiredToken() {
         String clear = "clef-expiree";
         tokenRepository.save(RunnerToken.builder()
-                .userId(userId).workspaceId(workspaceId)
+                .userId(userId).hostId(hostId)
                 .tokenHash(tokenHasher.sha256Hex(clear))
                 .expiresAt(OffsetDateTime.now().minusSeconds(1))
                 .build());
@@ -99,7 +99,7 @@ class RunnerTokenServiceTest {
      */
     @Test
     void authenticatorRejectsTokenOfADeletedUser() {
-        RunnerTokenService.IssuedToken issued = tokenService.issue(userId, workspaceId, null);
+        RunnerTokenService.IssuedToken issued = tokenService.issue(userId, hostId, null);
         assertThat(authenticator.authenticate(issued.clearToken())).isPresent();
 
         userRepository.deleteById(userId);
@@ -109,18 +109,18 @@ class RunnerTokenServiceTest {
 
     @Test
     void authenticatorRejectsRevokedToken() {
-        RunnerTokenService.IssuedToken issued = tokenService.issue(userId, workspaceId, null);
-        tokenService.revoke(userId, workspaceId, issued.token().getId());
+        RunnerTokenService.IssuedToken issued = tokenService.issue(userId, hostId, null);
+        tokenService.revoke(userId, hostId, issued.token().getId());
         assertThat(authenticator.authenticate(issued.clearToken())).isEmpty();
     }
 
     @Test
     void revokeIsIdempotent() {
-        RunnerTokenService.IssuedToken issued = tokenService.issue(userId, workspaceId, null);
+        RunnerTokenService.IssuedToken issued = tokenService.issue(userId, hostId, null);
         UUID tokenId = issued.token().getId();
-        tokenService.revoke(userId, workspaceId, tokenId);
+        tokenService.revoke(userId, hostId, tokenId);
         OffsetDateTime firstRevokedAt = tokenRepository.findById(tokenId).orElseThrow().getRevokedAt();
-        tokenService.revoke(userId, workspaceId, tokenId);
+        tokenService.revoke(userId, hostId, tokenId);
         assertThat(tokenRepository.findById(tokenId).orElseThrow().getRevokedAt()).isEqualTo(firstRevokedAt);
     }
 }

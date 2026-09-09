@@ -9,14 +9,17 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import fr.claudegateway.atelier.WorkspaceService;
 import fr.claudegateway.auth.SecureTokenGenerator;
+import fr.claudegateway.runner.host.RunnerHostNotFoundException;
+import fr.claudegateway.runner.host.RunnerHostService;
 
 /**
  * Cycle de vie des jetons runner (F-38 / SF-38-01) : émission (au moment de l'appairage), listing et
  * révocation. Le jeton est stocké <b>haché</b> ({@link TokenHasher}) ; sa valeur en clair n'existe
- * qu'au retour de {@link #issue}. Toute opération de gestion vérifie l'appartenance du workspace à
- * l'utilisateur (isolation {@code user_id}).
+ * qu'au retour de {@link #issue}.
+ *
+ * <p>Depuis F-48 / SF-48-01, un jeton appartient à un <b>poste</b> et non plus à un projet : toute
+ * opération de gestion vérifie l'appartenance du poste à l'utilisateur (isolation {@code user_id}).</p>
  */
 @Service
 public class RunnerTokenService {
@@ -24,32 +27,32 @@ public class RunnerTokenService {
     private final RunnerTokenRepository tokenRepository;
     private final TokenHasher tokenHasher;
     private final SecureTokenGenerator tokenGenerator;
-    private final WorkspaceService workspaceService;
+    private final RunnerHostService hostService;
     private final Duration tokenTtl;
 
     public RunnerTokenService(
             RunnerTokenRepository tokenRepository,
             TokenHasher tokenHasher,
             SecureTokenGenerator tokenGenerator,
-            WorkspaceService workspaceService,
+            RunnerHostService hostService,
             @Value("${app.runner.token-ttl:P30D}") Duration tokenTtl) {
         this.tokenRepository = tokenRepository;
         this.tokenHasher = tokenHasher;
         this.tokenGenerator = tokenGenerator;
-        this.workspaceService = workspaceService;
+        this.hostService = hostService;
         this.tokenTtl = tokenTtl;
     }
 
     /**
-     * Émet un nouveau jeton runner pour un couple utilisateur/workspace. Renvoie le clair (à ne
-     * révéler qu'une fois) et l'entité persistée (hachée).
+     * Émet un nouveau jeton runner pour un couple utilisateur/poste. Renvoie le clair (à ne révéler
+     * qu'une fois) et l'entité persistée (hachée).
      */
     @Transactional
-    public IssuedToken issue(UUID userId, UUID workspaceId, String label) {
+    public IssuedToken issue(UUID userId, UUID hostId, String label) {
         String clear = tokenGenerator.generate();
         RunnerToken token = tokenRepository.save(RunnerToken.builder()
                 .userId(userId)
-                .workspaceId(workspaceId)
+                .hostId(hostId)
                 .tokenHash(tokenHasher.sha256Hex(clear))
                 .label(normalizeLabel(label))
                 .expiresAt(OffsetDateTime.now().plus(tokenTtl))
@@ -57,23 +60,23 @@ public class RunnerTokenService {
         return new IssuedToken(clear, token);
     }
 
-    /** Jetons d'un workspace (isolation {@code user_id}), les plus récents d'abord. */
+    /** Jetons d'un poste (isolation {@code user_id}), les plus récents d'abord. */
     @Transactional(readOnly = true)
-    public List<RunnerToken> list(UUID userId, UUID workspaceId) {
-        workspaceService.requireOwned(userId, workspaceId);
-        return tokenRepository.findByUserIdAndWorkspaceIdOrderByCreatedAtDesc(userId, workspaceId);
+    public List<RunnerToken> list(UUID userId, UUID hostId) {
+        hostService.requireOwned(userId, hostId);
+        return tokenRepository.findByUserIdAndHostIdOrderByCreatedAtDesc(userId, hostId);
     }
 
     /**
      * Révoque un jeton. Idempotent : révoquer un jeton déjà révoqué ne fait rien. Un jeton d'un
-     * autre utilisateur ou d'un autre workspace est traité comme introuvable (404).
+     * autre utilisateur ou d'un autre poste est traité comme introuvable (404).
      */
     @Transactional
-    public void revoke(UUID userId, UUID workspaceId, UUID tokenId) {
-        workspaceService.requireOwned(userId, workspaceId);
+    public void revoke(UUID userId, UUID hostId, UUID tokenId) {
+        hostService.requireOwned(userId, hostId);
         RunnerToken token = tokenRepository.findByIdAndUserId(tokenId, userId)
-                .filter(t -> t.getWorkspaceId().equals(workspaceId))
-                .orElseThrow(() -> new fr.claudegateway.atelier.WorkspaceNotFoundException(
+                .filter(t -> t.getHostId().equals(hostId))
+                .orElseThrow(() -> new RunnerHostNotFoundException(
                         "Jeton runner introuvable : " + tokenId));
         if (token.getRevokedAt() == null) {
             token.setRevokedAt(OffsetDateTime.now());

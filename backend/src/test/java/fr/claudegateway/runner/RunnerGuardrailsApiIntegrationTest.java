@@ -43,6 +43,7 @@ class RunnerGuardrailsApiIntegrationTest {
     @Autowired private MockMvc mockMvc;
     @Autowired private UserRepository userRepository;
     @Autowired private WorkspaceRepository workspaceRepository;
+    @Autowired private fr.claudegateway.runner.host.RunnerHostRepository hostRepository;
     @Autowired private RunnerTokenRepository runnerTokenRepository;
     @Autowired private RunnerAuditRepository runnerAuditRepository;
     @Autowired private RunnerTokenService tokenService;
@@ -51,6 +52,8 @@ class RunnerGuardrailsApiIntegrationTest {
     private User owner;
     private String ownerToken;
     private Workspace workspace;
+    /** Poste du projet (F-48 / SF-48-01) : le coupe-circuit coupe la MACHINE, pas un dossier. */
+    private fr.claudegateway.runner.host.RunnerHost host;
     private String otherToken;
 
     @BeforeEach
@@ -58,12 +61,17 @@ class RunnerGuardrailsApiIntegrationTest {
         runnerAuditRepository.deleteAll();
         runnerTokenRepository.deleteAll();
         workspaceRepository.deleteAll();
+        hostRepository.deleteAll();
         userRepository.deleteAll();
 
         owner = seedUser("owner-guard@example.com");
         ownerToken = jwtService.generateToken(owner);
+        host = hostRepository.save(
+                fr.claudegateway.runner.host.RunnerHost.builder().userId(owner.getId()).name("Poste")
+                        .build());
         workspace = workspaceRepository.save(Workspace.builder()
                 .userId(owner.getId()).name("Projet").executionTarget(WorkspaceExecutionTarget.RUNNER)
+                .hostId(host.getId()).projectPath("projet")
                 .build());
         otherToken = jwtService.generateToken(seedUser("other-guard@example.com"));
     }
@@ -78,9 +86,14 @@ class RunnerGuardrailsApiIntegrationTest {
         return "/api/workspaces/" + workspace.getId() + suffix;
     }
 
+    /** Le coupe-circuit et les jetons vivent désormais sur le poste (F-48 / SF-48-01). */
+    private String hostUrl(String suffix) {
+        return "/api/runner-hosts/" + host.getId() + suffix;
+    }
+
     private void seedAudit(String tool, String target, String outcome) {
         runnerAuditRepository.save(RunnerAudit.builder()
-                .userId(owner.getId()).workspaceId(workspace.getId())
+                .userId(owner.getId()).hostId(host.getId()).workspaceId(workspace.getId())
                 .callId(UUID.randomUUID().toString().substring(0, 20))
                 .tool(tool).target(target).outcome(outcome).durationMs(5L)
                 .createdAt(OffsetDateTime.now())
@@ -161,13 +174,14 @@ class RunnerGuardrailsApiIntegrationTest {
 
     @Test
     void theKillSwitchRevokesEveryTokenAndFallsBackToSandbox() throws Exception {
-        UUID tokenId = tokenService.issue(owner.getId(), workspace.getId(), "poste").token().getId();
+        UUID tokenId = tokenService.issue(owner.getId(), host.getId(), "poste").token().getId();
 
-        mockMvc.perform(post(url("/runner/kill")).contextPath("/api")
+        mockMvc.perform(post(hostUrl("/kill")).contextPath("/api")
                         .header("Authorization", "Bearer " + ownerToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.revokedTokens").value(1))
-                .andExpect(jsonPath("$.executionTarget").value("SANDBOX"));
+                // Tous les projets du poste reviennent au bac à sable, pas seulement un.
+                .andExpect(jsonPath("$.workspacesReturned").value(1));
 
         assertThat(runnerTokenRepository.findById(tokenId).orElseThrow().getRevokedAt()).isNotNull();
         assertThat(workspaceRepository.findById(workspace.getId()).orElseThrow()
@@ -176,10 +190,10 @@ class RunnerGuardrailsApiIntegrationTest {
 
     @Test
     void cuttingTwiceIsNotAnError() throws Exception {
-        mockMvc.perform(post(url("/runner/kill")).contextPath("/api")
+        mockMvc.perform(post(hostUrl("/kill")).contextPath("/api")
                         .header("Authorization", "Bearer " + ownerToken))
                 .andExpect(status().isOk());
-        mockMvc.perform(post(url("/runner/kill")).contextPath("/api")
+        mockMvc.perform(post(hostUrl("/kill")).contextPath("/api")
                         .header("Authorization", "Bearer " + ownerToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.revokedTokens").value(0))
@@ -187,8 +201,8 @@ class RunnerGuardrailsApiIntegrationTest {
     }
 
     @Test
-    void theKillSwitchOfAnotherUsersProjectIsNotFound() throws Exception {
-        mockMvc.perform(post(url("/runner/kill")).contextPath("/api")
+    void theKillSwitchOfAnotherUsersHostIsNotFound() throws Exception {
+        mockMvc.perform(post(hostUrl("/kill")).contextPath("/api")
                         .header("Authorization", "Bearer " + otherToken))
                 .andExpect(status().isNotFound());
     }

@@ -62,6 +62,8 @@ class RunnerPollingApiIntegrationTest {
     @Autowired
     private WorkspaceRepository workspaceRepository;
     @Autowired
+    private fr.claudegateway.runner.host.RunnerHostRepository hostRepository;
+    @Autowired
     private RunnerTokenRepository runnerTokenRepository;
     @Autowired
     private RunnerTokenService tokenService;
@@ -77,26 +79,32 @@ class RunnerPollingApiIntegrationTest {
     private User owner;
     private String ownerJwt;
     private Workspace workspace;
+    /** Poste du projet (F-48 / SF-48-01) : c'est lui que le jeton runner désigne. */
+    private fr.claudegateway.runner.host.RunnerHost host;
     private RunnerTokenService.IssuedToken issued;
 
     private User other;
     private Workspace otherWorkspace;
+    private fr.claudegateway.runner.host.RunnerHost otherHost;
     private RunnerTokenService.IssuedToken otherIssued;
 
     @BeforeEach
     void setUp() {
         runnerTokenRepository.deleteAll();
         workspaceRepository.deleteAll();
+        hostRepository.deleteAll();
         userRepository.deleteAll();
 
         owner = seedUser("poll-owner@example.com");
         ownerJwt = jwtService.generateToken(owner);
-        workspace = seedWorkspace(owner.getId());
-        issued = tokenService.issue(owner.getId(), workspace.getId(), "poste-1");
+        host = seedHost(owner.getId());
+        workspace = seedWorkspace(owner.getId(), host);
+        issued = tokenService.issue(owner.getId(), host.getId(), "poste-1");
 
         other = seedUser("poll-other@example.com");
-        otherWorkspace = seedWorkspace(other.getId());
-        otherIssued = tokenService.issue(other.getId(), otherWorkspace.getId(), "poste-2");
+        otherHost = seedHost(other.getId());
+        otherWorkspace = seedWorkspace(other.getId(), otherHost);
+        otherIssued = tokenService.issue(other.getId(), otherHost.getId(), "poste-2");
     }
 
     @AfterEach
@@ -108,7 +116,7 @@ class RunnerPollingApiIntegrationTest {
 
     private RunnerIdentity identity(RunnerTokenService.IssuedToken token) {
         return new RunnerIdentity(token.token().getId(), token.token().getUserId(),
-                token.token().getWorkspaceId());
+                token.token().getHostId());
     }
 
     private User seedUser(String email) {
@@ -117,8 +125,14 @@ class RunnerPollingApiIntegrationTest {
                 .provider(AuthProvider.LOCAL).role(UserRole.ADMIN).build());
     }
 
-    private Workspace seedWorkspace(UUID userId) {
-        return workspaceRepository.save(Workspace.builder().userId(userId).name("Projet").build());
+    private fr.claudegateway.runner.host.RunnerHost seedHost(UUID userId) {
+        return hostRepository.save(
+                fr.claudegateway.runner.host.RunnerHost.builder().userId(userId).name("Poste").build());
+    }
+
+    private Workspace seedWorkspace(UUID userId, fr.claudegateway.runner.host.RunnerHost host) {
+        return workspaceRepository.save(Workspace.builder().userId(userId).name("Projet")
+                .hostId(host.getId()).projectPath("projet").build());
     }
 
     // ---------------------------------------------------------------- 401 générique
@@ -132,7 +146,7 @@ class RunnerPollingApiIntegrationTest {
 
     @Test
     void pollWithRevokedTokenIsUnauthorizedTheSameWay() throws Exception {
-        tokenService.revoke(owner.getId(), workspace.getId(), issued.token().getId());
+        tokenService.revoke(owner.getId(), host.getId(), issued.token().getId());
 
         // Aucun oracle : « jeton absent » et « jeton révoqué » se répondent à l'identique.
         mockMvc.perform(post(POLL).contextPath("/api").header(HEADER, issued.clearToken()))

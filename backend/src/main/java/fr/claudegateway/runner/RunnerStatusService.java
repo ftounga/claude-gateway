@@ -14,11 +14,14 @@ import fr.claudegateway.atelier.RunnerShell;
 import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceService;
 import fr.claudegateway.runner.channel.RunnerRegistry;
+import fr.claudegateway.runner.host.RunnerHost;
+import fr.claudegateway.runner.host.RunnerHostService;
 
 /**
- * Calcule l'état « runner connecté » d'un workspace (F-38 / SF-38-02). Le workspace est d'abord
- * vérifié comme appartenant à l'utilisateur ({@link WorkspaceService#requireOwned}, isolation
- * {@code user_id}) — jamais depuis un paramètre client.
+ * Calcule l'état « runner connecté » d'un <b>poste</b> (F-38 / SF-38-02, redéfini par
+ * F-48 / SF-48-01), et le rend aussi pour un <b>projet</b> — qui hérite alors de l'état du poste
+ * auquel il est rattaché. L'appartenance est toujours vérifiée en amont (isolation {@code user_id}),
+ * jamais déduite d'un paramètre client.
  *
  * <p>{@code connected} combine deux signaux : la présence dans le {@link RunnerRegistry} (immédiate,
  * locale ou cross-replica via PgNotify) <b>et</b> la fraîcheur de {@code last_seen_at} (base
@@ -31,58 +34,86 @@ public class RunnerStatusService {
     private final RunnerTokenRepository tokenRepository;
     private final RunnerRegistry registry;
     private final WorkspaceService workspaceService;
+    private final RunnerHostService hostService;
     private final Duration staleAfter;
 
     public RunnerStatusService(
             RunnerTokenRepository tokenRepository,
             RunnerRegistry registry,
             WorkspaceService workspaceService,
+            RunnerHostService hostService,
             @Value("${app.runner.heartbeat.stale-after:PT90S}") Duration staleAfter) {
         this.tokenRepository = tokenRepository;
         this.registry = registry;
         this.workspaceService = workspaceService;
+        this.hostService = hostService;
         this.staleAfter = staleAfter;
     }
 
-    /** État runner du workspace, pour son propriétaire. */
+    /**
+     * État runner d'un <b>projet</b>, pour son propriétaire : celui du poste auquel il est rattaché.
+     *
+     * <p>Un projet sans poste n'est pas une erreur — c'est l'état d'un projet qu'on vient de créer,
+     * et l'écran doit pouvoir le dire. Il rend donc « déconnecté », pas un 404.</p>
+     */
     @Transactional(readOnly = true)
     public RunnerStatus status(UUID userId, UUID workspaceId) {
         Workspace workspace = workspaceService.requireOwned(userId, workspaceId);
+        if (workspace.getHostId() == null) {
+            return new RunnerStatus(false, null, null, null);
+        }
+        return hostStatus(userId, workspace.getHostId());
+    }
+
+    /** État runner d'un <b>poste</b> possédé (404 si le poste n'est pas le sien). */
+    @Transactional(readOnly = true)
+    public RunnerStatus hostStatus(UUID userId, UUID hostId) {
+        RunnerHost host = hostService.requireOwned(userId, hostId);
+        return statusOf(userId, host);
+    }
+
+    /**
+     * État d'un poste déjà chargé et déjà vérifié possédé — la forme employée par les listes, qui
+     * n'ont aucune raison de relire chaque poste une seconde fois.
+     */
+    @Transactional(readOnly = true)
+    public RunnerStatus statusOf(UUID userId, RunnerHost host) {
         Optional<OffsetDateTime> lastSeen = tokenRepository
-                .findByUserIdAndWorkspaceIdOrderByCreatedAtDesc(userId, workspaceId).stream()
+                .findByUserIdAndHostIdOrderByCreatedAtDesc(userId, host.getId()).stream()
                 .map(RunnerToken::getLastSeenAt)
                 .filter(java.util.Objects::nonNull)
                 .max(Comparator.naturalOrder());
         boolean heartbeatFresh = lastSeen
                 .map(seen -> seen.isAfter(OffsetDateTime.now().minus(staleAfter)))
                 .orElse(false);
-        boolean connected = registry.isConnected(workspaceId) || heartbeatFresh;
-        return new RunnerStatus(connected, lastSeen.orElse(null), declaredShell(workspace));
+        boolean connected = registry.isConnected(host.getId()) || heartbeatFresh;
+        return new RunnerStatus(connected, lastSeen.orElse(null), declaredShell(host), host.getId());
     }
 
     /**
      * Genre d'interpréteur élu par le runner (F-38 / SF-38-27), <b>normalisé</b>, ou {@code null}
      * (F-45 / SF-45-05, décision D7).
      *
-     * <p>La colonne {@code workspaces.runner_shell} est alimentée par une trame venue d'un client :
-     * elle repasse par la liste blanche de {@link RunnerShell} avant de sortir de la gateway, si
-     * bien qu'une valeur inconnue — base d'une version antérieure, écriture manuelle — devient
+     * <p>La colonne {@code runner_hosts.shell} est alimentée par une trame venue d'un client : elle
+     * repasse par la liste blanche de {@link RunnerShell} avant de sortir de la gateway, si bien
+     * qu'une valeur inconnue — base d'une version antérieure, écriture manuelle — devient
      * {@code null} plutôt que d'être relayée telle quelle à l'écran.</p>
      *
-     * <p>{@code null} et non « inconnu » : un runner antérieur à SF-38-27 n'a rien déclaré, et
-     * l'écran doit alors <b>omettre la ligne</b>, pas afficher un défaut.</p>
+     * <p>{@code null} et non « inconnu » : un runner qui n'a rien déclaré ne doit pas produire un
+     * défaut à l'écran, mais l'<b>omission de la ligne</b>.</p>
      */
-    private static String declaredShell(Workspace workspace) {
-        return RunnerShell.fromDeclared(workspace.getRunnerShell())
+    private static String declaredShell(RunnerHost host) {
+        return RunnerShell.fromDeclared(host.getShell())
                 .map(RunnerShell::declared)
                 .orElse(null);
     }
 
     /**
-     * État runner : connecté ou non, dernière activité observée (peut être {@code null}), et genre
-     * d'interpréteur élu par le runner ({@code posix} / {@code powershell} / {@code cmd}, ou
-     * {@code null} si aucun runner ne l'a déclaré).
+     * État runner : connecté ou non, dernière activité observée (peut être {@code null}), genre
+     * d'interpréteur élu ({@code posix} / {@code powershell} / {@code cmd}, ou {@code null}), et le
+     * <b>poste</b> concerné ({@code null} pour un projet qui n'est rattaché à aucun).
      */
-    public record RunnerStatus(boolean connected, OffsetDateTime lastSeenAt, String shell) {
+    public record RunnerStatus(boolean connected, OffsetDateTime lastSeenAt, String shell,
+            UUID hostId) {
     }
 }

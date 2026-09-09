@@ -57,10 +57,10 @@ public class RunnerWebSocketHandler extends AbstractWebSocketHandler {
         // socket utilisable l'est aussi.
         dispatcher.attach(session, identity);
         registry.register(new RunnerConnection(
-                identity.workspaceId(), identity.userId(), identity.tokenId(), nodeId,
+                identity.hostId(), identity.userId(), identity.tokenId(), nodeId,
                 OffsetDateTime.now()));
         heartbeatService.touch(identity.tokenId());
-        log.debug("Runner connecte: workspace={} token={}", identity.workspaceId(), identity.tokenId());
+        log.debug("Runner connecte: poste={} token={}", identity.hostId(), identity.tokenId());
     }
 
     @Override
@@ -68,7 +68,7 @@ public class RunnerWebSocketHandler extends AbstractWebSocketHandler {
         RunnerIdentity identity = identityOf(session);
         JsonNode frame = parse(message.getPayload());
         if (frame == null) {
-            log.debug("Trame runner illisible ignoree (workspace={})", identity.workspaceId());
+            log.debug("Trame runner illisible ignoree (poste={})", identity.hostId());
             return;
         }
         String type = frame.path("type").asText(null);
@@ -92,9 +92,9 @@ public class RunnerWebSocketHandler extends AbstractWebSocketHandler {
         // Les appels en vol sont terminés AVANT le retrait du registre : aucun appel n'attend une
         // socket morte, et aucun n'est rejoué (un write_file rejoué serait destructeur).
         dispatcher.detach(session, identity);
-        registry.unregister(identity.workspaceId(), identity.tokenId());
-        log.debug("Runner deconnecte: workspace={} token={} ({})",
-                identity.workspaceId(), identity.tokenId(), status);
+        registry.unregister(identity.hostId(), identity.tokenId());
+        log.debug("Runner deconnecte: poste={} token={} ({})",
+                identity.hostId(), identity.tokenId(), status);
     }
 
     private RunnerIdentity identityOf(WebSocketSession session) {

@@ -33,12 +33,16 @@ import fr.claudegateway.atelier.WorkspaceSource;
  *                   ajouté au prompt de l'agent à la <b>prochaine ouverture de session</b>, ou
  *                   {@code null} si le projet n'en porte pas. Dérivé de l'arborescence déjà chargée :
  *                   l'annoncer à l'écran ne coûte ni lecture de stockage ni appel à GitHub
+ * @param hostId     <b>poste</b> sur lequel ce projet vit (F-48 / SF-48-01), ou {@code null} s'il
+ *                   n'est rattaché à aucune machine
+ * @param projectPath chemin du projet relatif à la racine du poste ; la chaîne vide désigne la
+ *                   racine elle-même, {@code null} un projet non rattaché
  */
 public record WorkspaceDetailResponse(
         UUID id, String name, int fileCount, List<String> files, OffsetDateTime createdAt,
         WorkspaceSource source, String gitRepoUrl, String gitRepo, String gitBranch, boolean truncated,
         String instructionsPath, boolean askBeforeBash, WorkspaceExecutionTarget executionTarget,
-        String runnerRootName, boolean runnerElevated) {
+        UUID hostId, String projectPath) {
 
     public static WorkspaceDetailResponse from(Workspace workspace, List<String> files) {
         return from(workspace, files, false);
@@ -50,9 +54,10 @@ public record WorkspaceDetailResponse(
                 workspace.sourceOrDefault(), workspace.getGitRepoUrl(), fullName(workspace),
                 workspace.getGitBranch(), truncated, ProjectInstructions.detectPath(files).orElse(null),
                 workspace.isAgentAskBeforeBash(), workspace.executionTargetOrDefault(),
-                // Ce que le runner a déclaré de lui-même à l'appairage (F-38 / SF-38-15 et 18) :
-                // le nom du dossier, et s'il tourne avec les droits de l'administrateur.
-                workspace.getRunnerRootName(), Boolean.TRUE.equals(workspace.getRunnerElevated()));
+                // Le POSTE sur lequel ce projet vit, et son chemin sous la racine de ce poste
+                // (F-48 / SF-48-01). Ce que le runner déclare de la machine — racine, système,
+                // droits, interpréteur — se lit sur le poste, plus sur le projet.
+                workspace.getHostId(), workspace.getProjectPath());
     }
 
     /** {@code owner/repo} lisible, ou {@code null} si le workspace n'est pas adossé à un dépôt. */

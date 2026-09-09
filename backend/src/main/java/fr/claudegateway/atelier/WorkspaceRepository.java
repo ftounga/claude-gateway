@@ -20,6 +20,9 @@ public interface WorkspaceRepository extends JpaRepository<Workspace, UUID> {
     /** Workspaces d'un utilisateur, les plus récents d'abord (isolation {@code user_id}). */
     List<Workspace> findByUserIdOrderByCreatedAtDesc(UUID userId);
 
+    /** Projets rattachés à un poste (F-48 / SF-48-01), isolation {@code user_id}. */
+    List<Workspace> findByUserIdAndHostId(UUID userId, UUID hostId);
+
     /** Purge à la suppression du compte (SF-11-03), après effacement des fichiers du stockage. */
     void deleteByUserId(UUID userId);
 }

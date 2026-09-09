@@ -58,27 +58,27 @@ public class RunnerPollingSessions {
      * dans la carte, pour que le nettoyage de l'ancien ne puisse pas effacer le nouveau.
      */
     public LongPollingRunnerOutbound open(RunnerIdentity identity) {
-        LongPollingRunnerOutbound current = channels.get(identity.workspaceId());
+        LongPollingRunnerOutbound current = channels.get(identity.hostId());
         if (current != null && current.isOpen() && current.tokenId().equals(identity.tokenId())) {
             refreshPresence(current);
             return current;
         }
         LongPollingRunnerOutbound channel = new LongPollingRunnerOutbound(
-                identity.workspaceId(), identity.userId(), identity.tokenId(), this::cleanup);
-        LongPollingRunnerOutbound previous = channels.put(identity.workspaceId(), channel);
+                identity.hostId(), identity.userId(), identity.tokenId(), this::cleanup);
+        LongPollingRunnerOutbound previous = channels.put(identity.hostId(), channel);
         if (previous != null) {
             // La carte porte déjà le nouveau canal : le nettoyage de l'ancien ne peut plus l'effacer.
             previous.close();
         }
         registry.register(connectionOf(channel));
         dispatcher.attachChannel(identity, channel);
-        log.debug("Canal runner long-polling ouvert (workspace={})", identity.workspaceId());
+        log.debug("Canal runner long-polling ouvert (poste={})", identity.hostId());
         return channel;
     }
 
     /** Canal ouvert de ce runner, s'il y en a un — sans en créer. */
     public Optional<LongPollingRunnerOutbound> find(RunnerIdentity identity) {
-        LongPollingRunnerOutbound channel = channels.get(identity.workspaceId());
+        LongPollingRunnerOutbound channel = channels.get(identity.hostId());
         return channel != null && channel.isOpen() && channel.tokenId().equals(identity.tokenId())
                 ? Optional.of(channel)
                 : Optional.empty();
@@ -107,7 +107,7 @@ public class RunnerPollingSessions {
         Instant limit = Instant.now().minusMillis(idleTimeoutMs);
         for (LongPollingRunnerOutbound channel : List.copyOf(channels.values())) {
             if (channel.lastPollAt().isBefore(limit)) {
-                log.info("Canal runner long-polling inactif fermé (workspace={})", channel.workspaceId());
+                log.info("Canal runner long-polling inactif fermé (poste={})", channel.hostId());
                 channel.close();
             }
         }
@@ -119,34 +119,34 @@ public class RunnerPollingSessions {
      * attendre un canal mort une fois la présence disparue). Idempotent.
      */
     private void cleanup(LongPollingRunnerOutbound channel) {
-        channels.remove(channel.workspaceId(), channel);
-        dispatcher.detachChannel(channel.workspaceId(), channel);
+        channels.remove(channel.hostId(), channel);
+        dispatcher.detachChannel(channel.hostId(), channel);
         // Garde anti-course : on ne retire du registre que si la présence enregistrée est encore
         // exactement la nôtre. Sans elle, la fin d'un polling effacerait la connexion WebSocket d'un
         // runner qui vient de se reconnecter avec le même jeton (la garde par tokenId du registre ne
         // distingue pas deux connexions du même jeton).
         RunnerConnection mine = connectionOf(channel);
-        if (registry.findLocal(channel.workspaceId()).filter(mine::equals).isPresent()) {
-            registry.unregister(channel.workspaceId(), channel.tokenId());
+        if (registry.findLocal(channel.hostId()).filter(mine::equals).isPresent()) {
+            registry.unregister(channel.hostId(), channel.tokenId());
         }
     }
 
     /**
      * Repose la présence de ce canal si plus personne ne l'occupe. Symétrique de la garde du
      * nettoyage : la fermeture <b>tardive</b> d'un WebSocket portant le même jeton appelle
-     * {@code unregister(workspaceId, tokenId)} et efface la présence du polling qui vient de prendre
+     * {@code unregister(hostId, tokenId)} et efface la présence du polling qui vient de prendre
      * le relais. Le poll suivant la remet, donc au pire le statut clignote le temps d'un cycle. On ne
      * touche à rien si une autre présence est enregistrée : elle est plus récente que nous.
      */
     private void refreshPresence(LongPollingRunnerOutbound channel) {
-        if (registry.findLocal(channel.workspaceId()).isEmpty()) {
+        if (registry.findLocal(channel.hostId()).isEmpty()) {
             registry.register(connectionOf(channel));
         }
     }
 
     /** Présence correspondant à ce canal — valeur <b>déterministe</b> (base de la garde anti-course). */
     private RunnerConnection connectionOf(LongPollingRunnerOutbound channel) {
-        return new RunnerConnection(channel.workspaceId(), channel.userId(), channel.tokenId(), nodeId,
+        return new RunnerConnection(channel.hostId(), channel.userId(), channel.tokenId(), nodeId,
                 OffsetDateTime.ofInstant(channel.connectedAt(), ZoneOffset.UTC));
     }
 }

@@ -8,12 +8,16 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import fr.claudegateway.atelier.WorkspaceService;
+import fr.claudegateway.runner.host.RunnerHostService;
 
 /**
- * Appairage d'un runner (F-38 / SF-38-01). L'utilisateur génère un code court à usage unique pour un
- * de ses workspaces ({@link #createPairingCode}) ; le runner l'échange contre un jeton
- * ({@link #redeem}). Le code est stocké haché, à durée de vie courte, consommé à l'échange.
+ * Appairage d'un runner (F-38 / SF-38-01, réécrit par F-48 / SF-48-01). L'utilisateur génère un code
+ * court à usage unique pour un de ses <b>postes</b> ({@link #createPairingCode}) ; le runner l'échange
+ * contre un jeton ({@link #redeem}). Le code est stocké haché, à durée de vie courte, consommé à
+ * l'échange.
+ *
+ * <p><b>Un seul appairage par machine</b> : c'est tout l'objet de F-48. Ouvrir un projet de plus sous
+ * la racine du poste ne demande ni code, ni runner, ni connexion supplémentaires.</p>
  */
 @Service
 public class RunnerPairingService {
@@ -22,7 +26,7 @@ public class RunnerPairingService {
     private final RunnerTokenService tokenService;
     private final TokenHasher tokenHasher;
     private final RunnerPairingCodeGenerator codeGenerator;
-    private final WorkspaceService workspaceService;
+    private final RunnerHostService hostService;
     private final Duration codeTtl;
 
     public RunnerPairingService(
@@ -30,27 +34,27 @@ public class RunnerPairingService {
             RunnerTokenService tokenService,
             TokenHasher tokenHasher,
             RunnerPairingCodeGenerator codeGenerator,
-            WorkspaceService workspaceService,
+            RunnerHostService hostService,
             @Value("${app.runner.pairing-code-ttl:PT5M}") Duration codeTtl) {
         this.codeRepository = codeRepository;
         this.tokenService = tokenService;
         this.tokenHasher = tokenHasher;
         this.codeGenerator = codeGenerator;
-        this.workspaceService = workspaceService;
+        this.hostService = hostService;
         this.codeTtl = codeTtl;
     }
 
     /**
-     * Génère un code d'appairage pour un workspace de l'utilisateur. Vérifie l'appartenance
-     * (404 sinon). Le clair renvoyé n'est jamais réexposé ensuite.
+     * Génère un code d'appairage pour un poste de l'utilisateur. Vérifie l'appartenance (404 sinon).
+     * Le clair renvoyé n'est jamais réexposé ensuite.
      */
     @Transactional
-    public PairingCode createPairingCode(UUID userId, UUID workspaceId) {
-        workspaceService.requireOwned(userId, workspaceId);
+    public PairingCode createPairingCode(UUID userId, UUID hostId) {
+        hostService.requireOwned(userId, hostId);
         String clear = codeGenerator.generate();
         RunnerPairingCode code = codeRepository.save(RunnerPairingCode.builder()
                 .userId(userId)
-                .workspaceId(workspaceId)
+                .hostId(hostId)
                 .codeHash(tokenHasher.sha256Hex(clear))
                 .expiresAt(OffsetDateTime.now().plus(codeTtl))
                 .build());
@@ -58,31 +62,15 @@ public class RunnerPairingService {
     }
 
     /**
-     * Échange un code d'appairage contre un jeton runner. Consomme le code (usage unique).
+     * Échange un code d'appairage contre un jeton runner. Consomme le code (usage unique) et
+     * enregistre <b>sur le poste</b> ce que le runner déclare de sa machine : le dernier segment de
+     * sa racine (F-38 / SF-38-15), son système, et les droits sous lesquels il tourne (SF-38-18).
      *
      * @throws PairingInvalidException si le code est inconnu, expiré ou déjà consommé
      */
     @Transactional
-    public PairedRunner redeem(String rawCode, String label) {
-        return redeem(rawCode, label, null);
-    }
-
-    /**
-     * Variante qui enregistre en plus le <b>nom du dossier</b> déclaré par le runner
-     * (F-38 / SF-38-15). Le chemin absolu n'est jamais transmis ni stocké : le runner n'envoie que
-     * le dernier segment, et la gateway le réduit de nouveau par précaution.
-     */
-    @Transactional
-    public PairedRunner redeem(String rawCode, String label, String rootName) {
-        return redeem(rawCode, label, rootName, false);
-    }
-
-    /**
-     * Variante qui enregistre en plus les <b>droits</b> sous lesquels le runner tourne
-     * (F-38 / SF-38-18). La gateway ne peut pas les deviner ; c'est le runner qui les déclare.
-     */
-    @Transactional
-    public PairedRunner redeem(String rawCode, String label, String rootName, boolean elevated) {
+    public PairedRunner redeem(String rawCode, String label, String rootName, String os,
+            boolean elevated) {
         String hash = tokenHasher.sha256Hex(normalizeCode(rawCode));
         RunnerPairingCode code = codeRepository.findByCodeHash(hash)
                 .filter(c -> c.isUsableAt(OffsetDateTime.now()))
@@ -90,10 +78,9 @@ public class RunnerPairingService {
         code.setConsumedAt(OffsetDateTime.now());
 
         RunnerTokenService.IssuedToken issued =
-                tokenService.issue(code.getUserId(), code.getWorkspaceId(), label);
-        // Libellé d'affichage : un échec ici ne doit pas faire échouer l'appairage lui-même.
-        workspaceService.recordRunnerDeclaration(code.getWorkspaceId(), rootName, elevated);
-        return new PairedRunner(issued.clearToken(), code.getWorkspaceId(), issued.token().getExpiresAt());
+                tokenService.issue(code.getUserId(), code.getHostId(), label);
+        hostService.recordDeclaration(code.getHostId(), rootName, os, elevated);
+        return new PairedRunner(issued.clearToken(), code.getHostId(), issued.token().getExpiresAt());
     }
 
     private static String normalizeCode(String code) {
@@ -104,7 +91,7 @@ public class RunnerPairingService {
     public record PairingCode(String code, OffsetDateTime expiresAt) {
     }
 
-    /** Résultat d'appairage : jeton en clair (éphémère), workspace et expiration du jeton. */
-    public record PairedRunner(String token, UUID workspaceId, OffsetDateTime expiresAt) {
+    /** Résultat d'appairage : jeton en clair (éphémère), poste et expiration du jeton. */
+    public record PairedRunner(String token, UUID hostId, OffsetDateTime expiresAt) {
     }
 }

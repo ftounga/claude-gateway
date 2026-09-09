@@ -55,7 +55,10 @@ class RunnerCallRouterTest {
     private ObjectProvider<RunnerRelayClient> relayProvider;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final UUID workspaceId = UUID.randomUUID();
+    private final UUID hostId = UUID.randomUUID();
+    /** Cible d'un appel (F-48 / SF-48-01) : le poste route, le projet accompagne. */
+    private final fr.claudegateway.runner.channel.RunnerTarget target =
+            new fr.claudegateway.runner.channel.RunnerTarget(hostId, UUID.randomUUID(), "projet");
     private RunnerRelayProperties properties;
 
     @BeforeEach
@@ -77,7 +80,7 @@ class RunnerCallRouterTest {
     }
 
     private void localSocketPresent() {
-        when(registry.findLocal(workspaceId)).thenReturn(Optional.of(new RunnerConnection(workspaceId,
+        when(registry.findLocal(hostId)).thenReturn(Optional.of(new RunnerConnection(hostId,
                 UUID.randomUUID(), UUID.randomUUID(), "node-1", OffsetDateTime.now())));
     }
 
@@ -87,39 +90,39 @@ class RunnerCallRouterTest {
         when(dispatcher.call(any(), anyString(), anyString(), any(), anyLong(), any()))
                 .thenReturn(ok());
 
-        RunnerCallResult result = router().call(workspaceId, "toolu_1", "list_files",
+        RunnerCallResult result = router().call(target, "toolu_1", "list_files",
                 objectMapper.createObjectNode(), 30_000L);
 
         assertThat(result.ok()).isTrue();
-        verify(dispatcher).call(eq(workspaceId), eq("toolu_1"), eq("list_files"), any(), eq(30_000L),
+        verify(dispatcher).call(eq(target), eq("toolu_1"), eq("list_files"), any(), eq(30_000L),
                 any());
         verifyNoInteractions(relayClient);
     }
 
     @Test
     void remoteAddressIsRelayedExactlyOnce() {
-        when(registry.findLocal(workspaceId)).thenReturn(Optional.empty());
-        when(registry.findRemote(workspaceId))
+        when(registry.findLocal(hostId)).thenReturn(Optional.empty());
+        when(registry.findRemote(hostId))
                 .thenReturn(Optional.of(new RemoteRunnerNode("node-2", PEER)));
         when(relayClient.call(any(), any(), anyString(), anyString(), any(), anyLong(), any()))
                 .thenReturn(ok());
 
-        RunnerCallResult result = router().call(workspaceId, "toolu_2", "read_file",
+        RunnerCallResult result = router().call(target, "toolu_2", "read_file",
                 objectMapper.createObjectNode(), 30_000L);
 
         assertThat(result.ok()).isTrue();
-        verify(relayClient, times(1)).call(any(), eq(workspaceId), eq("toolu_2"), eq("read_file"),
+        verify(relayClient, times(1)).call(any(), eq(target), eq("toolu_2"), eq("read_file"),
                 any(), eq(30_000L), any());
         verify(dispatcher, never()).call(any(), anyString(), anyString(), any(), anyLong(), any());
     }
 
     @Test
     void unknownRemoteAddressDegradesToTheExistingError() {
-        when(registry.findLocal(workspaceId)).thenReturn(Optional.empty());
-        when(registry.findRemote(workspaceId)).thenReturn(Optional.empty());
-        when(registry.isConnected(workspaceId)).thenReturn(false);
+        when(registry.findLocal(hostId)).thenReturn(Optional.empty());
+        when(registry.findRemote(hostId)).thenReturn(Optional.empty());
+        when(registry.isConnected(hostId)).thenReturn(false);
 
-        RunnerCallResult result = router().call(workspaceId, "toolu_3", "list_files",
+        RunnerCallResult result = router().call(target, "toolu_3", "list_files",
                 objectMapper.createObjectNode(), 30_000L);
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.RUNNER_UNAVAILABLE);
@@ -128,11 +131,11 @@ class RunnerCallRouterTest {
 
     @Test
     void connectedElsewhereWithoutAddressKeepsRunnerNotOnThisNode() {
-        when(registry.findLocal(workspaceId)).thenReturn(Optional.empty());
-        when(registry.findRemote(workspaceId)).thenReturn(Optional.empty());
-        when(registry.isConnected(workspaceId)).thenReturn(true);
+        when(registry.findLocal(hostId)).thenReturn(Optional.empty());
+        when(registry.findRemote(hostId)).thenReturn(Optional.empty());
+        when(registry.isConnected(hostId)).thenReturn(true);
 
-        RunnerCallResult result = router().call(workspaceId, "toolu_4", "list_files",
+        RunnerCallResult result = router().call(target, "toolu_4", "list_files",
                 objectMapper.createObjectNode(), 30_000L);
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE);
@@ -140,12 +143,12 @@ class RunnerCallRouterTest {
 
     @Test
     void remoteAddressEqualToOursIsNeverRelayedToItself() {
-        when(registry.findLocal(workspaceId)).thenReturn(Optional.empty());
-        when(registry.findRemote(workspaceId))
+        when(registry.findLocal(hostId)).thenReturn(Optional.empty());
+        when(registry.findRemote(hostId))
                 .thenReturn(Optional.of(new RemoteRunnerNode("node-1", SELF)));
-        when(registry.isConnected(workspaceId)).thenReturn(true);
+        when(registry.isConnected(hostId)).thenReturn(true);
 
-        RunnerCallResult result = router().call(workspaceId, "toolu_5", "list_files",
+        RunnerCallResult result = router().call(target, "toolu_5", "list_files",
                 objectMapper.createObjectNode(), 30_000L);
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE);
@@ -155,12 +158,12 @@ class RunnerCallRouterTest {
     @Test
     void relayDisabledKeepsTheBehaviourOfBeforeSf3812() {
         properties.setSecret("");
-        when(registry.findLocal(workspaceId)).thenReturn(Optional.empty());
-        when(registry.findRemote(workspaceId))
+        when(registry.findLocal(hostId)).thenReturn(Optional.empty());
+        when(registry.findRemote(hostId))
                 .thenReturn(Optional.of(new RemoteRunnerNode("node-2", PEER)));
-        when(registry.isConnected(workspaceId)).thenReturn(true);
+        when(registry.isConnected(hostId)).thenReturn(true);
 
-        RunnerCallResult result = router().call(workspaceId, "toolu_6", "list_files",
+        RunnerCallResult result = router().call(target, "toolu_6", "list_files",
                 objectMapper.createObjectNode(), 30_000L);
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE);
