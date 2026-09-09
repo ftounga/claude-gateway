@@ -359,3 +359,52 @@ prochaine vague réinvestisse dans `SANDBOX` par réflexe de symétrie, et que l
 défaut et renvoyée à cet ADR ; l'inverse — un défaut constaté sur `SANDBOX` — reste recevable. La
 divergence entre les deux moteurs est désormais une **décision**, avec sa raison, et non un état de
 fait qu'on redécouvre à chaque vague.
+
+---
+
+## ADR-018 — L'exécution est autorisée par défaut sur une machine connectée (tranche OQ-14)
+
+**Date** : 2026-09-10
+**Statut** : Acceptée
+**Décideur** : product owner
+
+**Contexte.** En cible `RUNNER`, la porte de confirmation était **armée par défaut** :
+`WorkspaceService.createLocal()` posait `agent_ask_before_bash = true`, et
+`setExecutionTarget()` la réarmait à chaque passage en cible `RUNNER` (SF-38-08, décision D7). Le
+motif d'origine était juste : `always_allow` est acceptable dans un conteneur jetable, pas sur une
+vraie machine.
+
+L'usage l'a contredit deux fois. Le banc d'essai runner a montré le prix de la rigidité — une
+procédure de treize étapes demandait des dizaines de clics — ce qui avait déjà conduit SF-38-20 à
+rendre le réglage désactivable par projet. Puis l'incident du 2026-09-08, sur le deuxième poste
+client, a montré le prix du **premier** clic : deux minutes d'attente au tout premier usage, sur une
+invite qui n'était pas peinte. C'est le moment qui décide de l'adoption.
+
+L'asymétrie était par ailleurs écrite depuis SF-38-19 : l'**exécution** était activée par défaut — le
+mode runner existe pour exécuter — mais la **porte** restait fermée par défaut.
+
+**Décision.**
+
+1. `agent_ask_before_bash` vaut **`false`** à la création d'un projet. La première commande n'attend
+   plus un clic sur une machine que l'utilisateur a lui-même connectée, avec son propre appairage,
+   dans un dossier qu'il a lui-même désigné.
+2. La bascule de cible d'exécution **ne touche plus** au réglage. La décision **D7 de SF-38-08 est
+   retirée** : la conserver rendrait le nouveau défaut inopérant dès la première bascule et
+   réarmerait la porte dans le dos d'un utilisateur qui l'avait éteinte — notamment au retour d'un
+   coupe-circuit, qui repasse le projet en `SANDBOX` puis, au ré-appairage, en `RUNNER`.
+3. Ce qui **constate** et ce qui **coupe** ne bouge pas : journal d'audit (`runner_audit`),
+   coupe-circuit et exclusions de secrets (`.runnerignore`) restent en place et **non
+   désactivables**. Ce qui disparaît est la question posée **avant** la commande, jamais la trace
+   qu'elle laisse ni le moyen de tout arrêter.
+4. Les projets **existants ne sont pas modifiés** : le réglage qu'ils portent peut avoir été voulu.
+
+**Préalable, et il n'est pas négociable.** Cette décision n'a été rendue possible que parce que F-47
+avait d'abord rendu l'invite impossible à manquer (SF-47-01→03). On ne desserre pas une garde pour
+compenser un défaut d'affichage : on corrige l'affichage, on rend le coût de la garde visible, et
+**ensuite** on décide si on la garde.
+
+**Conséquences.** `OQ-14` est close. La porte reste **activable par projet** depuis l'en-tête du
+terminal (F-33 / SF-33-01), et l'invite garde tout ce que F-47 lui a donné quand elle est armée.
+Toute demande de réarmement automatique — à la bascule de cible, au ré-appairage, à l'élévation de
+droits — est renvoyée à cet ADR : elle rouvre un arbitrage du product owner, pas une option
+technique.

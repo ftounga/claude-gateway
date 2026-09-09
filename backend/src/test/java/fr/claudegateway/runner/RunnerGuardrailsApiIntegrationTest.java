@@ -210,7 +210,7 @@ class RunnerGuardrailsApiIntegrationTest {
     }
 
     @Test
-    void switchingToTheRunnerTargetTurnsTheConfirmationOn() throws Exception {
+    void switchingToTheRunnerTargetLeavesTheConfirmationOff() throws Exception {
         Workspace sandbox = workspaceRepository.save(Workspace.builder()
                 .userId(owner.getId()).name("Autre")
                 .executionTarget(WorkspaceExecutionTarget.SANDBOX).build());
@@ -222,6 +222,28 @@ class RunnerGuardrailsApiIntegrationTest {
                         .content("{\"executionTarget\":\"RUNNER\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.executionTarget").value("RUNNER"))
+                // La bascule armait la porte (SF-38-08, D7). F-47 / SF-47-04 retire ce forçage :
+                // le PO a tranché OQ-14 le 2026-09-10, l'exécution est autorisée par défaut sur une
+                // machine que l'utilisateur a lui-même connectée (ADR-018). Le journal d'audit et le
+                // coupe-circuit, eux, restent non désactivables.
+                .andExpect(jsonPath("$.askBeforeBash").value(false));
+    }
+
+    @Test
+    void switchingToTheRunnerTargetLeavesAnArmedConfirmationArmed() throws Exception {
+        Workspace armed = workspaceRepository.save(Workspace.builder()
+                .userId(owner.getId()).name("Verrouille")
+                .executionTarget(WorkspaceExecutionTarget.SANDBOX)
+                .agentAskBeforeBash(true).build());
+
+        mockMvc.perform(put("/api/workspaces/" + armed.getId() + "/execution-target")
+                        .contextPath("/api")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"executionTarget\":\"RUNNER\"}"))
+                .andExpect(status().isOk())
+                // On ne désarme pas plus qu'on n'arme dans le dos de l'utilisateur : le réglage
+                // qu'il a posé est le sien, et la bascule de cible ne le relit pas.
                 .andExpect(jsonPath("$.askBeforeBash").value(true));
     }
 }

@@ -327,10 +327,29 @@ sensibles sont couverts par des tests.
 
 ## OQ-14 — En cible `RUNNER`, la porte de confirmation doit-elle rester **activée par défaut** ?
 
-**Statut** : **Ouverte — question de sécurité adressée au product owner (cadrage F-47, 2026-09-08),
-toujours ouverte au 2026-09-09.** Ne bloque pas F-47, **Terminée** dans `docs/PRODUCT_SPEC.md` :
-les deux subfeatures livrées ont rendu l'invite impossible à manquer, elles n'ont **rien changé** au
-réglage par défaut — délibérément.
+**Statut** : **TRANCHÉE le 2026-09-10 par le product owner — la porte n'est plus armée par
+défaut.** Implémentée par **F-47 / SF-47-04**, enregistrée en **ADR-018**.
+
+**La décision.** `agent_ask_before_bash` vaut **`false`** à la création d'un projet, et la bascule de
+cible d'exécution ne l'arme plus (la décision D7 de SF-38-08 est retirée : elle rendait le nouveau
+défaut inopérant dès la première bascule et réarmait la porte dans le dos de l'utilisateur). Le
+réglage reste **activable par projet** ; le **journal d'audit** et le **coupe-circuit** sont
+inchangés et restent non désactivables. Les projets **existants ne sont pas modifiés** : chacun garde
+le réglage qu'il porte.
+
+**Pourquoi maintenant, et pas le 2026-09-08.** On ne desserre pas une garde pour compenser un défaut
+d'affichage. F-47 a d'abord rendu l'invite impossible à manquer — peinte à l'instant où elle arrive
+(SF-47-01), son temps restant affiché et son expiration dite pour ce qu'elle est (SF-47-02), la
+peinture enfin prouvée par un test qui l'aurait vue manquer (SF-47-03). Le coût de la porte est
+devenu **visible** ; c'est ce qui rendait la question posable.
+
+<details>
+<summary>Historique de la question, avant qu'elle soit tranchée</summary>
+
+**Statut au 2026-09-09** : ouverte — question de sécurité adressée au product owner (cadrage F-47,
+2026-09-08). Ne bloquait pas F-47, **Terminée** dans `docs/PRODUCT_SPEC.md` : les deux subfeatures
+livrées avaient rendu l'invite impossible à manquer, elles n'avaient **rien changé** au réglage par
+défaut — délibérément.
 
 **La question, en une phrase**
 
@@ -367,7 +386,9 @@ question posable sans la trancher : on ne desserre pas une garde pour compenser 
   commande. Le journal d'audit et le coupe-circuit restent, eux, **non désactivables** — mais ils
   constatent, ils n'empêchent pas.
 
-**Pourquoi elle n'est pas tranchée par un agent**
+**Pourquoi elle n'était pas tranchée par un agent**
 
-C'est un arbitrage sécurité / adoption sur du code exécuté sur la machine d'un tiers. Il revient au
-product owner, explicitement, et se documente en ADR le jour où il est rendu.
+C'est un arbitrage sécurité / adoption sur du code exécuté sur la machine d'un tiers. Il revenait au
+product owner, explicitement, et se documente en ADR le jour où il est rendu — c'est **ADR-018**.
+
+</details>
