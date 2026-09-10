@@ -8,11 +8,16 @@ import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 
 import { AdminService } from './admin.service';
 import { AdminUser } from './admin.models';
+import { GovernancePackagesComponent } from './governance-packages/governance-packages.component';
 
 /**
  * Écran d'administration (F-20 / SF-20-02) : liste paginée des utilisateurs avec abonnement et
  * consommation de tokens. Réservé au rôle ADMIN — le lien n'apparaît que si `AuthService.isAdmin`,
  * et l'API renvoie 403 pour un non-admin.
+ *
+ * <p>Depuis F-51 / SF-51-06, il porte aussi la section **Gouvernance** : la rédaction et la
+ * publication des paquets. Même garde, même écran — il n'y a qu'un seul endroit où regarder ce qu'un
+ * admin peut faire.</p>
  */
 @Component({
   selector: 'app-admin',
@@ -23,6 +28,7 @@ import { AdminUser } from './admin.models';
     MatProgressBarModule,
     DatePipe,
     DecimalPipe,
+    GovernancePackagesComponent,
   ],
   templateUrl: './admin.component.html',
   styleUrl: './admin.component.scss',

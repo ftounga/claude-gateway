@@ -1,0 +1,122 @@
+<h2 mat-dialog-title>{{ editing ? 'Modifier le paquet' : 'Nouveau paquet' }}</h2>
+
+<mat-dialog-content class="editor">
+  @if (editing) {
+    <p class="editor__notice">
+      Enregistrer <strong>remplace intégralement</strong> le contenu de ce paquet, fichiers compris,
+      et incrémente sa version. L'identifiant, lui, ne change jamais.
+    </p>
+  }
+
+  <mat-form-field appearance="outline">
+    <mat-label>Identifiant (slug)</mat-label>
+    <input
+      matInput
+      [value]="slug()"
+      (input)="slug.set($any($event.target).value)"
+      [disabled]="editing"
+      placeholder="gouvernance-livrables"
+    />
+    <mat-hint>3 à 64 caractères, minuscules, chiffres et tirets. Immuable après création.</mat-hint>
+  </mat-form-field>
+
+  <mat-form-field appearance="outline">
+    <mat-label>Nom</mat-label>
+    <input matInput [value]="name()" (input)="name.set($any($event.target).value)" />
+  </mat-form-field>
+
+  <mat-form-field appearance="outline">
+    <mat-label>Résumé</mat-label>
+    <input matInput [value]="summary()" (input)="summary.set($any($event.target).value)" />
+    <mat-hint>Une ou deux phrases : c'est ce qu'on lit dans le catalogue.</mat-hint>
+  </mat-form-field>
+
+  <mat-form-field appearance="outline">
+    <mat-label>Règles</mat-label>
+    <textarea
+      matInput
+      rows="6"
+      [value]="rules()"
+      (input)="rules.set($any($event.target).value)"
+    ></textarea>
+    <mat-hint>Ajoutées à la consigne système des projets où le paquet est actif.</mat-hint>
+  </mat-form-field>
+
+  <mat-form-field appearance="outline">
+    <mat-label>Contrôles</mat-label>
+    <mat-select multiple [value]="controlIds()" (valueChange)="controlIds.set($event)">
+      @for (control of data.controls; track control.id) {
+        <mat-option [value]="control.id">{{ control.id }} — {{ control.description }}</mat-option>
+      }
+    </mat-select>
+    <mat-hint>
+      @if (data.controls.length === 0) {
+        Aucun contrôle n'est fourni par cette version du produit.
+      } @else {
+        Choisis dans la liste que le serveur fournit — un identifiant inventé serait refusé.
+      }
+    </mat-hint>
+  </mat-form-field>
+
+  <div class="editor__files">
+    <header>
+      <h3>Fichiers déposés dans le projet</h3>
+      <button mat-stroked-button type="button" (click)="addFile()">
+        <mat-icon>add</mat-icon>
+        Ajouter
+      </button>
+    </header>
+
+    @if (files().length === 0) {
+      <p class="editor__hint">
+        Aucun fichier : ce paquet n'apportera que des règles et des contrôles.
+      </p>
+    }
+
+    @for (file of files(); track $index) {
+      <div class="editor__file">
+        <mat-form-field appearance="outline" class="editor__file-path">
+          <mat-label>Chemin, relatif au projet</mat-label>
+          <input
+            matInput
+            [value]="file.path"
+            (input)="setFilePath($index, $any($event.target).value)"
+            placeholder=".claude/skills/explique.md"
+          />
+        </mat-form-field>
+
+        <mat-form-field appearance="outline" class="editor__file-kind">
+          <mat-label>Genre</mat-label>
+          <mat-select [value]="file.kind" (valueChange)="setFileKind($index, $event)">
+            <mat-option value="SKILL">Skill</mat-option>
+            <mat-option value="TEMPLATE">Gabarit</mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        <button
+          mat-icon-button
+          type="button"
+          (click)="removeFile($index)"
+          aria-label="Retirer ce fichier"
+        >
+          <mat-icon>delete_outline</mat-icon>
+        </button>
+
+        <mat-form-field appearance="outline" class="editor__file-content">
+          <mat-label>Contenu</mat-label>
+          <textarea
+            matInput
+            rows="4"
+            [value]="file.content"
+            (input)="setFileContent($index, $any($event.target).value)"
+          ></textarea>
+        </mat-form-field>
+      </div>
+    }
+  </div>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="cancel()">Annuler</button>
+  <button mat-flat-button color="primary" type="button" (click)="save()">Enregistrer</button>
+</mat-dialog-actions>

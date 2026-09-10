@@ -47,4 +47,8 @@
 
     <mat-paginator [pageSizeOptions]="[10, 25, 50]" [pageSize]="10"></mat-paginator>
   </mat-card>
+
+  <!-- F-51 / SF-51-06 — publier un paquet est un geste d'administration : il vit ici, et pas sur une
+       route à part qui multiplierait les endroits où l'on cherche ce qu'un admin peut faire. -->
+  <app-governance-packages></app-governance-packages>
 </section>
