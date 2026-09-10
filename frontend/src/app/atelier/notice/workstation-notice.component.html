@@ -1,0 +1,49 @@
+<!-- Rappel de journalisation (F-57 / SF-57-03) : non modal, fermable, réglable, jamais bloquant.
+     `role="status"` et non `alert` : ce n'est pas une alerte de menace, c'est un rappel de
+     responsabilité — il ne doit pas interrompre un lecteur d'écran en pleine phrase. -->
+@if (visible()) {
+  <aside class="notice" role="status" aria-label="Rappel : journalisation du poste">
+    <mat-icon class="notice-icon" aria-hidden="true">policy</mat-icon>
+
+    <div class="notice-body">
+      <p class="notice-title">
+        Sur un poste d'entreprise, vos commandes sont vraisemblablement journalisées
+      </p>
+      <p class="notice-text">
+        Ce que vous faites exécuter ici passe par votre machine. L'application ne sait pas ce qui
+        l'observe, et ne cherche pas à le savoir — mais un poste fourni par un employeur est presque
+        toujours journalisé. Faites-en le même usage que de votre terminal habituel.
+      </p>
+
+      <div class="notice-actions">
+        <button
+          mat-button
+          type="button"
+          class="notice-interval"
+          [matMenuTriggerFor]="intervalMenu"
+          aria-label="Choisir la fréquence du rappel"
+        >
+          Me le rappeler : {{ intervalLabel() }}
+          <mat-icon class="notice-interval-caret">arrow_drop_down</mat-icon>
+        </button>
+        <mat-menu #intervalMenu="matMenu">
+          @for (interval of intervals; track interval.label) {
+            <button mat-menu-item type="button" (click)="chooseInterval(interval.hours)">
+              {{ interval.label }}
+            </button>
+          }
+        </mat-menu>
+
+        <button
+          mat-flat-button
+          color="primary"
+          type="button"
+          class="notice-ack"
+          (click)="acknowledge()"
+        >
+          Compris
+        </button>
+      </div>
+    </div>
+  </aside>
+}

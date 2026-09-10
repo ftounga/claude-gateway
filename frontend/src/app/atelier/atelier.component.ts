@@ -25,6 +25,7 @@ import {
   ATELIER_GUIDE_FIRST_COMMAND,
   AtelierGuideComponent,
 } from './guide/atelier-guide.component';
+import { WorkstationNoticeComponent } from './notice/workstation-notice.component';
 import { AtelierTerminalComponent } from './terminal/atelier-terminal.component';
 import {
   blockLabel as blockLabelOf,
@@ -129,6 +130,7 @@ export const RUNNER_STATUS_POLL_MS = 15_000;
     AtelierTerminalComponent,
     AtelierFilesComponent,
     AtelierGuideComponent,
+    WorkstationNoticeComponent,
   ],
   templateUrl: './atelier.component.html',
   styleUrl: './atelier.component.scss',

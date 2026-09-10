@@ -3784,3 +3784,85 @@ describe("AtelierComponent — guide d'accueil (F-53 / SF-53-01)", () => {
     fixture.destroy();
   });
 });
+
+describe('AtelierComponent — rappel de journalisation (F-57 / SF-57-03)', () => {
+  let fixture: ComponentFixture<AtelierComponent>;
+
+  const summary: WorkspaceSummary = {
+    id: 'w1', name: 'projet', createdAt: '2026-09-10T00:00:00Z', source: 'LOCAL', gitRepo: null,
+  };
+
+  /** Monte l'écran. `sinceMs` simule un rappel déjà acquitté il y a ce délai ; `null` = jamais. */
+  function setup(sinceMs: number | null): void {
+    localStorage.removeItem('cg_atelier_guide');
+    if (sinceMs === null) {
+      localStorage.removeItem('cg_workstation_notice');
+    } else {
+      localStorage.setItem('cg_workstation_notice', JSON.stringify({
+        version: 1, intervalHours: 2, acknowledgedAt: Date.now() - sinceMs,
+      }));
+    }
+
+    const service = jasmine.createSpyObj<AtelierService>('AtelierService', [
+      'createWorkspace', 'createLocalWorkspace', 'listWorkspaces', 'getWorkspace',
+      'getEngine', 'getFile', 'writeFile', 'importLibrary', 'chat', 'streamChat', 'streamAgent',
+      'resetAgentSession', 'getHistory', 'getResume', 'restartThread', 'setExecutionTarget',
+      'getRunnerStatus', 'createHostPairingCode', 'downloadRunnerJar', 'killHost', 'getRunnerAudit',
+    ]);
+    const apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
+    const snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
+    const dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
+
+    apiKeyService.getStatus.and.returnValue(of({
+      present: false, maskedKey: null, last4: null, provider: null, mode: 'HOSTED',
+      validatedAt: null, createdAt: null,
+    } as ApiKeyStatus));
+    service.listWorkspaces.and.returnValue(of([summary]));
+    service.getHistory.and.returnValue(of([]));
+    service.getEngine.and.returnValue(of({
+      engine: 'LOCAL_MACHINE' as const, runnerConnected: false,
+      runnerLastSeenAt: null, recommendRunner: false, recommendReason: null,
+    }));
+    service.getResume.and.returnValue(
+      of({ turns: 0, lastMessageAt: null, threadStartedAt: null, prompt: 'NONE' as const }),
+    );
+    service.getRunnerStatus.and.returnValue(of({ connected: false, lastSeenAt: null }));
+
+    TestBed.configureTestingModule({
+      imports: [AtelierComponent],
+      providers: [
+        provideNoopAnimations(),
+        provideRouter([]),
+        { provide: AtelierService, useValue: service },
+        { provide: ApiKeyService, useValue: apiKeyService },
+        { provide: MatSnackBar, useValue: snackBar },
+        { provide: MatDialog, useValue: dialog },
+      ],
+    });
+
+    fixture = TestBed.createComponent(AtelierComponent);
+    fixture.detectChanges();
+  }
+
+  afterEach(() => {
+    fixture?.destroy();
+    localStorage.removeItem('cg_workstation_notice');
+    localStorage.removeItem('cg_atelier_guide');
+  });
+
+  it('affiche le rappel quand il est dû', () => {
+    setup(null);
+
+    expect(fixture.nativeElement.querySelector('app-workstation-notice')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.notice')).not.toBeNull();
+    expect(fixture.nativeElement.textContent as string).toContain('vraisemblablement journalisées');
+  });
+
+  it("n'affiche rien quand le dernier rappel est récent", () => {
+    setup(60 * 60 * 1000);
+
+    // Le composant reste monté — c'est lui qui décide — mais le bandeau, lui, ne s'affiche pas.
+    expect(fixture.nativeElement.querySelector('app-workstation-notice')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.notice')).toBeNull();
+  });
+});
