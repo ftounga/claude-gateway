@@ -441,6 +441,25 @@ app:
     # utilisable avec les formats qu'elle sert déjà.
     macos-aarch64-package-path: ${APP_RUNNER_MACOS_AARCH64_PACKAGE_PATH:}
     macos-x64-package-path: ${APP_RUNNER_MACOS_X64_PACKAGE_PATH:}
+    proxy-relay:
+      # F-59 : le relais local `px`, servi PAR LA GATEWAY. L'assistant proxy (F-55) le faisait
+      # télécharger depuis GitHub — souvent bloqué par catégorie sur un poste d'entreprise, ce qui
+      # enferme l'utilisateur : il lui faut le relais pour sortir, et une sortie pour l'obtenir. Le
+      # domaine de la gateway, lui, est forcément autorisé.
+      #
+      # À ne pas confondre avec `app.runner.relay` ci-dessous, qui est le relais INTERNE entre pods
+      # (SF-38-12) : deux choses sans rapport, deux préfixes distincts.
+      #
+      # Vide par défaut ⇒ l'archive n'est pas servie et l'écran masque le lien (jamais un lien mort).
+      windows-path: ${APP_RUNNER_PROXY_RELAY_WINDOWS_PATH:}
+      macos-aarch64-path: ${APP_RUNNER_PROXY_RELAY_MACOS_AARCH64_PATH:}
+      linux-x64-path: ${APP_RUNNER_PROXY_RELAY_LINUX_X64_PATH:}
+      # LICENCE — condition de la redistribution : `px` est sous MIT, sa notice doit accompagner la
+      # copie. Sans ce fichier, AUCUNE archive n'est servie (SF-59-01, D3).
+      license-path: ${APP_RUNNER_PROXY_RELAY_LICENSE_PATH:}
+      # Version amont servie, citée par `/runner/relay/formats` et affichée à l'écran. Libellé
+      # d'affichage : elle ne résout aucun fichier, ce sont les chemins ci-dessus qui le font.
+      version: ${APP_RUNNER_PROXY_RELAY_VERSION:v0.11.0}
     heartbeat:
       # Fenêtre de fraîcheur du dernier heartbeat pour le statut « runner connecté » : au-delà, le
       # runner est considéré déconnecté si le registre ne le voit pas. Adossé à `last_seen_at` (base

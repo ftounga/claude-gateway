@@ -47,8 +47,16 @@ les tunnels `CONNECT` depuis Java 8u111. Le produit ne fournit pas de relais d'a
 cela reviendrait à manipuler vos identifiants Windows.
 
 Le remède est un **relais local** : un outil qui porte l'authentification intégrée et expose, sur
-`127.0.0.1`, un proxy **sans** authentification (`px`, `cntlm` par exemple). Ensuite, dans le
-terminal qui lance le runner :
+`127.0.0.1`, un proxy **sans** authentification (`px`, `cntlm` par exemple).
+
+`px` est **servi par la passerelle elle-même** (`/api/runner/relay/windows`,
+`/api/runner/relay/macos-aarch64`, `/api/runner/relay/linux-x64`) : sur un poste où GitHub est
+bloqué par catégorie, c'est la seule adresse dont on soit sûr — sinon rien de ce produit ne
+fonctionnerait. Le binaire est celui publié en amont, sous licence **MIT**, et sa notice accompagne
+l'archive (`/api/runner/relay/license`). Rien à installer : décompressez, lancez. `cntlm`, sous
+licence GPL, n'est pas redistribué : il reste à récupérer chez son éditeur.
+
+Ensuite, dans le terminal qui lance le runner :
 
 ```
 HTTPS_PROXY=http://127.0.0.1:3128

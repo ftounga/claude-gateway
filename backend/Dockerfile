@@ -35,6 +35,19 @@ COPY runner/package-macos.sh ./
 RUN ./package-macos.sh target/claude-runner.jar target aarch64 \
     && ./package-macos.sh target/claude-runner.jar target x64
 
+# Relais local `px` (F-59 / SF-59-01) : la gateway sert elle-même le remède au proxy à
+# authentification. L'assistant (F-55) le faisait télécharger depuis GitHub, souvent bloqué PAR
+# CATÉGORIE sur un poste d'entreprise — l'utilisateur avait alors besoin du relais pour sortir, et
+# d'une sortie pour l'obtenir. Le domaine de la gateway, lui, est forcément autorisé.
+#
+# Version amont FIGÉE, somme SHA-256 vérifiée, et notice MIT vérifiée : le script échoue plutôt que
+# de laisser construire une image qui redistribuerait `px` sans sa licence. `cntlm` (GPL) n'est PAS
+# empaqueté — l'assistant continue d'y renvoyer par lien.
+COPY runner/package-relay.sh ./
+RUN ./package-relay.sh windows target \
+    && ./package-relay.sh macos-aarch64 target \
+    && ./package-relay.sh linux-x64 target
+
 # ---- Build du backend ----
 FROM eclipse-temurin:21-jdk-alpine AS build
 WORKDIR /app
@@ -61,6 +74,12 @@ COPY --from=runner-build /runner/target/claude-runner-windows-x64.zip claude-run
 # Paquets autonomes macOS (F-44 / SF-44-03), servis à côté des deux autres.
 COPY --from=runner-build /runner/target/claude-runner-macos-aarch64.tar.gz claude-runner-macos-aarch64.tar.gz
 COPY --from=runner-build /runner/target/claude-runner-macos-x64.tar.gz claude-runner-macos-x64.tar.gz
+# Relais local `px` (F-59), servi par GET /runner/relay/*. La notice MIT voyage AVEC les archives :
+# c'est la condition de leur redistribution, et le service refuse de les servir sans elle.
+COPY --from=runner-build /runner/target/px-v0.11.0-windows-amd64.zip px-v0.11.0-windows-amd64.zip
+COPY --from=runner-build /runner/target/px-v0.11.0-mac-arm64.tar.gz px-v0.11.0-mac-arm64.tar.gz
+COPY --from=runner-build /runner/target/px-v0.11.0-linux-glibc-x86_64.tar.gz px-v0.11.0-linux-glibc-x86_64.tar.gz
+COPY --from=runner-build /runner/target/px-LICENSE.txt px-LICENSE.txt
 
 EXPOSE 8080
 

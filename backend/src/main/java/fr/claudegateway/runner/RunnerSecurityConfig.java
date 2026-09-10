@@ -20,9 +20,11 @@ import org.springframework.security.web.SecurityFilterChain;
  * runner dans {@code RunnerHandshakeInterceptor}), plus le téléchargement du binaire runner
  * {@code GET /runner/download} (SF-38-03, client public sans secret), et le <b>repli long-polling</b>
  * {@code POST /runner/poll|send|disconnect} (SF-38-09, authentifié par l'en-tête
- * {@code X-Runner-Token} directement dans {@code RunnerPollController}). Toutes sont {@code permitAll}
- * au niveau de la chaîne (l'authentification réelle est faite en aval) ; tout le reste est refusé. Stateless, CSRF
- * désactivé (API non navigateur, pas de cookie de session).</p>
+ * {@code X-Runner-Token} directement dans {@code RunnerPollController}), et enfin le <b>relais local
+ * {@code px}</b> {@code GET /runner/relay/*} (F-59 / SF-59-01 — un binaire tiers public et sa notice
+ * de licence, servis pour l'utilisateur dont le poste n'atteint pas GitHub). Toutes sont
+ * {@code permitAll} au niveau de la chaîne (l'authentification réelle est faite en aval) ; tout le
+ * reste est refusé. Stateless, CSRF désactivé (API non navigateur, pas de cookie de session).</p>
  */
 @Configuration
 public class RunnerSecurityConfig {
@@ -55,6 +57,17 @@ public class RunnerSecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/runner/download/macos-aarch64").permitAll()
                         .requestMatchers(HttpMethod.GET, "/runner/download/macos-x64").permitAll()
                         .requestMatchers(HttpMethod.GET, "/runner/download/formats").permitAll()
+                        // Relais local `px` servi par la gateway (F-59 / SF-59-01) : même nature
+                        // encore — un binaire tiers public, sans jeton ni secret. Et l'exiger
+                        // authentifié manquerait la cible : celui qui en a besoin est justement
+                        // celui dont le poste ne sort pas. Déclarées une par une, comme au-dessus.
+                        .requestMatchers(HttpMethod.GET, "/runner/relay/windows").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/runner/relay/macos-aarch64").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/runner/relay/linux-x64").permitAll()
+                        // La notice MIT : servie AVEC les archives, c'est la condition de leur
+                        // redistribution — donc aussi publique qu'elles.
+                        .requestMatchers(HttpMethod.GET, "/runner/relay/license").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/runner/relay/formats").permitAll()
                         // Repli long-polling (SF-38-09) : le jeton runner voyage dans l'en-tête
                         // X-Runner-Token et est vérifié PAR LE CONTRÔLEUR (RunnerPollController) —
                         // aucun filtre HTTP ne sait lire un jeton runner, et rien n'est posé dans le
