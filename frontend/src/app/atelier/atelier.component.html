@@ -87,6 +87,7 @@
   <app-atelier-terminal
     [projectName]="activeName()"
     [hostName]="activeHostName()"
+    [hostMission]="activeHostMission()"
     [localFolder]="localFolder()"
     [runnerElevated]="runnerElevated()"
     [engine]="engine()"
@@ -208,6 +209,14 @@
               <span matListItemLine class="workspace-belonging">
                 @if (workspace.hostName) {
                   <app-host-badge [name]="workspace.hostName" size="sm"></app-host-badge>
+                }
+                <!-- État de mission (F-60 / SF-60-02), et seulement quand il n'est pas « En
+                     cours » : ici on travaille, et répéter l'état nominal sur chaque ligne
+                     ajouterait du bruit sans jamais changer une décision. « En attente » ou
+                     « Clôturé », si. L'écran de référence — /postes — écrit toujours les trois,
+                     donc l'absence n'est jamais ambiguë. -->
+                @if (missionToShow(workspace.hostMissionStatus); as mission) {
+                  <app-mission-badge [status]="mission"></app-mission-badge>
                 }
                 @if (workspace.gitRepo) {
                   <span class="workspace-repo">{{ workspace.gitRepo }}</span>

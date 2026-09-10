@@ -18,6 +18,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { HostBadgeComponent } from '../../shared/host-badge/host-badge.component';
+import { MissionBadgeComponent } from '../../shared/mission-badge/mission-badge.component';
 import { MarkdownPipe } from '../../shared/markdown.pipe';
 
 import {
@@ -65,8 +66,8 @@ import {
 @Component({
   selector: 'app-atelier-terminal',
   imports: [
-    FormsModule, HostBadgeComponent, MarkdownPipe, MatButtonModule, MatButtonToggleModule,
-    MatIconModule, MatProgressSpinnerModule, MatTooltipModule,
+    FormsModule, HostBadgeComponent, MissionBadgeComponent, MarkdownPipe, MatButtonModule,
+    MatButtonToggleModule, MatIconModule, MatProgressSpinnerModule, MatTooltipModule,
   ],
   templateUrl: './atelier-terminal.component.html',
   styleUrl: './atelier-terminal.component.scss',
@@ -85,6 +86,17 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * rattaché n'a pas de client, et « aucun poste » se lirait comme un défaut.</p>
    */
   @Input() hostName: string | null = null;
+
+  /**
+   * **État de mission** du poste, *à montrer* (F-60 / SF-60-02) : `'PENDING'`, `'CLOSED'`, ou
+   * `null` quand il n'y a rien à dire — projet non rattaché, ou mission simplement « en cours ».
+   *
+   * <p>Le tri est fait par l'appelant ({@code AtelierComponent.missionToShow}) : ici on
+   * travaille, et une pastille « En cours » permanente en tête de barre serait une décoration qui
+   * ne change aucune décision. « En attente » ou « Clôturé » en changent une, et s'affichent — avec
+   * leur libellé écrit, comme partout.</p>
+   */
+  @Input() hostMission: string | null = null;
 
   /**
    * Dossier de la machine, tel que le runner l'a déclaré (F-38 / SF-38-16). Affiché à côté du nom

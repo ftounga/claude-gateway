@@ -26,6 +26,8 @@ import {
   GitPushRequest,
   GitPushResult,
   AttachHostRequest,
+  HostMissionRequest,
+  HostMissionStatus,
   RunnerAuditEntry,
   RunnerHost,
   RunnerHostOverview,
@@ -655,6 +657,22 @@ export class AtelierService {
    */
   runnerHostsOverview(): Observable<RunnerHostOverview[]> {
     return this.http.get<RunnerHostOverview[]>('/api/runner-hosts/overview');
+  }
+
+  /**
+   * Déclare l'**état de mission** d'un poste (F-60 / SF-60-01) : en cours, en attente, clôturé.
+   *
+   * <p>Rend le poste **à jour** — c'est lui qui fait foi, jamais la valeur demandée. L'écran ne
+   * change donc pas d'état de façon optimiste : clôturer *range* une carte hors de la vue
+   * principale, et la faire disparaître avant de savoir si l'ordre a abouti la ferait réapparaître
+   * à la relecture suivante.</p>
+   *
+   * <p><b>Ce geste ne coupe rien</b> côté gateway : ni jeton, ni liaison, ni rattachement de
+   * projet, ni journal. Couper une machine reste le coupe-circuit, et il est ailleurs.</p>
+   */
+  setHostMissionStatus(hostId: string, status: HostMissionStatus): Observable<RunnerHost> {
+    return this.http.put<RunnerHost>(`/api/runner-hosts/${hostId}/mission`,
+      { missionStatus: status } satisfies HostMissionRequest);
   }
 
   /** Crée un poste au nom libre (F-48 / SF-48-01). */

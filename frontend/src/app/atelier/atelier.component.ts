@@ -21,6 +21,8 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { httpErrorMessage, MAX_UPLOAD_BYTES, oversizeMessage } from '../shared/http-error.util';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
+import { MissionBadgeComponent } from '../shared/mission-badge/mission-badge.component';
+import { HostMissionStatus, normalizeMissionStatus } from '../shared/mission-status';
 import { AtelierFilesComponent } from './files/atelier-files.component';
 import {
   ATELIER_GUIDE_FIRST_COMMAND,
@@ -133,6 +135,7 @@ export const RUNNER_STATUS_POLL_MS = 15_000;
     AtelierGuideComponent,
     WorkstationNoticeComponent,
     HostBadgeComponent,
+    MissionBadgeComponent,
   ],
   templateUrl: './atelier.component.html',
   styleUrl: './atelier.component.scss',
@@ -260,6 +263,34 @@ export class AtelierComponent implements OnInit, OnDestroy {
     const fromSummary = this.workspaces().find((w) => w.id === id)?.hostName;
     return fromSummary ?? this.runnerStatus()?.hostName ?? null;
   });
+
+  /**
+   * **État de mission** du poste du projet ouvert (F-60 / SF-60-02), *à montrer* — c'est-à-dire
+   * `null` quand la mission est simplement « en cours ».
+   *
+   * <p>On travaille dans cet écran : afficher « En cours » en tête de terminal serait une
+   * décoration permanente qui ne change aucune décision. « En attente » ou « Clôturé », en
+   * revanche, changent la lecture de ce qu'on est en train de faire — et s'affichent.</p>
+   */
+  readonly activeHostMission = computed<HostMissionStatus | null>(() => {
+    const id = this.activeWorkspaceId();
+    return this.missionToShow(this.workspaces().find((w) => w.id === id)?.hostMissionStatus);
+  });
+
+  /**
+   * État de mission **à afficher hors de `/postes`**, ou `null` quand il n'y a rien à dire.
+   *
+   * <p>`null` dans deux cas : le projet n'est rattaché à aucun poste, ou la mission est « en
+   * cours » — la norme. L'absence n'est jamais ambiguë, puisque l'écran de référence (`/postes`)
+   * écrit toujours les trois états.</p>
+   */
+  missionToShow(status: string | null | undefined): HostMissionStatus | null {
+    if (status === null || status === undefined) {
+      return null;
+    }
+    const normalized = normalizeMissionStatus(status);
+    return normalized === 'ACTIVE' ? null : normalized;
+  }
 
   /**
    * Détail du projet ouvert (F-31 / SF-31-02) : porte la source et, pour un dépôt, `owner/repo` et

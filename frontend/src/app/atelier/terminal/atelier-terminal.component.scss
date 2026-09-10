@@ -28,6 +28,12 @@
   flex: none;
 }
 
+/* État de mission (F-60 / SF-60-02) : la pastille apporte son propre fond clair (classes `.badge--*`
+   de la charte §5), donc elle reste lisible sur la barre navy sans que rien ne soit posé ici. */
+.terminal-mission {
+  flex: none;
+}
+
 .terminal-host-sep {
   color: var(--cg-divider);
   font-family: var(--cg-font-mono);

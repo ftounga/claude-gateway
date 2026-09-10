@@ -1,4 +1,5 @@
 import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -7,10 +8,23 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
+import { MatMenuModule } from '@angular/material/menu';
+import { MatSnackBar } from '@angular/material/snack-bar';
+
 import { AtelierService } from '../core/services/atelier.service';
 import { HostProjectSummary, RunnerHostOverview } from '../core/models/atelier.models';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import { HostTone, hostTone } from '../shared/host-identity';
+import { MissionBadgeComponent } from '../shared/mission-badge/mission-badge.component';
+import {
+  HostMissionStatus,
+  MISSION_STATUSES,
+  isMissionClosed,
+  missionHint,
+  missionIcon,
+  missionLabel,
+  normalizeMissionStatus,
+} from '../shared/mission-status';
 
 /** Période de rafraîchissement de la vue, en millisecondes. */
 export const POSTES_REFRESH_MS = 15_000;
@@ -43,11 +57,14 @@ export type PostesError = 'none' | 'network' | 'forbidden';
 @Component({
   selector: 'app-postes',
   imports: [
+    NgTemplateOutlet,
     RouterLink,
     HostBadgeComponent,
+    MissionBadgeComponent,
     MatButtonModule,
     MatCardModule,
     MatIconModule,
+    MatMenuModule,
     MatProgressSpinnerModule,
     MatTooltipModule,
   ],
@@ -58,6 +75,10 @@ export class PostesComponent implements OnInit {
   private readonly atelier = inject(AtelierService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly snackBar = inject(MatSnackBar);
+
+  /** Les trois états proposés au choix, dans l'ordre : du plus vivant au plus rangé. */
+  readonly missionStatuses = MISSION_STATUSES;
 
   readonly hosts = signal<RunnerHostOverview[]>([]);
   /** Premier chargement : c'est le seul moment où l'écran a le droit d'être vide. */
@@ -68,6 +89,33 @@ export class PostesComponent implements OnInit {
 
   readonly isEmpty = computed(() => !this.loading() && this.error() === 'none'
     && this.hosts().length === 0);
+
+  /**
+   * **Ce qui reste au premier plan** (F-60 / SF-60-02) : les missions en cours et en attente. Un
+   * poste clôturé n'est pas perdu, il descend dans le repli — « se ranger sans disparaître ».
+   */
+  readonly openHosts = computed(() =>
+    this.hosts().filter((host) => !isMissionClosed(host.missionStatus)));
+
+  /** Les missions clôturées, rangées : hors de la vue principale, à un clic de la consultation. */
+  readonly closedHosts = computed(() =>
+    this.hosts().filter((host) => isMissionClosed(host.missionStatus)));
+
+  /**
+   * Repli des clôturées : **refermé** à l'ouverture de l'écran. Sa raison d'être est de retirer
+   * les missions closes du champ de vision ; l'ouvrir d'office annulerait le rangement.
+   */
+  readonly closedOpen = signal(false);
+
+  /** Poste dont l'état est en train de partir à la gateway — le temps d'un aller-retour. */
+  readonly savingHostId = signal<string | null>(null);
+
+  /**
+   * Des postes existent, mais **toutes** leurs missions sont clôturées. La vue principale est vide
+   * et le dit ; le repli, lui, reste présent et ouvrable — rien n'a disparu.
+   */
+  readonly allClosed = computed(() => !this.loading() && this.error() === 'none'
+    && this.hosts().length > 0 && this.openHosts().length === 0);
 
   private timer: ReturnType<typeof setInterval> | null = null;
 
@@ -99,6 +147,69 @@ export class PostesComponent implements OnInit {
   /** Ouvre le terminal du projet — le « à un clic » que la vue promet. */
   openTerminal(project: HostProjectSummary): void {
     this.router.navigate(['/atelier', project.id]);
+  }
+
+  // -------------------------------------------- état de mission (F-60 / SF-60-02)
+
+  /** Ouvre ou referme le repli des missions clôturées. */
+  toggleClosed(): void {
+    this.closedOpen.update((open) => !open);
+  }
+
+  /** État de mission d'un poste, jamais nul : une valeur absente se lit « En cours ». */
+  mission(host: RunnerHostOverview): HostMissionStatus {
+    return normalizeMissionStatus(host.missionStatus);
+  }
+
+  /** Libellé **écrit** de l'état — c'est lui que la couleur double, et jamais l'inverse. */
+  missionLabel(status: string | null | undefined): string {
+    return missionLabel(status);
+  }
+
+  /** Icône de l'entrée de menu. Décorative : le libellé l'accompagne toujours. */
+  missionIcon(status: string | null | undefined): string {
+    return missionIcon(status);
+  }
+
+  /** Ce que l'entrée de menu explique, pour que le choix ne soit pas une devinette. */
+  missionHint(status: string | null | undefined): string {
+    return missionHint(status);
+  }
+
+  /**
+   * Déclare où en est la mission de ce poste.
+   *
+   * <p><b>Jamais de mise à jour optimiste</b> : clôturer *range* la carte hors de la vue
+   * principale. La faire disparaître avant de savoir si l'ordre a abouti la ferait réapparaître à
+   * la relecture suivante. L'écran attend donc la réponse — c'est elle qui fait foi.</p>
+   *
+   * <p>Sur échec, l'état affiché ne bouge pas d'un pixel et un message le dit : la vue reste
+   * exacte, même quand la gateway ne répond pas.</p>
+   */
+  setMission(host: RunnerHostOverview, status: HostMissionStatus): void {
+    if (this.mission(host) === status || this.savingHostId() !== null) {
+      return;
+    }
+    this.savingHostId.set(host.id);
+    this.atelier.setHostMissionStatus(host.id, status).subscribe({
+      next: (updated) => {
+        this.savingHostId.set(null);
+        // C'est la réponse qui décide, pas la valeur demandée.
+        const confirmed = normalizeMissionStatus(updated.missionStatus);
+        this.hosts.update((hosts) => hosts.map((h) =>
+          h.id === host.id ? { ...h, missionStatus: confirmed } : h));
+        if (isMissionClosed(confirmed)) {
+          // La carte vient de quitter la vue principale : on dit où elle est allée.
+          this.snackBar.open(`Mission clôturée. « ${host.name} » est rangé, rien n'est coupé.`,
+            'Fermer', { duration: 4000, panelClass: 'snack-info' });
+        }
+      },
+      error: () => {
+        this.savingHostId.set(null);
+        this.snackBar.open("L'état de la mission n'a pas pu être enregistré.", 'Fermer',
+          { duration: 4000, panelClass: 'snack-error' });
+      },
+    });
   }
 
   // ---------------------------------------------------------------- libellés

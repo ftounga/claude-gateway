@@ -1,0 +1,9 @@
+<!-- Pastille d'état de mission (F-60 / SF-60-02).
+     Le libellé est TOUJOURS écrit : la couleur double l'information, elle ne la remplace jamais.
+     L'icône est décorative — elle est masquée aux lecteurs d'écran, qui lisent le texte.
+     La classe vient de la charte (§5) : aucune couleur n'est posée en ligne ici, et rien n'est
+     emprunté à la palette d'identité des postes (§9). -->
+<span class="badge mission-badge" [ngClass]="badgeClass()">
+  <mat-icon class="mission-badge__icon" aria-hidden="true">{{ icon() }}</mat-icon>
+  <span class="mission-badge__label">{{ label() }}</span>
+</span>

@@ -295,8 +295,9 @@ Artefacts imposés par `CLAUDE.md` §« Séquence obligatoire par subfeature ».
       code une fois + rechargement, **le code n'est pas dans la liste**, effacement, dialogue annulé,
       échec de création, échec de chargement.
 - [x] Intégration : couverte côté backend (SF-62-01).
-- [x] **Tous les tests passent** : `1023 SUCCESS`, 0 échec (le spec de `/admin` a été complété du
-      bouchon de service — sans quoi il aurait cassé par injection).
+- [x] **Tous les tests passent** : `1055 SUCCESS`, 0 échec après rebase sur `main` (a033593, F-60
+      incluse) — le spec de `/admin` a été complété du bouchon de service, sans quoi il aurait cassé
+      par injection.
 - [x] Cas d'erreur du plan de test couverts un à un.
 
 ### Architecture — BLOQUANT
@@ -332,8 +333,11 @@ Artefacts imposés par `CLAUDE.md` §« Séquence obligatoire par subfeature ».
 ## SF-62-03 — Release checklist — **VERDICT : PASS**
 
 - [x] Review passée, aucun bloquant rouge
-- [x] Build + tests verts : `1023 SUCCESS` · `npm run build` OK
-- [x] Aucun conflit avec `main` ; branche créée depuis `origin/main` à jour (b9b17b4)
+- [x] Build + tests verts : `1055 SUCCESS` · `npm run build` OK (les seuls avertissements de budget
+      SCSS sont **préexistants** ; `access-codes.component.scss` n'en fait pas partie)
+- [x] Aucun conflit avec `main` : branche **rebasée** sur `origin/main` (a033593) — le seul conflit,
+      une ligne d'historique de `PRODUCT_SPEC.md` disputée avec F-60, est résolu en gardant **les
+      deux** entrées
 - [x] Definition of Done : mini-spec respectée, critères d'acceptation validés
 - [x] Base de données : **sans objet** (aucune migration)
 - [x] Sécurité : aucun secret dans le diff ; le code en clair ne transite que dans la réponse de
