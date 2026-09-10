@@ -10,7 +10,7 @@
 
 ## Statut
 
-`ready`
+`done` — livrée le 2026-09-10 (PR #342)
 
 ## Date de création
 
@@ -69,18 +69,18 @@ inchangés, y compris dans leur formulation.
 
 ## Critères d'acceptation
 
-- [ ] Les pastilles de l'écran des postes portent la classe globale `badge` et son modificateur de
+- [x] Les pastilles de l'écran des postes portent la classe globale `badge` et son modificateur de
       statut (`badge--success`, `badge--neutral`, `badge--warning`).
-- [ ] Plus aucune classe `cg-badge` dans le code source du frontend.
-- [ ] Plus aucun littéral `'JetBrains Mono'` dans une feuille de style de composant : le jeton
+- [x] Plus aucune classe `cg-badge` dans le code source du frontend.
+- [x] Plus aucun littéral `'JetBrains Mono'` dans une feuille de style de composant : le jeton
       `--cg-font-mono` est employé partout.
-- [ ] La feuille de style de la bulle d'aide n'emploie plus que des jetons `--cg-space-*` pour ses
+- [x] La feuille de style de la bulle d'aide n'emploie plus que des jetons `--cg-space-*` pour ses
       marges, gouttières et remplissages.
-- [ ] La grille du catalogue de gouvernance ne force plus une colonne plus large que son conteneur.
-- [ ] L'assistant proxy s'ouvre à 560 px, comme le parcours d'appairage.
-- [ ] Le message d'échec de génération de code porte `role="alert"`.
-- [ ] **Tous les tests frontend existants passent sans avoir été modifiés.**
-- [ ] `npm run build` et `npm test` verts.
+- [x] La grille du catalogue de gouvernance ne force plus une colonne plus large que son conteneur.
+- [x] L'assistant proxy s'ouvre à 560 px, comme le parcours d'appairage.
+- [x] Le message d'échec de génération de code porte `role="alert"`.
+- [x] **Tous les tests frontend existants passent sans avoir été modifiés.**
+- [x] `npm run build` et `npm test` verts.
 
 ---
 
