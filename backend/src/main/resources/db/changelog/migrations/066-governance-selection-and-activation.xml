@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-51 / SF-51-02 — Le second étage du catalogue : ce que CHACUN retient, et ce qu'il active.
+
+      `governance_selections`  : mon catalogue personnel. Retenir n'active rien ; le seul automatisme
+                                 est `default_applied`, qui fait embarquer le paquet par MES projets
+                                 à venir.
+      `governance_activations` : un paquet actif SUR UN PROJET. Tant que la ligne existe, les règles
+                                 rejoignent la consigne système et les contrôles se branchent sur les
+                                 crochets de F-50 (SF-51-04).
+
+      ISOLATION : les deux tables portent `user_id`, et il est en TÊTE de chaque index d'unicité.
+      Aucune lecture n'existe sans lui — c'est une propriété des repositories, pas une précaution des
+      appelants. Rien n'est partagé entre comptes (F-17, V3, hors périmètre).
+
+      `applied_version` fige la version appliquée : un projet peut rester en v2 pendant que le paquet
+      passe en v3. Rien ne met à jour un projet dans le dos de son propriétaire (décision D5).
+
+      Réversible : chaque changeSet porte son rollback.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="066-governance-selections-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="governance_selections">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="package_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="default_applied" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="governance_selections" indexName="idx_governance_selections_user_package"
+                     unique="true">
+            <column name="user_id"/>
+            <column name="package_id"/>
+        </createIndex>
+        <rollback><dropTable tableName="governance_selections"/></rollback>
+    </changeSet>
+
+    <changeSet id="066-governance-activations-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="governance_activations">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="package_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="applied_version" type="int"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="applied_at" type="timestamptz"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="governance_activations"
+                     indexName="idx_governance_activations_user_workspace_package" unique="true">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+            <column name="package_id"/>
+        </createIndex>
+        <rollback><dropTable tableName="governance_activations"/></rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="066-governance-selections-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="governance_selections">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="package_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="default_applied" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="governance_selections" indexName="idx_governance_selections_user_package"
+                     unique="true">
+            <column name="user_id"/>
+            <column name="package_id"/>
+        </createIndex>
+        <rollback><dropTable tableName="governance_selections"/></rollback>
+    </changeSet>
+
+    <changeSet id="066-governance-activations-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="governance_activations">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="package_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="applied_version" type="int"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="applied_at" type="timestamp with time zone"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="governance_activations"
+                     indexName="idx_governance_activations_user_workspace_package" unique="true">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+            <column name="package_id"/>
+        </createIndex>
+        <rollback><dropTable tableName="governance_activations"/></rollback>
+    </changeSet>
+
+</databaseChangeLog>
