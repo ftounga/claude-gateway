@@ -18,6 +18,10 @@ import fr.claudegateway.agent.AgentToolCall;
 import fr.claudegateway.agent.AgentTurn;
 import fr.claudegateway.agent.AgentTurnRequest;
 import fr.claudegateway.agent.AiAgentProvider;
+import fr.claudegateway.atelier.checkpoint.AtelierCheckpointContext;
+import fr.claudegateway.atelier.checkpoint.AtelierCheckpointKind;
+import fr.claudegateway.atelier.checkpoint.AtelierCheckpointRunner;
+import fr.claudegateway.atelier.checkpoint.AtelierCheckpointVerdict;
 import fr.claudegateway.atelier.dto.AtelierChatResponse.AtelierAction;
 import fr.claudegateway.byok.ByokKeyService;
 import fr.claudegateway.quota.QuotaService;
@@ -192,6 +196,11 @@ public class AtelierChatService implements RelayInterruptTarget {
     private final RunnerRelayBroadcaster relayBroadcaster;
     /** Postes (F-48 / SF-48-01) : l'interpréteur élu est une propriété de la MACHINE, pas du projet. */
     private final fr.claudegateway.runner.host.RunnerHostService runnerHostService;
+    /**
+     * Points de contrôle de la boucle (F-50 / SF-50-01). Vide tant que rien n'y est branché : le
+     * mécanisme existe, il ne fait rien, et le comportement de la boucle est celui d'avant.
+     */
+    private final AtelierCheckpointRunner checkpointRunner;
 
     /**
      * Tours pour lesquels une interruption a été demandée (F-38 / SF-38-07, même geste que F-32).
@@ -231,6 +240,10 @@ public class AtelierChatService implements RelayInterruptTarget {
     /** Longueur d'une précision : c'est une précision, pas une nouvelle consigne. */
     static final int MAX_STEER_CHARS = 4_000;
 
+    /**
+     * Forme historique, conservée pour les appelants (et les tests) qui l'attendent : aucun point de
+     * contrôle branché, donc le comportement d'avant F-50, à l'identique.
+     */
     public AtelierChatService(WorkspaceService workspaceService, AtelierMessageRepository messageRepository,
             AiAgentProvider agentProvider, ByokKeyService byokKeyService, QuotaService quotaService,
             fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService,
@@ -241,6 +254,25 @@ public class AtelierChatService implements RelayInterruptTarget {
             RunnerRelayBroadcaster relayBroadcaster,
             fr.claudegateway.runner.host.RunnerHostService runnerHostService,
             AtelierProperties atelierProperties) {
+        this(workspaceService, messageRepository, agentProvider, byokKeyService, quotaService,
+                gitWorkspaceService, runnerToolGateway, runnerCallDispatcher, confirmationGate,
+                runnerAuditService, relayBroadcaster, runnerHostService, atelierProperties,
+                AtelierCheckpointRunner.none());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AtelierChatService(WorkspaceService workspaceService, AtelierMessageRepository messageRepository,
+            AiAgentProvider agentProvider, ByokKeyService byokKeyService, QuotaService quotaService,
+            fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService,
+            RunnerToolGateway runnerToolGateway,
+            fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher,
+            RunnerConfirmationGate confirmationGate,
+            RunnerAuditService runnerAuditService,
+            RunnerRelayBroadcaster relayBroadcaster,
+            fr.claudegateway.runner.host.RunnerHostService runnerHostService,
+            AtelierProperties atelierProperties,
+            AtelierCheckpointRunner checkpointRunner) {
+        this.checkpointRunner = checkpointRunner;
         this.workspaceService = workspaceService;
         this.messageRepository = messageRepository;
         this.agentProvider = agentProvider;
@@ -483,6 +515,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else {
                     outcome = executeTool(userId, workspace, callId, call, listener, deadline, planOfTurn);
                 }
+                // Premier point d'accroche de la boucle (F-50 / SF-50-01) : après une écriture de
+                // fichier aboutie, un contrôle peut transformer le résultat en erreur portant
+                // l'action corrective. Sans contrôle enregistré, la ligne est transparente.
+                outcome = applyWriteCheckpoint(userId, workspaceId, call, outcome);
                 if (outcome.action() != null) {
                     actions.add(outcome.action());
                 }
@@ -904,6 +940,53 @@ public class AtelierChatService implements RelayInterruptTarget {
     /** Identifiant de corrélation d'un appel d'outil : celui du fournisseur, ou un UUID de secours. */
     private String correlationId(AgentToolCall call) {
         return call.id() == null || call.id().isBlank() ? UUID.randomUUID().toString() : call.id();
+    }
+
+    /**
+     * Point de contrôle <b>après écriture de fichier</b> (F-50 / SF-50-01).
+     *
+     * <p>C'est le premier point d'accroche de la boucle maison : jusqu'ici, rien ne s'exécutait
+     * autour d'un appel d'outil, et aucune règle ne pouvait passer du statut de consigne à celui de
+     * verrou. Le geste est celui qui a déjà fait ses preuves avec la porte de confirmation
+     * (SF-38-08) : le résultat rendu au modèle devient une <b>erreur</b>, et cette erreur porte
+     * <b>l'action corrective</b> — c'est le modèle qui doit corriger, donc le message lui dit quoi
+     * faire, pas seulement ce qui ne va pas.</p>
+     *
+     * <p>Trois bornes, et elles comptent :</p>
+     * <ul>
+     *   <li>seules les écritures <b>abouties</b> sont contrôlées — une écriture en échec n'a rien
+     *       produit qu'on puisse juger, et empiler un second message d'erreur sur le premier
+     *       brouillerait la correction attendue ;</li>
+     *   <li>l'action fichier destinée à l'écran est <b>conservée</b> : le fichier existe, l'éditeur
+     *       ouvert doit se rafraîchir, même si la suite est un blocage ;</li>
+     *   <li>sans contrôle enregistré, la méthode rend l'issue inchangée — F-50 livre le mécanisme,
+     *       pas son contenu.</li>
+     * </ul>
+     */
+    private ToolOutcome applyWriteCheckpoint(UUID userId, UUID workspaceId, AgentToolCall call,
+            ToolOutcome outcome) {
+        if (outcome.isError() || !isFileWrite(call.name())
+                || !checkpointRunner.hasCheckpoints(AtelierCheckpointKind.AFTER_FILE_WRITE)) {
+            return outcome;
+        }
+        JsonNode input = call.input();
+        // Ce que le modèle a DEMANDÉ d'écrire, jamais une relecture du disque : en cible RUNNER le
+        // fichier vit sur la machine de l'utilisateur, et la gateway n'y retourne pas pour contrôler.
+        String content = "edit_file".equals(call.name())
+                ? arg(input, "new_string")
+                : arg(input, "content");
+        AtelierCheckpointVerdict verdict = checkpointRunner.run(AtelierCheckpointKind.AFTER_FILE_WRITE,
+                AtelierCheckpointContext.afterFileWrite(userId, workspaceId, call.name(),
+                        arg(input, "path"), content));
+        if (!verdict.blocked()) {
+            return outcome;
+        }
+        return new ToolOutcome(AtelierCheckpointRunner.writeBlockedMessage(verdict), true, outcome.action());
+    }
+
+    /** Les deux outils qui modifient un fichier du projet, et eux seuls (F-50 / SF-50-01). */
+    private static boolean isFileWrite(String tool) {
+        return "write_file".equals(tool) || "edit_file".equals(tool);
     }
 
     private ToolOutcome executeTool(UUID userId, Workspace workspace, String callId, AgentToolCall call,
