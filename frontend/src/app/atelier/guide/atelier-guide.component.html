@@ -1,0 +1,70 @@
+<!-- Guide d'accueil de l'Atelier (F-53 / SF-53-01) : superposé, jamais modal, abandonnable partout. -->
+<aside class="guide" role="complementary" aria-label="Guide de démarrage">
+  <header class="guide-head">
+    <div class="guide-head-text">
+      <span class="guide-title">Vos premiers pas</span>
+      <span class="guide-progress">{{ doneCount() }} / {{ views.length }}</span>
+    </div>
+    <button
+      mat-icon-button
+      type="button"
+      class="guide-close"
+      matTooltip="Masquer le guide"
+      aria-label="Masquer le guide"
+      (click)="dismiss.emit()"
+    >
+      <mat-icon>close</mat-icon>
+    </button>
+  </header>
+
+  @if (completed()) {
+    <!-- Conclusion : la seule chose qui compte est dite, puis le guide s'efface pour de bon. -->
+    <div class="guide-done">
+      <mat-icon class="guide-done-icon" aria-hidden="true">check_circle</mat-icon>
+      <p class="guide-done-text">
+        Votre poste exécute. Vos prochains projets sous la même racine n'auront ni code à saisir,
+        ni installation à refaire.
+      </p>
+      <button mat-flat-button color="primary" type="button" class="guide-done-action" (click)="finish.emit()">
+        Terminer
+      </button>
+    </div>
+  } @else {
+    <ol class="guide-steps">
+      @for (step of views; track step.id; let index = $index) {
+        <li class="guide-step" [class.done]="isDone(step.id)" [class.current]="isCurrent(step.id)">
+          <span class="guide-step-mark" aria-hidden="true">
+            @if (isDone(step.id)) {
+              <mat-icon class="guide-step-check">check</mat-icon>
+            } @else {
+              {{ index + 1 }}
+            }
+          </span>
+          <div class="guide-step-body">
+            <span class="guide-step-title">{{ step.title }}</span>
+            @if (isCurrent(step.id)) {
+              <p class="guide-step-text">{{ step.text }}</p>
+              @if (canAct(step)) {
+                <button
+                  mat-flat-button
+                  color="primary"
+                  type="button"
+                  class="guide-step-action"
+                  (click)="act(step)"
+                >
+                  {{ step.action }}
+                </button>
+              }
+            }
+          </div>
+        </li>
+      }
+    </ol>
+
+    <footer class="guide-foot">
+      <button mat-button type="button" class="guide-skip" (click)="dismiss.emit()">
+        Masquer le guide
+      </button>
+    </footer>
+  }
+</aside>

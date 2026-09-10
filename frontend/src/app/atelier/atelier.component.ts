@@ -21,6 +21,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { httpErrorMessage, MAX_UPLOAD_BYTES, oversizeMessage } from '../shared/http-error.util';
 import { AtelierFilesComponent } from './files/atelier-files.component';
+import { AtelierGuideComponent } from './guide/atelier-guide.component';
 import { AtelierTerminalComponent } from './terminal/atelier-terminal.component';
 import {
   blockLabel as blockLabelOf,
@@ -43,6 +44,7 @@ import {
 } from '../chat/library-picker/library-picker-dialog.component';
 import { ApiKeyService } from '../core/services/api-key.service';
 import { AtelierService } from '../core/services/atelier.service';
+import { AtelierGuideService } from '../core/services/atelier-guide.service';
 import { ProviderMode } from '../core/models/api-key.models';
 import { GitPushDialogComponent, PickedGitPush } from './git/git-push-dialog.component';
 import { GitRepoDialogComponent, PickedGitRepository } from './git/git-repo-dialog.component';
@@ -123,6 +125,7 @@ export const RUNNER_STATUS_POLL_MS = 15_000;
     RouterLink,
     AtelierTerminalComponent,
     AtelierFilesComponent,
+    AtelierGuideComponent,
   ],
   templateUrl: './atelier.component.html',
   styleUrl: './atelier.component.scss',
@@ -136,6 +139,13 @@ export class AtelierComponent implements OnInit, OnDestroy {
   private readonly zone = inject(NgZone);
   private readonly appRef = inject(ApplicationRef);
   private readonly dialog = inject(MatDialog);
+
+  /**
+   * Guide d'accueil (F-53 / SF-53-01) : il mène au premier succès réel — créer un projet, connecter
+   * son poste, voir une commande aboutir. Le service ne fait que retenir l'avancement ; ce sont les
+   * faits observés ici qui cochent les étapes.
+   */
+  readonly guide = inject(AtelierGuideService);
 
   /**
    * Vue terminal montée (F-47 / SF-47-01) : c'est elle qui sait où se trouve l'invite d'autorisation
@@ -436,6 +446,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.atelier.listWorkspaces().subscribe({
       next: (list) => {
         this.workspaces.set(list);
+        // Étape 1 du guide (F-53) : elle se coche sur un fait — un projet EXISTE —, jamais sur le
+        // clic qui a ouvert le dialogue de création.
+        if (list.length > 0) {
+          this.guide.markStep('project');
+        }
         this.applyRequestedWorkspace(list);
         // Accès accordé : charger le mode d'exécution pour l'indicateur de tête d'écran.
         this.loadProviderMode();
@@ -1167,6 +1182,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
               budgetReached: done.budgetReached === true,
             },
           ]);
+          // Étape 3 du guide (F-53) : le premier succès visé est un tour qui S'ACHÈVE sur le
+          // poste. Un tour interrompu compte — il a bien été exécuté sur la machine ; une erreur de
+          // flux, non : elle passe par `onError`, qui ne coche rien.
+          this.guide.markStep('command');
           // Un tour a pu écrire des fichiers : rafraîchir l'arborescence (et l'aperçu ouvert).
           this.refreshTree(id);
           const openPath = this.selectedFilePath();
@@ -1601,7 +1620,13 @@ export class AtelierComponent implements OnInit, OnDestroy {
       return;
     }
     this.atelier.getRunnerStatus(id).subscribe({
-      next: (status) => this.runnerStatus.set(status),
+      next: (status) => {
+        this.runnerStatus.set(status);
+        // Étape 2 du guide (F-53) : le poste est connecté quand la gateway le voit connecté.
+        if (status.connected) {
+          this.guide.markStep('host');
+        }
+      },
       error: () => this.runnerStatus.set(null),
     });
   }
@@ -1628,6 +1653,22 @@ export class AtelierComponent implements OnInit, OnDestroy {
       .open(RunnerPairingDialogComponent, { data, width: '560px', maxWidth: '95vw' })
       .afterClosed()
       .subscribe(() => this.refreshRunnerStatus());
+  }
+
+  /**
+   * Guide d'accueil — étape « projet » : le guide n'ouvre rien de neuf, il déclenche le parcours
+   * « Sur ma machine » qui existe déjà (F-38 / SF-38-16).
+   */
+  guideCreateProject(): void {
+    this.openLocalProjectDialog();
+  }
+
+  /**
+   * Guide d'accueil — étape « poste » : le dialogue d'appairage porte déjà la vérification réseau,
+   * la fiche DSI et la commande de lancement (F-45, F-48). Le guide s'y rend, il ne les recopie pas.
+   */
+  guideConnectHost(): void {
+    this.openRunnerPairing();
   }
 
   /** Ouvre le journal d'activité de la machine (F-38 / SF-38-08, décision D11). */
