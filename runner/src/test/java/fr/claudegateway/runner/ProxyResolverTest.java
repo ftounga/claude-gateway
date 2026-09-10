@@ -87,4 +87,53 @@ class ProxyResolverTest {
         List<Proxy> proxies = resolver.select(URI.create("http://portal.example.com/api"));
         assertEquals(Proxy.Type.HTTP, proxies.get(0).type());
     }
+
+    // --- Route sortante affichée au démarrage (F-57 / SF-57-01) -------------------------------
+
+    @Test
+    void route_is_direct_when_nothing_is_declared() {
+        ProxyResolver.Route route = ProxyResolver.fromEnv(Map.of()).route();
+
+        assertEquals(ProxyResolver.Route.Kind.DIRECT, route.kind());
+        assertEquals(null, route.address());
+        assertEquals(null, route.variable());
+    }
+
+    @Test
+    void route_names_the_variable_that_carried_the_proxy() {
+        ProxyResolver.Route route =
+                ProxyResolver.fromEnv(Map.of("https_proxy", "proxy.corp:8080")).route();
+
+        assertEquals(ProxyResolver.Route.Kind.ENTERPRISE_PROXY, route.kind());
+        assertEquals("proxy.corp:8080", route.address());
+        assertEquals("https_proxy", route.variable());
+    }
+
+    @Test
+    void route_strips_inline_credentials() {
+        ProxyResolver.Route route = ProxyResolver
+                .fromEnv(Map.of("HTTPS_PROXY", "http://user:S3cr3t@proxy.corp:8080")).route();
+
+        assertEquals("proxy.corp:8080", route.address());
+    }
+
+    @Test
+    void a_loopback_proxy_is_a_local_relay() {
+        assertEquals(ProxyResolver.Route.Kind.LOCAL_RELAY,
+                ProxyResolver.fromEnv(Map.of("HTTPS_PROXY", "http://127.0.0.1:3128")).route().kind());
+        assertEquals(ProxyResolver.Route.Kind.LOCAL_RELAY,
+                ProxyResolver.fromEnv(Map.of("HTTPS_PROXY", "http://[::1]:3128")).route().kind());
+        assertEquals(ProxyResolver.Route.Kind.ENTERPRISE_PROXY,
+                ProxyResolver.fromEnv(Map.of("HTTPS_PROXY", "http://127proxy.corp:3128"))
+                        .route().kind());
+    }
+
+    @Test
+    void a_malformed_proxy_value_does_not_break_the_route() {
+        ProxyResolver.Route route =
+                ProxyResolver.fromEnv(Map.of("HTTPS_PROXY", "proxy.corp:pas-un-port")).route();
+
+        assertEquals(ProxyResolver.Route.Kind.ENTERPRISE_PROXY, route.kind());
+        assertEquals("proxy.corp:pas-un-port", route.address());
+    }
 }
