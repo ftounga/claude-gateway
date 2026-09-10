@@ -183,6 +183,28 @@ class RunnerHostOverviewServiceTest {
     }
 
     @Test
+    void aClosedMissionStaysInTheView() {
+        // « Se ranger sans disparaître » (F-60) : la gateway rend l'état, elle ne filtre pas. Le
+        // rangement est une affaire d'écran — sinon rendre les missions closes consultables
+        // demanderait un second appel, donc deux états de vue à synchroniser.
+        RunnerHost machine = host("Poste CAGIP", OffsetDateTime.now(), OffsetDateTime.now());
+        machine.setMissionStatus(HostMissionStatus.CLOSED);
+        when(hostService.list(alice)).thenReturn(List.of(machine));
+        connected(machine, false);
+        when(workspaceService.listByHost(alice, hostId)).thenReturn(List.of());
+        when(auditRepository.aggregateActivityByHost(eq(alice), eq(hostId), any()))
+                .thenReturn(List.of());
+
+        assertThat(service().overview(alice))
+                .singleElement()
+                .satisfies(view -> {
+                    assertThat(view.missionStatus()).isEqualTo(HostMissionStatus.CLOSED);
+                    // L'état de mission est DÉCLARÉ : il ne se déduit pas de la présence du runner.
+                    assertThat(view.connected()).isFalse();
+                });
+    }
+
+    @Test
     void anUnknownShellComesOutNullRatherThanRelayed() {
         // La colonne est alimentée par une trame venue d'un client : elle repasse par la liste
         // blanche avant de sortir de la gateway.

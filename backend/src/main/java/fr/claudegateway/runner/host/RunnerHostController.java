@@ -27,6 +27,7 @@ import fr.claudegateway.runner.dto.PairingCodeResponse;
 import fr.claudegateway.runner.dto.RunnerKillResponse;
 import fr.claudegateway.runner.dto.RunnerStatusResponse;
 import fr.claudegateway.runner.dto.RunnerTokenResponse;
+import fr.claudegateway.runner.host.dto.HostMissionRequest;
 import fr.claudegateway.runner.host.dto.RunnerHostOverviewResponse;
 import fr.claudegateway.runner.host.dto.RunnerHostRequest;
 import fr.claudegateway.runner.host.dto.RunnerHostResponse;
@@ -127,6 +128,27 @@ public class RunnerHostController {
         atelierAccess.requireAccess();
         UUID userId = currentUser.requireId();
         RunnerHost host = hostService.rename(userId, hostId, request.name());
+        return RunnerHostResponse.from(host, statusService.statusOf(userId, host).connected());
+    }
+
+    /**
+     * Déclare l'<b>état de mission</b> du poste (F-60 / SF-60-01) : où en est le travail chez ce
+     * client — {@code ACTIVE}, {@code PENDING}, {@code CLOSED}.
+     *
+     * <p>Chemin dédié plutôt qu'un champ de plus sur le renommage : un corps de renommage qui
+     * n'enverrait pas l'état remettrait la mission « en cours » sans que personne l'ait demandé.
+     * Deux gestes, deux chemins, aucune perte silencieuse.</p>
+     *
+     * <p><b>Ce geste ne coupe rien</b> : aucun jeton révoqué, aucune liaison fermée, aucun projet
+     * détaché, aucun journal effacé. Clôturer une mission range un poste, elle ne l'éteint pas —
+     * le coupe-circuit reste {@code POST /{hostId}/kill}.</p>
+     */
+    @PutMapping("/{hostId}/mission")
+    public RunnerHostResponse setMissionStatus(@PathVariable UUID hostId,
+            @Valid @RequestBody HostMissionRequest request) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        RunnerHost host = hostService.setMissionStatus(userId, hostId, request.missionStatus());
         return RunnerHostResponse.from(host, statusService.statusOf(userId, host).connected());
     }
 

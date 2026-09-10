@@ -523,8 +523,16 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   cette racine. C'est le déplacement d'unité de F-48 : jusque-là, chaque dossier exigeait son code
   d'appairage, son runner et sa connexion — pour la même machine et le même utilisateur.
   - `runner_hosts` : `id (uuid)`, `user_id (uuid)`, `name (varchar 100)`, `root_name (varchar 255)`,
-    `os (varchar 64)`, `shell (varchar 16)`, `elevated (boolean)`, `last_seen_at`, `created_at`,
+    `os (varchar 64)`, `shell (varchar 16)`, `elevated (boolean)`,
+    `mission_status (varchar 16, NOT NULL, défaut ACTIVE)`, `last_seen_at`, `created_at`,
     `updated_at`. Index `(user_id)`.
+  - `mission_status` (F-60 / SF-60-01, migration `067`) est l'état **métier** de la mission —
+    `ACTIVE`, `PENDING`, `CLOSED` —, **déclaré par le propriétaire** et jamais déduit. Il est
+    indépendant de l'état **technique** (« connecté »), qui se calcule : un poste éteint peut
+    porter une mission active en pause, un poste connecté une mission close qu'on n'a pas rangée.
+    Le déclarer **ne coupe rien** : ni jeton, ni liaison, ni rattachement de projet, ni journal —
+    le coupe-circuit reste `POST /runner-hosts/{id}/kill`. `GET /runner-hosts/overview` rend
+    **tous** les postes, clôturés compris : le rangement est une affaire d'écran.
   - Tout ce que la gateway sait de la machine est **déclaré par le runner**, jamais deviné :
     `root_name` n'est que le **dernier segment** de la racine, jamais le chemin absolu. Ces trois
     colonnes viennent de `workspaces` (migrations `052`, `053`, `063`) : elles décrivaient une
