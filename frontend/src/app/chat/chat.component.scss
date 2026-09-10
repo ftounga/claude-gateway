@@ -53,7 +53,7 @@
 }
 
 .conversation-model {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--cg-font-mono);
   font-size: 12px;
   color: var(--cg-text-secondary);
 }

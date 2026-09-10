@@ -1161,6 +1161,38 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     expect(service.createHostPairingCode).not.toHaveBeenCalled();
   });
 
+  // ---------------------------------------------------------------------------------------------
+  // F-56 / SF-56-01 — la passe de cohérence visuelle : ce qui se voit, pas ce qui se fait.
+  // ---------------------------------------------------------------------------------------------
+
+  it("ouvre l'assistant proxy à la largeur du parcours qu'il recouvre", () => {
+    setup();
+    component.declareNetworkResult('proxy-auth');
+
+    component.openProxyAssistant();
+
+    // Deux cadres décalés l'un sur l'autre se lisent comme deux produits : une seule constante
+    // porte la largeur des deux dialogues.
+    const config = dialogOpen.calls.mostRecent().args[1] as { width?: string };
+    expect(config.width).toBe(RunnerPairingDialogComponent.DIALOG_WIDTH);
+  });
+
+  it("annonce l'échec de génération d'un code aux lecteurs d'écran", () => {
+    setup();
+    service.createHostPairingCode.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 500 })),
+    );
+
+    component.toggleStep('code');
+    component.generateCode();
+    fixture.detectChanges();
+
+    const alerts = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('[role="alert"]'),
+    ).map((node) => node.textContent ?? '');
+    expect(alerts.some((text) => text.includes("n'a pas pu être généré"))).toBeTrue();
+  });
+
   it("renvoie à l'étape du poste plutôt que de demander un code sans machine", () => {
     setup();
     component.hostId.set(null);

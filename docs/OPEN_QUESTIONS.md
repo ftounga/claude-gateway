@@ -392,3 +392,42 @@ C'est un arbitrage sécurité / adoption sur du code exécuté sur la machine d'
 product owner, explicitement, et se documente en ADR le jour où il est rendu — c'est **ADR-018**.
 
 </details>
+
+---
+
+## OQ-15 — `DESIGN_SYSTEM.md` se contredit sur sa propre palette
+
+**Statut** : ouverte — relevée le 2026-09-10 par la passe visuelle **F-56 / SF-56-01**. **Ne bloque
+rien** : les écrans sont conformes, c'est le document qui l'est à moitié.
+
+**La contradiction, en trois lignes**
+
+| Endroit | Ce qui est écrit |
+|---|---|
+| Titre de `docs/DESIGN_SYSTEM.md` | « charte répliquée de legalcase : navy `#1A3A5C` / or `#C9973A` / fond `#F5F6FA` » |
+| Table §2 « Palette de couleurs » | Primary `#0B1020`, Accent `#E07B39` — la palette **antérieure**, celle de la refonte F-27 |
+| `frontend/src/styles.scss` (jetons `--cg-*`) | `--cg-primary: #1A3A5C`, `--cg-accent: #C9973A` — le **titre** |
+
+Les jetons suivent le titre, et les écrans emploient les jetons : **rien n'est faux à l'écran**. Ce
+qui est faux, c'est la table §2 — et c'est elle qu'un relecteur ouvre pour vérifier une couleur.
+La table §5 « Badges et statuts » a le même décalage : ses hex sont ceux de l'ancienne charte,
+recopiés tels quels dans `.badge--*`, où ils vivent encore.
+
+**Pourquoi F-56 ne l'a pas corrigée**
+
+`docs/PRODUCT_SPEC.md` place explicitement **la charte elle-même hors du périmètre de F-56** : elle
+fait autorité, la passe visuelle corrige les écrans qui s'en écartent, jamais l'inverse. Une passe
+qui se met à réécrire sa propre référence n'a plus de référence.
+
+**La question posée**
+
+Quelle valeur fait foi — le titre (legalcase `#1A3A5C` / `#C9973A`, ce que le produit affiche
+aujourd'hui) ou la table §2 (`#0B1020` / `#E07B39`, ce que F-27 avait posé) ? La réponse la plus
+probable est *le titre*, auquel cas le travail est d'**aligner la table §2 sur les jetons**, sans
+toucher une ligne de code. Mais c'est une décision de charte, et elle appartient au product owner.
+
+**Effet secondaire à traiter en même temps**
+
+`project-governance/checklists/review-checklist.md` §Design System exige « Inter, **Merriweather**,
+JetBrains Mono ». Merriweather n'apparaît **nulle part** dans `DESIGN_SYSTEM.md`, qui impose Space
+Grotesk pour les titres. La checklist de review a gardé une police d'un projet antérieur.

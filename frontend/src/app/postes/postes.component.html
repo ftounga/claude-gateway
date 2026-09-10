@@ -68,16 +68,16 @@
             <div class="poste__identity">
               <h2>{{ host.name }}</h2>
               <span
-                class="cg-badge"
-                [class.cg-badge--success]="host.connected"
-                [class.cg-badge--neutral]="!host.connected"
+                class="badge"
+                [class.badge--success]="host.connected"
+                [class.badge--neutral]="!host.connected"
               >
                 <mat-icon>{{ host.connected ? 'cloud_done' : 'cloud_off' }}</mat-icon>
                 {{ hostStateLabel(host) }}
               </span>
               @if (host.elevated) {
                 <span
-                  class="cg-badge cg-badge--warning"
+                  class="badge badge--warning"
                   matTooltip="Le runner de ce poste tourne avec les droits de l'administrateur"
                 >
                   <mat-icon>shield</mat-icon>
@@ -124,7 +124,7 @@
                   <div class="projet__main">
                     <span class="projet__name">{{ project.name }}</span>
                     @if (project.active) {
-                      <span class="cg-badge cg-badge--success">
+                      <span class="badge badge--success">
                         <mat-icon>bolt</mat-icon>
                         Actif
                       </span>

@@ -450,7 +450,9 @@
         }
 
         @if (generationError(); as error) {
-          <p class="pairing-error">{{ error }}</p>
+          <!-- Annoncé, comme l'échec de rattachement de l'étape 1 : un échec qu'un lecteur d'écran
+               ne signale pas laisse attendre un code qui ne viendra pas (F-56). -->
+          <p class="pairing-error" role="alert">{{ error }}</p>
         }
 
         <button
