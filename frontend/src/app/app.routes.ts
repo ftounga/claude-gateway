@@ -96,6 +96,12 @@ export const routes: Routes = [
         loadComponent: () => import('./atelier/atelier.component').then((m) => m.AtelierComponent),
       },
       {
+        // F-49 / SF-49-02 — la vue d'ensemble des postes. Chemin d'un seul segment, disjoint de
+        // `atelier/:id` : aucune des routes existantes ne le masque, et il n'en masque aucune.
+        path: 'postes',
+        loadComponent: () => import('./postes/postes.component').then((m) => m.PostesComponent),
+      },
+      {
         path: 'atelier/:id/fichiers',
         loadComponent: () =>
           import('./atelier/files/atelier-files.component').then((m) => m.AtelierFilesComponent),

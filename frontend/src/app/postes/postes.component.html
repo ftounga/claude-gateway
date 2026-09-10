@@ -1,0 +1,156 @@
+<section class="postes">
+  <header class="postes__header">
+    <div>
+      <h1>Postes</h1>
+      <p class="postes__subtitle">
+        Vos machines connectées, les projets qui vivent dessous, et ce qui tourne dessus.
+      </p>
+    </div>
+    <div class="postes__header-actions">
+      @if (lastUpdatedLabel(); as updated) {
+        <span class="postes__updated">Mis à jour à {{ updated }}</span>
+      }
+      <button
+        mat-stroked-button
+        type="button"
+        (click)="refresh()"
+        matTooltip="Relire l'état des postes"
+      >
+        <mat-icon>refresh</mat-icon>
+        Rafraîchir
+      </button>
+    </div>
+  </header>
+
+  @if (loading()) {
+    <div class="postes__loading">
+      <mat-spinner diameter="40"></mat-spinner>
+    </div>
+  } @else if (error() === 'forbidden') {
+    <mat-card class="postes__notice">
+      <mat-icon>lock</mat-icon>
+      <div>
+        <h2>La vue des postes fait partie de l'Atelier</h2>
+        <p>
+          Connecter une machine et y exécuter des commandes demande l'Atelier. Activez-le pour voir
+          vos postes ici.
+        </p>
+        <a mat-flat-button color="primary" routerLink="/billing">Voir les formules</a>
+      </div>
+    </mat-card>
+  } @else if (error() === 'network') {
+    <mat-card class="postes__notice">
+      <mat-icon>cloud_off</mat-icon>
+      <div>
+        <h2>L'état des postes n'a pas pu être lu</h2>
+        <p>La gateway n'a pas répondu. Rien n'est perdu : la vue est en lecture seule.</p>
+        <button mat-flat-button color="primary" type="button" (click)="refresh()">Réessayer</button>
+      </div>
+    </mat-card>
+  } @else if (isEmpty()) {
+    <mat-card class="postes__notice">
+      <mat-icon>devices</mat-icon>
+      <div>
+        <h2>Aucun poste connecté</h2>
+        <p>
+          Un poste est une machine appairée <strong>une seule fois</strong>, avec un dossier de
+          travail dessous. Connectez-en un depuis un projet de l'Atelier : tous les sous-dossiers de
+          sa racine deviennent ensuite disponibles sans rien réinstaller.
+        </p>
+        <a mat-flat-button color="primary" routerLink="/atelier">Ouvrir l'Atelier</a>
+      </div>
+    </mat-card>
+  } @else {
+    <div class="postes__list">
+      @for (host of hosts(); track host.id) {
+        <mat-card class="poste">
+          <header class="poste__head">
+            <div class="poste__identity">
+              <h2>{{ host.name }}</h2>
+              <span
+                class="cg-badge"
+                [class.cg-badge--success]="host.connected"
+                [class.cg-badge--neutral]="!host.connected"
+              >
+                <mat-icon>{{ host.connected ? 'cloud_done' : 'cloud_off' }}</mat-icon>
+                {{ hostStateLabel(host) }}
+              </span>
+              @if (host.elevated) {
+                <span
+                  class="cg-badge cg-badge--warning"
+                  matTooltip="Le runner de ce poste tourne avec les droits de l'administrateur"
+                >
+                  <mat-icon>shield</mat-icon>
+                  Administrateur
+                </span>
+              }
+            </div>
+            @if (activityLabel(host); as activity) {
+              <span class="poste__activity" [class.poste__activity--live]="host.activeProjects > 0">
+                {{ activity }}
+              </span>
+            }
+          </header>
+
+          <dl class="poste__facts">
+            @if (host.rootName) {
+              <div>
+                <dt>Racine</dt>
+                <dd class="poste__mono">{{ host.rootName }}</dd>
+              </div>
+            }
+            @if (host.os) {
+              <div>
+                <dt>Système</dt>
+                <dd>{{ host.os }}</dd>
+              </div>
+            }
+            @if (host.shell) {
+              <div>
+                <dt>Interpréteur</dt>
+                <dd class="poste__mono">{{ host.shell }}</dd>
+              </div>
+            }
+          </dl>
+
+          @if (host.projects.length === 0) {
+            <p class="poste__no-project">
+              Aucun projet sous ce poste. Rattachez-en un depuis l'Atelier.
+            </p>
+          } @else {
+            <ul class="poste__projects">
+              @for (project of host.projects; track project.id) {
+                <li class="projet" [class.projet--active]="project.active">
+                  <div class="projet__main">
+                    <span class="projet__name">{{ project.name }}</span>
+                    @if (project.active) {
+                      <span class="cg-badge cg-badge--success">
+                        <mat-icon>bolt</mat-icon>
+                        Actif
+                      </span>
+                    }
+                    <span class="projet__path poste__mono">{{ projectPathLabel(project) }}</span>
+                  </div>
+                  <div class="projet__side">
+                    @if (projectActivityLabel(project); as activity) {
+                      <span class="projet__activity">{{ activity }}</span>
+                    }
+                    <button
+                      mat-stroked-button
+                      type="button"
+                      (click)="openTerminal(project)"
+                      [attr.aria-label]="'Ouvrir le terminal de ' + project.name"
+                    >
+                      <mat-icon>terminal</mat-icon>
+                      Terminal
+                    </button>
+                  </div>
+                </li>
+              }
+            </ul>
+          }
+        </mat-card>
+      }
+    </div>
+  }
+</section>

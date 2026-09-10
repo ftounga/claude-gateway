@@ -12,6 +12,7 @@ import {
   FileContent,
   RunnerAuditEntry,
   RunnerHost,
+  RunnerHostOverview,
   RunnerKillResult,
   RunnerPairingCode,
   RunnerStatus,
@@ -613,6 +614,29 @@ describe('AtelierService', () => {
     req.flush([{ id: 'h1', name: 'Portable', connected: true, createdAt: '2026-09-10T08:00:00Z' }]);
 
     expect(hosts?.[0].name).toBe('Portable');
+  });
+
+  it("lit la vue d'ensemble via GET /api/runner-hosts/overview (F-49 / SF-49-02)", () => {
+    let overview: RunnerHostOverview[] | undefined;
+    service.runnerHostsOverview().subscribe((r: RunnerHostOverview[]) => (overview = r));
+
+    const req = httpMock.expectOne('/api/runner-hosts/overview');
+    expect(req.request.method).toBe('GET');
+    // L'appel ne porte aucun identifiant : la gateway part du JWT.
+    expect(req.request.params.keys().length).toBe(0);
+    req.flush([
+      {
+        id: 'h1',
+        name: 'Poste CAGIP',
+        connected: true,
+        createdAt: '2026-09-10T08:00:00Z',
+        activeProjects: 1,
+        projects: [{ id: 'w1', name: 'web', calls: 3, active: true, lastTool: 'bash' }],
+      },
+    ]);
+
+    expect(overview?.[0].activeProjects).toBe(1);
+    expect(overview?.[0].projects[0].lastTool).toBe('bash');
   });
 
   it('crée un poste au nom libre via POST /api/runner-hosts (F-48 / SF-48-03)', () => {

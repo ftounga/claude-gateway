@@ -28,6 +28,7 @@ import {
   AttachHostRequest,
   RunnerAuditEntry,
   RunnerHost,
+  RunnerHostOverview,
   RunnerHostRequest,
   RunnerKillResult,
   RunnerDownloadFormats,
@@ -615,6 +616,21 @@ export class AtelierService {
   /** Postes de l'utilisateur (F-48 / SF-48-01), avec leur état de connexion. */
   listRunnerHosts(): Observable<RunnerHost[]> {
     return this.http.get<RunnerHost[]>('/api/runner-hosts');
+  }
+
+  /**
+   * **Vue d'ensemble** des postes (F-49 / SF-49-01) : en un seul appel, chaque machine, son état,
+   * les projets rangés dessous et ce qui tourne sur chacun.
+   *
+   * <p>C'est une **lecture**, rejouée à intervalle par l'écran des postes — jamais un canal. Des
+   * flux vivants simultanés multiplieraient les tours facturés pour un bénéfice que l'état couvre
+   * déjà (arbitrage n° 3 du cadrage du 2026-09-10).</p>
+   *
+   * <p>L'appel ne porte **aucun identifiant** : la gateway part du JWT, et l'écran ne peut donc pas
+   * demander la machine d'un autre compte.</p>
+   */
+  runnerHostsOverview(): Observable<RunnerHostOverview[]> {
+    return this.http.get<RunnerHostOverview[]>('/api/runner-hosts/overview');
   }
 
   /** Crée un poste au nom libre (F-48 / SF-48-01). */
