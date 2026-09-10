@@ -50,7 +50,9 @@ class WorkspaceLibraryImportServiceTest {
                         2L * 1024 * 1024, null, null, null, null, null, null, true),
                 org.mockito.Mockito.mock(AtelierMessageRepository.class),
                 org.mockito.Mockito.mock(
-                        fr.claudegateway.governance.GovernanceActivationRepository.class));
+                        fr.claudegateway.governance.GovernanceActivationRepository.class),
+                org.mockito.Mockito.mock(
+                        org.springframework.context.ApplicationEventPublisher.class));
         service = new WorkspaceLibraryImportService(workspaceService, documentRepository);
     }
 

@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.atelier.AtelierAccessService;
 import fr.claudegateway.auth.CurrentUser;
+import fr.claudegateway.governance.dto.GovernanceDepositPlan;
 import fr.claudegateway.governance.dto.GovernanceProjectView;
 
 /**
@@ -30,12 +31,15 @@ import fr.claudegateway.governance.dto.GovernanceProjectView;
 public class GovernanceProjectController {
 
     private final GovernanceActivationService activationService;
+    private final GovernanceDepositService depositService;
     private final AtelierAccessService atelierAccess;
     private final CurrentUser currentUser;
 
     public GovernanceProjectController(GovernanceActivationService activationService,
-            AtelierAccessService atelierAccess, CurrentUser currentUser) {
+            GovernanceDepositService depositService, AtelierAccessService atelierAccess,
+            CurrentUser currentUser) {
         this.activationService = activationService;
+        this.depositService = depositService;
         this.atelierAccess = atelierAccess;
         this.currentUser = currentUser;
     }
@@ -47,14 +51,45 @@ public class GovernanceProjectController {
         return activationService.describe(currentUser.requireId(), workspaceId);
     }
 
-    /** Active un paquet retenu sur ce projet. */
+    /**
+     * Ce que ce paquet écrirait sur ce projet, et où. <b>N'écrit rien</b> (F-51 / SF-51-03).
+     *
+     * <p>C'est l'exigence de la feature : un paquet écrit sur la machine de l'utilisateur, l'écran
+     * l'annonce donc avant.</p>
+     */
+    @GetMapping("/{packageId}/preview")
+    public GovernanceDepositPlan preview(@PathVariable UUID workspaceId,
+            @PathVariable UUID packageId) {
+        atelierAccess.requireAccess();
+        return depositService.plan(currentUser.requireId(), workspaceId, packageId);
+    }
+
+    /**
+     * Active un paquet retenu sur ce projet, et dépose ses fichiers dans la foulée.
+     *
+     * <p>Le dépôt crée ce qui manque et ne remplace jamais rien. S'il ne peut pas aboutir — machine
+     * éteinte —, l'activation reste en attente : le paquet est bel et bien actif, seuls ses fichiers
+     * attendent.</p>
+     */
     @PostMapping("/{packageId}")
     public GovernanceProjectView activate(@PathVariable UUID workspaceId,
             @PathVariable UUID packageId) {
         atelierAccess.requireAccess();
         UUID userId = currentUser.requireId();
         activationService.activate(userId, workspaceId, packageId);
+        depositService.deposit(userId, workspaceId, packageId);
         return activationService.describe(userId, workspaceId);
+    }
+
+    /**
+     * Rejoue le dépôt : le geste offert quand la machine était éteinte, ou quand le paquet a été
+     * republié depuis. Crée seulement ce qui manque.
+     */
+    @PostMapping("/{packageId}/apply")
+    public GovernanceDepositPlan apply(@PathVariable UUID workspaceId,
+            @PathVariable UUID packageId) {
+        atelierAccess.requireAccess();
+        return depositService.deposit(currentUser.requireId(), workspaceId, packageId);
     }
 
     /** Désactive un paquet sur ce projet. Les fichiers déjà déposés restent (décision D4). */

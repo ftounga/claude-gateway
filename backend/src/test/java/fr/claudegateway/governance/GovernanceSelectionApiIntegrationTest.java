@@ -108,7 +108,9 @@ class GovernanceSelectionApiIntegrationTest {
                 .andExpect(jsonPath("$.active", Matchers.hasSize(1)))
                 .andExpect(jsonPath("$.active[0].appliedVersion").value(2))
                 .andExpect(jsonPath("$.active[0].outdated").value(false))
-                .andExpect(jsonPath("$.active[0].status").value("PENDING"))
+                // APPLIED depuis SF-51-03 : l'activation dépose dans la foulée, et ce paquet
+                // n'apporte aucun fichier — il n'y a donc rien à attendre.
+                .andExpect(jsonPath("$.active[0].status").value("APPLIED"))
                 .andExpect(jsonPath("$.available", Matchers.hasSize(0)));
 
         // Rejouer l'activation n'invente pas une seconde ligne.
