@@ -75,6 +75,13 @@ public final class RunnerMain {
         // programme fait sur ma machine ? » — et se lisent ensemble ou pas du tout (D1).
         Privileges privileges = Privileges.detect();
         StartupDisclosure.lines(privileges, proxyResolver.route()).forEach(console::info);
+        // F-55 / SF-55-03 : un NO_PROXY à la forme Windows est accepté, et c'est dit — parce que le
+        // MÊME NO_PROXY sera lu par `curl` dans le terminal d'à côté, où il ne marchera pas. Ce
+        // n'est pas une erreur : rien n'est cassé ici, et la ligne n'apparaît que dans ce cas (D2).
+        String noProxyNotice = proxyResolver.noProxyNotice();
+        if (noProxyNotice != null) {
+            console.info(noProxyNotice);
+        }
         if (privileges.elevated()) {
             console.error("Ce runner tourne en root : Claude agira avec les droits de "
                     + "l'administrateur sur cette machine.");
