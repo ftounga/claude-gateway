@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-62 / SF-62-01 — Les codes d'accès à durée limitée.
+
+      Un code émis par l'ADMIN ouvre le DROIT d'accès à la Forge pendant 24 h à qui le saisit. Une
+      seule table : un code à usage unique a au plus une consommation, une table de rachats séparée
+      n'ajouterait qu'une jointure.
+
+      CE QUE CETTE TABLE NE FAIT PAS : elle ne touche pas `subscriptions`. Le plan reste celui que la
+      facturation a écrit. Le « retour au plan précédent » n'est donc pas un événement à exécuter,
+      c'est le fait que `granted_until` soit passé — rien à planifier, rien qui puisse échouer, et
+      aucun risque qu'un code change ce qu'un client paie.
+
+      `code_hash` seul est stocké : le code en clair est montré une fois à l'émission, jamais
+      persisté ni journalisé. `label` sert à reconnaître un code dans la liste — pas un préfixe du
+      code, qui réduirait l'espace de recherche pour rien.
+
+      `granted_plan_code` et `duration_hours` sont FIGÉS à l'émission : changer le produit demain ne
+      doit pas réécrire l'histoire des codes déjà remis.
+
+      ISOLATION : toute lecture du droit d'un utilisateur filtre sur `redeemed_by_user_id`, qui est
+      en tête de l'index prévu à cet effet.
+
+      Réversible : chaque changeSet porte son rollback.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="067-access-codes-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="access_codes">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="code_hash" type="varchar(64)"><constraints nullable="false" unique="true"
+                    uniqueConstraintName="uk_access_codes_code_hash"/></column>
+            <column name="label" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="assigned_email" type="varchar(255)"/>
+            <column name="granted_plan_code" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="duration_hours" type="int"><constraints nullable="false"/></column>
+            <column name="valid_until" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="created_by_user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="redeemed_by_user_id" type="uuid"/>
+            <column name="redeemed_at" type="timestamptz"/>
+            <column name="granted_until" type="timestamptz"/>
+            <column name="previous_plan_code" type="varchar(32)"/>
+            <column name="previous_status" type="varchar(16)"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="access_codes" indexName="idx_access_codes_redeemed_by">
+            <column name="redeemed_by_user_id"/>
+            <column name="granted_until"/>
+        </createIndex>
+        <rollback><dropTable tableName="access_codes"/></rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="067-access-codes-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="access_codes">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="code_hash" type="varchar(64)"><constraints nullable="false" unique="true"
+                    uniqueConstraintName="uk_access_codes_code_hash"/></column>
+            <column name="label" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="assigned_email" type="varchar(255)"/>
+            <column name="granted_plan_code" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="duration_hours" type="int"><constraints nullable="false"/></column>
+            <column name="valid_until" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="created_by_user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="redeemed_by_user_id" type="uuid"/>
+            <column name="redeemed_at" type="timestamp with time zone"/>
+            <column name="granted_until" type="timestamp with time zone"/>
+            <column name="previous_plan_code" type="varchar(32)"/>
+            <column name="previous_status" type="varchar(16)"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="access_codes" indexName="idx_access_codes_redeemed_by">
+            <column name="redeemed_by_user_id"/>
+            <column name="granted_until"/>
+        </createIndex>
+        <rollback><dropTable tableName="access_codes"/></rollback>
+    </changeSet>
+
+</databaseChangeLog>
