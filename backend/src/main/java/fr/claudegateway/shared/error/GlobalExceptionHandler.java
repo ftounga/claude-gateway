@@ -13,6 +13,9 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 import fr.claudegateway.admin.AdminForbiddenException;
+import fr.claudegateway.governance.GovernancePackageConflictException;
+import fr.claudegateway.governance.GovernancePackageNotFoundException;
+import fr.claudegateway.governance.InvalidGovernancePackageException;
 import fr.claudegateway.ai.AIProviderException;
 import fr.claudegateway.ai.AIProviderUnavailableException;
 import fr.claudegateway.billing.AtelierOptionAlreadyActiveException;
@@ -81,6 +84,31 @@ public class GlobalExceptionHandler {
         log.debug("Accès admin refusé");
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(new ErrorResponse("forbidden", ex.getMessage()));
+    }
+
+    @ExceptionHandler(InvalidGovernancePackageException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidGovernancePackage(
+            InvalidGovernancePackageException ex) {
+        // Le message nomme le champ fautif : il est lu par l'admin en train de rédiger un paquet.
+        log.debug("Paquet de gouvernance refusé : {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("invalid_governance_package", ex.getMessage()));
+    }
+
+    @ExceptionHandler(GovernancePackageNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleGovernancePackageNotFound(
+            GovernancePackageNotFoundException ex) {
+        log.debug("Paquet de gouvernance introuvable ou non publié");
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("not_found", ex.getMessage()));
+    }
+
+    @ExceptionHandler(GovernancePackageConflictException.class)
+    public ResponseEntity<ErrorResponse> handleGovernancePackageConflict(
+            GovernancePackageConflictException ex) {
+        log.debug("Geste refusé sur un paquet de gouvernance : {}", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("governance_conflict", ex.getMessage()));
     }
 
     @ExceptionHandler(AtelierAccessDeniedException.class)

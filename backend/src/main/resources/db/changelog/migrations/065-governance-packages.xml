@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-51 / SF-51-01 — Le catalogue de gouvernance publié par l'admin.
+
+      Un PAQUET apporte quatre choses : des règles (texte ajouté à la consigne système), des
+      contrôles (identifiants de composants du serveur, branchés sur les crochets de F-50), des
+      gabarits et des skills — ces deux derniers étant des fichiers déposés dans le projet.
+
+      PAS DE user_id, et c'est voulu : un paquet est un contenu PRODUIT, comme un plan tarifaire. Il
+      n'appartient au dossier de personne, son écriture est réservée à l'admin, et sa lecture
+      publique est bornée aux paquets publiés. Ce qui appartient réellement à un utilisateur — sa
+      sélection, ses activations — vit dans d'autres tables (SF-51-02) et porte `user_id`.
+
+      Réversible : chaque changeSet porte son rollback.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="065-governance-packages-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="governance_packages">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="slug" type="varchar(64)"><constraints nullable="false" unique="true"/></column>
+            <column name="name" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="summary" type="varchar(500)"/>
+            <column name="rules" type="text"/>
+            <column name="control_ids" type="varchar(1000)"/>
+            <column name="version" type="int" defaultValueNumeric="1"><constraints nullable="false"/></column>
+            <column name="published" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="published_at" type="timestamptz"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="governance_packages" indexName="idx_governance_packages_published">
+            <column name="published"/>
+        </createIndex>
+        <rollback><dropTable tableName="governance_packages"/></rollback>
+    </changeSet>
+
+    <changeSet id="065-governance-package-files-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="governance_package_files">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="package_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="sort_order" type="int"><constraints nullable="false"/></column>
+            <column name="path" type="varchar(255)"><constraints nullable="false"/></column>
+            <column name="kind" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="content" type="text"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="governance_package_files" indexName="idx_governance_package_files_package">
+            <column name="package_id"/>
+            <column name="sort_order"/>
+        </createIndex>
+        <rollback><dropTable tableName="governance_package_files"/></rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <!-- Deux écarts assumés côté H2 :
+         1. La colonne de rang s'appelle `sort_order` et non `position` : `POSITION` est une fonction
+            SQL standard, reconnue comme mot réservé par H2.
+         2. H2 mappe `text` sur CLOB, que la validation de schéma refuse face au `text` de l'entité :
+            on reprend `varchar(1000000)`, comme `content` (037) et `tool_trace` (050). -->
+    <changeSet id="065-governance-packages-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="governance_packages">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="slug" type="varchar(64)"><constraints nullable="false" unique="true"/></column>
+            <column name="name" type="varchar(120)"><constraints nullable="false"/></column>
+            <column name="summary" type="varchar(500)"/>
+            <column name="rules" type="varchar(1000000)"/>
+            <column name="control_ids" type="varchar(1000)"/>
+            <column name="version" type="int" defaultValueNumeric="1"><constraints nullable="false"/></column>
+            <column name="published" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="published_at" type="timestamp with time zone"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="governance_packages" indexName="idx_governance_packages_published">
+            <column name="published"/>
+        </createIndex>
+        <rollback><dropTable tableName="governance_packages"/></rollback>
+    </changeSet>
+
+    <changeSet id="065-governance-package-files-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="governance_package_files">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="package_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="sort_order" type="int"><constraints nullable="false"/></column>
+            <column name="path" type="varchar(255)"><constraints nullable="false"/></column>
+            <column name="kind" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="content" type="varchar(1000000)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="governance_package_files" indexName="idx_governance_package_files_package">
+            <column name="package_id"/>
+            <column name="sort_order"/>
+        </createIndex>
+        <rollback><dropTable tableName="governance_package_files"/></rollback>
+    </changeSet>
+
+</databaseChangeLog>
