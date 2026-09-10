@@ -47,6 +47,17 @@ public class AtelierCheckpointRunner {
     private static final String WRITE_BLOCKED_FALLBACK = "reprends ce fichier avant de continuer.";
 
     /**
+     * Message déposé côté utilisateur quand la fin d'un tour est refusée (F-50 / SF-50-02). Ce n'est
+     * pas un {@code tool_result} : le tour bloqué est, par définition, celui qui n'a demandé aucun
+     * outil, et un résultat orphelin serait refusé par le fournisseur.
+     */
+    private static final String END_OF_TURN_BLOCKED_PREFIX = "Fin de tour contrôlée : ";
+
+    /** Repli de fin de tour : le modèle doit savoir qu'il n'a pas fini, même sans consigne précise. */
+    private static final String END_OF_TURN_BLOCKED_FALLBACK =
+            "reprends le travail avant de conclure.";
+
+    /**
      * Les contrôles, dans l'ordre de Spring ({@code @Order} / {@link org.springframework.core.Ordered}).
      * Vide tant que F-51 n'en enregistre aucun.
      */
@@ -92,9 +103,20 @@ public class AtelierCheckpointRunner {
      * Message rendu au modèle pour une écriture bloquée : le geste attendu, jamais le seul constat.
      */
     public static String writeBlockedMessage(AtelierCheckpointVerdict verdict) {
+        return message(WRITE_BLOCKED_PREFIX, WRITE_BLOCKED_FALLBACK, verdict);
+    }
+
+    /**
+     * Message déposé au modèle quand la fin d'un tour est refusée (F-50 / SF-50-02) : là encore, le
+     * geste attendu — le modèle n'a pas fini, et il doit savoir par quoi reprendre.
+     */
+    public static String endOfTurnBlockedMessage(AtelierCheckpointVerdict verdict) {
+        return message(END_OF_TURN_BLOCKED_PREFIX, END_OF_TURN_BLOCKED_FALLBACK, verdict);
+    }
+
+    private static String message(String prefix, String fallback, AtelierCheckpointVerdict verdict) {
         String correction = verdict == null ? null : verdict.correction();
-        return WRITE_BLOCKED_PREFIX
-                + (correction == null || correction.isBlank() ? WRITE_BLOCKED_FALLBACK : correction);
+        return prefix + (correction == null || correction.isBlank() ? fallback : correction);
     }
 
     /** {@code kind()} d'un contrôle, sans jamais laisser une implémentation bancale casser le tour. */

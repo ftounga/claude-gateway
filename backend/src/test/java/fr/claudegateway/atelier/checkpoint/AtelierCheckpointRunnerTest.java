@@ -170,6 +170,40 @@ class AtelierCheckpointRunnerTest {
     }
 
     @Test
+    void theEndOfTurnMessageCarriesTheGestureToo() {
+        assertThat(AtelierCheckpointRunner.endOfTurnBlockedMessage(
+                AtelierCheckpointVerdict.block("Renseigne STATE.md, puis conclus.")))
+                .isEqualTo("Fin de tour contrôlée : Renseigne STATE.md, puis conclus.");
+        assertThat(AtelierCheckpointRunner.endOfTurnBlockedMessage(AtelierCheckpointVerdict.block(null)))
+                .isEqualTo("Fin de tour contrôlée : reprends le travail avant de conclure.");
+    }
+
+    @Test
+    void theEndOfTurnContextKeepsThePathsInOrderAndBoundsThem() {
+        AtelierCheckpointContext context = AtelierCheckpointContext.endOfTurn(userId, workspaceId,
+                "Terminé.", List.of("a.txt", "b.txt"));
+
+        assertThat(context.kind()).isEqualTo(AtelierCheckpointKind.END_OF_TURN);
+        assertThat(context.replyText()).isEqualTo("Terminé.");
+        assertThat(context.writtenPaths()).containsExactly("a.txt", "b.txt");
+
+        List<String> tooMany = new ArrayList<>();
+        for (int i = 0; i < AtelierCheckpointContext.MAX_WRITTEN_PATHS + 50; i++) {
+            tooMany.add("f" + i + ".txt");
+        }
+        assertThat(AtelierCheckpointContext.endOfTurn(userId, workspaceId, "x", tooMany).writtenPaths())
+                .hasSize(AtelierCheckpointContext.MAX_WRITTEN_PATHS);
+    }
+
+    @Test
+    void aWriteContextCarriesNoEndOfTurnField() {
+        AtelierCheckpointContext context = context();
+
+        assertThat(context.replyText()).isNull();
+        assertThat(context.writtenPaths()).isEmpty();
+    }
+
+    @Test
     void theBlockedMessageCarriesTheGestureAndNotOnlyTheFinding() {
         String message = AtelierCheckpointRunner.writeBlockedMessage(
                 AtelierCheckpointVerdict.block("Retire la clé en clair de config.ts, puis reprends."));

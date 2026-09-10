@@ -241,6 +241,19 @@ public class AtelierChatService implements RelayInterruptTarget {
     static final int MAX_STEER_CHARS = 4_000;
 
     /**
+     * Fins de tour qu'un contrôle peut refuser dans un même message (F-50 / SF-50-02).
+     *
+     * <p>Assez pour une correction, sa vérification et un rattrapage ; trop peu pour qu'un contrôle
+     * mal écrit transforme un message en boucle coûteuse. Volontairement une <b>constante</b> et non
+     * un réglage : F-50 n'expose rien à la configuration, et le plafond d'étapes comme le budget
+     * continuent de s'appliquer par-dessus — le crochet ne relève aucune borne existante.</p>
+     */
+    static final int MAX_END_OF_TURN_BLOCKS = 3;
+
+    /** Libellé du bloc de transcription d'un blocage de fin de tour (F-50 / SF-50-02). */
+    static final String CHECKPOINT_BLOCK_LABEL = "point de contrôle";
+
+    /**
      * Forme historique, conservée pour les appelants (et les tests) qui l'attendent : aucun point de
      * contrôle branché, donc le comportement d'avant F-50, à l'identique.
      */
@@ -409,6 +422,17 @@ public class AtelierChatService implements RelayInterruptTarget {
         boolean spendCapReached = false;
         /** Explorations déjà déléguées dans ce message (F-39 / SF-39-14). */
         int delegations = 0;
+        /**
+         * Fins de tour refusées dans ce message (F-50 / SF-50-02). Bornées : un contrôle qui bloque
+         * quoi qu'il arrive ferait payer à l'utilisateur le prix d'une règle mal écrite.
+         */
+        int endOfTurnBlocks = 0;
+        /**
+         * Chemins écrits pendant le tour, dans l'ordre et sans doublon (F-50 / SF-50-02) : c'est ce
+         * qu'un contrôle de fin de tour doit pouvoir regarder. Une écriture <b>bloquée</b> y figure
+         * aussi — le fichier a bel et bien été écrit.
+         */
+        java.util.Set<String> writtenPaths = new java.util.LinkedHashSet<>();
         String finalText = "";
 
         log.info("Tour d'atelier ouvert (workspace={}, cible={}, plafond={} étapes)",
@@ -464,6 +488,41 @@ public class AtelierChatService implements RelayInterruptTarget {
             }
             if (turn.finished() || turn.toolCalls().isEmpty()) {
                 finalText = turn.text();
+                // Second point d'accroche (F-50 / SF-50-02) : le modèle croit avoir fini, un
+                // contrôle peut le renvoyer au travail. Posé ICI et nulle part ailleurs — les
+                // autres sorties de la boucle sont des arrêts SUBIS (interruption, budget de temps,
+                // plafond de consommation, réponse tronquée), et renvoyer au travail un tour arrêté
+                // sur son plafond reviendrait à franchir le plafond (décision D3).
+                if (endOfTurnBlocks < MAX_END_OF_TURN_BLOCKS
+                        && checkpointRunner.hasCheckpoints(AtelierCheckpointKind.END_OF_TURN)) {
+                    AtelierCheckpointVerdict verdict = checkpointRunner.run(
+                            AtelierCheckpointKind.END_OF_TURN,
+                            AtelierCheckpointContext.endOfTurn(userId, workspaceId, finalText,
+                                    List.copyOf(writtenPaths)));
+                    if (verdict.blocked()) {
+                        endOfTurnBlocks++;
+                        String correction = AtelierCheckpointRunner.endOfTurnBlockedMessage(verdict);
+                        // Le tour bloqué est rejoué tel quel — le modèle doit voir ce qu'il venait
+                        // de dire — puis la correction arrive côté UTILISATEUR : il n'y a aucun
+                        // appel d'outil auquel la rattacher, et un tool_result orphelin serait
+                        // refusé par le fournisseur (décision D1).
+                        List<AgentContentBlock> blockedBlocks = new ArrayList<>(turn.reasoning());
+                        blockedBlocks.add(new AgentContentBlock.Text(nonEmptyReply(finalText)));
+                        messages.add(AgentMessage.assistant(blockedBlocks));
+                        messages.add(AgentMessage.userText(correction));
+                        // Visible au rechargement, en erreur : sans cela, l'utilisateur verrait un
+                        // tour repartir tout seul sans jamais savoir pourquoi (SF-39-17).
+                        transcript.add(new AtelierTurnReport.Block(CHECKPOINT_BLOCK_LABEL, null,
+                                null, null, correction, true, true, false));
+                        continue;
+                    }
+                } else if (endOfTurnBlocks >= MAX_END_OF_TURN_BLOCKS) {
+                    // La main est rendue : un contrôle qui bloque en boucle ne prend pas le message
+                    // en otage. Le journal le dit — sans le motif, qui porte le travail de
+                    // l'utilisateur.
+                    log.info("Fin de tour rendue au modèle après {} blocage(s) (workspace={})",
+                            endOfTurnBlocks, workspaceId);
+                }
                 break;
             }
 
@@ -514,6 +573,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                     }
                 } else {
                     outcome = executeTool(userId, workspace, callId, call, listener, deadline, planOfTurn);
+                }
+                // Mémoire des écritures du tour (F-50 / SF-50-02), prise AVANT le crochet : un
+                // fichier bloqué reste un fichier écrit, et le contrôle de fin de tour doit le voir.
+                if (isFileWrite(call.name()) && !outcome.isError()) {
+                    String writtenPath = arg(call.input(), "path");
+                    if (writtenPath != null && !writtenPath.isBlank()) {
+                        writtenPaths.add(writtenPath);
+                    }
                 }
                 // Premier point d'accroche de la boucle (F-50 / SF-50-01) : après une écriture de
                 // fichier aboutie, un contrôle peut transformer le résultat en erreur portant
