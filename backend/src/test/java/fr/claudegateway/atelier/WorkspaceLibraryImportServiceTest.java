@@ -48,7 +48,9 @@ class WorkspaceLibraryImportServiceTest {
         WorkspaceService workspaceService = new WorkspaceService(workspaceRepository, storage,
                 new AtelierProperties("in-memory", null, "atelier/", 50L * 1024 * 1024, 2000,
                         2L * 1024 * 1024, null, null, null, null, null, null, true),
-                org.mockito.Mockito.mock(AtelierMessageRepository.class));
+                org.mockito.Mockito.mock(AtelierMessageRepository.class),
+                org.mockito.Mockito.mock(
+                        fr.claudegateway.governance.GovernanceActivationRepository.class));
         service = new WorkspaceLibraryImportService(workspaceService, documentRepository);
     }
 

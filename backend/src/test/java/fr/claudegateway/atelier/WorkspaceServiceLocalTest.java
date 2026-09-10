@@ -45,7 +45,9 @@ class WorkspaceServiceLocalTest {
     /** Construit le service avec les collaborateurs simulés, quel que soit l'ordre du constructeur. */
     private WorkspaceService newService() {
         return new WorkspaceService(workspaceRepository, storage,
-                new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null, true), messageRepository);
+                new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null, true), messageRepository,
+                org.mockito.Mockito.mock(
+                        fr.claudegateway.governance.GovernanceActivationRepository.class));
     }
 
     private Workspace localWorkspace() {

@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import fr.claudegateway.atelier.storage.WorkspaceStorage;
+import fr.claudegateway.governance.GovernanceActivationRepository;
 import fr.claudegateway.runner.host.RunnerProjectPath;
 
 /**
@@ -41,13 +42,16 @@ public class WorkspaceService {
     private final WorkspaceStorage storage;
     private final AtelierProperties properties;
     private final AtelierMessageRepository atelierMessageRepository;
+    private final GovernanceActivationRepository governanceActivations;
 
     public WorkspaceService(WorkspaceRepository workspaceRepository, WorkspaceStorage storage,
-            AtelierProperties properties, AtelierMessageRepository atelierMessageRepository) {
+            AtelierProperties properties, AtelierMessageRepository atelierMessageRepository,
+            GovernanceActivationRepository governanceActivations) {
         this.workspaceRepository = workspaceRepository;
         this.storage = storage;
         this.properties = properties;
         this.atelierMessageRepository = atelierMessageRepository;
+        this.governanceActivations = governanceActivations;
     }
 
     /** Crée un workspace à partir d'un zip (décompression sécurisée) et renvoie son résultat. */
@@ -301,13 +305,16 @@ public class WorkspaceService {
      * Supprime le workspace : fichiers du stockage, <b>messages d'Atelier</b>, puis la ligne.
      *
      * <p>Les messages ont été ajoutés par SF-11-03 : sans eux, l'historique des sessions d'agent
-     * survivait à son workspace, sans plus aucun moyen d'y accéder ni de le purger.</p>
+     * survivait à son workspace, sans plus aucun moyen d'y accéder ni de le purger. Les
+     * <b>activations de gouvernance</b> (F-51 / SF-51-02) suivent la même règle et pour la même
+     * raison : elles ne désignent plus rien une fois le projet parti.</p>
      */
     @Transactional
     public void delete(UUID userId, UUID id) {
         Workspace workspace = requireOwned(userId, id);
         storage.deletePrefix(prefixOf(userId, id));
         atelierMessageRepository.deleteByWorkspaceId(id);
+        governanceActivations.deleteByUserIdAndWorkspaceId(userId, id);
         workspaceRepository.delete(workspace);
     }
 
