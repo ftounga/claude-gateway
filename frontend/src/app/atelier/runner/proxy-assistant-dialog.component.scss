@@ -258,3 +258,52 @@
 .proxy-reset {
   margin-top: var(--cg-space-1);
 }
+
+/* Un relais proposé (F-55 / SF-55-02) : son nom, le poste auquel il s'adresse, ses gestes. */
+.proxy-relay {
+  padding: var(--cg-space-2) 0;
+
+  & + & {
+    border-top: 1px solid var(--cg-divider);
+  }
+}
+
+.proxy-relay-title {
+  margin: 0;
+  font-family: var(--cg-font-heading);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cg-text-primary);
+}
+
+.proxy-relay-when {
+  margin: 0 0 var(--cg-space-2);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Domaine et identifiant côte à côte — et aucun champ de mot de passe, jamais (D4). */
+.proxy-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cg-space-2);
+  margin-top: var(--cg-space-2);
+
+  .proxy-field {
+    flex: 1 1 200px;
+  }
+}
+
+/* Ce qu'il faut revoir quand la vérification échoue : une liste, pas un paragraphe. */
+.proxy-list {
+  margin: 0 0 var(--cg-space-2);
+  padding-left: var(--cg-space-4);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+
+  code {
+    font-family: var(--cg-font-mono);
+  }
+}

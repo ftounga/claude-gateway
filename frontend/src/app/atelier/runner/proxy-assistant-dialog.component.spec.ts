@@ -4,15 +4,26 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 
 import type { RunnerHostPlatform } from './runner-pairing-dialog.component';
+import { LOCAL_RELAY_PROXY_URL } from './runner-pairing-dialog.component';
 import {
+  DOMAIN_PLACEHOLDER,
+  LOCAL_RELAY_URL,
   PROXY_ADDRESS_PLACEHOLDER,
   ProxyAssistantDialogComponent,
   ProxyAssistantDialogData,
+  USER_PLACEHOLDER,
+  cntlmConfig,
+  cntlmHashCommand,
   integratedAuthCommands,
   mayUsePacFile,
   normalizeProxyAddress,
   proxyDeclareCommands,
   proxyLookupCommands,
+  relayCheckCommand,
+  relayDomainOrPlaceholder,
+  relayOptions,
+  relayUserOrPlaceholder,
+  runnerRedirectCommands,
 } from './proxy-assistant-dialog.component';
 
 const CHECK_URL = 'https://portal.example.com/api/runner/download/formats';
@@ -133,6 +144,115 @@ describe('proxyDeclareCommands (F-55 SF-55-01)', () => {
 
     expect(command).toContain('export HTTPS_PROXY=http://px.corp:8080');
     expect(command).toContain('export HTTP_PROXY=http://px.corp:8080');
+  });
+});
+
+describe('relayOptions (F-55 SF-55-02)', () => {
+  it('propose px sous Windows : winget d\'abord, puis le binaire autonome', () => {
+    const options = relayOptions('windows', 'ntlm', 'px.corp:8080');
+
+    expect(options.length).toBe(1);
+    expect(options[0].kind).toBe('px');
+    const commands = options[0].commands;
+    expect(commands[0].command).toBe('winget install genotrance.px');
+    expect(commands[0].purpose).toContain('WinHTTP');
+    expect(commands[commands.length - 1].command).toContain('--proxy=px.corp:8080 --port=3128');
+  });
+
+  it('télécharge le relais À TRAVERS le proxy, avec l\'option du verdict', () => {
+    const ntlm = relayOptions('windows', 'ntlm', 'px.corp:8080')[0].commands[1].command;
+    const kerberos = relayOptions('windows', 'negotiate', 'px.corp:8080')[0].commands[1].command;
+
+    expect(ntlm).toContain('--proxy-ntlm');
+    expect(kerberos).toContain('--proxy-negotiate');
+    expect(ntlm).toContain('-x http://px.corp:8080');
+  });
+
+  it('montre les DEUX relais sous macOS en NTLM — le navigateur ne sait pas trancher (D2)', () => {
+    const options = relayOptions('macos', 'ntlm', 'px.corp:8080');
+
+    expect(options.map((option) => option.kind)).toEqual(['px', 'cntlm']);
+  });
+
+  it('n\'offre JAMAIS cntlm en Kerberos : il ne sait pas le porter (D1)', () => {
+    for (const platform of ['windows', 'macos', 'other'] as RunnerHostPlatform[]) {
+      const kinds = relayOptions(platform, 'negotiate', 'px.corp:8080').map((o) => o.kind);
+      expect(kinds).not.toContain('cntlm');
+      expect(kinds).toContain('px');
+    }
+  });
+
+  it('propose cntlm en premier sur un système non reconnu, en NTLM', () => {
+    expect(relayOptions('other', 'ntlm', 'px.corp:8080').map((o) => o.kind))
+      .toEqual(['cntlm', 'px']);
+  });
+
+  it('ne propose RIEN quand le proxy exige des identifiants applicatifs, ni avant le test', () => {
+    expect(relayOptions('windows', 'refused', 'px.corp:8080')).toEqual([]);
+    expect(relayOptions('windows', 'unknown', 'px.corp:8080')).toEqual([]);
+  });
+});
+
+describe('cntlm — la configuration et le haché (F-55 SF-55-02)', () => {
+  it('n\'écrit AUCUN mot de passe en clair (D4)', () => {
+    const config = cntlmConfig('px.corp:8080', 'CORP', 'moi');
+
+    expect(config).toContain('Username    moi');
+    expect(config).toContain('Domain      CORP');
+    expect(config).toContain('Proxy       px.corp:8080');
+    expect(config).toContain('Listen      3128');
+    expect(config).toContain('PassNTLMv2');
+    expect(config).not.toMatch(/^Password/m);
+  });
+
+  it('produit le haché sur le poste, avec le domaine et l\'identifiant retenus', () => {
+    expect(cntlmHashCommand('CORP', 'moi')).toBe('cntlm -H -d CORP -u moi');
+  });
+
+  it('retombe sur les marqueurs quand rien d\'exploitable n\'est saisi', () => {
+    expect(relayDomainOrPlaceholder('')).toBe(DOMAIN_PLACEHOLDER);
+    expect(relayDomainOrPlaceholder('   ')).toBe(DOMAIN_PLACEHOLDER);
+    expect(relayDomainOrPlaceholder('CORP ; rm -rf')).toBe(DOMAIN_PLACEHOLDER);
+    expect(relayUserOrPlaceholder('a'.repeat(65))).toBe(USER_PLACEHOLDER);
+    expect(relayDomainOrPlaceholder('CORP')).toBe('CORP');
+    expect(relayUserOrPlaceholder('CORP\\moi')).toBe('CORP\\moi');
+  });
+});
+
+describe('vérifier puis rediriger (F-55 SF-55-02)', () => {
+  it('vérifie SANS aucune option d\'authentification — c\'est tout l\'objet du test', () => {
+    const command = relayCheckCommand('macos', CHECK_URL);
+
+    expect(command).toContain(`-x ${LOCAL_RELAY_URL}`);
+    expect(command).not.toContain('--proxy-ntlm');
+    expect(command).not.toContain('--proxy-negotiate');
+    expect(command).not.toContain('--proxy-user');
+    expect(command).toContain(CHECK_URL);
+  });
+
+  it('emploie `curl.exe` sous Windows', () => {
+    expect(relayCheckCommand('windows', CHECK_URL)).toMatch(/^curl\.exe /);
+  });
+
+  it('redirige le runner vers le relais, exclusions séparées par des VIRGULES', () => {
+    const unix = runnerRedirectCommands('macos');
+
+    expect(unix[0].command).toContain(`export HTTPS_PROXY=${LOCAL_RELAY_URL}`);
+    expect(unix[0].command).toContain(`export HTTP_PROXY=${LOCAL_RELAY_URL}`);
+    expect(unix[1].command).toContain('localhost,127.0.0.1');
+    expect(unix[1].command).not.toContain(';');
+  });
+
+  it('donne la forme PowerShell sous Windows', () => {
+    const windows = runnerRedirectCommands('windows');
+
+    expect(windows[0].command).toContain(`$env:HTTPS_PROXY="${LOCAL_RELAY_URL}"`);
+    expect(windows[1].command).toContain('$env:NO_PROXY=');
+  });
+
+  it('emploie la MÊME adresse de relais que le parcours de mise en service', () => {
+    // Deux adresses différentes feraient vérifier un relais et en déclarer un autre.
+    expect(LOCAL_RELAY_URL).toBe(LOCAL_RELAY_PROXY_URL);
   });
 });
 
@@ -324,5 +444,121 @@ describe('ProxyAssistantDialogComponent (F-55 SF-55-01)', () => {
 
     expect(snackBar.open).toHaveBeenCalledWith(
       'Copie impossible : sélectionnez le texte manuellement.', 'Fermer', { duration: 4000 });
+  });
+
+  // -----------------------------------------------------------------------------------------
+  // SF-55-02 — le relais local : installer, vérifier, PUIS rediriger.
+  // -----------------------------------------------------------------------------------------
+
+  it('porte quatre étapes, une seule ouverte à la fois', () => {
+    setup('proxy-auth');
+
+    component.openStep('relay');
+    expect(component.isOpen('relay')).toBeTrue();
+    expect(component.isOpen('qualify')).toBeFalse();
+
+    component.openStep('verify');
+    expect(component.isOpen('verify')).toBeTrue();
+    expect(component.isOpen('relay')).toBeFalse();
+  });
+
+  it('renvoie au test tant que rien n\'est déclaré, plutôt que de faire installer', () => {
+    setup('proxy-auth');
+
+    component.openStep('relay');
+    fixture.detectChanges();
+
+    expect(component.relays()).toEqual([]);
+    expect(text()).toContain('Faites d\'abord le test de l\'étape 2');
+  });
+
+  it('ne propose aucun relais quand le proxy exige des identifiants applicatifs', () => {
+    setup('proxy-auth');
+    component.declareAuthResult('refused');
+
+    component.openStep('relay');
+    fixture.detectChanges();
+
+    expect(component.relays()).toEqual([]);
+    expect(text()).toContain('Rien à installer ici');
+    expect(text()).not.toContain('winget');
+  });
+
+  it('compose la configuration cntlm avec le domaine et l\'identifiant saisis', () => {
+    setup('proxy-auth', 'other');
+    component.declareAuthResult('ntlm');
+    component.proxyAddress.set('px.corp:8080');
+    component.relayDomain.set('CORP');
+    component.relayUser.set('moi');
+
+    component.openStep('relay');
+    fixture.detectChanges();
+
+    expect(component.cntlmProposed()).toBeTrue();
+    expect(component.cntlmHashCommand()).toBe('cntlm -H -d CORP -u moi');
+    expect(component.cntlmConfig()).toContain('Proxy       px.corp:8080');
+    expect(text()).toContain('haché');
+    expect(text()).toContain('chmod 600 cntlm.conf');
+  });
+
+  it('n\'expose AUCUN champ de mot de passe', () => {
+    setup('proxy-auth', 'other');
+    component.declareAuthResult('ntlm');
+    component.openStep('relay');
+    fixture.detectChanges();
+
+    const passwords = (fixture.nativeElement as HTMLElement).querySelectorAll('input[type="password"]');
+    expect(passwords.length).toBe(0);
+    expect(text().toLowerCase()).not.toContain('mot de passe du proxy');
+  });
+
+  it('n\'affiche AUCUNE redirection tant que le relais n\'est pas vérifié (D3)', () => {
+    setup('proxy-auth');
+    component.declareAuthResult('ntlm');
+
+    component.openStep('verify');
+    fixture.detectChanges();
+
+    expect(component.relayVerified()).toBe('unknown');
+    expect(text()).not.toContain('HTTPS_PROXY');
+    expect(text()).toContain('second');
+  });
+
+  it('affiche la redirection et le piège du séparateur une fois le 200 déclaré', () => {
+    setup('proxy-auth');
+    component.declareAuthResult('ntlm');
+    component.openStep('verify');
+
+    component.declareRelayResult('carried');
+    fixture.detectChanges();
+
+    expect(text()).toContain('HTTPS_PROXY');
+    expect(text()).toContain('127.0.0.1:3128');
+    expect(text()).toContain('virgules');
+    expect(text()).toContain('rester ouvert');
+  });
+
+  it('dit quoi revoir quand la vérification échoue, et ne redirige pas', () => {
+    setup('proxy-auth');
+    component.declareAuthResult('ntlm');
+    component.openStep('verify');
+
+    component.declareRelayResult('failed');
+    fixture.detectChanges();
+
+    expect(text()).toContain('ne porte pas encore');
+    expect(text()).not.toContain('HTTPS_PROXY');
+  });
+
+  it('révise la déclaration de vérification', () => {
+    setup('proxy-auth');
+    component.openStep('verify');
+    component.declareRelayResult('carried');
+
+    component.resetRelayResult();
+    fixture.detectChanges();
+
+    expect(component.relayVerified()).toBe('unknown');
+    expect(text()).toContain('Qu\'affiche ce second terminal ?');
   });
 });
