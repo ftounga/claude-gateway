@@ -155,7 +155,7 @@ class GovernanceCheckpointDelegateTest {
     }
 
     @Test
-    @DisplayName("les deux crochets déclarent chacun leur point d'accroche")
+    @DisplayName("les trois crochets déclarent chacun leur point d'accroche")
     void checkpointsDeclareTheirKind() {
         GovernanceCheckpointDelegate delegate = delegateWith();
 
@@ -163,6 +163,26 @@ class GovernanceCheckpointDelegateTest {
                 .isEqualTo(AtelierCheckpointKind.AFTER_FILE_WRITE);
         assertThat(new GovernanceEndOfTurnCheckpoint(delegate).kind())
                 .isEqualTo(AtelierCheckpointKind.END_OF_TURN);
+        assertThat(new GovernanceCommandCheckpoint(delegate).kind())
+                .isEqualTo(AtelierCheckpointKind.BEFORE_COMMAND);
+    }
+
+    @Test
+    @DisplayName("un contrôle d'avant-commande n'est interrogé que sur ce point (F-52 / SF-52-01)")
+    void aCommandControlIsOnlyCalledBeforeACommand() {
+        GovernanceControl commandControl =
+                controlOfKind("avant-commande", AtelierCheckpointKind.BEFORE_COMMAND, true);
+        GovernanceCheckpointDelegate delegate = delegateWith(commandControl);
+        activate("avant-commande");
+
+        // Sur une écriture, il n'a rien à dire : le point d'accroche n'est pas le sien.
+        assertThat(delegate.evaluate(AtelierCheckpointKind.AFTER_FILE_WRITE,
+                AtelierCheckpointContext.afterFileWrite(alice, workspace, "write_file", "a.txt",
+                        "x")).blocked()).isFalse();
+        // Sur une commande, il bloque.
+        assertThat(delegate.evaluate(AtelierCheckpointKind.BEFORE_COMMAND,
+                AtelierCheckpointContext.beforeCommand(alice, workspace, "git commit -m x", null))
+                .blocked()).isTrue();
     }
 
     private GovernanceControl control(String id, boolean blocks) {

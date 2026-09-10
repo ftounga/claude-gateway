@@ -1083,6 +1083,42 @@ public class AtelierChatService implements RelayInterruptTarget {
         return new ToolOutcome(AtelierCheckpointRunner.writeBlockedMessage(verdict), true, outcome.action());
     }
 
+    /**
+     * Point de contrôle <b>avant commande</b> (F-52 / SF-52-01).
+     *
+     * <p>F-50 avait laissé {@code bash} de côté, au motif qu'il a « déjà sa porte et son journal ».
+     * Le motif ne tient pas pour une vérification <b>mécanique</b> : la porte de confirmation
+     * n'inspecte <b>rien</b> du contenu de la commande — elle demande une autorisation — et SF-38-20
+     * l'a rendue débrayable par projet. Une règle qui doit refuser un marqueur dans un message de
+     * commit n'a donc nulle part où se brancher, jusqu'ici.</p>
+     *
+     * <p>Deux bornes : le point n'est atteint que pour {@code bash}, et rien n'est lu tant qu'aucun
+     * contrôle n'est enregistré ({@code hasCheckpoints}) — l'immense majorité des projets n'en a
+     * aucun, et ils ne doivent pas payer une lecture de plus par commande.</p>
+     *
+     * @return le résultat d'outil à rendre au modèle si la commande est refusée, ou {@code null} si
+     *         elle peut suivre son chemin
+     */
+    private ToolOutcome applyCommandCheckpoint(UUID userId, UUID workspaceId,
+            RunnerTarget runnerTarget, String callId, AgentToolCall call, String target) {
+        if (!"bash".equals(call.name())
+                || !checkpointRunner.hasCheckpoints(AtelierCheckpointKind.BEFORE_COMMAND)) {
+            return null;
+        }
+        JsonNode input = call.input();
+        AtelierCheckpointVerdict verdict = checkpointRunner.run(AtelierCheckpointKind.BEFORE_COMMAND,
+                AtelierCheckpointContext.beforeCommand(userId, workspaceId, arg(input, "command"),
+                        arg(input, "cwd")));
+        if (!verdict.blocked()) {
+            return null;
+        }
+        // Refus AVANT émission : rien n'est parti sur la machine. Le journal le dit — sans le motif,
+        // qui porte le travail de l'utilisateur (règle SF-38-08 / D11).
+        runnerAuditService.recordDenied(userId, runnerTarget, callId, call.name(), target,
+                RunnerAuditOutcome.DENIED);
+        return ToolOutcome.error(AtelierCheckpointRunner.commandBlockedMessage(verdict));
+    }
+
     /** Les deux outils qui modifient un fichier du projet, et eux seuls (F-50 / SF-50-01). */
     private static boolean isFileWrite(String tool) {
         return "write_file".equals(tool) || "edit_file".equals(tool);
@@ -1119,6 +1155,14 @@ public class AtelierChatService implements RelayInterruptTarget {
         RunnerTarget runnerTarget = RunnerTargets.of(workspace);
         String tool = call.name();
         String target = auditTarget(call);
+        // Troisième point d'accroche (F-52 / SF-52-01) : AVANT la porte, et avant toute émission.
+        // Avant la porte, parce que faire cliquer l'utilisateur sur une commande que la gouvernance
+        // va refuser lui ferait payer deux fois le même refus.
+        ToolOutcome refused = applyCommandCheckpoint(userId, workspaceId, runnerTarget, callId, call,
+                target);
+        if (refused != null) {
+            return refused;
+        }
         // Deux façons de ne plus être interrompu, l'une bornée au message, l'autre au projet
         // (F-38 / SF-38-20). Dans les deux cas, l'audit continue de tout tracer.
         if (requiresConfirmation(tool, workspace)
