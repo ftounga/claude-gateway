@@ -281,6 +281,27 @@
   color: var(--cg-text-secondary);
   font-size: 12px;
   line-height: 1.5;
+
+  code {
+    font-family: var(--cg-font-mono);
+  }
+}
+
+/* Le relais servi par la passerelle (F-59) : le geste d'abord, la licence à côté — c'est la
+   condition de sa redistribution, pas une mention en bas de page. */
+.proxy-relay-gateway {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cg-space-2);
+  margin-bottom: var(--cg-space-2);
+}
+
+.proxy-relay-license {
+  color: var(--cg-accent);
+  font-size: 12px;
+  line-height: 1.5;
+  text-decoration: underline;
 }
 
 /* Domaine et identifiant côte à côte — et aucun champ de mot de passe, jamais (D4). */

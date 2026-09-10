@@ -10,6 +10,7 @@ import {
   AtelierMessage,
   AtelierStreamDone,
   FileContent,
+  ProxyRelayFormats,
   RunnerAuditEntry,
   RunnerHost,
   RunnerHostOverview,
@@ -773,6 +774,33 @@ describe('AtelierService', () => {
     req.flush({ revokedTokens: 2, disconnected: true, workspacesReturned: 3 });
 
     expect(result).toEqual({ revokedTokens: 2, disconnected: true, workspacesReturned: 3 });
+  });
+
+  it('lit les relais servis par CETTE gateway (F-59 / SF-59-02)', () => {
+    // L'écran doit savoir avant d'afficher : une gateway antérieure à F-59 ne sert rien, et un lien
+    // mort tomberait sur l'utilisateur le moins bien placé pour le diagnostiquer.
+    let formats: ProxyRelayFormats | undefined;
+    service.proxyRelayFormats().subscribe((r) => (formats = r));
+
+    const req = httpMock.expectOne('/api/runner/relay/formats');
+    expect(req.request.method).toBe('GET');
+    req.flush({
+      windows: true, macosAarch64: true, linuxX64: false, license: true, version: 'v0.11.0',
+    });
+
+    expect(formats?.windows).toBeTrue();
+    expect(formats?.version).toBe('v0.11.0');
+  });
+
+  it('télécharge le relais px depuis la gateway, une route par plateforme (F-59 / SF-59-02)', () => {
+    service.downloadProxyRelay('windows').subscribe();
+    const windows = httpMock.expectOne('/api/runner/relay/windows');
+    expect(windows.request.method).toBe('GET');
+    expect(windows.request.responseType).toBe('blob');
+    windows.flush(new Blob(['px']));
+
+    service.downloadProxyRelay('macos-aarch64').subscribe();
+    httpMock.expectOne('/api/runner/relay/macos-aarch64').flush(new Blob(['px']));
   });
 
   it("relit le journal d'activité du runner avec sa limite (F-38 / SF-38-08)", () => {

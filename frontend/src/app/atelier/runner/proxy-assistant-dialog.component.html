@@ -316,6 +316,43 @@
             <div class="proxy-relay">
               <p class="proxy-relay-title">{{ relay.title }}</p>
               <p class="proxy-relay-when">{{ relay.when }}</p>
+              @if (relay.origin === 'gateway') {
+                <!--
+                  F-59 / SF-59-02 — notre domaine d'abord. GitHub est souvent bloqué PAR CATÉGORIE
+                  sur un poste d'entreprise : il faudrait le relais pour sortir, et une sortie pour
+                  l'obtenir. Le domaine de la passerelle, lui, est forcément autorisé.
+                -->
+                <div class="proxy-relay-gateway">
+                  <button
+                    mat-flat-button
+                    color="primary"
+                    type="button"
+                    [disabled]="relayDownloading()"
+                    (click)="downloadGatewayRelay()"
+                  >
+                    <mat-icon>download</mat-icon>
+                    {{ relayDownloading() ? 'Téléchargement…' : 'Télécharger depuis cette passerelle' }}
+                  </button>
+                  <a
+                    class="proxy-relay-license"
+                    [href]="licenseUrl"
+                    target="_blank"
+                    rel="noopener"
+                  >
+                    Licence MIT de px
+                  </a>
+                </div>
+                <p class="proxy-relay-when">
+                  Rien à installer : décompressez, lancez. Le binaire est celui publié en amont,
+                  sous licence <strong>MIT</strong>, et sa notice accompagne l'archive.
+                </p>
+              }
+              @if (relay.kind === 'cntlm') {
+                <p class="proxy-relay-when">
+                  <code>cntlm</code> est sous licence <strong>GPL</strong> : cette passerelle ne le
+                  redistribue pas — il se récupère chez son éditeur.
+                </p>
+              }
               @for (step of relay.commands; track step.command) {
                 <p class="proxy-command-label">{{ step.purpose }}</p>
                 <div class="proxy-command">

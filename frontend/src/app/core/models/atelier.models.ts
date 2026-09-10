@@ -272,6 +272,26 @@ export interface RunnerDownloadFormats {
   macosX64Package: boolean;
 }
 
+/**
+ * Relais `px` servis par **cette** gateway (F-59 / SF-59-01).
+ *
+ * L'assistant proxy le faisait télécharger depuis GitHub — souvent bloqué **par catégorie** sur un
+ * poste d'entreprise, ce qui enferme l'utilisateur : il lui faut le relais pour sortir, et une
+ * sortie pour l'obtenir. Le domaine de la gateway, lui, est forcément autorisé.
+ *
+ * `license` porte la notice **MIT** de `px` : sans elle, la gateway ne sert **aucune** archive — la
+ * redistribution en dépend. Une gateway déployée avant F-59 renvoie tout à `false`, et l'écran
+ * retombe alors sur le lien GitHub au lieu d'offrir un lien mort.
+ */
+export interface ProxyRelayFormats {
+  windows: boolean;
+  macosAarch64: boolean;
+  linuxX64: boolean;
+  license: boolean;
+  /** Version amont servie, citée à l'écran (ex. `v0.11.0`). */
+  version: string;
+}
+
 export interface RunnerPairingCode {
   code: string;
   expiresAt: string;

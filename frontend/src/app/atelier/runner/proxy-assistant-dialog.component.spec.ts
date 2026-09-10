@@ -1,7 +1,11 @@
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+
+import type { ProxyRelayFormats } from '../../core/models/atelier.models';
 
 import type { RunnerHostPlatform } from './runner-pairing-dialog.component';
 import { LOCAL_RELAY_PROXY_URL } from './runner-pairing-dialog.component';
@@ -25,6 +29,22 @@ import {
   relayUserOrPlaceholder,
   runnerRedirectCommands,
 } from './proxy-assistant-dialog.component';
+
+/** Une gateway qui sert tout — l'état d'un déploiement à jour (F-59 / SF-59-01). */
+const SERVED: ProxyRelayFormats = {
+  windows: true,
+  macosAarch64: true,
+  linuxX64: true,
+  license: true,
+  version: 'v0.11.0',
+};
+
+/** L'offre passée à `relayOptions` quand la gateway sert le relais pour ce poste. */
+const OFFER = {
+  url: 'https://portal.example.com/api/runner/relay/windows',
+  version: 'v0.11.0',
+  archive: 'px.zip',
+};
 
 const CHECK_URL = 'https://portal.example.com/api/runner/download/formats';
 
@@ -193,6 +213,48 @@ describe('relayOptions (F-55 SF-55-02)', () => {
   });
 });
 
+describe('relayOptions — notre domaine d\'abord (F-59 SF-59-02)', () => {
+  it('met la passerelle EN PREMIER et nomme GitHub comme repli', () => {
+    const options = relayOptions('windows', 'ntlm', 'px.corp:8080', OFFER);
+
+    expect(options[0].origin).toBe('gateway');
+    expect(options[0].title).toContain('v0.11.0');
+    expect(options[1].origin).toBe('upstream');
+    expect(options[1].title).toContain('repli');
+  });
+
+  it('dit POURQUOI ce lien-ci passe, et télécharge à travers le proxy avec le bon verdict', () => {
+    const ntlm = relayOptions('windows', 'ntlm', 'px.corp:8080', OFFER)[0].commands[0];
+    const kerberos = relayOptions('windows', 'negotiate', 'px.corp:8080', OFFER)[0].commands[0];
+
+    expect(ntlm.purpose).toContain('GitHub');
+    expect(ntlm.purpose).toContain('même domaine');
+    expect(ntlm.command).toContain('--proxy-ntlm');
+    expect(ntlm.command).toContain('-x http://px.corp:8080');
+    expect(ntlm.command).toContain(OFFER.url);
+    expect(kerberos.command).toContain('--proxy-negotiate');
+  });
+
+  it('garde le repli GitHub ET cntlm sous Linux, la passerelle en tête', () => {
+    const kinds = relayOptions('other', 'ntlm', 'px.corp:8080', OFFER);
+
+    expect(kinds.map((o) => o.origin)).toEqual(['gateway', 'upstream', 'upstream']);
+    expect(kinds.map((o) => o.kind)).toEqual(['px', 'cntlm', 'px']);
+  });
+
+  it('sans offre, la sortie est EXACTEMENT celle d\'avant F-59', () => {
+    // Non-régression stricte : une gateway antérieure à F-59 ne sert rien, et l'assistant doit
+    // rester celui de F-55 — ordre compris.
+    expect(relayOptions('other', 'ntlm', 'px.corp:8080', null))
+      .toEqual(relayOptions('other', 'ntlm', 'px.corp:8080'));
+    expect(relayOptions('windows', 'ntlm', 'px.corp:8080', null)[0].origin).toBe('upstream');
+  });
+
+  it('ne propose toujours RIEN sur un 407 des deux côtés, même si la gateway sert le relais', () => {
+    expect(relayOptions('windows', 'refused', 'px.corp:8080', OFFER)).toEqual([]);
+  });
+});
+
 describe('cntlm — la configuration et le haché (F-55 SF-55-02)', () => {
   it('n\'écrit AUCUN mot de passe en clair (D4)', () => {
     const config = cntlmConfig('px.corp:8080', 'CORP', 'moi');
@@ -260,6 +322,21 @@ describe('ProxyAssistantDialogComponent (F-55 SF-55-01)', () => {
   let fixture: ComponentFixture<ProxyAssistantDialogComponent>;
   let component: ProxyAssistantDialogComponent;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
+  let httpMock: HttpTestingController;
+
+  /**
+   * Répond à la lecture des relais servis (F-59 / SF-59-02). `null` simule une gateway antérieure à
+   * F-59 : l'appel échoue, et l'assistant doit rester exactement celui d'avant.
+   */
+  function answerRelayFormats(formats: ProxyRelayFormats | null): void {
+    const req = httpMock.expectOne('/api/runner/relay/formats');
+    if (formats) {
+      req.flush(formats);
+    } else {
+      req.flush({ error: 'runner_relay_unavailable' }, { status: 404, statusText: 'Not Found' });
+    }
+    fixture.detectChanges();
+  }
 
   function setup(
     verdict: ProxyAssistantDialogData['verdict'] = null,
@@ -271,6 +348,8 @@ describe('ProxyAssistantDialogComponent (F-55 SF-55-01)', () => {
       imports: [ProxyAssistantDialogComponent],
       providers: [
         provideNoopAnimations(),
+        provideHttpClient(),
+        provideHttpClientTesting(),
         { provide: MatSnackBar, useValue: snackBar },
         {
           provide: MatDialogRef,
@@ -284,6 +363,7 @@ describe('ProxyAssistantDialogComponent (F-55 SF-55-01)', () => {
       ],
     });
 
+    httpMock = TestBed.inject(HttpTestingController);
     fixture = TestBed.createComponent(ProxyAssistantDialogComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
@@ -560,5 +640,76 @@ describe('ProxyAssistantDialogComponent (F-55 SF-55-01)', () => {
 
     expect(component.relayVerified()).toBe('unknown');
     expect(text()).toContain('Qu\'affiche ce second terminal ?');
+  });
+
+  // ------------------------ le relais servi par la gateway (F-59) ------------------------
+
+  it('propose le téléchargement depuis la passerelle et montre la licence MIT', () => {
+    setup('proxy-auth');
+    answerRelayFormats(SERVED);
+    component.declareAuthResult('ntlm');
+    component.openStep('relay');
+    fixture.detectChanges();
+
+    expect(component.gatewayRelay()?.url).toContain('/api/runner/relay/windows');
+    expect(text()).toContain('Télécharger depuis cette passerelle');
+    expect(text()).toContain('Licence MIT de px');
+    const link: HTMLAnchorElement | null =
+      (fixture.nativeElement as HTMLElement).querySelector('.proxy-relay-license');
+    expect(link?.getAttribute('href')).toBe('/api/runner/relay/license');
+  });
+
+  it('n\'offre AUCUN lien vers notre domaine quand la gateway ne sert rien — et sans erreur', () => {
+    setup('proxy-auth');
+    answerRelayFormats(null);
+    component.declareAuthResult('ntlm');
+    component.openStep('relay');
+    fixture.detectChanges();
+
+    expect(component.gatewayRelay()).toBeNull();
+    expect(text()).not.toContain('Télécharger depuis cette passerelle');
+    expect(text()).toContain('winget install genotrance.px');
+    expect(snackBar.open).not.toHaveBeenCalled();
+  });
+
+  it('masque le lien sur un Mac Intel possible : le binaire amont n\'existe pas', () => {
+    // Le navigateur annonce `MacIntel` sur un M3 (constaté en F-44) : seul l'Apple Silicon est
+    // servi, et l'écran ne doit pas promettre ce que la gateway ne sert pas.
+    setup('proxy-auth', 'macos');
+    answerRelayFormats({ ...SERVED, macosAarch64: false });
+    component.declareAuthResult('ntlm');
+    component.openStep('relay');
+    fixture.detectChanges();
+
+    expect(component.gatewayRelay()).toBeNull();
+    expect(text()).toContain('pip3 install --user px-proxy');
+  });
+
+  it('dit que cntlm reste chez son éditeur — GPL, non redistribué', () => {
+    setup('proxy-auth', 'other');
+    answerRelayFormats(SERVED);
+    component.declareAuthResult('ntlm');
+    component.openStep('relay');
+    fixture.detectChanges();
+
+    expect(text()).toContain('GPL');
+    expect(text()).toContain('éditeur');
+  });
+
+  it('enregistre l\'archive servie, et dit ce qui se passe si la passerelle refuse', () => {
+    setup('proxy-auth');
+    answerRelayFormats(SERVED);
+    component.declareAuthResult('ntlm');
+    component.openStep('relay');
+
+    component.downloadGatewayRelay();
+    // Une réponse en `blob` ne se rejoue pas avec un corps JSON : c'est l'échec du transfert qu'on
+    // simule, celui que verrait une gateway qui refuse de servir l'archive.
+    httpMock.expectOne('/api/runner/relay/windows')
+      .error(new ProgressEvent('error'), { status: 404, statusText: 'Not Found' });
+    fixture.detectChanges();
+
+    expect(component.relayDownloading()).toBeFalse();
+    expect(snackBar.open).toHaveBeenCalled();
   });
 });

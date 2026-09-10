@@ -31,6 +31,7 @@ import {
   RunnerHostOverview,
   RunnerHostRequest,
   RunnerKillResult,
+  ProxyRelayFormats,
   RunnerDownloadFormats,
   RunnerPairingCode,
   RunnerStatus,
@@ -40,6 +41,29 @@ import {
   WriteFileRequest,
   AtelierPlanStep,
 } from '../models/atelier.models';
+
+/**
+ * Plateformes pour lesquelles la gateway sert le relais `px` (F-59 / SF-59-01).
+ *
+ * macOS Intel n'y figure pas : le projet amont ne publie pas ce binaire, et en fabriquer un
+ * reviendrait à maintenir une version autre que celle publiée — hors périmètre. Le chemin `pip3` y
+ * reste proposé.
+ */
+export type ProxyRelayPlatform = 'windows' | 'macos-aarch64' | 'linux-x64';
+
+/** Ce que sert cette gateway, lu avant d'afficher le moindre lien (jamais un lien mort). */
+export const PROXY_RELAY_FORMATS_PATH = '/api/runner/relay/formats';
+
+/**
+ * Notice **MIT** de `px`, affichable telle quelle. C'est la condition de sa redistribution, et
+ * l'écran doit pouvoir la montrer **avant** de faire télécharger 21 Mo.
+ */
+export const PROXY_RELAY_LICENSE_PATH = '/api/runner/relay/license';
+
+/** Chemin de téléchargement du relais pour une plateforme — une route par plateforme (D1, F-44). */
+export function proxyRelayDownloadPath(platform: ProxyRelayPlatform): string {
+  return `/api/runner/relay/${platform}`;
+}
 
 /**
  * Accès à l'API de l'Atelier (F-28 « Claude Code Lite »). Le frontend ne communique qu'avec la
@@ -689,5 +713,25 @@ export class AtelierService {
    */
   runnerDownloadFormats(): Observable<RunnerDownloadFormats> {
     return this.http.get<RunnerDownloadFormats>('/api/runner/download/formats');
+  }
+
+  /**
+   * Relais `px` servis par **cette** gateway (F-59 / SF-59-01), et version amont servie.
+   *
+   * <p>Lu par l'assistant proxy pour proposer **notre domaine d'abord** — le seul dont on soit sûr
+   * qu'il est autorisé chez le client — et masquer le lien quand la gateway ne sert rien, plutôt
+   * que d'en offrir un mort (même règle qu'en F-44).</p>
+   */
+  proxyRelayFormats(): Observable<ProxyRelayFormats> {
+    return this.http.get<ProxyRelayFormats>(PROXY_RELAY_FORMATS_PATH);
+  }
+
+  /**
+   * Télécharge le relais `px` pour une plateforme donnée. Endpoint **public** : c'est un binaire
+   * tiers, sans jeton ni secret — et celui qui en a besoin est justement celui dont le poste ne sort
+   * pas.
+   */
+  downloadProxyRelay(platform: ProxyRelayPlatform): Observable<Blob> {
+    return this.http.get(proxyRelayDownloadPath(platform), { responseType: 'blob' });
   }
 }
