@@ -603,4 +603,77 @@ class AtelierApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].hostName").doesNotExist());
     }
+
+    // ------------------------------------------- état de mission (F-60 / SF-60-02)
+
+    /**
+     * La liste des projets porte aussi <b>où en est la mission</b> du poste. Même lecture que le
+     * nom, donc aucun appel de plus et aucun N+1 : l'écran sait d'un coup d'œil qu'un projet vit
+     * sous une mission en attente ou clôturée.
+     */
+    @Test
+    void workspaceListCarriesItsHostMissionStatus() throws Exception {
+        String hostId = JsonPath.read(mockMvc.perform(post("/api/runner-hosts").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Poste CAGIP\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(), "$.id");
+        String id = createWorkspace(aliceToken, Map.of("README.md", "hello"));
+        mockMvc.perform(put("/api/workspaces/" + id + "/host").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"hostId\":\"" + hostId + "\",\"projectPath\":\"web\"}"))
+                .andExpect(status().isOk());
+
+        // Un poste neuf est une mission en cours.
+        mockMvc.perform(get("/api/workspaces").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].hostMissionStatus", is("ACTIVE")));
+
+        mockMvc.perform(put("/api/runner-hosts/" + hostId + "/mission").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"missionStatus\":\"PENDING\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/workspaces").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].hostMissionStatus", is("PENDING")));
+    }
+
+    /** Un projet sans machine ne porte aucun état de mission — et surtout pas « inconnu ». */
+    @Test
+    void workspaceListLeavesMissionStatusNullWhenNotAttached() throws Exception {
+        createWorkspace(aliceToken, Map.of("README.md", "hello"));
+
+        mockMvc.perform(get("/api/workspaces").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].hostMissionStatus").doesNotExist());
+    }
+
+    /**
+     * Isolation : l'état de mission voyage avec le nom, donc sous la même règle. Un projet pointant
+     * vers le poste de quelqu'un d'autre n'en révèle ni le nom, ni l'avancement.
+     */
+    @Test
+    void workspaceListNeverRevealsAnotherUsersMissionStatus() throws Exception {
+        User bob = userRepository.findByEmail("bob@ex.com").orElseThrow();
+        RunnerHost bobHost = runnerHostRepository.save(RunnerHost.builder()
+                .userId(bob.getId()).name("Poste de Bob")
+                .missionStatus(fr.claudegateway.runner.host.HostMissionStatus.CLOSED).build());
+        String id = createWorkspace(aliceToken, Map.of("README.md", "hello"));
+        Workspace workspace = workspaceRepository.findById(UUID.fromString(id)).orElseThrow();
+        workspace.setHostId(bobHost.getId());
+        workspaceRepository.save(workspace);
+
+        mockMvc.perform(get("/api/workspaces").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].hostName").doesNotExist())
+                .andExpect(jsonPath("$[0].hostMissionStatus").doesNotExist());
+    }
 }

@@ -69,6 +69,30 @@ describe('AtelierTerminalComponent', () => {
     expect(text()).toContain('mon-projet');
   });
 
+  // ------------------------------------------------ état de mission (F-60 / SF-60-02)
+
+  it('dit OÙ EN EST la mission quand elle n\'avance pas, avec son libellé écrit', () => {
+    component.hostName = 'Poste CAGIP';
+    component.hostMission = 'CLOSED';
+    fixture.detectChanges();
+    const badge = fixture.nativeElement.querySelector('.terminal-mission') as HTMLElement;
+
+    expect(badge).not.toBeNull();
+    expect(badge.textContent).toContain('Clôturé');
+    // Deux registres côte à côte, aucun ne mange l'autre : l'identité du poste reste entière.
+    expect(fixture.nativeElement.querySelector('.host-badge__name')?.textContent?.trim())
+      .toBe('Poste CAGIP');
+  });
+
+  it('ne met rien en tête de barre quand la mission est simplement en cours', () => {
+    component.hostName = 'Poste CAGIP';
+    component.hostMission = null;
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.terminal-mission')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.terminal-host')).not.toBeNull();
+  });
+
   it('rend la demande en ligne d\'invite et les commandes avec leur sortie', () => {
     const turn: AtelierThreadItem[] = [
       { id: 'u1', role: 'USER', content: 'lance les tests', actions: [] },

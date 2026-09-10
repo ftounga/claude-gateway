@@ -12,7 +12,7 @@
 
 ## Statut
 
-`ready`
+`done`
 
 ## Date de création
 
@@ -143,7 +143,6 @@ de vision. L'ouvrir d'office annulerait le rangement.
 |-------|-------------|-------------|----------------------------|---------|---------------|
 | `RunnerHostOverview.missionStatus` | Non (champ additif) | — | `'ACTIVE' \| 'PENDING' \| 'CLOSED'` | Non | Valeur absente ou inconnue ⇒ traitée comme `ACTIVE`, jamais affichée telle quelle |
 | `WorkspaceSummary.hostMissionStatus` | Non (champ additif) | — | idem | Non | idem |
-| `RunnerStatus.hostMissionStatus` | Non (champ additif) | — | idem | Non | idem |
 | Libellés | — | — | `En cours`, `En attente`, `Clôturé` — écrits en dur, jamais dérivés de la valeur d'API | — | — |
 
 Une valeur inconnue est **repliée sur `ACTIVE`** et non affichée : une pastille qui écrirait la
@@ -160,7 +159,8 @@ valeur brute d'une API serait un « inconnu » déguisé, que la charte proscrit
 | PUT | `/api/runner-hosts/{hostId}/mission` | JWT | utilisateur + droit Atelier | **Consommé** (créé en SF-60-01) |
 | GET | `/api/runner-hosts/overview` | JWT | idem | **Consommé** (`missionStatus`) |
 | GET | `/api/workspaces` | JWT | idem | **Additif** : `hostMissionStatus` (nullable) |
-| GET | `/api/workspaces/{id}/runner/status` | JWT | idem | **Additif** : `hostMissionStatus` (nullable) |
+
+`GET /api/workspaces/{id}/runner/status` n'est **pas** touché — voir l'arbitrage n° 8.
 
 ### Tables impactées
 
@@ -184,15 +184,16 @@ valeur brute d'une API serait un « inconnu » déguisé, que la charte proscrit
 - `atelier/atelier.component.*` — état du poste sur la ligne du projet (si ≠ `ACTIVE`) et passage
   au terminal.
 - `atelier/terminal/atelier-terminal.component.*` — état du poste en tête de barre (si ≠ `ACTIVE`).
-- `core/models/atelier.models.ts` — `missionStatus` sur `RunnerHostOverview`,
-  `hostMissionStatus` sur `WorkspaceSummary` et `RunnerStatus`.
+- `core/models/atelier.models.ts` — `missionStatus` sur `RunnerHostOverview` et `RunnerHost`,
+  `hostMissionStatus` sur `WorkspaceSummary`, et le corps `HostMissionRequest`.
 - `core/services/atelier.service.ts` — `setHostMissionStatus(hostId, status)`.
 
 ### Backend
 
 - `atelier/dto/WorkspaceSummaryResponse` — composante `hostMissionStatus`, alimentée par la même
   lecture des postes de l'utilisateur que `hostName` (aucun N+1 ajouté).
-- `runner/dto/RunnerStatusResponse` — composante `hostMissionStatus`.
+- `atelier/AtelierController#list` — la carte des postes passe de `Map<UUID, String>` à
+  `Map<UUID, RunnerHost>` : **la même** lecture, deux valeurs lues au lieu d'une.
 
 ---
 
@@ -227,8 +228,10 @@ valeur brute d'une API serait un « inconnu » déguisé, que la charte proscrit
 
 ### Tests d'intégration (backend, Spring)
 
-- [ ] `GET /api/workspaces` → `hostMissionStatus` renseigné pour un projet rattaché, `null` sinon.
-- [ ] `GET /api/workspaces/{id}/runner/status` → `hostMissionStatus` du poste du projet.
+- [ ] `GET /api/workspaces` → `hostMissionStatus` renseigné pour un projet rattaché, `null` sinon,
+      et suivant le dernier état déclaré.
+- [ ] `GET /api/workspaces` → ni `hostName` ni `hostMissionStatus` pour un projet pointant vers le
+      poste d'un autre compte.
 
 ### Isolation utilisateur
 
@@ -327,4 +330,26 @@ combien, et l'ouvre d'un clic.
 **Pourquoi** : le geste ne coupe pas le runner, n'efface aucun historique et se défait en un clic
 depuis le repli. Les confirmations de la charte sont réservées au destructif ; en poser une ici
 apprendrait à l'utilisateur à cliquer « Oui » sans lire.
+**Réversible** : oui.
+
+
+### Arbitrage 8 — Une seule source pour l'état hors de `/postes` : la liste des projets
+
+**Décision prise pendant le dev** (la mini-spec prévoyait aussi `RunnerStatus`) : l'état de mission
+n'est ajouté qu'à `GET /api/workspaces`. `GET /api/workspaces/{id}/runner/status` n'est pas touché.
+**Pourquoi** : l'en-tête du terminal tire déjà son `hostName` de la liste des projets, `RunnerStatus`
+ne servant que de **repli**. Or ce repli n'existe que pour le projet **ouvert** et seulement en
+cible `RUNNER` — il n'aurait donc jamais couvert la liste latérale, tout en élargissant un contrat
+partagé par plusieurs écrans et une dizaine de tests. Une source suffit ; deux auraient introduit la
+possibilité que les deux divergent.
+**Conséquence assumée** : un terminal ouvert sur un projet dont la liste n'est pas chargée n'affiche
+pas l'état — cas qui ne se produit pas, la liste étant chargée à l'entrée dans la Forge.
+**Réversible** : oui — le champ reste ajoutable à `RunnerStatusResponse` sans rien casser.
+
+### Arbitrage 9 — Un seul gabarit de carte pour la vue principale et pour le repli
+
+**Décision** : la carte d'un poste est un `ng-template` instancié aux deux endroits.
+**Pourquoi** : « se ranger **sans disparaître** » n'est vrai que si la carte rangée est
+*exactement* la même — mêmes projets, même bouton Terminal, même possibilité de rouvrir la mission.
+Deux gabarits auraient divergé au premier ajout, et le repli serait devenu une vue au rabais.
 **Réversible** : oui.

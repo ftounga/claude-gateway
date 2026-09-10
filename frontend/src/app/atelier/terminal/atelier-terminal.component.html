@@ -7,6 +7,13 @@
          l'information. Rien n'est affiché quand le projet n'est rattaché à aucune machine. -->
     @if (hostName) {
       <app-host-badge class="terminal-host" [name]="hostName" size="md" [chip]="true"></app-host-badge>
+      <!-- OÙ EN EST-ON (F-60 / SF-60-02), et seulement quand ce n'est pas « En cours ». Deux
+           registres distincts se croisent ici : la pastille du poste porte la couleur d'IDENTITÉ
+           (§9), celle-ci la couleur de STATUT (§5). Elles ne se disputent rien — l'une dit chez
+           qui, l'autre dit où en est le travail, et toutes deux écrivent leur texte. -->
+      @if (hostMission) {
+        <app-mission-badge class="terminal-mission" [status]="hostMission"></app-mission-badge>
+      }
       <span class="terminal-host-sep" aria-hidden="true">/</span>
     }
     <span class="terminal-title">
