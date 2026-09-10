@@ -21,7 +21,10 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { httpErrorMessage, MAX_UPLOAD_BYTES, oversizeMessage } from '../shared/http-error.util';
 import { AtelierFilesComponent } from './files/atelier-files.component';
-import { AtelierGuideComponent } from './guide/atelier-guide.component';
+import {
+  ATELIER_GUIDE_FIRST_COMMAND,
+  AtelierGuideComponent,
+} from './guide/atelier-guide.component';
 import { AtelierTerminalComponent } from './terminal/atelier-terminal.component';
 import {
   blockLabel as blockLabelOf,
@@ -1201,6 +1204,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.streaming.set(null);
           this.execStreaming.set(null);
           this.clearPendingConfirmation();
+          // Le tour lancé sur le poste n'a pas abouti (F-53 / SF-53-02) : le guide le dit et propose
+          // d'aller vérifier la machine, plutôt que de laisser l'étape muette.
+          this.guide.markTurnFailed();
           // Retire le message utilisateur optimiste : rien n'a été persisté côté serveur.
           this.messages.update((current) => current.filter((m) => m.id !== userItem.id));
           this.notifyError(this.streamErrorMessage(code));
@@ -1669,6 +1675,14 @@ export class AtelierComponent implements OnInit, OnDestroy {
    */
   guideConnectHost(): void {
     this.openRunnerPairing();
+  }
+
+  /**
+   * Guide d'accueil — écrit la première demande dans la zone de saisie (F-53 / SF-53-02), sans
+   * l'envoyer : l'envoi consomme des tokens, il reste le geste de l'utilisateur.
+   */
+  guideWriteCommand(): void {
+    this.draft.set(ATELIER_GUIDE_FIRST_COMMAND);
   }
 
   /** Ouvre le journal d'activité de la machine (F-38 / SF-38-08, décision D11). */

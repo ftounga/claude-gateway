@@ -127,6 +127,26 @@
   margin-top: var(--cg-space-2);
 }
 
+/* La demande proposée à l'étape 3 : elle s'affiche telle qu'elle sera écrite (F-53 / SF-53-02). */
+.guide-command {
+  margin: var(--cg-space-2) 0 0;
+  padding: var(--cg-space-2);
+  border-radius: 8px;
+  background: var(--cg-surface-2);
+  font-family: var(--cg-font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--cg-text-primary);
+}
+
+/* Un tour qui n'a pas abouti : l'étape le dit et reste ouverte, elle ne se coche pas. */
+.guide-failure {
+  margin: var(--cg-space-2) 0 0;
+  color: var(--cg-error);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .guide-foot {
   margin-top: var(--cg-space-2);
   padding-top: var(--cg-space-2);

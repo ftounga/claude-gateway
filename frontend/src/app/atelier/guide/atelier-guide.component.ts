@@ -16,6 +16,13 @@ export interface AtelierGuideStepView {
 }
 
 /**
+ * Première demande proposée à l'étape 3 (F-53 / SF-53-02) : elle est **écrite** dans la zone de
+ * saisie, jamais envoyée — un envoi automatique consommerait des tokens sans décision de
+ * l'utilisateur.
+ */
+export const ATELIER_GUIDE_FIRST_COMMAND = 'Liste les fichiers de ce projet.';
+
+/**
  * Les trois étapes du premier succès (F-53). L'étape « poste » ne redit rien du dialogue
  * d'appairage — vérification réseau, fiche DSI, commande de lancement vivent dans F-45, et le guide
  * s'y rend au lieu de les recopier.
@@ -65,11 +72,20 @@ export class AtelierGuideComponent {
   /** Vrai quand un projet est ouvert : sans projet, les étapes 2 et 3 n'ont rien à ouvrir. */
   @Input() projectOpen = false;
 
+  /** Vrai quand le dernier tour lancé sur le poste a échoué (F-53 / SF-53-02). */
+  @Input() turnFailed = false;
+
   /** L'utilisateur ouvre le parcours « Sur ma machine ». */
   @Output() readonly createProject = new EventEmitter<void>();
 
   /** L'utilisateur ouvre le dialogue de connexion du poste (F-45 / F-48). */
   @Output() readonly connectHost = new EventEmitter<void>();
+
+  /** L'utilisateur demande que la première commande soit écrite dans le terminal. */
+  @Output() readonly writeCommand = new EventEmitter<void>();
+
+  /** L'utilisateur veut vérifier son poste après un tour qui n'a pas abouti. */
+  @Output() readonly checkHost = new EventEmitter<void>();
 
   /** L'utilisateur abandonne le guide. */
   @Output() readonly dismiss = new EventEmitter<void>();
@@ -84,6 +100,9 @@ export class AtelierGuideComponent {
   });
 
   readonly views = ATELIER_GUIDE_STEPS;
+
+  /** La demande proposée à l'étape 3, affichée telle qu'elle sera écrite. */
+  readonly firstCommand = ATELIER_GUIDE_FIRST_COMMAND;
 
   /** Avancement lisible depuis le gabarit. */
   readonly progress = computed(() => this.stepsState());

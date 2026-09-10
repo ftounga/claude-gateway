@@ -53,11 +53,22 @@ export class AtelierGuideService {
    */
   private readonly completedHere = signal(false);
 
+  /**
+   * Le dernier tour lancé sur le poste s'est arrêté sur une erreur (F-53 / SF-53-02).
+   *
+   * <p>État d'un <b>instant</b>, jamais mémorisé : un guide qui rouvrirait sur l'échec de la semaine
+   * dernière raconterait une histoire fausse.</p>
+   */
+  private readonly turnFailedHere = signal(false);
+
   /** Avancement courant des trois étapes. */
   readonly steps = computed<AtelierGuideSteps>(() => this.state().steps);
 
   /** Vrai quand les trois étapes sont franchies. */
   readonly completed = computed(() => allDone(this.state().steps));
+
+  /** Vrai quand le dernier tour lancé sur le poste a échoué, et que rien n'a abouti depuis. */
+  readonly turnFailed = computed(() => this.turnFailedHere());
 
   /** Statut courant du guide. */
   readonly status = computed<AtelierGuideStatus>(() => this.state().status);
@@ -81,21 +92,44 @@ export class AtelierGuideService {
       return;
     }
     const next: AtelierGuideState = { ...current, steps: { ...current.steps, [step]: true } };
+    if (step === 'command') {
+      // Un tour vient d'aboutir : l'échec précédent n'a plus rien à dire.
+      this.turnFailedHere.set(false);
+    }
     this.apply(next);
     if (next.status === 'active' && allDone(next.steps)) {
       this.completedHere.set(true);
     }
   }
 
+  /**
+   * Signale que le dernier tour lancé sur le poste n'a pas abouti (F-53 / SF-53-02) : l'étape reste
+   * ouverte, et le guide dit quoi faire au lieu de rester muet.
+   */
+  markTurnFailed(): void {
+    this.turnFailedHere.set(true);
+  }
+
+  /**
+   * Reprise délibérée du guide (F-53 / SF-53-02), après un abandon ou une conclusion. Les étapes
+   * déjà franchies le restent ; un parcours accompli se rouvre sur sa conclusion.
+   */
+  reopen(): void {
+    this.completedHere.set(allDone(this.state().steps));
+    this.apply({ ...this.state(), status: 'active' });
+  }
+
   /** Abandon : le guide se referme et ne réapparaît pas au rechargement. */
   dismiss(): void {
     this.completedHere.set(false);
+    this.turnFailedHere.set(false);
     this.apply({ ...this.state(), status: 'dismissed' });
   }
 
   /** Conclusion acquittée : le guide est terminé pour de bon. */
   finish(): void {
     this.completedHere.set(false);
+    this.turnFailedHere.set(false);
     this.apply({ ...this.state(), status: 'done' });
   }
 
