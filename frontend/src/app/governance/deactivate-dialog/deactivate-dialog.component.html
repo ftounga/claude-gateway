@@ -1,0 +1,17 @@
+<h2 mat-dialog-title>Désactiver « {{ data.packageName }} » ?</h2>
+
+<mat-dialog-content>
+  <p>
+    Ses règles quitteront la consigne de ce projet et ses contrôles cesseront de bloquer quoi que ce
+    soit.
+  </p>
+  <p>
+    <strong>Les fichiers déjà déposés restent.</strong> Ils appartiennent au projet : le produit ne
+    supprime jamais un de vos fichiers parce qu'une case est décochée.
+  </p>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="cancel()">Annuler</button>
+  <button mat-flat-button color="primary" type="button" (click)="confirm()">Désactiver</button>
+</mat-dialog-actions>

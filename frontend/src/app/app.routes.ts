@@ -102,6 +102,13 @@ export const routes: Routes = [
         loadComponent: () => import('./postes/postes.component').then((m) => m.PostesComponent),
       },
       {
+        // F-51 / SF-51-05 — le catalogue de gouvernance. Un seul segment, disjoint de toutes les
+        // routes existantes : il n'en masque aucune, et aucune ne le masque.
+        path: 'gouvernance',
+        loadComponent: () =>
+          import('./governance/governance.component').then((m) => m.GovernanceComponent),
+      },
+      {
         path: 'atelier/:id/fichiers',
         loadComponent: () =>
           import('./atelier/files/atelier-files.component').then((m) => m.AtelierFilesComponent),

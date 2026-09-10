@@ -1,0 +1,61 @@
+<h2 mat-dialog-title>Ce que « {{ data.packageName }} » va écrire</h2>
+
+<mat-dialog-content class="preview">
+  <p class="preview__intro">
+    Ce paquet écrit dans <strong>{{ data.projectName }}</strong>. Rien n'est jamais écrasé : un
+    fichier déjà présent est laissé tel quel.
+  </p>
+
+  @if (!data.plan.readable) {
+    <div class="preview__warning">
+      <mat-icon>cloud_off</mat-icon>
+      <p>
+        Le projet n'a pas pu être lu — la machine est peut-être éteinte. Impossible de dire ce qui
+        existe déjà. Vous pouvez activer quand même : les règles s'appliqueront tout de suite, les
+        fichiers seront déposés dès que le projet sera joignable.
+      </p>
+    </div>
+  }
+
+  @if (data.plan.entries.length === 0) {
+    <p class="preview__empty">
+      Ce paquet ne dépose aucun fichier. Il n'apporte que des règles et des contrôles.
+    </p>
+  } @else {
+    <p class="preview__summary">
+      {{ createdCount }} fichier(s) à créer, {{ keptCount }} déjà présent(s).
+    </p>
+    <ul class="preview__files">
+      @for (entry of data.plan.entries; track entry.path) {
+        <li class="preview__file" [class.preview__file--kept]="entry.action === 'KEEP'">
+          <mat-icon>{{ actionIcon(entry.action) }}</mat-icon>
+          <div>
+            <code>{{ entry.path }}</code>
+            <span class="preview__verdict">
+              {{ entry.kind === 'SKILL' ? 'skill' : 'gabarit' }} — {{ actionLabel(entry.action) }}
+            </span>
+          </div>
+        </li>
+      }
+    </ul>
+  }
+
+  <ul class="preview__effects">
+    @if (data.plan.rules) {
+      <li><mat-icon>gavel</mat-icon> Des règles rejoindront la consigne du projet.</li>
+    }
+    @if (data.plan.controls > 0) {
+      <li>
+        <mat-icon>verified_user</mat-icon>
+        {{ data.plan.controls }} contrôle(s) pourront bloquer une écriture ou une fin de tour.
+      </li>
+    }
+  </ul>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="cancel()">Annuler</button>
+  <button mat-flat-button color="primary" type="button" (click)="confirm()">
+    Activer sur ce projet
+  </button>
+</mat-dialog-actions>
