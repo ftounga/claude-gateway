@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
+import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, throwError } from 'rxjs';
 import { RunnerDownloadFormats, WorkspaceDetail } from '../../core/models/atelier.models';
@@ -33,6 +33,8 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
   let service: jasmine.SpyObj<AtelierService>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
   let dialogRef: jasmine.SpyObj<MatDialogRef<RunnerPairingDialogComponent>>;
+  /** F-55 / SF-55-01 : l'assistant proxy s'ouvre PAR-DESSUS ce parcours. */
+  let dialogOpen: jasmine.Spy;
 
   /** Gateway à jour : les quatre formats servis (F-44 / SF-44-03). */
   const EVERY_FORMAT: RunnerDownloadFormats = {
@@ -97,6 +99,10 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
 
     fixture = TestBed.createComponent(RunnerPairingDialogComponent);
     component = fixture.componentInstance;
+    // F-55 / SF-55-01 : on espionne l'instance que le COMPOSANT a reçue. Un composant autonome qui
+    // importe `MatDialogModule` reçoit son `MatDialog` d'un injecteur d'environnement propre : ni un
+    // `useValue` du TestBed ni `TestBed.inject` n'atteignent celui-là — l'injecteur du composant, si.
+    dialogOpen = spyOn(fixture.debugElement.injector.get(MatDialog), 'open');
     fixture.detectChanges();
   }
 
@@ -932,6 +938,44 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     expect(text).toContain(component.proxyDiscoveryCommand);
     expect(text).toContain(component.proxyExportCommand);
     expect(component.stepSummary('network')).toContain('Aucune réponse');
+  });
+
+  it('ouvre l\'assistant proxy depuis le 407, avec le verdict et sans fermer le parcours', () => {
+    setup();
+    component.declareNetworkResult('proxy-auth');
+    fixture.detectChanges();
+
+    expect(renderedText()).toContain('Ouvrir l\'assistant proxy');
+    component.openProxyAssistant();
+
+    expect(dialogOpen).toHaveBeenCalled();
+    const data = dialogOpen.calls.mostRecent().args[1]?.data as { verdict: string; checkUrl: string };
+    expect(data.verdict).toBe('proxy-auth');
+    // La même adresse que le contrôle d'accès : deux adresses autoriseraient deux verdicts.
+    expect(data.checkUrl).toBe(component.networkCheckUrl);
+    // D1 : le code d'appairage expire en 5 minutes — le parcours reste ouvert dessous.
+    expect(dialogRef.close).not.toHaveBeenCalled();
+  });
+
+  it('ouvre l\'assistant proxy depuis l\'absence de route, avec l\'autre verdict', () => {
+    setup();
+    component.declareNetworkResult('no-answer');
+    fixture.detectChanges();
+
+    expect(renderedText()).toContain('Ouvrir l\'assistant proxy');
+    component.openProxyAssistant();
+
+    const data = dialogOpen.calls.mostRecent().args[1]?.data as { verdict: string };
+    expect(data.verdict).toBe('no-answer');
+  });
+
+  it('ne propose pas l\'assistant proxy quand le terminal atteint la passerelle', () => {
+    setup();
+
+    component.declareNetworkResult('reachable');
+    fixture.detectChanges();
+
+    expect(renderedText()).not.toContain('Ouvrir l\'assistant proxy');
   });
 
   it('permet de revenir au diagnostic : une déclaration se révise', () => {

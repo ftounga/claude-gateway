@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, InjectionToken, OnDestroy, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
-import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
+import { MAT_DIALOG_DATA, MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
@@ -13,6 +13,10 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AtelierService } from '../../core/services/atelier.service';
+import {
+  ProxyAssistantDialogComponent,
+  ProxyAssistantDialogData,
+} from './proxy-assistant-dialog.component';
 import {
   RunnerDownloadFormats,
   RunnerHost,
@@ -358,6 +362,9 @@ export class RunnerPairingDialogComponent implements OnDestroy {
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialogRef = inject<MatDialogRef<RunnerPairingDialogComponent>>(MatDialogRef);
 
+  /** Ouvre l'assistant proxy PAR-DESSUS ce parcours, sans le fermer (F-55 / SF-55-01, D1). */
+  private readonly dialog = inject(MatDialog);
+
   /** Système d'où la page est consultée : il ne sert qu'à présélectionner un format. */
   private readonly hostPlatform = inject(RUNNER_HOST_PLATFORM);
 
@@ -609,6 +616,14 @@ export class RunnerPairingDialogComponent implements OnDestroy {
    * d'accord, terminal muet (D2).</p>
    */
   readonly networkCheckCommand = networkCheckCommand(this.hostPlatform, this.gatewayUrl);
+
+  /**
+   * L'adresse que le contrôle d'accès interroge, telle quelle : c'est celle que l'assistant proxy
+   * (F-55) réemploie dans ses tests d'authentification. Deux adresses différentes autoriseraient un
+   * verdict vert ici et rouge là-bas.
+   */
+  readonly networkCheckUrl = `${this.gatewayUrl}${NETWORK_CHECK_PATH}`;
+
 
   /** Comment retrouver le proxy du poste, sur le système consulté. */
   readonly proxyDiscoveryCommand = proxyDiscoveryCommand(this.hostPlatform);
@@ -869,6 +884,30 @@ export class RunnerPairingDialogComponent implements OnDestroy {
       // ne peut donc pas en demander un avant de savoir laquelle.
       this.step.set(this.hostId() === null ? 'host' : 'code');
     }
+  }
+
+  /**
+   * Ouvre l'<b>assistant proxy</b> (F-55 / SF-55-01) : retrouver l'adresse du proxy sur ce système,
+   * puis savoir lequel des deux remèdes s'applique.
+   *
+   * <p>Il s'ouvre <b>par-dessus</b> ce parcours, qui reste ouvert dessous : le code d'appairage
+   * expire en cinq minutes et le parcours porte l'avancement — le fermer pour aller chercher un
+   * proxy le ferait perdre (D1).</p>
+   */
+  openProxyAssistant(): void {
+    const data: ProxyAssistantDialogData = {
+      platform: this.hostPlatform,
+      checkUrl: this.networkCheckUrl,
+      // Seules les deux branches en échec portent le bouton ; tout le reste ouvre l'assistant à son
+      // début, ce qui est le comportement juste quand on ne sait pas ce qui refuse.
+      verdict: this.networkVerdict() === 'proxy-auth' ? 'proxy-auth' : 'no-answer',
+    };
+    this.dialog.open(ProxyAssistantDialogComponent, {
+      data,
+      width: '720px',
+      maxWidth: '95vw',
+      autoFocus: false,
+    });
   }
 
   /** Ramène l'étape 1 à ses trois choix : une déclaration se révise. */

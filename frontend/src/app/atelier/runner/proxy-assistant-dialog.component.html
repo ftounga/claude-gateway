@@ -1,0 +1,269 @@
+<h2 mat-dialog-title>Assistant proxy</h2>
+<mat-dialog-content>
+  <!-- Le motif, dit une fois pour toutes et avant les gestes (F-55 / SF-55-01, D6). Sans lui,
+       l'utilisateur cherche l'option du runner qui ferait passer NTLM : elle n'existe pas. -->
+  <p class="proxy-intro">
+    Neuf postes d'entreprise sur dix sortent par un proxy. Cet assistant sert à en
+    <strong>trouver l'adresse</strong>, puis à savoir <strong>lequel des deux remèdes</strong>
+    s'applique — ils ne sont pas interchangeables. Rien n'est exécuté d'ici : les commandes sont
+    composées pour votre poste, c'est vous qui les lancez.
+  </p>
+
+  <!-- Étape A — l'adresse. Ce que le poste ne dit pas spontanément : `netsh` lit WinHTTP, le
+       navigateur lit WinINET, et l'adresse peut n'exister que dans un fichier PAC. -->
+  <section class="proxy-step">
+    <h3 class="proxy-step-heading">
+      <button
+        type="button"
+        class="proxy-step-head"
+        [attr.aria-expanded]="isOpen('address')"
+        (click)="openStep('address')"
+      >
+        <span class="proxy-step-number">1</span>
+        <span class="proxy-step-head-text">
+          <span class="proxy-step-title">Retrouver l'adresse du proxy</span>
+          @if (resolvedAddress(); as address) {
+            <span class="proxy-step-summary">Adresse retenue : {{ address }}</span>
+          }
+        </span>
+        <mat-icon class="proxy-step-chevron">
+          {{ isOpen('address') ? 'expand_less' : 'expand_more' }}
+        </mat-icon>
+      </button>
+    </h3>
+
+    @if (isOpen('address')) {
+      <div class="proxy-step-body">
+        <p class="proxy-hint">
+          Votre navigateur atteint cette page : un proxy est donc configuré quelque part sur ce
+          poste. Il n'est simplement pas là où un terminal le cherche. Ces lectures disent où il est
+          — aucune ne modifie quoi que ce soit.
+        </p>
+
+        @for (lookup of lookupCommands; track lookup.command) {
+          <p class="proxy-command-label">{{ lookup.purpose }}</p>
+          <div class="proxy-command">
+            <code>{{ lookup.command }}</code>
+            <button
+              mat-icon-button
+              type="button"
+              matTooltip="Copier la commande"
+              aria-label="Copier la commande de lecture du proxy"
+              (click)="copy(lookup.command, 'Commande')"
+            >
+              <mat-icon>content_copy</mat-icon>
+            </button>
+          </div>
+        }
+
+        @if (pacPossible) {
+          <!-- Le fichier PAC : c'est lui qui a débloqué la séance du 2026-09-07. La page ne le lit
+               pas — il est servi sur le réseau interne, et interpréter du JavaScript de
+               configuration d'entreprise n'est pas le métier d'une passerelle (D8). -->
+          <div class="proxy-note">
+            <mat-icon class="proxy-inline-icon">description</mat-icon>
+            <div>
+              <p class="proxy-note-title">Si la réponse est une URL en <code>.pac</code></p>
+              <p class="proxy-note-text">
+                C'est un fichier de configuration automatique : l'adresse du proxy n'est écrite nulle
+                part ailleurs sur le poste. <strong>Ouvrez cette URL dans votre navigateur</strong> —
+                il y a accès, c'est le seul composant du poste qui sort — et cherchez-y une ligne
+                <code>PROXY hote:port</code>. C'est cette adresse-là qu'il faut recopier ci-dessous.
+              </p>
+            </div>
+          </div>
+        }
+
+        <mat-form-field appearance="outline" class="proxy-field">
+          <mat-label>Adresse trouvée</mat-label>
+          <input
+            matInput
+            type="text"
+            [maxlength]="maxLength"
+            [placeholder]="placeholder"
+            [ngModel]="proxyAddress()"
+            (ngModelChange)="proxyAddress.set($event)"
+            name="proxyAddress"
+          />
+          <mat-hint>
+            Elle compose toutes les commandes de cet assistant. Elle ne quitte pas ce navigateur.
+          </mat-hint>
+        </mat-form-field>
+
+        @if (addressInvalid()) {
+          <p class="proxy-error" role="alert">
+            Cette adresse n'est pas exploitable. Attendu : <code>hote</code> ou
+            <code>hote:port</code> — les commandes gardent le marqueur
+            <code>{{ placeholder }}</code> en attendant.
+          </p>
+        }
+      </div>
+    }
+  </section>
+
+  <!-- Étape B — la qualification. Deux pannes qui se lisent « ça ne passe pas », deux remèdes
+       opposés (D5) : les confondre fait installer un relais pour rien, ou attendre la DSI pour dix
+       secondes de déclaration. -->
+  <section class="proxy-step">
+    <h3 class="proxy-step-heading">
+      <button
+        type="button"
+        class="proxy-step-head"
+        [attr.aria-expanded]="isOpen('qualify')"
+        (click)="openStep('qualify')"
+      >
+        <span class="proxy-step-number">2</span>
+        <span class="proxy-step-head-text">
+          <span class="proxy-step-title">Qualifier ce qui refuse</span>
+          <span class="proxy-step-summary">
+            Un <code>407</code> et une absence de réponse n'ont pas le même remède.
+          </span>
+        </span>
+        <mat-icon class="proxy-step-chevron">
+          {{ isOpen('qualify') ? 'expand_less' : 'expand_more' }}
+        </mat-icon>
+      </button>
+    </h3>
+
+    @if (isOpen('qualify')) {
+      <div class="proxy-step-body">
+        <ul class="proxy-tree">
+          <!-- Absence de route : la route n'existe pas encore dans CE terminal. Aucun relais à
+               installer — une déclaration suffit. -->
+          <li class="proxy-branch">
+            <span class="proxy-branch-key proxy-branch-error">—</span>
+            <div class="proxy-branch-body">
+              <p class="proxy-branch-title">
+                Aucun code, <code>Could not resolve host</code> ou
+                <code>Failed to connect</code>
+              </p>
+              <p class="proxy-branch-text">
+                <strong>Aucun proxy n'est déclaré dans ce terminal.</strong> Il l'est côté système, et
+                un shell ne le lit pas — c'est pourquoi le navigateur passe et pas la commande. Rien
+                à installer : déclarez l'adresse de l'étape 1, puis refaites le contrôle d'accès.
+              </p>
+              @for (declare of declareCommands(); track declare.purpose) {
+                <p class="proxy-command-label">{{ declare.purpose }}</p>
+                <div class="proxy-command">
+                  <code>{{ declare.command }}</code>
+                  <button
+                    mat-icon-button
+                    type="button"
+                    matTooltip="Copier la commande"
+                    aria-label="Copier la déclaration du proxy"
+                    (click)="copy(declare.command, 'Commande')"
+                  >
+                    <mat-icon>content_copy</mat-icon>
+                  </button>
+                </div>
+              }
+              <p class="proxy-branch-text">
+                Ces variables ne franchissent pas la fenêtre : c'est <em>ce</em> terminal-là qui
+                devra lancer le runner.
+              </p>
+            </div>
+          </li>
+
+          <!-- 407 : la route existe, c'est l'authentification qui manque. Le test dit si un relais
+               local a une chance, ou si la demande part à la DSI. -->
+          <li class="proxy-branch">
+            <span class="proxy-branch-key proxy-branch-warn">407</span>
+            <div class="proxy-branch-body">
+              <p class="proxy-branch-title">Un proxy a répondu, et exige une authentification</p>
+              <p class="proxy-branch-text">
+                La route existe. Reste à savoir si l'authentification <strong>intégrée</strong> du
+                poste — celle de votre session, sans mot de passe à taper — est acceptée. Ces deux
+                commandes le disent. <code>--proxy-user :</code> ne porte
+                <strong>aucun identifiant</strong> : les deux champs sont vides, et c'est ce qui
+                demande à <code>curl</code> d'employer la session déjà ouverte.
+              </p>
+              @for (auth of authCommands(); track auth.purpose) {
+                <p class="proxy-command-label">{{ auth.purpose }}</p>
+                <div class="proxy-command">
+                  <code>{{ auth.command }}</code>
+                  <button
+                    mat-icon-button
+                    type="button"
+                    matTooltip="Copier la commande"
+                    aria-label="Copier la commande de test de l'authentification intégrée"
+                    (click)="copy(auth.command, 'Commande')"
+                  >
+                    <mat-icon>content_copy</mat-icon>
+                  </button>
+                </div>
+              }
+
+              @if (authVerdict() === 'unknown') {
+                <p class="proxy-question">Laquelle a répondu <code>200</code> ?</p>
+                <div class="proxy-choices">
+                  <button mat-stroked-button type="button" (click)="declareAuthResult('negotiate')">
+                    Kerberos
+                  </button>
+                  <button mat-stroked-button type="button" (click)="declareAuthResult('ntlm')">
+                    NTLM
+                  </button>
+                  <button mat-stroked-button type="button" (click)="declareAuthResult('refused')">
+                    <code>407</code> des deux côtés
+                  </button>
+                </div>
+              } @else {
+                <div class="proxy-verdict">
+                  @if (authVerdict() === 'refused') {
+                    <p class="proxy-verdict-title">
+                      Ce proxy exige des identifiants applicatifs — rien à installer ici.
+                    </p>
+                    <p class="proxy-branch-text">
+                      L'authentification intégrée n'est pas acceptée : un relais local ne pourrait
+                      pas mieux faire, puisqu'il s'authentifierait de la même façon. C'est une
+                      demande à votre DSI — exclure ce domaine de l'authentification proxy, ou
+                      fournir un compte de service. La fiche à leur transmettre est proposée dans le
+                      parcours « Connecter une machine », sous la branche du diagnostic.
+                    </p>
+                  } @else {
+                    <p class="proxy-verdict-title">
+                      L'authentification intégrée passe — pour
+                      <code>curl</code>, en
+                      {{ authVerdict() === 'negotiate' ? 'Kerberos' : 'NTLM' }}.
+                    </p>
+                    <p class="proxy-branch-text">
+                      <strong>Le runner, lui, n'y arrivera pas</strong>, et aucune version n'y
+                      changera rien : <code>java.net.http.HttpClient</code> n'a aucun support SSPI,
+                      et l'authentification <code>Basic</code> est désactivée sur les tunnels
+                      <code>CONNECT</code> depuis Java 8u111. Votre navigateur et
+                      <code>curl</code> s'authentifient avec votre session Windows ; la machine
+                      virtuelle Java, jamais.
+                    </p>
+                    <p class="proxy-branch-text">
+                      Le remède est un <strong>relais local</strong> : un petit programme qui tourne
+                      sur votre poste, porte l'authentification à la place de la JVM, et expose un
+                      proxy <strong>sans authentification</strong> sur <code>127.0.0.1</code>.
+                      @if (authVerdict() === 'negotiate') {
+                        En Kerberos, c'est <code>px</code> qu'il faut : <code>cntlm</code> ne porte
+                        que NTLM.
+                      } @else {
+                        En NTLM, <code>px</code> comme <code>cntlm</code> conviennent.
+                      }
+                    </p>
+                  }
+                  <button
+                    mat-button
+                    type="button"
+                    class="proxy-reset"
+                    (click)="resetAuthResult()"
+                  >
+                    <mat-icon>undo</mat-icon>
+                    Revenir au test
+                  </button>
+                </div>
+              }
+            </div>
+          </li>
+        </ul>
+      </div>
+    }
+  </section>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="close()">Fermer</button>
+</mat-dialog-actions>
