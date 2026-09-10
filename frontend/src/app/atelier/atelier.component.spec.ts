@@ -82,6 +82,10 @@ describe('AtelierComponent', () => {
   };
 
   function setup(): void {
+    // Guide d'accueil (F-53) : sa mémoire vit dans `localStorage`, partagé par toute la suite. On
+    // repart d'un guide neuf à chaque test, sinon l'avancement de l'un déciderait de l'écran d'un
+    // autre.
+    localStorage.removeItem('cg_atelier_guide');
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace',
       'createGitWorkspace',
@@ -3343,6 +3347,10 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
   };
 
   function setup(): void {
+    // Guide d'accueil (F-53) : sa mémoire vit dans `localStorage`, partagé par toute la suite. On
+    // repart d'un guide neuf à chaque test, sinon l'avancement de l'un déciderait de l'écran d'un
+    // autre.
+    localStorage.removeItem('cg_atelier_guide');
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createWorkspace', 'listWorkspaces', 'getWorkspace',
       'getEngine', 'getFile', 'writeFile',
@@ -3522,5 +3530,190 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
     fixture.destroy();
   });
 
+});
 
+/**
+ * Guide d'accueil (F-53 / SF-53-01) : il mène au premier succès réel — créer un projet, connecter
+ * son poste, voir une commande aboutir — et chaque étape se coche sur un **fait observé**, jamais
+ * sur le clic qui l'a ouverte.
+ */
+describe("AtelierComponent — guide d'accueil (F-53 / SF-53-01)", () => {
+  let fixture: ComponentFixture<AtelierComponent>;
+  let component: AtelierComponent;
+  let service: jasmine.SpyObj<AtelierService>;
+  let dialog: jasmine.SpyObj<MatDialog>;
+
+  const guideSummary: WorkspaceSummary = {
+    id: 'w1', name: 'projet', createdAt: '2026-09-10T00:00:00Z', source: 'LOCAL', gitRepo: null,
+  };
+  const guideDetail: WorkspaceDetail = {
+    id: 'w1', name: 'projet', fileCount: 0, files: [], createdAt: '2026-09-10T00:00:00Z',
+    source: 'LOCAL', gitRepoUrl: null, gitRepo: null, gitBranch: null, truncated: false,
+    executionTarget: 'RUNNER', hostId: 'h1', projectPath: 'app',
+  };
+
+  /** Monte l'écran : `projects` vide simule un compte neuf, `connected` un poste déjà appairé. */
+  function setup(options: { projects?: WorkspaceSummary[]; connected?: boolean } = {}): void {
+    localStorage.removeItem('cg_atelier_guide');
+    const projects = options.projects ?? [guideSummary];
+    service = jasmine.createSpyObj<AtelierService>('AtelierService', [
+      'createWorkspace', 'createLocalWorkspace', 'listWorkspaces', 'getWorkspace',
+      'getEngine', 'getFile', 'writeFile', 'importLibrary', 'chat', 'streamChat', 'streamAgent',
+      'resetAgentSession', 'getHistory', 'getResume', 'restartThread', 'setExecutionTarget',
+      'getRunnerStatus', 'createHostPairingCode', 'downloadRunnerJar', 'killHost', 'getRunnerAudit',
+    ]);
+    const apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
+    const snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
+    dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
+
+    apiKeyService.getStatus.and.returnValue(of({
+      present: false, maskedKey: null, last4: null, provider: null, mode: 'HOSTED',
+      validatedAt: null, createdAt: null,
+    } as ApiKeyStatus));
+    service.listWorkspaces.and.returnValue(of(projects));
+    service.getWorkspace.and.returnValue(of(guideDetail));
+    service.getHistory.and.returnValue(of([]));
+    service.getEngine.and.returnValue(of({
+      engine: 'LOCAL_MACHINE' as const, runnerConnected: options.connected === true,
+      runnerLastSeenAt: null, recommendRunner: false, recommendReason: null,
+    }));
+    service.getResume.and.returnValue(
+      of({ turns: 0, lastMessageAt: null, threadStartedAt: null, prompt: 'NONE' as const }),
+    );
+    service.getRunnerStatus.and.returnValue(
+      of({ connected: options.connected === true, lastSeenAt: null }),
+    );
+
+    TestBed.configureTestingModule({
+      imports: [AtelierComponent],
+      providers: [
+        provideNoopAnimations(),
+        provideRouter([]),
+        { provide: AtelierService, useValue: service },
+        { provide: ApiKeyService, useValue: apiKeyService },
+        { provide: MatSnackBar, useValue: snackBar },
+        { provide: MatDialog, useValue: dialog },
+      ],
+    });
+
+    fixture = TestBed.createComponent(AtelierComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+  }
+
+  afterEach(() => localStorage.removeItem('cg_atelier_guide'));
+
+  it('sur un compte sans projet, le guide est là et rien n\'est coché', () => {
+    setup({ projects: [] });
+
+    expect(component.guide.visible()).toBeTrue();
+    expect(component.guide.steps()).toEqual({ project: false, host: false, command: false });
+    expect(fixture.nativeElement.querySelector('app-atelier-guide')).not.toBeNull();
+    expect(fixture.nativeElement.textContent as string).toContain('Vos premiers pas');
+    fixture.destroy();
+  });
+
+  it("coche l'étape « projet » dès qu'un projet existe", () => {
+    setup();
+
+    expect(component.guide.steps().project).toBeTrue();
+    expect(component.guide.steps().host).toBeFalse();
+    fixture.destroy();
+  });
+
+  it("coche l'étape « poste » quand la gateway voit le runner connecté", () => {
+    setup({ connected: true });
+    component.selectWorkspace(guideSummary);
+    fixture.detectChanges();
+
+    expect(component.guide.steps().host).toBeTrue();
+    fixture.destroy();
+  });
+
+  it("laisse l'étape « poste » ouverte tant que le runner n'est pas connecté", () => {
+    setup();
+    component.selectWorkspace(guideSummary);
+    fixture.detectChanges();
+
+    expect(component.guide.steps().host).toBeFalse();
+    fixture.destroy();
+  });
+
+  it("coche l'étape « commande » quand un tour s'achève sur le poste", () => {
+    setup({ connected: true });
+    component.selectWorkspace(guideSummary);
+    fixture.detectChanges();
+    expect(component.engine()).toBe('LOCAL_MACHINE');
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onDone({ reply: 'Voilà.', actions: [], messageId: 'm-1' });
+      return Promise.resolve();
+    });
+
+    component.draft.set('liste les fichiers');
+    component.send();
+
+    expect(component.guide.steps().command).toBeTrue();
+    // Les trois étapes tombent : le guide conclut au lieu de disparaître.
+    expect(component.guide.completed()).toBeTrue();
+    expect(component.guide.visible()).toBeTrue();
+    fixture.destroy();
+  });
+
+  it("ne coche pas l'étape « commande » sur un tour du bac à sable", () => {
+    setup({ connected: true });
+    component.selectWorkspace(guideSummary);
+    // Le premier succès visé est un tour exécuté SUR LA MACHINE : le bac à sable ne le vaut pas.
+    component.engine.set('HOSTED_SANDBOX');
+    fixture.detectChanges();
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onDone({
+        reply: 'Voilà.', changedFiles: [], inputTokens: 0, outputTokens: 0,
+        activeSeconds: 0, interrupted: false,
+      });
+      return Promise.resolve();
+    });
+
+    component.draft.set('liste les fichiers');
+    component.send();
+
+    expect(component.guide.steps().command).toBeFalse();
+    fixture.destroy();
+  });
+
+  it("s'efface sur abandon et ne revient pas", () => {
+    setup();
+
+    component.guide.dismiss();
+    fixture.detectChanges();
+
+    expect(component.guide.visible()).toBeFalse();
+    expect(fixture.nativeElement.querySelector('app-atelier-guide')).toBeNull();
+    fixture.destroy();
+  });
+
+  it("ne s'affiche pas quand l'accès à l'Atelier est refusé", () => {
+    setup({ projects: [] });
+
+    component.accessDenied.set(true);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('app-atelier-guide')).toBeNull();
+    fixture.destroy();
+  });
+
+  it('relaie ses actions vers les parcours existants, sans rien réinventer', () => {
+    setup();
+    component.selectWorkspace(guideSummary);
+    fixture.detectChanges();
+    dialog.open.and.returnValue({ afterClosed: () => of(undefined) } as MatDialogRef<unknown>);
+
+    component.guideConnectHost();
+
+    // C'est le dialogue d'appairage de F-45 / F-48 qui s'ouvre — le guide n'en recopie rien.
+    expect(dialog.open).toHaveBeenCalled();
+    expect(dialog.open.calls.mostRecent().args[1]?.data).toEqual(
+      jasmine.objectContaining({ workspaceId: 'w1' }),
+    );
+    fixture.destroy();
+  });
 });

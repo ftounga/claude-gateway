@@ -19,6 +19,20 @@
     </div>
   </div>
 } @else {
+<!-- Guide d'accueil (F-53 / SF-53-01) : superposé, hors des deux vues, parce que ses trois étapes
+     traversent l'une et l'autre — la liste de projets pour la première, le terminal pour la
+     dernière. Il n'apparaît jamais quand l'Atelier est refusé : l'appel à souscrire reste seul. -->
+@if (guide.visible()) {
+  <app-atelier-guide
+    [steps]="guide.steps()"
+    [projectOpen]="activeWorkspaceId() !== null"
+    (createProject)="guideCreateProject()"
+    (connectHost)="guideConnectHost()"
+    (dismiss)="guide.dismiss()"
+    (finish)="guide.finish()"
+  ></app-atelier-guide>
+}
+
 <!-- Vue terminal immersive (F-30 SF-30-07, généralisée par F-39 SF-39-08) : un projet ouvert EST un
      terminal, quel que soit le moteur qui l'anime — ni liste de projets, ni bulles de conversation. -->
 @if (pendingConfirmation(); as ask) {

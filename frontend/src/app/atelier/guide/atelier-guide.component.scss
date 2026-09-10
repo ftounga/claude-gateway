@@ -1,0 +1,158 @@
+// Guide d'accueil de l'Atelier (F-53 / SF-53-01) — jetons du design system (--cg-*) uniquement.
+//
+// Position : en HAUT à droite, sous le bandeau. Le coin bas-droit porte la bulle d'aide (F-54) et le
+// bas de l'écran la zone de saisie du terminal — la couvrir à l'étape « faites exécuter une
+// commande » serait un contresens.
+//
+// z-index 950 : au-dessus de l'explorateur superposé (900), SOUS le rappel d'autorisation en attente
+// (1000), qui doit rester visible quoi qu'il arrive (F-47).
+.guide {
+  position: fixed;
+  top: calc(64px + var(--cg-space-3));
+  right: var(--cg-space-4);
+  z-index: 950;
+  width: 320px;
+  max-width: calc(100vw - 2 * var(--cg-space-4));
+  max-height: calc(100vh - 64px - 2 * var(--cg-space-4));
+  overflow-y: auto;
+  padding: var(--cg-space-3);
+  border: 1px solid var(--cg-divider);
+  border-radius: 12px;
+  background: var(--cg-surface);
+  box-shadow: 0 8px 24px rgba(28, 43, 58, 0.16);
+  font-family: var(--cg-font-body);
+  color: var(--cg-text-primary);
+}
+
+.guide-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-2);
+}
+
+.guide-head-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.guide-title {
+  display: block;
+  font-family: var(--cg-font-heading);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.guide-progress {
+  display: block;
+  margin-top: var(--cg-space-1);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+}
+
+.guide-close {
+  flex: none;
+  color: var(--cg-text-secondary);
+}
+
+.guide-steps {
+  list-style: none;
+  margin: var(--cg-space-3) 0 0;
+  padding: 0;
+}
+
+.guide-step {
+  display: flex;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) 0;
+
+  & + .guide-step {
+    border-top: 1px solid var(--cg-divider);
+  }
+}
+
+.guide-step-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--cg-surface-2);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.guide-step.current .guide-step-mark {
+  background: var(--cg-accent);
+  color: var(--cg-surface);
+}
+
+.guide-step.done .guide-step-mark {
+  background: var(--cg-success);
+  color: var(--cg-surface);
+}
+
+.guide-step-check {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}
+
+.guide-step-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.guide-step-title {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 24px;
+}
+
+.guide-step.done .guide-step-title {
+  color: var(--cg-text-secondary);
+}
+
+.guide-step-text {
+  margin: var(--cg-space-1) 0 0;
+  color: var(--cg-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.guide-step-action {
+  margin-top: var(--cg-space-2);
+}
+
+.guide-foot {
+  margin-top: var(--cg-space-2);
+  padding-top: var(--cg-space-2);
+  border-top: 1px solid var(--cg-divider);
+  text-align: right;
+}
+
+.guide-skip {
+  color: var(--cg-text-secondary);
+}
+
+.guide-done {
+  margin-top: var(--cg-space-3);
+  text-align: center;
+}
+
+.guide-done-icon {
+  color: var(--cg-success);
+  font-size: 32px;
+  width: 32px;
+  height: 32px;
+}
+
+.guide-done-text {
+  margin: var(--cg-space-2) 0 var(--cg-space-3);
+  color: var(--cg-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
