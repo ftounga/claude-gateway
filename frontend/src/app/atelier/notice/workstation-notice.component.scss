@@ -1,0 +1,90 @@
+// Rappel de journalisation (F-57 / SF-57-03) — jetons `--cg-*` du design system uniquement,
+// espacements multiples de 4 px.
+//
+// Place : en BAS à GAUCHE. Le haut porte le rappel d'autorisation en attente (F-47, z-index 1000),
+// le haut-droit le guide d'accueil (F-53, 950), le bas-droit la bulle d'aide (F-54, 1000), et le
+// bas-centre la zone de saisie du terminal. Le bas-gauche est le seul emplacement libre — et un
+// rappel de responsabilité n'a aucune raison de couvrir quoi que ce soit.
+//
+// z-index 940 : au-dessus de l'explorateur superposé (900), SOUS le guide (950) et sous le rappel
+// d'autorisation (1000), qui sont l'un et l'autre plus urgents que celui-ci.
+.notice {
+  position: fixed;
+  left: var(--cg-space-4);
+  bottom: var(--cg-space-4);
+  z-index: 940;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-2);
+  width: 380px;
+  max-width: calc(100vw - 2 * var(--cg-space-4));
+  padding: var(--cg-space-3);
+  border: 1px solid var(--cg-divider);
+  border-left: 4px solid var(--cg-accent);
+  border-radius: 12px;
+  background: var(--cg-surface);
+  box-shadow: 0 8px 24px rgba(28, 43, 58, 0.16);
+  font-family: var(--cg-font-body);
+  color: var(--cg-text-primary);
+}
+
+.notice-icon {
+  flex: none;
+  color: var(--cg-accent);
+}
+
+.notice-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.notice-title {
+  margin: 0;
+  font-family: var(--cg-font-heading);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.notice-text {
+  margin: var(--cg-space-1) 0 0;
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.notice-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cg-space-2);
+  margin-top: var(--cg-space-2);
+  flex-wrap: wrap;
+}
+
+.notice-interval {
+  color: var(--cg-text-secondary);
+  --mdc-text-button-label-text-color: var(--cg-text-secondary);
+  font-size: 12px;
+}
+
+.notice-interval-caret {
+  margin-left: 4px;
+}
+
+// Sous 480 px, le bandeau prend toute la largeur disponible et les actions s'empilent : il ne doit
+// jamais déborder ni pousser un bouton hors de l'écran.
+@media (max-width: 480px) {
+  .notice {
+    left: var(--cg-space-2);
+    right: var(--cg-space-2);
+    bottom: var(--cg-space-2);
+    width: auto;
+    max-width: none;
+  }
+
+  .notice-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

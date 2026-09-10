@@ -36,6 +36,10 @@
   ></app-atelier-guide>
 }
 
+<!-- Rappel de journalisation (F-57 / SF-57-03) : toujours monté, c'est LUI qui décide s'il
+     s'affiche. Non modal, réglable, désactivable — il ne retient ni un envoi, ni une commande. -->
+<app-workstation-notice></app-workstation-notice>
+
 <!-- Vue terminal immersive (F-30 SF-30-07, généralisée par F-39 SF-39-08) : un projet ouvert EST un
      terminal, quel que soit le moteur qui l'anime — ni liste de projets, ni bulles de conversation. -->
 @if (pendingConfirmation(); as ask) {
