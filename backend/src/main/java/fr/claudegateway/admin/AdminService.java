@@ -75,8 +75,14 @@ public class AdminService {
     /**
      * Autorise l'appelant : rôle {@code ADMIN} <b>ou</b> e-mail égal au super-admin configuré
      * (garantit l'accès même avant la promotion du rôle stocké).
+     *
+     * <p><b>Publique depuis F-51 / SF-51-01</b> : le catalogue de gouvernance est publié par l'admin
+     * et applique donc exactement la même garde. La dupliquer ailleurs créerait une seconde
+     * définition de « qui est admin » — c'est-à-dire, un jour, deux définitions divergentes.</p>
+     *
+     * @throws AdminForbiddenException si l'appelant n'est ni ADMIN ni le super-admin configuré (403)
      */
-    private void assertAdmin() {
+    public void assertAdmin() {
         AuthenticatedUser principal = currentUser.principal().orElseThrow(AdminForbiddenException::new);
         boolean admin = principal.role() == UserRole.ADMIN
                 || (!superAdminEmail.isEmpty() && superAdminEmail.equalsIgnoreCase(principal.email()));
