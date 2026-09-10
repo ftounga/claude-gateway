@@ -118,4 +118,60 @@ describe('AtelierGuideService', () => {
     // L'avancement vaut au moins pour la session en cours.
     expect(guide.steps().command).toBeTrue();
   });
+
+  // --- Reprise et échec de tour (F-53 / SF-53-02) ---
+
+  it('se rouvre après un abandon, étapes conservées, et la reprise est mémorisée', () => {
+    const guide = fresh();
+    guide.markStep('project');
+    guide.dismiss();
+
+    guide.reopen();
+    expect(guide.visible()).toBeTrue();
+    expect(guide.steps().project).toBeTrue();
+
+    const reloaded = fresh();
+    expect(reloaded.status()).toBe('active');
+    expect(reloaded.visible()).toBeTrue();
+  });
+
+  it('rouvre un parcours accompli sur sa conclusion', () => {
+    const guide = fresh();
+    guide.markStep('project');
+    guide.markStep('host');
+    guide.markStep('command');
+    guide.finish();
+    expect(guide.visible()).toBeFalse();
+
+    guide.reopen();
+    expect(guide.visible()).toBeTrue();
+    expect(guide.completed()).toBeTrue();
+
+    guide.finish();
+    expect(guide.visible()).toBeFalse();
+  });
+
+  it('signale un tour en échec, et l\'oublie dès qu\'un tour aboutit', () => {
+    const guide = fresh();
+    expect(guide.turnFailed()).toBeFalse();
+
+    guide.markTurnFailed();
+    expect(guide.turnFailed()).toBeTrue();
+    // L'étape ne se coche pas pour autant : un tour en échec n'est pas le premier succès.
+    expect(guide.steps().command).toBeFalse();
+
+    guide.markStep('command');
+    expect(guide.turnFailed()).toBeFalse();
+    expect(guide.steps().command).toBeTrue();
+  });
+
+  it('n\'écrit jamais l\'échec dans le stockage local', () => {
+    const guide = fresh();
+    guide.markStep('project');
+    guide.markTurnFailed();
+
+    expect(localStorage.getItem(STORAGE_KEY)).not.toContain('ailed');
+    // Rechargée, la session repart sans échec : c'est un état d'un instant.
+    expect(fresh().turnFailed()).toBeFalse();
+  });
 });

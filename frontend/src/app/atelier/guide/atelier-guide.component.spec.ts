@@ -8,7 +8,11 @@ describe('AtelierGuideComponent', () => {
   let fixture: ComponentFixture<AtelierGuideComponent>;
   let component: AtelierGuideComponent;
 
-  function setup(steps: Partial<AtelierGuideSteps> = {}, projectOpen = true): void {
+  function setup(
+    steps: Partial<AtelierGuideSteps> = {},
+    projectOpen = true,
+    turnFailed = false,
+  ): void {
     TestBed.configureTestingModule({
       imports: [AtelierGuideComponent],
       providers: [provideNoopAnimations()],
@@ -17,6 +21,7 @@ describe('AtelierGuideComponent', () => {
     component = fixture.componentInstance;
     component.steps = { project: false, host: false, command: false, ...steps };
     component.projectOpen = projectOpen;
+    component.turnFailed = turnFailed;
     fixture.detectChanges();
   }
 
@@ -77,11 +82,17 @@ describe('AtelierGuideComponent', () => {
     expect(text()).toContain('Connectez votre poste');
   });
 
-  it('la dernière étape n\'a aucun bouton : elle se coche sur un tour abouti', () => {
+  it('la dernière étape n\'ouvre rien : elle se coche sur un tour abouti', () => {
     setup({ project: true, host: true });
 
     expect(component.currentStep()).toBe('command');
-    expect(fixture.nativeElement.querySelector('.guide-step-action')).toBeNull();
+    // Aucune action « d'étape » : rien à ouvrir ici, seulement une demande à taper (SF-53-02).
+    expect(component.canAct(component.views[2])).toBeFalse();
+    const labels = Array.from(
+      fixture.nativeElement.querySelectorAll('.guide-step-action'),
+    ).map((b) => ((b as HTMLElement).textContent ?? '').trim());
+    expect(labels.length).toBe(1);
+    expect(labels[0]).toContain('Écrire dans le terminal');
   });
 
   it('s\'abandonne depuis n\'importe quelle étape', () => {
@@ -107,5 +118,49 @@ describe('AtelierGuideComponent', () => {
 
     (fixture.nativeElement.querySelector('.guide-done-action') as HTMLButtonElement).click();
     expect(finished).toHaveBeenCalled();
+  });
+
+  // --- Première commande et tour en échec (F-53 / SF-53-02) ---
+
+  it('propose la première demande et demande qu\'elle soit écrite, sans l\'envoyer', () => {
+    setup({ project: true, host: true });
+    const written = jasmine.createSpy('writeCommand');
+    component.writeCommand.subscribe(written);
+
+    expect(text()).toContain(component.firstCommand);
+    (fixture.nativeElement.querySelector('.guide-write') as HTMLButtonElement).click();
+
+    expect(written).toHaveBeenCalled();
+  });
+
+  it('ne propose pas d\'écrire dans le terminal sans projet ouvert', () => {
+    setup({ project: true, host: true }, false);
+
+    expect(fixture.nativeElement.querySelector('.guide-write')).toBeNull();
+    // La demande proposée reste lisible : elle dit ce qu'il y aura à taper.
+    expect(text()).toContain(component.firstCommand);
+  });
+
+  it('dit qu\'un tour n\'a pas abouti et propose de vérifier le poste', () => {
+    setup({ project: true, host: true }, true, true);
+    const checked = jasmine.createSpy('checkHost');
+    component.checkHost.subscribe(checked);
+
+    expect(text()).toContain("Le dernier tour ne s'est pas terminé sur votre poste");
+    const buttons = Array.from(
+      fixture.nativeElement.querySelectorAll('.guide-step-action'),
+    ) as HTMLButtonElement[];
+    const check = buttons.find((b) => (b.textContent ?? '').includes('Vérifier mon poste'));
+    check!.click();
+
+    expect(checked).toHaveBeenCalled();
+    // L'étape reste ouverte : un tour en échec n'est pas le premier succès.
+    expect(component.currentStep()).toBe('command');
+  });
+
+  it('ne signale aucun échec par défaut', () => {
+    setup({ project: true, host: true });
+
+    expect(fixture.nativeElement.querySelector('.guide-failure')).toBeNull();
   });
 });

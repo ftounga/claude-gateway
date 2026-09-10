@@ -26,8 +26,11 @@
   <app-atelier-guide
     [steps]="guide.steps()"
     [projectOpen]="activeWorkspaceId() !== null"
+    [turnFailed]="guide.turnFailed()"
     (createProject)="guideCreateProject()"
     (connectHost)="guideConnectHost()"
+    (writeCommand)="guideWriteCommand()"
+    (checkHost)="guideConnectHost()"
     (dismiss)="guide.dismiss()"
     (finish)="guide.finish()"
   ></app-atelier-guide>
@@ -217,6 +220,14 @@
           Mode Hosted — tokens inclus
         </span>
         <a class="mode-link" routerLink="/settings">Configurer une clé</a>
+      }
+      @if (!guide.visible()) {
+        <!-- Reprise du guide (F-53 / SF-53-02) : proposée uniquement quand il est masqué, et depuis
+             l'écran des projets — le terminal est immersif, et sa barre est déjà dense. -->
+        <button mat-button type="button" class="guide-reopen" (click)="guide.reopen()">
+          <mat-icon>flag</mat-icon>
+          Guide de démarrage
+        </button>
       }
     </div>
 

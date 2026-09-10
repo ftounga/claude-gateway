@@ -3716,4 +3716,71 @@ describe("AtelierComponent — guide d'accueil (F-53 / SF-53-01)", () => {
     );
     fixture.destroy();
   });
+
+  // --- Reprise et première commande (F-53 / SF-53-02) ---
+
+  it("propose de rouvrir le guide seulement lorsqu'il est masqué", () => {
+    setup({ projects: [] });
+
+    // Guide visible : l'entrée de reprise n'aurait rien à ouvrir.
+    expect(fixture.nativeElement.querySelector('.guide-reopen')).toBeNull();
+
+    component.guide.dismiss();
+    fixture.detectChanges();
+    const reopen = fixture.nativeElement.querySelector('.guide-reopen') as HTMLButtonElement;
+    expect(reopen).not.toBeNull();
+
+    reopen.click();
+    fixture.detectChanges();
+    expect(component.guide.visible()).toBeTrue();
+    expect(fixture.nativeElement.querySelector('app-atelier-guide')).not.toBeNull();
+    fixture.destroy();
+  });
+
+  it('écrit la première demande dans la zone de saisie, sans rien envoyer', () => {
+    setup({ connected: true });
+    component.selectWorkspace(guideSummary);
+    fixture.detectChanges();
+
+    component.guideWriteCommand();
+
+    expect(component.draft()).toBe('Liste les fichiers de ce projet.');
+    expect(service.streamChat).not.toHaveBeenCalled();
+    expect(component.submitting()).toBeFalse();
+    fixture.destroy();
+  });
+
+  it("signale un tour en échec sur le poste, sans cocher l'étape", () => {
+    setup({ connected: true });
+    component.selectWorkspace(guideSummary);
+    fixture.detectChanges();
+    service.streamChat.and.callFake((_id, _message, handlers) => {
+      handlers.onError('runner_unavailable');
+      return Promise.resolve();
+    });
+
+    component.draft.set('liste les fichiers');
+    component.send();
+
+    expect(component.guide.turnFailed()).toBeTrue();
+    expect(component.guide.steps().command).toBeFalse();
+    fixture.destroy();
+  });
+
+  it("ne signale rien quand c'est un tour du bac à sable qui échoue", () => {
+    setup({ connected: true });
+    component.selectWorkspace(guideSummary);
+    component.engine.set('HOSTED_SANDBOX');
+    fixture.detectChanges();
+    service.streamAgent.and.callFake((_id, _message, handlers) => {
+      handlers.onError('agent_failed');
+      return Promise.resolve();
+    });
+
+    component.draft.set('liste les fichiers');
+    component.send();
+
+    expect(component.guide.turnFailed()).toBeFalse();
+    fixture.destroy();
+  });
 });

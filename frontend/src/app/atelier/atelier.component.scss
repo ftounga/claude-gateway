@@ -157,6 +157,15 @@ a.active {
   }
 }
 
+/* Reprise du guide d'accueil (F-53 / SF-53-02) : une entrée discrète, à côté du mode d'exécution.
+   Elle n'existe que lorsque le guide est masqué. */
+.guide-reopen {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--cg-text-secondary);
+  --mdc-text-button-label-text-color: var(--cg-text-secondary);
+}
+
 /* Explorateur en surcouche (F-39 / SF-39-18) : plein écran par-dessus le terminal, qui reste monté
    derrière — c'est ce qui garde vivant le flux du tour. Les demandes d'autorisation, elles,
    s'affichent encore au-dessus (MatDialog, z-index Material supérieur). */

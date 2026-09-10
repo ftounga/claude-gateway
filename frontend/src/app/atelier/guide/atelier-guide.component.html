@@ -55,6 +55,40 @@
                   {{ step.action }}
                 </button>
               }
+              @if (step.id === 'command') {
+                <!-- La première demande est PROPOSÉE puis écrite dans la zone de saisie — jamais
+                     envoyée : l'envoi consomme des tokens, il reste le geste de l'utilisateur
+                     (F-53 / SF-53-02). -->
+                <p class="guide-command">{{ firstCommand }}</p>
+                @if (projectOpen) {
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    class="guide-step-action guide-write"
+                    (click)="writeCommand.emit()"
+                  >
+                    <mat-icon>edit_note</mat-icon>
+                    Écrire dans le terminal
+                  </button>
+                }
+                @if (turnFailed) {
+                  <!-- Un tour qui échoue laisse l'étape ouverte, et le guide dit quoi faire : le
+                       diagnostic, lui, vit dans le dialogue d'appairage (F-45). -->
+                  <p class="guide-failure" role="status">
+                    Le dernier tour ne s'est pas terminé sur votre poste.
+                  </p>
+                  @if (projectOpen) {
+                    <button
+                      mat-stroked-button
+                      type="button"
+                      class="guide-step-action"
+                      (click)="checkHost.emit()"
+                    >
+                      Vérifier mon poste
+                    </button>
+                  }
+                }
+              }
             }
           </div>
         </li>
