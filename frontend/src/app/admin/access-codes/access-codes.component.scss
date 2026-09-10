@@ -1,0 +1,117 @@
+// Section « Codes d'accès » de l'administration (F-62 / SF-62-03).
+// Calquée sur la section Gouvernance : mêmes jetons, mêmes formes. Aucune couleur nouvelle.
+.codes-admin {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-3);
+  padding: var(--cg-space-4);
+
+  &__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--cg-space-3);
+
+    h2 {
+      margin: 0 0 var(--cg-space-1);
+      font-size: 18px;
+    }
+  }
+
+  &__subtitle {
+    margin: 0;
+    color: var(--cg-text-secondary);
+    max-width: 72ch;
+  }
+
+  &__empty {
+    margin: 0;
+    color: var(--cg-text-secondary);
+  }
+
+  // ---- Le code fraîchement émis ----
+  // Bordure d'accent à gauche, comme les avertissements du reste du produit.
+  &__fresh {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cg-space-3);
+    padding: var(--cg-space-3);
+    border: 1px solid var(--cg-divider);
+    border-left: 4px solid var(--cg-accent);
+    border-radius: 8px;
+    background: var(--cg-bg);
+  }
+
+  &__fresh-main {
+    min-width: 260px;
+  }
+
+  &__fresh-warning {
+    margin: 0;
+    color: var(--cg-text-primary);
+    font-size: 14px;
+  }
+
+  &__fresh-code {
+    // Le code se recopie à la main : la monospace du design system évite les confusions de glyphes.
+    margin: var(--cg-space-2) 0 0;
+    font-family: 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace;
+    font-size: 20px;
+    letter-spacing: 0.08em;
+    color: var(--cg-primary);
+    user-select: all;
+  }
+
+  &__fresh-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+  }
+
+  &__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-2);
+  }
+
+  &__item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cg-space-2);
+    padding: var(--cg-space-3);
+    border: 1px solid var(--cg-divider);
+    border-radius: 8px;
+  }
+
+  &__item-main,
+  &__item-trace {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-1);
+  }
+
+  &__item-trace {
+    align-items: flex-end;
+    text-align: right;
+  }
+
+  &__meta {
+    color: var(--cg-text-secondary);
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 640px) {
+  .codes-admin__item-trace {
+    align-items: flex-start;
+    text-align: left;
+  }
+}

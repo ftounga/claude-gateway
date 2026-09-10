@@ -1,0 +1,86 @@
+<mat-card class="codes-admin">
+  <header class="codes-admin__header">
+    <div>
+      <h2>Codes d'accès</h2>
+      <p class="codes-admin__subtitle">
+        Un code ouvre la Forge pendant 24 h au compte qui le saisit, puis se referme tout seul. Il
+        ne change ni l'offre ni le quota de tokens de ce compte, et ne touche à aucun abonnement.
+      </p>
+    </div>
+    <button
+      mat-flat-button
+      color="primary"
+      type="button"
+      [disabled]="busy()"
+      (click)="create()"
+    >
+      <mat-icon>add</mat-icon>
+      Nouveau code
+    </button>
+  </header>
+
+  <!-- Le code en clair, montré UNE FOIS. Il n'est pas stocké : le dire franchement vaut mieux que
+       de laisser découvrir qu'on ne peut pas le retrouver. -->
+  @if (freshCode(); as code) {
+    <section class="codes-admin__fresh" aria-label="Code créé">
+      <div class="codes-admin__fresh-main">
+        <p class="codes-admin__fresh-warning">
+          Copiez ce code maintenant : <strong>il ne sera plus jamais affiché.</strong>
+        </p>
+        <p class="codes-admin__fresh-code">{{ code }}</p>
+      </div>
+      <div class="codes-admin__fresh-actions">
+        <button mat-flat-button color="primary" type="button" (click)="copyFreshCode()">
+          <mat-icon>content_copy</mat-icon>
+          Copier
+        </button>
+        <button mat-stroked-button type="button" (click)="dismissFreshCode()">J'ai copié</button>
+      </div>
+    </section>
+  }
+
+  @if (loading()) {
+    <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+  } @else if (failed()) {
+    <p class="codes-admin__empty">La liste des codes n'a pas pu être lue.</p>
+    <button mat-stroked-button type="button" (click)="load()">Réessayer</button>
+  } @else if (codes().length === 0) {
+    <p class="codes-admin__empty">
+      Aucun code émis. Créez-en un pour offrir une démonstration de 24 h.
+    </p>
+  } @else {
+    <ul class="codes-admin__list">
+      @for (code of codes(); track code.id) {
+        <li class="codes-admin__item">
+          <div class="codes-admin__item-main">
+            <strong>{{ code.label }}</strong>
+            <span class="codes-admin__meta">
+              {{ recipient(code) }} · {{ stateLabel(code.state) }} ·
+              {{ code.grantedPlanCode }} pendant {{ code.durationHours }} h
+            </span>
+          </div>
+
+          <div class="codes-admin__item-trace">
+            @if (code.redeemedByEmail) {
+              <span class="codes-admin__meta">
+                utilisé par {{ code.redeemedByEmail }}
+                @if (code.redeemedAt) { le {{ code.redeemedAt | date: 'short' }} }
+              </span>
+              @if (code.grantedUntil) {
+                <span class="codes-admin__meta">
+                  @if (code.state === 'ACTIVE') { jusqu'au } @else { terminé le }
+                  {{ code.grantedUntil | date: 'short' }} · revient à
+                  {{ code.previousPlanCode ?? 'aucune offre' }}
+                </span>
+              }
+            } @else {
+              <span class="codes-admin__meta">
+                jamais utilisé · valable jusqu'au {{ code.validUntil | date: 'mediumDate' }}
+              </span>
+            }
+          </div>
+        </li>
+      }
+    </ul>
+  }
+</mat-card>

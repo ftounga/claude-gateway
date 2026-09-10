@@ -8,6 +8,7 @@ import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 
 import { AdminService } from './admin.service';
 import { AdminUser } from './admin.models';
+import { AccessCodesComponent } from './access-codes/access-codes.component';
 import { GovernancePackagesComponent } from './governance-packages/governance-packages.component';
 
 /**
@@ -16,8 +17,9 @@ import { GovernancePackagesComponent } from './governance-packages/governance-pa
  * et l'API renvoie 403 pour un non-admin.
  *
  * <p>Depuis F-51 / SF-51-06, il porte aussi la section **Gouvernance** : la rédaction et la
- * publication des paquets. Même garde, même écran — il n'y a qu'un seul endroit où regarder ce qu'un
- * admin peut faire.</p>
+ * publication des paquets. Depuis F-62 / SF-62-03, la section **Codes d'accès** : l'émission et le
+ * suivi des codes qui offrent 24 h de Forge. Même garde, même écran — il n'y a qu'un seul endroit où
+ * regarder ce qu'un admin peut faire.</p>
  */
 @Component({
   selector: 'app-admin',
@@ -29,6 +31,7 @@ import { GovernancePackagesComponent } from './governance-packages/governance-pa
     DatePipe,
     DecimalPipe,
     GovernancePackagesComponent,
+    AccessCodesComponent,
   ],
   templateUrl: './admin.component.html',
   styleUrl: './admin.component.scss',

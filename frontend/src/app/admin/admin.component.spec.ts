@@ -8,6 +8,7 @@ import { AdminComponent } from './admin.component';
 import { AdminService } from './admin.service';
 import { AdminUser } from './admin.models';
 import { AuthService } from '../core/services/auth.service';
+import { AccessCodeAdminService } from './access-code-admin.service';
 import { GovernanceAdminService } from './governance-admin.service';
 
 describe('AdminComponent', () => {
@@ -50,12 +51,20 @@ describe('AdminComponent', () => {
     governanceSpy.list.and.returnValue(of([]));
     governanceSpy.controls.and.returnValue(of([]));
 
+    // Même chose pour la section Codes d'accès (F-62 / SF-62-03) : elle a son propre spec.
+    const accessCodeSpy = jasmine.createSpyObj<AccessCodeAdminService>('AccessCodeAdminService', [
+      'list',
+      'issue',
+    ]);
+    accessCodeSpy.list.and.returnValue(of([]));
+
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
       providers: [
         provideNoopAnimations(),
         { provide: AdminService, useValue: adminSpy },
         { provide: GovernanceAdminService, useValue: governanceSpy },
+        { provide: AccessCodeAdminService, useValue: accessCodeSpy },
       ],
     }).compileComponents();
 
