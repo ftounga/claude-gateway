@@ -42,6 +42,17 @@ public final class Privileges {
         return elevated;
     }
 
+    /**
+     * Droits <b>déclarés</b> — réservé aux tests.
+     *
+     * <p>Les droits se détectent, ils ne se déclarent pas : c'est pourquoi il n'existe pas de
+     * constructeur public. Mais un test qui vérifie ce que la console <i>dit</i> d'un compte
+     * administrateur ne peut pas se faire {@code root} pour l'obtenir.</p>
+     */
+    static Privileges of(String userName, boolean elevated) {
+        return new Privileges(userName, elevated);
+    }
+
     /** Détecte les droits courants. Ne lève jamais : en cas de doute, « non élevé ». */
     public static Privileges detect() {
         String user = System.getProperty("user.name", "");

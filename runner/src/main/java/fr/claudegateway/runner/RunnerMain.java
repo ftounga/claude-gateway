@@ -67,12 +67,14 @@ public final class RunnerMain {
         // toute connexion, et il ne changera plus de la vie du processus.
         commandModeLines(config.allowBash()).forEach(console::info);
 
-        // Avec quels droits (F-38 / SF-38-18). Le runner agit avec ceux du compte qui l'a lancé —
-        // il n'en bride aucun, et ne prétend pas le faire. Le dire au démarrage évite de le
-        // découvrir en autorisant une commande.
+        ProxyResolver proxyResolver = ProxyResolver.fromEnv(env);
+
+        // Déclaration de transparence (F-57 / SF-57-01) : ce que fait ce programme, sous quels
+        // droits (SF-38-18), par quelle route, et ce qu'il ne cherche pas. Un bloc, pas des lignes
+        // dispersées : ces informations répondent toutes à la même question — « qu'est-ce que ce
+        // programme fait sur ma machine ? » — et se lisent ensemble ou pas du tout (D1).
         Privileges privileges = Privileges.detect();
-        console.info("Compte    : " + privileges.userName()
-                + (privileges.elevated() ? "  (administrateur)" : ""));
+        StartupDisclosure.lines(privileges, proxyResolver.route()).forEach(console::info);
         if (privileges.elevated()) {
             console.error("Ce runner tourne en root : Claude agira avec les droits de "
                     + "l'administrateur sur cette machine.");
@@ -80,10 +82,8 @@ public final class RunnerMain {
                     + "vous faites autrement (conteneur, projet appartenant à root).");
         }
 
-        ProxyResolver proxyResolver = ProxyResolver.fromEnv(env);
-        if (proxyResolver.hasProxy()) {
-            console.info("Proxy d'entreprise détecté (HTTPS_PROXY/HTTP_PROXY).");
-        }
+        // Plus de ligne « Proxy d'entreprise détecté » ici : la route est désormais dite dans le bloc
+        // de transparence ci-dessus, avec son adresse expurgée et la variable qui l'a décidée.
         HttpClient httpClient = buildHttpClient(proxyResolver);
 
         // Contrôle de vol (SF-38-25) : la gateway est-elle joignable depuis CE terminal ? La question
