@@ -3,9 +3,11 @@ import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/route
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { HttpErrorResponse } from '@angular/common/http';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, throwError } from 'rxjs';
 
 import { BillingComponent } from './billing.component';
+import { AccessCodeService } from '../core/services/access-code.service';
 import { ApiKeyService } from '../core/services/api-key.service';
 import { BillingService } from '../core/services/billing.service';
 import { UsageService } from '../core/services/usage.service';
@@ -15,6 +17,7 @@ import {
   SubscriptionView,
   TopUpPacksResponse,
 } from '../core/models/billing.models';
+import { AccessGrantView } from '../core/models/access-code.models';
 import { ApiKeyStatus } from '../core/models/api-key.models';
 import { UsageView } from '../core/models/usage.models';
 
@@ -24,6 +27,7 @@ describe('BillingComponent', () => {
   let billingService: jasmine.SpyObj<BillingService>;
   let usageService: jasmine.SpyObj<UsageService>;
   let apiKeyService: jasmine.SpyObj<ApiKeyService>;
+  let accessCodeService: jasmine.SpyObj<AccessCodeService>;
 
   const subscription: SubscriptionView = {
     status: 'TRIALING',
@@ -105,6 +109,23 @@ describe('BillingComponent', () => {
     available: true,
   };
 
+  /** Aucun accès offert en cours (F-62) : la section de saisie doit être proposée. */
+  const noGrant: AccessGrantView = {
+    active: false,
+    grantedPlanCode: null,
+    grantedUntil: null,
+    previousPlanCode: null,
+    label: null,
+  };
+  /** Accès offert en cours (F-62) : le bandeau remplace la saisie. */
+  const liveGrant: AccessGrantView = {
+    active: true,
+    grantedPlanCode: 'GOLD',
+    grantedUntil: '2026-09-11T14:32:00Z',
+    previousPlanCode: 'SOLO',
+    label: 'démo prospect',
+  };
+
   /** Réglages F-41 : abonnement à servir, statut de clé (ou échec de l'appel). */
   interface ByokSetup {
     subscription?: SubscriptionView;
@@ -117,6 +138,7 @@ describe('BillingComponent', () => {
     option: AtelierOptionView | null = optionAvailable,
     byok: ByokSetup = {},
     catalog: PlansResponse = plans,
+    grant: AccessGrantView | 'fails' = noGrant,
   ): void {
     billingService = jasmine.createSpyObj<BillingService>('BillingService', [
       'getSubscription',
@@ -146,6 +168,16 @@ describe('BillingComponent', () => {
         : of(keyStatus),
     );
 
+    accessCodeService = jasmine.createSpyObj<AccessCodeService>('AccessCodeService', [
+      'getGrant',
+      'redeem',
+    ]);
+    accessCodeService.getGrant.and.returnValue(
+      grant === 'fails'
+        ? throwError(() => new HttpErrorResponse({ status: 500 }))
+        : of(grant),
+    );
+
     usageService = jasmine.createSpyObj<UsageService>('UsageService', ['getUsage']);
     usageService.getUsage.and.returnValue(
       usageFails ? throwError(() => new HttpErrorResponse({ status: 500 })) : of(usage),
@@ -158,6 +190,7 @@ describe('BillingComponent', () => {
         { provide: BillingService, useValue: billingService },
         { provide: UsageService, useValue: usageService },
         { provide: ApiKeyService, useValue: apiKeyService },
+        { provide: AccessCodeService, useValue: accessCodeService },
         provideRouter([]),
         {
           provide: ActivatedRoute,
@@ -313,6 +346,12 @@ describe('BillingComponent', () => {
     apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
     apiKeyService.getStatus.and.returnValue(of(absentKey));
 
+    accessCodeService = jasmine.createSpyObj<AccessCodeService>('AccessCodeService', [
+      'getGrant',
+      'redeem',
+    ]);
+    accessCodeService.getGrant.and.returnValue(of(noGrant));
+
     usageService = jasmine.createSpyObj<UsageService>('UsageService', ['getUsage']);
     usageService.getUsage.and.returnValue(of(usage));
 
@@ -323,6 +362,7 @@ describe('BillingComponent', () => {
         { provide: BillingService, useValue: billingService },
         { provide: UsageService, useValue: usageService },
         { provide: ApiKeyService, useValue: apiKeyService },
+        { provide: AccessCodeService, useValue: accessCodeService },
         provideRouter([]),
         {
           provide: ActivatedRoute,
@@ -857,4 +897,88 @@ describe('BillingComponent', () => {
     });
   });
 
+
+  // ------------------------------------------------ Code d'accès (F-62 / SF-62-02)
+
+  describe("code d'accès (F-62)", () => {
+    it("propose la saisie quand aucun accès offert n'est en cours", () => {
+      setup();
+
+      expect(component.canEnterAccessCode()).toBeTrue();
+      expect(component.hasAccessGrant()).toBeFalse();
+      // Le champ vide n'appelle rien : le bouton reste inerte.
+      expect(component.accessCodeSubmitDisabled()).toBeTrue();
+    });
+
+    it("remplace la saisie par le bandeau quand un accès est déjà en cours (pas de cumul à l'écran)", () => {
+      setup(null, false, optionAvailable, {}, plans, liveGrant);
+
+      expect(component.hasAccessGrant()).toBeTrue();
+      expect(component.canEnterAccessCode()).toBeFalse();
+    });
+
+    it('active un code valide, affiche le droit et vide le champ', () => {
+      setup();
+      accessCodeService.redeem.and.returnValue(of(liveGrant));
+
+      component.onAccessCodeInput('  forge-ab2c-3d4e ');
+      component.redeemAccessCode();
+
+      expect(accessCodeService.redeem).toHaveBeenCalledWith('forge-ab2c-3d4e');
+      expect(component.hasAccessGrant()).toBeTrue();
+      expect(component.accessGrant()?.grantedUntil).toBe('2026-09-11T14:32:00Z');
+      expect(component.accessCodeInput()).toBe('');
+      expect(component.accessCodeInProgress()).toBeFalse();
+    });
+
+    it("n'appelle rien sur un champ vide", () => {
+      setup();
+      accessCodeService.redeem.and.returnValue(of(liveGrant));
+
+      component.onAccessCodeInput('   ');
+      component.redeemAccessCode();
+
+      expect(accessCodeService.redeem).not.toHaveBeenCalled();
+    });
+
+    // Un `it` par refus : chacun a besoin d'un TestBed neuf, et un échec doit nommer le cas fautif
+    // plutôt que « la boucle ».
+    const refusals: Array<[string, number, string]> = [
+      ['access_code_invalid', 404, "Ce code d'accès est inconnu. Vérifiez la saisie."],
+      ['access_code_used', 409, 'Ce code a déjà été utilisé.'],
+      ['access_code_expired', 409, 'Ce code a expiré.'],
+      ['access_code_not_for_account', 403, 'Ce code est réservé à un autre compte.'],
+      ['access_code_already_granted', 409, 'Un accès offert est déjà en cours sur votre compte.'],
+      ['boom', 500, "Impossible d'activer ce code."],
+    ];
+
+    for (const [code, status, expected] of refusals) {
+      it(`traduit le refus ${code} en message français, sans vider le champ`, () => {
+        setup();
+        const open = spyOn(TestBed.inject(MatSnackBar), 'open');
+        accessCodeService.redeem.and.returnValue(
+          throwError(() => new HttpErrorResponse({ status, error: { error: code } })),
+        );
+
+        component.onAccessCodeInput('FORGE-AB2C-3D4E');
+        component.redeemAccessCode();
+
+        expect(open).toHaveBeenCalledWith(expected, 'Fermer', jasmine.any(Object));
+        // Le champ garde la saisie : on corrige une faute de frappe, on ne retape pas tout.
+        expect(component.accessCodeInput()).toBe('FORGE-AB2C-3D4E');
+        expect(component.accessCodeInProgress()).toBeFalse();
+      });
+    }
+
+    it("un échec de lecture du droit ne casse pas l'écran, mais masque la section", () => {
+      setup(null, false, optionAvailable, {}, plans, 'fails');
+
+      // L'écran reste rendu (les offres sont là) ...
+      expect(component.plans().length).toBe(2);
+      // ... et l'on préfère ne rien proposer plutôt qu'un geste dont on ignore l'issue.
+      expect(component.accessGrant()).toBeNull();
+      expect(component.canEnterAccessCode()).toBeFalse();
+      expect(component.hasAccessGrant()).toBeFalse();
+    });
+  });
 });

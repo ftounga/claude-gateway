@@ -148,6 +148,14 @@
   &__notice-text { margin: var(--cg-space-1) 0 0; color: var(--cg-text-secondary); font-size: 14px; }
   &__notice-cta { flex: none; }
 
+  // ---- Champ de code d'accès (F-62 / SF-62-02) ----
+  // Aucune couleur nouvelle : `mat-form-field` en `outline`, largeur bornée pour que le champ ne
+  // s'étire pas sur toute la carte — un code fait quatorze caractères, pas une phrase.
+  &__code-field {
+    width: 100%;
+    max-width: 320px;
+  }
+
   &__feedback {
     display: flex; align-items: center; gap: var(--cg-space-2);
     color: var(--cg-text-secondary); padding: var(--cg-space-4) 0;

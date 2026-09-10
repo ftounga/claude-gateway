@@ -8,9 +8,13 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { FormsModule } from '@angular/forms';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatDialog } from '@angular/material/dialog';
 
+import { AccessCodeService } from '../core/services/access-code.service';
 import { ApiKeyService } from '../core/services/api-key.service';
 import { BillingService } from '../core/services/billing.service';
 import { UsageService } from '../core/services/usage.service';
@@ -27,6 +31,7 @@ import {
   SubscriptionView,
   TopUpPack,
 } from '../core/models/billing.models';
+import { AccessGrantView } from '../core/models/access-code.models';
 import { ApiKeyStatus } from '../core/models/api-key.models';
 import { UsageView } from '../core/models/usage.models';
 
@@ -38,8 +43,13 @@ interface StatusDisplay {
 
 /**
  * Écran de facturation F-09 : abonnement courant, catalogue de plans, souscription via Stripe,
- * recharges ponctuelles (F-21), **option Atelier** (F-40) — le droit d'Atelier découplé du plan —
- * et **offre BYOK** (F-41) : la plateforme seule, sans jeton inclus.
+ * recharges ponctuelles (F-21), **option Atelier** (F-40) — le droit d'Atelier découplé du plan —,
+ * **offre BYOK** (F-41) : la plateforme seule, sans jeton inclus, et depuis F-62 la saisie d'un
+ * **code d'accès** : « payer, ou entrer un code ».
+ *
+ * <p>C'est ici, et nulle part ailleurs, que le code se saisit — sur l'écran où il produit son effet,
+ * en alternative au paiement. Le demander à la connexion imposerait un champ à tous ceux qui n'en
+ * ont pas.</p>
  */
 @Component({
   selector: 'app-billing',
@@ -53,6 +63,9 @@ interface StatusDisplay {
     MatProgressBarModule,
     MatProgressSpinnerModule,
     MatButtonToggleModule,
+    MatFormFieldModule,
+    MatInputModule,
+    FormsModule,
   ],
   templateUrl: './billing.component.html',
   styleUrl: './billing.component.scss',
@@ -60,6 +73,7 @@ interface StatusDisplay {
 export class BillingComponent implements OnInit {
   private readonly billingService = inject(BillingService);
   private readonly apiKeyService = inject(ApiKeyService);
+  private readonly accessCodeService = inject(AccessCodeService);
   private readonly usageService = inject(UsageService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
@@ -91,6 +105,12 @@ export class BillingComponent implements OnInit {
    * vers l'engagement annuel, on ne l'y met pas d'office.
    */
   readonly selectedPeriod = signal<BillingPeriodChoice>('MONTHLY');
+  /** Accès offert en cours (F-62), ou null tant qu'il n'a pas pu être chargé. */
+  readonly accessGrant = signal<AccessGrantView | null>(null);
+  /** Saisie du champ « code d'accès ». */
+  readonly accessCodeInput = signal('');
+  /** Vrai pendant l'activation d'un code (bouton désactivé). */
+  readonly accessCodeInProgress = signal(false);
 
   ngOnInit(): void {
     const checkout = this.route.snapshot.queryParamMap.get('checkout');
@@ -105,6 +125,7 @@ export class BillingComponent implements OnInit {
     this.loadTopUps();
     this.loadAtelierOption();
     this.loadApiKeyStatus();
+    this.loadAccessGrant();
   }
 
   /**
@@ -126,6 +147,17 @@ export class BillingComponent implements OnInit {
     this.billingService.getAtelierOption().subscribe({
       next: (option) => this.atelierOption.set(option),
       error: () => this.atelierOption.set(null),
+    });
+  }
+
+  /**
+   * Accès offert en cours (F-62). Échec **non bloquant** : la section reste masquée et l'écran de
+   * facturation demeure utilisable — même règle que les recharges et l'option Forge.
+   */
+  loadAccessGrant(): void {
+    this.accessCodeService.getGrant().subscribe({
+      next: (grant) => this.accessGrant.set(grant),
+      error: () => this.accessGrant.set(null),
     });
   }
 
@@ -596,6 +628,78 @@ export class BillingComponent implements OnInit {
         return 'La facturation est momentanément indisponible.';
       default:
         return "Impossible de mettre à jour l'option Forge.";
+    }
+  }
+
+  // ------------------------------------------------ Code d'accès (F-62 / SF-62-02)
+
+  /** Vrai si un accès offert est en cours — c'est le **serveur** qui le dit. */
+  hasAccessGrant(): boolean {
+    return this.accessGrant()?.active === true;
+  }
+
+  /**
+   * Vrai quand proposer la saisie a un sens : l'état a pu être lu, et aucun accès offert n'est en
+   * cours. Un second champ pendant un droit ouvert serait un piège — le cumul est refusé côté
+   * serveur (hors périmètre F-62), et l'écran ne doit pas inviter à un geste qui échouera.
+   */
+  canEnterAccessCode(): boolean {
+    return this.accessGrant() !== null && !this.hasAccessGrant();
+  }
+
+  /** Vrai si le bouton *Activer* doit rester inerte (champ vide ou appel en cours). */
+  accessCodeSubmitDisabled(): boolean {
+    return this.accessCodeInProgress() || this.accessCodeInput().trim().length === 0;
+  }
+
+  /** Reflète la saisie du champ dans le signal (le formulaire reste sans état propre). */
+  onAccessCodeInput(value: string): void {
+    this.accessCodeInput.set(value);
+  }
+
+  /**
+   * Active le code saisi. En cas de refus, le champ n'est **pas vidé** : l'utilisateur corrige une
+   * faute de frappe plutôt que de tout retaper.
+   */
+  redeemAccessCode(): void {
+    if (this.accessCodeSubmitDisabled()) {
+      return;
+    }
+    this.accessCodeInProgress.set(true);
+    this.accessCodeService.redeem(this.accessCodeInput().trim()).subscribe({
+      next: (grant) => {
+        this.accessCodeInProgress.set(false);
+        this.accessGrant.set(grant);
+        this.accessCodeInput.set('');
+        this.notify('Accès Forge activé. Bonne exploration.', 'snack-success');
+      },
+      error: (error: HttpErrorResponse) => {
+        this.accessCodeInProgress.set(false);
+        this.notify(this.accessCodeErrorMessage(error), 'snack-error');
+        if ((error.error as ApiError | undefined)?.error === 'access_code_already_granted') {
+          // L'état a changé sous nos pieds : on le relit plutôt que de le deviner.
+          this.loadAccessGrant();
+        }
+      },
+    });
+  }
+
+  /** Traduit un refus de l'API de codes en message actionnable (jamais un code brut). */
+  private accessCodeErrorMessage(error: HttpErrorResponse): string {
+    const apiError = error.error as ApiError | undefined;
+    switch (apiError?.error) {
+      case 'access_code_invalid':
+        return "Ce code d'accès est inconnu. Vérifiez la saisie.";
+      case 'access_code_used':
+        return 'Ce code a déjà été utilisé.';
+      case 'access_code_expired':
+        return 'Ce code a expiré.';
+      case 'access_code_not_for_account':
+        return 'Ce code est réservé à un autre compte.';
+      case 'access_code_already_granted':
+        return 'Un accès offert est déjà en cours sur votre compte.';
+      default:
+        return "Impossible d'activer ce code.";
     }
   }
 
