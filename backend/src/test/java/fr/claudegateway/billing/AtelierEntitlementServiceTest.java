@@ -1,6 +1,7 @@
 package fr.claudegateway.billing;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.util.UUID;
@@ -12,6 +13,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import fr.claudegateway.access.AccessGrantService;
 
 /**
  * Tests unitaires de la règle du droit d'Atelier (F-40 / SF-40-01).
@@ -26,13 +29,16 @@ class AtelierEntitlementServiceTest {
     @Mock
     private SubscriptionService subscriptionService;
 
+    @Mock
+    private AccessGrantService accessGrantService;
+
     private AtelierEntitlementService service;
 
     private final UUID userId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
-        service = new AtelierEntitlementService(subscriptionService);
+        service = new AtelierEntitlementService(subscriptionService, accessGrantService);
     }
 
     private Subscription subscription(PlanCode plan, SubscriptionStatus status, SubscriptionStatus option) {
@@ -214,6 +220,56 @@ class AtelierEntitlementServiceTest {
                     SubscriptionStatus.ACTIVE);
 
             assertThat(service.isGrantedByOption(byok)).isFalse();
+        }
+    }
+
+    @Nested
+    @DisplayName("Accès offert par un code (F-62) — une quatrième source de droit, pas un plan")
+    class AccessCodeGrant {
+
+        @Test
+        void grantOpensAccessToAnAccountWithNoPlanAtAll() {
+            // Le cas d'usage de F-62 : une démonstration chez un prospect encore en essai.
+            when(accessGrantService.isGrantedWithGrace(userId)).thenReturn(true);
+
+            Subscription trial = subscription(null, SubscriptionStatus.TRIALING, null);
+
+            assertThat(service.isEntitled(trial)).isTrue();
+            // Le droit ne vient NI du plan NI de l'option : l'écran de facturation doit continuer à
+            // proposer l'option, l'accès offert n'étant pas un achat.
+            assertThat(service.isIncludedInPlan(trial)).isFalse();
+            assertThat(service.isGrantedByOption(trial)).isFalse();
+        }
+
+        @Test
+        void expiredGrantClosesAccessWithoutAnythingHavingRun() {
+            // Rien n'a été exécuté entre-temps : le droit se ferme parce que le terme est passé.
+            when(accessGrantService.isGrantedWithGrace(userId)).thenReturn(false);
+
+            assertThat(service.isEntitled(subscription(null, SubscriptionStatus.TRIALING, null)))
+                    .isFalse();
+        }
+
+        @Test
+        void grantOnASoloPlanDoesNotChangeWhereTheRightComesFrom() {
+            // Un abonné Solo à qui l'on offre 24 h : il obtient le droit, et son plan reste Solo —
+            // c'est ce qui fait qu'il n'y a rien à restaurer au terme.
+            when(accessGrantService.isGrantedWithGrace(userId)).thenReturn(true);
+
+            Subscription solo = subscription(PlanCode.SOLO, SubscriptionStatus.ACTIVE, null);
+
+            assertThat(service.isEntitled(solo)).isTrue();
+            assertThat(solo.getPlanCode()).isEqualTo(PlanCode.SOLO);
+            assertThat(solo.getAtelierOptionStatus()).isNull();
+        }
+
+        @Test
+        void goldNeedsNoGrantAndNoneIsEvenConsulted() {
+            // Non-régression : un abonné Gold ne doit pas dépendre du service d'accès offert.
+            Subscription gold = subscription(PlanCode.GOLD, SubscriptionStatus.ACTIVE, null);
+
+            assertThat(service.isEntitled(gold)).isTrue();
+            verifyNoInteractions(accessGrantService);
         }
     }
 }

@@ -39,6 +39,8 @@ class AtelierAccessServiceTest {
 
     @Mock private CurrentUser currentUser;
     @Mock private SubscriptionService subscriptionService;
+    /** F-62 : aucun accès offert par défaut — on teste ici le droit issu du plan et de l'option. */
+    @Mock private fr.claudegateway.access.AccessGrantService accessGrantService;
 
     private AtelierAccessService service;
 
@@ -46,7 +48,8 @@ class AtelierAccessServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new AtelierAccessService(currentUser, new AtelierEntitlementService(subscriptionService));
+        service = new AtelierAccessService(currentUser,
+                new AtelierEntitlementService(subscriptionService, accessGrantService));
     }
 
     private AuthenticatedUser principal(UserRole role) {

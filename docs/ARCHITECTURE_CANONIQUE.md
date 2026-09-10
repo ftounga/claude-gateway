@@ -518,6 +518,39 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     **`POST .../governance/{packageId}/apply`**, **`DELETE .../governance/{packageId}`** (JWT, accès
     Atelier).
 
+- **access_codes** — les **codes d'accès à durée limitée** (F-62 / SF-62-01, migration `067`). Un
+  code émis par l'ADMIN ouvre à qui le saisit le **droit** d'accès à la Forge pendant 24 h.
+  - `access_codes` : `id (uuid)`, `code_hash (varchar 64, unique)`, `label (varchar 120)`,
+    `assigned_email (varchar 255, nullable)`, `granted_plan_code (varchar 32)`,
+    `duration_hours (int)`, `valid_until`, `created_by_user_id (uuid)`,
+    `redeemed_by_user_id (uuid, nullable)`, `redeemed_at`, `granted_until`,
+    `previous_plan_code (varchar 32)`, `previous_status (varchar 16)`, `created_at`, `updated_at`.
+    Index `(redeemed_by_user_id, granted_until)`.
+  - **Rien n'est écrit dans `subscriptions`.** Le code ouvre un droit **en surcouche**, à côté du
+    plan, sans jamais l'écraser : `plan_code` appartient au webhook Stripe, et un code qui y
+    écrirait finirait par changer ce qu'un client paie. C'est aussi ce qui fait qu'il n'y a **rien à
+    restaurer** au terme — le plan précédent n'a jamais été quitté. Il est tout de même recopié dans
+    `previous_plan_code` / `previous_status` comme **trace**, pour que l'administration lise « ce
+    compte reviendra à SOLO » sans recouper deux tables.
+  - **L'expiration est une comparaison, pas un événement** : passé `granted_until`, le droit se
+    ferme. Aucun job planifié n'existe, délibérément — l'exigence est que le retour survienne « même
+    si personne ne se connecte », et un cron peut ne pas tourner là où une comparaison ne le peut
+    pas. L'état d'un code (`ISSUED` / `ACTIVE` / `ENDED` / `EXPIRED`) est **dérivé** de ses dates,
+    jamais stocké, pour la même raison.
+  - **Grâce de tour** (`app.access-code.grace-minutes`, défaut 15) : le contrôle d'accès à la Forge
+    tolère le terme + grâce, parce qu'il est rejoué à chaque requête d'un tour (relances du runner,
+    flux d'événements) et que fermer à la seconde exacte couperait un tour engagé. La grâce n'ajoute
+    aucun jeton.
+  - **Aucun quota n'est modifié** : comme l'option Forge de F-40, un code ouvre l'accès, il n'ajoute
+    pas de tokens.
+  - `code_hash` seul est stocké : le code en clair est renvoyé **une fois** à l'émission, jamais
+    persisté ni journalisé.
+  - **Isolation** : toute lecture d'un droit filtre sur `redeemed_by_user_id`, en tête de l'index ;
+    aucune méthode de repository ne lit un droit sans le nommer. La liste complète est réservée à
+    l'ADMIN (`AdminService.assertAdmin()`).
+  - Endpoints **`POST/GET /admin/access-codes`** (ADMIN) et **`POST /access-code/redeem`**,
+    **`GET /access-code/grant`** (JWT).
+
 - **runner_hosts** — le **poste** (F-48 / SF-48-01, migration `064`). Une machine connectée, avec
   **une racine**, **un runner** et **un seul appairage** ; les projets deviennent des dossiers sous
   cette racine. C'est le déplacement d'unité de F-48 : jusque-là, chaque dossier exigeait son code
@@ -682,7 +715,7 @@ Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 rée
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations via `user_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
 
 ---
 

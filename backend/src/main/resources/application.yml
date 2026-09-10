@@ -48,6 +48,19 @@ app:
   admin:
     # Super-admin (F-20) : cet e-mail est autorisé sur l'API admin et promu ADMIN au démarrage.
     super-admin-email: ${SUPER_ADMIN_EMAIL:ntounga@gmail.com}
+  access-code:
+    # Codes d'accès à durée limitée (F-62). Un code émis par l'ADMIN ouvre le DROIT d'accès à la
+    # Forge — jamais un plan, jamais un quota, jamais un abonnement Stripe.
+    # Durée du droit ouvert par un code. FIGÉE dans la ligne à l'émission : la changer ici n'altère
+    # aucun code déjà remis à quelqu'un.
+    duration-hours: ${APP_ACCESS_CODE_DURATION_HOURS:24}
+    # Durée de vie d'un code NON consommé. C'est le « daté » de la spec : un code oublié dans un
+    # e-mail finit par ne plus rien valoir.
+    validity-days: ${APP_ACCESS_CODE_VALIDITY_DAYS:30}
+    # Grâce de tour. Le droit de Forge est relu à CHAQUE requête d'un tour (relances du runner, flux
+    # d'événements) ; fermer la porte à la seconde du terme couperait un tour engagé en plein
+    # milieu. La grâce laisse finir ce qui était commencé — elle n'ajoute aucun jeton.
+    grace-minutes: ${APP_ACCESS_CODE_GRACE_MINUTES:15}
   upload:
     # Liste blanche des types MIME acceptés (types supportés par Claude) et plafond de taille (F-04).
     # Décision réversible : ajustable sans changement de code.

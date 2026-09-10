@@ -12,6 +12,11 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
+import fr.claudegateway.access.AccessCodeAlreadyGrantedException;
+import fr.claudegateway.access.AccessCodeAlreadyUsedException;
+import fr.claudegateway.access.AccessCodeExpiredException;
+import fr.claudegateway.access.AccessCodeInvalidException;
+import fr.claudegateway.access.AccessCodeNotForAccountException;
 import fr.claudegateway.admin.AdminForbiddenException;
 import fr.claudegateway.governance.GovernancePackageConflictException;
 import fr.claudegateway.governance.GovernancePackageNotFoundException;
@@ -116,6 +121,50 @@ public class GlobalExceptionHandler {
         log.debug("Accès Atelier refusé : ni admin ni détenteur du droit d'Atelier (F-40)");
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(new ErrorResponse("atelier_forbidden", ex.getMessage()));
+    }
+
+    // --------------------------------------------- Codes d'accès à durée limitée (F-62)
+    //
+    // Les refus sont DISTINCTS, à dessein. Un code consommé ou périmé ne vaut plus rien : les
+    // confondre avec « inconnu » ne protégerait rien et enverrait, à quelqu'un qui tient un code
+    // parfaitement réel, un message qu'il ne saurait pas quoi faire.
+
+    @ExceptionHandler(AccessCodeInvalidException.class)
+    public ResponseEntity<ErrorResponse> handleAccessCodeInvalid(AccessCodeInvalidException ex) {
+        // Le code saisi n'est jamais journalisé : c'est un porteur de valeur.
+        log.debug("Code d'accès inconnu");
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(new ErrorResponse("access_code_invalid", ex.getMessage()));
+    }
+
+    @ExceptionHandler(AccessCodeAlreadyUsedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessCodeUsed(AccessCodeAlreadyUsedException ex) {
+        log.debug("Code d'accès déjà consommé");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("access_code_used", ex.getMessage()));
+    }
+
+    @ExceptionHandler(AccessCodeExpiredException.class)
+    public ResponseEntity<ErrorResponse> handleAccessCodeExpired(AccessCodeExpiredException ex) {
+        log.debug("Code d'accès périmé avant consommation");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("access_code_expired", ex.getMessage()));
+    }
+
+    @ExceptionHandler(AccessCodeNotForAccountException.class)
+    public ResponseEntity<ErrorResponse> handleAccessCodeNotForAccount(
+            AccessCodeNotForAccountException ex) {
+        log.debug("Code d'accès nominatif saisi par un autre compte");
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ErrorResponse("access_code_not_for_account", ex.getMessage()));
+    }
+
+    @ExceptionHandler(AccessCodeAlreadyGrantedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessCodeAlreadyGranted(
+            AccessCodeAlreadyGrantedException ex) {
+        log.debug("Accès offert déjà en cours : le cumul de codes est hors périmètre (F-62)");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("access_code_already_granted", ex.getMessage()));
     }
 
     @ExceptionHandler(UserNotFoundException.class)

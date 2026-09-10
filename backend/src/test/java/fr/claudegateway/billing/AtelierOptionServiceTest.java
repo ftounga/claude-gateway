@@ -42,6 +42,8 @@ class AtelierOptionServiceTest {
     @Mock private SubscriptionService subscriptionService;
     @Mock private SubscriptionRepository subscriptionRepository;
     @Mock private BillingProvider billingProvider;
+    /** F-62 : aucun accès offert par défaut — l'option reste la seule source de droit testée ici. */
+    @Mock private fr.claudegateway.access.AccessGrantService accessGrantService;
 
     private AtelierOptionService service;
 
@@ -55,7 +57,7 @@ class AtelierOptionServiceTest {
 
     private void withProperties(BillingProperties props) {
         service = new AtelierOptionService(subscriptionService, subscriptionRepository,
-                new AtelierEntitlementService(subscriptionService), billingProvider, props);
+                new AtelierEntitlementService(subscriptionService, accessGrantService), billingProvider, props);
     }
 
     @BeforeEach
