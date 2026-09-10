@@ -466,6 +466,58 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     côté serveur via le catalogue `TopUpCatalog`, jamais depuis le payload). Endpoints top-up : **`GET /billing/topups`**,
     **`POST /billing/topup/checkout`** (authentifiés) ; crédit appliqué via le webhook signé **`POST /webhook/stripe`**.
 
+- **governance_packages / governance_package_files** — le **catalogue publié** (F-51 / SF-51-01,
+  migration `065`). Un **paquet de gouvernance** apporte quatre choses, et rien d'autre : des
+  **règles** (texte ajouté à la consigne système du projet), des **contrôles** (identifiants de
+  composants du serveur, branchés sur les crochets de F-50), des **gabarits** et des **skills** — ces
+  deux derniers étant des fichiers déposés dans le projet.
+  - `governance_packages` : `id (uuid)`, `slug (varchar 64, unique, immuable)`, `name (varchar 120)`,
+    `summary (varchar 500)`, `rules (text)`, `control_ids (varchar 1000, liste à plat)`,
+    `version (int)`, `published (boolean)`, `published_at`, `created_at`, `updated_at`. Index
+    `(published)`.
+  - `governance_package_files` : `id (uuid)`, `package_id (uuid)`, `sort_order (int)`,
+    `path (varchar 255)`, `kind (varchar 16 : SKILL | TEMPLATE)`, `content (text)`, `created_at`.
+    Index `(package_id, sort_order)`. La colonne s'appelle `sort_order` et non `position` :
+    `POSITION` est une fonction SQL standard, donc réservée pour H2.
+  - **Pas de `user_id`, et c'est délibéré** : un paquet est un **contenu produit**, comme un plan
+    tarifaire — il n'appartient au dossier de personne. L'écriture est réservée à l'admin
+    (`AdminService.assertAdmin()`, F-20) ; la lecture publique est bornée aux paquets **publiés**.
+  - **Un paquet ne porte pas de code.** Il cite des identifiants de contrôles, et la publication
+    **refuse** un identifiant que le registre serveur ne connaît pas. Rien ne charge de script, ne
+    lance de processus, ni n'évalue une source reçue : c'est la limite héritée de F-50, et elle écarte
+    d'emblée la classe de failles qu'un catalogue de crochets ouvert introduirait.
+  - Endpoints **`GET/POST /admin/governance/packages`**, **`PUT/DELETE /admin/governance/packages/{id}`**,
+    **`POST /admin/governance/packages/{id}/publish|unpublish`**, **`GET /admin/governance/controls`**
+    (ADMIN) et **`GET /governance/packages`** (JWT — catalogue publié, **sans** le contenu des
+    fichiers).
+
+- **governance_selections / governance_activations** — le **catalogue personnel** et son application
+  (F-51 / SF-51-02, migration `066`). Deuxième étage du catalogue : l'admin publie, **chacun
+  compose**.
+  - `governance_selections` : `id (uuid)`, `user_id (uuid)`, `package_id (uuid)`,
+    `default_applied (boolean)`, `created_at`, `updated_at`. Unicité `(user_id, package_id)`.
+    Retenir un paquet **n'active rien** : c'est un geste de bibliothèque. Le seul automatisme est
+    `default_applied`, qui fait embarquer le paquet par les projets **à venir** de cet utilisateur.
+  - `governance_activations` : `id (uuid)`, `user_id (uuid)`, `workspace_id (uuid)`,
+    `package_id (uuid)`, `applied_version (int)`, `status (varchar 16 : PENDING | APPLIED)`,
+    `applied_at`, `created_at`, `updated_at`. Unicité `(user_id, workspace_id, package_id)`.
+    Tant que la ligne existe, les règles du paquet rejoignent la consigne système du projet et ses
+    contrôles se branchent sur les crochets de F-50 (SF-51-04).
+  - `applied_version` **fige** la version appliquée : un projet peut rester en v2 pendant que le
+    paquet passe en v3. Rien ne met à jour un projet dans le dos de son propriétaire.
+  - **Isolation** : `user_id` est **en tête** de chaque index d'unicité et aucune méthode de
+    repository n'existe sans lui — c'est une propriété des interfaces, pas une précaution des
+    appelants. Le projet est en outre vérifié comme **possédé** avant toute écriture, et les
+    activations sont effacées avec lui.
+  - **Le dépôt ne détruit jamais rien** (SF-51-03) : il crée ce qui manque et **laisse tel quel** tout
+    fichier déjà présent, contenu différent compris. La désactivation retire les règles et les
+    contrôles, mais **laisse les fichiers** : ils appartiennent au projet dès qu'ils y sont.
+  - Endpoints **`GET /governance/selection`**, **`PUT/DELETE /governance/selection/{packageId}`**,
+    **`GET /workspaces/{id}/governance`**, **`GET .../governance/{packageId}/preview`** (l'annonce :
+    ce qui sera écrit et où, **sans rien écrire**), **`POST .../governance/{packageId}`**,
+    **`POST .../governance/{packageId}/apply`**, **`DELETE .../governance/{packageId}`** (JWT, accès
+    Atelier).
+
 - **runner_hosts** — le **poste** (F-48 / SF-48-01, migration `064`). Une machine connectée, avec
   **une racine**, **un runner** et **un seul appairage** ; les projets deviennent des dossiers sous
   cette racine. C'est le déplacement d'unité de F-48 : jusque-là, chaque dossier exigeait son code
@@ -622,7 +674,7 @@ Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 rée
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/runner_tokens/runner_pairing_codes/runner_audit via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exception documentée : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
 
 ---
 
