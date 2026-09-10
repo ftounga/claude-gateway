@@ -48,7 +48,9 @@ class WorkspaceServiceTest {
                 new AtelierProperties("in-memory", null, "atelier/", maxTotal, maxEntries, maxFile, null, null, null, null, null, null, true),
                 atelierMessageRepository,
                 org.mockito.Mockito.mock(
-                        fr.claudegateway.governance.GovernanceActivationRepository.class));
+                        fr.claudegateway.governance.GovernanceActivationRepository.class),
+                org.mockito.Mockito.mock(
+                        org.springframework.context.ApplicationEventPublisher.class));
     }
 
     private WorkspaceService service() {

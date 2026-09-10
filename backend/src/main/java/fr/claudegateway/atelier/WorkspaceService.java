@@ -13,6 +13,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,15 +44,29 @@ public class WorkspaceService {
     private final AtelierProperties properties;
     private final AtelierMessageRepository atelierMessageRepository;
     private final GovernanceActivationRepository governanceActivations;
+    private final ApplicationEventPublisher events;
 
     public WorkspaceService(WorkspaceRepository workspaceRepository, WorkspaceStorage storage,
             AtelierProperties properties, AtelierMessageRepository atelierMessageRepository,
-            GovernanceActivationRepository governanceActivations) {
+            GovernanceActivationRepository governanceActivations, ApplicationEventPublisher events) {
         this.workspaceRepository = workspaceRepository;
         this.storage = storage;
         this.properties = properties;
         this.atelierMessageRepository = atelierMessageRepository;
         this.governanceActivations = governanceActivations;
+        this.events = events;
+    }
+
+    /**
+     * Annonce la création d'un projet (F-51 / SF-51-03).
+     *
+     * <p>Un seul endroit pour les trois portes d'entrée — archive, dépôt distant, projet local :
+     * un quatrième chemin de création oublierait sinon d'embarquer la gouvernance par défaut, et
+     * ça ne se verrait pas.</p>
+     */
+    private Workspace announceCreated(Workspace workspace) {
+        events.publishEvent(new WorkspaceCreatedEvent(workspace.getUserId(), workspace.getId()));
+        return workspace;
     }
 
     /** Crée un workspace à partir d'un zip (décompression sécurisée) et renvoie son résultat. */
@@ -69,6 +84,7 @@ public class WorkspaceService {
         for (Map.Entry<String, byte[]> entry : files.entrySet()) {
             storage.putFile(prefix + entry.getKey(), entry.getValue(), "text/plain; charset=utf-8");
         }
+        announceCreated(workspace);
         return new CreatedWorkspace(workspace, files.size());
     }
 
@@ -92,7 +108,7 @@ public class WorkspaceService {
     @Transactional
     public Workspace createFromGit(UUID userId, String name, String repoUrl, String owner, String repo,
             String branch) {
-        return workspaceRepository.save(Workspace.builder()
+        return announceCreated(workspaceRepository.save(Workspace.builder()
                 .userId(userId)
                 .name(name == null || name.isBlank() ? repo : name.trim())
                 .source(WorkspaceSource.GIT)
@@ -100,7 +116,7 @@ public class WorkspaceService {
                 .gitOwner(owner)
                 .gitRepo(repo)
                 .gitBranch(branch)
-                .build());
+                .build()));
     }
 
     /**
@@ -126,7 +142,7 @@ public class WorkspaceService {
         if (cleaned.length() > MAX_NAME_LENGTH) {
             throw new InvalidArchiveException("Nom de projet trop long (255 caractères au maximum).");
         }
-        return workspaceRepository.save(Workspace.builder()
+        return announceCreated(workspaceRepository.save(Workspace.builder()
                 .userId(userId)
                 .name(cleaned)
                 .source(WorkspaceSource.LOCAL)
@@ -137,7 +153,7 @@ public class WorkspaceService {
                 // la première commande n'attend plus un clic. La porte reste activable projet par
                 // projet ; le journal d'audit et le coupe-circuit, eux, ne se désactivent pas.
                 .agentAskBeforeBash(false)
-                .build());
+                .build()));
     }
 
     /**

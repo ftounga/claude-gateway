@@ -47,7 +47,9 @@ class WorkspaceServiceLocalTest {
         return new WorkspaceService(workspaceRepository, storage,
                 new AtelierProperties(null, null, null, null, null, null, null, null, null, null, null, null, true), messageRepository,
                 org.mockito.Mockito.mock(
-                        fr.claudegateway.governance.GovernanceActivationRepository.class));
+                        fr.claudegateway.governance.GovernanceActivationRepository.class),
+                org.mockito.Mockito.mock(
+                        org.springframework.context.ApplicationEventPublisher.class));
     }
 
     private Workspace localWorkspace() {
