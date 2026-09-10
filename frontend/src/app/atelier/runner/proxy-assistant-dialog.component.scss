@@ -1,0 +1,260 @@
+// Assistant proxy (F-55 / SF-55-01) — jetons du design system (--cg-*) uniquement.
+// La grammaire visuelle est celle du parcours de mise en service (SF-45-05) : mêmes en-têtes
+// d'étape, mêmes blocs de commande, mêmes branches. L'assistant s'ouvre par-dessus lui ; deux
+// grammaires superposées se liraient comme deux produits.
+
+.proxy-intro {
+  margin: 0 0 var(--cg-space-3);
+  color: var(--cg-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.proxy-step {
+  border-top: 1px solid var(--cg-divider);
+}
+
+.proxy-step-heading {
+  margin: 0;
+}
+
+.proxy-step-head {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  width: 100%;
+  padding: var(--cg-space-3) 0;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.proxy-step-head-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.proxy-step-title {
+  display: block;
+  font-family: var(--cg-font-heading);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--cg-text-primary);
+}
+
+.proxy-step-summary {
+  display: block;
+  margin-top: var(--cg-space-1);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+
+  code {
+    font-family: var(--cg-font-mono);
+  }
+}
+
+.proxy-step-chevron {
+  flex: none;
+  color: var(--cg-text-secondary);
+}
+
+.proxy-step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--cg-accent);
+  color: #fff;
+  font-family: var(--cg-font-body);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.proxy-step-body {
+  padding-bottom: var(--cg-space-3);
+}
+
+.proxy-hint {
+  margin: 0 0 var(--cg-space-2);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Les deux pannes, côte à côte : c'est leur différence qui compte (D5). */
+.proxy-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.proxy-branch {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) 0;
+
+  & + & {
+    border-top: 1px solid var(--cg-divider);
+  }
+}
+
+.proxy-branch-key {
+  flex: none;
+  min-width: 44px;
+  padding: var(--cg-space-1) var(--cg-space-2);
+  border-radius: 4px;
+  font-family: var(--cg-font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  color: #fff;
+}
+
+.proxy-branch-warn {
+  background: var(--cg-accent);
+}
+
+.proxy-branch-error {
+  background: var(--cg-error);
+}
+
+.proxy-branch-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.proxy-note-title,
+.proxy-branch-title,
+.proxy-verdict-title {
+  margin: 0 0 var(--cg-space-1);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cg-text-primary);
+
+  code {
+    font-family: var(--cg-font-mono);
+  }
+}
+
+.proxy-note-text,
+.proxy-branch-text {
+  margin: 0 0 var(--cg-space-2);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+
+  code {
+    font-family: var(--cg-font-mono);
+  }
+}
+
+.proxy-command-label {
+  margin: 0 0 var(--cg-space-1);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.proxy-command {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2);
+  margin-bottom: var(--cg-space-2);
+  border-radius: 8px;
+  background: var(--cg-navy);
+
+  code {
+    flex: 1;
+    font-family: var(--cg-font-mono);
+    font-size: 12px;
+    line-height: 1.5;
+    color: #fff;
+    // Les commandes de déclaration tiennent sur deux lignes : les écraser en une seule les rendrait
+    // fausses à la copie.
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .mat-mdc-icon-button {
+    flex: none;
+    color: #fff;
+  }
+}
+
+.proxy-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  margin-bottom: var(--cg-space-2);
+  border: 1px solid var(--cg-divider);
+  border-radius: 8px;
+  background: var(--cg-surface-2);
+}
+
+.proxy-inline-icon {
+  flex: none;
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}
+
+.proxy-field {
+  display: block;
+  width: 100%;
+  margin-top: var(--cg-space-1);
+}
+
+.proxy-error {
+  margin: 0 0 var(--cg-space-2);
+  color: var(--cg-error);
+  font-size: 12px;
+  line-height: 1.5;
+
+  code {
+    font-family: var(--cg-font-mono);
+  }
+}
+
+.proxy-question {
+  margin: 0 0 var(--cg-space-2);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cg-text-primary);
+
+  code {
+    font-family: var(--cg-font-mono);
+  }
+}
+
+.proxy-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cg-space-2);
+
+  code {
+    font-family: var(--cg-font-mono);
+  }
+}
+
+/* La conclusion du test : ce qu'on a appris, et ce qu'il faut en faire. */
+.proxy-verdict {
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border: 1px solid var(--cg-divider);
+  border-radius: 8px;
+  background: var(--cg-surface-2);
+}
+
+.proxy-reset {
+  margin-top: var(--cg-space-1);
+}

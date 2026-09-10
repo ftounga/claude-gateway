@@ -165,6 +165,17 @@
                       <mat-icon>content_copy</mat-icon>
                     </button>
                   </div>
+                  <!-- F-55 / SF-55-01 : F-45 nommait le remède et s'arrêtait là. L'assistant prend
+                       la suite — trouver l'adresse du proxy, puis savoir si un relais peut réussir. -->
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    class="pairing-action"
+                    (click)="openProxyAssistant()"
+                  >
+                    <mat-icon>route</mat-icon>
+                    Ouvrir l'assistant proxy
+                  </button>
                 </div>
               </li>
             }
@@ -216,6 +227,17 @@
                       ligne <code>PROXY hote:port</code>.
                     </p>
                   }
+                  <!-- F-55 / SF-55-01 : l'assistant dit OÙ lire l'adresse sur ce système — fichier
+                       PAC compris — et compose la déclaration avec l'adresse trouvée. -->
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    class="pairing-action"
+                    (click)="openProxyAssistant()"
+                  >
+                    <mat-icon>route</mat-icon>
+                    Ouvrir l'assistant proxy
+                  </button>
                 </div>
               </li>
             }
