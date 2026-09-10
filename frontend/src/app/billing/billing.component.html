@@ -293,6 +293,67 @@
     </section>
   }
 
+  <!-- ===== Code d'accès (F-62 / SF-62-02) : « payer, ou entrer un code » =====
+       Placée SOUS les abonnements : le chemin normal est de payer, le code est l'alternative.
+       En tête, l'exception serait la première chose lue. -->
+  @if (hasAccessGrant()) {
+    <section class="billing__notice" aria-label="Accès Forge offert">
+      <div>
+        <h2 class="billing__notice-title">Accès Forge offert</h2>
+        <p class="billing__notice-text">
+          @if (accessGrant()?.grantedUntil; as until) {
+            Jusqu'au {{ until | date: 'longDate' }} à {{ until | date: 'HH:mm' }}.
+          }
+          <strong>Votre offre et votre quota de tokens n'ont pas changé</strong> — un code ouvre
+          l'accès, il n'ajoute pas de tokens. À l'échéance, tout revient exactement comme avant.
+        </p>
+      </div>
+      <a mat-flat-button color="primary" class="billing__notice-cta" routerLink="/atelier">
+        Ouvrir la Forge
+      </a>
+    </section>
+  } @else if (canEnterAccessCode()) {
+    <section class="billing__section" aria-label="Code d'accès">
+      <div class="billing__section-head">
+        <h2>Vous avez un code d'accès ?</h2>
+        <p>
+          Un code ouvre la Forge pendant 24 h. Il ne change ni votre offre, ni votre quota de
+          tokens : à l'échéance, tout revient comme avant.
+        </p>
+      </div>
+
+      <article class="billing__card billing__card--option">
+        <div class="billing__option-main">
+          <mat-form-field appearance="outline" class="billing__code-field">
+            <mat-label>Code d'accès</mat-label>
+            <input
+              matInput
+              name="accessCode"
+              autocomplete="off"
+              placeholder="FORGE-XXXX-XXXX"
+              [ngModel]="accessCodeInput()"
+              (ngModelChange)="onAccessCodeInput($event)"
+              (keyup.enter)="redeemAccessCode()"
+            />
+          </mat-form-field>
+        </div>
+
+        <div class="billing__option-action">
+          <button
+            mat-flat-button
+            color="primary"
+            type="button"
+            class="billing__card-cta"
+            [disabled]="accessCodeSubmitDisabled()"
+            (click)="redeemAccessCode()"
+          >
+            @if (accessCodeInProgress()) { Activation… } @else { Activer }
+          </button>
+        </div>
+      </article>
+    </section>
+  }
+
   <!-- ===== Recharges ponctuelles (toujours visibles) ===== -->
   @if (topUpPacks().length > 0) {
     <section class="billing__section" aria-label="Recharges ponctuelles">

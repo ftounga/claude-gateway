@@ -195,3 +195,75 @@ Artefacts imposés par `CLAUDE.md` §« Séquence obligatoire par subfeature ».
 - [x] CI post-merge à vérifier sur `main`
 - [x] Débloque **SF-62-02** et **SF-62-03** (contrat d'API figé)
 - [x] Statut F-62 mis à jour une fois les trois subfeatures livrées
+
+---
+
+## SF-62-02 — Review checklist — **VERDICT : PASS** (aucun bloquant rouge)
+
+### Prérequis
+- [x] Mini-spec lue avant le code · template PR rempli · branche créée depuis `origin/main` (b488b25,
+      SF-62-01 déjà mergée)
+
+### Sécurité — BLOQUANT
+- [x] **Isolation** : l'écran n'envoie **aucun** identifiant d'utilisateur ; le droit affiché vient
+      du serveur, filtré sur le `user_id` du JWT.
+- [x] Aucune donnée sensible : le code saisi n'est ni journalisé ni conservé après succès (le champ
+      est vidé) ; aucun `console.log`.
+- [x] Rôles : sans objet côté écran — les endpoints consommés sont ceux de l'utilisateur.
+- [x] Aucune stacktrace affichée : chaque refus est traduit en français, jamais un code brut.
+
+### Cohérence mini-spec — BLOQUANT
+- [x] Saisie **sur l'écran du plan**, sous les abonnements (D7), jamais à la connexion.
+- [x] Les 8 critères d'acceptation sont couverts.
+- [x] Rien hors périmètre : aucune section existante modifiée, aucune route ajoutée.
+
+### Tests — BLOQUANT
+- [x] Tests de composant : proposition de la saisie, bandeau à la place quand un droit est en cours,
+      succès, champ vide sans appel réseau, **un test par refus** (6), échec non bloquant du
+      chargement.
+- [x] Intégration : couverte côté backend (SF-62-01).
+- [x] **Tous les tests passent** : `1015 SUCCESS`, 0 échec.
+- [x] Les cas d'erreur du plan de test sont couverts un à un.
+
+### Architecture — BLOQUANT
+- [x] Aucune logique métier dans le template ; l'écran **ne recalcule jamais** l'expiration (D8), il
+      lit `active` tel que le serveur le renvoie.
+- [x] Aucune migration · aucun traitement IA · build vert (`npm run build`).
+
+### Design System — BLOQUANT
+- [x] **Couleurs** : aucune valeur en dur — uniquement des jetons `--cg-*` déjà en place. La section
+      réutilise `billing__notice` (bordure d'accent) et `billing__card--option`, tels quels.
+- [x] **Polices** : aucune déclaration de police ajoutée (héritées).
+- [x] **Material** : `mat-form-field appearance="outline"` + `matInput`, `mat-flat-button
+      color="primary"`, `MatSnackBar` pour les retours.
+- [x] **Espacements** : uniquement `var(--cg-space-*)` (multiples de 4 px).
+- [x] Aucun `window.alert/confirm/prompt`.
+- [x] Notifications via `MatSnackBar` ; aucune confirmation destructive nécessaire (activer un code
+      n'est pas destructif).
+- [x] Pas de table ⇒ pas de `mat-paginator`.
+- [x] **Passe de cohérence F-56 et identité SF-49-03 intactes** : aucun jeton, aucune classe et aucun
+      fichier de charte n'a été modifié.
+
+> Note non bloquante : `billing.component.scss` dépasse le budget de 4 kB à la compilation. Le
+> dépassement **préexiste** (5,35 kB avant, 5,55 kB après) ; ce n'est pas une régression introduite
+> ici et le build reste vert.
+
+### Qualité / documentation — non bloquant
+- [x] DTO requête/réponse distincts (`RedeemAccessCodeRequest` / `AccessGrantView`).
+- [x] Aucun ADR ni question ouverte concernée.
+
+**Aucun bloquant rouge → push autorisé.**
+
+---
+
+## SF-62-02 — Release checklist — **VERDICT : PASS**
+
+- [x] Review passée, aucun bloquant rouge
+- [x] Build + tests verts : `1015 SUCCESS` · `npm run build` OK
+- [x] Aucun conflit avec `main` ; branche créée depuis `origin/main` à jour (b488b25)
+- [x] Definition of Done : mini-spec respectée, critères d'acceptation validés
+- [x] Base de données : **sans objet** (aucune migration)
+- [x] Sécurité : aucun secret dans le diff ; isolation garantie côté serveur, l'écran n'envoie aucun
+      identifiant
+- [x] Documentation : contrat API déjà décrit en SF-62-01 ; aucune table créée ; pas d'ADR
+- [x] Post-merge : débloque rien de bloquant (SF-62-03 dépend de SF-62-01, déjà mergée)
