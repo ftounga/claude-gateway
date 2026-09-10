@@ -77,72 +77,40 @@ export NO_PROXY=".domaine-interne.local,localhost,127.0.0.1"
 
 ---
 
-## Le volet proxy — le relais local, pas à pas
+## Le volet proxy — désormais dans l'application
 
-À faire **uniquement** si l'étape 0 bis a donné 200 avec `--proxy-ntlm` ou `--proxy-negotiate`.
+**Ce protocole ne déroule plus les commandes : F-55 les a mises dans l'écran.** Quand l'étape 0
+renvoie un `407` ou une absence de route, l'application ouvre un **assistant proxy** par-dessus le
+parcours de mise en service — qui reste ouvert dessous, pour ne pas perdre le code d'appairage.
 
-**Pourquoi c'est nécessaire** : `java.net.http.HttpClient` n'a aucun support SSPI, et
-l'authentification Basic est désactivée sur les tunnels depuis Java 8u111. Le navigateur et `curl`
-s'authentifient avec la session Windows ; la JVM, jamais. Un relais local porte l'authentification
-à sa place et expose un proxy **sans authentification** sur `127.0.0.1`.
+Ce que l'assistant fait à ta place :
 
-### Windows — px
+- **il compose les commandes avec l'adresse que tu saisis**, au lieu de te laisser substituer
+  `hote:port` dans six endroits — c'est là qu'on se trompe une fois ;
+- **il force le proxy avec `-x`** plutôt que de dépendre de l'environnement du terminal : le cas
+  « absence de route » est précisément celui où rien n'y est déclaré ;
+- **il propose le bon relais** selon le poste *et* le verdict d'authentification — jamais `cntlm`
+  sur un poste en Kerberos, puisqu'il ne porte que NTLM ;
+- **il n'affiche les commandes de redirection du runner qu'après un `200` déclaré** sur le relais :
+  rediriger vers un relais qui ne porte rien reproduit la panne en donnant à croire qu'elle est
+  réparée ;
+- **aucun mot de passe n'entre dans le navigateur** : les identifiants d'une adresse collée sont
+  retirés, et `cntlm -H` hache le secret dans ton terminal.
 
-```bash
-winget install genotrance.px          # souvent bloqué : WinHTTP n'a pas de proxy configuré
-# sinon, binaire autonome :
-curl -sS --proxy-ntlm --proxy-user : -L \
-  https://api.github.com/repos/genotrance/px/releases/latest | grep browser_download_url
-curl -sS --proxy-ntlm --proxy-user : -L -o px.zip "<url windows-amd64>"
-unzip px.zip -d px && ./px/px.exe --proxy=hote:port --port=3128
-```
+**Ce qu'il faut encore savoir de tête** (le motif, pour l'expliquer au client) : la JVM n'a aucun
+support SSPI et l'authentification Basic est désactivée sur les tunnels depuis Java 8u111. `curl`
+s'authentifie avec la session Windows, la JVM jamais — d'où le relais local.
 
-### macOS — px (Apple Silicon) ou cntlm (Intel)
+**Ce que l'assistant ne couvre pas encore**, et qui reste à faire à la main :
 
-```bash
-# Apple Silicon : binaire publié
-curl -sS --proxy-ntlm --proxy-user : -L -o px.tar.gz "<url mac-arm64>"
-tar -xzf px.tar.gz && ./px --proxy=hote:port --port=3128
+- `api.github.com` bloqué par filtrage de catégorie → récupérer le binaire du relais depuis un autre
+  poste et le copier sur clé ;
+- Windows antérieur à 10 (1803) → pas de `tar` pour décompresser `px.zip`.
 
-# Intel : pas de binaire publié
-pip3 install --user px-proxy && px --proxy=hote:port --port=3128
-# ou, si Homebrew existe :
-brew install cntlm
-```
-
-### cntlm — l'alternative universelle
-
-`/etc/cntlm.conf` (ou `cntlm.ini` sous Windows) :
-
-```
-Username    <identifiant>
-Domain      <DOMAINE>
-Proxy       hote:port
-Listen      3128
-NoProxy     localhost, 127.0.0.*
-```
-
-Mot de passe **haché**, jamais en clair : `cntlm -H -d DOMAINE -u identifiant` produit les lignes
-`PassNTLMv2` à coller dans le fichier. Puis `cntlm -f` pour le lancer au premier plan.
-
-### Vérifier le relais, puis y rediriger le runner
-
-```bash
-# dans un SECOND terminal — le relais doit rester lancé
-curl -sS -o /dev/null -w "via le relais : %{http_code}\n" \
-  -x http://127.0.0.1:3128 https://portal.ng-itconsulting.com/api/actuator/health
-```
-
-**200 sans `--proxy-ntlm`** = le relais porte l'authentification. Alors seulement :
-
-```bash
-export HTTPS_PROXY=http://127.0.0.1:3128
-export HTTP_PROXY=http://127.0.0.1:3128
-```
-
-⚠️ Le relais doit **rester ouvert** tant que le runner tourne. Ferme-le, la connexion tombe.
-
----
+**Le `NO_PROXY` à la forme Windows (`;`) est désormais accepté par le runner** (SF-55-03) : découpé
+sur la seule virgule, il devenait une entrée unique ne correspondant à aucun hôte, et toutes les
+exclusions tombaient en silence. Le runner le signale sans en faire une erreur — mais `curl`, lui,
+attend toujours des virgules.
 
 ## Étape 1 — Le poste
 
@@ -171,6 +139,13 @@ export HTTP_PROXY=http://127.0.0.1:3128
 
 13. ☐ Le **guide d'accueil** se déclenche-t-il à la première connexion ?
 14. ☐ La **vue d'ensemble** montre-t-elle le poste, son système, son interpréteur, ses projets ?
+14 bis. ☐ **L'appartenance se voit-elle ?** Chaque poste porte une couleur et des initiales, reprises
+    dans la liste des projets **et dans la barre du terminal**. Deux clients ouverts côte à côte
+    doivent se distinguer d'un coup d'œil — c'est le point à juger à l'œil, il n'a jamais été vu
+    en vrai.
+14 ter. ☐ Le menu dit-il **Forge** partout, et plus jamais « Atelier » ?
+14 quater. ☐ Le runner annonce-t-il au démarrage **par où il sort** (direct, proxy, relais local) et
+    sous quels droits ?
 15. ☐ Le **chatbot d'aide** répond-il à « comment configurer un proxy » ?
 16. ☐ Activer un **paquet de gouvernance** → l'écran annonce-t-il ce qu'il va écrire, et où ?
 
