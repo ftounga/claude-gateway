@@ -245,6 +245,13 @@
                       }
                     </p>
                   }
+                  @if (authVerdict() !== 'refused') {
+                    <!-- F-55 / SF-55-02 : le remède nommé devient un geste. -->
+                    <button mat-flat-button color="primary" type="button" (click)="openStep('relay')">
+                      Installer le relais
+                      <mat-icon>arrow_forward</mat-icon>
+                    </button>
+                  }
                   <button
                     mat-button
                     type="button"
@@ -259,6 +266,292 @@
             </div>
           </li>
         </ul>
+      </div>
+    }
+  </section>
+  <!-- Étape C — le relais local (F-55 / SF-55-02). Ce que F-45 nommait sans le montrer. -->
+  <section class="proxy-step">
+    <h3 class="proxy-step-heading">
+      <button
+        type="button"
+        class="proxy-step-head"
+        [attr.aria-expanded]="isOpen('relay')"
+        (click)="openStep('relay')"
+      >
+        <span class="proxy-step-number">3</span>
+        <span class="proxy-step-head-text">
+          <span class="proxy-step-title">Installer et lancer le relais local</span>
+          <span class="proxy-step-summary">
+            Il porte l'authentification que la machine virtuelle Java ne sait pas porter.
+          </span>
+        </span>
+        <mat-icon class="proxy-step-chevron">
+          {{ isOpen('relay') ? 'expand_less' : 'expand_more' }}
+        </mat-icon>
+      </button>
+    </h3>
+
+    @if (isOpen('relay')) {
+      <div class="proxy-step-body">
+        @if (authVerdict() === 'unknown') {
+          <p class="proxy-hint">
+            Faites d'abord le test de l'étape 2 : c'est lui qui dit si un relais peut réussir, et
+            lequel. Installer avant de savoir, c'est installer deux fois.
+          </p>
+        } @else if (authVerdict() === 'refused') {
+          <p class="proxy-hint">
+            Rien à installer ici. Un relais s'authentifierait exactement comme les deux tests de
+            l'étape 2, et échouerait pareil : ce proxy veut des identifiants applicatifs, ce qui est
+            une demande à votre DSI.
+          </p>
+        } @else {
+          <p class="proxy-hint">
+            Le relais tourne sur votre poste, s'authentifie auprès du proxy d'entreprise avec votre
+            session, et expose sur <code>{{ relayUrl }}</code> un proxy
+            <strong>sans authentification</strong> — c'est-à-dire un proxy que la machine virtuelle
+            Java sait employer. Il ne demande aucun droit administrateur.
+          </p>
+
+          @for (relay of relays(); track relay.title) {
+            <div class="proxy-relay">
+              <p class="proxy-relay-title">{{ relay.title }}</p>
+              <p class="proxy-relay-when">{{ relay.when }}</p>
+              @for (step of relay.commands; track step.command) {
+                <p class="proxy-command-label">{{ step.purpose }}</p>
+                <div class="proxy-command">
+                  <code>{{ step.command }}</code>
+                  <button
+                    mat-icon-button
+                    type="button"
+                    matTooltip="Copier la commande"
+                    aria-label="Copier la commande d'installation du relais"
+                    (click)="copy(step.command, 'Commande')"
+                  >
+                    <mat-icon>content_copy</mat-icon>
+                  </button>
+                </div>
+              }
+            </div>
+          }
+
+          @if (cntlmProposed()) {
+            <!-- La configuration de cntlm, et sa seule vraie difficulté : le mot de passe. -->
+            <div class="proxy-note">
+              <mat-icon class="proxy-inline-icon">lock</mat-icon>
+              <div>
+                <p class="proxy-note-title">Le mot de passe est <em>haché</em>, jamais en clair</p>
+                <p class="proxy-note-text">
+                  La ligne <code>Password</code> en clair est ce que fait tout le monde — et c'est un
+                  mot de passe de domaine déposé en clair dans un fichier. La commande ci-dessous le
+                  demande <strong>dans le terminal</strong> et produit des lignes
+                  <code>PassNTLMv2</code> : ce sont elles qu'on colle dans la configuration. Rien
+                  n'est saisi dans cet écran, et rien n'en sort.
+                </p>
+              </div>
+            </div>
+
+            <div class="proxy-fields">
+              <mat-form-field appearance="outline" class="proxy-field">
+                <mat-label>Domaine</mat-label>
+                <input
+                  matInput
+                  type="text"
+                  name="relayDomain"
+                  [maxlength]="relayFieldMaxLength"
+                  [placeholder]="domainPlaceholder"
+                  [ngModel]="relayDomain()"
+                  (ngModelChange)="relayDomain.set($event)"
+                />
+              </mat-form-field>
+              <mat-form-field appearance="outline" class="proxy-field">
+                <mat-label>Identifiant</mat-label>
+                <input
+                  matInput
+                  type="text"
+                  name="relayUser"
+                  [maxlength]="relayFieldMaxLength"
+                  [placeholder]="userPlaceholder"
+                  [ngModel]="relayUser()"
+                  (ngModelChange)="relayUser.set($event)"
+                />
+              </mat-form-field>
+            </div>
+
+            <p class="proxy-command-label">
+              Produire le haché — le mot de passe est demandé dans le terminal, il n'est écrit nulle
+              part.
+            </p>
+            <div class="proxy-command">
+              <code>{{ cntlmHashCommand() }}</code>
+              <button
+                mat-icon-button
+                type="button"
+                matTooltip="Copier la commande"
+                aria-label="Copier la commande de hachage du mot de passe"
+                (click)="copy(cntlmHashCommand(), 'Commande')"
+              >
+                <mat-icon>content_copy</mat-icon>
+              </button>
+            </div>
+
+            <p class="proxy-command-label">
+              <code>cntlm.conf</code> — coller les lignes <code>PassNTLMv2</code> obtenues à la place
+              de tout mot de passe.
+            </p>
+            <div class="proxy-command">
+              <code>{{ cntlmConfig() }}</code>
+              <button
+                mat-icon-button
+                type="button"
+                matTooltip="Copier la configuration"
+                aria-label="Copier la configuration cntlm"
+                (click)="copy(cntlmConfig(), 'Configuration')"
+              >
+                <mat-icon>content_copy</mat-icon>
+              </button>
+            </div>
+
+            <p class="proxy-command-label">
+              Le haché ouvre le proxy : c'est un secret, et le fichier ne doit être lisible que par
+              vous.
+            </p>
+            <div class="proxy-command">
+              <code>chmod 600 cntlm.conf</code>
+              <button
+                mat-icon-button
+                type="button"
+                matTooltip="Copier la commande"
+                aria-label="Copier la commande de restriction des droits"
+                (click)="copy('chmod 600 cntlm.conf', 'Commande')"
+              >
+                <mat-icon>content_copy</mat-icon>
+              </button>
+            </div>
+          }
+
+          <button mat-flat-button color="primary" type="button" (click)="openStep('verify')">
+            Vérifier le relais
+            <mat-icon>arrow_forward</mat-icon>
+          </button>
+        }
+      </div>
+    }
+  </section>
+
+  <!-- Étape D — vérifier, PUIS rediriger (F-55 / SF-55-02, D3). L'ordre est la substance de
+       l'étape : rediriger vers un relais qui ne porte rien reproduit la panne de départ. -->
+  <section class="proxy-step">
+    <h3 class="proxy-step-heading">
+      <button
+        type="button"
+        class="proxy-step-head"
+        [attr.aria-expanded]="isOpen('verify')"
+        (click)="openStep('verify')"
+      >
+        <span class="proxy-step-number">4</span>
+        <span class="proxy-step-head-text">
+          <span class="proxy-step-title">Vérifier, puis rediriger le runner</span>
+          <span class="proxy-step-summary">Dans cet ordre : un relais non vérifié se voit trop tard.</span>
+        </span>
+        <mat-icon class="proxy-step-chevron">
+          {{ isOpen('verify') ? 'expand_less' : 'expand_more' }}
+        </mat-icon>
+      </button>
+    </h3>
+
+    @if (isOpen('verify')) {
+      <div class="proxy-step-body">
+        <p class="proxy-hint">
+          Laissez le relais tourner dans son terminal et ouvrez-en un <strong>second</strong>. Cette
+          commande ne porte <strong>aucune</strong> option d'authentification — c'est tout son
+          objet : un <code>200</code> prouve que le relais s'authentifie à la place de celui qui
+          l'appelle, donc à la place du runner.
+        </p>
+
+        <div class="proxy-command">
+          <code>{{ relayCheckCommand() }}</code>
+          <button
+            mat-icon-button
+            type="button"
+            matTooltip="Copier la commande"
+            aria-label="Copier la commande de vérification du relais"
+            (click)="copy(relayCheckCommand(), 'Commande')"
+          >
+            <mat-icon>content_copy</mat-icon>
+          </button>
+        </div>
+
+        @if (relayVerified() === 'unknown') {
+          <p class="proxy-question">Qu'affiche ce second terminal ?</p>
+          <div class="proxy-choices">
+            <button mat-stroked-button type="button" (click)="declareRelayResult('carried')">
+              <code>200</code>
+            </button>
+            <button mat-stroked-button type="button" (click)="declareRelayResult('failed')">
+              Autre chose
+            </button>
+          </div>
+        } @else if (relayVerified() === 'failed') {
+          <div class="proxy-verdict">
+            <p class="proxy-verdict-title">Le relais ne porte pas encore l'authentification.</p>
+            <p class="proxy-branch-text">
+              Rien n'est à rediriger tant que cette commande ne répond pas <code>200</code> : le
+              runner produirait la même panne qu'au départ, en donnant à croire qu'elle est réparée.
+              À revoir, dans cet ordre :
+            </p>
+            <ul class="proxy-list">
+              <li>le relais tourne-t-il <strong>toujours</strong> dans l'autre terminal ?</li>
+              <li>l'adresse du proxy est-elle celle de l'étape 1 ?</li>
+              <li>pour <code>cntlm</code> : le domaine et l'identifiant sont-ils ceux de la session,
+                  et les lignes <code>PassNTLMv2</code> ont-elles bien été collées ?</li>
+            </ul>
+            <button mat-button type="button" class="proxy-reset" (click)="resetRelayResult()">
+              <mat-icon>undo</mat-icon>
+              Revenir à la vérification
+            </button>
+          </div>
+        } @else {
+          <div class="proxy-verdict">
+            <p class="proxy-verdict-title">Le relais porte l'authentification. Le runner peut y aller.</p>
+            @for (redirect of redirectCommands(); track redirect.purpose) {
+              <p class="proxy-command-label">{{ redirect.purpose }}</p>
+              <div class="proxy-command">
+                <code>{{ redirect.command }}</code>
+                <button
+                  mat-icon-button
+                  type="button"
+                  matTooltip="Copier la commande"
+                  aria-label="Copier la redirection du runner"
+                  (click)="copy(redirect.command, 'Commande')"
+                >
+                  <mat-icon>content_copy</mat-icon>
+                </button>
+              </div>
+            }
+            <!-- Le piège du séparateur, écrit ICI : c'est au moment de composer la liste qu'on
+                 recopie celle de Windows (D6). -->
+            <div class="proxy-note">
+              <mat-icon class="proxy-inline-icon">warning</mat-icon>
+              <div>
+                <p class="proxy-note-title">Les exclusions se séparent par des virgules</p>
+                <p class="proxy-note-text">
+                  Windows écrit les siennes avec des <code>;</code>.
+                  <code>curl</code> et le runner attendent des <code>,</code>. Recopiée telle quelle,
+                  la liste devient <strong>un seul nom d'hôte</strong> : plus rien n'est exclu, et
+                  tout le trafic interne part dans le relais.
+                </p>
+              </div>
+            </div>
+            <p class="proxy-branch-text">
+              Le relais doit <strong>rester ouvert</strong> tant que le runner tourne : fermer son
+              terminal coupe la connexion.
+            </p>
+            <button mat-button type="button" class="proxy-reset" (click)="resetRelayResult()">
+              <mat-icon>undo</mat-icon>
+              Revenir à la vérification
+            </button>
+          </div>
+        }
       </div>
     }
   </section>
