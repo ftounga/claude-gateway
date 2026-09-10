@@ -109,8 +109,9 @@ public class AtelierController {
 
     /**
      * Liste des projets de l'utilisateur, chacun accompagné du <b>nom de son poste</b>
-     * (F-49 / SF-49-03) — ce qui permet à la liste et à l'en-tête du terminal de montrer chez quel
-     * client on travaille.
+     * (F-49 / SF-49-03) et de l'<b>état de sa mission</b> (F-60 / SF-60-02) — ce qui permet à la
+     * liste et à l'en-tête du terminal de montrer chez quel client on travaille, et où en est le
+     * travail chez ce client.
      *
      * <p>Les noms sont indexés depuis les postes <b>possédés par l'utilisateur courant</b> : un
      * projet pointant vers le poste de quelqu'un d'autre ne trouve rien dans la carte et ressort à
@@ -125,12 +126,18 @@ public class AtelierController {
     public List<WorkspaceSummaryResponse> list() {
         atelierAccess.requireAccess();
         UUID userId = currentUser.requireId();
-        Map<UUID, String> hostNames = runnerHostService.list(userId).stream()
+        Map<UUID, fr.claudegateway.runner.host.RunnerHost> hosts = runnerHostService.list(userId)
+                .stream()
                 .collect(Collectors.toMap(fr.claudegateway.runner.host.RunnerHost::getId,
-                        fr.claudegateway.runner.host.RunnerHost::getName));
+                        host -> host));
         return workspaceService.list(userId).stream()
-                .map(workspace -> WorkspaceSummaryResponse.from(workspace,
-                        workspace.getHostId() == null ? null : hostNames.get(workspace.getHostId())))
+                .map(workspace -> {
+                    fr.claudegateway.runner.host.RunnerHost host =
+                            workspace.getHostId() == null ? null : hosts.get(workspace.getHostId());
+                    return WorkspaceSummaryResponse.from(workspace,
+                            host == null ? null : host.getName(),
+                            host == null ? null : host.getMissionStatus());
+                })
                 .toList();
     }
 

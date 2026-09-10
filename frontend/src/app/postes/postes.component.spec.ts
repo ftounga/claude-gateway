@@ -55,7 +55,7 @@ describe('PostesComponent', () => {
   };
 
   function setup(hosts: RunnerHostOverview[] = [poste]): void {
-    service = jasmine.createSpyObj<AtelierService>('AtelierService', ['runnerHostsOverview']);
+    service = jasmine.createSpyObj<AtelierService>('AtelierService', ['runnerHostsOverview', 'setHostMissionStatus']);
     service.runnerHostsOverview.and.returnValue(of(hosts));
     build();
   }
@@ -304,7 +304,7 @@ describe('PostesComponent', () => {
   }));
 
   it('affiche l’erreur et un bouton Réessayer quand le premier chargement échoue', () => {
-    service = jasmine.createSpyObj<AtelierService>('AtelierService', ['runnerHostsOverview']);
+    service = jasmine.createSpyObj<AtelierService>('AtelierService', ['runnerHostsOverview', 'setHostMissionStatus']);
     service.runnerHostsOverview.and.returnValue(throwError(() => new Error('réseau')));
     build();
 
@@ -313,7 +313,7 @@ describe('PostesComponent', () => {
   });
 
   it("dit que la vue appartient à la Forge quand l'accès est refusé", fakeAsync(() => {
-    service = jasmine.createSpyObj<AtelierService>('AtelierService', ['runnerHostsOverview']);
+    service = jasmine.createSpyObj<AtelierService>('AtelierService', ['runnerHostsOverview', 'setHostMissionStatus']);
     service.runnerHostsOverview.and.returnValue(
       throwError(() => new HttpErrorResponse({ status: 403 })),
     );
@@ -332,4 +332,150 @@ describe('PostesComponent', () => {
     setup();
     expect(component.lastUpdatedLabel()).toMatch(/^\d{2}:\d{2}$/);
   });
+
+  // ------------------------------------------- état de mission (F-60 / SF-60-02)
+
+  /** Un poste dans l'état de mission demandé, sans projet — l'essentiel tient à l'en-tête. */
+  function mission(id: string, name: string,
+    missionStatus: RunnerHostOverview['missionStatus']): RunnerHostOverview {
+    return { ...poste, id, name, missionStatus, projects: [] };
+  }
+
+  it('écrit toujours le libellé de l’état, jamais la couleur seule', () => {
+    setup([mission('h1', 'Poste CAGIP', 'PENDING')]);
+    expect(text()).toContain('En attente');
+  });
+
+  it('lit un poste sans état de mission comme une mission en cours', () => {
+    // Backend antérieur, champ absent : jamais « inconnu », jamais une pastille vide.
+    setup([{ ...poste, missionStatus: undefined, projects: [] }]);
+    expect(component.mission(component.hosts()[0])).toBe('ACTIVE');
+    expect(text()).toContain('En cours');
+  });
+
+  it("garde le filet d'identité du poste quel que soit son état de mission", () => {
+    // LE PIÈGE DU CADRAGE : la couleur de mission ne doit pas remplacer, ni concurrencer, la
+    // couleur d'identité. Deux postes de même état mais de noms différents gardent deux filets
+    // différents ; le filet ne dépend que du nom.
+    setup([mission('h1', 'Poste CAGIP', 'PENDING'), mission('h2', 'Poste Bercy', 'PENDING')]);
+    const cards = (fixture.nativeElement as HTMLElement)
+      .querySelectorAll<HTMLElement>('.poste');
+
+    expect(cards.length).toBe(2);
+    expect(cards[0].style.borderLeftColor).toBe(hexToRgb(hostTone('Poste CAGIP').solid));
+    expect(cards[1].style.borderLeftColor).toBe(hexToRgb(hostTone('Poste Bercy').solid));
+    expect(cards[0].style.borderLeftColor).not.toBe(cards[1].style.borderLeftColor);
+  });
+
+  it("donne le même filet à un même nom, quels que soient les états de mission", () => {
+    setup([mission('h1', 'Poste CAGIP', 'ACTIVE'), mission('h2', 'Poste CAGIP', 'CLOSED')]);
+    component.closedOpen.set(true);
+    fixture.detectChanges();
+    const cards = (fixture.nativeElement as HTMLElement)
+      .querySelectorAll<HTMLElement>('.poste');
+
+    expect(cards.length).toBe(2);
+    expect(cards[0].style.borderLeftColor).toBe(cards[1].style.borderLeftColor);
+  });
+
+  it("n'emprunte aucune couleur d'identité pour la pastille d'état", () => {
+    // La pastille de mission prend les classes de STATUT de la charte (§5) — rien n'est posé en
+    // ligne, donc rien ne peut venir de la palette d'identité (§9).
+    setup([mission('h1', 'Poste CAGIP', 'PENDING')]);
+    const badge = (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLElement>('app-mission-badge .badge');
+
+    expect(badge).not.toBeNull();
+    expect(badge!.classList).toContain('badge--warning');
+    expect(badge!.getAttribute('style')).toBeNull();
+  });
+
+  it('range un poste clôturé hors de la vue principale, sans le perdre', () => {
+    setup([mission('h1', 'Poste CAGIP', 'ACTIVE'), mission('h2', 'Poste Bercy', 'CLOSED')]);
+
+    expect(component.openHosts().map((h) => h.id)).toEqual(['h1']);
+    expect(component.closedHosts().map((h) => h.id)).toEqual(['h2']);
+    // Le repli annonce ce qu'il contient, et il est refermé au départ.
+    expect(component.closedOpen()).toBeFalse();
+    expect(text()).toContain('Missions clôturées (1)');
+    expect(text()).not.toContain('Poste Bercy');
+
+    component.toggleClosed();
+    fixture.detectChanges();
+    expect(text()).toContain('Poste Bercy');
+  });
+
+  it('garde le repli accessible quand toutes les missions sont clôturées', () => {
+    setup([mission('h1', 'Poste CAGIP', 'CLOSED')]);
+
+    expect(component.allClosed()).toBeTrue();
+    expect(text()).toContain('Toutes vos missions sont clôturées');
+    expect(text()).toContain('Missions clôturées (1)');
+  });
+
+  it("déclare l'état choisi et attend la réponse pour ranger la carte", () => {
+    setup([mission('h1', 'Poste CAGIP', 'ACTIVE')]);
+    service.setHostMissionStatus.and.returnValue(
+      of({ id: 'h1', name: 'Poste CAGIP', connected: true, missionStatus: 'CLOSED',
+        createdAt: new Date().toISOString() }),
+    );
+
+    component.setMission(component.hosts()[0], 'CLOSED');
+    fixture.detectChanges();
+
+    expect(service.setHostMissionStatus).toHaveBeenCalledWith('h1', 'CLOSED');
+    expect(component.openHosts().length).toBe(0);
+    expect(component.closedHosts().length).toBe(1);
+  });
+
+  it("suit la réponse de la gateway, pas la valeur demandée", () => {
+    // C'est la réponse qui fait foi : elle seule sait ce qui a réellement été enregistré.
+    setup([mission('h1', 'Poste CAGIP', 'ACTIVE')]);
+    service.setHostMissionStatus.and.returnValue(
+      of({ id: 'h1', name: 'Poste CAGIP', connected: true, missionStatus: 'PENDING',
+        createdAt: new Date().toISOString() }),
+    );
+
+    component.setMission(component.hosts()[0], 'CLOSED');
+
+    expect(component.mission(component.hosts()[0])).toBe('PENDING');
+  });
+
+  it("laisse l'état inchangé quand la gateway refuse", () => {
+    setup([mission('h1', 'Poste CAGIP', 'ACTIVE')]);
+    service.setHostMissionStatus.and.returnValue(throwError(() => new Error('réseau')));
+
+    component.setMission(component.hosts()[0], 'CLOSED');
+    fixture.detectChanges();
+
+    expect(component.mission(component.hosts()[0])).toBe('ACTIVE');
+    expect(component.openHosts().length).toBe(1);
+    expect(component.savingHostId()).toBeNull();
+  });
+
+  it("n'appelle pas la gateway pour l'état déjà en place", () => {
+    setup([mission('h1', 'Poste CAGIP', 'PENDING')]);
+
+    component.setMission(component.hosts()[0], 'PENDING');
+
+    expect(service.setHostMissionStatus).not.toHaveBeenCalled();
+  });
+
+  it('garde les projets et le terminal d’un poste clôturé', () => {
+    // « Se ranger sans disparaître » : la carte rangée est EXACTEMENT la même carte.
+    setup([{ ...poste, missionStatus: 'CLOSED' }]);
+    component.toggleClosed();
+    fixture.detectChanges();
+
+    const buttons = (fixture.nativeElement as HTMLElement)
+      .querySelectorAll('.projet button[aria-label^="Ouvrir le terminal"]');
+    expect(buttons.length).toBe(2);
+  });
 });
+
+/** Le DOM rend les couleurs en `rgb(...)` : on compare ce qu'il rend, pas ce qu'on a écrit. */
+function hexToRgb(hex: string): string {
+  const value = hex.replace('#', '');
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(value.slice(i, i + 2), 16));
+  return `rgb(${r}, ${g}, ${b})`;
+}

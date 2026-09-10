@@ -195,6 +195,57 @@ describe('AtelierComponent', () => {
     expect(component.activeHostName()).toBeNull();
   });
 
+  // ------------------------------------------------ état de mission (F-60 / SF-60-02)
+
+  it('écrit l’état de mission d’un projet dont la mission n’avance pas', () => {
+    setup();
+    component.workspaces.set([
+      { ...summary, hostName: 'Poste CAGIP', hostMissionStatus: 'PENDING' },
+    ]);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(root.querySelector('.workspace-belonging app-mission-badge')).not.toBeNull();
+    expect(root.textContent).toContain('En attente');
+  });
+
+  it('reste silencieux sur une mission en cours — c’est la norme, pas une information', () => {
+    // Ici on travaille : répéter « En cours » sur chaque ligne serait du bruit. L'absence n'est
+    // pas ambiguë, puisque /postes écrit toujours les trois états.
+    setup();
+    component.workspaces.set([
+      { ...summary, hostName: 'Poste CAGIP', hostMissionStatus: 'ACTIVE' },
+    ]);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(root.querySelector('app-mission-badge')).toBeNull();
+    expect(root.textContent).not.toContain('En cours');
+  });
+
+  it('n’écrit aucun état pour un projet non rattaché', () => {
+    setup();
+    component.workspaces.set([{ ...summary, hostName: null, hostMissionStatus: null }]);
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-mission-badge')).toBeNull();
+    expect(component.missionToShow(null)).toBeNull();
+  });
+
+  it('donne au terminal l’état de mission du projet ouvert, sauf quand il est en cours', () => {
+    setup();
+    component.workspaces.set([
+      { ...summary, hostName: 'Poste CAGIP', hostMissionStatus: 'CLOSED' },
+    ]);
+    component.activeWorkspaceId.set('w1');
+    expect(component.activeHostMission()).toBe('CLOSED');
+
+    component.workspaces.set([
+      { ...summary, hostName: 'Poste CAGIP', hostMissionStatus: 'ACTIVE' },
+    ]);
+    expect(component.activeHostMission()).toBeNull();
+  });
+
   it('loads the workspace list on init', () => {
     setup();
     expect(service.listWorkspaces).toHaveBeenCalled();

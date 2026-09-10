@@ -236,6 +236,47 @@ ensemble fini est la seule façon de **prouver** le contraste sur toutes les val
 
 ---
 
+## 10 — État de mission d'un poste (ajout F-60 / SF-60-02, 2026-09-10)
+
+> **Aucune couleur nouvelle ici** : cette section n'ajoute rien à la palette. Elle dit **quelle
+> palette existante** l'état de mission emploie, et surtout **laquelle il n'emploie pas**.
+
+Un poste porte, en plus de son identité (§9), un **état de mission** déclaré par son propriétaire :
+`En cours`, `En attente`, `Clôturé`. Deux systèmes de couleur se croisent donc sur le même objet, et
+ils répondent à deux questions différentes :
+
+| Question | Registre | Palette | Support |
+|---|---|---|---|
+| *Chez quel client suis-je ?* | **Identité** | §9 — dix tons dérivés du nom | Filet gauche + pastille d'initiales (`app-host-badge`) |
+| *Où en est-on ?* | **État** | §5 — pastilles de statut | Pastille de statut (`app-mission-badge`) |
+
+### Correspondance des états
+
+| État | Classe | Couleur | Libellé écrit |
+|---|---|---|---|
+| En cours | `.badge--success` | `#E8F5E9` / `#16A34A` | « En cours » |
+| En attente | `.badge--warning` | `#FFF8E1` / `#F9A825` | « En attente » |
+| Clôturé | `.badge--neutral` | `#F5F5F5` / `#64748B` | « Clôturé » |
+
+### Règles d'emploi — non négociables
+
+- **Deux registres, jamais mélangés.** Aucun ton de §9 ne qualifie un état ; aucune couleur de
+  statut n'identifie une machine. Deux systèmes qui se disputent la même surface deviennent
+  illisibles tous les deux — c'est le piège inscrit au cadrage de F-60.
+- **Une pastille à côté du nom, jamais un second aplat.** L'état n'ajoute ni fond de carte, ni
+  deuxième filet : le filet gauche reste celui de l'identité, et il reste seul.
+- **La couleur ne porte jamais seule l'information.** La pastille écrit **toujours** son libellé.
+  L'icône qui l'accompagne est décorative (`aria-hidden`) et ne remplace jamais le texte.
+- **Composant unique** : `app-mission-badge` (`shared/mission-badge/`), qui n'expose **aucune**
+  entrée permettant de masquer le libellé. Aucun écran ne recompose la pastille à la main, et aucun
+  ne pose de couleur d'état en ligne.
+- **Où l'état s'écrit** : sur `/postes`, **toujours**, pour les trois valeurs — c'est l'écran de
+  référence, celui où l'on compare des missions. Ailleurs (liste des projets de la Forge, en-tête
+  du terminal), **seulement** quand l'état n'est pas « En cours » : la norme y reste silencieuse,
+  et l'absence n'est pas ambiguë puisque l'écran de référence, lui, écrit tout.
+
+---
+
 ## Logo & marque (ajout 2026-07-03)
 
 - **Logo de l'application** : `frontend/public/claude-portal-logo.png` (« Claude Portal » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« Claude Portal »** (renommé en F-29 SF-29-01 : le terme « Proxy » faisait classer le domaine en catégorie « anonymizer » par les filtres d'entreprise).

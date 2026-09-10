@@ -1,0 +1,28 @@
+/* Pastille d'état de mission (F-60 / SF-60-02).
+
+   AUCUNE COULEUR ICI. Le fond et l'encre viennent des classes `.badge--*` de la charte
+   (DESIGN_SYSTEM.md §5), déclarées globalement dans `styles.scss`. C'est la règle du cadrage :
+   l'état emprunte la palette de STATUT, jamais celle de l'identité des postes (§9), qui répond à
+   une autre question. Cette feuille ne fait que de la mise en forme. */
+
+:host {
+  display: inline-flex;
+  min-width: 0;
+}
+
+.mission-badge {
+  gap: var(--cg-space-1);
+  white-space: nowrap;
+
+  &__icon {
+    /* L'icône double le libellé, elle ne le remplace pas : elle reste discrète. */
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    line-height: 14px;
+  }
+
+  &__label {
+    font-family: var(--cg-font-body);
+  }
+}

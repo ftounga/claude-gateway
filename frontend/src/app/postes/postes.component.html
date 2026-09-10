@@ -61,104 +61,190 @@
       </div>
     </mat-card>
   } @else {
-    <div class="postes__list">
-      @for (host of hosts(); track host.id) {
-        <mat-card class="poste" [style.borderLeftColor]="tone(host).solid">
-          <header class="poste__head">
-            <div class="poste__identity">
-              <!-- Identité visuelle du poste (F-49 / SF-49-03) : ses initiales sur sa couleur,
-                   dérivée de son nom. Le nom reste écrit — ici en h2 juste à côté — parce que la
-                   couleur ne porte jamais seule l'information. -->
-              <app-host-badge [name]="host.name" size="lg" [showName]="false"></app-host-badge>
-              <h2 [style.color]="tone(host).ink">{{ host.name }}</h2>
-              <span
-                class="badge"
-                [class.badge--success]="host.connected"
-                [class.badge--neutral]="!host.connected"
-              >
-                <mat-icon>{{ host.connected ? 'cloud_done' : 'cloud_off' }}</mat-icon>
-                {{ hostStateLabel(host) }}
-              </span>
-              @if (host.elevated) {
-                <span
-                  class="badge badge--warning"
-                  matTooltip="Le runner de ce poste tourne avec les droits de l'administrateur"
-                >
-                  <mat-icon>shield</mat-icon>
-                  Administrateur
-                </span>
-              }
-            </div>
-            @if (activityLabel(host); as activity) {
-              <span class="poste__activity" [class.poste__activity--live]="host.activeProjects > 0">
-                {{ activity }}
-              </span>
-            }
-          </header>
+    <!-- Vue principale : les missions en cours et en attente (F-60 / SF-60-02). Les clôturées
+         descendent dans le repli ci-dessous — elles se rangent, elles ne disparaissent pas. -->
+    @if (allClosed()) {
+      <mat-card class="postes__notice">
+        <mat-icon>inventory_2</mat-icon>
+        <div>
+          <h2>Toutes vos missions sont clôturées</h2>
+          <p>
+            Rien n'est perdu : vos postes sont rangés juste en dessous, avec leurs projets et leur
+            historique. Rouvrez-en un pour le remettre en cours.
+          </p>
+        </div>
+      </mat-card>
+    } @else {
+      <div class="postes__list">
+        @for (host of openHosts(); track host.id) {
+          <ng-container [ngTemplateOutlet]="posteCard" [ngTemplateOutletContext]="{ $implicit: host }"></ng-container>
+        }
+      </div>
+    }
 
-          <dl class="poste__facts">
-            @if (host.rootName) {
-              <div>
-                <dt>Racine</dt>
-                <dd class="poste__mono">{{ host.rootName }}</dd>
-              </div>
+    @if (closedHosts().length > 0) {
+      <section class="postes__closed">
+        <!-- Un repli, pas un onglet : « se ranger SANS disparaître ». Refermé au départ, il dit
+             combien de missions sont closes et les rouvre d'un clic. -->
+        <button
+          type="button"
+          class="postes__closed-toggle"
+          (click)="toggleClosed()"
+          [attr.aria-expanded]="closedOpen()"
+        >
+          <mat-icon>{{ closedOpen() ? 'expand_less' : 'expand_more' }}</mat-icon>
+          Missions clôturées ({{ closedHosts().length }})
+        </button>
+        @if (closedOpen()) {
+          <div class="postes__list postes__list--closed">
+            @for (host of closedHosts(); track host.id) {
+              <ng-container [ngTemplateOutlet]="posteCard" [ngTemplateOutletContext]="{ $implicit: host }"></ng-container>
             }
-            @if (host.os) {
-              <div>
-                <dt>Système</dt>
-                <dd>{{ host.os }}</dd>
-              </div>
-            }
-            @if (host.shell) {
-              <div>
-                <dt>Interpréteur</dt>
-                <dd class="poste__mono">{{ host.shell }}</dd>
-              </div>
-            }
-          </dl>
-
-          @if (host.projects.length === 0) {
-            <p class="poste__no-project">
-              Aucun projet sous ce poste. Rattachez-en un depuis la Forge.
-            </p>
-          } @else {
-            <ul class="poste__projects">
-              @for (project of host.projects; track project.id) {
-                <li
-                  class="projet"
-                  [class.projet--active]="project.active"
-                  [style.borderLeftColor]="tone(host).solid"
-                >
-                  <div class="projet__main">
-                    <span class="projet__name">{{ project.name }}</span>
-                    @if (project.active) {
-                      <span class="badge badge--success">
-                        <mat-icon>bolt</mat-icon>
-                        Actif
-                      </span>
-                    }
-                    <span class="projet__path poste__mono">{{ projectPathLabel(project) }}</span>
-                  </div>
-                  <div class="projet__side">
-                    @if (projectActivityLabel(project); as activity) {
-                      <span class="projet__activity">{{ activity }}</span>
-                    }
-                    <button
-                      mat-stroked-button
-                      type="button"
-                      (click)="openTerminal(project)"
-                      [attr.aria-label]="'Ouvrir le terminal de ' + project.name"
-                    >
-                      <mat-icon>terminal</mat-icon>
-                      Terminal
-                    </button>
-                  </div>
-                </li>
-              }
-            </ul>
-          }
-        </mat-card>
-      }
-    </div>
+          </div>
+        }
+      </section>
+    }
   }
 </section>
+
+<!-- La carte d'un poste. Un seul gabarit pour la vue principale et pour le repli : une mission
+     clôturée reste EXACTEMENT la même carte — mêmes projets, même terminal, même possibilité de la
+     rouvrir. C'est ce qui distingue « ranger » de « masquer ». -->
+<ng-template #posteCard let-host>
+  <mat-card class="poste" [style.borderLeftColor]="tone(host).solid">
+    <header class="poste__head">
+      <div class="poste__identity">
+        <!-- Identité visuelle du poste (F-49 / SF-49-03) : ses initiales sur sa couleur,
+             dérivée de son nom. Le nom reste écrit — ici en h2 juste à côté — parce que la
+             couleur ne porte jamais seule l'information.
+
+             ATTENTION (piège du cadrage F-60) : le filet de la carte et cette pastille sont les
+             SEULS porteurs de la couleur d'identité. L'état de mission, lui, prend la palette de
+             STATUT (§5) et n'entre que par sa propre pastille — jamais un second filet, jamais un
+             fond de carte. Deux questions, deux registres. -->
+        <app-host-badge [name]="host.name" size="lg" [showName]="false"></app-host-badge>
+        <h2 [style.color]="tone(host).ink">{{ host.name }}</h2>
+
+        <!-- État de MISSION : où en est-on. Choisi par l'utilisateur, jamais déduit. -->
+        <button
+          type="button"
+          class="poste__mission"
+          [matMenuTriggerFor]="missionMenu"
+          [disabled]="savingHostId() === host.id"
+          [attr.aria-label]="
+            'Mission de ' + host.name + ' : ' + missionLabel(mission(host)) + '. Changer l’état.'
+          "
+          matTooltip="Changer l'état de la mission"
+        >
+          <app-mission-badge [status]="mission(host)"></app-mission-badge>
+          @if (savingHostId() === host.id) {
+            <mat-spinner class="poste__mission-spinner" diameter="14"></mat-spinner>
+          } @else {
+            <mat-icon class="poste__mission-caret">arrow_drop_down</mat-icon>
+          }
+        </button>
+        <mat-menu #missionMenu="matMenu">
+          @for (status of missionStatuses; track status) {
+            <button
+              mat-menu-item
+              type="button"
+              (click)="setMission(host, status)"
+              [disabled]="mission(host) === status"
+              [matTooltip]="missionHint(status)"
+            >
+              <mat-icon>{{ missionIcon(status) }}</mat-icon>
+              <span>{{ missionLabel(status) }}</span>
+            </button>
+          }
+        </mat-menu>
+
+        <!-- État TECHNIQUE : joignable ou non. Il ne dit rien de l'avancement, et c'est
+             précisément pourquoi l'état de mission existe. -->
+        <span
+          class="badge"
+          [class.badge--success]="host.connected"
+          [class.badge--neutral]="!host.connected"
+        >
+          <mat-icon>{{ host.connected ? 'cloud_done' : 'cloud_off' }}</mat-icon>
+          {{ hostStateLabel(host) }}
+        </span>
+        @if (host.elevated) {
+          <span
+            class="badge badge--warning"
+            matTooltip="Le runner de ce poste tourne avec les droits de l'administrateur"
+          >
+            <mat-icon>shield</mat-icon>
+            Administrateur
+          </span>
+        }
+      </div>
+      @if (activityLabel(host); as activity) {
+        <span class="poste__activity" [class.poste__activity--live]="host.activeProjects > 0">
+          {{ activity }}
+        </span>
+      }
+    </header>
+
+    <dl class="poste__facts">
+      @if (host.rootName) {
+        <div>
+          <dt>Racine</dt>
+          <dd class="poste__mono">{{ host.rootName }}</dd>
+        </div>
+      }
+      @if (host.os) {
+        <div>
+          <dt>Système</dt>
+          <dd>{{ host.os }}</dd>
+        </div>
+      }
+      @if (host.shell) {
+        <div>
+          <dt>Interpréteur</dt>
+          <dd class="poste__mono">{{ host.shell }}</dd>
+        </div>
+      }
+    </dl>
+
+    @if (host.projects.length === 0) {
+      <p class="poste__no-project">
+        Aucun projet sous ce poste. Rattachez-en un depuis la Forge.
+      </p>
+    } @else {
+      <ul class="poste__projects">
+        @for (project of host.projects; track project.id) {
+          <li
+            class="projet"
+            [class.projet--active]="project.active"
+            [style.borderLeftColor]="tone(host).solid"
+          >
+            <div class="projet__main">
+              <span class="projet__name">{{ project.name }}</span>
+              @if (project.active) {
+                <span class="badge badge--success">
+                  <mat-icon>bolt</mat-icon>
+                  Actif
+                </span>
+              }
+              <span class="projet__path poste__mono">{{ projectPathLabel(project) }}</span>
+            </div>
+            <div class="projet__side">
+              @if (projectActivityLabel(project); as activity) {
+                <span class="projet__activity">{{ activity }}</span>
+              }
+              <button
+                mat-stroked-button
+                type="button"
+                (click)="openTerminal(project)"
+                [attr.aria-label]="'Ouvrir le terminal de ' + project.name"
+              >
+                <mat-icon>terminal</mat-icon>
+                Terminal
+              </button>
+            </div>
+          </li>
+        }
+      </ul>
+    }
+  </mat-card>
+</ng-template>

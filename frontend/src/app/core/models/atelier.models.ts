@@ -5,6 +5,10 @@
  * côté backend via le JWT porté par l'`authInterceptor`.
  */
 
+import { HostMissionStatus } from '../../shared/mission-status';
+
+export type { HostMissionStatus };
+
 /**
  * Provenance des fichiers d'un projet (F-31 / SF-31-02) : archive `.zip` téléversée, ou dépôt Git
  * cloné dans l'espace d'exécution. Les écrans sont communs ; seuls les gestes disponibles diffèrent.
@@ -49,6 +53,15 @@ export interface WorkspaceSummary {
    * affiché.</p>
    */
   hostName?: string | null;
+  /**
+   * **État de mission** du poste sur lequel ce projet vit (F-60 / SF-60-02), ou `null`/absent quand
+   * le projet n'est rattaché à aucune machine.
+   *
+   * <p>Il voyage avec `hostName`, par la même lecture et sous la même isolation : c'est ce qui
+   * permet à la liste des projets et à l'en-tête du terminal de dire **où en est la mission** sans
+   * un appel de plus. Champ **additif** : absent d'un backend antérieur ⇒ lu comme `ACTIVE`.</p>
+   */
+  hostMissionStatus?: HostMissionStatus | null;
 }
 
 /** Corps de `POST /api/workspaces/{id}/git/push` (F-31 / SF-31-04). Les deux champs sont facultatifs. */
@@ -228,6 +241,12 @@ export interface RunnerHost {
   elevated?: boolean | null;
   /** Un runner de ce poste est joignable maintenant, tous replicas confondus. */
   connected: boolean;
+  /**
+   * **État de mission** déclaré par le propriétaire (F-60 / SF-60-01) : `ACTIVE`, `PENDING` ou
+   * `CLOSED`. Indépendant de `connected`, qui est l'état **technique** : un poste éteint peut
+   * porter une mission active en pause, un poste connecté une mission close qu'on n'a pas rangée.
+   */
+  missionStatus?: HostMissionStatus | null;
   lastSeenAt?: string | null;
   createdAt: string;
 }
@@ -235,6 +254,16 @@ export interface RunnerHost {
 /** Corps de création et de renommage d'un poste (F-48 / SF-48-01). */
 export interface RunnerHostRequest {
   name: string;
+}
+
+/**
+ * Corps de `PUT /api/runner-hosts/{id}/mission` (F-60 / SF-60-01) : l'état de mission **déclaré**.
+ *
+ * <p>Chemin distinct du renommage à dessein : un corps de renommage qui n'enverrait pas l'état
+ * remettrait la mission « en cours » sans que personne l'ait demandé.</p>
+ */
+export interface HostMissionRequest {
+  missionStatus: HostMissionStatus;
 }
 
 /**
@@ -793,6 +822,12 @@ export interface RunnerHostOverview {
   shell?: string | null;
   elevated?: boolean | null;
   connected: boolean;
+  /**
+   * **État de mission** déclaré (F-60) — `ACTIVE`, `PENDING`, `CLOSED`. La gateway rend **tous**
+   * les postes, clôturés compris : « se ranger sans disparaître » est une affaire d'écran, et
+   * c'est `/postes` qui met les missions closes dans un repli plutôt que de les perdre.
+   */
+  missionStatus?: HostMissionStatus | null;
   lastSeenAt?: string | null;
   createdAt: string;
   /** Dernière activité observée sur le poste, tous projets confondus. */

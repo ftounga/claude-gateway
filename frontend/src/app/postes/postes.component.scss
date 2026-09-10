@@ -68,6 +68,41 @@
     flex-direction: column;
     gap: var(--cg-space-3);
   }
+
+  /* — Repli des missions clôturées (F-60 / SF-60-02).
+       Un repli, pas un onglet : « se ranger SANS disparaître ». Il dit combien de missions sont
+       closes et les rouvre d'un clic ; les cartes qu'il contient sont EXACTEMENT les mêmes. */
+  &__closed {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-3);
+  }
+
+  &__closed-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+    align-self: flex-start;
+    padding: var(--cg-space-2) var(--cg-space-3);
+    border: 1px solid var(--cg-divider);
+    border-radius: 999px;
+    background: var(--cg-surface);
+    color: var(--cg-text-secondary);
+    font-family: var(--cg-font-body);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--cg-text-primary);
+      border-color: var(--cg-text-secondary);
+    }
+  }
+
+  /* Les cartes rangées gardent tout — seule leur mise en avant baisse d'un cran. */
+  &__list--closed .poste {
+    opacity: 0.9;
+  }
 }
 
 .poste {
@@ -104,6 +139,43 @@
     app-host-badge {
       margin-right: var(--cg-space-1);
     }
+  }
+
+  /* — Déclencheur d'état de mission (F-60 / SF-60-02).
+       Un bouton NU : il n'apporte ni fond, ni bordure, ni couleur. Toute la couleur vient de la
+       pastille `app-mission-badge`, qui la prend dans la palette de STATUT de la charte (§5).
+       Rien ici n'emprunte à la palette d'identité des postes (§9) : ce sont deux registres, et
+       les mélanger rendrait les deux illisibles. */
+  &__mission {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cg-space-1);
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+
+    &[disabled] {
+      cursor: progress;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--cg-accent);
+      outline-offset: 2px;
+      border-radius: 999px;
+    }
+  }
+
+  &__mission-caret {
+    color: var(--cg-text-secondary);
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+  }
+
+  &__mission-spinner {
+    /* Le temps de l'aller-retour : l'état affiché ne bouge pas tant que la gateway n'a pas répondu. */
+    margin-left: var(--cg-space-1);
   }
 
   &__activity {
