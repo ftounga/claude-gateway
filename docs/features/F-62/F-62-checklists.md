@@ -267,3 +267,78 @@ Artefacts imposés par `CLAUDE.md` §« Séquence obligatoire par subfeature ».
       identifiant
 - [x] Documentation : contrat API déjà décrit en SF-62-01 ; aucune table créée ; pas d'ADR
 - [x] Post-merge : débloque rien de bloquant (SF-62-03 dépend de SF-62-01, déjà mergée)
+
+---
+
+## SF-62-03 — Review checklist — **VERDICT : PASS** (aucun bloquant rouge)
+
+### Prérequis
+- [x] Mini-spec lue avant le code · template PR rempli · branche créée depuis `origin/main` (b9b17b4)
+
+### Sécurité — BLOQUANT
+- [x] **Rôles** : la section n'existe que dans `/admin`, et le serveur refuse un non-admin (403,
+      testé en SF-62-01). L'écran **ne rejoue pas** la garde : il affiche son refus.
+- [x] **Le code en clair n'apparaît jamais dans la liste** — test dédié : la sérialisation des vues
+      de liste ne contient aucun code. Il n'existe qu'en mémoire, le temps de le copier, et l'écran
+      dit explicitement « il ne sera plus jamais affiché ».
+- [x] Aucun secret journalisé ; aucun `console.log`.
+- [x] Aucune stacktrace : le message du backend est affiché tel quel (il nomme le champ fautif),
+      sinon un message générique.
+
+### Cohérence mini-spec — BLOQUANT
+- [x] Section dans `/admin`, sous les utilisateurs, à côté de Gouvernance (D9).
+- [x] Les 7 critères d'acceptation sont couverts.
+- [x] Hors périmètre tenu : aucune révocation (D10), aucun envoi d'e-mail, aucune pagination.
+
+### Tests — BLOQUANT
+- [x] Tests de composant (8) : liste rendue, libellés d'état et destinataire, création affichant le
+      code une fois + rechargement, **le code n'est pas dans la liste**, effacement, dialogue annulé,
+      échec de création, échec de chargement.
+- [x] Intégration : couverte côté backend (SF-62-01).
+- [x] **Tous les tests passent** : `1023 SUCCESS`, 0 échec (le spec de `/admin` a été complété du
+      bouchon de service — sans quoi il aurait cassé par injection).
+- [x] Cas d'erreur du plan de test couverts un à un.
+
+### Architecture — BLOQUANT
+- [x] Aucune logique métier dans le template ; l'état affiché est **calculé par le serveur**, jamais
+      redérivé ici.
+- [x] Aucune migration · aucun traitement IA · build vert.
+
+### Design System — BLOQUANT
+- [x] **Couleurs** : aucune valeur en dur — `--cg-accent`, `--cg-divider`, `--cg-bg`,
+      `--cg-text-*`, `--cg-primary` uniquement.
+- [x] **Polices** : la seule déclaration est `JetBrains Mono` pour le code affiché — la monospace du
+      design system (§3, « Données, code »), justement parce qu'un code se recopie à la main.
+- [x] **Material** : `mat-card`, `mat-form-field appearance="outline"`, `mat-flat-button` /
+      `mat-stroked-button`, `mat-icon`, `mat-progress-bar`, `MatDialog`, `MatSnackBar`.
+- [x] **Espacements** : uniquement `var(--cg-space-*)` (multiples de 4 px).
+- [x] Aucun `window.alert/confirm/prompt` — le formulaire est un `MatDialog`.
+- [x] Notifications via `MatSnackBar`. Aucune action destructive (créer un code n'en détruit aucun).
+- [x] Liste et non table ⇒ pas de `mat-paginator` : le volume attendu se compte en dizaines, et la
+      section Gouvernance voisine suit exactement la même forme.
+- [x] Formulaire en `mat-form-field` `outline` avec `mat-hint` ; les bornes restent **tranchées par
+      le backend** — une seule définition de la règle.
+- [x] **F-56 et SF-49-03 intactes** : aucun fichier de charte, aucun jeton et aucune classe partagée
+      n'a été modifié.
+
+### Qualité / documentation — non bloquant
+- [x] Modèles et service alignés sur le contrat SF-62-01 ; DTO requête/réponse distincts.
+- [x] Aucune table créée · aucune question ouverte · pas d'ADR.
+
+**Aucun bloquant rouge → push autorisé.**
+
+---
+
+## SF-62-03 — Release checklist — **VERDICT : PASS**
+
+- [x] Review passée, aucun bloquant rouge
+- [x] Build + tests verts : `1023 SUCCESS` · `npm run build` OK
+- [x] Aucun conflit avec `main` ; branche créée depuis `origin/main` à jour (b9b17b4)
+- [x] Definition of Done : mini-spec respectée, critères d'acceptation validés
+- [x] Base de données : **sans objet** (aucune migration)
+- [x] Sécurité : aucun secret dans le diff ; le code en clair ne transite que dans la réponse de
+      création et ne survit pas au rechargement de la page
+- [x] Documentation : contrat API décrit en SF-62-01 ; aucune table créée ; pas d'ADR
+- [x] Post-merge : **F-62 est complète** (SF-62-01 + 02 + 03) → `PRODUCT_SPEC.md` passe la feature à
+      **Terminée** et reçoit son entrée d'historique ; `ARCHITECTURE_CANONIQUE.md` a déjà été mis à
+      jour en SF-62-01 (table `access_codes`)

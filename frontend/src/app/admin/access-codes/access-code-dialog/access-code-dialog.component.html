@@ -1,0 +1,40 @@
+<h2 mat-dialog-title>Nouveau code d'accès</h2>
+
+<mat-dialog-content class="code-form">
+  <p class="code-form__notice">
+    Le code ouvrira la <strong>Forge pendant 24 h</strong> au compte qui le saisira, puis se fermera
+    tout seul. Il ne change ni l'offre ni le quota de tokens de ce compte.
+  </p>
+
+  <mat-form-field appearance="outline">
+    <mat-label>Libellé</mat-label>
+    <input
+      matInput
+      [value]="label()"
+      (input)="label.set($any($event.target).value)"
+      placeholder="démo prospect Dupont"
+    />
+    <mat-hint>
+      La seule façon de reconnaître ce code plus tard : le code lui-même ne sera plus lisible.
+    </mat-hint>
+  </mat-form-field>
+
+  <mat-form-field appearance="outline">
+    <mat-label>E-mail du destinataire (facultatif)</mat-label>
+    <input
+      matInput
+      type="email"
+      autocomplete="off"
+      [value]="assignedEmail()"
+      (input)="assignedEmail.set($any($event.target).value)"
+    />
+    <mat-hint>Renseigné, le code devient nominatif : seul ce compte pourra l'utiliser.</mat-hint>
+  </mat-form-field>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-stroked-button type="button" mat-dialog-close>Annuler</button>
+  <button mat-flat-button color="primary" type="button" [disabled]="invalid()" (click)="submit()">
+    Créer le code
+  </button>
+</mat-dialog-actions>
