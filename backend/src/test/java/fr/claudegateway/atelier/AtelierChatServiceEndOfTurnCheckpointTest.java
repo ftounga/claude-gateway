@@ -192,6 +192,37 @@ class AtelierChatServiceEndOfTurnCheckpointTest {
     }
 
     @Test
+    void theRealJudgeSendsATurnWithoutItsMarkerBackToWork() {
+        // Bout en bout avec le contrôle réel du premier paquet (F-52 / SF-52-02) : une réponse sans
+        // marqueur repart, la même réponse marquée s'arrête.
+        fr.claudegateway.governance.control.JugeFinDeTourControl juge =
+                new fr.claudegateway.governance.control.JugeFinDeTourControl();
+        // Un contrôle de gouvernance n'est pas un crochet : il y arrive par la délégation de
+        // SF-51-04. On l'adapte ici pour l'observer dans la boucle, sans monter tout le catalogue.
+        AtelierChatService service = serviceWith(new AtelierCheckpoint() {
+            @Override
+            public AtelierCheckpointKind kind() {
+                return AtelierCheckpointKind.END_OF_TURN;
+            }
+
+            @Override
+            public AtelierCheckpointVerdict evaluate(AtelierCheckpointContext context) {
+                return juge.evaluate(context);
+            }
+        });
+        agentProvider.enqueueFinal("C'est fait.");
+        agentProvider.enqueueFinal("C'est fait.\n\n"
+                + fr.claudegateway.governance.control.FinDeTourMarker.FORME);
+
+        AtelierChatResult result = service.chat(userId, workspaceId, "range le projet");
+
+        assertThat(result.reply()).contains("fin-de-tour");
+        assertThat(userTexts()).anySatisfy(text -> assertThat(text)
+                .startsWith("Fin de tour contrôlée : ")
+                .contains(fr.claudegateway.governance.control.FinDeTourMarker.FORME));
+    }
+
+    @Test
     void aPassingCheckpointEndsTheTurnAsBefore() {
         EndOfTurnCheckpoint checkpoint = new EndOfTurnCheckpoint(null, 0);
         AtelierChatService service = serviceWith(checkpoint);
