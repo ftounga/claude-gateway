@@ -228,7 +228,7 @@ describe('GovernanceComponent', () => {
     expect(governance.deactivate).toHaveBeenCalledWith('w1', 'p1');
   });
 
-  it('un 403 affiche le bandeau Atelier et arrête là', () => {
+  it('un 403 affiche le bandeau Forge et arrête là', () => {
     governance.getCatalog.and.returnValue(
       throwError(() => new HttpErrorResponse({ status: 403 })),
     );

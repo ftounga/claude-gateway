@@ -26,8 +26,8 @@ describe('HelpService', () => {
     expect(request.request.method).toBe('POST');
     expect(request.request.body).toEqual({ message: 'comment appairer ?' });
 
-    request.flush({ answer: 'Depuis l’Atelier, bouton Connecter une machine.' });
+    request.flush({ answer: 'Depuis la Forge, bouton Connecter une machine.' });
 
-    expect(answer).toBe('Depuis l’Atelier, bouton Connecter une machine.');
+    expect(answer).toBe('Depuis la Forge, bouton Connecter une machine.');
   });
 });

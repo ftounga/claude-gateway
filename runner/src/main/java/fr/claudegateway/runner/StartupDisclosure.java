@@ -38,7 +38,7 @@ public final class StartupDisclosure {
         String nl = System.lineSeparator();
         return List.of(
                 "Ce runner : exécute sur cette machine les commandes que vous autorisez depuis "
-                        + "l'Atelier," + nl
+                        + "la Forge," + nl
                         + "            dans le dossier du projet visé — rien d'autre, et rien sans "
                         + "votre geste.",
                 "Compte    : " + account(privileges),

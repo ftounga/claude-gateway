@@ -9,6 +9,6 @@ package fr.claudegateway.atelier;
 public class AtelierAccessDeniedException extends RuntimeException {
 
     public AtelierAccessDeniedException() {
-        super("L'Atelier demande l'offre Gold, ou l'option Atelier ajoutée à votre offre.");
+        super("La Forge demande l'offre Gold, ou l'option Forge ajoutée à votre offre.");
     }
 }

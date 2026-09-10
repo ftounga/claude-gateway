@@ -40,6 +40,18 @@ class HelpDocumentLoaderTest {
     }
 
     @Test
+    void laDocumentationNeParlePlusQueDeLaForge() {
+        // F-58 / SF-58-01 — le centre d'aide est de la documentation PRODUIT : il porte le mot que
+        // l'utilisateur voit à l'écran. Le mot « Atelier » n'y a plus sa place, alors que les
+        // identifiants internes (`atelier_*`, /atelier) restent volontairement inchangés ailleurs.
+        String documentation = new HelpDocumentLoader().documentation();
+
+        assertThat(documentation).contains("Forge");
+        assertThat(documentation).doesNotContain("Atelier");
+        assertThat(documentation).doesNotContain("atelier");
+    }
+
+    @Test
     void refuseDeDemarrerSansAucunDocument() {
         // Un chatbot d'aide sans documentation répondrait de mémoire : mieux vaut ne pas démarrer.
         assertThatThrownBy(() -> new HelpDocumentLoader("classpath:help-inexistant/*.md"))

@@ -30,9 +30,9 @@
     <mat-card class="postes__notice">
       <mat-icon>lock</mat-icon>
       <div>
-        <h2>La vue des postes fait partie de l'Atelier</h2>
+        <h2>La vue des postes fait partie de la Forge</h2>
         <p>
-          Connecter une machine et y exécuter des commandes demande l'Atelier. Activez-le pour voir
+          Connecter une machine et y exécuter des commandes demande la Forge. Activez-la pour voir
           vos postes ici.
         </p>
         <a mat-flat-button color="primary" routerLink="/billing">Voir les formules</a>
@@ -54,10 +54,10 @@
         <h2>Aucun poste connecté</h2>
         <p>
           Un poste est une machine appairée <strong>une seule fois</strong>, avec un dossier de
-          travail dessous. Connectez-en un depuis un projet de l'Atelier : tous les sous-dossiers de
+          travail dessous. Connectez-en un depuis un projet de la Forge : tous les sous-dossiers de
           sa racine deviennent ensuite disponibles sans rien réinstaller.
         </p>
-        <a mat-flat-button color="primary" routerLink="/atelier">Ouvrir l'Atelier</a>
+        <a mat-flat-button color="primary" routerLink="/atelier">Ouvrir la Forge</a>
       </div>
     </mat-card>
   } @else {
@@ -115,7 +115,7 @@
 
           @if (host.projects.length === 0) {
             <p class="poste__no-project">
-              Aucun projet sous ce poste. Rattachez-en un depuis l'Atelier.
+              Aucun projet sous ce poste. Rattachez-en un depuis la Forge.
             </p>
           } @else {
             <ul class="poste__projects">

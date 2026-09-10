@@ -7,6 +7,6 @@ package fr.claudegateway.billing;
 public class AtelierOptionAlreadyActiveException extends RuntimeException {
 
     public AtelierOptionAlreadyActiveException() {
-        super("L'option Atelier est déjà active sur votre compte.");
+        super("L'option Forge est déjà active sur votre compte.");
     }
 }

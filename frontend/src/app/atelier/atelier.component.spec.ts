@@ -215,7 +215,7 @@ describe('AtelierComponent', () => {
     // rencontrait — il doit proposer les DEUX chemins, l'option d'abord, et ne plus dire « réservé ».
     const text: string = fixture.nativeElement.textContent;
     expect(text).not.toContain("réservé à l'offre Gold");
-    expect(text).toContain("Ajouter l'option Atelier");
+    expect(text).toContain("Ajouter l'option Forge");
     expect(text).toContain("Voir l'offre Gold");
     expect(text).toContain('quota de tokens');
   });

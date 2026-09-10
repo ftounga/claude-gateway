@@ -153,7 +153,7 @@ public class StripeBillingProvider implements BillingProvider {
         }
         if (!StringUtils.hasText(command.priceId())) {
             throw new BillingProviderUnavailableException(
-                    "Aucun price ID configuré pour l'option Atelier.");
+                    "Aucun price ID configuré pour l'option Forge.");
         }
 
         // L'option est un ABONNEMENT mensuel, distinct de celui du plan : le mode ne dépend d'aucun

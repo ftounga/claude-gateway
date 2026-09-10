@@ -1,7 +1,7 @@
 # Appairer une machine
 
 L'appairage est le geste qui relie **une fois** votre machine à votre compte. Il s'ouvre depuis
-l'Atelier, bouton **Connecter une machine**, et se déroule en quatre étapes : vérifier l'accès
+la Forge, bouton **Connecter une machine**, et se déroule en quatre étapes : vérifier l'accès
 réseau, générer un code, récupérer le runner, lancer la commande.
 
 ## Le code d'appairage
@@ -63,7 +63,7 @@ mémorisée disparue.
 
 ## Révoquer une machine
 
-Depuis l'Atelier, la liste des jetons permet de révoquer un accès. La liaison est coupée
+Depuis la Forge, la liste des jetons permet de révoquer un accès. La liaison est coupée
 immédiatement. Un jeton refusé par la passerelle — révoqué ou expiré — est **effacé** sur la
 machine : le lancement suivant redemandera un code.
 
