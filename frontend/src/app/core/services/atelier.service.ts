@@ -25,7 +25,10 @@ import {
   GitPullRequestResult,
   GitPushRequest,
   GitPushResult,
+  AttachHostRequest,
   RunnerAuditEntry,
+  RunnerHost,
+  RunnerHostRequest,
   RunnerKillResult,
   RunnerDownloadFormats,
   RunnerPairingCode,
@@ -492,12 +495,16 @@ export class AtelierService {
   }
 
   /**
-   * **Coupe-circuit** (F-38 / SF-38-08) : révoque tous les jetons runner du projet, coupe la
-   * liaison en cours et ramène la cible d'exécution à `SANDBOX`. Idempotent — couper une liaison
-   * déjà coupée n'est pas une erreur.
+   * **Coupe-circuit** d'un **poste** (F-38 / SF-38-08, porté à la machine par F-48 / SF-48-01) :
+   * révoque tous ses jetons runner, coupe la liaison en cours, et ramène **tous les projets** de
+   * cette machine à la cible `SANDBOX`.
+   *
+   * <p>On ne coupe pas un dossier, on coupe une machine : ne ramener qu'un projet au bac à sable
+   * laisserait les autres pointer vers un runner mort. Idempotent — couper une liaison déjà coupée
+   * n'est pas une erreur.</p>
    */
-  killRunner(id: string): Observable<RunnerKillResult> {
-    return this.http.post<RunnerKillResult>(`/api/workspaces/${id}/runner/kill`, null);
+  killHost(hostId: string): Observable<RunnerKillResult> {
+    return this.http.post<RunnerKillResult>(`/api/runner-hosts/${hostId}/kill`, null);
   }
 
   /** Journal d'activité du runner (F-38 / SF-38-08), du plus récent au plus ancien. */
@@ -593,12 +600,39 @@ export class AtelierService {
   }
 
   /**
-   * Génère un **code d'appairage à usage unique** pour ce projet (F-38 / SF-38-01). Le code
-   * n'apparaît que dans cette réponse : il n'est ni stocké ni ré-obtenable, et une régénération
-   * produit un nouveau code.
+   * Génère le **code d'appairage à usage unique** d'un **poste** (F-38 / SF-38-01, porté à la
+   * machine par F-48 / SF-48-01).
+   *
+   * <p><b>Un seul par machine</b> : c'est tout l'objet de F-48. Ouvrir un projet de plus sous la
+   * racine du poste ne demande ni code, ni runner, ni connexion supplémentaires. Le code n'apparaît
+   * que dans cette réponse : il n'est ni stocké ni ré-obtenable, et une régénération en produit un
+   * nouveau.</p>
    */
-  createRunnerPairingCode(id: string): Observable<RunnerPairingCode> {
-    return this.http.post<RunnerPairingCode>(`/api/workspaces/${id}/runner/pairing-code`, null);
+  createHostPairingCode(hostId: string): Observable<RunnerPairingCode> {
+    return this.http.post<RunnerPairingCode>(`/api/runner-hosts/${hostId}/pairing-code`, null);
+  }
+
+  /** Postes de l'utilisateur (F-48 / SF-48-01), avec leur état de connexion. */
+  listRunnerHosts(): Observable<RunnerHost[]> {
+    return this.http.get<RunnerHost[]>('/api/runner-hosts');
+  }
+
+  /** Crée un poste au nom libre (F-48 / SF-48-01). */
+  createRunnerHost(name: string): Observable<RunnerHost> {
+    return this.http.post<RunnerHost>('/api/runner-hosts', { name } satisfies RunnerHostRequest);
+  }
+
+  /**
+   * **Rattache** un projet à un poste (F-48 / SF-48-01) : la machine qui l'exécute, et son chemin
+   * relatif sous la racine de cette machine. `hostId` à `null` détache le projet.
+   *
+   * <p>C'est le geste qui remplace l'appairage par dossier — un poste appairé une fois accueille
+   * autant de projets qu'il porte de sous-dossiers.</p>
+   */
+  attachWorkspaceToHost(id: string, hostId: string | null,
+    projectPath?: string): Observable<WorkspaceDetail> {
+    return this.http.put<WorkspaceDetail>(`/api/workspaces/${id}/host`,
+      { hostId, projectPath } satisfies AttachHostRequest);
   }
 
   /**

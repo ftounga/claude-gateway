@@ -15,14 +15,16 @@ import fr.claudegateway.runner.RunnerStatusService.RunnerStatus;
  * L'écran d'appairage s'en sert pour conclure la mise en service en nommant l'interpréteur ; il
  * <b>omet la ligne</b> plutôt que d'écrire « inconnu ».</p>
  *
- * <p>{@code hostId} (F-48 / SF-48-01) est {@code null} pour un projet qui n'est rattaché à aucun
- * poste — l'état d'un projet qu'on vient de créer, que l'écran doit pouvoir dire.</p>
+ * <p>{@code hostId}, {@code hostName}, {@code rootName} et {@code elevated} (F-48) décrivent le
+ * <b>poste</b> : ils sont {@code null} / {@code false} pour un projet rattaché à aucune machine —
+ * l'état d'un projet qu'on vient de créer, que l'écran doit pouvoir dire. {@code rootName} n'est que
+ * le <b>dernier segment</b> de la racine déclarée, jamais le chemin absolu.</p>
  */
 public record RunnerStatusResponse(boolean connected, OffsetDateTime lastSeenAt, String shell,
-        UUID hostId) {
+        UUID hostId, String hostName, String rootName, boolean elevated) {
 
     public static RunnerStatusResponse from(RunnerStatus status) {
         return new RunnerStatusResponse(status.connected(), status.lastSeenAt(), status.shell(),
-                status.hostId());
+                status.hostId(), status.hostName(), status.rootName(), status.elevated());
     }
 }

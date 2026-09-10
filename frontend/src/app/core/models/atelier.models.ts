@@ -31,20 +31,6 @@ export interface WorkspaceSummary {
   createdAt: string;
   source: WorkspaceSource;
 
-  /**
-   * Nom du dossier déclaré par le runner à l'appairage (F-38 / SF-38-16) — le dernier segment
-   * seulement, jamais le chemin absolu. Absent tant qu'aucune machine ne s'est appairée.
-   */
-  runnerRootName?: string;
-
-  /**
-   * Vrai si le runner appairé tourne avec les droits de l'**administrateur** (F-38 / SF-38-18).
-   *
-   * <p>Déclaré par le runner : la gateway ne peut pas le deviner. Affiché là où l'on autorise une
-   * commande — autoriser `rm -rf build` n'a pas le même poids selon les droits sous lesquels elle
-   * s'exécutera.</p>
-   */
-  runnerElevated?: boolean;
   /** `owner/repo` pour un projet Git, `null` sinon. */
   gitRepo: string | null;
   /**
@@ -121,19 +107,21 @@ export interface WorkspaceDetail {
   source: WorkspaceSource;
 
   /**
-   * Nom du dossier déclaré par le runner à l'appairage (F-38 / SF-38-16) — le dernier segment
-   * seulement, jamais le chemin absolu. Absent tant qu'aucune machine ne s'est appairée.
+   * **Poste** sur lequel ce projet vit (F-48 / SF-48-01), ou `null`/absent s'il n'est rattaché à
+   * aucune machine — l'état d'un projet qu'on vient de créer.
+   *
+   * <p>C'est le déplacement d'unité de F-48 : la racine, le runner et l'appairage appartiennent à la
+   * machine, et le projet n'est qu'un dossier dessous. Ce que le runner déclare de la machine — sa
+   * racine, son système, ses droits, son interpréteur — se lit donc sur le poste, plus sur le
+   * projet.</p>
    */
-  runnerRootName?: string;
+  hostId?: string | null;
 
   /**
-   * Vrai si le runner appairé tourne avec les droits de l'**administrateur** (F-38 / SF-38-18).
-   *
-   * <p>Déclaré par le runner : la gateway ne peut pas le deviner. Affiché là où l'on autorise une
-   * commande — autoriser `rm -rf build` n'a pas le même poids selon les droits sous lesquels elle
-   * s'exécutera.</p>
+   * Chemin du projet **relatif à la racine du poste**, séparateur `/`. La chaîne vide désigne la
+   * racine elle-même ; `null`/absent, un projet non rattaché.
    */
-  runnerElevated?: boolean;
+  projectPath?: string | null;
   /** URL publique du dépôt (jamais le jeton), `null` pour un projet d'archive. */
   gitRepoUrl: string | null;
   /** `owner/repo`, `null` pour un projet d'archive. */
@@ -189,6 +177,66 @@ export interface RunnerStatus {
    * lirait comme un défaut.
    */
   shell?: string | null;
+  /**
+   * **Poste** dont cet état est celui (F-48 / SF-48-01), ou `null` quand le projet n'est rattaché à
+   * aucune machine. C'est lui que visent le coupe-circuit et la génération d'un code d'appairage.
+   */
+  hostId?: string | null;
+  /** Nom du poste, ou `null` quand le projet n'est rattaché à aucune machine. */
+  hostName?: string | null;
+  /**
+   * Dernier segment de la racine que le runner a déclarée (ex. `dev`), jamais le chemin absolu.
+   * `null` tant qu'aucun runner ne s'est appairé sur ce poste.
+   */
+  rootName?: string | null;
+  /**
+   * Vrai si le runner de ce poste tourne avec les droits de l'**administrateur** (F-38 / SF-38-18).
+   * Lu là où l'on autorise une commande : c'est le seul endroit où l'information change une
+   * décision.
+   */
+  elevated?: boolean;
+}
+
+/**
+ * Un **poste** (F-48 / SF-48-01) : une machine connectée, avec une racine et un runner, appairée
+ * **une seule fois**. Réponse de `GET /api/runner-hosts`.
+ *
+ * <p>Tout ce que la gateway sait de la machine est **déclaré par le runner**, jamais deviné :
+ * `rootName` n'est que le dernier segment de la racine, jamais le chemin absolu.</p>
+ */
+export interface RunnerHost {
+  id: string;
+  /** Nom libre, choisi par l'utilisateur — rien n'empêche d'y mettre le nom d'un client. */
+  name: string;
+  /** Dernier segment de la racine déclarée (ex. `dev`), ou `null` tant qu'aucun runner ne s'est appairé. */
+  rootName?: string | null;
+  os?: string | null;
+  /** `posix`, `powershell` ou `cmd`, ou `null` si aucun runner ne l'a déclaré. */
+  shell?: string | null;
+  /** Vrai si le runner tourne avec les droits de l'administrateur (F-38 / SF-38-18). */
+  elevated?: boolean | null;
+  /** Un runner de ce poste est joignable maintenant, tous replicas confondus. */
+  connected: boolean;
+  lastSeenAt?: string | null;
+  createdAt: string;
+}
+
+/** Corps de création et de renommage d'un poste (F-48 / SF-48-01). */
+export interface RunnerHostRequest {
+  name: string;
+}
+
+/**
+ * Corps de `PUT /api/workspaces/{id}/host` (F-48 / SF-48-01) : **rattacher** un projet à un poste.
+ *
+ * <p>C'est le geste qui remplace un appairage. Le poste est appairé une fois ; ouvrir un projet de
+ * plus sous sa racine ne coûte plus que cette requête.</p>
+ */
+export interface AttachHostRequest {
+  /** Poste visé, ou `null` pour détacher le projet. */
+  hostId: string | null;
+  /** Chemin relatif sous la racine du poste ; vide = la racine elle-même. */
+  projectPath?: string;
 }
 
 /**
@@ -250,7 +298,12 @@ export interface RunnerAuditEntry {
 export interface RunnerKillResult {
   revokedTokens: number;
   disconnected: boolean;
-  executionTarget: WorkspaceExecutionTarget;
+  /**
+   * Nombre de projets du poste ramenés à la cible `SANDBOX` (F-48 / SF-48-01). On ne coupe pas un
+   * dossier mais une machine : ne ramener qu'un projet laisserait les autres pointer vers un runner
+   * mort.
+   */
+  workspacesReturned: number;
 }
 
 /** Contenu texte d'un fichier du workspace. Réponse de `GET /api/workspaces/{id}/file?path=`. */
