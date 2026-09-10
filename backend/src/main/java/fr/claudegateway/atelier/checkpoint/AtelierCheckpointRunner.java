@@ -58,6 +58,18 @@ public class AtelierCheckpointRunner {
             "reprends le travail avant de conclure.";
 
     /**
+     * Message rendu au modèle quand une commande est refusée avant d'être émise (F-52 / SF-52-01).
+     * C'est un {@code tool_result} en erreur, comme un refus de la porte de confirmation — à ceci
+     * près que rien n'a été demandé à l'utilisateur : le refus est celui d'une règle qu'il a
+     * lui-même activée.
+     */
+    private static final String COMMAND_BLOCKED_PREFIX = "Commande contrôlée : ";
+
+    /** Repli quand un contrôle refuse une commande sans dire quoi corriger. */
+    private static final String COMMAND_BLOCKED_FALLBACK =
+            "reprends cette commande avant de la relancer.";
+
+    /**
      * Les contrôles, dans l'ordre de Spring ({@code @Order} / {@link org.springframework.core.Ordered}).
      * Vide tant que F-51 n'en enregistre aucun.
      */
@@ -112,6 +124,14 @@ public class AtelierCheckpointRunner {
      */
     public static String endOfTurnBlockedMessage(AtelierCheckpointVerdict verdict) {
         return message(END_OF_TURN_BLOCKED_PREFIX, END_OF_TURN_BLOCKED_FALLBACK, verdict);
+    }
+
+    /**
+     * Message rendu au modèle quand une commande n'a pas été émise (F-52 / SF-52-01) : ce qu'il faut
+     * changer pour que la commande passe, jamais le seul refus.
+     */
+    public static String commandBlockedMessage(AtelierCheckpointVerdict verdict) {
+        return message(COMMAND_BLOCKED_PREFIX, COMMAND_BLOCKED_FALLBACK, verdict);
     }
 
     private static String message(String prefix, String fallback, AtelierCheckpointVerdict verdict) {

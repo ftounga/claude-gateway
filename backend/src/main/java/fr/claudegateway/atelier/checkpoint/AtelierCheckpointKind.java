@@ -23,5 +23,21 @@ public enum AtelierCheckpointKind {
      * <p>Bloquer ici <b>empêche le tour de se terminer</b> : la correction est déposée comme message
      * utilisateur et la boucle repart.</p>
      */
-    END_OF_TURN
+    END_OF_TURN,
+
+    /**
+     * <b>Avant</b> l'exécution d'une commande {@code bash}, et avant toute émission vers la machine
+     * de l'utilisateur (F-52 / SF-52-01).
+     *
+     * <p>F-50 avait écarté {@code bash}, au motif qu'il a « déjà sa porte (SF-38-08) et son
+     * journal ». Le motif ne tient pas pour une vérification <b>mécanique</b> : la porte de
+     * confirmation demande une autorisation et n'inspecte <b>rien</b> du contenu de la commande, et
+     * SF-38-20 l'a rendue débrayable par projet. Elle ne peut donc pas porter un verrou
+     * déterministe — d'où ce troisième point.</p>
+     *
+     * <p>Bloquer ici <b>empêche la commande de partir</b> : rien n'est émis, le {@code tool_result}
+     * rendu au modèle est une erreur portant l'action corrective, et l'appel est journalisé comme
+     * refusé avant émission.</p>
+     */
+    BEFORE_COMMAND
 }
