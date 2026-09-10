@@ -201,6 +201,11 @@ public class AtelierChatService implements RelayInterruptTarget {
      * mécanisme existe, il ne fait rien, et le comportement de la boucle est celui d'avant.
      */
     private final AtelierCheckpointRunner checkpointRunner;
+    /**
+     * Règles de gouvernance du projet (F-51 / SF-51-04). {@link ProjectRulesSource#NONE} tant que
+     * rien n'est actif : la consigne système est alors celle d'avant F-51, à l'octet près.
+     */
+    private final ProjectRulesSource projectRules;
 
     /**
      * Tours pour lesquels une interruption a été demandée (F-38 / SF-38-07, même geste que F-32).
@@ -250,6 +255,9 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     static final int MAX_END_OF_TURN_BLOCKS = 3;
 
+    /** Titre du bloc de règles de gouvernance dans la consigne système (F-51 / SF-51-04). */
+    static final String GOVERNANCE_HEADER = "--- Règles de gouvernance (paquets actifs) ---";
+
     /** Libellé du bloc de transcription d'un blocage de fin de tour (F-50 / SF-50-02). */
     static final String CHECKPOINT_BLOCK_LABEL = "point de contrôle";
 
@@ -270,7 +278,29 @@ public class AtelierChatService implements RelayInterruptTarget {
         this(workspaceService, messageRepository, agentProvider, byokKeyService, quotaService,
                 gitWorkspaceService, runnerToolGateway, runnerCallDispatcher, confirmationGate,
                 runnerAuditService, relayBroadcaster, runnerHostService, atelierProperties,
-                AtelierCheckpointRunner.none());
+                AtelierCheckpointRunner.none(), ProjectRulesSource.NONE);
+    }
+
+    /**
+     * Forme de F-50, conservée pour les appelants (et les tests) qui branchent des points de contrôle
+     * sans se soucier de la gouvernance : aucune règle ajoutée à la consigne système, donc le
+     * comportement d'avant F-51, à l'identique.
+     */
+    public AtelierChatService(WorkspaceService workspaceService, AtelierMessageRepository messageRepository,
+            AiAgentProvider agentProvider, ByokKeyService byokKeyService, QuotaService quotaService,
+            fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService,
+            RunnerToolGateway runnerToolGateway,
+            fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher,
+            RunnerConfirmationGate confirmationGate,
+            RunnerAuditService runnerAuditService,
+            RunnerRelayBroadcaster relayBroadcaster,
+            fr.claudegateway.runner.host.RunnerHostService runnerHostService,
+            AtelierProperties atelierProperties,
+            AtelierCheckpointRunner checkpointRunner) {
+        this(workspaceService, messageRepository, agentProvider, byokKeyService, quotaService,
+                gitWorkspaceService, runnerToolGateway, runnerCallDispatcher, confirmationGate,
+                runnerAuditService, relayBroadcaster, runnerHostService, atelierProperties,
+                checkpointRunner, ProjectRulesSource.NONE);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -284,8 +314,10 @@ public class AtelierChatService implements RelayInterruptTarget {
             RunnerRelayBroadcaster relayBroadcaster,
             fr.claudegateway.runner.host.RunnerHostService runnerHostService,
             AtelierProperties atelierProperties,
-            AtelierCheckpointRunner checkpointRunner) {
+            AtelierCheckpointRunner checkpointRunner,
+            ProjectRulesSource projectRules) {
         this.checkpointRunner = checkpointRunner;
+        this.projectRules = projectRules == null ? ProjectRulesSource.NONE : projectRules;
         this.workspaceService = workspaceService;
         this.messageRepository = messageRepository;
         this.agentProvider = agentProvider;
@@ -1565,6 +1597,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                     .append(instructions.get()).append("\n\n");
         }
 
+        // Les règles de gouvernance viennent APRÈS les conventions du projet et AVANT les skills
+        // (arbitrage C1) : ce que l'utilisateur a écrit pour ce projet précis reste ce qu'on lit en
+        // premier ; un paquet le complète, il ne le remplace pas.
+        String governance = governanceRules(userId, workspace.getId());
+        if (governance != null) {
+            system.append(GOVERNANCE_HEADER).append('\n').append(governance).append("\n\n");
+        }
+
         List<String> tree = safeTree(userId, workspace);
         if (!tree.isEmpty()) {
             reads++; // Le listage est lui aussi une action menée sur la machine.
@@ -1600,6 +1640,23 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         String result = system.toString();
         return result.length() > SYSTEM_MAX_CHARS ? result.substring(0, SYSTEM_MAX_CHARS) : result;
+    }
+
+    /**
+     * Règles de gouvernance du projet, ou {@code null}.
+     *
+     * <p><b>Repli passant</b> (arbitrage C2, même geste que F-50) : une gouvernance en panne rend un
+     * tour SANS règles plutôt qu'un tour raté. Un bogue de gouvernance ne doit pas condamner le
+     * travail d'un utilisateur, qui n'a rien pour le débrayer.</p>
+     */
+    private String governanceRules(UUID userId, UUID workspaceId) {
+        try {
+            String rules = projectRules.rulesFor(userId, workspaceId);
+            return rules == null || rules.isBlank() ? null : rules;
+        } catch (RuntimeException ex) {
+            log.warn("Règles de gouvernance ignorées pour ce tour ({})", ex.getClass().getSimpleName());
+            return null;
+        }
     }
 
     /** Un fichier du projet est-il un skill ? Mêmes préfixes qu'avant SF-39-02. */
