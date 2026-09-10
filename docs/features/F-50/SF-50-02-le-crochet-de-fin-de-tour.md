@@ -10,7 +10,7 @@
 
 ## Statut
 
-`ready`
+`done`
 
 ## Date de création
 
@@ -45,7 +45,7 @@ fin du tour et **renvoyer le modèle au travail** avec l'action corrective à ex
      conversation, suivi d'un **message utilisateur** : `Fin de tour contrôlée : <action corrective>` ;
    - la boucle **repart** à l'itération suivante, avec ses garde-fous inchangés (plafond d'étapes,
      budget de temps, plafond de consommation, interruption).
-5. Le blocage est visible au rechargement : un bloc de transcription `checkpoint` en **erreur**
+5. Le blocage est visible au rechargement : un bloc de transcription `point de contrôle` en **erreur**
    porte le message, comme n'importe quel échec d'outil (SF-39-17).
 
 ### Cas d'erreur et bornes
@@ -69,18 +69,18 @@ s'exerce **à l'intérieur** des bornes du message, jamais au-dessus.
 
 ## Critères d'acceptation
 
-- [ ] Un contrôle enregistré sur `END_OF_TURN` est appelé quand le modèle rend une réponse finale.
-- [ ] Il reçoit le texte de la réponse et les chemins écrits pendant le tour, sans doublon.
-- [ ] Un verdict bloquant **empêche** la sortie : la boucle rappelle le fournisseur.
-- [ ] Le message correctif est déposé comme message **utilisateur** et contient l'action corrective.
-- [ ] Après reprise, la réponse finale rendue à l'utilisateur est celle du **dernier** tour, pas celle qui a été bloquée.
-- [ ] Un verdict passant termine le tour à l'identique d'aujourd'hui.
-- [ ] Sans contrôle enregistré, aucun comportement ne change.
-- [ ] Un tour interrompu, arrêté sur le budget de temps, sur le plafond de consommation, sur une réponse tronquée ou sur le plafond d'étapes **ne déclenche aucun contrôle**.
-- [ ] Au troisième blocage, le tour se termine malgré tout.
-- [ ] Le blocage apparaît dans la transcription persistée, en erreur.
-- [ ] Le contexte porte le `userId` et le `workspaceId` du tour (isolation).
-- [ ] Aucun texte de réponse, aucun chemin et aucune action corrective ne sont écrits dans le journal serveur.
+- [x] Un contrôle enregistré sur `END_OF_TURN` est appelé quand le modèle rend une réponse finale.
+- [x] Il reçoit le texte de la réponse et les chemins écrits pendant le tour, sans doublon.
+- [x] Un verdict bloquant **empêche** la sortie : la boucle rappelle le fournisseur.
+- [x] Le message correctif est déposé comme message **utilisateur** et contient l'action corrective.
+- [x] Après reprise, la réponse finale rendue à l'utilisateur est celle du **dernier** tour, pas celle qui a été bloquée.
+- [x] Un verdict passant termine le tour à l'identique d'aujourd'hui.
+- [x] Sans contrôle enregistré, aucun comportement ne change.
+- [x] Un tour interrompu, arrêté sur le budget de temps, sur le plafond de consommation, sur une réponse tronquée ou sur le plafond d'étapes **ne déclenche aucun contrôle**.
+- [x] Au troisième blocage, le tour se termine malgré tout.
+- [x] Le blocage apparaît dans la transcription persistée, en erreur.
+- [x] Le contexte porte le `userId` et le `workspaceId` du tour (isolation).
+- [x] Aucun texte de réponse, aucun chemin et aucune action corrective ne sont écrits dans le journal serveur.
 
 ---
 
@@ -148,25 +148,25 @@ Aucun — la transcription rend déjà un bloc en erreur (SF-39-17).
 
 ### Tests unitaires
 
-- [ ] `AtelierCheckpointRunnerTest` — `endOfTurnBlockedMessage` porte l'action ; sans action, le repli.
-- [ ] `AtelierCheckpointContextTest` — `endOfTurn(...)` borne la liste des chemins et la rend immuable.
+- [x] `AtelierCheckpointRunnerTest` — `endOfTurnBlockedMessage` porte l'action ; sans action, le repli.
+- [x] `AtelierCheckpointContextTest` — `endOfTurn(...)` borne la liste des chemins et la rend immuable.
 
 ### Tests d'intégration (boucle)
 
-- [ ] `AtelierChatServiceEndOfTurnCheckpointTest` — contrôle bloquant → la boucle repart, la réponse rendue est celle du tour suivant.
-- [ ] Le message correctif est déposé côté **utilisateur** et contient l'action.
-- [ ] Le contexte porte le texte de la réponse et les chemins écrits pendant le tour, sans doublon.
-- [ ] Contrôle passant → le tour se termine, un seul appel fournisseur de plus n'est pas fait.
-- [ ] Sans contrôle → comportement d'avant.
-- [ ] Tour **interrompu** → aucun contrôle exécuté.
-- [ ] Réponse **tronquée** → aucun contrôle exécuté.
-- [ ] Plafond d'étapes atteint → aucun contrôle exécuté.
-- [ ] Un contrôle qui bloque toujours → le tour se termine au troisième blocage.
-- [ ] La transcription persistée contient le bloc `checkpoint` en erreur.
+- [x] `AtelierChatServiceEndOfTurnCheckpointTest` — contrôle bloquant → la boucle repart, la réponse rendue est celle du tour suivant.
+- [x] Le message correctif est déposé côté **utilisateur** et contient l'action.
+- [x] Le contexte porte le texte de la réponse et les chemins écrits pendant le tour, sans doublon.
+- [x] Contrôle passant → le tour se termine, un seul appel fournisseur de plus n'est pas fait.
+- [x] Sans contrôle → comportement d'avant.
+- [x] Tour **interrompu** → aucun contrôle exécuté.
+- [x] Réponse **tronquée** → aucun contrôle exécuté.
+- [x] Plafond d'étapes atteint → aucun contrôle exécuté.
+- [x] Un contrôle qui bloque toujours → le tour se termine au troisième blocage.
+- [x] La transcription persistée contient le bloc `checkpoint` en erreur.
 
 ### Isolation workspace / utilisateur
 
-- [ ] Applicable — même garantie qu'en SF-50-01 : le contexte porte le couple du tour, obtenu après
+- [x] Applicable — même garantie qu'en SF-50-01 : le contexte porte le couple du tour, obtenu après
       `requireOwned`. Test : le contexte capté porte bien les identifiants du tour.
 
 ---
@@ -179,7 +179,7 @@ Aucun — la transcription rend déjà un bloc en erreur (SF-39-17).
 
 ### Questions ouvertes impactées
 
-- [ ] Aucune.
+- [x] Aucune.
 
 ---
 

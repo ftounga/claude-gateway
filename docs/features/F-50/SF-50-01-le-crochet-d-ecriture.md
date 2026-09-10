@@ -10,7 +10,7 @@
 
 ## Statut
 
-`ready`
+`done`
 
 ## Date de création
 
@@ -69,18 +69,18 @@ Le contexte remis à un contrôle porte : l'utilisateur, le projet, l'outil (`wr
 
 ## Critères d'acceptation
 
-- [ ] Un contrôle enregistré sur `AFTER_FILE_WRITE` est appelé après un `write_file` abouti, avec le chemin et le contenu demandé.
-- [ ] Il est appelé de la même façon après un `edit_file` abouti, avec `new_string` comme contenu.
-- [ ] Un verdict bloquant transforme le résultat d'outil en **erreur** (`is_error`) dont le texte contient l'action corrective.
-- [ ] Un verdict bloquant **conserve** l'action fichier rendue à l'écran (le fichier est écrit).
-- [ ] Un verdict passant laisse le résultat d'outil **strictement inchangé**.
-- [ ] Sans aucun contrôle enregistré (état livré par F-50), aucun comportement de la boucle ne change — les tests existants de `AtelierChatService` passent sans modification de leurs attentes.
-- [ ] Une écriture **en échec** ne déclenche aucun contrôle.
-- [ ] Un contrôle qui lève une exception est ignoré, le tour continue, et un `warn` sans contenu est journalisé.
-- [ ] Le premier contrôle bloquant court-circuite les suivants.
-- [ ] Un blocage sans action corrective produit le message de repli.
-- [ ] Le contexte remis au contrôle porte le `userId` du tour et le `workspaceId` déjà vérifié possédé (isolation).
-- [ ] Aucun contenu de fichier, aucun chemin et aucune action corrective ne sont écrits dans le journal serveur.
+- [x] Un contrôle enregistré sur `AFTER_FILE_WRITE` est appelé après un `write_file` abouti, avec le chemin et le contenu demandé.
+- [x] Il est appelé de la même façon après un `edit_file` abouti, avec `new_string` comme contenu.
+- [x] Un verdict bloquant transforme le résultat d'outil en **erreur** (`is_error`) dont le texte contient l'action corrective.
+- [x] Un verdict bloquant **conserve** l'action fichier rendue à l'écran (le fichier est écrit).
+- [x] Un verdict passant laisse le résultat d'outil **strictement inchangé**.
+- [x] Sans aucun contrôle enregistré (état livré par F-50), aucun comportement de la boucle ne change — les tests existants de `AtelierChatService` passent sans modification de leurs attentes.
+- [x] Une écriture **en échec** ne déclenche aucun contrôle.
+- [x] Un contrôle qui lève une exception est ignoré, le tour continue, et un `warn` sans contenu est journalisé.
+- [x] Le premier contrôle bloquant court-circuite les suivants.
+- [x] Un blocage sans action corrective produit le message de repli.
+- [x] Le contexte remis au contrôle porte le `userId` du tour et le `workspaceId` déjà vérifié possédé (isolation).
+- [x] Aucun contenu de fichier, aucun chemin et aucune action corrective ne sont écrits dans le journal serveur.
 
 ---
 
@@ -157,26 +157,26 @@ Aucun — la feature n'a pas d'écran (voir cadrage §5).
 
 ### Tests unitaires
 
-- [ ] `AtelierCheckpointRunnerTest` — aucun contrôle enregistré : verdict passant.
-- [ ] `AtelierCheckpointRunnerTest` — un contrôle bloquant : verdict bloquant, action corrective rendue.
-- [ ] `AtelierCheckpointRunnerTest` — deux contrôles bloquants : seul le premier est interrogé.
-- [ ] `AtelierCheckpointRunnerTest` — un contrôle d'un **autre** point d'accroche n'est pas interrogé.
-- [ ] `AtelierCheckpointRunnerTest` — un contrôle qui lève : ignoré, les suivants sont interrogés.
-- [ ] `AtelierCheckpointRunnerTest` — action corrective vide → message de repli ; > 2 000 caractères → tronquée.
-- [ ] `AtelierCheckpointVerdictTest` — `proceed()` n'est jamais bloquant ; `block(null)` l'est.
+- [x] `AtelierCheckpointRunnerTest` — aucun contrôle enregistré : verdict passant.
+- [x] `AtelierCheckpointRunnerTest` — un contrôle bloquant : verdict bloquant, action corrective rendue.
+- [x] `AtelierCheckpointRunnerTest` — deux contrôles bloquants : seul le premier est interrogé.
+- [x] `AtelierCheckpointRunnerTest` — un contrôle d'un **autre** point d'accroche n'est pas interrogé.
+- [x] `AtelierCheckpointRunnerTest` — un contrôle qui lève : ignoré, les suivants sont interrogés.
+- [x] `AtelierCheckpointRunnerTest` — action corrective vide → message de repli ; > 2 000 caractères → tronquée.
+- [x] `AtelierCheckpointVerdictTest` — `proceed()` n'est jamais bloquant ; `block(null)` l'est.
 
 ### Tests d'intégration (boucle)
 
-- [ ] `AtelierChatServiceCheckpointTest` — `write_file` abouti + contrôle bloquant → `tool_result` en erreur portant l'action ; l'action fichier `write` est conservée dans le résultat du tour.
-- [ ] `AtelierChatServiceCheckpointTest` — `edit_file` abouti + contrôle bloquant → même comportement.
-- [ ] `AtelierChatServiceCheckpointTest` — contrôle passant → résultat d'outil inchangé.
-- [ ] `AtelierChatServiceCheckpointTest` — `write_file` **en échec** → le contrôle n'est jamais appelé.
-- [ ] `AtelierChatServiceCheckpointTest` — `read_file` → le contrôle n'est jamais appelé.
-- [ ] Les neuf classes de tests existantes de `AtelierChatService` restent vertes sans changement d'attente.
+- [x] `AtelierChatServiceCheckpointTest` — `write_file` abouti + contrôle bloquant → `tool_result` en erreur portant l'action ; l'action fichier `write` est conservée dans le résultat du tour.
+- [x] `AtelierChatServiceCheckpointTest` — `edit_file` abouti + contrôle bloquant → même comportement.
+- [x] `AtelierChatServiceCheckpointTest` — contrôle passant → résultat d'outil inchangé.
+- [x] `AtelierChatServiceCheckpointTest` — `write_file` **en échec** → le contrôle n'est jamais appelé.
+- [x] `AtelierChatServiceCheckpointTest` — `read_file` → le contrôle n'est jamais appelé.
+- [x] Les neuf classes de tests existantes de `AtelierChatService` restent vertes sans changement d'attente.
 
 ### Isolation workspace / utilisateur
 
-- [ ] Applicable — le contexte remis au contrôle porte le couple `(userId, workspaceId)` issu du tour,
+- [x] Applicable — le contexte remis au contrôle porte le couple `(userId, workspaceId)` issu du tour,
       lui-même obtenu après `workspaceService.requireOwned` : aucun contrôle ne peut être appelé pour
       un projet que l'appelant ne possède pas. Test : le contexte capté porte bien les identifiants du
       tour.
@@ -191,7 +191,7 @@ Aucune. F-48 et F-49 sont livrées ; F-50 ne dépend d'aucune des deux.
 
 ### Questions ouvertes impactées
 
-- [ ] Aucune question de `docs/OPEN_QUESTIONS.md` n'est touchée.
+- [x] Aucune question de `docs/OPEN_QUESTIONS.md` n'est touchée.
 
 ---
 
