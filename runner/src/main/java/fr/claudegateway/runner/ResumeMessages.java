@@ -31,7 +31,7 @@ final class ResumeMessages {
                 + "Sur une machine déjà appairée : relancez le runner depuis le dossier du projet, "
                 + "sans aucun argument." + System.lineSeparator()
                 + "Sinon : reprenez la commande complète dans l'application "
-                + "(Atelier > Connecter une machine).";
+                + "(Forge > Connecter une machine).";
     }
 
     /** Mémoire trouvée, mais la racine qu'elle désigne n'existe plus et rien ne la remplace. */
@@ -55,7 +55,7 @@ final class ResumeMessages {
         }
         return "Aucun jeton stocké pour cette racine (" + tokenFile
                 + ") et aucun --code fourni : impossible de s'appairer." + System.lineSeparator()
-                + "Générez un code dans l'application (Atelier > Connecter une machine), "
+                + "Générez un code dans l'application (Forge > Connecter une machine), "
                 + "puis relancez avec --code <code-appairage>.";
     }
 

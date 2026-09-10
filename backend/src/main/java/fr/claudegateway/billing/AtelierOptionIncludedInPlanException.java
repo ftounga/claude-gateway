@@ -8,6 +8,6 @@ package fr.claudegateway.billing;
 public class AtelierOptionIncludedInPlanException extends RuntimeException {
 
     public AtelierOptionIncludedInPlanException() {
-        super("L'Atelier est déjà inclus dans votre offre.");
+        super("La Forge est déjà incluse dans votre offre.");
     }
 }

@@ -129,7 +129,7 @@
   <mat-card class="settings__card">
     <h2 class="settings__card-title">Compte GitHub</h2>
     <p class="settings__muted">
-      Enregistrez un jeton d'accès personnel GitHub pour que l'Atelier travaille directement sur vos
+      Enregistrez un jeton d'accès personnel GitHub pour que la Forge travaille directement sur vos
       dépôts. Le jeton est vérifié auprès de GitHub, chiffré, jamais affiché en clair, et n'entre
       jamais dans le bac à sable de l'agent.
     </p>
@@ -154,7 +154,7 @@
           <span class="settings__value">{{ git.updatedAt | date: 'short' }}</span>
         </div>
       } @else {
-        <p class="settings__muted">Aucun jeton enregistré — l'Atelier ne peut pas accéder à vos dépôts.</p>
+        <p class="settings__muted">Aucun jeton enregistré — la Forge ne peut pas accéder à vos dépôts.</p>
       }
     } @else {
       <p class="settings__muted">Chargement du jeton…</p>

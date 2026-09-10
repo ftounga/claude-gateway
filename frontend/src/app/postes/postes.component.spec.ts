@@ -259,7 +259,7 @@ describe('PostesComponent', () => {
     expect(text()).toContain('Réessayer');
   });
 
-  it("dit que la vue appartient à l'Atelier quand l'accès est refusé", fakeAsync(() => {
+  it("dit que la vue appartient à la Forge quand l'accès est refusé", fakeAsync(() => {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', ['runnerHostsOverview']);
     service.runnerHostsOverview.and.returnValue(
       throwError(() => new HttpErrorResponse({ status: 403 })),
@@ -267,7 +267,7 @@ describe('PostesComponent', () => {
     build();
 
     expect(component.error()).toBe('forbidden');
-    expect(text()).toContain("La vue des postes fait partie de l'Atelier");
+    expect(text()).toContain('La vue des postes fait partie de la Forge');
 
     // Un refus d'accès ne se répare pas en relisant : le sondage s'arrête.
     tick(POSTES_REFRESH_MS * 3);

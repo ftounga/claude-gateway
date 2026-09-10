@@ -179,13 +179,13 @@
                 <strong>Aucun jeton inclus</strong> — vos appels passent par votre clé Anthropic et
                 sont facturés sur votre compte.
               </p>
-              <p class="billing__card-feature">Atelier (Claude Code Lite) inclus</p>
+              <p class="billing__card-feature">Forge (Claude Code Lite) incluse</p>
             } @else {
               <p class="billing__card-tokens">
                 {{ plan.tokens | number }} tokens inclus{{ tokensSuffix(plan) }}
               </p>
               @if (plan.code === 'GOLD') {
-                <p class="billing__card-feature">Atelier (Claude Code Lite) inclus</p>
+                <p class="billing__card-feature">Forge (Claude Code Lite) incluse</p>
               }
             }
             <button
@@ -205,13 +205,13 @@
     }
   </section>
 
-  <!-- ===== Option Atelier (F-40) : le droit d'Atelier, découplé du plan ===== -->
+  <!-- ===== Option Forge (F-40) : le droit de Forge, découplé du plan ===== -->
   @if (atelierOption(); as option) {
-    <section class="billing__section" aria-label="Option Atelier">
+    <section class="billing__section" aria-label="Option Forge">
       <div class="billing__section-head">
-        <h2>Option Atelier</h2>
+        <h2>Option Forge</h2>
         <p>
-          L'Atelier — un espace où Claude lit, écrit et exécute sur votre projet — sans passer à
+          La Forge — un espace où Claude lit, écrit et exécute sur votre projet — sans passer à
           l'offre Gold.
         </p>
       </div>
@@ -228,11 +228,11 @@
             }
           </div>
 
-          <h3 class="billing__card-name">Atelier</h3>
+          <h3 class="billing__card-name">Forge</h3>
 
           @if (option.includedInPlan) {
             <p class="billing__card-tokens">
-              Votre offre comprend déjà l'Atelier : l'option n'a pas lieu d'être.
+              Votre offre comprend déjà la Forge : l'option n'a pas lieu d'être.
             </p>
           } @else {
             <p class="billing__card-price">

@@ -10,7 +10,7 @@ fournisseur et rend sa réponse.
 | Écran | À quoi il sert |
 |---|---|
 | **Chat** | Converser avec Claude, choisir le modèle, joindre des fichiers, retrouver ses conversations |
-| **Atelier** | Travailler sur un **projet** : parcourir et modifier ses fichiers, lancer des commandes, laisser l'assistant agir pas à pas |
+| **Forge** | Travailler sur un **projet** : parcourir et modifier ses fichiers, lancer des commandes, laisser l'assistant agir pas à pas |
 | **Bibliothèque** | Déposer des documents, suivre leur traitement, les retrouver |
 | **Q&A** | Poser une question dont la réponse est citée depuis vos propres documents |
 | **Templates** | Enregistrer des consignes réutilisables et les rejouer |
@@ -33,5 +33,5 @@ Le menu **Compte**, en haut à droite, ouvre Rapports d'usage, Facturation, Rég
 
 Cette aide répond sur **l'usage du produit**. Elle ne voit ni vos projets, ni vos fichiers, ni vos
 conversations : elle ne peut pas dire ce que contient un dossier, pourquoi une commande a échoué
-chez vous, ni relire votre code. Pour cela, ouvrez l'Atelier et posez la question à l'assistant, qui
+chez vous, ni relire votre code. Pour cela, ouvrez la Forge et posez la question à l'assistant, qui
 lui a accès au projet.

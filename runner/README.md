@@ -33,7 +33,7 @@ java -jar claude-runner.jar \
   --label "poste-dev"
 ```
 
-Le code d'appairage est généré depuis l'Atelier (usage unique, TTL 5 min). Il est échangé une
+Le code d'appairage est généré depuis la Forge (usage unique, TTL 5 min). Il est échangé une
 seule fois contre un **jeton** persisté localement : aux lancements suivants, `--code` devient
 inutile tant que le jeton est valide et non révoqué.
 
@@ -113,7 +113,7 @@ Une fois activée :
   au temps restant du tour.
 - Un code de sortie non nul est rendu tel quel à l'assistant : la commande a tourné, son échec est
   une information.
-- Le bouton **Interrompre** de l'Atelier tue le processus (`destroyForcibly`) et arrête le tour.
+- Le bouton **Interrompre** de la Forge tue le processus (`destroyForcibly`) et arrête le tour.
 
 ## Outils fichiers et confinement (SF-38-04)
 

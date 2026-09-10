@@ -545,9 +545,9 @@ export class BillingComponent implements OnInit {
       return;
     }
     const data: ConfirmDialogData = {
-      title: "Résilier l'option Atelier",
+      title: "Résilier l'option Forge",
       message:
-        "Votre accès à l'Atelier reste ouvert jusqu'à la fin de la période déjà payée, " +
+        "Votre accès à la Forge reste ouvert jusqu'à la fin de la période déjà payée, " +
         'puis ne sera pas reconduit. Votre offre et votre quota de tokens ne changent pas.',
       confirmLabel: 'Résilier',
     };
@@ -568,7 +568,7 @@ export class BillingComponent implements OnInit {
         this.atelierOptionInProgress.set(false);
         this.atelierOption.set(option);
         this.notify(
-          "Option Atelier résiliée. Votre accès reste ouvert jusqu'à la fin de la période.",
+          "Option Forge résiliée. Votre accès reste ouvert jusqu'à la fin de la période.",
           'snack-success',
         );
       },
@@ -585,17 +585,17 @@ export class BillingComponent implements OnInit {
     const apiError = error.error as ApiError | undefined;
     switch (apiError?.error) {
       case 'no_active_subscription':
-        return "Souscrivez d'abord une offre Solo ou Pro pour ajouter l'option Atelier.";
+        return "Souscrivez d'abord une offre Solo ou Pro pour ajouter l'option Forge.";
       case 'atelier_option_included':
-        return "L'Atelier est déjà inclus dans votre offre.";
+        return "La Forge est déjà incluse dans votre offre.";
       case 'atelier_option_already_active':
-        return "L'option Atelier est déjà active sur votre compte.";
+        return "L'option Forge est déjà active sur votre compte.";
       case 'atelier_option_not_active':
-        return "Aucune option Atelier à résilier.";
+        return "Aucune option Forge à résilier.";
       case 'billing_unavailable':
         return 'La facturation est momentanément indisponible.';
       default:
-        return "Impossible de mettre à jour l'option Atelier.";
+        return "Impossible de mettre à jour l'option Forge.";
     }
   }
 

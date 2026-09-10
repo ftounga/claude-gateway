@@ -34,6 +34,16 @@ class StartupDisclosureTest {
     }
 
     @Test
+    void it_names_the_screen_the_user_actually_sees() {
+        // F-58 / SF-58-01 — le runner parle à l'utilisateur : il doit citer l'écran par le nom qui
+        // s'y affiche. « Atelier » n'est plus ce nom.
+        String text = block("francky", false, Map.of());
+
+        assertTrue(text.contains("depuis la Forge"), text);
+        assertFalse(text.contains("Atelier"), text);
+    }
+
+    @Test
     void it_names_the_account_it_runs_under() {
         String text = block("francky", false, Map.of());
 

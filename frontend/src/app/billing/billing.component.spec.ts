@@ -95,7 +95,7 @@ describe('BillingComponent', () => {
   const topUps: TopUpPacksResponse = {
     packs: [{ code: 'STANDARD', label: 'Recharge 1 M tokens', tokens: 1000000 }],
   };
-  /** Option Atelier (F-40) : Solo sans option, paiement configuré. */
+  /** Option Forge (F-40) : Solo sans option, paiement configuré. */
   const optionAvailable: AtelierOptionView = {
     priceEur: '40',
     entitled: false,
@@ -392,10 +392,10 @@ describe('BillingComponent', () => {
     expect(component.changeInProgress()).toBeNull();
   });
 
-  it('affiche la mention Atelier sur la carte GOLD uniquement', () => {
+  it('affiche la mention Forge sur la carte GOLD uniquement', () => {
     setup();
-    // Par défaut (SOLO/PRO), aucune carte ne porte la mention Atelier.
-    expect(fixture.nativeElement.textContent).not.toContain('Atelier (Claude Code Lite) inclus');
+    // Par défaut (SOLO/PRO), aucune carte ne porte la mention Forge.
+    expect(fixture.nativeElement.textContent).not.toContain('Forge (Claude Code Lite) incluse');
 
     // Ajoute une offre GOLD : sa carte doit porter la mention.
     component.plans.set([
@@ -407,7 +407,7 @@ describe('BillingComponent', () => {
     ]);
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.textContent).toContain('Atelier (Claude Code Lite) inclus');
+    expect(fixture.nativeElement.textContent).toContain('Forge (Claude Code Lite) incluse');
   });
 
   it('surfaces an error when changing plan fails', () => {
@@ -429,7 +429,7 @@ describe('BillingComponent', () => {
     expect(component.changeInProgress()).toBeNull();
   });
 
-  // ------------------------------------------------ Option Atelier (F-40 / SF-40-03)
+  // ------------------------------------------------ Option Forge (F-40 / SF-40-03)
 
   /** Rejoue le chargement de l'option avec un état donné, puis rend. */
   function withOption(option: AtelierOptionView): void {
@@ -452,7 +452,7 @@ describe('BillingComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('quota de tokens ne change pas');
   });
 
-  it('offers no purchase to a plan that already includes the Atelier', () => {
+  it('offers no purchase to a plan that already includes the Forge', () => {
     setup();
     withOption({ ...optionAvailable, entitled: true, includedInPlan: true });
 
@@ -505,7 +505,7 @@ describe('BillingComponent', () => {
     setup(null, false, null);
 
     expect(component.atelierOption()).toBeNull();
-    expect(fixture.nativeElement.textContent).not.toContain('Option Atelier');
+    expect(fixture.nativeElement.textContent).not.toContain('Option Forge');
     // L'écran reste utilisable : les offres sont bien là.
     expect(component.plans().length).toBe(2);
   });
@@ -556,11 +556,11 @@ describe('BillingComponent', () => {
       ).atelierOptionErrorMessage(new HttpErrorResponse({ status: 409, error: { error: code } }));
 
     expect(message('no_active_subscription')).toContain('Solo ou Pro');
-    expect(message('atelier_option_included')).toContain('déjà inclus');
+    expect(message('atelier_option_included')).toContain('déjà incluse');
     expect(message('atelier_option_already_active')).toContain('déjà active');
     expect(message('atelier_option_not_active')).toContain('à résilier');
     expect(message('billing_unavailable')).toContain('indisponible');
-    expect(message('unexpected_code')).toContain("l'option Atelier");
+    expect(message('unexpected_code')).toContain("l'option Forge");
   });
 
   // ------------------------------------------------ Offre BYOK (F-41 / SF-41-03)
@@ -657,7 +657,7 @@ describe('BillingComponent', () => {
 
     expect(byokCard.textContent).toContain('Aucun jeton inclus');
     expect(byokCard.textContent).not.toContain('tokens inclus / mois');
-    expect(byokCard.textContent).toContain('Atelier (Claude Code Lite) inclus');
+    expect(byokCard.textContent).toContain('Forge (Claude Code Lite) incluse');
     // Non-régression : l'offre Hosted voisine garde exactement son libellé.
     expect(soloCard.textContent).toContain('tokens inclus / mois');
     expect(soloCard.textContent).not.toContain('Aucun jeton inclus');

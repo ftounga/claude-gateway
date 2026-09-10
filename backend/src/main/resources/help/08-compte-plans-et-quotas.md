@@ -18,7 +18,7 @@ allocation mensuelle de jetons, plus une offre **BYOK** où vous apportez votre 
 période d'essai est accordée à l'ouverture du compte. Les montants et l'allocation de chaque offre
 sont affichés sur l'écran **Facturation** — c'est la seule source à jour.
 
-L'accès à l'**Atelier** peut être ouvert depuis une offre Solo ou Pro par une **option**
+L'accès à la **Forge** peut être ouvert depuis une offre Solo ou Pro par une **option**
 mensuelle, sans changer d'offre ni d'allocation.
 
 L'allocation est **mensuelle**, y compris pour un abonnement engagé à l'année.
@@ -33,7 +33,7 @@ Quand l'allocation est épuisée, les appels sont **refusés** jusqu'au renouvel
 ou jusqu'à une recharge achetée depuis l'écran Facturation. Il n'y a pas de dépassement facturé à
 l'insu de l'utilisateur.
 
-L'Atelier applique en plus ses propres bornes par tour — un nombre maximal d'allers-retours, un
+La Forge applique en plus ses propres bornes par tour — un nombre maximal d'allers-retours, un
 budget de temps et un plafond de jetons par message — pour qu'un seul message ne puisse pas
 consommer une allocation entière.
 

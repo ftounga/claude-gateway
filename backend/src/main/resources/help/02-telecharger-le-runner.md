@@ -1,6 +1,6 @@
 # Télécharger le runner : quel format choisir
 
-Le runner se télécharge depuis l'Atelier : bouton **Connecter une machine**, étape *Récupérer le
+Le runner se télécharge depuis la Forge : bouton **Connecter une machine**, étape *Récupérer le
 runner*. Quatre formats existent ; l'écran n'affiche que ceux que la passerelle sert réellement.
 
 | Format | Taille | Prérequis | Ce qu'on lance |

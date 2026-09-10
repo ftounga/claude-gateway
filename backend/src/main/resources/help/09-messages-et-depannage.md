@@ -40,5 +40,5 @@
 2. **Relancer le runner après avoir modifié `.runnerignore`** : les règles sont lues au démarrage.
 3. **Un code de sortie non nul d'une commande n'est pas une panne du produit** : la commande a
    tourné, elle a échoué, et son message dit pourquoi.
-4. **Le journal d'audit** de l'Atelier trace chaque appel exécuté sur la machine, refus compris :
+4. **Le journal d'audit** de la Forge trace chaque appel exécuté sur la machine, refus compris :
    c'est là qu'on voit ce qui s'est réellement passé.

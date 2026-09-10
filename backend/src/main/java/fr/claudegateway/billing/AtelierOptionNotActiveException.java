@@ -7,6 +7,6 @@ package fr.claudegateway.billing;
 public class AtelierOptionNotActiveException extends RuntimeException {
 
     public AtelierOptionNotActiveException() {
-        super("Aucune option Atelier à résilier.");
+        super("Aucune option Forge à résilier.");
     }
 }

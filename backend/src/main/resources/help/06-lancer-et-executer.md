@@ -38,7 +38,7 @@ Ce qui encadre une commande :
   temps restant du tour ;
 - un code de sortie non nul est rendu tel quel : la commande a tourné, son échec est une
   information, pas une panne du produit ;
-- le bouton **Interrompre** de l'Atelier tue le processus et arrête le tour.
+- le bouton **Interrompre** de la Forge tue le processus et arrête le tour.
 
 ## Avec quels droits le runner agit
 

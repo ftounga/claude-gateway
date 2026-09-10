@@ -88,7 +88,7 @@ public class AtelierOptionService {
         }
         if (!isCarriedByLivePlan(subscription)) {
             throw new NoActiveSubscriptionException(
-                    "Souscrivez une offre Solo ou Pro avant d'ajouter l'option Atelier.");
+                    "Souscrivez une offre Solo ou Pro avant d'ajouter l'option Forge.");
         }
         if (isOptionLive(subscription)) {
             throw new AtelierOptionAlreadyActiveException();
@@ -97,7 +97,7 @@ public class AtelierOptionService {
         String priceId = properties.stripe().atelierOptionPriceId();
         if (!StringUtils.hasText(priceId)) {
             throw new BillingProviderUnavailableException(
-                    "Aucun price configuré pour l'option Atelier.");
+                    "Aucun price configuré pour l'option Forge.");
         }
 
         return billingProvider.createAtelierOptionCheckoutSession(new AtelierOptionCheckoutCommand(

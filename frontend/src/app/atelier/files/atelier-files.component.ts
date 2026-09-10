@@ -58,7 +58,7 @@ import {
 } from './text-prompt-dialog.component';
 
 /** Message de commit par défaut quand l'utilisateur n'en saisit pas. */
-const DEFAULT_COMMIT_MESSAGE = 'Modifications depuis l\'Atelier';
+const DEFAULT_COMMIT_MESSAGE = 'Modifications depuis la Forge';
 
 /**
  * Page « Explorateur de fichiers » de l'Atelier (F-28 / SF-28-15). Remplace le tiroir « Fichiers »
