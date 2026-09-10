@@ -466,16 +466,46 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     côté serveur via le catalogue `TopUpCatalog`, jamais depuis le payload). Endpoints top-up : **`GET /billing/topups`**,
     **`POST /billing/topup/checkout`** (authentifiés) ; crédit appliqué via le webhook signé **`POST /webhook/stripe`**.
 
-- **runner_pairing_codes / runner_tokens** — identité du runner (F-38 / SF-38-01, migration `047`).
+- **runner_hosts** — le **poste** (F-48 / SF-48-01, migration `064`). Une machine connectée, avec
+  **une racine**, **un runner** et **un seul appairage** ; les projets deviennent des dossiers sous
+  cette racine. C'est le déplacement d'unité de F-48 : jusque-là, chaque dossier exigeait son code
+  d'appairage, son runner et sa connexion — pour la même machine et le même utilisateur.
+  - `runner_hosts` : `id (uuid)`, `user_id (uuid)`, `name (varchar 100)`, `root_name (varchar 255)`,
+    `os (varchar 64)`, `shell (varchar 16)`, `elevated (boolean)`, `last_seen_at`, `created_at`,
+    `updated_at`. Index `(user_id)`.
+  - Tout ce que la gateway sait de la machine est **déclaré par le runner**, jamais deviné :
+    `root_name` n'est que le **dernier segment** de la racine, jamais le chemin absolu. Ces trois
+    colonnes viennent de `workspaces` (migrations `052`, `053`, `063`) : elles décrivaient une
+    machine, pas un projet.
+  - `workspaces` gagne `host_id (uuid, nullable)` et `project_path (varchar 512)` — le chemin du
+    projet **relatif à la racine du poste**, chaîne vide pour la racine elle-même.
+  - **Un poste appartient à un seul utilisateur** : ce n'est pas F-17 (espaces d'équipe, V3), rien
+    n'est partagé entre comptes, l'isolation `user_id` reste la règle.
+  - Endpoints **`POST/GET /runner-hosts`**, **`GET/PUT/DELETE /runner-hosts/{id}`**,
+    **`POST /runner-hosts/{id}/pairing-code|kill`**, **`GET /runner-hosts/{id}/tokens|status`**,
+    **`DELETE /runner-hosts/{id}/tokens/{tokenId}`** (JWT, accès Atelier), et
+    **`PUT /workspaces/{id}/host`** pour rattacher un projet. Volontairement **hors** du préfixe
+    `/runner/**`, qui est la chaîne du protocole runner et refuse tout ce qui n'y est pas listé.
+  - **Table rase** (décision du PO, 2026-09-10) : la migration `064` **vide** les trois tables runner
+    avant de changer de clef — aucune reprise de données, aucune colonne de transition, aucune double
+    lecture. Le seul coût est un ré-appairage.
+
+- **runner_pairing_codes / runner_tokens** — identité du runner (F-38 / SF-38-01, migration `047` ;
+  clef passée de `workspace_id` à `host_id` par F-48 / SF-48-01, migration `064`).
   Deux tables neuves. Le **runner** est un second type de porteur d'identité, authentifié par jeton
   et non par JWT utilisateur ; il ouvre (SF-38-02) une connexion sortante pour exécuter les outils de
   l'agent sur une machine connectée. **Aucun secret en clair** : seul le `SHA-256 (hex)` du code
   d'appairage et du jeton est stocké.
-  - `runner_pairing_codes` : `id (uuid)`, `user_id (uuid)`, `workspace_id (uuid)`, `code_hash (varchar 64)`,
-    `expires_at`, `consumed_at`, `created_at`. Index `code_hash`. Code court, TTL 5 min, usage unique.
-  - `runner_tokens` : `id (uuid)`, `user_id (uuid)`, `workspace_id (uuid)`, `token_hash (varchar 64, unique)`,
-    `label (varchar 100)`, `expires_at`, `revoked_at`, `last_seen_at`, `created_at`. Index `(user_id, workspace_id)`.
+  - `runner_pairing_codes` : `id (uuid)`, `user_id (uuid)`, `host_id (uuid)`, `code_hash (varchar 64)`,
+    `expires_at`, `consumed_at`, `created_at`. Index `code_hash`. Code court, TTL 5 min, usage unique,
+    **un seul par machine**.
+  - `runner_tokens` : `id (uuid)`, `user_id (uuid)`, `host_id (uuid)`, `token_hash (varchar 64, unique)`,
+    `label (varchar 100)`, `expires_at`, `revoked_at`, `last_seen_at`, `created_at`. Index `(user_id, host_id)`.
     TTL 30 j, révocable. Isolation `user_id` sur toutes les lectures/gestions.
+  - `RunnerIdentity` vaut `(tokenId, userId, hostId)` : le **projet** ne fait plus partie de
+    l'identité, il voyage **par appel** dans le champ `project` de la trame `tool_call`, et c'est le
+    runner qui referme son confinement dessus (F-48 / SF-48-02, régime **local** — décision non
+    réversible du cadrage).
   - Endpoints **`POST /workspaces/{id}/runner/pairing-code`**, **`GET/DELETE /workspaces/{id}/runner/tokens`**
     (JWT, gardés par l'accès Atelier Gold/ADMIN) et **`POST /runner/pair`** (sans JWT : le code d'appairage
     est la credential), ce dernier servi par une **chaîne de sécurité Spring dédiée** `@Order(1)`
@@ -519,10 +549,16 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   **refusé avant émission** (validation d'action). Clef de corrélation `call_id` = l'identifiant
   `tool_use` du fournisseur : la même clef relie la trame WebSocket, l'événement SSE de confirmation
   et la ligne d'audit.
-  - `runner_audit` : `id (uuid)`, `user_id (uuid)`, `workspace_id (uuid)`, `token_id (uuid, nullable)`,
+  - `runner_audit` : `id (uuid)`, `user_id (uuid)`, `workspace_id (uuid, **nullable** depuis F-48)`,
+    `host_id (uuid, nullable)`, `token_id (uuid, nullable)`,
     `call_id (varchar 64)`, `tool (varchar 32)`, `target (varchar 1000)`, `outcome (varchar 16)`,
     `error_code (varchar 32)`, `exit_code (int)`, `duration_ms (bigint)`, `bytes (bigint)`,
-    `created_at`. Index `(user_id, workspace_id, created_at)`.
+    `created_at`. Index `(user_id, workspace_id, created_at)` et `(user_id, host_id, created_at)`.
+  - Le journal **conserve le projet** (F-48 / SF-48-01) : il doit continuer de dire *quel projet* a
+    exécuté quoi, même si le runner appartient désormais à une machine. `workspace_id` devient
+    nullable parce que certains gestes visent la machine entière — le coupe-circuit, par exemple ;
+    les rattacher à un projet arbitraire serait un mensonge dans le seul document censé dire la
+    vérité.
   - **Ce que la table ne contient jamais** : aucun contenu de fichier, aucune sortie de commande,
     aucun message d'erreur du runner (un message peut porter un fragment de chemin de la machine ;
     un code d'erreur, jamais). Les lectures d'amorçage de la consigne système sont **agrégées en une
@@ -586,7 +622,7 @@ Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 rée
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/user_api_keys/user_git_credentials/prompt_templates/runner_tokens/runner_pairing_codes/runner_audit via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exception documentée : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/runner_tokens/runner_pairing_codes/runner_audit via `user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exception documentée : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur.)
 
 ---
 
