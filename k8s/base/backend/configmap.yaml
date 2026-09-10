@@ -35,6 +35,16 @@ data:
   # runtime/bin/java et du lanceur, et le paquet serait inutilisable apres decompression.
   APP_RUNNER_MACOS_AARCH64_PACKAGE_PATH: "/app/claude-runner-macos-aarch64.tar.gz"
   APP_RUNNER_MACOS_X64_PACKAGE_PATH: "/app/claude-runner-macos-x64.tar.gz"
+  # Relais local px (F-59) : la gateway sert elle-meme le remede au proxy a authentification.
+  # GitHub est souvent bloque PAR CATEGORIE sur un poste d'entreprise ; le domaine de la gateway,
+  # lui, est forcement autorise — sinon rien du produit ne fonctionne.
+  APP_RUNNER_PROXY_RELAY_WINDOWS_PATH: "/app/px-v0.11.0-windows-amd64.zip"
+  APP_RUNNER_PROXY_RELAY_MACOS_AARCH64_PATH: "/app/px-v0.11.0-mac-arm64.tar.gz"
+  APP_RUNNER_PROXY_RELAY_LINUX_X64_PATH: "/app/px-v0.11.0-linux-glibc-x86_64.tar.gz"
+  # LICENCE : px est sous MIT, sa notice doit accompagner la copie. Sans ce fichier, AUCUNE archive
+  # n'est servie (SF-59-01, D3). cntlm (GPL) n'est pas redistribue : l'assistant y renvoie par lien.
+  APP_RUNNER_PROXY_RELAY_LICENSE_PATH: "/app/px-LICENSE.txt"
+  APP_RUNNER_PROXY_RELAY_VERSION: "v0.11.0"
   # Phase 2 Atelier (Managed Agents / exécution de code, ADR-013) : activée. L'accès reste gardé
   # par offre Gold/ADMIN (SF-28-06) et la session est éphémère (runtime borné). ⚠️ Ouvrir aux
   # abonnés Gold au-delà de l'admin nécessite les plafonds de dépense de SF-28-12.
