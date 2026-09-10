@@ -176,3 +176,23 @@ Après merge, évaluer :
 Ce lifecycle est conçu pour être exécutable par des agents.
 Chaque étape a des entrées, des sorties et des critères de blocage explicites.
 Les templates sont stricts pour permettre un parsing automatique.
+
+
+---
+
+## Taille d'une subfeature (2026-09-10)
+
+Chaque subfeature paie **le cycle entier** : mini-spec, readiness, développement, review, release,
+PR, merge. Ce cycle a un coût fixe, indépendant de la taille du code livré. Découper une feature en
+cinq subfeatures, c'est donc payer cinq fois ce coût — et une semaine de livraison a montré que ce
+poste dépasse souvent celui du code lui-même.
+
+**Règle** : viser **2 à 3 subfeatures par feature**, et ne dépasser que si le découpage porte une
+vraie frontière — un contrat d'API qui permet au backend et à l'écran d'avancer en parallèle, une
+migration à isoler, un périmètre de sécurité distinct.
+
+**Ce qui reste vrai** : une subfeature de plus de deux jours doit être redécoupée. La règle
+ci-dessus borne l'autre extrémité, celle du découpage excessif — les deux se lisent ensemble.
+
+**Mauvais motif de découpage** : « c'est plus propre d'avoir une PR par fichier touché ». La revue
+gagne à voir un changement cohérent, pas des fragments dont aucun ne se comprend seul.

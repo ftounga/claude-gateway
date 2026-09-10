@@ -167,3 +167,27 @@ Isolation workspace :
 ```
 
 Ce plan est validé avant le démarrage du dev et reviewé dans la PR.
+
+
+---
+
+## Quand jouer la suite complète (2026-09-10)
+
+**Mesure qui motive cette règle** : la suite backend compte **1 844 tests** et dure environ
+**3 minutes**, le frontend 1 064 tests pour 50 secondes. Rejouée à chaque étape d'une subfeature —
+pendant le développement, avant la review, avant la release —, elle devenait le **premier poste de
+temps** d'une livraison, sans rien vérifier de plus la deuxième et la troisième fois : c'est le même
+code.
+
+| Moment | Ce qu'on joue |
+|---|---|
+| Pendant le développement | **les tests du périmètre touché** (`-Dtest=…`, `--include`), aussi souvent qu'on veut |
+| **Review checklist** | **la suite complète, une fois** — c'est le point de vérité |
+| Release checklist | **rien de plus**, on cite le résultat de la review |
+
+**Deux conditions pour que la seconde exécution soit inutile** : aucun commit n'a été ajouté entre
+la review et la release, et la branche n'a pas été rebasée. Si l'une des deux tombe, on rejoue —
+la règle supprime une redondance, pas une vérification.
+
+**Ce qui ne change pas** : un test rouge reste bloquant, l'isolation `user_id` reste exigée, et le
+plan de test de la mini-spec reste écrit avant le développement.

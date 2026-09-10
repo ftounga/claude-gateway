@@ -8,7 +8,9 @@ Tous les items doivent être verts.
 ## Validation technique
 
 - [ ] La review est approuvée
-- [ ] La CI est verte (build + tous les tests)
+- [ ] La suite complète est verte — **résultat de la review cité**, non rejoué, si aucun commit
+      n'a été ajouté et la branche n'a pas été rebasée depuis (voir `playbooks/testing-strategy.md`
+      § « Quand jouer la suite complète »). Sinon : rejouer.
 - [ ] Aucun conflit de merge avec `main`
 - [ ] La branche est à jour avec `main` (rebase ou merge récent)
 
