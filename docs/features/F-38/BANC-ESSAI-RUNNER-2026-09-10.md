@@ -91,6 +91,12 @@ Ce que l'assistant fait à ta place :
   « absence de route » est précisément celui où rien n'y est déclaré ;
 - **il propose le bon relais** selon le poste *et* le verdict d'authentification — jamais `cntlm`
   sur un poste en Kerberos, puisqu'il ne porte que NTLM ;
+- **il fait télécharger le relais depuis la passerelle** (F-59), et non plus depuis GitHub : `px` est
+  servi par **notre domaine** — forcément autorisé chez le client, sinon rien du produit ne
+  fonctionnerait — avec un bouton *et* la commande `curl` correspondante, portant l'option
+  d'authentification du verdict (`--proxy-ntlm` / `--proxy-negotiate`), la version servie citée et la
+  licence MIT à un clic. **GitHub reste proposé, mais en repli**, nommé comme tel ; `cntlm`, sous
+  GPL, n'est pas redistribué et demeure un lien vers son éditeur ;
 - **il n'affiche les commandes de redirection du runner qu'après un `200` déclaré** sur le relais :
   rediriger vers un relais qui ne porte rien reproduit la panne en donnant à croire qu'elle est
   réparée ;
@@ -103,9 +109,9 @@ s'authentifie avec la session Windows, la JVM jamais — d'où le relais local.
 
 **Ce que l'assistant ne couvre pas encore**, et qui reste à faire à la main :
 
-- `api.github.com` bloqué par filtrage de catégorie → récupérer le binaire du relais depuis un autre
-  poste et le copier sur clé ;
-- Windows antérieur à 10 (1803) → pas de `tar` pour décompresser `px.zip`.
+- Windows antérieur à 10 (1803) → pas de `tar` pour décompresser `px.zip` ;
+- macOS Intel et Linux non x86_64 → le projet amont ne publie pas ces binaires ; le chemin `pip3`
+  reste la voie.
 
 **Le `NO_PROXY` à la forme Windows (`;`) est désormais accepté par le runner** (SF-55-03) : découpé
 sur la seule virgule, il devenait une entrée unique ne correspondant à aucun hôte, et toutes les
