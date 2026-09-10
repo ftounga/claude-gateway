@@ -27,6 +27,7 @@ import fr.claudegateway.runner.dto.PairingCodeResponse;
 import fr.claudegateway.runner.dto.RunnerKillResponse;
 import fr.claudegateway.runner.dto.RunnerStatusResponse;
 import fr.claudegateway.runner.dto.RunnerTokenResponse;
+import fr.claudegateway.runner.host.dto.RunnerHostOverviewResponse;
 import fr.claudegateway.runner.host.dto.RunnerHostRequest;
 import fr.claudegateway.runner.host.dto.RunnerHostResponse;
 import jakarta.validation.Valid;
@@ -47,6 +48,7 @@ import jakarta.validation.Valid;
 public class RunnerHostController {
 
     private final RunnerHostService hostService;
+    private final RunnerHostOverviewService overviewService;
     private final RunnerPairingService pairingService;
     private final RunnerTokenService tokenService;
     private final RunnerStatusService statusService;
@@ -57,12 +59,14 @@ public class RunnerHostController {
     private final AtelierAccessService atelierAccess;
     private final CurrentUser currentUser;
 
-    public RunnerHostController(RunnerHostService hostService, RunnerPairingService pairingService,
+    public RunnerHostController(RunnerHostService hostService,
+            RunnerHostOverviewService overviewService, RunnerPairingService pairingService,
             RunnerTokenService tokenService, RunnerStatusService statusService,
             RunnerKillSwitchService killSwitchService, RunnerTokenRepository tokenRepository,
             RunnerPairingCodeRepository pairingCodes, WorkspaceService workspaceService,
             AtelierAccessService atelierAccess, CurrentUser currentUser) {
         this.hostService = hostService;
+        this.overviewService = overviewService;
         this.pairingService = pairingService;
         this.tokenService = tokenService;
         this.statusService = statusService;
@@ -92,6 +96,19 @@ public class RunnerHostController {
                 .map(host -> RunnerHostResponse.from(host,
                         statusService.statusOf(userId, host).connected()))
                 .toList();
+    }
+
+    /**
+     * <b>Vue d'ensemble</b> (F-49 / SF-49-01) : tous les postes, leur état, les projets rangés
+     * dessous et l'activité observée sur chacun — en un seul appel.
+     *
+     * <p>Déclarée avant {@code /{hostId}} par lisibilité ; Spring privilégie de toute façon le
+     * chemin littéral sur la variable, et un test d'intégration le vérifie.</p>
+     */
+    @GetMapping("/overview")
+    public List<RunnerHostOverviewResponse> overview() {
+        atelierAccess.requireAccess();
+        return overviewService.overview(currentUser.requireId());
     }
 
     /** Détail d'un poste possédé. */
