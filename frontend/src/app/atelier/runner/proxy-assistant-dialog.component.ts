@@ -8,6 +8,14 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
+import {
+  AtelierService,
+  PROXY_RELAY_LICENSE_PATH,
+  ProxyRelayPlatform,
+  proxyRelayDownloadPath,
+} from '../../core/services/atelier.service';
+import type { ProxyRelayFormats } from '../../core/models/atelier.models';
+
 // Import de TYPE uniquement : le parcours de mise en service importe, lui, ce composant. Un import
 // de valeur dans les deux sens créerait un cycle à l'exécution ; celui-ci est effacé à la
 // compilation.
@@ -65,16 +73,44 @@ export const RELAY_FIELD_MAX_LENGTH = 64;
 /** Ce que l'utilisateur déclare avoir obtenu en vérifiant le relais. */
 export type RelayCheckVerdict = 'unknown' | 'carried' | 'failed';
 
-/** Les deux relais que ce produit sait décrire. Il n'en embarque, n'en sert et n'en installe aucun. */
+/** Les deux relais que ce produit sait décrire. Un seul est redistribué : `px`, sous licence MIT. */
 export type RelayKind = 'px' | 'cntlm';
 
-/** Un relais proposé : ce qu'il est, quand il convient, et les gestes dans l'ordre. */
+/**
+ * D'où vient le binaire proposé (F-59 / SF-59-02).
+ *
+ * <p><b>`gateway`</b> : servi par notre domaine — le seul dont on soit certain qu'il est autorisé
+ * chez le client, sinon rien de ce produit ne fonctionnerait. C'est ce qui rompt le cercle où GitHub
+ * est bloqué par catégorie : il faudrait le relais pour sortir, et une sortie pour l'obtenir.</p>
+ *
+ * <p><b>`upstream`</b> : la source amont (GitHub, `winget`, `pip3`, l'éditeur de `cntlm`). Elle
+ * reste proposée — en <b>repli</b> nommé —, sans quoi l'assistant deviendrait inutile face à une
+ * gateway antérieure à F-59.</p>
+ */
+export type RelayOrigin = 'gateway' | 'upstream';
+
+/** Un relais proposé : ce qu'il est, d'où il vient, quand il convient, et les gestes dans l'ordre. */
 export interface RelayOption {
   readonly kind: RelayKind;
+  readonly origin: RelayOrigin;
   readonly title: string;
   /** Le poste auquel cette option s'adresse — c'est l'utilisateur qui tranche, pas le navigateur. */
   readonly when: string;
   readonly commands: ProxyCommand[];
+}
+
+/**
+ * Le relais que <b>cette</b> gateway sert pour <b>ce</b> poste (F-59 / SF-59-02), ou {@code null}
+ * quand elle n'en sert aucun — gateway déployée avant F-59, plateforme non empaquetée, notice de
+ * licence absente, ou lecture en échec.
+ */
+export interface GatewayRelayOffer {
+  /** Route de téléchargement, en **absolu** : la commande `curl` est collée dans un terminal. */
+  readonly url: string;
+  /** Version amont servie, citée à l'écran — jamais « la dernière ». */
+  readonly version: string;
+  /** L'archive telle qu'elle arrive sur le poste, et ce qu'il faut en faire. */
+  readonly archive: string;
 }
 
 /** Une commande à copier, et ce qu'elle répond. */
@@ -286,17 +322,21 @@ export function relayOptions(
   platform: RunnerHostPlatform,
   verdict: IntegratedAuthVerdict,
   address: string,
+  gateway: GatewayRelayOffer | null = null,
 ): RelayOption[] {
   if (verdict === 'refused' || verdict === 'unknown') {
     return [];
   }
   const flag = curlAuthFlag(verdict);
   const px = `--proxy=${address} --port=${LOCAL_RELAY_PORT}`;
+  const fromGateway = gatewayRelayOption(platform, flag, address, px, gateway);
   if (platform === 'windows') {
     return [
+      ...fromGateway,
       {
         kind: 'px',
-        title: 'px — le relais autonome',
+        origin: 'upstream',
+        title: upstreamTitle(fromGateway),
         when: 'Windows, sans droits administrateur',
         commands: [
           {
@@ -327,7 +367,8 @@ export function relayOptions(
   }
   const pxUnix: RelayOption = {
     kind: 'px',
-    title: 'px — le relais autonome',
+    origin: 'upstream',
+    title: upstreamTitle(fromGateway),
     when: platform === 'macos'
       ? 'Mac Apple Silicon (binaire publié), et Mac Intel par pip3'
       : 'Linux et systèmes non reconnus',
@@ -354,10 +395,13 @@ export function relayOptions(
   };
   if (verdict === 'negotiate') {
     // Kerberos : `cntlm` ne sait pas le porter. Le proposer ici serait une fausse piste (D1).
-    return [pxUnix];
+    return [...fromGateway, pxUnix];
   }
   const cntlm: RelayOption = {
     kind: 'cntlm',
+    // `cntlm` est sous GPL : il n'est PAS redistribué par la gateway, et ne le sera pas — fournir le
+    // binaire imposerait de fournir les sources correspondantes. Il reste un lien, l'écran le dit.
+    origin: 'upstream',
     title: 'cntlm — l\'alternative empaquetée partout',
     when: platform === 'macos' ? 'Mac Intel, si Homebrew est disponible' : 'Linux — NTLM uniquement',
     commands: [
@@ -372,8 +416,129 @@ export function relayOptions(
       },
     ],
   };
-  return platform === 'macos' ? [pxUnix, cntlm] : [cntlm, pxUnix];
+  return platform === 'macos'
+    ? [...fromGateway, pxUnix, cntlm]
+    : [...fromGateway, cntlm, pxUnix];
 }
+
+/**
+ * Le titre de l'option amont : elle devient un <b>repli</b> — et le dit — dès que la gateway sert le
+ * relais. Sans cela, deux blocs identiques se succéderaient et l'ordre seul dirait lequel essayer.
+ */
+function upstreamTitle(fromGateway: RelayOption[]): string {
+  return fromGateway.length > 0
+    ? 'px — en repli, depuis la source amont'
+    : 'px — le relais autonome';
+}
+
+/**
+ * L'option <b>« depuis cette passerelle »</b> (F-59 / SF-59-02), ou rien.
+ *
+ * <p>Elle passe en <b>premier</b>, et pour une raison qui n'est pas de goût : sur un poste
+ * d'entreprise, GitHub est souvent bloqué <b>par catégorie</b>, indépendamment du proxy. Le domaine
+ * de la gateway, lui, est forcément autorisé — sinon ni l'écran, ni l'appairage, ni le runner ne
+ * fonctionneraient — et {@code curl --proxy-ntlm --proxy-user :} l'atteint même derrière un
+ * {@code 407}.</p>
+ *
+ * <p>Le téléchargement passe <b>par le proxy</b>, avec l'option d'authentification qui vient de
+ * répondre {@code 200} : c'est le même geste que pour l'archive amont, et il échouerait sans elle.</p>
+ */
+function gatewayRelayOption(
+  platform: RunnerHostPlatform,
+  flag: string,
+  address: string,
+  pxArguments: string,
+  gateway: GatewayRelayOffer | null,
+): RelayOption[] {
+  if (!gateway) {
+    return [];
+  }
+  const why = 'Depuis cette passerelle — à essayer en premier. Si GitHub est filtré chez vous, ce '
+    + 'lien-ci passe par le même domaine que la passerelle, forcément autorisé : sinon rien de ce '
+    + 'produit ne fonctionnerait.';
+  // La version est citée quand la gateway la donne — et seulement alors : « px » tout court vaut
+  // mieux qu'une version inventée.
+  const relayName = gateway.version ? `px ${gateway.version}` : 'px';
+  if (platform === 'windows') {
+    return [{
+      kind: 'px',
+      origin: 'gateway',
+      title: `${relayName} — servi par cette passerelle`,
+      when: 'Windows, sans droits administrateur — et sans dépendre de GitHub',
+      commands: [
+        {
+          purpose: why,
+          command: `curl.exe -sS ${flag} --proxy-user : -x http://${address} -L -o ${gateway.archive} `
+            + `"${gateway.url}"\ntar -xf ${gateway.archive}`,
+        },
+        {
+          purpose: 'Lancer le relais. Il reste au premier plan : cette fenêtre ne doit pas être '
+            + 'fermée tant que le runner tourne.',
+          command: `px.exe ${pxArguments}`,
+        },
+      ],
+    }];
+  }
+  return [{
+    kind: 'px',
+    origin: 'gateway',
+    title: `${relayName} — servi par cette passerelle`,
+    when: platform === 'macos'
+      ? 'Mac Apple Silicon — sans dépendre de GitHub'
+      : 'Linux x86_64 — sans dépendre de GitHub',
+    commands: [
+      {
+        purpose: why,
+        command: `curl -sS ${flag} --proxy-user : -x http://${address} -L -o ${gateway.archive} `
+          + `"${gateway.url}"\ntar -xzf ${gateway.archive}`,
+      },
+      {
+        purpose: 'Lancer le relais, depuis le dossier décompressé. Il reste au premier plan : ce '
+          + 'terminal ne doit pas être fermé tant que le runner tourne.',
+        command: `./px ${pxArguments}`,
+      },
+    ],
+  }];
+}
+
+/**
+ * La plateforme de relais servie par la gateway pour ce poste, ou {@code null}.
+ *
+ * <p>`macos` ne donne que l'Apple Silicon : le projet amont ne publie <b>aucun</b> binaire Mac Intel
+ * — l'assistant y garde donc le chemin `pip3`, et n'affiche pas un lien qui n'existe pas. `other`
+ * vise le Linux x86_64, le seul empaqueté.</p>
+ */
+export function gatewayRelayPlatform(platform: RunnerHostPlatform): ProxyRelayPlatform | null {
+  switch (platform) {
+    case 'windows':
+      return 'windows';
+    case 'macos':
+      return 'macos-aarch64';
+    default:
+      return 'linux-x64';
+  }
+}
+
+/** Ce que la gateway sert réellement pour cette plateforme — la notice comprise, sans quoi rien. */
+export function gatewayServes(formats: ProxyRelayFormats, platform: ProxyRelayPlatform): boolean {
+  switch (platform) {
+    case 'windows':
+      return formats.windows;
+    case 'macos-aarch64':
+      return formats.macosAarch64;
+    default:
+      return formats.linuxX64;
+  }
+}
+
+/** Aucune archive servie : l'état d'une gateway antérieure à F-59, et celui d'un appel en échec. */
+export const NO_GATEWAY_RELAY: ProxyRelayFormats = {
+  windows: false,
+  macosAarch64: false,
+  linuxX64: false,
+  license: false,
+  version: '',
+};
 
 /** Une valeur de domaine ou d'identifiant retenue, ou son marqueur : jamais une saisie douteuse. */
 function relayField(raw: string, placeholder: string, pattern: RegExp): string {
@@ -498,6 +663,7 @@ export function runnerRedirectCommands(platform: RunnerHostPlatform): ProxyComma
 export class ProxyAssistantDialogComponent {
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialogRef = inject<MatDialogRef<ProxyAssistantDialogComponent>>(MatDialogRef);
+  private readonly atelier = inject(AtelierService);
 
   readonly data = inject<ProxyAssistantDialogData>(MAT_DIALOG_DATA);
 
@@ -564,9 +730,41 @@ export class ProxyAssistantDialogComponent {
   /** L'adresse du relais local, celle que la vérification puis la redirection emploient. */
   readonly relayUrl = LOCAL_RELAY_URL;
 
+  // ------------------- le relais servi par la gateway (F-59 / SF-59-02) -------------------
+
+  /**
+   * Ce que <b>cette</b> gateway sert. Lu une fois à l'ouverture, en <b>échec silencieux</b> : une
+   * gateway antérieure à F-59 répond `404`, et ce n'est pas une panne de l'utilisateur (D1).
+   */
+  readonly relayFormats = signal<ProxyRelayFormats>(NO_GATEWAY_RELAY);
+
+  /** La notice MIT de `px`, ouverte dans un onglet — la condition de sa redistribution. */
+  readonly licenseUrl = PROXY_RELAY_LICENSE_PATH;
+
+  /** Vrai pendant l'enregistrement du fichier : deux clics ne doivent pas lancer deux fois 21 Mo. */
+  readonly relayDownloading = signal(false);
+
+  /** La plateforme de relais servie pour ce poste — jamais devinée du navigateur (D2 de F-44). */
+  private readonly relayPlatform = gatewayRelayPlatform(this.data.platform);
+
+  /** Ce que la gateway propose pour ce poste, ou `null` : l'écran retombe alors sur GitHub. */
+  readonly gatewayRelay = computed<GatewayRelayOffer | null>(() => {
+    const formats = this.relayFormats();
+    const platform = this.relayPlatform;
+    if (!platform || !gatewayServes(formats, platform)) {
+      return null;
+    }
+    return {
+      // Absolue : la commande est collée dans un terminal, où un chemin relatif ne veut rien dire.
+      url: new URL(proxyRelayDownloadPath(platform), window.location.origin).toString(),
+      version: (formats.version ?? '').trim(),
+      archive: platform === 'windows' ? 'px.zip' : 'px.tar.gz',
+    };
+  });
+
   /** Les relais qui conviennent à ce poste et à ce verdict — vide quand il n'y a rien à installer. */
-  readonly relays = computed(
-    () => relayOptions(this.data.platform, this.authVerdict(), this.commandAddress()));
+  readonly relays = computed(() => relayOptions(
+    this.data.platform, this.authVerdict(), this.commandAddress(), this.gatewayRelay()));
 
   /** Vrai quand `cntlm` figure parmi les relais proposés : sa configuration n'a de sens que là. */
   readonly cntlmProposed = computed(() => this.relays().some((relay) => relay.kind === 'cntlm'));
@@ -590,6 +788,52 @@ export class ProxyAssistantDialogComponent {
 
   /** La redirection du runner — affichée seulement après un `200` déclaré (D3). */
   readonly redirectCommands = computed(() => runnerRedirectCommands(this.data.platform));
+
+  constructor() {
+    // Une lecture publique, et une seule (F-59 / SF-59-02, D1). L'assistant n'émettait aucun appel
+    // réseau ; celui-ci est le prix à payer pour ne jamais afficher un lien mort — la règle que
+    // F-44 s'était déjà donnée. En échec, on retombe exactement sur le comportement d'avant F-59.
+    this.atelier.proxyRelayFormats().subscribe({
+      next: (formats) => this.relayFormats.set(formats),
+      error: () => this.relayFormats.set(NO_GATEWAY_RELAY),
+    });
+  }
+
+  /**
+   * Enregistre le relais servi par la gateway. Le navigateur, lui, sort déjà par le proxy — c'est
+   * pourquoi un simple bouton suffit là où le terminal réclame une commande (D2).
+   */
+  downloadGatewayRelay(): void {
+    const platform = this.relayPlatform;
+    const offer = this.gatewayRelay();
+    if (!platform || !offer || this.relayDownloading()) {
+      return;
+    }
+    this.relayDownloading.set(true);
+    this.atelier.downloadProxyRelay(platform).subscribe({
+      next: (blob) => {
+        this.relayDownloading.set(false);
+        // Le nom employé par les commandes affichées, pour que la suite du parcours colle.
+        this.saveBlob(blob, offer.archive);
+      },
+      error: () => {
+        this.relayDownloading.set(false);
+        this.snackBar.open(
+          'Cette passerelle ne sert pas le relais : passez par le lien de repli ci-dessous.',
+          'Fermer', { duration: 5000 });
+      },
+    });
+  }
+
+  /** Déclenche l'enregistrement du fichier sous le nom qu'attendent les commandes affichées. */
+  private saveBlob(blob: Blob, filename: string): void {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
 
   /** Enregistre ce que la vérification du relais a donné. */
   declareRelayResult(verdict: RelayCheckVerdict): void {
