@@ -97,6 +97,11 @@ public final class RunnerMain {
         }
         console.info("Réseau    : gateway joignable");
 
+        // Interception TLS (F-57 / SF-57-02) : APRÈS le contrôle de vol, parce que sonder une
+        // gateway injoignable n'apprendrait rien. La sonde ne décide de rien — elle se tait au
+        // moindre doute, et n'a le droit de casser ni le démarrage, ni le code de sortie.
+        TlsProbe.forRuntime(proxyResolver).inspect(config.gatewayBaseUrl()).ifPresent(console::info);
+
         TokenStore tokenStore = new TokenStore(config.hostRoot(), home);
 
         String token;
