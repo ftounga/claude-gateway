@@ -1,0 +1,224 @@
+<section class="gouvernance">
+  <header class="gouvernance__header">
+    <div>
+      <h1>Gouvernance</h1>
+      <p class="gouvernance__subtitle">
+        Une gouvernance n'est pas un bloc : c'est un ensemble d'options que vous composez. Retenez les
+        paquets qui vous parlent, activez-les projet par projet.
+      </p>
+    </div>
+  </header>
+
+  @if (loading()) {
+    <div class="gouvernance__loading">
+      <mat-spinner diameter="40"></mat-spinner>
+    </div>
+  } @else if (error() === 'forbidden') {
+    <mat-card class="gouvernance__notice">
+      <mat-icon>lock</mat-icon>
+      <div>
+        <h2>La gouvernance fait partie de l'Atelier</h2>
+        <p>Composer un catalogue et l'appliquer à vos projets demande l'Atelier.</p>
+        <a mat-flat-button color="primary" routerLink="/billing">Voir les formules</a>
+      </div>
+    </mat-card>
+  } @else if (error() === 'network') {
+    <mat-card class="gouvernance__notice">
+      <mat-icon>cloud_off</mat-icon>
+      <div>
+        <h2>Le catalogue n'a pas pu être lu</h2>
+        <p>La gateway n'a pas répondu. Rien n'est perdu.</p>
+        <button mat-flat-button color="primary" type="button" (click)="load()">Réessayer</button>
+      </div>
+    </mat-card>
+  } @else {
+    <!-- ------------------------------------------------------- mes projets -->
+    <mat-card class="gouvernance__project">
+      <h2>Ce que vos projets appliquent</h2>
+
+      @if (workspaces().length === 0) {
+        <p class="gouvernance__empty">
+          Vous n'avez pas encore de projet. Créez-en un dans l'Atelier, puis revenez y appliquer un
+          paquet.
+        </p>
+        <a mat-stroked-button routerLink="/atelier">Ouvrir l'Atelier</a>
+      } @else {
+        <mat-form-field appearance="outline" class="gouvernance__picker">
+          <mat-label>Projet</mat-label>
+          <mat-select
+            [value]="selectedWorkspaceId()"
+            (valueChange)="chooseWorkspace($event)"
+          >
+            @for (workspace of workspaces(); track workspace.id) {
+              <mat-option [value]="workspace.id">{{ workspace.name }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        @if (projectLoading()) {
+          <mat-spinner diameter="28"></mat-spinner>
+        } @else {
+          <!-- L'alias `as` n'est accepté que sur un `@if`, jamais sur un `@else if` : le bloc est
+               donc imbriqué plutôt que chaîné. -->
+          @if (project(); as state) {
+          @if (state.active.length === 0) {
+            <p class="gouvernance__empty">
+              Aucun paquet actif sur ce projet. Retenez-en un ci-dessous, puis activez-le : l'écran
+              vous dira d'abord ce qu'il va écrire, et où.
+            </p>
+          } @else {
+            <ul class="gouvernance__active">
+              @for (activation of state.active; track activation.pkg.id) {
+                <li class="gouvernance__activation">
+                  <div class="gouvernance__activation-main">
+                    <strong>{{ activation.pkg.name }}</strong>
+                    <span class="gouvernance__meta">
+                      version {{ activation.appliedVersion }}
+                      @if (activation.outdated) {
+                        · une version plus récente existe
+                      }
+                      @if (activation.status === 'PENDING') {
+                        · fichiers en attente de dépôt
+                      }
+                    </span>
+                  </div>
+                  <div class="gouvernance__activation-actions">
+                    @if (activation.status === 'PENDING' || activation.outdated) {
+                      <button
+                        mat-stroked-button
+                        type="button"
+                        [disabled]="busy() === activation.pkg.id"
+                        (click)="applyAgain(activation)"
+                        matTooltip="Déposer les fichiers manquants"
+                      >
+                        Appliquer
+                      </button>
+                    }
+                    <button
+                      mat-button
+                      type="button"
+                      [disabled]="busy() === activation.pkg.id"
+                      (click)="deactivate(activation)"
+                    >
+                      Désactiver
+                    </button>
+                  </div>
+                </li>
+              }
+            </ul>
+          }
+
+          @if (state.available.length > 0) {
+            <p class="gouvernance__meta">Retenus, pas encore actifs ici :</p>
+            <div class="gouvernance__available">
+              @for (pkg of state.available; track pkg.id) {
+                <button
+                  mat-stroked-button
+                  type="button"
+                  [disabled]="busy() === pkg.id"
+                  (click)="activate(pkg)"
+                >
+                  <mat-icon>add</mat-icon>
+                  {{ pkg.name }}
+                </button>
+              }
+            </div>
+          }
+          }
+        }
+      }
+    </mat-card>
+
+    <!-- ---------------------------------------------------------- catalogue -->
+    <h2 class="gouvernance__section">Catalogue</h2>
+
+    @if (catalogEmpty()) {
+      <mat-card class="gouvernance__notice">
+        <mat-icon>inventory_2</mat-icon>
+        <div>
+          <h2>Aucun paquet publié</h2>
+          <p>Le catalogue est vide pour l'instant. Rien n'est imposé : il se remplira.</p>
+        </div>
+      </mat-card>
+    } @else {
+      <div class="gouvernance__catalog">
+        @for (pkg of catalog(); track pkg.id) {
+          <mat-card class="gouvernance__package">
+            <header class="gouvernance__package-header">
+              <div>
+                <h3>{{ pkg.name }}</h3>
+                <span class="gouvernance__meta">{{ pkg.slug }} · version {{ pkg.version }}</span>
+              </div>
+              @if (isRetained(pkg)) {
+                <button
+                  mat-button
+                  type="button"
+                  [disabled]="busy() === pkg.id"
+                  (click)="forget(pkg)"
+                >
+                  Ne plus retenir
+                </button>
+              } @else {
+                <button
+                  mat-flat-button
+                  color="primary"
+                  type="button"
+                  [disabled]="busy() === pkg.id"
+                  (click)="retain(pkg)"
+                >
+                  Retenir
+                </button>
+              }
+            </header>
+
+            @if (pkg.summary) {
+              <p class="gouvernance__summary">{{ pkg.summary }}</p>
+            }
+
+            <ul class="gouvernance__brings">
+              @if (pkg.rules) {
+                <li>
+                  <mat-icon>gavel</mat-icon>
+                  Des règles ajoutées à la consigne du projet
+                </li>
+              }
+              @if (pkg.controls.length > 0) {
+                <li>
+                  <mat-icon>verified_user</mat-icon>
+                  {{ pkg.controls.length }} contrôle(s) pouvant bloquer une écriture ou une fin de
+                  tour
+                </li>
+              }
+            </ul>
+
+            @if (pkg.files.length > 0) {
+              <details class="gouvernance__files">
+                <summary>{{ pkg.files.length }} fichier(s) déposé(s) dans le projet</summary>
+                <ul>
+                  @for (file of pkg.files; track file.path) {
+                    <li>
+                      <code>{{ file.path }}</code>
+                      <span class="gouvernance__meta">
+                        {{ file.kind === 'SKILL' ? 'skill' : 'gabarit' }}
+                      </span>
+                    </li>
+                  }
+                </ul>
+              </details>
+            }
+
+            @if (isRetained(pkg)) {
+              <mat-slide-toggle
+                [checked]="defaultApplied(pkg)"
+                [disabled]="busy() === pkg.id"
+                (change)="toggleDefault(pkg, $event.checked)"
+              >
+                Appliquer par défaut à mes nouveaux projets
+              </mat-slide-toggle>
+            }
+          </mat-card>
+        }
+      </div>
+    }
+  }
+</section>
