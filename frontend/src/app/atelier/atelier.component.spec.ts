@@ -155,6 +155,46 @@ describe('AtelierComponent', () => {
     fixture.detectChanges();
   }
 
+  // ------------------------------------------------ appartenance dans la liste (F-49 / SF-49-03)
+
+  it('ÉCRIT le nom du poste et pose sa pastille sur un projet rattaché', () => {
+    setup();
+    component.workspaces.set([{ ...summary, hostName: 'Poste CAGIP' }]);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(root.querySelector('.workspace-belonging .host-badge__name')?.textContent?.trim())
+      .toBe('Poste CAGIP');
+    expect((root.querySelector('.host-badge__mark') as HTMLElement).textContent?.trim())
+      .toBe('PC');
+  });
+
+  it('n\'affiche RIEN pour un projet non rattaché — jamais « aucun poste »', () => {
+    setup();
+    component.workspaces.set([{ ...summary, hostName: null }]);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(root.querySelector('.host-badge')).toBeNull();
+    expect(root.textContent).not.toContain('Aucun poste');
+  });
+
+  it('donne au terminal le poste du projet ouvert', () => {
+    setup();
+    component.workspaces.set([{ ...summary, hostName: 'Poste CAGIP' }]);
+    component.activeWorkspaceId.set('w1');
+
+    expect(component.activeHostName()).toBe('Poste CAGIP');
+  });
+
+  it('n\'annonce aucun poste quand le projet ouvert n\'est rattaché à rien', () => {
+    setup();
+    component.workspaces.set([{ ...summary, hostName: null }]);
+    component.activeWorkspaceId.set('w1');
+
+    expect(component.activeHostName()).toBeNull();
+  });
+
   it('loads the workspace list on init', () => {
     setup();
     expect(service.listWorkspaces).toHaveBeenCalled();

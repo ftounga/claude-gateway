@@ -17,6 +17,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
+import { HostBadgeComponent } from '../../shared/host-badge/host-badge.component';
 import { MarkdownPipe } from '../../shared/markdown.pipe';
 
 import {
@@ -64,8 +65,8 @@ import {
 @Component({
   selector: 'app-atelier-terminal',
   imports: [
-    FormsModule, MarkdownPipe, MatButtonModule, MatButtonToggleModule, MatIconModule,
-    MatProgressSpinnerModule, MatTooltipModule,
+    FormsModule, HostBadgeComponent, MarkdownPipe, MatButtonModule, MatButtonToggleModule,
+    MatIconModule, MatProgressSpinnerModule, MatTooltipModule,
   ],
   templateUrl: './atelier-terminal.component.html',
   styleUrl: './atelier-terminal.component.scss',
@@ -73,6 +74,17 @@ import {
 export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   /** Nom du projet, affiché dans l'en-tête. */
   @Input() projectName = '';
+
+  /**
+   * **Nom du poste** sur lequel ce projet vit (F-49 / SF-49-03), ou `null` s'il n'est rattaché à
+   * aucune machine.
+   *
+   * <p>C'est l'écran où l'on travaille, et donc celui où l'on doit savoir <b>chez quel client on
+   * est</b> : l'en-tête ouvre sur la pastille du poste — ses initiales sur la couleur dérivée de son
+   * nom — suivie de son nom <b>écrit</b>. Rien n'est affiché quand il vaut `null` : un projet non
+   * rattaché n'a pas de client, et « aucun poste » se lirait comme un défaut.</p>
+   */
+  @Input() hostName: string | null = null;
 
   /**
    * Dossier de la machine, tel que le runner l'a déclaré (F-38 / SF-38-16). Affiché à côté du nom

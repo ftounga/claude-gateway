@@ -1,0 +1,24 @@
+@if (identity(); as host) {
+  <span
+    class="host-badge"
+    [class.host-badge--sm]="size === 'sm'"
+    [class.host-badge--md]="size === 'md'"
+    [class.host-badge--lg]="size === 'lg'"
+    [class.host-badge--chip]="chip"
+    [style.background]="chip ? host.tone.tint : null"
+  >
+    <!-- Les initiales sur l'aplat du poste. Décoratives quand le nom est écrit juste à côté ;
+         nommées quand il ne l'est pas — la couleur ne porte jamais seule l'information. -->
+    <span
+      class="host-badge__mark"
+      [style.background]="host.tone.solid"
+      [attr.role]="showName ? null : 'img'"
+      [attr.aria-label]="showName ? null : ariaLabel()"
+      [attr.aria-hidden]="showName ? 'true' : null"
+      [attr.title]="showName ? null : ariaLabel()"
+    >{{ host.initials }}</span>
+    @if (showName) {
+      <span class="host-badge__name" [style.color]="host.tone.ink">{{ host.name }}</span>
+    }
+  </span>
+}

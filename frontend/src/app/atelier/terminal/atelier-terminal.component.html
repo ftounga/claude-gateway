@@ -1,6 +1,14 @@
 <section class="terminal-view" aria-label="Terminal du projet">
   <!-- En-tête : identité du projet + actions. Rien d'autre ne subsiste de l'écran Atelier. -->
   <header class="terminal-bar">
+    <!-- Chez QUI l'on travaille (F-49 / SF-49-03). C'est ici que l'appartenance compte le plus :
+         c'est l'écran où l'on exécute des commandes. La pastille porte la couleur du poste, dérivée
+         de son nom, et le nom reste ÉCRIT juste à côté — la couleur ne porte jamais seule
+         l'information. Rien n'est affiché quand le projet n'est rattaché à aucune machine. -->
+    @if (hostName) {
+      <app-host-badge class="terminal-host" [name]="hostName" size="md" [chip]="true"></app-host-badge>
+      <span class="terminal-host-sep" aria-hidden="true">/</span>
+    }
     <span class="terminal-title">
       <mat-icon>terminal</mat-icon>
       {{ projectName }} — terminal

@@ -40,6 +40,35 @@ describe('AtelierTerminalComponent', () => {
     expect(fixture.nativeElement.querySelector('.terminal-hint')).not.toBeNull();
   });
 
+  // ------------------------------------------------ appartenance (F-49 / SF-49-03)
+
+  it('dit chez QUEL client on travaille : la pastille du poste et son nom écrit', () => {
+    component.hostName = 'Poste CAGIP';
+    fixture.detectChanges();
+    const badge = fixture.nativeElement.querySelector('.terminal-host') as HTMLElement;
+
+    expect(badge).not.toBeNull();
+    expect(badge.querySelector('.host-badge__mark')?.textContent?.trim()).toBe('PC');
+    expect(badge.querySelector('.host-badge__name')?.textContent?.trim()).toBe('Poste CAGIP');
+  });
+
+  it('pose le poste sur SA propre surface — la barre est navy, l\'encre du poste ne l\'est pas', () => {
+    component.hostName = 'Poste CAGIP';
+    fixture.detectChanges();
+    const chip = fixture.nativeElement.querySelector('.host-badge--chip') as HTMLElement;
+
+    expect(chip).not.toBeNull();
+    expect(chip.style.background).not.toBe('');
+  });
+
+  it('n\'affiche aucun poste quand le projet n\'est rattaché à aucune machine', () => {
+    component.hostName = null;
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.terminal-host')).toBeNull();
+    expect(text()).toContain('mon-projet');
+  });
+
   it('rend la demande en ligne d\'invite et les commandes avec leur sortie', () => {
     const turn: AtelierThreadItem[] = [
       { id: 'u1', role: 'USER', content: 'lance les tests', actions: [] },

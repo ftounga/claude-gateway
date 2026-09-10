@@ -2,7 +2,9 @@ package fr.claudegateway.atelier;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -105,11 +107,30 @@ public class AtelierController {
         return WorkspaceDetailResponse.from(workspace, List.of());
     }
 
+    /**
+     * Liste des projets de l'utilisateur, chacun accompagné du <b>nom de son poste</b>
+     * (F-49 / SF-49-03) — ce qui permet à la liste et à l'en-tête du terminal de montrer chez quel
+     * client on travaille.
+     *
+     * <p>Les noms sont indexés depuis les postes <b>possédés par l'utilisateur courant</b> : un
+     * projet pointant vers le poste de quelqu'un d'autre ne trouve rien dans la carte et ressort à
+     * {@code null}. C'est là que se joue l'isolation, et c'est pourquoi la carte n'est pas bâtie
+     * depuis les {@code host_id} des projets.</p>
+     *
+     * <p><b>Une lecture, pas N</b> : un seul {@code SELECT} sur les postes, puis un mappage en
+     * mémoire — lire le poste projet par projet ferait un N+1 sur l'écran le plus souvent
+     * ouvert.</p>
+     */
     @GetMapping
     public List<WorkspaceSummaryResponse> list() {
         atelierAccess.requireAccess();
-        return workspaceService.list(currentUser.requireId()).stream()
-                .map(WorkspaceSummaryResponse::from)
+        UUID userId = currentUser.requireId();
+        Map<UUID, String> hostNames = runnerHostService.list(userId).stream()
+                .collect(Collectors.toMap(fr.claudegateway.runner.host.RunnerHost::getId,
+                        fr.claudegateway.runner.host.RunnerHost::getName));
+        return workspaceService.list(userId).stream()
+                .map(workspace -> WorkspaceSummaryResponse.from(workspace,
+                        workspace.getHostId() == null ? null : hostNames.get(workspace.getHostId())))
                 .toList();
     }
 

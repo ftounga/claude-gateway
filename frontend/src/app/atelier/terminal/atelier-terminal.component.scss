@@ -21,6 +21,19 @@
   color: var(--cg-surface);
 }
 
+/* Appartenance (F-49 / SF-49-03) : le poste ouvre la barre, avant le nom du projet. La puce porte
+   sa propre surface (teinte du poste) — la barre est navy, et l'encre du poste, validée sur blanc,
+   y serait illisible sans elle. */
+.terminal-host {
+  flex: none;
+}
+
+.terminal-host-sep {
+  color: var(--cg-divider);
+  font-family: var(--cg-font-mono);
+  font-size: 13px;
+}
+
 .terminal-title {
   display: flex;
   align-items: center;

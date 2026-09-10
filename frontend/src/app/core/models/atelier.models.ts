@@ -38,6 +38,17 @@ export interface WorkspaceSummary {
    * `SANDBOX`, le comportement historique.
    */
   executionTarget?: WorkspaceExecutionTarget;
+  /**
+   * **Nom du poste** sur lequel ce projet vit (F-49 / SF-49-03), ou `null`/absent s'il n'est
+   * rattaché à aucune machine. C'est lui qui porte l'appartenance à l'écran — la liste des projets
+   * et l'en-tête du terminal en tirent la pastille, les initiales et la couleur du poste.
+   *
+   * <p>La **couleur n'est jamais transmise** : elle se calcule à l'écran à partir de ce nom
+   * (`shared/host-identity.ts`), ce qui la rend identique d'une session à l'autre et d'un poste de
+   * consultation à l'autre. Champ **additif** : absent d'un backend antérieur ⇒ rien n'est
+   * affiché.</p>
+   */
+  hostName?: string | null;
 }
 
 /** Corps de `POST /api/workspaces/{id}/git/push` (F-31 / SF-31-04). Les deux champs sont facultatifs. */

@@ -1,0 +1,87 @@
+/* Pastille d'identité d'un poste (F-49 / SF-49-03).
+   Les couleurs viennent de la palette d'identité (DESIGN_SYSTEM.md §9), posées en ligne par le
+   composant : elles dépendent du nom du poste, une feuille de style ne peut pas les connaître.
+   Tout le reste — polices, espacements — vient des jetons de la charte. */
+
+.host-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  min-width: 0;
+
+  &__mark {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff; /* contraste ≥ 4.5:1 sur chaque aplat — prouvé par host-identity.spec.ts */
+    font-family: var(--cg-font-heading);
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    border-radius: 8px;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 12%);
+  }
+
+  &__name {
+    font-family: var(--cg-font-body);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* — Puce : le couple encre-sur-teinte, dont le contraste est prouvé, posé sur n'importe quelle
+       surface — y compris le navy de la barre du terminal, que ce composant ne connaît pas. */
+  &--chip {
+    padding: var(--cg-space-1) var(--cg-space-2);
+    border-radius: 999px;
+  }
+
+  /* — Petite : dans une liste dense (barre latérale des projets). */
+  &--sm {
+    gap: var(--cg-space-1);
+
+    .host-badge__mark {
+      width: 20px;
+      height: 20px;
+      font-size: 10px;
+      border-radius: 6px;
+    }
+
+    .host-badge__name {
+      font-size: 12px;
+    }
+  }
+
+  /* — Moyenne : dans une barre d'outils (en-tête du terminal). */
+  &--md {
+    .host-badge__mark {
+      width: 28px;
+      height: 28px;
+      font-size: 12px;
+    }
+
+    .host-badge__name {
+      font-size: 14px;
+    }
+  }
+
+  /* — Grande : en tête d'une carte de poste (vue d'ensemble). */
+  &--lg {
+    gap: var(--cg-space-3);
+
+    .host-badge__mark {
+      width: 48px;
+      height: 48px;
+      font-size: 18px;
+      border-radius: 12px;
+    }
+
+    .host-badge__name {
+      font-family: var(--cg-font-heading);
+      font-size: 20px;
+      font-weight: 700;
+    }
+  }
+}
