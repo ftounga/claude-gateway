@@ -7,6 +7,7 @@ import { of, throwError } from 'rxjs';
 import { POSTES_REFRESH_MS, PostesComponent } from './postes.component';
 import { AtelierService } from '../core/services/atelier.service';
 import { RunnerHostOverview } from '../core/models/atelier.models';
+import { hostInitials, hostTone } from '../shared/host-identity';
 
 /**
  * L'écran des postes (F-49 / SF-49-02) : ce qu'il montre, ce qu'il ne fait pas, et ce qu'il ne
@@ -97,6 +98,58 @@ describe('PostesComponent', () => {
     expect(root.querySelector('.badge.badge--success')).not.toBeNull();
     expect(root.querySelector('.badge.badge--warning')).not.toBeNull();
     expect(root.querySelectorAll('[class*="cg-badge"]').length).toBe(0);
+  });
+
+  // ---------------------------------------------------- appartenance (SF-49-03)
+
+  it('donne à chaque poste sa pastille d\'initiales, dérivée de son nom', () => {
+    setup();
+    const mark = (fixture.nativeElement as HTMLElement)
+      .querySelector('.host-badge__mark') as HTMLElement;
+
+    expect(mark.textContent?.trim()).toBe(hostInitials('Poste CAGIP'));
+    expect(mark.style.background).not.toBe('');
+  });
+
+  it('porte la couleur du poste sur le filet de sa carte ET sur celui de chaque projet', () => {
+    setup();
+    const root = fixture.nativeElement as HTMLElement;
+    const card = root.querySelector('.poste') as HTMLElement;
+    const projects = root.querySelectorAll<HTMLElement>('.projet');
+
+    expect(card.style.borderLeftColor).not.toBe('');
+    expect(projects.length).toBe(2);
+    projects.forEach((project) => {
+      // Le projet reprend le filet de SA machine : c'est ce qui le rattache visuellement.
+      expect(project.style.borderLeftColor).toBe(card.style.borderLeftColor);
+    });
+  });
+
+  it('donne à deux postes de noms différents deux couleurs différentes', () => {
+    setup([
+      { ...poste, id: 'h1', name: 'Poste bureau' },
+      { ...poste, id: 'h2', name: 'Poste maison' },
+    ]);
+    const cards = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.poste');
+
+    expect(cards.length).toBe(2);
+    expect(cards[0].style.borderLeftColor).not.toBe(cards[1].style.borderLeftColor);
+  });
+
+  it('ÉCRIT le nom du poste à côté de sa couleur — elle ne porte jamais seule l\'information', () => {
+    setup();
+    const heading = (fixture.nativeElement as HTMLElement).querySelector('.poste h2');
+
+    expect(heading?.textContent?.trim()).toBe('Poste CAGIP');
+  });
+
+  it('tire la même couleur que la fonction pure partagée', () => {
+    setup();
+    const card = (fixture.nativeElement as HTMLElement).querySelector('.poste') as HTMLElement;
+    const expected = hostTone('Poste CAGIP').solid.toLowerCase();
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(expected.slice(i, i + 2), 16));
+
+    expect(card.style.borderLeftColor).toContain(`${r}, ${g}, ${b}`);
   });
 
   it('marque le poste déconnecté avec la pastille neutre', () => {

@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
@@ -38,6 +39,8 @@ import fr.claudegateway.billing.PlanCode;
 import fr.claudegateway.billing.Subscription;
 import fr.claudegateway.billing.SubscriptionRepository;
 import fr.claudegateway.billing.SubscriptionStatus;
+import fr.claudegateway.runner.host.RunnerHost;
+import fr.claudegateway.runner.host.RunnerHostRepository;
 import fr.claudegateway.user.AuthProvider;
 import fr.claudegateway.user.User;
 import fr.claudegateway.user.UserRepository;
@@ -63,6 +66,8 @@ class AtelierApiIntegrationTest {
     @Autowired
     private SubscriptionRepository subscriptionRepository;
     @Autowired
+    private RunnerHostRepository runnerHostRepository;
+    @Autowired
     private JwtService jwtService;
 
     private User alice;
@@ -72,6 +77,7 @@ class AtelierApiIntegrationTest {
     @BeforeEach
     void setUp() {
         workspaceRepository.deleteAll();
+        runnerHostRepository.deleteAll();
         subscriptionRepository.deleteAll();
         userRepository.deleteAll();
         // Gating SF-28-06 : l'Atelier est réservé à l'offre Gold. Alice et Bob sont abonnés Gold actif
@@ -536,5 +542,65 @@ class AtelierApiIntegrationTest {
         mockMvc.perform(get("/api/workspaces/" + id).contextPath("/api")
                         .header("Authorization", bearer(bobToken)))
                 .andExpect(status().isNotFound());
+    }
+
+    // ------------------------------------------------ appartenance (F-49 / SF-49-03)
+
+    /**
+     * La liste des projets nomme le poste de chacun : c'est ce qui permet à l'écran de montrer
+     * <b>chez quel client on travaille</b> sans un appel par projet. La couleur, elle, n'est jamais
+     * transmise — elle se calcule à l'écran à partir de ce nom.
+     */
+    @Test
+    void workspaceListCarriesItsHostName() throws Exception {
+        String hostId = JsonPath.read(mockMvc.perform(post("/api/runner-hosts").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Poste CAGIP\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(), "$.id");
+        String id = createWorkspace(aliceToken, Map.of("README.md", "hello"));
+        mockMvc.perform(put("/api/workspaces/" + id + "/host").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"hostId\":\"" + hostId + "\",\"projectPath\":\"web\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/workspaces").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].hostName", is("Poste CAGIP")));
+    }
+
+    /** Un projet qui ne vit sur aucune machine ne nomme aucun poste — et surtout pas « aucun ». */
+    @Test
+    void workspaceListLeavesHostNameNullWhenNotAttached() throws Exception {
+        createWorkspace(aliceToken, Map.of("README.md", "hello"));
+
+        mockMvc.perform(get("/api/workspaces").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].hostName").doesNotExist());
+    }
+
+    /**
+     * Isolation : la carte des noms est bâtie depuis les postes <b>possédés</b>, jamais depuis le
+     * {@code host_id} porté par le projet. Un projet pointant, en base, vers le poste de quelqu'un
+     * d'autre ne peut donc pas en révéler le nom.
+     */
+    @Test
+    void workspaceListNeverNamesAnotherUsersHost() throws Exception {
+        User bob = userRepository.findByEmail("bob@ex.com").orElseThrow();
+        RunnerHost bobHost = runnerHostRepository.save(RunnerHost.builder()
+                .userId(bob.getId()).name("Poste de Bob").build());
+        String id = createWorkspace(aliceToken, Map.of("README.md", "hello"));
+        Workspace workspace = workspaceRepository.findById(UUID.fromString(id)).orElseThrow();
+        workspace.setHostId(bobHost.getId());
+        workspaceRepository.save(workspace);
+
+        mockMvc.perform(get("/api/workspaces").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].hostName").doesNotExist());
     }
 }

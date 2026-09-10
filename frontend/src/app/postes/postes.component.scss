@@ -76,6 +76,11 @@
   gap: var(--cg-space-3);
   padding: var(--cg-space-4);
 
+  /* Filet d'appartenance (F-49 / SF-49-03) : la couleur du poste, dérivée de son nom, posée en
+     ligne par le template. Un FILET, jamais un fond — la charte §8 interdit le fond coloré sur les
+     cartes, et un aplat teinté derrière du texte remettrait le contraste en jeu à chaque ton. */
+  border-left: 6px solid var(--cg-divider);
+
   &__head {
     display: flex;
     flex-wrap: wrap;
@@ -93,6 +98,11 @@
     h2 {
       margin: 0;
       font-size: 20px;
+    }
+
+    /* La pastille d'initiales ouvre l'en-tête ; le nom du poste la suit, écrit, en h2. */
+    app-host-badge {
+      margin-right: var(--cg-space-1);
     }
   }
 
@@ -155,11 +165,16 @@
   gap: var(--cg-space-2);
   padding: var(--cg-space-3);
   border: 1px solid var(--cg-divider);
+  /* Le projet reprend le filet de SA machine : c'est ce qui le rattache visuellement au poste
+     au-dessus, sans rien écrire de plus. Couleur posée en ligne par le template. */
+  border-left: 4px solid var(--cg-divider);
   border-radius: 8px;
   background: var(--cg-surface);
 
   &--active {
-    border-color: var(--cg-accent);
+    border-top-color: var(--cg-accent);
+    border-right-color: var(--cg-accent);
+    border-bottom-color: var(--cg-accent);
   }
 
   &__main {

@@ -185,6 +185,57 @@ Durée par défaut : 4 secondes. Jamais `window.alert()` ou `window.confirm()`.
 
 ---
 
+## 9 — Palette d'identité des postes (ajout F-49 / SF-49-03, 2026-09-10)
+
+> **Validation explicite** au sens du §8 : ces couleurs sont hors de la table §2, et c'est
+> délibéré. Elles ne décrivent aucun rôle applicatif — elles **identifient une machine**.
+
+Un poste (F-48) reçoit une **identité visuelle dérivée de son nom** : une couleur et des initiales,
+calculées par fonction pure (`frontend/src/app/shared/host-identity.ts`), **jamais stockées**. La
+même machine porte donc la même couleur d'une session à l'autre, d'un écran à l'autre et d'un poste
+de consultation à l'autre. Renommer un poste **change** sa couleur : c'est la contrepartie assumée
+d'une couleur qui n'est rangée nulle part.
+
+### Les dix tons
+
+Le hachage du nom choisit un **index** dans cette palette fermée — il ne calcule pas une teinte. Un
+ensemble fini est la seule façon de **prouver** le contraste sur toutes les valeurs possibles.
+
+| # | Aplat (`solid`) | Encre (`ink`) | Teinte (`tint`) |
+|---|-----------------|---------------|-----------------|
+| 0 | `#4370A3` | `#386599` | `#E7EFF9` |
+| 1 | `#7051B8` | `#5C3DA4` | `#ECE7F9` |
+| 2 | `#A348B1` | `#933BA0` | `#F6E7F9` |
+| 3 | `#B1487D` | `#A43D70` | `#F9E7F0` |
+| 4 | `#B14F48` | `#A4433D` | `#F9E8E7` |
+| 5 | `#94633D` | `#865632` | `#F9EFE7` |
+| 6 | `#7F6D34` | `#705F29` | `#F9F4E7` |
+| 7 | `#597731` | `#4E6C28` | `#F1F9E7` |
+| 8 | `#327B57` | `#286C4A` | `#E7F9F0` |
+| 9 | `#34777F` | `#2B6C73` | `#E7F7F9` |
+
+### Règles d'emploi — non négociables
+
+- **La couleur ne porte jamais seule l'information.** Le nom du poste reste **écrit** partout où sa
+  couleur apparaît. Quand un écran ne l'écrit pas lui-même, la pastille porte `role="img"` et un
+  `aria-label` qui le nomme.
+- **Contraste AA (4.5:1) garanti sur chacun des dix tons**, dans les trois emplois autorisés :
+  blanc sur `solid`, `ink` sur blanc, `ink` sur `tint`. Le test
+  `frontend/src/app/shared/host-identity.spec.ts` **recalcule** les ratios : aucun ton ne peut
+  entrer dans la palette sans les tenir. Toute autre combinaison est interdite.
+- **Sur une surface dont on ne connaît pas la couleur** (barre navy du terminal) : employer la
+  **puce** — `ink` sur `tint` — qui apporte sa propre surface.
+- **Filet, jamais fond** : la couleur entre par un bord (`border-left`) ou une pastille. Le §8
+  interdit le fond coloré sur les cartes, et un aplat teinté derrière du texte remettrait le
+  contraste en jeu à chaque ton.
+- **Un seul usage** : identifier un poste. Ces couleurs ne qualifient ni un état, ni une action, ni
+  un niveau de gravité — l'or de marque (`--cg-accent`) reste réservé aux gestes, et les pastilles
+  de statut restent celles du §5.
+- **Composant unique** : `app-host-badge` (`shared/host-badge/`). Aucun écran ne recompose la
+  pastille à la main.
+
+---
+
 ## Logo & marque (ajout 2026-07-03)
 
 - **Logo de l'application** : `frontend/public/claude-portal-logo.png` (« Claude Portal » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« Claude Portal »** (renommé en F-29 SF-29-01 : le terme « Proxy » faisait classer le domaine en catégorie « anonymizer » par les filtres d'entreprise).

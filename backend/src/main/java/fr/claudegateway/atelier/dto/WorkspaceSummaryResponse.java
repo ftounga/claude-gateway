@@ -14,17 +14,35 @@ import fr.claudegateway.atelier.WorkspaceSource;
  * n'offrent pas les mêmes gestes, et l'écran doit pouvoir le montrer sans charger le détail. Depuis
  * F-38 (SF-38-05), la {@code executionTarget} y figure pour la même raison : un projet qui s'exécute
  * sur la machine de l'utilisateur se signale dès la liste.</p>
+ *
+ * <p>Le {@code hostName} (F-49 / SF-49-03) est le <b>nom du poste</b> sur lequel le projet vit, ou
+ * {@code null} quand il n'est rattaché à aucune machine. Il est là pour que la liste des projets et
+ * l'en-tête du terminal puissent montrer <b>chez quel client on travaille</b> sans un appel de plus
+ * par projet. La <b>couleur</b> qui va avec n'est pas transmise : elle se calcule à l'écran, à
+ * partir de ce nom.</p>
  */
 public record WorkspaceSummaryResponse(
         UUID id, String name, OffsetDateTime createdAt, WorkspaceSource source, String gitRepo,
-        WorkspaceExecutionTarget executionTarget) {
+        WorkspaceExecutionTarget executionTarget, String hostName) {
 
+    /** Résumé d'un projet dont on ne cherche pas à nommer le poste. */
     public static WorkspaceSummaryResponse from(Workspace workspace) {
+        return from(workspace, null);
+    }
+
+    /**
+     * Résumé d'un projet, avec le nom de son poste.
+     *
+     * @param hostName nom du poste, ou {@code null} si le projet n'est rattaché à aucune machine.
+     *                 L'appelant ne doit y passer que le nom d'un poste <b>possédé par le même
+     *                 utilisateur</b> : c'est là que se joue l'isolation.
+     */
+    public static WorkspaceSummaryResponse from(Workspace workspace, String hostName) {
         String fullName = workspace.getGitOwner() == null || workspace.getGitRepo() == null
                 ? null
                 : workspace.getGitOwner() + "/" + workspace.getGitRepo();
         return new WorkspaceSummaryResponse(workspace.getId(), workspace.getName(),
                 workspace.getCreatedAt(), workspace.sourceOrDefault(), fullName,
-                workspace.executionTargetOrDefault());
+                workspace.executionTargetOrDefault(), hostName);
     }
 }

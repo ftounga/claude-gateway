@@ -52,6 +52,15 @@
   color: var(--cg-text-primary);
 }
 
+// Appartenance d'un projet (F-49 / SF-49-03) : la pastille de son poste ET le nom du poste écrit,
+// sous le nom du projet. Un projet non rattaché n'affiche rien.
+.workspace-belonging {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  min-width: 0;
+}
+
 // Dépôt d'un projet Git dans la liste (F-31 / SF-31-02) : discret, sous le nom du projet.
 .workspace-repo {
   font-family: var(--cg-font-mono);

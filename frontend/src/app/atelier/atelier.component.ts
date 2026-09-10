@@ -20,6 +20,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { httpErrorMessage, MAX_UPLOAD_BYTES, oversizeMessage } from '../shared/http-error.util';
+import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import { AtelierFilesComponent } from './files/atelier-files.component';
 import {
   ATELIER_GUIDE_FIRST_COMMAND,
@@ -131,6 +132,7 @@ export const RUNNER_STATUS_POLL_MS = 15_000;
     AtelierFilesComponent,
     AtelierGuideComponent,
     WorkstationNoticeComponent,
+    HostBadgeComponent,
   ],
   templateUrl: './atelier.component.html',
   styleUrl: './atelier.component.scss',
@@ -244,6 +246,19 @@ export class AtelierComponent implements OnInit, OnDestroy {
   readonly activeName = computed(() => {
     const id = this.activeWorkspaceId();
     return this.workspaces().find((w) => w.id === id)?.name ?? '';
+  });
+
+  /**
+   * **Poste du projet ouvert** (F-49 / SF-49-03) — ce que l'en-tête du terminal doit dire : chez
+   * quel client on travaille. Lu d'abord sur le résumé de projet, qui le connaît pour **tous** les
+   * projets ; l'état runner ne sert que de repli, il n'existe qu'en cible `RUNNER` et seulement une
+   * fois relevé. `null` quand le projet n'est rattaché à aucune machine : l'en-tête n'affiche alors
+   * rien.
+   */
+  readonly activeHostName = computed<string | null>(() => {
+    const id = this.activeWorkspaceId();
+    const fromSummary = this.workspaces().find((w) => w.id === id)?.hostName;
+    return fromSummary ?? this.runnerStatus()?.hostName ?? null;
   });
 
   /**

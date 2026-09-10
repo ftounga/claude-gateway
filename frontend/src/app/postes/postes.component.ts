@@ -9,6 +9,8 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AtelierService } from '../core/services/atelier.service';
 import { HostProjectSummary, RunnerHostOverview } from '../core/models/atelier.models';
+import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
+import { HostTone, hostTone } from '../shared/host-identity';
 
 /** Période de rafraîchissement de la vue, en millisecondes. */
 export const POSTES_REFRESH_MS = 15_000;
@@ -42,6 +44,7 @@ export type PostesError = 'none' | 'network' | 'forbidden';
   selector: 'app-postes',
   imports: [
     RouterLink,
+    HostBadgeComponent,
     MatButtonModule,
     MatCardModule,
     MatIconModule,
@@ -81,6 +84,16 @@ export class PostesComponent implements OnInit {
   /** Relecture demandée par l'utilisateur (bouton « Rafraîchir » ou « Réessayer »). */
   refresh(): void {
     this.load(this.hosts().length === 0);
+  }
+
+  /**
+   * Ton d'identité d'un poste (F-49 / SF-49-03) : **dérivé de son nom**, jamais rangé nulle part.
+   * C'est ce qui rattache visuellement chaque projet à sa machine — le filet de la carte et celui
+   * de chaque projet dessous sortent d'ici. Le nom reste écrit à côté : la couleur ne porte jamais
+   * seule l'information.
+   */
+  tone(host: RunnerHostOverview): HostTone {
+    return hostTone(host.name);
   }
 
   /** Ouvre le terminal du projet — le « à un clic » que la vue promet. */

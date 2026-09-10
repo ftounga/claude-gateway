@@ -63,10 +63,14 @@
   } @else {
     <div class="postes__list">
       @for (host of hosts(); track host.id) {
-        <mat-card class="poste">
+        <mat-card class="poste" [style.borderLeftColor]="tone(host).solid">
           <header class="poste__head">
             <div class="poste__identity">
-              <h2>{{ host.name }}</h2>
+              <!-- Identité visuelle du poste (F-49 / SF-49-03) : ses initiales sur sa couleur,
+                   dérivée de son nom. Le nom reste écrit — ici en h2 juste à côté — parce que la
+                   couleur ne porte jamais seule l'information. -->
+              <app-host-badge [name]="host.name" size="lg" [showName]="false"></app-host-badge>
+              <h2 [style.color]="tone(host).ink">{{ host.name }}</h2>
               <span
                 class="badge"
                 [class.badge--success]="host.connected"
@@ -120,7 +124,11 @@
           } @else {
             <ul class="poste__projects">
               @for (project of host.projects; track project.id) {
-                <li class="projet" [class.projet--active]="project.active">
+                <li
+                  class="projet"
+                  [class.projet--active]="project.active"
+                  [style.borderLeftColor]="tone(host).solid"
+                >
                   <div class="projet__main">
                     <span class="projet__name">{{ project.name }}</span>
                     @if (project.active) {

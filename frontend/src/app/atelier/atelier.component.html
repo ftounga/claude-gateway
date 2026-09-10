@@ -86,6 +86,7 @@
 @if (activeWorkspaceId()) {
   <app-atelier-terminal
     [projectName]="activeName()"
+    [hostName]="activeHostName()"
     [localFolder]="localFolder()"
     [runnerElevated]="runnerElevated()"
     [engine]="engine()"
@@ -200,8 +201,18 @@
               workspace.source === 'GIT' ? 'hub' : 'folder_zip'
             }}</mat-icon>
             <span matListItemTitle class="workspace-name">{{ workspace.name }}</span>
-            @if (workspace.gitRepo) {
-              <span matListItemLine class="workspace-repo">{{ workspace.gitRepo }}</span>
+            <!-- Appartenance (F-49 / SF-49-03) : la pastille du poste ET son nom écrit. Un projet
+                 non rattaché n'affiche rien — jamais « aucun poste », qui se lirait comme un
+                 défaut, et pas même une ligne vide. -->
+            @if (workspace.hostName || workspace.gitRepo) {
+              <span matListItemLine class="workspace-belonging">
+                @if (workspace.hostName) {
+                  <app-host-badge [name]="workspace.hostName" size="sm"></app-host-badge>
+                }
+                @if (workspace.gitRepo) {
+                  <span class="workspace-repo">{{ workspace.gitRepo }}</span>
+                }
+              </span>
             }
           </a>
         }
