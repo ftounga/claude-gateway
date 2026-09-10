@@ -1,0 +1,81 @@
+<mat-card class="gov-admin">
+  <header class="gov-admin__header">
+    <div>
+      <h2>Gouvernance</h2>
+      <p class="gov-admin__subtitle">
+        Les paquets que vous publiez ici deviennent le catalogue de tous. Chacun compose ensuite le
+        sien : rien n'est imposé à personne.
+      </p>
+    </div>
+    <button mat-flat-button color="primary" type="button" (click)="create()">
+      <mat-icon>add</mat-icon>
+      Nouveau paquet
+    </button>
+  </header>
+
+  @if (loading()) {
+    <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+  } @else if (failed()) {
+    <p class="gov-admin__empty">Le catalogue n'a pas pu être lu.</p>
+    <button mat-stroked-button type="button" (click)="load()">Réessayer</button>
+  } @else if (packages().length === 0) {
+    <p class="gov-admin__empty">
+      Aucun paquet. Créez-en un : tant que le catalogue est vide, la gouvernance n'existe pour
+      personne.
+    </p>
+  } @else {
+    <ul class="gov-admin__list">
+      @for (pkg of packages(); track pkg.id) {
+        <li class="gov-admin__item">
+          <div class="gov-admin__item-main">
+            <strong>{{ pkg.name }}</strong>
+            <span class="gov-admin__meta">
+              {{ pkg.slug }} · version {{ pkg.version }} ·
+              {{ pkg.published ? 'publié' : 'brouillon' }} · apporte {{ brings(pkg) }}
+            </span>
+          </div>
+          <div class="gov-admin__item-actions">
+            <button
+              mat-button
+              type="button"
+              [disabled]="busy() === pkg.id"
+              (click)="edit(pkg)"
+            >
+              Modifier
+            </button>
+            @if (pkg.published) {
+              <button
+                mat-stroked-button
+                type="button"
+                [disabled]="busy() === pkg.id"
+                (click)="unpublish(pkg)"
+                matTooltip="Le retire du catalogue, sans toucher aux projets qui l'appliquent"
+              >
+                Dépublier
+              </button>
+            } @else {
+              <button
+                mat-stroked-button
+                type="button"
+                [disabled]="busy() === pkg.id"
+                (click)="publish(pkg)"
+              >
+                Publier
+              </button>
+              <button
+                mat-icon-button
+                type="button"
+                [disabled]="busy() === pkg.id"
+                (click)="remove(pkg)"
+                aria-label="Supprimer ce brouillon"
+                matTooltip="Supprimer ce brouillon"
+              >
+                <mat-icon>delete_outline</mat-icon>
+              </button>
+            }
+          </div>
+        </li>
+      }
+    </ul>
+  }
+</mat-card>

@@ -1,0 +1,13 @@
+<h2 mat-dialog-title>Supprimer « {{ data.packageName }} » ?</h2>
+
+<mat-dialog-content>
+  <p>
+    Ce paquet n'est pas publié : personne ne l'a retenu ni activé. Sa suppression est
+    <strong>définitive</strong> — son contenu, règles et fichiers compris, ne sera pas récupérable.
+  </p>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="cancel()">Annuler</button>
+  <button mat-flat-button color="warn" type="button" (click)="confirm()">Supprimer</button>
+</mat-dialog-actions>

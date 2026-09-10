@@ -8,6 +8,7 @@ import { AdminComponent } from './admin.component';
 import { AdminService } from './admin.service';
 import { AdminUser } from './admin.models';
 import { AuthService } from '../core/services/auth.service';
+import { GovernanceAdminService } from './governance-admin.service';
 
 describe('AdminComponent', () => {
   let fixture: ComponentFixture<AdminComponent>;
@@ -40,9 +41,22 @@ describe('AdminComponent', () => {
     adminSpy = jasmine.createSpyObj<AdminService>('AdminService', ['getUsers']);
     adminSpy.getUsers.and.returnValue(of(users));
 
+    // La section Gouvernance (F-51 / SF-51-06) vit désormais dans cet écran : on la neutralise ici,
+    // elle a son propre spec. Ce test-ci porte sur la liste des utilisateurs, et rien d'autre.
+    const governanceSpy = jasmine.createSpyObj<GovernanceAdminService>('GovernanceAdminService', [
+      'list',
+      'controls',
+    ]);
+    governanceSpy.list.and.returnValue(of([]));
+    governanceSpy.controls.and.returnValue(of([]));
+
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
-      providers: [provideNoopAnimations(), { provide: AdminService, useValue: adminSpy }],
+      providers: [
+        provideNoopAnimations(),
+        { provide: AdminService, useValue: adminSpy },
+        { provide: GovernanceAdminService, useValue: governanceSpy },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(AdminComponent);
