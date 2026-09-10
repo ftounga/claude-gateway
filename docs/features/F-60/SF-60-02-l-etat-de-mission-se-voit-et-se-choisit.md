@@ -12,7 +12,7 @@
 
 ## Statut
 
-`done`
+`done` — PR #354
 
 ## Date de création
 
