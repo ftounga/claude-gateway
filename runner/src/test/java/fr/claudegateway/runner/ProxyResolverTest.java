@@ -2,6 +2,7 @@ package fr.claudegateway.runner;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.net.InetSocketAddress;
@@ -135,5 +136,61 @@ class ProxyResolverTest {
 
         assertEquals(ProxyResolver.Route.Kind.ENTERPRISE_PROXY, route.kind());
         assertEquals("proxy.corp:pas-un-port", route.address());
+    }
+
+    // --- NO_PROXY à la forme Windows (F-55 / SF-55-03) ----------------------------------------
+
+    @Test
+    void no_proxy_accepts_the_windows_semicolon_form() {
+        // La forme qu'affichent `netsh` et le registre, donc celle qu'on recopie. Découpée sur la
+        // seule virgule, elle produisait UNE entrée qui n'excluait plus rien.
+        ProxyResolver resolver = ProxyResolver.fromEnv(Map.of(
+                "HTTPS_PROXY", "http://proxy.corp:3128",
+                "NO_PROXY", ".corp.local;localhost;127.0.0.1"));
+
+        assertEquals(List.of(Proxy.NO_PROXY),
+                resolver.select(URI.create("https://git.corp.local/depot")));
+        assertEquals(List.of(Proxy.NO_PROXY), resolver.select(URI.create("http://localhost:8080")));
+    }
+
+    @Test
+    void no_proxy_accepts_both_separators_at_once() {
+        ProxyResolver resolver = ProxyResolver.fromEnv(Map.of(
+                "HTTPS_PROXY", "http://proxy.corp:3128",
+                "NO_PROXY", "a.corp; b.corp , c.corp"));
+
+        assertEquals(List.of(Proxy.NO_PROXY), resolver.select(URI.create("https://a.corp/x")));
+        assertEquals(List.of(Proxy.NO_PROXY), resolver.select(URI.create("https://b.corp/x")));
+        assertEquals(List.of(Proxy.NO_PROXY), resolver.select(URI.create("https://c.corp/x")));
+    }
+
+    @Test
+    void no_proxy_ignores_empty_entries_between_separators() {
+        ProxyResolver resolver = ProxyResolver.fromEnv(Map.of(
+                "HTTPS_PROXY", "http://proxy.corp:3128",
+                "NO_PROXY", "a.corp;;b.corp;"));
+
+        assertEquals(List.of(Proxy.NO_PROXY), resolver.select(URI.create("https://b.corp/x")));
+        // Le découpage n'élargit rien : ce qui n'est pas listé passe toujours par le proxy.
+        assertEquals(Proxy.Type.HTTP,
+                resolver.select(URI.create("https://ailleurs.example.com")).get(0).type());
+    }
+
+    @Test
+    void the_windows_form_is_reported_and_the_comma_form_is_not() {
+        assertTrue(ProxyResolver.fromEnv(Map.of("NO_PROXY", "a.corp;b.corp")).noProxyWindowsForm());
+        assertFalse(ProxyResolver.fromEnv(Map.of("NO_PROXY", "a.corp,b.corp")).noProxyWindowsForm());
+        assertFalse(ProxyResolver.fromEnv(Map.of()).noProxyWindowsForm());
+    }
+
+    @Test
+    void the_notice_names_the_expected_separator_and_is_silent_otherwise() {
+        String notice = ProxyResolver.fromEnv(Map.of("NO_PROXY", "a.corp;b.corp")).noProxyNotice();
+
+        assertTrue(notice.contains("NO_PROXY"));
+        assertTrue(notice.contains("Windows"));
+        assertTrue(notice.contains("virgules"));
+        assertNull(ProxyResolver.fromEnv(Map.of("NO_PROXY", "a.corp,b.corp")).noProxyNotice());
+        assertNull(ProxyResolver.fromEnv(Map.of()).noProxyNotice());
     }
 }

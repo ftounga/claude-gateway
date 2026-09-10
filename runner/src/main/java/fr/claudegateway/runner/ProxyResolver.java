@@ -20,6 +20,11 @@ import java.util.Map;
  * <p>Appliqué à la fois à l'appel HTTP d'appairage et à l'ouverture WSS (les deux passent par le même
  * {@link java.net.http.HttpClient}). Le truststore d'entreprise reste géré par la JVM
  * ({@code -Djavax.net.ssl.trustStore}).</p>
+ *
+ * <p><b>{@code NO_PROXY} se lit dans les deux formes</b> (F-55 / SF-55-03) : la virgule des outils
+ * Unix, et le point-virgule que Windows écrit. Découpée sur la seule virgule, une liste à la forme
+ * Windows devenait une <b>unique</b> entrée qui ne correspondait à aucun hôte — plus aucune
+ * exclusion ne s'appliquait, et rien ne le signalait.</p>
  */
 public final class ProxyResolver extends ProxySelector {
 
@@ -28,17 +33,25 @@ public final class ProxyResolver extends ProxySelector {
     private final List<String> noProxyHosts;
     /** Nom de la variable qui a décidé la route sortante, ou {@code null} en sortie directe. */
     private final String routeVariable;
+    /** Vrai quand un {@code ;} a servi de séparateur dans {@code NO_PROXY} (F-55 / SF-55-03). */
+    private final boolean noProxyWindowsForm;
 
     ProxyResolver(String httpsProxy, String httpProxy, List<String> noProxyHosts) {
-        this(httpsProxy, httpProxy, noProxyHosts, null);
+        this(httpsProxy, httpProxy, noProxyHosts, null, false);
     }
 
     ProxyResolver(String httpsProxy, String httpProxy, List<String> noProxyHosts,
             String routeVariable) {
+        this(httpsProxy, httpProxy, noProxyHosts, routeVariable, false);
+    }
+
+    ProxyResolver(String httpsProxy, String httpProxy, List<String> noProxyHosts,
+            String routeVariable, boolean noProxyWindowsForm) {
         this.httpsProxy = httpsProxy;
         this.httpProxy = httpProxy;
         this.noProxyHosts = noProxyHosts;
         this.routeVariable = routeVariable;
+        this.noProxyWindowsForm = noProxyWindowsForm;
     }
 
     /** Construit le résolveur depuis l'environnement (clés majuscules puis minuscules). */
@@ -47,8 +60,15 @@ public final class ProxyResolver extends ProxySelector {
         Declared http = declared(env, "HTTP_PROXY", "http_proxy");
         String noProxy = firstNonBlank(env, "NO_PROXY", "no_proxy");
         List<String> noProxyHosts = new ArrayList<>();
+        boolean windowsForm = false;
         if (noProxy != null) {
-            for (String part : noProxy.split(",")) {
+            // F-55 / SF-55-03 : Windows sépare ses exclusions par des `;` — c'est la forme
+            // qu'affichent `netsh` et le registre, donc celle qu'on recopie. Découpée sur la seule
+            // virgule, la liste devenait UNE entrée, qui ne correspond à aucun hôte : plus aucune
+            // exclusion ne s'appliquait, sans que rien ne le signale. Accepter le `;` ne crée
+            // aucune ambiguïté — il n'est jamais valide dans un nom d'hôte (D1).
+            windowsForm = noProxy.indexOf(';') >= 0;
+            for (String part : noProxy.split("[,;]")) {
                 String host = part.trim().toLowerCase(Locale.ROOT);
                 if (!host.isEmpty()) {
                     noProxyHosts.add(host);
@@ -59,7 +79,34 @@ public final class ProxyResolver extends ProxySelector {
         // d'abord, HTTP_PROXY en repli. C'est la gateway qu'on joint, et elle est en HTTPS.
         Declared route = https.value() != null ? https : http;
         return new ProxyResolver(normalize(https.value()), normalize(http.value()), noProxyHosts,
-                route.value() == null ? null : route.variable());
+                route.value() == null ? null : route.variable(), windowsForm);
+    }
+
+    /** {@code true} quand la liste d'exclusions était écrite à la forme Windows (séparateur `;`). */
+    public boolean noProxyWindowsForm() {
+        return noProxyWindowsForm;
+    }
+
+    /**
+     * Ce que le runner dit d'un {@code NO_PROXY} à la forme Windows, ou {@code null} quand il n'y a
+     * rien à dire (F-55 / SF-55-03).
+     *
+     * <p>Ce n'est <b>pas</b> une erreur : la valeur est comprise, et le runner démarre normalement
+     * (D3). La ligne existe parce que le <b>même</b> {@code NO_PROXY} sera lu par {@code curl} dans
+     * le terminal d'à côté — et que là, il ne marchera pas. C'est ce décalage-là qui coûte une heure
+     * de diagnostic, pas le comportement du runner.</p>
+     *
+     * <p>Elle n'est écrite que lorsqu'un {@code ;} a réellement servi (D2) : affichée à chaque
+     * démarrage, elle deviendrait un bruit qu'on n'attribue plus à rien.</p>
+     */
+    public String noProxyNotice() {
+        if (!noProxyWindowsForm) {
+            return null;
+        }
+        String nl = System.lineSeparator();
+        return "Exclusions: NO_PROXY est écrit à la forme Windows (« ; ») : le runner l'accepte."
+                + nl
+                + "            curl et la plupart des outils attendent des virgules : « a,b,c ».";
     }
 
     /** {@code true} si un proxy est configuré (HTTP ou HTTPS). */
