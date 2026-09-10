@@ -4,7 +4,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, throwError } from 'rxjs';
-import { RunnerDownloadFormats } from '../../core/models/atelier.models';
+import { RunnerDownloadFormats, WorkspaceDetail } from '../../core/models/atelier.models';
 
 import { AtelierService } from '../../core/services/atelier.service';
 import {
@@ -52,7 +52,10 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     hostPlatform: RunnerHostPlatform = 'windows',
   ): void {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
-      'createRunnerPairingCode',
+      'createHostPairingCode',
+      'listRunnerHosts',
+      'createRunnerHost',
+      'attachWorkspaceToHost',
       'downloadRunnerJar',
       'downloadRunnerWindowsPackage',
       'downloadRunnerMacosPackage',
@@ -62,6 +65,10 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     // F-45 / SF-45-02 : le dialogue relève l'état de la machine dès sa construction. Défaut =
     // « pas encore vue », l'état d'un projet dont le runner n'a pas encore été lancé.
     service.getRunnerStatus.and.returnValue(of({ connected: false, lastSeenAt: null }));
+    // F-48 / SF-48-03 : le dialogue releve les postes de l'utilisateur des sa construction.
+    service.listRunnerHosts.and.returnValue(of([
+      { id: 'h1', name: 'Portable', connected: false, createdAt: '2026-09-10T08:00:00Z' },
+    ]));
     // Le composant demande les formats disponibles dès sa construction (F-44 / SF-44-02) : sans
     // cette réponse, aucun test de ce fichier ne peut instancier le dialogue. Défaut = les deux
     // formats servis, qui est l'état d'une gateway à jour.
@@ -78,7 +85,12 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
         { provide: AtelierService, useValue: service },
         { provide: MatSnackBar, useValue: snackBar },
         { provide: MatDialogRef, useValue: dialogRef },
-        { provide: MAT_DIALOG_DATA, useValue: { workspaceId: 'w1', workspaceName: 'projet' } },
+        {
+          provide: MAT_DIALOG_DATA,
+          // Le POSTE fait partie de l'ouverture depuis F-48 / SF-48-03 : ces tests portent sur la
+          // mise en service d'un projet DEJA rattache a une machine.
+          useValue: { workspaceId: 'w1', workspaceName: 'projet', hostId: 'h1', projectPath: 'app' },
+        },
         { provide: RUNNER_HOST_PLATFORM, useValue: hostPlatform },
       ],
     });
@@ -99,16 +111,16 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     setup();
     expect(component.pairingCode()).toBeNull();
     expect(component.codeUsable()).toBeFalse();
-    expect(service.createRunnerPairingCode).not.toHaveBeenCalled();
+    expect(service.createHostPairingCode).not.toHaveBeenCalled();
   });
 
   it('affiche le code généré et son compte à rebours', () => {
     setup();
-    service.createRunnerPairingCode.and.returnValue(of(codeExpiringIn(300)));
+    service.createHostPairingCode.and.returnValue(of(codeExpiringIn(300)));
 
     component.generateCode();
 
-    expect(service.createRunnerPairingCode).toHaveBeenCalledWith('w1');
+    expect(service.createHostPairingCode).toHaveBeenCalledWith('h1');
     expect(component.pairingCode()?.code).toBe('AB12CD');
     expect(component.codeUsable()).toBeTrue();
     expect(component.secondsLeft()).toBeGreaterThan(290);
@@ -117,7 +129,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
 
   it('masque un code expiré et propose d\'en générer un nouveau', () => {
     setup();
-    service.createRunnerPairingCode.and.returnValue(of(codeExpiringIn(-1)));
+    service.createHostPairingCode.and.returnValue(of(codeExpiringIn(-1)));
 
     component.generateCode();
 
@@ -130,7 +142,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
 
   it('signale l\'échec de génération sans fermer le dialogue', () => {
     setup();
-    service.createRunnerPairingCode.and.returnValue(
+    service.createHostPairingCode.and.returnValue(
       throwError(() => new HttpErrorResponse({ status: 500 })));
 
     component.generateCode();
@@ -143,7 +155,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
   it('compose la commande avec l\'origine, le chemin saisi et le code', () => {
     setup();
     component.format.set('jar');
-    service.createRunnerPairingCode.and.returnValue(of(codeExpiringIn(300)));
+    service.createHostPairingCode.and.returnValue(of(codeExpiringIn(300)));
     component.generateCode();
     component.workspacePath.set('  /home/moi/projet  ');
 
@@ -154,7 +166,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     // du frontend, qui répond 405 sur un POST vers une route d'application (F-38 / SF-38-06).
     expect(command).toContain(`--gateway ${window.location.origin}/api`);
     // Guillemets : sans eux, Git Bash mange les antislashs d'un chemin Windows (SF-38-23).
-    expect(command).toContain('--workspace "/home/moi/projet"');
+    expect(command).toContain('--root "/home/moi/projet"');
     expect(command).toContain('--code AB12CD');
   });
 
@@ -162,7 +174,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     // Le poste par défaut de ces tests est Windows, et le format retenu le paquet Windows : le
     // chemin d'exemple suit donc le format (F-45 / SF-45-02).
     setup();
-    expect(component.runCommand()).toContain(`--workspace "${WINDOWS_WORKSPACE_PATH}"`);
+    expect(component.runCommand()).toContain(`--root "${WINDOWS_WORKSPACE_PATH}"`);
   });
 
   it('traite un 404 de téléchargement comme un état normal, sans erreur technique', () => {
@@ -195,7 +207,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     // F-44 / SF-44-02 : sur le paquet, préfixer par `java` rappellerait la JVM du système —
     // celle-là même qui manque ou qui est trop ancienne. C'est tout l'objet de la feature.
     setup();
-    service.createRunnerPairingCode.and.returnValue(of(codeExpiringIn(300)));
+    service.createHostPairingCode.and.returnValue(of(codeExpiringIn(300)));
     component.generateCode();
 
     expect(component.format()).toBe('windows');
@@ -285,7 +297,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     // D4 : le navigateur ne sait pas distinguer arm64 d'Intel ; on présélectionne le majoritaire.
     // Et comme sur Windows, préfixer par `java` rappellerait la JVM du système — celle qui manque.
     setup(EVERY_FORMAT, 'macos');
-    service.createRunnerPairingCode.and.returnValue(of(codeExpiringIn(300)));
+    service.createHostPairingCode.and.returnValue(of(codeExpiringIn(300)));
     component.generateCode();
 
     expect(component.format()).toBe('macos-aarch64');
@@ -358,7 +370,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     const resume = component.resumeCommand();
 
     expect(resume).not.toContain('--gateway');
-    expect(resume).not.toContain('--workspace');
+    expect(resume).not.toContain('--root');
     expect(resume).not.toContain('--code');
     // Guillemets, comme la commande d'installation : le piège des antislashs est le même (SF-38-23).
     expect(resume).toBe('cd "/home/moi/projet" && java -jar claude-runner.jar');
@@ -388,7 +400,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     // Un code expiré abîme la commande d'installation — c'est voulu. Il n'a aucune raison
     // d'abîmer celle qui ne s'en sert pas.
     setup();
-    service.createRunnerPairingCode.and.returnValue(of(codeExpiringIn(-1)));
+    service.createHostPairingCode.and.returnValue(of(codeExpiringIn(-1)));
     component.generateCode();
     component.workspacePath.set('C:\\Users\\moi\\projet');
 
@@ -528,10 +540,13 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     ).map((el) => el.textContent?.replace(/\s+/g, ' ').trim() ?? '');
 
     expect(titles[0]).toContain('Vérifier l\'accès réseau');
+    // Le POSTE avant le code (F-48 / SF-48-03) : un code appaire une machine, on ne peut pas en
+    // demander un avant de savoir laquelle.
+    expect(titles[1]).toContain('Choisir le poste');
     // Avant le code, et pas seulement avant le téléchargement : le code expire en 5 min (D1).
-    expect(titles[1]).toContain('Générer un code');
-    expect(titles[2]).toContain('Récupérer le runner');
-    expect(titles[3]).toContain('Lancer le runner');
+    expect(titles[2]).toContain('Générer un code');
+    expect(titles[3]).toContain('Récupérer le runner');
+    expect(titles[4]).toContain('Lancer le runner');
   });
 
   it('copie la commande de vérification comme les autres commandes', async () => {
@@ -568,7 +583,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     expect(component.examplePath()).toBe(WINDOWS_WORKSPACE_PATH);
     expect(component.examplePath()).toContain('C:\\');
     // Guillemets conservés : sans eux, Git Bash mange les antislashs (SF-38-23).
-    expect(component.runCommand()).toContain(`--workspace "${WINDOWS_WORKSPACE_PATH}"`);
+    expect(component.runCommand()).toContain(`--root "${WINDOWS_WORKSPACE_PATH}"`);
   });
 
   it('affiche un chemin macOS sous un paquet macOS', () => {
@@ -609,7 +624,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     component.format.set('macos-x64');
 
     expect(component.workspacePath()).toBe('/home/moi/projet');
-    expect(component.runCommand()).toContain('--workspace "/home/moi/projet"');
+    expect(component.runCommand()).toContain('--root "/home/moi/projet"');
   });
 
   it('relève l\'état de la machine dès l\'ouverture et reste en attente', () => {
@@ -686,7 +701,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     jasmine.clock().install();
     try {
       setup();
-      service.createRunnerPairingCode.and.returnValue(of(codeExpiringIn(300)));
+      service.createHostPairingCode.and.returnValue(of(codeExpiringIn(300)));
       component.generateCode();
 
       fixture.destroy();
@@ -787,7 +802,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     // D6 : la fiche est faite pour sortir de l'ecran, collee dans un ticket. C'est le genre de
     // fuite qui s'ajoute par inadvertance a la premiere evolution — d'ou ce test.
     setup();
-    service.createRunnerPairingCode.and.returnValue(of(codeExpiringIn(300, 'ZZ99YY')));
+    service.createHostPairingCode.and.returnValue(of(codeExpiringIn(300, 'ZZ99YY')));
     component.generateCode();
     component.workspacePath.set('/home/moi/dossier-confidentiel');
 
@@ -845,11 +860,11 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     expect(component.step()).toBe('network');
     expect(component.isOpen('network')).toBeTrue();
     expect(component.isOpen('code')).toBeFalse();
-    // Les en-têtes des quatre étapes restent rendus : on voit où l'on en est.
+    // Les en-têtes des cinq étapes restent rendus : on voit où l'on en est (F-48 ajoute le poste).
     const titles = Array.from(
       (fixture.nativeElement as HTMLElement).querySelectorAll('.pairing-step-title'),
     );
-    expect(titles.length).toBe(4);
+    expect(titles.length).toBe(5);
     // Le corps de l'étape 2 n'est pas rendu tant qu'elle est repliée.
     expect(renderedText()).not.toContain('Générer un nouveau code');
   });
@@ -932,7 +947,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
 
   it('marque le code comme fait et ouvre l\'étape du runner', () => {
     setup();
-    service.createRunnerPairingCode.and.returnValue(of(codeExpiringIn(300)));
+    service.createHostPairingCode.and.returnValue(of(codeExpiringIn(300)));
 
     component.generateCode();
 
@@ -1018,5 +1033,97 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     } finally {
       jasmine.clock().uninstall();
     }
+  });
+
+  // ---------------------------------------------------------------------------------------------
+  // F-48 / SF-48-03 — le poste : une machine, un appairage, et les projets rangés dessous.
+  // ---------------------------------------------------------------------------------------------
+
+  it('rattache le projet à un poste existant avant de demander un code', () => {
+    setup();
+    service.attachWorkspaceToHost.and.returnValue(
+      of({ id: 'w1', hostId: 'h1', projectPath: 'mon-projet' } as unknown as WorkspaceDetail));
+    component.selectedHostId.set('h1');
+    component.projectPath.set('mon-projet');
+
+    component.attachToHost();
+
+    expect(service.createRunnerHost).not.toHaveBeenCalled();
+    expect(service.attachWorkspaceToHost).toHaveBeenCalledWith('w1', 'h1', 'mon-projet');
+    expect(component.hostId()).toBe('h1');
+    expect(component.stepDone('host')).toBeTrue();
+    expect(component.stepSummary('host')).toContain('mon-projet');
+  });
+
+  it('crée le poste puis rattache le projet, en un seul geste', () => {
+    setup();
+    service.createRunnerHost.and.returnValue(
+      of({ id: 'h2', name: 'CAGIP', connected: false, createdAt: '2026-09-10T08:00:00Z' }));
+    service.attachWorkspaceToHost.and.returnValue(
+      of({ id: 'w1', hostId: 'h2', projectPath: '' } as unknown as WorkspaceDetail));
+    component.selectedHostId.set(component.newHostValue);
+    component.newHostName.set('  CAGIP  ');
+    component.projectPath.set('');
+
+    component.attachToHost();
+
+    expect(service.createRunnerHost).toHaveBeenCalledWith('CAGIP');
+    expect(service.attachWorkspaceToHost).toHaveBeenCalledWith('w1', 'h2', '');
+    expect(component.hostId()).toBe('h2');
+    // Chemin vide : le projet EST la racine du poste, et le résumé doit le dire.
+    expect(component.stepSummary('host')).toContain('à la racine');
+  });
+
+  it("refuse de rattacher tant que le nouveau poste n'a pas de nom", () => {
+    setup();
+    component.selectedHostId.set(component.newHostValue);
+    component.newHostName.set('   ');
+
+    expect(component.canAttach()).toBeFalse();
+    component.attachToHost();
+
+    expect(service.createRunnerHost).not.toHaveBeenCalled();
+  });
+
+  it("laisse l'étape ouverte quand la gateway refuse le chemin du projet", () => {
+    setup();
+    service.attachWorkspaceToHost.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 400 })));
+    component.selectedHostId.set('h1');
+    component.projectPath.set('../ailleurs');
+
+    component.attachToHost();
+
+    // Rien n'a bougé : le poste d'origine reste celui du projet, et le message dit quoi corriger.
+    expect(component.hostId()).toBe('h1');
+    expect(component.attachError()).toContain('racine du poste');
+    expect(dialogRef.close).not.toHaveBeenCalled();
+  });
+
+  it('saute le code quand le poste est déjà connecté', () => {
+    // Le gain de F-48 : ouvrir un projet de plus sous une machine en service ne coûte rien.
+    setup();
+    service.attachWorkspaceToHost.and.returnValue(
+      of({ id: 'w1', hostId: 'h1', projectPath: 'autre' } as unknown as WorkspaceDetail));
+    component.hosts.set([
+      { id: 'h1', name: 'Portable', connected: true, createdAt: '2026-09-10T08:00:00Z' },
+    ]);
+    component.selectedHostId.set('h1');
+
+    component.attachToHost();
+
+    expect(component.hostAlreadyLive()).toBeTrue();
+    expect(component.step()).toBeNull();
+    expect(service.createHostPairingCode).not.toHaveBeenCalled();
+  });
+
+  it("renvoie à l'étape du poste plutôt que de demander un code sans machine", () => {
+    setup();
+    component.hostId.set(null);
+
+    component.generateCode();
+
+    expect(service.createHostPairingCode).not.toHaveBeenCalled();
+    expect(component.step()).toBe('host');
   });
 });

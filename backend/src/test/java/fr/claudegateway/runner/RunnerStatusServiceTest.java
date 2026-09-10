@@ -64,7 +64,24 @@ class RunnerStatusServiceTest {
                 .id(workspaceId).userId(userId).name("Projet").hostId(hostId).projectPath("app")
                 .build());
         when(hostService.requireOwned(userId, hostId)).thenReturn(RunnerHost.builder()
-                .id(hostId).userId(userId).name("Poste").shell(declaredShell).build());
+                .id(hostId).userId(userId).name("Poste").shell(declaredShell)
+                .rootName("dev").elevated(true).build());
+    }
+
+    @Test
+    void statusCarriesWhatTheMachineDeclaredOfItself() {
+        // F-48 / SF-48-03 : la racine et les droits décrivent une MACHINE. Ils voyagent donc avec
+        // l'état du poste, et non plus avec le détail du projet. L'élévation est lue là où l'on
+        // autorise une commande — le seul endroit où elle change une décision (SF-38-18).
+        givenAttachedProject("posix");
+        when(registry.isConnected(hostId)).thenReturn(true);
+        givenTokens();
+
+        RunnerStatus status = service().status(userId, workspaceId);
+
+        assertThat(status.hostName()).isEqualTo("Poste");
+        assertThat(status.rootName()).isEqualTo("dev");
+        assertThat(status.elevated()).isTrue();
     }
 
     private RunnerToken tokenLastSeen(OffsetDateTime lastSeenAt) {

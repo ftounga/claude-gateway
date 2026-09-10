@@ -273,13 +273,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * Vrai si la machine connectée tourne en **administrateur** (F-38 / SF-38-18). Affiché là où l'on
    * autorise une commande : c'est le seul endroit où l'information change une décision.
    */
-  readonly runnerElevated = computed(() => this.activeDetail()?.runnerElevated === true);
+  readonly runnerElevated = computed(() => this.runnerStatus()?.elevated === true);
 
+  /**
+   * Racine déclarée par la machine — son dernier segment seulement (F-38 / SF-38-15). Elle vient
+   * désormais de l'état du **poste** (F-48 / SF-48-03) : c'est une propriété de la machine, plus du
+   * projet, et elle change quand un runner s'appaire, pas quand le projet est créé.
+   */
   readonly localFolder = computed(() => {
     if (!this.localProject()) {
       return null;
     }
-    return this.workspaces().find((w) => w.id === this.activeWorkspaceId())?.runnerRootName ?? null;
+    return this.runnerStatus()?.rootName ?? null;
   });
 
   /**
@@ -1610,7 +1615,15 @@ export class AtelierComponent implements OnInit, OnDestroy {
     if (!id) {
       return;
     }
-    const data: RunnerPairingDialogData = { workspaceId: id, workspaceName: this.activeName() };
+    // Le POSTE voyage avec le projet (F-48 / SF-48-03) : le dialogue part de la machine déjà
+    // rattachée, s'il y en a une, plutôt que de redemander ce que le projet sait déjà.
+    const detail = this.activeDetail();
+    const data: RunnerPairingDialogData = {
+      workspaceId: id,
+      workspaceName: this.activeName(),
+      hostId: detail?.hostId ?? this.runnerStatus()?.hostId ?? null,
+      projectPath: detail?.projectPath ?? null,
+    };
     this.dialog
       .open(RunnerPairingDialogComponent, { data, width: '560px', maxWidth: '95vw' })
       .afterClosed()
@@ -1635,16 +1648,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * étape de plus : c'est le bouton qu'on cherche quand quelque chose se passe mal.</p>
    */
   killRunner(): void {
-    const id = this.activeWorkspaceId();
-    if (!id || this.killingRunner()) {
+    // Le coupe-circuit vise le POSTE depuis F-48 / SF-48-01 : on ne coupe pas un dossier, on coupe
+    // une machine. Sans poste rattaché, il n'y a rien à couper.
+    const hostId = this.activeDetail()?.hostId ?? this.runnerStatus()?.hostId ?? null;
+    if (!hostId || this.killingRunner()) {
       return;
     }
     const data: ConfirmDialogData = {
-      title: 'Couper la liaison avec la machine',
+      title: 'Couper la liaison avec le poste',
       message:
-        'La connexion en cours est fermée, les jetons de ce projet sont révoqués et le projet '
-        + "repasse sur le sandbox hébergé. Il faudra réappairer la machine pour l'utiliser à "
-        + 'nouveau.',
+        'La connexion en cours est fermée, les jetons de ce poste sont révoqués, et TOUS les '
+        + 'projets de cette machine repassent sur le sandbox hébergé. Il faudra réappairer le '
+        + "poste pour l'utiliser à nouveau.",
       confirmLabel: 'Couper maintenant',
     };
     this.dialog
@@ -1652,20 +1667,21 @@ export class AtelierComponent implements OnInit, OnDestroy {
       .afterClosed()
       .subscribe((confirmed) => {
         if (confirmed) {
-          this.performKillRunner(id);
+          this.performKillRunner(hostId);
         }
       });
   }
 
-  private performKillRunner(id: string): void {
+  private performKillRunner(hostId: string): void {
     this.killingRunner.set(true);
-    this.atelier.killRunner(id).subscribe({
+    this.atelier.killHost(hostId).subscribe({
       next: (result) => {
         this.killingRunner.set(false);
-        // La cible qui fait foi est celle renvoyée par le backend, jamais celle qu'on espérait.
+        // Le poste coupé, la gateway ramène TOUS ses projets au bac à sable ; celui qui est ouvert
+        // suit, sans qu'on ait à deviner ce qu'elle a décidé pour les autres.
         const detail = this.activeDetail();
         if (detail) {
-          const updated = { ...detail, executionTarget: result.executionTarget };
+          const updated = { ...detail, executionTarget: 'SANDBOX' as const };
           this.activeDetail.set(updated);
           this.loadEngine(updated);
         }
@@ -1674,16 +1690,16 @@ export class AtelierComponent implements OnInit, OnDestroy {
         this.syncRunnerPolling();
         this.snackBar.open(
           result.revokedTokens > 0
-            ? `Liaison coupée : ${result.revokedTokens} jeton(s) révoqué(s). Projet repassé sur le `
-              + 'sandbox hébergé.'
-            : 'Aucune liaison active. Projet repassé sur le sandbox hébergé.',
+            ? `Liaison coupée : ${result.revokedTokens} jeton(s) révoqué(s), `
+              + `${result.workspacesReturned} projet(s) repassé(s) sur le sandbox hébergé.`
+            : 'Aucune liaison active. Les projets de ce poste sont sur le sandbox hébergé.',
           'Fermer', { duration: 6000 });
       },
       error: (err: unknown) => {
         this.killingRunner.set(false);
         this.notifyError(
           err instanceof HttpErrorResponse && err.status === 404
-            ? 'Projet introuvable.'
+            ? "Ce poste n'existe plus."
             : "La liaison n'a pas pu être coupée. Veuillez réessayer.");
       },
     });

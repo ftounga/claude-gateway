@@ -11,6 +11,7 @@ import {
   AtelierStreamDone,
   FileContent,
   RunnerAuditEntry,
+  RunnerHost,
   RunnerKillResult,
   RunnerPairingCode,
   RunnerStatus,
@@ -590,15 +591,46 @@ describe('AtelierService', () => {
     expect(received).toEqual({ connected: true, lastSeenAt: '2026-08-30T10:00:00Z' });
   });
 
-  it('génère un code d\'appairage via POST /api/workspaces/{id}/runner/pairing-code', () => {
+  it("génère le code d'appairage d'un POSTE via POST /api/runner-hosts/{id}/pairing-code", () => {
+    // F-48 / SF-48-01 : un code appaire une machine, pas un dossier — et un seul suffit pour tous
+    // les projets qui vivent sous sa racine.
     let received: RunnerPairingCode | undefined;
-    service.createRunnerPairingCode('w1').subscribe((r) => (received = r));
+    service.createHostPairingCode('h1').subscribe((r: RunnerPairingCode) => (received = r));
 
-    const req = httpMock.expectOne('/api/workspaces/w1/runner/pairing-code');
+    const req = httpMock.expectOne('/api/runner-hosts/h1/pairing-code');
     expect(req.request.method).toBe('POST');
     req.flush({ code: 'AB12CD', expiresAt: '2026-08-30T10:05:00Z' });
 
     expect(received?.code).toBe('AB12CD');
+  });
+
+  it('liste les postes via GET /api/runner-hosts (F-48 / SF-48-03)', () => {
+    let hosts: RunnerHost[] | undefined;
+    service.listRunnerHosts().subscribe((r: RunnerHost[]) => (hosts = r));
+
+    const req = httpMock.expectOne('/api/runner-hosts');
+    expect(req.request.method).toBe('GET');
+    req.flush([{ id: 'h1', name: 'Portable', connected: true, createdAt: '2026-09-10T08:00:00Z' }]);
+
+    expect(hosts?.[0].name).toBe('Portable');
+  });
+
+  it('crée un poste au nom libre via POST /api/runner-hosts (F-48 / SF-48-03)', () => {
+    service.createRunnerHost('  CAGIP  ').subscribe();
+
+    const req = httpMock.expectOne('/api/runner-hosts');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ name: '  CAGIP  ' });
+    req.flush({ id: 'h2', name: 'CAGIP', connected: false, createdAt: '2026-09-10T08:00:00Z' });
+  });
+
+  it('rattache un projet à un poste via PUT /api/workspaces/{id}/host (F-48 / SF-48-03)', () => {
+    service.attachWorkspaceToHost('w1', 'h1', 'mon-projet').subscribe();
+
+    const req = httpMock.expectOne('/api/workspaces/w1/host');
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual({ hostId: 'h1', projectPath: 'mon-projet' });
+    req.flush({ id: 'w1', hostId: 'h1', projectPath: 'mon-projet' });
   });
 
   it('télécharge le binaire du runner en blob via GET /api/runner/download', () => {
@@ -706,15 +738,17 @@ describe('AtelierService', () => {
     req.flush(null);
   });
 
-  it('POSTe le coupe-circuit sur /runner/kill (F-38 / SF-38-08)', () => {
+  it('POSTe le coupe-circuit sur le POSTE (F-38 / SF-38-08, F-48 / SF-48-01)', () => {
+    // On ne coupe pas un dossier, on coupe une machine : la réponse dit combien de projets sont
+    // revenus au bac à sable, et pas seulement celui qu'on regardait.
     let result: RunnerKillResult | undefined;
-    service.killRunner('w1').subscribe((r) => (result = r));
+    service.killHost('h1').subscribe((r: RunnerKillResult) => (result = r));
 
-    const req = httpMock.expectOne('/api/workspaces/w1/runner/kill');
+    const req = httpMock.expectOne('/api/runner-hosts/h1/kill');
     expect(req.request.method).toBe('POST');
-    req.flush({ revokedTokens: 2, disconnected: true, executionTarget: 'SANDBOX' });
+    req.flush({ revokedTokens: 2, disconnected: true, workspacesReturned: 3 });
 
-    expect(result).toEqual({ revokedTokens: 2, disconnected: true, executionTarget: 'SANDBOX' });
+    expect(result).toEqual({ revokedTokens: 2, disconnected: true, workspacesReturned: 3 });
   });
 
   it("relit le journal d'activité du runner avec sa limite (F-38 / SF-38-08)", () => {

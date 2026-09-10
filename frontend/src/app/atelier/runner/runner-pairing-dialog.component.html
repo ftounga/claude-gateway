@@ -264,6 +264,110 @@
     }
   </section>
 
+  <!-- Étape 2 — le poste (F-48 / SF-48-03) : une machine, un appairage, et les projets dessous -->
+  <section class="pairing-step">
+    <h3 class="pairing-step-heading">
+      <button
+        type="button"
+        class="pairing-step-head"
+        [attr.aria-expanded]="isOpen('host')"
+        (click)="toggleStep('host')"
+      >
+        <span class="pairing-step-number" [class.pairing-step-number-done]="stepDone('host')">
+          @if (stepDone('host')) {
+            <mat-icon class="pairing-step-check">check</mat-icon>
+          } @else {
+            2
+          }
+        </span>
+        <span class="pairing-step-head-text">
+          <span class="pairing-step-title">Choisir le poste</span>
+          @if (stepSummary('host'); as summary) {
+            <span class="pairing-step-summary">{{ summary }}</span>
+          }
+        </span>
+        <mat-icon class="pairing-step-chevron">
+          {{ isOpen('host') ? 'expand_less' : 'expand_more' }}
+        </mat-icon>
+      </button>
+    </h3>
+
+    @if (isOpen('host')) {
+      <div class="pairing-step-body">
+        <p class="pairing-hint">
+          Un <strong>poste</strong> est une machine : une racine, un runner, un seul appairage. Vos
+          projets sont des dossiers sous cette racine — en ouvrir un de plus ne demandera plus rien.
+        </p>
+
+        <mat-form-field appearance="outline" class="pairing-field">
+          <mat-label>Poste</mat-label>
+          <mat-select
+            [ngModel]="selectedHostId()"
+            (ngModelChange)="selectedHostId.set($event)"
+            name="host"
+          >
+            @for (host of hosts(); track host.id) {
+              <mat-option [value]="host.id">
+                {{ host.name }}@if (host.connected) { — connecté }
+              </mat-option>
+            }
+            <mat-option [value]="newHostValue">Nouveau poste…</mat-option>
+          </mat-select>
+        </mat-form-field>
+
+        @if (selectedHostId() === newHostValue) {
+          <mat-form-field appearance="outline" class="pairing-field">
+            <mat-label>Nom du poste</mat-label>
+            <input
+              matInput
+              [ngModel]="newHostName()"
+              (ngModelChange)="newHostName.set($event)"
+              name="hostName"
+              placeholder="Mon portable"
+              maxlength="100"
+            />
+            <mat-hint>Un nom libre — celui d'un client, d'une machine, de ce que vous voulez.</mat-hint>
+          </mat-form-field>
+        }
+
+        <mat-form-field appearance="outline" class="pairing-field">
+          <mat-label>Dossier du projet sous la racine</mat-label>
+          <input
+            matInput
+            [ngModel]="projectPath()"
+            (ngModelChange)="projectPath.set($event)"
+            name="projectPath"
+            placeholder="mon-projet"
+            maxlength="512"
+          />
+          <mat-hint>
+            Relatif à la racine du poste. Laissez vide si le projet <em>est</em> la racine.
+          </mat-hint>
+        </mat-form-field>
+
+        @if (attachError()) {
+          <p class="pairing-error" role="alert">{{ attachError() }}</p>
+        }
+
+        <div class="pairing-actions">
+          <button
+            mat-flat-button
+            color="primary"
+            type="button"
+            [disabled]="!canAttach()"
+            (click)="attachToHost()"
+          >
+            @if (attaching()) {
+              <mat-spinner diameter="18"></mat-spinner>
+            } @else {
+              Rattacher ce projet
+            }
+          </button>
+        </div>
+      </div>
+    }
+  </section>
+
   <!-- Étape 2 — le code d'appairage (usage unique, TTL court) -->
   <section class="pairing-step">
     <h3 class="pairing-step-heading">
@@ -277,7 +381,7 @@
           @if (stepDone('code')) {
             <mat-icon class="pairing-step-check">check</mat-icon>
           } @else {
-            2
+            3
           }
         </span>
         <span class="pairing-step-head-text">
@@ -359,7 +463,7 @@
           @if (stepDone('download')) {
             <mat-icon class="pairing-step-check">check</mat-icon>
           } @else {
-            3
+            4
           }
         </span>
         <span class="pairing-step-head-text">
@@ -506,7 +610,7 @@
           @if (stepDone('launch')) {
             <mat-icon class="pairing-step-check">check</mat-icon>
           } @else {
-            4
+            5
           }
         </span>
         <span class="pairing-step-head-text">

@@ -110,7 +110,7 @@ describe('AtelierComponent', () => {
       'setExecutionTarget',
       'getRunnerStatus',
       'getEngine',
-      'createRunnerPairingCode',
+      'createHostPairingCode',
       'downloadRunnerJar',
     ]);
     apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
@@ -2847,12 +2847,15 @@ describe('AtelierComponent', () => {
     expect(component.localFolder()).toBeNull();
 
     component.workspaces.set([
-      { ...summary, id: 'w1', source: 'LOCAL', runnerRootName: 'runner-claude' },
+      { ...summary, id: 'w1', source: 'LOCAL' },
     ]);
-    expect(component.localFolder()).toBe('runner-claude');
+    // La racine est celle du POSTE (F-48 / SF-48-03) : elle vient de l'état du runner, pas du
+    // projet — c'est une propriété de la machine, et elle n'existe qu'une fois un runner appairé.
+    component.runnerStatus.set({ connected: true, lastSeenAt: null, rootName: 'dev' });
+    expect(component.localFolder()).toBe('dev');
 
     // Projet local dont aucune machine ne s'est encore appairée : rien plutôt qu'un nom inventé.
-    component.workspaces.set([{ ...summary, id: 'w1', source: 'LOCAL' }]);
+    component.runnerStatus.set({ connected: false, lastSeenAt: null });
     expect(component.localFolder()).toBeNull();
   });
 
@@ -3145,7 +3148,7 @@ describe('AtelierComponent — écrans runner (F-38 SF-38-06)', () => {
       'createWorkspace', 'listWorkspaces', 'getWorkspace',
       'getEngine', 'getFile', 'writeFile',
       'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory', 'getResume', 'restartThread',
-      'setExecutionTarget', 'getRunnerStatus', 'createRunnerPairingCode', 'downloadRunnerJar',
+      'setExecutionTarget', 'getRunnerStatus', 'createHostPairingCode', 'downloadRunnerJar',
     ]);
     const apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
@@ -3296,8 +3299,10 @@ describe('AtelierComponent — écrans runner (F-38 SF-38-06)', () => {
     component.openRunnerPairing();
 
     expect(dialog.open).toHaveBeenCalled();
+    // Le POSTE voyage avec le projet (F-48 / SF-48-03) : le dialogue n'a pas à redemander ce que
+    // le projet sait déjà.
     expect(dialog.open.calls.mostRecent().args[1]?.data)
-      .toEqual({ workspaceId: 'w1', workspaceName: 'projet' });
+      .toEqual({ workspaceId: 'w1', workspaceName: 'projet', hostId: null, projectPath: null });
     expect(service.getRunnerStatus).toHaveBeenCalled();
     fixture.destroy();
   });
@@ -3333,7 +3338,8 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
   const runnerDetail: WorkspaceDetail = {
     id: 'w1', name: 'projet', fileCount: 1, files: ['src/main.ts'],
     createdAt: '2026-08-30T00:00:00Z', source: 'ARCHIVE', gitRepoUrl: null, gitRepo: null,
-    gitBranch: null, truncated: false, executionTarget: 'RUNNER',
+    // Le projet vit sur un POSTE, dans un sous-dossier de sa racine (F-48 / SF-48-01).
+    gitBranch: null, truncated: false, executionTarget: 'RUNNER', hostId: 'h1', projectPath: 'app',
   };
 
   function setup(): void {
@@ -3341,8 +3347,8 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
       'createWorkspace', 'listWorkspaces', 'getWorkspace',
       'getEngine', 'getFile', 'writeFile',
       'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory', 'getResume', 'restartThread',
-      'setExecutionTarget', 'getRunnerStatus', 'createRunnerPairingCode', 'downloadRunnerJar',
-      'confirmToolUse', 'confirmChatToolUse', 'killRunner', 'getRunnerAudit', 'interruptChat',
+      'setExecutionTarget', 'getRunnerStatus', 'createHostPairingCode', 'downloadRunnerJar',
+      'confirmToolUse', 'confirmChatToolUse', 'killHost', 'getRunnerAudit', 'interruptChat',
     ]);
     const apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
@@ -3475,16 +3481,18 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
     fixture.destroy();
   });
 
-  it('le coupe-circuit coupe la liaison et ramène le projet sur le sandbox hébergé', () => {
+  it('le coupe-circuit coupe le POSTE et ramène le projet sur le sandbox hébergé', () => {
+    // F-48 / SF-48-01 : on ne coupe pas un dossier, on coupe une machine. Le geste vise donc le
+    // poste du projet, jamais le projet lui-même.
     setup();
     dialog.open.and.returnValue({ afterClosed: () => of(true) } as MatDialogRef<unknown>);
-    service.killRunner.and.returnValue(
-      of({ revokedTokens: 2, disconnected: true, executionTarget: 'SANDBOX' as const }));
+    service.killHost.and.returnValue(
+      of({ revokedTokens: 2, disconnected: true, workspacesReturned: 1 }));
 
     component.killRunner();
     fixture.detectChanges();
 
-    expect(service.killRunner).toHaveBeenCalledWith('w1');
+    expect(service.killHost).toHaveBeenCalledWith('h1');
     expect(component.executionTarget()).toBe('SANDBOX');
     expect(component.runnerTarget()).toBeFalse();
     expect(snackBar.open).toHaveBeenCalled();
@@ -3497,7 +3505,7 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
 
     component.killRunner();
 
-    expect(service.killRunner).not.toHaveBeenCalled();
+    expect(service.killHost).not.toHaveBeenCalled();
     expect(component.executionTarget()).toBe('RUNNER');
     fixture.destroy();
   });

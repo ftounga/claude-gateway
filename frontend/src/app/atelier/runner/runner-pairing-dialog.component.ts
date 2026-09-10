@@ -8,20 +8,43 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatRadioModule } from '@angular/material/radio';
+import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AtelierService } from '../../core/services/atelier.service';
-import { RunnerDownloadFormats, RunnerPairingCode } from '../../core/models/atelier.models';
+import {
+  RunnerDownloadFormats,
+  RunnerHost,
+  RunnerPairingCode,
+} from '../../core/models/atelier.models';
 
-/** Données d'ouverture du dialogue : le projet à appairer. */
+/**
+ * Données d'ouverture du dialogue : le projet à mettre en service, et — depuis F-48 / SF-48-03 — le
+ * <b>poste</b> auquel il est déjà rattaché, s'il en a un.
+ *
+ * <p>Quand le poste est connu et connecté, il n'y a plus rien à appairer : ouvrir un projet de plus
+ * sous une machine déjà en service ne coûte rien, et c'est exactement ce que F-48 est venu
+ * chercher.</p>
+ */
 export interface RunnerPairingDialogData {
   workspaceId: string;
   workspaceName: string;
+  /** Poste déjà rattaché au projet, ou `null`/absent. */
+  hostId?: string | null;
+  /** Chemin du projet sous la racine du poste, ou `null`/absent. */
+  projectPath?: string | null;
 }
 
-/** Chemin d'exemple affiché tant que l'utilisateur n'a pas saisi la racine de son projet. */
-export const DEFAULT_WORKSPACE_PATH = '/chemin/vers/le/projet';
+/** Chemin d'exemple affiché tant que l'utilisateur n'a pas saisi la racine de son poste. */
+export const DEFAULT_WORKSPACE_PATH = '/chemin/vers/vos/projets';
+
+/**
+ * Valeur de la liste des postes qui signifie « en créer un » (F-48 / SF-48-03). Une constante
+ * plutôt qu'une chaîne vide : la chaîne vide est un chemin de projet légitime — la racine — et les
+ * deux ne doivent jamais pouvoir se confondre.
+ */
+export const NEW_HOST = '__nouveau__';
 
 /**
  * Chemins d'exemple par système (F-45 / SF-45-02). Un chemin Unix affiché sous un bouton
@@ -151,7 +174,7 @@ export function proxyExportCommand(platform: RunnerHostPlatform, proxyUrl: strin
  * de lecture à trois branches dans une seule colonne — et se lisait moins bien qu'avant d'avoir été
  * amélioré.</p>
  */
-export type PairingStep = 'network' | 'code' | 'download' | 'launch';
+export type PairingStep = 'network' | 'host' | 'code' | 'download' | 'launch';
 
 /**
  * Ce que l'utilisateur déclare avoir lu dans son terminal à l'étape 1 (F-45 / SF-45-05, décision D2).
@@ -324,6 +347,7 @@ export const RUNNER_HOST_PLATFORM = new InjectionToken<RunnerHostPlatform>('RUNN
     MatInputModule,
     MatProgressSpinnerModule,
     MatRadioModule,
+    MatSelectModule,
     MatTooltipModule,
   ],
   templateUrl: './runner-pairing-dialog.component.html',
@@ -350,10 +374,84 @@ export class RunnerPairingDialogComponent implements OnDestroy {
         this.format.set('jar');
       },
     });
+    // F-48 / SF-48-03 : le poste précède tout le reste. On part de celui que le projet porte déjà,
+    // s'il en a un, et on relève la liste pour que l'utilisateur puisse en choisir un autre.
+    this.hostId.set(this.data.hostId ?? null);
+    this.projectPath.set(this.data.projectPath ?? '');
+    this.selectedHostId.set(this.data.hostId ?? NEW_HOST);
+    this.loadHosts();
     // F-45 / SF-45-02 : une fois la commande lancée, rien à l'écran ne disait si la machine s'était
     // appairée. L'information existait déjà côté gateway ; il suffisait de la relever.
     this.readRunnerStatus();
     this.statusPoll = setInterval(() => this.readRunnerStatus(), RUNNER_STATUS_POLL_MS);
+  }
+
+  /**
+   * Relève les postes de l'utilisateur. <b>Silencieux en cas d'échec</b> : la liste n'est qu'un
+   * confort — créer un poste reste possible sans elle, et un rouge ici enverrait chercher au mauvais
+   * endroit.
+   */
+  private loadHosts(): void {
+    this.atelier.listRunnerHosts().subscribe({
+      next: (hosts) => this.hosts.set(hosts),
+      error: () => this.hosts.set([]),
+    });
+  }
+
+  /**
+   * Crée le poste s'il faut, puis <b>rattache</b> le projet avec son chemin sous la racine
+   * (F-48 / SF-48-03). Un seul geste de l'utilisateur, deux appels au plus.
+   */
+  attachToHost(): void {
+    if (!this.canAttach()) {
+      return;
+    }
+    this.attaching.set(true);
+    this.attachError.set(null);
+    const selected = this.selectedHostId();
+    if (selected === NEW_HOST) {
+      this.atelier.createRunnerHost(this.newHostName().trim()).subscribe({
+        next: (host) => {
+          this.hosts.update((hosts) => [host, ...hosts]);
+          this.attachWorkspace(host.id);
+        },
+        error: (err: unknown) => this.failAttach(err),
+      });
+      return;
+    }
+    this.attachWorkspace(selected);
+  }
+
+  private attachWorkspace(hostId: string): void {
+    this.atelier.attachWorkspaceToHost(this.data.workspaceId, hostId, this.projectPath().trim())
+      .subscribe({
+        next: (detail) => {
+          this.attaching.set(false);
+          this.hostId.set(detail.hostId ?? hostId);
+          this.selectedHostId.set(detail.hostId ?? hostId);
+          this.projectPath.set(detail.projectPath ?? '');
+          // Un poste déjà connecté n'a rien à appairer : on saute directement à la conclusion.
+          this.step.set(this.hostAlreadyLive() ? null : 'code');
+        },
+        error: (err: unknown) => this.failAttach(err),
+      });
+  }
+
+  /** Traduit un refus en phrase utile, et laisse l'étape ouverte : rien n'est perdu. */
+  private failAttach(err: unknown): void {
+    this.attaching.set(false);
+    if (err instanceof HttpErrorResponse && err.status === 400) {
+      this.attachError.set(
+        "Ce chemin n'est pas exploitable : il est relatif à la racine du poste, sans « .. » "
+        + 'ni chemin absolu.');
+      return;
+    }
+    if (err instanceof HttpErrorResponse && err.status === 404) {
+      this.attachError.set("Ce poste n'existe plus.");
+      this.loadHosts();
+      return;
+    }
+    this.attachError.set("Le projet n'a pas pu être rattaché. Veuillez réessayer.");
   }
   readonly data = inject<RunnerPairingDialogData>(MAT_DIALOG_DATA);
 
@@ -429,6 +527,49 @@ export class RunnerPairingDialogComponent implements OnDestroy {
    * ferait de ce dialogue un piège pendant que le remède arrive (D3).</p>
    */
   readonly step = signal<PairingStep | null>('network');
+
+  // ------------------------------- le poste (F-48 / SF-48-03) -------------------------------
+
+  /** Valeur « créer un poste » de la liste, exposée au gabarit. */
+  readonly newHostValue = NEW_HOST;
+
+  /** Postes connus de l'utilisateur, relevés à l'ouverture du dialogue. */
+  readonly hosts = signal<RunnerHost[]>([]);
+
+  /** Poste retenu : un identifiant existant, ou {@link NEW_HOST} pour en créer un. */
+  readonly selectedHostId = signal<string>(NEW_HOST);
+
+  /** Nom du poste à créer — libre, y compris le nom d'un client. */
+  readonly newHostName = signal('');
+
+  /** Chemin du projet sous la racine du poste ; vide = la racine elle-même. */
+  readonly projectPath = signal('');
+
+  /** Poste auquel le projet est rattaché, une fois le geste fait. */
+  readonly hostId = signal<string | null>(null);
+
+  readonly attaching = signal(false);
+
+  readonly attachError = signal<string | null>(null);
+
+  /** Poste rattaché, tel qu'on le connaît — sert au résumé de l'étape et à la commande. */
+  readonly attachedHost = computed(
+    () => this.hosts().find((host) => host.id === this.hostId()) ?? null);
+
+  /**
+   * Vrai quand le projet est rattaché à un poste <b>déjà connecté</b> : il n'y a alors ni code à
+   * générer ni runner à télécharger. C'est le gain de F-48, et l'écran doit le montrer plutôt que
+   * de rejouer une mise en service qui a déjà eu lieu.
+   */
+  readonly hostAlreadyLive = computed(() => this.attachedHost()?.connected === true);
+
+  /** Vrai quand le geste « rattacher » est possible en l'état du formulaire. */
+  readonly canAttach = computed(() => {
+    if (this.attaching()) {
+      return false;
+    }
+    return this.selectedHostId() !== NEW_HOST || this.newHostName().trim().length > 0;
+  });
 
   /** Ce que l'utilisateur déclare avoir lu à l'étape 1 (D2). */
   readonly networkVerdict = signal<NetworkVerdict>('unknown');
@@ -514,8 +655,10 @@ export class RunnerPairingDialogComponent implements OnDestroy {
     // « C:Usersmoi », que Windows résout ensuite comme un chemin RELATIF au lecteur C:. C'est le
     // deuxième obstacle rencontré par un client, juste après le prérequis Java. Les guillemets ne
     // gênent aucun shell, et suppriment le piège pour tous ceux qui copient la commande.
+    // `--root` depuis F-48 / SF-48-02 : ce qu'on désigne est la racine du POSTE, le dossier sous
+    // lequel vivent les projets — un seul appairage y suffit pour tous.
     return `${this.launcher()} --gateway ${this.gatewayUrl}`
-      + ` --workspace "${this.commandPath()}" --code ${code}`;
+      + ` --root "${this.commandPath()}" --code ${code}`;
   });
 
   /**
@@ -666,6 +809,8 @@ export class RunnerPairingDialogComponent implements OnDestroy {
         return this.runnerObtained();
       case 'launch':
         return this.runnerConnected();
+      case 'host':
+        return this.hostId() !== null;
     }
   }
 
@@ -695,7 +840,21 @@ export class RunnerPairingDialogComponent implements OnDestroy {
         return this.runnerObtained() ? 'Runner récupéré.' : '';
       case 'launch':
         return this.machineLabel();
+      case 'host':
+        return this.hostSummary();
     }
+  }
+
+  /** Ce que l'en-tête replié rapporte du poste, ou une chaîne vide tant qu'il n'y en a pas. */
+  private hostSummary(): string {
+    const host = this.attachedHost();
+    if (host === null) {
+      return this.hostId() === null ? '' : 'Projet rattaché à un poste.';
+    }
+    const where = this.projectPath().trim();
+    return where === ''
+      ? `Poste « ${host.name} » — le projet est à la racine.`
+      : `Poste « ${host.name} », projet dans « ${where} ».`;
   }
 
   /**
@@ -706,7 +865,9 @@ export class RunnerPairingDialogComponent implements OnDestroy {
   declareNetworkResult(verdict: NetworkVerdict): void {
     this.networkVerdict.set(verdict);
     if (verdict === 'reachable') {
-      this.step.set('code');
+      // Le POSTE avant le code (F-48 / SF-48-03) : un code d'appairage appartient à une machine, on
+      // ne peut donc pas en demander un avant de savoir laquelle.
+      this.step.set(this.hostId() === null ? 'host' : 'code');
     }
   }
 
@@ -775,7 +936,14 @@ export class RunnerPairingDialogComponent implements OnDestroy {
     }
     this.generating.set(true);
     this.generationError.set(null);
-    this.atelier.createRunnerPairingCode(this.data.workspaceId).subscribe({
+    const hostId = this.hostId();
+    if (hostId === null) {
+      // Rien à appairer tant qu'on ne sait pas QUELLE machine (F-48 / SF-48-03).
+      this.generating.set(false);
+      this.step.set('host');
+      return;
+    }
+    this.atelier.createHostPairingCode(hostId).subscribe({
       next: (code) => {
         this.generating.set(false);
         this.pairingCode.set(code);
@@ -789,7 +957,7 @@ export class RunnerPairingDialogComponent implements OnDestroy {
         this.stopCountdown();
         this.generationError.set(
           err instanceof HttpErrorResponse && err.status === 404
-            ? 'Projet introuvable.'
+            ? "Ce poste n'existe plus."
             : "Le code d'appairage n'a pas pu être généré. Veuillez réessayer.",
         );
       },
