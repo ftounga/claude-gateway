@@ -721,3 +721,52 @@ export interface AtelierResume {
   /** `NONE` — ne rien demander ; `IDLE` — projet inactif, proposer le choix. */
   prompt: 'NONE' | 'IDLE';
 }
+
+/**
+ * Un projet vu **depuis son poste** (F-49 / SF-49-01). Fragment de la réponse de
+ * `GET /api/runner-hosts/overview`.
+ *
+ * <p>`lastTool` est le **nom** du dernier outil employé (`bash`, `read`…), jamais sa cible : savoir
+ * qu'un `bash` a tourné suffit à une vue d'état, et la commande elle-même reste derrière l'écran du
+ * journal du projet.</p>
+ */
+export interface HostProjectSummary {
+  id: string;
+  name: string;
+  /** Chemin du projet **sous la racine du poste**, ou `null` pour la racine elle-même. */
+  projectPath?: string | null;
+  executionTarget?: WorkspaceExecutionTarget | null;
+  lastActivityAt?: string | null;
+  lastTool?: string | null;
+  /** Appels journalisés sur la fenêtre observée par la gateway. */
+  calls: number;
+  /** Vrai si ce projet a travaillé à l'instant — « ce qui tourne ». */
+  active: boolean;
+}
+
+/**
+ * **Vue d'ensemble d'un poste** (F-49 / SF-49-01) : tout ce que l'écran des postes doit savoir d'une
+ * machine, en une seule ligne de réponse.
+ *
+ * <p>Elle réunit ce qui vivait à trois endroits — l'état du runner, la liste des projets et le
+ * journal de chacun. La gateway rend des **instants** (`lastSeenAt`, `lastActivityAt`) et l'écran en
+ * fait des durées : une durée calculée au serveur vieillit dans le navigateur.</p>
+ */
+export interface RunnerHostOverview {
+  id: string;
+  name: string;
+  /** Dernier segment de la racine déclarée (ex. `dev`), jamais le chemin absolu de la machine. */
+  rootName?: string | null;
+  os?: string | null;
+  /** `posix`, `powershell` ou `cmd`, ou `null` si aucun runner ne l'a déclaré. */
+  shell?: string | null;
+  elevated?: boolean | null;
+  connected: boolean;
+  lastSeenAt?: string | null;
+  createdAt: string;
+  /** Dernière activité observée sur le poste, tous projets confondus. */
+  lastActivityAt?: string | null;
+  /** Nombre de projets actifs maintenant — « ce qui tourne ». */
+  activeProjects: number;
+  projects: HostProjectSummary[];
+}
