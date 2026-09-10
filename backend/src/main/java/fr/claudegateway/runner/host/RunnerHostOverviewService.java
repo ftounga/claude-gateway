@@ -118,6 +118,10 @@ public class RunnerHostOverviewService {
                 RunnerShell.fromDeclared(host.getShell()).map(RunnerShell::declared).orElse(null),
                 host.getElevated(),
                 statusService.statusOf(userId, host).connected(),
+                // L'état de mission est DÉCLARÉ (F-60) : la vue le recopie, elle ne le déduit
+                // ni de la présence du runner, ni de l'activité observée.
+                host.getMissionStatus() == null ? HostMissionStatus.defaultStatus()
+                        : host.getMissionStatus(),
                 host.getLastSeenAt(),
                 host.getCreatedAt(),
                 projects.stream()

@@ -79,6 +79,79 @@ class RunnerHostServiceTest {
         verify(repository).findByUserIdOrderByCreatedAtDesc(alice);
     }
 
+    // ------------------------------------------------------- état de mission (F-60 / SF-60-01)
+
+    @Test
+    void aFreshHostIsAMissionInProgress() {
+        // Le défaut est « en cours » et non « en attente » : un poste qu'on vient de créer EST une
+        // mission en cours. Le mettre en attente inventerait un feu rouge que personne n'a posé.
+        when(repository.save(any(RunnerHost.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        assertThat(service().create(alice, "Poste CAGIP").getMissionStatus())
+                .isEqualTo(HostMissionStatus.ACTIVE);
+    }
+
+    @Test
+    void declaresTheMissionStatusOfAnOwnedHost() {
+        RunnerHost host = new RunnerHost();
+        when(repository.findByIdAndUserId(hostId, alice)).thenReturn(Optional.of(host));
+
+        assertThat(service().setMissionStatus(alice, hostId, HostMissionStatus.PENDING)
+                .getMissionStatus()).isEqualTo(HostMissionStatus.PENDING);
+        assertThat(host.getMissionStatus()).isEqualTo(HostMissionStatus.PENDING);
+    }
+
+    @Test
+    void reapplyingTheSameMissionStatusChangesNothing() {
+        // Idempotent : l'écran peut rejouer un ordre sans que cela devienne un incident.
+        RunnerHost host = new RunnerHost();
+        host.setMissionStatus(HostMissionStatus.CLOSED);
+        when(repository.findByIdAndUserId(hostId, alice)).thenReturn(Optional.of(host));
+
+        service().setMissionStatus(alice, hostId, HostMissionStatus.CLOSED);
+
+        assertThat(host.getMissionStatus()).isEqualTo(HostMissionStatus.CLOSED);
+    }
+
+    @Test
+    void refusesToDeclareTheMissionStatusOfSomeoneElsesHost() {
+        // Isolation user_id : le poste de quelqu'un d'autre est introuvable, et rien n'est écrit.
+        when(repository.findByIdAndUserId(hostId, bob)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service().setMissionStatus(bob, hostId, HostMissionStatus.CLOSED))
+                .isInstanceOf(RunnerHostNotFoundException.class);
+    }
+
+    @Test
+    void closingAMissionCutsNothing() {
+        // Clôturer RANGE un poste, elle ne l'éteint pas : ce service ne connaît ni les jetons, ni
+        // les liaisons, ni les projets, ni le journal — et n'en touche donc aucun.
+        RunnerHost host = new RunnerHost();
+        host.setLastSeenAt(java.time.OffsetDateTime.now());
+        host.setShell("posix");
+        host.setRootName("dev");
+        when(repository.findByIdAndUserId(hostId, alice)).thenReturn(Optional.of(host));
+
+        service().setMissionStatus(alice, hostId, HostMissionStatus.CLOSED);
+
+        assertThat(host.getLastSeenAt()).isNotNull();
+        assertThat(host.getShell()).isEqualTo("posix");
+        assertThat(host.getRootName()).isEqualTo("dev");
+        verify(repository, never()).delete(any());
+    }
+
+    @Test
+    void keepsAMissionInProgressWhenNothingIsDeclared() {
+        // Aucune valeur nulle n'existe en base : un poste sans état serait un poste dont on ne
+        // saurait pas dire s'il est en cours ou rangé.
+        RunnerHost host = new RunnerHost();
+        when(repository.findByIdAndUserId(hostId, alice)).thenReturn(Optional.of(host));
+
+        service().setMissionStatus(alice, hostId, null);
+
+        assertThat(host.getMissionStatus()).isEqualTo(HostMissionStatus.ACTIVE);
+    }
+
     @Test
     void keepsOnlyTheLastSegmentOfTheRootTheRunnerDeclares() {
         // Le runner n'envoie qu'un nom, mais on ne fait pas confiance à un client pour ça : un

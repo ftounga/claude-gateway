@@ -9,6 +9,8 @@ import org.hibernate.annotations.UuidGenerator;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -88,6 +90,19 @@ public class RunnerHost {
      */
     @Column(name = "elevated")
     private Boolean elevated;
+
+    /**
+     * <b>État de mission</b> déclaré par le propriétaire (F-60 / SF-60-01) : où en est le travail
+     * chez ce client — {@code ACTIVE}, {@code PENDING}, {@code CLOSED}.
+     *
+     * <p>Indépendant de l'état <b>technique</b> (« connecté »), qui se calcule et ne se déclare
+     * pas. Jamais nul : un poste sans état serait un poste dont on ne saurait pas dire s'il est en
+     * cours ou rangé. Le défaut, en base comme à la création, est {@link HostMissionStatus#ACTIVE}.</p>
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mission_status", nullable = false, length = 16)
+    @Builder.Default
+    private HostMissionStatus missionStatus = HostMissionStatus.defaultStatus();
 
     /** Dernière connexion observée du poste, tenue par le heartbeat des jetons. */
     @Column(name = "last_seen_at")

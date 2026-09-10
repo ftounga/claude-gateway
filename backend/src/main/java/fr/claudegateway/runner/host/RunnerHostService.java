@@ -63,6 +63,27 @@ public class RunnerHostService implements RunnerShellRecorder {
     }
 
     /**
+     * Déclare l'<b>état de mission</b> d'un poste possédé (F-60 / SF-60-01) : où en est le travail
+     * chez ce client — en cours, en attente, clôturé.
+     *
+     * <p><b>Cette méthode n'écrit qu'une colonne.</b> Elle ne révoque aucun jeton, ne coupe aucune
+     * liaison, ne détache aucun projet, ne ramène aucune cible d'exécution à {@code SANDBOX} et
+     * n'efface aucune ligne de journal. Clôturer une mission n'est <b>pas</b> un coupe-circuit :
+     * couper une machine reste {@code POST /runner-hosts/{id}/kill}, et lui seul. Un poste clôturé
+     * se range, il ne s'éteint pas.</p>
+     *
+     * <p>Idempotent : réappliquer le même état ne lève pas et ne change rien.</p>
+     *
+     * @throws RunnerHostNotFoundException si le poste est inconnu ou appartient à quelqu'un d'autre
+     */
+    @Transactional
+    public RunnerHost setMissionStatus(UUID userId, UUID hostId, HostMissionStatus status) {
+        RunnerHost host = requireOwned(userId, hostId);
+        host.setMissionStatus(status == null ? HostMissionStatus.defaultStatus() : status);
+        return host;
+    }
+
+    /**
      * Supprime un poste possédé. Les jetons, codes et rattachements de projets sont nettoyés par
      * l'appelant ({@code RunnerHostController}) : ce service ne connaît ni les uns ni les autres.
      */

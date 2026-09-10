@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-60 / SF-60-01 — L'ÉTAT DE MISSION du poste.
+
+      La vue d'ensemble (F-49) ne connaît qu'un état TECHNIQUE — connecté ou non — qui ne dit rien
+      de l'état MÉTIER. Un poste dont le runner est éteint peut être une mission active en pause ;
+      un poste connecté peut être une mission close que personne n'a rangée. Le poste porte donc
+      désormais un état DÉCLARÉ par son propriétaire : ACTIVE, PENDING, CLOSED.
+
+      Pourquoi une colonne et non une table d'événements : le périmètre demande l'état COURANT.
+      Une chronologie serait des jalons, explicitement hors périmètre (PRODUCT_SPEC, ligne F-60).
+
+      Pourquoi NOT NULL avec défaut ACTIVE : un poste sans état serait un poste dont on ne peut pas
+      dire s'il est en cours ou rangé. Et un poste qui travaillait la veille de la migration EST
+      une mission en cours — le mettre en attente inventerait un feu rouge que personne n'a posé.
+
+      varchar(16) : la plus longue valeur fait 7 caractères ; la marge couvre un quatrième état
+      sans migration de type. Aucun quatrième état n'est prévu.
+
+      Un seul changeSet pour PostgreSQL et H2 : aucun type propre à un moteur n'est employé.
+      Réversible : le rollback rend la colonne.
+    -->
+    <changeSet id="067-runner-hosts-mission-status" author="claude-gateway">
+        <addColumn tableName="runner_hosts">
+            <column name="mission_status" type="varchar(16)" defaultValue="ACTIVE">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="runner_hosts" columnName="mission_status"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

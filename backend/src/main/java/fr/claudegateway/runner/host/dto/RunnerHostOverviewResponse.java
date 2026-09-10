@@ -4,6 +4,8 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import fr.claudegateway.runner.host.HostMissionStatus;
+
 /**
  * Vue d'ensemble d'un <b>poste</b> (F-49 / SF-49-01) : tout ce qu'un écran doit en savoir, en une
  * seule ligne de réponse.
@@ -16,7 +18,14 @@ import java.util.UUID;
  * ({@code lastSeenAt}, {@code lastActivityAt}) et l'écran en fait une durée. Une durée calculée au
  * serveur vieillit dans le navigateur.</p>
  *
+ * <p><b>Les clôturés y sont</b> (F-60 / SF-60-01, arbitrage n° 3) : la gateway rend l'état de
+ * chaque poste, y compris {@code CLOSED}, et ne filtre rien. « Se ranger sans disparaître » est une
+ * exigence d'écran ; un filtre au serveur obligerait à un second appel ou à un paramètre pour rendre
+ * les missions closes consultables — donc deux états de vue à synchroniser sur un écran qui se
+ * rafraîchit toutes les quinze secondes.</p>
+ *
  * @param connected      vrai si un runner de ce poste est joignable maintenant, tous replicas confondus
+ * @param missionStatus  état de mission <b>déclaré</b> par le propriétaire, indépendant de {@code connected}
  * @param lastActivityAt dernière activité observée sur le poste, tous projets confondus
  * @param activeProjects nombre de projets actifs maintenant — « ce qui tourne »
  * @param projects       les projets rangés sous ce poste, les plus actifs d'abord
@@ -29,6 +38,7 @@ public record RunnerHostOverviewResponse(
         String shell,
         Boolean elevated,
         boolean connected,
+        HostMissionStatus missionStatus,
         OffsetDateTime lastSeenAt,
         OffsetDateTime createdAt,
         OffsetDateTime lastActivityAt,
