@@ -1658,7 +1658,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
       projectPath: detail?.projectPath ?? null,
     };
     this.dialog
-      .open(RunnerPairingDialogComponent, { data, width: '560px', maxWidth: '95vw' })
+      .open(RunnerPairingDialogComponent, {
+        data,
+        width: RunnerPairingDialogComponent.DIALOG_WIDTH,
+        maxWidth: '95vw',
+      })
       .afterClosed()
       .subscribe(() => this.refreshRunnerStatus());
   }

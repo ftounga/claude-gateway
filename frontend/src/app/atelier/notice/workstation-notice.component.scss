@@ -69,7 +69,7 @@
 }
 
 .notice-interval-caret {
-  margin-left: 4px;
+  margin-left: var(--cg-space-1);
 }
 
 // Sous 480 px, le bandeau prend toute la largeur disponible et les actions s'empilent : il ne doit

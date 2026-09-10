@@ -57,7 +57,7 @@
   }
 
   &__mono {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--cg-font-mono);
   }
 
   &__toggle {

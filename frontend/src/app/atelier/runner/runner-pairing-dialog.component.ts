@@ -358,6 +358,12 @@ export const RUNNER_HOST_PLATFORM = new InjectionToken<RunnerHostPlatform>('RUNN
   styleUrl: './runner-pairing-dialog.component.scss',
 })
 export class RunnerPairingDialogComponent implements OnDestroy {
+  /**
+   * Largeur du parcours de mise en service — et de l'assistant proxy qui s'ouvre par-dessus.
+   * Une seule constante pour les deux : c'est ce qui garantit qu'ils restent alignés (F-56).
+   */
+  static readonly DIALOG_WIDTH = '560px';
+
   private readonly atelier = inject(AtelierService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialogRef = inject<MatDialogRef<RunnerPairingDialogComponent>>(MatDialogRef);
@@ -904,7 +910,10 @@ export class RunnerPairingDialogComponent implements OnDestroy {
     };
     this.dialog.open(ProxyAssistantDialogComponent, {
       data,
-      width: '720px',
+      // La largeur du parcours qu'il recouvre, et pas une autre (F-56) : l'assistant s'ouvre
+      // par-dessus ce dialogue-ci, et deux cadres décalés se lisent comme deux produits. Les
+      // commandes longues se replient (`pre-wrap` / `break-all`), elles ne débordent pas.
+      width: RunnerPairingDialogComponent.DIALOG_WIDTH,
       maxWidth: '95vw',
       autoFocus: false,
     });

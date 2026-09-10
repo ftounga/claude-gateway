@@ -117,7 +117,9 @@
 
   &__catalog {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    // `min(320px, 100%)` et non `320px` : sous 368 px de large, une colonne de 320 px est plus
+    // large que son conteneur et la page part en défilement horizontal (F-56).
+    grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
     gap: var(--cg-space-3);
   }
 
@@ -193,7 +195,7 @@
     }
 
     code {
-      font-family: 'JetBrains Mono', monospace;
+      font-family: var(--cg-font-mono);
       word-break: break-all;
       color: var(--cg-text-primary);
     }

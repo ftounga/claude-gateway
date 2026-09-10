@@ -87,6 +87,25 @@ describe('PostesComponent', () => {
     expect(text()).toContain('Connecté');
   });
 
+  // F-56 / SF-56-01 — les pastilles de statut viennent de la charte (DESIGN_SYSTEM.md §5). Elles
+  // portaient jusque-là un préfixe `cg-` qui ne correspondait à aucune classe existante : elles
+  // s'affichaient en texte nu, sans fond ni couleur.
+  it('habille les statuts avec les pastilles de la charte', () => {
+    setup([{ ...poste, elevated: true }]);
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(root.querySelector('.badge.badge--success')).not.toBeNull();
+    expect(root.querySelector('.badge.badge--warning')).not.toBeNull();
+    expect(root.querySelectorAll('[class*="cg-badge"]').length).toBe(0);
+  });
+
+  it('marque le poste déconnecté avec la pastille neutre', () => {
+    setup([{ ...poste, connected: false, activeProjects: 0 }]);
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(root.querySelector('.badge.badge--neutral')).not.toBeNull();
+  });
+
   it('montre ce que la machine a déclaré : racine, système, interpréteur', () => {
     setup();
     expect(text()).toContain('dev');
