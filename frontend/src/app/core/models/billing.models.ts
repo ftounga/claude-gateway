@@ -87,11 +87,18 @@ export interface CheckoutResponse {
   checkoutUrl: string;
 }
 
-/** Un pack de tokens rachetable ponctuellement (top-up F-21). Le prix vit côté Stripe. */
+/** Un pack de tokens rachetable ponctuellement (top-up F-21). */
 export interface TopUpPack {
   code: string;
   label: string;
   tokens: number;
+  /**
+   * Montant d'affichage en EUR (ex. `"4,99"`), renvoyé par le **serveur** (F-67) — jamais une
+   * constante d'écran. `null` quand aucun montant n'est configuré : le pack reste **vendable**, et
+   * l'écran dit alors que le prix sera indiqué à l'étape de paiement. Ne **jamais** y substituer un
+   * montant de repli : un chiffre inventé à côté d'un bouton d'achat est opposable par un client.
+   */
+  priceEur: string | null;
 }
 
 /** Réponse du catalogue de packs de tokens. */

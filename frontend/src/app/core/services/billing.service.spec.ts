@@ -107,7 +107,7 @@ describe('BillingService', () => {
 
   it('GETs the top-up pack catalog from /api/billing/topups', () => {
     const packs: TopUpPacksResponse = {
-      packs: [{ code: 'STANDARD', label: 'Recharge 1 M tokens', tokens: 1000000 }],
+      packs: [{ code: 'STANDARD', label: 'Recharge 1 M tokens', tokens: 1000000, priceEur: '4,99' }],
     };
     let received: TopUpPacksResponse | undefined;
     service.getTopUps().subscribe((r) => (received = r));

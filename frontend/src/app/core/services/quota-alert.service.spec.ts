@@ -28,7 +28,7 @@ describe('QuotaAlertService', () => {
       usedPercent: 85,
       thresholdPercent: 80,
       periodEnd: '2026-08-01',
-      topUp: { code: 'STANDARD', label: 'Recharge — 1 M tokens', tokens: 1000000 },
+      topUp: { code: 'STANDARD', label: 'Recharge — 1 M tokens', tokens: 1000000, priceEur: null },
     };
     let received: QuotaAlertView | undefined;
     service.getAlert().subscribe((r) => (received = r));

@@ -29,7 +29,12 @@
           [disabled]="redirecting()"
           (click)="recharge()"
         >
-          {{ redirecting() ? 'Redirection…' : 'Recharger — ' + quota.topUp.label }}
+          <!--
+            F-67 — le prix avant le clic : ce bouton redirige droit vers le paiement. Quand le
+            montant est connu, il est dit ici ; sinon le libellé reste tel quel — jamais un montant
+            inventé.
+          -->
+          {{ redirecting() ? 'Redirection…' : rechargeLabel(quota.topUp) }}
         </button>
       }
       <button mat-button type="button" class="quota-alert__dismiss" (click)="dismiss()">

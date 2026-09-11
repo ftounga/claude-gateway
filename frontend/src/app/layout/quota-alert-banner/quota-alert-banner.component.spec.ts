@@ -19,7 +19,7 @@ const RAISED: QuotaAlertView = {
   usedPercent: 85,
   thresholdPercent: 80,
   periodEnd: '2026-08-01',
-  topUp: { code: 'STANDARD', label: '1 M jetons', tokens: 1000000 },
+  topUp: { code: 'STANDARD', label: '1 M jetons', tokens: 1000000, priceEur: null },
 };
 
 describe('QuotaAlertBannerComponent', () => {
@@ -82,6 +82,26 @@ describe('QuotaAlertBannerComponent', () => {
     expect(text).toContain('jusqu\'au');
     // Le libellé du bouton vient du pack renvoyé par l'API, jamais d'une constante du composant.
     expect(text).toContain('Recharger — 1 M jetons');
+  });
+
+  it('dit le prix sur le bouton quand le serveur en envoie un (F-67)', async () => {
+    // Ce bouton mène DROIT au paiement : faire cliquer sans dire ce qu'on engage n'est pas
+    // acceptable en vente en ligne.
+    await build(of({ ...RAISED, topUp: { ...RAISED.topUp!, priceEur: '4,99' } }));
+
+    expect(html().querySelector('.quota-alert')!.textContent).toContain(
+      'Recharger — 1 M jetons · 4,99 €',
+    );
+  });
+
+  it('n\'invente aucun montant quand le pack n\'en a pas (F-67)', async () => {
+    // Cas LIVRÉ du pack 1 M : le prix appartient au PO. Le bouton garde son libellé, le montant
+    // sera donné par la page de paiement.
+    await build(of(RAISED));
+
+    const text = html().querySelector('.quota-alert')!.textContent ?? '';
+    expect(text).toContain('Recharger — 1 M jetons');
+    expect(text).not.toContain('€');
   });
 
   it('recharge en un clic : checkout sur le pack de l\'alerte puis redirection', async () => {

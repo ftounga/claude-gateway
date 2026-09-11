@@ -455,8 +455,14 @@
         @for (pack of topUpPacks(); track pack.code) {
           <article class="billing__card billing__card--pack">
             <h3 class="billing__card-name">{{ pack.label }}</h3>
-            @if (packPrice(pack.code); as price) {
+            <!--
+              F-67 — le prix avant le clic. Le montant vient du serveur ; quand il n'y en a pas, on
+              dit où il sera donné plutôt que d'en inventer un ou d'afficher un zéro.
+            -->
+            @if (topUpPrice(pack); as price) {
               <p class="billing__card-price"><span class="amount">{{ price }} €</span><span class="per">une fois</span></p>
+            } @else {
+              <p class="billing__card-price-unknown">Prix indiqué à l'étape de paiement</p>
             }
             <p class="billing__card-tokens">+{{ pack.tokens | number }} tokens</p>
             <button
