@@ -32,6 +32,10 @@ import fr.claudegateway.billing.Subscription;
  *                          facturation annonçait « essai 5 jours » en dur pendant que la page
  *                          d'accueil en promettait 14, et la configuration en servait 5. Un écran
  *                          qui lit la durée ne peut plus se désynchroniser de celle qui est servie.
+ * @param trialTokens       jetons alloués par l'essai gratuit ({@code app.quota.trial-tokens}), pour
+ *                          la même raison exactement : la carte « Gratuit » annonçait « 200 000
+ *                          tokens » en dur. Le jour où cette allocation change — la question est
+ *                          ouverte (OQ-16) — l'écran suivra au lieu de démentir le serveur.
  */
 public record SubscriptionResponse(
         String status,
@@ -40,10 +44,11 @@ public record SubscriptionResponse(
         OffsetDateTime currentPeriodEnd,
         boolean customerKeyBilled,
         String billingPeriod,
-        int trialDays) {
+        int trialDays,
+        long trialTokens) {
 
     public static SubscriptionResponse from(Subscription subscription, boolean customerKeyBilled,
-            int trialDays) {
+            int trialDays, long trialTokens) {
         return new SubscriptionResponse(
                 subscription.getStatus().name(),
                 subscription.getPlanCode() != null ? subscription.getPlanCode().name() : null,
@@ -53,6 +58,7 @@ public record SubscriptionResponse(
                 subscription.getBillingPeriod() != null
                         ? subscription.getBillingPeriod().name()
                         : null,
-                trialDays);
+                trialDays,
+                trialTokens);
     }
 }
