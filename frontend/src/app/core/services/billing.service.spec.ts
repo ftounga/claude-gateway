@@ -51,6 +51,8 @@ describe('BillingService', () => {
       currentPeriodEnd: null,
       customerKeyBilled: false,
       billingPeriod: null,
+      trialDays: 14,
+      trialTokens: 200000,
     };
     let received: SubscriptionView | undefined;
     service.getSubscription().subscribe((r) => (received = r));

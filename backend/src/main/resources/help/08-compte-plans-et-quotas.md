@@ -23,6 +23,11 @@ mensuelle, sans changer d'offre ni d'allocation.
 
 L'allocation est **mensuelle**, y compris pour un abonnement engagé à l'année.
 
+L'essai fait exception, et dans le bon sens : son allocation couvre **toute la durée de l'essai**.
+Elle ne se renouvelle pas au 1er du mois — un essai commencé fin août n'en reçoit pas une seconde le
+1er septembre. La durée et l'allocation exactes de l'essai sont affichées sur l'écran
+**Facturation**.
+
 ## Le quota
 
 La consommation se compte en **jetons** (tokens) traités, entrée et sortie confondues. Elle se suit

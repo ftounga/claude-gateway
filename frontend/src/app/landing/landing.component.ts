@@ -4,6 +4,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 
 import { AuthService } from '../core/services/auth.service';
+import { ADVERTISED_TRIAL_DAYS } from '../core/trial-offer';
 
 /** Argument de valeur mis en avant sur la landing. */
 interface Benefit {
@@ -37,6 +38,13 @@ export class LandingComponent {
   /** Vrai si un JWT est présent : on propose alors d'ouvrir le chat plutôt que de s'inscrire. */
   readonly isAuthenticated = this.authService.isAuthenticated;
 
+  /**
+   * Durée de l'essai annoncée par cette page publique (F-66). Une seule constante pour les deux
+   * mentions : c'est la recopie du chiffre, pas le chiffre lui-même, qui avait produit l'écart entre
+   * ce que le produit promettait et ce qu'il servait.
+   */
+  readonly trialDays = ADVERTISED_TRIAL_DAYS;
+
   readonly benefits: readonly Benefit[] = [
     {
       icon: 'shield',
@@ -50,7 +58,7 @@ export class LandingComponent {
     },
     {
       icon: 'workspace_premium',
-      title: 'Essai gratuit 14 jours',
+      title: `Essai gratuit ${ADVERTISED_TRIAL_DAYS} jours`,
       text: 'Testez la plateforme sans engagement, en mode Hosted ou avec votre propre clé (BYOK).',
     },
   ];

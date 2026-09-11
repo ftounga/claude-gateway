@@ -73,6 +73,15 @@ export interface SubscriptionView {
    * reste mensuelle quelle que soit sa valeur.
    */
   billingPeriod: BillingPeriod | null;
+  /**
+   * Durée de l'essai gratuit, en jours, **telle que le serveur la sert** (F-66). Propriété de
+   * l'**offre**, pas de l'abonnement : elle est renvoyée même à un client payant, pour que la grille
+   * puisse décrire l'essai à qui n'y a plus droit. L'écran l'affiche au lieu de la réciter — c'est
+   * ce qui empêche « essai 5 jours » de réapparaître à côté d'une promesse de 14.
+   */
+  trialDays: number;
+  /** Jetons alloués par l'essai, servis par la même configuration, et affichés de la même façon. */
+  trialTokens: number;
 }
 
 /** Requête de création d'une session de paiement. */
