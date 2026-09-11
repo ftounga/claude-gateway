@@ -397,3 +397,115 @@
   color: var(--cg-success);
   font-weight: 500;
 }
+
+// Explorateur de dossiers (F-71 / SF-71-03) : on CLIQUE le dossier, on ne le tape plus.
+// Aucune couleur nouvelle — jetons du §2 uniquement, et l'or de marque reste au geste.
+.pairing-browser {
+  display: block;
+  margin-bottom: var(--cg-space-3);
+}
+
+.pairing-browser-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-2);
+  margin: 0 0 var(--cg-space-2);
+  padding: var(--cg-space-3);
+  border: 1px solid var(--cg-divider);
+  border-radius: 8px;
+  background: var(--cg-surface-2);
+  color: var(--cg-text-secondary);
+  font-size: 13px;
+}
+
+.pairing-browser-notice--warn {
+  border-color: var(--cg-accent);
+}
+
+.pairing-browser-title {
+  margin: 0 0 var(--cg-space-1);
+  color: var(--cg-text-primary);
+  font-weight: 600;
+}
+
+.pairing-browser-text {
+  margin: var(--cg-space-1) 0 0;
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+}
+
+.pairing-browser-path {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  margin: 0 0 var(--cg-space-2);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+}
+
+.pairing-browser-mono {
+  font-family: var(--cg-font-mono);
+}
+
+.pairing-browser-list {
+  max-height: 240px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border: 1px solid var(--cg-divider);
+  border-radius: 8px;
+  list-style: none;
+}
+
+.pairing-browser-row {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  border-bottom: 1px solid var(--cg-divider);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.pairing-browser-pick {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border: none;
+  background: none;
+  color: var(--cg-text-primary);
+  font-family: var(--cg-font-body);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--cg-surface-2);
+  }
+
+  &:disabled {
+    color: var(--cg-text-secondary);
+    cursor: default;
+  }
+}
+
+// Le dossier retenu : l'or de marque, réservé aux gestes (§9). Le mot « retenu » est écrit à
+// côté du bouton — la couleur ne porte jamais seule l'information.
+.pairing-browser-pick--on {
+  color: var(--cg-accent);
+  font-weight: 600;
+}
+
+.pairing-browser-used {
+  color: var(--cg-text-secondary);
+  font-size: 11px;
+}
+
+.pairing-browser-chosen {
+  margin-right: var(--cg-space-2);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+}

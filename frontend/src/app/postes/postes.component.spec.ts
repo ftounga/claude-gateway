@@ -689,6 +689,94 @@ describe('PostesComponent', () => {
     expect(component.deletingHostId()).toBeNull();
   });
 
+
+  // ------------------------------------- le poste « Hébergé » (F-71 / SF-71-03)
+
+  /** Le poste virtuel tel que la gateway le rend : identifiant NUL, aucune machine derrière. */
+  const heberge: RunnerHostOverview = {
+    id: null,
+    name: 'Hébergé',
+    virtual: true,
+    rootName: null,
+    os: null,
+    shell: null,
+    elevated: null,
+    connected: false,
+    missionStatus: null,
+    lastSeenAt: null,
+    createdAt: null,
+    lastActivityAt: null,
+    activeProjects: 0,
+    liveTerminals: 1,
+    projects: [
+      {
+        id: 'w9',
+        name: 'mon-depot',
+        projectPath: null,
+        executionTarget: 'SANDBOX',
+        lastActivityAt: null,
+        lastTool: null,
+        calls: 0,
+        active: false,
+        liveTerminal: true,
+      },
+    ],
+  };
+
+  it('range les projets sans machine sous « Hébergé », en dernier', () => {
+    setup([poste, heberge]);
+    const cards = (fixture.nativeElement as HTMLElement).querySelectorAll('.poste');
+
+    expect(cards.length).toBe(2);
+    expect(cards[1].textContent).toContain('Hébergé');
+    expect(cards[1].textContent).toContain('mon-depot');
+    expect(cards[1].classList).toContain('poste--heberge');
+  });
+
+  it('ne lui donne ni identité de machine, ni état de connexion, ni mission, ni suppression', () => {
+    setup([heberge]);
+    const card = (fixture.nativeElement as HTMLElement).querySelector('.poste') as HTMLElement;
+
+    // Le §9 réserve ses dix tons à l'identification d'une MACHINE : le poste virtuel n'en prend
+    // aucun, et ne porte donc pas la pastille d'initiales.
+    expect(component.tone(heberge)).toBeNull();
+    expect(card.querySelector('.host-badge__mark')).toBeNull();
+    // Ni « Connecté », ni « Jamais connecté » : il n'a pas de runner.
+    expect(card.textContent).not.toContain('Connecté');
+    expect(card.textContent).not.toContain('Jamais connecté');
+    // Ni mission, ni menu de suppression.
+    expect(card.querySelector('.poste__mission')).toBeNull();
+    expect(card.querySelector('.poste__menu-trigger')).toBeNull();
+    // Et il dit ce qu'il est.
+    expect(card.textContent).toContain('chez la gateway');
+  });
+
+  it('compte ses terminaux vivants dans le total de l\'accueil', () => {
+    // Jusqu'ici, un terminal ouvert sur un projet hébergé n'était compté nulle part.
+    setup([{ ...poste, liveTerminals: 2 }, heberge]);
+
+    expect(component.liveTerminalCount()).toBe(3);
+  });
+
+  it('refuse de supprimer ou de clôturer un poste qui n\'existe pas en base', () => {
+    dialogAnswer = true;
+    setup([heberge]);
+
+    component.deleteHost(heberge);
+    component.setMission(heberge, 'CLOSED');
+
+    expect(dialog.open).not.toHaveBeenCalled();
+    expect(service.deleteRunnerHost).not.toHaveBeenCalled();
+    expect(service.setHostMissionStatus).not.toHaveBeenCalled();
+  });
+
+  it('n\'ancre pas la carte virtuelle : elle n\'a pas d\'identifiant', () => {
+    setup([heberge]);
+    const card = (fixture.nativeElement as HTMLElement).querySelector('.poste') as HTMLElement;
+
+    expect(card.id).toBe('');
+  });
+
 });
 
 /** Le DOM rend les couleurs en `rgb(...)` : on compare ce qu'il rend, pas ce qu'on a écrit. */

@@ -18,6 +18,7 @@ import {
   ProxyAssistantDialogData,
 } from './proxy-assistant-dialog.component';
 import {
+  HostFolder,
   RunnerDownloadFormats,
   RunnerHost,
   RunnerPairingCode,
@@ -189,6 +190,16 @@ export type PairingStep = 'network' | 'host' | 'code' | 'download' | 'launch';
  * résultats.</p>
  */
 export type NetworkVerdict = 'unknown' | 'reachable' | 'proxy-auth' | 'no-answer';
+
+/**
+ * Ce qui empêche de lister les dossiers d'un poste (F-71 / SF-71-03).
+ *
+ * <p>`offline` est **le** cas que le PO a demandé de traiter : le runner n'est pas connecté, donc
+ * personne ne peut lister — et l'écran le **dit**, au lieu d'offrir un champ vide. Les autres sont
+ * des refus ordinaires, distingués parce qu'ils appellent des gestes différents : lancer le runner,
+ * activer la Forge, ou simplement réessayer.</p>
+ */
+export type FolderBrowseError = 'none' | 'offline' | 'forbidden' | 'missing' | 'network';
 
 /**
  * Libellé de l'interpréteur élu par le runner (F-38 / SF-38-27), <b>écrit en dur par valeur</b>
@@ -390,9 +401,14 @@ export class RunnerPairingDialogComponent implements OnDestroy {
     // F-48 / SF-48-03 : le poste précède tout le reste. On part de celui que le projet porte déjà,
     // s'il en a un, et on relève la liste pour que l'utilisateur puisse en choisir un autre.
     this.hostId.set(this.data.hostId ?? null);
-    this.projectPath.set(this.data.projectPath ?? '');
+    this.projectPath.set(this.data.projectPath ?? null);
     this.selectedHostId.set(this.data.hostId ?? NEW_HOST);
     this.loadHosts();
+    // Le dossier se DÉSIGNE (F-71 / SF-71-03) : dès qu'un poste est connu, on demande ses
+    // sous-dossiers à la machine plutôt que d'offrir un champ à remplir.
+    if (this.data.hostId) {
+      this.browseFolders(this.data.hostId, this.data.projectPath ?? '');
+    }
     // F-45 / SF-45-02 : une fois la commande lancée, rien à l'écran ne disait si la machine s'était
     // appairée. L'information existait déjà côté gateway ; il suffisait de la relever.
     this.readRunnerStatus();
@@ -436,7 +452,10 @@ export class RunnerPairingDialogComponent implements OnDestroy {
   }
 
   private attachWorkspace(hostId: string): void {
-    this.atelier.attachWorkspaceToHost(this.data.workspaceId, hostId, this.projectPath().trim())
+    // Un poste qu'on vient de créer n'a pas de runner : le projet est à la racine que
+    // l'utilisateur passera au runner. La chaîne vide est ce choix, il n'est pas « absent ».
+    const where = this.projectPath() ?? '';
+    this.atelier.attachWorkspaceToHost(this.data.workspaceId, hostId, where)
       .subscribe({
         next: (detail) => {
           this.attaching.set(false);
@@ -448,6 +467,116 @@ export class RunnerPairingDialogComponent implements OnDestroy {
         },
         error: (err: unknown) => this.failAttach(err),
       });
+  }
+
+  // ------------------------- l'explorateur de dossiers (F-71 / SF-71-03) -------------------------
+
+  /**
+   * Change de poste : la liste des dossiers du précédent n'a plus aucun sens, et le dossier retenu
+   * non plus — un chemin est <b>relatif à une racine</b>, et la racine vient de changer.
+   */
+  selectHost(hostId: string): void {
+    this.selectedHostId.set(hostId);
+    this.projectPath.set(null);
+    this.folders.set([]);
+    this.foldersTruncated.set(false);
+    this.browseParent.set(null);
+    this.browsePath.set('');
+    if (hostId === NEW_HOST) {
+      // Rien à lister : la machine n'existe pas encore. L'écran le dit à sa façon.
+      this.foldersError.set('none');
+      return;
+    }
+    this.browseFolders(hostId, '');
+  }
+
+  /** Entre dans un dossier : on descend d'un niveau, sans rien choisir encore. */
+  enterFolder(folder: HostFolder): void {
+    const host = this.selectedHostId();
+    if (host === NEW_HOST) {
+      return;
+    }
+    this.browseFolders(host, folder.path);
+  }
+
+  /** Remonte d'un niveau. Sans effet à la racine, où {@link browseParent} est nul. */
+  goUp(): void {
+    const parent = this.browseParent();
+    const host = this.selectedHostId();
+    if (parent === null || host === NEW_HOST) {
+      return;
+    }
+    this.browseFolders(host, parent);
+  }
+
+  /** Retient un dossier — c'est LE geste que F-71 remplace à la frappe. */
+  chooseFolder(path: string): void {
+    this.projectPath.set(path);
+  }
+
+  /** Relit la liste après un échec, ou après avoir lancé le runner. */
+  retryFolders(): void {
+    const host = this.selectedHostId();
+    if (host !== NEW_HOST) {
+      this.browseFolders(host, this.browsePath());
+    }
+  }
+
+  /** Vrai si ce dossier est celui qui est retenu. */
+  isChosen(path: string): boolean {
+    return this.projectPath() === path;
+  }
+
+  /** Ce qui est écrit à côté du bouton : le dossier retenu, ou rien tant qu'on n'a pas choisi. */
+  chosenLabel(): string | null {
+    const chosen = this.projectPath();
+    if (chosen === null) {
+      return null;
+    }
+    return chosen === '' ? 'la racine du poste' : chosen;
+  }
+
+  /**
+   * Demande à la machine les sous-dossiers d'un chemin.
+   *
+   * <p><b>Jamais de champ de repli</b> en cas d'échec : la liste reste vide et l'écran <b>dit</b>
+   * pourquoi. Un champ libre rouvert au premier hoquet ramènerait le chemin tapé à la main, et avec
+   * lui le projet vide qui n'échoue qu'au premier usage.</p>
+   */
+  private browseFolders(hostId: string, path: string): void {
+    this.foldersLoading.set(true);
+    this.foldersError.set('none');
+    this.atelier.runnerHostFolders(hostId, path || undefined).subscribe({
+      next: (response) => {
+        this.foldersLoading.set(false);
+        this.folders.set(response.folders ?? []);
+        this.browsePath.set(response.path ?? '');
+        this.browseParent.set(response.parentPath ?? null);
+        this.foldersTruncated.set(response.truncated === true);
+      },
+      error: (err: unknown) => {
+        this.foldersLoading.set(false);
+        this.folders.set([]);
+        this.foldersTruncated.set(false);
+        this.foldersError.set(this.browseErrorOf(err));
+      },
+    });
+  }
+
+  private browseErrorOf(err: unknown): FolderBrowseError {
+    if (err instanceof HttpErrorResponse) {
+      if (err.status === 409) {
+        // Le runner n'est pas connecté — un état, réparable en le lançant.
+        return 'offline';
+      }
+      if (err.status === 403) {
+        return 'forbidden';
+      }
+      if (err.status === 404) {
+        return 'missing';
+      }
+    }
+    return 'network';
   }
 
   /** Traduit un refus en phrase utile, et laisse l'étape ouverte : rien n'est perdu. */
@@ -555,8 +684,34 @@ export class RunnerPairingDialogComponent implements OnDestroy {
   /** Nom du poste à créer — libre, y compris le nom d'un client. */
   readonly newHostName = signal('');
 
-  /** Chemin du projet sous la racine du poste ; vide = la racine elle-même. */
-  readonly projectPath = signal('');
+  /**
+   * Dossier **retenu** pour ce projet, relatif à la racine du poste. `null` = aucun choix encore
+   * fait ; la chaîne vide est un choix **légitime** — la racine elle-même. Les deux ne doivent
+   * jamais se confondre, d'où le `null` plutôt qu'une chaîne vide pour « rien ».
+   */
+  readonly projectPath = signal<string | null>(null);
+
+  // ------------------------- le dossier qu'on désigne (F-71 / SF-71-03) -------------------------
+
+  /** Dossier en cours de parcours dans l'explorateur ; vide = la racine du poste. */
+  readonly browsePath = signal('');
+
+  /** Sous-dossiers du dossier parcouru, tels que le runner les a listés. */
+  readonly folders = signal<HostFolder[]>([]);
+
+  /** Chemin du parent du dossier parcouru, ou `null` à la racine — de quoi remonter. */
+  readonly browseParent = signal<string | null>(null);
+
+  /** Des dossiers manquent : la machine a tronqué, ou le plafond de la gateway est atteint. */
+  readonly foldersTruncated = signal(false);
+
+  readonly foldersLoading = signal(false);
+
+  /**
+   * Ce qui empêche de lister. `offline` est **le** cas que le PO a demandé de traiter : sans
+   * machine, on ne peut pas lister — on le **dit**, au lieu d'offrir un champ vide.
+   */
+  readonly foldersError = signal<FolderBrowseError>('none');
 
   /** Poste auquel le projet est rattaché, une fois le geste fait. */
   readonly hostId = signal<string | null>(null);
@@ -576,12 +731,23 @@ export class RunnerPairingDialogComponent implements OnDestroy {
    */
   readonly hostAlreadyLive = computed(() => this.attachedHost()?.connected === true);
 
-  /** Vrai quand le geste « rattacher » est possible en l'état du formulaire. */
+  /**
+   * Vrai quand le geste « rattacher » est possible en l'état du formulaire.
+   *
+   * <p>Il faut un poste <b>et</b> un dossier retenu. Sur un poste dont le runner n'est pas encore
+   * connecté — un poste qu'on vient de créer, par exemple — le dossier ne peut pas être listé : le
+   * projet prend alors <b>la racine</b> que l'utilisateur passera au runner (`--workspace`), et
+   * l'écran le dit. C'est le seul dossier connaissable à cet instant, et c'est une réponse, pas un
+   * champ vide.</p>
+   */
   readonly canAttach = computed(() => {
     if (this.attaching()) {
       return false;
     }
-    return this.selectedHostId() !== NEW_HOST || this.newHostName().trim().length > 0;
+    if (this.selectedHostId() === NEW_HOST) {
+      return this.newHostName().trim().length > 0;
+    }
+    return this.projectPath() !== null;
   });
 
   /** Ce que l'utilisateur déclare avoir lu à l'étape 1 (D2). */
@@ -872,7 +1038,7 @@ export class RunnerPairingDialogComponent implements OnDestroy {
     if (host === null) {
       return this.hostId() === null ? '' : 'Projet rattaché à un poste.';
     }
-    const where = this.projectPath().trim();
+    const where = this.projectPath() ?? '';
     return where === ''
       ? `Poste « ${host.name} » — le projet est à la racine.`
       : `Poste « ${host.name} », projet dans « ${where} ».`;

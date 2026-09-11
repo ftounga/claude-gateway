@@ -191,13 +191,36 @@ export class PostesComponent implements OnInit {
   }
 
   /**
+   * **Poste virtuel « Hébergé »** (F-71 / SF-71-03) : les projets sans machine — dépôt GitHub,
+   * archive importée — que l'accueil, organisé par postes, n'avait nulle part où ranger.
+   *
+   * <p><b>Ce n'est pas un poste</b> : sa carte ne porte ni appairage, ni état de connexion, ni
+   * mission, ni suppression. Il vient de la gateway telle quelle et n'apparaît que s'il porte
+   * quelque chose — l'écran ne le fabrique pas.</p>
+   */
+  isHosted(host: RunnerHostOverview): boolean {
+    return host.virtual === true;
+  }
+
+  /**
+   * Clef de suivi d'une carte. L'identifiant d'un poste réel ; une constante pour le poste virtuel,
+   * qui n'en a pas — il n'existe aucune ligne en base pour lui.
+   */
+  hostKey(host: RunnerHostOverview): string {
+    return host.id ?? 'heberge';
+  }
+
+  /**
    * Ton d'identité d'un poste (F-49 / SF-49-03) : **dérivé de son nom**, jamais rangé nulle part.
    * C'est ce qui rattache visuellement chaque projet à sa machine — le filet de la carte et celui
    * de chaque projet dessous sortent d'ici. Le nom reste écrit à côté : la couleur ne porte jamais
    * seule l'information.
    */
-  tone(host: RunnerHostOverview): HostTone {
-    return hostTone(host.name);
+  tone(host: RunnerHostOverview): HostTone | null {
+    // Le §9 réserve ses dix tons à l'identification d'une MACHINE. Le poste « Hébergé » n'en est
+    // pas une : il garde le gris neutre du §5, et l'absence de couleur n'est pas un registre de
+    // plus. Renvoyer un ton ici lui donnerait une identité de machine qu'il n'a pas.
+    return this.isHosted(host) ? null : hostTone(host.name);
   }
 
   /** Ouvre le terminal du projet — le « à un clic » que la vue promet. */
@@ -243,7 +266,9 @@ export class PostesComponent implements OnInit {
    * exacte, même quand la gateway ne répond pas.</p>
    */
   setMission(host: RunnerHostOverview, status: HostMissionStatus): void {
-    if (this.mission(host) === status || this.savingHostId() !== null) {
+    // Le poste « Hébergé » n'a pas de mission — ni de client, ni de machine. Le gabarit ne propose
+    // pas le menu ; cette garde tient même si quelqu'un l'y remet un jour.
+    if (host.id === null || this.mission(host) === status || this.savingHostId() !== null) {
       return;
     }
     this.savingHostId.set(host.id);
@@ -282,7 +307,9 @@ export class PostesComponent implements OnInit {
    * qui fait foi, et son message porte le compte exact. L'écran le reprend tel quel et relit.</p>
    */
   deleteHost(host: RunnerHostOverview): void {
-    if (this.deletingHostId() !== null) {
+    // Rien à supprimer sur un poste qui n'existe pas en base (F-71) : ses projets se suppriment un
+    // par un, comme partout ailleurs.
+    if (host.id === null || this.deletingHostId() !== null) {
       return;
     }
     const data: DeleteHostDialogData = {
@@ -300,13 +327,19 @@ export class PostesComponent implements OnInit {
   }
 
   private performHostDeletion(host: RunnerHostOverview): void {
-    this.deletingHostId.set(host.id);
-    this.atelier.deleteRunnerHost(host.id).subscribe({
+    const hostId = host.id;
+    if (hostId === null) {
+      // Inatteignable depuis l'écran : le poste « Hébergé » n'expose pas ce geste. La garde est là
+      // pour que ce soit vrai du CODE et pas seulement du gabarit.
+      return;
+    }
+    this.deletingHostId.set(hostId);
+    this.atelier.deleteRunnerHost(hostId).subscribe({
       next: () => {
         this.deletingHostId.set(null);
         // La carte ne quitte l'écran qu'à la réponse : la retirer avant la ferait revenir au
         // rafraîchissement suivant si l'ordre avait échoué.
-        this.hosts.update((hosts) => hosts.filter((h) => h.id !== host.id));
+        this.hosts.update((hosts) => hosts.filter((h) => h.id === null || h.id !== hostId));
         this.snackBar.open(
           `Poste « ${host.name} » supprimé. Rien n'a été effacé sur la machine.`,
           'Fermer',

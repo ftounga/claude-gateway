@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
@@ -26,6 +26,7 @@ import {
   GitPushRequest,
   GitPushResult,
   AttachHostRequest,
+  HostFoldersResponse,
   HostMissionRequest,
   HostMissionStatus,
   RunnerAuditEntry,
@@ -706,6 +707,21 @@ export class AtelierService {
    */
   deleteRunnerHost(hostId: string): Observable<void> {
     return this.http.delete<void>(`/api/runner-hosts/${hostId}`);
+  }
+
+  /**
+   * **Sous-dossiers d'un poste** (F-71 / SF-71-02) : ce qu'on **clique** pour désigner le dossier
+   * d'un projet, au lieu de le taper.
+   *
+   * <p>La lecture se fait **sur la machine**, par le runner. Elle échoue donc en **409** quand
+   * aucun runner n'est connecté — un état, pas une panne, et l'écran doit le **dire** plutôt que
+   * d'afficher une liste vide qui ferait croire à une racine sans sous-dossier.</p>
+   *
+   * @param path chemin relatif sous la racine ; absent = la racine elle-même
+   */
+  runnerHostFolders(hostId: string, path?: string): Observable<HostFoldersResponse> {
+    const params = path ? new HttpParams().set('path', path) : undefined;
+    return this.http.get<HostFoldersResponse>(`/api/runner-hosts/${hostId}/folders`, { params });
   }
 
   /**

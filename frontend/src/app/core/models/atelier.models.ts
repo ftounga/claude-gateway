@@ -820,8 +820,19 @@ export interface HostProjectSummary {
  * fait des durées : une durée calculée au serveur vieillit dans le navigateur.</p>
  */
 export interface RunnerHostOverview {
-  id: string;
+  /**
+   * `null` pour le poste **virtuel** « Hébergé » (F-71 / SF-71-01) : il n'existe **aucune ligne en
+   * base** pour lui, et donc aucun identifiant à envoyer nulle part. Nul par choix, pas par
+   * omission — un identifiant constant finirait envoyé à un endpoint qui répondrait 404.
+   */
+  id: string | null;
   name: string;
+  /**
+   * Vrai pour le poste **« Hébergé »** (F-71 / SF-71-01), qui regroupe les projets sans machine —
+   * dépôt GitHub, archive importée. **Ce n'est pas un poste** : ni appairage, ni runner, ni
+   * suppression, ni état de mission. Il n'apparaît que s'il porte quelque chose.
+   */
+  virtual?: boolean;
   /** Dernier segment de la racine déclarée (ex. `dev`), jamais le chemin absolu de la machine. */
   rootName?: string | null;
   os?: string | null;
@@ -836,7 +847,8 @@ export interface RunnerHostOverview {
    */
   missionStatus?: HostMissionStatus | null;
   lastSeenAt?: string | null;
-  createdAt: string;
+  /** `null` pour le poste « Hébergé » (F-71) : rien n'a été créé, il n'a pas de date. */
+  createdAt: string | null;
   /** Dernière activité observée sur le poste, tous projets confondus. */
   lastActivityAt?: string | null;
   /** Nombre de projets actifs maintenant — « ce qui tourne ». */
@@ -844,6 +856,38 @@ export interface RunnerHostOverview {
   /** Nombre de **terminaux vivants** sur les projets de ce poste (F-70 / SF-70-01). */
   liveTerminals?: number;
   projects: HostProjectSummary[];
+}
+
+/**
+ * Un **dossier** proposé au clic sous la racine d'un poste (F-71 / SF-71-02).
+ *
+ * <p>Taper un chemin à la main créait un projet vide qui n'échouait qu'au **premier usage**, quand
+ * plus personne ne fait le lien avec la faute de frappe. Le runner liste, on clique.</p>
+ */
+export interface HostFolder {
+  /** Nom du dossier, tel qu'il est sur la machine. */
+  name: string;
+  /** Chemin sous la racine du poste — la valeur à envoyer au rattachement. */
+  path: string;
+  /**
+   * Vrai si un projet occupe **déjà** ce dossier. L'écran le marque et ne le propose pas : ouvrir
+   * deux fois le même dossier a déjà produit deux entités du même nom.
+   */
+  used: boolean;
+}
+
+/** Réponse de `GET /api/runner-hosts/{id}/folders` (F-71 / SF-71-02). */
+export interface HostFoldersResponse {
+  /** Chemin parcouru, relatif à la racine ; chaîne vide = la racine elle-même. */
+  path: string;
+  /** Chemin du dossier parent, ou `null` à la racine — c'est ce qui permet de remonter. */
+  parentPath: string | null;
+  folders: HostFolder[];
+  /**
+   * Vrai si des dossiers **manquent** : la machine a tronqué sa liste, ou le plafond de la gateway
+   * est atteint. Une liste incomplète se **dit** (SF-38-21).
+   */
+  truncated: boolean;
 }
 
 /**
