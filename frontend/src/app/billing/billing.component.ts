@@ -20,6 +20,7 @@ import { BillingService } from '../core/services/billing.service';
 import { SeatService } from '../core/services/seat.service';
 import { UsageService } from '../core/services/usage.service';
 import { ApiError } from '../core/models/auth.models';
+import { ADVERTISED_TRIAL_DAYS, DEFAULT_TRIAL_TOKENS } from '../core/trial-offer';
 import {
   ConfirmDialogComponent,
   ConfirmDialogData,
@@ -494,6 +495,26 @@ export class BillingComponent implements OnInit {
     }
     const days = Math.ceil((new Date(sub.trialEndsAt).getTime() - Date.now()) / 86_400_000);
     return Math.max(0, days);
+  }
+
+  /**
+   * Durée de l'essai **servie par le serveur**, en jours (F-66). Repli sur la durée annoncée
+   * publiquement tant que l'abonnement n'est pas chargé : la carte ne doit jamais afficher un trou,
+   * ni « essai 0 jour ».
+   */
+  trialDays(): number {
+    const configured = this.subscription()?.trialDays;
+    return configured && configured > 0 ? configured : ADVERTISED_TRIAL_DAYS;
+  }
+
+  /**
+   * Jetons alloués par l'essai, servis par la même configuration. Même repli, pour la même raison :
+   * l'allocation d'essai est une question ouverte côté produit (OQ-16), et l'écran doit suivre la
+   * valeur servie le jour où elle change, sans qu'on ait à revenir éditer ce fichier.
+   */
+  trialTokens(): number {
+    const configured = this.subscription()?.trialTokens;
+    return configured && configured > 0 ? configured : DEFAULT_TRIAL_TOKENS;
   }
 
   /** Vrai si l'utilisateur n'a aucune offre payante active (essai ou aucun abonnement). */

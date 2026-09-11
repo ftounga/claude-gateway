@@ -39,6 +39,8 @@ describe('BillingComponent', () => {
     currentPeriodEnd: null,
     customerKeyBilled: false,
     billingPeriod: null,
+    trialDays: 14,
+    trialTokens: 200000,
   };
   /** Abonnement BYOK en cours (F-41) : le serveur dit que les jetons sont sur la clé du client. */
   const byokSubscription: SubscriptionView = {
@@ -48,6 +50,8 @@ describe('BillingComponent', () => {
     currentPeriodEnd: '2026-08-01T00:00:00Z',
     customerKeyBilled: true,
     billingPeriod: 'MONTHLY',
+    trialDays: 14,
+    trialTokens: 200000,
   };
   /** Clé BYOK enregistrée ET active : le mode vaut BYOK. */
   const activeKey: ApiKeyStatus = {
@@ -527,6 +531,8 @@ describe('BillingComponent', () => {
       currentPeriodEnd: '2026-08-01T00:00:00Z',
       customerKeyBilled: false,
       billingPeriod: 'MONTHLY' as const,
+      trialDays: 14,
+      trialTokens: 200000,
     });
     billingService.changePlan.and.returnValue(
       of({
@@ -536,6 +542,8 @@ describe('BillingComponent', () => {
         currentPeriodEnd: '2026-08-01T00:00:00Z',
         customerKeyBilled: false,
         billingPeriod: 'MONTHLY' as const,
+        trialDays: 14,
+        trialTokens: 200000,
       }),
     );
 
@@ -580,6 +588,8 @@ describe('BillingComponent', () => {
       currentPeriodEnd: '2026-08-01T00:00:00Z',
       customerKeyBilled: false,
       billingPeriod: 'MONTHLY' as const,
+      trialDays: 14,
+      trialTokens: 200000,
     });
     billingService.changePlan.and.returnValue(
       throwError(() => new HttpErrorResponse({ status: 409, error: { error: 'no_active_subscription' } })),
@@ -942,10 +952,12 @@ describe('BillingComponent', () => {
       component.subscription.set({
         status: 'ACTIVE', planCode: 'PRO', trialEndsAt: null,
         currentPeriodEnd: '2026-08-01T00:00:00Z', customerKeyBilled: false, billingPeriod: 'MONTHLY',
+        trialDays: 14, trialTokens: 200000,
       });
       billingService.changePlan.and.returnValue(of({
         status: 'ACTIVE', planCode: 'SOLO', trialEndsAt: null,
         currentPeriodEnd: '2027-08-01T00:00:00Z', customerKeyBilled: false, billingPeriod: 'YEARLY',
+        trialDays: 14, trialTokens: 200000,
       }));
       component.selectPeriod('YEARLY');
 
@@ -1003,6 +1015,7 @@ describe('BillingComponent', () => {
       component.subscription.set({
         status: 'ACTIVE', planCode: 'SOLO', trialEndsAt: null,
         currentPeriodEnd: '2027-08-01T00:00:00Z', customerKeyBilled: false, billingPeriod: 'YEARLY',
+        trialDays: 14, trialTokens: 200000,
       });
 
       expect(component.commitmentLabel()).toBe('engagement annuel');
@@ -1174,6 +1187,43 @@ describe('BillingComponent', () => {
       expect(component.seats()).toBeNull();
       expect(component.plans().length).toBe(2);
       expect(fixture.nativeElement.textContent).not.toContain('Gérer mes postes');
+    });
+  });
+
+  /**
+   * F-66. La carte « Gratuit » annonçait « essai 5 jours » et « 200 000 tokens » en dur, pendant que
+   * la page d'accueil promettait 14 jours. Ce qu'elle affiche vient désormais du serveur.
+   */
+  describe('offre d’essai (F-66)', () => {
+    it('annonce la durée et l’allocation servies par le serveur', () => {
+      setup();
+
+      const text: string = fixture.nativeElement.textContent;
+      expect(text).toContain('essai 14 jours');
+      expect(text).not.toContain('essai 5 jours');
+      expect(component.trialTokens()).toBe(200000);
+      expect(text).toContain('tokens pour découvrir');
+    });
+
+    it('suit une configuration différente sans qu’on retouche l’écran', () => {
+      setup(null, false, optionAvailable, {
+        subscription: { ...subscription, trialDays: 7, trialTokens: 500000 },
+      });
+
+      expect(fixture.nativeElement.textContent).toContain('essai 7 jours');
+      expect(component.trialDays()).toBe(7);
+      expect(component.trialTokens()).toBe(500000);
+    });
+
+    it('affiche la durée annoncée tant que l’abonnement n’est pas chargé', () => {
+      setup();
+      component.subscription.set(null);
+      fixture.detectChanges();
+
+      // Ni trou, ni « essai 0 jour » : la promesse publique sert de repli.
+      expect(component.trialDays()).toBe(14);
+      expect(component.trialTokens()).toBe(200000);
+      expect(fixture.nativeElement.textContent).toContain('essai 14 jours');
     });
   });
 });

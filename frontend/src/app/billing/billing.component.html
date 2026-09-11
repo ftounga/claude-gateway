@@ -144,8 +144,8 @@
             @if (hasNoPaidPlan()) { <span class="billing__flag billing__flag--current">Offre actuelle</span> }
           </div>
           <h3 class="billing__card-name">Gratuit</h3>
-          <p class="billing__card-price"><span class="amount">0 €</span><span class="per">essai 5 jours</span></p>
-          <p class="billing__card-tokens">200 000 tokens pour découvrir</p>
+          <p class="billing__card-price"><span class="amount">0 €</span><span class="per">essai {{ trialDays() }} jours</span></p>
+          <p class="billing__card-tokens">{{ trialTokens() | number }} tokens pour découvrir</p>
           <button mat-stroked-button type="button" class="billing__card-cta is-outline" [disabled]="true">
             @if (trialDaysLeft() !== null) {
               Essai · {{ trialDaysLeft() }} j restant{{ trialDaysLeft() === 1 ? '' : 's' }}

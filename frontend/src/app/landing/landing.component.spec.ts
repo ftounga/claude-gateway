@@ -5,6 +5,7 @@ import { signal } from '@angular/core';
 
 import { LandingComponent } from './landing.component';
 import { AuthService } from '../core/services/auth.service';
+import { ADVERTISED_TRIAL_DAYS } from '../core/trial-offer';
 
 describe('LandingComponent', () => {
   let fixture: ComponentFixture<LandingComponent>;
@@ -29,6 +30,15 @@ describe('LandingComponent', () => {
   it('se crée sans appel réseau (AuthService sans HttpClient)', () => {
     setup(false);
     expect(component).toBeTruthy();
+  });
+
+  it('annonce la durée d\'essai depuis une constante unique (F-66)', () => {
+    setup(false);
+    const text: string = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    // Les deux mentions — l'encart et la note sous l'appel à l'action — disent la même chose, parce
+    // qu'elles lisent la même constante. C'est la recopie du chiffre qui avait produit l'écart.
+    expect(text).toContain(`Essai gratuit ${ADVERTISED_TRIAL_DAYS} jours`);
+    expect(text).toContain(`${ADVERTISED_TRIAL_DAYS} jours d'essai — aucune carte requise`);
   });
 
   it('non authentifié : propose l\'inscription (essai) et la connexion', () => {
