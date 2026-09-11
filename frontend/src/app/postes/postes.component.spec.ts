@@ -549,6 +549,67 @@ describe('PostesComponent', () => {
     });
   });
 
+  /**
+   * Le signe de vie sur la carte du poste (F-70 / SF-70-02). Le PO a tranché **le même** signe qu'au
+   * terminal : une pastille et le mot écrit. Ce qui se vérifie ici, c'est qu'il soit lisible **et**
+   * qu'il ne se confonde pas avec le « Connecté » du runner, deux pastilles plus haut.
+   */
+  describe('terminaux vivants (F-70)', () => {
+    it('montre la pastille et le mot sur la carte dont un projet vit', () => {
+      setup([{ ...poste, liveTerminals: 1 }]);
+      const dom = fixture.nativeElement as HTMLElement;
+      const badge = dom.querySelector('app-live-badge');
+      expect(badge).not.toBeNull();
+      expect(badge?.textContent?.trim()).toBe('Terminal connecté');
+    });
+
+    it('accorde au pluriel quand deux terminaux vivent sur le même poste', () => {
+      setup([{ ...poste, liveTerminals: 2 }]);
+      const dom = fixture.nativeElement as HTMLElement;
+      expect(dom.textContent).toContain('2 terminaux connectés');
+    });
+
+    it('n\'affiche aucune pastille de vie quand rien ne vit', () => {
+      setup([{ ...poste, liveTerminals: 0 }]);
+      const dom = fixture.nativeElement as HTMLElement;
+      expect(dom.querySelector('app-live-badge')).toBeNull();
+    });
+
+    it('marque la LIGNE du projet dont le terminal est ouvert, pas les autres', () => {
+      setup([
+        {
+          ...poste,
+          liveTerminals: 1,
+          projects: [
+            { ...poste.projects[0], liveTerminal: true },
+            { ...poste.projects[1], liveTerminal: false },
+          ],
+        },
+      ]);
+      const dom = fixture.nativeElement as HTMLElement;
+      const lines = Array.from(dom.querySelectorAll('.projet'));
+      expect(lines.length).toBe(2);
+      expect(lines[0].querySelector('app-live-badge')).not.toBeNull();
+      expect(lines[1].querySelector('app-live-badge')).toBeNull();
+    });
+
+    it('dit en tête ce que quatre flux engagent — un garde-fou qu\'on ne découvre pas en le heurtant', () => {
+      setup([{ ...poste, liveTerminals: 2 }]);
+      const dom = fixture.nativeElement as HTMLElement;
+      const counter = dom.querySelector('.postes__live');
+      expect(counter?.textContent).toContain('Terminaux vivants : 2 / 4');
+      // La phrase est écrite à l'écran, pas rangée dans une infobulle.
+      expect(counter?.textContent).toContain('consomme un tour en parallèle');
+    });
+
+    it('compte les terminaux vivants de TOUS les postes', () => {
+      setup([
+        { ...poste, liveTerminals: 1 },
+        { ...poste, id: 'h2', name: 'Poste BNP', liveTerminals: 2 },
+      ]);
+      expect(component.liveTerminalCount()).toBe(3);
+    });
+  });
   // ------------------------------------------- suppression d'un poste (F-69 / SF-69-02)
 
   it('propose « Supprimer le poste » dans le menu de la carte', () => {

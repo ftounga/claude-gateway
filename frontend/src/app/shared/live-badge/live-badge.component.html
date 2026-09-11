@@ -1,0 +1,9 @@
+<!-- Pastille de vie d'un terminal (F-70 / SF-70-01).
+     Le mot est TOUJOURS écrit à côté du point : c'est le signe tranché par le PO — une pastille ET
+     le mot « connecté », jamais la couleur seule, et le MÊME signe dans la barre du terminal et sur
+     la carte du poste. Le point emprunte l'encre de la surface (`currentColor`) : il n'ajoute aucun
+     registre de couleur aux trois qui cohabitent déjà (§5 statut, §9 identité, §10 mission). -->
+<span class="live-badge" [title]="hint()">
+  <span class="live-badge__dot" aria-hidden="true"></span>
+  <span class="live-badge__label">{{ label() }}</span>
+</span>

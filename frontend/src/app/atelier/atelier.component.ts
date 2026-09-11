@@ -7,6 +7,7 @@ import {
   OnInit,
   ViewChild,
   computed,
+  effect,
   inject,
   signal,
 } from '@angular/core';
@@ -61,6 +62,7 @@ import {
 import { ApiKeyService } from '../core/services/api-key.service';
 import { AtelierService } from '../core/services/atelier.service';
 import { AtelierGuideService } from '../core/services/atelier-guide.service';
+import { LiveTerminalService } from '../core/services/live-terminal.service';
 import { ProviderMode } from '../core/models/api-key.models';
 import { GitPushDialogComponent, PickedGitPush } from './git/git-push-dialog.component';
 import { GitRepoDialogComponent, PickedGitRepository } from './git/git-repo-dialog.component';
@@ -170,6 +172,37 @@ export class AtelierComponent implements OnInit, OnDestroy {
   private readonly zone = inject(NgZone);
   private readonly appRef = inject(ApplicationRef);
   private readonly dialog = inject(MatDialog);
+
+  /**
+   * Registre des terminaux vivants (F-70 / SF-70-01). Un terminal ouvert prend une place et la
+   * tient ; quatre au maximum, et le cinquième est refusé — explicitement, jamais en dormant.
+   */
+  private readonly liveTerminals = inject(LiveTerminalService);
+
+  /** Ce terminal vit : c'est ce qui allume la pastille et le mot « connecté » dans la barre. */
+  readonly terminalLive = this.liveTerminals.live;
+
+  /** Le plafond a refusé cette place : l'envoi est fermé, et le bandeau dit pourquoi. */
+  readonly terminalLimitReached = this.liveTerminals.limitReached;
+
+  /** Les terminaux vivants, nommés — le bandeau de refus doit dire lequel fermer. */
+  readonly liveTerminalList = computed(() => this.liveTerminals.registry()?.terminals ?? []);
+
+  /**
+   * Le terminal ouvert **prend** une place, et la rend en le refermant (F-70 / SF-70-01).
+   *
+   * <p>Un effet plutôt qu'un appel recopié dans chaque ouverture : un projet s'ouvre depuis la
+   * liste, depuis l'URL, depuis la vue des postes et juste après une création. Quatre chemins, une
+   * seule vérité — l'identifiant du projet actif.</p>
+   */
+  private readonly liveTerminalSync = effect(() => {
+    const id = this.activeWorkspaceId();
+    if (id) {
+      this.liveTerminals.start(id);
+    } else {
+      this.liveTerminals.stop();
+    }
+  });
 
   /**
    * Guide d'accueil (F-53 / SF-53-01) : il mène au premier succès réel — créer un projet, connecter
@@ -926,6 +959,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
     );
   }
 
+  /** Rejoue la prise de place après un refus (F-70 / SF-70-01) — bouton « Réessayer ». */
+  retryLiveTerminal(): void {
+    this.liveTerminals.retry();
+  }
+
   /**
    * Quitte le terminal (F-39 / SF-39-08). Il n'y a plus d'autre mode vers lequel basculer : quitter,
    * c'est refermer le projet et revenir à la liste.
@@ -1211,6 +1249,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
     const id = this.activeWorkspaceId();
     const content = this.draft().trim();
     if (!id || content.length === 0) {
+      return;
+    }
+    // Le plafond refuse cette place : on ne démarre pas un tour dans un terminal qui n'est pas
+    // vivant (F-70 / SF-70-01). C'est ce refus qui fait du plafond un garde-fou de dépense.
+    if (this.liveTerminals.limitReached()) {
       return;
     }
     // Un tour travaille déjà : ce message est une PRÉCISION, pas un second tour (F-39 / SF-39-19).
@@ -2177,6 +2220,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /** Quitter l'écran ne doit laisser tourner ni le chronomètre, ni le sondage du statut runner. */
   ngOnDestroy(): void {
+    // Quitter l'écran rend la place : un terminal qui n'est plus affiché n'est plus vivant, et
+    // le hors-périmètre de F-70 est explicite — aucun agent ne travaille onglet fermé.
+    this.liveTerminals.stop();
     this.stopExecTimer();
     this.stopRunnerPolling();
     // Un compte à rebours laissé tourner survivrait à l'écran qu'il décompte (F-47 / SF-47-02).

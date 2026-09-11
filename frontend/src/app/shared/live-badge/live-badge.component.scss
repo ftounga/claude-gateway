@@ -1,0 +1,59 @@
+/* Pastille de vie d'un terminal (F-70 / SF-70-01).
+
+   AUCUNE COULEUR DÉCLARÉE ICI, et c'est la décision de fond : trois registres de couleur cohabitent
+   déjà (DESIGN_SYSTEM §5 statut, §9 identité du poste, §10 état de mission). Un quatrième les
+   rendrait tous illisibles. Le signe de vie répond donc par le MOUVEMENT et par un MOT, en
+   empruntant l'encre de la surface qui le porte (`currentColor`) — lisible sur la barre navy du
+   terminal comme sur une carte blanche. Voir DESIGN_SYSTEM §11. */
+
+:host {
+  display: inline-flex;
+  min-width: 0;
+}
+
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.6;
+  white-space: nowrap;
+  /* Pas de pastille de fond : le §8 interdit les aplats colorés hors palette, et un aplat neutre
+     de plus sur une barre déjà chargée n'ajouterait que du bruit. */
+  color: inherit;
+
+  &__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: currentColor;
+    flex: none;
+    /* Le battement DIT la vie. Il double le mot ; il ne le remplace pas. */
+    animation: live-badge-pulse 2s ease-in-out infinite;
+  }
+
+  &__label {
+    font-family: var(--cg-font-body);
+  }
+}
+
+@keyframes live-badge-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+}
+
+/* Un mouvement qu'on n'a pas demandé peut gêner ou rendre malade. Le point reste, immobile — et le
+   mot, lui, n'a jamais bougé. */
+@media (prefers-reduced-motion: reduce) {
+  .live-badge__dot {
+    animation: none;
+  }
+}

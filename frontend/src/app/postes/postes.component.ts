@@ -16,6 +16,7 @@ import { AtelierService } from '../core/services/atelier.service';
 import { HostProjectSummary, RunnerHostOverview } from '../core/models/atelier.models';
 import { ForgeBreadcrumbComponent } from '../shared/forge-breadcrumb/forge-breadcrumb.component';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
+import { LiveBadgeComponent } from '../shared/live-badge/live-badge.component';
 import { HostTone, hostTone } from '../shared/host-identity';
 import { MissionBadgeComponent } from '../shared/mission-badge/mission-badge.component';
 import {
@@ -71,6 +72,7 @@ export type PostesError = 'none' | 'network' | 'forbidden';
     RouterLink,
     ForgeBreadcrumbComponent,
     HostBadgeComponent,
+    LiveBadgeComponent,
     MissionBadgeComponent,
     MatButtonModule,
     MatCardModule,
@@ -109,6 +111,16 @@ export class PostesComponent implements OnInit {
    */
   readonly openHosts = computed(() =>
     this.hosts().filter((host) => !isMissionClosed(host.missionStatus)));
+
+  /**
+   * **Terminaux vivants**, tous postes confondus (F-70 / SF-70-01). Affiché en tête d'écran avec ce
+   * qu'il engage : quatre flux vivants, ce sont quatre tours facturés en parallèle.
+   */
+  readonly liveTerminalCount = computed(() =>
+    this.hosts().reduce((total, host) => total + (host.liveTerminals ?? 0), 0));
+
+  /** Plafond tranché par le PO. Écrit à côté du compte pour que la limite soit prévisible. */
+  readonly liveTerminalLimit = 4;
 
   /** Les missions clôturées, rangées : hors de la vue principale, à un clic de la consultation. */
   readonly closedHosts = computed(() =>

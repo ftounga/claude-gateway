@@ -802,6 +802,13 @@ export interface HostProjectSummary {
   calls: number;
   /** Vrai si ce projet a travaillé à l'instant — « ce qui tourne ». */
   active: boolean;
+  /**
+   * Vrai si un **terminal est ouvert** sur ce projet maintenant (F-70 / SF-70-01). À ne pas
+   * confondre avec `active` : celui-ci dit qu'une commande a **tourné** récemment, celui-là qu'un
+   * onglet **vit**. Un terminal peut vivre sans rien exécuter, et une commande peut avoir tourné
+   * dans un onglet depuis refermé.
+   */
+  liveTerminal?: boolean;
 }
 
 /**
@@ -834,5 +841,32 @@ export interface RunnerHostOverview {
   lastActivityAt?: string | null;
   /** Nombre de projets actifs maintenant — « ce qui tourne ». */
   activeProjects: number;
+  /** Nombre de **terminaux vivants** sur les projets de ce poste (F-70 / SF-70-01). */
+  liveTerminals?: number;
   projects: HostProjectSummary[];
+}
+
+/**
+ * Un **terminal vivant** (F-70 / SF-70-01) : un onglet ouvert, nommé de façon à ce que l'écran
+ * puisse dire **lequel fermer**.
+ */
+export interface LiveTerminalEntry {
+  workspaceId: string;
+  workspaceName?: string | null;
+  hostId?: string | null;
+  hostName?: string | null;
+  openedAt: string;
+}
+
+/**
+ * **L'état du registre des terminaux vivants** (F-70 / SF-70-01).
+ *
+ * <p>Le PO a tranché **quatre au maximum**, et l'écran doit dire ce que cela engage : quatre flux
+ * vivants, ce sont quatre consommations simultanées — quatre tours facturés en parallèle. `limit`
+ * n'est donc pas un détail technique, c'est le garde-fou qu'on affiche.</p>
+ */
+export interface LiveTerminals {
+  limit: number;
+  live: number;
+  terminals: LiveTerminalEntry[];
 }

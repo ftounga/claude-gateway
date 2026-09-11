@@ -113,6 +113,59 @@
   }
 }
 
+// Signe de vie du terminal (F-70 / SF-70-01). Aucune couleur ici : la pastille hérite de l'encre
+// de la barre navy, comme prévu par DESIGN_SYSTEM §11. Trois registres de couleur cohabitent déjà.
+.terminal-live {
+  margin-left: var(--cg-space-2);
+  color: var(--cg-divider);
+}
+
+// Refus explicite du cinquième terminal (F-70 / SF-70-01). Un bandeau, pas une boîte modale : on
+// doit pouvoir continuer à LIRE ce terminal — seul l'envoi est fermé. Le filet emprunte l'or de
+// marque, réservé aux gestes : ici il en désigne un, « fermez-en un ».
+.terminal-live-limit {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-bottom: 1px solid var(--cg-navy-2);
+  border-left: 3px solid var(--cg-accent);
+  color: var(--cg-divider);
+  font-size: 13px;
+}
+
+.terminal-live-limit-icon {
+  color: var(--cg-accent);
+  flex-shrink: 0;
+}
+
+.terminal-live-limit-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.terminal-live-limit-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.terminal-live-limit-cost {
+  margin: var(--cg-space-1) 0 0;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.terminal-live-limit-list {
+  margin: var(--cg-space-2) 0 0;
+  padding-left: var(--cg-space-3);
+  font-size: 12px;
+}
+
+.terminal-live-limit-retry {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
 // Cible d'exécution et gestes runner (F-38, portés dans l'écran unique — D-L4-4).
 .terminal-target {
   display: flex;
