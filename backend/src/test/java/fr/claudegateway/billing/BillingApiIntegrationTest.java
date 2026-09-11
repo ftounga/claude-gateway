@@ -87,6 +87,9 @@ class BillingApiIntegrationTest {
                 // La durée d'essai servie voyage avec l'abonnement (F-66) : l'écran l'affiche au
                 // lieu de réciter un littéral, et ne peut donc plus annoncer autre chose.
                 .andExpect(jsonPath("$.trialDays", is(14)))
+                // Même chose pour les jetons de l'essai (F-66 / SF-66-03) : la carte « Gratuit » les
+                // annonçait en dur. Ce que l'écran affiche vient désormais de ce que le serveur sert.
+                .andExpect(jsonPath("$.trialTokens", is(200000)))
                 // Les identifiants Stripe ne doivent jamais apparaître dans la réponse.
                 .andExpect(jsonPath("$.stripeCustomerId").doesNotExist())
                 .andExpect(jsonPath("$.stripeSubscriptionId").doesNotExist());
