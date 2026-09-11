@@ -36,6 +36,12 @@ que la vigilance : la gateway relaie le price ID qu'on lui donne sans vérifier 
 appartient au PO**, seul à voir le tableau de bord Stripe. Cette page dit ce que le produit
 **affiche** ; elle ne peut pas certifier ce que Stripe **débite**.
 
+**Un quota affiché n'est pas une durée d'usage.** Depuis **F-63** (livrée le 2026-09-11), le quota
+reste libellé en tokens, mais chaque token y entre **au prix de sa nature** : une sortie pèse cinq
+fois une entrée, une lecture de cache un dixième. Aucun montant ni aucun quota de cette page n'a
+changé — c'est la **vitesse** à laquelle un quota se consomme qui dépend désormais du style d'usage.
+La règle, ses clés et son point de bascule sont en **§8.1**.
+
 **`À CONFIRMER PAR LE PO`** signale un chiffre qu'aucune source du dépôt ne donne. Il n'est
 **jamais** remplacé par une estimation : dans une grille tarifaire, un chiffre inventé est pire que
 son absence. La liste complète de ces points est en **§7**, et suivie en **OQ-16**.
@@ -53,6 +59,15 @@ Quatre plans sont vendables. Ils viennent de `PlanCatalog` / `PlanCode`
 | Pro | `PRO` | Hosted | **99 €** | **990 €** | **5 000 000** |
 | Gold | `GOLD` | Hosted | **199 €** | **1 990 €** | **12 000 000** |
 | BYOK | `BYOK` | BYOK (clé du client) | **29 €** | *pas d'offre annuelle* | **0 — et c'est le contrat** |
+
+**Ces quotas se décomptent au coût réel** (F-63, **§8.1**) : le chiffre de la colonne n'a pas
+bougé, la façon de le consommer si. Point de bascule à **4 entrées pour 1 sortie** — au-delà, le
+quota dure plus longtemps qu'avant ; en deçà, moins.
+
+**Un abonnement couvre un poste** (F-65, **§8.2**) : le quota du tableau est celui d'**un** poste.
+Chaque poste supplémentaire facturable ajoute un supplément mensuel **qui apporte sa propre part de
+jetons**. Mécanisme livré, **valeurs au PO** — par défaut aucun supplément n'est facturé et aucun
+jeton n'est apporté, si bien que la colonne ci-dessus reste exacte telle quelle.
 
 **Sources, ligne à ligne** — toutes dans `backend/src/main/resources/application.yml` :
 
@@ -76,6 +91,11 @@ servies en production**.
 | Passerelle, conversations, historique, fichiers | ✅ | ✅ | ✅ | ✅ |
 | **Atelier** (F-28) | par l'**option** (§3) | par l'**option** (§3) | **inclus** | **inclus** |
 | Jetons fournis par la plateforme | ✅ | ✅ | ✅ | ❌ — clé Anthropic du client, facturée sur son compte |
+| **Postes couverts** (F-65, §8.2) | 1 | 1 | 1 | 1 |
+
+Le nombre de postes couverts ne dépend **pas** du plan : `app.seat.included-seats` est une valeur
+unique (défaut **1**), pas une entrée par plan. Un plan plus cher achète du **quota**, pas des
+postes.
 
 Le zéro de BYOK n'est **pas** un abonnement expiré : le pré-vol de quota distingue les deux
 (`EntitlementService.isCustomerKeyBilled`), sans quoi un client BYOK payant serait bloqué comme un
@@ -105,6 +125,9 @@ Deux packs, achetés à l'unité, qui créditent le quota de la **période coura
 | Recharge 200 k tokens | `DAY` | **200 000** | **4,99 €** *(à reconfirmer)* | Produit Stripe « Claude Proxy — Recharge 200 k », montant relevé dans `PRODUCT_SPEC.md` (F-09 / SF-09-04) |
 | Recharge — 1 M tokens | `STANDARD` | **1 000 000** | **À CONFIRMER PAR LE PO** | **aucune source dans le dépôt** |
 
+**Les jetons crédités sont de la même nature que le quota du plan** : ils s'ajoutent au même
+compteur et se consomment donc, eux aussi, au décompte pondéré de **§8.1**.
+
 **Le code ne connaît aucun de ces deux prix** : `TopUpPackResponse` n'expose ni prix ni price ID —
 « le prix vit côté fournisseur ». L'écran de rachat n'affiche donc **aucun montant** avant la page
 de paiement Stripe. Les 4,99 € ci-dessus sont une valeur **relevée dans une note de livraison**, pas
@@ -128,7 +151,7 @@ sans appeler le fournisseur. La variante monétisée reste ouverte (**OQ-08**).
 | | Valeur | Source |
 |---|---|---|
 | Montant mensuel affiché | **40 €** | `app.billing.stripe.atelier-option-display-price` (`APP_BILLING_ATELIER_OPTION_PRICE`) |
-| Quota apporté | **aucun** | par construction — l'option ouvre un **droit d'accès**, pas une allocation |
+| Quota apporté | **aucun** | par construction — l'option ouvre un **droit d'accès**, pas une allocation. *À la différence du supplément par poste (§8.2), qui en apporte* |
 | Abonnement Stripe | **distinct** de celui du plan | `app.billing.stripe.atelier-option-price-id` (`STRIPE_PRICE_ATELIER_OPTION`) |
 
 Elle existe pour une raison précise : sans elle, accéder à l'Atelier depuis Solo imposait de passer
@@ -208,10 +231,13 @@ Aucun de ces points n'est tranché par F-64 : ce sont des décisions commerciale
 
 ---
 
-## 8. Places réservées
+## 8. Comment le quota se décompte, et ce qui l'alimente
 
-**Ne rien inscrire dans ces sections avant la livraison de la feature correspondante.** Elles
-existent pour que la grille les accueille sans être réécrite.
+*Ces deux sections étaient les **places réservées** ouvertes par F-64. **Les deux features ont été
+livrées le 2026-09-11** : elles décrivent désormais des règles **en vigueur**, pas des intentions.*
+
+**Ni l'une ni l'autre n'annonce de montant** : F-63 n'en change aucun — elle change une façon de
+compter ; F-65 n'en décide aucun — elle livre un mécanisme dont les valeurs appartiennent au PO.
 
 ### 8.1 F-63 — le quota compté au coût réel *(livrée le 2026-09-11)*
 
@@ -324,9 +350,9 @@ ou des **estimations**, pas des prix de vente.
 - **Un prix, un quota ou une durée change** → cette page d'abord, la configuration ensuite, Stripe
   enfin (ou l'inverse — mais les trois, jamais un seul).
 - **Un plan ou un pack naît ou meurt** → §1, §2 ou §5, et la raison avec.
-- **F-63 ou F-65 est livrée** → §8, qui cesse d'être vide. *(Les deux livrées le 2026-09-11 :
-  §8.1 et §8.2. §8.2 décrit un mécanisme et ses clés ; elle n'annonce aucun montant, faute de
-  source — OQ-16 point 8.)*
+- **§8 n'est plus une place réservée** : F-63 et F-65 ont été livrées le 2026-09-11 (§8.1 et §8.2).
+  Une règle qui change la **façon de décompter**, sans changer un prix, se documente là — et §0, §1
+  et §2 y renvoient, pour qu'on ne puisse pas lire un quota sans savoir comment il se consomme.
 - **Un point de §7 est tranché** → il quitte §7, entre dans la grille, et OQ-16 est mise à jour.
 
 **Ce qui ne doit jamais arriver** : qu'une grille soit recopiée dans un document de référence. C'est
