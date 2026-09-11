@@ -23,21 +23,22 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class UsageReportService {
 
-    /** Échelle de division tokens → millions (coût = tokens/1e6 × prix_par_million). */
-    private static final int TOKENS_PER_MILLION = 1_000_000;
     /** Précision monétaire du coût estimé (montants unitaires potentiellement faibles). */
-    private static final int COST_SCALE = 4;
+    private static final int COST_SCALE = UsageCostEstimator.COST_SCALE;
 
     private final UsageCounterRepository usageCounterRepository;
     private final UsageReportProperties properties;
+    private final UsageCostEstimator costEstimator;
     private final Clock clock;
 
     public UsageReportService(
             UsageCounterRepository usageCounterRepository,
             UsageReportProperties properties,
+            UsageCostEstimator costEstimator,
             Clock clock) {
         this.usageCounterRepository = usageCounterRepository;
         this.properties = properties;
+        this.costEstimator = costEstimator;
         this.clock = clock;
     }
 
@@ -92,18 +93,12 @@ public class UsageReportService {
     }
 
     /**
-     * Coût estimé d'une période = tokens d'entrée/1e6 × prix_entrée + tokens de sortie/1e6 ×
-     * prix_sortie, arrondi à {@value #COST_SCALE} décimales (HALF_UP).
+     * Coût estimé d'une période, délégué à l'estimateur commun (F-61) : le rapport mensuel, la
+     * consommation par client et la console d'administration doivent annoncer <b>le même</b>
+     * montant pour la même consommation.
      */
     private BigDecimal estimateCost(long inputTokens, long outputTokens) {
-        BigDecimal million = BigDecimal.valueOf(TOKENS_PER_MILLION);
-        BigDecimal inputCost = BigDecimal.valueOf(inputTokens)
-                .multiply(properties.inputCostPerMillionTokens())
-                .divide(million, COST_SCALE, RoundingMode.HALF_UP);
-        BigDecimal outputCost = BigDecimal.valueOf(outputTokens)
-                .multiply(properties.outputCostPerMillionTokens())
-                .divide(million, COST_SCALE, RoundingMode.HALF_UP);
-        return inputCost.add(outputCost);
+        return costEstimator.estimate(inputTokens, outputTokens);
     }
 
     /** Premier jour du mois calendaire courant (UTC). */

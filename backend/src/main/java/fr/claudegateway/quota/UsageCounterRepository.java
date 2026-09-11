@@ -26,6 +26,21 @@ public interface UsageCounterRepository extends JpaRepository<UsageCounter, UUID
      */
     List<UsageCounter> findByUserIdOrderByPeriodStartDesc(UUID userId);
 
+    /**
+     * Compteurs de <b>tous</b> les comptes sur une fenêtre de mois — console d'administration
+     * (F-61 / SF-61-03), et elle seule.
+     *
+     * <p>C'est la seule lecture du projet qui ne filtre pas sur {@code user_id}, parce que son objet
+     * est précisément la vue transverse. Elle n'est atteignable que derrière
+     * {@code AdminService.assertAdmin()}, et ne rend que des <b>volumes</b> : la table ne porte
+     * aucun contenu, ni projet, ni poste.</p>
+     *
+     * @param from début inclus (premier du mois)
+     * @param to   fin <b>exclue</b> (premier du mois suivant le dernier observé)
+     */
+    List<UsageCounter> findByPeriodStartGreaterThanEqualAndPeriodStartLessThan(LocalDate from,
+            LocalDate to);
+
     /** Suppression RGPD : tous les compteurs d'usage d'un utilisateur. */
     void deleteByUserId(UUID userId);
 }

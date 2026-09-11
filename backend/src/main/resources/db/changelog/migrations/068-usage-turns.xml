@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-61 / SF-61-01 — LE RELEVÉ PAR TOUR, source de vérité de la consommation par client.
+
+      POURQUOI UNE TABLE NEUVE, et pas les colonnes qui existent déjà :
+
+      * `workspaces.agent_input_tokens` (migration 040) est un REPÈRE DE DELTA, pas un cumul :
+        `AtelierSessionService.markSessionOpened()` le remet à ZÉRO à chaque ouverture de session,
+        et `recordSessionUsage()` y ÉCRASE le cumul rendu par le fournisseur. L'agréger ferait
+        RÉTRÉCIR les totaux — un consultant verrait la consommation d'un client baisser toute
+        seule, et refacturerait moins qu'il n'a dépensé.
+      * `usage_counters` (009, F-10) est monotone et fait foi pour la facturation, mais son grain
+        est (utilisateur × mois) : aucune dimension projet ni poste.
+      * `atelier_messages.terminal_json` (041) porte bien un relevé par tour — mais en JSON
+        D'AFFICHAGE, aux côtés de la TRANSCRIPTION du tour. Facturer en traversant des contenus est
+        exactement ce que la limite de F-61 interdit.
+
+      CE QUE LA TABLE NE CONTIENT PAS, et c'est le cœur de la décision : aucune colonne de texte
+      libre. Ni message, ni commande, ni chemin, ni nom. Des VOLUMES et des HORODATAGES. La
+      confidentialité n'est pas tenue par la discipline de la requête : il n'y a rien à divulguer,
+      parce qu'il n'y a rien de rangé. C'est la seule garantie qui survive à la prochaine feature.
+
+      PAS DE CLÉ ÉTRANGÈRE vers `workspaces` ni `runner_hosts` : volontaire. Une pièce de
+      refacturation ne doit pas disparaître parce qu'on a rangé un projet. `host_id` est un
+      INSTANTANÉ du poste au moment du tour : déplacer un projet d'un poste à l'autre ne déplace pas
+      rétroactivement une dépense déjà refacturée à un client.
+
+      Table neuve : aucune donnée existante n'est touchée. Réversible : dropTable.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="068-usage-turns-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="usage_turns">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <!-- Nuls pour un tour hors projet : /chat et /ask consomment aussi, et les ignorer
+                 empêcherait la somme des clients de se réconcilier avec le total de la période. -->
+            <column name="workspace_id" type="uuid"/>
+            <column name="host_id" type="uuid"/>
+            <column name="input_tokens" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="output_tokens" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="occurred_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <!-- L'unique lecture prévue : « ce qu'un utilisateur a consommé sur une fenêtre ». -->
+        <createIndex tableName="usage_turns" indexName="idx_usage_turns_user_occurred">
+            <column name="user_id"/>
+            <column name="occurred_at"/>
+        </createIndex>
+        <rollback><dropTable tableName="usage_turns"/></rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="068-usage-turns-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="usage_turns">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"/>
+            <column name="host_id" type="uuid"/>
+            <column name="input_tokens" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="output_tokens" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="occurred_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="usage_turns" indexName="idx_usage_turns_user_occurred">
+            <column name="user_id"/>
+            <column name="occurred_at"/>
+        </createIndex>
+        <rollback><dropTable tableName="usage_turns"/></rollback>
+    </changeSet>
+
+</databaseChangeLog>

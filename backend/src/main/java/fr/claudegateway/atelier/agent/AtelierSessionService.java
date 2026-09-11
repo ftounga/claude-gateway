@@ -998,8 +998,12 @@ public class AtelierSessionService implements RelaySessionInterruptTarget {
                     ? new TurnUsage(inputDelta, outputDelta, secondsDelta)
                     : billedFromCost(costDelta, inputDelta, outputDelta, secondsDelta);
             // recordUsage prend des int : on borne les deltas à Integer.MAX_VALUE.
+            // Le projet et son poste accompagnent le décompte (F-61 / SF-61-01) : le journal par
+            // tour est la seule source qui ne rétrécit pas — les compteurs `agent_*_tokens` de ce
+            // workspace, eux, repartent de zéro à chaque session (voir markSessionOpened).
             quotaService.recordUsage(userId, (int) Math.min(billed.inputTokens(), Integer.MAX_VALUE),
-                    (int) Math.min(billed.outputTokens(), Integer.MAX_VALUE));
+                    (int) Math.min(billed.outputTokens(), Integer.MAX_VALUE),
+                    workspaceId, workspace.getHostId());
             quotaService.recordSandboxSeconds(userId, secondsDelta);
             return billed;
         } catch (RuntimeException ex) {

@@ -55,7 +55,9 @@ class QuotaBonusTest {
     @BeforeEach
     void setUp() {
         quotaService = new QuotaService(usageCounterRepository, subscriptionService, entitlementService,
-                byokKeyService, quotaAlertService, new QuotaProperties(null, null, null), clock);
+                byokKeyService, quotaAlertService,
+                org.mockito.Mockito.mock(UsageLedgerService.class),
+                new QuotaProperties(null, null, null), clock);
     }
 
     private void baseQuota(long quota) {

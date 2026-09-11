@@ -209,7 +209,7 @@ class AtelierChatServiceBudgetTest {
         verify(quotaService, never()).currentUsage(any());
         verify(quotaService, never()).assertWithinQuota(any());
         verify(quotaService, never()).recordUsage(any(), org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.anyInt());
+                org.mockito.ArgumentMatchers.anyInt(), any(), any());
     }
 
     @Test
@@ -224,7 +224,9 @@ class AtelierChatServiceBudgetTest {
 
         // Deux itérations à 7/3 : le décompte porte sur ce qui a réellement été traité, plafond
         // atteint ou non.
-        verify(quotaService).recordUsage(userId, 14, 6);
+        verify(quotaService).recordUsage(org.mockito.ArgumentMatchers.eq(userId),
+                org.mockito.ArgumentMatchers.eq(14), org.mockito.ArgumentMatchers.eq(6),
+                any(), any());
     }
 
     // ------------------------------------------------------------ la consommation est visible

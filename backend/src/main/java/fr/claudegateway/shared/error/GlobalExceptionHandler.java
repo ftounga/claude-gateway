@@ -8,6 +8,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
@@ -704,6 +705,34 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .body(new ErrorResponse("billing_error",
                         "Le service de facturation a rencontré une erreur. Veuillez réessayer."));
+    }
+
+    /**
+     * Fenêtre de consommation refusée (F-61) : bornes inversées ou période trop longue. Le message
+     * est celui du service — il décrit une règle, jamais une donnée.
+     */
+    @ExceptionHandler(fr.claudegateway.quota.InvalidUsageWindowException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidUsageWindow(
+            fr.claudegateway.quota.InvalidUsageWindowException ex) {
+        log.debug("Relevé de consommation refusé : fenêtre invalide");
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("validation_error", ex.getMessage()));
+    }
+
+    /**
+     * Paramètre de requête au mauvais type — une date illisible, par exemple. Sans ce handler, la
+     * demande tombait dans le filet à {@code 500} ci-dessous : une requête malformée y était
+     * annoncée au client comme une panne du service, ce qu'elle n'est pas.
+     *
+     * <p>La valeur soumise n'est <b>jamais</b> journalisée ni renvoyée : seul le nom du paramètre
+     * l'est.</p>
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        log.debug("Requête invalide : paramètre '{}' au mauvais format", ex.getName());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ErrorResponse("validation_error",
+                        "Requête invalide : le paramètre '" + ex.getName() + "' est mal formé."));
     }
 
     @ExceptionHandler(Exception.class)

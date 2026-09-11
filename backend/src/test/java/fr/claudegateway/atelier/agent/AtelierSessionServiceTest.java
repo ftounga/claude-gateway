@@ -444,7 +444,7 @@ class AtelierSessionServiceTest {
 
         assertThat(result.reply()).isEqualTo("Terminé.");
         // Décompte : tokens sur le quota, secondes de bac à sable sur le plafond.
-        verify(quotaService).recordUsage(USER, 1_000, 200);
+        verify(quotaService).recordUsage(eq(USER), eq(1_000), eq(200), any(), any());
         verify(quotaService).recordSandboxSeconds(USER, 8L);
     }
 
@@ -578,10 +578,10 @@ class AtelierSessionServiceTest {
         service.runTask(USER, WORKSPACE, "un");
         service.runTask(USER, WORKSPACE, "deux");
 
-        verify(quotaService).recordUsage(USER, 1_000, 200);
+        verify(quotaService).recordUsage(eq(USER), eq(1_000), eq(200), any(), any());
         verify(quotaService).recordSandboxSeconds(USER, 8L);
         // Second tour : seul l'écart est décompté, pas le cumul.
-        verify(quotaService).recordUsage(USER, 500, 60);
+        verify(quotaService).recordUsage(eq(USER), eq(500), eq(60), any(), any());
         verify(quotaService).recordSandboxSeconds(USER, 12L);
     }
 
@@ -605,7 +605,7 @@ class AtelierSessionServiceTest {
         service(enabled()).runTask(USER, WORKSPACE, "go");
 
         // Ouvrir une session remet les compteurs à zéro : le delta est le relevé lui-même, jamais négatif.
-        verify(quotaService).recordUsage(USER, 10, 2);
+        verify(quotaService).recordUsage(eq(USER), eq(10), eq(2), any(), any());
         verify(quotaService).recordSandboxSeconds(USER, 1L);
     }
 
@@ -713,7 +713,7 @@ class AtelierSessionServiceTest {
         assertThat(second.inputTokens()).isEqualTo(500L);
         assertThat(second.outputTokens()).isEqualTo(60L);
         assertThat(second.activeSeconds()).isEqualTo(12L);
-        verify(quotaService).recordUsage(USER, 500, 60);
+        verify(quotaService).recordUsage(eq(USER), eq(500), eq(60), any(), any());
     }
 
     @Test
@@ -1138,7 +1138,7 @@ class AtelierSessionServiceTest {
 
         // Le tour a réellement consommé du bac à sable : il est décompté comme tout autre tour (D3).
         assertThat(result.activeSeconds()).isEqualTo(42L);
-        verify(quotaService).recordUsage(USER, 900, 100);
+        verify(quotaService).recordUsage(eq(USER), eq(900), eq(100), any(), any());
         verify(quotaService).recordSandboxSeconds(USER, 42L);
         // ... et conservé, avec sa transcription partielle et sa marque (D2).
         ArgumentCaptor<fr.claudegateway.atelier.AtelierMessage> saved =
@@ -1591,7 +1591,7 @@ class AtelierSessionServiceTest {
 
         AtelierSessionResult result = service(enabled()).runTask(USER, WORKSPACE, "go");
 
-        verify(quotaService).recordUsage(USER, 83_333, 16_667);
+        verify(quotaService).recordUsage(eq(USER), eq(83_333), eq(16_667), any(), any());
         verify(quotaService).recordSandboxSeconds(USER, 8L);
         // Le tour affiche ce qui est réellement décompté : une seule source de vérité.
         assertThat(result.inputTokens()).isEqualTo(83_333L);
@@ -1607,7 +1607,7 @@ class AtelierSessionServiceTest {
                 .runTask(USER, WORKSPACE, "go");
 
         // 2× le décompte neutre : le levier de marge agit sur le décompte, pas sur le tarif affiché.
-        verify(quotaService).recordUsage(USER, 166_667, 33_333);
+        verify(quotaService).recordUsage(eq(USER), eq(166_667), eq(33_333), any(), any());
     }
 
     @Test
@@ -1628,7 +1628,7 @@ class AtelierSessionServiceTest {
         service(enabled()).runTask(USER, WORKSPACE, "go");
 
         // Delta = 45 cents ⇒ 50 000 tokens, au prorata du delta de tokens (1 000 / 200).
-        verify(quotaService).recordUsage(USER, 41_667, 8_333);
+        verify(quotaService).recordUsage(eq(USER), eq(41_667), eq(8_333), any(), any());
         assertThat(workspace.getAgentListCost()).isEqualTo(135L);
     }
 
@@ -1640,7 +1640,7 @@ class AtelierSessionServiceTest {
 
         service(enabled()).runTask(USER, WORKSPACE, "go");
 
-        verify(quotaService).recordUsage(USER, 1_000, 200);
+        verify(quotaService).recordUsage(eq(USER), eq(1_000), eq(200), any(), any());
     }
 
     @Test
@@ -1651,7 +1651,7 @@ class AtelierSessionServiceTest {
 
         service(enabled()).runTask(USER, WORKSPACE, "go");
 
-        verify(quotaService).recordUsage(USER, 20_000, 0);
+        verify(quotaService).recordUsage(eq(USER), eq(20_000), eq(0), any(), any());
     }
 
     @Test
@@ -1669,7 +1669,7 @@ class AtelierSessionServiceTest {
 
         service(enabled()).runTask(USER, WORKSPACE, "go");
 
-        verify(quotaService).recordUsage(USER, 0, 0);
+        verify(quotaService).recordUsage(eq(USER), eq(0), eq(0), any(), any());
     }
 
     @Test
@@ -1689,7 +1689,7 @@ class AtelierSessionServiceTest {
         service(enabled()).runTask(USER, WORKSPACE, "go");
 
         // Le cumul de l'ancienne session ne doit pas masquer les premiers tours de la nouvelle.
-        verify(quotaService).recordUsage(USER, 10_000, 0);
+        verify(quotaService).recordUsage(eq(USER), eq(10_000), eq(0), any(), any());
     }
 
     // ------------------------------------ F-35 / SF-35-01 : roster de sous-agents

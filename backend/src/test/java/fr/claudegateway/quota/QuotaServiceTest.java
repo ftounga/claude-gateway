@@ -60,10 +60,15 @@ class QuotaServiceTest {
     // Plafond de bac à sable figé à 100 s pour rendre les tests de gate déterministes.
     private final QuotaProperties quotaProperties = new QuotaProperties(null, null, 100L);
 
+    /** Journal par tour (F-61) : présent, mais muet ici — ce test juge le quota, pas le relevé. */
+    private final UsageLedgerService usageLedgerService =
+            org.mockito.Mockito.mock(UsageLedgerService.class);
+
     @BeforeEach
     void setUp() {
         quotaService = new QuotaService(usageCounterRepository, subscriptionService,
-                entitlementService, byokKeyService, quotaAlertService, quotaProperties, clock);
+                entitlementService, byokKeyService, quotaAlertService, usageLedgerService,
+                quotaProperties, clock);
     }
 
     private void stubQuota(long quota) {

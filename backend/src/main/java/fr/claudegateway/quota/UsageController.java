@@ -1,15 +1,19 @@
 package fr.claudegateway.quota;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.quota.dto.QuotaAlertResponse;
+import fr.claudegateway.quota.dto.UsageByClientResponse;
 import fr.claudegateway.quota.dto.UsageReportResponse;
 import fr.claudegateway.quota.dto.UsageResponse;
 
@@ -24,16 +28,19 @@ public class UsageController {
 
     private final QuotaService quotaService;
     private final UsageReportService usageReportService;
+    private final UsageByClientService usageByClientService;
     private final QuotaAlertService quotaAlertService;
     private final CurrentUser currentUser;
 
     public UsageController(
             QuotaService quotaService,
             UsageReportService usageReportService,
+            UsageByClientService usageByClientService,
             QuotaAlertService quotaAlertService,
             CurrentUser currentUser) {
         this.quotaService = quotaService;
         this.usageReportService = usageReportService;
+        this.usageByClientService = usageByClientService;
         this.quotaAlertService = quotaAlertService;
         this.currentUser = currentUser;
     }
@@ -53,6 +60,27 @@ public class UsageController {
     public UsageReportResponse report() {
         UUID userId = currentUser.requireId();
         return UsageReportResponse.from(usageReportService.buildReport(userId));
+    }
+
+    /**
+     * Consommation <b>par client</b> (F-61 / SF-61-02) : ce que chaque poste — et chaque projet
+     * dessous — a consommé sur la fenêtre demandée, avec son coût estimé et sa part du total.
+     * Lecture seule, isolation {@code user_id}.
+     *
+     * <p>Des volumes et des coûts, jamais des contenus : aucun message, aucune commande, aucun
+     * chemin ne transite par cette route.</p>
+     *
+     * @param from premier mois observé (facultatif ; défaut : onze mois avant {@code to})
+     * @param to   dernier mois observé, inclus (facultatif ; défaut : mois courant)
+     */
+    @GetMapping("/by-client")
+    public UsageByClientResponse byClient(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate to) {
+        UUID userId = currentUser.requireId();
+        return UsageByClientResponse.from(usageByClientService.byClient(userId, from, to));
     }
 
     /**

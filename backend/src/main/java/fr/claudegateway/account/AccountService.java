@@ -24,6 +24,7 @@ import fr.claudegateway.chat.MessageLibraryDocumentRepository;
 import fr.claudegateway.ocr.Document;
 import fr.claudegateway.ocr.DocumentRepository;
 import fr.claudegateway.quota.UsageCounterRepository;
+import fr.claudegateway.quota.UsageTurnRepository;
 import fr.claudegateway.rag.ChunkRepository;
 import fr.claudegateway.runner.RunnerPairingCodeRepository;
 import fr.claudegateway.runner.RunnerTokenRepository;
@@ -48,6 +49,7 @@ public class AccountService {
     private final UserService userService;
     private final SubscriptionRepository subscriptionRepository;
     private final UsageCounterRepository usageCounterRepository;
+    private final UsageTurnRepository usageTurnRepository;
     private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
     private final UploadedFileRepository uploadedFileRepository;
@@ -69,6 +71,7 @@ public class AccountService {
             UserService userService,
             SubscriptionRepository subscriptionRepository,
             UsageCounterRepository usageCounterRepository,
+            UsageTurnRepository usageTurnRepository,
             ConversationRepository conversationRepository,
             MessageRepository messageRepository,
             UploadedFileRepository uploadedFileRepository,
@@ -88,6 +91,7 @@ public class AccountService {
         this.userService = userService;
         this.subscriptionRepository = subscriptionRepository;
         this.usageCounterRepository = usageCounterRepository;
+        this.usageTurnRepository = usageTurnRepository;
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.uploadedFileRepository = uploadedFileRepository;
@@ -163,6 +167,9 @@ public class AccountService {
         conversationRepository.deleteByUserId(userId);
         uploadedFileRepository.deleteByUserId(userId);
         usageCounterRepository.deleteByUserId(userId);
+        // Journal de consommation par tour (F-61 / SF-61-01) : il décrit l'activité d'un
+        // compte — quel projet, quel poste, quand — et ne lui survit pas.
+        usageTurnRepository.deleteByUserId(userId);
         subscriptionRepository.deleteByUserId(userId);
         userApiKeyRepository.deleteByUserId(userId);
         // Secrets de l'utilisateur : la clé Claude ET le jeton GitHub (F-31) disparaissent avec le
