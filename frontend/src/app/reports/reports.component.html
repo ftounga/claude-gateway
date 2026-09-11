@@ -6,6 +6,19 @@
         Consommation de tokens et coût estimé de votre compte, mois par mois. Le coût est une
         estimation au tarif de la plateforme, pas un montant facturé.
       </p>
+      <!-- F-63 / SF-63-03 : deux chiffres justes coexistent désormais — le volume traité, montré
+           ici, et le décompte pondéré qu'oppose le quota. Les confondre ferait passer l'un pour une
+           erreur de l'autre. -->
+      <p class="reports__subtitle">
+        Les tokens de cette page sont des <strong>volumes traités</strong>. Votre
+        <strong>quota</strong>, lui, se décompte au coût réel : un token de sortie y pèse davantage
+        qu'un token d'entrée, une relecture mise en cache beaucoup moins. Les deux chiffres sont
+        justes, et ils ne sont pas égaux.
+        @if (billedThisPeriod() !== null && processedThisPeriod() !== null) {
+          <span>Ce mois-ci : {{ formatTokens(processedThisPeriod()!) }} traités,
+            {{ formatTokens(billedThisPeriod()!) }} décomptés de votre quota.</span>
+        }
+      </p>
     </div>
   </header>
 

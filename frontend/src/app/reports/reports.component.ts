@@ -12,6 +12,8 @@ import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { UsageReportService } from '../core/services/usage-report.service';
 import { UsagePeriodView, UsageReportView } from '../core/models/usage-report.models';
 import { UsageByClientService } from '../core/services/usage-by-client.service';
+import { UsageService } from '../core/services/usage.service';
+import { UsageView } from '../core/models/usage.models';
 import { ClientUsageView, UsageByClientView } from '../core/models/usage-by-client.models';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 
@@ -34,6 +36,12 @@ const MONTHS_FR = [
  * l'agrégation ne doit pas emporter l'historique mensuel.</p>
  *
  * <p>Des volumes et des coûts, <b>jamais</b> des contenus.</p>
+ *
+ * <p>Depuis F-63 / SF-63-03, il dit aussi <b>comment le quota compte</b> : les tokens de cette page
+ * sont des <b>volumes traités</b>, tandis que le quota se décompte au coût réel — un token de
+ * sortie y pèse davantage qu'un token d'entrée, une relecture mise en cache beaucoup moins. Les
+ * deux chiffres sont justes et ne sont pas égaux ; taire la différence ferait passer l'un pour une
+ * erreur de l'autre.</p>
  */
 @Component({
   selector: 'app-reports',
@@ -53,6 +61,7 @@ const MONTHS_FR = [
 export class ReportsComponent implements OnInit, AfterViewInit {
   private readonly usageReportService = inject(UsageReportService);
   private readonly usageByClientService = inject(UsageByClientService);
+  private readonly usageService = inject(UsageService);
   private readonly snackBar = inject(MatSnackBar);
 
   /** Fenêtres proposées pour la consommation par client. Le mois est le grain réel de la donnée. */
@@ -68,6 +77,21 @@ export class ReportsComponent implements OnInit, AfterViewInit {
     const usage = this.byClient();
     return !this.clientLoading() && (usage === null || usage.clients.length === 0);
   });
+
+  /**
+   * Consommation de la période courante (F-63 / SF-63-03), pour montrer côte à côte le volume
+   * traité et le décompte pondéré. Chargée à part et <b>en silence</b> : c'est une note de
+   * lecture, son absence ne vaut pas un message d'erreur.
+   */
+  private readonly usage = signal<UsageView | null>(null);
+
+  /** Tokens décomptés du quota ce mois-ci, ou `null` tant qu'on ne les connaît pas. */
+  readonly billedThisPeriod = computed<number | null>(() => this.usage()?.usedTokens ?? null);
+
+  /** Volume traité ce mois-ci, ou `null` si le backend ne le rapporte pas (antérieur à F-63). */
+  readonly processedThisPeriod = computed<number | null>(
+    () => this.usage()?.processedTokens ?? null,
+  );
 
   readonly displayedColumns = ['period', 'inputTokens', 'outputTokens', 'totalTokens', 'cost'];
   readonly dataSource = new MatTableDataSource<UsagePeriodView>([]);
@@ -97,6 +121,11 @@ export class ReportsComponent implements OnInit, AfterViewInit {
   ngOnInit(): void {
     this.refresh();
     this.refreshByClient();
+    this.usageService.getUsage().subscribe({
+      next: (usage) => this.usage.set(usage),
+      // Silence volontaire : la page reste complète sans cette note.
+      error: () => this.usage.set(null),
+    });
   }
 
   ngAfterViewInit(): void {
