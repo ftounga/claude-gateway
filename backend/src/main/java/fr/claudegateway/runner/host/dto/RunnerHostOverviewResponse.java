@@ -24,6 +24,14 @@ import fr.claudegateway.runner.host.HostMissionStatus;
  * les missions closes consultables — donc deux états de vue à synchroniser sur un écran qui se
  * rafraîchit toutes les quinze secondes.</p>
  *
+ * <p><b>Le poste « Hébergé »</b> (F-71 / SF-71-01) emprunte cette même forme, avec {@code id} nul et
+ * {@link #virtual} vrai : il regroupe les projets sans machine — dépôt GitHub, archive importée —
+ * que l'accueil, organisé par postes depuis F-68, n'avait nulle part où ranger. <b>Aucune ligne
+ * n'existe en base pour lui</b> : c'est une vue. Son {@code id} est nul <b>par choix</b>, et non par
+ * omission : un identifiant constant ressemblerait à une entité et finirait envoyé à un endpoint qui
+ * répondrait 404. Nul, il est inexploitable par construction.</p>
+ *
+ * @param virtual        vrai pour le poste « Hébergé » : ni appairage, ni runner, ni suppression
  * @param connected      vrai si un runner de ce poste est joignable maintenant, tous replicas confondus
  * @param missionStatus  état de mission <b>déclaré</b> par le propriétaire, indépendant de {@code connected}
  * @param lastActivityAt dernière activité observée sur le poste, tous projets confondus
@@ -38,6 +46,7 @@ public record RunnerHostOverviewResponse(
         String os,
         String shell,
         Boolean elevated,
+        boolean virtual,
         boolean connected,
         HostMissionStatus missionStatus,
         OffsetDateTime lastSeenAt,
@@ -46,6 +55,28 @@ public record RunnerHostOverviewResponse(
         int activeProjects,
         int liveTerminals,
         List<HostProjectSummary> projects) {
+
+    /** Nom du poste virtuel, écrit <b>par la gateway</b> : deux écrans qui le nommeraient chacun à
+     * leur façon seraient deux vérités. */
+    public static final String HOSTED_NAME = "Hébergé";
+
+    /**
+     * Le poste <b>virtuel</b> « Hébergé » (F-71 / SF-71-01).
+     *
+     * <p>Tout ce qui décrit une machine est nul : pas de racine, pas de système, pas
+     * d'interpréteur, jamais vu, jamais créé. {@code missionStatus} l'est aussi — une mission se
+     * déclare sur un client, et il n'y a ici ni client ni machine.</p>
+     *
+     * <p>{@code activeProjects} et {@code lastActivityAt} restent à zéro et à nul : « ce qui
+     * tourne » se lit dans le <b>journal du runner</b>, qui n'a rien à dire d'un projet qu'aucun
+     * runner n'exécute. Le signe de vie, lui, est exact et rendu — un terminal ouvert sur un projet
+     * hébergé est un terminal ouvert.</p>
+     */
+    public static RunnerHostOverviewResponse hosted(List<HostProjectSummary> projects,
+            int liveTerminals) {
+        return new RunnerHostOverviewResponse(null, HOSTED_NAME, null, null, null, null, true,
+                false, null, null, null, null, 0, liveTerminals, projects);
+    }
 
     /**
      * Un projet vu depuis son poste (F-49 / SF-49-01).

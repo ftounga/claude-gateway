@@ -23,6 +23,13 @@ public interface WorkspaceRepository extends JpaRepository<Workspace, UUID> {
     /** Projets rattachés à un poste (F-48 / SF-48-01), isolation {@code user_id}. */
     List<Workspace> findByUserIdAndHostId(UUID userId, UUID hostId);
 
+    /**
+     * Projets <b>sans poste</b> (F-71 / SF-71-01), isolation {@code user_id} : un dépôt GitHub, une
+     * archive importée, ou un projet pas encore rattaché à une machine. Ils existent depuis F-48
+     * ({@code host_id} nullable) mais n'apparaissaient sur aucune carte de l'accueil.
+     */
+    List<Workspace> findByUserIdAndHostIdIsNull(UUID userId);
+
     /** Purge à la suppression du compte (SF-11-03), après effacement des fichiers du stockage. */
     void deleteByUserId(UUID userId);
 }

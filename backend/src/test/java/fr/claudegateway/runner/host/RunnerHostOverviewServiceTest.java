@@ -282,4 +282,101 @@ class RunnerHostOverviewServiceTest {
                 .isAfter(OffsetDateTime.now().minus(RunnerHostOverviewService.MAX_OBSERVED_WINDOW)
                         .minusMinutes(1));
     }
+
+    // --------------------------------------------- le poste « Hébergé » (F-71 / SF-71-01)
+
+    private Workspace hostedProject(UUID id, String name) {
+        return Workspace.builder().id(id).userId(alice).name(name).hostId(null).projectPath(null)
+                .executionTarget(WorkspaceExecutionTarget.SANDBOX).build();
+    }
+
+    @Test
+    void projectsWithoutAMachineAreGatheredUnderTheHostedHost() {
+        // Le manque relevé en testant : un dépôt GitHub n'a pas de poste, et l'accueil organisé par
+        // postes n'avait nulle part où le mettre.
+        RunnerHost machine = host("Poste CAGIP", OffsetDateTime.now(), OffsetDateTime.now());
+        UUID depot = UUID.randomUUID();
+        when(hostService.list(alice)).thenReturn(List.of(machine));
+        connected(machine, true);
+        when(workspaceService.listByHost(alice, hostId)).thenReturn(List.of());
+        when(auditRepository.aggregateActivityByHost(eq(alice), eq(hostId), any()))
+                .thenReturn(List.of());
+        when(workspaceService.listWithoutHost(alice))
+                .thenReturn(List.of(hostedProject(depot, "mon-depot")));
+
+        List<RunnerHostOverviewResponse> overview = service().overview(alice);
+
+        // EN DERNIER : les machines d'abord, le bac à sable après.
+        assertThat(overview).hasSize(2);
+        RunnerHostOverviewResponse heberge = overview.get(1);
+        assertThat(heberge.virtual()).isTrue();
+        assertThat(heberge.id()).isNull();
+        assertThat(heberge.name()).isEqualTo("Hébergé");
+        assertThat(heberge.projects()).extracting(HostProjectSummary::name)
+                .containsExactly("mon-depot");
+        // Ce n'est pas une machine : rien de ce qui décrit une machine n'est rendu.
+        assertThat(heberge.connected()).isFalse();
+        assertThat(heberge.missionStatus()).isNull();
+        assertThat(heberge.rootName()).isNull();
+        assertThat(heberge.os()).isNull();
+        assertThat(heberge.shell()).isNull();
+        assertThat(heberge.elevated()).isNull();
+        assertThat(heberge.lastSeenAt()).isNull();
+        assertThat(heberge.createdAt()).isNull();
+        // Aucun runner n'exécute ces projets : le journal du runner n'a rien à en dire.
+        assertThat(heberge.activeProjects()).isZero();
+        assertThat(heberge.lastActivityAt()).isNull();
+        // Et le poste réel n'est pas contaminé.
+        assertThat(overview.getFirst().virtual()).isFalse();
+    }
+
+    @Test
+    void theHostedHostDoesNotAppearWhenEmpty() {
+        // Décision du PO : il n'apparaît QUE s'il contient quelque chose.
+        RunnerHost machine = host("Poste", OffsetDateTime.now(), OffsetDateTime.now());
+        when(hostService.list(alice)).thenReturn(List.of(machine));
+        connected(machine, true);
+        when(workspaceService.listByHost(alice, hostId)).thenReturn(List.of());
+        when(auditRepository.aggregateActivityByHost(eq(alice), eq(hostId), any()))
+                .thenReturn(List.of());
+        when(workspaceService.listWithoutHost(alice)).thenReturn(List.of());
+
+        assertThat(service().overview(alice)).singleElement()
+                .extracting(RunnerHostOverviewResponse::virtual).isEqualTo(false);
+    }
+
+    @Test
+    void theHostedHostCountsItsLiveTerminals() {
+        // Un terminal ouvert sur un projet hébergé est un terminal ouvert : jusqu'ici il n'était
+        // compté nulle part, et le « n / 4 » de l'accueil s'en trouvait faux.
+        UUID vivant = UUID.randomUUID();
+        UUID muet = UUID.randomUUID();
+        when(hostService.list(alice)).thenReturn(List.of());
+        when(liveTerminals.liveWorkspaceIds(alice)).thenReturn(java.util.Set.of(vivant));
+        when(workspaceService.listWithoutHost(alice)).thenReturn(
+                List.of(hostedProject(muet, "archive"), hostedProject(vivant, "depot")));
+
+        RunnerHostOverviewResponse heberge = service().overview(alice).getFirst();
+
+        assertThat(heberge.liveTerminals()).isEqualTo(1);
+        assertThat(heberge.projects()).extracting(HostProjectSummary::liveTerminal)
+                .containsExactly(false, true);
+    }
+
+    @Test
+    void theHostedHostNeverReadsTheHostRegistry() {
+        // C'est une VUE, pas une entité : aucune ligne n'est lue ni écrite dans runner_hosts pour
+        // elle, et aucun état de runner n'est sondé.
+        UUID depot = UUID.randomUUID();
+        when(hostService.list(alice)).thenReturn(List.of());
+        when(workspaceService.listWithoutHost(alice))
+                .thenReturn(List.of(hostedProject(depot, "mon-depot")));
+
+        service().overview(alice);
+
+        org.mockito.Mockito.verify(statusService, org.mockito.Mockito.never())
+                .statusOf(any(), any());
+        org.mockito.Mockito.verify(auditRepository, org.mockito.Mockito.never())
+                .aggregateActivityByHost(any(), any(), any());
+    }
 }
