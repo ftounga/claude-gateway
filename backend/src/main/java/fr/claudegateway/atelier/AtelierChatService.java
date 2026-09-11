@@ -652,7 +652,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
 
         if (hosted) {
-            quotaService.recordUsage(userId, inputTokens, outputTokens);
+            // Le projet et son poste voyagent avec le décompte (F-61 / SF-61-01) : c'est ce qui
+            // permettra de dire plus tard combien CE client a coûté. Le poste est celui du moment
+            // du tour — déplacer le projet demain ne doit pas déplacer la dépense d'hier.
+            quotaService.recordUsage(userId, inputTokens, outputTokens,
+                    workspaceId, workspace.getHostId());
         }
 
         // Jamais de message vide dans l'historique (SF-28-18) : il serait relu au tour suivant et

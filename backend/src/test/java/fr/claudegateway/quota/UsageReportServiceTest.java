@@ -44,7 +44,8 @@ class UsageReportServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new UsageReportService(usageCounterRepository, properties, clock);
+        service = new UsageReportService(usageCounterRepository, properties,
+                new UsageCostEstimator(properties), clock);
     }
 
     private UsageCounter counter(LocalDate period, long input, long output) {
@@ -112,8 +113,9 @@ class UsageReportServiceTest {
     @Test
     void costIsEstimatedAtTheRatesOfTheModelActuallyServedWhenNoneAreConfigured() {
         // F-36 / SF-36-03 : sans tarif configuré, le rapport estime au tarif Opus (5 / 25).
-        UsageReportService atDefaults = new UsageReportService(usageCounterRepository,
-                new UsageReportProperties("EUR", 12, null, null), clock);
+        UsageReportProperties defaults = new UsageReportProperties("EUR", 12, null, null);
+        UsageReportService atDefaults = new UsageReportService(usageCounterRepository, defaults,
+                new UsageCostEstimator(defaults), clock);
         when(usageCounterRepository.findByUserIdOrderByPeriodStartDesc(alice))
                 .thenReturn(List.of(counter(july, 1_000, 2_000)));
 
@@ -127,8 +129,8 @@ class UsageReportServiceTest {
     void windowLimitedToMaxMonths() {
         UsageReportProperties limited =
                 new UsageReportProperties("EUR", 2, new BigDecimal("3.00"), new BigDecimal("15.00"));
-        UsageReportService limitedService =
-                new UsageReportService(usageCounterRepository, limited, clock);
+        UsageReportService limitedService = new UsageReportService(usageCounterRepository, limited,
+                new UsageCostEstimator(limited), clock);
         when(usageCounterRepository.findByUserIdOrderByPeriodStartDesc(alice))
                 .thenReturn(List.of(
                         counter(july, 1_000, 0),

@@ -50,6 +50,9 @@ class AccountServiceTest {
     private SubscriptionRepository subscriptionRepository;
     @Mock
     private UsageCounterRepository usageCounterRepository;
+    /** Journal de consommation par tour (F-61) : purgé avec le compte, au même titre que le reste. */
+    @Mock
+    private fr.claudegateway.quota.UsageTurnRepository usageTurnRepository;
     @Mock
     private ConversationRepository conversationRepository;
     @Mock
@@ -85,7 +88,7 @@ class AccountServiceTest {
 
     private AccountService service() {
         return new AccountService(userService, subscriptionRepository, usageCounterRepository,
-                conversationRepository, messageRepository, uploadedFileRepository, userApiKeyRepository,
+                usageTurnRepository, conversationRepository, messageRepository, uploadedFileRepository, userApiKeyRepository,
                 gitTokenService, templateRepository, runnerTokenRepository, runnerPairingCodeRepository,
                 runnerAuditRepository, runnerHostRepository, workspaceRepository, workspaceService,
                 atelierMessageRepository,

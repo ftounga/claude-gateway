@@ -250,7 +250,7 @@ class AtelierChatServiceTest {
 
         assertThat(agentProvider.lastRequest).isNull();
         assertThat(listener.actions).isEmpty();
-        verify(quotaService, never()).recordUsage(any(), anyInt(), anyInt());
+        verify(quotaService, never()).recordUsage(any(), anyInt(), anyInt(), any(), any());
     }
 
     @Test
@@ -262,7 +262,7 @@ class AtelierChatServiceTest {
         service.chat(userId, workspaceId, "salut");
 
         verify(quotaService).assertWithinQuota(userId);
-        verify(quotaService).recordUsage(eq(userId), anyInt(), anyInt());
+        verify(quotaService).recordUsage(eq(userId), anyInt(), anyInt(), any(), any());
     }
 
     @Test
@@ -286,7 +286,7 @@ class AtelierChatServiceTest {
         service.chat(userId, workspaceId, "salut");
 
         verify(quotaService, never()).assertWithinQuota(any());
-        verify(quotaService, never()).recordUsage(any(), anyInt(), anyInt());
+        verify(quotaService, never()).recordUsage(any(), anyInt(), anyInt(), any(), any());
     }
 
     @Test
@@ -300,7 +300,7 @@ class AtelierChatServiceTest {
                 .isInstanceOf(WorkspaceNotFoundException.class);
 
         assertThat(agentProvider.lastRequest).isNull();
-        verify(quotaService, never()).recordUsage(any(), anyInt(), anyInt());
+        verify(quotaService, never()).recordUsage(any(), anyInt(), anyInt(), any(), any());
     }
 
     // ------------------------------------------------- SF-28-18 : tour tronqué et mémoire vide

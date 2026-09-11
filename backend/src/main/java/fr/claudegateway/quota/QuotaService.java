@@ -41,6 +41,7 @@ public class QuotaService {
     private final EntitlementService entitlementService;
     private final ByokKeyService byokKeyService;
     private final QuotaAlertService quotaAlertService;
+    private final UsageLedgerService usageLedgerService;
     private final QuotaProperties quotaProperties;
     private final Clock clock;
 
@@ -50,6 +51,7 @@ public class QuotaService {
             EntitlementService entitlementService,
             ByokKeyService byokKeyService,
             QuotaAlertService quotaAlertService,
+            UsageLedgerService usageLedgerService,
             QuotaProperties quotaProperties,
             Clock clock) {
         this.usageCounterRepository = usageCounterRepository;
@@ -57,6 +59,7 @@ public class QuotaService {
         this.entitlementService = entitlementService;
         this.byokKeyService = byokKeyService;
         this.quotaAlertService = quotaAlertService;
+        this.usageLedgerService = usageLedgerService;
         this.quotaProperties = quotaProperties;
         this.clock = clock;
     }
@@ -108,6 +111,27 @@ public class QuotaService {
      */
     @Transactional
     public void recordUsage(UUID userId, int inputTokens, int outputTokens) {
+        recordUsage(userId, inputTokens, outputTokens, null, null);
+    }
+
+    /**
+     * Même décompte, en disant <b>pour quel projet</b> et <b>sous quel poste</b> (F-61 / SF-61-01).
+     *
+     * <p>Le compteur de période est incrémenté exactement comme avant — c'est lui qui fait foi pour
+     * le quota et la facturation. S'y ajoute une ligne du <b>journal par tour</b>, qui seule sait
+     * répondre à « combien ce client me coûte-t-il ». Les deux écritures sont indépendantes : le
+     * journal ne peut ni bloquer, ni annuler le décompte (voir {@link UsageLedgerService}).</p>
+     *
+     * <p>La ventilation n'est <b>pas</b> lue depuis {@code workspaces.agent_*_tokens} : ces colonnes
+     * sont remises à zéro à chaque session, et les agréger ferait rétrécir les totaux.</p>
+     *
+     * @param workspaceId projet du tour, ou {@code null} pour un tour hors projet ({@code /chat},
+     *                    {@code /ask})
+     * @param hostId      poste du projet <b>au moment du tour</b>, ou {@code null}
+     */
+    @Transactional
+    public void recordUsage(UUID userId, int inputTokens, int outputTokens,
+            UUID workspaceId, UUID hostId) {
         long input = Math.max(0, inputTokens);
         long output = Math.max(0, outputTokens);
         if (input == 0 && output == 0) {
@@ -120,6 +144,9 @@ public class QuotaService {
         counter.setOutputTokens(counter.getOutputTokens() + output);
         raiseQuotaAlertIfNeeded(userId, counter);
         usageCounterRepository.save(counter);
+        // Après le compteur, et jamais avant : si quelque chose doit manquer, c'est le relevé
+        // d'attribution, pas la consommation opposable au quota.
+        usageLedgerService.recordTurn(userId, workspaceId, hostId, input, output);
     }
 
     /**
