@@ -9,6 +9,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import fr.claudegateway.atelier.RunnerShell;
 import fr.claudegateway.billing.seat.SeatLedgerService;
+import fr.claudegateway.runner.RunnerPairingCodeRepository;
+import fr.claudegateway.runner.RunnerTokenRepository;
 
 /**
  * Cycle de vie des postes (F-48 / SF-48-01) : création, listing, suppression, et enregistrement de
@@ -24,10 +26,16 @@ public class RunnerHostService implements RunnerShellRecorder {
 
     private final RunnerHostRepository repository;
     private final SeatLedgerService seatLedgerService;
+    private final RunnerTokenRepository tokenRepository;
+    private final RunnerPairingCodeRepository pairingCodeRepository;
 
-    public RunnerHostService(RunnerHostRepository repository, SeatLedgerService seatLedgerService) {
+    public RunnerHostService(RunnerHostRepository repository, SeatLedgerService seatLedgerService,
+            RunnerTokenRepository tokenRepository,
+            RunnerPairingCodeRepository pairingCodeRepository) {
         this.repository = repository;
         this.seatLedgerService = seatLedgerService;
+        this.tokenRepository = tokenRepository;
+        this.pairingCodeRepository = pairingCodeRepository;
     }
 
     /** Crée un poste au nom libre. Le nom est requis : c'est ce qui le rend reconnaissable. */
@@ -112,16 +120,28 @@ public class RunnerHostService implements RunnerShellRecorder {
     }
 
     /**
-     * Supprime un poste possédé. Les jetons, codes et rattachements de projets sont nettoyés par
-     * l'appelant ({@code RunnerHostController}) : ce service ne connaît ni les uns ni les autres.
+     * Supprime un poste possédé <b>avec ses identifiants</b> — jetons runner et codes d'appairage —
+     * en <b>une seule transaction</b>.
+     *
+     * <p>Les trois effacements tenaient auparavant dans le contrôleur, hors transaction : la purge
+     * des jetons y levait {@code TransactionRequiredException}, et la suppression d'un poste
+     * répondait 500. Le défaut n'avait jamais été vu parce qu'aucun écran n'appelait ce chemin —
+     * c'est précisément ce que F-69 vient corriger en l'exposant. Les rassembler ici, c'est aussi
+     * garantir qu'on ne peut plus supprimer un poste en laissant vivre un jeton qui l'authentifie.</p>
      *
      * <p>Ses <b>mois-postes</b> (F-65) partent avec lui : supprimer un poste n'est pas le clôturer.
      * La clôture range et laisse le mois engagé ; la suppression détruit la machine, son appairage
      * et ses jetons — la garder en facturation montrerait une ligne sans nom.</p>
+     *
+     * <p>Ce service ne connaît pas les <b>projets</b>, et n'a pas à les connaître : depuis F-69 un
+     * poste ne se supprime qu'à zéro projet, et la garde vit là où l'orchestration vit — dans le
+     * contrôleur.</p>
      */
     @Transactional
-    public void delete(UUID userId, UUID hostId) {
+    public void deleteWithCredentials(UUID userId, UUID hostId) {
         RunnerHost host = requireOwned(userId, hostId);
+        tokenRepository.deleteByHostId(hostId);
+        pairingCodeRepository.deleteByHostId(hostId);
         seatLedgerService.forgetHost(host.getId());
         repository.delete(host);
     }

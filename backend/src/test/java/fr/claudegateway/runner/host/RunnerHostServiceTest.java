@@ -31,13 +31,16 @@ class RunnerHostServiceTest {
 
     @Mock private RunnerHostRepository repository;
     @Mock private SeatLedgerService seatLedgerService;
+    @Mock private fr.claudegateway.runner.RunnerTokenRepository tokenRepository;
+    @Mock private fr.claudegateway.runner.RunnerPairingCodeRepository pairingCodeRepository;
 
     private final UUID alice = UUID.randomUUID();
     private final UUID bob = UUID.randomUUID();
     private final UUID hostId = UUID.randomUUID();
 
     private RunnerHostService service() {
-        return new RunnerHostService(repository, seatLedgerService);
+        return new RunnerHostService(repository, seatLedgerService, tokenRepository,
+                pairingCodeRepository);
     }
 
     @Test
@@ -217,5 +220,34 @@ class RunnerHostServiceTest {
     void declaredShellIsNullForAProjectAttachedToNothing() {
         assertThat(service().declaredShell(null)).isNull();
         verify(repository, never()).findById(any());
+    }
+
+    // -------------------------------------------------- suppression (F-69 / SF-69-01)
+
+    @Test
+    void deletingAHostTakesItsCredentialsWithIt() {
+        RunnerHost host = RunnerHost.builder().id(hostId).userId(alice).name("Poste CAGIP").build();
+        when(repository.findByIdAndUserId(hostId, alice)).thenReturn(Optional.of(host));
+
+        service().deleteWithCredentials(alice, hostId);
+
+        // Un poste supprimé ne doit laisser derrière lui AUCUN moyen de s'authentifier : le jeton
+        // authentifierait un runner au nom d'une machine qui n'existe plus, jusqu'à son expiration.
+        verify(tokenRepository).deleteByHostId(hostId);
+        verify(pairingCodeRepository).deleteByHostId(hostId);
+        verify(seatLedgerService).forgetHost(hostId);
+        verify(repository).delete(host);
+    }
+
+    @Test
+    void theHostOfAnotherAccountIsNeverDeleted() {
+        when(repository.findByIdAndUserId(hostId, bob)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service().deleteWithCredentials(bob, hostId))
+                .isInstanceOf(RunnerHostNotFoundException.class);
+
+        verify(tokenRepository, never()).deleteByHostId(any());
+        verify(pairingCodeRepository, never()).deleteByHostId(any());
+        verify(repository, never()).delete(any(RunnerHost.class));
     }
 }

@@ -49,6 +49,8 @@ class WorkspaceServiceLocalTest {
                 org.mockito.Mockito.mock(
                         fr.claudegateway.governance.GovernanceActivationRepository.class),
                 org.mockito.Mockito.mock(
+                        fr.claudegateway.runner.audit.RunnerAuditRepository.class),
+                org.mockito.Mockito.mock(
                         org.springframework.context.ApplicationEventPublisher.class));
     }
 

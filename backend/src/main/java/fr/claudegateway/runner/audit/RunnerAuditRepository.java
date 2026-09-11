@@ -56,4 +56,15 @@ public interface RunnerAuditRepository extends JpaRepository<RunnerAudit, UUID> 
      * (chemins lus, commandes exécutées) et ne survit pas au compte qu'il décrit.
      */
     void deleteByUserId(UUID userId);
+
+    /**
+     * Purge à la suppression d'un <b>projet</b> (F-69 / SF-69-01), pour la même raison à une échelle
+     * plus fine : sans elle, le journal d'un projet supprimé survivait <b>sans porte d'entrée</b> —
+     * sa seule lecture est {@code GET /workspaces/{id}/runner/audit}, sur un projet qui n'existe
+     * plus — tout en continuant de porter des commandes exécutées et des chemins lus.
+     *
+     * <p>Le filtre porte sur {@code user_id} <b>et</b> {@code workspace_id} : un identifiant de
+     * projet ne suffit jamais à effacer le journal de quelqu'un d'autre.</p>
+     */
+    void deleteByUserIdAndWorkspaceId(UUID userId, UUID workspaceId);
 }

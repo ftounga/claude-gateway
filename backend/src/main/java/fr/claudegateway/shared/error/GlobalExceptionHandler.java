@@ -555,6 +555,19 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("not_found", ex.getMessage()));
     }
 
+    @ExceptionHandler(fr.claudegateway.runner.host.HostHasProjectsException.class)
+    public ResponseEntity<ErrorResponse> handleHostHasProjects(
+            fr.claudegateway.runner.host.HostHasProjectsException ex) {
+        // Suppression d'un poste refusee tant qu'il porte des projets (F-69 / SF-69-01). 409 et non
+        // 400 : la demande est valide, c'est l'etat de la ressource qui s'y oppose — et il change
+        // des que l'utilisateur a supprime les projets. Le compte de projets n'est pas une donnee
+        // sensible : il decrit ce que l'appelant possede deja.
+        log.debug("Suppression de poste refusee : {} projet(s) encore rattache(s)",
+                ex.getRemainingProjects());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("host_has_projects", ex.getMessage()));
+    }
+
     @ExceptionHandler(fr.claudegateway.runner.host.InvalidHostNameException.class)
     public ResponseEntity<ErrorResponse> handleInvalidHostName(
             fr.claudegateway.runner.host.InvalidHostNameException ex) {

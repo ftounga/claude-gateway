@@ -17,11 +17,9 @@ import fr.claudegateway.atelier.AtelierAccessService;
 import fr.claudegateway.atelier.WorkspaceService;
 import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.runner.RunnerKillSwitchService;
-import fr.claudegateway.runner.RunnerPairingCodeRepository;
 import fr.claudegateway.runner.RunnerPairingService;
 import fr.claudegateway.runner.RunnerPairingService.PairingCode;
 import fr.claudegateway.runner.RunnerStatusService;
-import fr.claudegateway.runner.RunnerTokenRepository;
 import fr.claudegateway.runner.RunnerTokenService;
 import fr.claudegateway.runner.dto.PairingCodeResponse;
 import fr.claudegateway.runner.dto.RunnerKillResponse;
@@ -54,8 +52,6 @@ public class RunnerHostController {
     private final RunnerTokenService tokenService;
     private final RunnerStatusService statusService;
     private final RunnerKillSwitchService killSwitchService;
-    private final RunnerTokenRepository tokenRepository;
-    private final RunnerPairingCodeRepository pairingCodes;
     private final WorkspaceService workspaceService;
     private final AtelierAccessService atelierAccess;
     private final CurrentUser currentUser;
@@ -63,8 +59,7 @@ public class RunnerHostController {
     public RunnerHostController(RunnerHostService hostService,
             RunnerHostOverviewService overviewService, RunnerPairingService pairingService,
             RunnerTokenService tokenService, RunnerStatusService statusService,
-            RunnerKillSwitchService killSwitchService, RunnerTokenRepository tokenRepository,
-            RunnerPairingCodeRepository pairingCodes, WorkspaceService workspaceService,
+            RunnerKillSwitchService killSwitchService, WorkspaceService workspaceService,
             AtelierAccessService atelierAccess, CurrentUser currentUser) {
         this.hostService = hostService;
         this.overviewService = overviewService;
@@ -72,8 +67,6 @@ public class RunnerHostController {
         this.tokenService = tokenService;
         this.statusService = statusService;
         this.killSwitchService = killSwitchService;
-        this.tokenRepository = tokenRepository;
-        this.pairingCodes = pairingCodes;
         this.workspaceService = workspaceService;
         this.atelierAccess = atelierAccess;
         this.currentUser = currentUser;
@@ -153,19 +146,31 @@ public class RunnerHostController {
     }
 
     /**
-     * Supprime un poste : coupe sa liaison, efface ses jetons et ses codes, <b>détache</b> ses
-     * projets. Les projets survivent — ils ne sont pas les fichiers, ils sont la conversation.
+     * Supprime un poste <b>vide</b> : coupe sa liaison, efface ses jetons et ses codes, puis la
+     * ligne du poste.
+     *
+     * <p><b>Refusé tant qu'il reste des projets</b> (F-69 / SF-69-01), décision du PO : pas de
+     * cascade. Le refus est <b>total</b> — il précède le coupe-circuit, donc aucun jeton n'est
+     * révoqué, aucune liaison n'est coupée, aucun projet n'est touché. Un refus qui aurait déjà
+     * débranché la machine ne serait pas un refus.</p>
+     *
+     * <p>Avant F-69, ce chemin <b>détachait</b> les projets : ils survivaient, sans machine, sans
+     * que personne l'ait demandé. Ni cascade ni refus — une troisième voie, qu'on retire ici.</p>
+     *
+     * <p>La suppression de compte (SF-11-03) ne passe pas par là : elle efface les postes par le
+     * repository, après avoir supprimé les projets. Cette garde ne la bloque donc pas.</p>
      */
     @DeleteMapping("/{hostId}")
     public ResponseEntity<Void> delete(@PathVariable UUID hostId) {
         atelierAccess.requireAccess();
         UUID userId = currentUser.requireId();
-        hostService.requireOwned(userId, hostId);
+        RunnerHost host = hostService.requireOwned(userId, hostId);
+        int remaining = workspaceService.listByHost(userId, hostId).size();
+        if (remaining > 0) {
+            throw new HostHasProjectsException(host.getName(), remaining);
+        }
         killSwitchService.kill(userId, hostId);
-        workspaceService.detachAllFromHost(userId, hostId);
-        tokenRepository.deleteByHostId(hostId);
-        pairingCodes.deleteByHostId(hostId);
-        hostService.delete(userId, hostId);
+        hostService.deleteWithCredentials(userId, hostId);
         return ResponseEntity.noContent().build();
     }
 

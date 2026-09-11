@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import fr.claudegateway.atelier.storage.WorkspaceStorage;
 import fr.claudegateway.governance.GovernanceActivationRepository;
+import fr.claudegateway.runner.audit.RunnerAuditRepository;
 import fr.claudegateway.runner.host.RunnerProjectPath;
 
 /**
@@ -44,16 +45,19 @@ public class WorkspaceService {
     private final AtelierProperties properties;
     private final AtelierMessageRepository atelierMessageRepository;
     private final GovernanceActivationRepository governanceActivations;
+    private final RunnerAuditRepository runnerAudit;
     private final ApplicationEventPublisher events;
 
     public WorkspaceService(WorkspaceRepository workspaceRepository, WorkspaceStorage storage,
             AtelierProperties properties, AtelierMessageRepository atelierMessageRepository,
-            GovernanceActivationRepository governanceActivations, ApplicationEventPublisher events) {
+            GovernanceActivationRepository governanceActivations, RunnerAuditRepository runnerAudit,
+            ApplicationEventPublisher events) {
         this.workspaceRepository = workspaceRepository;
         this.storage = storage;
         this.properties = properties;
         this.atelierMessageRepository = atelierMessageRepository;
         this.governanceActivations = governanceActivations;
+        this.runnerAudit = runnerAudit;
         this.events = events;
     }
 
@@ -190,18 +194,6 @@ public class WorkspaceService {
         return workspaceRepository.findByUserIdAndHostId(userId, hostId);
     }
 
-    /**
-     * Détache tous les projets d'un poste supprimé. Ils ne disparaissent pas : un projet survit à
-     * la machine sur laquelle il tournait, et son historique de conversation avec.
-     */
-    @Transactional
-    public void detachAllFromHost(UUID userId, UUID hostId) {
-        for (Workspace workspace : workspaceRepository.findByUserIdAndHostId(userId, hostId)) {
-            workspace.setHostId(null);
-            workspace.setProjectPath(null);
-        }
-    }
-
     /** Workspaces de l'utilisateur (isolation {@code user_id}). */
     public List<Workspace> list(UUID userId) {
         return workspaceRepository.findByUserIdOrderByCreatedAtDesc(userId);
@@ -318,12 +310,27 @@ public class WorkspaceService {
     }
 
     /**
-     * Supprime le workspace : fichiers du stockage, <b>messages d'Atelier</b>, puis la ligne.
+     * Supprime le projet <b>côté gateway, et uniquement là</b> (F-69) : les fichiers du stockage
+     * objet de la gateway, la <b>conversation</b>, les <b>réglages</b> de gouvernance, le
+     * <b>journal</b> du runner, puis la ligne du projet.
+     *
+     * <p><b>Le dossier sur la machine de l'utilisateur n'est jamais touché</b>, et il ne peut pas
+     * l'être : aucune ligne de cette méthode n'ouvre le canal runner, n'émet de commande ni ne lit
+     * un chemin de machine. Le {@code project_path} du projet n'est pas relu. C'est une limite de
+     * périmètre tranchée par le PO — supprimer les fichiers d'un client depuis une application web
+     * serait irréversible et illégitime — et l'écran l'écrit avant de demander confirmation.</p>
      *
      * <p>Les messages ont été ajoutés par SF-11-03 : sans eux, l'historique des sessions d'agent
      * survivait à son workspace, sans plus aucun moyen d'y accéder ni de le purger. Les
      * <b>activations de gouvernance</b> (F-51 / SF-51-02) suivent la même règle et pour la même
-     * raison : elles ne désignent plus rien une fois le projet parti.</p>
+     * raison : elles ne désignent plus rien une fois le projet parti. Le <b>journal du runner</b>
+     * (F-69 / SF-69-01) la suit à son tour : il porte des commandes exécutées et des chemins lus,
+     * et sa seule lecture était celle d'un projet qui n'existe plus.</p>
+     *
+     * <p><b>Ce qui ne part pas</b> : {@code usage_turns}, le relevé de consommation par tour
+     * (F-61). Ce sont des pièces de facturation — la dépense a eu lieu — et
+     * {@code UsageByClientService} sait déjà nommer « supprimé » un projet absent. Les effacer
+     * ferait rétrécir une consommation déjà facturée.</p>
      */
     @Transactional
     public void delete(UUID userId, UUID id) {
@@ -331,6 +338,7 @@ public class WorkspaceService {
         storage.deletePrefix(prefixOf(userId, id));
         atelierMessageRepository.deleteByWorkspaceId(id);
         governanceActivations.deleteByUserIdAndWorkspaceId(userId, id);
+        runnerAudit.deleteByUserIdAndWorkspaceId(userId, id);
         workspaceRepository.delete(workspace);
     }
 

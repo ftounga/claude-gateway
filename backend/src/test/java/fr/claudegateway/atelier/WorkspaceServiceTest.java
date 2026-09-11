@@ -40,6 +40,13 @@ class WorkspaceServiceTest {
     @org.mockito.Mock
     private AtelierMessageRepository atelierMessageRepository;
 
+    @Mock
+    private fr.claudegateway.governance.GovernanceActivationRepository governanceActivations;
+
+    /** Journal du runner : purgé avec le projet depuis F-69 / SF-69-01. */
+    @Mock
+    private fr.claudegateway.runner.audit.RunnerAuditRepository runnerAudit;
+
     private final UUID alice = UUID.randomUUID();
     private final UUID workspaceId = UUID.randomUUID();
 
@@ -47,8 +54,8 @@ class WorkspaceServiceTest {
         return new WorkspaceService(workspaceRepository, storage,
                 new AtelierProperties("in-memory", null, "atelier/", maxTotal, maxEntries, maxFile, null, null, null, null, null, null, true),
                 atelierMessageRepository,
-                org.mockito.Mockito.mock(
-                        fr.claudegateway.governance.GovernanceActivationRepository.class),
+                governanceActivations,
+                runnerAudit,
                 org.mockito.Mockito.mock(
                         org.springframework.context.ApplicationEventPublisher.class));
     }
@@ -181,6 +188,45 @@ class WorkspaceServiceTest {
 
         assertThatThrownBy(() -> service().deleteFile(alice, workspaceId, "nope.txt"))
                 .isInstanceOf(WorkspaceNotFoundException.class);
+    }
+
+    // ------------------------------------------------ suppression d'un projet (F-69 / SF-69-01)
+
+    @Test
+    void deleteErasesEverythingHeldByTheGateway() {
+        givenOwned();
+
+        service().delete(alice, workspaceId);
+
+        // Conversation, réglages, journal : tout ce que le PO range dans « côté gateway ».
+        verify(atelierMessageRepository).deleteByWorkspaceId(workspaceId);
+        verify(governanceActivations).deleteByUserIdAndWorkspaceId(alice, workspaceId);
+        verify(runnerAudit).deleteByUserIdAndWorkspaceId(alice, workspaceId);
+        verify(workspaceRepository).delete(any(Workspace.class));
+    }
+
+    @Test
+    void deleteRejectsWorkspaceOfAnotherUserWithoutErasingAnything() {
+        when(workspaceRepository.findByIdAndUserId(workspaceId, alice)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service().delete(alice, workspaceId))
+                .isInstanceOf(WorkspaceNotFoundException.class);
+
+        verify(atelierMessageRepository, never()).deleteByWorkspaceId(any());
+        verify(runnerAudit, never()).deleteByUserIdAndWorkspaceId(any(), any());
+        verify(workspaceRepository, never()).delete(any(Workspace.class));
+    }
+
+    /**
+     * Le relevé de consommation (F-61) n'est <b>pas</b> une dépendance de ce service, et c'est la
+     * preuve la plus solide qu'une suppression de projet ne peut pas l'entamer : il n'y a aucun
+     * chemin de code pour le faire. Ce test fige ce fait — ajouter un jour
+     * {@code UsageTurnRepository} ici le ferait échouer, et obligerait à rouvrir l'arbitrage.
+     */
+    @Test
+    void deleteCannotTouchBillingEvidence() {
+        assertThat(WorkspaceService.class.getDeclaredFields())
+                .noneMatch(field -> field.getType().getSimpleName().contains("UsageTurn"));
     }
 
     @Test
