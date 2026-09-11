@@ -25,7 +25,7 @@ class StripeBillingProviderTest {
         return new StripeBillingProvider(new BillingProperties(14, new BillingProperties.Stripe(
                 secretKey, webhookSecret, Map.of("PRO", "price_pro"),
                 Map.of("STANDARD", "price_topup"), null, null, Map.of(),
-                "price_atelier_option", "40", Map.of(), Map.of())));
+                "price_atelier_option", "40", Map.of(), Map.of(), Map.of())));
     }
 
     @Test
@@ -99,20 +99,20 @@ class StripeBillingProviderTest {
         assertThat(provider("sk_test", "whsec")).isNotNull();
         assertThat(new BillingProperties(14, new BillingProperties.Stripe(
                 "sk", "wh", Map.of(), Map.of(), null, null, Map.of(), "price_opt", "40",
-                Map.of(), Map.of()))
+                Map.of(), Map.of(), Map.of()))
                 .stripe().isAtelierOptionConfigured()).isTrue();
         assertThat(new BillingProperties(14, new BillingProperties.Stripe(
                 "sk", "wh", Map.of(), Map.of(), null, null, Map.of(), "", "40",
-                Map.of(), Map.of()))
+                Map.of(), Map.of(), Map.of()))
                 .stripe().isAtelierOptionConfigured()).isFalse();
         assertThat(new BillingProperties(14, new BillingProperties.Stripe(
                 "", "wh", Map.of(), Map.of(), null, null, Map.of(), "price_opt", "40",
-                Map.of(), Map.of()))
+                Map.of(), Map.of(), Map.of()))
                 .stripe().isAtelierOptionConfigured()).isFalse();
         // Défaut de la feature : 40 €/mois, même si la configuration ne le dit pas.
         assertThat(new BillingProperties(14, new BillingProperties.Stripe(
                 "sk", "wh", Map.of(), Map.of(), null, null, Map.of(), "price_opt", null,
-                Map.of(), Map.of()))
+                Map.of(), Map.of(), Map.of()))
                 .stripe().atelierOptionDisplayPrice()).isEqualTo("40");
     }
 

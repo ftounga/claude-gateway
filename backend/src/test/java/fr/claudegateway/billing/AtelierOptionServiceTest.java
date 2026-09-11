@@ -52,7 +52,7 @@ class AtelierOptionServiceTest {
     private static BillingProperties properties(String optionPriceId, String displayPrice) {
         return new BillingProperties(5, new BillingProperties.Stripe(
                 "sk_test", "whsec_test", Map.of(), Map.of(), null, null, Map.of(),
-                optionPriceId, displayPrice, Map.of(), Map.of()));
+                optionPriceId, displayPrice, Map.of(), Map.of(), Map.of()));
     }
 
     private void withProperties(BillingProperties props) {

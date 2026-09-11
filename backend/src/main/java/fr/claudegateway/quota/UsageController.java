@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.auth.CurrentUser;
+import fr.claudegateway.billing.BillingProperties;
+import fr.claudegateway.billing.TopUpPack;
 import fr.claudegateway.quota.dto.QuotaAlertResponse;
 import fr.claudegateway.quota.dto.UsageByClientResponse;
 import fr.claudegateway.quota.dto.UsageReportResponse;
@@ -31,18 +33,21 @@ public class UsageController {
     private final UsageByClientService usageByClientService;
     private final QuotaAlertService quotaAlertService;
     private final CurrentUser currentUser;
+    private final BillingProperties billingProperties;
 
     public UsageController(
             QuotaService quotaService,
             UsageReportService usageReportService,
             UsageByClientService usageByClientService,
             QuotaAlertService quotaAlertService,
-            CurrentUser currentUser) {
+            CurrentUser currentUser,
+            BillingProperties billingProperties) {
         this.quotaService = quotaService;
         this.usageReportService = usageReportService;
         this.usageByClientService = usageByClientService;
         this.quotaAlertService = quotaAlertService;
         this.currentUser = currentUser;
+        this.billingProperties = billingProperties;
     }
 
     /** Consommation de tokens de l'utilisateur courant pour la période de facturation en cours. */
@@ -86,11 +91,21 @@ public class UsageController {
     /**
      * Alerte de consommation (F-42) : l'utilisateur courant a-t-il franchi le seuil de sa période,
      * et avec quel pack peut-il recharger ? Lecture seule, isolation {@code user_id}.
+     *
+     * <p>Le pack proposé porte son <b>montant d'affichage</b> (F-67), résolu par la configuration de
+     * facturation — la même que celle de l'écran de facturation. Une recharge en un clic qui ne dit
+     * pas ce qu'elle coûte fait cliquer à l'aveugle ; deux sources de prix différentes finiraient par
+     * afficher deux montants.</p>
      */
     @GetMapping("/alert")
     public QuotaAlertResponse alert() {
         UUID userId = currentUser.requireId();
-        return QuotaAlertResponse.from(quotaAlertService.currentAlert(userId));
+        QuotaAlert alert = quotaAlertService.currentAlert(userId);
+        TopUpPack pack = alert.recommendedPack();
+        String priceEur = pack == null
+                ? null
+                : billingProperties.stripe().topupDisplayPrice(pack.code());
+        return QuotaAlertResponse.from(alert, priceEur);
     }
 
     /**

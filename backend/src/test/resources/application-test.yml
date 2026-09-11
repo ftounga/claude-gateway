@@ -54,6 +54,12 @@ app:
         DAILY: "9"
       yearly-display-prices:
         SOLO: "240"
+      # F-67 : DAY a un montant d'affichage, STANDARD n'en a pas. C'est la configuration LIVRÉE
+      # (le montant du pack 1 M appartient au PO), et c'est ce qui permet aux tests de vérifier les
+      # deux cas d'un même appel : le pack qui affiche son prix, et celui qui n'en affiche aucun
+      # sans jamais en inventer un.
+      topup-display-prices:
+        DAY: "4,99"
 logging:
   level:
     fr.claudegateway: DEBUG

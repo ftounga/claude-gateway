@@ -178,7 +178,11 @@ class QuotaAlertApiIntegrationTest {
                 .andExpect(jsonPath("$.usedPercent", is(80)))
                 .andExpect(jsonPath("$.thresholdPercent", is(80)))
                 .andExpect(jsonPath("$.topUp.code", is("STANDARD")))
-                .andExpect(jsonPath("$.topUp.tokens", is(1000000)));
+                .andExpect(jsonPath("$.topUp.tokens", is(1000000)))
+                // F-67 : le pack porte désormais son montant d'affichage. Celui du pack 1 M n'est
+                // pas configuré (il appartient au PO) — l'API renvoie donc null, et surtout PAS un
+                // montant de repli : c'est à l'écran de dire que le prix sera indiqué au paiement.
+                .andExpect(jsonPath("$.topUp.priceEur", nullValue()));
     }
 
     /**

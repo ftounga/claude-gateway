@@ -8,6 +8,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -255,6 +258,40 @@ class BillingCheckoutApiIntegrationTest {
                 // Deux packs disponibles (Recharge 200 k + Recharge 1 M), ordre non contraint.
                 .andExpect(jsonPath("$.packs[*].code", org.hamcrest.Matchers.hasItems("DAY", "STANDARD")))
                 .andExpect(jsonPath("$.packs[*].tokens", org.hamcrest.Matchers.hasItems(200000, 1000000)));
+    }
+
+    /**
+     * F-67 — le prix avant le clic. Le pack dont le montant est configuré l'expose ; celui dont le
+     * montant appartient au PO expose {@code null}, <b>jamais</b> un montant de repli : un chiffre
+     * inventé à côté d'un bouton d'achat est opposable par un client.
+     */
+    @Test
+    void topUpPacksCarryTheirConfiguredDisplayPriceAndNeverAnInventedOne() throws Exception {
+        String body = mockMvc.perform(get("/api/billing/topups").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode packs = new ObjectMapper().readTree(body).get("packs");
+        JsonNode day = packOf(packs, "DAY");
+        JsonNode standard = packOf(packs, "STANDARD");
+
+        assertThat(day.get("priceEur").asText()).isEqualTo("4,99");
+        // Le pack 1 M reste listé et vendable, SANS montant : son prix appartient au PO.
+        assertThat(standard.get("priceEur").isNull()).isTrue();
+        // Aucun price ID Stripe ne sort de cet endpoint, comme pour les plans.
+        assertThat(body).doesNotContain("price_topup");
+    }
+
+    private static JsonNode packOf(JsonNode packs, String code) {
+        for (JsonNode pack : packs) {
+            if (code.equals(pack.get("code").asText())) {
+                return pack;
+            }
+        }
+        throw new AssertionError("Pack absent du catalogue : " + code);
     }
 
     @Test

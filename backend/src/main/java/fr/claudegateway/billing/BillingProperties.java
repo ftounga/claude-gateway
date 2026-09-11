@@ -24,7 +24,8 @@ public record BillingProperties(
         }
         if (stripe == null) {
             stripe = new Stripe(
-                    null, null, Map.of(), Map.of(), null, null, Map.of(), null, null, Map.of(), Map.of());
+                    null, null, Map.of(), Map.of(), null, null, Map.of(), null, null,
+                    Map.of(), Map.of(), Map.of());
         }
     }
 
@@ -43,6 +44,10 @@ public record BillingProperties(
      * @param atelierOptionDisplayPrice montant d'affichage EUR de l'option Atelier (cosmétique, défaut 40)
      * @param yearlyPrices        code de plan → price ID Stripe <b>annuel</b> (F-43) — vide => pas d'engagement annuel
      * @param yearlyDisplayPrices code de plan → montant d'affichage EUR <b>annuel</b> (cosmétique, F-43)
+     * @param topupDisplayPrices  code de pack de recharge → montant d'affichage EUR (cosmétique, F-67).
+     *                            Même patron que {@code displayPrices} : le débit réel appartient au
+     *                            price ID, jamais à ce montant. Un pack sans entrée ici est vendable
+     *                            <b>sans prix affiché</b> — l'écran le dit, il n'invente rien.
      */
     public record Stripe(
             String secretKey,
@@ -55,7 +60,8 @@ public record BillingProperties(
             String atelierOptionPriceId,
             String atelierOptionDisplayPrice,
             Map<String, String> yearlyPrices,
-            Map<String, String> yearlyDisplayPrices) {
+            Map<String, String> yearlyDisplayPrices,
+            Map<String, String> topupDisplayPrices) {
 
         public Stripe {
             if (prices == null) {
@@ -72,6 +78,9 @@ public record BillingProperties(
             }
             if (yearlyDisplayPrices == null) {
                 yearlyDisplayPrices = Map.of();
+            }
+            if (topupDisplayPrices == null) {
+                topupDisplayPrices = Map.of();
             }
             if (successUrl == null || successUrl.isBlank()) {
                 successUrl = "http://localhost:4200/billing?checkout=success";
@@ -99,6 +108,23 @@ public record BillingProperties(
         /** Price ID Stripe associé à un pack de tokens (top-up), ou {@code null} si non configuré. */
         public String topupPriceId(String packCode) {
             return topupPrices == null ? null : topupPrices.get(packCode);
+        }
+
+        /**
+         * Montant d'affichage (EUR) d'un pack de recharge (F-67), ou {@code null} si aucun montant
+         * n'est configuré pour ce pack.
+         *
+         * <p>Le {@code null} est la réponse <b>voulue</b> quand la configuration est muette : il vaut
+         * mieux qu'un écran dise « prix indiqué au paiement » que d'afficher un montant que personne
+         * n'a décidé. Une valeur blanche est donc traitée comme une absence — sans quoi elle
+         * traverserait l'API et s'afficherait « €» à côté d'un bouton d'achat.</p>
+         */
+        public String topupDisplayPrice(String packCode) {
+            if (packCode == null || topupDisplayPrices == null) {
+                return null;
+            }
+            String price = topupDisplayPrices.get(packCode);
+            return price == null || price.isBlank() ? null : price;
         }
 
         /** Montant d'affichage (EUR) du plan pour la page de facturation, ou {@code null} si absent. */
