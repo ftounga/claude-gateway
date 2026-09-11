@@ -80,7 +80,8 @@ public class ChatController {
         // Pré-vol ET relais sur le thread SSE : une erreur de pré-vol (quota, modèle, isolation…) est
         // émise DANS le flux (événement {@code error}), jamais via l'@ExceptionHandler JSON — qui
         // produirait un 406 (HttpMediaTypeNotAcceptable) sur cet endpoint produces=text/event-stream.
-        chatStreamExecutor.execute(() -> prepareAndRelay(emitter, userId, request));
+        SseStreamDispatch.submit(chatStreamExecutor, emitter,
+                () -> prepareAndRelay(emitter, userId, request));
         return emitter;
     }
 

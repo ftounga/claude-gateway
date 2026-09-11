@@ -62,6 +62,7 @@ public class AccountService {
     private final RunnerAuditRepository runnerAuditRepository;
     private final RunnerHostRepository runnerHostRepository;
     private final HostSeatMonthRepository hostSeatMonthRepository;
+    private final fr.claudegateway.terminals.LiveTerminalRepository liveTerminalRepository;
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceService workspaceService;
     private final AtelierMessageRepository atelierMessageRepository;
@@ -85,6 +86,7 @@ public class AccountService {
             RunnerAuditRepository runnerAuditRepository,
             RunnerHostRepository runnerHostRepository,
             HostSeatMonthRepository hostSeatMonthRepository,
+            fr.claudegateway.terminals.LiveTerminalRepository liveTerminalRepository,
             WorkspaceRepository workspaceRepository,
             WorkspaceService workspaceService,
             AtelierMessageRepository atelierMessageRepository,
@@ -106,6 +108,7 @@ public class AccountService {
         this.runnerAuditRepository = runnerAuditRepository;
         this.runnerHostRepository = runnerHostRepository;
         this.hostSeatMonthRepository = hostSeatMonthRepository;
+        this.liveTerminalRepository = liveTerminalRepository;
         this.workspaceRepository = workspaceRepository;
         this.workspaceService = workspaceService;
         this.atelierMessageRepository = atelierMessageRepository;
@@ -198,6 +201,9 @@ public class AccountService {
         // elles ne survivent pas au compte qu'elles décrivent.
         hostSeatMonthRepository.deleteByUserId(userId);
         runnerHostRepository.deleteByUserId(userId);
+        // Places de terminal vivant (F-70 / SF-70-01) : elles nomment les projets ouverts par le
+        // compte. Sans purge, elles survivraient à sa suppression jusqu'à leur expiration.
+        liveTerminalRepository.deleteByUserId(userId);
         // Domaine documentaire (F-05/F-06) et Atelier (F-28), ajoutés par SF-11-03. Ces données
         // survivaient au compte : documents OCR (texte extrait et réponse brute du fournisseur
         // compris), embeddings, historique des sessions d'agent, et les fichiers de chaque

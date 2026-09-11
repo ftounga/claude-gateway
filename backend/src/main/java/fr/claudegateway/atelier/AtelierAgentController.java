@@ -95,7 +95,8 @@ public class AtelierAgentController {
         boolean allowed = atelierAccess.hasAccess();
         boolean enabled = properties.enabled();
         SseEmitter emitter = new SseEmitter(STREAM_TIMEOUT_MS);
-        chatStreamExecutor.execute(() -> relay(emitter, userId, id, request.message(), allowed, enabled));
+        fr.claudegateway.chat.SseStreamDispatch.submit(chatStreamExecutor, emitter,
+                () -> relay(emitter, userId, id, request.message(), allowed, enabled));
         return emitter;
     }
 
