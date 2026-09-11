@@ -2,6 +2,11 @@
 
 > Déclenchée par une question du PO : *« est-ce qu'on ne peut pas dire que les 199 € c'est pour
 > un client, et qu'il faut payer à chaque nouveau client ? »* Ce document arbitre, il ne décrit pas.
+>
+> ⚠️ **Note datée : les chiffres qu'elle contient servent le raisonnement, ils ne font pas autorité.**
+> La grille tarifaire en vigueur — plans, montants, quotas, recharges, périodicité, essai — est dans
+> **[`docs/TARIFS.md`](TARIFS.md)**, source de vérité unique (F-64). En cas d'écart, c'est elle qui
+> fait foi.
 
 ---
 
@@ -100,18 +105,22 @@ simple à expliquer et à vendre — et c'est un argument qui compte.
 
 ---
 
-## 5. Incohérence à corriger avant toute décision
+## 5. Incohérence à corriger avant toute décision — **levée le 2026-09-11 (F-64)**
 
-Deux grilles coexistent dans le dépôt :
+Deux grilles coexistaient dans le dépôt, sans concorder ni sur les montants ni sur les plans :
+`marketing.md` ignorait GOLD, `PRODUCT_SPEC` ignorait BYOK et les recharges. **Deux grilles publiées
+finissent en litige commercial le jour où un client cite celle qui l'arrange.**
 
-| Source | Contenu |
-|---|---|
-| `docs/marketing.md` | Hosted : Solo **29 €**, Pro **119 €**, Daily 15 €/j · BYOK : Solo 9 €, Pro 49 €, Daily 7 €/j |
-| `docs/PRODUCT_SPEC.md` | Solo **24 €**, Gold **199 €** |
+**Réglé** : la grille vit désormais dans **[`docs/TARIFS.md`](TARIFS.md)**, source de vérité unique,
+alignée sur ce que le code et la configuration appliquent réellement ; tous les autres documents y
+renvoient au lieu de recopier des montants. La grille de `marketing.md` était **appliquée nulle
+part** — c'est la configuration qui a tranché, et ce n'est pas un arbitrage de prix mais le constat
+de ce qui est facturé.
 
-Ni les montants, ni les noms de plans ne concordent — `marketing.md` ignore GOLD, `PRODUCT_SPEC`
-ignore BYOK et Daily. **Deux grilles publiées finissent en litige commercial.** Une seule source de
-vérité, les autres y renvoient.
+**Ce que F-64 n'a pas tranché**, faute de source : le prix de la recharge 1 M, la concordance
+montants affichés ↔ prix Stripe, et l'écart entre l'essai **annoncé** (14 jours) et l'essai
+**appliqué** (5 jours). Ces points sont listés dans `TARIFS.md` §7 et suivis en **OQ-16** — un
+chiffre inventé dans une grille tarifaire est pire que son absence.
 
 
 ---
