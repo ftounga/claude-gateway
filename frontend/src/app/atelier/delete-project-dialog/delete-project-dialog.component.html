@@ -1,0 +1,54 @@
+<h2 mat-dialog-title>Supprimer « {{ data.projectName }} » ?</h2>
+
+<mat-dialog-content>
+  <!-- Deux listes de MÊME poids. La seconde n'est pas une note de bas de page : c'est la question
+       que se pose réellement quelqu'un qui hésite devant ce bouton. -->
+  <section class="delete-project__block">
+    <h3 class="delete-project__heading">
+      <mat-icon class="delete-project__icon delete-project__icon--gone" aria-hidden="true">
+        delete_sweep
+      </mat-icon>
+      Ce qui sera effacé, définitivement
+    </h3>
+    <ul class="delete-project__list">
+      <li>La conversation de ce projet et tout son historique.</li>
+      <li>Ses réglages et la gouvernance qui lui était appliquée.</li>
+      <li>Son journal d'exécution — les commandes qui ont tourné pour lui.</li>
+      <li>Les fichiers importés dans la gateway (archive, bibliothèque).</li>
+    </ul>
+  </section>
+
+  <section class="delete-project__block delete-project__block--safe">
+    <h3 class="delete-project__heading">
+      <mat-icon class="delete-project__icon delete-project__icon--safe" aria-hidden="true">
+        shield
+      </mat-icon>
+      Ce qui n'est pas touché
+    </h3>
+    <ul class="delete-project__list">
+      <li>
+        <strong>Le dossier sur votre machine.</strong>
+        @if (folderLabel(); as folder) {
+          Aucun fichier de {{ folder }} n'est supprimé, déplacé ni modifié.
+        } @else {
+          Aucun fichier, aucun dossier de votre ordinateur n'est supprimé, déplacé ni modifié.
+        }
+        La gateway n'envoie aucune commande à votre machine pour supprimer un projet.
+      </li>
+      @if (data.hostName) {
+        <li>
+          Le poste « {{ data.hostName }} » reste appairé : ses autres projets continuent de
+          fonctionner, et vous n'aurez rien à réinstaller.
+        </li>
+      }
+      <li>Votre relevé de consommation : la dépense déjà engagée reste comptée.</li>
+    </ul>
+  </section>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-stroked-button type="button" (click)="cancel()">Annuler</button>
+  <button mat-flat-button color="warn" type="button" (click)="confirm()">
+    Supprimer le projet
+  </button>
+</mat-dialog-actions>

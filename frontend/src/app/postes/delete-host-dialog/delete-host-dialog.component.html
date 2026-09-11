@@ -1,0 +1,69 @@
+@if (blocked()) {
+  <h2 mat-dialog-title>« {{ data.hostName }} » porte encore {{ projectsLabel() }}</h2>
+
+  <mat-dialog-content>
+    <p>
+      Un poste ne se supprime pas avec ses projets dessous. Supprimer en cascade effacerait des
+      conversations que vous ne voyez peut-être plus — mieux vaut regarder ce que vous jetez.
+    </p>
+    <p class="delete-host__where">
+      <mat-icon class="delete-host__icon" aria-hidden="true">list</mat-icon>
+      <span>
+        {{ whereToFindThem() }} Supprimez-les depuis la liste des projets de la Forge, puis revenez
+        ici.
+      </span>
+    </p>
+    <p class="delete-host__reassure">
+      <strong>Rien n'est effacé sur votre machine</strong>, ni maintenant ni après : supprimer un
+      projet ou un poste ne touche jamais vos fichiers.
+    </p>
+  </mat-dialog-content>
+
+  <mat-dialog-actions align="end">
+    <button mat-flat-button color="primary" type="button" (click)="cancel()">Fermer</button>
+  </mat-dialog-actions>
+} @else {
+  <h2 mat-dialog-title>Supprimer le poste « {{ data.hostName }} » ?</h2>
+
+  <mat-dialog-content>
+    <section class="delete-host__block">
+      <h3 class="delete-host__heading">
+        <mat-icon class="delete-host__icon delete-host__icon--gone" aria-hidden="true">
+          link_off
+        </mat-icon>
+        Ce qui sera effacé, définitivement
+      </h3>
+      <ul class="delete-host__list">
+        <li>L'appairage de cette machine, et ses jetons d'accès.</li>
+        <li>Ce que la machine avait déclaré : sa racine, son système, son interpréteur.</li>
+        <li>Sa ligne dans la Forge — la carte disparaît de cet écran.</li>
+      </ul>
+    </section>
+
+    <section class="delete-host__block delete-host__block--safe">
+      <h3 class="delete-host__heading">
+        <mat-icon class="delete-host__icon delete-host__icon--safe" aria-hidden="true">
+          shield
+        </mat-icon>
+        Ce qui n'est pas touché
+      </h3>
+      <ul class="delete-host__list">
+        <li>
+          <strong>Votre machine et ses fichiers.</strong> Aucun dossier n'est supprimé, déplacé ni
+          modifié. Le runner installé dessus reste installé : il cesse simplement d'être reconnu.
+        </li>
+        <li>
+          Vous pourrez reconnecter cette machine quand vous voudrez — il faudra seulement l'appairer
+          à nouveau.
+        </li>
+      </ul>
+    </section>
+  </mat-dialog-content>
+
+  <mat-dialog-actions align="end">
+    <button mat-stroked-button type="button" (click)="cancel()">Annuler</button>
+    <button mat-flat-button color="warn" type="button" (click)="confirm()">
+      Supprimer le poste
+    </button>
+  </mat-dialog-actions>
+}

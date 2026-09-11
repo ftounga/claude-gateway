@@ -102,6 +102,7 @@ describe('AtelierComponent', () => {
       'streamAgent',
       'resetAgentSession',
       'renameWorkspace',
+      'deleteWorkspace',
       'interruptAgentSession',
       'interruptChat',
       'setAskBeforeBash',
@@ -2707,6 +2708,98 @@ describe('AtelierComponent', () => {
 
     expect(snackBar.open.calls.mostRecent().args[0]).toBe('Projet introuvable.');
   });
+  // ---- F-69 / SF-69-02 : supprimer un projet depuis la liste ----
+
+  it('la liste offre un menu de suppression sur chaque projet (F-69)', () => {
+    setup();
+    component.workspaces.set([summary, { ...summary, id: 'w2', name: 'essai', hostName: null }]);
+    fixture.detectChanges();
+
+    const triggers = (fixture.nativeElement as HTMLElement)
+      .querySelectorAll('.workspace-menu-trigger');
+
+    // Tous les projets, y compris celui qui n'est rattaché à aucun poste : c'est justement
+    // l'essai que le PO veut pouvoir balayer, et /forge ne le montre pas.
+    expect(triggers.length).toBe(2);
+  });
+
+  it('ouvre le dialogue en lui passant le nom du projet et son poste (F-69)', () => {
+    setup();
+    dialog.open.and.returnValue({ afterClosed: () => of(false) } as MatDialogRef<unknown, unknown>);
+
+    component.deleteWorkspace({ ...summary, name: 'essai', hostName: 'Poste CAGIP' });
+
+    const data = dialog.open.calls.mostRecent().args[1]?.data as {
+      projectName: string;
+      hostName: string | null;
+    };
+    expect(data.projectName).toBe('essai');
+    expect(data.hostName).toBe('Poste CAGIP');
+  });
+
+  it('un dialogue annulé ne supprime rien (F-69)', () => {
+    setup();
+    dialog.open.and.returnValue({ afterClosed: () => of(false) } as MatDialogRef<unknown, unknown>);
+
+    component.deleteWorkspace(summary);
+
+    expect(service.deleteWorkspace).not.toHaveBeenCalled();
+    expect(component.workspaces().length).toBe(1);
+  });
+
+  it('supprime le projet confirmé et retire sa ligne (F-69)', () => {
+    setup();
+    dialog.open.and.returnValue({ afterClosed: () => of(true) } as MatDialogRef<unknown, unknown>);
+    service.deleteWorkspace.and.returnValue(of(void 0));
+
+    component.deleteWorkspace(summary);
+
+    expect(service.deleteWorkspace).toHaveBeenCalledOnceWith('w1');
+    expect(component.workspaces()).toEqual([]);
+    // Le message répond à la question qui fait hésiter, une dernière fois.
+    expect(snackBar.open.calls.mostRecent().args[0]).toContain('machine');
+  });
+
+  it('supprimer le projet OUVERT referme le terminal (F-69)', () => {
+    setup();
+    component.activeWorkspaceId.set('w1');
+    dialog.open.and.returnValue({ afterClosed: () => of(true) } as MatDialogRef<unknown, unknown>);
+    service.deleteWorkspace.and.returnValue(of(void 0));
+
+    component.deleteWorkspace(summary);
+
+    expect(component.activeWorkspaceId()).toBeNull();
+  });
+
+  it('un échec réseau laisse la liste intacte (F-69)', () => {
+    // Une ligne qui disparaît sans que le serveur ait confirmé reviendrait au chargement suivant —
+    // et le doute porterait alors sur ce qui a réellement été effacé.
+    setup();
+    dialog.open.and.returnValue({ afterClosed: () => of(true) } as MatDialogRef<unknown, unknown>);
+    service.deleteWorkspace.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 500 })),
+    );
+
+    component.deleteWorkspace(summary);
+
+    expect(component.workspaces().length).toBe(1);
+    expect(snackBar.open.calls.mostRecent().args[0]).toContain("n'a pas pu être supprimé");
+  });
+
+  it('un 404 retire la ligne : l\'écran était en retard (F-69)', () => {
+    setup();
+    dialog.open.and.returnValue({ afterClosed: () => of(true) } as MatDialogRef<unknown, unknown>);
+    service.deleteWorkspace.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 404 })),
+    );
+
+    component.deleteWorkspace(summary);
+
+    expect(component.workspaces()).toEqual([]);
+    expect(snackBar.open.calls.mostRecent().args[0]).toContain('déjà été supprimé');
+  });
+
+
   // ---- F-37 SF-37-02 : modifications du tour dans le fil ----
 
   it('mode Terminal : les modifications du tour rejoignent le fil, repliées (F-37)', () => {

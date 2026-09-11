@@ -576,6 +576,19 @@ export class AtelierService {
     return this.http.post<WorkspaceDetail>(`/api/workspaces/${id}/rename`, { name });
   }
 
+  /**
+   * **Supprime le projet** (F-28, exposé à l'écran par F-69 / SF-69-02).
+   *
+   * <p><b>Côté gateway, et uniquement là</b> : la conversation, son historique, les réglages, le
+   * journal d'exécution et les fichiers importés dans la gateway. <b>Le dossier sur la machine de
+   * l'utilisateur n'est jamais touché</b> — la gateway n'émet aucune commande vers le runner sur ce
+   * chemin. C'est une limite de périmètre tranchée par le PO, et le dialogue de confirmation
+   * l'écrit avant de demander quoi que ce soit.</p>
+   */
+  deleteWorkspace(id: string): Observable<void> {
+    return this.http.delete<void>(`/api/workspaces/${id}`);
+  }
+
   /** Historique de conversation du workspace. */
   getHistory(id: string): Observable<AtelierMessage[]> {
     return this.http.get<AtelierMessage[]>(`/api/workspaces/${id}/chat`);
@@ -678,6 +691,21 @@ export class AtelierService {
   /** Crée un poste au nom libre (F-48 / SF-48-01). */
   createRunnerHost(name: string): Observable<RunnerHost> {
     return this.http.post<RunnerHost>('/api/runner-hosts', { name } satisfies RunnerHostRequest);
+  }
+
+  /**
+   * **Supprime un poste** (F-69 / SF-69-02) : son appairage, ses jetons et sa ligne.
+   *
+   * <p><b>Refusé par la gateway (409) tant qu'il porte des projets</b> — pas de cascade, décision du
+   * PO. L'écran dit le même refus avant le clic pour ne pas faire cliquer sur un bouton qui va
+   * refuser, mais c'est le serveur qui fait foi : un projet créé dans un autre onglet et l'écran a
+   * tort.</p>
+   *
+   * <p>La <b>machine</b>, elle, n'est pas touchée : ni ses fichiers, ni le runner installé dessus.
+   * Elle cesse simplement d'être connue de la gateway.</p>
+   */
+  deleteRunnerHost(hostId: string): Observable<void> {
+    return this.http.delete<void>(`/api/runner-hosts/${hostId}`);
   }
 
   /**
