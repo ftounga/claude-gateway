@@ -1289,8 +1289,12 @@ class AnthropicManagedAgentProviderTest {
         assertThat(usage.outputTokens()).isEqualTo(353L);
         // active_seconds 8.455 arrondi → 8.
         assertThat(usage.activeSeconds()).isEqualTo(8L);
-        // Aucun `list_cost` rapporté : l'appelant retombe sur le décompte des tokens (F-36 SF-36-02).
+        // Aucun `list_cost` rapporté : l'appelant retombe sur le décompte des tokens (F-36 SF-36-02),
+        // et c'est précisément là que la ventilation du cache compte (F-63 / SF-63-02).
         assertThat(usage.listCostMinorUnits()).isNull();
+        assertThat(usage.cacheReadTokens()).isEqualTo(14_114L);
+        assertThat(usage.cacheWriteTokens()).isEqualTo(465L);
+        assertThat(usage.fullPriceInputTokens()).isEqualTo(4L);
         server.verify();
     }
 

@@ -388,8 +388,10 @@ public class AnthropicAgentProvider implements AiAgentProvider {
         boolean truncated = "max_tokens".equals(stopReason);
         JsonNode usage = response.path("usage");
         // Les tokens servis par le cache ne sont PAS dans `input_tokens` (SF-39-01, D3). Ne compter
-        // que ce champ ferait chuter le décompte du quota d'environ 90 % sans que rien ne le
-        // signale : le quota mesure ce qui a été TRAITÉ, pas ce que le fournisseur nous facture.
+        // que ce champ ferait chuter le VOLUME traité d'environ 90 % sans que rien ne le signale.
+        // Ils sont donc additionnés ici — et, depuis F-63 / SF-63-02, portés AUSSI séparément : le
+        // volume reste le volume, mais le décompte les facture à leur prix (un dixième du tarif
+        // d'entrée en lecture, 1,25× en écriture) au lieu du plein tarif.
         int cacheCreation = usage.path("cache_creation_input_tokens").asInt(0);
         int cacheRead = usage.path("cache_read_input_tokens").asInt(0);
         int inputTokens = usage.path("input_tokens").asInt(0) + cacheCreation + cacheRead;
@@ -399,7 +401,7 @@ public class AnthropicAgentProvider implements AiAgentProvider {
                 inputTokens, cacheCreation, cacheRead);
         logAppliedContextEdits(response);
         return new AgentTurn(text.toString(), toolCalls, finished, inputTokens, outputTokens, truncated,
-                reasoning);
+                reasoning, cacheRead, cacheCreation);
     }
 
     /**

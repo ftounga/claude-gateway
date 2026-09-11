@@ -229,6 +229,11 @@ class AnthropicAgentProviderTest {
         // que `input_tokens` ferait chuter le décompte de ~98 % ici, en silence.
         assertThat(turn.inputTokens()).isEqualTo(32_500);
         assertThat(turn.outputTokens()).isEqualTo(40);
+        // …et le cache voyage AUSSI séparément (F-63 / SF-63-02), pour que le décompte le facture à
+        // son prix — un dixième du tarif d'entrée en lecture — au lieu du plein tarif.
+        assertThat(turn.cacheReadTokens()).isEqualTo(30_000);
+        assertThat(turn.cacheWriteTokens()).isEqualTo(2_000);
+        assertThat(turn.fullPriceInputTokens()).isEqualTo(500);
     }
 
     @Test

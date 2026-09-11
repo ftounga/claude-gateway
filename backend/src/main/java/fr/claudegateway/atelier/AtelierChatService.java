@@ -25,6 +25,7 @@ import fr.claudegateway.atelier.checkpoint.AtelierCheckpointVerdict;
 import fr.claudegateway.atelier.dto.AtelierChatResponse.AtelierAction;
 import fr.claudegateway.byok.ByokKeyService;
 import fr.claudegateway.quota.QuotaService;
+import fr.claudegateway.quota.TurnTokens;
 import fr.claudegateway.runner.audit.RunnerAuditOutcome;
 import fr.claudegateway.runner.audit.RunnerAuditService;
 import fr.claudegateway.runner.channel.RunnerCallResult;
@@ -448,6 +449,14 @@ public class AtelierChatService implements RelayInterruptTarget {
         List<AtelierTurnReport.Block> transcript = new ArrayList<>();
         int inputTokens = 0;
         int outputTokens = 0;
+        /**
+         * Ventilation du cache du tour (F-63 / SF-63-02). Ces tokens sont <b>déjà compris</b> dans
+         * {@code inputTokens} — le plafond de message et le relevé affiché comptent, comme avant, ce
+         * qui a été <b>traité</b>. Ils voyagent à part pour le seul décompte du quota, qui les
+         * facture à leur prix : un dixième du tarif d'entrée en lecture, 1,25× en écriture.
+         */
+        int cacheReadTokens = 0;
+        int cacheWriteTokens = 0;
         /** Plus grosse itération observée dans ce tour : majorant de la suivante (D-L8-2). */
         long largestIterationTokens = 0L;
         boolean interrupted = false;
@@ -504,6 +513,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                     new AgentTurnRequest(model, system, messages, tools, apiKey, reasoning, contextPolicy));
             inputTokens += turn.inputTokens();
             outputTokens += turn.outputTokens();
+            cacheReadTokens += turn.cacheReadTokens();
+            cacheWriteTokens += turn.cacheWriteTokens();
             largestIterationTokens =
                     Math.max(largestIterationTokens, (long) turn.inputTokens() + turn.outputTokens());
             // Consommation relayée au fil de l'eau : c'est ce qui fait apparaître les tokens dans la
@@ -600,6 +611,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                                 explore(userId, workspace, call, model, apiKey, deadline);
                         inputTokens += explored.inputTokens();
                         outputTokens += explored.outputTokens();
+                        cacheReadTokens += explored.cacheReadTokens();
+                        cacheWriteTokens += explored.cacheWriteTokens();
                         listener.onProgress((long) inputTokens + outputTokens);
                         outcome = explored.outcome();
                     }
@@ -655,8 +668,13 @@ public class AtelierChatService implements RelayInterruptTarget {
             // Le projet et son poste voyagent avec le décompte (F-61 / SF-61-01) : c'est ce qui
             // permettra de dire plus tard combien CE client a coûté. Le poste est celui du moment
             // du tour — déplacer le projet demain ne doit pas déplacer la dépense d'hier.
-            quotaService.recordUsage(userId, inputTokens, outputTokens,
-                    workspaceId, workspace.getHostId());
+            // Chaque nature de token à son prix (F-63) : l'entrée au plein tarif, le cache au sien.
+            // Le VOLUME enregistré ne bouge pas — `TurnTokens` le recompose — mais ce qui est
+            // décompté du quota cesse de facturer au plein tarif des tokens relus au dixième.
+            quotaService.recordUsage(userId,
+                    new TurnTokens(Math.max(0, inputTokens - cacheReadTokens - cacheWriteTokens),
+                            outputTokens, cacheReadTokens, cacheWriteTokens),
+                    null, workspaceId, workspace.getHostId());
         }
 
         // Jamais de message vide dans l'historique (SF-28-18) : il serait relu au tour suivant et
@@ -903,7 +921,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             String model, String apiKey, long deadline) {
         String question = call.input() == null ? null : call.input().path("question").asText(null);
         if (question == null || question.isBlank()) {
-            return new ExplorationOutcome(ToolOutcome.error("Question requise pour explorer."), 0, 0);
+            return new ExplorationOutcome(ToolOutcome.error("Question requise pour explorer."), 0, 0, 0, 0);
         }
         String scope = call.input().path("path").asText(null);
         // Outils de la sous-boucle : lecture seule, et cela vaut aussi en cible RUNNER (D2 de
@@ -925,15 +943,17 @@ public class AtelierChatService implements RelayInterruptTarget {
                     () -> interruptedTurns.contains(turnKey(userId, workspace.getId()))
                             || System.currentTimeMillis() >= deadline);
             return new ExplorationOutcome(ToolOutcome.info(result.answer()),
-                    result.inputTokens(), result.outputTokens());
+                    result.inputTokens(), result.outputTokens(),
+                    result.cacheReadTokens(), result.cacheWriteTokens());
         } catch (RuntimeException ex) {
             return new ExplorationOutcome(
-                    ToolOutcome.error("L'exploration a échoué ; poursuis toi-même."), 0, 0);
+                    ToolOutcome.error("L'exploration a échoué ; poursuis toi-même."), 0, 0, 0, 0);
         }
     }
 
     /** Issue d'une délégation : le résultat rendu au modèle, et ce qu'elle a consommé. */
-    private record ExplorationOutcome(ToolOutcome outcome, int inputTokens, int outputTokens) {
+    private record ExplorationOutcome(ToolOutcome outcome, int inputTokens, int outputTokens,
+            int cacheReadTokens, int cacheWriteTokens) {
     }
 
     /**

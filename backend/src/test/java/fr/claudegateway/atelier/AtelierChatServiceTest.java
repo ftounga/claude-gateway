@@ -250,7 +250,8 @@ class AtelierChatServiceTest {
 
         assertThat(agentProvider.lastRequest).isNull();
         assertThat(listener.actions).isEmpty();
-        verify(quotaService, never()).recordUsage(any(), anyInt(), anyInt(), any(), any());
+        verify(quotaService, never()).recordUsage(any(), any(fr.claudegateway.quota.TurnTokens.class),
+                any(), any(), any());
     }
 
     @Test
@@ -262,7 +263,23 @@ class AtelierChatServiceTest {
         service.chat(userId, workspaceId, "salut");
 
         verify(quotaService).assertWithinQuota(userId);
-        verify(quotaService).recordUsage(eq(userId), anyInt(), anyInt(), any(), any());
+        verify(quotaService).recordUsage(eq(userId), any(fr.claudegateway.quota.TurnTokens.class),
+                org.mockito.ArgumentMatchers.isNull(), any(), any());
+    }
+
+    @Test
+    void cacheTokensReachTheDecountSeparatelyFromFullPriceInput() {
+        // F-63 / SF-63-02 : le fournisseur replie le cache dans l'entrée (D3 de SF-39-01), ce qui
+        // faisait facturer au plein tarif des tokens relus au dixième. Le VOLUME ne change pas —
+        // 100 000 tokens traités — mais le décompte sait désormais ce qui, dedans, vient du cache.
+        stubHappyPath();
+        agentProvider.enqueueFinalServedByCache("Bonjour.", 100_000, 500, 90_000, 5_000);
+
+        service.chat(userId, workspaceId, "salut");
+
+        verify(quotaService).recordUsage(userId,
+                new fr.claudegateway.quota.TurnTokens(5_000L, 500L, 90_000L, 5_000L),
+                null, workspaceId, null);
     }
 
     @Test
@@ -286,7 +303,8 @@ class AtelierChatServiceTest {
         service.chat(userId, workspaceId, "salut");
 
         verify(quotaService, never()).assertWithinQuota(any());
-        verify(quotaService, never()).recordUsage(any(), anyInt(), anyInt(), any(), any());
+        verify(quotaService, never()).recordUsage(any(), any(fr.claudegateway.quota.TurnTokens.class),
+                any(), any(), any());
     }
 
     @Test
@@ -300,7 +318,8 @@ class AtelierChatServiceTest {
                 .isInstanceOf(WorkspaceNotFoundException.class);
 
         assertThat(agentProvider.lastRequest).isNull();
-        verify(quotaService, never()).recordUsage(any(), anyInt(), anyInt(), any(), any());
+        verify(quotaService, never()).recordUsage(any(), any(fr.claudegateway.quota.TurnTokens.class),
+                any(), any(), any());
     }
 
     // ------------------------------------------------- SF-28-18 : tour tronqué et mémoire vide

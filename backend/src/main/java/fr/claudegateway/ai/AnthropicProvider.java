@@ -307,8 +307,15 @@ public class AnthropicProvider implements AIProvider {
             throw new AIProviderException("Réponse sans contenu textuel du fournisseur IA.");
         }
         String model = response.model() != null ? response.model() : requestedModel;
-        int input = response.usage() != null ? response.usage().inputTokens() : 0;
+        // Le cache, s'il y en a (F-63 / SF-63-02) : `input_tokens` ne le contient pas, il faut donc
+        // l'ajouter au volume — et le porter à part pour qu'il soit décompté à son prix. La
+        // passerelle ne pose aucun `cache_control` aujourd'hui : ces champs valent 0 et le
+        // comportement est strictement celui d'avant.
+        int cacheRead = response.usage() != null ? response.usage().cacheReadInputTokens() : 0;
+        int cacheWrite = response.usage() != null ? response.usage().cacheCreationInputTokens() : 0;
+        int input = (response.usage() != null ? response.usage().inputTokens() : 0)
+                + cacheRead + cacheWrite;
         int output = response.usage() != null ? response.usage().outputTokens() : 0;
-        return new ChatCompletionResult(text, model, input, output);
+        return new ChatCompletionResult(text, model, input, output, cacheRead, cacheWrite);
     }
 }

@@ -127,7 +127,8 @@ class AskServiceTest {
 
         // Quota vérifié avant, consommation enregistrée après.
         verify(quotaService).assertWithinQuota(alice);
-        verify(quotaService).recordUsage(alice, 20, 10);
+        verify(quotaService).recordUsage(alice,
+                new fr.claudegateway.quota.TurnTokens(20L, 10L, 0L, 0L), null, null, null);
     }
 
     @Test
@@ -146,7 +147,8 @@ class AskServiceTest {
         // Aucun chargement de chunks/documents en repli.
         verify(chunkRepository, never()).findByIdInAndUserId(anyList(), any());
         verifyNoInteractions(documentRepository);
-        verify(quotaService).recordUsage(alice, 5, 3);
+        verify(quotaService).recordUsage(alice,
+                new fr.claudegateway.quota.TurnTokens(5L, 3L, 0L, 0L), null, null, null);
     }
 
     @Test

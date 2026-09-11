@@ -115,6 +115,17 @@ public class StubAiAgentProvider implements AiAgentProvider {
     }
 
     /**
+     * Tour final dont l'entrée est majoritairement servie par le cache (F-63 / SF-63-02).
+     * {@code inputTokens} porte, comme chez le fournisseur, le total <b>traité</b> : la ventilation
+     * s'y ajoute sans rien en retirer.
+     */
+    public void enqueueFinalServedByCache(String text, int inputTokens, int outputTokens,
+            int cacheReadTokens, int cacheWriteTokens) {
+        script.add(new AgentTurn(text, List.of(), true, inputTokens, outputTokens, false, List.of(),
+                cacheReadTokens, cacheWriteTokens));
+    }
+
+    /**
      * Empile un tour « appel d'outil » à la <b>consommation choisie</b> (F-39 / SF-39-15) : le
      * plafond de consommation d'un message se teste sur des itérations dont on connaît le poids.
      */

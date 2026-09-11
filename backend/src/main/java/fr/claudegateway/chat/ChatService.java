@@ -165,7 +165,7 @@ public class ChatService {
                 .build());
 
         // Enregistre la consommation de tokens de cet appel sur la période courante (F-10).
-        quotaService.recordUsage(userId, completion.inputTokens(), completion.outputTokens());
+        quotaService.recordUsage(userId, completion.turnTokens(), null, null, null);
 
         // Rafraîchit updated_at pour le tri de la liste latérale.
         conversation.setTitle(conversation.getTitle());
@@ -240,7 +240,7 @@ public class ChatService {
                 .model(completion.model())
                 .build());
 
-        quotaService.recordUsage(context.userId(), completion.inputTokens(), completion.outputTokens());
+        quotaService.recordUsage(context.userId(), completion.turnTokens(), null, null, null);
 
         // Rafraîchit updated_at pour le tri de la liste latérale.
         context.conversation().setTitle(context.conversation().getTitle());

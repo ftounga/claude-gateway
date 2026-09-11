@@ -1001,7 +1001,7 @@ public class AtelierSessionService implements RelaySessionInterruptTarget {
             // tour est la seule source qui ne rétrécit pas — les compteurs `agent_*_tokens` de ce
             // workspace, eux, repartent de zéro à chaque session (voir markSessionOpened).
             TurnUsage turn = new TurnUsage(inputDelta, outputDelta, secondsDelta);
-            quotaService.recordUsage(userId, new TurnTokens(inputDelta, outputDelta, 0L, 0L),
+            quotaService.recordUsage(userId, turnTokens(usage, inputDelta, outputDelta),
                     cost == null ? null : usdOf(costDelta), workspaceId, workspace.getHostId());
             quotaService.recordSandboxSeconds(userId, secondsDelta);
             return turn;
@@ -1009,6 +1009,23 @@ public class AtelierSessionService implements RelaySessionInterruptTarget {
             log.debug("Décompte de l'usage de session ignoré (best-effort) : run déjà livré.");
             return TurnUsage.UNKNOWN;
         }
+    }
+
+    /**
+     * Ventile le delta d'entrée du tour entre plein tarif et cache (F-63 / SF-63-02), au prorata du
+     * cumul rapporté par la session — le fournisseur ne rapporte le cache qu'en cumul, jamais par
+     * tour. Cette ventilation ne sert qu'au <b>repli</b> : dès que le coût réel est rapporté, c'est
+     * lui qui est décompté, et il a déjà tarifé le cache lui-même.
+     */
+    private static TurnTokens turnTokens(SessionUsage usage, long inputDelta, long outputDelta) {
+        long cached = usage.cacheReadTokens() + usage.cacheWriteTokens();
+        if (cached <= 0L || usage.inputTokens() <= 0L || inputDelta <= 0L) {
+            return new TurnTokens(inputDelta, outputDelta, 0L, 0L);
+        }
+        long cacheRead = inputDelta * usage.cacheReadTokens() / usage.inputTokens();
+        long cacheWrite = inputDelta * usage.cacheWriteTokens() / usage.inputTokens();
+        return new TurnTokens(Math.max(0L, inputDelta - cacheRead - cacheWrite), outputDelta,
+                cacheRead, cacheWrite);
     }
 
     /** Coût rapporté par le fournisseur (unités mineures) ramené en dollars. */

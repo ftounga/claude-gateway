@@ -310,7 +310,9 @@ class ChatServiceTest {
 
         // Le quota est vérifié avant l'appel et la consommation exacte est enregistrée après.
         verify(quotaService).assertWithinQuota(alice);
-        verify(quotaService).recordUsage(alice, 42, 17);
+        // Décompte ventilé par nature (F-63) : sans cache rapporté, tout est en entrée.
+        verify(quotaService).recordUsage(alice,
+                new fr.claudegateway.quota.TurnTokens(42L, 17L, 0L, 0L), null, null, null);
     }
 
     @Test
