@@ -33,9 +33,21 @@ l'option BYOK, l'hébergement privé et la possibilité d'allowlist via les équ
 
 ## 4. Pricing & packaging
 
-**Hosted** : Solo 29 €/mois, Pro 119 €/mois (RAG, export, quotas larges), Daily 15 €/jour.
-**BYOK** : Solo 9 €/mois, Pro 49 €/mois (RAG, export), Daily 7 €/jour.
-**Trial** : 14 jours.
+> **La grille tarifaire vit dans [`docs/TARIFS.md`](TARIFS.md) — source de vérité unique.**
+> Ce document n'en recopie aucun montant : deux grilles publiées finissent en litige commercial le
+> jour où un client cite celle qui l'arrange. C'est exactement ce qui s'était produit ici (F-64).
+
+**Structure de l'offre** (les montants, quotas et durées sont dans [`TARIFS.md`](TARIFS.md)) :
+
+- **Hosted** — la plateforme fournit les jetons : trois paliers (Solo, Pro, Gold), au mois ou à
+  l'année, avec une allocation mensuelle de tokens et des **recharges** à l'unité en cas de
+  dépassement.
+- **BYOK** — le client apporte sa clé Anthropic : la plateforme seule est facturée, la consommation
+  IA reste sur son compte fournisseur.
+- **Option Atelier** — souscrite en supplément d'un plan Solo ou Pro, elle ouvre l'Atelier sans
+  changer le quota. Gold et BYOK l'incluent.
+- **Essai gratuit** — durée et allocation dans [`TARIFS.md`](TARIFS.md) §4, qui signale par ailleurs
+  un écart **non tranché** entre la durée annoncée publiquement et celle réellement appliquée.
 
 ## 5. Go-to-market playbook
 
@@ -49,7 +61,9 @@ l'option BYOK, l'hébergement privé et la possibilité d'allowlist via les équ
 
 - Objet : « Un assistant LLM sécurisé pour vos missions (test gratuit) »
 - Accroche : « Je sais combien c'est galère d'utiliser votre téléphone ou d'envoyer des docs pour analyser chez un client — j'ai construit un outil qui résout ça, prêt à l'emploi. »
-- Bénéfices : « sécurisé, éphémère, exportable, option BYOK, trial 14 jours. »
+- Bénéfices : « sécurisé, éphémère, exportable, option BYOK, essai gratuit. »
+  *(La durée de l'essai est dans [`TARIFS.md`](TARIFS.md) §4 — ne pas l'annoncer depuis ce document :
+  la durée annoncée et la durée appliquée divergent aujourd'hui, l'écart est ouvert en OQ-16.)*
 
 ## 7. Positionnement éthique & légal
 

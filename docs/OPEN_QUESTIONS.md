@@ -431,3 +431,40 @@ toucher une ligne de code. Mais c'est une décision de charte, et elle appartien
 `project-governance/checklists/review-checklist.md` §Design System exige « Inter, **Merriweather**,
 JetBrains Mono ». Merriweather n'apparaît **nulle part** dans `DESIGN_SYSTEM.md`, qui impose Space
 Grotesk pour les titres. La checklist de review a gardé une police d'un projet antérieur.
+
+---
+
+## OQ-16 — Six points tarifaires qu'aucune source du dépôt ne tranche
+
+**Statut** : ouverte — relevée le 2026-09-11 par **F-64 / SF-64-01**, qui a établi
+`docs/TARIFS.md` comme grille unique. **Ne bloque rien** : le produit facture aujourd'hui, ces
+points concernent ce qu'on *dit* de la facturation et ce qu'on *veut* qu'elle devienne.
+**Ils appartiennent tous au PO** — F-64 s'est interdit de les trancher : un chiffre inventé dans
+une grille tarifaire est pire que son absence.
+
+**Ce que F-64 a pu établir** : les quatre plans vendables, leurs montants affichés (mensuels et
+annuels), leurs quotas, les deux recharges et leur contenu en jetons, l'option Atelier et l'essai —
+tous repris de la configuration réellement servie en production. **Ce qui suit est ce qui manquait.**
+
+| # | Point | Ce qu'on sait | Ce qui manque |
+|---|---|---|---|
+| 1 | **Prix de la recharge `STANDARD` (1 M jetons)** | Le pack est vendable (price ID d'environnement) et crédite 1 M jetons | **Aucun montant**, nulle part dans le dépôt. Le code n'expose ni prix ni price ID (`TopUpPackResponse`) : l'écran de rachat n'affiche rien avant la page Stripe |
+| 2 | **Prix de la recharge `DAY` (200 k jetons)** | **4,99 €**, relevé dans une note de livraison (`PRODUCT_SPEC.md`, F-09 / SF-09-04), produit Stripe « Claude Proxy — Recharge 200 k » | Ce montant n'est **pas configuré** : à reconfirmer au tableau de bord Stripe |
+| 3 | **Durée de l'essai : 5 appliqués contre 14 annoncés** | `app.billing.trial-days` = **5** ; la page d'accueil et `marketing.md` annoncent **14 jours, sans carte** | Dans quel sens aligner ? Les deux corrections sont des décisions commerciales **de sens opposé** |
+| 4 | **Concordance montants affichés ↔ prix Stripe** | Les montants d'affichage sont **cosmétiques** ; le débit est porté par le price ID, que la gateway relaie sans vérifier (OQ-07) | Le dépôt ne peut pas vérifier la concordance. Quatre plans, trois prix annuels, l'option Atelier, deux recharges : seul le tableau de bord Stripe fait foi |
+| 5 | **BYOK sans offre annuelle** | `yearly-prices` et `yearly-display-prices` n'ont **pas d'entrée `BYOK`** : le plan n'est proposé qu'au mois | Absence **subie ou voulue** ? Les trois autres plans ont leur annuel |
+| 6 | **`markup` de décompte à `1.0`** | Neutre : le décompte n'applique aucun multiplicateur, la marge étant portée par l'allocation de chaque plan (`app.atelier.agent.cost.markup`) | Le porter à `2.0` **doublerait la vitesse de consommation du quota de chaque client** — levier de marge réel, à actionner sciemment, jamais par inadvertance |
+
+**Pourquoi cette question existe plutôt qu'une décision par défaut.** Le régime d'autonomie du
+projet autorise à trancher un gate produit *réversible* et à le tracer. Un prix ne l'est pas : il
+est **publié**, il est **opposable**, et c'est précisément une grille publiée à la légère qui a
+produit le litige que F-64 vient de refermer.
+
+**Effet du non-traitement** : aucun sur le code. Sur le commerce, deux effets nets — le point 3 est
+une **promesse publique tenue à 36 %** (5 jours sur 14 annoncés), et les points 1-2 rendent les
+recharges **invendables autrement qu'à l'aveugle**, le client ne découvrant leur prix qu'à la page
+de paiement.
+
+**Ne pas confondre avec** : **F-63** (change le *décompte* du quota, pas un tarif) et **F-65**
+(ajoutera un supplément par poste dont le montant appartient aussi au PO). `docs/TARIFS.md` §8 leur
+réserve la place, vide.

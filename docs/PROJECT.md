@@ -267,7 +267,9 @@ Le mode BYOK permet de connecter sa clé API Anthropic personnelle, stockée de 
 Plusieurs plans d'abonnement. Chaque abonnement définit : fonctionnalités disponibles, usage mensuel maximal, limites de stockage, fournisseurs disponibles, capacités premium. Les changements deviennent effectifs immédiatement après confirmation de paiement.
 
 ### 11.10 Billing
-Facturation via Stripe : abonnements mensuels, daily passes, essais gratuits, upgrades, downgrades, annulation, historique de paiement. Claude Gateway ne stocke jamais d'informations de carte bancaire.
+Facturation via Stripe : abonnements mensuels ou annuels, recharges de jetons à l'unité, essais gratuits, upgrades, downgrades, annulation, historique de paiement. Claude Gateway ne stocke jamais d'informations de carte bancaire.
+
+**La grille tarifaire — plans, montants, quotas, recharges, périodicité, essai — vit dans un document unique : [`docs/TARIFS.md`](TARIFS.md)** (F-64). Aucun autre document, celui-ci compris, ne recopie un montant. *(Le « pass journée » mentionné dans les versions antérieures de cette section désignait le plan `DAILY`, **retiré du catalogue** le 2026-09-07 — SF-09-04 ; il subsiste comme **pack de recharge**, voir `TARIFS.md` §5.)*
 
 ### 11.11 Administration
 Les administrateurs peuvent : voir les utilisateurs, les abonnements, les statistiques ; suspendre / réactiver des comptes ; consulter la santé de la plateforme ; monitorer l'usage API ; voir les événements de facturation. Les capacités d'administration restent isolées des fonctionnalités clientes.

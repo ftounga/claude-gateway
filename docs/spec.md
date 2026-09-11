@@ -24,7 +24,9 @@ Fournir une application de chat personnel hébergée sur le cluster EKS (service
 - **Chunking** : 400 tokens / overlap 50.
 - **Embeddings** : initialement via API fournisseur (Anthropic/OpenAI) ; migration possible vers local (all-MiniLM) ultérieurement.
 - **BYOK** : option disponible (clé utilisateur stockée chiffrée).
-- **Pricing** : Hosted (Solo 29 €/mois, Pro 119 €/mois, Daily 15 €/jour) ; BYOK (Solo 9 €/mois, Pro 49 €/mois, Daily 7 €/jour) ; trial 14 jours.
+- **Pricing** : plans Hosted (Solo / Pro / Gold) + plan BYOK, au mois ou à l'année, recharges à
+  l'unité, option Atelier, essai gratuit. **Montants, quotas et durées : [`TARIFS.md`](TARIFS.md)**
+  — source de vérité unique, ce document n'en recopie aucun (F-64).
 
 ## 3. Architecture globale
 
@@ -174,11 +176,18 @@ LIMIT :k;
 
 ## 9. Billing & Pricing
 
-**Hosted** (quotas de tokens inclus) : Solo 29 €/mois, Pro 119 €/mois (RAG & export), Daily 15 €/jour.
-**BYOK** (plateforme seule) : Solo 9 €/mois, Pro 49 €/mois (RAG, export), Daily 7 €/jour.
-**Trial** : 14 jours.
+> **Montants, quotas, recharges, périodicité et essai : [`docs/TARIFS.md`](TARIFS.md)** — source de
+> vérité tarifaire unique (F-64). Aucun montant n'est recopié ici ; la grille qui figurait dans cette
+> section était **périmée** (elle n'était appliquée nulle part) et proposait un axe « Hosted × BYOK »
+> que le code ne connaît pas : **BYOK est un plan**, pas une déclinaison de chaque plan.
 
-Billing via Stripe, webhooks → mise à jour de `subscriptions` et des entitlements. Overage : compteurs de quota + tarif par dépassement (ex. configurable 0,002 €/token ou par tranche).
+**Hosted** (quotas de tokens inclus) : Solo, Pro, Gold — au mois ou à l'année.
+**BYOK** (plateforme seule) : la consommation IA reste sur le compte fournisseur du client.
+**Recharges** à l'unité pour le dépassement, **option Atelier** en supplément, **essai gratuit**.
+
+Billing via Stripe, webhooks → mise à jour de `subscriptions` et des entitlements. **Overage : V1 =
+blocage à la limite** (`402 quota_exceeded`, sans appel au fournisseur) ; la variante monétisée
+(tarif par token ou par tranche) reste ouverte — **OQ-08**.
 
 ## 10. Sécurité & conformité
 
