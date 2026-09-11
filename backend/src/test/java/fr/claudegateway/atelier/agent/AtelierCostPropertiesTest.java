@@ -6,19 +6,22 @@ import java.math.BigDecimal;
 
 import org.junit.jupiter.api.Test;
 
-/** Réglages de dépense des sessions d'Atelier (F-36). */
+/**
+ * Plafonds de dépense des sessions d'Atelier (F-36).
+ *
+ * <p>Depuis F-63, les tarifs du décompte ne vivent plus ici : ce que vaut un token de quota, le
+ * prix de chaque nature de token et le markup sont dans
+ * {@code fr.claudegateway.quota.TokenPricingProperties}, sous le même préfixe de configuration.</p>
+ */
 class AtelierCostPropertiesTest {
 
     @Test
     void missingValuesFallBackToTheDocumentedDefaults() {
-        AtelierCostProperties properties = new AtelierCostProperties(null, null, null, null, null);
+        AtelierCostProperties properties = new AtelierCostProperties(null, null, null);
 
         assertThat(properties.maxRunCost()).isEqualByComparingTo("2.00");
         assertThat(properties.maxRunCostDelegated()).isEqualByComparingTo("5.00");
         assertThat(properties.minRunCost()).isEqualByComparingTo("0.10");
-        assertThat(properties.costPerMillionTokens()).isEqualByComparingTo("9.00");
-        // Markup neutre par défaut : les allocations par plan portent déjà la marge commerciale.
-        assertThat(properties.markup()).isEqualByComparingTo("1.0");
     }
 
     @Test
@@ -26,22 +29,18 @@ class AtelierCostPropertiesTest {
         // Un plafond nul ou négatif ouvrirait une session que le fournisseur mettrait aussitôt en
         // pause : on retombe sur le défaut plutôt que de livrer un plafond inutilisable.
         AtelierCostProperties properties = new AtelierCostProperties(
-                BigDecimal.ZERO, new BigDecimal("-1"), BigDecimal.ZERO, new BigDecimal("-3"),
-                BigDecimal.ZERO);
+                BigDecimal.ZERO, new BigDecimal("-1"), BigDecimal.ZERO);
 
         assertThat(properties.maxRunCost()).isEqualByComparingTo("2.00");
         assertThat(properties.maxRunCostDelegated()).isEqualByComparingTo("5.00");
         assertThat(properties.minRunCost()).isEqualByComparingTo("0.10");
-        assertThat(properties.costPerMillionTokens()).isEqualByComparingTo("9.00");
-        // Un markup nul ne « désactiverait » rien : il ferait consommer zéro quota. Défaut neutre.
-        assertThat(properties.markup()).isEqualByComparingTo("1.0");
     }
 
     @Test
     void aFloorAboveTheCapIsBroughtBackToTheCap() {
         // Le plafond borne la dépense : un plancher au-dessus le contredirait.
         AtelierCostProperties properties = new AtelierCostProperties(
-                new BigDecimal("1.00"), null, new BigDecimal("3.00"), null, null);
+                new BigDecimal("1.00"), null, new BigDecimal("3.00"));
 
         assertThat(properties.minRunCost()).isEqualByComparingTo("1.00");
     }
@@ -49,13 +48,10 @@ class AtelierCostPropertiesTest {
     @Test
     void configuredValuesAreKept() {
         AtelierCostProperties properties = new AtelierCostProperties(
-                new BigDecimal("4.00"), new BigDecimal("9.00"), new BigDecimal("0.25"),
-                new BigDecimal("12.50"), new BigDecimal("2.0"));
+                new BigDecimal("4.00"), new BigDecimal("9.00"), new BigDecimal("0.25"));
 
         assertThat(properties.maxRunCost()).isEqualByComparingTo("4.00");
         assertThat(properties.maxRunCostDelegated()).isEqualByComparingTo("9.00");
         assertThat(properties.minRunCost()).isEqualByComparingTo("0.25");
-        assertThat(properties.costPerMillionTokens()).isEqualByComparingTo("12.50");
-        assertThat(properties.markup()).isEqualByComparingTo("2.0");
     }
 }

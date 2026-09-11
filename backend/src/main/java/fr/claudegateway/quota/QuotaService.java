@@ -1,5 +1,6 @@
 package fr.claudegateway.quota;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -42,6 +43,7 @@ public class QuotaService {
     private final ByokKeyService byokKeyService;
     private final QuotaAlertService quotaAlertService;
     private final UsageLedgerService usageLedgerService;
+    private final BilledTokensCalculator billedTokensCalculator;
     private final QuotaProperties quotaProperties;
     private final Clock clock;
 
@@ -52,6 +54,7 @@ public class QuotaService {
             ByokKeyService byokKeyService,
             QuotaAlertService quotaAlertService,
             UsageLedgerService usageLedgerService,
+            BilledTokensCalculator billedTokensCalculator,
             QuotaProperties quotaProperties,
             Clock clock) {
         this.usageCounterRepository = usageCounterRepository;
@@ -60,6 +63,7 @@ public class QuotaService {
         this.byokKeyService = byokKeyService;
         this.quotaAlertService = quotaAlertService;
         this.usageLedgerService = usageLedgerService;
+        this.billedTokensCalculator = billedTokensCalculator;
         this.quotaProperties = quotaProperties;
         this.clock = clock;
     }
@@ -132,20 +136,59 @@ public class QuotaService {
     @Transactional
     public void recordUsage(UUID userId, int inputTokens, int outputTokens,
             UUID workspaceId, UUID hostId) {
-        long input = Math.max(0, inputTokens);
-        long output = Math.max(0, outputTokens);
-        if (input == 0 && output == 0) {
+        recordUsage(userId, TurnTokens.of(inputTokens, outputTokens), null, workspaceId, hostId);
+    }
+
+    /**
+     * Décompte d'un tour <b>au coût réel</b> (F-63) : chaque nature de token pèse le sien.
+     *
+     * <p>Deux compteurs sont incrémentés, et ils ne disent pas la même chose :</p>
+     * <ul>
+     *   <li>les <b>volumes</b> ({@code input_tokens}, {@code output_tokens}) — ce que le fournisseur
+     *       a traité, cache compris, exactement comme avant F-63. Le rapport d'usage (F-16), la
+     *       consommation par client et la console d'administration (F-61) en vivent ;</li>
+     *   <li>les <b>tokens facturés</b> ({@code billed_tokens}) — ce que le quota oppose. Un token de
+     *       sortie coûte cinq fois un token d'entrée chez le fournisseur, une lecture de cache un
+     *       dixième : les traiter à l'identique faisait dépendre la marge du style d'usage du
+     *       client, c'est-à-dire de rien qu'on maîtrise.</li>
+     * </ul>
+     *
+     * <p>Le changement est un changement de <b>calcul</b>, pas de <b>tarif</b> : aucun prix, aucun
+     * quota ne bouge — seuls les tarifs de conversion, tous en configuration, disent ce que pèse
+     * chaque nature.</p>
+     *
+     * @param userId          utilisateur authentifié (contexte de sécurité)
+     * @param tokens          tokens du tour, par nature
+     * @param providerCostUsd coût réel du tour rapporté par le fournisseur, en dollars, ou
+     *                        {@code null} s'il ne le rapporte pas — le coût est alors calculé à
+     *                        partir des tokens, aux tarifs de configuration. Quand il existe, il
+     *                        fait foi : il sait des choses que les tokens ignorent (modèle servi,
+     *                        recherches web, temps de bac à sable)
+     * @param workspaceId     projet du tour, ou {@code null} pour un tour hors projet
+     * @param hostId          poste du projet <b>au moment du tour</b>, ou {@code null}
+     */
+    @Transactional
+    public void recordUsage(UUID userId, TurnTokens tokens, BigDecimal providerCostUsd,
+            UUID workspaceId, UUID hostId) {
+        if (tokens.isEmpty() && (providerCostUsd == null || providerCostUsd.signum() <= 0)) {
             return;
         }
+        long input = tokens.processedInputTokens();
+        long output = tokens.outputTokens();
+        long billed = providerCostUsd == null
+                ? billedTokensCalculator.billedTokens(tokens)
+                : billedTokensCalculator.billedTokensFromCost(providerCostUsd);
         LocalDate periodStart = currentPeriodStart();
         UsageCounter counter = usageCounterRepository.findByUserIdAndPeriodStart(userId, periodStart)
                 .orElseGet(() -> createCounter(userId, periodStart));
         counter.setInputTokens(counter.getInputTokens() + input);
         counter.setOutputTokens(counter.getOutputTokens() + output);
+        counter.setBilledTokens(counter.getBilledTokens() + billed);
         raiseQuotaAlertIfNeeded(userId, counter);
         usageCounterRepository.save(counter);
         // Après le compteur, et jamais avant : si quelque chose doit manquer, c'est le relevé
-        // d'attribution, pas la consommation opposable au quota.
+        // d'attribution, pas la consommation opposable au quota. Le journal enregistre des VOLUMES
+        // (il sert à refacturer un client), pas le décompte facturé.
         usageLedgerService.recordTurn(userId, workspaceId, hostId, input, output);
     }
 
@@ -177,8 +220,10 @@ public class QuotaService {
         long quota = effectiveQuota(userId);
         long used = currentPeriodUsage(userId);
         long remaining = Math.max(0, quota - used);
+        long processed = currentPeriodProcessedTokens(userId);
         LocalDate periodStart = currentPeriodStart();
-        return new UsageSnapshot(used, quota, remaining, periodStart, periodStart.plusMonths(1));
+        return new UsageSnapshot(used, quota, remaining, processed, periodStart,
+                periodStart.plusMonths(1));
     }
 
     /**
@@ -267,7 +312,19 @@ public class QuotaService {
         return entitlementService.resolveMonthlyTokenQuota(subscription);
     }
 
+    /**
+     * Consommation <b>opposable au quota</b> de la période : les tokens facturés, où chaque nature
+     * pèse son coût (F-63). Ce n'est pas le volume traité — celui-là est
+     * {@link #currentPeriodProcessedTokens(UUID)}.
+     */
     private long currentPeriodUsage(UUID userId) {
+        return usageCounterRepository.findByUserIdAndPeriodStart(userId, currentPeriodStart())
+                .map(UsageCounter::getBilledTokens)
+                .orElse(0L);
+    }
+
+    /** Volume de tokens <b>traités</b> sur la période (entrée + sortie), à titre d'information. */
+    private long currentPeriodProcessedTokens(UUID userId) {
         return usageCounterRepository.findByUserIdAndPeriodStart(userId, currentPeriodStart())
                 .map(UsageCounter::totalTokens)
                 .orElse(0L);

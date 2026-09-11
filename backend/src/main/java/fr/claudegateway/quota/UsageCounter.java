@@ -63,6 +63,23 @@ public class UsageCounter {
     @Builder.Default
     private long outputTokens = 0L;
 
+    /**
+     * Tokens <b>facturés</b> cumulés sur la période (F-63) : c'est <b>ce compteur-là</b> que le
+     * quota oppose, et lui seul.
+     *
+     * <p>Il diffère des deux précédents parce que chaque nature de token y entre au <b>prix de sa
+     * nature</b> — un token de sortie coûte cinq fois un token d'entrée chez le fournisseur, une
+     * lecture de cache un dixième. Les traiter à l'identique faisait dépendre la marge du style
+     * d'usage du client ({@code docs/STRATEGIE-TARIFAIRE.md} §2).</p>
+     *
+     * <p>Les colonnes ci-dessus restent des <b>volumes</b>, et continuent de servir le rapport
+     * d'usage (F-16) et la consommation par client (F-61) : y ranger un décompte pondéré aurait
+     * faussé leur coût estimé.</p>
+     */
+    @Column(name = "billed_tokens", nullable = false)
+    @Builder.Default
+    private long billedTokens = 0L;
+
     /** Tokens rachetés (top-up, F-21) crédités sur la période ; s'ajoutent au quota d'abonnement. */
     @Column(name = "bonus_tokens", nullable = false)
     @Builder.Default
@@ -101,7 +118,10 @@ public class UsageCounter {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
-    /** Total de tokens consommés sur la période (entrée + sortie). */
+    /**
+     * Total de tokens <b>traités</b> sur la période (entrée + sortie). C'est un <b>volume</b> :
+     * ce que le quota oppose est {@link #getBilledTokens()} (F-63).
+     */
     public long totalTokens() {
         return inputTokens + outputTokens;
     }
