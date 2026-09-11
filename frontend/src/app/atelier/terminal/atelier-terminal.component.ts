@@ -23,6 +23,7 @@ import {
   ForgeBreadcrumbComponent,
   ForgeCrumb,
 } from '../../shared/forge-breadcrumb/forge-breadcrumb.component';
+import { LiveBadgeComponent } from '../../shared/live-badge/live-badge.component';
 import { MarkdownPipe } from '../../shared/markdown.pipe';
 
 import {
@@ -31,6 +32,7 @@ import {
   AtelierTerminalBlock,
   GitPullRequestResult,
   GitPushResult,
+  LiveTerminalEntry,
   RunnerStatus,
   WorkspaceExecutionTarget,
 } from '../../core/models/atelier.models';
@@ -70,7 +72,7 @@ import {
 @Component({
   selector: 'app-atelier-terminal',
   imports: [
-    FormsModule, ForgeBreadcrumbComponent, MarkdownPipe, MatButtonModule,
+    FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
     MatButtonToggleModule, MatIconModule, MatProgressSpinnerModule, MatTooltipModule,
   ],
   templateUrl: './atelier-terminal.component.html',
@@ -310,6 +312,21 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    */
   @Input() confirmationCountdown: string | null = null;
 
+  /**
+   * Ce terminal **vit** : il tient une place au registre (F-70 / SF-70-01). C'est ce qui allume la
+   * pastille et le mot « connecté » dans la barre.
+   */
+  @Input() live = false;
+
+  /**
+   * Le plafond a **refusé** cette place. Le seul cas qui bloque l'envoi : un refus explicite vaut
+   * mieux qu'un agent qu'on croit actif et qui dort. Une panne réseau, elle, ne bloque rien.
+   */
+  @Input() liveLimitReached = false;
+
+  /** Les terminaux vivants, nommés : le bandeau de refus doit dire **lequel fermer**. */
+  @Input() liveTerminals: LiveTerminalEntry[] = [];
+
   @Output() draftChange = new EventEmitter<string>();
   @Output() send = new EventEmitter<void>();
   @Output() quit = new EventEmitter<void>();
@@ -318,6 +335,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Output() publish = new EventEmitter<void>();
   /** Demande d'arrêt du run en cours (F-32 / SF-32-02). */
   @Output() interrupt = new EventEmitter<void>();
+  /** Rejoue la prise de place après un refus — le bouton « Réessayer » du bandeau. */
+  @Output() retryLive = new EventEmitter<void>();
   /** Ouverture du fichier d'instructions du projet (F-34 / SF-34-02). */
   @Output() openInstructions = new EventEmitter<void>();
   /** Décision sur la demande en attente (F-33 / SF-33-03) : `true` autorise, `false` refuse. */
@@ -537,9 +556,25 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   /** Envoie la demande saisie (touche Entrée ou bouton), sauf pendant un envoi. */
   submit(): void {
+    // Le refus du plafond bloque l'envoi — c'est ce qui fait du plafond un garde-fou de dépense
+    // plutôt qu'un message décoratif (F-70 / SF-70-01).
+    if (this.liveLimitReached) {
+      return;
+    }
     if (!this.submitting && this.draft.trim().length > 0) {
       this.send.emit();
     }
+  }
+
+  /**
+   * Nomme un terminal vivant pour le bandeau de refus : « projet — chez poste ». Sans le nom, un
+   * refus qui dit « fermez-en un » ne dit pas lequel, et n'est donc pas actionnable
+   * (F-70 / SF-70-01).
+   */
+  liveTerminalLabel(entry: LiveTerminalEntry): string {
+    const project = entry.workspaceName?.trim() || 'Projet sans nom';
+    const host = entry.hostName?.trim();
+    return host ? `${project} — chez ${host}` : project;
   }
 
   blockLabel = blockLabel;

@@ -30,6 +30,14 @@
         <span class="engine-last-seen">— {{ runnerLastSeenLabel }}</span>
       }
     </span>
+    <!-- SIGNE DE VIE (F-70 / SF-70-01) : une pastille ET le mot « connecté ». Le MÊME signe se
+         retrouve sur la carte du poste — c'est la décision du PO, et c'est ce qui permet de voir
+         d'un coup d'œil lesquels de ses terminaux vivent. Aucune couleur nouvelle : la pastille
+         emprunte l'encre de la barre (voir DESIGN_SYSTEM §11), et n'entre donc en concurrence ni
+         avec l'identité du poste (§9) ni avec l'état de mission (§10). -->
+    @if (live) {
+      <app-live-badge class="terminal-live" scope="terminal"></app-live-badge>
+    }
     <span class="terminal-bar-actions">
       @if (submitting) {
         <mat-progress-spinner
@@ -122,6 +130,46 @@
       </button>
     </span>
   </header>
+
+  <!-- REFUS EXPLICITE DU CINQUIÈME TERMINAL (F-70 / SF-70-01).
+       Le PO a tranché : un refus dit, jamais une mise en veille silencieuse — un agent qu'on croit
+       actif et qui dort est pire qu'un refus. Le terminal reste LISIBLE (son historique est là),
+       mais l'envoi est fermé, et le bandeau NOMME les terminaux vivants pour qu'on sache lequel
+       aller fermer. La phrase sur le coût est obligatoire : quatre flux vivants, ce sont quatre
+       tours facturés en parallèle, et le plafond est un garde-fou de dépense. -->
+  @if (liveLimitReached) {
+    <div class="terminal-live-limit" role="status">
+      <mat-icon class="terminal-live-limit-icon" aria-hidden="true">block</mat-icon>
+      <div class="terminal-live-limit-text">
+        <p class="terminal-live-limit-title">
+          Quatre terminaux actifs au maximum, fermez-en un pour en ouvrir un autre.
+        </p>
+        <p class="terminal-live-limit-cost">
+          Quatre flux vivants, ce sont quatre consommations simultanées : quatre tours facturés en
+          parallèle. Le plafond est un garde-fou de dépense, pas une limite technique.
+        </p>
+        @if (liveTerminals.length > 0) {
+          <ul class="terminal-live-limit-list">
+            <!-- NOMMÉS, pas cliquables (arbitrage F-70) : un lien amènerait CET onglet refusé sur
+                 un projet déjà tenu par un autre onglet — visible, et toujours refusé. Un piège.
+                 On dit lequel fermer ; l'onglet à fermer, lui, est dans le navigateur. -->
+            @for (entry of liveTerminals; track entry.workspaceId) {
+              <li>{{ liveTerminalLabel(entry) }}</li>
+            }
+          </ul>
+        }
+      </div>
+      <button
+        mat-stroked-button
+        type="button"
+        class="terminal-live-limit-retry"
+        (click)="retryLive.emit()"
+      >
+        <mat-icon>refresh</mat-icon>
+        Réessayer
+      </button>
+    </div>
+  }
 
   <!-- Cible d'exécution du projet (F-38 / SF-38-05) et gestes runner. **Pas un mode** : un réglage
        de projet, qui suit donc l'écran unique (D-L4-4). Les faire disparaître avec l'ancienne mise
@@ -559,13 +607,19 @@
       class="terminal-field"
       name="draft"
       autocomplete="off"
-      [placeholder]="submitting ? 'Précisez pendant qu\'il travaille…' : 'Décrivez la tâche à exécuter…'"
+      [placeholder]="liveLimitReached
+        ? 'Terminal en attente d\'une place — fermez-en un autre pour reprendre ici'
+        : (submitting ? 'Précisez pendant qu\'il travaille…' : 'Décrivez la tâche à exécuter…')"
       aria-label="Demande à exécuter"
-      [disabled]="publishing"
+      [disabled]="publishing || liveLimitReached"
       [ngModel]="draft"
       (ngModelChange)="draftChange.emit($event)"
     />
-    <button mat-button type="submit" [disabled]="draft.trim().length === 0">
+    <button
+      mat-button
+      type="submit"
+      [disabled]="draft.trim().length === 0 || liveLimitReached"
+    >
       Envoyer
     </button>
   </form>

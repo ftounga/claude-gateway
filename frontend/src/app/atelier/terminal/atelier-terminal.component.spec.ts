@@ -1247,4 +1247,85 @@ describe('AtelierTerminalComponent', () => {
       expect(() => component.revealPendingAsk()).not.toThrow();
     });
   });
+
+  // ------------------------------------------------ signe de vie et plafond (F-70 / SF-70-02)
+
+  describe('terminaux vivants', () => {
+    it('affiche une pastille ET le mot « connecté » quand le terminal vit', () => {
+      component.live = true;
+      fixture.detectChanges();
+
+      const badge = fixture.nativeElement.querySelector('app-live-badge');
+      expect(badge).not.toBeNull();
+      expect(badge.textContent.trim()).toBe('connecté');
+    });
+
+    it("n'affiche rien quand le terminal ne tient aucune place", () => {
+      component.live = false;
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('app-live-badge')).toBeNull();
+    });
+
+    it('refuse le cinquième AVEC la phrase du PO et ce que cela engage', () => {
+      component.liveLimitReached = true;
+      fixture.detectChanges();
+
+      expect(text()).toContain(
+        'Quatre terminaux actifs au maximum, fermez-en un pour en ouvrir un autre.',
+      );
+      expect(text()).toContain('quatre consommations simultanées');
+      expect(text()).toContain('garde-fou de dépense');
+    });
+
+    it("ferme l'envoi sous le refus — un plafond qui n'arrête rien n'est pas un plafond", fakeAsync(() => {
+      component.liveLimitReached = true;
+      component.draft = 'lance les tests';
+      fixture.detectChanges();
+      // `ngModel` applique l'état désactivé dans une micro-tâche : sans l'attendre, on lirait
+      // l'état d'avant et le test passerait pour de mauvaises raisons.
+      tick();
+      fixture.detectChanges();
+
+      const field = fixture.nativeElement.querySelector('.terminal-field') as HTMLInputElement;
+      const submit = fixture.nativeElement.querySelector(
+        '.terminal-input button[type="submit"]',
+      ) as HTMLButtonElement;
+      expect(field.disabled).toBe(true);
+      expect(submit.disabled).toBe(true);
+
+      const sent = jasmine.createSpy('send');
+      component.send.subscribe(sent);
+      component.submit();
+      expect(sent).not.toHaveBeenCalled();
+    }));
+
+    it("nomme les terminaux à fermer : sans cela, « fermez-en un » ne dit pas lequel", () => {
+      component.liveLimitReached = true;
+      component.liveTerminals = [
+        {
+          workspaceId: 'w1',
+          workspaceName: 'web',
+          hostId: 'h1',
+          hostName: 'CAGIP',
+          openedAt: '2026-09-12T09:00:00Z',
+        },
+      ];
+      fixture.detectChanges();
+
+      expect(text()).toContain('web — chez CAGIP');
+    });
+
+    it("ne bloque rien tant que le plafond n'a pas refusé", () => {
+      component.liveLimitReached = false;
+      component.draft = 'lance les tests';
+      fixture.detectChanges();
+
+      const sent = jasmine.createSpy('send');
+      component.send.subscribe(sent);
+      component.submit();
+      expect(sent).toHaveBeenCalled();
+      expect(fixture.nativeElement.querySelector('.terminal-live-limit')).toBeNull();
+    });
+  });
 });

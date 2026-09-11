@@ -12,6 +12,15 @@
       </p>
     </div>
     <div class="postes__header-actions">
+      <!-- CE QUE ÇA ENGAGE (F-70 / SF-70-01), dit à l'écran et non seulement au refus : quatre flux
+           vivants sont quatre consommations simultanées. Le plafond est un garde-fou de dépense, et
+           un garde-fou qu'on ne voit qu'en le heurtant n'en est pas un. -->
+      <span class="postes__live">
+        Terminaux vivants : {{ liveTerminalCount() }} / {{ liveTerminalLimit }}
+        <span class="postes__live-cost">
+          — chaque terminal vivant consomme un tour en parallèle
+        </span>
+      </span>
       @if (lastUpdatedLabel(); as updated) {
         <span class="postes__updated">Mis à jour à {{ updated }}</span>
       }
@@ -175,6 +184,13 @@
           <mat-icon>{{ host.connected ? 'cloud_done' : 'cloud_off' }}</mat-icon>
           {{ hostStateLabel(host) }}
         </span>
+        <!-- SIGNE DE VIE (F-70 / SF-70-01) : LA MÊME pastille que dans la barre du terminal, et le
+             mot écrit à côté. « Terminal connecté » plutôt que « connecté » tout court : le mot est
+             déjà pris, deux pastilles plus haut, par l'état du RUNNER. Aucune couleur nouvelle — le
+             point hérite de l'encre de la carte (§11). -->
+        @if (host.liveTerminals) {
+          <app-live-badge scope="host" [count]="host.liveTerminals"></app-live-badge>
+        }
         @if (host.elevated) {
           <span
             class="badge badge--warning"
@@ -232,6 +248,12 @@
                   <mat-icon>bolt</mat-icon>
                   Actif
                 </span>
+              }
+              <!-- « Actif » dit qu'une commande a TOURNÉ récemment ; la pastille de vie dit qu'un
+                   onglet VIT. Les deux peuvent être vrais séparément, et c'est pourquoi elles
+                   coexistent au lieu de se remplacer. -->
+              @if (project.liveTerminal) {
+                <app-live-badge scope="host"></app-live-badge>
               }
               <span class="projet__path poste__mono">{{ projectPathLabel(project) }}</span>
             </div>

@@ -137,6 +137,10 @@
     (publish)="openPushDialog()"
     (interrupt)="interruptRun()"
     (openBilling)="goToBilling()"
+    [live]="terminalLive()"
+    [liveLimitReached]="terminalLimitReached()"
+    [liveTerminals]="liveTerminalList()"
+    (retryLive)="retryLiveTerminal()"
   ></app-atelier-terminal>
 } @else {
 <div class="atelier-layout">

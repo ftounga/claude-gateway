@@ -277,6 +277,44 @@ ils répondent à deux questions différentes :
 
 ---
 
+## 11 — Signe de vie d'un terminal (ajout F-70 / SF-70-02, 2026-09-12)
+
+> **Aucune couleur ici non plus**, et cette fois c'est la décision elle-même : ce registre répond
+> **sans couleur**. Trois systèmes de couleur cohabitent déjà (§5 statut, §9 identité du poste,
+> §10 état de mission) ; un quatrième les rendrait tous illisibles.
+
+Un terminal **vit** quand son onglet est ouvert et que sa place est tenue au registre
+(F-70 / SF-70-01). Le PO a tranché le signe : **une pastille et le mot « connecté »**, le **même**
+dans la barre du terminal et sur la carte du poste.
+
+| Question | Registre | Palette | Support |
+|---|---|---|---|
+| *Chez quel client suis-je ?* | **Identité** | §9 — dix tons dérivés du nom | Filet gauche + `app-host-badge` |
+| *Où en est-on ?* | **État de mission** | §5 — pastilles de statut | `app-mission-badge` |
+| *Est-ce que ça vit maintenant ?* | **Vie** | **aucune** — encre de la surface | `app-live-badge` |
+
+### Règles d'emploi — non négociables
+
+- **Aucune couleur propre.** Le point est peint en `currentColor` : il hérite de l'encre de la
+  surface qui le porte, et reste lisible sur la barre navy du terminal comme sur une carte blanche.
+  Il ne dispute sa place à aucun des trois autres registres.
+- **Le mouvement dit la vie, le mot la nomme.** La pastille pulse (2 s) *et* le libellé est
+  **toujours** écrit — aucune entrée du composant ne permet de n'afficher que le point. Sous
+  `prefers-reduced-motion`, la pulsation disparaît ; le point et le mot restent.
+- **Le mot change selon l'endroit, la pastille jamais.** Dans la barre du terminal : « connecté ».
+  Sur la carte d'un poste : « Terminal connecté », ou « N terminaux connectés » — parce que le mot
+  « connecté » y est déjà pris par l'état du **runner**, et que deux « connecté » côte à côte pour
+  deux choses différentes ne renseignent personne.
+- **Ni fond, ni filet.** Le §8 interdit les aplats colorés sur les cartes, et le filet gauche
+  appartient à l'identité du poste (§9). Le signe de vie n'entre que par son point.
+- **Ce que ça engage se lit à côté.** Quatre flux vivants sont **quatre consommations simultanées** :
+  l'écran d'accueil de la Forge écrit « Terminaux vivants : n / 4 » et la phrase qui l'explique. Un
+  garde-fou de dépense qu'on ne découvre qu'en le heurtant n'en est pas un.
+- **Composant unique** : `app-live-badge` (`shared/live-badge/`). Aucun écran ne recompose la
+  pastille à la main, aucun ne pose de couleur en ligne dessus.
+
+---
+
 ## Logo & marque (ajout 2026-07-03)
 
 - **Logo de l'application** : `frontend/public/claude-portal-logo.png` (« Claude Portal » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« Claude Portal »** (renommé en F-29 SF-29-01 : le terme « Proxy » faisait classer le domaine en catégorie « anonymizer » par les filtres d'entreprise).

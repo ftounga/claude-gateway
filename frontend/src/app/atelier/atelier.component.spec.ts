@@ -1,4 +1,5 @@
-import { HttpErrorResponse } from '@angular/common/http';
+import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ApplicationRef } from '@angular/core';
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
@@ -142,6 +143,9 @@ describe('AtelierComponent', () => {
       imports: [AtelierComponent],
       providers: [
         provideNoopAnimations(),
+        // F-70 / SF-70-01 : l'écran prend une place au registre des terminaux vivants.
+        provideHttpClient(),
+        provideHttpClientTesting(),
         provideRouter([]),
         { provide: AtelierService, useValue: service },
         { provide: ApiKeyService, useValue: apiKeyService },
@@ -287,6 +291,9 @@ describe('AtelierComponent', () => {
       imports: [AtelierComponent],
       providers: [
         provideNoopAnimations(),
+        // F-70 / SF-70-01 : l'écran prend une place au registre des terminaux vivants.
+        provideHttpClient(),
+        provideHttpClientTesting(),
         provideRouter([]),
         { provide: AtelierService, useValue: service },
         { provide: ApiKeyService, useValue: apiKeyService },
@@ -359,6 +366,9 @@ describe('AtelierComponent', () => {
       imports: [AtelierComponent],
       providers: [
         provideNoopAnimations(),
+        // F-70 / SF-70-01 : l'écran prend une place au registre des terminaux vivants.
+        provideHttpClient(),
+        provideHttpClientTesting(),
         provideRouter([]),
         { provide: AtelierService, useValue: service },
         { provide: ApiKeyService, useValue: apiKeyService },
@@ -400,6 +410,9 @@ describe('AtelierComponent', () => {
       imports: [AtelierComponent],
       providers: [
         provideNoopAnimations(),
+        // F-70 / SF-70-01 : l'écran prend une place au registre des terminaux vivants.
+        provideHttpClient(),
+        provideHttpClientTesting(),
         provideRouter([]),
         { provide: AtelierService, useValue: service },
         { provide: ApiKeyService, useValue: apiKeyService },
@@ -3158,6 +3171,9 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
       imports: [AtelierComponent],
       providers: [
         provideNoopAnimations(),
+        // F-70 / SF-70-01 : l'écran prend une place au registre des terminaux vivants.
+        provideHttpClient(),
+        provideHttpClientTesting(),
         provideRouter([]),
         { provide: AtelierService, useValue: service },
         { provide: ApiKeyService, useValue: apiKeyService },
@@ -3275,6 +3291,9 @@ describe('AtelierComponent — écrans runner (F-38 SF-38-06)', () => {
       imports: [AtelierComponent],
       providers: [
         provideNoopAnimations(),
+        // F-70 / SF-70-01 : l'écran prend une place au registre des terminaux vivants.
+        provideHttpClient(),
+        provideHttpClientTesting(),
         provideRouter([]),
         { provide: AtelierService, useValue: service },
         { provide: ApiKeyService, useValue: apiKeyService },
@@ -3475,6 +3494,9 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
       imports: [AtelierComponent],
       providers: [
         provideNoopAnimations(),
+        // F-70 / SF-70-01 : l'écran prend une place au registre des terminaux vivants.
+        provideHttpClient(),
+        provideHttpClientTesting(),
         provideRouter([]),
         { provide: AtelierService, useValue: service },
         { provide: ApiKeyService, useValue: apiKeyService },
@@ -3679,6 +3701,9 @@ describe("AtelierComponent — guide d'accueil (F-53 / SF-53-01)", () => {
       imports: [AtelierComponent],
       providers: [
         provideNoopAnimations(),
+        // F-70 / SF-70-01 : l'écran prend une place au registre des terminaux vivants.
+        provideHttpClient(),
+        provideHttpClientTesting(),
         provideRouter([]),
         { provide: AtelierService, useValue: service },
         { provide: ApiKeyService, useValue: apiKeyService },
@@ -3923,6 +3948,9 @@ describe('AtelierComponent — rappel de journalisation (F-57 / SF-57-03)', () =
       imports: [AtelierComponent],
       providers: [
         provideNoopAnimations(),
+        // F-70 / SF-70-01 : l'écran prend une place au registre des terminaux vivants.
+        provideHttpClient(),
+        provideHttpClientTesting(),
         provideRouter([]),
         { provide: AtelierService, useValue: service },
         { provide: ApiKeyService, useValue: apiKeyService },

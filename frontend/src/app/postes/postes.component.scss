@@ -34,6 +34,21 @@
     font-size: 12px;
   }
 
+  /* Compteur de terminaux vivants (F-70 / SF-70-01). Aucune couleur d'état : c'est un fait chiffré,
+     pas un verdict — et trois registres de couleur cohabitent déjà sur cet écran. */
+  &__live {
+    color: var(--cg-text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  /* La phrase est ÉCRITE, pas rangée dans une infobulle : un garde-fou de dépense qu'il faut
+     survoler pour découvrir n'informe personne. */
+  &__live-cost {
+    font-weight: 400;
+    opacity: 0.85;
+  }
+
   &__loading {
     display: flex;
     justify-content: center;
