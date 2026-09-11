@@ -101,8 +101,15 @@ describe('BillingComponent', () => {
     periodStart: '2026-07-01',
     periodEnd: '2026-08-01',
   };
+  /**
+   * Deux packs, et c'est la configuration LIVRÉE (F-67) : l'un porte son montant, l'autre non — le
+   * prix du pack 1 M appartient au PO. Les deux cas de l'écran tiennent dans une seule liste.
+   */
   const topUps: TopUpPacksResponse = {
-    packs: [{ code: 'STANDARD', label: 'Recharge 1 M tokens', tokens: 1000000 }],
+    packs: [
+      { code: 'DAY', label: 'Recharge 200 k tokens', tokens: 200000, priceEur: '4,99' },
+      { code: 'STANDARD', label: 'Recharge 1 M tokens', tokens: 1000000, priceEur: null },
+    ],
   };
   /** Option Forge (F-40) : Solo sans option, paiement configuré. */
   const optionAvailable: AtelierOptionView = {
@@ -350,11 +357,62 @@ describe('BillingComponent', () => {
 
   // --- Rachat de tokens (top-up, SF-21-03) ---
 
+  /** Carte d'un pack de recharge, cherchée par son libellé (l'ordre du catalogue n'est pas contraint). */
+  function packCard(label: string): HTMLElement {
+    const cards = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('article.billing__card--pack'),
+    );
+    return cards.find(
+      (c) => c.querySelector('.billing__card-name')?.textContent?.trim() === label,
+    ) as HTMLElement;
+  }
+
   it('loads top-up packs on init', () => {
     setup();
     expect(billingService.getTopUps).toHaveBeenCalled();
-    expect(component.topUpPacks().length).toBe(1);
-    expect(component.topUpPacks()[0].code).toBe('STANDARD');
+    expect(component.topUpPacks().length).toBe(2);
+    expect(component.topUpPacks().map((p) => p.code)).toEqual(['DAY', 'STANDARD']);
+  });
+
+  // --- Le prix avant le clic (F-67 / SF-67-02) ---
+
+  it('shows the amount the server sends for a priced pack', () => {
+    setup();
+    fixture.detectChanges();
+
+    const dayCard = packCard('Recharge 200 k tokens');
+    expect(dayCard.querySelector('.billing__card-price')?.textContent).toContain('4,99 €');
+    expect(dayCard.textContent).toContain('une fois');
+  });
+
+  it('says where the price will be shown instead of inventing one', () => {
+    setup();
+    fixture.detectChanges();
+
+    const standardCard = packCard('Recharge 1 M tokens');
+    // Le cœur de F-67 : aucun montant, aucun zéro, aucun « — € » — une phrase vraie à la place.
+    expect(standardCard.querySelector('.billing__card-price')).toBeNull();
+    expect(standardCard.textContent).toContain('Prix indiqué à l\'étape de paiement');
+    expect(standardCard.textContent).not.toContain('€');
+  });
+
+  it('keeps a pack without an amount buyable', () => {
+    setup();
+    fixture.detectChanges();
+
+    // Le pack a un price ID côté serveur : c'est bien une recharge vendable, pas une offre morte.
+    const cta = packCard('Recharge 1 M tokens').querySelector('button') as HTMLButtonElement;
+    expect(cta.textContent).toContain('Acheter');
+    expect(cta.disabled).toBeFalse();
+  });
+
+  it('treats an empty amount exactly like an absent one', () => {
+    setup();
+    // Une chaîne vide est ce que produit une variable d'environnement non renseignée : l'écran ne
+    // fait pas confiance à la forme du champ, sans quoi il afficherait « €» tout seul.
+    expect(component.topUpPrice({ code: 'X', label: 'X', tokens: 1, priceEur: '' })).toBeNull();
+    expect(component.topUpPrice({ code: 'X', label: 'X', tokens: 1, priceEur: '   ' })).toBeNull();
+    expect(component.topUpPrice({ code: 'X', label: 'X', tokens: 1, priceEur: '4,99' })).toBe('4,99');
   });
 
   it('starts a top-up checkout and redirects to the Stripe URL', () => {

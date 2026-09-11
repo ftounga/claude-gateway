@@ -507,12 +507,20 @@ export class BillingComponent implements OnInit {
   }
 
   /**
-   * Prix d'affichage d'un pack de tokens (EUR). Affichage uniquement ; le débit réel reste porté par
-   * le price Stripe côté serveur. TODO : exposer ce prix via l'API (comme `priceEur` des plans).
+   * Montant d'affichage d'un pack de recharge (EUR), tel que le **serveur** l'envoie (F-67).
+   *
+   * <p>Ce composant portait jusqu'ici un barème écrit en dur — `{ DAY: '4,99', STANDARD: '29' }` —
+   * dont les 29 € du pack 1 M ne venaient d'aucune source : ni configuration, ni Stripe, ni la
+   * grille tarifaire, qui porte « à confirmer par le PO ». L'écran affichait donc un montant que
+   * personne n'avait décidé, à côté d'un bouton d'achat.</p>
+   *
+   * <p>`null` est un état **normal** : le pack reste vendable, et l'écran dit que le prix sera
+   * indiqué à l'étape de paiement. Une chaîne vide est traitée comme une absence — l'écran ne fait
+   * pas confiance à la forme du champ pour éviter d'afficher « €» tout seul.</p>
    */
-  packPrice(code: string): string | null {
-    const prices: Record<string, string> = { DAY: '4,99', STANDARD: '29' };
-    return prices[code] ?? null;
+  topUpPrice(pack: TopUpPack): string | null {
+    const price = pack.priceEur?.trim();
+    return price ? price : null;
   }
 
   /** Part consommée du quota, bornée 0–100 % (quota nul ⇒ 100 % : accès bloqué). */

@@ -7,6 +7,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { ApiError } from '../../core/models/auth.models';
+import { TopUpPack } from '../../core/models/billing.models';
 import { QuotaAlertView } from '../../core/models/quota-alert.models';
 import { BillingService } from '../../core/services/billing.service';
 import { QuotaAlertService } from '../../core/services/quota-alert.service';
@@ -47,6 +48,19 @@ export class QuotaAlertBannerComponent implements OnInit {
       // Silencieux à dessein : l'absence d'alerte ne doit jamais parasiter l'écran de travail.
       error: () => this.alert.set(null),
     });
+  }
+
+  /**
+   * Libellé du bouton de recharge. Il porte le **montant** du pack quand le serveur en envoie un
+   * (F-67) : ce bouton mène droit au paiement, et faire cliquer sans dire ce qu'on engage n'est pas
+   * acceptable en vente en ligne.
+   *
+   * <p>Sans montant configuré, le libellé reste celui d'avant — le prix sera indiqué sur la page de
+   * paiement. Aucun montant de repli n'est inventé ici, jamais.</p>
+   */
+  rechargeLabel(pack: TopUpPack): string {
+    const price = pack.priceEur?.trim();
+    return price ? `Recharger — ${pack.label} · ${price} €` : `Recharger — ${pack.label}`;
   }
 
   /** Vrai si la bannière doit être rendue. Aucun élément DOM n'est produit sinon. */
