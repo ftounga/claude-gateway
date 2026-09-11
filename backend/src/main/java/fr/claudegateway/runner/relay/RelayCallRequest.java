@@ -29,9 +29,18 @@ import fr.claudegateway.runner.channel.RunnerTarget;
 public record RelayCallRequest(UUID hostId, UUID workspaceId, String project, String callId,
         String tool, JsonNode input, long timeoutMs) {
 
-    /** Vrai si l'enveloppe est exploitable telle quelle (le reste est validé par le dispatcher). */
+    /**
+     * Vrai si l'enveloppe est exploitable telle quelle (le reste est validé par le dispatcher).
+     *
+     * <p>{@code workspaceId} peut être <b>nul</b> depuis F-71 / SF-71-02 : un appel de <b>poste</b>
+     * — lister les sous-dossiers d'une racine pour désigner un projet qui n'existe pas encore — ne
+     * concerne aucun projet. Ce champ n'autorise rien : l'appartenance a déjà été vérifiée par le
+     * pod appelant, et le pod destinataire ne fait confiance qu'au secret partagé (contrat du relais
+     * §3). Il ne sert qu'à l'isolation des <b>annulations</b> en vol ; nul, l'appel n'est simplement
+     * pas annulable par projet — ce qui est exact, il n'en a pas.</p>
+     */
     boolean isValid() {
-        return hostId != null && workspaceId != null && callId != null && !callId.isBlank()
+        return hostId != null && callId != null && !callId.isBlank()
                 && tool != null && !tool.isBlank() && timeoutMs > 0;
     }
 

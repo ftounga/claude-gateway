@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.atelier.AtelierAccessService;
@@ -21,10 +22,12 @@ import fr.claudegateway.runner.RunnerPairingService;
 import fr.claudegateway.runner.RunnerPairingService.PairingCode;
 import fr.claudegateway.runner.RunnerStatusService;
 import fr.claudegateway.runner.RunnerTokenService;
+import fr.claudegateway.runner.browse.RunnerHostFolderBrowser;
 import fr.claudegateway.runner.dto.PairingCodeResponse;
 import fr.claudegateway.runner.dto.RunnerKillResponse;
 import fr.claudegateway.runner.dto.RunnerStatusResponse;
 import fr.claudegateway.runner.dto.RunnerTokenResponse;
+import fr.claudegateway.runner.host.dto.HostFoldersResponse;
 import fr.claudegateway.runner.host.dto.HostMissionRequest;
 import fr.claudegateway.runner.host.dto.RunnerHostOverviewResponse;
 import fr.claudegateway.runner.host.dto.RunnerHostRequest;
@@ -53,6 +56,7 @@ public class RunnerHostController {
     private final RunnerStatusService statusService;
     private final RunnerKillSwitchService killSwitchService;
     private final WorkspaceService workspaceService;
+    private final RunnerHostFolderBrowser folderBrowser;
     private final AtelierAccessService atelierAccess;
     private final CurrentUser currentUser;
 
@@ -60,7 +64,8 @@ public class RunnerHostController {
             RunnerHostOverviewService overviewService, RunnerPairingService pairingService,
             RunnerTokenService tokenService, RunnerStatusService statusService,
             RunnerKillSwitchService killSwitchService, WorkspaceService workspaceService,
-            AtelierAccessService atelierAccess, CurrentUser currentUser) {
+            RunnerHostFolderBrowser folderBrowser, AtelierAccessService atelierAccess,
+            CurrentUser currentUser) {
         this.hostService = hostService;
         this.overviewService = overviewService;
         this.pairingService = pairingService;
@@ -68,6 +73,7 @@ public class RunnerHostController {
         this.statusService = statusService;
         this.killSwitchService = killSwitchService;
         this.workspaceService = workspaceService;
+        this.folderBrowser = folderBrowser;
         this.atelierAccess = atelierAccess;
         this.currentUser = currentUser;
     }
@@ -103,6 +109,29 @@ public class RunnerHostController {
     public List<RunnerHostOverviewResponse> overview() {
         atelierAccess.requireAccess();
         return overviewService.overview(currentUser.requireId());
+    }
+
+    /**
+     * <b>Sous-dossiers du poste</b> (F-71 / SF-71-02) : ce qu'on <b>clique</b> pour désigner le
+     * dossier d'un projet, au lieu de le taper.
+     *
+     * <p>Un chemin tapé à la main crée un projet vide qui n'échoue qu'au <b>premier usage</b>, quand
+     * plus personne ne fait le lien avec la faute de frappe. Décision du PO : le runner liste, on
+     * clique.</p>
+     *
+     * <p>Le runner doit être <b>connecté</b> : sans machine, il n'y a rien à lister, et la gateway
+     * le <b>dit</b> (409) plutôt que de rendre une liste vide qui ferait croire à une racine sans
+     * sous-dossier.</p>
+     *
+     * <p>Déclaré avant {@code /{hostId}} par lisibilité, comme {@code /overview}.</p>
+     *
+     * @param path chemin relatif sous la racine ; absent ou vide = la racine elle-même
+     */
+    @GetMapping("/{hostId}/folders")
+    public HostFoldersResponse folders(@PathVariable UUID hostId,
+            @RequestParam(name = "path", required = false) String path) {
+        atelierAccess.requireAccess();
+        return folderBrowser.folders(currentUser.requireId(), hostId, path);
     }
 
     /** Détail d'un poste possédé. */
