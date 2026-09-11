@@ -95,7 +95,10 @@ public class QuotaService {
             byokKeyService.requireActiveApiKey(userId);
             return;
         }
-        long quota = entitlementService.resolveMonthlyTokenQuota(subscription)
+        // Quota effectif : l'allocation du plan, la part apportée par les postes supplémentaires
+        // (F-65) et les jetons rachetés (F-21). Ce que le pré-vol oppose doit être exactement ce que
+        // la jauge annonce — d'où le même calcul des deux côtés.
+        long quota = entitlementService.resolveEffectiveMonthlyTokenQuota(subscription)
                 + currentPeriodBonus(userId);
         long used = currentPeriodUsage(userId);
         if (used >= quota) {
@@ -296,7 +299,10 @@ public class QuotaService {
                 .orElse(0L);
     }
 
-    /** Quota effectif de la période : quota d'abonnement + tokens rachetés (bonus) de la période. */
+    /**
+     * Quota effectif de la période : allocation de l'abonnement, <b>part des postes supplémentaires</b>
+     * (F-65) et tokens rachetés (bonus, F-21) de la période.
+     */
     private long effectiveQuota(UUID userId) {
         return resolveQuota(userId) + currentPeriodBonus(userId);
     }
@@ -309,7 +315,7 @@ public class QuotaService {
 
     private long resolveQuota(UUID userId) {
         Subscription subscription = subscriptionService.getOrCreateForUser(userId);
-        return entitlementService.resolveMonthlyTokenQuota(subscription);
+        return entitlementService.resolveEffectiveMonthlyTokenQuota(subscription);
     }
 
     /**

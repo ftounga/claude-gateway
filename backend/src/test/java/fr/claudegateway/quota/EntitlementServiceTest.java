@@ -1,6 +1,7 @@
 package fr.claudegateway.quota;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 import java.time.OffsetDateTime;
 import java.util.Map;
@@ -13,6 +14,7 @@ import fr.claudegateway.billing.PlanCatalog;
 import fr.claudegateway.billing.PlanCode;
 import fr.claudegateway.billing.Subscription;
 import fr.claudegateway.billing.SubscriptionStatus;
+import fr.claudegateway.billing.seat.SeatQuotaService;
 
 /**
  * Tests unitaires de la résolution d'entitlement (SF-10-01) : traduction de l'état d'abonnement
@@ -26,6 +28,12 @@ class EntitlementServiceTest {
 
     private EntitlementService service;
 
+    /**
+     * Aucun poste supplémentaire (F-65) : ces tests décrivent l'allocation du PLAN, et le supplément
+     * par poste est une autre histoire — celle de {@code SeatQuotaServiceTest}.
+     */
+    private final SeatQuotaService seatQuotaService = mock(SeatQuotaService.class);
+
     @BeforeEach
     void setUp() {
         QuotaProperties properties = new QuotaProperties(
@@ -33,7 +41,7 @@ class EntitlementServiceTest {
                 Map.of("SOLO", 1_000_000L, "PRO", 5_000_000L, "DAILY", 500_000L, "GOLD", 12_000_000L,
                         "BYOK", 0L),
                 null);
-        service = new EntitlementService(properties, new PlanCatalog());
+        service = new EntitlementService(properties, new PlanCatalog(), seatQuotaService);
     }
 
     private Subscription subscription(SubscriptionStatus status, PlanCode plan, OffsetDateTime trialEndsAt) {
@@ -106,7 +114,7 @@ class EntitlementServiceTest {
     @Test
     void activeWithUnconfiguredPlanFailsClosed() {
         EntitlementService noPlans = new EntitlementService(
-                new QuotaProperties(200_000L, Map.of(), null), new PlanCatalog());
+                new QuotaProperties(200_000L, Map.of(), null), new PlanCatalog(), seatQuotaService);
         assertThat(noPlans.resolveMonthlyTokenQuota(
                 subscription(SubscriptionStatus.ACTIVE, PlanCode.PRO, null)))
                 .isZero();

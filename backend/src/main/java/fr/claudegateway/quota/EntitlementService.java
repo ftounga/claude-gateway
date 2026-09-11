@@ -11,6 +11,7 @@ import fr.claudegateway.billing.PlanCode;
 import fr.claudegateway.billing.ProviderMode;
 import fr.claudegateway.billing.Subscription;
 import fr.claudegateway.billing.SubscriptionStatus;
+import fr.claudegateway.billing.seat.SeatQuotaService;
 
 /**
  * Résout l'entitlement d'un utilisateur (F-10) : combien de tokens son abonnement lui alloue pour
@@ -26,6 +27,12 @@ import fr.claudegateway.billing.SubscriptionStatus;
  * abonnement expiré, qui lui doit bloquer. Le quota seul ne porte pas cette différence — un nombre
  * ne dit pas pourquoi il vaut zéro : c'est {@link #isCustomerKeyBilled(Subscription)} qui la porte,
  * explicitement, et sur laquelle le pré-vol de quota s'appuie.</p>
+ *
+ * <p><b>F-65 — deux allocations, pas une.</b> {@link #resolveMonthlyTokenQuota(Subscription)} reste
+ * l'allocation du <b>plan</b>, que le catalogue annonce ; {@link
+ * #resolveEffectiveMonthlyTokenQuota(Subscription)} y ajoute la part apportée par les <b>postes
+ * supplémentaires</b>, et c'est elle qu'opposent le pré-vol, la jauge et le seuil d'alerte. Les
+ * confondre ferait dire au catalogue des choses différentes selon le lecteur.</p>
  */
 @Service
 public class EntitlementService {
@@ -36,10 +43,15 @@ public class EntitlementService {
 
     private final QuotaProperties properties;
     private final PlanCatalog planCatalog;
+    private final SeatQuotaService seatQuotaService;
 
-    public EntitlementService(QuotaProperties properties, PlanCatalog planCatalog) {
+    public EntitlementService(
+            QuotaProperties properties,
+            PlanCatalog planCatalog,
+            SeatQuotaService seatQuotaService) {
         this.properties = properties;
         this.planCatalog = planCatalog;
+        this.seatQuotaService = seatQuotaService;
     }
 
     /**
@@ -59,6 +71,32 @@ public class EntitlementService {
             return properties.trialTokens();
         }
         return 0L;
+    }
+
+    /**
+     * Allocation mensuelle <b>effective</b> : celle du plan, <b>plus</b> la part de jetons apportée
+     * par les postes supplémentaires (F-65).
+     *
+     * <p>C'est cette méthode — et non {@link #resolveMonthlyTokenQuota(Subscription)} — que doivent
+     * appeler le pré-vol, la jauge et le seuil d'alerte : ce que le quota oppose et ce que l'écran
+     * annonce doivent être le même nombre. {@code resolveMonthlyTokenQuota} reste l'allocation du
+     * <b>plan seul</b>, parce que le catalogue ({@code GET /billing/plans}) doit continuer d'annoncer
+     * ce que le plan donne, indépendamment du nombre de postes de celui qui le regarde.</p>
+     *
+     * <p><b>Le supplément est un abonnement payant, pas un cadeau</b> : l'apport n'existe que sous
+     * un abonnement en cours (ACTIVE ou PAST_DUE). Un essai n'en reçoit pas — personne ne facture
+     * un poste supplémentaire à un essai gratuit — et une offre BYOK non plus : la plateforme n'y
+     * alloue aucun jeton par contrat (F-41), et ce zéro-là doit rester un zéro.</p>
+     *
+     * @param subscription abonnement de l'utilisateur (jamais {@code null})
+     * @return quota de la période, postes supplémentaires compris
+     */
+    public long resolveEffectiveMonthlyTokenQuota(Subscription subscription) {
+        long planQuota = resolveMonthlyTokenQuota(subscription);
+        if (!isLive(subscription.getStatus()) || isCustomerKeyBilled(subscription)) {
+            return planQuota;
+        }
+        return planQuota + seatQuotaService.grantedTokens(subscription.getUserId());
     }
 
     /**

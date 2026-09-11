@@ -64,7 +64,7 @@ class QuotaBonusTest {
 
     private void baseQuota(long quota) {
         when(subscriptionService.getOrCreateForUser(alice)).thenReturn(subscription);
-        when(entitlementService.resolveMonthlyTokenQuota(subscription)).thenReturn(quota);
+        when(entitlementService.resolveEffectiveMonthlyTokenQuota(subscription)).thenReturn(quota);
     }
 
     private UsageCounter counter(long input, long output, long bonus) {

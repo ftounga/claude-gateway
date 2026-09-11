@@ -17,9 +17,11 @@ import fr.claudegateway.billing.dto.CheckoutRequest;
 import fr.claudegateway.billing.dto.CheckoutResponse;
 import fr.claudegateway.billing.dto.PlanResponse;
 import fr.claudegateway.billing.dto.PlansResponse;
+import fr.claudegateway.billing.dto.SeatsResponse;
 import fr.claudegateway.billing.dto.SubscriptionResponse;
 import fr.claudegateway.billing.dto.TopUpCheckoutRequest;
 import fr.claudegateway.billing.dto.TopUpPacksResponse;
+import fr.claudegateway.billing.seat.SeatQuotaService;
 import fr.claudegateway.quota.EntitlementService;
 import fr.claudegateway.quota.QuotaProperties;
 import jakarta.validation.Valid;
@@ -39,6 +41,7 @@ public class BillingController {
     private final TopUpCatalog topUpCatalog;
     private final TopUpService topUpService;
     private final AtelierOptionService atelierOptionService;
+    private final SeatQuotaService seatQuotaService;
     private final CurrentUser currentUser;
     private final BillingProperties billingProperties;
     private final QuotaProperties quotaProperties;
@@ -51,6 +54,7 @@ public class BillingController {
             TopUpCatalog topUpCatalog,
             TopUpService topUpService,
             AtelierOptionService atelierOptionService,
+            SeatQuotaService seatQuotaService,
             CurrentUser currentUser,
             BillingProperties billingProperties,
             QuotaProperties quotaProperties,
@@ -61,6 +65,7 @@ public class BillingController {
         this.topUpCatalog = topUpCatalog;
         this.topUpService = topUpService;
         this.atelierOptionService = atelierOptionService;
+        this.seatQuotaService = seatQuotaService;
         this.currentUser = currentUser;
         this.billingProperties = billingProperties;
         this.quotaProperties = quotaProperties;
@@ -89,6 +94,20 @@ public class BillingController {
                         stripe.isYearlyAvailable(plan)))
                 .toList();
         return new PlansResponse(plans);
+    }
+
+    /**
+     * Postes comptés pour la période courante (F-65 / SF-65-01) : combien, lesquels, ce que les
+     * suppléments apportent en jetons, et si le supplément est réellement facturé.
+     *
+     * <p>Lecture seule, isolation {@code user_id} : un poste d'un autre compte n'y apparaît jamais.
+     * Aucun appel au fournisseur de paiement n'est émis par ce chemin — F-65 <b>compte</b>, il ne
+     * facture pas lui-même.</p>
+     */
+    @GetMapping("/seats")
+    public SeatsResponse seats() {
+        UUID userId = currentUser.requireId();
+        return SeatsResponse.from(seatQuotaService.describe(userId));
     }
 
     /** Abonnement de l'utilisateur courant (essai provisionné à la volée si absent). */
