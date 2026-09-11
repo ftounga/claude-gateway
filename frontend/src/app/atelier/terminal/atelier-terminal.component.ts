@@ -8,7 +8,9 @@ import {
   OnDestroy,
   Output,
   ViewChild,
+  computed,
   inject,
+  signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -17,8 +19,10 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
-import { HostBadgeComponent } from '../../shared/host-badge/host-badge.component';
-import { MissionBadgeComponent } from '../../shared/mission-badge/mission-badge.component';
+import {
+  ForgeBreadcrumbComponent,
+  ForgeCrumb,
+} from '../../shared/forge-breadcrumb/forge-breadcrumb.component';
 import { MarkdownPipe } from '../../shared/markdown.pipe';
 
 import {
@@ -66,15 +70,41 @@ import {
 @Component({
   selector: 'app-atelier-terminal',
   imports: [
-    FormsModule, HostBadgeComponent, MissionBadgeComponent, MarkdownPipe, MatButtonModule,
+    FormsModule, ForgeBreadcrumbComponent, MarkdownPipe, MatButtonModule,
     MatButtonToggleModule, MatIconModule, MatProgressSpinnerModule, MatTooltipModule,
   ],
   templateUrl: './atelier-terminal.component.html',
   styleUrl: './atelier-terminal.component.scss',
 })
 export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
-  /** Nom du projet, affiché dans l'en-tête. */
-  @Input() projectName = '';
+
+  private readonly projectNameValue = signal('');
+  private readonly projectIdValue = signal<string | null>(null);
+  private readonly hostNameValue = signal<string | null>(null);
+  private readonly hostIdValue = signal<string | null>(null);
+  private readonly hostMissionValue = signal<string | null>(null);
+
+  /** Nom du projet, affiché dans l'en-tête — dernier niveau du fil d'Ariane. */
+  @Input()
+  set projectName(value: string) {
+    this.projectNameValue.set(value ?? '');
+  }
+  get projectName(): string {
+    return this.projectNameValue();
+  }
+
+  /**
+   * Identifiant du projet ouvert (F-68 / SF-68-01), ou `null` quand l'appelant ne le connaît pas
+   * encore. Sert uniquement à rendre **cliquable** le dernier niveau du fil d'Ariane — décision du
+   * PO : chaque niveau est un lien.
+   */
+  @Input()
+  set projectId(value: string | null) {
+    this.projectIdValue.set(value ?? null);
+  }
+  get projectId(): string | null {
+    return this.projectIdValue();
+  }
 
   /**
    * **Nom du poste** sur lequel ce projet vit (F-49 / SF-49-03), ou `null` s'il n'est rattaché à
@@ -84,8 +114,30 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * est</b> : l'en-tête ouvre sur la pastille du poste — ses initiales sur la couleur dérivée de son
    * nom — suivie de son nom <b>écrit</b>. Rien n'est affiché quand il vaut `null` : un projet non
    * rattaché n'a pas de client, et « aucun poste » se lirait comme un défaut.</p>
+   *
+   * <p>Depuis F-68 / SF-68-01, ce niveau est aussi le <b>« chez qui »</b> du fil d'Ariane : la
+   * pastille est la même, elle est simplement devenue un lien vers la carte du poste.</p>
    */
-  @Input() hostName: string | null = null;
+  @Input()
+  set hostName(value: string | null) {
+    this.hostNameValue.set(value ?? null);
+  }
+  get hostName(): string | null {
+    return this.hostNameValue();
+  }
+
+  /**
+   * Identifiant du poste (F-68 / SF-68-01), ou `null` quand il n'est pas connu. Il n'apporte
+   * qu'une chose : l'ancrage `#poste-<id>` qui ramène, depuis le fil d'Ariane, à la carte de ce
+   * client sur l'accueil de la Forge. Sans lui le niveau reste cliquable, sans ancrage.
+   */
+  @Input()
+  set hostId(value: string | null) {
+    this.hostIdValue.set(value ?? null);
+  }
+  get hostId(): string | null {
+    return this.hostIdValue();
+  }
 
   /**
    * **État de mission** du poste, *à montrer* (F-60 / SF-60-02) : `'PENDING'`, `'CLOSED'`, ou
@@ -96,7 +148,43 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * ne change aucune décision. « En attente » ou « Clôturé » en changent une, et s'affichent — avec
    * leur libellé écrit, comme partout.</p>
    */
-  @Input() hostMission: string | null = null;
+  @Input()
+  set hostMission(value: string | null) {
+    this.hostMissionValue.set(value ?? null);
+  }
+  get hostMission(): string | null {
+    return this.hostMissionValue();
+  }
+
+  /**
+   * **Fil d'Ariane de la barre du terminal** (F-68 / SF-68-01) — « Forge › CAGIP › mon-projet ».
+   *
+   * <p>La barre disait déjà le poste puis le projet, séparés par une barre oblique. F-68 n'y
+   * <b>retire</b> rien : il ajoute l'ancêtre qui manquait — la Forge — et rend les niveaux
+   * cliquables, maintenant que l'onglet « Postes » a disparu de la barre de navigation.</p>
+   *
+   * <p>Le niveau « Forge » est ajouté par le composant de fil lui-même ; on ne lui donne ici que
+   * ce qui vient du projet ouvert.</p>
+   */
+  readonly crumbs = computed<ForgeCrumb[]>(() => {
+    const trail: ForgeCrumb[] = [];
+    const host = this.hostNameValue();
+    if (host) {
+      trail.push({
+        label: host,
+        link: ['/forge'],
+        fragment: this.hostIdValue() ? `poste-${this.hostIdValue()}` : null,
+        hostName: host,
+        missionStatus: this.hostMissionValue(),
+      });
+    }
+    const project = this.projectNameValue();
+    if (project) {
+      const id = this.projectIdValue();
+      trail.push({ label: project, link: id ? ['/atelier', id] : ['/atelier'] });
+    }
+    return trail;
+  });
 
   /**
    * Dossier de la machine, tel que le runner l'a déclaré (F-38 / SF-38-16). Affiché à côté du nom

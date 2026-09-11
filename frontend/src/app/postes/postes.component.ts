@@ -1,7 +1,7 @@
 import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
@@ -13,6 +13,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { AtelierService } from '../core/services/atelier.service';
 import { HostProjectSummary, RunnerHostOverview } from '../core/models/atelier.models';
+import { ForgeBreadcrumbComponent } from '../shared/forge-breadcrumb/forge-breadcrumb.component';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import { HostTone, hostTone } from '../shared/host-identity';
 import { MissionBadgeComponent } from '../shared/mission-badge/mission-badge.component';
@@ -59,6 +60,7 @@ export type PostesError = 'none' | 'network' | 'forbidden';
   imports: [
     NgTemplateOutlet,
     RouterLink,
+    ForgeBreadcrumbComponent,
     HostBadgeComponent,
     MissionBadgeComponent,
     MatButtonModule,
@@ -74,6 +76,7 @@ export type PostesError = 'none' | 'network' | 'forbidden';
 export class PostesComponent implements OnInit {
   private readonly atelier = inject(AtelierService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
   private readonly snackBar = inject(MatSnackBar);
 
@@ -119,6 +122,9 @@ export class PostesComponent implements OnInit {
 
   private timer: ReturnType<typeof setInterval> | null = null;
 
+  /** L'ancrage demandé par le fil d'Ariane n'est honoré qu'une fois : après, l'écran est à vous. */
+  private anchorHonoured = false;
+
   ngOnInit(): void {
     this.load(true);
     this.startPolling();
@@ -127,6 +133,31 @@ export class PostesComponent implements OnInit {
       this.stopPolling();
       document.removeEventListener('visibilitychange', this.onVisibilityChange);
     });
+  }
+
+  /**
+   * Amène dans le champ de vision la carte visée par le fragment `#poste-<id>` (F-68 / SF-68-01).
+   *
+   * <p>C'est la réponse au niveau « chez qui » du fil d'Ariane : cliquer sur le client ramène à
+   * <b>sa</b> carte, dans la vue qui les porte toutes — il n'existe pas d'écran par client, et en
+   * inventer un ouvrirait un périmètre que personne n'a demandé.</p>
+   *
+   * <p>Silencieux quand la carte n'existe pas : poste supprimé, mission clôturée et repliée, ou
+   * simple fragment recopié de travers. Un fil d'Ariane ne doit jamais produire d'erreur.</p>
+   */
+  revealAnchoredHost(): void {
+    if (this.anchorHonoured) {
+      return;
+    }
+    const fragment = this.route.snapshot.fragment;
+    if (!fragment || !fragment.startsWith('poste-')) {
+      return;
+    }
+    this.anchorHonoured = true;
+    const card = document.getElementById(fragment);
+    if (card && typeof card.scrollIntoView === 'function') {
+      card.scrollIntoView({ block: 'center' });
+    }
   }
 
   /** Relecture demandée par l'utilisateur (bouton « Rafraîchir » ou « Réessayer »). */
@@ -300,6 +331,8 @@ export class PostesComponent implements OnInit {
         this.error.set('none');
         this.loading.set(false);
         this.lastUpdatedAt.set(new Date());
+        // Les cartes viennent d'être rendues : l'ancrage du fil d'Ariane peut enfin les trouver.
+        setTimeout(() => this.revealAnchoredHost());
       },
       error: (err: unknown) => {
         this.loading.set(false);

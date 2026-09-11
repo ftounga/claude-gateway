@@ -19,6 +19,10 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
+import {
+  ForgeBreadcrumbComponent,
+  ForgeCrumb,
+} from '../shared/forge-breadcrumb/forge-breadcrumb.component';
 import { httpErrorMessage, MAX_UPLOAD_BYTES, oversizeMessage } from '../shared/http-error.util';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import { MissionBadgeComponent } from '../shared/mission-badge/mission-badge.component';
@@ -134,6 +138,7 @@ export const RUNNER_STATUS_POLL_MS = 15_000;
     AtelierFilesComponent,
     AtelierGuideComponent,
     WorkstationNoticeComponent,
+    ForgeBreadcrumbComponent,
     HostBadgeComponent,
     MissionBadgeComponent,
   ],
@@ -141,6 +146,16 @@ export const RUNNER_STATUS_POLL_MS = 15_000;
   styleUrl: './atelier.component.scss',
 })
 export class AtelierComponent implements OnInit, OnDestroy {
+
+  /**
+   * Fil d'Ariane de l'écran des projets (F-68 / SF-68-01) : « Forge › Projets ».
+   *
+   * <p>Cet écran n'est plus la porte d'entrée de la Forge — c'est la vue des missions qui l'est —
+   * mais il reste l'endroit où l'on crée un projet et où l'on ouvre un dépôt. Le fil le situe
+   * plutôt que de le laisser flotter sans ancêtre.</p>
+   */
+  readonly projectsCrumbs: ForgeCrumb[] = [{ label: 'Projets', link: ['/atelier'] }];
+
   private readonly atelier = inject(AtelierService);
   private readonly apiKeyService = inject(ApiKeyService);
   private readonly router = inject(Router);
@@ -263,6 +278,15 @@ export class AtelierComponent implements OnInit, OnDestroy {
     const fromSummary = this.workspaces().find((w) => w.id === id)?.hostName;
     return fromSummary ?? this.runnerStatus()?.hostName ?? null;
   });
+
+  /**
+   * **Identifiant du poste du projet ouvert** (F-68 / SF-68-01), ou `null` quand il n'est pas
+   * connu. Il ne sert qu'au fil d'Ariane : c'est l'ancrage `#poste-<id>` qui, depuis le niveau
+   * « chez qui », ramène à la carte de ce client sur l'accueil de la Forge. Lu sur le détail du
+   * projet, avec l'état runner en repli — exactement la même source que le coupe-circuit.
+   */
+  readonly activeHostId = computed<string | null>(() =>
+    this.activeDetail()?.hostId ?? this.runnerStatus()?.hostId ?? null);
 
   /**
    * **État de mission** du poste du projet ouvert (F-60 / SF-60-02), *à montrer* — c'est-à-dire

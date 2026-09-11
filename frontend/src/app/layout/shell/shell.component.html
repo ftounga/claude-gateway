@@ -6,13 +6,15 @@
       <mat-icon>chat</mat-icon>
       Chat
     </a>
-    <a mat-button routerLink="/atelier" routerLinkActive="active">
+    <!-- F-68 / SF-68-01 — une seule entrée pour la Forge. Elle mène à l'accueil de la Forge,
+         c'est-à-dire à la vue des missions ; l'entrée « Postes » a disparu, parce que deux onglets
+         qui listaient les mêmes projets posaient la question « c'est quoi la différence ? ».
+         L'état actif est calculé plutôt que délégué à `routerLinkActive` : travailler dans un
+         projet (`/atelier/:id`), c'est toujours être dans la Forge, et la section d'où l'on vient
+         ne doit pas s'éteindre pendant qu'on y travaille. -->
+    <a mat-button routerLink="/forge" [class.active]="forgeActive()">
       <mat-icon>terminal</mat-icon>
       Forge
-    </a>
-    <a mat-button routerLink="/postes" routerLinkActive="active">
-      <mat-icon>devices</mat-icon>
-      Postes
     </a>
     <a mat-button routerLink="/gouvernance" routerLinkActive="active">
       <mat-icon>gavel</mat-icon>

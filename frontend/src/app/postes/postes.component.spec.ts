@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { HttpErrorResponse } from '@angular/common/http';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { Router, provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 
 import { POSTES_REFRESH_MS, PostesComponent } from './postes.component';
@@ -60,13 +60,26 @@ describe('PostesComponent', () => {
     build();
   }
 
-  function build(): void {
+  /**
+   * Prépare l'écran avec un fragment d'URL (F-68 / SF-68-01) : c'est ce que pose le niveau
+   * « chez qui » du fil d'Ariane quand on revient sur l'accueil de la Forge.
+   */
+  function setupWithFragment(fragment: string, hosts: RunnerHostOverview[] = [poste]): void {
+    service = jasmine.createSpyObj<AtelierService>('AtelierService',
+      ['runnerHostsOverview', 'setHostMissionStatus']);
+    service.runnerHostsOverview.and.returnValue(of(hosts));
+    build(fragment);
+  }
+
+  function build(fragment: string | null = null): void {
     TestBed.configureTestingModule({
       imports: [PostesComponent],
       providers: [
         { provide: AtelierService, useValue: service },
         provideRouter([]),
         provideNoopAnimations(),
+        // Déclaré APRÈS `provideRouter` : c'est ce jeton-là que l'écran lit pour son ancrage.
+        { provide: ActivatedRoute, useValue: { snapshot: { fragment } } },
       ],
     });
     fixture = TestBed.createComponent(PostesComponent);
@@ -470,6 +483,55 @@ describe('PostesComponent', () => {
     const buttons = (fixture.nativeElement as HTMLElement)
       .querySelectorAll('.projet button[aria-label^="Ouvrir le terminal"]');
     expect(buttons.length).toBe(2);
+  });
+
+  // ------------------------------------- accueil de la Forge (F-68 / SF-68-01)
+
+  describe("accueil de la Forge (F-68)", () => {
+    it('porte le fil d\'Ariane, et s\'y nomme « Forge »', () => {
+      setup();
+      const crumbs = (fixture.nativeElement as HTMLElement).querySelector('app-forge-breadcrumb');
+
+      expect(crumbs).not.toBeNull();
+      expect(crumbs?.textContent).toContain('Forge');
+      // Cet écran EST l'accueil de la Forge : c'est le dernier niveau.
+      expect(crumbs?.querySelector('[aria-current="page"]')?.textContent?.trim()).toBe('Forge');
+    });
+
+    it('donne à chaque carte l\'ancrage que vise le niveau « chez qui »', () => {
+      setup();
+
+      expect((fixture.nativeElement as HTMLElement).querySelector('#poste-h1')).not.toBeNull();
+    });
+
+    it('amène dans le champ de vision la carte visée par le fragment', () => {
+      setupWithFragment('poste-h1');
+      const card = (fixture.nativeElement as HTMLElement).querySelector('#poste-h1') as HTMLElement;
+      const scroll = spyOn(card, 'scrollIntoView');
+
+      component.revealAnchoredHost();
+
+      expect(scroll).toHaveBeenCalled();
+    });
+
+    it('ne bronche pas sur un fragment qui ne désigne aucune carte', () => {
+      // Poste supprimé, mission clôturée et repliée, fragment recopié de travers : un fil d'Ariane
+      // ne doit jamais produire d'erreur.
+      setupWithFragment('poste-inconnu');
+
+      expect(() => component.revealAnchoredHost()).not.toThrow();
+    });
+
+    it('n\'honore l\'ancrage qu\'une fois — ensuite l\'écran appartient à l\'utilisateur', () => {
+      setupWithFragment('poste-h1');
+      const card = (fixture.nativeElement as HTMLElement).querySelector('#poste-h1') as HTMLElement;
+      const scroll = spyOn(card, 'scrollIntoView');
+
+      component.revealAnchoredHost();
+      component.revealAnchoredHost();
+
+      expect(scroll).toHaveBeenCalledTimes(1);
+    });
   });
 });
 

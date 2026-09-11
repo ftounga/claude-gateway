@@ -1,0 +1,40 @@
+<nav class="forge-crumbs" aria-label="Fil d'Ariane">
+  @for (crumb of trail(); track $index; let last = $last) {
+    @if (!$first) {
+      <!-- Séparateur purement visuel : le fil est déjà une liste de liens pour un lecteur d'écran. -->
+      <span class="forge-crumbs__sep" aria-hidden="true">›</span>
+    }
+    <a
+      class="forge-crumb"
+      [class.forge-crumb--current]="last"
+      [class.forge-crumb--host]="!!crumb.hostName"
+      [routerLink]="crumb.link"
+      [fragment]="crumb.fragment ?? undefined"
+      [attr.aria-current]="last ? 'page' : null"
+    >
+      @if (crumb.hostName) {
+        <!-- Chez QUI (F-49 / SF-49-03) : la pastille du poste, réemployée telle quelle. Elle écrit
+             le nom — la couleur ne porte jamais seule l'information — et sa teinte reste dérivée du
+             nom, jamais transmise. La puce lui donne sa propre surface : le fil peut vivre sur la
+             barre navy du terminal comme sur le fond clair d'une page. -->
+        <app-host-badge
+          class="forge-crumb__host-badge"
+          [name]="crumb.hostName"
+          size="sm"
+          [chip]="true"
+        ></app-host-badge>
+      } @else {
+        <span class="forge-crumb__label">{{ crumb.label }}</span>
+      }
+    </a>
+    @if (crumb.missionStatus) {
+      <!-- OÙ EN EST-ON (F-60 / SF-60-02) : hors du fil, juste après le niveau du poste. Deux
+           registres distincts se croisent ici — identité (§9) et statut (§5) — et aucun ne se
+           substitue à l'autre : chacun écrit son texte. -->
+      <app-mission-badge
+        class="forge-crumb__mission"
+        [status]="crumb.missionStatus"
+      ></app-mission-badge>
+    }
+  }
+</nav>

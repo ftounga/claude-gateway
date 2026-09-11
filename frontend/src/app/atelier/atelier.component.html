@@ -86,7 +86,9 @@
 @if (activeWorkspaceId()) {
   <app-atelier-terminal
     [projectName]="activeName()"
+    [projectId]="activeWorkspaceId()"
     [hostName]="activeHostName()"
+    [hostId]="activeHostId()"
     [hostMission]="activeHostMission()"
     [localFolder]="localFolder()"
     [runnerElevated]="runnerElevated()"
@@ -231,6 +233,12 @@
 
   <!-- Zone principale : conversation -->
   <section class="atelier-main">
+    <!-- Fil d'Ariane (F-68 / SF-68-01) : « Forge › Projets ». Depuis que l'accueil de la Forge est
+         la vue des missions, cet écran est une étape du chemin — le fil le dit. -->
+    <div class="atelier-crumbs-bar">
+      <app-forge-breadcrumb [crumbs]="projectsCrumbs"></app-forge-breadcrumb>
+    </div>
+
     <!-- Indicateur de mode d'exécution (BYOK vs Hosted), en tête d'écran. -->
     <div class="mode-bar">
       @if (providerMode() === 'BYOK') {

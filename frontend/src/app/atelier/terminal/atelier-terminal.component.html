@@ -1,25 +1,13 @@
 <section class="terminal-view" aria-label="Terminal du projet">
   <!-- En-tête : identité du projet + actions. Rien d'autre ne subsiste de l'écran Atelier. -->
   <header class="terminal-bar">
-    <!-- Chez QUI l'on travaille (F-49 / SF-49-03). C'est ici que l'appartenance compte le plus :
-         c'est l'écran où l'on exécute des commandes. La pastille porte la couleur du poste, dérivée
-         de son nom, et le nom reste ÉCRIT juste à côté — la couleur ne porte jamais seule
-         l'information. Rien n'est affiché quand le projet n'est rattaché à aucune machine. -->
-    @if (hostName) {
-      <app-host-badge class="terminal-host" [name]="hostName" size="md" [chip]="true"></app-host-badge>
-      <!-- OÙ EN EST-ON (F-60 / SF-60-02), et seulement quand ce n'est pas « En cours ». Deux
-           registres distincts se croisent ici : la pastille du poste porte la couleur d'IDENTITÉ
-           (§9), celle-ci la couleur de STATUT (§5). Elles ne se disputent rien — l'une dit chez
-           qui, l'autre dit où en est le travail, et toutes deux écrivent leur texte. -->
-      @if (hostMission) {
-        <app-mission-badge class="terminal-mission" [status]="hostMission"></app-mission-badge>
-      }
-      <span class="terminal-host-sep" aria-hidden="true">/</span>
-    }
-    <span class="terminal-title">
-      <mat-icon>terminal</mat-icon>
-      {{ projectName }} — terminal
-    </span>
+    <!-- OÙ L'ON EST, et CHEZ QUI (F-68 / SF-68-01) — « Forge › CAGIP › mon-projet ».
+         La barre disait déjà le poste puis le projet ; le fil d'Ariane ajoute l'ancêtre qui
+         manquait depuis que l'onglet « Postes » a disparu, et rend les niveaux cliquables. Rien
+         n'est retiré : le niveau du poste EST la pastille d'identité de SF-49-03 (initiales sur la
+         couleur dérivée du nom, nom écrit à côté), et l'état de mission de F-60 la suit toujours,
+         toujours seulement quand il n'est pas « En cours ». -->
+    <app-forge-breadcrumb class="terminal-crumbs" [crumbs]="crumbs()"></app-forge-breadcrumb>
     <!-- Dossier de la machine (F-38 / SF-38-16) : dit OÙ le travail a lieu, une fois le runner
          appairé. Rien n'est affiché tant qu'aucune machine ne l'a déclaré. -->
     @if (localFolder) {
