@@ -1,0 +1,135 @@
+// Section « Consommation » de l'administration (F-61 / SF-61-05).
+// Calquée sur les sections Gouvernance et Codes d'accès : mêmes jetons, mêmes formes.
+// Aucune couleur nouvelle — la passe de cohérence F-56 n'est pas rouverte.
+.usage-admin {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-3);
+  padding: var(--cg-space-4);
+
+  &__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--cg-space-3);
+
+    h2 {
+      margin: 0 0 var(--cg-space-1);
+      font-size: 18px;
+    }
+  }
+
+  &__subtitle {
+    margin: 0;
+    color: var(--cg-text-secondary);
+    max-width: 72ch;
+  }
+
+  &__empty {
+    margin: 0;
+    color: var(--cg-text-secondary);
+  }
+
+  &__totals {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--cg-space-3);
+  }
+
+  &__stat {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-1);
+    padding: var(--cg-space-3);
+    border: 1px solid var(--cg-divider);
+    border-radius: 8px;
+  }
+
+  &__stat-label {
+    color: var(--cg-text-secondary);
+    font-size: 12px;
+  }
+
+  &__stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--cg-text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  // Un tableau large défile dans son conteneur : la page ne défile jamais horizontalement.
+  &__table-wrap {
+    overflow-x: auto;
+  }
+
+  &__table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+
+    th,
+    td {
+      padding: var(--cg-space-2);
+      border-bottom: 1px solid var(--cg-divider);
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    th {
+      color: var(--cg-text-secondary);
+      font-weight: 500;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+  }
+
+  &__num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__share {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+  }
+
+  &__bar {
+    display: block;
+    width: 80px;
+    height: 6px;
+    background: var(--cg-divider);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  &__bar-fill {
+    display: block;
+    height: 100%;
+    background: var(--cg-accent);
+    border-radius: 3px;
+  }
+
+  &__share-value {
+    color: var(--cg-text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__spark {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 28px;
+  }
+
+  &__spark-bar {
+    display: block;
+    width: 6px;
+    min-height: 2px;
+    background: var(--cg-accent);
+    border-radius: 2px 2px 0 0;
+  }
+}

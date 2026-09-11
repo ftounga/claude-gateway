@@ -10,6 +10,7 @@ import { AdminUser } from './admin.models';
 import { AuthService } from '../core/services/auth.service';
 import { AccessCodeAdminService } from './access-code-admin.service';
 import { GovernanceAdminService } from './governance-admin.service';
+import { AdminUsageService } from './admin-usage.service';
 
 describe('AdminComponent', () => {
   let fixture: ComponentFixture<AdminComponent>;
@@ -58,6 +59,21 @@ describe('AdminComponent', () => {
     ]);
     accessCodeSpy.list.and.returnValue(of([]));
 
+    // Et pour la section Consommation (F-61 / SF-61-05), qui a elle aussi son propre spec.
+    const usageSpy = jasmine.createSpyObj<AdminUsageService>('AdminUsageService', ['getUsage']);
+    usageSpy.getUsage.and.returnValue(
+      of({
+        currency: 'EUR',
+        from: '2025-10-01',
+        to: '2026-09-01',
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        estimatedCost: 0,
+        users: [],
+      }),
+    );
+
     await TestBed.configureTestingModule({
       imports: [AdminComponent],
       providers: [
@@ -65,6 +81,7 @@ describe('AdminComponent', () => {
         { provide: AdminService, useValue: adminSpy },
         { provide: GovernanceAdminService, useValue: governanceSpy },
         { provide: AccessCodeAdminService, useValue: accessCodeSpy },
+        { provide: AdminUsageService, useValue: usageSpy },
       ],
     }).compileComponents();
 

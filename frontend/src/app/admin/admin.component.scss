@@ -16,6 +16,12 @@
   padding: 8px;
 }
 
+/* Les sections de l'écran respirent entre elles (F-61 / SF-61-05) : sans cela, la section
+   Consommation se collerait à la liste des comptes et les deux se liraient comme un seul bloc. */
+.admin-page > * + * {
+  margin-top: var(--cg-space-4);
+}
+
 .admin-table {
   width: 100%;
 }

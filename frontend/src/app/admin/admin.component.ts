@@ -9,6 +9,7 @@ import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { AdminService } from './admin.service';
 import { AdminUser } from './admin.models';
 import { AccessCodesComponent } from './access-codes/access-codes.component';
+import { AdminUsageComponent } from './usage/admin-usage.component';
 import { GovernancePackagesComponent } from './governance-packages/governance-packages.component';
 
 /**
@@ -20,6 +21,10 @@ import { GovernancePackagesComponent } from './governance-packages/governance-pa
  * publication des paquets. Depuis F-62 / SF-62-03, la section **Codes d'accès** : l'émission et le
  * suivi des codes qui offrent 24 h de Forge. Même garde, même écran — il n'y a qu'un seul endroit où
  * regarder ce qu'un admin peut faire.</p>
+ *
+ * <p>Depuis F-61 / SF-61-05, la section <b>Consommation</b> : qui consomme, combien, à quel coût,
+ * et comment cela évolue. Des volumes et des coûts, <b>jamais</b> des contenus — ni message, ni
+ * commande, ni nom de projet.</p>
  */
 @Component({
   selector: 'app-admin',
@@ -32,6 +37,7 @@ import { GovernancePackagesComponent } from './governance-packages/governance-pa
     DecimalPipe,
     GovernancePackagesComponent,
     AccessCodesComponent,
+    AdminUsageComponent,
   ],
   templateUrl: './admin.component.html',
   styleUrl: './admin.component.scss',

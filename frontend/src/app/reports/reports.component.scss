@@ -113,4 +113,112 @@
     background: var(--cg-accent);
     border-radius: 3px;
   }
+
+  /* ---- Par client (F-61 / SF-61-04) ---- */
+
+  &__section-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--cg-space-3);
+    margin-bottom: var(--cg-space-3);
+  }
+
+  &__window {
+    flex: none;
+  }
+
+  &__clients {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-4);
+  }
+
+  &__client {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-2);
+    padding-top: var(--cg-space-3);
+    border-top: 1px solid var(--cg-divider);
+
+    &:first-child {
+      padding-top: 0;
+      border-top: none;
+    }
+  }
+
+  &__client-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cg-space-2);
+  }
+
+  &__client-name {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+  }
+
+  &__client-outside {
+    font-weight: 600;
+    color: var(--cg-text-secondary);
+  }
+
+  &__client-figures {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+
+  &__client-cost {
+    font-weight: 700;
+    color: var(--cg-text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  &__client-tokens {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cg-space-3);
+    margin: 0;
+    color: var(--cg-text-secondary);
+    font-size: 12px;
+
+    strong {
+      color: var(--cg-text-primary);
+      font-variant-numeric: tabular-nums;
+    }
+  }
+
+  /* Un tableau large défile dans son conteneur : la page, elle, ne défile jamais
+     horizontalement (DESIGN_SYSTEM.md — comportement sur écran étroit). */
+  &__projects-wrap {
+    overflow-x: auto;
+  }
+
+  &__projects {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+
+    th,
+    td {
+      padding: var(--cg-space-2);
+      border-bottom: 1px solid var(--cg-divider);
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    th {
+      color: var(--cg-text-secondary);
+      font-weight: 500;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+  }
 }
