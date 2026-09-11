@@ -304,6 +304,85 @@
     </section>
   }
 
+
+  <!-- ===== Postes comptés (F-65 / SF-65-02) =====
+       Placée APRÈS l'option Forge et AVANT les recharges : c'est une propriété de l'abonnement
+       (combien de missions en parallèle), pas un achat ponctuel. Le volet disparaît si l'appel
+       échoue — la facturation reste lisible sans lui. -->
+  @if (seats(); as seatsView) {
+    <section class="billing__section" aria-label="Postes comptés">
+      <div class="billing__section-head">
+        <h2>Postes</h2>
+        <p>
+          Votre abonnement couvre
+          {{ seatsView.includedSeats }} poste{{ seatsView.includedSeats > 1 ? 's' : '' }}.
+          @if (seatsView.countedSeats > 0) {
+            {{ seatsView.countedSeats }} poste{{ seatsView.countedSeats > 1 ? 's' : '' }}
+            compté{{ seatsView.countedSeats > 1 ? 's' : '' }} ce mois-ci.
+          }
+          <strong>Un poste clôturé ne compte plus le mois suivant</strong> — c'est le geste par
+          lequel une mission terminée cesse d'être facturée.
+        </p>
+      </div>
+
+      <article class="billing__card billing__card--option billing__card--seats">
+        <div class="billing__option-main">
+          @if (seatsView.seats.length === 0) {
+            <p class="billing__seat-empty">
+              Aucun poste pour l'instant. Un poste, c'est une machine chez un client.
+            </p>
+          } @else {
+            <ul class="billing__seat-list">
+              @for (seat of seatsView.seats; track seat.hostId) {
+                <li class="billing__seat">
+                  <span class="billing__seat-name">{{ seat.name ?? 'Poste supprimé' }}</span>
+                  <!-- Le rôle du poste est ÉCRIT, et rien d'autre ne le porte : pas de code
+                       couleur du tout ici (DESIGN_SYSTEM §10). -->
+                  <span class="billing__seat-role">{{ seatRole(seat) }}</span>
+                  <span class="billing__seat-since">
+                    compté depuis le {{ seat.billableFrom | date: 'longDate' }}
+                  </span>
+                </li>
+              }
+            </ul>
+          }
+
+          <p class="billing__seat-rule">
+            Un poste compté l'est pour <strong>tout le mois</strong> : le rouvrir avant la fin du
+            mois ne le refacture pas, et le clôturer ne rembourse pas le mois engagé.
+          </p>
+
+          @if (seatsView.billed) {
+            <p class="billing__seat-note">
+              @if (seatsView.displayPrice) {
+                Supplément de {{ seatsView.displayPrice }} € par mois et par poste supplémentaire.
+              } @else {
+                Un supplément mensuel s'applique par poste supplémentaire.
+              }
+              @if (seatsView.grantedTokens > 0) {
+                Vos {{ seatsView.extraSeats }} poste{{ seatsView.extraSeats > 1 ? 's' : '' }}
+                supplémentaire{{ seatsView.extraSeats > 1 ? 's' : '' }}
+                ajoute{{ seatsView.extraSeats > 1 ? 'nt' : '' }}
+                {{ seatsView.grantedTokens | number }} tokens à votre quota du mois.
+              }
+            </p>
+          } @else {
+            <p class="billing__seat-note">
+              <strong>Aucun supplément n'est facturé pour l'instant</strong> — vos postes sont
+              comptés, votre quota est inchangé.
+            </p>
+          }
+        </div>
+
+        <div class="billing__option-action">
+          <a mat-stroked-button class="billing__card-cta is-outline" routerLink="/postes">
+            Gérer mes postes
+          </a>
+        </div>
+      </article>
+    </section>
+  }
+
   <!-- ===== Code d'accès (F-62 / SF-62-02) : « payer, ou entrer un code » =====
        Placée SOUS les abonnements : le chemin normal est de payer, le code est l'alternative.
        En tête, l'exception serait la première chose lue. -->
