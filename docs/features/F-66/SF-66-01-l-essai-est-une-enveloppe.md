@@ -10,7 +10,7 @@
 
 ## Statut
 
-`ready`
+`done` — PR #370, mergée le 2026-09-11
 
 ## Date de création
 

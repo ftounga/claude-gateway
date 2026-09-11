@@ -50,11 +50,13 @@ bouge, et non l'inverse.
 1. **SF-66-01** — L'essai devient une **enveloppe unique** : le plafond d'essai s'oppose à la
    consommation cumulée **depuis le début de l'essai**, pas au mois calendaire. Un essai vaut
    200 000 jetons, une seule fois, qu'il traverse ou non un 1er du mois. *(La fuite, d'abord.)*
-2. **SF-66-02** — La durée passe de **5 à 14 jours**, et l'API expose la durée servie pour que
-   l'écran cesse de la réciter de mémoire.
-3. **SF-66-03** — Les écrans annoncent la durée **que le serveur sert** : la carte « Gratuit » de la
-   page de facturation lit la valeur de l'API, et la page d'accueil (publique, donc sans API) tient
-   sa promesse depuis **une seule** constante.
+2. **SF-66-02** — La durée passe de **5 à 14 jours**, défaut de code compris, et l'API expose la
+   durée servie (`trialDays`) pour que l'écran cesse de la réciter de mémoire.
+3. **SF-66-03** — L'API expose aussi l'**allocation** servie (`trialTokens`) : la carte « Gratuit »
+   annonçait « 200 000 tokens » en dur, c'est-à-dire le même défaut, à un chiffre près.
+4. **SF-66-04** — Les écrans annoncent l'essai **que le serveur sert** : la page de facturation lit
+   les deux valeurs, et la page d'accueil (publique, donc sans API) tient ses deux mentions depuis
+   **une seule** constante documentée.
 
 ## Ce que la feature ne fait pas
 
@@ -70,10 +72,13 @@ bouge, et non l'inverse.
 
 ## Découpage
 
-| SF | Titre | Nature | Dépend de |
+| SF | Titre | Nature | Statut |
 |---|---|---|---|
-| SF-66-01 | L'essai est une enveloppe, pas un abonnement mensuel gratuit | Backend | — |
-| SF-66-02 | L'essai dure les quatorze jours annoncés | Backend | SF-66-01 |
-| SF-66-03 | L'écran annonce la durée que le serveur sert | Frontend | SF-66-02 |
+| SF-66-01 | L'essai est une enveloppe, pas un abonnement mensuel gratuit | Backend | `done` — PR #370 |
+| SF-66-02 | L'essai dure les quatorze jours annoncés | Backend | `done` — PR #371 |
+| SF-66-03 | L'offre d'essai se décrit elle-même (`trialTokens`) | Backend | `done` — PR #372 |
+| SF-66-04 | L'écran annonce l'essai qu'on sert | Frontend | `done` — PR #375 |
 
-Ordre imposé : **la fuite (01) avant la durée (02)**, puis l'affichage (03).
+Ordre imposé : **la fuite (01) avant la durée (02)**, puis ce que l'API dit de l'offre (03), puis les
+écrans (04). SF-66-03 s'est ajoutée en cours de route : la carte « Gratuit » annonçait aussi son
+allocation en dur, c'est-à-dire le même défaut que celui que la feature répare.
