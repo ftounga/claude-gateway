@@ -10,7 +10,7 @@
 
 ## Statut
 
-`ready`
+`done`
 
 ## Date de création
 
