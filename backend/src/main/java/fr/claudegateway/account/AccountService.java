@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import fr.claudegateway.account.dto.AccountExport;
 import fr.claudegateway.billing.Subscription;
 import fr.claudegateway.billing.SubscriptionRepository;
+import fr.claudegateway.billing.seat.HostSeatMonthRepository;
 import fr.claudegateway.byok.UserApiKeyRepository;
 import fr.claudegateway.chat.Conversation;
 import fr.claudegateway.chat.ConversationRepository;
@@ -60,6 +61,7 @@ public class AccountService {
     private final RunnerPairingCodeRepository runnerPairingCodeRepository;
     private final RunnerAuditRepository runnerAuditRepository;
     private final RunnerHostRepository runnerHostRepository;
+    private final HostSeatMonthRepository hostSeatMonthRepository;
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceService workspaceService;
     private final AtelierMessageRepository atelierMessageRepository;
@@ -82,6 +84,7 @@ public class AccountService {
             RunnerPairingCodeRepository runnerPairingCodeRepository,
             RunnerAuditRepository runnerAuditRepository,
             RunnerHostRepository runnerHostRepository,
+            HostSeatMonthRepository hostSeatMonthRepository,
             WorkspaceRepository workspaceRepository,
             WorkspaceService workspaceService,
             AtelierMessageRepository atelierMessageRepository,
@@ -102,6 +105,7 @@ public class AccountService {
         this.runnerPairingCodeRepository = runnerPairingCodeRepository;
         this.runnerAuditRepository = runnerAuditRepository;
         this.runnerHostRepository = runnerHostRepository;
+        this.hostSeatMonthRepository = hostSeatMonthRepository;
         this.workspaceRepository = workspaceRepository;
         this.workspaceService = workspaceService;
         this.atelierMessageRepository = atelierMessageRepository;
@@ -190,6 +194,9 @@ public class AccountService {
         runnerAuditRepository.deleteByUserId(userId);
         // Les POSTES en dernier (F-48 / SF-48-01) : ils portent la racine, le système et les droits
         // déclarés par la machine — des données personnelles, qui ne survivent pas au compte.
+        // Mois-postes (F-65 / SF-65-01) AVANT les postes : ce sont des pièces de facturation, et
+        // elles ne survivent pas au compte qu'elles décrivent.
+        hostSeatMonthRepository.deleteByUserId(userId);
         runnerHostRepository.deleteByUserId(userId);
         // Domaine documentaire (F-05/F-06) et Atelier (F-28), ajoutés par SF-11-03. Ces données
         // survivaient au compte : documents OCR (texte extrait et réponse brute du fournisseur

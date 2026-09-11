@@ -278,6 +278,28 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     (`GET /admin/usage`, SF-61-03) ne la lit **pas** : elle agrège `usage_counters`, qui ignore les
     projets — une vue admin bâtie sur ce journal donnerait à l'administrateur la carte des missions
     de ses utilisateurs.
+- **host_seat_months** — le **mois-poste** (F-65 / SF-65-01, migration `070`). Une ligne = « ce
+  poste a été facturable pendant cette période, à partir de `billable_from` ».
+  - `host_seat_months` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `host_id (uuid, NOT NULL)`,
+    `period_start (date, NOT NULL)`, `billable_from (date, NOT NULL)`, `created_at (timestamptz)`.
+    **Unicité `(host_id, period_start)`**, index `(user_id, period_start)`.
+  - **Pourquoi elle existe** : l'état de mission de F-60 (`runner_hosts.mission_status`) dit quels
+    postes sont facturables **maintenant** — tous sauf les clôturés. Il ne dit pas ce qui a été vrai
+    **pendant le mois**, et c'est exactement ce dont la facturation au poste a besoin : un poste
+    clôturé le 12 a engagé le mois, un poste rouvert le 20 après clôture ne doit pas être compté
+    deux fois. L'unicité `(host_id, period_start)` **est** la règle « un mois-poste se paie une
+    fois » : la réouverture retrouve la ligne et la laisse intacte — ni piège à utilisateur (pas de
+    double facturation), ni faille (pas de compteur remis à zéro par un aller-retour).
+  - **L'absence de ligne est signifiante** : un poste facturable aujourd'hui sans ligne sur la
+    période l'est depuis le premier jour du mois — ou depuis sa création, si elle est plus tardive.
+    C'est ce qui dispense F-65 de toute écriture périodique : **aucun job mensuel ne peut manquer,
+    puisqu'aucun n'existe**. Deux écritures seulement, aux frontières de facturabilité (clôture,
+    réouverture).
+  - **Aucune clé étrangère** vers `runner_hosts` : même choix que `usage_turns`. La purge est
+    explicite — suppression du poste (`deleteByHostId`), suppression du compte (`deleteByUserId`).
+  - Alimente `GET /billing/seats` et la part de quota apportée par les postes supplémentaires
+    (`EntitlementService.resolveEffectiveMonthlyTokenQuota`). **Aucun montant n'est stocké ici** :
+    les jetons se recalculent à partir de la configuration `app.seat` (défauts inertes).
 - **user_api_keys** — clé API personnelle BYOK chiffrée au repos (F-03, migration `030`, OQ-06 : AWS KMS
   envelope encryption). **Une seule clé par utilisateur** (`user_id` unique). **Aucune clé en clair** : seuls
   le blob chiffré et les 4 derniers caractères sont persistés.
@@ -748,7 +770,7 @@ Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 rée
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations via `user_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations via `user_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
 
 ---
 

@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-65 / SF-65-01 — LE MOIS-POSTE.
+
+      L'abonnement couvre UN poste ; chaque poste supplémentaire ajoute un supplément mensuel qui
+      apporte sa part de quota. L'état de mission de F-60 dit déjà quels postes sont facturables
+      (tout sauf CLOSED) — cette table ne le redit pas. Elle porte la seule chose qu'un état COURANT
+      ne peut PAS porter : la MÉMOIRE d'un mois.
+
+      Deux questions, qu'une colonne d'état ne sait pas trancher :
+
+        1. Un poste clôturé le 12 a été facturable du 1er au 12. Son état dit « clôturé », et plus
+           rien ne dirait qu'il a engagé le mois en cours. Sans cette ligne, clôturer en fin de mois
+           rembourserait le mois — et clôturer chaque 30 deviendrait une méthode.
+
+        2. Un poste rouvert le 20 après avoir été clôturé le 12 doit être compté UNE fois pour ce
+           mois, pas deux. La ligne existe déjà : la réouverture ne la réécrit pas. C'est là, et
+           nulle part ailleurs, que « rouvrir ne refacture pas » est garanti.
+
+      D'où le grain : (host_id, period_start), UNIQUE. Une ligne = « ce poste a été facturable
+      pendant cette période, à partir de billable_from ». L'ABSENCE de ligne est signifiante elle
+      aussi, et c'est ce qui dispense de toute écriture périodique : un poste facturable aujourd'hui
+      sans ligne ce mois-ci l'est depuis le premier jour du mois (ou depuis sa création, si elle est
+      plus tardive) — vrai par construction, puisque toute interruption aurait écrit une ligne.
+
+      PAS DE CLÉ ÉTRANGÈRE vers runner_hosts : même choix que usage_turns (migration 068) — une
+      pièce de facturation ne s'efface pas parce qu'on range un poste. La purge est explicite
+      (suppression du poste, suppression du compte).
+
+      billable_from est une DATE et non un horodatage : la proratisation est à la journée, et une
+      heure inviterait à croire qu'on facture à l'heure.
+
+      Table neuve : aucune donnée existante n'est touchée. Réversible : dropTable.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="070-host-seat-months-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="host_seat_months">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="period_start" type="date"><constraints nullable="false"/></column>
+            <column name="billable_from" type="date"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="host_seat_months"
+                             columnNames="host_id, period_start"
+                             constraintName="uk_host_seat_months_host_period"/>
+        <!-- L'unique lecture prévue : « les mois-postes d'un utilisateur sur une période ». -->
+        <createIndex tableName="host_seat_months" indexName="idx_host_seat_months_user_period">
+            <column name="user_id"/>
+            <column name="period_start"/>
+        </createIndex>
+        <rollback><dropTable tableName="host_seat_months"/></rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="070-host-seat-months-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="host_seat_months">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="period_start" type="date"><constraints nullable="false"/></column>
+            <column name="billable_from" type="date"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addUniqueConstraint tableName="host_seat_months"
+                             columnNames="host_id, period_start"
+                             constraintName="uk_host_seat_months_host_period"/>
+        <createIndex tableName="host_seat_months" indexName="idx_host_seat_months_user_period">
+            <column name="user_id"/>
+            <column name="period_start"/>
+        </createIndex>
+        <rollback><dropTable tableName="host_seat_months"/></rollback>
+    </changeSet>
+
+</databaseChangeLog>

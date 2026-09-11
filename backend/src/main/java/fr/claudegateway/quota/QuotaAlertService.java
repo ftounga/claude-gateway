@@ -158,14 +158,19 @@ public class QuotaAlertService {
         return topUpCatalog.find(properties.topUpPack());
     }
 
-    /** Quota effectif de la période : allocation de l'abonnement + tokens rachetés de la période. */
+    /**
+     * Quota effectif de la période : allocation de l'abonnement, part apportée par les postes
+     * supplémentaires (F-65) et tokens rachetés de la période. Même calcul que le pré-vol de
+     * {@code QuotaService} — un seuil qui se jugerait sur un autre quota que celui qui bloque
+     * préviendrait au mauvais moment.
+     */
     private long effectiveQuota(UUID userId, UsageCounter counter) {
         return subscriptionQuota(userId) + counter.getBonusTokens();
     }
 
     private long subscriptionQuota(UUID userId) {
         Subscription subscription = subscriptionService.getOrCreateForUser(userId);
-        return entitlementService.resolveMonthlyTokenQuota(subscription);
+        return entitlementService.resolveEffectiveMonthlyTokenQuota(subscription);
     }
 
     /** Part consommée du quota, en pourcentage entier arrondi (0 si le quota est nul). */

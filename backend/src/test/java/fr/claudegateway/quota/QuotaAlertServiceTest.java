@@ -70,7 +70,7 @@ class QuotaAlertServiceTest {
         Subscription sub = Subscription.builder()
                 .userId(userId).status(SubscriptionStatus.ACTIVE).planCode(PlanCode.SOLO).build();
         when(subscriptionService.getOrCreateForUser(userId)).thenReturn(sub);
-        when(entitlementService.resolveMonthlyTokenQuota(sub)).thenReturn(quota);
+        when(entitlementService.resolveEffectiveMonthlyTokenQuota(sub)).thenReturn(quota);
     }
 
     private UsageCounter counter(UUID userId, long used, long bonus) {

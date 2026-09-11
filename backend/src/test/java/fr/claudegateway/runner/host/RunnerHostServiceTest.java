@@ -16,6 +16,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import fr.claudegateway.billing.seat.SeatLedgerService;
+
 /**
  * Cycle de vie d'un <b>poste</b> (F-48 / SF-48-01) : ce que l'utilisateur crée, et ce que le runner
  * déclare de sa machine à l'appairage.
@@ -28,13 +30,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class RunnerHostServiceTest {
 
     @Mock private RunnerHostRepository repository;
+    @Mock private SeatLedgerService seatLedgerService;
 
     private final UUID alice = UUID.randomUUID();
     private final UUID bob = UUID.randomUUID();
     private final UUID hostId = UUID.randomUUID();
 
     private RunnerHostService service() {
-        return new RunnerHostService(repository);
+        return new RunnerHostService(repository, seatLedgerService);
     }
 
     @Test

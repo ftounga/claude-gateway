@@ -82,7 +82,7 @@ class QuotaServiceTest {
         Subscription sub = Subscription.builder()
                 .userId(alice).status(SubscriptionStatus.ACTIVE).planCode(PlanCode.PRO).build();
         when(subscriptionService.getOrCreateForUser(alice)).thenReturn(sub);
-        when(entitlementService.resolveMonthlyTokenQuota(sub)).thenReturn(quota);
+        when(entitlementService.resolveEffectiveMonthlyTokenQuota(sub)).thenReturn(quota);
     }
 
     /**
@@ -435,7 +435,7 @@ class QuotaServiceTest {
                 .userId(alice).status(SubscriptionStatus.CANCELED).planCode(PlanCode.PRO).build();
         when(subscriptionService.getOrCreateForUser(alice)).thenReturn(canceled);
         when(entitlementService.isCustomerKeyBilled(canceled)).thenReturn(false);
-        when(entitlementService.resolveMonthlyTokenQuota(canceled)).thenReturn(0L);
+        when(entitlementService.resolveEffectiveMonthlyTokenQuota(canceled)).thenReturn(0L);
         when(usageCounterRepository.findByUserIdAndPeriodStart(alice, expectedPeriod))
                 .thenReturn(Optional.empty());
 
@@ -477,7 +477,7 @@ class QuotaServiceTest {
                 .userId(alice).status(SubscriptionStatus.CANCELED).planCode(PlanCode.BYOK).build();
         when(subscriptionService.getOrCreateForUser(alice)).thenReturn(canceledByok);
         when(entitlementService.isCustomerKeyBilled(canceledByok)).thenReturn(false);
-        when(entitlementService.resolveMonthlyTokenQuota(canceledByok)).thenReturn(0L);
+        when(entitlementService.resolveEffectiveMonthlyTokenQuota(canceledByok)).thenReturn(0L);
         when(usageCounterRepository.findByUserIdAndPeriodStart(alice, expectedPeriod))
                 .thenReturn(Optional.empty());
 

@@ -388,6 +388,47 @@ app:
     window: ${APP_HELP_WINDOW:PT60M}
     # Une réponse d'aide fait 3 à 6 phrases : la borne est une garantie de coût autant qu'un style.
     max-tokens: ${APP_HELP_MAX_TOKENS:512}
+  seat:
+    # SUPPLÉMENT PAR POSTE SUPPLÉMENTAIRE (F-65). L'abonnement couvre UN poste ; chaque poste
+    # supplémentaire ajoute un supplément mensuel QUI APPORTE SA PART DE QUOTA — sans quoi le second
+    # poste se lirait comme une double facturation. La consommation, elle, reste facturée comme
+    # avant : le supplément porte la LARGEUR (combien de missions en parallèle), pas la PROFONDEUR.
+    #
+    # AUCUN MONTANT N'EST DÉCIDÉ ICI. Les défauts ci-dessous rendent le mécanisme INERTE : aucun
+    # jeton apporté, aucun supplément facturé, quota strictement identique à celui d'avant F-65.
+    # Les valeurs appartiennent au PO et à Stripe (docs/TARIFS.md §8.2, OQ-16 point 8).
+    #
+    # Un poste CLÔTURÉ (état de mission F-60) ne compte pas : clôturer une mission terminée est le
+    # geste par lequel le consultant cesse de payer. Une mission EN ATTENTE compte — elle est gardée
+    # ouverte. Et un mois-poste se paie UNE FOIS : rouvrir dans le mois ne refacture rien, clôturer
+    # dans le mois ne rembourse rien.
+    included-seats: ${APP_SEAT_INCLUDED_SEATS:1}
+    # Jetons mensuels apportés par un poste supplémentaire. CALIBRAGE RECOMMANDÉ par la stratégie
+    # (docs/STRATEGIE-TARIFAIRE.md §6) : le MÊME NOMBRE DE TOKENS PAR EURO que le plan de base —
+    # marge identique à celle du plan, aucune surprise à la lecture de la facture. Le chiffre reste
+    # au PO : 0 = rien n'est apporté.
+    tokens-per-extra-seat: ${APP_SEAT_TOKENS_PER_EXTRA_SEAT:0}
+    # DÉGRESSIVITÉ (vide par défaut). Miroir, côté quota, d'un price à paliers chez le fournisseur de
+    # paiement : un consultant à six missions n'acceptera pas six fois le supplément plein. Format :
+    #   quota-tiers:
+    #     - up-to-seats: 2      # suppléments 1 et 2
+    #       tokens: <au PO>
+    #     - up-to-seats: 5      # suppléments 3 à 5, et au-delà (le dernier palier continue)
+    #       tokens: <au PO>
+    # Vide => apport PLAT (tokens-per-extra-seat). Les deux grilles — prix chez Stripe, jetons ici —
+    # sont tenues alignées PAR LE PO : le dépôt ne peut pas le vérifier (même régime qu'OQ-07).
+    quota-tiers: []
+    # PRORATISATION d'un poste devenu facturable en cours de mois. DAILY (défaut) = prorata temporis
+    # à la journée, sur le quota comme sur l'argent : une part PLEINE de jetons pour un poste ouvert
+    # le 28 serait une faille. S'aligne sur la proratisation par défaut de Stripe quand la quantité
+    # augmente. NONE n'a de sens que si le PO met aussi Stripe en proration_behavior=none.
+    proration: ${APP_SEAT_PRORATION:DAILY}
+    # POINT DE BRANCHEMENT laissé au PO : le price ID du supplément. Vide => le supplément n'est pas
+    # facturé, et l'écran le dit. F-65 ne crée AUCUN price et n'appelle PAS Stripe.
+    price-id: ${STRIPE_PRICE_EXTRA_SEAT:}
+    # Montant d'AFFICHAGE du supplément (cosmétique, comme les autres display-prices : le débit
+    # appartient au price ID). Vide par défaut — un montant inventé serait pire que son absence.
+    display-price: ${APP_BILLING_EXTRA_SEAT_PRICE:}
   quota:
     # Quotas d'entitlement (F-10) : allocation mensuelle de tokens par état d'abonnement/plan.
     # Valeurs commerciales réversibles, ajustables par environnement sans changement de code.

@@ -1,6 +1,7 @@
 package fr.claudegateway.quota;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 import java.util.Map;
 import java.util.UUID;
@@ -13,6 +14,7 @@ import fr.claudegateway.billing.PlanCatalog;
 import fr.claudegateway.billing.PlanCode;
 import fr.claudegateway.billing.Subscription;
 import fr.claudegateway.billing.SubscriptionStatus;
+import fr.claudegateway.billing.seat.SeatQuotaService;
 
 /**
  * F-43 / SF-43-02 — <b>l'engagement est annuel, l'allocation reste mensuelle</b>.
@@ -40,7 +42,7 @@ class EntitlementServiceYearlyTest {
                 Map.of("SOLO", SOLO_MONTHLY_TOKENS, "PRO", PRO_MONTHLY_TOKENS, "DAILY", 500_000L,
                         "GOLD", 12_000_000L, "BYOK", 0L),
                 null);
-        service = new EntitlementService(properties, new PlanCatalog());
+        service = new EntitlementService(properties, new PlanCatalog(), mock(SeatQuotaService.class));
     }
 
     private static Subscription active(PlanCode plan, BillingPeriod period) {

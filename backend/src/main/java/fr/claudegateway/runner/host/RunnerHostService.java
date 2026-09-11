@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import fr.claudegateway.atelier.RunnerShell;
+import fr.claudegateway.billing.seat.SeatLedgerService;
 
 /**
  * Cycle de vie des postes (F-48 / SF-48-01) : création, listing, suppression, et enregistrement de
@@ -22,9 +23,11 @@ public class RunnerHostService implements RunnerShellRecorder {
     private static final int MAX_OS_LENGTH = 64;
 
     private final RunnerHostRepository repository;
+    private final SeatLedgerService seatLedgerService;
 
-    public RunnerHostService(RunnerHostRepository repository) {
+    public RunnerHostService(RunnerHostRepository repository, SeatLedgerService seatLedgerService) {
         this.repository = repository;
+        this.seatLedgerService = seatLedgerService;
     }
 
     /** Crée un poste au nom libre. Le nom est requis : c'est ce qui le rend reconnaissable. */
@@ -74,22 +77,53 @@ public class RunnerHostService implements RunnerShellRecorder {
      *
      * <p>Idempotent : réappliquer le même état ne lève pas et ne change rien.</p>
      *
+     * <p><b>Ce que la clôture fait désormais, et qui n'est pas une coupure</b> (F-65 / SF-65-01) :
+     * elle note que le poste a été facturable pendant le mois en cours. C'est ce qui rend la clôture
+     * honnête dans les deux sens — le mois engagé reste dû jusqu'au bout, et rouvrir le poste avant
+     * la fin du même mois ne le refacture pas.</p>
+     *
      * @throws RunnerHostNotFoundException si le poste est inconnu ou appartient à quelqu'un d'autre
      */
     @Transactional
     public RunnerHost setMissionStatus(UUID userId, UUID hostId, HostMissionStatus status) {
         RunnerHost host = requireOwned(userId, hostId);
-        host.setMissionStatus(status == null ? HostMissionStatus.defaultStatus() : status);
+        HostMissionStatus next = status == null ? HostMissionStatus.defaultStatus() : status;
+        HostMissionStatus previous = host.getMissionStatus();
+        host.setMissionStatus(next);
+        recordSeatTransition(userId, host, previous, next);
         return host;
+    }
+
+    /**
+     * Tient le registre des mois-postes à jour au passage d'une frontière de facturabilité
+     * (F-65 / SF-65-01) : la clôture d'un poste facturable, et la réouverture d'un poste clôturé.
+     * Les autres transitions — {@code ACTIVE} ↔ {@code PENDING} — ne franchissent aucune frontière
+     * et n'écrivent rien : une mission en attente reste une mission ouverte.
+     */
+    private void recordSeatTransition(
+            UUID userId, RunnerHost host, HostMissionStatus previous, HostMissionStatus next) {
+        boolean wasBillable = previous != HostMissionStatus.CLOSED;
+        boolean isBillable = next != HostMissionStatus.CLOSED;
+        if (wasBillable && !isBillable) {
+            seatLedgerService.noteClosure(userId, host.getId(), host.getCreatedAt());
+        } else if (!wasBillable && isBillable) {
+            seatLedgerService.noteReopening(userId, host.getId());
+        }
     }
 
     /**
      * Supprime un poste possédé. Les jetons, codes et rattachements de projets sont nettoyés par
      * l'appelant ({@code RunnerHostController}) : ce service ne connaît ni les uns ni les autres.
+     *
+     * <p>Ses <b>mois-postes</b> (F-65) partent avec lui : supprimer un poste n'est pas le clôturer.
+     * La clôture range et laisse le mois engagé ; la suppression détruit la machine, son appairage
+     * et ses jetons — la garder en facturation montrerait une ligne sans nom.</p>
      */
     @Transactional
     public void delete(UUID userId, UUID hostId) {
-        repository.delete(requireOwned(userId, hostId));
+        RunnerHost host = requireOwned(userId, hostId);
+        seatLedgerService.forgetHost(host.getId());
+        repository.delete(host);
     }
 
     /**
