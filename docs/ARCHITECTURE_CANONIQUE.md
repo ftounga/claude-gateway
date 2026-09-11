@@ -232,7 +232,18 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     top-up F-21, migration `032`)`, `sandbox_seconds (bigint, défaut 0 ; F-28)`,
     `quota_alert_raised_at (timestamptz, nullable ; F-42, migration `058`)`,
     `quota_alert_dismissed_at (timestamptz, nullable ; F-42, migration `058`)`,
+    `billed_tokens (bigint, défaut 0 ; F-63, migration `069`)`,
     `created_at`, `updated_at`. Unique `(user_id, period_start)`, index `user_id`.
+  - **Décompte au coût réel (F-63)** : `input_tokens` / `output_tokens` restent des **volumes** —
+    ce que le fournisseur a traité, cache compris —, et c'est d'eux que vivent le rapport d'usage
+    (F-16) et la consommation par client (F-61), qui en déduisent un coût estimé. Ce que le quota
+    oppose est `billed_tokens`, où **chaque nature de token pèse son coût** : une sortie coûte cinq
+    fois une entrée chez le fournisseur, une lecture de cache un dixième. Écrire le décompte pondéré
+    dans les colonnes de volume aurait appliqué les mêmes tarifs deux fois — un coût au carré —,
+    d'où une colonne distincte. Les tarifs, la valeur d'un token de quota et le markup sont en
+    **configuration** (`app.atelier.agent.cost.*`), jamais en dur. Reprise de la migration :
+    `billed_tokens = input_tokens + output_tokens` — le changement de comptage ne vaut que pour les
+    tours à venir.
   - Alimente la vérification de quota **avant** l'appel fournisseur (`ChatService` → `402 quota_exceeded`
     à la limite) et `GET /usage`. Le quota **effectif** = quota mensuel (dérivé de `subscriptions` via la
     configuration `app.quota`, jamais en dur, réversible) **+ `bonus_tokens`** de la période (rachats top-up,
