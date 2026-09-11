@@ -41,6 +41,7 @@ class RunnerHostOverviewServiceTest {
     @Mock private WorkspaceService workspaceService;
     @Mock private RunnerStatusService statusService;
     @Mock private RunnerAuditRepository auditRepository;
+    @Mock private fr.claudegateway.terminals.LiveTerminalService liveTerminals;
 
     private final UUID alice = UUID.randomUUID();
     private final UUID hostId = UUID.randomUUID();
@@ -51,7 +52,7 @@ class RunnerHostOverviewServiceTest {
 
     private RunnerHostOverviewService service(Duration observed, Duration activeWithin) {
         return new RunnerHostOverviewService(hostService, workspaceService, statusService,
-                auditRepository, observed, activeWithin);
+                auditRepository, liveTerminals, observed, activeWithin);
     }
 
     // ------------------------------------------------------------------ décors

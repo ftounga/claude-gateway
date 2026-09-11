@@ -99,7 +99,8 @@ public class AtelierChatController {
         // est émise DANS le flux ({@code error: forbidden}), comme les autres erreurs de pré-vol.
         boolean hasAccess = atelierAccess.hasAccess();
         SseEmitter emitter = new SseEmitter(STREAM_TIMEOUT_MS);
-        chatStreamExecutor.execute(() -> relay(emitter, userId, id, request.message(), hasAccess));
+        fr.claudegateway.chat.SseStreamDispatch.submit(chatStreamExecutor, emitter,
+                () -> relay(emitter, userId, id, request.message(), hasAccess));
         return emitter;
     }
 

@@ -28,6 +28,7 @@ import fr.claudegateway.runner.host.HostMissionStatus;
  * @param missionStatus  état de mission <b>déclaré</b> par le propriétaire, indépendant de {@code connected}
  * @param lastActivityAt dernière activité observée sur le poste, tous projets confondus
  * @param activeProjects nombre de projets actifs maintenant — « ce qui tourne »
+ * @param liveTerminals  nombre de terminaux <b>vivants</b> sur les projets de ce poste (F-70)
  * @param projects       les projets rangés sous ce poste, les plus actifs d'abord
  */
 public record RunnerHostOverviewResponse(
@@ -43,6 +44,7 @@ public record RunnerHostOverviewResponse(
         OffsetDateTime createdAt,
         OffsetDateTime lastActivityAt,
         int activeProjects,
+        int liveTerminals,
         List<HostProjectSummary> projects) {
 
     /**
@@ -57,6 +59,8 @@ public record RunnerHostOverviewResponse(
      * @param executionTarget  {@code RUNNER} ou {@code SANDBOX}
      * @param calls            appels journalisés sur la fenêtre observée
      * @param active           vrai si la dernière activité est plus récente que la fenêtre d'activité
+     * @param liveTerminal     vrai si un terminal de <b>cet utilisateur</b> est ouvert sur ce projet
+     *                         maintenant (F-70 / SF-70-01) — un onglet vivant, pas un tour en cours
      */
     public record HostProjectSummary(
             UUID id,
@@ -66,6 +70,7 @@ public record RunnerHostOverviewResponse(
             OffsetDateTime lastActivityAt,
             String lastTool,
             long calls,
-            boolean active) {
+            boolean active,
+            boolean liveTerminal) {
     }
 }

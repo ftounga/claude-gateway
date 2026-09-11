@@ -234,6 +234,27 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("git_default_branch_refused", ex.getMessage()));
     }
 
+    /**
+     * Plafond de terminaux vivants atteint (F-70 / SF-70-01).
+     *
+     * <p>Le message est <b>celui que l'écran affiche</b>, mot pour mot : c'est la phrase tranchée
+     * par le PO. Un refus dit, jamais une mise en veille silencieuse — un cinquième terminal qu'on
+     * laisserait s'ouvrir en sommeil donnerait l'impression d'un agent au travail.</p>
+     */
+    @ExceptionHandler(fr.claudegateway.terminals.LiveTerminalLimitReachedException.class)
+    public ResponseEntity<ErrorResponse> handleLiveTerminalLimit(
+            fr.claudegateway.terminals.LiveTerminalLimitReachedException ex) {
+        log.debug("Terminal refusé : plafond de terminaux vivants atteint ({})", ex.getLimit());
+        // La phrase du PO vaut pour le plafond du PO. Le plafond n'est configurable que vers le bas
+        // (borne dure à 4) et seulement pour les tests : le message suit, plutôt que de mentir.
+        String message = ex.getLimit() == 4
+                ? "Quatre terminaux actifs au maximum, fermez-en un pour en ouvrir un autre."
+                : "Au plus " + ex.getLimit()
+                        + " terminaux actifs en même temps : fermez-en un pour en ouvrir un autre.";
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("terminal_limit_reached", message));
+    }
+
     @ExceptionHandler(PairingInvalidException.class)
     public ResponseEntity<ErrorResponse> handlePairingInvalid(PairingInvalidException ex) {
         log.debug("Appairage runner refusé : code invalide, expiré ou déjà consommé");

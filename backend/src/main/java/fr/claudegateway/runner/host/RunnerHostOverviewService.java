@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -22,6 +23,7 @@ import fr.claudegateway.runner.audit.RunnerAuditActivity;
 import fr.claudegateway.runner.audit.RunnerAuditRepository;
 import fr.claudegateway.runner.host.dto.RunnerHostOverviewResponse;
 import fr.claudegateway.runner.host.dto.RunnerHostOverviewResponse.HostProjectSummary;
+import fr.claudegateway.terminals.LiveTerminalService;
 
 /**
  * La <b>vue d'ensemble des postes</b> (F-49 / SF-49-01) : en une lecture, tous les postes d'un
@@ -56,6 +58,7 @@ public class RunnerHostOverviewService {
     private final WorkspaceService workspaceService;
     private final RunnerStatusService statusService;
     private final RunnerAuditRepository auditRepository;
+    private final LiveTerminalService liveTerminals;
     private final Duration observedWindow;
     private final Duration activeWithin;
 
@@ -64,12 +67,14 @@ public class RunnerHostOverviewService {
             WorkspaceService workspaceService,
             RunnerStatusService statusService,
             RunnerAuditRepository auditRepository,
+            LiveTerminalService liveTerminals,
             @Value("${app.runner.overview.observed-window:PT1H}") Duration observedWindow,
             @Value("${app.runner.overview.active-within:PT2M}") Duration activeWithin) {
         this.hostService = hostService;
         this.workspaceService = workspaceService;
         this.statusService = statusService;
         this.auditRepository = auditRepository;
+        this.liveTerminals = liveTerminals;
         this.observedWindow = clamp(observedWindow, Duration.ofMinutes(1), MAX_OBSERVED_WINDOW);
         // Un projet ne peut pas être « actif » sur une fenêtre qu'on n'observe pas.
         this.activeWithin = clamp(activeWithin, Duration.ofSeconds(1), this.observedWindow);
@@ -86,8 +91,12 @@ public class RunnerHostOverviewService {
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime since = now.minus(observedWindow);
         OffsetDateTime activeSince = now.minus(activeWithin);
+        // UNE lecture du registre des terminaux vivants pour toute la vue (F-70 / SF-70-01) : la
+        // question « ce projet a-t-il un terminal ouvert » se pose sur chaque ligne de chaque carte,
+        // et une requête par projet ferait payer l'affichage d'un booléen au prix d'un balayage.
+        Set<UUID> live = liveTerminals.liveWorkspaceIds(userId);
         return hostService.list(userId).stream()
-                .map(host -> describe(userId, host, since, activeSince))
+                .map(host -> describe(userId, host, since, activeSince, live))
                 .sorted(BY_LAST_SEEN_THEN_CREATED)
                 .toList();
     }
@@ -102,11 +111,11 @@ public class RunnerHostOverviewService {
                             Comparator.nullsLast(Comparator.reverseOrder()));
 
     private RunnerHostOverviewResponse describe(UUID userId, RunnerHost host, OffsetDateTime since,
-            OffsetDateTime activeSince) {
+            OffsetDateTime activeSince, Set<UUID> liveWorkspaceIds) {
         Map<UUID, RunnerAuditActivity> activity = activityByProject(userId, host.getId(), since);
         List<HostProjectSummary> projects = workspaceService.listByHost(userId, host.getId()).stream()
                 .map(workspace -> summarize(userId, workspace, activity.get(workspace.getId()),
-                        activeSince))
+                        activeSince, liveWorkspaceIds.contains(workspace.getId())))
                 .sorted(BY_ACTIVITY_THEN_NAME)
                 .toList();
 
@@ -130,6 +139,11 @@ public class RunnerHostOverviewService {
                         .max(Comparator.naturalOrder())
                         .orElse(null),
                 (int) projects.stream().filter(HostProjectSummary::active).count(),
+                // Le signe de vie du poste (F-70) : combien de SES projets ont un terminal ouvert.
+                // Distinct d'`activeProjects`, qui compte ce qui a TOURNÉ récemment — un terminal
+                // peut vivre sans rien exécuter, et une commande peut avoir tourné sans qu'aucun
+                // onglet ne soit resté ouvert.
+                (int) projects.stream().filter(HostProjectSummary::liveTerminal).count(),
                 projects);
     }
 
@@ -151,7 +165,7 @@ public class RunnerHostOverviewService {
     }
 
     private HostProjectSummary summarize(UUID userId, Workspace workspace,
-            RunnerAuditActivity activity, OffsetDateTime activeSince) {
+            RunnerAuditActivity activity, OffsetDateTime activeSince, boolean liveTerminal) {
         OffsetDateTime lastActivityAt = activity == null ? null : activity.getLastAt();
         boolean active = lastActivityAt != null && lastActivityAt.isAfter(activeSince);
         return new HostProjectSummary(
@@ -164,7 +178,8 @@ public class RunnerHostOverviewService {
                 // Un projet muet sur la fenêtre ne coûte aucune requête de plus.
                 activity == null ? null : lastTool(userId, workspace.getId()),
                 activity == null ? 0L : activity.getCalls(),
-                active);
+                active,
+                liveTerminal);
     }
 
     private String lastTool(UUID userId, UUID workspaceId) {

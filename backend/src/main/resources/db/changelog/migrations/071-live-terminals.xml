@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-70 / SF-70-01 — Le registre des terminaux vivants.
+
+      Une ligne = un ONGLET de terminal ouvert. Le plafond de quatre est un garde-fou de DÉPENSE
+      (quatre flux vivants = quatre tours facturés en parallèle), et un garde-fou de dépense qui ne
+      vaudrait que pour le pod qui répond ne serait pas un garde-fou : sous HPA, un registre en
+      mémoire compterait les terminaux d'un replica et laisserait passer ceux des autres. D'où une
+      table, lue par tous les pods.
+
+      `last_seen_at` est ce qui rend le plafond sûr : un onglet fermé brutalement n'envoie aucune
+      libération, et sa place expire d'elle-même. Sans lui, quatre fermetures brutales suffiraient à
+      condamner le compte.
+
+      Table PUREMENT ADDITIVE : aucune table existante n'est touchée, aucune donnée n'est déplacée,
+      et chaque changeSet porte son rollback.
+    -->
+
+    <changeSet id="071-live-terminals-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="live_terminals">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="session_id" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="opened_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="last_seen_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <!-- Un onglet ne tient qu'UNE place : c'est ce qui fait du même appel une prise puis un
+             battement de cœur, et ce qui empêche un rechargement de page d'en consommer une seconde. -->
+        <createIndex tableName="live_terminals" indexName="idx_live_terminals_user_session" unique="true">
+            <column name="user_id"/>
+            <column name="session_id"/>
+        </createIndex>
+        <!-- Lecture du registre : toujours par utilisateur ET par fraîcheur. -->
+        <createIndex tableName="live_terminals" indexName="idx_live_terminals_user_last_seen">
+            <column name="user_id"/>
+            <column name="last_seen_at"/>
+        </createIndex>
+        <rollback><dropTable tableName="live_terminals"/></rollback>
+    </changeSet>
+
+    <changeSet id="071-live-terminals-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="live_terminals">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="session_id" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="opened_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="last_seen_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="live_terminals" indexName="idx_live_terminals_user_session" unique="true">
+            <column name="user_id"/>
+            <column name="session_id"/>
+        </createIndex>
+        <createIndex tableName="live_terminals" indexName="idx_live_terminals_user_last_seen">
+            <column name="user_id"/>
+            <column name="last_seen_at"/>
+        </createIndex>
+        <rollback><dropTable tableName="live_terminals"/></rollback>
+    </changeSet>
+
+</databaseChangeLog>

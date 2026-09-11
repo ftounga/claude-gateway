@@ -76,6 +76,8 @@ class AccountServiceTest {
     @Mock
     private fr.claudegateway.billing.seat.HostSeatMonthRepository hostSeatMonthRepository;
     @Mock
+    private fr.claudegateway.terminals.LiveTerminalRepository liveTerminalRepository;
+    @Mock
     private fr.claudegateway.atelier.WorkspaceRepository workspaceRepository;
     @Mock
     private fr.claudegateway.atelier.WorkspaceService workspaceService;
@@ -93,6 +95,7 @@ class AccountServiceTest {
                 usageTurnRepository, conversationRepository, messageRepository, uploadedFileRepository, userApiKeyRepository,
                 gitTokenService, templateRepository, runnerTokenRepository, runnerPairingCodeRepository,
                 runnerAuditRepository, runnerHostRepository, hostSeatMonthRepository,
+                liveTerminalRepository,
                 workspaceRepository, workspaceService,
                 atelierMessageRepository,
                 documentRepository, chunkRepository, messageLibraryDocumentRepository);

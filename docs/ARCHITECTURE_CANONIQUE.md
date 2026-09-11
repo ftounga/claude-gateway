@@ -638,6 +638,30 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     avant de changer de clef — aucune reprise de données, aucune colonne de transition, aucune double
     lecture. Le seul coût est un ré-appairage.
 
+- **live_terminals** — la **place de terminal vivant** (F-70 / SF-70-01, migration `071`). Une
+  ligne = **un onglet de terminal ouvert**, qui tient sa place en la renouvelant (~30 s). Le PO a
+  tranché **quatre flux réellement vivants au maximum**, refus explicite au cinquième : quatre flux
+  vivants, ce sont **quatre consommations simultanées** — le plafond est un garde-fou de dépense,
+  pas une contrainte technique.
+  - `live_terminals` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `workspace_id (uuid, NOT NULL)`,
+    `session_id (varchar 64, NOT NULL)`, `opened_at`, `last_seen_at`. Index **unique**
+    `(user_id, session_id)`, index `(user_id, last_seen_at)`.
+  - **Pourquoi une table et pas un registre en mémoire** : sous HPA, un compteur en mémoire ne
+    verrait que les terminaux du pod qui répond, et un garde-fou de dépense qui ne compte qu'un
+    replica n'en est pas un. La table est lue par tous les pods et ne passe **pas** par le relais
+    inter-pods (SF-38-12/13).
+  - **`last_seen_at` est ce qui rend le plafond sûr** : un onglet fermé brutalement n'envoie aucune
+    libération ; sa place expire seule au bout du délai de grâce (`PT90S` par défaut, borné à
+    [30 s, 10 min]). Sans elle, quatre fermetures brutales condamneraient le compte.
+  - **Aucune clé étrangère** vers `workspaces` ni `users` : cohérent avec le reste du domaine
+    runner. La purge est explicite (`deleteByUserId` dans `AccountService`), et une place qui
+    désignerait un projet disparu n'est jamais rendue nommée (le nom vient d'une lecture
+    **par propriétaire**, comme en SF-49-03).
+  - Endpoints **`POST/DELETE /workspaces/{id}/terminal/live`** (prendre-ou-tenir / libérer) et
+    **`GET /terminals/live`** (JWT). Refus : **409 `terminal_limit_reached`**.
+  - `GET /runner-hosts/overview` gagne `liveTerminals` (par poste) et `liveTerminal` (par projet),
+    champs **additifs** : la vue d'ensemble lit le registre **une fois** par appel.
+
 - **runner_pairing_codes / runner_tokens** — identité du runner (F-38 / SF-38-01, migration `047` ;
   clef passée de `workspace_id` à `host_id` par F-48 / SF-48-01, migration `064`).
   Deux tables neuves. Le **runner** est un second type de porteur d'identité, authentifié par jeton
@@ -770,7 +794,7 @@ Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 rée
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations via `user_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations via `user_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
 
 ---
 
