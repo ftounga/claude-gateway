@@ -356,6 +356,24 @@ app:
         # ne facture donc que la plateforme. Valeur commerciale réversible, ajustable par
         # environnement sans changement de code.
         BYOK: ${APP_BILLING_BYOK_PRICE:29}
+      # Montants d'affichage (EUR) des PACKS DE RECHARGE (F-67). Même patron que display-prices
+      # ci-dessus, et pour la même raison : un prix est une décision commerciale, réversible sans
+      # redéploiement (OQ-07). Jusqu'ici AUCUN montant de recharge n'était exposé par l'API — l'écran
+      # de rachat en affichait un ÉCRIT EN DUR dans le composant Angular, dont celui du pack 1 M
+      # (29 €) que personne n'avait décidé. C'est exactement ce que F-67 supprime.
+      #
+      # STANDARD EST VIDE, ET C'EST VOULU : le montant du pack 1 M appartient au PO
+      # (docs/TARIFS.md §7 point 1, OQ-16). Un pack sans montant reste VENDABLE — son price ID porte
+      # le débit — et l'écran dit alors que le prix sera indiqué à l'étape de paiement. NE PAS y
+      # mettre une estimation : un chiffre inventé à côté d'un bouton d'achat est opposable.
+      #
+      # Le montant est la chaîne AFFICHÉE telle quelle (séparateur décimal compris) : l'application
+      # ne le calcule ni ne le compare — le débit réel appartient au price Stripe.
+      topup-display-prices:
+        # 4,99 € : valeur relevée en note de livraison (F-09 / SF-09-04) et reprise par
+        # docs/TARIFS.md §2, À RECONFIRMER au tableau de bord Stripe (OQ-16 point 2).
+        DAY: ${STRIPE_DISPLAY_PRICE_TOPUP_DAY:4,99}
+        STANDARD: ${STRIPE_DISPLAY_PRICE_TOPUP_STANDARD:}
       # Montants d'affichage (EUR) ANNUELS (F-43). Défaut : DIX MOIS PAYÉS sur douze (≈ −17 %) à
       # partir des mensuels 24 / 99 / 199. Ce sont des DÉFAUTS, pas une formule : la remise n'est
       # calculée nulle part dans le code, pour que le PO puisse passer à onze mois payés ou faire

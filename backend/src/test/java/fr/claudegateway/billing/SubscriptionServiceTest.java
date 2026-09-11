@@ -102,7 +102,7 @@ class SubscriptionServiceTest {
         BillingProperties props = new BillingProperties(5, new BillingProperties.Stripe(
                 "sk", "wh", Map.of("PRO", "price_pro", "SOLO", "price_solo"), Map.of(), null, null,
                 Map.of(), null, null,
-                Map.of("SOLO", "price_solo_yearly"), Map.of("SOLO", "240")));
+                Map.of("SOLO", "price_solo_yearly"), Map.of("SOLO", "240"), Map.of()));
         return new SubscriptionService(repository, props, new PlanCatalog(), provider,
                 new BillingPeriodSelection(props));
     }

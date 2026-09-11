@@ -26,7 +26,7 @@ class BillingPropertiesYearlyTest {
                 Map.of(), null, null,
                 Map.of("SOLO", "24", "DAILY", "9"),
                 null, null,
-                yearlyPrices, yearlyDisplayPrices);
+                yearlyPrices, yearlyDisplayPrices, Map.of());
     }
 
     @Test

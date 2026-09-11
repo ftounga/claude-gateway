@@ -20,6 +20,7 @@ import fr.claudegateway.billing.dto.PlansResponse;
 import fr.claudegateway.billing.dto.SeatsResponse;
 import fr.claudegateway.billing.dto.SubscriptionResponse;
 import fr.claudegateway.billing.dto.TopUpCheckoutRequest;
+import fr.claudegateway.billing.dto.TopUpPackResponse;
 import fr.claudegateway.billing.dto.TopUpPacksResponse;
 import fr.claudegateway.billing.seat.SeatQuotaService;
 import fr.claudegateway.quota.EntitlementService;
@@ -150,10 +151,25 @@ public class BillingController {
                 subscription, entitlementService.isCustomerKeyBilled(subscription));
     }
 
-    /** Catalogue des packs de tokens rachetables (top-up, F-21). */
+    /**
+     * Catalogue des packs de tokens rachetables (top-up, F-21), enrichi depuis F-67 du
+     * <b>montant d'affichage</b> de chaque pack.
+     *
+     * <p>Le montant vient de la configuration ({@code app.billing.stripe.topup-display-prices}),
+     * jamais du code : c'est le même patron que les plans, et pour la même raison — un prix est une
+     * décision commerciale, réversible sans redéploiement (OQ-07). Un pack dont le montant n'est pas
+     * configuré est renvoyé avec {@code priceEur = null} et <b>reste listé</b> : il est vendable, son
+     * price ID existe, et c'est à l'écran de dire que le prix sera indiqué au paiement.</p>
+     *
+     * <p>Le price ID Stripe, lui, ne sort pas d'ici — exactement comme pour les plans.</p>
+     */
     @GetMapping("/topups")
     public TopUpPacksResponse topups() {
-        return TopUpPacksResponse.from(topUpCatalog.packs());
+        BillingProperties.Stripe stripe = billingProperties.stripe();
+        List<TopUpPackResponse> packs = topUpCatalog.packs().stream()
+                .map(pack -> TopUpPackResponse.of(pack, stripe.topupDisplayPrice(pack.code())))
+                .toList();
+        return new TopUpPacksResponse(packs);
     }
 
     /** Crée une session de paiement one-shot pour le rachat d'un pack de tokens (top-up, F-21). */

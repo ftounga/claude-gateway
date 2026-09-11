@@ -36,7 +36,7 @@ class CheckoutServiceTest {
                 Map.of("PRO", "price_pro", "SOLO", "price_solo", "DAILY", "price_daily"),
                 Map.of(), null, null, Map.of(),
                 null, null,
-                Map.of("SOLO", "price_solo_yearly"), Map.of("SOLO", "240")));
+                Map.of("SOLO", "price_solo_yearly"), Map.of("SOLO", "240"), Map.of()));
         service = new CheckoutService(new PlanCatalog(), subscriptionService, billingProvider,
                 new BillingPeriodSelection(properties));
     }

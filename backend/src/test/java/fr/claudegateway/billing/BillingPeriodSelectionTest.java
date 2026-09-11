@@ -28,7 +28,7 @@ class BillingPeriodSelectionTest {
                     "sk", "wh",
                     Map.of("SOLO", "price_solo", "PRO", "price_pro", "DAILY", "price_daily"),
                     Map.of(), null, null, Map.of(), null, null,
-                    Map.of("SOLO", "price_solo_yearly"), Map.of("SOLO", "240"))));
+                    Map.of("SOLO", "price_solo_yearly"), Map.of("SOLO", "240"), Map.of())));
 
     @Test
     void anAbsentPeriodMeansMonthly() {

@@ -120,18 +120,30 @@ impayé.
 Deux packs, achetés à l'unité, qui créditent le quota de la **période courante**. Ils viennent de
 `TopUpCatalog`.
 
-| Pack | Code | Tokens crédités | **Prix** | Source du prix |
-|---|---|---|---|---|
-| Recharge 200 k tokens | `DAY` | **200 000** | **4,99 €** *(à reconfirmer)* | Produit Stripe « Claude Proxy — Recharge 200 k », montant relevé dans `PRODUCT_SPEC.md` (F-09 / SF-09-04) |
-| Recharge — 1 M tokens | `STANDARD` | **1 000 000** | **À CONFIRMER PAR LE PO** | **aucune source dans le dépôt** |
+| Pack | Code | Tokens crédités | **Prix affiché** | Clé de configuration | Variable d'environnement |
+|---|---|---|---|---|---|
+| Recharge 200 k tokens | `DAY` | **200 000** | **4,99 €** *(à reconfirmer)* | `app.billing.stripe.topup-display-prices.DAY` | `STRIPE_DISPLAY_PRICE_TOPUP_DAY` |
+| Recharge — 1 M tokens | `STANDARD` | **1 000 000** | **À CONFIRMER PAR LE PO** — clé livrée **vide** | `app.billing.stripe.topup-display-prices.STANDARD` | `STRIPE_DISPLAY_PRICE_TOPUP_STANDARD` |
 
 **Les jetons crédités sont de la même nature que le quota du plan** : ils s'ajoutent au même
 compteur et se consomment donc, eux aussi, au décompte pondéré de **§8.1**.
 
-**Le code ne connaît aucun de ces deux prix** : `TopUpPackResponse` n'expose ni prix ni price ID —
-« le prix vit côté fournisseur ». L'écran de rachat n'affiche donc **aucun montant** avant la page
-de paiement Stripe. Les 4,99 € ci-dessus sont une valeur **relevée dans une note de livraison**, pas
-une valeur configurée : elle doit être reconfirmée au tableau de bord Stripe.
+**Depuis F-67 (livrée le 2026-09-12), ces montants sont en configuration** et remontent jusqu'à
+l'écran — même patron que `display-prices` des plans, même régime : le montant est **affiché**, le
+débit appartient au price ID (§0). `TopUpPackResponse` porte désormais `priceEur`, et la recharge en
+un clic de l'alerte des 80 % (§2, F-42) lit **le même** montant.
+
+**Ce que F-67 a trouvé en chemin, et corrigé** : l'écran de rachat affichait **4,99 €** et **29 €**
+écrits **en dur dans le composant Angular**. Les 29 € du pack 1 M ne venaient d'aucune source —
+ni configuration, ni Stripe, ni cette page, qui portait déjà « à confirmer par le PO ». Le produit
+affichait donc un montant que personne n'avait décidé, à côté d'un bouton d'achat. Le barème en dur
+a été supprimé.
+
+**Tant que le montant du pack 1 M n'est pas fixé**, l'écran affiche le pack **sans prix**, avec la
+mention « *Prix indiqué à l'étape de paiement* » — jamais un montant, jamais un zéro. Le pack reste
+**vendable** : son price ID existe, et Stripe Checkout affiche le montant avant toute saisie de
+carte. Les **4,99 €** de `DAY` restent une valeur **relevée dans une note de livraison** : elle est
+désormais configurée, mais doit toujours être reconfirmée au tableau de bord Stripe.
 
 Le code `DAY` est conservé bien qu'il ne désigne plus une journée : il voyage dans les métadonnées
 Stripe des paiements **déjà encaissés** et dans `APP_QUOTA_ALERT_TOPUP_PACK`. Seul son nom commercial
@@ -211,9 +223,14 @@ Aucun de ces points n'est tranché par F-64 : ce sont des décisions commerciale
 **OQ-16** (`docs/OPEN_QUESTIONS.md`).
 
 1. **Prix du pack `STANDARD` (recharge 1 M).** Aucune source dans le dépôt. Le pack est vendable
-   (il a un price ID d'environnement) mais son montant n'est écrit nulle part ici.
-2. **Prix du pack `DAY`.** 4,99 € relevé dans une note de livraison, jamais en configuration — à
-   reconfirmer au tableau de bord Stripe.
+   (il a un price ID d'environnement) mais son montant n'est écrit nulle part ici. **Depuis F-67, la
+   clé qui l'accueillera existe et est livrée vide** (`STRIPE_DISPLAY_PRICE_TOPUP_STANDARD`) : la
+   renseigner suffit à afficher le prix, sans redéploiement. Tant qu'elle est vide, l'écran dit que
+   le prix sera indiqué au paiement — il n'invente rien. *Ce point a en outre fait disparaître un
+   montant faux : l'écran affichait 29 €, écrits en dur, décidés par personne.*
+2. **Prix du pack `DAY`.** 4,99 € relevé dans une note de livraison — **désormais en configuration**
+   (F-67, `STRIPE_DISPLAY_PRICE_TOPUP_DAY`), mais toujours à reconfirmer au tableau de bord Stripe :
+   le dépôt affiche ce montant, il ne peut pas certifier qu'il est celui qui est débité.
 3. **Durée de l'essai : 5 appliqués contre 14 annoncés** (§4). Aligner dans quel sens ?
 4. **Concordance montants affichés ↔ prix Stripe**, pour les quatre plans, les trois prix annuels,
    l'option Atelier et les deux recharges. Le dépôt ne peut pas la vérifier ; le tableau de bord

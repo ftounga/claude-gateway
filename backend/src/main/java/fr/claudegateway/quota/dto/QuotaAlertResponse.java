@@ -21,7 +21,9 @@ import fr.claudegateway.quota.QuotaAlert;
  * @param thresholdPercent seuil configuré, en pourcentage entier
  * @param periodEnd        date à laquelle le quota repart (premier jour de la période suivante)
  * @param topUp            pack de recharge proposé en un clic, {@code null} si aucune alerte ou si
- *                         le code configuré est inconnu du catalogue
+ *                         le code configuré est inconnu du catalogue. Depuis F-67 il porte son
+ *                         <b>montant d'affichage</b> : proposer une recharge en un clic sans dire
+ *                         combien elle coûte, c'est faire cliquer à l'aveugle
  */
 public record QuotaAlertResponse(
         boolean raised,
@@ -33,8 +35,16 @@ public record QuotaAlertResponse(
         LocalDate periodEnd,
         TopUpPackResponse topUp) {
 
-    /** Projette une alerte métier en réponse d'API. */
-    public static QuotaAlertResponse from(QuotaAlert alert) {
+    /**
+     * Projette une alerte métier en réponse d'API.
+     *
+     * @param alert        l'alerte de la période courante
+     * @param topUpPriceEur montant d'affichage du pack recommandé (F-67), ou {@code null} si aucun
+     *                      montant n'est configuré. Il est <b>passé</b> plutôt que résolu ici : une
+     *                      projection d'API n'a pas à lire la configuration de facturation, et le
+     *                      montant doit venir de la même source que l'écran de facturation
+     */
+    public static QuotaAlertResponse from(QuotaAlert alert, String topUpPriceEur) {
         TopUpPack pack = alert.recommendedPack();
         return new QuotaAlertResponse(
                 alert.raised(),
@@ -44,6 +54,6 @@ public record QuotaAlertResponse(
                 alert.usedPercent(),
                 alert.thresholdPercent(),
                 alert.periodEnd(),
-                pack == null ? null : TopUpPackResponse.from(pack));
+                pack == null ? null : TopUpPackResponse.of(pack, topUpPriceEur));
     }
 }
