@@ -187,13 +187,34 @@ app:
         # Plancher : une session au budget nul serait refusee par le fournisseur (ou mise en pause
         # avant le premier mot). Borne le depassement possible du quota a quelques centimes.
         min-run-cost: ${APP_ATELIER_AGENT_MIN_RUN_COST:0.10}
-        # Cout de reference du fournisseur (USD par million de tokens, blended Opus). Sert a convertir
-        # le quota restant en dollars pour en deduire le plafond de la session.
-        cost-per-million-tokens: ${APP_ATELIER_AGENT_COST_PER_M:9.00}
+        # --- Decompte du quota au COUT REEL (F-63) ----------------------------------------------
+        # Tarifs du FOURNISSEUR, par million de tokens. Ils ne sont pas nos prix de vente : ils
+        # disent ce que chaque nature de token nous coute, donc ce qu'elle doit peser dans le
+        # decompte. Avant F-63 un token de sortie pesait autant qu'un token d'entree alors qu'il
+        # coute CINQ FOIS plus, et une lecture de cache — un DIXIEME du tarif d'entree — etait
+        # facturee au client au plein tarif. La marge dependait donc du style d'usage du client
+        # (69 % en agentique, 30 % en generation : docs/STRATEGIE-TARIFAIRE.md §2).
+        # En configuration parce qu'ils changent quand le fournisseur change ses tarifs.
+        input-cost-per-million-tokens: ${APP_ATELIER_AGENT_INPUT_COST_PER_M:5.00}
+        output-cost-per-million-tokens: ${APP_ATELIER_AGENT_OUTPUT_COST_PER_M:25.00}
+        # Cache : 0,1x l'entree en lecture, 1,25x en ecriture (TTL 5 min, celui que pose la boucle
+        # d'agent). Ratios publies par le fournisseur, ici au tarif Opus 5.
+        cache-read-cost-per-million-tokens: ${APP_ATELIER_AGENT_CACHE_READ_COST_PER_M:0.50}
+        cache-write-cost-per-million-tokens: ${APP_ATELIER_AGENT_CACHE_WRITE_COST_PER_M:6.25}
+        # Ce que VAUT un token de quota, en dollars par million. Remplace `cost-per-million-tokens`
+        # (meme valeur, ancienne variable d'environnement honoree en repli) : celui-ci se presentait
+        # comme le cout « blended » du fournisseur, approximation sans objet une fois l'entree et la
+        # sortie distinguees. Il fixe l'ECHELLE du decompte — les ratios entre natures viennent des
+        # tarifs ci-dessus — et, avec elle, le cout fournisseur maximal d'un quota : quota x cette
+        # valeur, QUEL QUE SOIT le style d'usage. C'est ce qui rend la marge independante de
+        # l'usage. Sert aussi a convertir le quota restant en dollars (plafond de session, F-36).
+        # SECOND LEVIER DE MARGE apres le markup : l'abaisser a 5.00 reviendrait a dire « un token de
+        # quota = un token d'entree » et accelererait d'autant la consommation. A actionner sciemment.
+        quota-token-cost-per-million-tokens: ${APP_ATELIER_AGENT_QUOTA_TOKEN_COST_PER_M:${APP_ATELIER_AGENT_COST_PER_M:9.00}}
         # Multiplicateur applique au cout reel lors du decompte du quota (F-36 / SF-36-02).
-        # 1.0 = NEUTRE : les allocations de tokens par plan embarquent deja la marge commerciale
-        # (GOLD : 199 EUR pour 12 M tokens ~ 2x le cout blended). Le porter a 2.0 doublerait la
-        # vitesse de consommation du quota de chaque client — levier de marge, a actionner sciemment.
+        # 1.0 = NEUTRE : les allocations de tokens par plan embarquent deja la marge commerciale.
+        # Le porter a 2.0 doublerait la vitesse de consommation du quota de chaque client — levier
+        # de marge, a actionner sciemment.
         markup: ${APP_ATELIER_AGENT_COST_MARKUP:1.0}
   ocr:
     # Pipeline OCR (F-05). Fournisseur `stub` par défaut (dev/tests, sans AWS) ; `textract` en cluster.

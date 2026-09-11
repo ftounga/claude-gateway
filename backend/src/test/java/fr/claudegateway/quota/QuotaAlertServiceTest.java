@@ -76,7 +76,7 @@ class QuotaAlertServiceTest {
     private UsageCounter counter(UUID userId, long used, long bonus) {
         return UsageCounter.builder()
                 .userId(userId).periodStart(period)
-                .inputTokens(used).outputTokens(0L).bonusTokens(bonus).build();
+                .inputTokens(used).outputTokens(0L).billedTokens(used).bonusTokens(bonus).build();
     }
 
     // ---------- Pose de la marque ----------

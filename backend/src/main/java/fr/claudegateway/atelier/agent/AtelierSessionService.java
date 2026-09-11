@@ -30,7 +30,9 @@ import fr.claudegateway.atelier.WorkspaceService;
 import fr.claudegateway.atelier.agent.ManagedAgentProvider.SessionUsage;
 import fr.claudegateway.git.GitTokenMissingException;
 import fr.claudegateway.git.GitTokenService;
+import fr.claudegateway.quota.BilledTokensCalculator;
 import fr.claudegateway.quota.QuotaService;
+import fr.claudegateway.quota.TurnTokens;
 import fr.claudegateway.quota.UsageSnapshot;
 import fr.claudegateway.runner.relay.RelaySessionInterruptTarget;
 import fr.claudegateway.runner.relay.RunnerRelayBroadcaster;
@@ -77,14 +79,8 @@ public class AtelierSessionService implements RelaySessionInterruptTarget {
      */
     private static final String BUDGET_STOP_REASON = "budget";
 
-    /** Diviseur de conversion « tokens → millions de tokens » des tarifs de référence. */
-    private static final BigDecimal TOKENS_PER_MILLION = new BigDecimal("1000000");
-
-    /**
-     * Numérateur de conversion « unités mineures → tokens » : {@code 1 000 000 / 100}. Le coût est
-     * rapporté en cents, le tarif de référence en dollars par million de tokens.
-     */
-    private static final BigDecimal TOKENS_PER_MINOR_UNIT_NUMERATOR = new BigDecimal("10000");
+    /** Diviseur de conversion « unités mineures → dollars » : le coût est rapporté en cents. */
+    private static final BigDecimal MINOR_UNITS_PER_UNIT = new BigDecimal("100");
 
     private final ManagedAgentProvider provider;
     private final WorkspaceService workspaceService;
@@ -97,6 +93,7 @@ public class AtelierSessionService implements RelaySessionInterruptTarget {
     private final ProjectInstructionsService instructionsService;
     private final McpVaultService mcpVaultService;
     private final AtelierCostProperties costProperties;
+    private final BilledTokensCalculator billedTokensCalculator;
     private final AtelierDiffProperties diffProperties;
     /**
      * Diffusion de la marque d'interruption aux pods pairs (F-38 / SF-38-13). Inerte tant que le
@@ -138,7 +135,8 @@ public class AtelierSessionService implements RelaySessionInterruptTarget {
             QuotaService quotaService, WorkspaceRepository workspaceRepository,
             AtelierMessageRepository messageRepository, GitTokenService gitTokenService,
             ProjectInstructionsService instructionsService, McpVaultService mcpVaultService,
-            AtelierCostProperties costProperties, AtelierDiffProperties diffProperties,
+            AtelierCostProperties costProperties, BilledTokensCalculator billedTokensCalculator,
+            AtelierDiffProperties diffProperties,
             RunnerRelayBroadcaster relayBroadcaster) {
         this.provider = provider;
         this.workspaceService = workspaceService;
@@ -151,6 +149,7 @@ public class AtelierSessionService implements RelaySessionInterruptTarget {
         this.instructionsService = instructionsService;
         this.mcpVaultService = mcpVaultService;
         this.costProperties = costProperties;
+        this.billedTokensCalculator = billedTokensCalculator;
         this.diffProperties = diffProperties;
         this.relayBroadcaster = relayBroadcaster;
     }
@@ -634,9 +633,7 @@ public class AtelierSessionService implements RelaySessionInterruptTarget {
      */
     private SessionBudget sessionBudget(UUID userId, DelegationPolicy delegation) {
         UsageSnapshot usage = quotaService.currentUsage(userId);
-        BigDecimal remainingCost = BigDecimal.valueOf(usage.remainingTokens())
-                .multiply(costProperties.costPerMillionTokens())
-                .divide(TOKENS_PER_MILLION, 6, RoundingMode.DOWN);
+        BigDecimal remainingCost = billedTokensCalculator.usdOfQuotaTokens(usage.remainingTokens());
         // Une session qui délègue mène plusieurs travaux de front : son plafond par run est majoré
         // (F-35 / SF-35-01, propriété laissée dormante par SF-36-01). Il reste borné par le quota
         // restant — déléguer ne donne jamais accès à plus que ce que l'utilisateur a payé.
@@ -992,64 +989,37 @@ public class AtelierSessionService implements RelaySessionInterruptTarget {
                 workspace.setAgentListCost(cost);
             }
             workspaceRepository.save(workspace);
-            // Décompte au COÛT RÉEL quand le fournisseur le rapporte (F-36 / SF-36-02), sinon repli
-            // sur les tokens bruts — exactement le comportement d'avant F-36.
-            TurnUsage billed = cost == null
-                    ? new TurnUsage(inputDelta, outputDelta, secondsDelta)
-                    : billedFromCost(costDelta, inputDelta, outputDelta, secondsDelta);
-            // recordUsage prend des int : on borne les deltas à Integer.MAX_VALUE.
+            // Décompte au COÛT RÉEL quand le fournisseur le rapporte (F-36 / SF-36-02), sinon aux
+            // tarifs de configuration, chaque nature de token à son prix (F-63 / SF-63-01).
+            //
+            // Les VOLUMES enregistrés sont désormais les deltas RÉELS du fournisseur : jusqu'à F-63
+            // ce chemin rangeait dans les compteurs un « équivalent token » issu du coût, réparti au
+            // prorata — un chiffre qui n'était ni un volume traité ni rien d'autre, et dont le
+            // rapport d'usage (F-16) et la consommation par client (F-61) tiraient un coût estimé.
+            //
             // Le projet et son poste accompagnent le décompte (F-61 / SF-61-01) : le journal par
             // tour est la seule source qui ne rétrécit pas — les compteurs `agent_*_tokens` de ce
             // workspace, eux, repartent de zéro à chaque session (voir markSessionOpened).
-            quotaService.recordUsage(userId, (int) Math.min(billed.inputTokens(), Integer.MAX_VALUE),
-                    (int) Math.min(billed.outputTokens(), Integer.MAX_VALUE),
-                    workspaceId, workspace.getHostId());
+            TurnUsage turn = new TurnUsage(inputDelta, outputDelta, secondsDelta);
+            quotaService.recordUsage(userId, new TurnTokens(inputDelta, outputDelta, 0L, 0L),
+                    cost == null ? null : usdOf(costDelta), workspaceId, workspace.getHostId());
             quotaService.recordSandboxSeconds(userId, secondsDelta);
-            return billed;
+            return turn;
         } catch (RuntimeException ex) {
             log.debug("Décompte de l'usage de session ignoré (best-effort) : run déjà livré.");
             return TurnUsage.UNKNOWN;
         }
     }
 
-    /**
-     * Convertit le coût réellement facturé en <b>équivalent tokens</b> décompté du quota
-     * (F-36 / SF-36-02). Le quota reste libellé en tokens ; c'est la conversion qui fait entrer dans
-     * le décompte ce que les tokens ignorent — le modèle réellement servi, les recherches web, le
-     * temps de bac à sable.
-     *
-     * <p>Formule : {@code cents ÷ 100 × markup ÷ coût de référence par million × 1 000 000}. Le
-     * markup est le levier de marge, ajustable par configuration ; à {@code 1.0} (défaut) le décompte
-     * reproduit l'économie d'avant F-36.</p>
-     *
-     * <p>L'équivalent est réparti entre entrée et sortie <b>au prorata des tokens rapportés</b> : le
-     * compteur n'a que ces deux colonnes, et inventer une autre ventilation fausserait le rapport
-     * d'usage. Un coût sans aucun token rapporté (recherche web ou temps de bac à sable seuls) est
-     * décompté entièrement en entrée — ne rien décompter serait faux.</p>
-     */
-    private TurnUsage billedFromCost(long costDeltaMinorUnits, long inputDelta, long outputDelta,
-            long secondsDelta) {
-        if (costDeltaMinorUnits <= 0) {
-            return new TurnUsage(0L, 0L, secondsDelta);
-        }
-        long total = BigDecimal.valueOf(costDeltaMinorUnits)
-                .multiply(costProperties.markup())
-                .multiply(TOKENS_PER_MINOR_UNIT_NUMERATOR)
-                .divide(costProperties.costPerMillionTokens(), 0, RoundingMode.HALF_UP)
-                .longValue();
-        long rawTokens = inputDelta + outputDelta;
-        if (rawTokens <= 0) {
-            return new TurnUsage(total, 0L, secondsDelta);
-        }
-        long input = BigDecimal.valueOf(total)
-                .multiply(BigDecimal.valueOf(inputDelta))
-                .divide(BigDecimal.valueOf(rawTokens), 0, RoundingMode.HALF_UP)
-                .longValue();
-        return new TurnUsage(input, total - input, secondsDelta);
+    /** Coût rapporté par le fournisseur (unités mineures) ramené en dollars. */
+    private static BigDecimal usdOf(long costMinorUnits) {
+        return BigDecimal.valueOf(costMinorUnits).divide(MINOR_UNITS_PER_UNIT, 6, RoundingMode.HALF_UP);
     }
 
     /**
-     * Consommation d'un tour (F-30 SF-30-05) : les deltas <b>effectivement décomptés</b> du quota.
+     * Consommation d'un tour (F-30 SF-30-05) : les deltas <b>réellement rapportés</b> par le
+     * fournisseur. Ce que le quota décompte, lui, est un coût converti en tokens facturés (F-63) —
+     * l'écran montre ce qui a été traité, pas la conversion.
      * {@link #UNKNOWN} signale un relevé manqué — l'écran n'affiche alors rien, plutôt qu'un
      * « 0 token » qui serait faux après une exécution réelle.
      */

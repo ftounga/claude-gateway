@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <!--
+      F-63 / SF-63-01 — Les tokens FACTURÉS, à côté des tokens TRAITÉS.
+
+      `input_tokens` et `output_tokens` sont des VOLUMES : ce que le fournisseur a traité. Trois
+      écrans en vivent — le rapport d'usage (F-16), la consommation par client et la console
+      d'administration (F-61) —, et deux d'entre eux en déduisent un COÛT ESTIMÉ en appliquant
+      5 $/M à l'entrée et 25 $/M à la sortie.
+
+      Y écrire un décompte déjà pondéré par ces mêmes tarifs aurait donc produit un coût au carré.
+      D'où une colonne distincte : ce qu'on facture cesse d'être confondu avec ce qu'on a traité.
+      Les deux chiffres sont désormais justes tous les deux, et l'écran dit lequel il montre
+      (SF-63-03).
+
+      Reprise : `billed_tokens = input_tokens + output_tokens` sur les lignes existantes. Partir de
+      zéro offrirait un quota gratuit à toute période en cours ; recalculer rétroactivement
+      fabriquerait une consommation que personne n'a faite — et les natures de tokens du passé ne
+      sont de toute façon pas connues (le cache y était replié dans l'entrée). Le changement de
+      comptage ne vaut que pour les tours à venir.
+
+      Additive et réversible : l'ancien code ne lit jamais cette colonne.
+    -->
+    <changeSet id="069-usage-counters-billed-tokens" author="claude-gateway">
+        <addColumn tableName="usage_counters">
+            <column name="billed_tokens" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <update tableName="usage_counters">
+            <column name="billed_tokens" valueComputed="input_tokens + output_tokens"/>
+        </update>
+        <rollback>
+            <dropColumn tableName="usage_counters" columnName="billed_tokens"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

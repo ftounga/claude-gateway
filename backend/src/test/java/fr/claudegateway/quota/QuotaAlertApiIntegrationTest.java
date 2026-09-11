@@ -59,7 +59,10 @@ class QuotaAlertApiIntegrationTest {
     static class StubAIProvider implements AIProvider {
         @Override
         public ChatCompletionResult complete(ChatCompletionRequest request) {
-            return new ChatCompletionResult("Réponse", request.model(), 12, 8);
+            // 16 tokens d'entrée et 4 de sortie : 20 tokens traités, et — au ratio 4:1, point
+            // d'équilibre exact du décompte au coût réel (F-63) — 20 tokens facturés.
+            // (16×5 + 4×25) ÷ 9 = 20. Les chiffres de ce test gardent donc leur sens.
+            return new ChatCompletionResult("Réponse", request.model(), 16, 4);
         }
 
         @Override

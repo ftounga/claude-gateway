@@ -89,11 +89,14 @@ public class QuotaAlertService {
             // `assertWithinQuota` pose déjà.
             return;
         }
-        double ratio = (double) counter.totalTokens() / (double) quota;
+        // Le seuil se juge sur les tokens FACTURÉS (F-63), c'est-à-dire sur ce que le quota oppose :
+        // alerter sur le volume traité préviendrait trop tôt ou trop tard selon le style d'usage du
+        // client, et jamais au moment où il approche réellement de son plafond.
+        double ratio = (double) counter.getBilledTokens() / (double) quota;
         if (ratio >= properties.threshold()) {
             counter.setQuotaAlertRaisedAt(OffsetDateTime.now(clock));
-            log.info("Seuil de consommation franchi pour l'utilisateur {} ({} / {} tokens)",
-                    userId, counter.totalTokens(), quota);
+            log.info("Seuil de consommation franchi pour l'utilisateur {} ({} / {} tokens facturés)",
+                    userId, counter.getBilledTokens(), quota);
         }
     }
 
@@ -110,7 +113,9 @@ public class QuotaAlertService {
         Optional<UsageCounter> counter =
                 usageCounterRepository.findByUserIdAndPeriodStart(userId, periodStart);
 
-        long used = counter.map(UsageCounter::totalTokens).orElse(0L);
+        // Ce que la bannière annonce doit être ce que le quota oppose (F-63) : les tokens facturés,
+        // et non le volume traité — sans quoi le pourcentage affiché contredirait le blocage.
+        long used = counter.map(UsageCounter::getBilledTokens).orElse(0L);
         long quota = counter.map(c -> effectiveQuota(userId, c))
                 .orElseGet(() -> subscriptionQuota(userId));
         boolean raised = counter

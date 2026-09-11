@@ -34,8 +34,11 @@ import fr.claudegateway.atelier.WorkspaceNotFoundException;
 import fr.claudegateway.atelier.WorkspaceRepository;
 import fr.claudegateway.atelier.WorkspaceService;
 import fr.claudegateway.atelier.agent.ManagedAgentProvider.SessionUsage;
+import fr.claudegateway.quota.BilledTokensCalculator;
 import fr.claudegateway.quota.QuotaExceededException;
 import fr.claudegateway.quota.QuotaService;
+import fr.claudegateway.quota.TokenPricingProperties;
+import fr.claudegateway.quota.TurnTokens;
 import fr.claudegateway.quota.SandboxLimitExceededException;
 import fr.claudegateway.quota.UsageSnapshot;
 
@@ -60,6 +63,14 @@ class AtelierSessionServiceTest {
     private AtelierAgentBootstrapService bootstrapService;
     @Mock
     private QuotaService quotaService;
+
+    /**
+     * Le calculateur de décompte est utilisé <b>réel</b> (F-63) : c'est lui qui dit ce que vaut un
+     * token de quota, et le plafond de session s'en déduit. Le mocker reviendrait à tester la
+     * conversion contre elle-même.
+     */
+    private final BilledTokensCalculator billedTokensCalculator = new BilledTokensCalculator(
+            new TokenPricingProperties(null, null, null, null, null, null));
     @Mock
     private WorkspaceRepository workspaceRepository;
     @Mock
@@ -124,17 +135,17 @@ class AtelierSessionServiceTest {
             AtelierDiffProperties diff) {
         return new AtelierSessionService(provider, workspaceService, bootstrapService, props, quotaService,
                 workspaceRepository, messageRepository, gitTokenService, instructionsService,
-                mcpVaultService, cost, diff, relayBroadcaster);
+                mcpVaultService, cost, billedTokensCalculator, diff, relayBroadcaster);
     }
 
-    /** Réglages de dépense par défaut (F-36 / SF-36-01) : plafond 2 $, plancher 0,10 $, 9 $/M. */
+    /** Plafonds de dépense par défaut (F-36 / SF-36-01) : plafond 2 $, plancher 0,10 $. */
     private AtelierCostProperties costProperties() {
-        return costProperties(null);
+        return new AtelierCostProperties(null, null, null);
     }
 
-    /** Réglages de dépense avec un markup explicite (F-36 / SF-36-02). */
-    private AtelierCostProperties costProperties(java.math.BigDecimal markup) {
-        return new AtelierCostProperties(null, null, null, null, markup);
+    /** Montant en dollars tel que le service le transmet au décompte (échelle 6, F-63). */
+    private static java.math.BigDecimal usd(String amount) {
+        return new java.math.BigDecimal(amount).setScale(6);
     }
 
     /** Quota restant large : le plafond par run est alors le facteur limitant (F-36 / SF-36-01). */
@@ -444,7 +455,8 @@ class AtelierSessionServiceTest {
 
         assertThat(result.reply()).isEqualTo("Terminé.");
         // Décompte : tokens sur le quota, secondes de bac à sable sur le plafond.
-        verify(quotaService).recordUsage(eq(USER), eq(1_000), eq(200), any(), any());
+        verify(quotaService).recordUsage(USER, new TurnTokens(1_000L, 200L, 0L, 0L), null,
+                WORKSPACE, null);
         verify(quotaService).recordSandboxSeconds(USER, 8L);
     }
 
@@ -578,10 +590,12 @@ class AtelierSessionServiceTest {
         service.runTask(USER, WORKSPACE, "un");
         service.runTask(USER, WORKSPACE, "deux");
 
-        verify(quotaService).recordUsage(eq(USER), eq(1_000), eq(200), any(), any());
+        verify(quotaService).recordUsage(USER, new TurnTokens(1_000L, 200L, 0L, 0L), null,
+                WORKSPACE, null);
         verify(quotaService).recordSandboxSeconds(USER, 8L);
         // Second tour : seul l'écart est décompté, pas le cumul.
-        verify(quotaService).recordUsage(eq(USER), eq(500), eq(60), any(), any());
+        verify(quotaService).recordUsage(USER, new TurnTokens(500L, 60L, 0L, 0L), null,
+                WORKSPACE, null);
         verify(quotaService).recordSandboxSeconds(USER, 12L);
     }
 
@@ -605,7 +619,8 @@ class AtelierSessionServiceTest {
         service(enabled()).runTask(USER, WORKSPACE, "go");
 
         // Ouvrir une session remet les compteurs à zéro : le delta est le relevé lui-même, jamais négatif.
-        verify(quotaService).recordUsage(eq(USER), eq(10), eq(2), any(), any());
+        verify(quotaService).recordUsage(USER, new TurnTokens(10L, 2L, 0L, 0L), null,
+                WORKSPACE, null);
         verify(quotaService).recordSandboxSeconds(USER, 1L);
     }
 
@@ -713,7 +728,6 @@ class AtelierSessionServiceTest {
         assertThat(second.inputTokens()).isEqualTo(500L);
         assertThat(second.outputTokens()).isEqualTo(60L);
         assertThat(second.activeSeconds()).isEqualTo(12L);
-        verify(quotaService).recordUsage(eq(USER), eq(500), eq(60), any(), any());
     }
 
     @Test
@@ -1138,7 +1152,8 @@ class AtelierSessionServiceTest {
 
         // Le tour a réellement consommé du bac à sable : il est décompté comme tout autre tour (D3).
         assertThat(result.activeSeconds()).isEqualTo(42L);
-        verify(quotaService).recordUsage(eq(USER), eq(900), eq(100), any(), any());
+        verify(quotaService).recordUsage(USER, new TurnTokens(900L, 100L, 0L, 0L), null,
+                WORKSPACE, null);
         verify(quotaService).recordSandboxSeconds(USER, 42L);
         // ... et conservé, avec sa transcription partielle et sa marque (D2).
         ArgumentCaptor<fr.claudegateway.atelier.AtelierMessage> saved =
@@ -1585,29 +1600,19 @@ class AtelierSessionServiceTest {
     @Test
     void theQuotaIsChargedFromTheRealCostWhenTheProviderReportsIt() {
         stubNominalRun();
-        // 90 cents = 0,90 $ ; à 9 $/M et markup 1,0 ⇒ 100 000 tokens équivalents, répartis au prorata
-        // des tokens rapportés (1 000 / 200) ⇒ 83 333 en entrée, 16 667 en sortie.
+        // 90 cents = 0,90 $. Le coût réel part au décompte tel quel : c'est lui qui sait ce que les
+        // tokens ignorent (modèle servi, recherches web, temps de bac à sable).
         when(provider.getSessionUsage("sess_1")).thenReturn(new SessionUsage(1_000L, 200L, 8L, 90L));
 
         AtelierSessionResult result = service(enabled()).runTask(USER, WORKSPACE, "go");
 
-        verify(quotaService).recordUsage(eq(USER), eq(83_333), eq(16_667), any(), any());
+        verify(quotaService).recordUsage(USER, new TurnTokens(1_000L, 200L, 0L, 0L), usd("0.90"),
+                WORKSPACE, null);
         verify(quotaService).recordSandboxSeconds(USER, 8L);
-        // Le tour affiche ce qui est réellement décompté : une seule source de vérité.
-        assertThat(result.inputTokens()).isEqualTo(83_333L);
-        assertThat(result.outputTokens()).isEqualTo(16_667L);
-    }
-
-    @Test
-    void theMarkupMultipliesWhatIsChargedToTheQuota() {
-        stubNominalRun();
-        when(provider.getSessionUsage("sess_1")).thenReturn(new SessionUsage(1_000L, 200L, 8L, 90L));
-
-        service(enabled(), costProperties(new java.math.BigDecimal("2.0")))
-                .runTask(USER, WORKSPACE, "go");
-
-        // 2× le décompte neutre : le levier de marge agit sur le décompte, pas sur le tarif affiché.
-        verify(quotaService).recordUsage(eq(USER), eq(166_667), eq(33_333), any(), any());
+        // Le tour affiche les tokens RÉELLEMENT rapportés (F-63) : jusqu'ici il montrait l'équivalent
+        // token issu du coût, un chiffre qui n'était le volume de rien.
+        assertThat(result.inputTokens()).isEqualTo(1_000L);
+        assertThat(result.outputTokens()).isEqualTo(200L);
     }
 
     @Test
@@ -1627,31 +1632,35 @@ class AtelierSessionServiceTest {
 
         service(enabled()).runTask(USER, WORKSPACE, "go");
 
-        // Delta = 45 cents ⇒ 50 000 tokens, au prorata du delta de tokens (1 000 / 200).
-        verify(quotaService).recordUsage(eq(USER), eq(41_667), eq(8_333), any(), any());
+        // Delta = 45 cents, et deltas de tokens de 1 000 / 200 : le cumul n'est jamais refacturé.
+        verify(quotaService).recordUsage(USER, new TurnTokens(1_000L, 200L, 0L, 0L), usd("0.45"),
+                WORKSPACE, null);
         assertThat(workspace.getAgentListCost()).isEqualTo(135L);
     }
 
     @Test
-    void aMissingRealCostFallsBackToTheRawTokenAccounting() {
-        // Repli : sans coût rapporté, le décompte est exactement celui d'avant F-36.
+    void aMissingRealCostFallsBackToTheTokenAccounting() {
+        // Repli : sans coût rapporté, le décompte part des tokens — et c'est alors le calculateur
+        // qui les tarife, chaque nature à son prix (F-63).
         stubNominalRun();
         when(provider.getSessionUsage("sess_1")).thenReturn(new SessionUsage(1_000L, 200L, 8L, null));
 
         service(enabled()).runTask(USER, WORKSPACE, "go");
 
-        verify(quotaService).recordUsage(eq(USER), eq(1_000), eq(200), any(), any());
+        verify(quotaService).recordUsage(USER, new TurnTokens(1_000L, 200L, 0L, 0L), null,
+                WORKSPACE, null);
     }
 
     @Test
-    void aCostWithoutAnyReportedTokenIsChargedEntirelyOnInput() {
+    void aCostWithoutAnyReportedTokenIsStillCharged() {
         // Recherches web ou temps de bac à sable seuls : ne rien décompter serait faux.
         stubNominalRun();
         when(provider.getSessionUsage("sess_1")).thenReturn(new SessionUsage(0L, 0L, 30L, 18L));
 
         service(enabled()).runTask(USER, WORKSPACE, "go");
 
-        verify(quotaService).recordUsage(eq(USER), eq(20_000), eq(0), any(), any());
+        verify(quotaService).recordUsage(USER, new TurnTokens(0L, 0L, 0L, 0L), usd("0.18"),
+                WORKSPACE, null);
     }
 
     @Test
@@ -1669,7 +1678,8 @@ class AtelierSessionServiceTest {
 
         service(enabled()).runTask(USER, WORKSPACE, "go");
 
-        verify(quotaService).recordUsage(eq(USER), eq(0), eq(0), any(), any());
+        verify(quotaService).recordUsage(USER, new TurnTokens(0L, 0L, 0L, 0L), usd("0.00"),
+                WORKSPACE, null);
     }
 
     @Test
@@ -1689,7 +1699,8 @@ class AtelierSessionServiceTest {
         service(enabled()).runTask(USER, WORKSPACE, "go");
 
         // Le cumul de l'ancienne session ne doit pas masquer les premiers tours de la nouvelle.
-        verify(quotaService).recordUsage(eq(USER), eq(10_000), eq(0), any(), any());
+        verify(quotaService).recordUsage(USER, new TurnTokens(0L, 0L, 0L, 0L), usd("0.09"),
+                WORKSPACE, null);
     }
 
     // ------------------------------------ F-35 / SF-35-01 : roster de sous-agents

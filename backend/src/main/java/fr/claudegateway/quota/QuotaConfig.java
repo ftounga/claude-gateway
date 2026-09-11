@@ -16,7 +16,8 @@ import org.springframework.context.annotation.Primary;
 @EnableConfigurationProperties({
         QuotaProperties.class,
         QuotaAlertProperties.class,
-        UsageReportProperties.class})
+        UsageReportProperties.class,
+        TokenPricingProperties.class})
 public class QuotaConfig {
 
     /** Horloge par défaut de la plateforme (UTC), surchargée dans les tests si besoin. */

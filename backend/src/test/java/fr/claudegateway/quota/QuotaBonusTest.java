@@ -57,6 +57,8 @@ class QuotaBonusTest {
         quotaService = new QuotaService(usageCounterRepository, subscriptionService, entitlementService,
                 byokKeyService, quotaAlertService,
                 org.mockito.Mockito.mock(UsageLedgerService.class),
+                new BilledTokensCalculator(
+                        new TokenPricingProperties(null, null, null, null, null, null)),
                 new QuotaProperties(null, null, null), clock);
     }
 
@@ -68,7 +70,8 @@ class QuotaBonusTest {
     private UsageCounter counter(long input, long output, long bonus) {
         return UsageCounter.builder()
                 .userId(alice).periodStart(period)
-                .inputTokens(input).outputTokens(output).bonusTokens(bonus).build();
+                .inputTokens(input).outputTokens(output).billedTokens(input + output)
+                .bonusTokens(bonus).build();
     }
 
     @Test
