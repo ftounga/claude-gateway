@@ -1,0 +1,93 @@
+<mat-card class="usage-admin">
+  <header class="usage-admin__header">
+    <div>
+      <h2>Consommation</h2>
+      <p class="usage-admin__subtitle">
+        Ce que chaque compte consomme, entrée et sortie distinguées — leurs coûts unitaires n'ont
+        rien à voir. Le coût est une estimation au tarif de la plateforme, pas un montant facturé.
+        Volumes et coûts uniquement : aucun contenu, aucun projet, aucun poste.
+      </p>
+    </div>
+    <mat-button-toggle-group
+      aria-label="Période observée"
+      [value]="months()"
+      (change)="selectWindow($event.value)"
+    >
+      @for (window of windows; track window) {
+        <mat-button-toggle [value]="window">{{ window }} mois</mat-button-toggle>
+      }
+    </mat-button-toggle-group>
+  </header>
+
+  @if (loading()) {
+    <mat-progress-bar mode="indeterminate"></mat-progress-bar>
+  } @else if (isEmpty()) {
+    <p class="usage-admin__empty">Aucune consommation sur cette période.</p>
+  } @else {
+    <div class="usage-admin__totals">
+      <div class="usage-admin__stat">
+        <span class="usage-admin__stat-label">Tokens d'entrée</span>
+        <span class="usage-admin__stat-value">{{ formatTokens(usage()!.inputTokens) }}</span>
+      </div>
+      <div class="usage-admin__stat">
+        <span class="usage-admin__stat-label">Tokens de sortie</span>
+        <span class="usage-admin__stat-value">{{ formatTokens(usage()!.outputTokens) }}</span>
+      </div>
+      <div class="usage-admin__stat">
+        <span class="usage-admin__stat-label">Coût estimé</span>
+        <span class="usage-admin__stat-value">{{ formatCost(usage()!.estimatedCost) }}</span>
+      </div>
+    </div>
+
+    <div class="usage-admin__table-wrap">
+      <table class="usage-admin__table">
+        <thead>
+          <tr>
+            <th scope="col">Compte</th>
+            <th scope="col">Plan</th>
+            <th scope="col" class="usage-admin__num">Entrée</th>
+            <th scope="col" class="usage-admin__num">Sortie</th>
+            <th scope="col" class="usage-admin__num">Coût estimé</th>
+            <th scope="col">Part</th>
+            <th scope="col">Évolution</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (user of usage()!.users; track user.userId) {
+            <tr>
+              <td>{{ user.email ?? 'Compte supprimé' }}</td>
+              <td>{{ user.planCode ?? '—' }}</td>
+              <td class="usage-admin__num">{{ formatTokens(user.inputTokens) }}</td>
+              <td class="usage-admin__num">{{ formatTokens(user.outputTokens) }}</td>
+              <td class="usage-admin__num">{{ formatCost(user.estimatedCost) }}</td>
+              <td>
+                <span class="usage-admin__share">
+                  <span class="usage-admin__bar" aria-hidden="true">
+                    <span
+                      class="usage-admin__bar-fill"
+                      [style.width.%]="sharePercent(user.share)"
+                    ></span>
+                  </span>
+                  <span class="usage-admin__share-value">{{ sharePercent(user.share) }} %</span>
+                </span>
+              </td>
+              <td>
+                <!-- Une barre par mois de la fenêtre, à échelle commune à tous les comptes : deux
+                     échelles feraient lire deux courbes identiques pour deux volumes différents. -->
+                <span class="usage-admin__spark">
+                  @for (period of user.periods; track period.periodStart) {
+                    <span
+                      class="usage-admin__spark-bar"
+                      [style.height.%]="monthHeight(period)"
+                      [title]="monthLabel(period.periodStart) + ' — ' + formatTokens(period.totalTokens) + ' tokens'"
+                    ></span>
+                  }
+                </span>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</mat-card>

@@ -86,4 +86,101 @@
       <mat-paginator [pageSizeOptions]="[6, 12, 24]" [pageSize]="12"></mat-paginator>
     </mat-card>
   }
+
+  <!-- F-61 / SF-61-04 — Par client : la matière d'une refacturation. Hors de la condition
+       ci-dessus : elle se charge et échoue seule, et un compte sans historique mensuel peut
+       parfaitement avoir de la consommation attribuée. -->
+  <mat-card class="reports__list">
+    <div class="reports__section-head">
+      <div>
+        <h2 class="reports__list-title">Par client</h2>
+        <p class="reports__subtitle">
+          Ce que chaque poste — et chaque projet dessous — a consommé. La ventilation par client
+          commence avec la mise en service du relevé : la consommation antérieure figure dans
+          l'historique mensuel ci-dessus, mais n'est attribuable à aucun client.
+        </p>
+      </div>
+      <mat-button-toggle-group
+        class="reports__window"
+        aria-label="Période de la consommation par client"
+        [value]="clientMonths()"
+        (change)="selectClientWindow($event.value)"
+      >
+        @for (months of clientWindows; track months) {
+          <mat-button-toggle [value]="months">{{ months }} mois</mat-button-toggle>
+        }
+      </mat-button-toggle-group>
+    </div>
+
+    @if (clientLoading()) {
+      <div class="reports__loading">
+        <mat-spinner diameter="32"></mat-spinner>
+      </div>
+    } @else if (noClientUsage()) {
+      <div class="reports__empty">
+        <mat-icon>groups</mat-icon>
+        <p>Aucune consommation attribuée sur cette période.</p>
+      </div>
+    } @else {
+      <div class="reports__clients">
+        @for (client of byClient()!.clients; track client.hostId ?? 'outside') {
+          <section class="reports__client">
+            <header class="reports__client-head">
+              <span class="reports__client-name">
+                @if (client.hostId) {
+                  <!-- Identité visuelle du poste (F-49 / SF-49-03) : le nom reste écrit à côté,
+                       la couleur ne porte jamais seule l'information. -->
+                  <app-host-badge [name]="clientLabel(client)" size="sm"></app-host-badge>
+                } @else {
+                  <span class="reports__client-outside">{{ clientLabel(client) }}</span>
+                }
+              </span>
+              <span class="reports__client-figures">
+                <span class="reports__client-cost">{{ formatClientCost(client.estimatedCost) }}</span>
+                <span class="reports__stat-hint">{{ sharePercent(client.share) }} % du total</span>
+              </span>
+            </header>
+
+            <span class="reports__bar" aria-hidden="true">
+              <span class="reports__bar-fill" [style.width.%]="sharePercent(client.share)"></span>
+            </span>
+
+            <p class="reports__client-tokens">
+              <span>Entrée <strong>{{ formatTokens(client.inputTokens) }}</strong></span>
+              <span>Sortie <strong>{{ formatTokens(client.outputTokens) }}</strong></span>
+            </p>
+
+            @if (client.hostId === null) {
+              <p class="reports__stat-hint">
+                Projets sans poste, conversations et questions — rattachés à aucun client.
+              </p>
+            }
+
+            <div class="reports__projects-wrap">
+              <table class="reports__projects">
+                <thead>
+                  <tr>
+                    <th scope="col">Projet</th>
+                    <th scope="col" class="reports__num">Entrée</th>
+                    <th scope="col" class="reports__num">Sortie</th>
+                    <th scope="col" class="reports__num">Coût estimé</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (project of client.projects; track project.workspaceId ?? 'none') {
+                    <tr>
+                      <td>{{ projectLabel(project.name, project.workspaceId) }}</td>
+                      <td class="reports__num">{{ formatTokens(project.inputTokens) }}</td>
+                      <td class="reports__num">{{ formatTokens(project.outputTokens) }}</td>
+                      <td class="reports__num">{{ formatClientCost(project.estimatedCost) }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </section>
+        }
+      </div>
+    }
+  </mat-card>
 </section>

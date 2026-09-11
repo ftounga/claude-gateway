@@ -5,6 +5,11 @@
     <mat-progress-bar mode="indeterminate"></mat-progress-bar>
   }
 
+  <!-- F-61 / SF-61-05 — la consommation par utilisateur. Au-dessus de la liste des comptes :
+       « qui consomme » est la question qu'on se pose en ouvrant cet écran ; « qui est inscrit »
+       vient après. -->
+  <app-admin-usage></app-admin-usage>
+
   <mat-card class="admin-card">
     <table mat-table [dataSource]="dataSource" class="admin-table">
       <ng-container matColumnDef="email">

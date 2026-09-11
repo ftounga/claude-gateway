@@ -7,11 +7,14 @@ import { of, throwError } from 'rxjs';
 import { ReportsComponent } from './reports.component';
 import { UsageReportService } from '../core/services/usage-report.service';
 import { UsageReportView } from '../core/models/usage-report.models';
+import { UsageByClientService } from '../core/services/usage-by-client.service';
+import { UsageByClientView } from '../core/models/usage-by-client.models';
 
 describe('ReportsComponent', () => {
   let fixture: ComponentFixture<ReportsComponent>;
   let component: ReportsComponent;
   let service: jasmine.SpyObj<UsageReportService>;
+  let byClientService: jasmine.SpyObj<UsageByClientService>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
 
   const report: UsageReportView = {
@@ -42,9 +45,65 @@ describe('ReportsComponent', () => {
     totalEstimatedCost: 0.165,
   };
 
-  function setup(value: UsageReportView = report): void {
+  /** Consommation par client (F-61 / SF-61-04) : deux clients, dont le seau « hors client ». */
+  const byClient: UsageByClientView = {
+    currency: 'EUR',
+    from: '2025-10-01',
+    to: '2026-09-01',
+    inputTokens: 1_040_000,
+    outputTokens: 200_000,
+    totalTokens: 1_240_000,
+    estimatedCost: 6.12,
+    clients: [
+      {
+        hostId: 'h1',
+        hostName: 'poste-groupe-x',
+        inputTokens: 1_000_000,
+        outputTokens: 200_000,
+        totalTokens: 1_200_000,
+        estimatedCost: 6.0,
+        share: 0.9677,
+        projects: [
+          {
+            workspaceId: 'w1',
+            name: 'refonte-paie',
+            inputTokens: 1_000_000,
+            outputTokens: 200_000,
+            totalTokens: 1_200_000,
+            estimatedCost: 6.0,
+            share: 0.9677,
+          },
+        ],
+      },
+      {
+        hostId: null,
+        hostName: null,
+        inputTokens: 40_000,
+        outputTokens: 0,
+        totalTokens: 40_000,
+        estimatedCost: 0.12,
+        share: 0.0323,
+        projects: [
+          {
+            workspaceId: null,
+            name: null,
+            inputTokens: 40_000,
+            outputTokens: 0,
+            totalTokens: 40_000,
+            estimatedCost: 0.12,
+            share: 0.0323,
+          },
+        ],
+      },
+    ],
+  };
+
+  function setup(value: UsageReportView = report, clients: UsageByClientView = byClient): void {
     service = jasmine.createSpyObj<UsageReportService>('UsageReportService', ['getReport']);
     service.getReport.and.returnValue(of(value));
+    byClientService = jasmine.createSpyObj<UsageByClientService>('UsageByClientService',
+      ['getByClient']);
+    byClientService.getByClient.and.returnValue(of(clients));
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
 
     TestBed.configureTestingModule({
@@ -53,6 +112,7 @@ describe('ReportsComponent', () => {
         provideNoopAnimations(),
         provideRouter([]),
         { provide: UsageReportService, useValue: service },
+        { provide: UsageByClientService, useValue: byClientService },
         { provide: MatSnackBar, useValue: snackBar },
       ],
     });
@@ -107,5 +167,80 @@ describe('ReportsComponent', () => {
     // Plus grande période = 20000 tokens → 100 % ; 3000 → 15 %.
     expect(component.barWidth(20000)).toBe(100);
     expect(component.barWidth(3000)).toBe(15);
+  });
+
+  // ------------------------------------------------------ Par client (F-61 / SF-61-04)
+
+  it('charge la consommation par client et rend chaque poste avec ses projets', () => {
+    setup();
+
+    expect(byClientService.getByClient).toHaveBeenCalledWith(12);
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('poste-groupe-x');
+    expect(text).toContain('refonte-paie');
+    expect(text).toContain('Hors client');
+  });
+
+  it('écrit le nom du poste : la couleur ne porte jamais seule l’information', () => {
+    setup();
+
+    const badge = (fixture.nativeElement as HTMLElement).querySelector('app-host-badge');
+    expect(badge).not.toBeNull();
+    expect(badge?.textContent).toContain('poste-groupe-x');
+  });
+
+  it('recharge la section sur changement de période, sans toucher au rapport mensuel', () => {
+    setup();
+    byClientService.getByClient.calls.reset();
+    service.getReport.calls.reset();
+
+    component.selectClientWindow(3);
+
+    expect(byClientService.getByClient).toHaveBeenCalledWith(3);
+    expect(service.getReport).not.toHaveBeenCalled();
+  });
+
+  it('ne recharge pas quand la période ne change pas', () => {
+    setup();
+    byClientService.getByClient.calls.reset();
+
+    component.selectClientWindow(12);
+
+    expect(byClientService.getByClient).not.toHaveBeenCalled();
+  });
+
+  it('affiche un état vide quand rien n’est attribué', () => {
+    setup(report, { ...byClient, clients: [], totalTokens: 0 });
+
+    expect(component.noClientUsage()).toBeTrue();
+    expect((fixture.nativeElement as HTMLElement).textContent)
+      .toContain('Aucune consommation attribuée sur cette période.');
+  });
+
+  it('sur erreur, prévient sans emporter l’historique mensuel', () => {
+    setup();
+    byClientService.getByClient.and.returnValue(throwError(() => new Error('boom')));
+
+    component.refreshByClient();
+
+    expect(component.clientLoading()).toBeFalse();
+    expect(snackBar.open).toHaveBeenCalled();
+    // L'historique mensuel est toujours là : les deux sections échouent séparément.
+    expect(component.report()?.totalTokens).toBe(23000);
+  });
+
+  it('nomme explicitement un poste ou un projet supprimé', () => {
+    setup();
+
+    expect(component.clientLabel({ ...byClient.clients[0], hostName: null })).toBe('Poste supprimé');
+    expect(component.projectLabel(null, 'w9')).toBe('Projet supprimé');
+    expect(component.projectLabel(null, null)).toBe('Conversations et questions');
+  });
+
+  it('arrondit les parts en pourcentage entier', () => {
+    setup();
+
+    expect(component.sharePercent(0.9677)).toBe(97);
+    expect(component.sharePercent(0)).toBe(0);
   });
 });
