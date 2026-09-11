@@ -8,6 +8,8 @@ import { ReportsComponent } from './reports.component';
 import { UsageReportService } from '../core/services/usage-report.service';
 import { UsageReportView } from '../core/models/usage-report.models';
 import { UsageByClientService } from '../core/services/usage-by-client.service';
+import { UsageService } from '../core/services/usage.service';
+import { UsageView } from '../core/models/usage.models';
 import { UsageByClientView } from '../core/models/usage-by-client.models';
 
 describe('ReportsComponent', () => {
@@ -15,6 +17,7 @@ describe('ReportsComponent', () => {
   let component: ReportsComponent;
   let service: jasmine.SpyObj<UsageReportService>;
   let byClientService: jasmine.SpyObj<UsageByClientService>;
+  let usageService: jasmine.SpyObj<UsageService>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
 
   const report: UsageReportView = {
@@ -98,13 +101,28 @@ describe('ReportsComponent', () => {
     ],
   };
 
-  function setup(value: UsageReportView = report, clients: UsageByClientView = byClient): void {
+  /** Consommation de la période : volume traité et décompte pondéré diffèrent (F-63). */
+  const usage: UsageView = {
+    usedTokens: 5200,
+    quotaTokens: 200000,
+    remainingTokens: 194800,
+    processedTokens: 12000,
+    periodStart: '2026-09-01',
+    periodEnd: '2026-10-01',
+  };
+
+  function setup(value: UsageReportView = report, clients: UsageByClientView = byClient,
+    currentUsage: UsageView | null = usage): void {
     service = jasmine.createSpyObj<UsageReportService>('UsageReportService', ['getReport']);
     service.getReport.and.returnValue(of(value));
     byClientService = jasmine.createSpyObj<UsageByClientService>('UsageByClientService',
       ['getByClient']);
     byClientService.getByClient.and.returnValue(of(clients));
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
+    usageService = jasmine.createSpyObj<UsageService>('UsageService', ['getUsage']);
+    usageService.getUsage.and.returnValue(
+      currentUsage === null ? throwError(() => new Error('indisponible')) : of(currentUsage),
+    );
 
     TestBed.configureTestingModule({
       imports: [ReportsComponent],
@@ -113,6 +131,7 @@ describe('ReportsComponent', () => {
         provideRouter([]),
         { provide: UsageReportService, useValue: service },
         { provide: UsageByClientService, useValue: byClientService },
+        { provide: UsageService, useValue: usageService },
         { provide: MatSnackBar, useValue: snackBar },
       ],
     });
@@ -242,5 +261,33 @@ describe('ReportsComponent', () => {
 
     expect(component.sharePercent(0.9677)).toBe(97);
     expect(component.sharePercent(0)).toBe(0);
+  });
+
+  // ----------------------------------------------------- F-63 / SF-63-03 : dire comment on compte
+
+  it('names the weighted count next to the volumes it displays', () => {
+    setup();
+
+    const text: string = fixture.nativeElement.textContent;
+    // La page montre des VOLUMES ; le quota, lui, se décompte au coût réel. Taire la différence
+    // ferait passer deux chiffres justes pour une contradiction.
+    expect(text).toContain('volumes traités');
+    expect(text).toContain('coût réel');
+  });
+
+  it('shows both figures of the current period side by side', () => {
+    setup();
+
+    expect(component.processedThisPeriod()).toBe(12000);
+    expect(component.billedThisPeriod()).toBe(5200);
+  });
+
+  it('stays silent and complete when the current consumption cannot be loaded', () => {
+    setup(report, byClient, null);
+
+    // Une note de lecture absente n'est pas une erreur : ni message, ni chiffres inventés.
+    expect(component.processedThisPeriod()).toBeNull();
+    expect(component.billedThisPeriod()).toBeNull();
+    expect(component.dataSource.data.length).toBe(2);
   });
 });

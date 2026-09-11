@@ -67,6 +67,17 @@
             <p class="billing__gauge-period">
               Période du {{ u.periodStart | date: 'mediumDate' }} au {{ u.periodEnd | date: 'mediumDate' }}
             </p>
+            <!-- F-63 / SF-63-03 : la jauge montre un décompte PONDÉRÉ, pas un comptage brut. Le
+                 taire laisserait l'écran de consommation, qui affiche des volumes, passer pour une
+                 contradiction. Aucun tarif n'est écrit ici : les prix vivent en configuration. -->
+            <p class="billing__gauge-period">
+              Décompte pondéré au coût réel : un token de sortie pèse davantage qu'un token
+              d'entrée, une relecture mise en cache beaucoup moins.
+              @if (u.processedTokens !== undefined) {
+                <span>Volume traité sur la période : {{ u.processedTokens | number }} tokens
+                  — visible en détail dans vos rapports d'usage.</span>
+              }
+            </p>
           </div>
         }
       }

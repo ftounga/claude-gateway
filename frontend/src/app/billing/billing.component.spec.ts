@@ -93,6 +93,8 @@ describe('BillingComponent', () => {
     usedTokens: 4200,
     quotaTokens: 200000,
     remainingTokens: 195800,
+    // Volume traité et décompte pondéré diffèrent depuis F-63 : l'écran doit le dire.
+    processedTokens: 9000,
     periodStart: '2026-07-01',
     periodEnd: '2026-08-01',
   };
@@ -980,5 +982,17 @@ describe('BillingComponent', () => {
       expect(component.canEnterAccessCode()).toBeFalse();
       expect(component.hasAccessGrant()).toBeFalse();
     });
+  });
+
+  // ----------------------------------------------------- F-63 / SF-63-03 : dire comment on compte
+
+  it('names the weighted count next to the quota gauge', () => {
+    setup();
+
+    const text: string = fixture.nativeElement.textContent;
+    expect(text).toContain('Décompte pondéré au coût réel');
+    // Le volume traité est montré à côté, pour que les deux chiffres cessent de se contredire.
+    // (Le séparateur de milliers dépend de la locale de l'environnement : on juge le libellé.)
+    expect(text).toContain('Volume traité sur la période');
   });
 });
