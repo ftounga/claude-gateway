@@ -63,6 +63,8 @@ class QuotaAlertServiceTest {
 
     private QuotaAlertService alertService(QuotaAlertProperties properties) {
         return new QuotaAlertService(usageCounterRepository, subscriptionService, entitlementService,
+                new QuotaWindowService(usageCounterRepository, entitlementService,
+                        new fr.claudegateway.billing.BillingProperties(null, null), clock),
                 topUpCatalog, properties, clock);
     }
 
@@ -310,5 +312,41 @@ class QuotaAlertServiceTest {
 
         assertThat(aliceCounter.getQuotaAlertDismissedAt()).isNull();
         assertThat(service.currentAlert(alice).raised()).isTrue();
+    }
+
+    // ---------- Enveloppe d'essai (F-66) ----------
+
+    /**
+     * Un essai commencé le mois dernier et déjà à 85 % de son enveloppe doit être prévenu — même si
+     * la ligne du mois courant est presque vide. Sans la fenêtre de quota, le seuil se jugerait sur
+     * cette ligne-là et l'utilisateur serait bloqué sans avoir rien vu venir.
+     */
+    @Test
+    void thresholdOfAStraddlingTrialIsJudgedOnTheWholeEnvelope() {
+        Subscription trial = Subscription.builder()
+                .userId(alice).status(SubscriptionStatus.TRIALING)
+                .createdAt(OffsetDateTime.parse("2026-06-28T09:00:00Z"))
+                .trialEndsAt(OffsetDateTime.parse("2026-07-12T09:00:00Z"))
+                .build();
+        when(subscriptionService.getOrCreateForUser(alice)).thenReturn(trial);
+        when(entitlementService.hasActiveTrial(trial)).thenReturn(true);
+        when(entitlementService.resolveEffectiveMonthlyTokenQuota(trial)).thenReturn(200_000L);
+        when(usageCounterRepository.findByUserIdAndPeriodStartGreaterThanEqual(alice,
+                LocalDate.of(2026, 6, 1)))
+                .thenReturn(java.util.List.of(UsageCounter.builder()
+                        .userId(alice).periodStart(LocalDate.of(2026, 6, 1))
+                        .inputTokens(160_000L).outputTokens(0L).billedTokens(160_000L).build()));
+
+        UsageCounter july = counter(alice, 10_000L, 0L);
+        service.evaluateAfterUsage(alice, july);
+
+        assertThat(july.getQuotaAlertRaisedAt()).isNotNull();
+        // Et la bannière annonce le même cumul, sur la fenêtre de l'essai.
+        when(usageCounterRepository.findByUserIdAndPeriodStart(alice, period))
+                .thenReturn(Optional.of(july));
+        QuotaAlert alert = service.currentAlert(alice);
+        assertThat(alert.usedTokens()).isEqualTo(170_000L);
+        assertThat(alert.usedPercent()).isEqualTo(85);
+        assertThat(alert.periodEnd()).isEqualTo(LocalDate.of(2026, 7, 12));
     }
 }

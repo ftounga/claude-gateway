@@ -55,7 +55,10 @@ class QuotaBonusTest {
     @BeforeEach
     void setUp() {
         quotaService = new QuotaService(usageCounterRepository, subscriptionService, entitlementService,
-                byokKeyService, quotaAlertService,
+                byokKeyService,
+                new QuotaWindowService(usageCounterRepository, entitlementService,
+                        new fr.claudegateway.billing.BillingProperties(null, null), clock),
+                quotaAlertService,
                 org.mockito.Mockito.mock(UsageLedgerService.class),
                 new BilledTokensCalculator(
                         new TokenPricingProperties(null, null, null, null, null, null)),

@@ -41,6 +41,7 @@ public class QuotaService {
     private final SubscriptionService subscriptionService;
     private final EntitlementService entitlementService;
     private final ByokKeyService byokKeyService;
+    private final QuotaWindowService quotaWindowService;
     private final QuotaAlertService quotaAlertService;
     private final UsageLedgerService usageLedgerService;
     private final BilledTokensCalculator billedTokensCalculator;
@@ -52,6 +53,7 @@ public class QuotaService {
             SubscriptionService subscriptionService,
             EntitlementService entitlementService,
             ByokKeyService byokKeyService,
+            QuotaWindowService quotaWindowService,
             QuotaAlertService quotaAlertService,
             UsageLedgerService usageLedgerService,
             BilledTokensCalculator billedTokensCalculator,
@@ -61,6 +63,7 @@ public class QuotaService {
         this.subscriptionService = subscriptionService;
         this.entitlementService = entitlementService;
         this.byokKeyService = byokKeyService;
+        this.quotaWindowService = quotaWindowService;
         this.quotaAlertService = quotaAlertService;
         this.usageLedgerService = usageLedgerService;
         this.billedTokensCalculator = billedTokensCalculator;
@@ -98,9 +101,15 @@ public class QuotaService {
         // Quota effectif : l'allocation du plan, la part apportée par les postes supplémentaires
         // (F-65) et les jetons rachetés (F-21). Ce que le pré-vol oppose doit être exactement ce que
         // la jauge annonce — d'où le même calcul des deux côtés.
+        //
+        // Le tout s'oppose sur la FENÊTRE de l'abonnement (F-66) et non sur le mois : pour un
+        // abonnement payant les deux coïncident, pour un essai en cours la fenêtre couvre tout
+        // l'essai. Sans cela, un essai à cheval sur un 1er du mois disposait de deux fois son
+        // plafond, le compteur mensuel repartant de zéro au milieu de l'essai.
+        QuotaWindow window = quotaWindowService.resolve(subscription);
         long quota = entitlementService.resolveEffectiveMonthlyTokenQuota(subscription)
-                + currentPeriodBonus(userId);
-        long used = currentPeriodUsage(userId);
+                + currentPeriodBonus(userId) + window.carryOverBonusTokens();
+        long used = currentPeriodUsage(userId) + window.carryOverBilledTokens();
         if (used >= quota) {
             throw new QuotaExceededException(
                     "Quota de consommation atteint pour la période courante.");
@@ -220,13 +229,17 @@ public class QuotaService {
      */
     @Transactional(readOnly = true)
     public UsageSnapshot currentUsage(UUID userId) {
-        long quota = effectiveQuota(userId);
-        long used = currentPeriodUsage(userId);
+        Subscription subscription = subscriptionService.getOrCreateForUser(userId);
+        // Même fenêtre que le pré-vol (F-66) : la jauge doit annoncer ce que le quota oppose, sans
+        // quoi un essai à cheval sur un 1er du mois s'afficherait vide la veille d'être bloqué.
+        QuotaWindow window = quotaWindowService.resolve(subscription);
+        long quota = entitlementService.resolveEffectiveMonthlyTokenQuota(subscription)
+                + currentPeriodBonus(userId) + window.carryOverBonusTokens();
+        long used = currentPeriodUsage(userId) + window.carryOverBilledTokens();
         long remaining = Math.max(0, quota - used);
-        long processed = currentPeriodProcessedTokens(userId);
-        LocalDate periodStart = currentPeriodStart();
-        return new UsageSnapshot(used, quota, remaining, processed, periodStart,
-                periodStart.plusMonths(1));
+        long processed = currentPeriodProcessedTokens(userId) + window.carryOverProcessedTokens();
+        return new UsageSnapshot(used, quota, remaining, processed, window.displayStart(),
+                window.displayEnd());
     }
 
     /**
@@ -299,23 +312,10 @@ public class QuotaService {
                 .orElse(0L);
     }
 
-    /**
-     * Quota effectif de la période : allocation de l'abonnement, <b>part des postes supplémentaires</b>
-     * (F-65) et tokens rachetés (bonus, F-21) de la période.
-     */
-    private long effectiveQuota(UUID userId) {
-        return resolveQuota(userId) + currentPeriodBonus(userId);
-    }
-
     private long currentPeriodBonus(UUID userId) {
         return usageCounterRepository.findByUserIdAndPeriodStart(userId, currentPeriodStart())
                 .map(UsageCounter::getBonusTokens)
                 .orElse(0L);
-    }
-
-    private long resolveQuota(UUID userId) {
-        Subscription subscription = subscriptionService.getOrCreateForUser(userId);
-        return entitlementService.resolveEffectiveMonthlyTokenQuota(subscription);
     }
 
     /**

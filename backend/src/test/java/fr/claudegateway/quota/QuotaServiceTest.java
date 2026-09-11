@@ -74,7 +74,10 @@ class QuotaServiceTest {
     @BeforeEach
     void setUp() {
         quotaService = new QuotaService(usageCounterRepository, subscriptionService,
-                entitlementService, byokKeyService, quotaAlertService, usageLedgerService,
+                entitlementService, byokKeyService,
+                new QuotaWindowService(usageCounterRepository, entitlementService,
+                        new fr.claudegateway.billing.BillingProperties(null, null), clock),
+                quotaAlertService, usageLedgerService,
                 billedTokensCalculator, quotaProperties, clock);
     }
 

@@ -21,6 +21,17 @@ public interface UsageCounterRepository extends JpaRepository<UsageCounter, UUID
     List<UsageCounter> findByUserId(UUID userId);
 
     /**
+     * Compteurs d'un utilisateur depuis un mois donné (inclus) — fenêtre de quota d'un essai (F-66),
+     * qui peut chevaucher un 1er du mois et donc plusieurs lignes. Isolation {@code user_id}.
+     *
+     * <p>Au plus deux lignes pour un essai de quatorze jours : la fenêtre est bornée par la durée de
+     * l'essai, jamais par l'ancienneté du compte.</p>
+     *
+     * @param from premier jour du premier mois de la fenêtre (inclus)
+     */
+    List<UsageCounter> findByUserIdAndPeriodStartGreaterThanEqual(UUID userId, LocalDate from);
+
+    /**
      * Rapport d'usage (F-16) : compteurs d'un utilisateur triés de la période la plus récente à la
      * plus ancienne (isolation {@code user_id}). La fenêtre est ensuite bornée dans le service.
      */

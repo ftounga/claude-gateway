@@ -124,6 +124,25 @@ public class EntitlementService {
                 .anyMatch(plan -> plan.code() == planCode && plan.providerMode() == ProviderMode.BYOK);
     }
 
+    /**
+     * Vrai si cet abonnement est un <b>essai en cours</b> : statut {@link SubscriptionStatus#TRIALING}
+     * et fin d'essai non dépassée.
+     *
+     * <p>Public depuis F-66 : l'essai n'a pas le même <b>horizon de quota</b> qu'un abonnement payant.
+     * L'allocation d'un plan est mensuelle et se renouvelle ; celle d'un essai est une <b>enveloppe
+     * unique</b> qui ne doit pas repartir à zéro parce que l'essai traverse un 1er du mois
+     * ({@link QuotaWindowService}). Ce prédicat est le seul endroit qui dit « essai en cours », et
+     * les deux lectures s'appuient dessus au lieu de le redériver chacune de leur côté.</p>
+     *
+     * @param subscription abonnement de l'utilisateur (peut être {@code null} — rend alors {@code false})
+     * @return {@code true} si l'essai gratuit court encore
+     */
+    public boolean hasActiveTrial(Subscription subscription) {
+        return subscription != null
+                && subscription.getStatus() == SubscriptionStatus.TRIALING
+                && isTrialActive(subscription);
+    }
+
     private static boolean isLive(SubscriptionStatus status) {
         return status != null && LIVE_STATUSES.contains(status);
     }

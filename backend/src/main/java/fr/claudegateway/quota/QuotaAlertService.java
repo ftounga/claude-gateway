@@ -47,6 +47,7 @@ public class QuotaAlertService {
     private final UsageCounterRepository usageCounterRepository;
     private final SubscriptionService subscriptionService;
     private final EntitlementService entitlementService;
+    private final QuotaWindowService quotaWindowService;
     private final TopUpCatalog topUpCatalog;
     private final QuotaAlertProperties properties;
     private final Clock clock;
@@ -55,12 +56,14 @@ public class QuotaAlertService {
             UsageCounterRepository usageCounterRepository,
             SubscriptionService subscriptionService,
             EntitlementService entitlementService,
+            QuotaWindowService quotaWindowService,
             TopUpCatalog topUpCatalog,
             QuotaAlertProperties properties,
             Clock clock) {
         this.usageCounterRepository = usageCounterRepository;
         this.subscriptionService = subscriptionService;
         this.entitlementService = entitlementService;
+        this.quotaWindowService = quotaWindowService;
         this.topUpCatalog = topUpCatalog;
         this.properties = properties;
         this.clock = clock;
@@ -81,7 +84,11 @@ public class QuotaAlertService {
             // Déjà prévenu sur cette période : c'est ici, et uniquement ici, que se joue l'unicité.
             return;
         }
-        long quota = effectiveQuota(userId, counter);
+        // Fenêtre de quota (F-66) : pour un abonnement payant elle vaut le mois, pour un essai en
+        // cours elle couvre tout l'essai. Sans elle, un essai commencé le mois dernier et déjà à
+        // 95 % de son enveloppe repartirait d'une ligne vide et ne serait jamais prévenu.
+        QuotaWindow window = quotaWindowService.resolve(subscriptionService.getOrCreateForUser(userId));
+        long quota = effectiveQuota(userId, counter) + window.carryOverBonusTokens();
         if (quota <= 0) {
             // Aucun quota plateforme à approcher : offre BYOK (les jetons sont chez le client) ou
             // abonnement qui n'ouvre aucun accès. Prévenir d'un seuil sur zéro n'aurait aucun sens —
@@ -92,11 +99,12 @@ public class QuotaAlertService {
         // Le seuil se juge sur les tokens FACTURÉS (F-63), c'est-à-dire sur ce que le quota oppose :
         // alerter sur le volume traité préviendrait trop tôt ou trop tard selon le style d'usage du
         // client, et jamais au moment où il approche réellement de son plafond.
-        double ratio = (double) counter.getBilledTokens() / (double) quota;
+        long used = counter.getBilledTokens() + window.carryOverBilledTokens();
+        double ratio = (double) used / (double) quota;
         if (ratio >= properties.threshold()) {
             counter.setQuotaAlertRaisedAt(OffsetDateTime.now(clock));
             log.info("Seuil de consommation franchi pour l'utilisateur {} ({} / {} tokens facturés)",
-                    userId, counter.getBilledTokens(), quota);
+                    userId, used, quota);
         }
     }
 
@@ -112,12 +120,16 @@ public class QuotaAlertService {
         LocalDate periodStart = currentPeriodStart();
         Optional<UsageCounter> counter =
                 usageCounterRepository.findByUserIdAndPeriodStart(userId, periodStart);
+        QuotaWindow window = quotaWindowService.resolve(subscriptionService.getOrCreateForUser(userId));
 
         // Ce que la bannière annonce doit être ce que le quota oppose (F-63) : les tokens facturés,
-        // et non le volume traité — sans quoi le pourcentage affiché contredirait le blocage.
-        long used = counter.map(UsageCounter::getBilledTokens).orElse(0L);
+        // et non le volume traité — sans quoi le pourcentage affiché contredirait le blocage. Et sur
+        // la même fenêtre que lui (F-66), report des mois clos compris.
+        long used = counter.map(UsageCounter::getBilledTokens).orElse(0L)
+                + window.carryOverBilledTokens();
         long quota = counter.map(c -> effectiveQuota(userId, c))
-                .orElseGet(() -> subscriptionQuota(userId));
+                .orElseGet(() -> subscriptionQuota(userId))
+                + window.carryOverBonusTokens();
         boolean raised = counter
                 .map(c -> c.getQuotaAlertRaisedAt() != null && c.getQuotaAlertDismissedAt() == null)
                 .orElse(false);
@@ -129,7 +141,7 @@ public class QuotaAlertService {
                 Math.max(0L, quota - used),
                 percentOf(used, quota),
                 properties.thresholdPercent(),
-                periodStart.plusMonths(1),
+                window.displayEnd(),
                 raised ? recommendedPack().orElse(null) : null);
     }
 
