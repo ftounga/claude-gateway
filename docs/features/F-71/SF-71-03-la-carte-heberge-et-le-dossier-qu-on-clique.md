@@ -166,5 +166,12 @@ projet » du dialogue d'appairage par un **explorateur où l'on clique**.
 - La carte « Hébergé » réutilise le **gabarit** de carte des postes plutôt qu'un composant à part :
   un second gabarit divergerait au premier changement, et les projets doivent se lire exactement
   pareil, où qu'ils vivent.
+- **A6 (arbitrage pris au dev)** — *poste pas encore connecté : la racine, et on le dit.* Un poste
+  qu'on vient de créer n'a **pas encore de runner** : personne ne peut lister ses dossiers, et
+  exiger un choix rendrait la première mise en service **impossible**. Le projet prend alors la
+  **racine** que l'utilisateur passera au runner (`--workspace`) — le seul dossier connaissable à
+  cet instant — et l'écran l'écrit noir sur blanc. C'est bien D7 : on **dit** qu'on ne peut pas
+  lister, au lieu d'offrir un champ vide. Réversible : F-72 inverse l'ordre (connecter le poste,
+  *puis* ajouter des projets) et ce cas disparaîtra de lui-même.
 - L'explorateur est **dans le dialogue existant** et non dans un dialogue de plus : le geste est le
   même — dire où vit ce projet.

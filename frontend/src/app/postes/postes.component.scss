@@ -315,3 +315,28 @@
   width: 16px;
   height: 16px;
 }
+
+// Poste « Hébergé » (F-71 / SF-71-03) : le bac à sable, et non une machine.
+// AUCUNE couleur nouvelle — il ne prend pas les dix tons d'identité du §9 (réservés à
+// l'identification d'une MACHINE) et garde le gris « archivé / inactif » du §5. L'absence de
+// couleur n'est pas un quatrième registre.
+.poste--heberge {
+  border-left-color: var(--cg-divider);
+}
+
+.poste__heberge-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--cg-surface-2);
+  color: var(--cg-text-secondary);
+}
+
+.poste__heberge-hint {
+  margin: 0 0 var(--cg-space-2);
+  color: var(--cg-text-secondary);
+  font-size: 13px;
+}

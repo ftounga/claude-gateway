@@ -90,7 +90,7 @@
       </mat-card>
     } @else {
       <div class="postes__list">
-        @for (host of openHosts(); track host.id) {
+        @for (host of openHosts(); track hostKey(host)) {
           <ng-container [ngTemplateOutlet]="posteCard" [ngTemplateOutletContext]="{ $implicit: host }"></ng-container>
         }
       </div>
@@ -111,7 +111,7 @@
         </button>
         @if (closedOpen()) {
           <div class="postes__list postes__list--closed">
-            @for (host of closedHosts(); track host.id) {
+            @for (host of closedHosts(); track hostKey(host)) {
               <ng-container [ngTemplateOutlet]="posteCard" [ngTemplateOutletContext]="{ $implicit: host }"></ng-container>
             }
           </div>
@@ -127,7 +127,12 @@
 <ng-template #posteCard let-host>
   <!-- `id` d'ancrage (F-68 / SF-68-01) : c'est la cible du niveau « chez qui » du fil d'Ariane.
        Un ancrage de page, jamais un critère de lecture — il ne désigne rien côté gateway. -->
-  <mat-card class="poste" [id]="'poste-' + host.id" [style.borderLeftColor]="tone(host).solid">
+  <mat-card
+    class="poste"
+    [class.poste--heberge]="isHosted(host)"
+    [attr.id]="host.id ? 'poste-' + host.id : null"
+    [style.borderLeftColor]="tone(host)?.solid"
+  >
     <header class="poste__head">
       <div class="poste__identity">
         <!-- Identité visuelle du poste (F-49 / SF-49-03) : ses initiales sur sa couleur,
@@ -138,10 +143,24 @@
              SEULS porteurs de la couleur d'identité. L'état de mission, lui, prend la palette de
              STATUT (§5) et n'entre que par sa propre pastille — jamais un second filet, jamais un
              fond de carte. Deux questions, deux registres. -->
-        <app-host-badge [name]="host.name" size="lg" [showName]="false"></app-host-badge>
-        <h2 [style.color]="tone(host).ink">{{ host.name }}</h2>
+        @if (isHosted(host)) {
+          <!-- POSTE « HÉBERGÉ » (F-71 / SF-71-03) : ce n'est pas une machine, il ne prend donc
+               AUCUN des dix tons d'identité du §9 — ceux-ci identifient une machine, et lui n'en
+               est pas une. Gris neutre du §5, pastille `cloud`, et rien de plus : pas de
+               quatrième registre de couleur. -->
+          <span class="poste__heberge-badge" aria-hidden="true">
+            <mat-icon>cloud</mat-icon>
+          </span>
+          <h2>{{ host.name }}</h2>
+        } @else {
+          <app-host-badge [name]="host.name" size="lg" [showName]="false"></app-host-badge>
+          <h2 [style.color]="tone(host)?.ink">{{ host.name }}</h2>
+        }
 
-        <!-- État de MISSION : où en est-on. Choisi par l'utilisateur, jamais déduit. -->
+        <!-- État de MISSION : où en est-on. Choisi par l'utilisateur, jamais déduit.
+             Absent du poste « Hébergé » : une mission se déclare chez un client, et il n'y a ici
+             ni client ni machine. -->
+        @if (!isHosted(host)) {
         <button
           type="button"
           class="poste__mission"
@@ -174,16 +193,22 @@
           }
         </mat-menu>
 
+        }
+
         <!-- État TECHNIQUE : joignable ou non. Il ne dit rien de l'avancement, et c'est
-             précisément pourquoi l'état de mission existe. -->
-        <span
-          class="badge"
-          [class.badge--success]="host.connected"
-          [class.badge--neutral]="!host.connected"
-        >
-          <mat-icon>{{ host.connected ? 'cloud_done' : 'cloud_off' }}</mat-icon>
-          {{ hostStateLabel(host) }}
-        </span>
+             précisément pourquoi l'état de mission existe.
+             Le poste « Hébergé » n'a pas de runner : « connecté » n'y voudrait rien dire, et
+             « jamais connecté » ferait croire à une machine en panne. -->
+        @if (!isHosted(host)) {
+          <span
+            class="badge"
+            [class.badge--success]="host.connected"
+            [class.badge--neutral]="!host.connected"
+          >
+            <mat-icon>{{ host.connected ? 'cloud_done' : 'cloud_off' }}</mat-icon>
+            {{ hostStateLabel(host) }}
+          </span>
+        }
         <!-- SIGNE DE VIE (F-70 / SF-70-01) : LA MÊME pastille que dans la barre du terminal, et le
              mot écrit à côté. « Terminal connecté » plutôt que « connecté » tout court : le mot est
              déjà pris, deux pastilles plus haut, par l'état du RUNNER. Aucune couleur nouvelle — le
@@ -209,7 +234,9 @@
         }
         <!-- Le SEUL geste destructif de cet écran (F-69 / SF-69-02), et il y est parce que les
              postes ne sont listés nulle part ailleurs. Sous menu de dépassement, derrière un
-             dialogue, et refusé par la gateway tant qu'il reste des projets. -->
+             dialogue, et refusé par la gateway tant qu'il reste des projets.
+             Absent du poste « Hébergé » : il n'existe aucune ligne en base à supprimer. -->
+        @if (!isHosted(host)) {
         <button
           mat-icon-button
           type="button"
@@ -231,10 +258,20 @@
             <span>Supprimer le poste</span>
           </button>
         </mat-menu>
+        }
       </div>
     </header>
 
+    @if (isHosted(host)) {
+      <!-- Ce que ce « poste » est vraiment : le bac à sable de la gateway, et non une machine. -->
+      <p class="poste__heberge-hint">
+        Ces projets vivent <strong>chez la gateway</strong>, pas sur une de vos machines : un dépôt
+        GitHub, une archive importée. Rien à appairer, rien à lancer.
+      </p>
+    }
+
     <dl class="poste__facts">
+      @if (!isHosted(host)) {
       @if (host.rootName) {
         <div>
           <dt>Racine</dt>
@@ -253,6 +290,7 @@
           <dd class="poste__mono">{{ host.shell }}</dd>
         </div>
       }
+      }
     </dl>
 
     @if (host.projects.length === 0) {
@@ -265,7 +303,7 @@
           <li
             class="projet"
             [class.projet--active]="project.active"
-            [style.borderLeftColor]="tone(host).solid"
+            [style.borderLeftColor]="tone(host)?.solid"
           >
             <div class="projet__main">
               <span class="projet__name">{{ project.name }}</span>
@@ -281,7 +319,9 @@
               @if (project.liveTerminal) {
                 <app-live-badge scope="host"></app-live-badge>
               }
-              <span class="projet__path poste__mono">{{ projectPathLabel(project) }}</span>
+              @if (!isHosted(host)) {
+                <span class="projet__path poste__mono">{{ projectPathLabel(project) }}</span>
+              }
             </div>
             <div class="projet__side">
               @if (projectActivityLabel(project); as activity) {

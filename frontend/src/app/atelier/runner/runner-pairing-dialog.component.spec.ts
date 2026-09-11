@@ -58,6 +58,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
       'listRunnerHosts',
       'createRunnerHost',
       'attachWorkspaceToHost',
+      'runnerHostFolders',
       'downloadRunnerJar',
       'downloadRunnerWindowsPackage',
       'downloadRunnerMacosPackage',
@@ -75,6 +76,17 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     // cette réponse, aucun test de ce fichier ne peut instancier le dialogue. Défaut = les deux
     // formats servis, qui est l'état d'une gateway à jour.
     service.runnerDownloadFormats.and.returnValue(of(formats));
+    // F-71 / SF-71-03 : le dossier se DÉSIGNE. Dès qu'un poste est connu, le dialogue demande ses
+    // sous-dossiers à la machine — il n'offre plus de champ à remplir.
+    service.runnerHostFolders.and.returnValue(of({
+      path: '',
+      parentPath: null,
+      folders: [
+        { name: 'EDENRED', path: 'EDENRED', used: false },
+        { name: 'CAGIP', path: 'CAGIP', used: true },
+      ],
+      truncated: false,
+    }));
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     dialogRef = jasmine.createSpyObj<MatDialogRef<RunnerPairingDialogComponent>>('MatDialogRef', [
       'close',
@@ -1159,6 +1171,177 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     expect(component.hostAlreadyLive()).toBeTrue();
     expect(component.step()).toBeNull();
     expect(service.createHostPairingCode).not.toHaveBeenCalled();
+  });
+
+
+  // ---------------------------------------------------------------------------------------------
+  // F-71 / SF-71-03 — le dossier se désigne, il ne se tape plus.
+  // ---------------------------------------------------------------------------------------------
+
+  /** Déplie l'étape « Choisir le poste » : c'est là que vit l'explorateur de dossiers. */
+  function openHostStep(): void {
+    component.step.set('host');
+    fixture.detectChanges();
+  }
+
+  it("n'offre aucun champ de saisie de chemin", () => {
+    // Le défaut d'origine : un chemin tapé créait un projet vide qui n'échouait qu'au premier
+    // usage. Il ne doit donc rester AUCUNE entrée de texte pour le chemin, ni repli qui en rouvre.
+    setup();
+    openHostStep();
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(root.querySelector('input[name="projectPath"]')).toBeNull();
+  });
+
+  it('liste les dossiers de la racine et les propose au clic', () => {
+    setup();
+    openHostStep();
+
+    expect(service.runnerHostFolders).toHaveBeenCalledWith('h1', 'app');
+    expect(component.folders().length).toBe(2);
+    const buttons = (fixture.nativeElement as HTMLElement)
+      .querySelectorAll('.pairing-browser-pick');
+    // Un bouton pour « ce dossier », un par sous-dossier.
+    expect(buttons.length).toBe(3);
+  });
+
+  it('retient le dossier cliqué et le dit en clair', () => {
+    setup();
+    openHostStep();
+    component.chooseFolder('EDENRED');
+    fixture.detectChanges();
+
+    expect(component.projectPath()).toBe('EDENRED');
+    expect(component.chosenLabel()).toBe('EDENRED');
+    expect(component.canAttach()).toBeTrue();
+  });
+
+  it('laisse choisir la racine — un poste peut n\'héberger qu\'un projet', () => {
+    setup();
+    component.chooseFolder('');
+
+    expect(component.projectPath()).toBe('');
+    expect(component.chosenLabel()).toBe('la racine du poste');
+    expect(component.canAttach()).toBeTrue();
+  });
+
+  it('ne propose pas un dossier déjà ouvert', () => {
+    setup();
+    openHostStep();
+    const picks = (fixture.nativeElement as HTMLElement)
+      .querySelectorAll('.pairing-browser-pick');
+    // Le troisième bouton est CAGIP, marqué `used` par la gateway.
+    expect((picks[2] as HTMLButtonElement).disabled).toBeTrue();
+    expect(picks[2].textContent).toContain('déjà ouvert');
+  });
+
+  it('descend dans un dossier, puis remonte', () => {
+    setup();
+    service.runnerHostFolders.and.returnValue(of({
+      path: 'EDENRED',
+      parentPath: '',
+      folders: [{ name: 'api', path: 'EDENRED/api', used: false }],
+      truncated: false,
+    }));
+
+    component.enterFolder({ name: 'EDENRED', path: 'EDENRED', used: false });
+
+    expect(service.runnerHostFolders).toHaveBeenCalledWith('h1', 'EDENRED');
+    expect(component.browsePath()).toBe('EDENRED');
+    expect(component.browseParent()).toBe('');
+
+    service.runnerHostFolders.and.returnValue(of({
+      path: '', parentPath: null, folders: [], truncated: false,
+    }));
+    component.goUp();
+
+    expect(component.browsePath()).toBe('');
+    expect(component.browseParent()).toBeNull();
+  });
+
+  it('dit que le runner n\'est pas connecté, sans offrir de champ vide', () => {
+    // LE cas demandé par le PO : on ne peut pas lister sans machine, alors on le DIT.
+    setup();
+    service.runnerHostFolders.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 409 })));
+
+    openHostStep();
+    component.retryFolders();
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(component.foldersError()).toBe('offline');
+    expect(root.textContent).toContain("n'est pas connecté");
+    expect(root.querySelector('input[name="projectPath"]')).toBeNull();
+    expect(root.querySelector('.pairing-browser-list')).toBeNull();
+  });
+
+  it('propose de réessayer quand la lecture échoue autrement', () => {
+    setup();
+    service.runnerHostFolders.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 0 })));
+
+    openHostStep();
+    component.retryFolders();
+    fixture.detectChanges();
+
+    expect(component.foldersError()).toBe('network');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Réessayer');
+  });
+
+  it('dit que la liste est incomplète plutôt que de la laisser croire entière', () => {
+    setup();
+    service.runnerHostFolders.and.returnValue(of({
+      path: '', parentPath: null, folders: [], truncated: true,
+    }));
+
+    openHostStep();
+    component.retryFolders();
+    fixture.detectChanges();
+
+    expect(component.foldersTruncated()).toBeTrue();
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Liste incomplète');
+  });
+
+  it('oublie le dossier retenu quand on change de poste', () => {
+    // Un chemin est relatif à UNE racine : le garder d'un poste à l'autre rattacherait le projet à
+    // un dossier qui n'existe pas sur la nouvelle machine.
+    setup();
+    component.chooseFolder('EDENRED');
+
+    component.selectHost('h2');
+
+    expect(component.projectPath()).toBeNull();
+    expect(component.canAttach()).toBeFalse();
+    expect(service.runnerHostFolders).toHaveBeenCalledWith('h2', undefined);
+  });
+
+  it("n'interroge aucune machine pour un poste qui n'existe pas encore", () => {
+    setup();
+    service.runnerHostFolders.calls.reset();
+
+    openHostStep();
+    component.selectHost(component.newHostValue);
+    fixture.detectChanges();
+
+    expect(service.runnerHostFolders).not.toHaveBeenCalled();
+    // Et l'écran dit que le dossier sera la racine passée au runner, au lieu d'un champ vide.
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('racine');
+  });
+
+  it('rattache un poste neuf à la racine, sans dossier choisi', () => {
+    setup();
+    service.createRunnerHost.and.returnValue(
+      of({ id: 'h2', name: 'CAGIP', connected: false, createdAt: '2026-09-10T08:00:00Z' }));
+    service.attachWorkspaceToHost.and.returnValue(
+      of({ id: 'w1', hostId: 'h2', projectPath: '' } as unknown as WorkspaceDetail));
+    component.selectHost(component.newHostValue);
+    component.newHostName.set('CAGIP');
+
+    component.attachToHost();
+
+    expect(service.attachWorkspaceToHost).toHaveBeenCalledWith('w1', 'h2', '');
   });
 
   // ---------------------------------------------------------------------------------------------

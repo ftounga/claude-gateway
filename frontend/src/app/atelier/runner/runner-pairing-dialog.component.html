@@ -325,7 +325,7 @@
           <mat-label>Poste</mat-label>
           <mat-select
             [ngModel]="selectedHostId()"
-            (ngModelChange)="selectedHostId.set($event)"
+            (ngModelChange)="selectHost($event)"
             name="host"
           >
             @for (host of hosts(); track host.id) {
@@ -352,26 +352,146 @@
           </mat-form-field>
         }
 
-        <mat-form-field appearance="outline" class="pairing-field">
-          <mat-label>Dossier du projet sous la racine</mat-label>
-          <input
-            matInput
-            [ngModel]="projectPath()"
-            (ngModelChange)="projectPath.set($event)"
-            name="projectPath"
-            placeholder="mon-projet"
-            maxlength="512"
-          />
-          <mat-hint>
-            Relatif à la racine du poste. Laissez vide si le projet <em>est</em> la racine.
-          </mat-hint>
-        </mat-form-field>
+        <!-- LE DOSSIER SE DÉSIGNE, IL NE SE TAPE PLUS (F-71 / SF-71-03). Un chemin tapé créait un
+             projet vide qui n'échouait qu'au PREMIER USAGE, quand plus personne ne fait le lien
+             avec la faute de frappe. Le runner liste, on clique. Il n'y a donc AUCUN champ de
+             saisie de chemin ici, et aucun repli qui en rouvrirait un. -->
+        <section class="pairing-browser" aria-label="Dossier du projet">
+          @if (selectedHostId() === newHostValue) {
+            <!-- D7, cas « poste pas encore créé » : il n'y a pas de machine à interroger. On le dit,
+                 et le projet prend la racine que l'utilisateur passera au runner (--workspace) —
+                 le seul dossier connaissable à cet instant. -->
+            <p class="pairing-browser-notice">
+              <mat-icon class="pairing-inline-icon">info</mat-icon>
+              <span>
+                Ce poste n'existe pas encore : son dossier de travail sera la
+                <strong>racine</strong> que vous indiquerez au runner au lancement. Une fois la
+                machine connectée, vous ajouterez d'autres projets en <strong>cliquant</strong>
+                leurs dossiers — sans jamais réappairer.
+              </span>
+            </p>
+          } @else if (foldersLoading()) {
+            <p class="pairing-browser-notice">
+              <mat-spinner diameter="18"></mat-spinner>
+              <span>Lecture des dossiers sur la machine…</span>
+            </p>
+          } @else if (foldersError() === 'offline') {
+            <!-- LE cas du PO : on ne peut pas lister sans machine, alors on le DIT. -->
+            <div class="pairing-browser-notice pairing-browser-notice--warn">
+              <mat-icon class="pairing-inline-icon">cloud_off</mat-icon>
+              <div>
+                <p class="pairing-browser-title">Le runner de ce poste n'est pas connecté</p>
+                <p class="pairing-browser-text">
+                  Les dossiers de la racine se lisent <strong>sur la machine</strong> : lancez le
+                  runner, puis réessayez. Le projet restera à la racine tant que rien n'est choisi.
+                </p>
+                <button mat-stroked-button type="button" (click)="retryFolders()">
+                  <mat-icon>refresh</mat-icon>
+                  Réessayer
+                </button>
+              </div>
+            </div>
+          } @else if (foldersError() !== 'none') {
+            <div class="pairing-browser-notice pairing-browser-notice--warn">
+              <mat-icon class="pairing-inline-icon">error_outline</mat-icon>
+              <div>
+                <p class="pairing-browser-title">
+                  @switch (foldersError()) {
+                    @case ('forbidden') { La Forge est nécessaire pour parcourir une machine }
+                    @case ('missing') { Ce poste n'existe plus }
+                    @default { Les dossiers n'ont pas pu être lus }
+                  }
+                </p>
+                <button mat-stroked-button type="button" (click)="retryFolders()">
+                  <mat-icon>refresh</mat-icon>
+                  Réessayer
+                </button>
+              </div>
+            </div>
+          } @else {
+            <!-- Où l'on est, et comment remonter. -->
+            <p class="pairing-browser-path">
+              <mat-icon class="pairing-inline-icon">folder_open</mat-icon>
+              <span class="pairing-browser-mono">{{ browsePath() || 'racine du poste' }}</span>
+              @if (browseParent() !== null) {
+                <button mat-button type="button" (click)="goUp()">
+                  <mat-icon>arrow_upward</mat-icon>
+                  Remonter
+                </button>
+              }
+            </p>
+
+            <ul class="pairing-browser-list">
+              <!-- La racine est un choix LÉGITIME : un poste peut n'héberger qu'un projet. -->
+              <li class="pairing-browser-row">
+                <button
+                  type="button"
+                  class="pairing-browser-pick"
+                  [class.pairing-browser-pick--on]="isChosen(browsePath())"
+                  (click)="chooseFolder(browsePath())"
+                >
+                  <mat-icon>{{ isChosen(browsePath()) ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                  <span>Ce dossier : {{ browsePath() || 'la racine du poste' }}</span>
+                </button>
+              </li>
+
+              @for (folder of folders(); track folder.path) {
+                <li class="pairing-browser-row">
+                  <button
+                    type="button"
+                    class="pairing-browser-pick"
+                    [class.pairing-browser-pick--on]="isChosen(folder.path)"
+                    [disabled]="folder.used"
+                    (click)="chooseFolder(folder.path)"
+                  >
+                    <mat-icon>{{ isChosen(folder.path) ? 'check_circle' : 'folder' }}</mat-icon>
+                    <span class="pairing-browser-mono">{{ folder.name }}</span>
+                    @if (folder.used) {
+                      <!-- Le défaut vécu : ouvrir deux fois le même dossier a produit deux
+                           entités du même nom, et un utilisateur perdu. -->
+                      <span class="pairing-browser-used">déjà ouvert</span>
+                    }
+                  </button>
+                  <button
+                    mat-icon-button
+                    type="button"
+                    [attr.aria-label]="'Entrer dans ' + folder.name"
+                    matTooltip="Voir ce qu'il contient"
+                    (click)="enterFolder(folder)"
+                  >
+                    <mat-icon>chevron_right</mat-icon>
+                  </button>
+                </li>
+              }
+            </ul>
+
+            @if (folders().length === 0) {
+              <p class="pairing-browser-text">
+                Aucun sous-dossier ici. La racine reste un choix valable.
+              </p>
+            }
+
+            @if (foldersTruncated()) {
+              <!-- Une liste incomplète se DIT (SF-38-21) : un dossier manquant en silence, ce sont
+                   dix minutes à chercher ce que le système savait ne pas avoir envoyé. -->
+              <p class="pairing-browser-text">
+                Liste incomplète : la machine en contient davantage. Ajoutez un
+                <code>.runnerignore</code> à la racine, ou entrez dans un sous-dossier.
+              </p>
+            }
+          }
+        </section>
 
         @if (attachError()) {
           <p class="pairing-error" role="alert">{{ attachError() }}</p>
         }
 
         <div class="pairing-actions">
+          @if (chosenLabel(); as chosen) {
+            <span class="pairing-browser-chosen">
+              Dossier retenu : <span class="pairing-browser-mono">{{ chosen }}</span>
+            </span>
+          }
           <button
             mat-flat-button
             color="primary"
