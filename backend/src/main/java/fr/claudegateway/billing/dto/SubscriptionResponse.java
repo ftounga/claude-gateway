@@ -25,6 +25,13 @@ import fr.claudegateway.billing.Subscription;
  *                          serveur</b> ({@code EntitlementService.isCustomerKeyBilled}), pas une
  *                          comparaison de code de plan : le client reflète la décision du serveur au
  *                          lieu de la re-dériver, et ne peut donc plus s'en écarter.
+ * @param trialDays         durée de l'essai gratuit, en jours, <b>telle que ce serveur la sert</b>
+ *                          (F-66). Renvoyée même hors essai : c'est une propriété de l'<b>offre</b>,
+ *                          pas de l'abonnement — l'écran présente l'offre gratuite à qui n'en
+ *                          bénéficie plus. Elle existe pour une raison précise : la page de
+ *                          facturation annonçait « essai 5 jours » en dur pendant que la page
+ *                          d'accueil en promettait 14, et la configuration en servait 5. Un écran
+ *                          qui lit la durée ne peut plus se désynchroniser de celle qui est servie.
  */
 public record SubscriptionResponse(
         String status,
@@ -32,9 +39,11 @@ public record SubscriptionResponse(
         OffsetDateTime trialEndsAt,
         OffsetDateTime currentPeriodEnd,
         boolean customerKeyBilled,
-        String billingPeriod) {
+        String billingPeriod,
+        int trialDays) {
 
-    public static SubscriptionResponse from(Subscription subscription, boolean customerKeyBilled) {
+    public static SubscriptionResponse from(Subscription subscription, boolean customerKeyBilled,
+            int trialDays) {
         return new SubscriptionResponse(
                 subscription.getStatus().name(),
                 subscription.getPlanCode() != null ? subscription.getPlanCode().name() : null,
@@ -43,6 +52,7 @@ public record SubscriptionResponse(
                 customerKeyBilled,
                 subscription.getBillingPeriod() != null
                         ? subscription.getBillingPeriod().name()
-                        : null);
+                        : null,
+                trialDays);
     }
 }

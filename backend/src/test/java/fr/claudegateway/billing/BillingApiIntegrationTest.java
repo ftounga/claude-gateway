@@ -84,6 +84,9 @@ class BillingApiIntegrationTest {
                 .andExpect(jsonPath("$.status", is("TRIALING")))
                 .andExpect(jsonPath("$.planCode", nullValue()))
                 .andExpect(jsonPath("$.trialEndsAt", notNullValue()))
+                // La durée d'essai servie voyage avec l'abonnement (F-66) : l'écran l'affiche au
+                // lieu de réciter un littéral, et ne peut donc plus annoncer autre chose.
+                .andExpect(jsonPath("$.trialDays", is(14)))
                 // Les identifiants Stripe ne doivent jamais apparaître dans la réponse.
                 .andExpect(jsonPath("$.stripeCustomerId").doesNotExist())
                 .andExpect(jsonPath("$.stripeSubscriptionId").doesNotExist());
