@@ -177,14 +177,28 @@ concerne pas.
 
 | | Valeur appliquée | Source |
 |---|---|---|
-| Durée | **5 jours** | `app.billing.trial-days` (`APP_BILLING_TRIAL_DAYS`) |
+| Durée | **14 jours** | `app.billing.trial-days` (`APP_BILLING_TRIAL_DAYS`) |
 | Jetons alloués | **200 000** | `app.quota.trial-tokens` (`APP_QUOTA_TRIAL_TOKENS`) |
+| Portée de l'allocation | **toute la durée de l'essai** — enveloppe unique, pas un plafond mensuel | F-66 / SF-66-01 (`QuotaWindowService`) |
+| Coût fournisseur maximal d'un essai | **≈ 1,80 $** (200 000 × 9,00 $/M) | §8.1, décompte pondéré F-63 |
 
-> ⚠️ **Contradiction ouverte, non tranchée ici.** Le produit **annonce 14 jours** — sur la page
-> d'accueil (`frontend/src/app/landing/`, « Essai gratuit 14 jours », « aucune carte requise ») et
-> dans `docs/marketing.md`. Il en **applique 5**. Les deux corrections possibles — aligner le code
-> sur la promesse, ou la promesse sur le code — sont des décisions commerciales de sens opposé et
-> appartiennent au PO. Voir §7 et **OQ-16**.
+**La contradiction « 14 annoncés / 5 appliqués » est refermée** (F-66, le 2026-09-11), et dans le
+sens de la **promesse** : le code sert désormais les 14 jours annoncés. Le raisonnement mérite
+d'être relu, parce qu'il est contre-intuitif — **le risque financier d'un essai n'est pas porté par
+sa durée, il est porté par son quota**. Depuis le décompte pondéré de F-63, un essai coûte au plus
+≈ 1,80 $ quel que soit le style d'usage : quatorze jours ne consomment donc pas plus que cinq, ils
+laissent seulement plus de temps pour dépenser le **même** plafond.
+
+> ⚠️ **Ce qui fuyait n'était pas la durée.** Le plafond d'essai s'opposait au **mois calendaire** :
+> un essai commencé fin août retrouvait 200 000 jetons le 1er septembre, soit **400 000 jetons
+> ≈ 3,60 $**. SF-66-01 en a fait une **enveloppe unique** sur toute la durée de l'essai — et l'a
+> fait **avant** d'allonger la durée, qui aurait porté la part des essais à cheval de ≈ 13 % à
+> ≈ 47 %.
+
+> ⚠️ **Reste ouvert, et appartient au PO** : le **dimensionnement** de l'essai. 200 000 jetons ne
+> représentent que **quatre à dix tours de Forge** (20 000 à 50 000 jetons par tour) — c'est
+> peut-être trop court pour convaincre. 500 000 coûteraient ≈ 4,50 $ par essai. **À CONFIRMER PAR LE
+> PO** — voir §7 et **OQ-16** point 9. F-66 n'y a pas touché.
 
 ---
 
@@ -231,7 +245,10 @@ Aucun de ces points n'est tranché par F-64 : ce sont des décisions commerciale
 2. **Prix du pack `DAY`.** 4,99 € relevé dans une note de livraison — **désormais en configuration**
    (F-67, `STRIPE_DISPLAY_PRICE_TOPUP_DAY`), mais toujours à reconfirmer au tableau de bord Stripe :
    le dépôt affiche ce montant, il ne peut pas certifier qu'il est celui qui est débité.
-3. **Durée de l'essai : 5 appliqués contre 14 annoncés** (§4). Aligner dans quel sens ?
+3. ~~**Durée de l'essai : 5 appliqués contre 14 annoncés**~~ — **tranché et livré** le 2026-09-11
+   par **F-66**, dans le sens de la promesse (14 jours servis). Reste à sa place le **dimensionnement**
+   de l'essai : **200 000 jetons suffisent-ils** (§4) ? Quatre à dix tours de Forge ; 500 000
+   coûteraient ≈ 4,50 $ par essai. **À CONFIRMER PAR LE PO.**
 4. **Concordance montants affichés ↔ prix Stripe**, pour les quatre plans, les trois prix annuels,
    l'option Atelier et les deux recharges. Le dépôt ne peut pas la vérifier ; le tableau de bord
    Stripe seul le peut.
