@@ -245,6 +245,28 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     qui **ré-arme l'alerte sans code de remise à zéro**. `raised_at` est posé **une seule fois** (unicité
     de l'émission) ; `dismissed_at` retient que l'utilisateur l'a écartée. L'évaluation est faite après
     l'incrément et **avant** la sauvegarde — même écriture — et encadrée : elle n'échoue jamais l'appel.
+- **usage_turns** — journal de consommation **par tour** (F-61 / SF-61-01, migration `068`).
+  **Append-only** : une ligne par tour facturé, jamais modifiée, effacée seulement avec le compte.
+  - `usage_turns` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `workspace_id (uuid, nullable)`,
+    `host_id (uuid, nullable)`, `input_tokens (bigint, défaut 0)`, `output_tokens (bigint, défaut 0)`,
+    `occurred_at (timestamptz)`. Index `(user_id, occurred_at)`.
+  - **Pourquoi elle existe** : `workspaces.agent_input_tokens` (migration `040`) est un **repère de
+    delta remis à zéro à chaque ouverture de session** (`markSessionOpened`) — l'agréger ferait
+    **rétrécir** les totaux, et un consultant verrait la consommation d'un client baisser toute
+    seule. `usage_counters` est monotone mais son grain est (utilisateur × mois) : aucune dimension
+    projet ni poste. Le relevé de tour existait déjà dans `atelier_messages.terminal_json`, mais en
+    **JSON d'affichage**, aux côtés de la transcription — facturer en traversant des contenus est
+    exclu.
+  - **Aucune colonne de texte**, volontairement : des identifiants, deux volumes, un horodatage.
+    Les écrans de F-61 montrent des volumes et des coûts, **jamais** des contenus, et cette garantie
+    est tenue par la **structure** de la table plutôt que par la prudence des requêtes.
+  - **Aucune clé étrangère** vers `workspaces` ni `runner_hosts` : une pièce de refacturation ne
+    disparaît pas parce qu'on a rangé un projet. `host_id` est un **instantané** du poste au moment
+    du tour — déplacer un projet demain ne déplace pas une dépense déjà refacturée.
+  - Alimente `GET /usage/by-client` (F-61 / SF-61-02). La console d'administration
+    (`GET /admin/usage`, SF-61-03) ne la lit **pas** : elle agrège `usage_counters`, qui ignore les
+    projets — une vue admin bâtie sur ce journal donnerait à l'administrateur la carte des missions
+    de ses utilisateurs.
 - **user_api_keys** — clé API personnelle BYOK chiffrée au repos (F-03, migration `030`, OQ-06 : AWS KMS
   envelope encryption). **Une seule clé par utilisateur** (`user_id` unique). **Aucune clé en clair** : seuls
   le blob chiffré et les 4 derniers caractères sont persistés.
@@ -715,7 +737,7 @@ Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 rée
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations via `user_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations via `user_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
 
 ---
 
