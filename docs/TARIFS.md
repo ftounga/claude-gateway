@@ -261,23 +261,45 @@ quintuple.
 **Ce qui n'a pas été décidé** : la valeur de `Pq` elle-même. C'est le second levier de marge après
 le `markup`, et il appartient au PO — suivi en **OQ-16 (point 7)**.
 
-### 8.2 F-65 — le supplément par poste supplémentaire *(réservé)*
+### 8.2 F-65 — le supplément par poste supplémentaire *(livrée le 2026-09-11)*
 
-**Ce que la grille pose déjà** : un abonnement couvre **un poste**. C'est vrai aujourd'hui —
-aucun supplément n'existe — et c'est la prémisse de F-65.
+**Aucun montant n'a été décidé, et le tableau ci-dessous le dit ligne à ligne.** F-65 a livré le
+**mécanisme** et ses clés de configuration ; les valeurs appartiennent au PO et à Stripe. **Les
+défauts livrés sont inertes** : aucun jeton apporté, aucun supplément facturé, quota rigoureusement
+identique à celui d'avant la livraison.
 
-F-65 ajoutera un **supplément mensuel par poste supplémentaire**, qui **apportera sa part de
-quota** (tranché par le PO le 2026-09-11). Quand il sera livré, ce tableau accueillera : le montant
-du supplément, le quota qu'il apporte, et le sort d'un poste **clôturé** (F-60) — qui ne se facture
-pas. Trois points restaient à trancher côté PO : proratisation en cours de mois, dégressivité
-au-delà de quelques postes, réouverture dans le même mois. *(Vide à ce jour ; aucun montant n'est
-anticipé.)*
+**La règle.** L'abonnement couvre **un poste** (`app.seat.included-seats`, défaut **1**) ; au-delà,
+chaque poste **facturable** apporte sa part de jetons. Est facturable tout poste dont l'**état de
+mission** (F-60) n'est pas `CLOSED` — une mission *en attente* compte, elle est gardée ouverte.
+**Un poste clôturé ne se facture plus le mois suivant** : c'est le geste par lequel le consultant
+cesse de payer une mission terminée.
 
-| Élément | Valeur |
-|---|---|
-| Supplément mensuel par poste supplémentaire | *(réservé — F-65)* |
-| Quota apporté par le supplément | *(réservé — F-65)* |
-| Poste clôturé | *(réservé — F-65)* |
+| Élément | Valeur | Clé de configuration |
+|---|---|---|
+| Postes couverts par l'abonnement | **1** | `app.seat.included-seats` (`APP_SEAT_INCLUDED_SEATS`) |
+| Supplément mensuel par poste supplémentaire | **À CONFIRMER PAR LE PO** — le montant n'existe que chez Stripe, sous un price ID à créer | `app.seat.price-id` (`STRIPE_PRICE_EXTRA_SEAT`), montant affiché : `app.seat.display-price` (`APP_BILLING_EXTRA_SEAT_PRICE`) |
+| Quota apporté par le supplément | **À CONFIRMER PAR LE PO** — défaut **0** (rien n'est apporté). *Calibrage recommandé par `STRATEGIE-TARIFAIRE.md` §6 : le **même nombre de tokens par euro** que le plan de base* | `app.seat.tokens-per-extra-seat` (`APP_SEAT_TOKENS_PER_EXTRA_SEAT`) |
+| Dégressivité au-delà de quelques postes | **À CONFIRMER PAR LE PO** — table de paliers **vide** par défaut (apport plat). Côté argent, c'est un price **à paliers** chez Stripe ; cette table en est le **miroir côté quota**, et **le PO tient les deux alignées** | `app.seat.quota-tiers` |
+| Poste **clôturé** (F-60) | **Ne compte plus dès le mois suivant.** Le mois en cours, lui, reste engagé | — (`runner_hosts.mission_status`) |
+| Poste ouvert **en cours de mois** | **Prorata temporis à la journée**, sur le quota comme sur l'argent | `app.seat.proration` (`APP_SEAT_PRORATION`), défaut `DAILY` |
+| **Réouverture** dans le même mois | **Un mois-poste se paie une fois** : rouvrir ne refacture rien et n'apporte aucun jeton ; clôturer ne rembourse rien et ne reprend rien | — (unicité `(host_id, period_start)` de `host_seat_months`) |
+
+**Pourquoi la proratisation s'applique aussi au quota** : une part **pleine** de jetons pour un poste
+ouvert le 28 serait une faille — on ouvrirait un poste la veille de la fin du mois pour encaisser la
+part entière. La même fraction des deux côtés ferme la porte, et elle s'aligne sur ce que Stripe
+proratise par défaut quand la quantité d'un abonnement augmente. Passer `proration` à `NONE` n'a de
+sens que si Stripe est mis, lui aussi, en `proration_behavior=none`.
+
+**Pourquoi la réouverture ne refacture pas** : refacturer serait un **piège à utilisateur**, ne rien
+facturer une **faille exploitable**. La règle « un mois-poste se paie une fois » ferme les deux avec
+la même phrase — et elle est **écrite à l'écran**, sous la liste des postes comptés.
+
+**L'unité facturée est le poste, jamais le projet** : un projet de plus sous un poste reste gratuit
+(F-48). Et **F-65 ne coupe rien** : un supplément non payé ne bloque aucun poste — le quota reste la
+seule borne d'usage.
+
+**Ce que F-65 n'a pas touché** : Stripe. Aucun price créé, aucune quantité poussée, aucun price ID
+lu. Les trois valeurs manquantes sont suivies en **OQ-16 point 8**.
 
 ---
 
@@ -302,7 +324,9 @@ ou des **estimations**, pas des prix de vente.
 - **Un prix, un quota ou une durée change** → cette page d'abord, la configuration ensuite, Stripe
   enfin (ou l'inverse — mais les trois, jamais un seul).
 - **Un plan ou un pack naît ou meurt** → §1, §2 ou §5, et la raison avec.
-- **F-63 ou F-65 est livrée** → §8, qui cesse d'être vide. *(F-63 livrée le 2026-09-11 : §8.1.)*
+- **F-63 ou F-65 est livrée** → §8, qui cesse d'être vide. *(Les deux livrées le 2026-09-11 :
+  §8.1 et §8.2. §8.2 décrit un mécanisme et ses clés ; elle n'annonce aucun montant, faute de
+  source — OQ-16 point 8.)*
 - **Un point de §7 est tranché** → il quitte §7, entre dans la grille, et OQ-16 est mise à jour.
 
 **Ce qui ne doit jamais arriver** : qu'une grille soit recopiée dans un document de référence. C'est
