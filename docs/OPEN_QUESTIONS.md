@@ -434,7 +434,7 @@ Grotesk pour les titres. La checklist de review a gardé une police d'un projet 
 
 ---
 
-## OQ-16 — Six points tarifaires qu'aucune source du dépôt ne tranche
+## OQ-16 — Sept points tarifaires qu'aucune source du dépôt ne tranche
 
 **Statut** : ouverte — relevée le 2026-09-11 par **F-64 / SF-64-01**, qui a établi
 `docs/TARIFS.md` comme grille unique. **Ne bloque rien** : le produit facture aujourd'hui, ces
@@ -454,6 +454,7 @@ tous repris de la configuration réellement servie en production. **Ce qui suit 
 | 4 | **Concordance montants affichés ↔ prix Stripe** | Les montants d'affichage sont **cosmétiques** ; le débit est porté par le price ID, que la gateway relaie sans vérifier (OQ-07) | Le dépôt ne peut pas vérifier la concordance. Quatre plans, trois prix annuels, l'option Atelier, deux recharges : seul le tableau de bord Stripe fait foi |
 | 5 | **BYOK sans offre annuelle** | `yearly-prices` et `yearly-display-prices` n'ont **pas d'entrée `BYOK`** : le plan n'est proposé qu'au mois | Absence **subie ou voulue** ? Les trois autres plans ont leur annuel |
 | 6 | **`markup` de décompte à `1.0`** | Neutre : le décompte n'applique aucun multiplicateur, la marge étant portée par l'allocation de chaque plan (`app.atelier.agent.cost.markup`) | Le porter à `2.0` **doublerait la vitesse de consommation du quota de chaque client** — levier de marge réel, à actionner sciemment, jamais par inadvertance |
+| 7 | **Valeur d'un token de quota à `9,00 $/M`** *(ajouté le 2026-09-11 par F-63)* | `app.atelier.agent.cost.quota-token-cost-per-million-tokens`, **inchangé** : c'est l'ancien `cost-per-million-tokens`, renommé et redocumenté. Il ne dit plus un « coût blended » — approximation sans objet depuis que l'entrée et la sortie sont distinguées — mais **ce que vaut un token de quota**, c'est-à-dire le coût fournisseur qu'il représente. Conséquence directe : le coût fournisseur maximal d'un quota vaut `quota × cette valeur`, **quel que soit le style d'usage** | C'est le **second levier de marge**, à côté du `markup`. L'abaisser à `5,00` reviendrait à poser « un token de quota = un token d'entrée » — formulation littérale de `STRATEGIE-TARIFAIRE.md` §2 — et **multiplierait par 1,8 la vitesse de consommation** de tout utilisateur de la Forge, soit une coupe de 44 % de son quota effectif. F-63 s'est **interdit** de le faire : les ratios entre natures de tokens sont des tarifs fournisseur, l'échelle est une décision commerciale |
 
 **Pourquoi cette question existe plutôt qu'une décision par défaut.** Le régime d'autonomie du
 projet autorise à trancher un gate produit *réversible* et à le tracer. Un prix ne l'est pas : il
@@ -465,6 +466,10 @@ une **promesse publique tenue à 36 %** (5 jours sur 14 annoncés), et les point
 recharges **invendables autrement qu'à l'aveugle**, le client ne découvrant leur prix qu'à la page
 de paiement.
 
-**Ne pas confondre avec** : **F-63** (change le *décompte* du quota, pas un tarif) et **F-65**
-(ajoutera un supplément par poste dont le montant appartient aussi au PO). `docs/TARIFS.md` §8 leur
-réserve la place, vide.
+**Ne pas confondre avec** : **F-63** — livrée le 2026-09-11, elle change le *décompte* du quota et
+**aucun tarif** (`docs/TARIFS.md` §8.1 en décrit la règle) — et **F-65**, qui ajoutera un supplément
+par poste dont le montant appartient aussi au PO (`TARIFS.md` §8.2, toujours vide). F-63 n'a décidé
+aucun montant : elle a livré le mécanisme et laissé toutes les valeurs en configuration, avec leurs
+défauts d'avant. Elle a en revanche **révélé** le point 7 ci-dessus — un levier qui existait déjà,
+mais que son ancien nom (« coût blended ») présentait comme un constat technique plutôt que comme un
+réglage commercial.

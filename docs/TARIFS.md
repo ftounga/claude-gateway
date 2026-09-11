@@ -200,6 +200,11 @@ Aucun de ces points n'est tranché par F-64 : ce sont des décisions commerciale
    marge étant portée par l'allocation de chaque plan (`app.atelier.agent.cost.markup`). Le porter à 2.0
    doublerait la vitesse de consommation de chaque client — **levier de marge**, à actionner
    sciemment, jamais par inadvertance.
+7. **Valeur d'un token de quota** = `9,00 $/M` (`app.atelier.agent.cost.quota-token-cost-per-million-tokens`,
+   §8.1). Inchangée par F-63, qui s'est interdit d'y toucher. C'est le **second levier de marge** :
+   l'abaisser à `5,00` — « un token de quota = un token d'entrée » — multiplierait par 1,8 la
+   vitesse de consommation de tout utilisateur de la Forge. Les **ratios** entre natures de tokens
+   sont des tarifs fournisseur ; l'**échelle**, elle, est une décision commerciale.
 
 ---
 
@@ -208,13 +213,53 @@ Aucun de ces points n'est tranché par F-64 : ce sont des décisions commerciale
 **Ne rien inscrire dans ces sections avant la livraison de la feature correspondante.** Elles
 existent pour que la grille les accueille sans être réécrite.
 
-### 8.1 F-63 — le quota compté au coût réel *(réservé)*
+### 8.1 F-63 — le quota compté au coût réel *(livrée le 2026-09-11)*
 
-F-63 changera la **façon de compter** le quota : un token de sortie coûte cinq fois un token
-d'entrée chez le fournisseur, et le décompte les traite aujourd'hui à l'identique. **Aucun montant
-de cette page ne changera** — ni prix, ni quota affiché. Ce qui changera, c'est la **vitesse** à
-laquelle un quota se consomme, selon le style d'usage. Quand F-63 sera livrée, décrire ici la règle
-de conversion et l'effet sur la lecture d'un quota. *(Vide à ce jour.)*
+**Aucun montant de cette page n'a changé** — ni prix, ni quota affiché, ni `markup`. Ce qui a changé
+est la **façon de compter**, et donc la **vitesse** à laquelle un quota se consomme selon le style
+d'usage.
+
+**La règle.** Le quota reste libellé en tokens, mais chaque nature de token y entre **au prix de sa
+nature** :
+
+```
+coût du tour ($) = (entrée×Pe + sortie×Ps + lecture_cache×Pc + écriture_cache×Pw) ÷ 1 000 000
+                   ou, quand le fournisseur rapporte lui-même le coût, CE coût
+tokens décomptés = coût du tour × markup ÷ Pq × 1 000 000
+```
+
+| Symbole | Ce que c'est | Clé de configuration (`app.atelier.agent.cost.*`) | Défaut |
+|---|---|---|---|
+| `Pe` | tarif fournisseur de l'**entrée** | `input-cost-per-million-tokens` | **5,00 $/M** |
+| `Ps` | tarif de la **sortie** — cinq fois l'entrée, c'est tout le sujet | `output-cost-per-million-tokens` | **25,00 $/M** |
+| `Pc` | tarif d'une **lecture de cache** (0,1× l'entrée) | `cache-read-cost-per-million-tokens` | **0,50 $/M** |
+| `Pw` | tarif d'une **écriture de cache** (1,25× l'entrée) | `cache-write-cost-per-million-tokens` | **6,25 $/M** |
+| `Pq` | **ce que vaut un token de quota** | `quota-token-cost-per-million-tokens` | **9,00 $/M** |
+| `markup` | multiplicateur commercial | `markup` | **1.0** (neutre) |
+
+`Pq` **remplace** l'ancien `cost-per-million-tokens` : même valeur, ancienne variable
+d'environnement honorée en repli, rôle explicité. Il ne prétend plus être un « coût blended » —
+approximation sans objet une fois l'entrée et la sortie distinguées.
+
+**Comment lire un quota, maintenant.** Deux chiffres coexistent, tous deux justes :
+
+| | Ce que c'est | Où on le voit |
+|---|---|---|
+| **Volume traité** | les tokens que le fournisseur a traités, cache compris | le rapport d'usage et la consommation par client (F-61), avec leur coût estimé |
+| **Décompte** | ce que le quota oppose, pondéré au coût réel | la jauge de l'écran d'abonnement, `GET /usage` |
+
+Les deux écrans le disent explicitement (SF-63-03) : sans cela, un client comparant sa jauge au
+total de ses rapports prendrait deux chiffres justes pour une contradiction.
+
+**Ce que cela change pour un client**, à quota inchangé : le point de bascule est à **4 entrées pour
+1 sortie**. Au-delà — usage agentique, ratio 38:1 relevé en production, a fortiori servi par le
+cache — le quota se consomme **moins vite** qu'avant. En deçà — génération de texte long, 3:1 — il
+se consomme **plus vite**. C'est l'effet recherché : le coût fournisseur maximal d'un quota devient
+`quota × Pq`, **quel que soit le style d'usage**, là où il variait auparavant du simple au
+quintuple.
+
+**Ce qui n'a pas été décidé** : la valeur de `Pq` elle-même. C'est le second levier de marge après
+le `markup`, et il appartient au PO — suivi en **OQ-16 (point 7)**.
 
 ### 8.2 F-65 — le supplément par poste supplémentaire *(réservé)*
 
@@ -244,7 +289,8 @@ ou des **estimations**, pas des prix de vente.
 | Chiffre | Ce que c'est | Clé |
 |---|---|---|
 | 5 $ / 25 $ par million | Tarifs **fournisseur** (Opus, entrée/sortie), servant à **estimer** un coût dans le rapport d'usage (F-16) | `app.usage.report.{input,output}-cost-per-million-tokens` |
-| 9 $ par million | Coût fournisseur de référence (« blended »), servant à convertir un quota restant en budget de session | `app.atelier.agent.cost.cost-per-million-tokens` |
+| 5 $ / 25 $ / 0,50 $ / 6,25 $ par million | Tarifs **fournisseur** par nature de token (entrée, sortie, lecture et écriture de cache), servant au **décompte du quota** (F-63, §8.1) | `app.atelier.agent.cost.{input,output,cache-read,cache-write}-cost-per-million-tokens` |
+| 9 $ par million | **Ce que vaut un token de quota** (§8.1) : il convertit un coût en tokens décomptés, et un quota restant en budget de session. Remplace l'ancien `cost-per-million-tokens` (« blended »), même valeur | `app.atelier.agent.cost.quota-token-cost-per-million-tokens` |
 | 2 $ / 5 $ / 0,10 $ | Plafonds de **dépense d'une session** Atelier (normal / avec délégation / plancher) | `app.atelier.agent.cost.max-run-cost*`, `min-run-cost` |
 | 18 000 s (5 h) | Plafond de temps de bac à sable par période | `app.quota.max-sandbox-seconds` |
 | 100 € | Capital social de l'éditeur, sur le site vitrine | `k8s/base/corporate/configmap.yaml` |
@@ -256,7 +302,7 @@ ou des **estimations**, pas des prix de vente.
 - **Un prix, un quota ou une durée change** → cette page d'abord, la configuration ensuite, Stripe
   enfin (ou l'inverse — mais les trois, jamais un seul).
 - **Un plan ou un pack naît ou meurt** → §1, §2 ou §5, et la raison avec.
-- **F-63 ou F-65 est livrée** → §8, qui cesse d'être vide.
+- **F-63 ou F-65 est livrée** → §8, qui cesse d'être vide. *(F-63 livrée le 2026-09-11 : §8.1.)*
 - **Un point de §7 est tranché** → il quitte §7, entre dans la grille, et OQ-16 est mise à jour.
 
 **Ce qui ne doit jamais arriver** : qu'une grille soit recopiée dans un document de référence. C'est
