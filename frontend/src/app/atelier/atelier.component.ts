@@ -19,6 +19,7 @@ import { MatListModule } from '@angular/material/list';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import {
   ForgeBreadcrumbComponent,
@@ -50,6 +51,10 @@ import {
   TextPromptDialogComponent,
   TextPromptDialogData,
 } from './files/text-prompt-dialog.component';
+import {
+  DeleteProjectDialogComponent,
+  DeleteProjectDialogData,
+} from './delete-project-dialog/delete-project-dialog.component';
 import {
   LibraryPickerDialogComponent,
   PickedLibraryDocument,
@@ -135,6 +140,7 @@ export const RUNNER_STATUS_POLL_MS = 15_000;
     MatIconModule,
     MatMenuModule,
     MatProgressSpinnerModule,
+    MatTooltipModule,
     RouterLink,
     AtelierTerminalComponent,
     AtelierFilesComponent,
@@ -641,6 +647,70 @@ export class AtelierComponent implements OnInit, OnDestroy {
           then(name.trim());
         }
       });
+  }
+
+  /**
+   * **Supprime un projet** (F-69 / SF-69-02) — le geste que le PO ne trouvait nulle part, alors que
+   * la gateway savait le faire depuis F-28.
+   *
+   * <p>La confirmation passe par un dialogue qui <b>écrit</b> ce qui part et ce qui ne bouge pas —
+   * au premier rang, <b>le dossier sur la machine, qui n'est jamais touché</b>. C'est la question
+   * que se pose quelqu'un qui hésite devant ce bouton, et elle doit avoir sa réponse à l'écran.</p>
+   *
+   * <p><b>Jamais de retrait optimiste</b> : la ligne ne quitte la liste qu'à la réponse. La retirer
+   * avant la ferait réapparaître au prochain chargement si l'appel échoue — et le doute porterait
+   * alors sur ce qui a été effacé, ce qui est exactement ce qu'on veut éviter ici.</p>
+   *
+   * <p>Un <b>404</b> fait exception et retire la ligne : le projet n'existe plus (supprimé depuis un
+   * autre onglet), c'est l'écran qui était en retard.</p>
+   */
+  deleteWorkspace(workspace: WorkspaceSummary): void {
+    const data: DeleteProjectDialogData = {
+      projectName: workspace.name,
+      hostName: workspace.hostName ?? null,
+    };
+    this.dialog
+      .open(DeleteProjectDialogComponent, { data, width: '520px' })
+      .afterClosed()
+      .subscribe((confirmed) => {
+        if (confirmed === true) {
+          this.performDelete(workspace);
+        }
+      });
+  }
+
+  private performDelete(workspace: WorkspaceSummary): void {
+    this.atelier.deleteWorkspace(workspace.id).subscribe({
+      next: () => {
+        this.forgetWorkspace(workspace.id);
+        this.snackBar.open(
+          'Projet supprimé. Le dossier sur votre machine n\'a pas été touché.',
+          'Fermer',
+          { duration: 5000 },
+        );
+      },
+      error: (err: unknown) => {
+        if (err instanceof HttpErrorResponse && err.status === 404) {
+          // Déjà supprimé ailleurs : l'écran était en retard, il se met à jour.
+          this.forgetWorkspace(workspace.id);
+          this.notifyError('Projet introuvable. Il a peut-être déjà été supprimé.');
+          return;
+        }
+        this.notifyError(
+          err instanceof HttpErrorResponse && err.status === 403
+            ? 'La Forge est nécessaire pour ce geste.'
+            : "Le projet n'a pas pu être supprimé. Rien n'a été effacé.",
+        );
+      },
+    });
+  }
+
+  /** Retire le projet de la liste et, si c'était celui ouvert, referme le terminal. */
+  private forgetWorkspace(id: string): void {
+    this.workspaces.update((list) => list.filter((w) => w.id !== id));
+    if (this.activeWorkspaceId() === id) {
+      this.closeWorkspace();
+    }
   }
 
   /** Renomme le projet actif (F-28 SF-28-16) : étiquette seule, rien d'autre ne bouge. */

@@ -8,6 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
+import { MatDialog } from '@angular/material/dialog';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
@@ -18,6 +19,10 @@ import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import { LiveBadgeComponent } from '../shared/live-badge/live-badge.component';
 import { HostTone, hostTone } from '../shared/host-identity';
 import { MissionBadgeComponent } from '../shared/mission-badge/mission-badge.component';
+import {
+  DeleteHostDialogComponent,
+  DeleteHostDialogData,
+} from './delete-host-dialog/delete-host-dialog.component';
 import {
   HostMissionStatus,
   MISSION_STATUSES,
@@ -49,9 +54,13 @@ export type PostesError = 'none' | 'network' | 'forbidden';
  * secondes, et <b>rien du tout</b> quand l'onglet est masqué — une vue que personne ne regarde n'a
  * aucune raison d'appeler la gateway.</p>
  *
- * <p><b>Lecture seule</b> : renommer, supprimer, couper une machine ou révoquer un jeton restent
- * dans le dialogue de mise en service. Une vue d'ensemble qui porterait ces gestes sur chaque carte
- * transformerait un écran de consultation en champ de mines.</p>
+ * <p><b>Presque en lecture seule</b> : renommer une machine, la couper ou révoquer un jeton restent
+ * dans le dialogue de mise en service — une vue d'ensemble qui porterait tous ces gestes sur chaque
+ * carte deviendrait un champ de mines. Deux exceptions, et deux seulement : l'<b>état de mission</b>
+ * (F-60 / SF-60-02), qui est la question même de cet écran, et <b>supprimer le poste</b> (F-69 /
+ * SF-69-02), parce que les postes ne sont listés <b>nulle part ailleurs</b> — inventer un écran de
+ * réglages pour un seul bouton serait disproportionné. Cette dernière est sous menu de dépassement,
+ * derrière un dialogue, et son cas dangereux est <b>refusé par la gateway</b>.</p>
  *
  * <p>L'isolation est garantie côté gateway : l'appel ne porte aucun identifiant, la vue part du
  * JWT.</p>
@@ -81,6 +90,7 @@ export class PostesComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly dialog = inject(MatDialog);
 
   /** Les trois états proposés au choix, dans l'ordre : du plus vivant au plus rangé. */
   readonly missionStatuses = MISSION_STATUSES;
@@ -124,6 +134,9 @@ export class PostesComponent implements OnInit {
 
   /** Poste dont l'état est en train de partir à la gateway — le temps d'un aller-retour. */
   readonly savingHostId = signal<string | null>(null);
+
+  /** Poste dont la suppression est en cours : la carte se verrouille le temps de l'aller-retour. */
+  readonly deletingHostId = signal<string | null>(null);
 
   /**
    * Des postes existent, mais **toutes** leurs missions sont clôturées. La vue principale est vide
@@ -253,6 +266,80 @@ export class PostesComponent implements OnInit {
           { duration: 4000, panelClass: 'snack-error' });
       },
     });
+  }
+
+  // -------------------------------------------- suppression d'un poste (F-69 / SF-69-02)
+
+  /**
+   * **Supprime un poste** — ou explique pourquoi c'est refusé.
+   *
+   * <p>Décision du PO : <b>pas de cascade</b>. Tant que des projets vivent sous ce poste, le
+   * dialogue est un <b>refus</b> : il dit combien il en reste et où ils sont, et <b>aucun appel ne
+   * part</b>. Proposer un bouton qui refusera à coup sûr serait une fausse promesse.</p>
+   *
+   * <p>L'écran peut malgré tout être en retard — un projet créé dans un autre onglet, la vue relue
+   * il y a quinze secondes. C'est pourquoi la gateway refuse elle aussi, en 409 : c'est <b>elle</b>
+   * qui fait foi, et son message porte le compte exact. L'écran le reprend tel quel et relit.</p>
+   */
+  deleteHost(host: RunnerHostOverview): void {
+    if (this.deletingHostId() !== null) {
+      return;
+    }
+    const data: DeleteHostDialogData = {
+      hostName: host.name,
+      remainingProjects: host.projects.length,
+    };
+    this.dialog
+      .open(DeleteHostDialogComponent, { data, width: '520px' })
+      .afterClosed()
+      .subscribe((confirmed) => {
+        if (confirmed === true) {
+          this.performHostDeletion(host);
+        }
+      });
+  }
+
+  private performHostDeletion(host: RunnerHostOverview): void {
+    this.deletingHostId.set(host.id);
+    this.atelier.deleteRunnerHost(host.id).subscribe({
+      next: () => {
+        this.deletingHostId.set(null);
+        // La carte ne quitte l'écran qu'à la réponse : la retirer avant la ferait revenir au
+        // rafraîchissement suivant si l'ordre avait échoué.
+        this.hosts.update((hosts) => hosts.filter((h) => h.id !== host.id));
+        this.snackBar.open(
+          `Poste « ${host.name} » supprimé. Rien n'a été effacé sur la machine.`,
+          'Fermer',
+          { duration: 5000, panelClass: 'snack-info' },
+        );
+      },
+      error: (err: unknown) => {
+        this.deletingHostId.set(null);
+        this.snackBar.open(this.deletionErrorMessage(err), 'Fermer',
+          { duration: 6000, panelClass: 'snack-error' });
+        // La vue était en retard sur la gateway : on la relit plutôt que de la laisser mentir.
+        this.load(false);
+      },
+    });
+  }
+
+  /**
+   * Le message d'échec. Sur un **409**, celui du serveur est repris **tel quel** : il porte le
+   * nombre exact de projets restants, que l'écran ne connaissait manifestement pas.
+   */
+  private deletionErrorMessage(err: unknown): string {
+    if (err instanceof HttpErrorResponse) {
+      if (err.status === 409 && typeof err.error?.message === 'string') {
+        return err.error.message;
+      }
+      if (err.status === 403) {
+        return 'La Forge est nécessaire pour ce geste.';
+      }
+      if (err.status === 404) {
+        return 'Poste introuvable. Il a peut-être déjà été supprimé.';
+      }
+    }
+    return "Le poste n'a pas pu être supprimé. Rien n'a été effacé.";
   }
 
   // ---------------------------------------------------------------- libellés

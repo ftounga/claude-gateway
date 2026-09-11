@@ -1,0 +1,59 @@
+// Dialogue de suppression d'un projet (F-69 / SF-69-02) — conforme à docs/DESIGN_SYSTEM.md.
+//
+// AUCUNE couleur nouvelle : le rouge est `--cg-error` de la charte, le vert `--cg-success`, et le
+// bouton destructif reste `mat-flat-button color="warn"` (§5). On n'introduit pas de quatrième
+// registre : ni couleur d'identité de poste (§9), ni pastille d'état de mission (F-60) ici.
+
+.delete-project__block {
+  margin-bottom: var(--cg-space-4);
+
+  &:last-of-type {
+    margin-bottom: 0;
+  }
+}
+
+.delete-project__block--safe {
+  padding: var(--cg-space-3);
+  border-radius: 8px;
+  background: var(--cg-surface-2);
+}
+
+.delete-project__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  margin: 0 0 var(--cg-space-2);
+  font-family: var(--cg-font-heading);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--cg-text-primary);
+}
+
+.delete-project__icon {
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+
+  &--gone {
+    color: var(--cg-error);
+  }
+
+  &--safe {
+    color: var(--cg-success);
+  }
+}
+
+.delete-project__list {
+  margin: 0;
+  padding-left: var(--cg-space-4);
+  color: var(--cg-text-secondary);
+  line-height: 1.5;
+
+  li + li {
+    margin-top: var(--cg-space-1);
+  }
+
+  strong {
+    color: var(--cg-text-primary);
+  }
+}
