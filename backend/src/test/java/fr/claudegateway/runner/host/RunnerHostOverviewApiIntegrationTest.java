@@ -151,4 +151,49 @@ class RunnerHostOverviewApiIntegrationTest {
         mockMvc.perform(get(URL).contextPath("/api").header("Authorization", "Bearer " + aliceToken))
                 .andExpect(status().isOk());
     }
+
+    // --------------------------------------------- le poste « Hébergé » (F-71 / SF-71-01)
+
+    @Test
+    void aProjectWithoutAMachineAppearsUnderTheHostedHost() throws Exception {
+        // Un dépôt GitHub n'a pas de poste : il se range sous « Hébergé », EN DERNIER, avec un
+        // identifiant NUL — il n'existe aucune ligne en base pour lui.
+        User solo = seedUser("hosted-overview@example.com", UserRole.ADMIN);
+        workspaceRepository.save(Workspace.builder().userId(solo.getId()).name("mon-depot")
+                .hostId(null).projectPath(null).build());
+
+        mockMvc.perform(get(URL).contextPath("/api")
+                        .header("Authorization", "Bearer " + jwtService.generateToken(solo)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].virtual").value(true))
+                .andExpect(jsonPath("$[0].id").doesNotExist())
+                .andExpect(jsonPath("$[0].name").value("Hébergé"))
+                .andExpect(jsonPath("$[0].connected").value(false))
+                .andExpect(jsonPath("$[0].missionStatus").doesNotExist())
+                .andExpect(jsonPath("$[0].projects.length()").value(1))
+                .andExpect(jsonPath("$[0].projects[0].name").value("mon-depot"));
+    }
+
+    @Test
+    void theHostedHostIsAbsentWhenEveryProjectHasAMachine() throws Exception {
+        // Décision du PO : il n'apparaît que s'il contient quelque chose.
+        mockMvc.perform(get(URL).contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].virtual").value(false));
+    }
+
+    @Test
+    void theHostedHostNeverGathersAnotherAccountsProject() throws Exception {
+        // Isolation : le projet sans machine de Bob n'entre jamais dans l'« Hébergé » d'Alice.
+        workspaceRepository.save(Workspace.builder()
+                .userId(userRepository.findByEmail("bob-overview@example.com").orElseThrow().getId())
+                .name("depot-secret").hostId(null).projectPath(null).build());
+
+        mockMvc.perform(get(URL).contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].name").value("Poste CAGIP"));
+    }
 }

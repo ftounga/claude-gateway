@@ -95,10 +95,15 @@ public class RunnerHostOverviewService {
         // question « ce projet a-t-il un terminal ouvert » se pose sur chaque ligne de chaque carte,
         // et une requête par projet ferait payer l'affichage d'un booléen au prix d'un balayage.
         Set<UUID> live = liveTerminals.liveWorkspaceIds(userId);
-        return hostService.list(userId).stream()
-                .map(host -> describe(userId, host, since, activeSince, live))
-                .sorted(BY_LAST_SEEN_THEN_CREATED)
-                .toList();
+        List<RunnerHostOverviewResponse> hosts = new java.util.ArrayList<>(
+                hostService.list(userId).stream()
+                        .map(host -> describe(userId, host, since, activeSince, live))
+                        .sorted(BY_LAST_SEEN_THEN_CREATED)
+                        .toList());
+        // Le poste « Hébergé » (F-71 / SF-71-01), EN DERNIER et seulement s'il porte quelque chose.
+        // En dernier parce qu'il n'est pas une machine : les machines d'abord, le bac à sable après.
+        describeHosted(userId, live).ifPresent(hosts::add);
+        return List.copyOf(hosts);
     }
 
     // ------------------------------------------------------------------ interne
@@ -126,6 +131,7 @@ public class RunnerHostOverviewService {
                 host.getOs(),
                 RunnerShell.fromDeclared(host.getShell()).map(RunnerShell::declared).orElse(null),
                 host.getElevated(),
+                false,
                 statusService.statusOf(userId, host).connected(),
                 // L'état de mission est DÉCLARÉ (F-60) : la vue le recopie, elle ne le déduit
                 // ni de la présence du runner, ni de l'activité observée.
@@ -145,6 +151,33 @@ public class RunnerHostOverviewService {
                 // onglet ne soit resté ouvert.
                 (int) projects.stream().filter(HostProjectSummary::liveTerminal).count(),
                 projects);
+    }
+
+    /**
+     * Le poste <b>virtuel</b> « Hébergé » (F-71 / SF-71-01) : les projets sans machine, rangés
+     * ensemble — ou {@link Optional#empty()} s'il n'y en a aucun.
+     *
+     * <p>Décision du PO : il n'apparaît <b>que s'il contient quelque chose</b>. Une carte vide
+     * nommée « Hébergé » sur l'accueil d'un utilisateur qui n'a que des machines n'apprendrait rien
+     * et poserait une question à laquelle personne n'a besoin de répondre.</p>
+     *
+     * <p><b>Aucune ligne n'est lue ni écrite dans {@code runner_hosts}</b> : la seule lecture est
+     * celle des projets, filtrée par {@code user_id}. Et aucun appel n'est fait au journal d'audit —
+     * il est tenu par le runner, et aucun runner n'exécute ces projets.</p>
+     */
+    private Optional<RunnerHostOverviewResponse> describeHosted(UUID userId,
+            Set<UUID> liveWorkspaceIds) {
+        List<Workspace> orphans = workspaceService.listWithoutHost(userId);
+        if (orphans.isEmpty()) {
+            return Optional.empty();
+        }
+        List<HostProjectSummary> projects = orphans.stream()
+                .map(workspace -> summarize(userId, workspace, null, OffsetDateTime.now(),
+                        liveWorkspaceIds.contains(workspace.getId())))
+                .sorted(BY_ACTIVITY_THEN_NAME)
+                .toList();
+        return Optional.of(RunnerHostOverviewResponse.hosted(projects,
+                (int) projects.stream().filter(HostProjectSummary::liveTerminal).count()));
     }
 
     /** Le plus actif d'abord ; les muets ensuite, par ordre alphabétique — une liste stable. */

@@ -194,6 +194,17 @@ public class WorkspaceService {
         return workspaceRepository.findByUserIdAndHostId(userId, hostId);
     }
 
+    /**
+     * Projets <b>sans poste</b> (F-71 / SF-71-01), isolation {@code user_id}.
+     *
+     * <p>Ce sont ceux qui vivent chez la gateway plutôt que sur une machine : dépôt GitHub, archive
+     * importée, ou projet pas encore rattaché. L'accueil de la Forge les range sous un poste
+     * <b>virtuel</b> — une vue, jamais une ligne en base.</p>
+     */
+    public List<Workspace> listWithoutHost(UUID userId) {
+        return workspaceRepository.findByUserIdAndHostIdIsNull(userId);
+    }
+
     /** Workspaces de l'utilisateur (isolation {@code user_id}). */
     public List<Workspace> list(UUID userId) {
         return workspaceRepository.findByUserIdOrderByCreatedAtDesc(userId);
