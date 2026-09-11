@@ -21,31 +21,20 @@
   color: var(--cg-surface);
 }
 
-/* Appartenance (F-49 / SF-49-03) : le poste ouvre la barre, avant le nom du projet. La puce porte
-   sa propre surface (teinte du poste) — la barre est navy, et l'encre du poste, validée sur blanc,
-   y serait illisible sans elle. */
-.terminal-host {
-  flex: none;
-}
+/* Fil d'Ariane (F-68 / SF-68-01) : « Forge › CAGIP › mon-projet ». Il ouvre la barre, là où
+   vivaient le poste et le nom du projet — il les porte tous les deux.
 
-/* État de mission (F-60 / SF-60-02) : la pastille apporte son propre fond clair (classes `.badge--*`
-   de la charte §5), donc elle reste lisible sur la barre navy sans que rien ne soit posé ici. */
-.terminal-mission {
-  flex: none;
-}
+   La barre est navy : les trois encres du fil sont redéfinies ici avec des jetons de la charte, et
+   rien d'autre. La pastille du poste (F-49 / SF-49-03) garde sa propre surface — la teinte du
+   client — et l'encre validée dessus ; la pastille de mission (F-60 / SF-60-02) apporte son fond
+   clair de la charte §5. Ni l'une ni l'autre n'est retouchée ici. */
+.terminal-crumbs {
+  --forge-crumb-color: var(--cg-divider);
+  --forge-crumb-current-color: var(--cg-surface);
+  --forge-crumb-hover-color: var(--cg-orange-2);
 
-.terminal-host-sep {
-  color: var(--cg-divider);
+  flex: 0 1 auto;
   font-family: var(--cg-font-mono);
-  font-size: 13px;
-}
-
-.terminal-title {
-  display: flex;
-  align-items: center;
-  gap: var(--cg-space-2);
-  font-family: var(--cg-font-mono);
-  font-size: 13px;
 }
 
 /* Dossier de la machine (F-38 / SF-38-16) : discret, à côté du titre — une localisation, pas un

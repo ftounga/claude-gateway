@@ -6,6 +6,7 @@ import {
   tick,
 } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { provideRouter } from '@angular/router';
 
 import { AtelierTerminalComponent } from './atelier-terminal.component';
 import { AtelierThreadItem } from '../atelier.types';
@@ -23,6 +24,9 @@ describe('AtelierTerminalComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [AtelierTerminalComponent, NoopAnimationsModule],
+      // Depuis F-68 / SF-68-01, la barre du terminal est un fil d'Ariane : ses niveaux sont des
+      // liens, et un `routerLink` a besoin d'un routeur pour calculer son `href`.
+      providers: [provideRouter([])],
     }).compileComponents();
     fixture = TestBed.createComponent(AtelierTerminalComponent);
     component = fixture.componentInstance;
@@ -45,7 +49,7 @@ describe('AtelierTerminalComponent', () => {
   it('dit chez QUEL client on travaille : la pastille du poste et son nom écrit', () => {
     component.hostName = 'Poste CAGIP';
     fixture.detectChanges();
-    const badge = fixture.nativeElement.querySelector('.terminal-host') as HTMLElement;
+    const badge = fixture.nativeElement.querySelector('.forge-crumb--host') as HTMLElement;
 
     expect(badge).not.toBeNull();
     expect(badge.querySelector('.host-badge__mark')?.textContent?.trim()).toBe('PC');
@@ -65,7 +69,7 @@ describe('AtelierTerminalComponent', () => {
     component.hostName = null;
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('.terminal-host')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.forge-crumb--host')).toBeNull();
     expect(text()).toContain('mon-projet');
   });
 
@@ -75,7 +79,7 @@ describe('AtelierTerminalComponent', () => {
     component.hostName = 'Poste CAGIP';
     component.hostMission = 'CLOSED';
     fixture.detectChanges();
-    const badge = fixture.nativeElement.querySelector('.terminal-mission') as HTMLElement;
+    const badge = fixture.nativeElement.querySelector('.forge-crumb__mission') as HTMLElement;
 
     expect(badge).not.toBeNull();
     expect(badge.textContent).toContain('Clôturé');
@@ -89,8 +93,50 @@ describe('AtelierTerminalComponent', () => {
     component.hostMission = null;
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.querySelector('.terminal-mission')).toBeNull();
-    expect(fixture.nativeElement.querySelector('.terminal-host')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.forge-crumb__mission')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.forge-crumb--host')).not.toBeNull();
+  });
+
+  // ------------------------------------------------ fil d'Ariane (F-68 / SF-68-01)
+
+  it('dit où l\'on est ET chez qui : « Forge › poste › projet », chaque niveau cliquable', () => {
+    component.hostName = 'Poste CAGIP';
+    component.hostId = 'h1';
+    component.projectId = 'w1';
+    fixture.detectChanges();
+    const trail: HTMLAnchorElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('.forge-crumb'),
+    );
+
+    expect(trail.length).toBe(3);
+    expect(trail[0].getAttribute('href')).toBe('/forge');
+    // « Chez qui » ramène à la carte de ce client sur l'accueil de la Forge.
+    expect(trail[1].getAttribute('href')).toBe('/forge#poste-h1');
+    expect(trail[2].getAttribute('href')).toBe('/atelier/w1');
+    expect(trail[2].getAttribute('aria-current')).toBe('page');
+    expect(trail[2].textContent?.trim()).toBe('mon-projet');
+  });
+
+  it('omet le niveau du poste quand le projet n\'est rattaché à aucune machine', () => {
+    component.hostName = null;
+    component.projectId = 'w1';
+    fixture.detectChanges();
+    const trail: HTMLAnchorElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('.forge-crumb'),
+    );
+
+    // « Forge › mon-projet » : jamais « aucun poste », qui se lirait comme un défaut.
+    expect(trail.length).toBe(2);
+    expect(trail[1].textContent?.trim()).toBe('mon-projet');
+  });
+
+  it('garde le fil utilisable quand l\'identifiant du poste n\'est pas encore connu', () => {
+    component.hostName = 'Poste CAGIP';
+    component.hostId = null;
+    fixture.detectChanges();
+    const host = fixture.nativeElement.querySelector('.forge-crumb--host') as HTMLAnchorElement;
+
+    expect(host.getAttribute('href')).toBe('/forge');
   });
 
   it('rend la demande en ligne d\'invite et les commandes avec leur sortie', () => {

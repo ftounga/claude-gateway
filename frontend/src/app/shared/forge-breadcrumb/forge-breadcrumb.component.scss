@@ -1,0 +1,75 @@
+/* Fil d'Ariane de la Forge (F-68 / SF-68-01).
+
+   Aucun registre de couleur nouveau : texte secondaire au repos, texte principal pour la page
+   courante, accent de la charte au survol. La couleur du client entre uniquement par la pastille
+   d'identité (charte §9), que ce fichier ne touche pas.
+
+   Les trois encres passent par des variables : le fil vit aussi sur la barre NAVY du terminal, où
+   l'encre claire de la charte est illisible. L'écran hôte les redéfinit — avec des jetons `--cg-*`,
+   jamais avec une couleur écrite en dur. */
+
+:host {
+  --forge-crumb-color: var(--cg-text-secondary);
+  --forge-crumb-current-color: var(--cg-text-primary);
+  --forge-crumb-hover-color: var(--cg-accent);
+
+  display: block;
+  min-width: 0;
+}
+
+.forge-crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--cg-space-1);
+  font-size: 13px;
+  min-width: 0;
+}
+
+.forge-crumbs__sep {
+  color: var(--forge-crumb-color);
+  opacity: 0.7;
+  user-select: none;
+}
+
+.forge-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  padding: 0 var(--cg-space-1);
+  border-radius: 4px;
+  color: var(--forge-crumb-color);
+  text-decoration: none;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.forge-crumb:hover,
+.forge-crumb:focus-visible {
+  color: var(--forge-crumb-hover-color);
+  text-decoration: underline;
+}
+
+/* La page courante : même lien, encre plus appuyée. Elle reste cliquable — décision du PO — et
+   c'est `aria-current="page"` qui dit, lui, qu'on y est déjà. */
+.forge-crumb--current {
+  color: var(--forge-crumb-current-color);
+  font-weight: 600;
+}
+
+.forge-crumb__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Le niveau du poste porte la pastille d'identité, qui a son propre dessin et sa propre surface :
+   le fil ne fait que la porter, il ne la recolore jamais. */
+.forge-crumb--host {
+  padding: 0;
+}
+
+.forge-crumb__mission {
+  display: inline-flex;
+  align-items: center;
+}

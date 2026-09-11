@@ -1,9 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideRouter, Router } from '@angular/router';
+import { NavigationEnd, provideRouter, Router } from '@angular/router';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 
 import { signal } from '@angular/core';
 
@@ -66,6 +66,16 @@ describe('ShellComponent', () => {
     fixture.detectChanges();
   });
 
+  /**
+   * Simule l'arrivée sur une URL. La coquille n'écoute rien d'autre que les navigations terminées
+   * du routeur : les rejouer ici évite d'avoir à déclarer toute la table de routes dans un test
+   * qui ne parle que de la barre de navigation.
+   */
+  function arriveAt(url: string): void {
+    (router.events as unknown as Subject<NavigationEnd>).next(new NavigationEnd(1, url, url));
+    fixture.detectChanges();
+  }
+
   it('affiche les liens de navigation vers les sections principales', () => {
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('Chat');
@@ -106,6 +116,43 @@ describe('ShellComponent', () => {
     expect(shell.querySelector('.help-widget__bubble')).not.toBeNull();
     // Le panneau ne s'ouvre qu'au clic : la bulle n'encombre pas l'écran par défaut.
     expect(shell.querySelector('.help-panel')).toBeNull();
+  });
+
+  // ---- F-68 SF-68-01 : un seul onglet pour la Forge, et il mène aux missions ----
+
+  it('ne propose plus d\'onglet « Postes » — la Forge s\'ouvre dessus', () => {
+    const shell = fixture.nativeElement as HTMLElement;
+    const nav = shell.querySelector('.app-nav') as HTMLElement;
+
+    expect(nav.textContent).not.toContain('Postes');
+    expect(nav.querySelector('a[href="/postes"]')).toBeNull();
+  });
+
+  it('fait mener l\'entrée « Forge » à l\'accueil de la Forge', () => {
+    const forge = (fixture.nativeElement as HTMLElement)
+      .querySelector('.app-nav a[href="/forge"]') as HTMLAnchorElement;
+
+    expect(forge).not.toBeNull();
+    expect(forge.textContent).toContain('Forge');
+  });
+
+  it('garde l\'entrée « Forge » allumée pendant qu\'on travaille dans un projet', () => {
+    const forge = () => (fixture.nativeElement as HTMLElement)
+      .querySelector('.app-nav a[href="/forge"]') as HTMLAnchorElement;
+
+    // Hors de la Forge : éteinte.
+    expect(forge().classList).not.toContain('active');
+
+    // `/atelier/:id` est la route du terminal, conservée telle quelle par F-58 : y travailler,
+    // c'est toujours être dans la Forge — l'onglet ne doit pas s'éteindre en route.
+    arriveAt('/atelier/w1');
+    expect(forge().classList).toContain('active');
+
+    arriveAt('/forge#poste-h1');
+    expect(forge().classList).toContain('active');
+
+    arriveAt('/chat');
+    expect(forge().classList).not.toContain('active');
   });
 
   // ---- F-29 SF-29-01 : garde-fou anti-régression sur la marque de la coquille ----

@@ -96,10 +96,20 @@ export const routes: Routes = [
         loadComponent: () => import('./atelier/atelier.component').then((m) => m.AtelierComponent),
       },
       {
-        // F-49 / SF-49-02 — la vue d'ensemble des postes. Chemin d'un seul segment, disjoint de
-        // `atelier/:id` : aucune des routes existantes ne le masque, et il n'en masque aucune.
-        path: 'postes',
+        // F-68 / SF-68-01 — **l'accueil de la Forge** : la vue des missions (livrée par F-49 /
+        // SF-49-02) devient la porte d'entrée, et l'onglet « Postes » disparaît de la barre. Le
+        // composant est le même, à l'identique — F-68 réorganise la navigation, il ne refait pas
+        // l'écran. Chemin d'un seul segment, disjoint de `atelier/:id`.
+        path: 'forge',
         loadComponent: () => import('./postes/postes.component').then((m) => m.PostesComponent),
+      },
+      {
+        // L'ancienne adresse (F-49 / SF-49-02) continue de répondre : un onglet resté ouvert ou un
+        // lien collé la veille s'ouvre sur la même page. `pathMatch: 'full'` pour ne capter que le
+        // chemin exact, cible absolue pour ne pas dépendre de la résolution du parent pathless.
+        path: 'postes',
+        redirectTo: '/forge',
+        pathMatch: 'full',
       },
       {
         // F-51 / SF-51-05 — le catalogue de gouvernance. Un seul segment, disjoint de toutes les

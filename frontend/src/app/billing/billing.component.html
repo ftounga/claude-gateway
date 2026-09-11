@@ -375,7 +375,9 @@
         </div>
 
         <div class="billing__option-action">
-          <a mat-stroked-button class="billing__card-cta is-outline" routerLink="/postes">
+          <!-- F-68 / SF-68-01 : les postes se gèrent depuis l'accueil de la Forge. `/postes`
+               redirigerait, mais un lien périmé dans le code n'a aucune raison de survivre. -->
+          <a mat-stroked-button class="billing__card-cta is-outline" routerLink="/forge">
             Gérer mes postes
           </a>
         </div>

@@ -141,6 +141,14 @@ a.active {
 }
 
 // ---- Indicateur de mode d'exécution (BYOK / Hosted) ----
+/* Fil d'Ariane de l'écran des projets (F-68 / SF-68-01) : une bande sobre au-dessus de la barre de
+   mode, sur la même surface et avec le même filet — un repère, pas un titre concurrent. */
+.atelier-crumbs-bar {
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-bottom: 1px solid var(--cg-divider);
+  background: var(--cg-surface);
+}
+
 .mode-bar {
   display: flex;
   align-items: center;

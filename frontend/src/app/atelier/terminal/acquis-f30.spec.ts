@@ -1,5 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { provideRouter } from '@angular/router';
 
 import { AtelierTerminalComponent } from './atelier-terminal.component';
 import { chatStepsToBlocks } from './chat-steps';
@@ -23,6 +24,9 @@ describe('F-39 §4 — acquis visuels repris par l\'écran unique', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [AtelierTerminalComponent, NoopAnimationsModule],
+      // La barre du terminal est un fil d'Ariane depuis F-68 / SF-68-01 : ses niveaux sont des
+      // liens, et un `routerLink` a besoin d'un routeur pour calculer son `href`.
+      providers: [provideRouter([])],
     }).compileComponents();
     fixture = TestBed.createComponent(AtelierTerminalComponent);
     component = fixture.componentInstance;

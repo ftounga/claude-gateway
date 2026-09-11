@@ -1,4 +1,9 @@
 <section class="postes">
+  <!-- Fil d'Ariane (F-68 / SF-68-01) : cet écran EST l'accueil de la Forge depuis que l'onglet
+       « Postes » a disparu. Le fil le nomme — « Forge », page courante — et sert de racine à tous
+       les niveaux plus profonds. Il ne change rien à ce que la vue affiche. -->
+  <app-forge-breadcrumb class="postes__crumbs"></app-forge-breadcrumb>
+
   <header class="postes__header">
     <div>
       <h1>Postes</h1>
@@ -111,7 +116,9 @@
      clôturée reste EXACTEMENT la même carte — mêmes projets, même terminal, même possibilité de la
      rouvrir. C'est ce qui distingue « ranger » de « masquer ». -->
 <ng-template #posteCard let-host>
-  <mat-card class="poste" [style.borderLeftColor]="tone(host).solid">
+  <!-- `id` d'ancrage (F-68 / SF-68-01) : c'est la cible du niveau « chez qui » du fil d'Ariane.
+       Un ancrage de page, jamais un critère de lecture — il ne désigne rien côté gateway. -->
+  <mat-card class="poste" [id]="'poste-' + host.id" [style.borderLeftColor]="tone(host).solid">
     <header class="poste__head">
       <div class="poste__identity">
         <!-- Identité visuelle du poste (F-49 / SF-49-03) : ses initiales sur sa couleur,
