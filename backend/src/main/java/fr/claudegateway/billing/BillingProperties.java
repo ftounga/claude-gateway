@@ -10,7 +10,14 @@ import org.springframework.boot.context.properties.NestedConfigurationProperty;
  * (clé secrète, secret de webhook) proviennent exclusivement de l'environnement et ne sont jamais
  * journalisés (patron identique à la clé Anthropic).
  *
- * @param trialDays durée de l'essai gratuit en jours (défaut 5, PROJECT.md §11.10)
+ * @param trialDays durée de l'essai gratuit en jours (défaut <b>14</b>, F-66). C'est la durée que le
+ *                  produit annonce publiquement — page d'accueil et {@code docs/marketing.md} — et
+ *                  le défaut de code la sert désormais lui aussi : une configuration absente ne doit
+ *                  pas servir un essai plus court que la promesse. Allonger l'essai ne coûte rien de
+ *                  plus, parce que ce qui borne le coût est le <b>quota</b>
+ *                  ({@code app.quota.trial-tokens}, ≈ 1,80 $ au plus depuis F-63), et que ce quota
+ *                  est désormais une enveloppe unique sur toute la durée de l'essai (F-66 /
+ *                  {@link fr.claudegateway.quota.QuotaWindowService}), non un plafond mensuel.
  * @param stripe    réglages du fournisseur de paiement Stripe (SF-09-02)
  */
 @ConfigurationProperties(prefix = "app.billing")
@@ -20,7 +27,7 @@ public record BillingProperties(
 
     public BillingProperties {
         if (trialDays == null || trialDays <= 0) {
-            trialDays = 5;
+            trialDays = 14;
         }
         if (stripe == null) {
             stripe = new Stripe(

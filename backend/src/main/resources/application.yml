@@ -316,7 +316,7 @@ app:
     mcp-server-name: ${APP_GIT_MCP_SERVER_NAME:github}
   billing:
     # Durée de l'essai gratuit en jours (F-09). Décision réversible : ajustable sans changement de code.
-    trial-days: ${APP_BILLING_TRIAL_DAYS:5}
+    trial-days: ${APP_BILLING_TRIAL_DAYS:14}
     stripe:
       # Secrets Stripe (F-09) : fournis EXCLUSIVEMENT par l'environnement, jamais commités ni journalisés.
       # Si secret-key est vide, le billing est dormant (checkout => 503), comme la clé Anthropic.

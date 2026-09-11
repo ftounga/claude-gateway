@@ -143,7 +143,7 @@ class QuotaWindowServiceTest {
 
     @Test
     void trialWithoutCreationDateFallsBackOnTheEndMinusTheConfiguredDuration() {
-        // Durée par défaut : 5 jours → essai réputé commencé le 2026-06-29, donc fenêtre sur juin.
+        // Durée par défaut : 14 jours → essai réputé commencé le 2026-06-20, donc fenêtre sur juin.
         Subscription subscription = trial(null, OffsetDateTime.parse("2026-07-04T08:00:00Z"));
         when(entitlementService.hasActiveTrial(subscription)).thenReturn(true);
         when(usageCounterRepository.findByUserIdAndPeriodStartGreaterThanEqual(eq(alice), eq(june)))
@@ -152,7 +152,7 @@ class QuotaWindowServiceTest {
         QuotaWindow window = service.resolve(subscription);
 
         assertThat(window.periodStart()).isEqualTo(june);
-        assertThat(window.displayStart()).isEqualTo(LocalDate.of(2026, 6, 29));
+        assertThat(window.displayStart()).isEqualTo(LocalDate.of(2026, 6, 20));
         assertThat(window.carryOverBilledTokens()).isEqualTo(10_000L);
     }
 

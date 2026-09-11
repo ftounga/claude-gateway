@@ -89,11 +89,32 @@ class SubscriptionServiceTest {
         verify(repository, times(1)).save(any());
     }
 
+    /**
+     * Le défaut de code sert la durée <b>annoncée</b> (F-66). Une configuration absente ou invalide
+     * ne doit pas servir un essai plus court que la promesse publique : c'est exactement l'écart que
+     * F-66 referme.
+     */
     @Test
-    void defaultsTrialDaysWhenPropertyInvalid() {
-        assertThat(new BillingProperties(null, null).trialDays()).isEqualTo(5);
-        assertThat(new BillingProperties(0, null).trialDays()).isEqualTo(5);
-        assertThat(new BillingProperties(-3, null).trialDays()).isEqualTo(5);
+    void defaultsTrialDaysToTheAdvertisedFourteenWhenPropertyInvalid() {
+        assertThat(new BillingProperties(null, null).trialDays()).isEqualTo(14);
+        assertThat(new BillingProperties(0, null).trialDays()).isEqualTo(14);
+        assertThat(new BillingProperties(-3, null).trialDays()).isEqualTo(14);
+    }
+
+    @Test
+    void provisionsFourteenDayTrialWithTheDefaultConfiguration() {
+        UUID userId = UUID.randomUUID();
+        BillingProperties defaults = new BillingProperties(null, null);
+        SubscriptionService defaultService = new SubscriptionService(repository, defaults,
+                new PlanCatalog(), mock(BillingProvider.class),
+                new BillingPeriodSelection(defaults));
+        when(repository.findByUserId(userId)).thenReturn(Optional.empty());
+        when(repository.save(any(Subscription.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Subscription result = defaultService.getOrCreateForUser(userId);
+
+        assertThat(result.getTrialEndsAt()).isAfter(OffsetDateTime.now().plusDays(13));
+        assertThat(result.getTrialEndsAt()).isBefore(OffsetDateTime.now().plusDays(15));
     }
 
     // ---- Changement de plan (upgrade/downgrade, SF-21-05) ----

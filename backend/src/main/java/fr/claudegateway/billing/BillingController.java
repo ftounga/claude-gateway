@@ -148,7 +148,8 @@ public class BillingController {
      */
     private SubscriptionResponse describe(Subscription subscription) {
         return SubscriptionResponse.from(
-                subscription, entitlementService.isCustomerKeyBilled(subscription));
+                subscription, entitlementService.isCustomerKeyBilled(subscription),
+                billingProperties.trialDays());
     }
 
     /**
