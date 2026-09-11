@@ -384,13 +384,32 @@ public interface ManagedAgentProvider {
      *                         quand le fournisseur ne le rapporte pas — l'appelant retombe alors sur
      *                         le décompte des tokens. Le coût capture ce que les tokens ignorent : le
      *                         modèle réellement servi, les recherches web, le temps de bac à sable
+     * @param cacheReadTokens  part de {@code inputTokens} servie depuis le cache (F-63 / SF-63-02),
+     *                         au dixième du tarif d'entrée. Ne sert qu'au repli : quand le coût est
+     *                         rapporté, il l'a déjà pris en compte
+     * @param cacheWriteTokens part de {@code inputTokens} écrite dans le cache, au tarif majoré
      */
     record SessionUsage(long inputTokens, long outputTokens, long activeSeconds,
-            Long listCostMinorUnits) {
+            Long listCostMinorUnits, long cacheReadTokens, long cacheWriteTokens) {
 
         /** Consommation sans coût rapporté : forme d'avant F-36 (repli sur les tokens). */
         public SessionUsage(long inputTokens, long outputTokens, long activeSeconds) {
-            this(inputTokens, outputTokens, activeSeconds, null);
+            this(inputTokens, outputTokens, activeSeconds, null, 0L, 0L);
+        }
+
+        /** Consommation sans ventilation de cache : forme d'avant F-63 / SF-63-02. */
+        public SessionUsage(long inputTokens, long outputTokens, long activeSeconds,
+                Long listCostMinorUnits) {
+            this(inputTokens, outputTokens, activeSeconds, listCostMinorUnits, 0L, 0L);
+        }
+
+        /**
+         * Tokens d'entrée facturés au <b>plein tarif</b> : le total agrégé moins le cache. Jamais
+         * négatif. Ne sert qu'au <b>repli</b> — quand le fournisseur rapporte le coût, c'est lui
+         * qui fait foi.
+         */
+        public long fullPriceInputTokens() {
+            return Math.max(0L, inputTokens - cacheReadTokens - cacheWriteTokens);
         }
     }
 }

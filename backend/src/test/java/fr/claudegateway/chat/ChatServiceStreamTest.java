@@ -131,7 +131,9 @@ class ChatServiceStreamTest {
         ArgumentCaptor<Message> captor = ArgumentCaptor.forClass(Message.class);
         verify(messageRepository).save(captor.capture());
         assertThat(captor.getValue().getRole()).isEqualTo(MessageRole.ASSISTANT);
-        verify(quotaService, times(1)).recordUsage(eq(alice), eq(11), eq(5));
+        // Décompte ventilé par nature (F-63) : aucun cache rapporté ici, donc tout en entrée.
+        verify(quotaService, times(1)).recordUsage(alice,
+                new fr.claudegateway.quota.TurnTokens(11L, 5L, 0L, 0L), null, null, null);
     }
 
     @Test

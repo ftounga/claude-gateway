@@ -46,7 +46,8 @@ class AtelierExploration {
             trouves pas, dis-le en une phrase.""";
 
     /** Issue d'une exploration : sa réponse, et ce qu'elle a consommé. */
-    record Result(String answer, int inputTokens, int outputTokens) {
+    record Result(String answer, int inputTokens, int outputTokens, int cacheReadTokens,
+            int cacheWriteTokens) {
     }
 
     private AtelierExploration() {
@@ -72,6 +73,10 @@ class AtelierExploration {
 
         int inputTokens = 0;
         int outputTokens = 0;
+        // Ventilation du cache (F-63 / SF-63-02) : déjà comprise dans `inputTokens`, portée à part
+        // pour que le décompte la facture à son prix et non au plein tarif d'entrée.
+        int cacheReadTokens = 0;
+        int cacheWriteTokens = 0;
         String answer = "";
 
         for (int iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
@@ -82,6 +87,8 @@ class AtelierExploration {
                     new AgentTurnRequest(model, SYSTEM, messages, readTools, apiKey));
             inputTokens += turn.inputTokens();
             outputTokens += turn.outputTokens();
+            cacheReadTokens += turn.cacheReadTokens();
+            cacheWriteTokens += turn.cacheWriteTokens();
 
             if (turn.truncated()) {
                 answer = "Exploration interrompue : la réponse dépassait la taille maximale.";
@@ -121,7 +128,7 @@ class AtelierExploration {
         if (answer.length() > MAX_ANSWER_CHARS) {
             answer = answer.substring(0, MAX_ANSWER_CHARS) + "\n… (réponse tronquée)";
         }
-        return new Result(answer, inputTokens, outputTokens);
+        return new Result(answer, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens);
     }
 
     /** Exécution d'un outil de lecture, fournie par l'appelant (il seul sait router par cible). */

@@ -208,8 +208,8 @@ class AtelierChatServiceBudgetTest {
         assertThat(result.budgetReached()).isTrue();
         verify(quotaService, never()).currentUsage(any());
         verify(quotaService, never()).assertWithinQuota(any());
-        verify(quotaService, never()).recordUsage(any(), org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.anyInt(), any(), any());
+        verify(quotaService, never()).recordUsage(any(),
+                any(fr.claudegateway.quota.TurnTokens.class), any(), any(), any());
     }
 
     @Test
@@ -223,10 +223,9 @@ class AtelierChatServiceBudgetTest {
         service.chat(userId, workspaceId, "lis tout");
 
         // Deux itérations à 7/3 : le décompte porte sur ce qui a réellement été traité, plafond
-        // atteint ou non.
-        verify(quotaService).recordUsage(org.mockito.ArgumentMatchers.eq(userId),
-                org.mockito.ArgumentMatchers.eq(14), org.mockito.ArgumentMatchers.eq(6),
-                any(), any());
+        // atteint ou non. Aucun cache rapporté ici : tout est de l'entrée au plein tarif (F-63).
+        verify(quotaService).recordUsage(userId,
+                new fr.claudegateway.quota.TurnTokens(14L, 6L, 0L, 0L), null, workspaceId, null);
     }
 
     // ------------------------------------------------------------ la consommation est visible

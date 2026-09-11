@@ -22,6 +22,8 @@ record AnthropicResponse(
     @JsonIgnoreProperties(ignoreUnknown = true)
     record Usage(
             @JsonProperty("input_tokens") int inputTokens,
-            @JsonProperty("output_tokens") int outputTokens) {
+            @JsonProperty("output_tokens") int outputTokens,
+            @JsonProperty("cache_read_input_tokens") int cacheReadInputTokens,
+            @JsonProperty("cache_creation_input_tokens") int cacheCreationInputTokens) {
     }
 }

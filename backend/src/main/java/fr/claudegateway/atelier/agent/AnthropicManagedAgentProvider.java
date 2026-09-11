@@ -707,14 +707,18 @@ public class AnthropicManagedAgentProvider implements ManagedAgentProvider {
             JsonNode usage = response.path("usage");
             JsonNode cacheCreation = usage.path("cache_creation");
             // Tokens d'entrée = entrée directe + lecture de cache + créations de cache (5m + 1h).
-            long inputTokens = usage.path("input_tokens").asLong(0)
-                    + usage.path("cache_read_input_tokens").asLong(0)
-                    + cacheCreation.path("ephemeral_5m_input_tokens").asLong(0)
+            long cacheReadTokens = usage.path("cache_read_input_tokens").asLong(0);
+            long cacheWriteTokens = cacheCreation.path("ephemeral_5m_input_tokens").asLong(0)
                     + cacheCreation.path("ephemeral_1h_input_tokens").asLong(0);
+            long inputTokens = usage.path("input_tokens").asLong(0)
+                    + cacheReadTokens + cacheWriteTokens;
             long outputTokens = usage.path("output_tokens").asLong(0);
             // Temps facturé du bac à sable : active_seconds arrondi à la seconde.
             long activeSeconds = Math.round(response.path("stats").path("active_seconds").asDouble(0));
-            return new SessionUsage(inputTokens, outputTokens, activeSeconds, listCost(response));
+            // Le cache voyage AUSSI séparément (F-63 / SF-63-02) : il ne change rien au volume
+            // ci-dessus, il sert au repli du décompte quand le fournisseur ne rapporte pas de coût.
+            return new SessionUsage(inputTokens, outputTokens, activeSeconds, listCost(response),
+                    cacheReadTokens, cacheWriteTokens);
         } catch (RestClientException ex) {
             throw failure("usage de session", ex);
         }
