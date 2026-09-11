@@ -112,3 +112,37 @@ Deux grilles coexistent dans le dépôt :
 Ni les montants, ni les noms de plans ne concordent — `marketing.md` ignore GOLD, `PRODUCT_SPEC`
 ignore BYOK et Daily. **Deux grilles publiées finissent en litige commercial.** Une seule source de
 vérité, les autres y renvoient.
+
+
+---
+
+## 6. Stratégie retenue — 2026-09-11
+
+**Le prix suit deux axes, et un seul d'entre eux est nouveau.**
+
+| Axe | Ce qu'il mesure | Comment il est facturé |
+|---|---|---|
+| **Largeur** | Combien de **missions** en parallèle | L'abonnement couvre **un poste** ; chaque poste supplémentaire ajoute un **supplément mensuel**, qui **apporte sa part de quota** |
+| **Profondeur** | Combien on **travaille** sur chacune | La consommation, décomptée au **coût réel** (F-63) et bornée par le quota ; au-delà, recharges |
+
+**Calibrage recommandé du supplément** : le **même nombre de tokens par euro** que le plan de base —
+si 199 € donnent 12 M tokens, 70 € en donnent ≈ 4,2 M. Simple à expliquer, marge identique à celle
+du plan, aucune surprise sur la facture. Le premier poste porte seul les coûts fixes (plateforme,
+support), ce qui laisse la latitude d'être **plus généreux** sur les suivants si l'on veut favoriser
+les consultants à plusieurs missions — décision commerciale, pas technique.
+
+**Pourquoi cet édifice tient :**
+
+1. **En régie, la règle n'est pas contournable.** Un poste est une machine chez un client, avec son
+   réseau et son proxy : on ne peut pas réunir deux clients sous un poste.
+2. **Le prix suit le coût.** F-63 fait payer la sortie à son prix (cinq fois l'entrée) : la marge
+   cesse de dépendre du style d'usage du client. C'est la pièce qui protège tout le reste.
+3. **La sortie du modèle est un geste, pas une négociation.** Un poste **clôturé** (F-60, livré la
+   veille) ne se facture pas. Le consultant qui termine une mission la clôt, et cesse de payer.
+4. **Rien ne décourage l'usage.** Ouvrir un poste reste gratuit ; c'est le **maintenir actif** qui se
+   facture — ce qui correspond à une mission réellement en cours, donc facturée au client final.
+
+**Ce qui reste à trancher** : proratisation d'un poste ouvert en cours de mois, dégressivité au-delà
+de quelques postes (un consultant à six missions n'acceptera pas six fois le supplément plein), et
+le traitement d'une **réouverture** dans le même mois — refacturer serait un piège, ne rien facturer
+une faille.
