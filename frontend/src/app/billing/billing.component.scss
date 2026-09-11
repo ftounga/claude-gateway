@@ -156,6 +156,31 @@
     max-width: 320px;
   }
 
+  // ---- Postes comptés (F-65 / SF-65-02) ----
+  // Aucune couleur nouvelle : le rôle de chaque poste emprunte le badge existant, et il est
+  // TOUJOURS écrit — la couleur ne porte jamais seule l'information (DESIGN_SYSTEM §10).
+  &__card--seats { align-items: flex-start; }
+  &__seat-list { list-style: none; margin: 0; padding: 0; }
+  &__seat {
+    display: flex; align-items: center; flex-wrap: wrap; gap: var(--cg-space-2);
+    padding: var(--cg-space-2) 0;
+    & + & { border-top: 1px solid var(--cg-divider); }
+  }
+  &__seat-name { font-weight: 500; }
+  // Une seule pastille, neutre, pour les trois rôles : c'est le LIBELLÉ qui informe, jamais la
+  // couleur. Fond repris du badge « Offre actuelle » — aucune teinte nouvelle.
+  &__seat-role {
+    font-size: 12px; font-weight: 600;
+    padding: 3px 9px; border-radius: 999px;
+    color: var(--cg-primary); background: rgba(11, 16, 32, 0.08);
+  }
+  &__seat-since { color: var(--cg-text-secondary); font-size: 13px; }
+  &__seat-empty { margin: 0; color: var(--cg-text-secondary); font-size: 14px; }
+  &__seat-rule {
+    margin: var(--cg-space-3) 0 0; color: var(--cg-text-secondary); font-size: 13px;
+  }
+  &__seat-note { margin: var(--cg-space-2) 0 0; color: var(--cg-text-secondary); font-size: 14px; }
+
   &__feedback {
     display: flex; align-items: center; gap: var(--cg-space-2);
     color: var(--cg-text-secondary); padding: var(--cg-space-4) 0;

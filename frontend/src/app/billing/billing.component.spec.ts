@@ -10,6 +10,7 @@ import { BillingComponent } from './billing.component';
 import { AccessCodeService } from '../core/services/access-code.service';
 import { ApiKeyService } from '../core/services/api-key.service';
 import { BillingService } from '../core/services/billing.service';
+import { SeatService } from '../core/services/seat.service';
 import { UsageService } from '../core/services/usage.service';
 import {
   AtelierOptionView,
@@ -19,6 +20,7 @@ import {
 } from '../core/models/billing.models';
 import { AccessGrantView } from '../core/models/access-code.models';
 import { ApiKeyStatus } from '../core/models/api-key.models';
+import { SeatsView } from '../core/models/seat.models';
 import { UsageView } from '../core/models/usage.models';
 
 describe('BillingComponent', () => {
@@ -28,6 +30,7 @@ describe('BillingComponent', () => {
   let usageService: jasmine.SpyObj<UsageService>;
   let apiKeyService: jasmine.SpyObj<ApiKeyService>;
   let accessCodeService: jasmine.SpyObj<AccessCodeService>;
+  let seatService: jasmine.SpyObj<SeatService>;
 
   const subscription: SubscriptionView = {
     status: 'TRIALING',
@@ -128,6 +131,51 @@ describe('BillingComponent', () => {
     label: 'démo prospect',
   };
 
+  /** Un seul poste : celui que l'abonnement couvre. Aucun supplément, rien de facturé. */
+  const oneSeat: SeatsView = {
+    includedSeats: 1,
+    countedSeats: 1,
+    extraSeats: 0,
+    grantedTokens: 0,
+    billed: false,
+    displayPrice: '',
+    periodStart: '2026-09-01',
+    periodEnd: '2026-10-01',
+    seats: [
+      {
+        hostId: 'h-1', name: 'Poste CAGIP', billableFrom: '2026-09-01',
+        coveredByPlan: true, extraSeatRank: 0, grantedTokens: 0, closed: false,
+      },
+    ],
+  };
+  /** Deux postes, supplément facturé et doté de jetons : l'état que le PO aura configuré. */
+  const twoSeatsBilled: SeatsView = {
+    includedSeats: 1,
+    countedSeats: 2,
+    extraSeats: 1,
+    grantedTokens: 300000,
+    billed: true,
+    displayPrice: '70',
+    periodStart: '2026-09-01',
+    periodEnd: '2026-10-01',
+    seats: [
+      oneSeat.seats[0],
+      {
+        hostId: 'h-2', name: 'Poste Banque', billableFrom: '2026-09-05',
+        coveredByPlan: false, extraSeatRank: 1, grantedTokens: 300000, closed: false,
+      },
+    ],
+  };
+  /** Le second poste a été clôturé en cours de mois : il reste compté jusqu'au bout. */
+  const closedSeatStillCounted: SeatsView = {
+    ...twoSeatsBilled,
+    seats: [twoSeatsBilled.seats[0], { ...twoSeatsBilled.seats[1], closed: true }],
+  };
+  /** Aucun poste : le volet s'affiche quand même, avec son invitation. */
+  const noSeats: SeatsView = {
+    ...oneSeat, countedSeats: 0, seats: [],
+  };
+
   /** Réglages F-41 : abonnement à servir, statut de clé (ou échec de l'appel). */
   interface ByokSetup {
     subscription?: SubscriptionView;
@@ -141,6 +189,7 @@ describe('BillingComponent', () => {
     byok: ByokSetup = {},
     catalog: PlansResponse = plans,
     grant: AccessGrantView | 'fails' = noGrant,
+    seats: SeatsView | 'fails' = oneSeat,
   ): void {
     billingService = jasmine.createSpyObj<BillingService>('BillingService', [
       'getSubscription',
@@ -180,6 +229,13 @@ describe('BillingComponent', () => {
         : of(grant),
     );
 
+    seatService = jasmine.createSpyObj<SeatService>('SeatService', ['getSeats']);
+    seatService.getSeats.and.returnValue(
+      seats === 'fails'
+        ? throwError(() => new HttpErrorResponse({ status: 500 }))
+        : of(seats),
+    );
+
     usageService = jasmine.createSpyObj<UsageService>('UsageService', ['getUsage']);
     usageService.getUsage.and.returnValue(
       usageFails ? throwError(() => new HttpErrorResponse({ status: 500 })) : of(usage),
@@ -193,6 +249,7 @@ describe('BillingComponent', () => {
         { provide: UsageService, useValue: usageService },
         { provide: ApiKeyService, useValue: apiKeyService },
         { provide: AccessCodeService, useValue: accessCodeService },
+        { provide: SeatService, useValue: seatService },
         provideRouter([]),
         {
           provide: ActivatedRoute,
@@ -357,6 +414,9 @@ describe('BillingComponent', () => {
     usageService = jasmine.createSpyObj<UsageService>('UsageService', ['getUsage']);
     usageService.getUsage.and.returnValue(of(usage));
 
+    seatService = jasmine.createSpyObj<SeatService>('SeatService', ['getSeats']);
+    seatService.getSeats.and.returnValue(of(oneSeat));
+
     TestBed.configureTestingModule({
       imports: [BillingComponent],
       providers: [
@@ -365,6 +425,7 @@ describe('BillingComponent', () => {
         { provide: UsageService, useValue: usageService },
         { provide: ApiKeyService, useValue: apiKeyService },
         { provide: AccessCodeService, useValue: accessCodeService },
+        { provide: SeatService, useValue: seatService },
         provideRouter([]),
         {
           provide: ActivatedRoute,
@@ -994,5 +1055,67 @@ describe('BillingComponent', () => {
     // Le volume traité est montré à côté, pour que les deux chiffres cessent de se contredire.
     // (Le séparateur de milliers dépend de la locale de l'environnement : on juge le libellé.)
     expect(text).toContain('Volume traité sur la période');
+  });
+
+  // ------------------------------------------ F-65 / SF-65-02 : quels postes sont comptés, et pourquoi
+
+  describe('postes comptés (F-65)', () => {
+    it('charge les postes et dit lequel l’abonnement couvre', () => {
+      setup();
+
+      expect(seatService.getSeats).toHaveBeenCalled();
+      expect(component.seats()).toEqual(oneSeat);
+
+      const text: string = fixture.nativeElement.textContent;
+      expect(text).toContain('Poste CAGIP');
+      expect(text).toContain('Inclus dans l’abonnement');
+    });
+
+    it('numérote les suppléments et annonce les jetons qu’ils apportent', () => {
+      setup(null, false, optionAvailable, {}, plans, noGrant, twoSeatsBilled);
+
+      const text: string = fixture.nativeElement.textContent;
+      expect(text).toContain('Supplément n° 1');
+      expect(text).toContain('70');
+      expect(text).toContain('ajoute');
+    });
+
+    it('dit qu’un poste clôturé reste compté jusqu’à la fin du mois engagé', () => {
+      setup(null, false, optionAvailable, {}, plans, noGrant, closedSeatStillCounted);
+
+      expect(fixture.nativeElement.textContent)
+        .toContain('Clôturé — compté jusqu’à la fin du mois');
+    });
+
+    it('écrit la règle de réouverture sans qu’il faille cliquer', () => {
+      setup();
+
+      const text: string = fixture.nativeElement.textContent;
+      expect(text).toContain('ne le refacture pas');
+      expect(text).toContain('ne rembourse pas le mois engagé');
+    });
+
+    it('dit qu’aucun supplément n’est facturé tant que rien n’est configuré', () => {
+      setup();
+
+      const text: string = fixture.nativeElement.textContent;
+      expect(text).toContain("Aucun supplément n'est facturé pour l'instant");
+      // Et surtout : aucun montant n'est affiché quand il n'y en a pas.
+      expect(text).not.toContain('par mois et par poste supplémentaire');
+    });
+
+    it('invite à créer un poste quand il n’y en a aucun', () => {
+      setup(null, false, optionAvailable, {}, plans, noGrant, noSeats);
+
+      expect(fixture.nativeElement.textContent).toContain("Aucun poste pour l'instant");
+    });
+
+    it('masque le volet si l’appel échoue, sans casser l’écran', () => {
+      setup(null, false, optionAvailable, {}, plans, noGrant, 'fails');
+
+      expect(component.seats()).toBeNull();
+      expect(component.plans().length).toBe(2);
+      expect(fixture.nativeElement.textContent).not.toContain('Gérer mes postes');
+    });
   });
 });

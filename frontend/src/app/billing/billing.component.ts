@@ -17,6 +17,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { AccessCodeService } from '../core/services/access-code.service';
 import { ApiKeyService } from '../core/services/api-key.service';
 import { BillingService } from '../core/services/billing.service';
+import { SeatService } from '../core/services/seat.service';
 import { UsageService } from '../core/services/usage.service';
 import { ApiError } from '../core/models/auth.models';
 import {
@@ -32,6 +33,7 @@ import {
   TopUpPack,
 } from '../core/models/billing.models';
 import { AccessGrantView } from '../core/models/access-code.models';
+import { SeatsView, SeatView } from '../core/models/seat.models';
 import { ApiKeyStatus } from '../core/models/api-key.models';
 import { UsageView } from '../core/models/usage.models';
 
@@ -75,6 +77,7 @@ export class BillingComponent implements OnInit {
   private readonly apiKeyService = inject(ApiKeyService);
   private readonly accessCodeService = inject(AccessCodeService);
   private readonly usageService = inject(UsageService);
+  private readonly seatService = inject(SeatService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
   private readonly route = inject(ActivatedRoute);
@@ -111,6 +114,11 @@ export class BillingComponent implements OnInit {
   readonly accessCodeInput = signal('');
   /** Vrai pendant l'activation d'un code (bouton désactivé). */
   readonly accessCodeInProgress = signal(false);
+  /**
+   * Postes comptés pour le mois (F-65), ou null tant qu'ils n'ont pas pu être chargés. Le volet
+   * « Postes » reste alors masqué : la facturation doit rester lisible sans lui.
+   */
+  readonly seats = signal<SeatsView | null>(null);
 
   ngOnInit(): void {
     const checkout = this.route.snapshot.queryParamMap.get('checkout');
@@ -126,6 +134,32 @@ export class BillingComponent implements OnInit {
     this.loadAtelierOption();
     this.loadApiKeyStatus();
     this.loadAccessGrant();
+    this.loadSeats();
+  }
+
+  /**
+   * Postes comptés pour la période (F-65 / SF-65-02). Échec **non bloquant** : le volet reste
+   * masqué et l'écran de facturation demeure utilisable — même règle que l'option Forge.
+   */
+  loadSeats(): void {
+    this.seatService.getSeats().subscribe({
+      next: (seats) => this.seats.set(seats),
+      error: () => this.seats.set(null),
+    });
+  }
+
+  /**
+   * Ce qu'un poste compté est, en une phrase écrite. **Jamais une couleur seule**
+   * (`DESIGN_SYSTEM` §10) : un poste clôturé mais encore compté doit dire POURQUOI il l'est, sans
+   * quoi il passerait pour une facture de trop.
+   */
+  seatRole(seat: SeatView): string {
+    if (seat.closed) {
+      return 'Clôturé — compté jusqu’à la fin du mois';
+    }
+    return seat.coveredByPlan
+      ? 'Inclus dans l’abonnement'
+      : `Supplément n° ${seat.extraSeatRank}`;
   }
 
   /**
