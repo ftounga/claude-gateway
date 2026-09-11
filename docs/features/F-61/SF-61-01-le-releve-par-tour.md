@@ -12,7 +12,7 @@
 
 ## Statut
 
-`ready`
+`done` — livrée le 2026-09-11
 
 ## Date de création
 
@@ -167,7 +167,7 @@ Aucun.
 ### Tests d'intégration
 
 - [ ] `UsageLedgerIntegrationTest` — deux tours consécutifs sur le même projet : la somme lue est
-      la somme des deux (le totalne rétrécit pas), y compris quand `workspaces.agent_input_tokens`
+      la somme des deux (le total ne rétrécit pas), y compris quand `workspaces.agent_input_tokens`
       est remis à 0 entre les deux.
 - [ ] `AccountService` — après suppression de compte, aucune ligne de journal ne subsiste.
 
