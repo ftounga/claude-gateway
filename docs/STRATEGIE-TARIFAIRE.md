@@ -48,10 +48,19 @@ payer davantage. Aligner le prix sur la valeur perçue est sain.
 
 **Mais trois objections, dont une rédhibitoire.**
 
-**(a) Nous venons de rendre le contournement gratuit.** F-48 a fait du *poste* une racine avec des
-projets dessous. Facturer au poste, c'est inviter à déclarer **un seul poste** dont la racine
-contient tous les clients — précisément ce que le produit permet désormais, et qu'on a livré hier.
-Une règle qu'un utilisateur normal contourne sans effort n'est pas une règle.
+**(a) Objection corrigée le 2026-09-11, après contestation du PO — elle ne vaut que pour un mode
+d'usage, pas pour le sien.** J'avais écrit que F-48 rendait le contournement gratuit : déclarer un
+seul poste dont la racine contient tous les clients. **C'est faux en régie.** Un poste est
+physiquement une **machine** : intervenir chez un client, c'est sa machine, son réseau, son proxy,
+son runner. Deux clients ne partagent ni disque ni réseau — on ne peut pas les réunir sous un poste.
+
+L'objection ne tient que pour le consultant travaillant **depuis sa propre machine** sur plusieurs
+projets clients : là, `~/dev` contient `client-a/` et `client-b/`, un seul runner, un seul poste, et
+la facturation au poste ne capte rien. Ce cas existe, mais il ne peut pas fonder la règle à lui seul.
+
+**Conséquence** : la facturation au poste est **légitime en régie**, et **contournable hors régie**.
+Le choix dépend donc de la clientèle visée — et c'est précisément ce que l'option A ci-dessous
+résout, en facturant l'**activité** plutôt que la déclaration.
 
 **(b) Le prix cesserait de suivre le coût.** Notre coût est proportionnel aux **tokens**, pas aux
 clients. Cinq clients dormants coûtent moins qu'un client intensif. Facturer au client, c'est
@@ -81,6 +90,13 @@ reste le prix lui-même.
 
 **Recommandation : §2 d'abord (il protège la marge quoi qu'il arrive), puis A.** B et C restent
 disponibles ; elles ne s'excluent pas.
+
+**Pourquoi A plutôt que la facturation au poste déclaré, maintenant que l'objection (a) est
+corrigée** : les deux se valent en régie — un poste actif y *est* un client. A ne devient supérieure
+que hors régie, où elle continue de facturer le travail réel là où le poste déclaré ne capterait
+rien. Elle est donc le **sur-ensemble** de l'idée du PO : même résultat dans son cas, plus robuste
+dans l'autre. Si la clientèle visée est exclusivement la régie, facturer au poste déclaré est plus
+simple à expliquer et à vendre — et c'est un argument qui compte.
 
 ---
 
