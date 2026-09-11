@@ -225,6 +225,33 @@
                 }
               </span>
             }
+            <!-- Menu de dépassement (F-69 / SF-69-02) : c'est ici que le ménage se fait, parce que
+                 cette liste est la SEULE à montrer TOUS les projets — y compris ceux rattachés à
+                 aucun poste, qui sont précisément les essais qu'on veut balayer. `$event.stopPropagation()`
+                 pour ne pas ouvrir le projet en cliquant sur le menu qui va le supprimer. -->
+            <button
+              matListItemMeta
+              mat-icon-button
+              type="button"
+              class="workspace-menu-trigger"
+              [matMenuTriggerFor]="projectMenu"
+              (click)="$event.stopPropagation()"
+              [attr.aria-label]="'Actions sur ' + workspace.name"
+              matTooltip="Actions sur ce projet"
+            >
+              <mat-icon>more_vert</mat-icon>
+            </button>
+            <mat-menu #projectMenu="matMenu">
+              <button
+                mat-menu-item
+                type="button"
+                class="workspace-menu-delete"
+                (click)="deleteWorkspace(workspace)"
+              >
+                <mat-icon>delete_outline</mat-icon>
+                <span>Supprimer le projet</span>
+              </button>
+            </mat-menu>
           </a>
         }
       </mat-nav-list>

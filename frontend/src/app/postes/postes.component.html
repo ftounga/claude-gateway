@@ -185,11 +185,37 @@
           </span>
         }
       </div>
-      @if (activityLabel(host); as activity) {
-        <span class="poste__activity" [class.poste__activity--live]="host.activeProjects > 0">
-          {{ activity }}
-        </span>
-      }
+      <div class="poste__head-side">
+        @if (activityLabel(host); as activity) {
+          <span class="poste__activity" [class.poste__activity--live]="host.activeProjects > 0">
+            {{ activity }}
+          </span>
+        }
+        <!-- Le SEUL geste destructif de cet écran (F-69 / SF-69-02), et il y est parce que les
+             postes ne sont listés nulle part ailleurs. Sous menu de dépassement, derrière un
+             dialogue, et refusé par la gateway tant qu'il reste des projets. -->
+        <button
+          mat-icon-button
+          type="button"
+          class="poste__menu-trigger"
+          [matMenuTriggerFor]="hostMenu"
+          [disabled]="deletingHostId() === host.id"
+          [attr.aria-label]="'Actions sur ' + host.name"
+          matTooltip="Actions sur ce poste"
+        >
+          @if (deletingHostId() === host.id) {
+            <mat-spinner diameter="18"></mat-spinner>
+          } @else {
+            <mat-icon>more_vert</mat-icon>
+          }
+        </button>
+        <mat-menu #hostMenu="matMenu">
+          <button mat-menu-item type="button" (click)="deleteHost(host)">
+            <mat-icon>delete_outline</mat-icon>
+            <span>Supprimer le poste</span>
+          </button>
+        </mat-menu>
+      </div>
     </header>
 
     <dl class="poste__facts">

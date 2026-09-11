@@ -178,6 +178,20 @@
     margin-left: var(--cg-space-1);
   }
 
+  /* Côté droit de l'en-tête : l'activité observée, puis le menu de dépassement (F-69 / SF-69-02).
+     Aucune couleur propre — le menu est neutre, et c'est voulu : un geste destructif ne doit pas
+     se signaler par un aplat rouge sur une carte de consultation. Le rouge n'apparaît que dans le
+     dialogue, sur le bouton `color="warn"` de la charte (§5). */
+  &__head-side {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+  }
+
+  &__menu-trigger {
+    color: var(--cg-text-secondary);
+  }
+
   &__activity {
     color: var(--cg-text-secondary);
     font-size: 12px;

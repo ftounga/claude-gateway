@@ -4,6 +4,8 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 
+import { MatDialog } from '@angular/material/dialog';
+
 import { POSTES_REFRESH_MS, PostesComponent } from './postes.component';
 import { AtelierService } from '../core/services/atelier.service';
 import { RunnerHostOverview } from '../core/models/atelier.models';
@@ -17,6 +19,9 @@ describe('PostesComponent', () => {
   let fixture: ComponentFixture<PostesComponent>;
   let component: PostesComponent;
   let service: jasmine.SpyObj<AtelierService>;
+  let dialog: jasmine.SpyObj<MatDialog>;
+  /** Ce que le dialogue de suppression renvoie : `true` = l'utilisateur a confirmé. */
+  let dialogAnswer: boolean;
 
   const poste: RunnerHostOverview = {
     id: 'h1',
@@ -54,8 +59,15 @@ describe('PostesComponent', () => {
     ],
   };
 
+  beforeEach(() => {
+    // Par défaut, l'utilisateur n'a rien confirmé : c'est l'état le plus sûr pour un test, et
+    // Jasmine tire l'ordre au sort — sans cette remise à zéro, un test en contaminerait un autre.
+    dialogAnswer = false;
+  });
+
   function setup(hosts: RunnerHostOverview[] = [poste]): void {
-    service = jasmine.createSpyObj<AtelierService>('AtelierService', ['runnerHostsOverview', 'setHostMissionStatus']);
+    service = jasmine.createSpyObj<AtelierService>('AtelierService',
+      ['runnerHostsOverview', 'setHostMissionStatus', 'deleteRunnerHost']);
     service.runnerHostsOverview.and.returnValue(of(hosts));
     build();
   }
@@ -66,16 +78,19 @@ describe('PostesComponent', () => {
    */
   function setupWithFragment(fragment: string, hosts: RunnerHostOverview[] = [poste]): void {
     service = jasmine.createSpyObj<AtelierService>('AtelierService',
-      ['runnerHostsOverview', 'setHostMissionStatus']);
+      ['runnerHostsOverview', 'setHostMissionStatus', 'deleteRunnerHost']);
     service.runnerHostsOverview.and.returnValue(of(hosts));
     build(fragment);
   }
 
   function build(fragment: string | null = null): void {
+    dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
+    dialog.open.and.returnValue({ afterClosed: () => of(dialogAnswer) } as never);
     TestBed.configureTestingModule({
       imports: [PostesComponent],
       providers: [
         { provide: AtelierService, useValue: service },
+        { provide: MatDialog, useValue: dialog },
         provideRouter([]),
         provideNoopAnimations(),
         // Déclaré APRÈS `provideRouter` : c'est ce jeton-là que l'écran lit pour son ancrage.
@@ -533,6 +548,86 @@ describe('PostesComponent', () => {
       expect(scroll).toHaveBeenCalledTimes(1);
     });
   });
+
+  // ------------------------------------------- suppression d'un poste (F-69 / SF-69-02)
+
+  it('propose « Supprimer le poste » dans le menu de la carte', () => {
+    setup();
+    const trigger = (fixture.nativeElement as HTMLElement)
+      .querySelector('.poste__menu-trigger') as HTMLButtonElement;
+
+    expect(trigger).not.toBeNull();
+    trigger.click();
+    fixture.detectChanges();
+
+    expect(document.body.textContent).toContain('Supprimer le poste');
+  });
+
+  it('ouvre le dialogue en lui passant le nombre de projets restants', () => {
+    setup();
+
+    component.deleteHost(component.hosts()[0]);
+
+    expect(dialog.open).toHaveBeenCalled();
+    const data = dialog.open.calls.mostRecent().args[1]?.data as {
+      hostName: string;
+      remainingProjects: number;
+    };
+    expect(data.hostName).toBe('Poste CAGIP');
+    expect(data.remainingProjects).toBe(2);
+  });
+
+  it("n'appelle rien quand le dialogue est refermé sans confirmer", () => {
+    setup();
+
+    component.deleteHost(component.hosts()[0]);
+
+    expect(service.deleteRunnerHost).not.toHaveBeenCalled();
+    expect(component.hosts().length).toBe(1);
+  });
+
+  it('supprime le poste confirmé et retire sa carte', () => {
+    dialogAnswer = true;
+    setup([{ ...poste, projects: [] }]);
+    service.deleteRunnerHost.and.returnValue(of(void 0));
+
+    component.deleteHost(component.hosts()[0]);
+    fixture.detectChanges();
+
+    expect(service.deleteRunnerHost).toHaveBeenCalledOnceWith('h1');
+    expect(component.hosts()).toEqual([]);
+  });
+
+  it('garde la carte quand la gateway refuse, et relit la vue', () => {
+    // Le compte exact vient du serveur : l'écran pouvait être en retard d'un projet créé ailleurs.
+    dialogAnswer = true;
+    setup([{ ...poste, projects: [] }]);
+    service.deleteRunnerHost.and.returnValue(throwError(() => new HttpErrorResponse({
+      status: 409,
+      error: { error: 'host_has_projects', message: '« Poste CAGIP » porte encore 3 projets.' },
+    })));
+
+    component.deleteHost(component.hosts()[0]);
+    fixture.detectChanges();
+
+    // La carte reste : rien n'a été supprimé, l'écran ne doit pas prétendre le contraire.
+    expect(component.hosts().length).toBe(1);
+    // Et la vue est relue — deux lectures : celle de l'ouverture, celle d'après l'échec.
+    expect(service.runnerHostsOverview).toHaveBeenCalledTimes(2);
+  });
+
+  it('garde la carte quand le réseau ne répond pas', () => {
+    dialogAnswer = true;
+    setup([{ ...poste, projects: [] }]);
+    service.deleteRunnerHost.and.returnValue(throwError(() => new HttpErrorResponse({ status: 0 })));
+
+    component.deleteHost(component.hosts()[0]);
+    fixture.detectChanges();
+
+    expect(component.hosts().length).toBe(1);
+    expect(component.deletingHostId()).toBeNull();
+  });
+
 });
 
 /** Le DOM rend les couleurs en `rgb(...)` : on compare ce qu'il rend, pas ce qu'on a écrit. */
