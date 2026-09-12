@@ -17,6 +17,15 @@ spring:
           auth: ${MAIL_SMTP_AUTH:true}
           starttls:
             enable: ${MAIL_SMTP_STARTTLS:true}
+          # F-77 — Délais d'attente SMTP BORNÉS. Sans ces trois propriétés, JavaMail attend
+          # INDÉFINIMENT : le 2026-09-12 le relais Brevo a mis 70 s à répondre, MailHealthIndicator
+          # a mis 70 s à rendre, et tout ce qui interroge /api/actuator/health a attendu 70 s avec
+          # lui. Sortir le courrier des sondes protège les sondes ; borner l'attente protège TOUT
+          # LE RESTE (supervision, healthcheck CI, envoi d'un e-mail de réinitialisation).
+          # Valeurs en millisecondes. Au-delà, l'indicateur rend DOWN — ce qui est la vérité.
+          connectiontimeout: ${MAIL_CONNECT_TIMEOUT_MS:5000}
+          timeout: ${MAIL_READ_TIMEOUT_MS:5000}
+          writetimeout: ${MAIL_WRITE_TIMEOUT_MS:5000}
   servlet:
     multipart:
       # Plafonds de téléversement (F-04). Alignés sur app.upload.max-size (défaut 32 Mo) ; la marge
@@ -32,9 +41,34 @@ management:
     web:
       exposure:
         include: health,info
+  # F-77 — Sondes Kubernetes. TOUT est posé explicitement ici, pour TOUS les profils : un défaut
+  # de Spring Boot qui changerait de version rouvrirait la panne du 2026-09-12 sans qu'aucune ligne
+  # du dépôt n'ait bougé.
+  health:
+    # Les indicateurs d'état d'application (livenessState / readinessState) sont les MEMBRES des
+    # groupes ci-dessous. Sans eux, les groupes seraient vides — ou le contexte refuserait de
+    # démarrer (validate-group-membership). On ne les hérite pas : on les demande.
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
   endpoint:
     health:
       show-details: always
+      # Expose /actuator/health/{liveness,readiness} — les chemins que lisent les sondes de
+      # k8s/base/backend/deployment.yaml.
+      probes:
+        enabled: true
+      group:
+        # « Le processus est-il vivant ? » Rien de joignable par le réseau ici : c'est précisément
+        # un indicateur réseau (le SMTP) qui a fait tuer les quatre pods le 2026-09-12.
+        liveness:
+          include: livenessState
+        # « Peut-il recevoir du trafic ? » La BASE en fait partie — un pod sans base ne sert rien
+        # d'utile — et le défaut de Spring ne l'y met PAS (groupe auto-configuré = readinessState
+        # seul). Le COURRIER n'y sera jamais : on n'a pas besoin du SMTP pour servir une requête.
+        readiness:
+          include: readinessState,db
 app:
   # URL du frontend, utilisée pour construire les liens d'e-mail (vérification, reset) et
   # la redirection post-connexion OAuth.
