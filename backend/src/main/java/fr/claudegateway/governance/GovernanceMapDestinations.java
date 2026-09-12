@@ -86,7 +86,26 @@ public class GovernanceMapDestinations {
         if (userId == null || host == null) {
             return Map.of();
         }
-        return index(activationsOf(userId, host));
+        return index(activationsOf(userId, host), GovernanceFileKind.MAP::equals);
+    }
+
+    /**
+     * Les fichiers que les paquets actifs déposent <b>dans chaque projet</b> du poste — gabarits et
+     * skills —, indexés par chemin (F-94 / SF-94-01).
+     *
+     * <p>C'est le pendant de {@link #filesOf} pour l'autre point de chute. Le juge indépendant s'en
+     * sert pour reconnaître un <b>gabarit jamais touché</b> : un fichier de projet dont le contenu
+     * est exactement celui qui a été déposé ne porte aucun fait, seulement les exemples du gabarit,
+     * et l'envoyer au juge fabriquerait des alertes fantômes dès le premier projet. Comme pour la
+     * carte, la liste est celle des paquets <b>réellement actifs</b> : une liste de noms gravée dans
+     * le code mentirait au premier gabarit ajouté.</p>
+     */
+    @Transactional(readOnly = true)
+    public Map<String, GovernancePackageFile> projectFilesOf(UUID userId, GovernanceHostRef host) {
+        if (userId == null || host == null) {
+            return Map.of();
+        }
+        return index(activationsOf(userId, host), kind -> kind != GovernanceFileKind.MAP);
     }
 
     /**
@@ -157,8 +176,9 @@ public class GovernanceMapDestinations {
         }
     }
 
-    /** Les fichiers {@code MAP} des paquets encore publiés, dédoublonnés par chemin. */
-    private Map<String, GovernancePackageFile> index(List<GovernanceActivation> active) {
+    /** Les fichiers des paquets encore publiés retenus par {@code kinds}, dédoublonnés par chemin. */
+    private Map<String, GovernancePackageFile> index(List<GovernanceActivation> active,
+            java.util.function.Predicate<GovernanceFileKind> kinds) {
         Map<String, GovernancePackageFile> expected = new LinkedHashMap<>();
         for (GovernanceActivation activation : active) {
             Optional<GovernancePackage> pkg = published(activation.getPackageId());
@@ -166,7 +186,7 @@ public class GovernanceMapDestinations {
                 continue; // Paquet dépublié ou effacé depuis : sa carte n'est plus attendue.
             }
             for (GovernancePackageFile file : filesOf(pkg.get().getId())) {
-                if (file.getKind() != GovernanceFileKind.MAP) {
+                if (file.getKind() == null || !kinds.test(file.getKind())) {
                     continue;
                 }
                 String path = GovernancePath.normalizeOrNull(file.getPath());
