@@ -98,7 +98,11 @@ app:
   upload:
     # Liste blanche des types MIME acceptés (types supportés par Claude) et plafond de taille (F-04).
     # Décision réversible : ajustable sans changement de code.
-    allowed-types: ${APP_UPLOAD_ALLOWED_TYPES:application/pdf,image/png,image/jpeg,image/gif,image/webp,text/plain,text/markdown,text/csv}
+    # `.docx` (F-86 / SF-86-03) : accepté ici, et CONVERTI EN TEXTE avant transmission — le
+    # fournisseur ne lit pas les `.docx` (un bloc `document` prend du PDF ou du texte). Ajouter le
+    # type suffit à le faire apparaître dans le sélecteur de pièce jointe : SF-85-01 fait dériver
+    # l'accept de GET /api/file-formats. Aucune ligne de frontend à toucher.
+    allowed-types: ${APP_UPLOAD_ALLOWED_TYPES:application/pdf,image/png,image/jpeg,image/gif,image/webp,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document}
     max-size: ${APP_UPLOAD_MAX_SIZE:32MB}
   atelier:
     # Atelier / Claude Code Lite (F-28). Stockage `in-memory` par défaut (dev/tests, sans S3) ;

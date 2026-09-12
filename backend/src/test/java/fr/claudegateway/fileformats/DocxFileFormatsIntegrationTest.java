@@ -16,6 +16,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import fr.claudegateway.auth.JwtService;
 import fr.claudegateway.ocr.OcrProperties;
+import fr.claudegateway.upload.UploadProperties;
 import fr.claudegateway.user.AuthProvider;
 import fr.claudegateway.user.User;
 import fr.claudegateway.user.UserRepository;
@@ -50,6 +51,9 @@ class DocxFileFormatsIntegrationTest {
     @Autowired
     private OcrProperties ocrProperties;
 
+    @Autowired
+    private UploadProperties uploadProperties;
+
     private String token;
 
     @BeforeEach
@@ -67,6 +71,16 @@ class DocxFileFormatsIntegrationTest {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.documents.mediaTypes", hasItem(OcrProperties.DOCX_MEDIA_TYPE)));
+    }
+
+    @Test
+    void wordIsAlsoPublishedForConversationAttachments() throws Exception {
+        // SF-86-03 : le sélecteur de pièce jointe le propose pour la même raison, sans frontend.
+        mockMvc.perform(get("/api/file-formats").contextPath("/api")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.attachments.mediaTypes", hasItem(OcrProperties.DOCX_MEDIA_TYPE)));
+        assertThat(uploadProperties.allowedTypeSet()).contains(OcrProperties.DOCX_MEDIA_TYPE);
     }
 
     @Test
