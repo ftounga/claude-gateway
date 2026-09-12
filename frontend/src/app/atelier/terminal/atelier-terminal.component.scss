@@ -584,6 +584,37 @@
   }
 }
 
+// Portée de ce qu'on autorise (F-73 / SF-73-03). Aucune couleur nouvelle : le bloc `.terminal-ask`
+// porte déjà l'orange de charte depuis F-33, la mention emprunte sa couleur de texte. Ce n'est pas
+// un quatrième registre de couleur — c'est du texte dans un bloc qui en a déjà un.
+.terminal-ask-scope {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-2);
+  margin: 0 0 var(--cg-space-2);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--cg-surface);
+
+  strong {
+    font-weight: 600;
+  }
+}
+
+.terminal-ask-scope-detail {
+  display: block;
+  margin-top: 4px;
+  opacity: 0.85;
+}
+
+.terminal-ask-scope-icon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+}
+
 .terminal-ask-actions {
   display: flex;
   align-items: center;

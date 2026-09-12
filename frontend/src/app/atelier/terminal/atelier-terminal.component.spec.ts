@@ -539,6 +539,82 @@ describe('AtelierTerminalComponent', () => {
     expect(buttons.every((b) => b.disabled)).toBeTrue();
   });
 
+  // ---- F-73 / SF-73-03 : ce que l'écran dit au moment d'autoriser ----
+
+  /** Invite en attente, telle qu'elle arrive quand la porte est armée. */
+  function asking(): void {
+    component.pendingConfirmation = {
+      toolUseId: 'sevt_1',
+      source: 'LOCAL_MACHINE',
+      tool: 'bash',
+      detail: 'cat .env',
+      answering: false,
+      denying: false,
+      reason: '',
+      deadline: null,
+      timeoutMs: null,
+    };
+  }
+
+  it("dit la portée de ce qu'on autorise quand la commande part sur la machine", () => {
+    asking();
+    component.executionTarget = 'RUNNER';
+    fixture.detectChanges();
+
+    const scope = fixture.nativeElement.querySelector('.terminal-ask-scope') as HTMLElement;
+    expect(scope).not.toBeNull();
+    // Le confinement est retiré (F-73 / SF-73-01) : ce que l'utilisateur lit ici est la seule
+    // chose qui reste entre lui et une fuite de secret client.
+    expect(scope.textContent).toContain('avec les droits de votre compte');
+    expect(scope.textContent).toContain("n'est pas limité au dossier du projet");
+  });
+
+  it("place la portée dans l'invite, avant les boutons", () => {
+    asking();
+    component.executionTarget = 'RUNNER';
+    fixture.detectChanges();
+
+    const ask = fixture.nativeElement.querySelector('.terminal-ask') as HTMLElement;
+    // Dans le role="alertdialog" : lue par un lecteur d'écran à l'annonce de l'invite.
+    expect(ask.getAttribute('role')).toBe('alertdialog');
+    const scope = ask.querySelector('.terminal-ask-scope') as HTMLElement;
+    const actions = ask.querySelector('.terminal-ask-actions') as HTMLElement;
+    expect(scope).not.toBeNull();
+    expect(scope.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy();
+  });
+
+  it("ne dit rien de la machine quand le projet s'exécute dans le bac à sable", () => {
+    asking();
+    component.executionTarget = 'SANDBOX';
+    fixture.detectChanges();
+
+    // Le bac à sable est jetable et ne touche pas la machine : y écrire la même phrase serait faux.
+    expect(fixture.nativeElement.querySelector('.terminal-ask-scope')).toBeNull();
+  });
+
+  it("n'affiche aucune mention de portée sans invite en attente", () => {
+    component.executionTarget = 'RUNNER';
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.terminal-ask-scope')).toBeNull();
+  });
+
+  it("garde la mention d'élévation après celle de portée", () => {
+    asking();
+    component.executionTarget = 'RUNNER';
+    component.runnerElevated = true;
+    fixture.detectChanges();
+
+    const ask = fixture.nativeElement.querySelector('.terminal-ask') as HTMLElement;
+    const scope = ask.querySelector('.terminal-ask-scope') as HTMLElement;
+    const elevated = ask.querySelector('.terminal-ask-elevated') as HTMLElement;
+    expect(elevated).not.toBeNull();
+    // La portée d'abord (elle vaut toujours), les droits ensuite (ils varient).
+    expect(scope.compareDocumentPosition(elevated) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy();
+  });
+
   it("dit l'état de l'option de validation et émet sa bascule", () => {
     component.askBeforeBash = true;
     fixture.detectChanges();
