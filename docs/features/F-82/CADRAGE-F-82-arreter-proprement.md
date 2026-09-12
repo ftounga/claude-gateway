@@ -151,6 +151,44 @@ Les chemins d'exemple disaient la même chose : `C:\Users\moi\projets\mon-projet
 
 Livré avec D5, dans **SF-82-04** : même parcours, même fichier, même décision.
 
+## 5 quater. D7 — Deux endroits pour connecter, un seul modèle
+
+Ajouté le 2026-09-12, après que le PO a demandé : *« on est d'accord que la connexion se fait par
+poste uniquement, pas par projet ? »*. Vérification faite, les deux gestes existent **aux deux
+endroits** :
+
+| Geste | Terminal d'un projet | Carte du poste |
+|---|---|---|
+| Connecter | `atelier.component.ts:1765` | oui |
+| Couper la liaison | `atelier-terminal.component.html:229` | ajouté par SF-82-02 |
+
+SF-82-04 a supprimé l'**ambiguïté** (les deux modes demandent la racine du poste), pas le **chemin**.
+D7 tranche le chemin — et il le tranche **différemment pour chaque geste**, parce qu'ils ne servent
+pas le même moment.
+
+### Connecter depuis le terminal d'un projet → **retiré**
+
+Le cas réel qu'il couvre est : *« je suis dans mon projet, le poste est éteint, je veux le
+rallumer »*. Ce n'est pas une **connexion**, c'est une **reprise** — et SF-82-04 vient de mettre la
+commande de reprise en premier. La moitié utile est déjà couverte.
+
+Ce qui reste après retrait : une machine **jamais appairée** se connecte depuis `/forge`. Un clic de
+plus, **une fois par machine**, contre un parcours qui cesse définitivement de laisser croire qu'on
+appaire un dossier.
+
+À la place, dans le terminal : **un état, pas un bouton d'action**. Le nom du poste, son état, la
+commande de reprise quand elle a un sens, et un lien vers la carte du poste.
+
+### Couper la liaison depuis le terminal → **gardé**
+
+C'est le geste d'**urgence**. Quand ça se passe mal, l'utilisateur est **dans le terminal en train de
+le regarder** : l'obliger à naviguer pour arrêter une machine qui déraille ajoute une étape au pire
+moment. SF-38-08 le dit déjà — « le bouton qu'on cherche quand ça se passe mal ».
+
+**Mais une seule formulation.** Aujourd'hui le terminal promet **moins** que ce qu'il fait : ni les
+projets ramenés au bac à sable, ni le processus qui continue de tourner sur la machine. Les deux
+boutons doivent partager **la confirmation de SF-82-02** — celle qui nomme les projets un par un.
+
 ## 6. Découpage
 
 | | |
