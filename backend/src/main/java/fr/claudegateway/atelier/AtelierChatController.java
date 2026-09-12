@@ -367,6 +367,21 @@ public class AtelierChatController {
                 }
 
                 /**
+                 * Un BLOC RICHE posé dans le fil (F-89 / SF-89-02) : carte, moments, liste. Relayé
+                 * au fil de l'eau, comme le plan — un compte rendu qui n'apparaîtrait qu'à la fin
+                 * du tour laisserait l'écran muet pendant qu'un agent lit trente fils.
+                 *
+                 * <p>Le bloc est déjà VALIDÉ : l'écran n'a rien à filtrer, et c'est exactement ce
+                 * qu'on veut — un écran qui écarterait les lignes sans source afficherait un compte
+                 * rendu amputé sans le dire.</p>
+                 */
+                @Override
+                public void onCard(String toolUseId,
+                        fr.claudegateway.teams.block.TeamsBlockCard card) {
+                    turn.publish("card", new StreamCard(toolUseId, card));
+                }
+
+                /**
                  * Une demande d'autorisation n'est plus seulement relayée : elle devient l'ÉTAT du
                  * tour (F-84 / SF-84-03). Un écran qui arrive après coup la trouve encore en
                  * attente, au lieu de l'avoir manquée avec le flux qui la portait.
@@ -417,6 +432,13 @@ public class AtelierChatController {
                 .toList());
     }
 
+
+    /**
+     * Un bloc riche relayé au fil de l'eau (F-89 / SF-89-02). Il porte le même {@code toolUseId} que
+     * le bloc de transcription qui le rejouera au rechargement : l'écran remplace, il n'empile pas.
+     */
+    record StreamCard(String toolUseId, fr.claudegateway.teams.block.TeamsBlockCard card) {
+    }
 
     /** Charges utiles JSON des événements SSE. */
     record StreamText(String text) {

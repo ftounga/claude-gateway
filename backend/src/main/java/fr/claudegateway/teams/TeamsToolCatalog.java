@@ -72,6 +72,20 @@ public class TeamsToolCatalog {
             READ_CONVERSATION, MENTIONS, SEARCH, FIND_MEETINGS, MEETING_TRANSCRIPT,
             MEETING_RECORDING);
 
+    /** La <b>carte de réunion</b> (F-89 / SF-89-02) : des sections de lignes sourcées. */
+    public static final String MEETING_CARD = "teams_meeting_card";
+
+    /** La <b>liste</b> (F-89 / SF-89-02) : engagements, mentions. */
+    public static final String LIST = "teams_list";
+
+    /** Les <b>moments</b> (F-89 / SF-89-02) : l'image, à côté de la phrase prononcée. */
+    public static final String MOMENTS = "teams_moments";
+
+    /** Vrai si ce nom d'outil est un outil de <b>présentation</b>, qui pose un bloc dans le fil. */
+    public static boolean isPresentation(String tool) {
+        return MEETING_CARD.equals(tool) || LIST.equals(tool) || MOMENTS.equals(tool);
+    }
+
     /**
      * Préfixe commun à tous les outils du volet. Sert à une seule chose, mais elle compte : un test
      * peut vérifier qu'<b>aucun</b> outil commençant par {@code teams_} n'est donné là où le droit
@@ -117,6 +131,7 @@ public class TeamsToolCatalog {
                         + "commande exacte à lancer.",
                 Map.of("type", "object", "properties", Map.of())));
         tools.addAll(readingTools());
+        tools.addAll(presentationTools());
         return List.copyOf(tools);
     }
 
@@ -205,7 +220,119 @@ public class TeamsToolCatalog {
                 Map.of("type", "object",
                         "properties", Map.of("meeting_id", text),
                         "required", List.of("meeting_id"))));
+        return tools;
+    }
 
+    /**
+     * <b>Les outils de présentation</b> (F-89 / SF-89-02) : ceux par lesquels l'agent <b>pose un
+     * bloc</b> dans le fil plutôt que d'écrire du texte.
+     *
+     * <p>Ils vivent dans ce catalogue, donc sous la même garde : un terminal de projet ne les reçoit
+     * <b>jamais</b>. C'est la règle non négociable du cadrage — <i>un terminal de projet reste
+     * textuel pour toujours</i> — tenue par construction plutôt que par consigne.</p>
+     *
+     * <p><b>Trois schémas, et pas un champ de score.</b> La certitude est une énumération de deux
+     * mots. Ce n'est pas une préférence de rédaction : un chiffre donnerait une apparence de mesure
+     * à une interprétation, et « 82 % » se lit comme une mesure.</p>
+     */
+    private List<AgentTool> presentationTools() {
+        Map<String, Object> text = Map.of("type", "string");
+        Map<String, Object> lineSchema = Map.of("type", "object",
+                "properties", Map.of(
+                        "text", Map.of("type", "string",
+                                "description", "L'affirmation, en une phrase."),
+                        "author", Map.of("type", "string",
+                                "description", "Qui l'a écrite ou dite."),
+                        "at", Map.of("type", "string",
+                                "description", "Quand, au format ISO-8601, tel que l'outil de "
+                                        + "lecture te l'a rendu. Ne le reformate pas."),
+                        "messageId", Map.of("type", "string",
+                                "description", "Identifiant du message source, tel que rendu."),
+                        "webUrl", Map.of("type", "string",
+                                "description", "Lien qui ouvre le fil à ce message."),
+                        "certainty", Map.of("type", "string",
+                                "enum", List.of("EXPLICITE", "A_CONFIRMER"),
+                                "description", "EXPLICITE si c'est écrit noir sur blanc dans le "
+                                        + "message ; A_CONFIRMER si c'est TA lecture de ce qui est "
+                                        + "écrit. Dans le doute, A_CONFIRMER.")),
+                "required", List.of("text"));
+        Map<String, Object> linesSchema = Map.of("type", "array", "items", lineSchema);
+        Map<String, Object> gapsSchema = Map.of("type", "array", "items", text,
+                "description", "CE QUE TU N'AS PAS PU LIRE, tel que les outils de lecture te l'ont "
+                        + "rendu : messages non reconnus, fil non atteint, plafond touché. "
+                        + "Obligatoire. Une liste vide signifie « aucun manque signalé » — elle ne "
+                        + "signifie jamais « j'ai tout lu ».");
+        Map<String, Object> windowSchema = Map.of("type", "string",
+                "description", "La fenêtre RÉELLEMENT lue, en toutes lettres : « du 5 au 12 "
+                        + "septembre, 47 messages lus ». Jamais celle que tu avais demandée.");
+
+        List<AgentTool> tools = new ArrayList<>();
+        tools.add(new AgentTool(MEETING_CARD,
+                "Pose dans le fil la CARTE d'une réunion ou d'une conversation. Chaque ligne doit "
+                        + "porter sa source : sans `messageId` ni `webUrl`, la ligne est REFUSÉE et "
+                        + "la carte entière avec elle — ce qu'on affirme doit pouvoir s'ouvrir d'un "
+                        + "clic. Mets en PREMIÈRE section ce qu'on attend du lecteur : c'est ce "
+                        + "qu'il cherche, et il ne doit pas avoir à faire défiler pour le trouver.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "title", Map.of("type", "string",
+                                        "description", "Le sujet de la réunion."),
+                                "subtitle", Map.of("type", "string",
+                                        "description", "Date, durée, participants."),
+                                "window", windowSchema,
+                                "sections", Map.of("type", "array",
+                                        "items", Map.of("type", "object",
+                                                "properties", Map.of(
+                                                        "title", text,
+                                                        "lines", linesSchema),
+                                                "required", List.of("title", "lines"))),
+                                "gaps", gapsSchema),
+                        "required", List.of("title", "window", "sections", "gaps"))));
+        tools.add(new AgentTool(LIST,
+                "Pose dans le fil une LISTE — des engagements, des mentions. Mêmes règles que la "
+                        + "carte : chaque ligne porte sa source, et chaque ligne dit si elle est "
+                        + "EXPLICITE ou A_CONFIRMER.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "title", Map.of("type", "string",
+                                        "description", "« Ce qu'on attend de vous », "
+                                                + "« Vos engagements », « Vos mentions »."),
+                                "subtitle", text,
+                                "window", windowSchema,
+                                "lines", linesSchema,
+                                "gaps", gapsSchema),
+                        "required", List.of("title", "window", "lines", "gaps"))));
+        tools.add(new AgentTool(MOMENTS,
+                "Pose dans le fil des MOMENTS : une image de ce qui était à l'écran, à côté de la "
+                        + "phrase prononcée pendant qu'elle l'était. C'est l'HORODATAGE qui les "
+                        + "rapproche — un moment sans heure est refusé. N'invente jamais un "
+                        + "`imageId` : si tu n'en as pas, rends le moment sans image.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "title", Map.of("type", "string",
+                                        "description", "Le sujet de la réunion."),
+                                "subtitle", text,
+                                "window", windowSchema,
+                                "moments", Map.of("type", "array",
+                                        "items", Map.of("type", "object",
+                                                "properties", Map.of(
+                                                        "at", Map.of("type", "string",
+                                                                "description", "Instant de la "
+                                                                        + "phrase, ISO-8601."),
+                                                        "quote", Map.of("type", "string",
+                                                                "description", "Ce qui a été dit."),
+                                                        "speaker", text,
+                                                        "imageId", Map.of("type", "string",
+                                                                "description", "Image remontée de "
+                                                                        + "la machine, si tu en as "
+                                                                        + "une."),
+                                                        "webUrl", Map.of("type", "string",
+                                                                "description", "Lien qui ouvre la "
+                                                                        + "transcription à la "
+                                                                        + "seconde.")),
+                                                "required", List.of("at", "quote"))),
+                                "gaps", gapsSchema),
+                        "required", List.of("title", "window", "moments", "gaps"))));
         return tools;
     }
 }

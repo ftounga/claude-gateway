@@ -103,6 +103,24 @@ public interface AtelierProgressListener {
         // Aucun relais : mode synchrone.
     }
 
+    /**
+     * <b>Un bloc riche posé dans le fil</b> (F-89 / SF-89-02) : carte de réunion, moments, liste.
+     *
+     * <p>Relayé au fil de l'eau comme le plan, et pour la même raison : le bloc est le <b>travail
+     * rendu</b>, pas un résumé de fin de tour — le voir arriver est ce qui fait qu'on n'attend pas
+     * devant un écran muet pendant qu'un agent lit trente fils.</p>
+     *
+     * <p>Volontairement <b>par défaut neutre</b> : additif, le mode synchrone n'a personne à qui
+     * relayer, et le bloc est de toute façon écrit dans la transcription du tour.</p>
+     *
+     * @param toolUseId identifiant de l'appel qui a posé le bloc — le même que celui du bloc de
+     *                  transcription, pour que l'écran ne l'affiche pas deux fois
+     * @param card      le bloc, déjà validé : l'écran ne valide rien
+     */
+    default void onCard(String toolUseId, fr.claudegateway.teams.block.TeamsBlockCard card) {
+        // Aucun relais : le bloc reste dans la transcription du tour.
+    }
+
     /** Listener neutre : n'émet rien (mode synchrone historique). */
     AtelierProgressListener NOOP = new AtelierProgressListener() {
         @Override

@@ -87,6 +87,21 @@ public class StubAiAgentProvider implements AiAgentProvider {
      * renvoyer un {@code tool_use} sans id exploitable, et la boucle doit alors en fabriquer un
      * (F-38 / SF-38-05, contrat de messages §1).
      */
+    /**
+     * Empile un tour « appel d'outil » dont l'entrée <b>entière</b> est un objet JSON — la seule
+     * forme utilisable pour un outil à plusieurs champs structurés (F-89 / SF-89-02).
+     */
+    public void enqueueToolCallWithObject(String toolName, String json) {
+        try {
+            List<AgentToolCall> calls = new ArrayList<>();
+            calls.add(new AgentToolCall("tool_" + (idSeq++), toolName,
+                    (ObjectNode) mapper.readTree(json)));
+            script.add(new AgentTurn("", calls, false, 5, 5));
+        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
+            throw new IllegalArgumentException("JSON de test invalide", ex);
+        }
+    }
+
     public void enqueueToolCallWithoutId(String toolName) {
         List<AgentToolCall> calls = new ArrayList<>();
         calls.add(new AgentToolCall(null, toolName, mapper.createObjectNode()));

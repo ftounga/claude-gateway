@@ -213,6 +213,12 @@ public class AtelierChatService implements RelayInterruptTarget {
      * celle d'avant F-89, à l'identique.
      */
     private final fr.claudegateway.teams.TeamsToolCatalog teamsToolCatalog;
+    /**
+     * Images des moments (F-89 / SF-89-02). {@code null} pour les formes de service antérieures au
+     * volet Teams : un moment qui nomme une image est alors refusé, ce qui est le bon défaut — on
+     * ne pose jamais un bloc qui renvoie à une image dont on ne sait rien.
+     */
+    private final fr.claudegateway.teams.block.TeamsMomentImageService momentImages;
 
     /**
      * Tours pour lesquels une interruption a été demandée (F-38 / SF-38-07, même geste que F-32).
@@ -286,7 +292,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 gitWorkspaceService, runnerToolGateway, runnerCallDispatcher, confirmationGate,
                 runnerAuditService, relayBroadcaster, runnerHostService, atelierProperties,
                 AtelierCheckpointRunner.none(), ProjectRulesSource.NONE,
-                fr.claudegateway.teams.TeamsToolCatalog.none());
+                fr.claudegateway.teams.TeamsToolCatalog.none(), null);
     }
 
     /**
@@ -309,7 +315,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 gitWorkspaceService, runnerToolGateway, runnerCallDispatcher, confirmationGate,
                 runnerAuditService, relayBroadcaster, runnerHostService, atelierProperties,
                 checkpointRunner, ProjectRulesSource.NONE,
-                fr.claudegateway.teams.TeamsToolCatalog.none());
+                fr.claudegateway.teams.TeamsToolCatalog.none(), null);
     }
 
     /**
@@ -331,7 +337,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         this(workspaceService, messageRepository, agentProvider, byokKeyService, quotaService,
                 gitWorkspaceService, runnerToolGateway, runnerCallDispatcher, confirmationGate,
                 runnerAuditService, relayBroadcaster, runnerHostService, atelierProperties,
-                checkpointRunner, projectRules, fr.claudegateway.teams.TeamsToolCatalog.none());
+                checkpointRunner, projectRules, fr.claudegateway.teams.TeamsToolCatalog.none(),
+                null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -347,9 +354,11 @@ public class AtelierChatService implements RelayInterruptTarget {
             AtelierProperties atelierProperties,
             AtelierCheckpointRunner checkpointRunner,
             ProjectRulesSource projectRules,
-            fr.claudegateway.teams.TeamsToolCatalog teamsToolCatalog) {
+            fr.claudegateway.teams.TeamsToolCatalog teamsToolCatalog,
+            fr.claudegateway.teams.block.TeamsMomentImageService momentImages) {
         this.teamsToolCatalog = teamsToolCatalog == null
                 ? fr.claudegateway.teams.TeamsToolCatalog.none() : teamsToolCatalog;
+        this.momentImages = momentImages;
         this.checkpointRunner = checkpointRunner;
         this.projectRules = projectRules == null ? ProjectRulesSource.NONE : projectRules;
         this.workspaceService = workspaceService;
@@ -480,6 +489,14 @@ public class AtelierChatService implements RelayInterruptTarget {
         List<AtelierToolTrace.Step> trace = new ArrayList<>();
         /** Transcription rendue à l'écran au rechargement (SF-39-17), bornée à la persistance. */
         List<AtelierTurnReport.Block> transcript = new ArrayList<>();
+        /**
+         * Blocs riches posés pendant ce tour (F-89 / SF-89-02), par identifiant d'appel. Local au
+         * TOUR, jamais au service : celui-ci est un singleton partagé par tous les utilisateurs, et
+         * un champ d'instance ferait fuiter le compte rendu de l'un chez l'autre — même parade que
+         * pour le plan (SF-39-13).
+         */
+        java.util.Map<String, fr.claudegateway.teams.block.TeamsBlockCard> cardsOfTurn =
+                new java.util.HashMap<>();
         int inputTokens = 0;
         int outputTokens = 0;
         /**
@@ -650,7 +667,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                         outcome = explored.outcome();
                     }
                 } else {
-                    outcome = executeTool(userId, workspace, callId, call, listener, deadline, planOfTurn);
+                    outcome = executeTool(userId, workspace, callId, call, listener, deadline,
+                            planOfTurn, cardsOfTurn);
                 }
                 // Mémoire des écritures du tour (F-50 / SF-50-02), prise AVANT le crochet : un
                 // fichier bloqué reste un fichier écrit, et le contrôle de fin de tour doit le voir.
@@ -677,7 +695,11 @@ public class AtelierChatService implements RelayInterruptTarget {
                 // passé — l'acquis §4 n°7 de F-30 ne valait pas pour le moteur qui exécute.
                 transcript.add(new AtelierTurnReport.Block(call.name(), auditTarget(call), callId,
                         null, outcome.content() == null ? "" : outcome.content(),
-                        outcome.content() != null, outcome.isError(), false));
+                        outcome.content() != null, outcome.isError(), false,
+                        // Le BLOC RICHE (F-89 / SF-89-02), s'il y en a un : c'est ce qui fait
+                        // qu'une carte de réunion survit au rechargement, comme le reste du fil.
+                        // `null` partout ailleurs — donc dans tout terminal de projet.
+                        cardsOfTurn.get(callId)));
             }
             messages.add(AgentMessage.assistant(assistantBlocks));
             messages.add(AgentMessage.toolResults(toolResults));
@@ -942,6 +964,77 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
+     * Pose un <b>bloc riche</b> dans le fil (F-89 / SF-89-02) : carte de réunion, liste, moments.
+     *
+     * <h2>Le second verrou de la règle non négociable</h2>
+     *
+     * <p>Le premier est que ces outils ne sont pas <b>déclarés</b> hors d'un terminal Teams
+     * ({@code TeamsToolCatalog}). Celui-ci refuse l'appel <b>même si le modèle nomme l'outil de
+     * lui-même</b> — ce qu'il peut faire : la boucle relaie les outils non déclarés au lieu de les
+     * refuser d'emblée. Les deux verrous ne sont donc pas redondants, et la règle tient :
+     * <i>un terminal de projet reste textuel pour toujours</i>.</p>
+     *
+     * <h2>Échouer bruyamment</h2>
+     *
+     * <p>Un bloc sans source, sans fenêtre de lecture ou sans déclaration de ses manques est
+     * <b>refusé</b>, et l'agent reçoit le motif — pas un « invalid input », une phrase qui dit quoi
+     * corriger. Aucun bloc n'est posé au passage : on n'affiche jamais la moitié d'un compte rendu.</p>
+     */
+    private ToolOutcome applyTeamsBlock(UUID userId, Workspace workspace, String callId,
+            AgentToolCall call, AtelierProgressListener listener,
+            java.util.Map<String, fr.claudegateway.teams.block.TeamsBlockCard> cardsOfTurn) {
+        if (!workspace.isTeamsTerminal()) {
+            return ToolOutcome.error("Ce terminal n'affiche que du texte : les cartes, les moments "
+                    + "et les listes n'existent que dans un terminal Teams. Réponds en clair.");
+        }
+        fr.claudegateway.teams.block.TeamsBlockCard.Kind kind = switch (call.name()) {
+            case fr.claudegateway.teams.TeamsToolCatalog.MEETING_CARD ->
+                    fr.claudegateway.teams.block.TeamsBlockCard.Kind.MEETING_CARD;
+            case fr.claudegateway.teams.TeamsToolCatalog.MOMENTS ->
+                    fr.claudegateway.teams.block.TeamsBlockCard.Kind.MOMENTS;
+            default -> fr.claudegateway.teams.block.TeamsBlockCard.Kind.LIST;
+        };
+        fr.claudegateway.teams.block.TeamsBlockCard card;
+        try {
+            card = fr.claudegateway.teams.block.TeamsBlockCards.read(kind, call.input(),
+                    imageId -> momentImages != null
+                            && momentImages.exists(userId, workspace.getId(), imageId));
+        } catch (fr.claudegateway.teams.block.TeamsBlockRejectedException e) {
+            return ToolOutcome.error(e.getMessage());
+        }
+        cardsOfTurn.put(callId, card);
+        listener.onCard(callId, card);
+        return ToolOutcome.info(acknowledge(card));
+    }
+
+    /**
+     * Ce que le modèle reçoit en retour : <b>ce qui a été retenu</b>, pour qu'il puisse se corriger
+     * sans qu'on ait à le deviner à l'écran. Le décompte « explicite / à confirmer » est là pour
+     * cela — un bloc entièrement « à confirmer » est un bloc qu'il faut étayer.
+     */
+    private static String acknowledge(fr.claudegateway.teams.block.TeamsBlockCard card) {
+        long explicit = card.allLines().stream()
+                .filter(line -> line.certainty()
+                        == fr.claudegateway.teams.block.TeamsBlockCard.Certainty.EXPLICITE)
+                .count();
+        long lines = card.allLines().size();
+        StringBuilder text = new StringBuilder("Bloc posé dans le fil : « ")
+                .append(card.title()).append(" ».");
+        if (lines > 0) {
+            text.append(' ').append(lines).append(" ligne(s), dont ").append(explicit)
+                    .append(" explicite(s) et ").append(lines - explicit).append(" à confirmer.");
+        }
+        if (!card.moments().isEmpty()) {
+            text.append(' ').append(card.moments().size()).append(" moment(s).");
+        }
+        text.append(" Fenêtre annoncée : ").append(card.window()).append('.');
+        text.append(card.gaps().isEmpty()
+                ? " Aucun manque déclaré."
+                : " " + card.gaps().size() + " manque(s) déclaré(s).");
+        return text.toString();
+    }
+
+    /**
      * Exécute une délégation d'exploration (F-39 / SF-39-14) : une sous-boucle en lecture seule dont
      * <b>seule la réponse</b> revient ici. Ce qu'elle a lu reste chez elle — c'est tout l'intérêt.
      *
@@ -969,7 +1062,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                         ToolOutcome outcome = READ_ONLY_TOOLS.contains(subCall.name())
                                 ? executeTool(userId, workspace, UUID.randomUUID().toString(), subCall,
                                         AtelierProgressListener.NOOP, deadline,
-                                        new java.util.concurrent.atomic.AtomicReference<>(AtelierPlan.EMPTY))
+                                        new java.util.concurrent.atomic.AtomicReference<>(AtelierPlan.EMPTY),
+                                        // Une exploration est en LECTURE SEULE : elle ne pose aucun
+                                        // bloc dans le fil, et n'a donc nulle part où en ranger un.
+                                        java.util.Map.of())
                                 : ToolOutcome.error("Outil indisponible en exploration : " + subCall.name());
                         return new AtelierExploration.ExecutedTool(outcome.content(), outcome.isError());
                     },
@@ -1183,11 +1279,17 @@ public class AtelierChatService implements RelayInterruptTarget {
 
     private ToolOutcome executeTool(UUID userId, Workspace workspace, String callId, AgentToolCall call,
             AtelierProgressListener listener, long deadline,
-            java.util.concurrent.atomic.AtomicReference<AtelierPlan> planOfTurn) {
+            java.util.concurrent.atomic.AtomicReference<AtelierPlan> planOfTurn,
+            java.util.Map<String, fr.claudegateway.teams.block.TeamsBlockCard> cardsOfTurn) {
         // Le plan ne s'exécute nulle part : il ne touche ni la machine, ni le stockage. Il est donc
         // traité AVANT le routage par cible (F-39 / SF-39-13).
         if ("set_plan".equals(call.name())) {
             return applyPlan(call, listener, planOfTurn);
+        }
+        // Les outils de PRÉSENTATION (F-89 / SF-89-02) non plus : ils ne touchent ni la machine ni
+        // le stockage, ils posent un bloc dans le fil. Traités ici, avant le routage par cible.
+        if (fr.claudegateway.teams.TeamsToolCatalog.isPresentation(call.name())) {
+            return applyTeamsBlock(userId, workspace, callId, call, listener, cardsOfTurn);
         }
         if (workspace.isRunnerTarget()) {
             return executeToolOnRunner(userId, workspace, callId, call, listener, deadline);

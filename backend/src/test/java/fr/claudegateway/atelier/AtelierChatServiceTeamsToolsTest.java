@@ -66,7 +66,7 @@ class AtelierChatServiceTeamsToolsTest {
                 new AtelierProperties(null, null, null, null, null, null, null, null, null, null,
                         null, null, true),
                 AtelierCheckpointRunner.none(), ProjectRulesSource.NONE,
-                new TeamsToolCatalog(teamsAccess));
+                new TeamsToolCatalog(teamsAccess), null);
     }
 
     private static Workspace terminal(boolean teams) {

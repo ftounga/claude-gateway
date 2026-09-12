@@ -539,6 +539,12 @@ public class WorkspaceService {
     public void delete(UUID userId, UUID id) {
         Workspace workspace = requireOwned(userId, id);
         storage.deletePrefix(prefixOf(userId, id));
+        // Les IMAGES DES MOMENTS d'un terminal Teams (F-89 / SF-89-02, décision D2) : elles vivent
+        // avec le compte rendu et s'en vont avec lui. Elles sont hors du préfixe des fichiers de
+        // projet — un terminal Teams n'a pas d'arborescence —, donc il faut les nommer. Sans effet
+        // sur un projet ordinaire, qui n'en a aucune.
+        storage.deletePrefix(
+                fr.claudegateway.teams.block.TeamsMomentImageService.prefixOf(userId, id));
         atelierMessageRepository.deleteByWorkspaceId(id);
         // Plus aucune activation de gouvernance à purger ici : depuis F-75, elles vivent sur le
         // POSTE, et supprimer un dossier ne doit surtout pas éteindre la gouvernance de la machine.
