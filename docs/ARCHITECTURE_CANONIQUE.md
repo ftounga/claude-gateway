@@ -171,7 +171,7 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
 - **documents** — document soumis au pipeline OCR (F-05, migration `010`). Isolé par `user_id`.
   - `documents` : `id (uuid)`, `user_id (uuid)`, `filename`, `media_type`, `size_bytes`,
     `status (UPLOADED|PROCESSING|EXTRACTED|INDEXING|INDEXED|FAILED)`,
-    `ocr_mode (SYNC|ASYNC)`, `provider_job_id (interne, nullable, jamais exposé)`,
+    `ocr_mode (SYNC|ASYNC|LOCAL)` — LOCAL = extraction Word sur la machine, sans fournisseur OCR (F-86), `provider_job_id (interne, nullable, jamais exposé)`,
     `extracted_text (nullable)`, `textract_raw (brut fournisseur, nullable, jamais exposé)`,
     `error_message (neutre, nullable)`, `chunk_count (int, F-06, migration 011)`,
     `created_at`, `updated_at`. Index `user_id`.
