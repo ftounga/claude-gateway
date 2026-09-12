@@ -589,6 +589,17 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("host_has_projects", ex.getMessage()));
     }
 
+    @ExceptionHandler(fr.claudegateway.runner.host.HostProjectExistsException.class)
+    public ResponseEntity<ErrorResponse> handleHostProjectExists(
+            fr.claudegateway.runner.host.HostProjectExistsException ex) {
+        // Ouverture d'un projet refusee : ce dossier est deja ouvert sous ce poste (F-72 /
+        // SF-72-01). 409 et non 400 : la demande est valide, c'est l'etat qui s'y oppose. Le nom du
+        // projet existant n'est pas une donnee sensible — il decrit ce que l'appelant possede deja.
+        log.debug("Ouverture de projet refusee : dossier deja ouvert sous ce poste");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("host_project_exists", ex.getMessage()));
+    }
+
     @ExceptionHandler(fr.claudegateway.runner.host.InvalidHostNameException.class)
     public ResponseEntity<ErrorResponse> handleInvalidHostName(
             fr.claudegateway.runner.host.InvalidHostNameException ex) {
