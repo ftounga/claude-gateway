@@ -39,7 +39,23 @@ public enum TeamsGapKind {
      * Teams n'a rien servi sur ce sujet depuis le rattachement (F-88 / SF-88-01). Distinct de
      * « il n'y a rien » : on ne sait pas, et on le dit.
      */
-    NOTHING_OBSERVED("rien d'observé depuis le rattachement");
+    NOTHING_OBSERVED("rien d'observé depuis le rattachement"),
+
+    /**
+     * La vidéo n'a pas changé de plan au seuil demandé (F-90 / SF-90-01). Distinct de « il n'y avait
+     * rien à montrer » : peut-être un plan fixe, peut-être un seuil trop haut — et on le dit plutôt
+     * que de rendre une liste vide, qui se lirait « cette réunion n'a rien montré ».
+     */
+    NO_SCENE_CHANGE("aucun changement de plan détecté"),
+
+    /** Une image sortie par {@code ffmpeg} mais qu'on n'a pas pu relire (F-90 / SF-90-01). */
+    FRAME_UNREADABLE("image extraite illisible"),
+
+    /**
+     * Une image sortie sans horodatage exploitable (F-90 / SF-90-01) : elle est <b>écartée</b>, car
+     * une image mal datée dans un compte rendu est pire qu'une image absente.
+     */
+    FRAME_UNDATED("image extraite non datée");
 
     private final String label;
 
