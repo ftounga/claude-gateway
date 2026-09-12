@@ -3,6 +3,7 @@ package fr.claudegateway.runner;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -60,7 +61,7 @@ public class RunnerStatusService {
     public RunnerStatus status(UUID userId, UUID workspaceId) {
         Workspace workspace = workspaceService.requireOwned(userId, workspaceId);
         if (workspace.getHostId() == null) {
-            return new RunnerStatus(false, null, null, null, null, null, false);
+            return new RunnerStatus(false, false, null, null, null, null, null, false);
         }
         return hostStatus(userId, workspace.getHostId());
     }
@@ -78,17 +79,24 @@ public class RunnerStatusService {
      */
     @Transactional(readOnly = true)
     public RunnerStatus statusOf(UUID userId, RunnerHost host) {
-        Optional<OffsetDateTime> lastSeen = tokenRepository
-                .findByUserIdAndHostIdOrderByCreatedAtDesc(userId, host.getId()).stream()
+        OffsetDateTime now = OffsetDateTime.now();
+        // UNE seule lecture des jetons du poste : elle sert au dernier signe de vie ET à
+        // `paired`. Les deux questions portent sur les mêmes lignes ; les poser deux fois
+        // ferait payer un booléen au prix d'une requête (F-82 / SF-82-04).
+        List<RunnerToken> tokens =
+                tokenRepository.findByUserIdAndHostIdOrderByCreatedAtDesc(userId, host.getId());
+        Optional<OffsetDateTime> lastSeen = tokens.stream()
                 .map(RunnerToken::getLastSeenAt)
                 .filter(java.util.Objects::nonNull)
                 .max(Comparator.naturalOrder());
         boolean heartbeatFresh = lastSeen
-                .map(seen -> seen.isAfter(OffsetDateTime.now().minus(staleAfter)))
+                .map(seen -> seen.isAfter(now.minus(staleAfter)))
                 .orElse(false);
         boolean connected = registry.isConnected(host.getId()) || heartbeatFresh;
-        return new RunnerStatus(connected, lastSeen.orElse(null), declaredShell(host), host.getId(),
-                host.getName(), host.getRootName(), Boolean.TRUE.equals(host.getElevated()));
+        boolean paired = tokens.stream().anyMatch(token -> token.isValidAt(now));
+        return new RunnerStatus(connected, paired, lastSeen.orElse(null), declaredShell(host),
+                host.getId(), host.getName(), host.getRootName(),
+                Boolean.TRUE.equals(host.getElevated()));
     }
 
     /**
@@ -110,20 +118,28 @@ public class RunnerStatusService {
     }
 
     /**
-     * État runner : connecté ou non, dernière activité observée (peut être {@code null}), genre
-     * d'interpréteur élu ({@code posix} / {@code powershell} / {@code cmd}, ou {@code null}), et ce
-     * que l'écran doit savoir du <b>poste</b> — son identifiant, son nom, la racine qu'il a
-     * déclarée, et s'il tourne en administrateur.
+     * État runner : connecté ou non, <b>appairé</b> ou non, dernière activité observée (peut être
+     * {@code null}), genre d'interpréteur élu ({@code posix} / {@code powershell} / {@code cmd}, ou
+     * {@code null}), et ce que l'écran doit savoir du <b>poste</b> — son identifiant, son nom, la
+     * racine qu'il a déclarée, et s'il tourne en administrateur.
      *
      * <p>Ces trois dernières valeurs décrivaient le projet avant F-48 ; elles décrivent maintenant
      * une machine, et voyagent avec son état plutôt qu'avec le détail du projet. L'élévation est
      * lue là où l'on autorise une commande : c'est le seul endroit où elle change une décision
      * (SF-38-18).</p>
      *
+     * <p><b>{@code paired}</b> (F-82 / SF-82-04) répond à la question que {@code connected} ne sait
+     * pas poser : « cette machine porte-t-elle encore un jeton utilisable ? ». Un poste non connecté
+     * mais appairé n'a besoin d'<b>aucun code</b> — seulement qu'on relance le runner, qui retrouve
+     * passerelle et racine à côté de son jeton (F-46 / SF-46-01). Un poste dont tous les jetons ont
+     * été révoqués par le coupe-circuit (SF-38-08), ou dont le jeton a expiré, vaut {@code false} :
+     * il lui faut réellement un nouveau code, et proposer une reprise vouée à l'échec serait pire
+     * que ne rien proposer.</p>
+     *
      * <p>Tout est {@code null} / {@code false} pour un projet rattaché à aucun poste — l'état d'un
      * projet qu'on vient de créer.</p>
      */
-    public record RunnerStatus(boolean connected, OffsetDateTime lastSeenAt, String shell,
-            UUID hostId, String hostName, String rootName, boolean elevated) {
+    public record RunnerStatus(boolean connected, boolean paired, OffsetDateTime lastSeenAt,
+            String shell, UUID hostId, String hostName, String rootName, boolean elevated) {
     }
 }

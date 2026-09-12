@@ -46,7 +46,7 @@ export interface RunnerPairingDialogData {
 }
 
 /** Chemin d'exemple affiché tant que l'utilisateur n'a pas saisi la racine de son poste. */
-export const DEFAULT_WORKSPACE_PATH = '/chemin/vers/vos/projets';
+export const DEFAULT_ROOT_PATH = '/chemin/vers/vos/projets';
 
 /**
  * Valeur de la liste des postes qui signifie « en créer un » (F-48 / SF-48-03). Une constante
@@ -59,9 +59,14 @@ export const NEW_HOST = '__nouveau__';
  * Chemins d'exemple par système (F-45 / SF-45-02). Un chemin Unix affiché sous un bouton
  * « Télécharger le runner pour Windows » invite à recopier une forme qui ne marchera pas — c'est
  * là que commence le troisième obstacle rencontré chez le client, le chemin avalé par Git Bash.
+ *
+ * <p><b>Ils décrivent une racine de POSTE</b> (F-82 / SF-82-04, D6) : le dossier <b>sous lequel</b>
+ * vivent les projets, et non un projet. Les exemples se terminaient jusqu'ici par
+ * « …/mon-projet » — ils invitaient donc à déclarer une machine qui commence au dossier d'un
+ * projet, ce qui redonne un poste par projet, exactement le modèle que F-48 a supprimé.</p>
  */
-export const WINDOWS_WORKSPACE_PATH = 'C:\\Users\\moi\\projets\\mon-projet';
-export const MACOS_WORKSPACE_PATH = '/Users/moi/projets/mon-projet';
+export const WINDOWS_ROOT_PATH = 'C:\\Users\\moi\\projets';
+export const MACOS_ROOT_PATH = '/Users/moi/projets';
 
 /**
  * Période du relevé d'état de la machine (F-45 / SF-45-02).
@@ -569,7 +574,9 @@ export class RunnerPairingDialogComponent implements OnDestroy {
           this.selectedHostId.set(detail.hostId ?? hostId);
           this.projectPath.set(detail.projectPath ?? '');
           // Un poste déjà connecté n'a rien à appairer : on saute directement à la conclusion.
-          this.step.set(this.hostAlreadyLive() ? null : 'code');
+          // Un poste appairé mais éteint n'a rien à appairer non plus : l'encart de reprise porte
+          // le seul geste utile, et ouvrir l'étape « code » par-dessus le contredirait (SF-82-04).
+          this.step.set(this.hostAlreadyLive() ? null : this.stepAfterHostKnown());
         },
         error: (err: unknown) => this.failAttach(err),
       });
@@ -778,8 +785,15 @@ export class RunnerPairingDialogComponent implements OnDestroy {
   readonly anyPackageAvailable = computed(
     () => this.windowsPackageAvailable() || this.macosAarch64Available() || this.macosX64Available());
 
-  /** Racine du projet sur la machine, saisie par l'utilisateur ; sert seulement à la commande. */
-  readonly workspacePath = signal('');
+  /**
+   * <b>Racine du POSTE</b> sur la machine, saisie par l'utilisateur ; sert seulement à la commande.
+   *
+   * <p>C'est le dossier <b>sous lequel</b> vivent tous les projets — ce que le runner reçoit dans
+   * <code>--root</code> (F-48 / SF-48-02), et jamais le dossier d'un projet. Le champ s'appelait
+   * « racine du projet » en mode projet : le runner déclarait alors la machine comme si elle
+   * commençait à ce dossier, et l'on retombait sur un poste par projet (F-82 / SF-82-04, D6).</p>
+   */
+  readonly rootPath = signal('');
 
   /** Secondes restantes avant expiration du code, recalculées chaque seconde. */
   readonly secondsLeft = signal(0);
@@ -789,6 +803,30 @@ export class RunnerPairingDialogComponent implements OnDestroy {
 
   /** Dernier signe de vie relevé, ou `null` si aucun runner ne s'est jamais signalé. */
   readonly runnerLastSeenAt = signal<string | null>(null);
+
+  /**
+   * Le poste porte <b>un jeton encore utilisable</b> — ni révoqué, ni expiré (F-82 / SF-82-04).
+   *
+   * <p>Faux par défaut, et faux quand la gateway ne renvoie pas le champ : l'absence d'information
+   * rend le parcours complet, c'est-à-dire le comportement d'avant.</p>
+   */
+  readonly runnerPaired = signal(false);
+
+  /**
+   * <b>Dernier segment</b> de la racine que la machine a déclarée au dernier appairage, ou `null`.
+   *
+   * <p>Le dernier segment seulement : la gateway ne stocke délibérément pas l'arborescence d'une
+   * machine cliente (`runner_hosts.root_name`). On le <b>rappelle</b> donc, on ne pré-remplit
+   * rien — pré-remplir un chemin deviné serait une commande faussement prête (D6-a).</p>
+   */
+  readonly runnerRootName = signal<string | null>(null);
+
+  /**
+   * La reprise a déjà été mise en avant une fois. Garde-fou : le relevé d'état bat toutes les cinq
+   * secondes, et replier le parcours à chaque tour rouvrirait une porte que l'utilisateur vient de
+   * refermer.
+   */
+  private readonly resumeOffered = signal(false);
 
   /**
    * Interpréteur élu par le runner et déclaré à la gateway (F-38 / SF-38-27), relevé avec l'état
@@ -865,6 +903,33 @@ export class RunnerPairingDialogComponent implements OnDestroy {
    * de rejouer une mise en service qui a déjà eu lieu.
    */
   readonly hostAlreadyLive = computed(() => this.attachedHost()?.connected === true);
+
+  /**
+   * <b>La reprise</b> (F-82 / SF-82-04) : le poste est connu, il porte un jeton utilisable, et son
+   * runner ne tourne pas.
+   *
+   * <p>C'est le cas <b>courant</b> — une machine qu'on rallume, un `Ctrl-C` de la veille — et
+   * celui que l'écran traitait jusqu'ici comme un premier appairage : il ouvrait l'étape « code »,
+   * proposant un code qui expire en cinq minutes et qui ne sert à rien, le jeton étant déjà sur le
+   * disque du poste (F-46 / SF-46-01).</p>
+   *
+   * <p>Les deux autres cas restent <b>intacts</b> : un poste connecté saute à la conclusion
+   * ({@link hostAlreadyLive}), un poste sans jeton utilisable — jamais appairé, ou coupé par le
+   * coupe-circuit (SF-38-08) — ouvre bien l'étape « code », seul geste qui puisse alors aboutir.</p>
+   */
+  readonly resumeAvailable = computed(
+    () => this.hostId() !== null && this.runnerPaired() && !this.runnerConnected());
+
+  /**
+   * La commande de reprise de l'encart : <b>le lanceur, nu</b>.
+   *
+   * <p>Ni passerelle, ni racine, ni code — l'appairage les a mémorisés à côté du jeton
+   * (F-46 / SF-46-01). Elle se distingue de {@link resumeCommand}, qui préfixe un `cd` vers le
+   * chemin saisi : ce préfixe a du sens juste après que l'utilisateur a tapé sa racine, mais à la
+   * réouverture du dialogue ce champ est vide et le `cd` porterait le chemin <b>d'exemple</b> —
+   * une commande faussement prête (D5-b). L'encart dit donc en toutes lettres d'où la lancer.</p>
+   */
+  readonly restartCommand = computed(() => this.launcher());
 
   /**
    * Vrai quand le geste « rattacher » est possible en l'état du formulaire.
@@ -1041,7 +1106,7 @@ export class RunnerPairingDialogComponent implements OnDestroy {
    * visiblement incomplète vaut mieux qu'une commande faussement prête (D1 de SF-45-02).
    */
   private commandPath(): string {
-    return this.workspacePath().trim() || this.examplePath();
+    return this.rootPath().trim() || this.examplePath();
   }
 
   /**
@@ -1095,12 +1160,12 @@ export class RunnerPairingDialogComponent implements OnDestroy {
   readonly examplePath = computed(() => {
     const selected = this.selectedPackage();
     if (selected === 'windows') {
-      return WINDOWS_WORKSPACE_PATH;
+      return WINDOWS_ROOT_PATH;
     }
     if (selected !== null) {
-      return MACOS_WORKSPACE_PATH;
+      return MACOS_ROOT_PATH;
     }
-    return this.hostPlatform === 'windows' ? WINDOWS_WORKSPACE_PATH : DEFAULT_WORKSPACE_PATH;
+    return this.hostPlatform === 'windows' ? WINDOWS_ROOT_PATH : DEFAULT_ROOT_PATH;
   });
 
   /**
@@ -1141,6 +1206,26 @@ export class RunnerPairingDialogComponent implements OnDestroy {
    */
   toggleStep(step: PairingStep): void {
     this.step.set(this.isOpen(step) ? null : step);
+  }
+
+  /**
+   * Ce qu'on déplie une fois le poste connu : l'étape « code », <b>sauf</b> si la reprise suffit —
+   * auquel cas rien, l'encart de reprise étant déjà au-dessus du parcours (F-82 / SF-82-04).
+   */
+  private stepAfterHostKnown(): PairingStep | null {
+    return this.resumeAvailable() ? null : 'code';
+  }
+
+  /**
+   * Le <b>repli nommé</b> de l'encart de reprise : « la machine a changé, ou le jeton a été
+   * révoqué ». Il ouvre l'étape « code », d'un clic, sans rien fermer d'autre — le parcours complet
+   * n'a jamais cessé d'être là.
+   */
+  startRepairing(): void {
+    // La reprise a déjà été mise en avant ; sans cela, le prochain relevé d'état refermerait
+    // l'étape que l'utilisateur vient d'ouvrir.
+    this.resumeOffered.set(true);
+    this.step.set('code');
   }
 
   /**
@@ -1223,7 +1308,7 @@ export class RunnerPairingDialogComponent implements OnDestroy {
     if (verdict === 'reachable') {
       // Le POSTE avant le code (F-48 / SF-48-03) : un code d'appairage appartient à une machine, on
       // ne peut donc pas en demander un avant de savoir laquelle.
-      this.step.set(this.hostId() === null ? 'host' : 'code');
+      this.step.set(this.hostId() === null ? 'host' : this.stepAfterHostKnown());
     }
   }
 
@@ -1445,6 +1530,10 @@ export class RunnerPairingDialogComponent implements OnDestroy {
         // Champ additif (F-45 / SF-45-05) : une gateway antérieure ne l'envoie pas, et la
         // conclusion omet alors la ligne plutôt que d'écrire « inconnu ».
         this.runnerShell.set(status.shell ?? null);
+        // Champs additifs (F-82 / SF-82-04) : absents d'une gateway antérieure, ils valent alors
+        // « pas de jeton connu » — donc le parcours complet, le comportement d'avant.
+        this.runnerPaired.set(status.paired === true);
+        this.runnerRootName.set(status.rootName ?? null);
         if (status.connected) {
           this.runnerConnected.set(true);
           // La conclusion REMPLACE le parcours : c'est la seule information attendue depuis le
@@ -1454,7 +1543,9 @@ export class RunnerPairingDialogComponent implements OnDestroy {
           // La question posée par ce dialogue — « l'appairage a-t-il marché ? » — a sa réponse.
           // Continuer à interroger serait de la surveillance, pas de l'installation (D3).
           this.stopStatusPoll();
+          return;
         }
+        this.offerResumeFirst();
       },
       error: (err: unknown) => {
         if (err instanceof HttpErrorResponse && (err.status === 403 || err.status === 404)) {
@@ -1462,6 +1553,35 @@ export class RunnerPairingDialogComponent implements OnDestroy {
         }
       },
     });
+  }
+
+  /**
+   * Met <b>la reprise en avant</b> dès qu'elle devient possible (F-82 / SF-82-04).
+   *
+   * <p>L'encart de reprise vit au-dessus du parcours ; ce qu'il faut en plus, c'est que le parcours
+   * ne s'ouvre pas <b>par-dessus</b> lui sur l'étape « code », dont on n'a précisément pas besoin.
+   * On le replie donc — sans rien en retirer : tout en-tête reste cliquable, et le repli nommé de
+   * l'encart rouvre l'étape « code » d'un clic.</p>
+   *
+   * <p>Deux garde-fous. <b>Une seule fois</b> : le relevé bat toutes les cinq secondes, et replier
+   * à chaque tour rouvrirait une porte que l'utilisateur vient de refermer. Et <b>jamais sur un
+   * code déjà obtenu</b> : un code expire en cinq minutes, l'escamoter serait le perdre.</p>
+   */
+  private offerResumeFirst(): void {
+    if (this.resumeOffered() || !this.resumeAvailable()) {
+      return;
+    }
+    this.resumeOffered.set(true);
+    if (this.pairingCode() !== null) {
+      return;
+    }
+    const open = this.step();
+    // On ne replie que les deux étapes rendues inutiles par la reprise : la vérification réseau
+    // (ce poste est déjà sorti jusqu'à la passerelle, une fois au moins) et le code. Une étape que
+    // l'utilisateur a lui-même ouverte ailleurs reste ouverte.
+    if (open === 'code' || (open === 'network' && this.networkVerdict() === 'unknown')) {
+      this.step.set(null);
+    }
   }
 
   /**

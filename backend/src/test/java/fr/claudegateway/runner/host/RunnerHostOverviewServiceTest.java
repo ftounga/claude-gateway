@@ -85,7 +85,7 @@ class RunnerHostOverviewServiceTest {
     }
 
     private void connected(RunnerHost host, boolean connected) {
-        when(statusService.statusOf(alice, host)).thenReturn(new RunnerStatus(connected,
+        when(statusService.statusOf(alice, host)).thenReturn(new RunnerStatus(connected, connected,
                 host.getLastSeenAt(), "posix", host.getId(), host.getName(), "dev", false));
     }
 

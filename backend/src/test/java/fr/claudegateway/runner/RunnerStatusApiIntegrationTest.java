@@ -135,6 +135,40 @@ class RunnerStatusApiIntegrationTest {
     }
 
     @Test
+    void ownerSeesNotPairedWhenTheHostNeverGotAToken() throws Exception {
+        // F-82 / SF-82-04 : un poste jamais appairé a bel et bien besoin d'un code.
+        mockMvc.perform(get(statusUrl(adminWorkspace.getId())).contextPath("/api")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paired").value(false));
+    }
+
+    @Test
+    void ownerSeesPairedWhileTheHostCarriesALiveToken() throws Exception {
+        // F-82 / SF-82-04 : appairé mais éteint — le cas d'une machine qu'on rallume. Aucun code
+        // n'est nécessaire : le jeton est déjà sur son disque (F-46 / SF-46-01).
+        tokenService.issue(admin.getId(), adminHost.getId(), "poste");
+
+        mockMvc.perform(get(statusUrl(adminWorkspace.getId())).contextPath("/api")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.connected").value(false))
+                .andExpect(jsonPath("$.paired").value(true));
+    }
+
+    @Test
+    void revokingTheLastTokenTakesThePairedFlagAway() throws Exception {
+        // Après le coupe-circuit (SF-38-08), la reprise échouerait : l'écran doit redemander un code.
+        RunnerToken issued = tokenService.issue(admin.getId(), adminHost.getId(), "poste").token();
+        tokenService.revoke(admin.getId(), adminHost.getId(), issued.getId());
+
+        mockMvc.perform(get(statusUrl(adminWorkspace.getId())).contextPath("/api")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paired").value(false));
+    }
+
+    @Test
     void ownerSeesTheElectedShellWhenTheRunnerDeclaredOne() throws Exception {
         // F-45 / SF-45-05 : la donnee existe depuis la migration 063 (SF-38-27), elle n'etait pas
         // exposee. L'ecran d'appairage s'en sert pour conclure la mise en service.
