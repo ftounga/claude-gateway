@@ -72,6 +72,8 @@ travaille onglet fermé ») ; F-76 ne le rouvre pas.
 
 Backend (SF-76-01) mergé **avant** le frontend.
 
+**Livré le 2026-09-12** : SF-76-01 (PR #403), SF-76-02 (PR #404), SF-76-03 (PR #405).
+
 ---
 
 ## Arbitrages (gates réversibles — décidés et tracés)

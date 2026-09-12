@@ -12,7 +12,7 @@
 
 ## Statut
 
-`todo`
+`done` — mergée le 2026-09-12 (PR #404)
 
 ## Date de création
 
