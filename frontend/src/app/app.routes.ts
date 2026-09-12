@@ -104,6 +104,15 @@ export const routes: Routes = [
         loadComponent: () => import('./postes/postes.component').then((m) => m.PostesComponent),
       },
       {
+        // F-76 / SF-76-03 — **voir travailler ses terminaux**. Un écran à PART, et non un panneau
+        // de l'accueil : on l'ouvre quand on surveille, et la page d'accueil doit rester lisible
+        // sur un portable. Placée AVANT la redirection de `postes` et après `forge` : deux
+        // segments, elle ne masque ni `forge` (un segment), ni `atelier/:id` (autre préfixe).
+        path: 'forge/supervision',
+        loadComponent: () =>
+          import('./supervision/supervision.component').then((m) => m.SupervisionComponent),
+      },
+      {
         // L'ancienne adresse (F-49 / SF-49-02) continue de répondre : un onglet resté ouvert ou un
         // lien collé la veille s'ouvre sur la même page. `pathMatch: 'full'` pour ne capter que le
         // chemin exact, cible absolue pour ne pas dépendre de la résolution du parent pathless.

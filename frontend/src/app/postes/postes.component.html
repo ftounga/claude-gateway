@@ -24,6 +24,17 @@
       @if (lastUpdatedLabel(); as updated) {
         <span class="postes__updated">Mis à jour à {{ updated }}</span>
       }
+      <!-- LA PORTE DE LA VUE DE SUPERVISION (F-76 / SF-76-03). Elle est ici, et non dans la barre
+           de navigation : F-68 a supprimé l'onglet « Postes » pour désencombrer, on ne le rouvre
+           pas. On surveille depuis la Forge, et on y revient. -->
+      <a
+        mat-stroked-button
+        routerLink="/forge/supervision"
+        matTooltip="Voir les terminaux ouverts travailler, côte à côte"
+      >
+        <mat-icon>grid_view</mat-icon>
+        Voir travailler
+      </a>
       <button
         mat-stroked-button
         type="button"

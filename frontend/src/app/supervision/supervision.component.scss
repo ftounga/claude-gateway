@@ -1,0 +1,208 @@
+/* La vue de supervision (F-76 / SF-76-03).
+
+   AUCUNE COULEUR NOUVELLE. Trois registres seulement, tous déjà dans la charte : l'identité du
+   poste (§9, filet gauche + pastille d'initiales), la vie du terminal (§11, sans couleur), et
+   l'attente d'une décision (§5 « En attente », `#FFF8E1` / `#F9A825`). Voir §12.
+
+   Le filet gauche appartient à L'IDENTITÉ : l'attente n'y touche pas, elle entre par un anneau. */
+
+.supervision {
+  padding: var(--cg-space-4);
+  max-width: 1280px;
+  margin: 0 auto;
+
+  &__crumbs {
+    display: block;
+    margin-bottom: var(--cg-space-2);
+  }
+
+  &__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--cg-space-3);
+    margin-bottom: var(--cg-space-3);
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+    }
+  }
+
+  &__subtitle {
+    margin: var(--cg-space-1) 0 0;
+    color: var(--cg-text-secondary);
+  }
+
+  &__header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cg-space-2);
+  }
+
+  &__live,
+  &__updated {
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+  }
+
+  /* Un état qui n'est plus frais se DIT. L'effacer ferait croire que tout s'est arrêté. */
+  &__updated--stale {
+    color: #f9a825;
+  }
+
+  /* Le compteur d'attente : écrit, en tête de page, avant la grille. */
+  &__awaiting {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+    margin: 0 0 var(--cg-space-3);
+    padding: var(--cg-space-2) var(--cg-space-3);
+    border-radius: 8px;
+    /* Palette §5 « En attente » — celle des pastilles de statut, pas une quatrième famille. */
+    background: #fff8e1;
+    color: #f9a825;
+    font-weight: 500;
+  }
+
+  &__loading {
+    display: flex;
+    justify-content: center;
+    padding: var(--cg-space-6);
+  }
+
+  &__notice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cg-space-3);
+    padding: var(--cg-space-4);
+    border-radius: 8px;
+    background: var(--cg-surface);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+
+    h2 {
+      margin: 0 0 var(--cg-space-1);
+      font-size: 18px;
+    }
+
+    p {
+      margin: 0 0 var(--cg-space-3);
+      color: var(--cg-text-secondary);
+    }
+  }
+
+  /* Une colonne sur un portable, deux ensuite, trois au large : quatre terminaux se regardent
+     ensemble, et une grille qui déborde annule l'intérêt de la vue. */
+  &__grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--cg-space-3);
+
+    @media (min-width: 720px) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    @media (min-width: 1100px) {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+}
+
+.tuile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-3);
+  border: 1px solid var(--cg-divider);
+  /* Le filet de SA machine : c'est ce qui rattache un terminal à son client d'un coup d'œil.
+     Couleur posée en ligne par le gabarit (fonction pure du nom, jamais rangée). */
+  border-left: 4px solid var(--cg-divider);
+  border-radius: 8px;
+  background: var(--cg-surface);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  color: inherit;
+  text-decoration: none;
+  min-width: 0;
+
+  &:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cg-accent);
+    outline-offset: 2px;
+  }
+
+  /* CE QUI ATTEND UNE DÉCISION SE VOIT DE LOIN : un anneau, pas un fond (le §8 interdit l'aplat
+     coloré sur une carte) et pas le filet gauche (il appartient à l'identité du poste, §9). La
+     pastille écrite « Attend votre autorisation » reste dans l'aperçu, juste dessous. */
+  &--awaiting {
+    box-shadow: 0 0 0 2px #f9a825, 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+    min-width: 0;
+  }
+
+  &__host {
+    font-size: 12px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    /* Le bac à sable de la gateway n'est pas une machine : gris « archivé / inactif » du §5. */
+    &--hosted {
+      color: var(--cg-text-secondary);
+    }
+  }
+
+  &__hosted-icon {
+    color: var(--cg-text-secondary);
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+  }
+
+  &__live {
+    margin-left: auto;
+    color: var(--cg-text-secondary);
+  }
+
+  &__project {
+    margin: 0;
+    font-size: 16px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cg-space-2);
+    margin-top: auto;
+    padding-top: var(--cg-space-1);
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__enter {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cg-space-1);
+    color: var(--cg-accent);
+
+    mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+    }
+  }
+}
