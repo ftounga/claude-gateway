@@ -1311,7 +1311,15 @@ public class AtelierChatService implements RelayInterruptTarget {
             case "bash" -> runnerToolGateway.bash(target, callId, requiredArg(input, "command"),
                     input.path("cwd").asText(null), deadline - System.currentTimeMillis(),
                     listener::onOutput);
-            default -> null;
+            // Le volet Teams (F-88 / SF-88-03) : un seul relais pour les huit outils, parce qu'ils
+            // partagent le même contrat — des paramètres que SEUL le runner sait interpréter, et une
+            // enveloppe JSON en retour. La gateway relaie ; elle ne réinterprète ni la période, ni
+            // le plafond. Les outils sont donnés ou non par TeamsToolCatalog : si le modèle en
+            // nomme un qu'il n'a pas reçu, la capacité du poste le refuse avant émission.
+            default -> call.name() != null
+                    && call.name().startsWith(fr.claudegateway.teams.TeamsToolCatalog.PREFIX)
+                            ? runnerToolGateway.teamsRead(target, callId, call.name(), input)
+                            : null;
         };
     }
 
@@ -1344,8 +1352,26 @@ public class AtelierChatService implements RelayInterruptTarget {
             case "read_file", "write_file", "edit_file" -> arg(input, "path");
             case "search_files" -> arg(input, "query");
             case "bash" -> shorten(arg(input, "command"), AUDIT_TARGET_CHARS);
-            default -> null;
+            // Teams (F-88 / SF-88-03) : ce qui est tracé est CE QU'ON A DEMANDÉ — un fil, une
+            // requête, une réunion —, jamais ce qui est revenu. Un journal d'audit qui porterait
+            // le texte des messages d'un client serait précisément l'entrepôt de données sensibles
+            // que D2 refuse.
+            default -> call.name() != null
+                    && call.name().startsWith(fr.claudegateway.teams.TeamsToolCatalog.PREFIX)
+                            ? shorten(teamsAuditTarget(input), AUDIT_TARGET_CHARS)
+                            : null;
         };
+    }
+
+    /** La cible lisible d'un appel Teams : le fil, la question ou la réunion. Jamais un contenu. */
+    private String teamsAuditTarget(JsonNode input) {
+        for (String field : List.of("conversation_id", "meeting_id", "query")) {
+            String value = arg(input, field);
+            if (value != null && !value.isBlank()) {
+                return field + '=' + value;
+            }
+        }
+        return null;
     }
 
     /**

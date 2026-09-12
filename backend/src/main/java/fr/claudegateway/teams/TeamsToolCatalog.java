@@ -45,8 +45,32 @@ import fr.claudegateway.atelier.Workspace;
 @Component
 public class TeamsToolCatalog {
 
-    /** L'état de la liaison — le seul outil que le runner sait exécuter depuis F-87 / SF-87-03. */
+    /** L'état de la liaison (F-87 / SF-87-03). */
     public static final String STATUS = "teams_status";
+    /** Retrouver une conversation par personne, groupe ou sujet (F-88 / SF-88-01). */
+    public static final String FIND_CONVERSATIONS = "teams_find_conversations";
+    /** Lire une conversation sur une fenêtre de temps (F-88 / SF-88-01). */
+    public static final String READ_CONVERSATION = "teams_read_conversation";
+    /** Là où l'on m'a mentionné, par le flux d'activité (F-88 / SF-88-02). */
+    public static final String MENTIONS = "teams_mentions";
+    /** Rechercher dans le contenu, par l'index de Teams (F-88 / SF-88-02). */
+    public static final String SEARCH = "teams_search";
+    /** Retrouver une réunion (F-88 / SF-88-02). */
+    public static final String FIND_MEETINGS = "teams_find_meetings";
+    /** La transcription d'une réunion enregistrée (F-88 / SF-88-02). */
+    public static final String MEETING_TRANSCRIPT = "teams_meeting_transcript";
+    /** L'enregistrement d'une réunion : où il est, et ce qu'on n'en fait pas (F-88 / SF-88-02). */
+    public static final String MEETING_RECORDING = "teams_meeting_recording";
+
+    /**
+     * <b>Le catalogue, dans l'ordre où il est donné à l'agent</b> — et la seule liste qui fasse foi
+     * côté gateway. Sa contrepartie côté runner ({@code TeamsTools.CATALOG}) porte exactement les
+     * mêmes noms ; les deux sont verrouillées par un test de chaque côté, parce que deux dépôts de
+     * la même vérité finissent par diverger quand personne ne les compare.
+     */
+    public static final List<String> CATALOG = List.of(STATUS, FIND_CONVERSATIONS,
+            READ_CONVERSATION, MENTIONS, SEARCH, FIND_MEETINGS, MEETING_TRANSCRIPT,
+            MEETING_RECORDING);
 
     /**
      * Préfixe commun à tous les outils du volet. Sert à une seule chose, mais elle compte : un test
@@ -92,6 +116,96 @@ public class TeamsToolCatalog {
                         + "phrase et le remède qu'il te rend, mot pour mot : ils contiennent la "
                         + "commande exacte à lancer.",
                 Map.of("type", "object", "properties", Map.of())));
+        tools.addAll(readingTools());
         return List.copyOf(tools);
+    }
+
+    /**
+     * <b>Les sept outils de lecture</b> (F-88 / SF-88-03). Aucun n'est un bouton : l'agent les
+     * compose. « Qu'est-ce qu'on attend de moi ? » appellera les mentions, puis la recherche sur les
+     * variantes du nom, puis la lecture des fils récemment actifs — et il conclura ; une autre
+     * question appellera autre chose.
+     *
+     * <p><b>Les descriptions portent la doctrine du volet</b>, parce que c'est le seul endroit où
+     * l'agent la lit : le plafond y est <b>annoncé et dit négociable</b> (D4), les <b>trois
+     * gisements</b> d'un engagement y sont nommés — et surtout, chaque outil rappelle que son
+     * résultat porte <b>ce qu'il n'a pas pu lire</b>, et qu'il faut le <b>répéter</b>. Un compte
+     * rendu qui tait un trou est un compte rendu faux, et c'est la règle qui prime sur toutes les
+     * autres dans ce volet.</p>
+     */
+    private List<AgentTool> readingTools() {
+        Map<String, Object> text = Map.of("type", "string");
+        Map<String, Object> number = Map.of("type", "integer");
+        List<AgentTool> tools = new ArrayList<>();
+
+        tools.add(new AgentTool(FIND_CONVERSATIONS,
+                "Retrouve une conversation Teams par personne, par groupe ou par sujet, classée de "
+                        + "la plus récemment active à la plus ancienne. Un tête-à-tête n'a pas de "
+                        + "sujet : cherche alors par le NOM de la personne. C'est par là qu'on "
+                        + "commence quand on ne sait pas encore quel fil lire.",
+                Map.of("type", "object",
+                        "properties", Map.of("query", text, "limit", number))));
+
+        tools.add(new AgentTool(READ_CONVERSATION,
+                "Lit les messages d'une conversation sur une PÉRIODE. Sans conversation_id, lit le "
+                        + "fil actuellement affiché dans Teams. La période par défaut est de 7 jours "
+                        + "et 500 messages — ce plafond est NÉGOCIABLE : passe from (« 2026-09-01 », "
+                        + "« 21d », « 3 semaines ») et max_messages (jusqu'à 2000) pour remonter "
+                        + "plus loin. Le résultat porte TOUJOURS la fenêtre RÉELLEMENT lue "
+                        + "(window.actualFrom / actualTo) et la liste des manques (gaps) : cite la "
+                        + "phrase « text » telle quelle, et ne présente jamais une lecture "
+                        + "incomplète comme complète. C'est le seul outil qui trouve les "
+                        + "engagements qu'on a pris soi-même (« je te l'envoie demain ») : ils ne "
+                        + "contiennent ni mention ni nom, aucune recherche ne les trouve.",
+                Map.of("type", "object",
+                        "properties", Map.of("conversation_id", text, "from", text, "to", text,
+                                "max_messages", number))));
+
+        tools.add(new AgentTool(MENTIONS,
+                "Là où l'on vous a MENTIONNÉ explicitement (@vous), lu dans le flux d'activité que "
+                        + "Teams calcule déjà : c'est exact et peu coûteux, commence par là. "
+                        + "Attention : cela ne couvre QUE les mentions explicites — ce qu'on vous "
+                        + "demande sans vous mentionner n'y est pas.",
+                Map.of("type", "object",
+                        "properties", Map.of("from", text, "to", text, "max_mentions", number))));
+
+        tools.add(new AgentTool(SEARCH,
+                "Cherche dans le CONTENU des messages, en posant la question à l'index de Teams. "
+                        + "Sert à trouver ce qui vous concerne sans vous mentionner — « Francky "
+                        + "s'occupe du MFA » : essaie plusieurs variantes du nom (prénom, nom, "
+                        + "initiales). Si le résultat dit que la question n'a PAS pu être posée, "
+                        + "ce n'est pas « il n'y a rien » : répète à l'utilisateur ce qu'il peut "
+                        + "faire.",
+                Map.of("type", "object",
+                        "properties", Map.of("query", text, "from", text, "to", text,
+                                "max_results", number),
+                        "required", List.of("query"))));
+
+        tools.add(new AgentTool(FIND_MEETINGS,
+                "Retrouve une réunion par date, par sujet ou par participant. Le résultat dit si "
+                        + "elle a été ENREGISTRÉE et si une TRANSCRIPTION est annoncée : ce sont "
+                        + "les deux champs qui décident si tu peux aller plus loin.",
+                Map.of("type", "object",
+                        "properties", Map.of("query", text, "from", text, "to", text,
+                                "limit", number))));
+
+        tools.add(new AgentTool(MEETING_TRANSCRIPT,
+                "La transcription d'une réunion enregistrée : les répliques horodatées, avec leur "
+                        + "locuteur. Trouve d'abord la réunion avec " + FIND_MEETINGS + ". Si rien "
+                        + "ne revient, dis-le : une réunion non enregistrée n'a pas de "
+                        + "transcription, et il ne faut surtout pas en inventer le contenu.",
+                Map.of("type", "object",
+                        "properties", Map.of("meeting_id", text),
+                        "required", List.of("meeting_id"))));
+
+        tools.add(new AgentTool(MEETING_RECORDING,
+                "Dit si une réunion a un enregistrement et où il se trouve. Il ne le TÉLÉCHARGE "
+                        + "PAS : ne laisse jamais croire à l'utilisateur qu'un fichier a été "
+                        + "récupéré — le résultat explique pourquoi, répète-le.",
+                Map.of("type", "object",
+                        "properties", Map.of("meeting_id", text),
+                        "required", List.of("meeting_id"))));
+
+        return tools;
     }
 }
