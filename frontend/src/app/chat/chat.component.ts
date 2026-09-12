@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, NgZone, OnInit, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -15,6 +16,11 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
+import {
+  REFUSAL_SNACK_DURATION_MS,
+  fileRejectionMessage,
+  rejectionSentences,
+} from '../shared/file-format-names';
 import { MarkdownPipe } from '../shared/markdown.pipe';
 import { MessageSegmentsPipe } from '../shared/message-segments.pipe';
 import { CopyBlockComponent } from './copy-block/copy-block.component';
@@ -110,6 +116,11 @@ export class ChatComponent implements OnInit {
    */
   readonly attachmentAccept = computed(() => this.fileFormats.accept('attachments'));
 
+  /** La liste blanche du serveur, ou `null` tant qu'elle n'est pas connue (F-85 / SF-85-02). */
+  readonly acceptedAttachmentTypes = computed(
+    () => this.fileFormats.profile('attachments')?.mediaTypes ?? null,
+  );
+
   readonly activeTitle = computed(() => {
     const id = this.activeConversationId();
     const conversation = this.conversations().find((c) => c.id === id);
@@ -173,6 +184,14 @@ export class ChatComponent implements OnInit {
       return;
     }
     for (const file of Array.from(files)) {
+      // F-85 / SF-85-02 : refusé ici, en toutes lettres, plutôt qu'après un aller-retour qui
+      // rendait une énumération de types MIME. Si la liste blanche n'est pas connue, rien n'est
+      // refusé localement : le serveur tranchera, et son message sera traduit à la réponse.
+      const refusal = fileRejectionMessage(file, this.acceptedAttachmentTypes());
+      if (refusal) {
+        this.notifyError(refusal, REFUSAL_SNACK_DURATION_MS);
+        continue;
+      }
       const localId = `att-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       this.attachments.update((list) => [
         ...list,
@@ -185,10 +204,17 @@ export class ChatComponent implements OnInit {
               a.localId === localId ? { ...a, serverId: res.id, status: 'ready' } : a,
             ),
           ),
-        error: () => {
+        error: (error: HttpErrorResponse) => {
           this.attachments.update((list) =>
             list.map((a) => (a.localId === localId ? { ...a, status: 'error' } : a)),
           );
+          // Le serveur garde son message exact ; c'est l'écran qui traduit, avec la fonction
+          // commune — le même refus qu'en local, au caractère près (F-85 / SF-85-02).
+          const accepted = this.acceptedAttachmentTypes();
+          if (error.status === 415 && accepted) {
+            this.notifyError(rejectionSentences(file, accepted), REFUSAL_SNACK_DURATION_MS);
+            return;
+          }
           this.notifyError(`Le fichier « ${file.name} » n’a pas pu être téléversé.`);
         },
       });
@@ -425,7 +451,11 @@ export class ChatComponent implements OnInit {
     return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
   }
 
-  private notifyError(message: string): void {
-    this.snackBar.open(message, 'Fermer', { duration: 4000, panelClass: 'snack-error' });
+  /**
+   * Un refus de format tient en trois phrases et donne une manipulation à faire : il reste affiché
+   * plus longtemps (F-85 / SF-85-02). Un message qui disparaît avant d'être lu ne dit rien.
+   */
+  private notifyError(message: string, duration = 4000): void {
+    this.snackBar.open(message, 'Fermer', { duration, panelClass: 'snack-error' });
   }
 }

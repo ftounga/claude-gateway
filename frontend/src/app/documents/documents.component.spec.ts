@@ -10,6 +10,7 @@ import { provideRouter } from '@angular/router';
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { MatDialog } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, throwError } from 'rxjs';
 
 import { DocumentsComponent } from './documents.component';
@@ -22,6 +23,7 @@ describe('DocumentsComponent', () => {
   let service: jasmine.SpyObj<DocumentsService>;
   let dialog: jasmine.SpyObj<MatDialog>;
   let httpMock: HttpTestingController;
+  let snackBar: MatSnackBar;
 
   /**
    * Répond à la lecture des formats du serveur (F-85 / SF-85-01). L'appel est optionnel dans les
@@ -91,6 +93,8 @@ describe('DocumentsComponent', () => {
       ],
     });
     httpMock = TestBed.inject(HttpTestingController);
+    snackBar = TestBed.inject(MatSnackBar);
+    spyOn(snackBar, 'open').and.callThrough();
 
     fixture = TestBed.createComponent(DocumentsComponent);
     component = fixture.componentInstance;
@@ -120,6 +124,101 @@ describe('DocumentsComponent', () => {
   it("laisse l'accept vide tant que le serveur n'a pas répondu", () => {
     setup();
     expect(fileInput().getAttribute('accept')).toBe('');
+  });
+
+  // --- F-85 / SF-85-02 — le refus parle la langue de l'utilisateur ------------------------------
+
+  /** Un `.docx` tel que le navigateur le présente. */
+  function docx(): File {
+    return new File(['x'], 'rapport.docx', {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+  }
+
+  /** Le dernier message affiché dans la snackbar. */
+  function lastSnack(): string {
+    return (snackBar.open as jasmine.Spy).calls.mostRecent().args[0] as string;
+  }
+
+  /** Simule un choix de fichier dans le sélecteur. */
+  function pick(file: File): void {
+    const input = fileInput();
+    Object.defineProperty(input, 'files', { value: [file], configurable: true });
+    input.dispatchEvent(new Event('change'));
+  }
+
+  /** Simule un dépôt du fichier sur la carte. */
+  function drop(file: File): void {
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    const event = new DragEvent('drop', { dataTransfer: transfer, bubbles: true });
+    fixture.nativeElement.querySelector('.documents__submit').dispatchEvent(event);
+  }
+
+  it("refuse un .docx en toutes lettres, sans type MIME, et nomme le PDF", () => {
+    setup();
+    answerFileFormats(['application/pdf', 'image/png', 'image/jpeg', 'image/tiff']);
+
+    pick(docx());
+
+    const message = lastSnack();
+    expect(message).not.toMatch(/[a-z]+\/[a-z0-9.+-]+/);
+    expect(message).toContain('Les fichiers Word (.docx) ne sont pas acceptés.');
+    expect(message).toContain('Formats acceptés : PDF, images (PNG, JPEG, TIFF).');
+    expect(message).toContain('Exportez votre document en PDF');
+    // Rien n'a été envoyé : le refus a lieu avant l'aller-retour.
+    expect(service.submit).not.toHaveBeenCalled();
+  });
+
+  it('le glisser-déposer donne exactement le même message que le sélecteur', () => {
+    setup();
+    answerFileFormats(['application/pdf', 'image/png', 'image/jpeg', 'image/tiff']);
+
+    pick(docx());
+    const bySelector = lastSnack();
+    drop(docx());
+    const byDrop = lastSnack();
+
+    expect(byDrop).toBe(bySelector);
+    expect(service.submit).not.toHaveBeenCalled();
+  });
+
+  it('traduit le 415 du serveur dans le même message', () => {
+    setup();
+    answerFileFormats(['application/pdf', 'image/png', 'image/jpeg', 'image/tiff']);
+    // Le serveur garde son message exact : c'est l'écran qui traduit.
+    service.submit.and.returnValue(
+      throwError(
+        () =>
+          new HttpErrorResponse({
+            status: 415,
+            error: { message: 'Format refusé (« application/msword »). Formats acceptés : …' },
+          }),
+      ),
+    );
+
+    // Un fichier que la garde locale laisse passer (type accepté) mais que le serveur refuse.
+    const disguised = new File(['x'], 'rapport.docx', { type: 'application/pdf' });
+    pick(disguised);
+
+    const message = lastSnack();
+    expect(message).not.toMatch(/[a-z]+\/[a-z0-9.+-]+/);
+    expect(message).toContain('Les fichiers Word (.docx) ne sont pas acceptés.');
+  });
+
+  it("laisse parler le serveur quand la liste blanche n'est pas connue", () => {
+    setup();
+    // Aucune réponse à /api/file-formats : l'écran ne sait pas ce qui passe, il n'invente pas.
+    service.submit.and.returnValue(
+      throwError(
+        () => new HttpErrorResponse({ status: 415, error: { message: 'Format refusé (« x »).' } }),
+      ),
+    );
+
+    pick(docx());
+
+    expect(service.submit).toHaveBeenCalled();
+    expect(lastSnack()).toBe('Format refusé (« x »).');
   });
 
   it('loads the document list on init', () => {

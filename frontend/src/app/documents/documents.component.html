@@ -10,7 +10,16 @@
     </a>
   </header>
 
-  <mat-card class="documents__submit">
+  <!-- F-85 / SF-85-02 : déposer un fichier ici ne faisait rien — le navigateur quittait la page
+       pour l'afficher. Le dépôt passe par le même chemin que le sélecteur, donc par le même
+       message de refus. -->
+  <mat-card
+    class="documents__submit"
+    [class.documents__submit--dragging]="dragging()"
+    (dragover)="onDragOver($event)"
+    (dragleave)="onDragLeave()"
+    (drop)="onDrop($event)"
+  >
     <input
       #fileInput
       type="file"
