@@ -198,6 +198,62 @@ class NetworkPreflightTest {
         assertFalse(message.contains("SSPI"), message);
     }
 
+    // ------------------------------------------------------------------ F-80 / SF-80-01
+
+    @Test
+    @DisplayName("un echec de poignee de main TLS est qualifie comme tel")
+    void aTlsHandshakeFailureIsQualified() {
+        // C'est ce verdict qui autorise le runner a LIRE la chaine : une SSLException prouve que le
+        // serveur a repondu et presente un certificat.
+        NetworkPreflight preflight = new NetworkPreflight(
+                new ThrowingHttpClient(new IOException(
+                        new javax.net.ssl.SSLHandshakeException("PKIX path building failed"))),
+                OperatingSystem.LINUX);
+
+        NetworkPreflight.Verdict verdict = preflight.verify("https://portal.exemple.fr/api");
+
+        assertTrue(verdict.unreachable(), "un echec TLS reste un echec");
+        assertTrue(verdict.tlsFailure(), "il y a une chaine a lire et un emetteur a nommer");
+        assertTrue(verdict.message().contains("pas joignable"), verdict.message());
+    }
+
+    @Test
+    @DisplayName("les autres pannes ne declenchent aucune sonde")
+    void otherFailuresNeverTriggerTheProbe() throws IOException {
+        // Un DNS muet, un port ferme ou un 407 ne laissent RIEN a regarder : sonder y ferait perdre
+        // un delai d'attente pour ne rien afficher.
+        assertFalse(new NetworkPreflight(
+                new ThrowingHttpClient(new java.net.UnknownHostException("portal.exemple.fr")),
+                OperatingSystem.LINUX).verify("https://portal.exemple.fr/api").tlsFailure());
+        assertFalse(new NetworkPreflight(
+                new ThrowingHttpClient(new IOException("Tunnel failed, got: 407")),
+                OperatingSystem.LINUX).verify("https://portal.exemple.fr/api").tlsFailure());
+        assertFalse(preflight().verify(startServer(200, "{}")).tlsFailure());
+    }
+
+    @Test
+    @DisplayName("un 407 porte par une SSLException reste un 407, jamais une interception")
+    void aProxyAuthCarriedByAnSslExceptionStaysAProxyAuth() {
+        // C'est le PROXY qui parle, pas le serveur : le nommer « intercepteur » enverrait chercher
+        // un certificat la ou il faut une authentification.
+        NetworkPreflight preflight = new NetworkPreflight(
+                new ThrowingHttpClient(new javax.net.ssl.SSLException(
+                        "Unable to tunnel through proxy. Proxy returns \"HTTP/1.1 407\"")),
+                OperatingSystem.LINUX);
+
+        NetworkPreflight.Verdict verdict = preflight.verify("https://portal.exemple.fr/api");
+
+        assertTrue(verdict.unreachable());
+        assertFalse(verdict.tlsFailure(), verdict.message());
+        assertTrue(verdict.message().contains("SSPI"), verdict.message());
+    }
+
+    @Test
+    @DisplayName("check() reste le message seul, pour les appelants qui n'en veulent pas plus")
+    void checkStillReturnsTheMessageAlone() throws IOException {
+        assertNull(preflight().check(startServer(200, "{}")));
+    }
+
     @Test
     @DisplayName("declarer un proxy connu : la syntaxe du systeme, jamais rien")
     void declaringAKnownProxyUsesTheShellOfTheHost() {

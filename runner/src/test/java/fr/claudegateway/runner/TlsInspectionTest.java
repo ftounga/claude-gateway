@@ -118,4 +118,48 @@ class TlsInspectionTest {
         assertTrue(text.contains("ne le contourne pas"), text);
         assertTrue(text.contains("ne relâche aucune vérification"), text);
     }
+
+    // ------------------------------------------------------------------ F-80 / SF-80-01
+
+    @Test
+    void the_organisation_is_read_from_the_presented_certificate() {
+        assertEquals("Zscaler Inc.",
+                TlsInspection.organisation("CN=portal.ng-itconsulting.com, O=Zscaler Inc."));
+        assertEquals("Zscaler Inc.",
+                TlsInspection.organisation("cn=portal.x.fr, o=Zscaler Inc., C=US"));
+        // Sans O=, rien : mieux vaut un nom incomplet qu'un nom inventé.
+        assertEquals("", TlsInspection.organisation("CN=portal.x.fr"));
+        assertEquals("", TlsInspection.organisation(null));
+    }
+
+    @Test
+    void the_presenter_names_the_editor_first_then_the_authority() {
+        // L'ordre est celui de la reconnaissance : « Zscaler Inc. » se lit d'un coup d'œil, le CN
+        // de l'autorité intermédiaire demande de savoir ce qu'est une autorité intermédiaire.
+        String presenter = TlsInspection.presenter(
+                List.of(link("CN=portal.ng-itconsulting.com, O=Zscaler Inc.", CORPORATE_ROOT)),
+                "CN=Zscaler Intermediate Root CA (zscaler.net) (t)");
+
+        assertEquals("Zscaler Inc. (CN=Zscaler Intermediate Root CA (zscaler.net) (t))", presenter);
+    }
+
+    @Test
+    void the_presenter_falls_back_to_the_authority_alone() {
+        assertEquals("Acme Corp Proxy CA",
+                TlsInspection.presenter(List.of(link("CN=portal.x.fr", CORPORATE_ROOT)),
+                        CORPORATE_ROOT));
+        assertEquals("Acme Corp Proxy CA", TlsInspection.presenter(null, CORPORATE_ROOT));
+        assertEquals("Acme Corp Proxy CA", TlsInspection.presenter(List.of(), CORPORATE_ROOT));
+    }
+
+    @Test
+    void the_handshake_failure_message_names_the_presenter_and_calls_it_normal() {
+        String text = TlsInspection.handshakeFailure("Zscaler Inc. (CN=Zscaler Root CA)");
+
+        assertTrue(text.contains("Certificat présenté par : Zscaler Inc."), text);
+        assertTrue(text.contains("déchiffre le trafic et le re-signe"), text);
+        assertTrue(text.contains("normal d'un proxy d'inspection d'entreprise"), text);
+        // Aucun remède ici : celui-ci appartient au message de la panne, affiché juste au-dessus.
+        assertFalse(text.contains("trustStore"), text);
+    }
 }

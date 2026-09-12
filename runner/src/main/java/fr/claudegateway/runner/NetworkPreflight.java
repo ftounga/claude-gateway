@@ -44,11 +44,44 @@ public final class NetworkPreflight {
     }
 
     /**
+     * Verdict du contrôle de vol (F-80 / SF-80-01).
+     *
+     * <p>Le message seul ne suffisait plus : un échec <b>TLS</b> n'appelle pas la même suite qu'un
+     * DNS muet. Le premier prouve que la connexion a abouti et que le serveur a présenté un
+     * certificat — donc qu'il y a quelque chose à lire et à nommer ; le second ne laisse rien à
+     * regarder.</p>
+     *
+     * @param message message à afficher, ou {@code null} quand la gateway répond
+     * @param tlsFailure vrai quand l'échec est une poignée de main TLS
+     */
+    public record Verdict(String message, boolean tlsFailure) {
+
+        /** Verdict de succès : la gateway a répondu. */
+        static final Verdict REACHABLE = new Verdict(null, false);
+
+        /** Vrai quand le runner ne doit pas continuer. */
+        public boolean unreachable() {
+            return message != null;
+        }
+    }
+
+    /**
      * Joint la gateway. Rend {@code null} si elle répond, ou le message à afficher sinon.
+     *
+     * <p>Conservée pour les appelants qui n'ont que faire de la <b>nature</b> de l'échec.</p>
      *
      * @param gateway URL de la gateway, telle qu'elle a été normalisée par la configuration
      */
     public String check(String gateway) {
+        return verify(gateway).message();
+    }
+
+    /**
+     * Joint la gateway et <b>qualifie</b> son échec (F-80 / SF-80-01).
+     *
+     * @param gateway URL de la gateway, telle qu'elle a été normalisée par la configuration
+     */
+    public Verdict verify(String gateway) {
         HttpRequest request = HttpRequest.newBuilder(URI.create(gateway + "/runner/download/formats"))
                 .timeout(TIMEOUT)
                 .GET()
@@ -59,17 +92,23 @@ public final class NetworkPreflight {
             // pour le seul 407, qui ne vient pas du serveur qu'on cherche à joindre (SF-45-04).
             HttpResponse<Void> response =
                     httpClient.send(request, HttpResponse.BodyHandlers.discarding());
-            return response.statusCode() == PROXY_AUTH_REQUIRED ? proxyAuthMessage(gateway) : null;
+            return response.statusCode() == PROXY_AUTH_REQUIRED
+                    ? new Verdict(proxyAuthMessage(gateway), false)
+                    : Verdict.REACHABLE;
         } catch (IOException unreachable) {
             // Sur une cible en HTTPS, le proxy refuse le tunnel CONNECT et la JVM lève une
             // IOException : il n'y a JAMAIS de réponse à inspecter. Ne traiter que le statut ne
             // couvrirait donc pas le cas réellement rencontré chez le client (D2).
-            return Failures.isProxyAuthRequired(unreachable)
-                    ? proxyAuthMessage(gateway)
-                    : message(gateway, unreachable);
+            if (Failures.isProxyAuthRequired(unreachable)) {
+                // Un 407 refusé par le proxy peut voyager dans une SSLException : c'est le proxy qui
+                // parle, pas le serveur. Il est donc traité D'ABORD, et n'appelle aucune sonde.
+                return new Verdict(proxyAuthMessage(gateway), false);
+            }
+            return new Verdict(message(gateway, unreachable), Failures.isTlsHandshake(unreachable));
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
-            return null; // Interruption : ce n'est pas un verdict réseau, on laisse la suite décider.
+            // Interruption : ce n'est pas un verdict réseau, on laisse la suite décider.
+            return Verdict.REACHABLE;
         }
     }
 
