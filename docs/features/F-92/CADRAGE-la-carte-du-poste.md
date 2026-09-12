@@ -144,6 +144,62 @@ dans un projet du poste.**
 **Dans cet ordre.** F-92 est la fondation : sans destination, ni la promotion, ni le juge, ni le
 doctor n'ont de sens.
 
+## 7 bis. F-96 — La gouvernance se met à jour
+
+Ajouté le 2026-09-12, sur une question du PO : *« vu que la gouvernance est déjà activée, comment
+va-t-il la mettre à jour avec les nouveaux changements ? »*
+
+**Réponse actuelle : il ne la met pas à jour.** `GovernanceDepositAction` n'a que deux issues —
+`CREATE` (le fichier n'existe pas) et `KEEP` (il existe, il est **laissé tel quel, contenu différent
+compris**).
+
+| Ce qui change dans le paquet | Ce qui arrive sur un poste déjà activé |
+|---|---|
+| Un **nouveau** fichier | ✅ créé au geste « appliquer » |
+| Le **contenu** d'un fichier existant | ❌ **rien** |
+
+Conséquence : **un skill corrigé n'atteint jamais un poste qui a déjà l'ancienne version.** Un client
+resterait sur la gouvernance du jour de son activation, pour toujours. Le produit publie un
+catalogue qu'il ne peut pas faire évoluer.
+
+### La réponse était déjà dans le prompt d'origine
+
+`gouv-bootstrap`, §9 point 4 :
+
+> Poser un `.gouv-version` : si la version du script est plus récente que le fichier, **rejouer la
+> mise à jour des scripts et skills — qui, eux, sont écrasés : ce sont des artefacts générés, pas du
+> contenu utilisateur.**
+
+**C'est la distinction qui manque.** Aujourd'hui tout est traité comme du contenu utilisateur :
+
+| | Aujourd'hui | Ce qu'il faut |
+|---|---|---|
+| **Contenu utilisateur** — un `STATE.md` rempli, un `acces.md` nourri | jamais écrasé | **inchangé, c'est juste** |
+| **Artefact généré** — un skill publié par le produit, un gabarit encore vierge | jamais écrasé | **mis à jour** |
+
+Écraser un `STATE.md` rempli est une perte de données. Écraser un skill que le produit a publié n'en
+est pas une : personne ne modifie un skill à la main dans un projet client.
+
+### Ce que F-96 livre
+
+**Une troisième issue, `UPDATE`**, pour les fichiers qu'un paquet **déclare comme artefacts
+générés** — et **seulement s'ils n'ont pas été modifiés localement**. Un fichier que l'utilisateur a
+touché **redevient du contenu utilisateur** : on ne le touche plus, et on le dit.
+
+**Reconnaître une modification locale** est le point dur : il faut savoir si le fichier présent est
+celui qu'on avait déposé. La voie évidente est une empreinte de ce qui a été déposé, retenue à
+l'activation — à trancher et à tracer.
+
+**Et le plan de dépôt le dit**, comme il dit déjà le reste : *« 2 créés, 1 mis à jour, 3 laissés tels
+quels — dont 1 modifié localement, conservé »*. **Un fichier conservé parce qu'il a été modifié n'est
+pas la même chose qu'un fichier conservé parce qu'il était déjà bon** : l'écran doit distinguer les
+deux, sinon on ne sait jamais si sa correction est arrivée.
+
+**Ce qui reste hors de F-96** : écraser du contenu utilisateur, dans quelque cas que ce soit. Il n'y a
+pas de geste « forcer » — s'il en fallait un, ce serait une décision du PO, pas un défaut de cette
+feature.
+
+
 ## 8. Ce que ça vaut, au-delà de la gouvernance
 
 **Un argument commercial que le PO n'a pas encore nommé.** Après six mois chez un client, la carte de
