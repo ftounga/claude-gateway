@@ -10,7 +10,7 @@
 
 ## Statut
 
-`in-progress`
+`done` — mergée le 2026-09-12 (PR #456)
 
 ## Date de création
 
