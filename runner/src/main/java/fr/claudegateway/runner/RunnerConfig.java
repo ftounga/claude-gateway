@@ -21,8 +21,8 @@ import java.util.Map;
  * <p><b>La racine est celle du poste</b> depuis F-48 / SF-48-02 : le dossier sous lequel vivent les
  * projets, et non plus un projet. {@code --workspace} (et {@code CLAUDE_RUNNER_WORKSPACE}) restent
  * acceptés et désignent la même chose — une ligne de commande valide hier ne doit pas échouer
- * demain. Le confinement d'un tour, lui, est plus étroit que cette racine : il se referme sur le
- * sous-dossier que la gateway désigne à chaque appel ({@link ProjectScopes}).</p>
+ * demain. Le tour, lui, démarre plus bas : dans le sous-dossier que la gateway désigne à chaque
+ * appel ({@link ProjectScopes}) — un point de départ, pas une borne (F-73 / SF-73-01).</p>
  *
  * <p>Cette classe ne fait aucune I/O réseau : elle valide le format et l'existence de la racine, et
  * dérive l'URI WSS. Elle est intégralement testable unitairement.</p>
@@ -195,9 +195,9 @@ public final class RunnerConfig {
     }
 
     /**
-     * Racine du <b>poste</b> (F-48 / SF-48-02) : le dossier sous lequel vivent les projets. Le
-     * confinement d'un tour est plus étroit — il se referme sur le sous-dossier que la gateway
-     * désigne à chaque appel ({@link ProjectScopes}).
+     * Racine du <b>poste</b> (F-48 / SF-48-02) : le dossier sous lequel vivent les projets. Un tour
+     * démarre plus bas, dans le sous-dossier que la gateway désigne à chaque appel
+     * ({@link ProjectScopes}) — sans que cela borne ce qu'il peut atteindre (F-73).
      */
     public Path hostRoot() {
         return workspaceRoot;

@@ -59,8 +59,8 @@ public final class RunnerMain {
             console.info(ResumeMessages.resumedFrom(config.resumedFrom()));
         }
         console.info("Gateway   : " + config.gatewayBaseUrl());
-        console.info("Poste     : " + config.hostRoot() + " (racine — chaque tour est confiné au "
-                + "dossier du projet qu'il vise)");
+        console.info("Poste     : " + config.hostRoot() + " (racine — le projet d'un tour y donne "
+                + "son dossier de départ)");
         // Le mode est dit dans les DEUX sens (F-38 / SF-38-19, D4) : le défaut d'avant venait de ce
         // qu'un runner restreint ne se signalait pas — on le découvrait au premier refus. Et il est
         // dit ICI, une seule fois (SF-38-26, D1) : il vient de la configuration, il est connu avant

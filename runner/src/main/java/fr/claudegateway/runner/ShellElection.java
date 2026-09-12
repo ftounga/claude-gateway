@@ -31,7 +31,7 @@ import java.util.function.Predicate;
  *
  * <p><b>Le piège écarté (D3)</b> : Windows 10+ pose un {@code bash.exe} dans {@code System32}. Ce
  * n'est pas un shell du poste, c'est le <b>lanceur WSL</b> — il ouvre une distribution Linux dont le
- * système de fichiers n'est pas celui du projet, et le {@code cwd} confiné par le {@link PathGuard}
+ * système de fichiers n'est pas celui du projet, et le {@code cwd} résolu par le {@link PathResolver}
  * n'y existe pas. Un candidat plausible qui casse tout vaut moins que pas de candidat du tout : il
  * est exclu de l'élection.</p>
  *

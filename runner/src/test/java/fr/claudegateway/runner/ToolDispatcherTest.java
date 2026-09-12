@@ -52,7 +52,7 @@ class ToolDispatcherTest {
             frames.add(frame);
             return CompletableFuture.completedFuture(null);
         });
-        dispatcher = new ToolDispatcher(new FileTools(new PathGuard(root)), sender, new Console());
+        dispatcher = new ToolDispatcher(new FileTools(new PathResolver(root)), sender, new Console());
     }
 
     @AfterEach
@@ -90,13 +90,15 @@ class ToolDispatcherTest {
     }
 
     @Test
-    void refuseUnCheminHorsRacineSansToucherAuDisque() throws Exception {
-        dispatcher.onToolCall(toolCall("toolu_03", "read_file", input("path", "../../etc/passwd"), 30_000));
+    void unCheminHorsRacineNEstPlusRefuseMaisResteBorneParLaMachine() throws Exception {
+        // F-73 / SF-73-01 : plus de `path_outside_root`. Ce qui subsiste vient de l'OS — ici le
+        // fichier n'existe pas sous ce dossier de test, d'où `not_found` et non un refus du runner.
+        dispatcher.onToolCall(toolCall("toolu_03", "read_file",
+                input("path", "../voisin-absent.txt"), 30_000));
 
         JsonNode result = nextFrame();
         assertFalse(result.path("ok").asBoolean());
-        assertEquals("path_outside_root", result.path("error").path("code").asText());
-        assertFalse(result.path("error").path("message").asText().contains(root.toString()));
+        assertEquals("not_found", result.path("error").path("code").asText());
     }
 
     @Test
@@ -238,7 +240,7 @@ class ToolDispatcherTest {
 
     @Test
     void annonceLaCapaciteBashQuandLaMachineLAutorise() throws Exception {
-        PathGuard guard = new PathGuard(root);
+        PathResolver guard = new PathResolver(root);
         ToolRouter tools = new ToolRouter(new FileTools(guard), new BashTool(guard, true, ShellElection.elect()));
         try (ToolDispatcher withBash = new ToolDispatcher(ToolScopes.fixed(tools), tools.capabilities(), ShellElection.elect(), sender,
                 new Console())) {
@@ -252,7 +254,7 @@ class ToolDispatcherTest {
 
     @Test
     void declareLeGenreDInterpreteurEluDansLaTrameReady() throws Exception {
-        PathGuard guard = new PathGuard(root);
+        PathResolver guard = new PathResolver(root);
         ToolRouter tools = new ToolRouter(new FileTools(guard), new BashTool(guard, true, ShellElection.elect()));
         try (ToolDispatcher withBash = new ToolDispatcher(ToolScopes.fixed(tools), tools.capabilities(), ShellElection.elect(), sender,
                 new Console())) {
@@ -278,7 +280,7 @@ class ToolDispatcherTest {
     @Test
     @DisabledOnOs(OS.WINDOWS)
     void diffuseLaSortieDeBashAvantSaTrameTerminale() throws Exception {
-        PathGuard guard = new PathGuard(root);
+        PathResolver guard = new PathResolver(root);
         ToolRouter tools = new ToolRouter(new FileTools(guard), new BashTool(guard, true, ShellElection.elect()));
         try (ToolDispatcher withBash = new ToolDispatcher(ToolScopes.fixed(tools), tools.capabilities(), ShellElection.elect(), sender,
                 new Console())) {
@@ -307,7 +309,7 @@ class ToolDispatcherTest {
     @Test
     @DisabledOnOs(OS.WINDOWS)
     void uneAnnulationDeBashTueLeProcessusEtNeProduitQuUneTrameTerminale() throws Exception {
-        PathGuard guard = new PathGuard(root);
+        PathResolver guard = new PathResolver(root);
         ToolRouter tools = new ToolRouter(new FileTools(guard), new BashTool(guard, true, ShellElection.elect()));
         try (ToolDispatcher withBash = new ToolDispatcher(ToolScopes.fixed(tools), tools.capabilities(), ShellElection.elect(), sender,
                 new Console())) {
@@ -369,20 +371,22 @@ class ToolDispatcherTest {
     }
 
     @Test
-    void unProjetNeLitPasSonVoisinMemeSousLaMemeRacine() throws Exception {
+    void unProjetAtteintSonVoisinDepuisF73() throws Exception {
+        // Ce test affirmait l'inverse (SF-48-02). Le confinement par projet est retiré : il ne
+        // tenait que sur les outils fichiers, et `cd ../projet-b` par bash n'a jamais été inspecté.
         Files.createDirectories(root.resolve("projet-a"));
         Files.createDirectories(root.resolve("projet-b"));
-        Files.writeString(root.resolve("projet-b/secret.txt"), "B");
+        Files.writeString(root.resolve("projet-b/note.txt"), "B");
 
         try (ToolDispatcher scoped = scopedDispatcher()) {
             ObjectNode call = toolCall("toolu_p2", "read_file",
-                    input("path", "../projet-b/secret.txt"), 30_000);
+                    input("path", "../projet-b/note.txt"), 30_000);
             call.put("project", "projet-a");
             scoped.onToolCall(call);
 
             JsonNode result = nextFrame();
-            assertFalse(result.path("ok").asBoolean());
-            assertEquals("path_outside_root", result.path("error").path("code").asText());
+            assertTrue(result.path("ok").asBoolean(), result.toString());
+            assertEquals("B", result.path("content").asText());
         }
     }
 

@@ -327,8 +327,18 @@ sensibles sont couverts par des tests.
 
 ## OQ-14 — En cible `RUNNER`, la porte de confirmation doit-elle rester **activée par défaut** ?
 
-**Statut** : **TRANCHÉE le 2026-09-10 par le product owner — la porte n'est plus armée par
-défaut.** Implémentée par **F-47 / SF-47-04**, enregistrée en **ADR-018**.
+**Statut** : **RETRANCHÉE le 2026-09-12 — la porte est de nouveau armée par défaut.** Implémentée
+par **F-73 / SF-73-02**, enregistrée en **ADR-019** (qui supersède ADR-018).
+
+**Pourquoi la réponse a changé.** La décision du 2026-09-10 reposait sur un dispositif à deux
+verrous : la porte *et* le confinement du runner. Vérification faite le 2026-09-12, **le confinement
+n'existait pas** pour `bash` — seul le `cwd` d'une commande passait par la garde, jamais la commande
+elle-même. Il ne restait donc qu'un verrou, et il était désarmé. Le product owner a retiré le
+confinement (on ne promet pas ce qu'on ne tient pas) **et** réarmé la porte, qui redevient ce qui
+s'interpose avant une commande. Les projets **existants ne sont pas modifiés**.
+
+<details>
+<summary>La décision du 2026-09-10, telle qu'elle avait été rendue</summary>
 
 **La décision.** `agent_ask_before_bash` vaut **`false`** à la création d'un projet, et la bascule de
 cible d'exécution ne l'arme plus (la décision D7 de SF-38-08 est retirée : elle rendait le nouveau
@@ -342,6 +352,8 @@ d'affichage. F-47 a d'abord rendu l'invite impossible à manquer — peinte à l
 (SF-47-01), son temps restant affiché et son expiration dite pour ce qu'elle est (SF-47-02), la
 peinture enfin prouvée par un test qui l'aurait vue manquer (SF-47-03). Le coût de la porte est
 devenu **visible** ; c'est ce qui rendait la question posable.
+
+</details>
 
 <details>
 <summary>Historique de la question, avant qu'elle soit tranchée</summary>

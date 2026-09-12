@@ -99,15 +99,48 @@ class BashToolTest {
     }
 
     @Test
-    void refuseUnCwdHorsDeLaRacine() {
+    void unCwdHorsDeLaRacineNEstRefuseQueSIlNExistePas() {
+        // F-73 / SF-73-01 : le cwd n'est plus confiné. Ce qui reste vérifié est son existence —
+        // un dossier de départ faux ferait échouer la commande sans dire pourquoi.
         ObjectNode input = command("echo x");
-        input.put("cwd", "../ailleurs");
+        input.put("cwd", "../ailleurs-qui-n-existe-pas");
 
         ToolOutcome outcome = enabled().run(input, context);
 
         assertFalse(outcome.ok());
-        assertEquals("path_outside_root", outcome.errorCode());
+        assertEquals("not_found", outcome.errorCode());
         assertTrue(context.chunks.isEmpty(), "Rien n'a été exécuté");
+    }
+
+    @Test
+    void demarreDansUnCwdHorsDeLaRacineQuandIlExiste(@TempDir Path ailleurs) throws IOException {
+        Files.writeString(ailleurs.resolve("marqueur-voisin.txt"), "x");
+        ObjectNode input = command("ls");
+        input.put("cwd", ailleurs.toString());
+
+        ToolOutcome outcome = enabled().run(input, context);
+
+        assertTrue(outcome.ok(), outcome.errorCode());
+        assertTrue(context.text("stdout").contains("marqueur-voisin.txt"), context.text("stdout"));
+    }
+
+    @Test
+    void uneCommandeSortDuDossierDuProjetEtCestDitAinsi() throws IOException {
+        // Le test qui aurait dû exister depuis SF-38-07. Le commentaire du code affirmait qu'« une
+        // commande ne s'exécute jamais hors de la racine exposée » ; aucun test ne le vérifiait,
+        // et c'était faux. Celui-ci fige la vérité du produit (F-73 / SF-73-01).
+        Path voisin = Files.createDirectories(root.getParent().resolve("voisin-" + root.getFileName()));
+        Files.writeString(voisin.resolve("trouve.txt"), "x");
+        try {
+            ToolOutcome outcome = enabled().run(
+                    command("cd ../" + voisin.getFileName() + " && ls"), context);
+
+            assertTrue(outcome.ok(), outcome.errorCode());
+            assertTrue(context.text("stdout").contains("trouve.txt"), context.text("stdout"));
+        } finally {
+            Files.deleteIfExists(voisin.resolve("trouve.txt"));
+            Files.deleteIfExists(voisin);
+        }
     }
 
     @Test
@@ -124,7 +157,7 @@ class BashToolTest {
 
     @Test
     void refuseLexecutionQuandLaMachineNeLaPasAutorisee() {
-        ToolOutcome outcome = new BashTool(new PathGuard(root), false, POSIX_SHELL).run(command("echo x"), context);
+        ToolOutcome outcome = new BashTool(new PathResolver(root), false, POSIX_SHELL).run(command("echo x"), context);
 
         assertFalse(outcome.ok());
         assertEquals("unsupported_tool", outcome.errorCode());
@@ -205,14 +238,14 @@ class BashToolTest {
     @Test
     void unOutilFichierNeRenvoieAucunCodeDeSortie() throws IOException {
         Files.writeString(root.resolve("a.txt"), "x");
-        ToolOutcome outcome = new FileTools(new PathGuard(root)).execute("read_file",
+        ToolOutcome outcome = new FileTools(new PathResolver(root)).execute("read_file",
                 MAPPER.createObjectNode().put("path", "a.txt"), ToolContext.none());
 
         assertNull(outcome.exitCode(), "exitCode n'existe que pour bash (contrat §2.4)");
     }
 
     private BashTool enabled() {
-        return new BashTool(new PathGuard(root), true, POSIX_SHELL);
+        return new BashTool(new PathResolver(root), true, POSIX_SHELL);
     }
 
     private static ObjectNode command(String command) {

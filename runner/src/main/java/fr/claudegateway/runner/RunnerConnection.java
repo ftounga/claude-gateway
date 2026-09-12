@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <p>Note : cette classe est intrinsèquement I/O réseau ; elle n'est pas couverte par les tests
  * unitaires (la connexion réelle est un smoke manuel). La logique testable (backoff, config, proxy,
- * jeton, confinement, outils, file d'émission, aiguillage) est isolée dans des classes dédiées.</p>
+ * jeton, résolution des chemins, outils, file d'émission, aiguillage) est isolée dans des classes dédiées.</p>
  */
 public final class RunnerConnection {
 
@@ -91,7 +91,7 @@ public final class RunnerConnection {
             return t;
         });
         sender = new FrameSender(console);
-        // Meme montage de gardes que le repli long-polling : confinement et exclusions ne doivent
+        // Meme montage d'outils que le repli long-polling : les deux transports ne doivent
         // jamais dependre du transport (SF-38-09).
         dispatcher = ToolStack.create(config, console, sender).dispatcher();
         router = new FrameRouter(dispatcher, console);

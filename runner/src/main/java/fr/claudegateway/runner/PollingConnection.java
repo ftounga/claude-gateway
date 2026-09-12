@@ -12,8 +12,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <p>Elle transporte <b>les mêmes enveloppes</b> que la socket : {@code ready} à l'ouverture,
  * {@code tool_call} / {@code tool_cancel} en entrée, {@code tool_stream} / {@code tool_result} /
- * {@code protocol_error} en sortie. Aucun type de message nouveau, aucune garde en moins — le même
- * {@link ToolStack} monte le même confinement et les mêmes exclusions.</p>
+ * {@code protocol_error} en sortie. Aucun type de message nouveau, aucun comportement en moins — le
+ * même {@link ToolStack} monte les mêmes outils, avec le même dossier de départ par projet.</p>
  *
  * <p><b>Le poll est le heartbeat</b> : la gateway rafraîchit {@code last_seen_at} à chaque poll, donc
  * aucun minuteur séparé n'est armé ici. Et comme les outils s'exécutent sur les threads workers du

@@ -136,8 +136,8 @@ public final class ToolDispatcher implements AutoCloseable {
             return;
         }
 
-        // Le confinement est résolu AVANT toute exécution, et un projet inexploitable termine
-        // l'appel ici : rien ne doit tourner tant qu'on ne sait pas dans quel dossier le borner.
+        // Le dossier de DÉPART est résolu AVANT toute exécution, et un projet inexploitable termine
+        // l'appel ici : rien ne doit tourner tant qu'on ne sait pas où le faire démarrer.
         ToolExecutor tools;
         try {
             tools = scopes.forProject(project);

@@ -47,17 +47,27 @@ class ToolStackAnnouncementTest {
     }
 
     @Test
-    void mounting_the_stack_still_announces_root_shell_and_exclusions() {
+    void mounting_the_stack_still_announces_root_shell_and_listing_filter() {
         // Ces lignes restent, et restent répétées à chaque transport : elles attestent que le repli
-        // long-polling monte les mêmes gardes que la socket (D1).
+        // long-polling monte les mêmes outils que la socket (D1).
         String announced = String.join("\n", mount(false));
 
-        // Depuis F-48 / SF-48-02, la racine annoncée est celle du POSTE, et le montage dit
-        // explicitement que le confinement d'un tour est plus étroit qu'elle.
         assertTrue(announced.contains("Racine du poste :"), announced);
-        assertTrue(announced.contains("confiné au dossier du projet"), announced);
+        assertTrue(announced.contains("point de DÉPART"), announced);
         assertTrue(announced.contains("Interpréteur :"), announced);
-        assertTrue(announced.contains("Exclusions :"), announced);
+        assertTrue(announced.contains("Listage :"), announced);
+    }
+
+    @Test
+    void mounting_the_stack_no_longer_promises_any_confinement() {
+        // F-73 / SF-73-01 : ce sont ces mots-là qui ont induit le product owner en erreur. Ils ne
+        // doivent plus apparaître — ni ici, ni ailleurs sur la console.
+        for (boolean restricted : new boolean[] {false, true}) {
+            String announced = String.join("\n", mount(restricted));
+
+            assertFalse(announced.contains("confiné"), announced);
+            assertFalse(announced.contains("non désactivable"), announced);
+        }
     }
 
     /** Monte la pile sur un workspace vide et rend les lignes que la console a reçues. */
