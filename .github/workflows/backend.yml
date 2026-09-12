@@ -33,6 +33,15 @@ jobs:
       - name: Run tests (unitaires + intégration)
         run: cd backend && ./mvnw verify -q
 
+      # F-81 / SF-81-01 — Tests de contrat runner ↔ gateway. `backend/` et `runner/` sont deux
+      # projets Maven distincts qui ne se voient pas : le 2026-09-10, un champ renommé d'un seul
+      # côté a paralysé tout appairage de machine neuve pendant DEUX JOURS sans qu'aucune
+      # compilation, aucun test, aucune image ne bronche. Sans cette étape, le garde-fou ne joue
+      # qu'en local — et ce qui ne tourne qu'en local ne garde rien de ce qui part en production.
+      # Le script impose l'ordre d'installation que le module ne peut pas imposer lui-même.
+      - name: Tests de contrat (runner ↔ gateway)
+        run: ./scripts/contract-tests.sh
+
   build-and-deploy:
     name: Build & Deploy
     runs-on: ubuntu-latest
