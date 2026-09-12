@@ -490,3 +490,32 @@ aucun montant : elle a livré le mécanisme et laissé toutes les valeurs en con
 défauts d'avant. Elle a en revanche **révélé** le point 7 ci-dessus — un levier qui existait déjà,
 mais que son ancien nom (« coût blended ») présentait comme un constat technique plutôt que comme un
 réglage commercial.
+
+---
+
+## OQ-17 — Le runner doit-il faire confiance au magasin du système, et sous quelle condition ?
+
+**Ouverte le 2026-09-12** par F-80, sur un fait constaté et non sur une hypothèse : chez un client
+sous **Zscaler**, la racine d'inspection TLS est installée sur le poste — le navigateur et `curl` la
+reconnaissent — mais la JVM ne lit jamais le magasin du système, et le runner échoue seul.
+
+**La question n'est pas technique, elle est de confiance.** Additionner le magasin du système au
+`cacerts` de la JDK ne relâche aucune vérification : c'est exactement la confiance que le poste
+accorde déjà à tout le reste. Mais cela revient à suivre, sans que l'utilisateur l'ait demandé, un
+équipement qui **déchiffre le trafic**.
+
+| | Automatique | Sur drapeau `--trust-system` |
+|---|---|---|
+| Premier lancement en entreprise | fonctionne | **échoue**, puis fonctionne |
+| Geste conscient de l'utilisateur | non — une ligne au démarrage l'en informe | oui |
+| Cohérence avec le navigateur du poste | totale | partielle |
+| Risque | suivre un intercepteur sans l'avoir voulu (mais le poste le suit déjà partout) | aucun de plus |
+
+**Recommandation portée au cadrage** : automatique **et annoncé** — la ligne de transparence du
+démarrage nomme la racine détectée —, avec `--no-system-trust` pour qui veut la confiance stricte.
+
+**Ce que la réponse engage** : le comportement par défaut du runner sur **tout** poste d'entreprise
+sous inspection TLS, c'est-à-dire une grande part des clients visés. Tant qu'elle n'est pas tranchée,
+SF-80-02 ne peut pas être développée — seule SF-80-01 (le diagnostic) l'est sans risque.
+
+**Tranchée par** : le PO. **Non tranchée à ce jour.**
