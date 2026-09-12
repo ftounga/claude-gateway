@@ -23,6 +23,7 @@ import fr.claudegateway.runner.Console;
 import fr.claudegateway.runner.FrameRouter;
 import fr.claudegateway.runner.FrameSender;
 import fr.claudegateway.runner.RunnerIdentity;
+import fr.claudegateway.runner.ServedRunnerVersion;
 import fr.claudegateway.runner.ShellElection;
 import fr.claudegateway.runner.ToolDispatcher;
 import fr.claudegateway.runner.ToolOutcome;
@@ -184,7 +185,8 @@ class ToolFramesContractTest {
 
         RunnerCallDispatcher gateway = new RunnerCallDispatcher(registry,
                 ContractMappers.gateway(), (hostId, declared) -> {
-                }, 2_000L);
+                }, (hostId, declared) -> {
+                }, new ServedRunnerVersion("", ""), 2_000L);
 
         sender = new FrameSender(new Console());
         runner = new ToolDispatcher(scopes, capacites, ShellElection.elect(), sender, new Console());

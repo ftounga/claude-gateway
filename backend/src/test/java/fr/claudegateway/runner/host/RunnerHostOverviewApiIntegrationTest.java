@@ -78,7 +78,8 @@ class RunnerHostOverviewApiIntegrationTest {
 
     private RunnerHost seedHost(UUID userId, String name, OffsetDateTime lastSeenAt) {
         return hostRepository.save(RunnerHost.builder().userId(userId).name(name).rootName("dev")
-                .os("linux").shell("posix").elevated(false).lastSeenAt(lastSeenAt).build());
+                .os("linux").shell("posix").runnerVersion("0.0.1").elevated(false)
+                .lastSeenAt(lastSeenAt).build());
     }
 
     private Workspace seedWorkspace(UUID userId, UUID hostId, String name, String path) {
@@ -101,6 +102,8 @@ class RunnerHostOverviewApiIntegrationTest {
                 .andExpect(jsonPath("$[0].rootName").value("dev"))
                 .andExpect(jsonPath("$[0].os").value("linux"))
                 .andExpect(jsonPath("$[0].shell").value("posix"))
+                // F-81 / SF-81-03 : « son runner est-il a jour ? » a desormais une reponse.
+                .andExpect(jsonPath("$[0].runnerVersion").value("0.0.1"))
                 .andExpect(jsonPath("$[0].elevated").value(false))
                 .andExpect(jsonPath("$[0].connected").value(false))
                 .andExpect(jsonPath("$[0].activeProjects").value(1))

@@ -29,6 +29,7 @@ describe('PostesComponent', () => {
     rootName: 'dev',
     os: 'linux',
     shell: 'posix',
+    runnerVersion: '0.0.1',
     elevated: false,
     connected: true,
     lastSeenAt: new Date().toISOString(),
@@ -227,18 +228,23 @@ describe('PostesComponent', () => {
     expect(root.querySelector('.badge.badge--neutral')).not.toBeNull();
   });
 
-  it('montre ce que la machine a déclaré : racine, système, interpréteur', () => {
+  it('montre ce que la machine a déclaré : racine, système, interpréteur, version du runner', () => {
     setup();
     expect(text()).toContain('dev');
     expect(text()).toContain('linux');
     expect(text()).toContain('posix');
+    // F-81 / SF-81-03 : « son runner est-il à jour ? » a une réponse à l'écran, au lieu d'être
+    // devinée. Rien de plus : aucun geste n'en dépend et aucun runner n'est refusé.
+    expect(text()).toContain('Runner');
+    expect(text()).toContain('0.0.1');
   });
 
   it("omet une ligne plutôt que d'écrire « inconnu » quand le runner n'a rien déclaré", () => {
-    setup([{ ...poste, rootName: null, os: null, shell: null }]);
+    setup([{ ...poste, rootName: null, os: null, shell: null, runnerVersion: null }]);
     expect(text()).not.toContain('Racine');
     expect(text()).not.toContain('Système');
     expect(text()).not.toContain('Interpréteur');
+    expect(text()).not.toContain('Runner');
   });
 
   it("signale les droits d'administrateur quand le runner tourne élevé", () => {

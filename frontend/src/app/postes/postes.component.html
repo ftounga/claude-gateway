@@ -342,6 +342,15 @@
           <dd class="poste__mono">{{ host.shell }}</dd>
         </div>
       }
+      <!-- F-81 / SF-81-03 : la version DÉCLARÉE par le runner. Elle répond à « est-il à jour ? »,
+           elle ne juge rien et n'ouvre aucun geste — un poste qui travaille n'est pas arrêté
+           parce qu'une version a bougé. Absente tant qu'aucun runner ne l'a déclarée. -->
+      @if (host.runnerVersion) {
+        <div>
+          <dt>Runner</dt>
+          <dd class="poste__mono">{{ host.runnerVersion }}</dd>
+        </div>
+      }
       }
     </dl>
 

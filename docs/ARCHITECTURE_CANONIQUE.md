@@ -637,8 +637,14 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   d'appairage, son runner et sa connexion — pour la même machine et le même utilisateur.
   - `runner_hosts` : `id (uuid)`, `user_id (uuid)`, `name (varchar 100)`, `root_name (varchar 255)`,
     `os (varchar 64)`, `shell (varchar 16)`, `elevated (boolean)`,
-    `mission_status (varchar 16, NOT NULL, défaut ACTIVE)`, `last_seen_at`, `created_at`,
-    `updated_at`. Index `(user_id)`.
+    `runner_version (varchar 64)`, `mission_status (varchar 16, NOT NULL, défaut ACTIVE)`,
+    `last_seen_at`, `created_at`, `updated_at`. Index `(user_id)`.
+  - `runner_version` (F-81 / SF-81-03, migration `076`) est la version du binaire que le runner
+    **déclare** dans sa trame `ready`. Elle existe pour que « son runner est-il à jour ? » ait une
+    **réponse** — rendue dans la vue d'ensemble du poste, et comparée à la version que la gateway
+    distribue elle-même pour écrire une ligne de journal quand le poste est en retard. Elle ne
+    **décide** de rien : aucun runner n'est refusé, dégradé ou arrêté sur sa valeur (hors périmètre
+    absolu de F-81). Nulle tant qu'aucun runner ne s'est connecté.
   - `mission_status` (F-60 / SF-60-01, migration `067`) est l'état **métier** de la mission —
     `ACTIVE`, `PENDING`, `CLOSED` —, **déclaré par le propriétaire** et jamais déduit. Il est
     indépendant de l'état **technique** (« connecté »), qui se calcule : un poste éteint peut

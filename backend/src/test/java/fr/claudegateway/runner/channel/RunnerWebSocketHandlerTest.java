@@ -48,7 +48,8 @@ class RunnerWebSocketHandlerTest {
     void setUpDispatcher() {
         // Dispatcher réel (grâce raccourcie) : le routage des trames non-heartbeat n'a d'intérêt que
         // s'il aboutit vraiment quelque part.
-        dispatcher = new RunnerCallDispatcher(registry, objectMapper, (id, shell) -> { }, 100L);
+        dispatcher = new RunnerCallDispatcher(registry, objectMapper, (id, shell) -> { },
+                (id, version) -> { }, new fr.claudegateway.runner.ServedRunnerVersion("", ""), 100L);
     }
 
     private RunnerWebSocketHandler handler() {

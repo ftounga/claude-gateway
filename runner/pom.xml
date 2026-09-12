@@ -115,6 +115,23 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
                 <version>3.4.2</version>
+                <configuration>
+                    <archive>
+                        <!--
+                            F-81 / SF-81-03 — La VERSION, dans le manifeste.
+
+                            Le runner declare sa version dans sa trame `ready` en lisant
+                            `Package.getImplementationVersion()`. Sans cette entree, cette lecture
+                            rend null et le runner retombe sur sa constante de repli : TOUS les
+                            postes annoncaient alors la meme version, quelle que soit la date de
+                            leur binaire. Le champ existait ; il ne disait rien.
+                        -->
+                        <manifestEntries>
+                            <Implementation-Title>${project.artifactId}</Implementation-Title>
+                            <Implementation-Version>${project.version}</Implementation-Version>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
                 <executions>
                     <execution>
                         <id>thin-jar</id>
@@ -146,6 +163,13 @@
                                 <transformer
                                         implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>fr.claudegateway.runner.RunnerLauncher</mainClass>
+                                    <!-- shade REECRIT le manifeste : sans ces entrees, le fat-jar
+                                         distribue perdrait la version que le jar mince porte, et
+                                         c'est lui qui tourne sur la machine du client. -->
+                                    <manifestEntries>
+                                        <Implementation-Title>${project.artifactId}</Implementation-Title>
+                                        <Implementation-Version>${project.version}</Implementation-Version>
+                                    </manifestEntries>
                                 </transformer>
                                 <transformer
                                         implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>

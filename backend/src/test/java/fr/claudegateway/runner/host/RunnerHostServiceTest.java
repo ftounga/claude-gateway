@@ -217,6 +217,44 @@ class RunnerHostServiceTest {
         verify(repository, never()).findById(any());
     }
 
+    // -------------------------------------------- version du runner (F-81 / SF-81-03)
+
+    @Test
+    void recordsTheDeclaredRunnerVersionOnTheMachine() {
+        RunnerHost host = new RunnerHost();
+        when(repository.findById(hostId)).thenReturn(Optional.of(host));
+
+        service().recordRunnerVersion(hostId, " 1.4.2 ");
+
+        assertThat(host.getRunnerVersion())
+                .as("la version déclarée répond à « son runner est-il à jour ? » au lieu de laisser "
+                        + "deviner ; elle est retenue telle quelle, une fois débarrassée des espaces")
+                .isEqualTo("1.4.2");
+    }
+
+    @Test
+    void keepsAVersionItCannotParse() {
+        // Un runner recompilé à la main peut déclarer n'importe quoi. On montre ce qui tourne
+        // RÉELLEMENT sur la machine ; on ne le compare pas, et on ne le juge pas.
+        RunnerHost host = new RunnerHost();
+        when(repository.findById(hostId)).thenReturn(Optional.of(host));
+
+        service().recordRunnerVersion(hostId, "maison-du-2026-09-12");
+
+        assertThat(host.getRunnerVersion()).isEqualTo("maison-du-2026-09-12");
+    }
+
+    @Test
+    void ignoresAnEmptyOrOversizedVersionRatherThanTruncatingIt() {
+        // Une version coupée en deux serait pire qu'une version absente : elle se comparerait.
+        service().recordRunnerVersion(hostId, null);
+        service().recordRunnerVersion(hostId, "   ");
+        service().recordRunnerVersion(hostId, "9".repeat(RunnerHost.MAX_RUNNER_VERSION_LENGTH + 1));
+        service().recordRunnerVersion(null, "1.0.0");
+
+        verify(repository, never()).findById(any());
+    }
+
     @Test
     void declaredShellIsNullForAProjectAttachedToNothing() {
         assertThat(service().declaredShell(null)).isNull();

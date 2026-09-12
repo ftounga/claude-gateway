@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-81 / SF-81-03 — Version du runner déclarée par le poste.
+
+      La trame `ready` porte un champ `runnerVersion` depuis F-38, et la gateway n'en faisait rien :
+      « est-ce que son runner est à jour ? » se devinait. Elle le retient désormais, l'affiche dans
+      la vue d'ensemble du poste, et écrit une ligne de journal quand il est plus ancien que celui
+      qu'elle distribue elle-même.
+
+      Pourquoi une colonne plutôt qu'une carte en mémoire : la trame arrive sur le pod qui porte la
+      socket, alors que la vue d'ensemble est servie par le pod qui répond à l'écran — et ce n'est
+      pas forcément le même (HPA min 1 / max 4, SF-38-12). Même raisonnement que `shell` (063/064),
+      même forme.
+
+      Nullable et sans défaut : un poste jamais connecté, ou un runner antérieur à cette version, ne
+      déclare rien — et la vue rend alors `null`, ce qui est la réponse exacte.
+
+      RIEN N'EST BLOQUÉ PAR CETTE COLONNE. Elle n'est lue que pour être affichée et journalisée ; la
+      gateway ne refuse aucun runner, quelle que soit sa valeur.
+    -->
+    <changeSet id="076-runner-hosts-runner-version" author="claude-gateway">
+        <addColumn tableName="runner_hosts">
+            <column name="runner_version" type="varchar(64)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="runner_hosts" columnName="runner_version"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

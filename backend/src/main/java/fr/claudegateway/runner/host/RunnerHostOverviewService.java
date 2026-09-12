@@ -146,6 +146,9 @@ public class RunnerHostOverviewService {
                 host.getOs(),
                 RunnerShell.fromDeclared(host.getShell()).map(RunnerShell::declared).orElse(null),
                 host.getElevated(),
+                // Rendue TELLE QUELLE, y compris si elle est illisible (F-81 / SF-81-03) : c'est une
+                // information sur ce qui tourne réellement sur la machine, pas un jugement.
+                host.getRunnerVersion(),
                 false,
                 statusService.statusOf(userId, host).connected(),
                 // L'état de mission est DÉCLARÉ (F-60) : la vue le recopie, elle ne le déduit
