@@ -125,6 +125,7 @@
     [draft]="draft()"
     (draftChange)="draft.set($event)"
     (send)="send()"
+    [teamsTerminal]="activeIsTeamsTerminal()"
     [gitProject]="activeIsGit()"
     [publishing]="publishing()"
     [interrupting]="interrupting()"

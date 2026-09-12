@@ -640,6 +640,40 @@ describe('AtelierService', () => {
     expect(terminal?.projectPath).toBe('');
   });
 
+  // ------------------------------------------------------------------ F-89 / SF-89-01 et 03
+
+  it('ouvre le terminal Teams d\'un poste (F-89 / SF-89-01)', () => {
+    let terminal: WorkspaceDetail | undefined;
+    service.openTeamsTerminal('h1').subscribe((r: WorkspaceDetail) => (terminal = r));
+
+    const req = httpMock.expectOne('/api/runner-hosts/h1/teams-terminal');
+    expect(req.request.method).toBe('POST');
+    // Aucun corps : on demande « le terminal Teams de ce poste », rien d'autre.
+    expect(req.request.body).toBeNull();
+    req.flush({ id: 'wtt1', name: 'Terminal Teams', teamsTerminal: true, projectPath: '' });
+
+    expect(terminal?.teamsTerminal).toBeTrue();
+  });
+
+  it('lit le droit Teams sans jamais provoquer de refus (F-89 / SF-89-01)', () => {
+    let access: { entitled: boolean } | undefined;
+    service.teamsAccess().subscribe((r) => (access = r));
+
+    const req = httpMock.expectOne('/api/teams/access');
+    expect(req.request.method).toBe('GET');
+    req.flush({ entitled: false });
+
+    // Ne pas avoir l'option est un ÉTAT, pas une erreur : 200 dans tous les cas.
+    expect(access?.entitled).toBeFalse();
+  });
+
+  it('l\'adresse d\'une image de moment passe par la route du terminal (F-89 / SF-89-02)', () => {
+    expect(service.momentImageUrl('ws-1', 'abc123'))
+      .toBe('/api/workspaces/ws-1/teams/moments/abc123');
+    // Un identifiant est un DERNIER SEGMENT, jamais un chemin : il est encodé.
+    expect(service.momentImageUrl('ws-1', 'a/b')).toBe('/api/workspaces/ws-1/teams/moments/a%2Fb');
+  });
+
   it('liste les postes via GET /api/runner-hosts (F-48 / SF-48-03)', () => {
     let hosts: RunnerHost[] | undefined;
     service.listRunnerHosts().subscribe((r: RunnerHost[]) => (hosts = r));

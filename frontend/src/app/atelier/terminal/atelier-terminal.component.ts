@@ -4,6 +4,7 @@ import {
   Component,
   ElementRef,
   EventEmitter,
+  HostListener,
   Input,
   OnDestroy,
   Output,
@@ -12,6 +13,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
@@ -33,6 +35,9 @@ import { TeamsLink } from '../teams/teams-link.service';
 import {
   AtelierEngine,
   AtelierRunnerRecommendation,
+  AtelierTeamsCard,
+  AtelierTeamsLine,
+  AtelierTeamsMoment,
   AtelierTerminalBlock,
   GitPullRequestResult,
   GitPushResult,
@@ -54,6 +59,15 @@ import {
   subtaskLabel,
   visibleOutput,
 } from './terminal-block';
+import {
+  cardAsText,
+  cardOf,
+  certaintyLabel,
+  gapsLabel,
+  isUncertain,
+  momentSpeaker,
+  shortTime,
+} from './teams-block';
 import {
   AtelierFileDiffView,
   DiffLine,
@@ -88,7 +102,7 @@ export const RUNNER_RESUME_COMMAND = 'java -jar claude-runner.jar';
   selector: 'app-atelier-terminal',
   imports: [
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
-    TeamsLinkBadgeComponent,
+    TeamsLinkBadgeComponent, NgTemplateOutlet,
     MatButtonToggleModule, MatIconModule, MatProgressSpinnerModule, MatTooltipModule, RouterLink,
   ],
   templateUrl: './atelier-terminal.component.html',
@@ -96,7 +110,14 @@ export const RUNNER_RESUME_COMMAND = 'java -jar claude-runner.jar';
   // Le budget de style par composant (12 kB, `angular.json`) est une limite de build, et la feuille
   // du terminal en était à un cheveu ; l'y avoir ajoutée a cassé `ng build` sans casser les tests.
   // Séparer range aussi ce qui appartient à un mode dans un fichier qui le nomme.
-  styleUrls: ['./atelier-terminal.component.scss', './atelier-terminal-readonly.component.scss'],
+  // TROIS FEUILLES, pour la raison qui en avait imposé deux (F-83 / SF-83-02) : le budget de style
+  // par composant (12 ko, `angular.json`) est une limite de BUILD, et la peau du terminal Teams
+  // (F-89 / SF-89-03) vit donc à part — dans un fichier qui la nomme.
+  styleUrls: [
+    './atelier-terminal.component.scss',
+    './atelier-terminal-readonly.component.scss',
+    './atelier-terminal-teams.component.scss',
+  ],
 })
 export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
@@ -306,6 +327,22 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * non négociable de F-76, et elle vaut plus encore là où l'on regarde quatre choses à la fois.</p>
    */
   @Input() readOnly = false;
+
+  /**
+   * **Ce terminal est le terminal Teams** (F-89 / SF-89-03). C'est de cette marque, et d'elle
+   * seule, que découlent la <b>peau</b> — le flux en prose plutôt qu'en monospace — et le droit
+   * d'afficher des <b>blocs riches</b>.
+   *
+   * <p><b>La règle non négociable du volet, tenue ici pour la troisième fois</b> : <i>un terminal
+   * de projet reste textuel pour toujours</i>. Sans cette marque, un bloc porteur de carte est rendu
+   * <b>en texte</b> — jamais masqué : masquer ferait disparaître une information sans le dire, et
+   * la règle interdit la carte, pas le contenu.</p>
+   *
+   * <p>Aucune couleur nouvelle ne l'accompagne : la surface reste celle de tout terminal
+   * (`--cg-primary`). Ce qui bascule est la typographie et le contenu — un compte rendu est de la
+   * prose, pas une sortie de shell (charte §15).</p>
+   */
+  @Input() teamsTerminal = false;
 
   /** Vrai pendant un envoi : l'invite est désactivée. */
   @Input() submitting = false;
@@ -759,6 +796,89 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   /** Déplie/replie la sortie d'un bloc. */
   toggleBlock(block: AtelierTerminalBlock): void {
     block.expanded = !block.expanded;
+  }
+
+  // ------------------------------------------------ blocs riches (F-89 / SF-89-03)
+
+  certaintyLabel = certaintyLabel;
+  isUncertain = isUncertain;
+  shortTime = shortTime;
+  gapsLabel = gapsLabel;
+  momentSpeaker = momentSpeaker;
+  cardAsText = cardAsText;
+
+  /**
+   * L'image de moment **agrandie**, ou `null`. Un état d'<b>écran</b>, jamais une adresse : le
+   * porter dans l'URL rouvrirait la page — et donc le fil — au moindre retour arrière. C'est
+   * exactement le raisonnement de la mosaïque (F-83 / SF-83-03), et c'est son geste qu'on reprend.
+   */
+  readonly zoomedMomentId = signal<string | null>(null);
+
+  /**
+   * Images qui n'ont pas chargé. Leur moment <b>reste</b> : la phrase et l'heure suffisent à en
+   * faire un moment, et le perdre avec son image perdrait ce qui a été dit.
+   */
+  private readonly failedImages = signal<ReadonlySet<string>>(new Set());
+
+  /** La carte à afficher pour ce bloc, ou `null` — la garde d'affichage vit dans `teams-block.ts`. */
+  cardOf(block: AtelierTerminalBlock): AtelierTeamsCard | null {
+    return cardOf(block, this.teamsTerminal);
+  }
+
+  /** Adresse de l'image d'un moment, servie par la gateway sous l'isolation du terminal. */
+  momentImageUrl(moment: AtelierTeamsMoment): string {
+    return `/api/workspaces/${this.projectId ?? ''}/teams/moments/${encodeURIComponent(moment.imageId)}`;
+  }
+
+  /** Vrai si l'image de ce moment est agrandie. */
+  isMomentZoomed(moment: AtelierTeamsMoment): boolean {
+    return this.zoomedMomentId() === moment.imageId && moment.imageId.length > 0;
+  }
+
+  /** Vrai si l'image de ce moment n'a pas chargé. */
+  isMomentImageBroken(moment: AtelierTeamsMoment): boolean {
+    return this.failedImages().has(moment.imageId);
+  }
+
+  /**
+   * **Un clic agrandit, un second rend l'image à sa place** — le geste de la mosaïque
+   * (charte §13, F-83 / SF-83-03), qu'on n'invente pas deux fois.
+   */
+  toggleMomentZoom(moment: AtelierTeamsMoment): void {
+    if (!moment.imageId) {
+      return;
+    }
+    this.zoomedMomentId.update((current) => (current === moment.imageId ? null : moment.imageId));
+  }
+
+  /** Le libellé dit **l'état**, jamais une icône seule — même règle qu'en mosaïque. */
+  momentZoomLabel(moment: AtelierTeamsMoment): string {
+    const time = shortTime(moment.at);
+    return this.isMomentZoomed(moment)
+      ? `Réduire l'image de ${time}`
+      : `Agrandir l'image de ${time}`;
+  }
+
+  /** Échap rend l'image à sa place. Le geste standard pour « revenir ». */
+  @HostListener('document:keydown.escape')
+  closeMomentZoom(): void {
+    this.zoomedMomentId.set(null);
+  }
+
+  /**
+   * L'image n'a pas chargé : on le <b>dit</b>, à sa place, et le moment reste. Une image manquante
+   * qui laisserait un cadre vide ferait douter du reste du compte rendu.
+   */
+  onMomentImageError(moment: AtelierTeamsMoment): void {
+    this.failedImages.update((current) => new Set([...current, moment.imageId]));
+    if (this.zoomedMomentId() === moment.imageId) {
+      this.zoomedMomentId.set(null);
+    }
+  }
+
+  /** Ce qu'on écrit sous une ligne : l'auteur, s'il est connu. */
+  lineAuthor(line: AtelierTeamsLine): string {
+    return line.author;
   }
 
   diffCountLabel = diffCountLabel;

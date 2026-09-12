@@ -106,6 +106,7 @@ import {
 } from '../shared/kill-host-dialog/kill-host-dialog.component';
 import { killHostSuccessMessage } from '../shared/kill-host-dialog/kill-host-messages';
 import { chatStepsToBlocks } from './terminal/chat-steps';
+import { cardBlock, withCards } from './terminal/teams-block';
 import { derivePreview } from './terminal/terminal-preview';
 
 // Les types et constantes du fil vivent dans `atelier.types` (F-30 SF-30-07) : la vue terminal les
@@ -428,6 +429,15 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /** Vrai si le projet ouvert est adossé à un dépôt Git. */
   readonly activeIsGit = computed(() => this.activeDetail()?.source === 'GIT');
+
+  /**
+   * **Le projet ouvert est-il le terminal Teams ?** (F-89 / SF-89-03)
+   *
+   * <p>C'est de là que viennent la peau du terminal et le droit d'afficher des blocs riches. Champ
+   * additif : absent d'un backend antérieur ⇒ `false`, donc un terminal textuel — <i>un terminal de
+   * projet reste textuel pour toujours</i>.</p>
+   */
+  readonly activeIsTeamsTerminal = computed(() => this.activeDetail()?.teamsTerminal === true);
 
   /**
    * Cible d'exécution du projet ouvert (F-38 / SF-38-05). Champ additif : absent d'un backend
@@ -1252,6 +1262,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
     // La boucle maison s'affiche dans la même vue terminal que le flux d'agent : les étapes du tour
     // sont converties en blocs (commande puis sortie) au fil de l'eau (D-L4-5).
     this.execStreaming.set({ status: '', blocks: [], text: '', tokens: null, plan: [] });
+    // Les blocs riches du tour (F-89 / SF-89-02) : ils ne viennent pas des étapes, ils viennent de
+    // l'agent. Vidés à chaque envoi, comme tout ce qui appartient au tour.
+    this.cardsOfTurn = [];
     this.startExecTimer();
 
     void this.atelier.streamChat(id, content, {
@@ -1303,6 +1316,20 @@ export class AtelierComponent implements OnInit, OnDestroy {
         this.zone.run(() =>
           this.execStreaming.update((current) => (current ? { ...current, plan: steps } : current)),
         ),
+      // UN BLOC RICHE posé dans le fil (F-89 / SF-89-02) : carte, moments, liste. On le range avec
+      // le NOMBRE D'ÉTAPES déjà reçues — les blocs vivants sont recalculés à chaque étape, et une
+      // carte simplement ajoutée serait effacée au relais suivant.
+      onCard: (event) =>
+        this.zone.run(() => {
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: cardBlock(event.toolUseId, event.card),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
       onDone: (done) =>
         this.zone.run(() => {
           this.submitting.set(false);
@@ -1378,9 +1405,19 @@ export class AtelierComponent implements OnInit, OnDestroy {
   private mirrorLocalSteps(): void {
     const steps = this.streaming()?.steps ?? [];
     this.execStreaming.update((current) =>
-      current ? { ...current, blocks: chatStepsToBlocks(steps) } : current,
+      // Les blocs riches reçus pendant ce tour sont replacés à l'endroit où ils sont arrivés
+      // (F-89 / SF-89-03) : entre les commandes qui les précèdent et celles qui les suivent.
+      current
+        ? { ...current, blocks: withCards(chatStepsToBlocks(steps), this.cardsOfTurn) }
+        : current,
     );
   }
+
+  /**
+   * Blocs riches reçus pendant le tour en cours (F-89 / SF-89-02), avec le nombre d'étapes déjà
+   * relayées quand chacun est arrivé. Vidé à chaque envoi : un compte rendu appartient à son tour.
+   */
+  private cardsOfTurn: { afterSteps: number; block: AtelierTerminalBlock }[] = [];
 
   /** Traduit un code d'erreur de flux en message utilisateur lisible (SF-28-05). */
   private streamErrorMessage(code: string): string {
@@ -2293,6 +2330,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.submitting.set(true);
           this.streaming.set({ steps: [], text: '' });
           this.execStreaming.set({ status: '', blocks: [], text: '', tokens: null, plan: [] });
+          // Le rejeu de F-84 reconstruit TOUT le tour, blocs riches compris : garder ceux d'un
+          // rebranchement précédent les afficherait deux fois.
+          this.cardsOfTurn = [];
           this.startExecTimer();
           // La durée vient du tour, pas de l'écran : il tourne peut-être depuis dix minutes, et
           // repartir de zéro afficherait une mesure fausse.
@@ -2355,6 +2395,20 @@ export class AtelierComponent implements OnInit, OnDestroy {
         this.zone.run(() =>
           this.execStreaming.update((current) => (current ? { ...current, plan: steps } : current)),
         ),
+      // UN BLOC RICHE posé dans le fil (F-89 / SF-89-02) : carte, moments, liste. On le range avec
+      // le NOMBRE D'ÉTAPES déjà reçues — les blocs vivants sont recalculés à chaque étape, et une
+      // carte simplement ajoutée serait effacée au relais suivant.
+      onCard: (event) =>
+        this.zone.run(() => {
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: cardBlock(event.toolUseId, event.card),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
       onDone: () =>
         this.zone.run(() => {
           this.submitting.set(false);

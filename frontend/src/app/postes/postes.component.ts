@@ -308,6 +308,21 @@ export class PostesComponent implements OnInit {
   readonly openingTerminalHostId = signal<string | null>(null);
 
   /**
+   * **Le compte a-t-il le droit Teams ?** (F-89 / SF-89-03)
+   *
+   * <p>Lu **une fois** au chargement de l'écran, et c'est de lui seul que dépend l'existence du
+   * geste « Terminal Teams » sur une carte. Sans le droit, il n'y a <b>pas de bouton</b> — ni grisé,
+   * ni menant à un refus : <i>le terminal existe, ou il n'existe pas</i>.</p>
+   *
+   * <p><b>Fail-closed</b> : si la lecture échoue, le bouton n'apparaît pas. Un bouton qui mène à un
+   * 403 n'est pas une porte, c'est un piège.</p>
+   */
+  readonly teamsEntitled = signal(false);
+
+  /** Poste dont le **terminal Teams** est en cours d'ouverture (F-89 / SF-89-03). */
+  readonly openingTeamsHostId = signal<string | null>(null);
+
+  /**
    * Nombre de dossiers non ouverts montrés sur une carte. Huit tient dans une carte sans la faire
    * dérouler ; en afficher trente la rendrait illisible — et la lisibilité est le **seul** critère
    * ici : c'est le poste qui est facturé (F-65), pas les projets.
@@ -328,6 +343,7 @@ export class PostesComponent implements OnInit {
 
   ngOnInit(): void {
     this.load(true);
+    this.loadTeamsAccess();
     this.startPolling();
     document.addEventListener('visibilitychange', this.onVisibilityChange);
     this.destroyRef.onDestroy(() => {
@@ -474,6 +490,61 @@ export class PostesComponent implements OnInit {
         this.notifyFailure(err, "Le terminal de ce poste n'a pas pu être ouvert. Rien n'a été créé.");
         // L'écran était peut-être en retard — un poste supprimé dans un autre onglet. On relit
         // plutôt que de laisser la carte mentir.
+        this.load(false);
+      },
+    });
+  }
+
+  // -------------------------------------------- terminal Teams (F-89 / SF-89-03)
+
+  /**
+   * Lit le **droit Teams** du compte, une fois, au chargement de l'écran.
+   *
+   * <p>Il n'est pas relu au sondage : un droit ne change pas pendant qu'on regarde ses postes, et le
+   * relire chaque minute ajouterait un appel à un écran qui en fait déjà beaucoup.</p>
+   *
+   * <p><b>Fail-closed</b> : une lecture qui échoue laisse le droit fermé, donc aucun bouton. Rien
+   * n'est dit à l'utilisateur — il ne demandait rien, et annoncer l'absence d'une option qu'il n'a
+   * pas souscrite serait de la réclame là où il travaille.</p>
+   */
+  private loadTeamsAccess(): void {
+    this.atelier.teamsAccess().subscribe({
+      next: (access) => this.teamsEntitled.set(access.entitled === true),
+      error: () => this.teamsEntitled.set(false),
+    });
+  }
+
+  /** Vrai si la carte de ce poste doit porter le geste « Terminal Teams ». */
+  showTeamsTerminal(host: RunnerHostOverview): boolean {
+    // Le poste « Hébergé » (F-71) n'est pas une machine : aucun navigateur n'y est observable, donc
+    // rien à lire. Et sans le droit, le terminal n'existe pas pour ce compte.
+    return !host.virtual && host.id !== null && this.teamsEntitled();
+  }
+
+  /**
+   * **Ouvre le terminal Teams du poste** — le point d'entrée du volet, et le seul.
+   *
+   * <p>Teams n'est pas un écran à boutons : c'est un terminal où l'on parle. Ce geste-ci n'ouvre
+   * donc pas une fonctionnalité, il ouvre une <b>conversation</b> — et tout le reste s'y demande.</p>
+   *
+   * <p>Même mécanique que le terminal du poste : appel idempotent, navigation <b>au succès
+   * seulement</b>. Partir vers un terminal qu'on n'a pas obtenu afficherait une page d'erreur à la
+   * place d'un message, et perdrait la carte au passage.</p>
+   */
+  openTeamsTerminal(host: RunnerHostOverview): void {
+    const hostId = host.id;
+    if (hostId === null || this.openingTeamsHostId() !== null) {
+      return;
+    }
+    this.openingTeamsHostId.set(hostId);
+    this.atelier.openTeamsTerminal(hostId).subscribe({
+      next: (terminal) => {
+        this.openingTeamsHostId.set(null);
+        this.router.navigate(['/atelier', terminal.id]);
+      },
+      error: (err: unknown) => {
+        this.openingTeamsHostId.set(null);
+        this.notifyFailure(err, "Le terminal Teams n'a pas pu être ouvert. Rien n'a été créé.");
         this.load(false);
       },
     });
