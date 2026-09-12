@@ -76,6 +76,40 @@ pourtant le repli — c'est précisément ce cas qu'il devait couvrir.
 jamais été tenté ? Le runner doit **nommer** le transport essayé et le motif de son échec. Tant
 qu'on ne sait pas lequel des deux, aucun correctif ne peut être écrit.
 
+## 5 bis. D5 — Reprendre un poste connu coûte un code d'appairage, pour rien
+
+Ajouté le 2026-09-12 à la demande du PO, après l'avoir constaté en testant.
+
+Depuis le terminal d'un projet, le bouton de mise en service rouvre le parcours en mode « projet ».
+Il lit le poste rattaché, puis se place selon son état — `runner-pairing-dialog.component.ts:572` :
+
+```java
+this.step.set(this.hostAlreadyLive() ? null : 'code');
+```
+
+Un poste **connecté** saute à la conclusion : rien à appairer, c'est le gain de F-48. Un poste
+**non connecté** ouvre l'étape **« code d'appairage »**.
+
+**Or « non connecté » recouvre deux situations que l'écran ne distingue pas :**
+
+| | Ce qu'il faut réellement |
+|---|---|
+| Jamais appairé | un code d'appairage |
+| **Appairé, mais le runner ne tourne pas** | `java -jar claude-runner.jar`, **sans argument** — le jeton est déjà sur le disque |
+
+Le second est le cas **courant** : un poste qu'on rallume le matin, une machine qu'on redémarre, un
+`Ctrl-C` de la veille. L'écran y propose pourtant un code neuf — qui expire en cinq minutes, qu'il
+faut aller chercher, et qui ne sert à rien.
+
+La commande de reprise **existe** à l'écran (`runner-pairing-dialog.component.html:903`), mais dans
+la **conclusion**, sous la commande complète. Ce dont on a besoin dans le cas le plus fréquent est
+donc ce qu'on voit en dernier.
+
+**Ce qu'il faut** : la gateway sait si un poste porte un jeton **valide et non révoqué**. Quand c'est
+le cas, l'écran propose **la reprise d'abord** — une ligne à copier, rien à générer — et n'offre le
+réappairage qu'en **repli**, nommé comme tel (« la machine a changé, ou le jeton a été révoqué »).
+Rien n'est retiré : le parcours complet reste accessible d'un clic.
+
 ## 6. Découpage
 
 | | |
@@ -83,6 +117,7 @@ qu'on ne sait pas lequel des deux, aucun correctif ne peut être écrit.
 | **SF-82-01** | `Ctrl-C` rend toujours la main : attente bornée, et un mot quand la fermeture propre a échoué |
 | **SF-82-02** | Le coupe-circuit vit sur la carte du poste, avec une confirmation qui **dit tout** ce qu'il fait |
 | **SF-82-03** | Le repli de transport se nomme : transport essayé, motif de l'échec, transport retenu |
+| **SF-82-04** | Reprendre un poste connu ne coûte plus un code : la reprise d'abord, le réappairage en repli |
 
 ## 7. Hors périmètre
 
