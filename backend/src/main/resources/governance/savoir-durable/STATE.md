@@ -3,6 +3,15 @@
 > **Ce fichier est jetable.** Il meurt avec le sujet. Tout ce qui doit lui survivre part dans
 > `PLAN-ACTION.md` — c'est la seule règle qui compte ici.
 
+## Statut
+
+`en cours`
+
+_Deux valeurs, et deux seulement : `en cours` tant que le sujet vit, `clos` quand il est terminé.
+Un sujet passé à `clos` alors qu'une case `- [ ]` reste ouverte est **refusé** — remonte-la d'abord
+dans la carte du poste. Tant que le sujet est `en cours`, une case ouverte est normale : elle est
+simplement **signalée**._
+
 ## Le sujet
 
 _En une phrase : ce qu'on cherche à obtenir, et à quoi on saura que c'est fait._
