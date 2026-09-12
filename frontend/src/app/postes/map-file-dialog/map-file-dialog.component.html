@@ -1,0 +1,64 @@
+<h2 mat-dialog-title>{{ data.file.title }}</h2>
+
+<mat-dialog-content class="map-file">
+  <p class="map-file__where">
+    <code>{{ data.file.path }}</code>
+    <span>à la racine de {{ data.hostName }}</span>
+  </p>
+
+  <!-- Les sections AVANT le contenu : elles disent en trois lignes où ce fichier est rempli et où
+       il ne l'est pas. C'est ce qu'on cherche quand on ouvre la carte d'un client qu'on n'a pas
+       touchée depuis un mois. -->
+  @if (data.file.sections.length > 0) {
+    <ul class="map-file__sections">
+      @for (section of data.file.sections; track section.title) {
+        <li [class.map-file__section--empty]="section.facts === 0">
+          <span class="map-file__section-title">{{ section.title }}</span>
+          <span class="map-file__section-facts">
+            {{ section.facts === 0 ? 'vide' : section.facts + ' fait(s)' }}
+          </span>
+        </li>
+      }
+    </ul>
+  }
+
+  @if (loading()) {
+    <div class="map-file__loading">
+      <mat-spinner diameter="32"></mat-spinner>
+    </div>
+  } @else if (failed()) {
+    <!-- L'échec le DIT, et porte son geste. Rien n'est inventé : pas de contenu vide qui passerait
+         pour une carte vide. -->
+    <div class="map-file__notice">
+      <mat-icon>cloud_off</mat-icon>
+      <div>
+        <p>Ce fichier n'a pas pu être lu sur la machine.</p>
+        <button mat-stroked-button type="button" (click)="read()">Réessayer</button>
+      </div>
+    </div>
+  } @else {
+    @if (content(); as file) {
+    @if (file.message) {
+      <div class="map-file__notice">
+        <mat-icon>help_outline</mat-icon>
+        <p>{{ file.message }}</p>
+      </div>
+    }
+    @if (file.present) {
+      @if (file.truncated) {
+        <!-- Une coupe se DIT : une troncature muette laisserait croire qu'on a tout lu. -->
+        <p class="map-file__truncated">
+          Ce fichier est trop long : seul son début est affiché. Ouvrez-le dans le terminal du poste
+          pour le lire en entier.
+        </p>
+      }
+      <!-- Le contenu n'est JAMAIS interprété : c'est le fichier d'un client. -->
+      <pre class="map-file__content">{{ file.content }}</pre>
+    }
+    }
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="close()">Fermer</button>
+</mat-dialog-actions>

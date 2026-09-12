@@ -14,6 +14,8 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { AtelierService } from '../core/services/atelier.service';
+import { GovernanceService } from '../core/services/governance.service';
+import { GovernanceMap, GovernanceMapFile } from '../core/models/governance.models';
 import {
   HostFolder,
   HostProjectSummary,
@@ -54,6 +56,10 @@ import {
   DeleteHostDialogComponent,
   DeleteHostDialogData,
 } from './delete-host-dialog/delete-host-dialog.component';
+import {
+  MapFileDialogComponent,
+  MapFileDialogData,
+} from './map-file-dialog/map-file-dialog.component';
 import {
   KillHostDialogComponent,
   KillHostDialogData,
@@ -148,6 +154,7 @@ const EMPTY_HOSTED: RunnerHostOverview = {
 })
 export class PostesComponent implements OnInit {
   private readonly atelier = inject(AtelierService);
+  private readonly governance = inject(GovernanceService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
@@ -260,6 +267,21 @@ export class PostesComponent implements OnInit {
   /** Postes déjà interrogés dans cette page — la lecture n'est **pas** rejouée par le sondage. */
   private readonly foldersRead = new Set<string>();
 
+  /**
+   * **Ce que la machine sait** — le relevé de la carte de chaque poste (F-92 / SF-92-03).
+   *
+   * <p>La carte, ce sont les fichiers posés à la <b>racine</b> du poste, à côté des dossiers de
+   * projets. Les montrer ici est ce qui les fait <b>exister</b> : un fichier qu'on ne voit jamais
+   * n'est pas un savoir, c'est un fichier.</p>
+   *
+   * <p>La clef est l'identifiant du poste ; l'absence d'entrée signifie « pas encore lu », ce qui
+   * n'est <b>pas</b> la même chose qu'une carte vide.</p>
+   */
+  private readonly maps = signal<Record<string, GovernanceMap>>({});
+
+  /** Postes dont la carte a déjà été lue dans cette page — le sondage ne la relit jamais. */
+  private readonly mapsRead = new Set<string>();
+
   /** Chemin dont l'ouverture est en vol : la ligne se verrouille le temps de l'aller-retour. */
   readonly openingFolder = signal<string | null>(null);
 
@@ -329,10 +351,11 @@ export class PostesComponent implements OnInit {
 
   /** Relecture demandée par l'utilisateur (bouton « Rafraîchir » ou « Réessayer »). */
   refresh(): void {
-    // Une relecture DEMANDÉE relit aussi les racines (F-72 / SF-72-03) : c'est le geste par lequel
-    // on dit « j'ai lancé le runner » ou « j'ai créé un dossier sur ma machine ». Le sondage
-    // automatique, lui, ne les relit jamais.
+    // Une relecture DEMANDÉE relit aussi les racines (F-72 / SF-72-03) et les cartes (F-92 /
+    // SF-92-03) : c'est le geste par lequel on dit « j'ai lancé le runner » ou « j'ai écrit dans la
+    // carte ». Le sondage automatique, lui, ne les relit jamais.
     this.foldersRead.clear();
+    this.mapsRead.clear();
     this.load(this.hosts().length === 0);
   }
 
@@ -586,6 +609,95 @@ export class PostesComponent implements OnInit {
         error: () => this.forgetFolders(hostId),
       });
     }
+  }
+
+  /**
+   * Le relevé de la carte d'un poste, ou {@code null} tant qu'il n'a pas été lu.
+   *
+   * <p>Distinguer « pas lu » de « vide » est tout le sujet : une machine éteinte n'a pas une carte
+   * vide, elle a une carte qu'on n'a pas pu lire.</p>
+   */
+  hostMap(host: RunnerHostOverview): GovernanceMap | null {
+    const hostId = host.id;
+    return hostId === null ? null : this.maps()[hostId] ?? null;
+  }
+
+  /**
+   * Ce que la carte porte, en une phrase — le seul chiffre qui répond à la question du PO :
+   * « à chaque projet qu'on rajoute, la connaissance de l'infra augmente ».
+   */
+  mapSummary(map: GovernanceMap): string {
+    if (map.facts === 0) {
+      return `aucun fait encore — ${map.filesPresent} / ${map.filesExpected} fichiers en place`;
+    }
+    return `${map.facts} fait(s) · ${map.filesPresent} / ${map.filesExpected} fichiers`;
+  }
+
+  /** Ce qu'une ligne de fichier dit à droite de son titre. */
+  mapFileLabel(file: GovernanceMapFile): string {
+    if (!file.readable) {
+      return 'non lu';
+    }
+    if (!file.present) {
+      return 'absent';
+    }
+    return file.facts === 0 ? 'encore vide' : `${file.facts} fait(s)`;
+  }
+
+  /**
+   * Ouvre un fichier de la carte : ses sections, puis son contenu exact.
+   *
+   * <p>C'est le geste qui donne son sens à la feature — relire les pièges d'un client <b>sans
+   * ouvrir un terminal</b>.</p>
+   */
+  openMapFile(host: RunnerHostOverview, file: GovernanceMapFile): void {
+    const hostId = host.id;
+    if (hostId === null) {
+      return;
+    }
+    this.dialog.open<MapFileDialogComponent, MapFileDialogData>(MapFileDialogComponent, {
+      width: '720px',
+      maxWidth: '95vw',
+      data: { hostRef: hostId, hostName: host.name, file },
+    });
+  }
+
+  /**
+   * Lit la carte d'un poste **connecté**, une seule fois par page.
+   *
+   * <p><b>Hors du sondage de 15 s</b>, exactement comme les dossiers non ouverts (F-72 / SF-72-03)
+   * et pour la même raison : six lectures de fichier par poste toutes les quinze secondes, ce sont
+   * 1 440 allers-retours par heure sur la machine d'un client — et autant de lignes d'audit — pour
+   * un contenu qui bouge quelques fois par jour.</p>
+   *
+   * <p>Un poste <b>non connecté</b> n'est pas interrogé du tout : la section le dit et propose son
+   * geste, plutôt que de faire attendre un délai pour l'apprendre.</p>
+   */
+  private loadMaps(hosts: RunnerHostOverview[]): void {
+    for (const host of hosts) {
+      const hostId = host.id;
+      if (hostId === null || !host.connected || this.mapsRead.has(hostId)) {
+        continue;
+      }
+      this.mapsRead.add(hostId);
+      this.governance.getMap(hostId).subscribe({
+        next: (map) => this.maps.update((all) => ({ ...all, [hostId]: map })),
+        // SILENCIEUX, comme la liste des dossiers : la carte du poste reste exacte, et un rouge ici
+        // enverrait chercher au mauvais endroit. Le relevé porte lui-même ses messages quand il
+        // arrive ; c'est seulement l'appel qui a échoué qu'on tait.
+        error: () => this.forgetMap(hostId),
+      });
+    }
+  }
+
+  /** Oublie le relevé d'un poste : la prochaine lecture demandée le relira. */
+  private forgetMap(hostId: string): void {
+    this.mapsRead.delete(hostId);
+    this.maps.update((all) => {
+      const next = { ...all };
+      delete next[hostId];
+      return next;
+    });
   }
 
   /** Oublie ce qu'on savait de la racine d'un poste : la prochaine lecture la relira. */
@@ -1011,6 +1123,10 @@ export class PostesComponent implements OnInit {
         // sondage de 15 s ne la rejoue pas — lire la machine du client 240 fois par heure pour une
         // liste qui ne bouge presque jamais n'a aucun sens.
         this.loadFolders(hosts);
+        // La carte de chaque poste connecté, lue UNE fois (F-92 / SF-92-03) : même règle, même
+        // motif. Six lectures de fichier toutes les 15 s sur la machine d'un client n'ont aucun
+        // sens pour un contenu qui bouge quelques fois par jour.
+        this.loadMaps(hosts);
         this.error.set('none');
         this.loading.set(false);
         this.lastUpdatedAt.set(new Date());

@@ -1,0 +1,98 @@
+/**
+ * Un fichier de la carte, ouvert (F-92 / SF-92-03).
+ *
+ * **Aucun registre de couleur nouveau.** Une section vide emprunte le gris « inactif » du §5, le
+ * même que les dossiers non ouverts de F-72 ; rien n'emprunte l'identité du client (§9), l'état de
+ * mission (§10) ni le signe de vie (§11).
+ */
+.map-file {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-3);
+
+  &__where {
+    display: flex;
+    align-items: baseline;
+    gap: var(--cg-space-2);
+    margin: 0;
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+
+    code {
+      font-family: var(--cg-font-mono);
+      font-size: 13px;
+      color: var(--cg-text-primary);
+    }
+  }
+
+  &__sections {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-1);
+
+    li {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: var(--cg-space-2);
+      padding: var(--cg-space-1) var(--cg-space-2);
+      border-left: 2px solid var(--cg-divider);
+      font-size: 13px;
+    }
+  }
+
+  &__section--empty {
+    color: var(--cg-text-secondary);
+  }
+
+  &__section-facts {
+    flex: 0 0 auto;
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__loading {
+    display: flex;
+    justify-content: center;
+    padding: var(--cg-space-4);
+  }
+
+  &__notice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cg-space-2);
+    padding: var(--cg-space-2);
+    border: 1px solid var(--cg-divider);
+    border-radius: 8px;
+    color: var(--cg-text-secondary);
+    font-size: 13px;
+
+    p {
+      margin: 0 0 var(--cg-space-2);
+    }
+  }
+
+  &__truncated {
+    margin: 0;
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__content {
+    margin: 0;
+    padding: var(--cg-space-2);
+    max-height: 480px;
+    overflow: auto;
+    border: 1px solid var(--cg-divider);
+    border-radius: 8px;
+    background: var(--cg-surface);
+    font-family: var(--cg-font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}

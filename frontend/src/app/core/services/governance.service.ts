@@ -7,6 +7,8 @@ import {
   GovernanceFileComparison,
   GovernanceHost,
   GovernanceHostSummary,
+  GovernanceMap,
+  GovernanceMapFileContent,
   GovernancePackage,
   GovernanceSelection,
 } from '../models/governance.models';
@@ -77,6 +79,29 @@ export class GovernanceService {
   ): Observable<GovernanceFileComparison> {
     return this.http.get<GovernanceFileComparison>(
       `/api/governance/hosts/${hostRef}/${packageId}/file`,
+      { params: new HttpParams().set('path', path) },
+    );
+  }
+
+  /**
+   * **Ce que la machine sait** : le relevé de la carte de ce poste (F-92 / SF-92-02).
+   *
+   * Lecture de la racine par le runner — coûteuse, donc jamais attachée à un sondage : l'appelant
+   * la déclenche au chargement et sur un geste explicite, pas plus.
+   */
+  getMap(hostRef: string): Observable<GovernanceMap> {
+    return this.http.get<GovernanceMap>(`/api/governance/hosts/${hostRef}/map`);
+  }
+
+  /**
+   * Le **contenu exact** d'un fichier de la carte (F-92 / SF-92-02).
+   *
+   * Seuls les chemins de la carte sont lisibles : la gateway refuse tout le reste, et c'est ce qui
+   * empêche cette route de devenir un explorateur du disque d'un client.
+   */
+  readMapFile(hostRef: string, path: string): Observable<GovernanceMapFileContent> {
+    return this.http.get<GovernanceMapFileContent>(
+      `/api/governance/hosts/${hostRef}/map/file`,
       { params: new HttpParams().set('path', path) },
     );
   }

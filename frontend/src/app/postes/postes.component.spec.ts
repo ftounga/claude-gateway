@@ -9,6 +9,8 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { POSTES_REFRESH_MS, PostesComponent } from './postes.component';
 import { AtelierService } from '../core/services/atelier.service';
+import { GovernanceService } from '../core/services/governance.service';
+import { GovernanceMap } from '../core/models/governance.models';
 import { RunnerHostOverview, WorkspaceDetail } from '../core/models/atelier.models';
 import { hostInitials, hostTone } from '../shared/host-identity';
 
@@ -20,6 +22,7 @@ describe('PostesComponent', () => {
   let fixture: ComponentFixture<PostesComponent>;
   let component: PostesComponent;
   let service: jasmine.SpyObj<AtelierService>;
+  let governance: jasmine.SpyObj<GovernanceService>;
   let dialog: jasmine.SpyObj<MatDialog>;
   /** Ce que le dialogue de suppression renvoie : `true` = l'utilisateur a confirmé. */
   let dialogAnswer: boolean;
@@ -121,13 +124,57 @@ describe('PostesComponent', () => {
     build(fragment);
   }
 
+  /**
+   * La carte du poste (F-92 / SF-92-03) : ce que la machine sait, à sa racine. Relevé nominal —
+   * les tests qui visent un autre chemin le remplacent.
+   */
+  const carte: GovernanceMap = {
+    hostRef: 'h1',
+    hostId: 'h1',
+    hostName: 'Poste CAGIP',
+    supported: true,
+    governed: true,
+    readable: true,
+    message: null,
+    files: [
+      {
+        path: 'README.md',
+        title: 'La carte du poste',
+        present: true,
+        readable: true,
+        sections: [{ title: 'Contacts', facts: 3 }],
+        facts: 3,
+        truncated: false,
+        message: null,
+      },
+      {
+        path: 'acces.md',
+        title: 'Accès',
+        present: true,
+        readable: true,
+        sections: [{ title: 'Les pièges', facts: 0 }],
+        facts: 0,
+        truncated: false,
+        message: null,
+      },
+    ],
+    filesExpected: 2,
+    filesPresent: 2,
+    sections: 2,
+    facts: 3,
+  };
+
   function build(fragment: string | null = null): void {
+    governance = jasmine.createSpyObj<GovernanceService>('GovernanceService',
+      ['getMap', 'readMapFile']);
+    governance.getMap.and.returnValue(of(carte));
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
     dialog.open.and.returnValue({ afterClosed: () => of(dialogAnswer) } as never);
     TestBed.configureTestingModule({
       imports: [PostesComponent],
       providers: [
         { provide: AtelierService, useValue: service },
+        { provide: GovernanceService, useValue: governance },
         { provide: MatDialog, useValue: dialog },
         provideRouter([]),
         provideNoopAnimations(),
@@ -1429,6 +1476,129 @@ describe('PostesComponent', () => {
         .querySelector('.postes__notice-actions a') as HTMLAnchorElement;
       expect(link.getAttribute('href')).toBe('/billing#code-acces');
     });
+  });
+
+  // --------------------------------------------- la carte du poste (F-92 / SF-92-03)
+
+  describe('la carte du poste', () => {
+    it('montre ce que la machine sait, sans ouvrir un terminal', () => {
+      setup();
+
+      expect(governance.getMap).toHaveBeenCalledOnceWith('h1');
+      expect(text()).toContain('Carte du poste');
+      expect(text()).toContain('3 fait(s)');
+      expect(text()).toContain('La carte du poste');
+      expect(text()).toContain('Accès');
+      // Un fichier encore vide le DIT : c'est ce qui montre où la connaissance manque.
+      expect(text()).toContain('encore vide');
+    });
+
+    it("dit à quoi sert le terminal du poste — aujourd'hui, rien ne l'indique", () => {
+      setup();
+
+      expect(text()).toContain('terminal du poste');
+      expect(text()).toContain('à la racine');
+    });
+
+    it('un poste NON CONNECTÉ ne déclenche aucune lecture, et le dit avec son geste', () => {
+      setup([{ ...poste, connected: false }]);
+
+      expect(governance.getMap).not.toHaveBeenCalled();
+      expect(text()).toContain('lancez le runner');
+    });
+
+    it("le poste « Hébergé » n'a pas de carte : ce n'est pas une machine", () => {
+      setup([]);
+
+      const heberge = (fixture.nativeElement as HTMLElement).querySelector('.poste--heberge');
+      expect(heberge).not.toBeNull();
+      expect(heberge?.querySelector('.poste__carte')).toBeNull();
+    });
+
+    it('le sondage de 15 s ne relit JAMAIS la carte ; « Rafraîchir » la relit', fakeAsync(() => {
+      setup();
+      expect(governance.getMap).toHaveBeenCalledTimes(1);
+
+      tick(POSTES_REFRESH_MS);
+      fixture.detectChanges();
+      // Six lectures de fichier par poste toutes les 15 s, ce sont 1 440 allers-retours par heure
+      // sur la machine d'un client : le sondage ne les fait pas.
+      expect(governance.getMap).toHaveBeenCalledTimes(1);
+
+      component.refresh();
+      expect(governance.getMap).toHaveBeenCalledTimes(2);
+
+      fixture.destroy();
+      tick(POSTES_REFRESH_MS);
+    }));
+
+    it("un poste non gouverné rend le geste qui le gouverne, pas une carte vide", () => {
+      governanceReturns({
+        ...carte,
+        governed: false,
+        readable: false,
+        files: [],
+        filesExpected: 0,
+        filesPresent: 0,
+        facts: 0,
+        message: 'Aucune gouvernance active sur ce poste : activez « Le savoir durable ».',
+      });
+
+      expect(text()).toContain('Aucune gouvernance active');
+      expect(text()).toContain('Ouvrir la gouvernance');
+    });
+
+    it('un échec de lecture fait disparaître la section, SANS rouge', () => {
+      service = spyService();
+      service.runnerHostsOverview.and.returnValue(of([poste]));
+      buildWithMap(throwError(() => new HttpErrorResponse({ status: 500 })));
+
+      // La carte du poste, elle, reste exacte : un rouge ici enverrait chercher au mauvais endroit.
+      expect(text()).toContain('Poste CAGIP');
+      expect(text()).not.toContain('fait(s)');
+    });
+
+    it('cliquer un fichier de la carte ouvre son contenu', () => {
+      setup();
+
+      component.openMapFile(poste, carte.files[0]);
+
+      expect(dialog.open).toHaveBeenCalled();
+      const data = dialog.open.calls.mostRecent().args[1]?.data as { hostRef: string; file: unknown };
+      expect(data.hostRef).toBe('h1');
+      expect(data.file).toBe(carte.files[0]);
+    });
+
+    /** Rejoue l'écran avec un relevé de carte donné. */
+    function governanceReturns(map: GovernanceMap): void {
+      service = spyService();
+      service.runnerHostsOverview.and.returnValue(of([poste]));
+      buildWithMap(of(map));
+    }
+
+    /** Construit l'écran en imposant ce que la lecture de carte répond. */
+    function buildWithMap(answer: Observable<GovernanceMap>): void {
+      governance = jasmine.createSpyObj<GovernanceService>('GovernanceService',
+        ['getMap', 'readMapFile']);
+      governance.getMap.and.returnValue(answer);
+      dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
+      dialog.open.and.returnValue({ afterClosed: () => of(dialogAnswer) } as never);
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        imports: [PostesComponent],
+        providers: [
+          { provide: AtelierService, useValue: service },
+          { provide: GovernanceService, useValue: governance },
+          { provide: MatDialog, useValue: dialog },
+          provideRouter([]),
+          provideNoopAnimations(),
+          { provide: ActivatedRoute, useValue: { snapshot: { fragment: null } } },
+        ],
+      });
+      fixture = TestBed.createComponent(PostesComponent);
+      component = fixture.componentInstance;
+      fixture.detectChanges();
+    }
   });
 
 });
