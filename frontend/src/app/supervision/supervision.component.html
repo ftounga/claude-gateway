@@ -1,0 +1,114 @@
+<section class="supervision">
+  <!-- « Forge › Supervision » : le fil d'Ariane de F-68, réemployé tel quel. Il dit où l'on est, et
+       il ramène à l'accueil d'un clic. -->
+  <app-forge-breadcrumb class="supervision__crumbs" [crumbs]="crumbs"></app-forge-breadcrumb>
+
+  <header class="supervision__header">
+    <div>
+      <h1>Voir travailler ses terminaux</h1>
+      <p class="supervision__subtitle">
+        Une tuile par terminal ouvert : ses dernières lignes, et ce qu'il fait à l'instant.
+        Un clic entre dans le terminal.
+      </p>
+    </div>
+    <div class="supervision__header-actions">
+      <span class="supervision__live">
+        Terminaux vivants : {{ liveCount() }} / {{ limit() }}
+      </span>
+      @if (lastUpdatedLabel(); as updated) {
+        <span class="supervision__updated" [class.supervision__updated--stale]="stale()">
+          @if (stale()) {
+            Dernier état connu à {{ updated }}
+          } @else {
+            Mis à jour à {{ updated }}
+          }
+        </span>
+      }
+      <button mat-stroked-button type="button" (click)="refresh()">
+        <mat-icon>refresh</mat-icon>
+        Rafraîchir
+      </button>
+    </div>
+  </header>
+
+  <!-- CE QUI ATTEND UNE DÉCISION, COMPTÉ EN TOUTES LETTRES (F-76, exigence non négociable).
+       C'est le premier des trois signaux — avec la mise en tête et l'anneau de la tuile. Aucun ne
+       suffit seul : le 2026-09-08, la demande ÉTAIT à l'écran, et elle a échappé douze heures. -->
+  @if (awaitingCount() > 0) {
+    <p class="supervision__awaiting" role="status">
+      <mat-icon aria-hidden="true">pan_tool</mat-icon>
+      {{ awaitingLabel() }}
+    </p>
+  }
+
+  @if (loading()) {
+    <div class="supervision__loading">
+      <mat-spinner diameter="40"></mat-spinner>
+    </div>
+  } @else if (failed()) {
+    <!-- Rien n'a jamais répondu : il n'y a rien à conserver, et rien à inventer. -->
+    <div class="supervision__notice">
+      <mat-icon>cloud_off</mat-icon>
+      <div>
+        <h2>L'état des terminaux n'a pas pu être lu</h2>
+        <p>La gateway n'a pas répondu. Rien n'est perdu : cette vue est en lecture seule.</p>
+        <button mat-flat-button color="primary" type="button" (click)="refresh()">Réessayer</button>
+      </div>
+    </div>
+  } @else if (tiles().length === 0) {
+    <div class="supervision__notice">
+      <mat-icon>terminal</mat-icon>
+      <div>
+        <h2>Aucun terminal ouvert</h2>
+        <p>
+          Cette vue montre les terminaux <strong>vivants</strong> — un onglet ouvert sur un projet.
+          Ouvrez-en un depuis la Forge et il apparaîtra ici.
+        </p>
+        <a mat-flat-button color="primary" routerLink="/forge">Aller à la Forge</a>
+      </div>
+    </div>
+  } @else {
+    <div class="supervision__grid">
+      @for (tile of tiles(); track tile.workspaceId) {
+        <!-- LA TUILE ENTIÈRE EST UN LIEN : « un clic entre dans le terminal ». Et elle ne porte
+             aucun champ — écrire dans une tuile est hors périmètre.
+             La couleur du CLIENT (SF-49-03) entre par le filet et par la pastille d'initiales ;
+             le nom du poste reste ÉCRIT à côté. Quatre terminaux, c'est souvent quatre clients. -->
+        <a
+          class="tuile"
+          [class.tuile--awaiting]="tile.awaiting"
+          [routerLink]="['/atelier', tile.workspaceId]"
+          [style.borderLeftColor]="tile.tone?.solid"
+          [attr.aria-label]="'Ouvrir le terminal de ' + tile.projectName"
+        >
+          <header class="tuile__head">
+            @if (tile.hostName) {
+              <app-host-badge [name]="tile.hostName" size="sm" [showName]="false"></app-host-badge>
+              <span class="tuile__host" [style.color]="tile.tone?.ink">{{ tile.hostName }}</span>
+            } @else {
+              <!-- Poste « Hébergé » (F-71) : il n'identifie AUCUNE machine, il ne prend donc aucun
+                   des dix tons du §9. Gris neutre, et le mot écrit. -->
+              <mat-icon class="tuile__hosted-icon" aria-hidden="true">cloud</mat-icon>
+              <span class="tuile__host tuile__host--hosted">Hébergé</span>
+            }
+            <app-live-badge class="tuile__live" scope="terminal"></app-live-badge>
+          </header>
+
+          <h2 class="tuile__project">{{ tile.projectName }}</h2>
+
+          <!-- L'aperçu, en densité « tuile » : six lignes. Même composant que sur la carte du
+               poste — même source, deux densités. -->
+          <app-terminal-preview [preview]="tile.preview" density="tile"></app-terminal-preview>
+
+          <footer class="tuile__foot">
+            <span class="tuile__opened">{{ openedLabel(tile) }}</span>
+            <span class="tuile__enter">
+              <mat-icon aria-hidden="true">arrow_forward</mat-icon>
+              Entrer
+            </span>
+          </footer>
+        </a>
+      }
+    </div>
+  }
+</section>

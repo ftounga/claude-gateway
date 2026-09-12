@@ -101,4 +101,30 @@ describe('app.routes', () => {
       expect(paths.indexOf('atelier')).toBeLessThan(paths.indexOf('atelier/:id'));
     });
   });
+
+  // ---- F-76 / SF-76-03 : la vue de supervision, sans rien masquer ----
+
+  describe('la vue de supervision (F-76)', () => {
+    function children(): Route[] {
+      return routes[guardedParentIndex()].children ?? [];
+    }
+
+    it('déclare /forge/supervision sous la route authentifiée', () => {
+      const supervision = children().find((c) => c.path === 'forge/supervision');
+
+      expect(supervision).withContext('/forge/supervision absente').toBeDefined();
+      expect(supervision?.loadComponent).toBeDefined();
+    });
+
+    it('ne masque ni /forge, ni /postes, ni les routes de l’Atelier', () => {
+      // Elle a DEUX segments : elle ne peut capter ni un chemin d'un segment, ni `atelier/:id`,
+      // dont le premier segment diffère. Le test fige ce raisonnement.
+      const paths = children().map((c) => c.path);
+
+      expect(paths).toContain('forge');
+      expect(paths).toContain('postes');
+      expect(paths).toContain('atelier/:id');
+      expect(paths.indexOf('forge')).toBeLessThan(paths.indexOf('forge/supervision'));
+    });
+  });
 });
