@@ -9,8 +9,8 @@ import java.util.UUID;
  * <p>C'est la conséquence directe du déplacement de l'unité vers le poste. Le routage — registre,
  * socket, relais inter-pods — se fait par {@link #hostId} : c'est la machine qui est connectée.
  * Le projet, lui, voyage <b>par appel</b> : {@link #projectPath} part dans la trame
- * {@code tool_call}, et le runner referme son confinement dessus (SF-48-02, régime local — la
- * garantie reste celle du processus qui exécute, jamais celle du réseau).</p>
+ * {@code tool_call} et donne le <b>dossier de départ</b> du tour (SF-48-02 ; ce n'est plus une
+ * borne depuis F-73 / SF-73-01 — ce qui s'interpose est la porte de confirmation).</p>
  *
  * <p>{@link #workspaceId} n'est pas transmis au runner : il ne sert qu'à la gateway, pour
  * l'isolation des appels en vol (annuler le tour d'un projet ne doit pas tuer celui d'un autre

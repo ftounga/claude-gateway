@@ -225,9 +225,12 @@ class RunnerGuardrailsApiIntegrationTest {
 
     @Test
     void switchingToTheRunnerTargetLeavesTheConfirmationOff() throws Exception {
+        // Le réglage est posé à false EXPLICITEMENT : depuis F-73 / SF-73-02 le défaut est `true`,
+        // et ce test-ci porte sur la bascule de cible, qui ne doit toucher à rien.
         Workspace sandbox = workspaceRepository.save(Workspace.builder()
                 .userId(owner.getId()).name("Autre")
-                .executionTarget(WorkspaceExecutionTarget.SANDBOX).build());
+                .executionTarget(WorkspaceExecutionTarget.SANDBOX)
+                .agentAskBeforeBash(false).build());
 
         mockMvc.perform(put("/api/workspaces/" + sandbox.getId() + "/execution-target")
                         .contextPath("/api")
@@ -236,10 +239,39 @@ class RunnerGuardrailsApiIntegrationTest {
                         .content("{\"executionTarget\":\"RUNNER\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.executionTarget").value("RUNNER"))
-                // La bascule armait la porte (SF-38-08, D7). F-47 / SF-47-04 retire ce forçage :
-                // le PO a tranché OQ-14 le 2026-09-10, l'exécution est autorisée par défaut sur une
-                // machine que l'utilisateur a lui-même connectée (ADR-018). Le journal d'audit et le
-                // coupe-circuit, eux, restent non désactivables.
+                // La bascule armait la porte (SF-38-08, D7). SF-47-04 a retiré ce forçage et F-73
+                // le laisse retiré : on n'arme pas dans le dos d'un utilisateur qui a éteint. Ce
+                // que F-73 change est la valeur de DÉPART d'un projet neuf, jamais une bascule.
+                .andExpect(jsonPath("$.askBeforeBash").value(false));
+    }
+
+    @Test
+    void aFreshLocalProjectAsksBeforeRunningAnything() throws Exception {
+        // F-73 / SF-73-02 (ADR-019) : la porte redevient armée à la création. C'est ce qui remplace
+        // le confinement retiré par SF-73-01 — lequel n'existait déjà pas pour bash.
+        mockMvc.perform(post("/api/workspaces/local")
+                        .contextPath("/api")
+                        .header("Authorization", "Bearer " + ownerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Projet neuf\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.executionTarget").value("RUNNER"))
+                .andExpect(jsonPath("$.askBeforeBash").value(true));
+    }
+
+    @Test
+    void anExistingProjectKeepsTheSettingItCarries() throws Exception {
+        // Aucune donnée n'est réécrite (F-73, D4) : un projet qui avait éteint la porte la garde
+        // éteinte, et la migration 072 ne touche que le DÉFAUT de colonne.
+        Workspace existing = workspaceRepository.save(Workspace.builder()
+                .userId(owner.getId()).name("Existant")
+                .executionTarget(WorkspaceExecutionTarget.RUNNER)
+                .agentAskBeforeBash(false).build());
+
+        mockMvc.perform(get("/api/workspaces/" + existing.getId())
+                        .contextPath("/api")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.askBeforeBash").value(false));
     }
 

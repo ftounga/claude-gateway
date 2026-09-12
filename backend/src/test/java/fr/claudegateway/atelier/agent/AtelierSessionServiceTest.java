@@ -1339,12 +1339,28 @@ class AtelierSessionServiceTest {
 
     @Test
     void aProjectWithoutTheOptionOpensItsSessionWithoutAnyPermissionPolicy() {
+        // La porte est ARMÉE par défaut depuis F-73 / SF-73-02 : ce cas-ci est celui d'un projet
+        // où l'utilisateur l'a explicitement éteinte, et il vérifie que le réglage est bien lu.
+        stubNominalRun();
+        Workspace disarmed = ws(null);
+        disarmed.setAgentAskBeforeBash(false);
+        when(workspaceService.requireOwned(USER, WORKSPACE)).thenReturn(disarmed);
+
+        service(enabled()).runTask(USER, WORKSPACE, "go");
+
+        assertThat(permissionsSentAtSessionOpening()).isEqualTo(SessionPermissions.ALLOW_ALL);
+    }
+
+    @Test
+    void aFreshProjectOpensItsSessionAskingBeforeShellCommands() {
+        // Le défaut de l'entité (F-73 / SF-73-02) arrive jusqu'à la politique d'outils de la
+        // session : c'est le chemin complet, du champ en base à ce que le fournisseur reçoit.
         stubNominalRun();
 
         service(enabled()).runTask(USER, WORKSPACE, "go");
 
-        // Non-régression : la session s'ouvre comme avant F-33, tout s'exécute sans demander.
-        assertThat(permissionsSentAtSessionOpening()).isEqualTo(SessionPermissions.ALLOW_ALL);
+        assertThat(permissionsSentAtSessionOpening())
+                .isEqualTo(SessionPermissions.of(true));
     }
 
     @Test

@@ -10,8 +10,8 @@ import java.util.UUID;
  *
  * <p>Depuis F-48 / SF-48-01, un runner est rattaché à un <b>poste</b> et non plus à un projet : une
  * machine, une racine, un appairage. Le <b>projet</b> ne fait donc plus partie de l'identité — il
- * voyage <b>par appel</b>, dans la trame {@code tool_call}, et c'est le runner qui referme son
- * confinement dessus (SF-48-02, régime local).</p>
+ * voyage <b>par appel</b>, dans la trame {@code tool_call}, et c'est le dossier où le runner fait
+ * démarrer le tour (SF-48-02 ; ce n'est plus une borne depuis F-73 / SF-73-01).</p>
  */
 public record RunnerIdentity(UUID tokenId, UUID userId, UUID hostId) {
 }

@@ -72,10 +72,10 @@ class WorkspaceServiceLocalTest {
         // La cible est imposée : un projet local en bac à sable ouvrirait une session sur un dossier
         // vide et laisserait croire que le travail a lieu quelque part (D3).
         assertThat(created.executionTargetOrDefault()).isEqualTo(WorkspaceExecutionTarget.RUNNER);
-        // L'exécution est autorisée par défaut (F-47 / SF-47-04, décision du PO du 2026-09-10 qui
-        // tranche OQ-14) : la première commande n'attend plus un clic sur une machine que
-        // l'utilisateur a lui-même connectée.
-        assertThat(created.isAgentAskBeforeBash()).isFalse();
+        // La porte de confirmation est ARMÉE à la création (F-73 / SF-73-02, ADR-019). Ce test
+        // affirmait l'inverse depuis SF-47-04 : ce défaut-là avait été pris quand le confinement
+        // du runner paraissait exister — il n'existait pas pour bash, il est retiré (SF-73-01).
+        assertThat(created.isAgentAskBeforeBash()).isTrue();
         // Rien n'est alloué de ce dont on ne se servira jamais (D4).
         verify(storage, never()).putFile(any(), any(), any());
     }
@@ -113,15 +113,28 @@ class WorkspaceServiceLocalTest {
 
     @Test
     void doesNotArmTheConfirmationGateWhenSwitchingToRunner() {
+        Workspace disarmed = localWorkspace();
+        disarmed.setAgentAskBeforeBash(false); // l'utilisateur a éteint la porte, explicitement
         when(workspaceRepository.findByIdAndUserId(workspaceId, userId))
-                .thenReturn(java.util.Optional.of(localWorkspace()));
+                .thenReturn(java.util.Optional.of(disarmed));
 
         Workspace result = service.setExecutionTarget(userId, workspaceId,
                 WorkspaceExecutionTarget.RUNNER);
 
-        // La bascule armait la porte à chaque passage en cible RUNNER (SF-38-08, D7). Le laisser
-        // en place rendrait le nouveau défaut inopérant dès la première bascule (F-47 / SF-47-04).
+        // La bascule armait la porte à chaque passage en cible RUNNER (SF-38-08, D7). Ce forçage
+        // reste retiré : F-73 change la valeur de DÉPART d'un projet neuf, jamais une bascule —
+        // réarmer dans le dos de qui a éteint resterait réarmer dans son dos.
         assertThat(result.isAgentAskBeforeBash()).isFalse();
+    }
+
+    @Test
+    void aBareWorkspaceCarriesTheArmedDefaultToo() {
+        // Le défaut est porté par l'ENTITÉ, pas seulement par createLocal : les projets créés
+        // depuis une archive ou un dépôt Git héritent du même régime (F-73, arbitrage A5). La
+        // colonne porte le même défaut (migration 072) pour tout INSERT qui l'omettrait.
+        assertThat(new Workspace().isAgentAskBeforeBash()).isTrue();
+        assertThat(Workspace.builder().userId(userId).name("x").build().isAgentAskBeforeBash())
+                .isTrue();
     }
 
     @Test

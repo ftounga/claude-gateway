@@ -105,9 +105,9 @@ public class Workspace {
      * Chemin du projet <b>relatif à la racine du poste</b> (F-48 / SF-48-01), séparateur {@code /}.
      * La chaîne vide désigne la racine elle-même — un poste peut n'héberger qu'un projet.
      *
-     * <p>C'est cette valeur qui voyage dans chaque {@code tool_call} et sur laquelle le runner
-     * referme son confinement : le régime retenu est <b>local</b> (décision n° 2 du cadrage, non
-     * réversible), donc la gateway l'indique et c'est le processus local qui refuse d'en sortir.</p>
+     * <p>C'est cette valeur qui voyage dans chaque {@code tool_call} et qui donne au runner le
+     * <b>dossier de départ</b> du tour. Depuis F-73 / SF-73-01, elle ne le borne plus : le
+     * confinement a été retiré parce qu'il n'existait déjà pas pour {@code bash}.</p>
      */
     @Column(name = "project_path", length = 512)
     private String projectPath;
@@ -203,10 +203,21 @@ public class Workspace {
      * de session : la politique d'outils est fixée pour toute la vie de la session, une bascule ne
      * change donc pas une sandbox déjà ouverte.
      *
-     * <p>{@code false} par défaut — qui n'active rien garde exactement le comportement d'avant F-33
-     * ({@code always_allow}), et aucune session ne peut rester bloquée en attente d'une confirmation
-     * que personne n'attend.</p>
+     * <p><b>{@code true} par défaut</b> depuis F-73 / SF-73-02 (ADR-019). SF-47-04 l'avait mis à
+     * {@code false} le 2026-09-10, dans un dispositif qu'on croyait à deux verrous : la porte
+     * <i>et</i> le confinement du runner. Vérification faite, ce confinement n'existait pas pour
+     * {@code bash} — seul le {@code cwd} passait par la garde, jamais la commande. Il ne restait
+     * qu'un verrou, désarmé. Le confinement est retiré (SF-73-01) et la porte redevient ce qui
+     * s'interpose avant une commande.</p>
+     *
+     * <p>Le défaut est posé <b>ici et en base</b> (migration 072) : ici pour tout code Java qui crée
+     * un projet, en base pour tout {@code INSERT} qui omettrait la colonne. Les projets
+     * <b>existants</b> ne sont pas modifiés — aucune donnée n'est réécrite.</p>
+     *
+     * <p><b>Limite connue, assumée par le PO</b> : cette porte ne couvre que l'outil {@code bash}.
+     * Une lecture de fichier ne demande rien.</p>
      */
     @Column(name = "agent_ask_before_bash", nullable = false)
-    private boolean agentAskBeforeBash;
+    @Builder.Default
+    private boolean agentAskBeforeBash = true;
 }

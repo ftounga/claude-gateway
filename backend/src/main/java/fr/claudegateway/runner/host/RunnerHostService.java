@@ -151,8 +151,7 @@ public class RunnerHostService implements RunnerShellRecorder {
      * déplacé sur le poste par F-48).
      *
      * <p>La <b>racine</b> est réduite à son dernier segment : l'arborescence de la machine de
-     * l'utilisateur n'a aucune raison d'entrer dans la base, et le confinement du runner ne remonte
-     * déjà que des chemins relatifs.</p>
+     * l'utilisateur n'a aucune raison d'entrer dans la base.</p>
      */
     @Transactional
     public void recordDeclaration(UUID hostId, String rootName, String os, boolean elevated) {

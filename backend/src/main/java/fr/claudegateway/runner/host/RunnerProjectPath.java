@@ -2,16 +2,16 @@ package fr.claudegateway.runner.host;
 
 /**
  * Chemin d'un projet <b>sous la racine du poste</b> (F-48 / SF-48-01) : la valeur qui voyage dans
- * chaque appel d'outil et sur laquelle le runner referme son confinement (SF-48-02, régime local).
+ * chaque appel d'outil et qui donne au runner le <b>dossier de départ</b> du tour (SF-48-02 ; ce
+ * n'est plus une borne depuis F-73 / SF-73-01).
  *
  * <p>Forme canonique : séparateur {@code /}, ni chemin absolu, ni lettre de lecteur, ni {@code ..},
  * ni segment vide. La chaîne <b>vide</b> est légitime et signifie « la racine du poste elle-même » —
  * un poste peut n'héberger qu'un projet, et c'est alors la racine.</p>
  *
- * <p>La gateway normalise ici <b>avant de stocker</b>. Ce n'est pas la garde de sécurité : celle qui
- * fait foi reste celle du runner, qui canonicalise et refuse de sortir (décision n° 2 du cadrage,
- * non réversible). C'est simplement le refus d'écrire en base une valeur qu'aucun runner
- * n'accepterait.</p>
+ * <p>La gateway normalise ici <b>avant de stocker</b>. Ce n'est pas une garde de sécurité — il n'y
+ * en a plus depuis F-73 / SF-73-01 : c'est le refus d'écrire en base une valeur qu'aucun runner
+ * n'accepterait comme dossier de départ.</p>
  */
 public final class RunnerProjectPath {
 

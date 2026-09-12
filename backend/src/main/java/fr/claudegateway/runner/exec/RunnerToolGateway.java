@@ -22,8 +22,8 @@ import fr.claudegateway.runner.relay.RunnerCallRouter;
  * une issue.
  *
  * <p>Depuis F-48 / SF-48-01, la cible d'un appel est un {@link RunnerTarget} : le <b>poste</b> qui
- * exécute, et le <b>projet</b> qui travaille sous sa racine. Le projet part dans la trame et le
- * runner referme son confinement dessus — la garantie reste locale.</p>
+ * exécute, et le <b>projet</b> qui travaille sous sa racine. Le projet part dans la trame et donne
+ * le dossier où le tour démarre — sans le borner (F-73 / SF-73-01).</p>
  *
  * <p>Depuis SF-38-12, elle passe par {@link RunnerCallRouter} et non plus par le dispatcher : c'est
  * le routeur qui sait si la socket du runner vit sur ce pod ou sur un autre. La façade, elle, ne

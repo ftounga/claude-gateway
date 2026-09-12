@@ -30,7 +30,7 @@ import fr.claudegateway.runner.channel.RunnerTarget;
  *
  * <p>Depuis F-48 / SF-48-01, la clef du routage est le <b>poste</b> : c'est la machine qui tient la
  * socket, et tous ses projets l'empruntent. Le projet, lui, ne sert qu'à isoler les appels en vol et
- * à dire au runner où se confiner.</p>
+ * à dire au runner où faire démarrer le tour.</p>
  *
  * <p>Trois cas, dans cet ordre :</p>
  * <ol>
