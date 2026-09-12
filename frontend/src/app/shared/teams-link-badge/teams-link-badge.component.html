@@ -1,0 +1,17 @@
+<!-- Indicateur de liaison Teams (F-87 / SF-87-03).
+     TROIS ÉTATS, AUCUNE ACTION : ni bouton, ni lien. Le libellé est TOUJOURS écrit à côté de la
+     pastille — la couleur ne porte jamais seule l'information (DESIGN_SYSTEM §10, §11, §12).
+     Aucun registre de couleur nouveau : « relié » emprunte l'encre de la barre (§11), les deux
+     autres empruntent les pastilles de statut existantes (§5), celle que §12 emploie déjà pour ce
+     qui réclame l'attention. -->
+<span
+  class="teams-link"
+  [class.teams-link--linked]="linked()"
+  [class.badge]="!linked()"
+  [class.badge--warning]="changed()"
+  [class.badge--neutral]="!linked() && !changed()"
+  [title]="hint()"
+>
+  <span class="teams-link__dot" aria-hidden="true"></span>
+  <span class="teams-link__label">{{ label() }}</span>
+</span>

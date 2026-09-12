@@ -39,10 +39,15 @@ public final class RunnerConfig {
     private final boolean checkOnly;
     private final Transport transport;
     private final Path resumedFrom;
+    private final boolean allowTeams;
+    private final int teamsPort;
 
     private RunnerConfig(String gatewayBaseUrl, Path workspaceRoot, String pairingCode,
             String label, Duration heartbeatInterval, boolean allowBash, boolean systemTrust,
-            boolean checkOnly, Transport transport, Path resumedFrom) {
+            boolean checkOnly, Transport transport, Path resumedFrom, boolean allowTeams,
+            String teamsPort) {
+        this.allowTeams = allowTeams;
+        this.teamsPort = fr.claudegateway.runner.teams.BrowserPort.resolve(teamsPort, name -> null);
         this.gatewayBaseUrl = gatewayBaseUrl;
         this.workspaceRoot = workspaceRoot;
         this.pairingCode = pairingCode;
@@ -100,6 +105,12 @@ public final class RunnerConfig {
         // Le test de référence d'un poste d'entreprise — le seul qui emprunte EXACTEMENT le chemin
         // du runner — coûtait jusqu'ici un code d'appairage, qui expire en 5 minutes.
         boolean checkOnly = isTrue(pick(cli, "check", env, "CLAUDE_RUNNER_CHECK"));
+        // Volet Teams (F-87 / SF-87-03) : ACTIF par défaut, comme les autres capacités du runner —
+        // il ne fait rien tant que personne ne le demande, et il ne peut rien faire sans un
+        // navigateur lancé exprès par l'utilisateur. `--no-teams` le retire d'une machine où la
+        // politique interne l'interdit ; la capacité n'est alors même pas annoncée à la gateway.
+        String noTeams = pick(cli, "no-teams", env, "CLAUDE_RUNNER_NO_TEAMS");
+        String teamsPort = pick(cli, "teams-port", env, fr.claudegateway.runner.teams.BrowserPort.ENV);
         String transport = pick(cli, "transport", env, "CLAUDE_RUNNER_TRANSPORT");
 
         // Reprise (F-46 / SF-46-01) : ce que la mémoire complète, et seulement ce qui manque. Une
@@ -169,7 +180,7 @@ public final class RunnerConfig {
         return new RunnerConfig(normalizedGateway, root, normalizedCode, normalizedLabel, hb,
                 // Entre deux consignes contradictoires, on retient la plus restrictive (D3).
                 !isTrue(noBash), !isTrue(noSystemTrust), checkOnly, Transport.parse(transport),
-                resumedFrom);
+                resumedFrom, !isTrue(noTeams), teamsPort);
     }
 
     /** URL absolue de l'endpoint d'appairage, {@code {gateway}/runner/pair}. */
@@ -275,6 +286,25 @@ public final class RunnerConfig {
     }
 
     /**
+     * Volet Teams autorisé sur cette machine (F-87 / SF-87-03). <b>Vrai par défaut</b> : la liaison
+     * ne fait rien tant qu'on ne la demande pas, et elle ne peut rien faire sans un navigateur que
+     * l'utilisateur a lancé lui-même avec un port de débogage. {@code --no-teams} (ou
+     * {@code CLAUDE_RUNNER_NO_TEAMS=true}) la retire — la capacité n'est alors pas même annoncée.
+     */
+    public boolean allowTeams() {
+        return allowTeams;
+    }
+
+    /**
+     * Port de débogage du navigateur à observer (F-87 / SF-87-03) : {@code --teams-port}, sinon
+     * {@code CLAUDE_TEAMS_DEBUG_PORT}, sinon 9222. L'hôte, lui, n'est pas configurable : c'est
+     * toujours la boucle locale.
+     */
+    public int teamsPort() {
+        return teamsPort;
+    }
+
+    /**
      * Contrôle de vol <b>seul</b> (F-80 / SF-80-03) : joindre la gateway, dire ce qu'on voit, sortir.
      *
      * <p>Ni appairage, ni connexion, ni jeton. C'est le seul test qui emprunte <b>exactement</b> le
@@ -360,7 +390,7 @@ public final class RunnerConfig {
      * avaler l'argument suivant. La forme {@code --allow-bash=false} reste acceptée.
      */
     private static final java.util.Set<String> BOOLEAN_FLAGS =
-            java.util.Set.of("allow-bash", "no-bash", "no-system-trust", "check");
+            java.util.Set.of("allow-bash", "no-bash", "no-system-trust", "check", "no-teams");
 
     private static Map<String, String> parseArgs(String[] args) {
         Map<String, String> map = new HashMap<>();

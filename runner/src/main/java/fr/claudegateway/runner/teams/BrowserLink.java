@@ -39,17 +39,35 @@ public final class BrowserLink implements AutoCloseable {
      * cherche le conteneur défilable le plus haut et le remonte d'un écran. Aucun sélecteur de
      * Teams, aucune classe CSS — une refonte visuelle ne le casse pas.
      */
-    private static final String SCROLL_UP = "(() => {"
-            + " const all = Array.from(document.querySelectorAll('*'));"
+    private static final String PICK_SCROLLER = " const all = Array.from(document.querySelectorAll('*'));"
             + " let best = document.scrollingElement; let height = 0;"
             + " for (const el of all) {"
             + "   if (el.scrollHeight > el.clientHeight + 100 && el.clientHeight > 200"
             + "       && el.scrollHeight > height) { best = el; height = el.scrollHeight; }"
-            + " }"
+            + " }";
+
+    private static final String SCROLL_UP = "(() => {" + PICK_SCROLLER
             + " if (!best) { return false; }"
             + " const before = best.scrollTop;"
             + " best.scrollTop = Math.max(0, before - best.clientHeight);"
             + " return best.scrollTop < before;"
+            + "})()";
+
+    /**
+     * Le geste de la <b>sonde</b> : remonter d'un écran pour que la page demande quelque chose, puis
+     * <b>remettre la vue où elle était</b> toute seule.
+     *
+     * <p>Une sonde qui laisserait la conversation de l'utilisateur remontée d'un écran serait une
+     * intrusion, et elle se répéterait à chaque relevé d'état. La restauration est confiée à la page
+     * elle-même ({@code setTimeout}) : un seul aller-retour, et rien à piloter ensuite.</p>
+     */
+    private static final String NUDGE = "(() => {" + PICK_SCROLLER
+            + " if (!best) { return false; }"
+            + " const before = best.scrollTop;"
+            + " if (before <= 0) { return false; }"
+            + " best.scrollTop = Math.max(0, before - best.clientHeight);"
+            + " setTimeout(() => { best.scrollTop = before; }, 900);"
+            + " return true;"
             + "})()";
 
     private final CdpConnection connection;
@@ -160,6 +178,24 @@ public final class BrowserLink implements AutoCloseable {
             }
         }
         return done;
+    }
+
+    /**
+     * Le geste de la sonde (F-87 / SF-87-03) : provoquer une demande de la page <b>sans déplacer</b>
+     * durablement la vue de l'utilisateur — la position est restaurée par la page elle-même.
+     *
+     * @return vrai si la page a bougé ; faux si elle était déjà en haut, ou n'a pas de conteneur
+     */
+    public boolean nudge(Sleeper sleeper) {
+        ObjectNode params = mapper.createObjectNode();
+        params.put("expression", NUDGE);
+        params.put("returnByValue", true);
+        boolean moved = connection.send(CdpCommands.EVALUATE, params)
+                .path("result").path("value").asBoolean(false);
+        if (sleeper != null) {
+            sleeper.sleep(SCROLL_SETTLE_MS);
+        }
+        return moved;
     }
 
     @Override
