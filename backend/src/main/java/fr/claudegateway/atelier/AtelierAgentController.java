@@ -1,6 +1,5 @@
 package fr.claudegateway.atelier;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Executor;
@@ -33,6 +32,9 @@ import fr.claudegateway.atelier.dto.AgentConfirmRequest;
 import fr.claudegateway.atelier.dto.AgentConfirmationRequest;
 import fr.claudegateway.atelier.dto.AgentConfirmationResponse;
 import fr.claudegateway.atelier.dto.AtelierAgentRequest;
+import fr.claudegateway.atelier.live.LiveTurn;
+import fr.claudegateway.atelier.live.LiveTurnRegistry;
+import fr.claudegateway.atelier.live.SseTurnSubscriber;
 import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.byok.ByokKeyRequiredException;
 import fr.claudegateway.quota.QuotaExceededException;
@@ -70,15 +72,18 @@ public class AtelierAgentController {
     private final fr.claudegateway.atelier.agent.AtelierAgentProperties properties;
     private final CurrentUser currentUser;
     private final Executor chatStreamExecutor;
+    private final LiveTurnRegistry liveTurns;
 
     public AtelierAgentController(AtelierSessionService sessionService, AtelierAccessService atelierAccess,
             fr.claudegateway.atelier.agent.AtelierAgentProperties properties, CurrentUser currentUser,
-            @Qualifier("chatStreamExecutor") Executor chatStreamExecutor) {
+            @Qualifier("chatStreamExecutor") Executor chatStreamExecutor,
+            LiveTurnRegistry liveTurns) {
         this.sessionService = sessionService;
         this.atelierAccess = atelierAccess;
         this.properties = properties;
         this.currentUser = currentUser;
         this.chatStreamExecutor = chatStreamExecutor;
+        this.liveTurns = liveTurns;
     }
 
     /**
@@ -94,113 +99,124 @@ public class AtelierAgentController {
         // comme booléens : une erreur d'accès/flag est émise DANS le flux ({@code error}).
         boolean allowed = atelierAccess.hasAccess();
         boolean enabled = properties.enabled();
-        SseEmitter emitter = new SseEmitter(STREAM_TIMEOUT_MS);
+        SseEmitter emitter = newEmitter();
         fr.claudegateway.chat.SseStreamDispatch.submit(chatStreamExecutor, emitter,
                 () -> relay(emitter, userId, id, request.message(), allowed, enabled));
         return emitter;
     }
 
-    /** Exécute le run en relayant chaque étape ; traduit toute erreur en événement SSE {@code error}. */
+    /**
+     * Exécute le run en <b>publiant</b> chaque étape dans le tour vivant ; traduit toute erreur en
+     * événement SSE {@code error}.
+     *
+     * <p><b>F-84 / SF-84-01</b> : ce contrôleur porte exactement la même mécanique que
+     * {@link AtelierChatController} et il est traité de la même façon. L'émetteur est un
+     * <b>abonné</b> du tour ; un envoi qui échoue le détache et n'interrompt rien.</p>
+     */
     private void relay(SseEmitter emitter, UUID userId, UUID workspaceId, String message,
             boolean allowed, boolean enabled) {
-        if (!allowed) {
-            sendError(emitter, "forbidden");
-            return;
-        }
-        if (!enabled) {
-            // Flag off : aucun appel Anthropic, erreur émise dans le flux.
-            sendError(emitter, "agent_disabled");
-            return;
-        }
+        LiveTurn turn = liveTurns.open(userId, workspaceId);
+        turn.attach(new SseTurnSubscriber(emitter), LiveTurn.FROM_START);
         try {
+            if (!allowed) {
+                turn.publish("error", new StreamError("forbidden"));
+                return;
+            }
+            if (!enabled) {
+                // Flag off : aucun appel Anthropic, erreur émise dans le flux.
+                turn.publish("error", new StreamError("agent_disabled"));
+                return;
+            }
             AtelierAgentListener listener = new AtelierAgentListener() {
                 @Override
                 public void onAgentText(String text) {
-                    sendAgent(emitter, text);
+                    turn.publish("agent", new StreamAgent(text));
                 }
 
                 @Override
                 public void onProgress(long tokens) {
-                    sendProgress(emitter, tokens);
+                    turn.publish("progress", new StreamProgress(tokens));
                 }
 
                 @Override
                 public void onAction(String tool, String detail) {
-                    sendAction(emitter, tool, null, detail, null);
+                    turn.publish("action", new StreamAction(tool, null, detail, null));
                 }
 
                 @Override
                 public void onAction(String tool, String toolUseId, String detail) {
-                    sendAction(emitter, tool, toolUseId, detail, null);
+                    turn.publish("action", new StreamAction(tool, toolUseId, detail, null));
                 }
 
                 @Override
                 public void onAction(String tool, String toolUseId, String detail, String threadId) {
-                    sendAction(emitter, tool, toolUseId, detail, threadId);
+                    turn.publish("action", new StreamAction(tool, toolUseId, detail, threadId));
                 }
 
                 @Override
                 public void onActionResult(String tool, String toolUseId, String output, boolean error) {
-                    sendActionResult(emitter, tool, toolUseId, output, error, null);
+                    turn.publish("action_result",
+                            new StreamActionResult(tool, toolUseId, output, error, null));
                 }
 
                 @Override
                 public void onActionResult(String tool, String toolUseId, String output, boolean error,
                         String threadId) {
-                    sendActionResult(emitter, tool, toolUseId, output, error, threadId);
+                    turn.publish("action_result",
+                            new StreamActionResult(tool, toolUseId, output, error, threadId));
                 }
 
                 @Override
                 public void onStatus(String state) {
-                    sendStatus(emitter, state);
+                    turn.publish("status", new StreamStatus(state));
                 }
 
                 @Override
                 public void onConfirmationRequest(String tool, String confirmationId, String detail) {
-                    sendConfirmRequest(emitter, tool, confirmationId, detail);
+                    turn.publish("confirm_request",
+                            new StreamConfirmRequest(confirmationId, tool, detail));
                 }
 
                 @Override
                 public void onConfirmationResolved(String confirmationId, String decision) {
-                    sendConfirmResolved(emitter, confirmationId, decision);
+                    turn.publish("confirm_resolved",
+                            new StreamConfirmResolved(confirmationId, decision));
                 }
             };
             AtelierSessionResult result = sessionService.runTaskStreaming(userId, workspaceId, message, listener);
-            emitter.send(SseEmitter.event().name("done")
-                    .data(new StreamDone(result.reply(), result.changedFiles(),
-                            result.inputTokens(), result.outputTokens(), result.activeSeconds(),
-                            result.interrupted(), result.budgetReached(), result.diffs())));
-            emitter.complete();
+            turn.publish("done", new StreamDone(result.reply(), result.changedFiles(),
+                    result.inputTokens(), result.outputTokens(), result.activeSeconds(),
+                    result.interrupted(), result.budgetReached(), result.diffs()));
         } catch (WorkspaceNotFoundException ex) {
-            sendError(emitter, "workspace_not_found");
+            turn.publish("error", new StreamError("workspace_not_found"));
         } catch (QuotaExceededException ex) {
             // Pré-vol quota tokens épuisé : aucune session créée (aucun coût), erreur dans le flux.
-            sendError(emitter, "quota_exceeded");
+            turn.publish("error", new StreamError("quota_exceeded"));
         } catch (SandboxLimitExceededException ex) {
             // Pré-vol plafond de bac à sable atteint : aucune session créée, erreur dans le flux.
-            sendError(emitter, "sandbox_limit");
+            turn.publish("error", new StreamError("sandbox_limit"));
         } catch (ByokKeyRequiredException ex) {
             // Offre BYOK sans clé (F-41 / SF-41-02) : refus posé par le même pré-vol, donc AVANT
             // toute création de session — aucun coût engagé. Nommé dans le flux, jamais un 500.
-            sendError(emitter, "byok_key_required");
+            turn.publish("error", new StreamError("byok_key_required"));
         } catch (AtelierAgentDisabledException ex) {
-            sendError(emitter, "agent_disabled");
+            turn.publish("error", new StreamError("agent_disabled"));
         } catch (AgentSessionTimeoutException ex) {
-            sendError(emitter, "session_timeout");
+            turn.publish("error", new StreamError("session_timeout"));
         } catch (AgentCreditExhaustedException ex) {
             // Crédit de la PLATEFORME épuisé (F-30 SF-30-08) : réessayer ne peut pas aboutir — code
             // distinct de `provider_error`, pour ne pas inviter l'utilisateur à recommencer en vain.
-            sendError(emitter, "credit_exhausted");
+            turn.publish("error", new StreamError("credit_exhausted"));
         } catch (AgentProviderException ex) {
-            sendError(emitter, "provider_error");
-        } catch (StreamAbortedException | IOException ex) {
-            // Le client s'est déconnecté pendant l'émission : on clôt (la session est déjà terminée).
-            emitter.complete();
+            turn.publish("error", new StreamError("provider_error"));
         } catch (RuntimeException ex) {
-            log.warn("Échec inattendu du relais SSE d'exécution de l'atelier");
-            sendError(emitter, "internal_error");
+            log.warn("Échec inattendu du run d'exécution de l'atelier");
+            turn.publish("error", new StreamError("internal_error"));
+        } finally {
+            liveTurns.close(turn);
         }
     }
+
 
     /**
      * Termine la session sandbox du workspace et efface son identifiant (F-30 SF-30-04) : le message
@@ -284,96 +300,13 @@ public class AtelierAgentController {
                         "Le service d'exécution n'a pas pu traiter la demande. Veuillez réessayer."));
     }
 
-    /** Émet un fragment de texte de l'agent ; une déconnexion client interrompt le relais. */
-    private void sendAgent(SseEmitter emitter, String text) {
-        try {
-            emitter.send(SseEmitter.event().name("agent").data(new StreamAgent(text)));
-        } catch (IOException | IllegalStateException ex) {
-            throw new StreamAbortedException();
-        }
-    }
-
     /**
-     * Émet la consommation du tour en cours (F-30 / SF-30-13). Événement <b>additif</b> : un client
-     * qui l'ignore conserve exactement le comportement antérieur.
+     * L'émetteur du flux. Isolé en une méthode pour qu'un test puisse fournir celui d'un
+     * <b>navigateur parti</b> — l'objet même que F-84 devait cesser de confondre avec un ordre
+     * d'arrêt. Jamais redéfini en production.
      */
-    private void sendProgress(SseEmitter emitter, long tokens) {
-        try {
-            emitter.send(SseEmitter.event().name("progress").data(new StreamProgress(tokens)));
-        } catch (IOException | IllegalStateException ex) {
-            throw new StreamAbortedException();
-        }
-    }
-
-    /** Émet une action (usage d'outil) ; une déconnexion client interrompt le relais. */
-    private void sendAction(SseEmitter emitter, String tool, String toolUseId, String detail,
-            String threadId) {
-        try {
-            emitter.send(SseEmitter.event().name("action")
-                    .data(new StreamAction(tool, toolUseId, detail, threadId)));
-        } catch (IOException | IllegalStateException ex) {
-            throw new StreamAbortedException();
-        }
-    }
-
-    /**
-     * Émet la sortie d'une commande (F-30 SF-30-01) ; une déconnexion client interrompt le relais.
-     * Événement <b>additif</b> : un client qui l'ignore conserve le comportement antérieur.
-     */
-    private void sendActionResult(SseEmitter emitter, String tool, String toolUseId, String output,
-            boolean error, String threadId) {
-        try {
-            emitter.send(SseEmitter.event().name("action_result")
-                    .data(new StreamActionResult(tool, toolUseId, output, error, threadId)));
-        } catch (IOException | IllegalStateException ex) {
-            throw new StreamAbortedException();
-        }
-    }
-
-    /**
-     * Émet une demande d'autorisation (F-33 / SF-33-02) : l'écran affiche la commande et attend une
-     * décision. Événement <b>additif</b> — un client qui l'ignore ne voit rien de plus qu'avant, et
-     * la commande finira refusée par expiration du délai.
-     */
-    private void sendConfirmRequest(SseEmitter emitter, String tool, String confirmationId, String detail) {
-        try {
-            emitter.send(SseEmitter.event().name("confirm_request")
-                    .data(new StreamConfirmRequest(confirmationId, tool, detail)));
-        } catch (IOException | IllegalStateException ex) {
-            throw new StreamAbortedException();
-        }
-    }
-
-    /** Émet la résolution d'une demande d'autorisation, pour que l'écran retire l'invite. */
-    private void sendConfirmResolved(SseEmitter emitter, String confirmationId, String decision) {
-        try {
-            emitter.send(SseEmitter.event().name("confirm_resolved")
-                    .data(new StreamConfirmResolved(confirmationId, decision)));
-        } catch (IOException | IllegalStateException ex) {
-            throw new StreamAbortedException();
-        }
-    }
-
-    /** Émet une transition d'état ; une déconnexion client interrompt le relais. */
-    private void sendStatus(SseEmitter emitter, String state) {
-        try {
-            emitter.send(SseEmitter.event().name("status").data(new StreamStatus(state)));
-        } catch (IOException | IllegalStateException ex) {
-            throw new StreamAbortedException();
-        }
-    }
-
-    private void sendError(SseEmitter emitter, String code) {
-        try {
-            emitter.send(SseEmitter.event().name("error").data(new StreamError(code)));
-        } catch (IOException | IllegalStateException ignored) {
-            // Client déjà parti : rien à faire de plus.
-        }
-        emitter.complete();
-    }
-
-    /** Interruption interne : le client a fermé le flux pendant l'émission. */
-    private static final class StreamAbortedException extends RuntimeException {
+    SseEmitter newEmitter() {
+        return new SseEmitter(STREAM_TIMEOUT_MS);
     }
 
     /** Charges utiles JSON des événements SSE. */
