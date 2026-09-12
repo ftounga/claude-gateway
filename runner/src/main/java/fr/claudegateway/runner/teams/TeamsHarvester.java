@@ -42,10 +42,14 @@ final class TeamsHarvester {
      * la fait rafraîchir en remettant la vue où elle était. C'est la récolte des outils qui ne
      * lisent pas un fil précis (mentions, réunions).
      */
-    void harvestInPlace(TeamsReadWindow window) {
+    List<TeamsGap> harvestInPlace(TeamsReadWindow window) {
+        List<TeamsGap> gaps = new ArrayList<>();
         ledger.absorb(link.observer().collect(), window);
+        ledger.lastGaps().forEach(gap -> fold(gaps, gap));
         gestures.nudge();
         ledger.absorb(link.observer().collect(), window);
+        ledger.lastGaps().forEach(gap -> fold(gaps, gap));
+        return gaps;
     }
 
     /**
