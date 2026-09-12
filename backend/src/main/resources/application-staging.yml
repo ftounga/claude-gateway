@@ -17,16 +17,10 @@ spring:
 server:
   port: 8080
   forward-headers-strategy: framework
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
-  endpoint:
-    health:
-      show-details: always
-      probes:
-        enabled: true
+# F-77 — La configuration des sondes (exposition, groupes liveness/readiness, probes.enabled)
+# vit désormais dans `application.yml`, UNE seule fois, pour TOUS les profils. Elle y était
+# dupliquée mot pour mot : deux copies, c'est se garantir qu'un jour l'une des deux sera
+# corrigée seule. Et la poser dans le profil de base, c'est la faire passer par les tests.
 app:
   frontend-url: ${APP_FRONTEND_URL:https://portal.ng-itconsulting.com}
 logging:

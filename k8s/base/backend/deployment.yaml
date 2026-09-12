@@ -43,23 +43,48 @@ spec:
                 name: backend-config
             - secretRef:
                 name: backend-secrets
+          # ─── Sondes (F-77) ───────────────────────────────────────────────────────────────
+          # Panne de production du 2026-09-12, 09 h 07 : les trois sondes lisaient l'AGRÉGAT
+          # /api/actuator/health, qui inclut MailHealthIndicator. Le relais SMTP a mis 70 s à
+          # répondre, le délai d'attente valait 1 s (le défaut Kubernetes, jamais écrit ici), les
+          # trois sondes ont échoué et Kubernetes a tué quatre pods en boucle. Un service dont
+          # personne n'envoyait de courrier a été déclaré mort parce que son SMTP était lent.
+          #
+          # Donc : JAMAIS l'agrégat. Les groupes dédiés, dont la composition est écrite dans
+          # backend/src/main/resources/application.yml (liveness = livenessState ;
+          # readiness = readinessState + db ; le courrier dans aucun des deux).
+          # Toute valeur ci-dessous est celle appliquée à la main sur le cluster pour rétablir
+          # le service — ce fichier ne fait que la rendre reproductible.
           startupProbe:
             httpGet:
-              path: /api/actuator/health
+              # « A-t-il fini de démarrer ? » — même question que la vivacité : l'échec de cette
+              # sonde TUE le conteneur. La brancher sur readiness ferait tuer, au bout de 300 s,
+              # un pod dont seule la base tarde — la faute de raisonnement du 2026-09-12, déplacée
+              # d'un indicateur à l'autre. C'est readinessProbe qui retient le trafic entre-temps.
+              path: /api/actuator/health/liveness
               port: 8080
             initialDelaySeconds: 30
             periodSeconds: 10
+            # 30 × 10 s = 300 s de marge au démarrage avant que la vivacité ne prenne le relais.
             failureThreshold: 30
+            timeoutSeconds: 5
           readinessProbe:
             httpGet:
-              path: /api/actuator/health
+              # « Peut-il recevoir du trafic ? » Base comprise : un pod sans base ne sert rien
+              # d'utile. Échec => retiré du Service, PAS redémarré.
+              path: /api/actuator/health/readiness
               port: 8080
             periodSeconds: 10
+            timeoutSeconds: 5
           livenessProbe:
             httpGet:
-              path: /api/actuator/health
+              # « Le processus est-il vivant ? » Rien de joignable par le réseau.
+              path: /api/actuator/health/liveness
               port: 8080
             periodSeconds: 30
+            # 5 s, pas 1 : une seconde ne laisse aucune marge à une base qui répond en 800 ms.
+            # Doit rester strictement inférieur au periodSeconds le plus court (10 s).
+            timeoutSeconds: 5
           resources:
             requests:
               cpu: 250m
