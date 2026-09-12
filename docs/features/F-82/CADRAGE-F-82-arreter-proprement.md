@@ -110,6 +110,47 @@ le cas, l'écran propose **la reprise d'abord** — une ligne à copier, rien à
 réappairage qu'en **repli**, nommé comme tel (« la machine a changé, ou le jeton a été révoqué »).
 Rien n'est retiré : le parcours complet reste accessible d'un clic.
 
+## 5 ter. D6 — le mode projet demande une racine de **projet**, et refait un poste par projet
+
+Ajouté le 2026-09-12 à la demande du PO, dans le même mouvement que D5 : c'est le même écran, et la
+même confusion entre « la machine » et « le dossier où je travaille ».
+
+`runner-pairing-dialog.component.html:870` :
+
+```html
+{{ hostMode ? 'Racine du poste sur la machine' : 'Racine du projet sur la machine' }}
+```
+
+Cette valeur (`workspacePath` → `commandPath()`, `ts:1043`) part **telle quelle** dans `--root` de la
+commande de lancement (`ts:997`) **et** dans la commande de reprise (`ts:1011`). Or `--root` **est la
+racine du poste** — le dossier sous lequel vivent les projets ; le commentaire de `ts:995` le dit
+lui-même, en citant F-48 / SF-48-02.
+
+**Conséquence en mode projet** (dialogue ouvert depuis l'en-tête d'un terminal, `hostMode = false`) :
+l'écran demande la « racine du **projet** », et le runner déclare donc la machine comme si elle
+commençait à ce dossier. La racine du poste devient `~/dev/mon-projet`, les sous-dossiers offerts à
+« Ajouter un projet » sont ceux du projet et non ceux de la machine, et l'on retombe sur **un poste
+par projet** — exactement le modèle que F-48 a supprimé.
+
+Les chemins d'exemple disaient la même chose : `C:\Users\moi\projets\mon-projet` et
+`/Users/moi/projets/mon-projet` décrivent un **projet**, pas une racine de machine.
+
+**Ce qui est retenu** — « la connexion doit se faire **par poste uniquement**, pas par projet » :
+
+1. Les **deux** modes demandent, affichent et emploient **la même chose** : la racine de la machine.
+   Le libellé conditionnel disparaît ; l'aide dit que c'est le dossier **sous lequel** vivent les
+   projets.
+2. Les chemins d'exemple deviennent des racines de poste (`C:\Users\moi\projets`,
+   `/Users/moi/projets`).
+3. Quand la machine a **déjà déclaré** sa racine, l'écran le **rappelle** au lieu de laisser croire
+   qu'un chemin neuf est attendu. Il ne **pré-remplit pas** : `runner_hosts.root_name` ne stocke
+   volontairement que le **dernier segment** — l'arborescence d'une machine cliente n'a rien à faire
+   dans la base — et deviner le reste produirait une commande faussement prête.
+4. Le mode projet **reste** : il sert à rattacher un projet à un poste. Ce qui disparaît, c'est
+   l'idée qu'on appaire un dossier de projet.
+
+Livré avec D5, dans **SF-82-04** : même parcours, même fichier, même décision.
+
 ## 6. Découpage
 
 | | |
@@ -117,7 +158,7 @@ Rien n'est retiré : le parcours complet reste accessible d'un clic.
 | **SF-82-01** | `Ctrl-C` rend toujours la main : attente bornée, et un mot quand la fermeture propre a échoué |
 | **SF-82-02** | Le coupe-circuit vit sur la carte du poste, avec une confirmation qui **dit tout** ce qu'il fait |
 | **SF-82-03** | Le repli de transport se nomme : transport essayé, motif de l'échec, transport retenu |
-| **SF-82-04** | Reprendre un poste connu ne coûte plus un code : la reprise d'abord, le réappairage en repli |
+| **SF-82-04** | Reprendre un poste connu ne coûte plus un code : la reprise d'abord, le réappairage en repli — **et** la racine demandée est celle du **poste**, dans les deux modes (D6) |
 
 ## 7. Hors périmètre
 

@@ -54,6 +54,59 @@
         Projet appairé : <strong>{{ workspaceName }}</strong>.
       }
     </p>
+
+    <!-- LA REPRISE (F-82 / SF-82-04). Le poste est connu, il porte un jeton utilisable, son runner
+         ne tourne pas : il n'y a AUCUN code à générer — seulement à relancer le runner. C'est le
+         cas courant (une machine qu'on rallume, un Ctrl-C de la veille), et l'écran lui proposait
+         jusqu'ici un code neuf qui expire en cinq minutes et ne sert à rien.
+         L'encart, et pas une sixième étape : ce n'est pas une étape, c'est un raccourci (D5-a). -->
+    @if (resumeAvailable()) {
+      <section class="pairing-resume" role="status">
+        <mat-icon class="pairing-resume-icon">restart_alt</mat-icon>
+        <div class="pairing-resume-body">
+          <p class="pairing-resume-title">Cette machine est déjà appairée</p>
+          <p class="pairing-resume-text">
+            Son runner ne tourne pas, mais son jeton est resté sur son disque :
+            <strong>aucun code n'est nécessaire</strong>. Relancez-le sur le poste, dans le dossier
+            où le runner a été déposé.
+          </p>
+
+          <div class="pairing-command">
+            <code>{{ restartCommand() }}</code>
+            <button
+              mat-icon-button
+              type="button"
+              matTooltip="Copier la commande de relance"
+              aria-label="Copier la commande de relance"
+              (click)="copy(restartCommand(), 'Commande de relance')"
+            >
+              <mat-icon>content_copy</mat-icon>
+            </button>
+          </div>
+
+          <p class="pairing-resume-text">
+            Aucun argument : le runner retrouve la passerelle et la racine qu'il a mémorisées au
+            premier appairage.
+            @if (runnerRootName(); as root) {
+              Cette machine avait déclaré la racine <strong>« {{ root }} »</strong>.
+            }
+          </p>
+
+          <!-- Le REPLI, nommé. Rien n'est retiré du parcours : il est entier, replié dessous, et
+               ce bouton en rouvre l'étape « code » d'un clic. -->
+          <p class="pairing-resume-fallback">La machine a changé, ou le jeton a été révoqué ?</p>
+          <button
+            mat-stroked-button
+            type="button"
+            class="pairing-action"
+            (click)="startRepairing()"
+          >
+            <mat-icon>key</mat-icon>
+            Réappairer cette machine
+          </button>
+        </div>
+      </section>
+    }
   }
 
   <!-- Étape 1 — la sortie réseau (F-45 / SF-45-01). Avant le code et avant les 39 Mo : chez le
@@ -865,10 +918,13 @@
 
     @if (isOpen('launch')) {
       <div class="pairing-step-body">
+        <!-- LA RACINE DU POSTE, dans LES DEUX modes (F-82 / SF-82-04, D6). Le mode projet
+             demandait une « racine du projet » et l'envoyait telle quelle dans `--root` : le runner
+             déclarait alors la machine comme si elle commençait au dossier du projet, « Ajouter un
+             projet » n'offrait plus que ses sous-dossiers, et l'on retombait sur un poste par
+             projet — le modèle que F-48 a supprimé. Un runner se lance à la racine du POSTE. -->
         <mat-form-field appearance="outline" class="pairing-field" subscriptSizing="dynamic">
-          <mat-label>
-            {{ hostMode ? 'Racine du poste sur la machine' : 'Racine du projet sur la machine' }}
-          </mat-label>
+          <mat-label>Racine du poste sur la machine</mat-label>
           <!-- Le chemin d'exemple suit le format retenu (F-45 / SF-45-02) : un chemin Unix sous un
                bouton « pour Windows » invitait à recopier une forme qui ne marche pas. Placeholder et
                non valeur : le runner refuse tout accès hors de la racine annoncée, et pré-remplir un
@@ -877,14 +933,25 @@
             matInput
             maxlength="200"
             [placeholder]="examplePath()"
-            [ngModel]="workspacePath()"
-            (ngModelChange)="workspacePath.set($event)"
+            [ngModel]="rootPath()"
+            (ngModelChange)="rootPath.set($event)"
           />
           <mat-hint>
-            Le runner refuse tout accès au-dessus de ce dossier. Ce chemin reste dans votre
-            navigateur.
+            Le dossier <strong>sous lequel</strong> vivent vos projets — pas un projet. Le runner
+            refuse tout accès au-dessus. Ce chemin reste dans votre navigateur.
           </mat-hint>
         </mat-form-field>
+
+        <!-- La machine a déjà déclaré sa racine : on la RAPPELLE plutôt que de laisser croire
+             qu'un chemin neuf est attendu. On ne pré-remplit pas : la gateway ne connaît que le
+             dernier segment (`runner_hosts.root_name`), et deviner le reste produirait une
+             commande faussement prête (D6-a). -->
+        @if (runnerRootName(); as root) {
+          <p class="pairing-hint">
+            Cette machine avait déclaré la racine <strong>« {{ root }} »</strong> — reprenez le même
+            dossier, sinon le poste changera de racine et vos projets seront à chercher ailleurs.
+          </p>
+        }
 
         <p class="pairing-command-label">La première fois</p>
         <div class="pairing-command">
@@ -919,7 +986,7 @@
 
         <p class="pairing-hint">
           Le runner échange le code contre un jeton et mémorise la passerelle et la racine du
-          projet : les lancements suivants n'ont plus besoin d'aucun argument, et le code ne sert
+          poste : les lancements suivants n'ont plus besoin d'aucun argument, et le code ne sert
           qu'une fois.
         </p>
 

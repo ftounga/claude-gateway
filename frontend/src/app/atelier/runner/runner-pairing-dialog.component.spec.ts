@@ -8,10 +8,10 @@ import { RunnerDownloadFormats, WorkspaceDetail } from '../../core/models/atelie
 
 import { AtelierService } from '../../core/services/atelier.service';
 import {
-  DEFAULT_WORKSPACE_PATH,
+  DEFAULT_ROOT_PATH,
   IT_SHEET_FILENAME,
   LOCAL_RELAY_PROXY_URL,
-  MACOS_WORKSPACE_PATH,
+  MACOS_ROOT_PATH,
   NETWORK_CHECK_PATH,
   RUNNER_BUILD_COMMAND,
   RUNNER_HOST_PLATFORM,
@@ -19,7 +19,7 @@ import {
   RunnerHostPlatform,
   RunnerPairingDialogComponent,
   shellLabel,
-  WINDOWS_WORKSPACE_PATH,
+  WINDOWS_ROOT_PATH,
   detectHostPlatform,
   itDepartmentSheet,
   networkCheckCommand,
@@ -177,7 +177,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     component.format.set('jar');
     service.createHostPairingCode.and.returnValue(of(codeExpiringIn(300)));
     component.generateCode();
-    component.workspacePath.set('  /home/moi/projet  ');
+    component.rootPath.set('  /home/moi/projet  ');
 
     const command = component.runCommand();
 
@@ -194,7 +194,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     // Le poste par défaut de ces tests est Windows, et le format retenu le paquet Windows : le
     // chemin d'exemple suit donc le format (F-45 / SF-45-02).
     setup();
-    expect(component.runCommand()).toContain(`--root "${WINDOWS_WORKSPACE_PATH}"`);
+    expect(component.runCommand()).toContain(`--root "${WINDOWS_ROOT_PATH}"`);
   });
 
   it('traite un 404 de téléchargement comme un état normal, sans erreur technique', () => {
@@ -385,7 +385,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     // mémorisé la passerelle et la racine — la commande des fois suivantes n'a plus à les porter.
     setup(EVERY_FORMAT, 'other');
     component.format.set('jar');
-    component.workspacePath.set('  /home/moi/projet  ');
+    component.rootPath.set('  /home/moi/projet  ');
 
     const resume = component.resumeCommand();
 
@@ -399,7 +399,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
   it('reprend le chemin d\'exemple tant que rien n\'est saisi', () => {
     setup();
 
-    expect(component.resumeCommand()).toContain(`cd "${WINDOWS_WORKSPACE_PATH}"`);
+    expect(component.resumeCommand()).toContain(`cd "${WINDOWS_ROOT_PATH}"`);
   });
 
   it('reprend avec le lanceur du paquet Windows, jamais avec « java »', () => {
@@ -413,7 +413,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     setup(EVERY_FORMAT, 'macos');
 
     expect(component.resumeCommand()).toContain('&& ./claude-runner.command');
-    expect(component.resumeCommand()).toContain(`cd "${MACOS_WORKSPACE_PATH}"`);
+    expect(component.resumeCommand()).toContain(`cd "${MACOS_ROOT_PATH}"`);
   });
 
   it('laisse la commande de reprise intacte quand le code a expiré', () => {
@@ -422,7 +422,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     setup();
     service.createHostPairingCode.and.returnValue(of(codeExpiringIn(-1)));
     component.generateCode();
-    component.workspacePath.set('C:\\Users\\moi\\projet');
+    component.rootPath.set('C:\\Users\\moi\\projet');
 
     expect(component.runCommand()).toContain('--code <code-appairage>');
     expect(component.resumeCommand()).toBe('cd "C:\\Users\\moi\\projet" && claude-runner.cmd');
@@ -689,16 +689,16 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
   it('affiche un chemin Windows sous le paquet Windows', () => {
     setup(EVERY_FORMAT, 'windows');
 
-    expect(component.examplePath()).toBe(WINDOWS_WORKSPACE_PATH);
+    expect(component.examplePath()).toBe(WINDOWS_ROOT_PATH);
     expect(component.examplePath()).toContain('C:\\');
     // Guillemets conservés : sans eux, Git Bash mange les antislashs (SF-38-23).
-    expect(component.runCommand()).toContain(`--root "${WINDOWS_WORKSPACE_PATH}"`);
+    expect(component.runCommand()).toContain(`--root "${WINDOWS_ROOT_PATH}"`);
   });
 
   it('affiche un chemin macOS sous un paquet macOS', () => {
     setup(EVERY_FORMAT, 'macos');
 
-    expect(component.examplePath()).toBe(MACOS_WORKSPACE_PATH);
+    expect(component.examplePath()).toBe(MACOS_ROOT_PATH);
     expect(component.examplePath()).toContain('/Users/');
   });
 
@@ -707,32 +707,32 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     // porte aucun système ; c'est alors le poste d'où la page est consultée qui décide.
     setup(EVERY_FORMAT, 'other');
     expect(component.format()).toBe('jar');
-    expect(component.examplePath()).toBe(DEFAULT_WORKSPACE_PATH);
+    expect(component.examplePath()).toBe(DEFAULT_ROOT_PATH);
   });
 
   it('donne un chemin Windows au jar consulté depuis Windows', () => {
     setup({ ...EVERY_FORMAT, windowsPackage: false }, 'windows');
 
     expect(component.selectedPackage()).toBeNull();
-    expect(component.examplePath()).toBe(WINDOWS_WORKSPACE_PATH);
+    expect(component.examplePath()).toBe(WINDOWS_ROOT_PATH);
   });
 
   it('met le chemin d\'exemple à jour quand le format change', () => {
     setup(EVERY_FORMAT, 'windows');
-    expect(component.examplePath()).toBe(WINDOWS_WORKSPACE_PATH);
+    expect(component.examplePath()).toBe(WINDOWS_ROOT_PATH);
 
     component.format.set('macos-aarch64');
 
-    expect(component.examplePath()).toBe(MACOS_WORKSPACE_PATH);
+    expect(component.examplePath()).toBe(MACOS_ROOT_PATH);
   });
 
   it('ne remplace jamais un chemin saisi par l\'utilisateur', () => {
     setup(EVERY_FORMAT, 'windows');
-    component.workspacePath.set('/home/moi/projet');
+    component.rootPath.set('/home/moi/projet');
 
     component.format.set('macos-x64');
 
-    expect(component.workspacePath()).toBe('/home/moi/projet');
+    expect(component.rootPath()).toBe('/home/moi/projet');
     expect(component.runCommand()).toContain('--root "/home/moi/projet"');
   });
 
@@ -948,7 +948,7 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     setup();
     service.createHostPairingCode.and.returnValue(of(codeExpiringIn(300, 'ZZ99YY')));
     component.generateCode();
-    component.workspacePath.set('/home/moi/dossier-confidentiel');
+    component.rootPath.set('/home/moi/dossier-confidentiel');
 
     expect(component.itSheet).not.toContain('ZZ99YY');
     expect(component.itSheet).not.toContain('projet');
@@ -1512,5 +1512,257 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
 
     expect(service.createHostPairingCode).not.toHaveBeenCalled();
     expect(component.step()).toBe('host');
+  });
+
+  // ---------------------------------------------------------------------------------------------
+  // F-82 / SF-82-04 — reprendre un poste connu ne coûte plus un code
+  // ---------------------------------------------------------------------------------------------
+
+  /** Relève d'état d'un poste APPAIRÉ mais ÉTEINT — le cas courant d'une machine qu'on rallume. */
+  function givenPairedButOffline(rootName: string | null = 'projets'): void {
+    service.getRunnerStatus.and.returnValue(
+      of({ connected: false, paired: true, lastSeenAt: null, rootName }));
+    jasmine.clock().tick(RUNNER_STATUS_POLL_MS);
+  }
+
+  it('propose la reprise quand le poste est appairé mais éteint', () => {
+    jasmine.clock().install();
+    try {
+      setup();
+      expect(component.resumeAvailable()).toBeFalse();
+
+      givenPairedButOffline();
+
+      expect(component.runnerPaired()).toBeTrue();
+      expect(component.resumeAvailable()).toBeTrue();
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it('ne propose aucune reprise quand tous les jetons ont été révoqués', () => {
+    // Piège n° 1 : après le coupe-circuit (SF-38-08), la reprise échouerait. Proposer un geste
+    // voué à l'échec est pire que ne rien proposer — l'étape « code » reste le bon geste.
+    jasmine.clock().install();
+    try {
+      setup();
+      service.getRunnerStatus.and.returnValue(
+        of({ connected: false, paired: false, lastSeenAt: null }));
+
+      jasmine.clock().tick(RUNNER_STATUS_POLL_MS);
+
+      expect(component.resumeAvailable()).toBeFalse();
+      expect(component.step()).toBe('network');
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it('ne propose aucune reprise sur une gateway qui ne dit rien du jeton', () => {
+    // Champ additif : son absence vaut « pas de jeton connu », donc le parcours d'avant.
+    jasmine.clock().install();
+    try {
+      setup();
+      service.getRunnerStatus.and.returnValue(of({ connected: false, lastSeenAt: null }));
+
+      jasmine.clock().tick(RUNNER_STATUS_POLL_MS);
+
+      expect(component.resumeAvailable()).toBeFalse();
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it('ne propose pas la reprise sur un poste connecté — il saute à la conclusion', () => {
+    // Piège n° 2 : `hostAlreadyLive` est intact. Un poste connecté n'a rien à reprendre.
+    jasmine.clock().install();
+    try {
+      setup();
+      service.getRunnerStatus.and.returnValue(
+        of({ connected: true, paired: true, lastSeenAt: null }));
+
+      jasmine.clock().tick(RUNNER_STATUS_POLL_MS);
+
+      expect(component.runnerConnected()).toBeTrue();
+      expect(component.resumeAvailable()).toBeFalse();
+      expect(component.step()).toBeNull();
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it('donne une commande de relance nue : ni passerelle, ni racine, ni code', () => {
+    jasmine.clock().install();
+    try {
+      setup(EVERY_FORMAT, 'other');
+      component.format.set('jar');
+      givenPairedButOffline();
+
+      const restart = component.restartCommand();
+
+      expect(restart).toBe('java -jar claude-runner.jar');
+      expect(restart).not.toContain('--gateway');
+      expect(restart).not.toContain('--root');
+      expect(restart).not.toContain('--code');
+      // Et surtout : aucun `cd` vers un chemin d'exemple, que personne n'a saisi (D5-b).
+      expect(restart).not.toContain('cd ');
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it('relance avec le lanceur du paquet retenu, jamais avec « java »', () => {
+    jasmine.clock().install();
+    try {
+      setup(EVERY_FORMAT, 'windows');
+      givenPairedButOffline();
+
+      expect(component.restartCommand()).toBe('claude-runner.cmd');
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it('replie le parcours quand la reprise devient possible, sans rien en retirer', () => {
+    jasmine.clock().install();
+    try {
+      setup();
+      expect(component.step()).toBe('network');
+
+      givenPairedButOffline();
+
+      expect(component.step()).toBeNull();
+      // Rien n'est retiré : l'étape « code » se rouvre d'un clic.
+      component.toggleStep('code');
+      expect(component.step()).toBe('code');
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it("n'escamote jamais un code déjà obtenu", () => {
+    jasmine.clock().install();
+    try {
+      setup();
+      service.createHostPairingCode.and.returnValue(of(codeExpiringIn(300)));
+      component.generateCode();
+      // L'utilisateur revient lire son code : c'est exactement ce qu'il ne faut pas escamoter.
+      component.toggleStep('code');
+      expect(component.step()).toBe('code');
+
+      givenPairedButOffline();
+
+      expect(component.resumeAvailable()).toBeTrue();
+      expect(component.step()).toBe('code');
+      expect(component.codeUsable()).toBeTrue();
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it('ne replie le parcours qu\'une fois — pas à chaque relevé', () => {
+    jasmine.clock().install();
+    try {
+      setup();
+      givenPairedButOffline();
+      expect(component.step()).toBeNull();
+
+      component.toggleStep('download');
+      jasmine.clock().tick(RUNNER_STATUS_POLL_MS * 3);
+
+      expect(component.step()).toBe('download');
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it('ouvre l\'étape « code » depuis le repli nommé, en un clic', () => {
+    jasmine.clock().install();
+    try {
+      setup();
+      givenPairedButOffline();
+
+      component.startRepairing();
+
+      expect(component.step()).toBe('code');
+      // Et le relevé suivant ne la referme pas.
+      jasmine.clock().tick(RUNNER_STATUS_POLL_MS * 2);
+      expect(component.step()).toBe('code');
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it('affiche l\'encart de reprise, sa commande et son repli nommé', () => {
+    jasmine.clock().install();
+    try {
+      setup(EVERY_FORMAT, 'other');
+      component.format.set('jar');
+      givenPairedButOffline('projets');
+      fixture.detectChanges();
+
+      const card = (fixture.nativeElement as HTMLElement).querySelector('.pairing-resume');
+      expect(card).not.toBeNull();
+      const text = card?.textContent ?? '';
+      expect(text).toContain('déjà appairée');
+      expect(text).toContain('java -jar claude-runner.jar');
+      expect(text).toContain('aucun code');
+      expect(text).toContain('« projets »');
+      expect(text).toContain('La machine a changé, ou le jeton a été révoqué');
+    } finally {
+      jasmine.clock().uninstall();
+    }
+  });
+
+  it("n'affiche aucun encart de reprise quand le poste n'est pas appairé", () => {
+    setup();
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('.pairing-resume')).toBeNull();
+  });
+
+  // ---------------------------------------------------------------------------------------------
+  // F-82 / SF-82-04 (D6) — la racine demandée est celle du POSTE, jamais celle d'un projet
+  // ---------------------------------------------------------------------------------------------
+
+  it('demande la racine du POSTE, y compris en mode projet', () => {
+    setup();
+    component.toggleStep('launch');
+    fixture.detectChanges();
+
+    const labels = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('mat-label'),
+    ).map((node) => node.textContent ?? '');
+    expect(labels.some((text) => text.includes('Racine du poste sur la machine'))).toBeTrue();
+    expect(labels.some((text) => text.includes('Racine du projet'))).toBeFalse();
+  });
+
+  it("n'offre plus de chemin d'exemple qui ressemble à un projet", () => {
+    // Le défaut : « C:\\Users\\moi\\projets\\mon-projet » invitait à déclarer une machine qui
+    // commence au dossier d'un projet — un poste par projet, ce que F-48 a supprimé.
+    setup(EVERY_FORMAT, 'windows');
+    expect(component.examplePath()).toBe(WINDOWS_ROOT_PATH);
+    expect(component.examplePath()).not.toContain('mon-projet');
+
+    component.format.set('macos-aarch64');
+    expect(component.examplePath()).toBe(MACOS_ROOT_PATH);
+    expect(component.examplePath()).not.toContain('mon-projet');
+  });
+
+  it('rappelle la racine déjà déclarée par la machine, sans la pré-remplir', () => {
+    jasmine.clock().install();
+    try {
+      setup();
+      givenPairedButOffline('projets');
+      component.toggleStep('launch');
+      fixture.detectChanges();
+
+      const body = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(body).toContain('avait déclaré la racine');
+      // Rappelée, jamais pré-remplie : la gateway ne connaît que le dernier segment (D6-a).
+      expect(component.rootPath()).toBe('');
+    } finally {
+      jasmine.clock().uninstall();
+    }
   });
 });

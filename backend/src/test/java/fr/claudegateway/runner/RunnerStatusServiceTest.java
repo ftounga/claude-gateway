@@ -160,8 +160,86 @@ class RunnerStatusServiceTest {
         RunnerStatus status = service().status(userId, workspaceId);
 
         assertThat(status.connected()).isFalse();
+        // F-82 / SF-82-04 : pas de poste, donc pas de jeton, donc rien à reprendre. L'écran doit
+        // ouvrir le parcours complet et non proposer une relance qui n'irait nulle part.
+        assertThat(status.paired()).isFalse();
         assertThat(status.hostId()).isNull();
         verify(tokenRepository, never()).findByUserIdAndHostIdOrderByCreatedAtDesc(any(), any());
+    }
+
+    // ---------- Le poste porte-t-il encore un jeton utilisable ? (F-82 / SF-82-04) ----------
+
+    /** Jeton dont on choisit l'échéance et la révocation — les deux seuls critères de `paired`. */
+    private RunnerToken token(OffsetDateTime expiresAt, OffsetDateTime revokedAt) {
+        return RunnerToken.builder()
+                .userId(userId).hostId(hostId)
+                .tokenHash("h").expiresAt(expiresAt).revokedAt(revokedAt)
+                .build();
+    }
+
+    @Test
+    void pairedWhenTheHostStillCarriesALiveToken() {
+        // LE cas courant : la machine est éteinte, mais son jeton est sur son disque. Aucun code
+        // d'appairage n'est nécessaire — seulement relancer le runner.
+        givenAttachedProject(null);
+        when(registry.isConnected(hostId)).thenReturn(false);
+        givenTokens(token(OffsetDateTime.now().plusDays(10), null));
+
+        RunnerStatus status = service().status(userId, workspaceId);
+
+        assertThat(status.connected()).isFalse();
+        assertThat(status.paired()).isTrue();
+    }
+
+    @Test
+    void notPairedWhenEveryTokenHasBeenRevoked() {
+        // Après le coupe-circuit (SF-38-08) : la reprise échouerait, et proposer un geste voué à
+        // l'échec est pire que ne rien proposer. L'écran redemande donc un code.
+        givenAttachedProject(null);
+        when(registry.isConnected(hostId)).thenReturn(false);
+        OffsetDateTime later = OffsetDateTime.now().plusDays(10);
+        givenTokens(token(later, OffsetDateTime.now().minusMinutes(1)),
+                token(later, OffsetDateTime.now().minusHours(3)));
+
+        RunnerStatus status = service().status(userId, workspaceId);
+
+        assertThat(status.paired()).isFalse();
+    }
+
+    @Test
+    void notPairedWhenTheOnlyTokenHasExpired() {
+        givenAttachedProject(null);
+        when(registry.isConnected(hostId)).thenReturn(false);
+        givenTokens(token(OffsetDateTime.now().minusMinutes(1), null));
+
+        RunnerStatus status = service().status(userId, workspaceId);
+
+        assertThat(status.paired()).isFalse();
+    }
+
+    @Test
+    void pairedWhenOneTokenSurvivesAmongRevokedOnes() {
+        // Un seul jeton utilisable suffit : c'est celui que le runner présentera.
+        givenAttachedProject(null);
+        when(registry.isConnected(hostId)).thenReturn(false);
+        OffsetDateTime later = OffsetDateTime.now().plusDays(10);
+        givenTokens(token(later, OffsetDateTime.now().minusMinutes(1)), token(later, null));
+
+        RunnerStatus status = service().status(userId, workspaceId);
+
+        assertThat(status.paired()).isTrue();
+    }
+
+    @Test
+    void pairedIsReadOnlyFromTheOwnersTokens() {
+        // Isolation : la lecture passe par user_id ET host_id. Aucune autre lecture n'existe.
+        givenAttachedProject(null);
+        when(registry.isConnected(hostId)).thenReturn(false);
+        givenTokens(token(OffsetDateTime.now().plusDays(10), null));
+
+        service().status(userId, workspaceId);
+
+        verify(tokenRepository).findByUserIdAndHostIdOrderByCreatedAtDesc(userId, hostId);
     }
 
     // ---------- Interpréteur élu (F-45 / SF-45-05), désormais porté par le POSTE ----------

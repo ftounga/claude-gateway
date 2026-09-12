@@ -73,7 +73,8 @@ class AtelierEngineServiceTest {
 
     private void givenRunner(boolean connected, OffsetDateTime lastSeenAt) {
         when(runnerStatusService.status(userId, workspaceId))
-                .thenReturn(new RunnerStatus(connected, lastSeenAt, null, null, null, null, false));
+                .thenReturn(new RunnerStatus(connected, connected, lastSeenAt, null, null, null,
+                        null, false));
     }
 
     private void givenTree(int fileCount, boolean truncated) {

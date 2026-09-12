@@ -206,6 +206,19 @@ export interface ExecutionTargetRequest {
  */
 export interface RunnerStatus {
   connected: boolean;
+  /**
+   * Le poste porte **un jeton encore utilisable** — ni révoqué, ni expiré (F-82 / SF-82-04).
+   *
+   * Il se lit **avec** `connected`, jamais à sa place. « Non connecté mais appairé » est le cas
+   * d'une machine qu'on rallume : il ne lui faut **aucun code d'appairage**, seulement qu'on
+   * relance le runner, qui retrouve passerelle et racine à côté de son jeton (F-46 / SF-46-01).
+   * Après un coupe-circuit (SF-38-08) il repasse à `false`, et l'écran redemande un code — le seul
+   * geste qui puisse alors aboutir.
+   *
+   * Champ **additif** : une gateway antérieure ne l'envoie pas, et son absence se lit comme
+   * `false` — le parcours complet, c'est-à-dire le comportement d'avant.
+   */
+  paired?: boolean;
   /** Dernier signe de vie observé, ou `null` si aucun runner ne s'est jamais signalé. */
   lastSeenAt: string | null;
   /**

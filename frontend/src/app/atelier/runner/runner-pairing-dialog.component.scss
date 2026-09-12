@@ -168,6 +168,54 @@
   line-height: 1.5;
 }
 
+/* LA REPRISE (F-82 / SF-82-04). Elle vit au-dessus du parcours, comme la conclusion — mais elle
+   n'est pas une conclusion : le liseré est celui de l'accent, pas le vert du succès. Jetons du
+   design system uniquement (docs/DESIGN_SYSTEM.md), aucun registre de couleur ajouté. */
+.pairing-resume {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-3);
+  margin-bottom: var(--cg-space-3);
+  border: 1px solid var(--cg-accent);
+  border-radius: 8px;
+  background: var(--cg-surface-2);
+}
+
+.pairing-resume-icon {
+  flex: none;
+  color: var(--cg-accent);
+}
+
+.pairing-resume-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.pairing-resume-title {
+  margin: 0 0 var(--cg-space-2);
+  font-family: var(--cg-font-heading);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--cg-text-primary);
+}
+
+.pairing-resume-text {
+  margin: 0 0 var(--cg-space-2);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Le repli, NOMMÉ. Il doit se lire comme une sortie de secours, pas comme le geste principal. */
+.pairing-resume-fallback {
+  margin: var(--cg-space-3) 0 var(--cg-space-1);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
 .pairing-hint {
   margin: 0 0 var(--cg-space-2);
   color: var(--cg-text-secondary);
