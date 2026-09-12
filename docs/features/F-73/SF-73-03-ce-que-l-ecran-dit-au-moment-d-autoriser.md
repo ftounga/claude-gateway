@@ -12,7 +12,7 @@
 
 ## Statut
 
-`ready`
+`done` — mergée le 2026-09-12 (PR #391)
 
 ## Date de création
 
@@ -143,9 +143,9 @@ Aucune.
 | Fichier | Changement |
 |---|---|
 | `atelier/terminal/atelier-terminal.component.html` | mention ajoutée dans `.terminal-ask`, sous la commande |
-| `atelier/terminal/atelier-terminal.component.ts` | entrée `runnerTarget` (ou équivalent booléen `runnerScopeVisible`) |
+| `atelier/terminal/atelier-terminal.component.ts` | accesseur `runnerScope` — l'entrée `executionTarget` **existait déjà** (F-38 / SF-38-05), aucune entrée nouvelle |
 | `atelier/terminal/atelier-terminal.component.scss` | classe `.terminal-ask-scope`, tokens `--cg-*` uniquement |
-| `atelier/atelier.component.html` | passe la cible d'exécution du projet au terminal |
+| ~~`atelier/atelier.component.html`~~ | **rien à faire** : `[executionTarget]` était déjà transmis au terminal |
 
 ---
 
@@ -161,8 +161,8 @@ Aucune.
 
 ### Tests d'intégration
 
-5. `atelier.component.spec.ts` : la cible d'exécution du projet chargé est bien transmise au
-   composant terminal (liaison de gabarit).
+5. La liaison `[executionTarget]` d'`atelier.component.html` existait déjà et reste couverte par les
+   specs de `atelier.component.spec.ts` : rien à ajouter, la mention hérite d'un chemin déjà éprouvé.
 
 ### Isolation workspace
 

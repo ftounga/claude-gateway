@@ -364,12 +364,14 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - Le vault s'attache **à la création de session** (`vault_ids`) : le fournisseur refuse de l'ajouter
     ensuite. Une session ouverte avant SF-31-05 n'a donc pas l'outil ; « Réinitialiser la sandbox »
     en rouvre une équipée.
-- **workspaces — validation avant exécution** (F-33 / SF-33-01, migration `044`). Colonne
-  `agent_ask_before_bash (boolean, non nul, défaut false)` : quand elle est posée, la session d'agent
-  est ouverte avec `permission_policy: always_ask` sur le **seul outil `bash`** (surcharge d'outils
-  session-locale, `agent_with_overrides.tools` — l'agent plateforme n'est jamais modifié).
-  **Aucune table nouvelle**, aucune donnée existante changée : à `false`, le corps de création de
-  session est strictement celui d'avant F-33.
+- **workspaces — validation avant exécution** (F-33 / SF-33-01, migration `044` ; **défaut inversé
+  par F-73 / SF-73-02, migration `072`**). Colonne
+  `agent_ask_before_bash (boolean, non nul, défaut **true**)` : quand elle est posée, la session
+  d'agent est ouverte avec `permission_policy: always_ask` sur le **seul outil `bash`** (surcharge
+  d'outils session-locale, `agent_with_overrides.tools` — l'agent plateforme n'est jamais modifié).
+  **Aucune table nouvelle**, et la migration `072` ne fait **aucun `UPDATE`** : seul le défaut de
+  colonne change, les projets existants gardent le réglage qu'ils portent. Le défaut est posé aussi
+  sur l'**entité** (`@Builder.Default`), pour que tout chemin de création l'hérite (ADR-019).
   - La politique est fixée à l'**ouverture** de session : `PUT /workspaces/{id}/agent/confirmation`
     répond `appliesToCurrentSession: false` quand une sandbox tourne déjà, plutôt que d'annoncer une
     protection qui n'est pas en vigueur. La réinitialisation (F-30 SF-30-06) l'applique.
@@ -698,9 +700,11 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `label (varchar 100)`, `expires_at`, `revoked_at`, `last_seen_at`, `created_at`. Index `(user_id, host_id)`.
     TTL 30 j, révocable. Isolation `user_id` sur toutes les lectures/gestions.
   - `RunnerIdentity` vaut `(tokenId, userId, hostId)` : le **projet** ne fait plus partie de
-    l'identité, il voyage **par appel** dans le champ `project` de la trame `tool_call`, et c'est le
-    runner qui referme son confinement dessus (F-48 / SF-48-02, régime **local** — décision non
-    réversible du cadrage).
+    l'identité, il voyage **par appel** dans le champ `project` de la trame `tool_call`, et donne au
+    runner le **dossier de départ** du tour (F-48 / SF-48-02). **Ce n'est plus une borne depuis
+    F-73 / SF-73-01** : le confinement a été retiré partout, parce qu'il n'existait déjà pas pour
+    `bash` (seul le `cwd` passait par la garde, jamais la commande). Ce qui s'interpose est la porte
+    de confirmation, le journal d'audit, le coupe-circuit — et ce que l'application **dit** (ADR-019).
   - Endpoints **`POST /workspaces/{id}/runner/pairing-code`**, **`GET/DELETE /workspaces/{id}/runner/tokens`**
     (JWT, gardés par l'accès Atelier Gold/ADMIN) et **`POST /runner/pair`** (sans JWT : le code d'appairage
     est la credential), ce dernier servi par une **chaîne de sécurité Spring dédiée** `@Order(1)`
@@ -722,15 +726,21 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     refusés** dans ce mode (D2 : ils exécutent chez Anthropic, impossible à rerouter) → `409
     execution_target_runner`. Le garde-fou « projet Git en lecture seule » ne vaut plus que pour
     `SANDBOX` : un projet `GIT` + `RUNNER` est légitime (le dépôt est cloné sur la machine).
-  - **`workspaces.agent_ask_before_bash`** (migration `044`, F-33) : **`false` par défaut**, et le
-    passage en cible `RUNNER` **n'y touche plus**. La décision D7 de SF-38-08 forçait la colonne à
-    `true` à chaque bascule et en refusait la désactivation (`409 execution_target_runner`) ; SF-38-20
-    a rouvert la désactivation, et **F-47 / SF-47-04** a retiré le forçage — le PO a tranché `OQ-14`
-    le 2026-09-10 : l'exécution est **autorisée par défaut** sur une machine que l'utilisateur a
-    lui-même connectée (ADR-018). La porte reste **activable par projet** ; le **journal d'audit** et
-    le **coupe-circuit** restent non désactivables. Le coupe-circuit
-    `POST /workspaces/{id}/runner/kill` **ramène la cible à `SANDBOX`**, sans plus modifier ce
-    réglage.
+  - **`workspaces.agent_ask_before_bash`** (migration `044`, F-33 ; défaut inversé par la migration
+    `072`, F-73) : **`true` par défaut**, et le passage en cible `RUNNER` **n'y touche pas**. La
+    décision D7 de SF-38-08 forçait la colonne à `true` à chaque bascule et en refusait la
+    désactivation (`409 execution_target_runner`) ; SF-38-20 a rouvert la désactivation, **F-47 /
+    SF-47-04** a retiré le forçage et mis le défaut à `false` (ADR-018), puis **F-73 / SF-73-02** a
+    **réarmé le défaut** (ADR-019) : ce `false` avait été pris quand le confinement du runner
+    paraissait exister — il n'existait pas pour `bash`, et il est retiré. Le forçage à la bascule,
+    lui, **reste retiré** : réarmer dans le dos de qui a éteint resterait réarmer dans son dos. La
+    porte reste **réglable par projet** ; le **journal d'audit** et le **coupe-circuit** restent non
+    désactivables. Le coupe-circuit `POST /workspaces/{id}/runner/kill` **ramène la cible à
+    `SANDBOX`**, sans modifier ce réglage.
+  - **Limite connue, assumée par le PO (ADR-019)** : cette porte ne couvre que `bash`. Les quatre
+    outils fichiers ne demandent rien — un `read_file` sur un `.env` ou `~/.ssh/id_rsa` part chez le
+    fournisseur dans le contexte du tour, et **plus aucune exclusion de secrets** ne s'y oppose côté
+    runner (`ExclusionRules.DEFAULT_DENY` supprimée ; le filtre restant n'élague que le listage).
   - Endpoint **`PUT /workspaces/{id}/execution-target`** (JWT, accès Atelier, `requireOwned` d'abord :
     **404** sur le workspace d'autrui, **400** sur valeur inconnue) ; `executionTarget` est exposé en champ
     **additif** dans le détail et la liste des workspaces.
