@@ -523,6 +523,23 @@
           Claude demande à exécuter cette commande
         </p>
         <pre class="terminal-ask-command">{{ ask.detail || ask.tool }}</pre>
+        @if (runnerScope) {
+          <!-- Ce qu'autoriser veut dire (F-73 / SF-73-03). Depuis que le confinement est retiré
+               — il n'existait déjà pas pour bash —, ce que l'utilisateur LIT avant de cliquer est
+               la seule chose qui reste entre lui et une fuite de secret client. Factuel : c'est sa
+               machine, il a lancé le runner lui-même. -->
+          <p class="terminal-ask-scope">
+            <mat-icon class="terminal-ask-scope-icon">travel_explore</mat-icon>
+            <span>
+              <strong>S'exécute sur cette machine, avec les droits de votre compte, dans n'importe
+              quel dossier.</strong>
+              <span class="terminal-ask-scope-detail">
+                Ce runner n'est pas limité au dossier du projet : une commande peut lire vos fichiers
+                personnels et ceux de vos autres clients.
+              </span>
+            </span>
+          </p>
+        }
         @if (confirmationCountdown) {
           <!-- Le délai courait en silence (F-47 / SF-47-02) : deux minutes s'écoulaient sans que
                rien ne dise qu'elles s'écoulaient. -->

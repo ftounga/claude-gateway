@@ -228,6 +228,18 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Input() switchingTarget = false;
 
   /**
+   * Vrai quand ce qu'on autorise s'exécutera **sur la machine de l'utilisateur** (F-73 / SF-73-03).
+   *
+   * <p>C'est ce qui décide d'afficher la mention de portée dans l'invite d'autorisation. En cible
+   * `SANDBOX`, rien n'est dit : le bac à sable est jetable et ne touche pas la machine — y écrire
+   * la même phrase serait faux. Une cible inconnue n'affiche rien non plus : on n'affirme pas une
+   * portée qu'on ne connaît pas.</p>
+   */
+  get runnerScope(): boolean {
+    return this.executionTarget === 'RUNNER';
+  }
+
+  /**
    * Dernier état runner relevé (F-38 / SF-38-02), ou `null` tant qu'aucun relevé n'a abouti —
    * « état inconnu » se dit, il ne se devine pas.
    */
