@@ -13,15 +13,15 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { forkJoin } from 'rxjs';
 
-import { AtelierService } from '../core/services/atelier.service';
 import { GovernanceService } from '../core/services/governance.service';
-import { WorkspaceSummary } from '../core/models/atelier.models';
 import {
   GovernanceActivation,
+  GovernanceHost,
+  GovernanceHostSummary,
   GovernancePackage,
-  GovernanceProject,
   GovernanceSelection,
 } from '../core/models/governance.models';
+import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import {
   DepositPreviewData,
   DepositPreviewDialogComponent,
@@ -32,17 +32,23 @@ import { DeactivateDialogComponent } from './deactivate-dialog/deactivate-dialog
 export type GovernanceError = 'none' | 'network' | 'forbidden';
 
 /**
- * Écran **Gouvernance** (F-51 / SF-51-05) : le catalogue publié par l'admin, ce que j'en retiens, et
- * ce que j'applique à chacun de mes projets.
+ * Écran **Gouvernance** (F-51 / SF-51-05, regrainé par F-75 / SF-75-03) : le catalogue publié par
+ * l'admin, ce que j'en retiens, et ce que j'applique à chacun de mes **postes**.
  *
- * <p>Une gouvernance n'est pas un bloc qu'on impose : c'est un ensemble d'options qu'on compose. Cet
- * écran est l'endroit unique où on la compose — l'enfouir dans le détail d'un projet obligerait à la
- * refaire projet par projet (arbitrage E1).</p>
+ * <p><b>Le grain a changé, et l'écran avec lui.</b> On choisissait un projet ; on choisit désormais
+ * un <b>poste</b>. On active une fois sur un client, et tout dossier ajouté demain sous sa racine en
+ * hérite — c'est tout l'intérêt d'un bootstrap idempotent, et c'est ce que l'activation par projet
+ * interdisait. <b>Aucune dérogation par dossier</b> : le PO l'a tranché, et cet écran n'offre aucun
+ * moyen d'en fabriquer une.</p>
  *
- * <p><b>Rien ne s'écrit sans avoir été annoncé.</b> Activer ouvre d'abord un dialogue qui liste les
- * chemins exacts et leur sort : créé, ou déjà présent et laissé tel quel. Aucune requête d'activation
- * n'est envoyée tant qu'il n'est pas confirmé — c'est l'exigence centrale de la feature, et un texte
- * sur une carte qu'on peut ne pas lire n'y répondrait pas (arbitrage E2).</p>
+ * <p><b>Rien ne s'écrit sans avoir été lu.</b> Activer ouvre d'abord un dialogue qui liste les
+ * chemins exacts, leur sort dossier par dossier, et — depuis F-75 — <b>ouvre chaque fichier</b> en
+ * lecture seule avec son différentiel. Aucune requête d'activation n'est envoyée tant qu'il n'est
+ * pas confirmé : on approuvait jusqu'ici un dépôt de fichiers à l'aveugle, sur la machine d'un
+ * client.</p>
+ *
+ * <p>L'identité du poste est celle de toute la Forge ({@code HostBadgeComponent}, SF-49-03) : aucun
+ * quatrième registre de couleur n'est introduit.</p>
  *
  * <p>L'isolation est entièrement portée par la gateway : aucun appel de cet écran ne transporte
  * d'identifiant d'utilisateur, tous partent du JWT.</p>
@@ -62,24 +68,24 @@ export type GovernanceError = 'none' | 'network' | 'forbidden';
     MatSelectModule,
     MatSlideToggleModule,
     MatTooltipModule,
+    HostBadgeComponent,
   ],
   templateUrl: './governance.component.html',
   styleUrl: './governance.component.scss',
 })
 export class GovernanceComponent implements OnInit {
   private readonly governance = inject(GovernanceService);
-  private readonly atelier = inject(AtelierService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
 
   readonly catalog = signal<GovernancePackage[]>([]);
   readonly selection = signal<GovernanceSelection[]>([]);
-  readonly workspaces = signal<WorkspaceSummary[]>([]);
-  readonly selectedWorkspaceId = signal<string | null>(null);
-  readonly project = signal<GovernanceProject | null>(null);
+  readonly hosts = signal<GovernanceHostSummary[]>([]);
+  readonly selectedHostRef = signal<string | null>(null);
+  readonly host = signal<GovernanceHost | null>(null);
 
   readonly loading = signal(true);
-  readonly projectLoading = signal(false);
+  readonly hostLoading = signal(false);
   readonly busy = signal<string | null>(null);
   readonly error = signal<GovernanceError>('none');
 
@@ -94,22 +100,22 @@ export class GovernanceComponent implements OnInit {
     this.load();
   }
 
-  /** Charge le catalogue, la sélection et les projets — les trois sont nécessaires pour agir. */
+  /** Charge le catalogue, la sélection et les postes — les trois sont nécessaires pour agir. */
   load(): void {
     this.loading.set(true);
     this.error.set('none');
     forkJoin({
       catalog: this.governance.getCatalog(),
       selection: this.governance.getSelection(),
-      workspaces: this.atelier.listWorkspaces(),
+      hosts: this.governance.getHosts(),
     }).subscribe({
-      next: ({ catalog, selection, workspaces }) => {
+      next: ({ catalog, selection, hosts }) => {
         this.catalog.set(catalog);
         this.selection.set(selection);
-        this.workspaces.set(workspaces);
+        this.hosts.set(hosts);
         this.loading.set(false);
-        if (!this.selectedWorkspaceId() && workspaces.length > 0) {
-          this.chooseWorkspace(workspaces[0].id);
+        if (!this.selectedHostRef() && hosts.length > 0) {
+          this.chooseHost(hosts[0].ref);
         }
       },
       error: (err: HttpErrorResponse) => {
@@ -121,15 +127,15 @@ export class GovernanceComponent implements OnInit {
     });
   }
 
-  chooseWorkspace(workspaceId: string): void {
-    this.selectedWorkspaceId.set(workspaceId);
-    this.loadProject(workspaceId);
+  chooseHost(hostRef: string): void {
+    this.selectedHostRef.set(hostRef);
+    this.loadHost(hostRef);
   }
 
-  /** Nom du projet choisi, pour l'annonce : un identifiant ne dit rien à personne. */
-  selectedWorkspaceName(): string {
-    const id = this.selectedWorkspaceId();
-    return this.workspaces().find((workspace) => workspace.id === id)?.name ?? 'ce projet';
+  /** Nom du poste choisi, pour l'annonce : une référence ne dit rien à personne. */
+  selectedHostName(): string {
+    const ref = this.selectedHostRef();
+    return this.hosts().find((host) => host.ref === ref)?.name ?? 'ce poste';
   }
 
   isRetained(pkg: GovernancePackage): boolean {
@@ -149,7 +155,7 @@ export class GovernanceComponent implements OnInit {
       next: (selection) => {
         this.selection.set(selection);
         this.busy.set(null);
-        this.refreshProject();
+        this.refreshHost();
         this.snackBar.open(`« ${pkg.name} » est dans votre catalogue.`, 'Fermer', {
           duration: 4000,
         });
@@ -158,7 +164,7 @@ export class GovernanceComponent implements OnInit {
     });
   }
 
-  /** Ne plus retenir. Les projets où il est actif ne changent pas : ils s'éteignent un par un. */
+  /** Ne plus retenir. Les postes où il est actif ne changent pas : ils s'éteignent un par un. */
   forget(pkg: GovernancePackage): void {
     this.busy.set(pkg.id);
     this.governance.deselect(pkg.id).subscribe({
@@ -166,7 +172,7 @@ export class GovernanceComponent implements OnInit {
         this.selection.update((entries) => entries.filter((entry) => entry.pkg.id !== pkg.id));
         this.busy.set(null);
         this.snackBar.open(
-          `« ${pkg.name} » quitte votre catalogue. Les projets où il est actif ne changent pas.`,
+          `« ${pkg.name} » quitte votre catalogue. Les postes où il est actif ne changent pas.`,
           'Fermer',
           { duration: 6000 },
         );
@@ -175,7 +181,7 @@ export class GovernanceComponent implements OnInit {
     });
   }
 
-  /** Marque (ou démarque) « appliqué par défaut » : vaut pour mes projets à venir, et eux seuls. */
+  /** Marque (ou démarque) « appliqué par défaut » : vaut pour mes postes à venir, et eux seuls. */
   toggleDefault(pkg: GovernancePackage, defaultApplied: boolean): void {
     this.busy.set(pkg.id);
     this.governance.select(pkg.id, defaultApplied).subscribe({
@@ -187,7 +193,7 @@ export class GovernanceComponent implements OnInit {
     });
   }
 
-  // --------------------------------------------------------------- le projet
+  // ---------------------------------------------------------------- le poste
 
   /**
    * Annonce, puis active.
@@ -197,25 +203,27 @@ export class GovernanceComponent implements OnInit {
    * pas en aveugle — on le dit.</p>
    */
   activate(pkg: GovernancePackage): void {
-    const workspaceId = this.selectedWorkspaceId();
-    if (!workspaceId) {
+    const hostRef = this.selectedHostRef();
+    if (!hostRef) {
       return;
     }
     this.busy.set(pkg.id);
-    this.governance.preview(workspaceId, pkg.id).subscribe({
+    this.governance.preview(hostRef, pkg.id).subscribe({
       next: (plan) => {
         this.busy.set(null);
         const data: DepositPreviewData = {
+          packageId: pkg.id,
           packageName: pkg.name,
-          projectName: this.selectedWorkspaceName(),
+          hostRef,
+          hostName: this.selectedHostName(),
           plan,
         };
         this.dialog
-          .open(DepositPreviewDialogComponent, { data, width: '560px' })
+          .open(DepositPreviewDialogComponent, { data, width: '640px' })
           .afterClosed()
           .subscribe((confirmed) => {
             if (confirmed) {
-              this.confirmActivation(workspaceId, pkg);
+              this.confirmActivation(hostRef, pkg);
             }
           });
       },
@@ -224,12 +232,12 @@ export class GovernanceComponent implements OnInit {
     });
   }
 
-  private confirmActivation(workspaceId: string, pkg: GovernancePackage): void {
+  private confirmActivation(hostRef: string, pkg: GovernancePackage): void {
     this.busy.set(pkg.id);
-    this.governance.activate(workspaceId, pkg.id).subscribe({
-      next: (project) => {
-        this.project.set(project);
-        this.selectionCountRefresh();
+    this.governance.activate(hostRef, pkg.id).subscribe({
+      next: (host) => {
+        this.host.set(host);
+        this.refreshCounts();
         this.busy.set(null);
       },
       error: (err: HttpErrorResponse) =>
@@ -244,19 +252,20 @@ export class GovernanceComponent implements OnInit {
 
   /** Rejoue le dépôt d'un paquet resté en attente — la machine était éteinte, elle ne l'est plus. */
   applyAgain(activation: GovernanceActivation): void {
-    const workspaceId = this.selectedWorkspaceId();
-    if (!workspaceId) {
+    const hostRef = this.selectedHostRef();
+    if (!hostRef) {
       return;
     }
     this.busy.set(activation.pkg.id);
-    this.governance.apply(workspaceId, activation.pkg.id).subscribe({
+    this.governance.apply(hostRef, activation.pkg.id).subscribe({
       next: (plan) => {
         this.busy.set(null);
-        this.refreshProject();
+        this.refreshHost();
+        const unreadable = plan.projects.filter((project) => !project.readable).length;
         this.snackBar.open(
-          plan.readable
-            ? 'Les fichiers manquants ont été déposés.'
-            : "Le projet n'a pas pu être lu : le dépôt reste en attente.",
+          unreadable === 0
+            ? 'Les fichiers manquants ont été déposés dans les dossiers du poste.'
+            : `${unreadable} dossier(s) n'ont pas pu être lus : le dépôt reste en attente.`,
           'Fermer',
           { duration: 5000 },
         );
@@ -267,8 +276,8 @@ export class GovernanceComponent implements OnInit {
 
   /** Désactive, après confirmation — et en rappelant que les fichiers déjà déposés restent. */
   deactivate(activation: GovernanceActivation): void {
-    const workspaceId = this.selectedWorkspaceId();
-    if (!workspaceId) {
+    const hostRef = this.selectedHostRef();
+    if (!hostRef) {
       return;
     }
     this.dialog
@@ -282,11 +291,11 @@ export class GovernanceComponent implements OnInit {
           return;
         }
         this.busy.set(activation.pkg.id);
-        this.governance.deactivate(workspaceId, activation.pkg.id).subscribe({
+        this.governance.deactivate(hostRef, activation.pkg.id).subscribe({
           next: () => {
             this.busy.set(null);
-            this.refreshProject();
-            this.selectionCountRefresh();
+            this.refreshHost();
+            this.refreshCounts();
           },
           error: (err: HttpErrorResponse) =>
             this.failed(err, "Le paquet n'a pas pu être désactivé."),
@@ -296,32 +305,36 @@ export class GovernanceComponent implements OnInit {
 
   // -------------------------------------------------------------- internes
 
-  private loadProject(workspaceId: string): void {
-    this.projectLoading.set(true);
-    this.governance.getProject(workspaceId).subscribe({
-      next: (project) => {
-        this.project.set(project);
-        this.projectLoading.set(false);
+  private loadHost(hostRef: string): void {
+    this.hostLoading.set(true);
+    this.governance.getHost(hostRef).subscribe({
+      next: (host) => {
+        this.host.set(host);
+        this.hostLoading.set(false);
       },
       error: () => {
-        // Un projet illisible ne casse pas l'écran : le catalogue reste utilisable.
-        this.project.set(null);
-        this.projectLoading.set(false);
+        // Un poste illisible ne casse pas l'écran : le catalogue reste utilisable.
+        this.host.set(null);
+        this.hostLoading.set(false);
       },
     });
   }
 
-  private refreshProject(): void {
-    const workspaceId = this.selectedWorkspaceId();
-    if (workspaceId) {
-      this.loadProject(workspaceId);
+  private refreshHost(): void {
+    const hostRef = this.selectedHostRef();
+    if (hostRef) {
+      this.loadHost(hostRef);
     }
   }
 
-  /** Relit la sélection : le compteur « actif sur N projets » vient d'elle. */
-  private selectionCountRefresh(): void {
+  /** Relit la sélection et les postes : les compteurs viennent d'eux. */
+  private refreshCounts(): void {
     this.governance.getSelection().subscribe({
       next: (selection) => this.selection.set(selection),
+      error: () => undefined,
+    });
+    this.governance.getHosts().subscribe({
+      next: (hosts) => this.hosts.set(hosts),
       error: () => undefined,
     });
   }

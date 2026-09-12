@@ -65,6 +65,16 @@
     max-width: 360px;
   }
 
+  /**
+   * L'identité du poste, reprise telle quelle de la Forge (SF-49-03). Aucun quatrième registre de
+   * couleur n'est introduit ici : le badge porte l'identité du client, rien d'autre.
+   */
+  &__host {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+  }
+
   &__empty {
     margin: 0;
     color: var(--cg-text-secondary);

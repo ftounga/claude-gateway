@@ -41,18 +41,43 @@
   }
 
   &__file {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--cg-space-2);
-    padding: var(--cg-space-2);
     border: 1px solid var(--cg-divider);
     border-radius: 8px;
     background: var(--cg-surface);
+  }
+
+  /**
+   * Un fichier s'OUVRE (F-75 / SF-75-03) : la ligne est donc un vrai bouton, atteignable au clavier
+   * comme à la souris — on ne demande pas d'approuver à l'aveugle ce qu'on ne peut pas ouvrir.
+   */
+  &__file-button {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+    width: 100%;
+    padding: var(--cg-space-2);
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+
+    &:hover,
+    &:focus-visible {
+      background: var(--cg-surface-2);
+    }
 
     mat-icon {
       flex: 0 0 auto;
       color: var(--cg-accent);
     }
+  }
+
+  &__file-body {
+    flex: 1 1 auto;
+    min-width: 0;
 
     code {
       display: block;
@@ -61,11 +86,44 @@
       word-break: break-all;
       color: var(--cg-text-primary);
     }
+  }
 
-    &--kept {
-      mat-icon {
-        color: var(--cg-text-secondary);
-      }
+  &__chevron {
+    color: var(--cg-text-secondary);
+  }
+
+  &__back {
+    align-self: flex-start;
+  }
+
+  &__projects {
+    font-size: 13px;
+    color: var(--cg-text-secondary);
+
+    summary {
+      cursor: pointer;
+      padding: var(--cg-space-1) 0;
+    }
+
+    code {
+      font-family: var(--cg-font-mono);
+      font-size: 12px;
+      word-break: break-all;
+    }
+
+    ul {
+      list-style: none;
+      margin: 0;
+      padding: 0 0 0 var(--cg-space-3);
+    }
+  }
+
+  &__project {
+    padding: var(--cg-space-2) 0;
+    border-bottom: 1px solid var(--cg-divider);
+
+    &:last-child {
+      border-bottom: 0;
     }
   }
 

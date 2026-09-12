@@ -3,8 +3,9 @@
     <div>
       <h1>Gouvernance</h1>
       <p class="gouvernance__subtitle">
-        Une gouvernance n'est pas un bloc : c'est un ensemble d'options que vous composez. Retenez les
-        paquets qui vous parlent, activez-les projet par projet.
+        Une gouvernance n'est pas un bloc : c'est un ensemble d'options que vous composez. Retenez
+        les paquets qui vous parlent, puis activez-les <strong>sur un poste</strong> — tous ses
+        dossiers en héritent, y compris ceux que vous ajouterez demain.
       </p>
     </div>
   </header>
@@ -18,7 +19,7 @@
       <mat-icon>lock</mat-icon>
       <div>
         <h2>La gouvernance fait partie de la Forge</h2>
-        <p>Composer un catalogue et l'appliquer à vos projets demande la Forge.</p>
+        <p>Composer un catalogue et l'appliquer à vos postes demande la Forge.</p>
         <a mat-flat-button color="primary" routerLink="/billing">Voir les formules</a>
       </div>
     </mat-card>
@@ -32,39 +33,58 @@
       </div>
     </mat-card>
   } @else {
-    <!-- ------------------------------------------------------- mes projets -->
+    <!-- -------------------------------------------------------- mes postes -->
     <mat-card class="gouvernance__project">
-      <h2>Ce que vos projets appliquent</h2>
+      <h2>Ce que vos postes appliquent</h2>
 
-      @if (workspaces().length === 0) {
+      @if (hosts().length === 0) {
         <p class="gouvernance__empty">
-          Vous n'avez pas encore de projet. Créez-en un dans la Forge, puis revenez y appliquer un
+          Vous n'avez pas encore de poste. Connectez-en un dans la Forge, puis revenez y appliquer un
           paquet.
         </p>
-        <a mat-stroked-button routerLink="/atelier">Ouvrir la Forge</a>
+        <a mat-stroked-button routerLink="/forge">Ouvrir la Forge</a>
       } @else {
         <mat-form-field appearance="outline" class="gouvernance__picker">
-          <mat-label>Projet</mat-label>
-          <mat-select
-            [value]="selectedWorkspaceId()"
-            (valueChange)="chooseWorkspace($event)"
-          >
-            @for (workspace of workspaces(); track workspace.id) {
-              <mat-option [value]="workspace.id">{{ workspace.name }}</mat-option>
+          <mat-label>Poste</mat-label>
+          <mat-select [value]="selectedHostRef()" (valueChange)="chooseHost($event)">
+            @for (host of hosts(); track host.ref) {
+              <mat-option [value]="host.ref">
+                {{ host.name }} · {{ host.projects }} dossier(s)
+              </mat-option>
             }
           </mat-select>
         </mat-form-field>
 
-        @if (projectLoading()) {
+        @if (hostLoading()) {
           <mat-spinner diameter="28"></mat-spinner>
         } @else {
           <!-- L'alias `as` n'est accepté que sur un `@if`, jamais sur un `@else if` : le bloc est
                donc imbriqué plutôt que chaîné. -->
-          @if (project(); as state) {
+          @if (host(); as state) {
+          <div class="gouvernance__host">
+            <app-host-badge [name]="state.name" size="sm"></app-host-badge>
+            @if (state.virtual) {
+              <span class="gouvernance__meta">les dossiers sans machine</span>
+            }
+          </div>
+
+          @if (state.projects.length === 0) {
+            <p class="gouvernance__empty">
+              Ce poste ne porte encore aucun dossier. Ce que vous y activez s'appliquera au premier
+              que vous y ajouterez, sans rien recocher.
+            </p>
+          } @else {
+            <p class="gouvernance__meta">
+              S'applique à : @for (project of state.projects; track project.id) {<code>{{
+                project.name
+              }}</code>@if (!$last) {<span>, </span>} }
+            </p>
+          }
+
           @if (state.active.length === 0) {
             <p class="gouvernance__empty">
-              Aucun paquet actif sur ce projet. Retenez-en un ci-dessous, puis activez-le : l'écran
-              vous dira d'abord ce qu'il va écrire, et où.
+              Aucun paquet actif sur ce poste. Retenez-en un ci-dessous, puis activez-le : l'écran
+              vous dira d'abord ce qu'il va écrire, où, et vous laissera lire chaque fichier.
             </p>
           } @else {
             <ul class="gouvernance__active">
@@ -89,7 +109,7 @@
                         type="button"
                         [disabled]="busy() === activation.pkg.id"
                         (click)="applyAgain(activation)"
-                        matTooltip="Déposer les fichiers manquants"
+                        matTooltip="Déposer les fichiers manquants dans les dossiers du poste"
                       >
                         Appliquer
                       </button>
@@ -179,7 +199,7 @@
               @if (pkg.rules) {
                 <li>
                   <mat-icon>gavel</mat-icon>
-                  Des règles ajoutées à la consigne du projet
+                  Des règles ajoutées à la consigne de chaque dossier
                 </li>
               }
               @if (pkg.controls.length > 0) {
@@ -193,7 +213,9 @@
 
             @if (pkg.files.length > 0) {
               <details class="gouvernance__files">
-                <summary>{{ pkg.files.length }} fichier(s) déposé(s) dans le projet</summary>
+                <summary>
+                  {{ pkg.files.length }} fichier(s) déposé(s) dans chaque dossier du poste
+                </summary>
                 <ul>
                   @for (file of pkg.files; track file.path) {
                     <li>
@@ -204,6 +226,9 @@
                     </li>
                   }
                 </ul>
+                <p class="gouvernance__meta">
+                  Vous pourrez lire chaque fichier avant d'activer.
+                </p>
               </details>
             }
 
@@ -213,7 +238,7 @@
                 [disabled]="busy() === pkg.id"
                 (change)="toggleDefault(pkg, $event.checked)"
               >
-                Appliquer par défaut à mes nouveaux projets
+                Appliquer par défaut à mes nouveaux postes
               </mat-slide-toggle>
             }
           </mat-card>
