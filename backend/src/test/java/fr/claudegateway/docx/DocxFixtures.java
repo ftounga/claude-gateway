@@ -10,13 +10,17 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /**
- * Fabrique des archives {@code .docx} — légitimes et hostiles — pour les tests de F-86 / SF-86-01.
+ * Fabrique des archives {@code .docx} — légitimes et hostiles — pour les tests de F-86.
+ *
+ * <p>Publique parce qu'elle sert aussi aux tests des chemins qui consomment l'extraction
+ * (bibliothèque de documents, pièce jointe de conversation) : fabriquer deux fois les mêmes
+ * archives hostiles, c'est risquer d'en durcir une et pas l'autre.
  *
  * <p>Les documents sont construits ici plutôt que déposés en ressources binaires : un test qui
  * montre le XML qu'il fabrique dit ce qu'il éprouve, alors qu'un fichier {@code .docx} opaque
  * oblige à le rouvrir dans Word pour savoir ce qu'il contenait.
  */
-final class DocxFixtures {
+public final class DocxFixtures {
 
     private static final String DOCUMENT_HEADER = """
             <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -28,12 +32,12 @@ final class DocxFixtures {
     }
 
     /** Un {@code .docx} dont le corps est le XML donné (fragments de {@code w:body}). */
-    static byte[] docx(String bodyXml) {
+    public static byte[] docx(String bodyXml) {
         return archive(Map.of(DocxTextExtractor.DOCUMENT_PART, DOCUMENT_HEADER + bodyXml + DOCUMENT_FOOTER));
     }
 
     /** Un {@code .docx} avec un corps et des parties supplémentaires (notes, en-têtes, pieds). */
-    static byte[] docx(String bodyXml, Map<String, String> extraParts) {
+    public static byte[] docx(String bodyXml, Map<String, String> extraParts) {
         Map<String, String> parts = new LinkedHashMap<>();
         parts.put(DocxTextExtractor.DOCUMENT_PART, DOCUMENT_HEADER + bodyXml + DOCUMENT_FOOTER);
         parts.putAll(extraParts);
@@ -41,7 +45,7 @@ final class DocxFixtures {
     }
 
     /** Une archive zip quelconque : nom de partie → contenu texte. */
-    static byte[] archive(Map<String, String> parts) {
+    public static byte[] archive(Map<String, String> parts) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(out)) {
             zip.putNextEntry(new ZipEntry("[Content_Types].xml"));
@@ -59,7 +63,7 @@ final class DocxFixtures {
     }
 
     /** Une archive d'une seule entrée de {@code bytes} octets nuls : la charge d'une zip-bomb. */
-    static byte[] archiveWithZeroFilledEntry(String name, int bytes) {
+    public static byte[] archiveWithZeroFilledEntry(String name, int bytes) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(out)) {
             zip.putNextEntry(new ZipEntry(name));
@@ -78,7 +82,7 @@ final class DocxFixtures {
     }
 
     /** Une archive de {@code count} entrées minuscules : la charge d'une bombe « par le nombre ». */
-    static byte[] archiveWithManyEntries(int count) {
+    public static byte[] archiveWithManyEntries(int count) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(out)) {
             for (int i = 0; i < count; i++) {
@@ -93,12 +97,12 @@ final class DocxFixtures {
     }
 
     /** Un paragraphe de texte courant. */
-    static String paragraph(String text) {
+    public static String paragraph(String text) {
         return "<w:p><w:r><w:t>" + text + "</w:t></w:r></w:p>";
     }
 
     /** Un tableau : chaque tableau de chaînes est une rangée. */
-    static String table(String[]... rows) {
+    public static String table(String[]... rows) {
         StringBuilder xml = new StringBuilder("<w:tbl>");
         for (String[] row : rows) {
             xml.append("<w:tr>");

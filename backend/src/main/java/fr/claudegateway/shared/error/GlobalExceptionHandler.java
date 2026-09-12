@@ -72,6 +72,7 @@ import fr.claudegateway.rag.provider.EmbeddingProviderException;
 import fr.claudegateway.runner.PairingInvalidException;
 import fr.claudegateway.rag.provider.EmbeddingProviderUnavailableException;
 import fr.claudegateway.template.TemplateNotFoundException;
+import fr.claudegateway.docx.InvalidDocxException;
 import fr.claudegateway.upload.EmptyFileException;
 import fr.claudegateway.upload.FileTooLargeException;
 import fr.claudegateway.upload.UnsupportedFileTypeException;
@@ -421,6 +422,24 @@ public class GlobalExceptionHandler {
         log.debug("Upload refusé : type de fichier non supporté");
         return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
                 .body(new ErrorResponse("unsupported_file_type", ex.getMessage()));
+    }
+
+    /**
+     * Un document Word illisible (F-86 / SF-86-02) : corrompu, tronqué, renommé, ou porteur d'une
+     * charge hostile (zip-bomb, entité XML externe).
+     *
+     * <p><b>422 et non 415</b> : {@code 415} dit « ce <i>type</i> n'est pas accepté », ce qui serait
+     * faux — le type Word est accepté, c'est <i>ce fichier-là</i> qui est cassé. {@code 422} dit
+     * exactement cela.
+     *
+     * <p>Le message vient de {@link InvalidDocxException}, qui ne porte qu'une phrase destinée à
+     * l'utilisateur : la cause technique reste au journal, jamais dans la réponse.
+     */
+    @ExceptionHandler(InvalidDocxException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidDocx(InvalidDocxException ex) {
+        log.debug("Document Word refusé : contenu illisible ou hors garde-fous");
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(new ErrorResponse("invalid_document", ex.getMessage()));
     }
 
     @ExceptionHandler({ FileTooLargeException.class, MaxUploadSizeExceededException.class })

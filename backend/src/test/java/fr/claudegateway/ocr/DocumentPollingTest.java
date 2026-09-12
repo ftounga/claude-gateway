@@ -37,7 +37,9 @@ class DocumentPollingTest {
 
     @BeforeEach
     void setUp() {
-        documentService = new DocumentService(documentRepository, ocrProvider, new OcrProperties(null, null, null, null));
+        documentService = new DocumentService(documentRepository, ocrProvider,
+                new fr.claudegateway.docx.DocxTextExtractor(new fr.claudegateway.docx.DocxProperties(null, null, null)),
+                new OcrProperties(null, null, null, null, null));
     }
 
     private Document processingPdf(String jobId) {

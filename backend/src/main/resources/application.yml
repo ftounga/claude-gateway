@@ -265,8 +265,14 @@ app:
     # Liste blanche MIME, plafond de taille et routage sync/async : décisions réversibles (config).
     provider: ${APP_OCR_PROVIDER:stub}
     max-size: ${APP_OCR_MAX_SIZE:20MB}
-    allowed-types: ${APP_OCR_ALLOWED_TYPES:application/pdf,image/png,image/jpeg,image/tiff}
+    # `.docx` (F-86) : AJOUTER le type ici suffit à le faire apparaître dans l'accept du sélecteur
+    # et dans la phrase « formats acceptés » de l'écran — SF-85-01 les fait dériver de
+    # GET /api/file-formats, qui lit CET objet de propriétés. Aucune ligne de frontend à toucher.
+    allowed-types: ${APP_OCR_ALLOWED_TYPES:application/pdf,image/png,image/jpeg,image/tiff,application/vnd.openxmlformats-officedocument.wordprocessingml.document}
     sync-types: ${APP_OCR_SYNC_TYPES:image/png,image/jpeg}
+    # Types extraits SUR LA MACHINE, sans fournisseur OCR (F-86 / SF-86-02). Testé AVANT
+    # `sync-types` : un `.docx` n'est pas une image, il n'y a rien à reconnaître, seulement à lire.
+    local-types: ${APP_OCR_LOCAL_TYPES:application/vnd.openxmlformats-officedocument.wordprocessingml.document}
     polling:
       # Worker intra-backend de complétion des jobs OCR asynchrones (PDF/TIFF) — SF-05-02.
       # Décision par défaut OQ-10 (réversible : workers dédiés + file en V2).
