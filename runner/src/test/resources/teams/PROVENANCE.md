@@ -42,3 +42,5 @@ lire **avant** l'utilisateur — et jamais en rendant la moitié d'un compte ren
 | `activity-feed.json` | flux d'activité : deux mentions et une réaction (qui n'en est pas une) |
 | `meetings.json` | une réunion enregistrée avec transcription annoncée |
 | `transcript.json` | trois répliques horodatées |
+| `profile.json` | le profil de l'utilisateur relié — **inventé de bout en bout**, sur un domaine `.invalid` qui ne peut exister (F-88 / SF-88-01) |
+| `conversation-messages-page2.json` | la page **précédente** du même fil, qui **chevauche** la première : elle prouve le recollement sans doublon (F-88 / SF-88-01) |

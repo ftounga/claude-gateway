@@ -57,6 +57,16 @@ public interface TeamsAdapter {
     TeamsReading<TeamsTranscriptCue> transcript(String url, JsonNode body);
 
     /**
+     * <b>Qui est l'utilisateur relié</b>, quand une réponse observée le dit (F-88 / SF-88-01).
+     *
+     * <p>Ajout <b>additif</b> à l'interface de SF-87-01, annoncé à F-89 : sans identité, « on m'a
+     * mentionné » ne se distingue pas de « on a mentionné quelqu'un », et répondre « non » faute de
+     * savoir serait <b>faux</b> — précisément ce que le volet refuse. L'identifiant est celui
+     * observé dans la session du navigateur ; il n'est ni deviné, ni demandé à l'utilisateur.</p>
+     */
+    Optional<TeamsParticipant> self(String url, JsonNode body);
+
+    /**
      * L'adresse de la page suivante, quand le corps en annonce une. Vide quand il n'y en a plus —
      * ou quand la forme n'est plus reconnue, auquel cas la lecture porte déjà un manque
      * {@link TeamsGapKind#PAGINATION_STOPPED}.

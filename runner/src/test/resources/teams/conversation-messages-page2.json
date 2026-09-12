@@ -1,0 +1,39 @@
+{
+  "messages": [
+    {
+      "id": "1756368000000",
+      "conversationid": "19:fabrique@thread.v2",
+      "from": "https://teams.microsoft.com/api/chatsvc/emea/v1/users/8:orgid:00000000-0000-0000-0000-000000000001",
+      "imdisplayname": "Paul Durand",
+      "originalarrivaltime": "2026-08-28T14:02:00.000Z",
+      "messagetype": "Text",
+      "type": "Message",
+      "content": "On ouvre le chantier MFA la semaine prochaine.",
+      "properties": {}
+    },
+    {
+      "id": "1756900000000",
+      "conversationid": "19:fabrique@thread.v2",
+      "from": "https://teams.microsoft.com/api/chatsvc/emea/v1/users/8:orgid:00000000-0000-0000-0000-000000000002",
+      "imdisplayname": "Francky Tounga",
+      "originalarrivaltime": "2026-09-03T08:15:00.000Z",
+      "messagetype": "Text",
+      "type": "Message",
+      "content": "Je m'occupe du MFA, je reviens vers vous vendredi.",
+      "properties": {}
+    },
+    {
+      "id": "1757662323000",
+      "conversationid": "19:fabrique@thread.v2",
+      "from": "https://teams.microsoft.com/api/chatsvc/emea/v1/users/8:orgid:00000000-0000-0000-0000-000000000001",
+      "imdisplayname": "Paul Durand",
+      "originalarrivaltime": "2026-09-05T09:12:03.412Z",
+      "messagetype": "Text",
+      "type": "Message",
+      "content": "Bonjour Francky, peux-tu relire le plan de migration (version corrigee) ?",
+      "properties": {
+        "edittime": "1757663000000"
+      }
+    }
+  ]
+}

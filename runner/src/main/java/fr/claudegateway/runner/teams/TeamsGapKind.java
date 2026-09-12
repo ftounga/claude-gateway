@@ -28,7 +28,18 @@ public enum TeamsGapKind {
     BODY_UNAVAILABLE("corps de réponse indisponible"),
 
     /** Le plafond annoncé a été atteint : ce qui précède n'a pas été lu (D4). */
-    CAP_REACHED("plafond de remontée atteint");
+    CAP_REACHED("plafond de remontée atteint"),
+    /**
+     * Le fil demandé n'a pas pu être amené sous les yeux : il n'avait jamais été observé, et le
+     * geste d'ouverture n'a pas abouti (F-88 / SF-88-01). Il rend <b>zéro message et ce manque</b> —
+     * jamais une liste vide silencieuse, qui se lirait comme « il n'y a rien ».
+     */
+    CONVERSATION_NOT_REACHED("fil non atteint dans la fenêtre Teams"),
+    /**
+     * Teams n'a rien servi sur ce sujet depuis le rattachement (F-88 / SF-88-01). Distinct de
+     * « il n'y a rien » : on ne sait pas, et on le dit.
+     */
+    NOTHING_OBSERVED("rien d'observé depuis le rattachement");
 
     private final String label;
 

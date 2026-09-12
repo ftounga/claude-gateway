@@ -27,8 +27,20 @@ final class FakeCdpConnection implements CdpConnection {
     /** Identifiants de requête dont le corps doit être déclaré indisponible. */
     private final List<String> purged = new ArrayList<>();
 
+    /** Ce que la page livrera au PROCHAIN geste de défilement (F-88 / SF-88-01). */
+    private final java.util.Deque<String[]> onNextScroll = new java.util.ArrayDeque<>();
+    /** Les fils que le geste d'ouverture saura trouver dans la page. */
+    private final java.util.Set<String> reachable = new java.util.LinkedHashSet<>();
+
     private boolean open = true;
     private boolean scrollMoves = true;
+    /**
+     * La page s'arrête de remonter quand elle n'a plus rien à livrer — comme un vrai début de fil.
+     * Faux par défaut : les tests de F-87 comptent les gestes sur une page qui remonte toujours.
+     */
+    private boolean stopWhenNothingLeft;
+    private String route = "https://teams.microsoft.com/v2/#/conversations/19:fabrique@thread.v2";
+    private int scrolls;
 
     @Override
     public JsonNode send(String method, ObjectNode params) {
@@ -45,11 +57,43 @@ final class FakeCdpConnection implements CdpConnection {
             return result;
         }
         if (CdpCommands.EVALUATE.equals(method)) {
-            ObjectNode result = mapper.createObjectNode();
-            result.putObject("result").put("value", scrollMoves);
-            return result;
+            return evaluate(params.path("expression").asText(""));
         }
         return mapper.createObjectNode();
+    }
+
+    /**
+     * Le faux {@code Runtime.evaluate}. Trois gestes seulement, exactement comme le vrai vocabulaire
+     * de F-88 : lire la route, ouvrir un fil, faire défiler.
+     */
+    private JsonNode evaluate(String expression) {
+        ObjectNode result = mapper.createObjectNode();
+        if (expression.contains("location.href")) {
+            result.putObject("result").put("value", route);
+            return result;
+        }
+        if (expression.contains(".click()")) {
+            String opened = "";
+            for (String candidate : reachable) {
+                if (expression.contains(candidate.toLowerCase(java.util.Locale.ROOT))) {
+                    opened = candidate;
+                    break;
+                }
+            }
+            if (!opened.isEmpty()) {
+                route = "https://teams.microsoft.com/v2/#/conversations/" + opened;
+            }
+            result.putObject("result").put("value", !opened.isEmpty());
+            return result;
+        }
+        scrolls++;
+        String[] delivery = onNextScroll.poll();
+        if (delivery != null) {
+            emitResponse(delivery[0], delivery[1], delivery[2]);
+        }
+        boolean moved = scrollMoves && (delivery != null || !stopWhenNothingLeft);
+        result.putObject("result").put("value", moved);
+        return result;
     }
 
     @Override
@@ -96,6 +140,39 @@ final class FakeCdpConnection implements CdpConnection {
 
     void scrollStopsMoving() {
         scrollMoves = false;
+    }
+
+    /** La page cesse de remonter dès qu'elle n'a plus rien à livrer : le début d'un fil. */
+    void stopsWhenNothingLeft() {
+        stopWhenNothingLeft = true;
+    }
+
+    /** La page défile toujours, mais ne rapporte plus rien : le cas du trou silencieux. */
+    void scrollsForever() {
+        stopWhenNothingLeft = false;
+    }
+
+    /** Ce que la page livrera au prochain défilement. */
+    void deliverOnScroll(String requestId, String url, String body) {
+        onNextScroll.add(new String[] { requestId, url, body });
+    }
+
+    /** Le fil affiché, tel que la route le dit. */
+    void showing(String conversationId) {
+        route = "https://teams.microsoft.com/v2/#/conversations/" + conversationId;
+    }
+
+    /** Un fil que le geste d'ouverture saura atteindre dans la page. */
+    void reachable(String conversationId) {
+        reachable.add(conversationId);
+    }
+
+    int scrolls() {
+        return scrolls;
+    }
+
+    String route() {
+        return route;
     }
 
     List<String> sentCommands() {

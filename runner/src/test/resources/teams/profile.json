@@ -1,0 +1,10 @@
+{
+  "mri": "8:orgid:00000000-0000-0000-0000-000000000002",
+  "objectId": "00000000-0000-0000-0000-000000000002",
+  "displayName": "Francky Tounga",
+  "givenName": "Francky",
+  "surname": "Tounga",
+  "userPrincipalName": "francky.tounga@fabrique.invalid",
+  "email": "francky.tounga@fabrique.invalid",
+  "type": "User"
+}
