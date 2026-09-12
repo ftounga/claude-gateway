@@ -43,7 +43,7 @@ class TokenStoreTest {
         Optional<StoredToken> loaded = store.load();
         assertTrue(loaded.isPresent());
         assertEquals(saved.token(), loaded.get().token());
-        assertEquals(saved.workspaceId(), loaded.get().workspaceId());
+        assertEquals(saved.hostId(), loaded.get().hostId());
     }
 
     @Test
