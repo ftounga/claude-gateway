@@ -8,7 +8,7 @@ import { MatDialog } from '@angular/material/dialog';
 
 import { POSTES_REFRESH_MS, PostesComponent } from './postes.component';
 import { AtelierService } from '../core/services/atelier.service';
-import { RunnerHostOverview } from '../core/models/atelier.models';
+import { RunnerHostOverview, WorkspaceDetail } from '../core/models/atelier.models';
 import { hostInitials, hostTone } from '../shared/host-identity';
 
 /**
@@ -33,7 +33,11 @@ describe('PostesComponent', () => {
     connected: true,
     lastSeenAt: new Date().toISOString(),
     createdAt: new Date().toISOString(),
-    lastActivityAt: new Date().toISOString(),
+    // Cinq minutes, et non « maintenant » : l'écran calcule ses durées À L'AFFICHAGE, et une
+    // durée en SECONDES change entre les deux passes de détection du mode développement — ce
+    // qu'Angular signale en NG0100, au hasard de la seconde où le test tombe. En minutes, le
+    // libellé est stable pendant toute la durée d'un test.
+    lastActivityAt: new Date(Date.now() - 300_000).toISOString(),
     activeProjects: 1,
     projects: [
       {
@@ -41,7 +45,7 @@ describe('PostesComponent', () => {
         name: 'web',
         projectPath: 'web',
         executionTarget: 'RUNNER',
-        lastActivityAt: new Date().toISOString(),
+        lastActivityAt: new Date(Date.now() - 300_000).toISOString(),
         lastTool: 'bash',
         calls: 12,
         active: true,
@@ -66,10 +70,30 @@ describe('PostesComponent', () => {
   });
 
   function setup(hosts: RunnerHostOverview[] = [poste]): void {
-    service = jasmine.createSpyObj<AtelierService>('AtelierService',
-      ['runnerHostsOverview', 'setHostMissionStatus', 'deleteRunnerHost']);
+    service = spyService();
     service.runnerHostsOverview.and.returnValue(of(hosts));
     build();
+  }
+
+  /**
+   * Le service simulé. Depuis F-72 / SF-72-03, l'écran lit aussi la **racine** de chaque poste
+   * connecté — une fois par page, jamais au sondage — et peut y **ouvrir** un projet.
+   */
+  function spyService(): jasmine.SpyObj<AtelierService> {
+    const spy = jasmine.createSpyObj<AtelierService>('AtelierService',
+      ['runnerHostsOverview', 'setHostMissionStatus', 'deleteRunnerHost', 'runnerHostFolders',
+        'openHostProject']);
+    spy.runnerHostFolders.and.returnValue(of({
+      path: '',
+      parentPath: null,
+      folders: [
+        { name: 'web', path: 'web', used: true },
+        { name: 'EDENRED', path: 'EDENRED', used: false },
+      ],
+      truncated: false,
+    }));
+    spy.openHostProject.and.returnValue(of({ id: 'w9', name: 'EDENRED' } as WorkspaceDetail));
+    return spy;
   }
 
   /**
@@ -77,8 +101,7 @@ describe('PostesComponent', () => {
    * « chez qui » du fil d'Ariane quand on revient sur l'accueil de la Forge.
    */
   function setupWithFragment(fragment: string, hosts: RunnerHostOverview[] = [poste]): void {
-    service = jasmine.createSpyObj<AtelierService>('AtelierService',
-      ['runnerHostsOverview', 'setHostMissionStatus', 'deleteRunnerHost']);
+    service = spyService();
     service.runnerHostsOverview.and.returnValue(of(hosts));
     build(fragment);
   }
@@ -812,6 +835,143 @@ describe('PostesComponent', () => {
 
     // Le poste existe peut-être maintenant, connecté ou non : la vue doit le montrer.
     expect(service.runnerHostsOverview).toHaveBeenCalledTimes(1);
+  });
+
+  // ------------------ « Ajouter un projet » et les dossiers non ouverts (F-72 / SF-72-03)
+
+  it('offre « Ajouter un projet » sur la carte d\'une machine', () => {
+    setup();
+
+    expect(text()).toContain('Ajouter un projet');
+  });
+
+  it('montre les dossiers de la racine QUI NE SONT PAS encore ouverts', () => {
+    setup();
+    const items = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.poste__unopened-item'),
+    ).map((node) => node.textContent?.trim() ?? '');
+
+    // `web` est déjà pris par un projet (`used`) : le proposer ferait ouvrir deux fois le même
+    // dossier, c'est-à-dire le défaut que F-72 supprime.
+    expect(items.some((label) => label.includes('EDENRED'))).toBeTrue();
+    expect(items.some((label) => label.includes('web'))).toBeFalse();
+  });
+
+  it('tronque la liste des dossiers au seuil, et le DIT', () => {
+    service = spyService();
+    service.runnerHostsOverview.and.returnValue(of([poste]));
+    service.runnerHostFolders.and.returnValue(of({
+      path: '',
+      parentPath: null,
+      folders: Array.from({ length: 12 }, (_, i) => ({
+        name: `dossier-${i}`, path: `dossier-${i}`, used: false,
+      })),
+      truncated: false,
+    }));
+    build();
+
+    const items = (fixture.nativeElement as HTMLElement)
+      .querySelectorAll('.poste__unopened-item');
+    expect(items.length).toBe(component.maxUnopenedShown);
+    // Une liste incomplète se DIT (SF-38-21).
+    expect(text()).toContain('et 4 autres');
+  });
+
+  it('dit quand la machine elle-même a tronqué sa liste', () => {
+    service = spyService();
+    service.runnerHostsOverview.and.returnValue(of([poste]));
+    service.runnerHostFolders.and.returnValue(of({
+      path: '', parentPath: null,
+      folders: [{ name: 'EDENRED', path: 'EDENRED', used: false }],
+      truncated: true,
+    }));
+    build();
+
+    expect(text()).toContain('tronquée');
+  });
+
+  it('ne lit AUCUN dossier sur un poste déconnecté, et n\'affiche pas la section', () => {
+    setup([{ ...poste, connected: false }]);
+
+    // Personne ne peut lister sans machine : une liste vide ferait croire à une racine sans
+    // sous-dossier.
+    expect(service.runnerHostFolders).not.toHaveBeenCalled();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.poste__unopened')).toBeNull();
+  });
+
+  it('ne lit aucun dossier pour le poste « Hébergé » : il n\'a pas de machine', () => {
+    setup([{
+      id: null, name: 'Hébergé', virtual: true, connected: false, activeProjects: 0,
+      createdAt: new Date().toISOString(), projects: [],
+    } as RunnerHostOverview]);
+
+    expect(service.runnerHostFolders).not.toHaveBeenCalled();
+    expect(text()).not.toContain('Ajouter un projet');
+  });
+
+  it('ne relit PAS les dossiers au sondage de 15 secondes', fakeAsync(() => {
+    setup();
+    expect(service.runnerHostFolders).toHaveBeenCalledTimes(1);
+
+    tick(POSTES_REFRESH_MS);
+
+    // 240 lectures par heure et par poste, pour une liste qui ne bouge presque jamais — et chacune
+    // est une ligne d'audit sur la machine du client.
+    expect(service.runnerHostFolders).toHaveBeenCalledTimes(1);
+    fixture.destroy();
+  }));
+
+  it('relit les dossiers quand l\'utilisateur DEMANDE un rafraîchissement', () => {
+    setup();
+    service.runnerHostFolders.calls.reset();
+
+    component.refresh();
+
+    // C'est le geste par lequel on dit « j'ai lancé le runner » ou « j'ai créé un dossier ».
+    expect(service.runnerHostFolders).toHaveBeenCalledTimes(1);
+  });
+
+  it('ouvre un projet d\'un clic sur un dossier non ouvert, sans demander de nom', () => {
+    setup();
+
+    component.openFolderAsProject(poste, { name: 'EDENRED', path: 'EDENRED', used: false });
+
+    expect(service.openHostProject).toHaveBeenCalledWith('h1', 'EDENRED');
+  });
+
+  it('relit la vue après une ouverture', () => {
+    setup();
+    service.runnerHostsOverview.calls.reset();
+
+    component.openFolderAsProject(poste, { name: 'EDENRED', path: 'EDENRED', used: false });
+
+    expect(service.runnerHostsOverview).toHaveBeenCalledTimes(1);
+  });
+
+  it('reprend le refus de doublon de la gateway, tel quel', () => {
+    setup();
+    service.openHostProject.and.returnValue(throwError(() => new HttpErrorResponse({
+      status: 409,
+      error: { error: 'host_project_exists', message: 'Ce dossier est déjà ouvert : EDENRED.' },
+    })));
+
+    component.openFolderAsProject(poste, { name: 'EDENRED', path: 'EDENRED', used: false });
+
+    expect(component.openingFolder()).toBeNull();
+  });
+
+  it('n\'ouvre rien sur le poste « Hébergé », même si on le lui demande', () => {
+    const heberge = {
+      id: null, name: 'Hébergé', virtual: true, connected: false, activeProjects: 0,
+      createdAt: new Date().toISOString(), projects: [],
+    } as RunnerHostOverview;
+    setup([heberge]);
+
+    component.addProject(heberge);
+    component.openFolderAsProject(heberge, { name: 'x', path: 'x', used: false });
+
+    expect(dialog.open).not.toHaveBeenCalled();
+    expect(service.openHostProject).not.toHaveBeenCalled();
   });
 
 });

@@ -1,0 +1,129 @@
+// Dialogue « Ajouter un projet » (F-72 / SF-72-03) — jetons du design system (--cg-*).
+// Aucune couleur nouvelle : le gris « archivé / inactif » du §5 pour ce qui n'est pas un projet,
+// l'orange d'action pour le seul bouton de marque. Espacements multiples de 4 px (--cg-space-*).
+
+.add-project__intro {
+  margin: 0 0 var(--cg-space-3);
+  color: var(--cg-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.add-project__done {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-2);
+  margin: 0 0 var(--cg-space-3);
+  color: var(--cg-success);
+  font-size: 13px;
+}
+
+.add-project__error {
+  margin: 0 0 var(--cg-space-3);
+  color: var(--cg-error);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.add-project__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-2);
+  margin: 0 0 var(--cg-space-2);
+  padding: var(--cg-space-3);
+  border: 1px solid var(--cg-divider);
+  border-radius: 8px;
+  background: var(--cg-surface-2);
+  color: var(--cg-text-secondary);
+  font-size: 13px;
+}
+
+.add-project__notice--warn {
+  border-color: var(--cg-accent);
+}
+
+.add-project__title {
+  margin: 0 0 var(--cg-space-1);
+  color: var(--cg-text-primary);
+  font-weight: 600;
+}
+
+.add-project__text {
+  margin: var(--cg-space-1) 0 0;
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+
+  code {
+    font-family: var(--cg-font-mono);
+  }
+}
+
+.add-project__path {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  margin: 0 0 var(--cg-space-2);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+}
+
+.add-project__mono {
+  font-family: var(--cg-font-mono);
+}
+
+.add-project__list {
+  max-height: 280px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  border: 1px solid var(--cg-divider);
+  border-radius: 8px;
+  list-style: none;
+}
+
+.add-project__row {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  border-bottom: 1px solid var(--cg-divider);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.add-project__pick {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border: none;
+  background: none;
+  color: var(--cg-text-primary);
+  font-family: var(--cg-font-body);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--cg-surface-2);
+  }
+
+  &:disabled {
+    color: var(--cg-text-secondary);
+    cursor: default;
+  }
+}
+
+.add-project__used {
+  color: var(--cg-text-secondary);
+  font-size: 11px;
+}
+
+.add-project__inline-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  font-size: 18px;
+}

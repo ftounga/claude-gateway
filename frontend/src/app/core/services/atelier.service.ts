@@ -737,6 +737,22 @@ export class AtelierService {
   }
 
   /**
+   * **Ouvre un projet sur un dossier du poste** (F-72 / SF-72-01) — le second des deux gestes.
+   *
+   * <p>Un seul appel crée le projet <b>et</b> le rattache, et <b>aucun nom n'est demandé</b> : le
+   * projet prend celui de son dossier, celui du poste pour la racine. Le nom a déjà été donné une
+   * fois, à la connexion du poste.</p>
+   *
+   * <p>Le doublon est <b>refusé</b> par la gateway (409 `host_project_exists`) : ouvrir deux fois
+   * le même dossier a déjà produit deux entités du même nom.</p>
+   *
+   * @param path chemin relatif sous la racine ; chaîne vide = la racine du poste
+   */
+  openHostProject(hostId: string, path: string): Observable<WorkspaceDetail> {
+    return this.http.post<WorkspaceDetail>(`/api/runner-hosts/${hostId}/projects`, { path });
+  }
+
+  /**
    * **Rattache** un projet à un poste (F-48 / SF-48-01) : la machine qui l'exécute, et son chemin
    * relatif sous la racine de cette machine. `hostId` à `null` détache le projet.
    *

@@ -1,0 +1,145 @@
+<h2 mat-dialog-title>Ajouter un projet à « {{ data.hostName }} »</h2>
+
+<mat-dialog-content>
+  <p class="add-project__intro">
+    Ce poste est déjà appairé : <strong>il n'y a rien à réinstaller</strong>. Choisissez un dossier
+    de sa racine — le projet prendra le <strong>nom du dossier</strong>, et vous pouvez en ajouter
+    autant que vous voulez.
+  </p>
+
+  @if (opened().length > 0) {
+    <!-- On enchaîne, donc on confirme au fil de l'eau : sans cela, rien ne dirait ce qui vient
+         d'être créé pendant que le dialogue reste ouvert. -->
+    <p class="add-project__done" role="status">
+      <mat-icon class="add-project__inline-icon">check_circle</mat-icon>
+      <span>
+        Ouvert{{ opened().length > 1 ? 's' : '' }} :
+        <strong>{{ opened().join(', ') }}</strong>
+      </span>
+    </p>
+  }
+
+  @if (openError(); as error) {
+    <p class="add-project__error" role="alert">{{ error }}</p>
+  }
+
+  @if (loading()) {
+    <p class="add-project__notice">
+      <mat-spinner diameter="18"></mat-spinner>
+      <span>Lecture des dossiers sur la machine…</span>
+    </p>
+  } @else if (browseError() === 'offline') {
+    <!-- LE cas du PO : on ne peut pas lister sans machine, alors on le DIT. Aucun champ vide
+         n'est offert en repli — un chemin tapé crée un projet qui n'échoue qu'au premier usage. -->
+    <div class="add-project__notice add-project__notice--warn">
+      <mat-icon class="add-project__inline-icon">cloud_off</mat-icon>
+      <div>
+        <p class="add-project__title">Le runner de ce poste n'est pas connecté</p>
+        <p class="add-project__text">
+          Les dossiers de la racine se lisent <strong>sur la machine</strong> : lancez le runner,
+          puis réessayez.
+        </p>
+        <button mat-stroked-button type="button" (click)="retry()">
+          <mat-icon>refresh</mat-icon>
+          Réessayer
+        </button>
+      </div>
+    </div>
+  } @else if (browseError() !== 'none') {
+    <div class="add-project__notice add-project__notice--warn">
+      <mat-icon class="add-project__inline-icon">error_outline</mat-icon>
+      <div>
+        <p class="add-project__title">
+          @switch (browseError()) {
+            @case ('forbidden') { La Forge est nécessaire pour parcourir une machine }
+            @case ('missing') { Ce poste n'existe plus }
+            @default { Les dossiers n'ont pas pu être lus }
+          }
+        </p>
+        <button mat-stroked-button type="button" (click)="retry()">
+          <mat-icon>refresh</mat-icon>
+          Réessayer
+        </button>
+      </div>
+    </div>
+  } @else {
+    <p class="add-project__path">
+      <mat-icon class="add-project__inline-icon">folder_open</mat-icon>
+      <span class="add-project__mono">{{ currentLabel() }}</span>
+      @if (parentPath() !== null) {
+        <button mat-button type="button" (click)="goUp()">
+          <mat-icon>arrow_upward</mat-icon>
+          Remonter
+        </button>
+      }
+    </p>
+
+    <ul class="add-project__list">
+      <!-- La racine est un choix LÉGITIME : un poste peut n'héberger qu'un projet. -->
+      <li class="add-project__row">
+        <button
+          type="button"
+          class="add-project__pick"
+          [disabled]="opening() !== null"
+          (click)="openFolder(browsePath())"
+        >
+          @if (isOpening(browsePath())) {
+            <mat-spinner diameter="18"></mat-spinner>
+          } @else {
+            <mat-icon>add_circle_outline</mat-icon>
+          }
+          <span>Ouvrir ce dossier : {{ currentLabel() }}</span>
+        </button>
+      </li>
+
+      @for (folder of folders(); track folder.path) {
+        <li class="add-project__row">
+          <button
+            type="button"
+            class="add-project__pick"
+            [disabled]="folder.used || opening() !== null"
+            (click)="openFolder(folder.path)"
+          >
+            @if (isOpening(folder.path)) {
+              <mat-spinner diameter="18"></mat-spinner>
+            } @else {
+              <mat-icon>{{ folder.used ? 'folder' : 'create_new_folder' }}</mat-icon>
+            }
+            <span class="add-project__mono">{{ folder.name }}</span>
+            @if (folder.used) {
+              <!-- Le défaut vécu : ouvrir deux fois le même dossier a produit deux entités du
+                   même nom, et un utilisateur perdu. -->
+              <span class="add-project__used">déjà ouvert</span>
+            }
+          </button>
+          <button
+            mat-icon-button
+            type="button"
+            [attr.aria-label]="'Entrer dans ' + folder.name"
+            matTooltip="Voir ce qu'il contient"
+            (click)="enterFolder(folder)"
+          >
+            <mat-icon>chevron_right</mat-icon>
+          </button>
+        </li>
+      }
+    </ul>
+
+    @if (folders().length === 0) {
+      <p class="add-project__text">Aucun sous-dossier ici. Ce dossier reste ouvrable.</p>
+    }
+
+    @if (truncated()) {
+      <!-- Une liste incomplète se DIT (SF-38-21) : un dossier manquant en silence, ce sont dix
+           minutes à chercher ce que le système savait ne pas avoir envoyé. -->
+      <p class="add-project__text">
+        Liste incomplète : la machine en contient davantage. Ajoutez un <code>.runnerignore</code>
+        à la racine, ou entrez dans un sous-dossier.
+      </p>
+    }
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-flat-button color="primary" type="button" (click)="close()">Terminer</button>
+</mat-dialog-actions>

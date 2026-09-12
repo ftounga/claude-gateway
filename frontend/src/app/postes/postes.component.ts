@@ -13,7 +13,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { AtelierService } from '../core/services/atelier.service';
-import { HostProjectSummary, RunnerHostOverview } from '../core/models/atelier.models';
+import { HostFolder, HostProjectSummary, RunnerHostOverview } from '../core/models/atelier.models';
 import { ForgeBreadcrumbComponent } from '../shared/forge-breadcrumb/forge-breadcrumb.component';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import { LiveBadgeComponent } from '../shared/live-badge/live-badge.component';
@@ -23,6 +23,10 @@ import {
   RunnerPairingDialogComponent,
   RunnerPairingDialogData,
 } from '../atelier/runner/runner-pairing-dialog.component';
+import {
+  AddProjectDialogComponent,
+  AddProjectDialogData,
+} from './add-project-dialog/add-project-dialog.component';
 import {
   DeleteHostDialogComponent,
   DeleteHostDialogData,
@@ -42,6 +46,12 @@ export const POSTES_REFRESH_MS = 15_000;
 
 /** Ce qui empêche la vue d'exister — distinct d'un simple hoquet pendant un rafraîchissement. */
 export type PostesError = 'none' | 'network' | 'forbidden';
+
+/**
+ * Liste vide **partagée** : une carte sans dossier connu rend toujours la <b>même</b> référence.
+ * Un `[]` neuf à chaque appel changerait de référence à chaque cycle de détection.
+ */
+const EMPTY_FOLDERS: HostFolder[] = [];
 
 /**
  * Écran **Postes** (F-49 / SF-49-02) : le seul endroit d'où l'on voit **toutes ses machines** —
@@ -142,6 +152,36 @@ export class PostesComponent implements OnInit {
   /** Poste dont la suppression est en cours : la carte se verrouille le temps de l'aller-retour. */
   readonly deletingHostId = signal<string | null>(null);
 
+  // -------------------------- les dossiers non encore ouverts (F-72 / SF-72-03)
+
+  /**
+   * **Ce que la machine contient et que vous n'avez pas encore ouvert**, par poste.
+   *
+   * <p>Demande du PO : voir les dossiers de la racine <b>sans que rien ne soit créé</b>. Créer
+   * automatiquement un projet par dossier noierait la vue — un <code>~/dev</code> de consultant en
+   * contient vingt ou trente, dont deux servent — et ne rien montrer oblige à chercher.</p>
+   *
+   * <p>La clef est l'identifiant du poste ; l'absence d'entrée signifie « pas encore lu », ce qui
+   * n'est pas la même chose qu'une liste vide.</p>
+   */
+  private readonly rootFolders = signal<Record<string, HostFolder[]>>({});
+
+  /** Postes dont la racine a été tronquée : on le **dit** plutôt que de laisser croire. */
+  private readonly rootTruncated = signal<Record<string, boolean>>({});
+
+  /** Postes déjà interrogés dans cette page — la lecture n'est **pas** rejouée par le sondage. */
+  private readonly foldersRead = new Set<string>();
+
+  /** Chemin dont l'ouverture est en vol : la ligne se verrouille le temps de l'aller-retour. */
+  readonly openingFolder = signal<string | null>(null);
+
+  /**
+   * Nombre de dossiers non ouverts montrés sur une carte. Huit tient dans une carte sans la faire
+   * dérouler ; en afficher trente la rendrait illisible — et la lisibilité est le **seul** critère
+   * ici : c'est le poste qui est facturé (F-65), pas les projets.
+   */
+  readonly maxUnopenedShown = 8;
+
   /**
    * Des postes existent, mais **toutes** leurs missions sont clôturées. La vue principale est vide
    * et le dit ; le repli, lui, reste présent et ouvrable — rien n'a disparu.
@@ -191,6 +231,10 @@ export class PostesComponent implements OnInit {
 
   /** Relecture demandée par l'utilisateur (bouton « Rafraîchir » ou « Réessayer »). */
   refresh(): void {
+    // Une relecture DEMANDÉE relit aussi les racines (F-72 / SF-72-03) : c'est le geste par lequel
+    // on dit « j'ai lancé le runner » ou « j'ai créé un dossier sur ma machine ». Le sondage
+    // automatique, lui, ne les relit jamais.
+    this.foldersRead.clear();
     this.load(this.hosts().length === 0);
   }
 
@@ -260,6 +304,177 @@ export class PostesComponent implements OnInit {
   /** Ouvre le terminal du projet — le « à un clic » que la vue promet. */
   openTerminal(project: HostProjectSummary): void {
     this.router.navigate(['/atelier', project.id]);
+  }
+
+  // -------------------------------------------- ajouter un projet (F-72 / SF-72-03)
+
+  /**
+   * **Ajoute un projet** sous ce poste — le second des deux gestes.
+   *
+   * <p>Le poste est déjà appairé : il n'y a <b>rien à réinstaller</b>. L'explorateur liste les
+   * dossiers de la machine, on clique, et le projet existe — <b>sans qu'aucun nom soit demandé</b>.
+   * Autant de fois qu'on veut, <b>sans jamais réappairer</b>.</p>
+   */
+  addProject(host: RunnerHostOverview): void {
+    const hostId = host.id;
+    if (hostId === null) {
+      // Le poste « Hébergé » n'a pas de machine à parcourir (F-71). Le gabarit n'offre pas ce
+      // geste ; la garde est là pour que ce soit vrai du CODE et pas seulement du gabarit.
+      return;
+    }
+    const data: AddProjectDialogData = { hostId, hostName: host.name };
+    this.dialog
+      .open(AddProjectDialogComponent, {
+        data,
+        width: AddProjectDialogComponent.DIALOG_WIDTH,
+        maxWidth: '95vw',
+        autoFocus: false,
+      })
+      .afterClosed()
+      .subscribe((changed) => {
+        if (changed === true) {
+          // Des projets sont apparus : la vue ET la liste des dossiers non ouverts sont en retard.
+          this.forgetFolders(hostId);
+          this.load(false);
+        }
+      });
+  }
+
+  /**
+   * **Ouvre un projet sur un dossier non encore ouvert**, d'un clic depuis la carte.
+   *
+   * <p>C'est le même geste que dans l'explorateur, sans l'explorateur : le dossier est déjà sous les
+   * yeux, il n'y a rien à parcourir.</p>
+   */
+  openFolderAsProject(host: RunnerHostOverview, folder: HostFolder): void {
+    const hostId = host.id;
+    if (hostId === null || this.openingFolder() !== null) {
+      return;
+    }
+    this.openingFolder.set(folder.path);
+    this.atelier.openHostProject(hostId, folder.path).subscribe({
+      next: (workspace) => {
+        this.openingFolder.set(null);
+        this.snackBar.open(
+          `Projet « ${workspace.name} » ouvert. Rien n'a été installé sur la machine.`,
+          'Fermer',
+          { duration: 4000, panelClass: 'snack-info' },
+        );
+        this.forgetFolders(hostId);
+        this.load(false);
+      },
+      error: (err: unknown) => {
+        this.openingFolder.set(null);
+        this.snackBar.open(this.openErrorMessage(err), 'Fermer',
+          { duration: 6000, panelClass: 'snack-error' });
+        // L'écran était peut-être en retard — un projet créé dans un autre onglet. On relit plutôt
+        // que de le laisser mentir, sans quoi le même refus se rejouerait.
+        this.forgetFolders(hostId);
+        this.load(false);
+      },
+    });
+  }
+
+  /**
+   * Les dossiers de la racine **que ce poste n'a pas encore ouverts**, tronqués au seuil d'affichage.
+   *
+   * <p>Ce qui est <b>exclu</b> ne passe pas par ici : <code>.runnerignore</code>, le bruit de
+   * construction (SF-38-21) et les dossiers cachés sont écartés <b>par le runner et la gateway</b>,
+   * avant d'arriver. L'écran n'ajoute aucun filtre — ce qui est exclu ne quitte jamais la machine.</p>
+   */
+  unopenedFolders(host: RunnerHostOverview): HostFolder[] {
+    const hostId = host.id;
+    return hostId === null ? EMPTY_FOLDERS : this.unopenedByHost()[hostId]?.shown ?? EMPTY_FOLDERS;
+  }
+
+  /**
+   * Ce que chaque carte a à montrer, **calculé une fois** par lecture.
+   *
+   * <p>Un signal calculé, et non un filtre appelé depuis le gabarit : une méthode qui rend un
+   * nouveau tableau à chaque appel change de <b>référence</b> à chaque cycle de détection, ce
+   * qu'Angular signale en mode développement (NG0100). Ici la référence est stable tant que les
+   * dossiers ne changent pas.</p>
+   */
+  private readonly unopenedByHost = computed(() => {
+    const truncated = this.rootTruncated();
+    const byHost: Record<string, { shown: HostFolder[]; more: string | null }> = {};
+    for (const [hostId, folders] of Object.entries(this.rootFolders())) {
+      const free = folders.filter((folder) => !folder.used);
+      const shown = free.slice(0, this.maxUnopenedShown);
+      const hidden = free.length - shown.length;
+      const more = hidden > 0
+        ? `et ${hidden} autre${hidden > 1 ? 's' : ''} — ouvrez-les depuis « Ajouter un projet ».`
+        : truncated[hostId]
+          ? 'La machine en contient davantage : la liste a été tronquée.'
+          : null;
+      byHost[hostId] = { shown, more };
+    }
+    return byHost;
+  });
+
+  /**
+   * Ce qu'on ne montre pas, **dit** : le reste de la liste, ou la troncature de la machine. Une
+   * liste incomplète se dit (SF-38-21) — un dossier manquant en silence, ce sont dix minutes à
+   * chercher ce que le système savait ne pas avoir envoyé.
+   */
+  moreFolders(host: RunnerHostOverview): string | null {
+    const hostId = host.id;
+    return hostId === null ? null : this.unopenedByHost()[hostId]?.more ?? null;
+  }
+
+  /**
+   * Relit la racine d'un poste **connecté**, une seule fois par page.
+   *
+   * <p><b>Hors du sondage de 15 s</b> (arbitrage A1 du cadrage) : y attacher une lecture de la
+   * machine ferait 240 <code>list_files</code> par heure et par poste pour une liste qui ne bouge
+   * presque jamais — et chacun est une ligne d'audit sur la machine du client.</p>
+   */
+  private loadFolders(hosts: RunnerHostOverview[]): void {
+    for (const host of hosts) {
+      const hostId = host.id;
+      // Le poste « Hébergé » n'a pas de machine ; un poste déconnecté n'a personne pour lister —
+      // et la carte n'affiche alors aucune section, plutôt qu'une liste vide qui mentirait.
+      if (hostId === null || !host.connected || this.foldersRead.has(hostId)) {
+        continue;
+      }
+      this.foldersRead.add(hostId);
+      this.atelier.runnerHostFolders(hostId).subscribe({
+        next: (response) => {
+          this.rootFolders.update((all) => ({ ...all, [hostId]: response.folders ?? [] }));
+          this.rootTruncated.update((all) => ({ ...all, [hostId]: response.truncated === true }));
+        },
+        // SILENCIEUX : cette liste est un confort. Un rouge ici enverrait chercher au mauvais
+        // endroit, alors que la carte, elle, est exacte. Le refus explicite existe là où le geste
+        // est demandé — dans le dialogue « Ajouter un projet ».
+        error: () => this.forgetFolders(hostId),
+      });
+    }
+  }
+
+  /** Oublie ce qu'on savait de la racine d'un poste : la prochaine lecture la relira. */
+  private forgetFolders(hostId: string): void {
+    this.foldersRead.delete(hostId);
+    this.rootFolders.update((all) => {
+      const next = { ...all };
+      delete next[hostId];
+      return next;
+    });
+  }
+
+  /** Le message d'échec d'une ouverture. Sur un **409**, celui du serveur est repris tel quel. */
+  private openErrorMessage(err: unknown): string {
+    if (err instanceof HttpErrorResponse) {
+      if (err.status === 409 && typeof err.error?.message === 'string') {
+        return err.error.message;
+      }
+      if (err.status === 403) {
+        return 'La Forge est nécessaire pour ce geste.';
+      }
+      if (err.status === 404) {
+        return 'Poste introuvable.';
+      }
+    }
+    return "Le projet n'a pas pu être ouvert. Veuillez réessayer.";
   }
 
   // -------------------------------------------- état de mission (F-60 / SF-60-02)
@@ -494,6 +709,10 @@ export class PostesComponent implements OnInit {
     this.atelier.runnerHostsOverview().subscribe({
       next: (hosts) => {
         this.hosts.set(hosts.map((host) => ({ ...host, projects: host.projects ?? [] })));
+        // La racine de chaque poste connecté, lue UNE fois (F-72 / SF-72-03, arbitrage A1) : le
+        // sondage de 15 s ne la rejoue pas — lire la machine du client 240 fois par heure pour une
+        // liste qui ne bouge presque jamais n'a aucun sens.
+        this.loadFolders(hosts);
         this.error.set('none');
         this.loading.set(false);
         this.lastUpdatedAt.set(new Date());

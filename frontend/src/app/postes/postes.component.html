@@ -313,7 +313,15 @@
 
     @if (host.projects.length === 0) {
       <p class="poste__no-project">
-        Aucun projet sous ce poste. Rattachez-en un depuis la Forge.
+        @if (isHosted(host)) {
+          Aucun projet hébergé.
+        } @else {
+          <!-- LE SECOND DES DEUX GESTES (F-72 / SF-72-03) : à ce stade, aucun projet n'existe —
+               et c'est normal, on vient de brancher une machine. Le dire ici évite exactement le
+               moment où le parcours d'avant faisait perdre le fil. -->
+          Aucun projet sous ce poste — c'est normal si vous venez de le connecter.
+          Ajoutez-en un en cliquant un dossier de sa racine.
+        }
       </p>
     } @else {
       <ul class="poste__projects">
@@ -358,6 +366,67 @@
           </li>
         }
       </ul>
+    }
+
+    @if (!isHosted(host)) {
+      <!-- LA DÉCOUVERTE SANS LA CRÉATION (F-72 / SF-72-03, demande du PO du 2026-09-12) : on voit
+           ce que la machine contient SANS que rien ne soit créé, et le geste d'ouverture reste
+           celui de l'utilisateur. Créer un projet par dossier noierait la vue — un ~/dev de
+           consultant en contient vingt ou trente, dont deux servent.
+
+           EN RETRAIT et en GRIS : ce sont des dossiers, pas des projets. C'est un quatrième OBJET,
+           pas un quatrième registre de couleur — le gris « archivé / inactif » du §5 existe déjà
+           pour « ce qui n'est pas actif », et aucun ton d'identité (§9) n'est emprunté. -->
+      @if (unopenedFolders(host); as unopened) {
+        @if (unopened.length > 0) {
+          <section class="poste__unopened">
+            <p class="poste__unopened-title">
+              Dossiers de la racine que vous n'avez pas encore ouverts
+            </p>
+            <ul class="poste__unopened-list">
+              @for (folder of unopened; track folder.path) {
+                <li>
+                  <button
+                    type="button"
+                    class="poste__unopened-item"
+                    [disabled]="openingFolder() !== null"
+                    (click)="openFolderAsProject(host, folder)"
+                    [attr.aria-label]="'Ouvrir un projet sur ' + folder.name"
+                    matTooltip="Ouvrir un projet sur ce dossier"
+                  >
+                    @if (openingFolder() === folder.path) {
+                      <mat-spinner diameter="14"></mat-spinner>
+                    } @else {
+                      <mat-icon>create_new_folder</mat-icon>
+                    }
+                    <span class="poste__mono">{{ folder.name }}</span>
+                  </button>
+                </li>
+              }
+            </ul>
+            @if (moreFolders(host); as more) {
+              <!-- Une liste tronquée se DIT (SF-38-21) : un dossier manquant en silence, ce sont
+                   dix minutes à chercher ce que le système savait ne pas avoir envoyé. -->
+              <p class="poste__unopened-more">{{ more }}</p>
+            }
+          </section>
+        }
+      }
+
+      <div class="poste__card-actions">
+        <!-- « Ajouter un projet », autant de fois qu'on veut, SANS JAMAIS RÉAPPAIRER : c'est tout
+             le bénéfice de F-48, enfin atteignable depuis l'écran. -->
+        <button
+          mat-stroked-button
+          type="button"
+          (click)="addProject(host)"
+          [attr.aria-label]="'Ajouter un projet à ' + host.name"
+          matTooltip="Choisir un dossier de la racine — aucun nom à saisir"
+        >
+          <mat-icon>add</mat-icon>
+          Ajouter un projet
+        </button>
+      </div>
     }
   </mat-card>
 </ng-template>
