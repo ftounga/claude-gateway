@@ -18,6 +18,8 @@ import fr.claudegateway.governance.dto.GovernanceDepositPlan;
 import fr.claudegateway.governance.dto.GovernanceFileComparison;
 import fr.claudegateway.governance.dto.GovernanceHostSummary;
 import fr.claudegateway.governance.dto.GovernanceHostView;
+import fr.claudegateway.governance.dto.GovernanceMapFileContent;
+import fr.claudegateway.governance.dto.GovernanceMapView;
 
 /**
  * La gouvernance <b>d'un poste</b> (F-75 / SF-75-01) : ce qui s'y applique, et les gestes qui
@@ -43,17 +45,20 @@ public class GovernanceHostController {
     private final GovernanceActivationService activationService;
     private final GovernanceDepositService depositService;
     private final GovernanceFileReadingService fileReadingService;
+    private final GovernanceMapReadingService mapReadingService;
     private final GovernanceHostScope hostScope;
     private final AtelierAccessService atelierAccess;
     private final CurrentUser currentUser;
 
     public GovernanceHostController(GovernanceActivationService activationService,
             GovernanceDepositService depositService,
-            GovernanceFileReadingService fileReadingService, GovernanceHostScope hostScope,
+            GovernanceFileReadingService fileReadingService,
+            GovernanceMapReadingService mapReadingService, GovernanceHostScope hostScope,
             AtelierAccessService atelierAccess, CurrentUser currentUser) {
         this.activationService = activationService;
         this.depositService = depositService;
         this.fileReadingService = fileReadingService;
+        this.mapReadingService = mapReadingService;
         this.hostScope = hostScope;
         this.atelierAccess = atelierAccess;
         this.currentUser = currentUser;
@@ -108,6 +113,42 @@ public class GovernanceHostController {
         }
         UUID userId = currentUser.requireId();
         return fileReadingService.read(userId, hostScope.require(userId, hostRef), packageId, path);
+    }
+
+    /**
+     * <b>Ce que la machine sait</b> : le relevé de la carte de ce poste (F-92 / SF-92-02).
+     *
+     * <p>Les fichiers de carte sont lus <b>à la racine</b> et résumés : présents ou non, leurs
+     * sections, et le nombre de <b>faits</b> que chacune porte. C'est ce qui fait exister la carte
+     * pour l'utilisateur — un fichier qu'on ne voit jamais n'est pas un savoir, c'est un fichier.</p>
+     *
+     * <p><b>Lecture bornée</b> : seuls les chemins apportés par les paquets actifs sont lus, et la
+     * lecture s'arrête au premier refus de <b>transport</b> plutôt que d'attendre un délai par
+     * fichier.</p>
+     */
+    @GetMapping("/{hostRef}/map")
+    public GovernanceMapView map(@PathVariable String hostRef) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        return mapReadingService.describe(userId, hostScope.require(userId, hostRef));
+    }
+
+    /**
+     * Le <b>contenu exact</b> d'un fichier de la carte, lu sur la machine (F-92 / SF-92-02).
+     *
+     * <p>Le relevé dit <i>combien</i> ; ceci dit <b>quoi</b> — les VPN d'un client, ses bastions, ses
+     * pièges — sans ouvrir un terminal. <b>Seuls les chemins de la carte</b> sont lisibles : cette
+     * route n'est pas un explorateur de fichiers.</p>
+     */
+    @GetMapping("/{hostRef}/map/file")
+    public GovernanceMapFileContent mapFile(@PathVariable String hostRef,
+            @RequestParam(name = "path", required = false) String path) {
+        atelierAccess.requireAccess();
+        if (path == null || path.isBlank()) {
+            throw new InvalidGovernancePackageException("Chemin de fichier requis.");
+        }
+        UUID userId = currentUser.requireId();
+        return mapReadingService.readFile(userId, hostScope.require(userId, hostRef), path);
     }
 
     /**

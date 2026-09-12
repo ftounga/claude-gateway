@@ -83,16 +83,30 @@ class GovernanceHostFilesTest {
     }
 
     @Test
-    @DisplayName("une machine muette, des droits refusés ou un dossier : on NE SAIT PAS")
+    @DisplayName("des droits refusés, un dossier, un fichier trop gros : on NE SAIT PAS")
     void everyOtherRefusalIsUnknown() {
-        for (String code : new String[] {RunnerErrorCodes.RUNNER_UNAVAILABLE,
-                RunnerErrorCodes.RUNNER_TIMEOUT, RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE,
-                "io_error", "is_directory", "too_large", "not_a_file"}) {
+        for (String code : new String[] {"io_error", "is_directory", "too_large", "not_a_file"}) {
             when(gateway.readFile(any(), anyString(), anyString()))
                     .thenReturn(RunnerCallResult.backendError(code, "refus"));
 
             assertThat(files.presence(alice, host, "acces.md"))
                     .as("code %s", code).isEqualTo(Presence.UNKNOWN);
+        }
+    }
+
+    @Test
+    @DisplayName("une machine muette est INJOIGNABLE, pas « illisible » — la suite n'a rien à tenter")
+    void asilentMachineIsUnreachable() {
+        // La distinction n'est pas cosmétique : un fichier illisible n'empêche pas de lire le
+        // suivant, une machine injoignable si. C'est elle qui borne le coût de la lecture de carte
+        // à UN délai plutôt qu'à six (F-92 / SF-92-02).
+        for (String code : new String[] {RunnerErrorCodes.RUNNER_UNAVAILABLE,
+                RunnerErrorCodes.RUNNER_TIMEOUT, RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE}) {
+            when(gateway.readFile(any(), anyString(), anyString()))
+                    .thenReturn(RunnerCallResult.backendError(code, "muet"));
+
+            assertThat(files.presence(alice, host, "acces.md"))
+                    .as("code %s", code).isEqualTo(Presence.UNREACHABLE);
         }
     }
 
