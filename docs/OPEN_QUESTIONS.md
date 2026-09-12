@@ -524,6 +524,21 @@ Le runner additionne le magasin du système à celui de la JDK **sans rien deman
 transparence du démarrage **nomme la racine d'entreprise détectée**. `--no-system-trust` reste
 disponible pour qui veut la confiance stricte.
 
+**LIVRÉE le 2026-09-12 — SF-80-02 (PR #415).** `TrustStores` additionne les deux magasins,
+`StartupDisclosure` porte la ligne `Confiance :`, `--no-system-trust` rétablit la confiance stricte,
+et le magasin absent ou illisible produit un repli silencieux. Deux précisions d'implémentation qui
+n'étaient pas dans la question :
+
+- **La racine nommée vient de notre propre connexion**, jamais du magasin du poste. `StartupDisclosure`
+  décrit la configuration du runner — « jamais une inspection du poste » (F-57) —, et `Windows-ROOT`
+  contient des centaines de racines absentes du `cacerts` qui ne sont pas des racines d'entreprise :
+  en nommer une aurait été le faux positif que F-57 interdit.
+- **Les paquets `jlink` embarquent leur propre `cacerts`** : sans le module `jdk.crypto.mscapi`,
+  `Windows-ROOT` n'existe pas dans l'image Windows et la décision n'aurait valu que pour les
+  lancements par `.jar`.
+
+Cette question est **close**.
+
 **Le motif de la décision** : refuser ce que le poste accorde déjà partout ne protège personne — le
 navigateur, `curl` et le système suivent l'intercepteur de toute façon. Le runner n'ajoute aucune
 confiance : il cesse d'être le seul à ignorer celle qui existe. Ce qui compte est que l'utilisateur
