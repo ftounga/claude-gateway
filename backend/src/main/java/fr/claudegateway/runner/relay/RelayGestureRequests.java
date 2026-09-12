@@ -2,6 +2,8 @@ package fr.claudegateway.runner.relay;
 
 import java.util.UUID;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 /**
  * Enveloppes des gestes <b>diffusés</b> entre pods (F-38 / SF-38-13, contrat du relais §4 à §6) :
  * annuler, trancher une autorisation, interrompre un tour, marquer une session interrompue.
@@ -11,6 +13,12 @@ import java.util.UUID;
  * {@code RunnerConfirmationGate.resolve}, qui compare {@code userId} <i>et</i> {@code workspaceId} à
  * ceux de la demande en attente : un identifiant de corrélation deviné n'autorise rien chez
  * autrui.</p>
+ *
+ * <p><b>Toutes tolérantes aux champs inconnus (F-81 / SF-81-02).</b> Ces enveloppes sont écrites par
+ * un <b>autre pod</b> de la gateway. Pendant une bascule progressive, deux versions cohabitent et
+ * le pod qui émet peut être plus récent que celui qui lit. Un champ ajouté ne doit pas transformer
+ * un geste relayé en erreur : ce serait une annulation qui n'annule pas, ou une autorisation qui
+ * n'arrive jamais, sur un poste en train de travailler.</p>
  */
 final class RelayGestureRequests {
 
@@ -18,6 +26,7 @@ final class RelayGestureRequests {
     }
 
     /** Annulation des appels en vol d'un workspace (contrat §4). */
+    @JsonIgnoreProperties(ignoreUnknown = true)
     record CancelRequest(UUID workspaceId, String reason) {
 
         boolean isValid() {
@@ -30,6 +39,7 @@ final class RelayGestureRequests {
     }
 
     /** Décision de la porte de confirmation (contrat §5). */
+    @JsonIgnoreProperties(ignoreUnknown = true)
     record ConfirmRequest(UUID userId, UUID workspaceId, String callId, Boolean allow,
             String reason) {
 
@@ -40,6 +50,7 @@ final class RelayGestureRequests {
     }
 
     /** Interruption d'un tour d'atelier (contrat §6, clef {@code userId:workspaceId}). */
+    @JsonIgnoreProperties(ignoreUnknown = true)
     record InterruptRequest(UUID userId, UUID workspaceId, String reason) {
 
         boolean isValid() {
@@ -56,6 +67,7 @@ final class RelayGestureRequests {
      * Précision déposée pendant un tour (F-39 / SF-39-19), relayée au pod qui exécute la boucle.
      * Ce n'est pas une interruption : on n'arrête rien, on ajoute au contexte.
      */
+    @JsonIgnoreProperties(ignoreUnknown = true)
     record SteerRequest(UUID userId, UUID workspaceId, String message) {
 
         boolean isValid() {
@@ -63,6 +75,7 @@ final class RelayGestureRequests {
         }
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     record SessionInterruptRequest(String sessionId, Boolean mark) {
 
         boolean isValid() {
