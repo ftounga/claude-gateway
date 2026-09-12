@@ -153,6 +153,49 @@ export function networkCheckCommand(platform: RunnerHostPlatform, gatewayUrl: st
 }
 
 /**
+ * Ce que cette commande <b>ne prouve pas</b> (F-80 / SF-80-03).
+ *
+ * <p>Le défaut le plus coûteux des trois qu'a révélés la séance du 2026-09-12 : sur un poste dont le
+ * proxy déchiffre le TLS — Zscaler, Netskope, Palo Alto, un antivirus qui inspecte —, `curl` répond
+ * <b>200</b> et le runner échoue. L'étape censée écarter le réseau de la liste des suspects le
+ * déclare donc innocent à tort, et envoie chercher le défaut ailleurs. Ce n'est pas une manipulation
+ * perdue, c'est une <b>piste</b> perdue.</p>
+ *
+ * <p>La raison est simple, et elle se dit : les deux outils ne consultent pas le même magasin de
+ * certificats. La mise en garde les <b>nomme</b> — un avertissement qui ne dit pas pourquoi se lit
+ * comme une précaution rituelle, et ne change aucun raisonnement.</p>
+ *
+ * <p>Affichée en <b>permanence</b>, pas seulement en cas d'échec (D1) : elle sert précisément dans
+ * le cas où l'utilisateur obtient `200`.</p>
+ */
+export function tlsWarning(platform: RunnerHostPlatform): string {
+  const curlStore =
+    platform === 'windows'
+      ? 'le magasin de certificats de Windows'
+      : platform === 'macos'
+        ? 'le trousseau de macOS'
+        : '/etc/ssl/certs';
+  const tool = platform === 'windows' ? 'curl.exe' : 'curl';
+  return (
+    `${tool} valide le certificat avec ${curlStore} ; le runner, lui, passe par la machine ` +
+    `virtuelle Java. Un 200 ici ne garantit donc pas le runner : sur un poste dont le proxy ` +
+    `déchiffre le TLS, curl passe et le runner peut échouer. Le seul test qui emprunte ` +
+    `exactement le chemin du runner est son propre contrôle de vol, à l'étape « Lancer le runner ».`
+  );
+}
+
+/**
+ * Contrôle de vol du runner (F-80 / SF-80-03) : le test de référence, enfin gratuit.
+ *
+ * <p>Il emprunte <b>exactement</b> le chemin du runner — même magasin de confiance, même proxy, même
+ * adresse. Et il ne porte <b>aucun code d'appairage</b> : sans le drapeau `--check`, éprouver ce
+ * chemin coûtait un code, qui expire en 5 minutes.</p>
+ */
+export function runnerCheckCommand(launcher: string, gatewayUrl: string): string {
+  return `${launcher} --gateway ${gatewayUrl} --check`;
+}
+
+/**
  * Comment <b>retrouver</b> le proxy du poste. Le produit dit où regarder, il ne va pas chercher :
  * lire le registre ou interpréter un fichier PAC reviendrait à exécuter la configuration réseau
  * d'un poste d'entreprise. Jamais vide — un système inconnu reçoit le geste générique.
@@ -295,9 +338,25 @@ export function itDepartmentSheet(origin: string, generatedAt: Date): string {
     '       sur 127.0.0.1.',
     '',
     'INTERCEPTION TLS',
-    '  Si le proxy déchiffre le TLS, le certificat de l\'autorité interne doit',
-    '  être connu de la JVM du runner :',
-    '    -Djavax.net.ssl.trustStore=<fichier>',
+    '  Si un équipement du réseau déchiffre et re-signe le trafic (Zscaler,',
+    '  Netskope, Palo Alto, antivirus inspectant le TLS), le runner le DIT au',
+    '  démarrage et nomme l\'autorité qui présente le certificat.',
+    '',
+    '  Dans le cas habituel, IL N\'Y A RIEN À DEMANDER : le runner lit le magasin',
+    '  de certificats du poste — magasin Windows, trousseau macOS,',
+    '  /etc/ssl/certs sous Linux — en plus de celui livré avec Java. Si la racine',
+    '  d\'inspection y est installée, comme sur tout poste géré, il la reconnaît.',
+    '',
+    '  Rien n\'est installé ni modifié sur le poste : le runner LIT ces magasins.',
+    '',
+    '  Si la racine d\'inspection n\'est PAS dans le magasin du poste, il suffit de',
+    `  l'y installer comme pour n'importe quel navigateur, ou d'exclure ${host}`,
+    '  de l\'inspection TLS.',
+    '',
+    '  ATTENTION AU TEST : `curl` valide avec le magasin du poste, et un',
+    '  navigateur aussi. Un 200 obtenu ainsi ne prouve donc pas que le runner',
+    '  passera. Le test de référence est le contrôle de vol du runner lui-même :',
+    '    claude-runner --gateway <url de la passerelle> --check',
     '',
     'CE QUI N\'EST PAS DEMANDÉ',
     '  Aucun droit administrateur, aucun service installé, aucune tâche',
@@ -879,6 +938,13 @@ export class RunnerPairingDialogComponent implements OnDestroy {
    */
   readonly networkCheckUrl = `${this.gatewayUrl}${NETWORK_CHECK_PATH}`;
 
+  /**
+   * Ce que la commande ci-dessus ne prouve pas (F-80 / SF-80-03). Affichée en permanence : elle sert
+   * dans le cas où l'utilisateur obtient <code>200</code> et en conclut, à tort, que le réseau est
+   * hors de cause.
+   */
+  readonly tlsWarning = tlsWarning(this.hostPlatform);
+
 
   /** Comment retrouver le proxy du poste, sur le système consulté. */
   readonly proxyDiscoveryCommand = proxyDiscoveryCommand(this.hostPlatform);
@@ -944,6 +1010,19 @@ export class RunnerPairingDialogComponent implements OnDestroy {
    */
   readonly resumeCommand = computed(
     () => `cd "${this.commandPath()}" && ${this.launcher()}`);
+
+  /**
+   * Le <b>test de référence</b> (F-80 / SF-80-03) : le contrôle de vol du runner, sans appairage.
+   *
+   * <p>Il est ici, à l'étape de lancement, et pas à l'étape 1 : à l'étape 1 le runner n'est pas
+   * encore sur la machine, et la commande y serait inapplicable (D4). La mise en garde, elle, est
+   * bien à l'étape 1 — c'est là qu'on conclut à tort.</p>
+   *
+   * <p>Elle ne porte <b>aucun code d'appairage</b> : c'est ce qui la rend rejouable autant qu'il
+   * faut, là où un code expire en 5 minutes.</p>
+   */
+  readonly checkCommand = computed(
+    () => runnerCheckCommand(this.launcher(), this.gatewayUrl));
 
   /**
    * Vrai quand le paquet retenu est réellement servi : son lanceur démarre alors au **double-clic**,
@@ -1093,7 +1172,10 @@ export class RunnerPairingDialogComponent implements OnDestroy {
       case 'network':
         switch (this.networkVerdict()) {
           case 'reachable':
-            return 'Ce terminal atteint la passerelle.';
+            // F-80 / SF-80-03 : « sort jusqu'à », et non « atteint ». La sortie réseau est acquise ;
+            // l'acceptation du certificat par la JVM, elle, ne l'est pas — et le résumé d'une étape
+            // repliée est justement ce qu'on relit pour se convaincre que le réseau est hors de cause.
+            return 'Ce terminal sort jusqu\'à la passerelle.';
           case 'proxy-auth':
             return 'Un proxy exige une authentification — voir la fiche pour votre DSI.';
           case 'no-answer':

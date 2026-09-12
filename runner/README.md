@@ -78,6 +78,7 @@ Le runner **refuse explicitement** — sans jamais redemander un code en silence
 | `--heartbeat-interval` | `CLAUDE_RUNNER_HEARTBEAT_INTERVAL` | `30` (s) | Période du heartbeat |
 | `--allow-bash` | `CLAUDE_RUNNER_ALLOW_BASH` | **`false`** | Autorise l'exécution de commandes (`bash`) sur cette machine |
 | `--no-system-trust` | `CLAUDE_RUNNER_NO_SYSTEM_TRUST` | **absent** | Confiance stricte : le `cacerts` de la JDK **seul**, sans le magasin du système (F-80 / SF-80-02) |
+| `--check` | `CLAUDE_RUNNER_CHECK` | **absent** | Contrôle de vol **seul** : joint la passerelle, dit ce qu'il voit, sort. Aucun appairage, aucun jeton (F-80 / SF-80-03) |
 
 L'argument CLI prime toujours sur la variable d'environnement. `--allow-bash` est un **drapeau** :
 il s'écrit seul (il n'avale pas l'argument suivant) ; `--allow-bash=false` le remet à l'état par
@@ -104,6 +105,20 @@ JDK, jamais une erreur. `--no-system-trust` rétablit la confiance stricte.
 
 La racine nommée dans la ligne ci-dessus est celle que **la gateway présente réellement**, lue sur
 notre propre connexion — jamais une racine moissonnée dans le magasin du poste.
+
+### Vérifier l'accès sans appairer (F-80 / SF-80-03)
+
+```bash
+java -jar claude-runner.jar --gateway https://portal.exemple.fr/api --check
+```
+
+Contrôle de vol seul : la passerelle est jointe, le proxy, le certificat et le magasin de confiance
+sont affichés, puis le runner s'arrête. **Ni appairage, ni connexion ouverte, ni jeton écrit** — et
+aucun code consommé, donc rejouable autant qu'il le faut.
+
+C'est le **seul** test qui emprunte exactement le chemin du runner. Un `curl` valide le certificat
+avec le magasin du **poste** : sur une machine dont le proxy déchiffre le TLS, il répond `200` là où
+le runner échoue. Codes de sortie : `0` joignable, `5` injoignable, `2` usage invalide.
 
 ## Exécution de commandes (SF-38-07)
 

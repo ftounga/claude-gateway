@@ -36,12 +36,13 @@ public final class RunnerConfig {
     private final Duration heartbeatInterval;
     private final boolean allowBash;
     private final boolean systemTrust;
+    private final boolean checkOnly;
     private final Transport transport;
     private final Path resumedFrom;
 
     private RunnerConfig(String gatewayBaseUrl, Path workspaceRoot, String pairingCode,
             String label, Duration heartbeatInterval, boolean allowBash, boolean systemTrust,
-            Transport transport, Path resumedFrom) {
+            boolean checkOnly, Transport transport, Path resumedFrom) {
         this.gatewayBaseUrl = gatewayBaseUrl;
         this.workspaceRoot = workspaceRoot;
         this.pairingCode = pairingCode;
@@ -49,6 +50,7 @@ public final class RunnerConfig {
         this.heartbeatInterval = heartbeatInterval;
         this.allowBash = allowBash;
         this.systemTrust = systemTrust;
+        this.checkOnly = checkOnly;
         this.transport = transport;
         this.resumedFrom = resumedFrom;
     }
@@ -94,6 +96,10 @@ public final class RunnerConfig {
         // par le PO le 2026-09-12, « automatique et annoncé ». `--no-system-trust` est le drapeau
         // INVERSE : il rétablit la confiance stricte, c'est-à-dire le cacerts de la JDK seul.
         String noSystemTrust = pick(cli, "no-system-trust", env, "CLAUDE_RUNNER_NO_SYSTEM_TRUST");
+        // Contrôle de vol seul (F-80 / SF-80-03) : joindre la gateway, dire ce qu'on voit, sortir.
+        // Le test de référence d'un poste d'entreprise — le seul qui emprunte EXACTEMENT le chemin
+        // du runner — coûtait jusqu'ici un code d'appairage, qui expire en 5 minutes.
+        boolean checkOnly = isTrue(pick(cli, "check", env, "CLAUDE_RUNNER_CHECK"));
         String transport = pick(cli, "transport", env, "CLAUDE_RUNNER_TRANSPORT");
 
         // Reprise (F-46 / SF-46-01) : ce que la mémoire complète, et seulement ce qui manque. Une
@@ -119,6 +125,12 @@ public final class RunnerConfig {
         }
         String normalizedGateway = normalizeGateway(gateway);
 
+        if (workspace == null && checkOnly) {
+            // F-80 / SF-80-03, D3 : un contrôle de vol ne touche aucun fichier. Exiger une racine
+            // pour le lancer ajouterait un obstacle à l'outil censé en retirer un. Dès qu'une racine
+            // EST fournie, elle repasse par les validations ordinaires ci-dessous.
+            workspace = System.getProperty("user.dir", ".");
+        }
         if (workspace == null) {
             throw new ConfigException("--root est requis (racine du poste : le dossier sous lequel "
                     + "vivent vos projets, par exemple ~/dev)"
@@ -156,7 +168,8 @@ public final class RunnerConfig {
 
         return new RunnerConfig(normalizedGateway, root, normalizedCode, normalizedLabel, hb,
                 // Entre deux consignes contradictoires, on retient la plus restrictive (D3).
-                !isTrue(noBash), !isTrue(noSystemTrust), Transport.parse(transport), resumedFrom);
+                !isTrue(noBash), !isTrue(noSystemTrust), checkOnly, Transport.parse(transport),
+                resumedFrom);
     }
 
     /** URL absolue de l'endpoint d'appairage, {@code {gateway}/runner/pair}. */
@@ -262,6 +275,20 @@ public final class RunnerConfig {
     }
 
     /**
+     * Contrôle de vol <b>seul</b> (F-80 / SF-80-03) : joindre la gateway, dire ce qu'on voit, sortir.
+     *
+     * <p>Ni appairage, ni connexion, ni jeton. C'est le seul test qui emprunte <b>exactement</b> le
+     * chemin du runner — celui que l'écran de mise en service propose désormais comme test de
+     * référence, là où un {@code curl} conclut à tort sur un poste dont le proxy déchiffre le TLS.</p>
+     *
+     * <p>Il ne consomme <b>aucun code d'appairage</b> : sans ce drapeau, éprouver le chemin du
+     * runner coûtait un code, qui expire en 5 minutes.</p>
+     */
+    public boolean checkOnly() {
+        return checkOnly;
+    }
+
+    /**
      * Transport demandé (F-38 / SF-38-09). {@code AUTO} par défaut : WebSocket d'abord, repli
      * long-polling si le réseau le tue. {@code WEBSOCKET} ne se replie jamais, {@code POLLING} ne
      * tente même pas la socket (réseau déjà connu comme hostile).
@@ -333,7 +360,7 @@ public final class RunnerConfig {
      * avaler l'argument suivant. La forme {@code --allow-bash=false} reste acceptée.
      */
     private static final java.util.Set<String> BOOLEAN_FLAGS =
-            java.util.Set.of("allow-bash", "no-bash", "no-system-trust");
+            java.util.Set.of("allow-bash", "no-bash", "no-system-trust", "check");
 
     private static Map<String, String> parseArgs(String[] args) {
         Map<String, String> map = new HashMap<>();

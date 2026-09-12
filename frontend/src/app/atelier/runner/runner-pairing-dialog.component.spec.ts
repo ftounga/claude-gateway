@@ -25,6 +25,8 @@ import {
   networkCheckCommand,
   proxyDiscoveryCommand,
   proxyExportCommand,
+  runnerCheckCommand,
+  tlsWarning,
 } from './runner-pairing-dialog.component';
 
 describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
@@ -591,6 +593,95 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     expect(service.runnerDownloadFormats).toHaveBeenCalledTimes(1);
     expect(networkCheckCommand('windows', 'https://x/api')).toContain('https://x/api');
   });
+
+  // ---------------------------------------------------------------------------------------------
+  // F-80 / SF-80-03 — l'écran teste le chemin du runner, pas celui de curl.
+  // ---------------------------------------------------------------------------------------------
+
+  it('nomme LES DEUX magasins de confiance sous Windows', () => {
+    // Sans les nommer, l'avertissement se lirait comme une précaution rituelle et ne changerait
+    // aucun raisonnement. C'est parce qu'ils DIFFÈRENT qu'un 200 ne prouve rien.
+    const warning = tlsWarning('windows');
+
+    expect(warning).toContain('curl.exe');
+    expect(warning).toContain('magasin de certificats de Windows');
+    expect(warning).toContain('machine virtuelle Java');
+    expect(warning).toContain('200');
+  });
+
+  it('nomme le magasin du système consulté, jamais celui d\'un autre', () => {
+    expect(tlsWarning('macos')).toContain('trousseau de macOS');
+    expect(tlsWarning('macos')).not.toContain('Windows');
+    expect(tlsWarning('other')).toContain('/etc/ssl/certs');
+    expect(tlsWarning('other')).not.toContain('Windows');
+    // Et dans tous les cas, le renvoi vers le seul test qui vaut.
+    for (const platform of ['windows', 'macos', 'other'] as RunnerHostPlatform[]) {
+      expect(tlsWarning(platform)).toContain('contrôle de vol');
+    }
+  });
+
+  it('affiche la mise en garde DÈS L\'OUVERTURE, pas seulement en cas d\'échec', () => {
+    setup(EVERY_FORMAT, 'windows');
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+    // D1 : elle sert précisément à qui obtient 200. La conditionner à un échec la rendrait
+    // invisible à ceux qui en ont besoin.
+    expect(text).toContain('ne garantit pas le runner');
+    expect(text).toContain('magasin de certificats de Windows');
+  });
+
+  it('la branche 200 dit ce qu\'elle ne prouve pas et renvoie au contrôle de vol', () => {
+    setup();
+    component.declareNetworkResult('reachable');
+    // Déclarer le résultat replie l'étape et ouvre la suivante : on la rouvre pour lire la branche.
+    component.step.set('network');
+    fixture.detectChanges();
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+    expect(text).toContain('sort jusqu\'à la passerelle');
+    expect(text).toContain('acceptera le certificat');
+    expect(text).toContain('Lancer le runner');
+  });
+
+  it('propose le contrôle de vol du runner, SANS code d\'appairage', () => {
+    setup();
+    service.createHostPairingCode.and.returnValue(of(codeExpiringIn(300)));
+    component.generateCode();
+
+    const command = component.checkCommand();
+
+    expect(command).toContain('--check');
+    expect(command).toContain('--gateway');
+    // Le cœur de l'arbitrage : le test de référence ne doit brûler aucun code, qui expire en 5 min.
+    expect(command).not.toContain('--code');
+    expect(command).not.toContain('AB12CD');
+    // Ni racine : un contrôle de vol ne touche aucun fichier.
+    expect(command).not.toContain('--root');
+  });
+
+  it('le contrôle de vol emprunte le lanceur du format retenu', () => {
+    setup(EVERY_FORMAT, 'windows');
+    component.format.set('windows');
+    expect(component.checkCommand()).toContain('claude-runner.cmd');
+
+    component.format.set('jar');
+    expect(component.checkCommand()).toContain('java -jar');
+
+    expect(runnerCheckCommand('java -jar claude-runner.jar', 'https://x/api'))
+      .toBe('java -jar claude-runner.jar --gateway https://x/api --check');
+  });
+
+  it('rend le contrôle de vol à l\'étape de lancement', () => {
+    setup();
+    component.step.set('launch');
+    fixture.detectChanges();
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+    // D4 : ici et pas à l'étape 1 — à l'étape 1 le runner n'est pas encore sur la machine.
+    expect(text).toContain('Pour vérifier l\'accès sans appairer');
+    expect(text).toContain('--check');
+    expect(text).toContain('ni jeton écrit');
+  });
   // ---------------------------------------------------------------------------------------------
   // F-45 / SF-45-02 — le format pilote le chemin, et l'écran dit si la machine s'est connectée.
   // ---------------------------------------------------------------------------------------------
@@ -798,7 +889,42 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
     // D4 : un pare-feu applicatif peut autoriser HTTPS et refuser l'Upgrade WebSocket.
     expect(sheet).toContain('Upgrade');
     expect(sheet).toContain('long-polling');
-    expect(sheet).toContain('trustStore');
+    expect(sheet).toContain('INTERCEPTION TLS');
+  });
+
+  // ---------------------------------------------------------------- F-80 / SF-80-03
+
+  it('dit qu\'il n\'y a RIEN à demander quand la racine d\'inspection est sur le poste', () => {
+    const sheet = itDepartmentSheet('https://portal.exemple.fr', GENERATED_AT);
+
+    // D5 : la fiche prescrivait un fichier de truststore qui n'existe sur aucun poste. Depuis
+    // SF-80-02 le runner LIT le magasin du poste — sur un poste géré, il n'y a plus rien à faire.
+    expect(sheet).toContain('RIEN À DEMANDER');
+    expect(sheet).toContain('/etc/ssl/certs');
+    expect(sheet).toContain('trousseau macOS');
+    // La prescription inutilisable a disparu (D2 du cadrage F-80).
+    expect(sheet).not.toContain('-Djavax.net.ssl.trustStore');
+  });
+
+  it('dit que le runner LIT les magasins, et n\'y écrit rien', () => {
+    const sheet = itDepartmentSheet('https://portal.exemple.fr', GENERATED_AT);
+
+    expect(sheet).toContain('Rien n\'est installé ni modifié sur le poste');
+  });
+
+  it('met en garde la DSI contre un test au curl, et nomme le test de référence', () => {
+    const sheet = itDepartmentSheet('https://portal.exemple.fr', GENERATED_AT);
+
+    // Le défaut le plus coûteux du cadrage : un 200 obtenu au curl innocente le réseau à tort.
+    expect(sheet).toContain('ATTENTION AU TEST');
+    expect(sheet).toContain('--check');
+  });
+
+  it('garde une issue quand la racine n\'est PAS dans le magasin du poste', () => {
+    const sheet = itDepartmentSheet('https://portal.exemple.fr', GENERATED_AT);
+
+    expect(sheet).toContain("de l'inspection TLS");
+    expect(sheet).toContain('portal.exemple.fr');
   });
 
   it('dit qu\'aucun droit administrateur n\'est requis', () => {
@@ -923,7 +1049,9 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
 
     expect(component.stepDone('network')).toBeTrue();
     expect(component.step()).toBe('code');
-    expect(component.stepSummary('network')).toContain('atteint la passerelle');
+    // F-80 / SF-80-03 : le résumé dit la SORTIE, pas la réussite du runner — c'est cette phrase
+    // qu'on relit, étape repliée, pour se convaincre que le réseau est hors de cause.
+    expect(component.stepSummary('network')).toContain('sort jusqu\'à la passerelle');
   });
 
   it('reste sur l\'étape réseau quand le diagnostic échoue, sans rien verrouiller', () => {

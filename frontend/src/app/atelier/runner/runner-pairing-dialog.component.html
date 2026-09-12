@@ -109,6 +109,18 @@
           </button>
         </div>
 
+        <!-- F-80 / SF-80-03 : la mise en garde la plus coûteuse des trois défauts du cadrage. Sous
+             inspection TLS, curl répond 200 et le runner échoue — l'étape censée écarter le réseau
+             des suspects l'innocente à tort, et fait perdre une PISTE, pas une manipulation. Elle
+             est affichée en PERMANENCE (D1) : elle sert précisément à qui obtient 200. -->
+        <div class="pairing-note">
+          <mat-icon class="pairing-inline-icon">gpp_maybe</mat-icon>
+          <div>
+            <p class="pairing-note-title">Un <code>200</code> ici ne garantit pas le runner</p>
+            <p class="pairing-note-text">{{ tlsWarning }}</p>
+          </div>
+        </div>
+
         <!-- L'arbre de lecture ne s'affiche plus en entier : l'utilisateur DIT ce qu'il a obtenu, et
              seule sa branche se déplie (D2). Les trois affichées ensemble sont, par construction,
              fausses aux deux tiers pour celui qui les lit. -->
@@ -148,10 +160,19 @@
               <li class="pairing-branch">
                 <span class="pairing-branch-key pairing-branch-ok">200</span>
                 <div class="pairing-branch-body">
-                  <p class="pairing-branch-title">Ce terminal atteint la passerelle.</p>
+                  <p class="pairing-branch-title">Ce terminal sort jusqu'à la passerelle.</p>
                   <p class="pairing-branch-text">
                     C'est ce terminal qui devra lancer le runner — pas un autre : les variables de
                     proxy ne se transmettent pas d'une fenêtre à l'autre.
+                  </p>
+                  <!-- F-80 / SF-80-03 : ce que ce 200 ne dit pas. Le titre de la branche ne conclut
+                       plus « atteint la passerelle » mais « sort jusqu'à » — la sortie est acquise,
+                       la validation du certificat ne l'est pas. -->
+                  <p class="pairing-branch-text">
+                    Il reste une chose que ce <code>200</code> ne dit pas : que la machine virtuelle
+                    Java acceptera le certificat. Si le runner échoue malgré ce résultat, ce n'est
+                    donc pas contradictoire — passez au contrôle de vol du runner, à l'étape
+                    <strong>Lancer le runner</strong>.
                   </p>
                 </div>
               </li>
@@ -900,6 +921,29 @@
           Le runner échange le code contre un jeton et mémorise la passerelle et la racine du
           projet : les lancements suivants n'ont plus besoin d'aucun argument, et le code ne sert
           qu'une fois.
+        </p>
+
+        <!-- F-80 / SF-80-03 : le test de référence. Il est ICI et pas à l'étape 1 — à l'étape 1 le
+             runner n'est pas encore sur la machine (D4). Il ne porte aucun code d'appairage : c'est
+             ce qui le rend rejouable, là où un code expire en 5 minutes. -->
+        <p class="pairing-command-label">Pour vérifier l'accès sans appairer</p>
+        <div class="pairing-command">
+          <code>{{ checkCommand() }}</code>
+          <button
+            mat-icon-button
+            type="button"
+            matTooltip="Copier la commande de vérification"
+            aria-label="Copier le contrôle de vol du runner"
+            (click)="copy(checkCommand(), 'Commande de vérification')"
+          >
+            <mat-icon>content_copy</mat-icon>
+          </button>
+        </div>
+        <p class="pairing-hint">
+          Le contrôle de vol joint la passerelle, dit ce qu'il voit — proxy, certificat, magasin de
+          confiance — puis s'arrête : ni appairage, ni connexion ouverte, ni jeton écrit. C'est le
+          <strong>seul</strong> test qui emprunte exactement le chemin du runner, et il ne consomme
+          aucun code : relancez-le autant qu'il le faut.
         </p>
 
         @if (doubleClickAvailable()) {
