@@ -196,7 +196,9 @@ class AtelierChatServiceEndOfTurnCheckpointTest {
         // Bout en bout avec le contrôle réel du premier paquet (F-52 / SF-52-02) : une réponse sans
         // marqueur repart, la même réponse marquée s'arrête.
         fr.claudegateway.governance.control.JugeFinDeTourControl juge =
-                new fr.claudegateway.governance.control.JugeFinDeTourControl();
+                new fr.claudegateway.governance.control.JugeFinDeTourControl(
+                        org.mockito.Mockito.mock(
+                                fr.claudegateway.governance.GovernanceMapDestinations.class));
         // Un contrôle de gouvernance n'est pas un crochet : il y arrive par la délégation de
         // SF-51-04. On l'adapte ici pour l'observer dans la boucle, sans monter tout le catalogue.
         AtelierChatService service = serviceWith(new AtelierCheckpoint() {

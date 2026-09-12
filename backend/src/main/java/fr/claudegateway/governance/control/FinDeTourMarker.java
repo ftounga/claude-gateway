@@ -18,20 +18,28 @@ import java.util.regex.Pattern;
  * le jugement là où il coûte zéro, et laisse au serveur ce qu'il fait bien : lire une <b>forme</b>,
  * mécaniquement, sans interpréter.</p>
  *
+ * <p><b>Il dit désormais OÙ</b> (F-93 / SF-93-01). Le champ {@code promu} porte ce que le tour a
+ * réellement promu <b>et sa destination</b> : {@code promu=cluster atlas -> plateformes.md}. Sans
+ * destination, une promotion n'est pas vérifiable — « je l'ai noté » se dit à chaque tour, et ne se
+ * constate jamais. Le champ est <b>facultatif</b> : un marqueur qui ne le porte pas vaut « rien
+ * promu », faute de quoi tout poste activé avant cette version cesserait de clore ses tours.</p>
+ *
  * <p><b>C'est un commentaire HTML</b>, et ce n'est pas un détail : le rendu Markdown de la réponse ne
  * l'affiche pas. Le marqueur parle au produit, pas au lecteur.</p>
  *
  * <p><b>Le dernier fait foi.</b> Une réponse peut citer la forme attendue avant de la poser
  * réellement — en expliquant la règle, par exemple. Celui qui clôt la réponse est le vrai.</p>
  *
- * @param promotions ce que le tour a fait apparaître de durable et qui n'est pas dans la carte du
- *                   projet ; vide s'il n'y a rien à promouvoir
- * @param dette      nombre de cases {@code - [ ]} restées non cochées dans la carte du projet
+ * @param promotions ce que le tour a fait apparaître de durable et qui n'est encore dans aucune
+ *                   carte ; vide s'il n'y a rien à promouvoir
+ * @param promus     ce que le tour a promu, <b>avec sa destination</b> ; vide s'il n'a rien promu
+ * @param dette      nombre de cases {@code - [ ]} restées non cochées dans les fichiers du projet
  */
-public record FinDeTourMarker(List<String> promotions, int dette) {
+public record FinDeTourMarker(List<String> promotions, List<Promotion> promus, int dette) {
 
     /** La forme exacte attendue, telle qu'elle est rendue au modèle quand elle manque. */
-    public static final String FORME = "<!-- fin-de-tour: promotion=aucune; dette=0 -->";
+    public static final String FORME =
+            "<!-- fin-de-tour: promotion=aucune; promu=aucune; dette=0 -->";
 
     /** Éléments cités dans une action corrective : au-delà, ce n'est plus une action, c'est une liste. */
     public static final int MAX_CITED = 10;
@@ -39,20 +47,72 @@ public record FinDeTourMarker(List<String> promotions, int dette) {
     /** Longueur de la citation des éléments à promouvoir dans le message correctif. */
     public static final int MAX_CITED_CHARS = 300;
 
+    /**
+     * Un élément promu, et <b>où</b> il l'a été (F-93 / SF-93-01).
+     *
+     * @param element     ce qui a été promu, tel que le modèle l'a écrit
+     * @param destination le fichier de carte qui l'a reçu ; <b>vide</b> si le modèle ne l'a pas dit —
+     *                    et c'est exactement ce qu'un contrôle refuse
+     */
+    public record Promotion(String element, String destination) {
+
+        /** Rend les deux champs jamais nuls : ils finissent dans un message lu par un modèle. */
+        public Promotion {
+            element = element == null ? "" : element;
+            destination = destination == null ? "" : destination;
+        }
+
+        /** Vrai si le modèle a dit où il avait promu. */
+        public boolean hasDestination() {
+            return !destination.isBlank();
+        }
+
+        /** Ce couple, tel qu'un message correctif le cite. */
+        public String cited() {
+            return hasDestination() ? element + " -> " + destination : element;
+        }
+    }
+
     private static final Pattern MARKER =
             Pattern.compile("<!--\\s*fin-de-tour\\s*:(.*?)-->", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+    /**
+     * La flèche de destination : {@code ->}, {@code →}, ou le mot {@code vers}.
+     *
+     * <p>On corrige le modèle sur le fond — a-t-il dit où ? — jamais sur la typographie. Un refus
+     * qui porterait sur la forme d'une flèche ferait perdre un tour pour rien.</p>
+     */
+    private static final Pattern ARROW =
+            Pattern.compile("\\s*(?:->|→|\\bvers\\b)\\s*", Pattern.CASE_INSENSITIVE);
 
     /** Ce qui s'écrit quand il n'y a rien à promouvoir. Le vide vaut la même chose. */
     private static final List<String> NOTHING = List.of("aucune", "aucun", "none", "-", "0");
 
-    /** Rend la liste immuable et bornée : elle finit dans un message lu par un modèle. */
+    /** Rend les listes immuables et bornées : elles finissent dans un message lu par un modèle. */
     public FinDeTourMarker {
         promotions = promotions == null ? List.of() : List.copyOf(promotions);
+        promus = promus == null ? List.of() : List.copyOf(promus);
     }
 
     /** Vrai si le tour n'a rien laissé à promouvoir. */
     public boolean nothingToPromote() {
         return promotions.isEmpty();
+    }
+
+    /** Les promotions déclarées <b>sans dire où</b> — celles qu'un contrôle refuse (F-93). */
+    public List<Promotion> withoutDestination() {
+        return promus.stream().filter(promotion -> !promotion.hasDestination()).toList();
+    }
+
+    /** Les destinations citées, dans l'ordre, sans doublon. */
+    public List<String> destinations() {
+        List<String> cited = new ArrayList<>();
+        for (Promotion promotion : promus) {
+            if (promotion.hasDestination() && !cited.contains(promotion.destination())) {
+                cited.add(promotion.destination());
+            }
+        }
+        return List.copyOf(cited);
     }
 
     /**
@@ -76,6 +136,7 @@ public record FinDeTourMarker(List<String> promotions, int dette) {
     /** Lit le corps du marqueur ; {@code empty} dès qu'une valeur ne veut rien dire. */
     private static Optional<FinDeTourMarker> read(String body) {
         List<String> promotions = List.of();
+        List<Promotion> promus = List.of();
         Integer dette = null;
         for (String pair : body.split(";")) {
             int equals = pair.indexOf('=');
@@ -86,6 +147,7 @@ public record FinDeTourMarker(List<String> promotions, int dette) {
             String value = pair.substring(equals + 1).trim();
             switch (key) {
                 case "promotion", "promotions" -> promotions = readPromotions(value);
+                case "promu", "promus" -> promus = readPromus(value);
                 case "dette", "debt" -> {
                     dette = readDette(value);
                     if (dette == null) {
@@ -99,7 +161,8 @@ public record FinDeTourMarker(List<String> promotions, int dette) {
                 }
             }
         }
-        return dette == null ? Optional.empty() : Optional.of(new FinDeTourMarker(promotions, dette));
+        return dette == null ? Optional.empty()
+                : Optional.of(new FinDeTourMarker(promotions, promus, dette));
     }
 
     /** {@code aucune}, {@code none} et le vide veulent tous dire « rien ». */
@@ -117,6 +180,35 @@ public record FinDeTourMarker(List<String> promotions, int dette) {
         return items;
     }
 
+    /**
+     * Lit {@code promu=élément -> fichier, élément -> fichier} (F-93 / SF-93-01).
+     *
+     * <p>Un élément <b>sans</b> flèche est conservé avec une destination vide, et c'est délibéré :
+     * c'est ce qui permet au contrôle de répondre « dis où », au lieu de perdre silencieusement une
+     * déclaration mal formée — un silence qu'on prendrait pour « rien promu ».</p>
+     */
+    private static List<Promotion> readPromus(String value) {
+        if (value.isEmpty() || NOTHING.contains(value.toLowerCase(Locale.ROOT))) {
+            return List.of();
+        }
+        List<Promotion> items = new ArrayList<>();
+        for (String part : value.split(",")) {
+            String item = part.trim();
+            if (item.isEmpty()) {
+                continue;
+            }
+            Matcher arrow = ARROW.matcher(item);
+            Promotion promotion = arrow.find()
+                    ? new Promotion(item.substring(0, arrow.start()).strip(),
+                            item.substring(arrow.end()).strip())
+                    : new Promotion(item, "");
+            if (!promotion.element().isEmpty() && !items.contains(promotion)) {
+                items.add(promotion);
+            }
+        }
+        return items;
+    }
+
     /** Un entier positif ou nul, ou {@code null} : une dette négative ne veut rien dire. */
     private static Integer readDette(String value) {
         try {
@@ -129,9 +221,19 @@ public record FinDeTourMarker(List<String> promotions, int dette) {
 
     /** Les éléments à promouvoir, cités pour un message correctif : bornés en nombre et en longueur. */
     public String citedPromotions() {
+        return cite(promotions);
+    }
+
+    /** Les promotions déclarées, citées avec leur destination quand elles en portent une. */
+    public String citedPromus(List<Promotion> subset) {
+        return cite(subset.stream().map(Promotion::cited).toList());
+    }
+
+    /** La citation bornée d'une liste : au-delà, ce n'est plus une action corrective. */
+    private static String cite(List<String> items) {
         StringBuilder cited = new StringBuilder();
         int count = 0;
-        for (String item : promotions) {
+        for (String item : items) {
             if (count >= MAX_CITED || cited.length() >= MAX_CITED_CHARS) {
                 cited.append('…');
                 break;

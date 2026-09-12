@@ -113,4 +113,95 @@ class FinDeTourMarkerTest {
         assertThat(cited).endsWith("…");
         assertThat(cited.length()).isLessThan(FinDeTourMarker.MAX_CITED_CHARS + 40);
     }
+
+    // ---------------------------------------------------- « promu » : la destination (F-93)
+
+    @Test
+    @DisplayName("« promu » lit le couple élément -> destination")
+    void promuReadsThePair() {
+        FinDeTourMarker marker = FinDeTourMarker.parse(
+                "<!-- fin-de-tour: promotion=aucune; promu=cluster atlas -> plateformes.md; dette=0 -->")
+                .orElseThrow();
+
+        assertThat(marker.promus()).hasSize(1);
+        assertThat(marker.promus().get(0).element()).isEqualTo("cluster atlas");
+        assertThat(marker.promus().get(0).destination()).isEqualTo("plateformes.md");
+        assertThat(marker.withoutDestination()).isEmpty();
+        assertThat(marker.destinations()).containsExactly("plateformes.md");
+    }
+
+    @Test
+    @DisplayName("plusieurs couples, et les destinations sont rendues sans doublon")
+    void severalPairs() {
+        FinDeTourMarker marker = FinDeTourMarker.parse("<!-- fin-de-tour: promotion=aucune; "
+                + "promu=cluster atlas -> plateformes.md, bastion b1 -> acces.md, "
+                + "VPN client -> acces.md; dette=0 -->").orElseThrow();
+
+        assertThat(marker.promus()).hasSize(3);
+        assertThat(marker.destinations()).containsExactly("plateformes.md", "acces.md");
+    }
+
+    @Test
+    @DisplayName("trois façons d'écrire la flèche, parce qu'on corrige le fond, pas la typographie")
+    void threeArrows() {
+        assertThat(FinDeTourMarker.parse(
+                "<!-- fin-de-tour: promu=a -> x.md; dette=0 -->").orElseThrow().destinations())
+                .containsExactly("x.md");
+        assertThat(FinDeTourMarker.parse(
+                "<!-- fin-de-tour: promu=a → x.md; dette=0 -->").orElseThrow().destinations())
+                .containsExactly("x.md");
+        assertThat(FinDeTourMarker.parse(
+                "<!-- fin-de-tour: promu=a vers x.md; dette=0 -->").orElseThrow().destinations())
+                .containsExactly("x.md");
+    }
+
+    @Test
+    @DisplayName("un élément SANS flèche est conservé, sans destination : c'est ce qu'on refuse")
+    void anElementWithoutAnArrowIsKept() {
+        FinDeTourMarker marker = FinDeTourMarker.parse(
+                "<!-- fin-de-tour: promotion=aucune; promu=cluster atlas; dette=0 -->")
+                .orElseThrow();
+
+        assertThat(marker.promus()).hasSize(1);
+        assertThat(marker.withoutDestination()).hasSize(1);
+        assertThat(marker.destinations()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("une flèche sans destination ne vaut pas mieux qu'une absence de flèche")
+    void anEmptyDestinationIsNoDestination() {
+        assertThat(FinDeTourMarker.parse("<!-- fin-de-tour: promu=cluster atlas ->; dette=0 -->")
+                .orElseThrow().withoutDestination()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("« promu » absent vaut « aucune » : un paquet déjà activé continue de fonctionner")
+    void anAbsentPromuIsNothing() {
+        FinDeTourMarker marker =
+                FinDeTourMarker.parse("<!-- fin-de-tour: promotion=aucune; dette=0 -->")
+                        .orElseThrow();
+
+        assertThat(marker.promus()).isEmpty();
+        assertThat(marker.withoutDestination()).isEmpty();
+        assertThat(marker.destinations()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("« aucune », « none » et le vide veulent tous dire « rien promu »")
+    void nothingPromoted() {
+        assertThat(FinDeTourMarker.parse("<!-- fin-de-tour: promu=aucune; dette=0 -->")
+                .orElseThrow().promus()).isEmpty();
+        assertThat(FinDeTourMarker.parse("<!-- fin-de-tour: promu=none; dette=0 -->")
+                .orElseThrow().promus()).isEmpty();
+        assertThat(FinDeTourMarker.parse("<!-- fin-de-tour: promu=; dette=0 -->")
+                .orElseThrow().promus()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("la forme annoncée au modèle porte les trois champs")
+    void theAnnouncedFormCarriesTheThreeFields() {
+        assertThat(FinDeTourMarker.FORME).contains("promotion=").contains("promu=")
+                .contains("dette=");
+        assertThat(FinDeTourMarker.parse(FinDeTourMarker.FORME)).isPresent();
+    }
 }

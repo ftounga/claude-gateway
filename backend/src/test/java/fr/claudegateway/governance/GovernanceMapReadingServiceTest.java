@@ -42,9 +42,11 @@ import fr.claudegateway.governance.dto.GovernanceMapView;
 class GovernanceMapReadingServiceTest {
 
     @Mock
-    private GovernanceActivationService activationService;
+    private GovernanceActivationRepository activations;
     @Mock
-    private GovernancePackageService packageService;
+    private GovernancePackageRepository packages;
+    @Mock
+    private GovernancePackageFileRepository packageFiles;
     @Mock
     private GovernanceHostFiles hostFiles;
     @Mock
@@ -59,19 +61,23 @@ class GovernanceMapReadingServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new GovernanceMapReadingService(activationService, packageService, hostFiles,
-                hostScope);
+        // Le vrai résolveur de destinations (F-93 / SF-93-01) sur des dépôts simulés : c'est LA
+        // MÊME liste qui sert à rendre la carte et à nommer où promouvoir, et la tester deux fois
+        // la ferait diverger.
+        service = new GovernanceMapReadingService(
+                new GovernanceMapDestinations(activations, packages, packageFiles, hostScope),
+                hostFiles, hostScope);
         when(hostScope.nameOf(alice, host)).thenReturn("FREE");
         when(hostFiles.supports(host)).thenReturn(true);
 
         pkg = GovernancePackage.builder().id(UUID.randomUUID()).slug("savoir-durable")
                 .name("Le savoir durable").version(3).published(true).build();
-        when(packageService.requirePublished(pkg.getId())).thenReturn(pkg);
-        when(packageService.filesOf(pkg.getId())).thenReturn(List.of(
+        when(packages.findById(pkg.getId())).thenReturn(java.util.Optional.of(pkg));
+        when(packageFiles.findByPackageIdOrderByPositionAsc(pkg.getId())).thenReturn(List.of(
                 file("README.md", GovernanceFileKind.MAP),
                 file("acces.md", GovernanceFileKind.MAP),
                 file("STATE.md", GovernanceFileKind.TEMPLATE)));
-        when(activationService.activeOn(alice, host)).thenReturn(List.of(
+        when(activations.findByUserIdAndHostIdOrderByCreatedAtAsc(alice, hostId)).thenReturn(List.of(
                 GovernanceActivation.builder().id(UUID.randomUUID()).userId(alice).hostId(hostId)
                         .packageId(pkg.getId()).appliedVersion(3).build()));
     }
@@ -168,7 +174,8 @@ class GovernanceMapReadingServiceTest {
     @Test
     @DisplayName("poste non gouverné : aucun appel, et le geste est « activez le paquet »")
     void anUngovernedHostIsNotRead() {
-        when(activationService.activeOn(alice, host)).thenReturn(List.of());
+        when(activations.findByUserIdAndHostIdOrderByCreatedAtAsc(alice, hostId))
+                .thenReturn(List.of());
 
         GovernanceMapView view = service.describe(alice, host);
 

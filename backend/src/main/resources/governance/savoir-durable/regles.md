@@ -1,7 +1,8 @@
 **Le travail est jetable, le savoir est durable.** Un sujet produit des notes qui mourront avec lui.
 Tout élément durable qu'il fait apparaître — une décision, une contrainte, un format, une limite
-mesurée, un piège rencontré — doit être **promu** vers la carte du projet, sinon il est perdu avec les
-notes.
+mesurée, un piège rencontré — doit être **promu**, et **la promotion dit où** : dans la carte du
+**poste** si cela survivra au projet, dans la carte du **projet** sinon. Ce qui n'est pas promu est
+perdu avec les notes.
 
 ### Où vit quoi
 
@@ -50,27 +51,71 @@ Un contrôle **refuse mécaniquement** un `git commit` portant l'un de ces marqu
 ton, les tournures, les listes à trois éléments partout — n'est pas vérifiable par une machine : il
 est de ta responsabilité.
 
-### La promotion, et sa dette
+### La promotion, et sa destination
 
-Quand un tour fait apparaître un élément durable, **ajoute-le à `PLAN-ACTION.md`** dans le même tour.
-Ce qu'on note « plus tard » ne se note jamais.
+Quand un tour fait apparaître un **élément durable**, range-le **dans le même tour**. Ce qu'on note
+« plus tard » ne se note jamais.
 
-Ce qui reste à faire s'écrit dans la carte sous forme de cases à cocher Markdown non cochées. Tant
-qu'il en reste une, **le sujet n'est pas clos** : traite-la, ou retire la ligne devenue sans objet.
-Un contrôle refuse de clore un tour tant que tu déclares une dette non nulle.
+**Deux gestes, jamais un seul :**
+
+1. **Ajoute-le à la carte** — le bon fichier, selon ce que c'est :
+
+   | Ce que le tour a fait apparaître | Où ça va |
+   |---|---|
+   | cluster, serveur, hébergement, stockage | `plateformes.md` |
+   | plage, DNS, domaine, flux, certificat, endpoint | `reseau.md` |
+   | VPN, bastion, forge, compte, droit, **piège** | `acces.md` |
+   | base, schéma, sauvegarde, restauration | `donnees.md` |
+   | supervision, alerte, astreinte, procédure | `exploitation.md` |
+   | contact, convention du client, annuaire des projets | `README.md` |
+   | une **décision propre à ce projet** | `PLAN-ACTION.md`, dans le projet |
+
+   Le critère tient en une phrase : **ce qui survivra au projet va dans la carte du poste ; ce qui
+   meurt avec lui reste dans le projet.**
+
+2. **Trace-le coché dans `STATE.md`, en disant où** — c'est ce qui rend la promotion vérifiable :
+
+   ```
+   - [ ] cluster « atlas » (10.0.4.0/24)
+   - [x] cluster « atlas » (10.0.4.0/24) -> promu dans plateformes.md
+   ```
+
+Une case `- [ ]` qui reste est une **dette** : tant qu'il en reste une, le sujet n'est pas clos.
+Traite-la, ou retire la ligne devenue sans objet. Un contrôle refuse de clore un tour tant que tu
+déclares une dette non nulle, **et tant qu'une promotion ne dit pas où elle a été rangée.**
+
+Ce qui compte dans la dette : les cases des **fichiers du projet** — `STATE.md` et `PLAN-ACTION.md`.
+Les cases « ce qui reste à cartographier » de la carte du poste **n'en font pas partie** : elles
+disent ce qu'on ne sait pas encore, et c'est déjà un savoir.
+
+### Où se rangent les dépôts, et où ils ne se rangent pas
+
+Trois invariants de la racine du poste. Chacun porte son **action corrective**, et son identifiant
+est celui que citent les contrôles qui les vérifient.
+
+| Identifiant | La règle | Si c'est le cas, le geste |
+|---|---|---|
+| `clonage/depot-dans-repos` | Un dépôt client se clone dans **`repos/`** sous la racine du poste, jamais à côté des dossiers de projets. | Déplace-le : `mkdir -p repos && mv <dossier> repos/<dossier>`. Laissé parmi les sujets, il serait pris pour un projet et gouverné comme tel. |
+| `clonage/projet-sans-git` | **Un projet n'est jamais un dépôt versionné** : un sujet est un dossier de travail. | Ce dossier porte un `.git/` : c'est un dépôt, pas un sujet. Déplace-le sous `repos/` et ouvre un dossier de travail distinct pour le sujet. |
+| `clonage/note-hors-depot` | **Aucune note personnelle non versionnée** à la racine d'un dépôt client. | Déplace ce `.md` dans la carte du poste, puis supprime-le du dépôt. Il ne doit pas partir dans un dépôt qu'on ne possède pas. |
+
+La troisième est celle qui protège le plus : elle évite de livrer ses propres notes dans un dépôt
+qu'on ne possède pas.
 
 ### Le marqueur de fin de tour
 
 Termine **chaque** réponse finale par cette ligne, exactement sous cette forme :
 
 ```
-<!-- fin-de-tour: promotion=aucune; dette=0 -->
+<!-- fin-de-tour: promotion=aucune; promu=aucune; dette=0 -->
 ```
 
-- `promotion` — ce que ce tour a fait apparaître de durable et qui **ne figure pas encore** dans
-  `PLAN-ACTION.md`, séparé par des virgules. Écris `aucune` s'il n'y a rien. Sois honnête : c'est toi
-  qui juges, et c'est le seul endroit où ce jugement est demandé.
-- `dette` — le nombre de cases non cochées restant dans `PLAN-ACTION.md`.
+- `promotion` — ce que ce tour a fait apparaître de durable et qui **ne figure encore dans aucune
+  carte**, séparé par des virgules. Écris `aucune` s'il n'y a rien. Sois honnête : c'est toi qui
+  juges, et c'est le seul endroit où ce jugement est demandé.
+- `promu` — ce que tu as rangé **et où** : `promu=cluster atlas -> plateformes.md, VPN client ->
+  acces.md`. Une promotion sans destination est refusée : « je l'ai noté » ne se constate pas.
+- `dette` — le nombre de cases non cochées restant dans `STATE.md` et `PLAN-ACTION.md`.
 
 C'est un commentaire HTML : il ne s'affiche pas dans la réponse. Sans lui, la fin du tour est refusée
 — non pas pour te punir, mais parce qu'un contrôle qui se tait quand il ne comprend pas ne protège de
