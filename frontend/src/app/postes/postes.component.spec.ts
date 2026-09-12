@@ -82,7 +82,11 @@ describe('PostesComponent', () => {
   function spyService(): jasmine.SpyObj<AtelierService> {
     const spy = jasmine.createSpyObj<AtelierService>('AtelierService',
       ['runnerHostsOverview', 'setHostMissionStatus', 'deleteRunnerHost', 'runnerHostFolders',
-        'openHostProject']);
+        'openHostProject', 'createGitWorkspace', 'createWorkspace']);
+    // F-72 / SF-72-04 : les deux sources SANS MACHINE — dépôt GitHub, archive — ont rejoint la
+    // carte « Hébergé », qui est l'endroit juste : elles vivent chez la gateway.
+    spy.createGitWorkspace.and.returnValue(of({ id: 'w7', name: 'hello' } as WorkspaceDetail));
+    spy.createWorkspace.and.returnValue(of({ id: 'w8', name: 'archive' } as WorkspaceDetail));
     spy.runnerHostFolders.and.returnValue(of({
       path: '',
       parentPath: null,
@@ -133,7 +137,10 @@ describe('PostesComponent', () => {
 
   it('rend une carte par poste, avec son nom et son état', () => {
     setup();
-    const cards = (fixture.nativeElement as HTMLElement).querySelectorAll('.poste');
+    // `:not(.poste--heberge)` : la carte « Hébergé » est TOUJOURS rendue depuis F-72 / SF-72-04,
+    // parce qu'elle porte des gestes. On compte ici les MACHINES.
+    const cards = (fixture.nativeElement as HTMLElement)
+      .querySelectorAll('.poste:not(.poste--heberge)');
     expect(cards.length).toBe(1);
     expect(text()).toContain('Poste CAGIP');
     expect(text()).toContain('Connecté');
@@ -181,7 +188,8 @@ describe('PostesComponent', () => {
       { ...poste, id: 'h1', name: 'Poste bureau' },
       { ...poste, id: 'h2', name: 'Poste maison' },
     ]);
-    const cards = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.poste');
+    const cards = (fixture.nativeElement as HTMLElement)
+      .querySelectorAll<HTMLElement>('.poste:not(.poste--heberge)');
 
     expect(cards.length).toBe(2);
     expect(cards[0].style.borderLeftColor).not.toBe(cards[1].style.borderLeftColor);
@@ -410,7 +418,7 @@ describe('PostesComponent', () => {
     // différents ; le filet ne dépend que du nom.
     setup([mission('h1', 'Poste CAGIP', 'PENDING'), mission('h2', 'Poste Bercy', 'PENDING')]);
     const cards = (fixture.nativeElement as HTMLElement)
-      .querySelectorAll<HTMLElement>('.poste');
+      .querySelectorAll<HTMLElement>('.poste:not(.poste--heberge)');
 
     expect(cards.length).toBe(2);
     expect(cards[0].style.borderLeftColor).toBe(hexToRgb(hostTone('Poste CAGIP').solid));
@@ -423,7 +431,7 @@ describe('PostesComponent', () => {
     component.closedOpen.set(true);
     fixture.detectChanges();
     const cards = (fixture.nativeElement as HTMLElement)
-      .querySelectorAll<HTMLElement>('.poste');
+      .querySelectorAll<HTMLElement>('.poste:not(.poste--heberge)');
 
     expect(cards.length).toBe(2);
     expect(cards[0].style.borderLeftColor).toBe(cards[1].style.borderLeftColor);
@@ -751,6 +759,7 @@ describe('PostesComponent', () => {
     const cards = (fixture.nativeElement as HTMLElement).querySelectorAll('.poste');
 
     expect(cards.length).toBe(2);
+    // Toujours EN DERNIER, après les machines.
     expect(cards[1].textContent).toContain('Hébergé');
     expect(cards[1].textContent).toContain('mon-depot');
     expect(cards[1].classList).toContain('poste--heberge');
@@ -972,6 +981,112 @@ describe('PostesComponent', () => {
 
     expect(dialog.open).not.toHaveBeenCalled();
     expect(service.openHostProject).not.toHaveBeenCalled();
+  });
+
+  // ---------------- les sources sans machine, sur la carte « Hébergé » (F-72 / SF-72-04)
+
+  it('rend la carte « Hébergé » même quand la gateway n\'en renvoie aucune', () => {
+    setup();
+
+    // Elle porte des GESTES : une carte de gestes qui disparaît quand elle est vide met ses
+    // gestes hors de portée.
+    expect(text()).toContain('Hébergé');
+    expect(text()).toContain('Ouvrir un dépôt GitHub');
+    expect(text()).toContain('Importer une archive');
+  });
+
+  it('la rend aussi quand aucune machine n\'est connectée — le premier jour', () => {
+    setup([]);
+
+    expect(text()).toContain('Aucun poste connecté');
+    expect(text()).toContain('Ouvrir un dépôt GitHub');
+  });
+
+  it('ne met sur elle AUCUN geste de machine', () => {
+    setup([]);
+    const card = (fixture.nativeElement as HTMLElement).querySelector('.poste') as HTMLElement;
+
+    expect(card.textContent).not.toContain('Ajouter un projet');
+    expect(card.textContent).not.toContain('Supprimer le poste');
+    expect(card.querySelector('.poste__mission')).toBeNull();
+    expect(card.querySelector('.poste__unopened')).toBeNull();
+  });
+
+  it('ouvre un dépôt GitHub puis relit la vue', () => {
+    setup();
+    dialog.open.and.returnValue({
+      afterClosed: () => of({ repoUrl: 'https://github.com/octocat/hello', branch: 'main' }),
+    } as never);
+    service.runnerHostsOverview.calls.reset();
+
+    component.openGitRepo();
+
+    expect(service.createGitWorkspace).toHaveBeenCalledWith({
+      repoUrl: 'https://github.com/octocat/hello', branch: 'main',
+    });
+    expect(component.creating()).toBeFalse();
+    expect(service.runnerHostsOverview).toHaveBeenCalledTimes(1);
+  });
+
+  it('n\'appelle rien si le dialogue de dépôt est fermé sans choix', () => {
+    setup();
+    dialog.open.and.returnValue({ afterClosed: () => of(undefined) } as never);
+
+    component.openGitRepo();
+
+    expect(service.createGitWorkspace).not.toHaveBeenCalled();
+    expect(component.creating()).toBeFalse();
+  });
+
+  it('reprend les messages GitHub à l\'identique', () => {
+    setup();
+    dialog.open.and.returnValue({
+      afterClosed: () => of({ repoUrl: 'https://github.com/octocat/hello' }),
+    } as never);
+    service.createGitWorkspace.and.returnValue(throwError(() => new HttpErrorResponse({
+      status: 400, error: { error: 'git_token_missing' },
+    })));
+
+    component.openGitRepo();
+
+    expect(component.creating()).toBeFalse();
+  });
+
+  it('importe une archive après avoir demandé son nom', () => {
+    setup();
+    dialog.open.and.returnValue({ afterClosed: () => of('mon-archive') } as never);
+    const file = new File(['zip'], 'projet.zip', { type: 'application/zip' });
+    const event = { target: { files: [file], value: 'x' } } as unknown as Event;
+    service.runnerHostsOverview.calls.reset();
+
+    component.onZipPicked(event);
+
+    // Le nom EST demandé ici, et c'est cohérent : une archive n'a pas de dossier sur une machine
+    // dont on pourrait tirer son nom.
+    expect(service.createWorkspace).toHaveBeenCalledWith(file, 'mon-archive');
+    expect(service.runnerHostsOverview).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuse une archive trop volumineuse AVANT tout appel', () => {
+    setup();
+    const file = new File(['x'], 'gros.zip', { type: 'application/zip' });
+    Object.defineProperty(file, 'size', { value: 2_000_000_000 });
+    const event = { target: { files: [file], value: 'x' } } as unknown as Event;
+
+    component.onZipPicked(event);
+
+    expect(service.createWorkspace).not.toHaveBeenCalled();
+    expect(component.creating()).toBeFalse();
+  });
+
+  it('n\'importe rien si la saisie du nom est annulée', () => {
+    setup();
+    dialog.open.and.returnValue({ afterClosed: () => of(undefined) } as never);
+    const file = new File(['zip'], 'projet.zip', { type: 'application/zip' });
+
+    component.onZipPicked({ target: { files: [file], value: 'x' } } as unknown as Event);
+
+    expect(service.createWorkspace).not.toHaveBeenCalled();
   });
 
 });

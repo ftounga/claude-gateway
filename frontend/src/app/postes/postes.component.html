@@ -137,6 +137,20 @@
       </section>
     }
   }
+
+  <!-- LES DEUX SOURCES SANS MACHINE (F-72 / SF-72-04) : un dépôt GitHub, une archive. Elles vivent
+       chez la gateway, donc sous le poste « Hébergé ». Cette carte est désormais TOUJOURS là, même
+       vide, parce qu'elle porte des GESTES : une carte de gestes qui disparaît quand elle n'a rien
+       met ses gestes hors de portée. Hors du @if/@else ci-dessus pour être là aussi quand aucune
+       machine n'est connectée — c'est justement le premier jour d'un utilisateur. -->
+  @if (!loading() && error() === 'none') {
+    <div class="postes__list postes__list--heberge">
+      <ng-container
+        [ngTemplateOutlet]="posteCard"
+        [ngTemplateOutletContext]="{ $implicit: hostedHost() }"
+      ></ng-container>
+    </div>
+  }
 </section>
 
 <!-- La carte d'un poste. Un seul gabarit pour la vue principale et pour le repli : une mission
@@ -425,6 +439,44 @@
         >
           <mat-icon>add</mat-icon>
           Ajouter un projet
+        </button>
+      </div>
+    } @else {
+      <!-- LES DEUX SOURCES SANS MACHINE (F-72 / SF-72-04). Elles étaient sous « Nouveau projet »,
+           à la racine — la porte qui faisait partir du PROJET au lieu du poste. Le geste est le
+           même au mot près ; seul son emplacement change, et il est enfin juste : un dépôt ou une
+           archive n'a pas de machine, il vit ici. -->
+      <input
+        #zipInput
+        type="file"
+        class="poste__zip-input"
+        accept=".zip,application/zip"
+        hidden
+        (change)="onZipPicked($event)"
+      />
+      <div class="poste__card-actions">
+        @if (creating()) {
+          <mat-spinner diameter="18"></mat-spinner>
+        }
+        <button
+          mat-stroked-button
+          type="button"
+          [disabled]="creating()"
+          (click)="openGitRepo()"
+          matTooltip="Le jeton GitHub se règle une fois pour toutes dans vos réglages"
+        >
+          <mat-icon>hub</mat-icon>
+          Ouvrir un dépôt GitHub
+        </button>
+        <button
+          mat-stroked-button
+          type="button"
+          [disabled]="creating()"
+          (click)="zipInput.click()"
+          matTooltip="Importer un projet depuis une archive"
+        >
+          <mat-icon>upload_file</mat-icon>
+          Importer une archive .zip
         </button>
       </div>
     }
