@@ -520,9 +520,20 @@ public class RunnerCallDispatcher {
         return capabilities.getOrDefault(hostId, DEFAULT_CAPABILITIES);
     }
 
-    /** Capacité requise par un outil (contrat §2.1) : {@code bash} pour la commande, sinon fichiers. */
+    /**
+     * Capacité requise par un outil (contrat §2.1) : {@code bash} pour la commande, <b>{@code teams}
+     * pour le volet Teams</b> (F-88 / SF-88-03), sinon les fichiers.
+     *
+     * <p>La ligne Teams ferme une porte restée entrouverte : SF-87-03 avait fait <b>annoncer</b> la
+     * capacité par le runner — une machine lancée avec {@code --no-teams} ne la déclare pas — mais
+     * personne ne l'<b>exigeait</b>. L'appel partait donc pour être refusé au bout du fil. Le refus
+     * redevient local et immédiat, exactement comme pour {@code bash}.</p>
+     */
     private static String capabilityFor(String tool) {
-        return "bash".equals(tool) ? "bash" : "files";
+        if ("bash".equals(tool)) {
+            return "bash";
+        }
+        return tool != null && tool.startsWith("teams_") ? "teams" : "files";
     }
 
     /**

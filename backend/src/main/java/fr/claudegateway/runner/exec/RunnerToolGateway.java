@@ -46,6 +46,12 @@ public class RunnerToolGateway {
      * sonde <b>observe</b> le réseau du navigateur pendant quelques secondes avant de conclure.
      */
     public static final long TEAMS_TOOL_TIMEOUT_MS = 20_000L;
+    /**
+     * Délai des outils Teams qui <b>font défiler</b> (F-88 / SF-88-03) : jusqu'à quarante remontées
+     * d'écran, chacune suivie d'une attente de stabilisation. Observer est court ; parcourir ne
+     * l'est pas.
+     */
+    public static final long TEAMS_SCROLLING_TIMEOUT_MS = 60_000L;
     /** Plancher : un délai ridicule ferait échouer la commande avant même son démarrage. */
     public static final long MIN_BASH_TIMEOUT_MS = 1_000L;
     /** Longueur maximale d'une ligne de commande acceptée (le runner applique la même borne). */
@@ -122,6 +128,59 @@ public class RunnerToolGateway {
     public RunnerCallResult teamsStatus(RunnerTarget target, String callId) {
         return router.call(target, callId, "teams_status", objectMapper.createObjectNode(),
                 TEAMS_TOOL_TIMEOUT_MS);
+    }
+
+    /**
+     * Relaie un outil de <b>lecture</b> Teams (F-88 / SF-88-03).
+     *
+     * <p>Un seul relais pour les sept, et c'est voulu : ils partagent exactement le même contrat —
+     * un objet de paramètres que <b>seul le runner</b> sait interpréter, et une enveloppe JSON en
+     * retour. La gateway <b>relaie</b> ; elle ne réinterprète ni la période, ni le plafond, ni la
+     * conversation demandée. Dupliquer ici la lecture des paramètres créerait une seconde vérité sur
+     * ce que « from » veut dire, et les deux finiraient par diverger.</p>
+     *
+     * <p>Ce que ce relais fait quand même, parce que rien d'autre ne le ferait : <b>borner les
+     * chaînes</b> avant émission — une requête de recherche de dix mille caractères n'a aucune
+     * chance d'être une vraie question.</p>
+     *
+     * @param tool nom de l'outil, préfixé {@code teams_} (vérifié)
+     */
+    public RunnerCallResult teamsRead(RunnerTarget target, String callId, String tool,
+            com.fasterxml.jackson.databind.JsonNode input) {
+        if (tool == null || !tool.startsWith("teams_")) {
+            return invalid("Outil Teams inconnu.");
+        }
+        ObjectNode payload = objectMapper.createObjectNode();
+        if (input != null && input.isObject()) {
+            input.fields().forEachRemaining(field -> {
+                if (field.getValue() == null || field.getValue().isNull()) {
+                    return;
+                }
+                if (field.getValue().isTextual()) {
+                    String value = field.getValue().asText();
+                    if (value.length() > MAX_QUERY_CHARS) {
+                        value = value.substring(0, MAX_QUERY_CHARS);
+                    }
+                    payload.put(field.getKey(), value);
+                } else if (field.getValue().isNumber() || field.getValue().isBoolean()) {
+                    payload.set(field.getKey(), field.getValue());
+                }
+                // Tout le reste est écarté : un outil de lecture ne prend que des scalaires, et
+                // recopier un objet quelconque ferait traverser le réseau à ce qu'on n'a pas lu.
+            });
+        }
+        return router.call(target, callId, tool, payload, teamsTimeoutFor(tool));
+    }
+
+    /**
+     * Le délai d'un outil Teams. Lire un fil ou poser une question à l'index demande de
+     * <b>faire défiler</b> la page et d'attendre à chaque geste ; observer, non. Allonger le délai
+     * de tous ferait mettre une minute à {@code teams_status} pour dire « navigateur non détecté »,
+     * ce qui serait une régression de SF-87-03.
+     */
+    static long teamsTimeoutFor(String tool) {
+        return "teams_read_conversation".equals(tool) || "teams_search".equals(tool)
+                ? TEAMS_SCROLLING_TIMEOUT_MS : TEAMS_TOOL_TIMEOUT_MS;
     }
 
     /**

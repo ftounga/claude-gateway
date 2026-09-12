@@ -261,6 +261,52 @@ class AtelierChatServiceRunnerTargetTest {
     }
 
     /** Texte du dernier {@code tool_result} transmis au modèle. */
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("F-88 / SF-88-03 : un outil teams_* est routé vers la machine,"
+            + " son enveloppe est rendue au modèle, et sa ligne d'audit ne porte PAS de contenu")
+    void aTeamsReadingToolIsRoutedRenderedAndAudited() {
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        String envelope = "{\"tool\":\"teams_read_conversation\",\"text\":\"5 messages lus.\"}";
+        when(runnerToolGateway.teamsRead(eq(runnerTarget), anyString(),
+                eq("teams_read_conversation"), any())).thenReturn(ok(envelope));
+        agentProvider.enqueueToolCall("teams_read_conversation", "conversation_id",
+                "19:x@thread.v2");
+        agentProvider.enqueueFinal("Voilà.");
+
+        service.chat(userId, workspaceId, "lis le fil");
+
+        verify(runnerToolGateway).teamsRead(eq(runnerTarget), anyString(),
+                eq("teams_read_conversation"), any());
+        // L'enveloppe est rendue TELLE QUELLE : elle porte déjà la phrase, la fenêtre réellement
+        // lue, les manques et la santé. La gateway n'a rien à y ajouter ni à en retrancher.
+        assertThat(toolResultText()).isEqualTo(envelope);
+        org.mockito.ArgumentCaptor<String> auditTarget =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(runnerAuditService).recordCall(eq(userId), eq(runnerTarget), anyString(),
+                eq("teams_read_conversation"), auditTarget.capture(), any());
+        assertThat(auditTarget.getValue()).isEqualTo("conversation_id=19:x@thread.v2");
+        assertThat(auditTarget.getValue()).doesNotContain("messages lus");
+    }
+
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("F-88 / SF-88-03 : une recherche est tracée par sa QUESTION,"
+            + " jamais par ce qu'elle a ramené")
+    void aTeamsSearchIsAuditedByItsQuestion() {
+        stubWorkspace(WorkspaceSource.ARCHIVE, WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.teamsRead(eq(runnerTarget), anyString(), eq("teams_search"), any()))
+                .thenReturn(ok("{\"results\":[]}"));
+        agentProvider.enqueueToolCall("teams_search", "query", "MFA");
+        agentProvider.enqueueFinal("Rien.");
+
+        service.chat(userId, workspaceId, "cherche MFA");
+
+        org.mockito.ArgumentCaptor<String> auditTarget =
+                org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(runnerAuditService).recordCall(eq(userId), eq(runnerTarget), anyString(),
+                eq("teams_search"), auditTarget.capture(), any());
+        assertThat(auditTarget.getValue()).isEqualTo("query=MFA");
+    }
+
     private String toolResultText() {
         return lastToolResult().content();
     }

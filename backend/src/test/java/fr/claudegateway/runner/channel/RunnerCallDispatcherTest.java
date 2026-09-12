@@ -264,6 +264,51 @@ class RunnerCallDispatcherTest {
     }
 
     @Test
+    void refusesATeamsToolOnAMachineWithoutTheTeamsCapability() throws Exception {
+        // F-88 / SF-88-03 : une machine lancée avec --no-teams annonce `files`, pas `teams`. Le
+        // refus doit être LOCAL et IMMÉDIAT — SF-87-03 faisait déjà annoncer la capacité, personne
+        // ne l'exigeait, et l'appel partait pour être refusé au bout du fil.
+        withLocalRunner();
+        dispatcher.onFrame(identity, "ready", objectMapper.readTree(
+                "{\"type\":\"ready\",\"protocol\":1,\"capabilities\":[\"files\",\"bash\"]}"));
+
+        RunnerCallResult result = dispatcher.call(target, "toolu_1", "teams_read_conversation",
+                objectMapper.readTree("{\"conversation_id\":\"19:x\"}"), 60_000L);
+
+        assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.UNSUPPORTED_TOOL);
+        verify(session, never()).sendMessage(any());
+    }
+
+    @Test
+    void emitsATeamsToolWhenTheMachineAnnouncesTheCapability() throws Exception {
+        withLocalRunner();
+        dispatcher.onFrame(identity, "ready", objectMapper.readTree(
+                "{\"type\":\"ready\",\"protocol\":1,\"capabilities\":[\"files\",\"teams\"]}"));
+        respondWith("{\"type\":\"tool_result\",\"id\":\"toolu_1\",\"ok\":true,"
+                + "\"content\":\"{}\"}");
+
+        RunnerCallResult result = dispatcher.call(target, "toolu_1", "teams_mentions",
+                objectMapper.readTree("{}"), 20_000L);
+
+        assertThat(result.ok()).isTrue();
+    }
+
+    @Test
+    void filesAndBashKeepTheirOwnCapabilities() throws Exception {
+        // Non-régression : la ligne Teams ne doit pas déplacer les deux capacités historiques.
+        withLocalRunner();
+        dispatcher.onFrame(identity, "ready", objectMapper.readTree(
+                "{\"type\":\"ready\",\"protocol\":1,\"capabilities\":[\"files\"]}"));
+        respondWith("{\"type\":\"tool_result\",\"id\":\"toolu_2\",\"ok\":true,"
+                + "\"content\":\"ok\"}");
+
+        RunnerCallResult files = dispatcher.call(target, "toolu_2", "read_file",
+                objectMapper.readTree("{\"path\":\"a.ts\"}"), 10L);
+
+        assertThat(files.ok()).isTrue();
+    }
+
+    @Test
     void recordsTheInterpreterTheRunnerElected() throws Exception {
         // F-38 / SF-38-27 : la consigne système est construite par le pod qui sert le message, pas
         // par celui qui porte la socket. Le genre déclaré doit donc quitter la mémoire de ce pod.
