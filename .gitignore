@@ -1,5 +1,6 @@
 backend/target/
 runner/target/
+contract-tests/target/
 backend/.idea/
 backend/*.iml
 frontend/node_modules/

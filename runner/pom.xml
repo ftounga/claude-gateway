@@ -94,6 +94,41 @@
                 <version>3.5.2</version>
             </plugin>
 
+            <!--
+                F-81 / SF-81-01 — Jar MINCE, attaché sous le classifieur `thin`.
+
+                Le module `contract-tests/` doit charger les classes du runner À CÔTÉ de celles du
+                backend, dans une même JVM. Il ne peut pas le faire depuis le fat-jar : celui-ci
+                embarque sa propre copie de Jackson, qui se retrouverait en double sur le chemin de
+                classes avec celle de Spring Boot — deux versions de la même bibliothèque, la
+                première trouvée gagnant. Exactement le genre de divergence silencieuse que F-81
+                existe pour empêcher.
+
+                Le jar mince ne contient que les classes du runner ; Jackson y redevient une
+                dépendance déclarée, dont la version est alors arbitrée par un seul BOM.
+
+                L'ARTEFACT PRINCIPAL EST INCHANGÉ : le fat-jar produit par shade reste
+                `target/claude-runner.jar`, et c'est toujours lui que l'image, les paquets autonomes
+                et `GET /runner/download` servent. Ce jar-ci s'ajoute, il ne remplace rien.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <executions>
+                    <execution>
+                        <id>thin-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <classifier>thin</classifier>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
             <!-- Fat-jar autonome (toutes deps incluses) + main-class exécutable. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
