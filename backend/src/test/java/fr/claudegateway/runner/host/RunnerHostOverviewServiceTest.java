@@ -59,7 +59,7 @@ class RunnerHostOverviewServiceTest {
 
     private RunnerHost host(String name, OffsetDateTime lastSeenAt, OffsetDateTime createdAt) {
         return RunnerHost.builder().id(hostId).userId(alice).name(name).rootName("dev")
-                .os("linux").shell("posix").elevated(false).lastSeenAt(lastSeenAt)
+                .os("linux").shell("posix").runnerVersion("0.0.1").elevated(false).lastSeenAt(lastSeenAt)
                 .createdAt(createdAt).build();
     }
 
@@ -123,6 +123,9 @@ class RunnerHostOverviewServiceTest {
         assertThat(poste.rootName()).isEqualTo("dev");
         assertThat(poste.os()).isEqualTo("linux");
         assertThat(poste.shell()).isEqualTo("posix");
+        assertThat(poste.runnerVersion())
+                .as("rendue telle que le runner l'a declaree (F-81 / SF-81-03)")
+                .isEqualTo("0.0.1");
         assertThat(poste.elevated()).isFalse();
         // Le plus actif d'abord : c'est ce que l'œil cherche en premier sur une vue d'état.
         assertThat(poste.projects()).extracting(HostProjectSummary::name)
@@ -320,6 +323,9 @@ class RunnerHostOverviewServiceTest {
         assertThat(heberge.rootName()).isNull();
         assertThat(heberge.os()).isNull();
         assertThat(heberge.shell()).isNull();
+        assertThat(heberge.runnerVersion())
+                .as("le poste « Heberge » n'a pas de machine, donc pas de runner")
+                .isNull();
         assertThat(heberge.elevated()).isNull();
         assertThat(heberge.lastSeenAt()).isNull();
         assertThat(heberge.createdAt()).isNull();

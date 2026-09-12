@@ -21,7 +21,7 @@ import fr.claudegateway.runner.RunnerTokenRepository;
  * compte, et un identifiant de poste venu du client ne suffit jamais à y toucher.</p>
  */
 @Service
-public class RunnerHostService implements RunnerShellRecorder {
+public class RunnerHostService implements RunnerShellRecorder, RunnerVersionRecorder {
 
     private static final int MAX_OS_LENGTH = 64;
 
@@ -196,6 +196,27 @@ public class RunnerHostService implements RunnerShellRecorder {
     public void recordRunnerShell(UUID hostId, String declared) {
         RunnerShell.fromDeclared(declared).ifPresent(shell ->
                 repository.findById(hostId).ifPresent(host -> host.setShell(shell.declared())));
+    }
+
+    /**
+     * Retient la <b>version</b> du binaire que le runner déclare (F-81 / SF-81-03).
+     *
+     * <p>Elle n'autorise et n'interdit rien : elle est écrite pour que la vue d'ensemble du poste
+     * puisse répondre à « son runner est-il à jour ? » au lieu de laisser deviner. Une valeur vide ou
+     * trop longue est <b>ignorée</b> plutôt que tronquée — elle vient d'un client, et une version
+     * coupée en deux serait pire qu'une version absente.</p>
+     */
+    @Transactional
+    @Override
+    public void recordRunnerVersion(UUID hostId, String declared) {
+        if (hostId == null || declared == null) {
+            return;
+        }
+        String version = declared.trim();
+        if (version.isEmpty() || version.length() > RunnerHost.MAX_RUNNER_VERSION_LENGTH) {
+            return;
+        }
+        repository.findById(hostId).ifPresent(host -> host.setRunnerVersion(version));
     }
 
     /**

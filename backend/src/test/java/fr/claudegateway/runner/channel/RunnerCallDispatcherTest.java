@@ -67,10 +67,15 @@ class RunnerCallDispatcherTest {
     /** Ce que le runner a déclaré comme interpréteur (F-38 / SF-38-27) : {@code null} si rien. */
     private final Map<UUID, String> recordedShells = new HashMap<>();
 
+    /** Ce que le runner a déclaré comme version de binaire (F-81 / SF-81-03). */
+    private final Map<UUID, String> recordedVersions = new HashMap<>();
+
     @BeforeEach
     void setUp() {
         // Grâce raccourcie : le contrat impose 5 000 ms en production, inutilisable dans un test.
-        dispatcher = new RunnerCallDispatcher(registry, objectMapper, recordedShells::put, 120L);
+        dispatcher = new RunnerCallDispatcher(registry, objectMapper, recordedShells::put,
+                recordedVersions::put, new fr.claudegateway.runner.ServedRunnerVersion("", "1.0.0"),
+                120L);
         executor = Executors.newSingleThreadExecutor();
         when(session.getAttributes()).thenReturn(attributes);
         when(session.isOpen()).thenReturn(true);
@@ -286,15 +291,67 @@ class RunnerCallDispatcherTest {
         assertThat(recordedShells).isEmpty();
     }
 
+    // -------------------------------------------- version du runner (F-81 / SF-81-03)
+
+    @Test
+    void recordsTheVersionTheRunnerDeclares() throws Exception {
+        dispatcher.onFrame(identity, "ready", objectMapper.readTree(
+                "{\"type\":\"ready\",\"protocol\":1,\"capabilities\":[\"files\"],"
+                        + "\"runnerVersion\":\"0.0.1\"}"));
+
+        assertThat(recordedVersions)
+                .as("l'identite vient TOUJOURS de la session : une trame ne peut pas ecrire la "
+                        + "version sur le poste d'un autre")
+                .containsExactly(java.util.Map.entry(hostId, "0.0.1"));
+    }
+
+    @Test
+    void recordsNothingWhenTheRunnerDeclaresNoVersion() throws Exception {
+        // Runner anterieur : le champ est absent, ou n'est pas une chaine. Rien n'est ecrit.
+        dispatcher.onFrame(identity, "ready", objectMapper.readTree(
+                "{\"type\":\"ready\",\"protocol\":1,\"capabilities\":[\"files\"]}"));
+        dispatcher.onFrame(identity, "ready", objectMapper.readTree(
+                "{\"type\":\"ready\",\"protocol\":1,\"runnerVersion\":42}"));
+        dispatcher.onFrame(identity, "ready", objectMapper.readTree(
+                "{\"type\":\"ready\",\"protocol\":1,\"runnerVersion\":\"   \"}"));
+
+        assertThat(recordedVersions).isEmpty();
+    }
+
+    @Test
+    void anOutdatedRunnerIsNeverBlocked() throws Exception {
+        // HORS PERIMETRE ABSOLU de F-81 : forcer, refuser, bloquer. Le seuil de ce dispatcher est
+        // 1.0.0 ; ce runner declare 0.0.1, il est donc « en retard » — et il travaille exactement
+        // comme les autres. Un poste qui travaille ne s'arrete pas parce qu'une version a bouge.
+        withLocalRunner();
+        respondWith("{\"type\":\"tool_result\",\"id\":\"toolu_vieux\",\"ok\":true,"
+                + "\"content\":\"a.ts\",\"durationMs\":3}");
+        dispatcher.onFrame(identity, "ready", objectMapper.readTree(
+                "{\"type\":\"ready\",\"protocol\":1,\"capabilities\":[\"files\",\"bash\"],"
+                        + "\"runnerVersion\":\"0.0.1\"}"));
+
+        RunnerCallResult result = dispatcher.call(target, "toolu_vieux", "bash",
+                objectMapper.readTree("{\"command\":\"ls\"}"), 30_000L);
+
+        assertThat(result.ok())
+                .as("la seule consequence d'une version ancienne est une LIGNE DE JOURNAL : "
+                        + "l'appel part, le runner repond, et le resultat revient intact")
+                .isTrue();
+        assertThat(result.content()).isEqualTo("a.ts");
+    }
+
     @Test
     void aFailedRecordingNeverBreaksTheRunnerConnection() throws Exception {
         RunnerCallDispatcher fragile = new RunnerCallDispatcher(registry, objectMapper,
                 (id, shell) -> {
                     throw new IllegalStateException("base injoignable");
-                }, 120L);
+                },
+                (id, version) -> {
+                    throw new IllegalStateException("base injoignable");
+                }, new fr.claudegateway.runner.ServedRunnerVersion("", "1.0.0"), 120L);
         com.fasterxml.jackson.databind.JsonNode ready = objectMapper.readTree(
                 "{\"type\":\"ready\",\"protocol\":1,\"capabilities\":[\"files\",\"bash\"],"
-                        + "\"shell\":\"posix\"}");
+                        + "\"shell\":\"posix\",\"runnerVersion\":\"0.0.1\"}");
 
         // L'enregistrement est best-effort ; la liaison, elle, ne l'est pas.
         org.assertj.core.api.Assertions

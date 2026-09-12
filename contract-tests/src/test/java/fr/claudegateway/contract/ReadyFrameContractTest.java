@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import fr.claudegateway.runner.Console;
 import fr.claudegateway.runner.FrameSender;
 import fr.claudegateway.runner.RunnerIdentity;
+import fr.claudegateway.runner.ServedRunnerVersion;
 import fr.claudegateway.runner.ShellElection;
 import fr.claudegateway.runner.ToolDispatcher;
 import fr.claudegateway.runner.ToolOutcome;
@@ -88,6 +89,30 @@ class ReadyFrameContractTest {
     }
 
     @Test
+    @DisplayName("la version que le runner déclare est celle que la gateway retient")
+    void laVersionDeclareeEstCelleQueLaGatewayRetient() throws Exception {
+        java.util.concurrent.atomic.AtomicReference<String> retenue =
+                new java.util.concurrent.atomic.AtomicReference<>();
+
+        RunnerRegistry registry = mock(RunnerRegistry.class);
+        when(registry.findLocal(any())).thenReturn(Optional.of(new RunnerConnection(
+                HOST, IDENTITY.userId(), IDENTITY.tokenId(), "node-test", OffsetDateTime.now())));
+        RunnerCallDispatcher gateway = new RunnerCallDispatcher(registry,
+                ContractMappers.gateway(), (hostId, declared) -> {
+                }, (hostId, declared) -> retenue.set(declared),
+                new ServedRunnerVersion("", ""), 50L);
+
+        gateway.onFrame(IDENTITY, "ready",
+                ContractMappers.gateway().readTree(readyFrame(List.of("files"))));
+
+        assertThat(retenue.get())
+                .as("SI CE TEST TOMBE, le champ `runnerVersion` a dérivé : l'écran afficherait un "
+                        + "vide là où il doit répondre à « son runner est-il à jour ? » (F-81 / "
+                        + "SF-81-03)")
+                .isEqualTo("9.9.9");
+    }
+
+    @Test
     @DisplayName("un type de trame inconnu est ignoré, jamais une erreur")
     void unTypeInconnuEstIgnore() throws Exception {
         RunnerCallDispatcher gateway = dispatcher((hostId, declared) -> {
@@ -152,6 +177,8 @@ class ReadyFrameContractTest {
         when(registry.isConnected(any())).thenReturn(true);
         // `graceMs` au minimum : le seul appel qui va au bout de son délai est celui qu'on veut voir
         // expirer, et l'attente inutile n'apprend rien.
-        return new RunnerCallDispatcher(registry, ContractMappers.gateway(), recorder, 50L);
+        return new RunnerCallDispatcher(registry, ContractMappers.gateway(), recorder,
+                (hostId, declared) -> {
+                }, new ServedRunnerVersion("", ""), 50L);
     }
 }

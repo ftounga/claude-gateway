@@ -79,6 +79,8 @@ public class RunnerCallDispatcher {
     private final RunnerRegistry registry;
     private final ObjectMapper objectMapper;
     private final fr.claudegateway.runner.host.RunnerShellRecorder shellRecorder;
+    private final fr.claudegateway.runner.host.RunnerVersionRecorder versionRecorder;
+    private final fr.claudegateway.runner.ServedRunnerVersion servedVersion;
     private final long graceMs;
 
     private final Map<UUID, RunnerOutbound> outbound = new ConcurrentHashMap<>();
@@ -87,10 +89,14 @@ public class RunnerCallDispatcher {
 
     public RunnerCallDispatcher(RunnerRegistry registry, ObjectMapper objectMapper,
             fr.claudegateway.runner.host.RunnerShellRecorder shellRecorder,
+            fr.claudegateway.runner.host.RunnerVersionRecorder versionRecorder,
+            fr.claudegateway.runner.ServedRunnerVersion servedVersion,
             @Value("${app.runner.call.grace-ms:5000}") long graceMs) {
         this.registry = registry;
         this.objectMapper = objectMapper;
         this.shellRecorder = shellRecorder;
+        this.versionRecorder = versionRecorder;
+        this.servedVersion = servedVersion;
         this.graceMs = graceMs > 0 ? graceMs : DEFAULT_GRACE_MS;
     }
 
@@ -362,7 +368,45 @@ public class RunnerCallDispatcher {
         }
         capabilities.put(identity.hostId(), declared.isEmpty() ? DEFAULT_CAPABILITIES : declared);
         recordDeclaredShell(identity, frame);
+        recordDeclaredVersion(identity, frame);
         log.debug("Runner prêt (poste={}, capacités={})", identity.hostId(), declared);
+    }
+
+    /**
+     * Retient la <b>version</b> que le runner déclare (F-81 / SF-81-03) et dit, s'il y a lieu, qu'il
+     * est en retard.
+     *
+     * <p>La trame porte ce champ depuis F-38 ; la gateway n'en faisait rien, et « son runner est-il à
+     * jour ? » se devinait. Il est désormais persisté sur le poste — même raison que l'interpréteur :
+     * la trame arrive sur le pod qui porte la socket, alors que la vue d'ensemble est servie par
+     * celui qui répond à l'écran, et ce n'est pas forcément le même (SF-38-12).</p>
+     *
+     * <p><b>Rien n'est bloqué, jamais.</b> Un runner en retard s'appaire, se connecte et exécute ses
+     * outils exactement comme les autres. Une ligne de journal est écrite, et c'est tout : un poste
+     * qui travaille ne s'arrête pas parce qu'une version a bougé. Le niveau est {@code WARN} et non
+     * {@code ERROR} — cela doit attirer l'œil d'un exploitant, pas réveiller quelqu'un.</p>
+     *
+     * <p>Best-effort, comme le reste de {@code ready} : une écriture qui échoue ne doit pas couper une
+     * liaison runner par ailleurs saine.</p>
+     */
+    private void recordDeclaredVersion(RunnerIdentity identity, JsonNode frame) {
+        JsonNode node = frame.path("runnerVersion");
+        if (!node.isTextual() || node.asText().isBlank()) {
+            return; // Runner qui ne déclare rien : rien n'est écrit, rien n'est signalé.
+        }
+        String declaree = node.asText().trim();
+        try {
+            versionRecorder.recordRunnerVersion(identity.hostId(), declaree);
+        } catch (RuntimeException e) {
+            log.warn("Version de runner non enregistrée (poste={}) : {}", identity.hostId(),
+                    e.getMessage());
+        }
+        String reference = servedVersion.version();
+        if (fr.claudegateway.runner.host.RunnerVersions.isOlder(declaree, reference)) {
+            log.warn("Runner en retard (poste={}, version déclarée={}, version distribuée={}) — "
+                    + "rien n'est bloqué : le poste continue de travailler normalement.",
+                    identity.hostId(), declaree, reference);
+        }
     }
 
     /**

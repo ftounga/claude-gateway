@@ -861,6 +861,15 @@ export interface RunnerHostOverview {
   /** `posix`, `powershell` ou `cmd`, ou `null` si aucun runner ne l'a déclaré. */
   shell?: string | null;
   elevated?: boolean | null;
+  /**
+   * Version du binaire que le runner de ce poste **déclare** (F-81 / SF-81-03), ou `null` s'il n'a
+   * jamais rien déclaré.
+   *
+   * <p>Rendue pour que « son runner est-il à jour ? » ait une **réponse** au lieu d'être devinée.
+   * Et pour rien d'autre : aucun geste de l'écran n'en dépend, aucun runner n'est refusé sur sa
+   * valeur — un poste qui travaille ne s'arrête pas parce qu'une version a bougé.</p>
+   */
+  runnerVersion?: string | null;
   connected: boolean;
   /**
    * **État de mission** déclaré (F-60) — `ACTIVE`, `PENDING`, `CLOSED`. La gateway rend **tous**

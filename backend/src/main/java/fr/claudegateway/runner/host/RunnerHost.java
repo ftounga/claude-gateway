@@ -34,7 +34,7 @@ import lombok.Setter;
  *
  * <p>Tout ce que la gateway sait de la machine est <b>déclaré par le runner</b>, jamais deviné :
  * {@link #rootName} (le dernier segment de la racine seulement — l'arborescence de la machine n'a
- * rien à faire ici), {@link #os}, {@link #shell}, {@link #elevated}.</p>
+ * rien à faire ici), {@link #os}, {@link #shell}, {@link #elevated}, {@link #runnerVersion}.</p>
  */
 @Entity
 @Table(name = "runner_hosts")
@@ -47,6 +47,9 @@ public class RunnerHost {
 
     /** Longueur maximale du nom lisible d'un poste. */
     public static final int MAX_NAME_LENGTH = 100;
+
+    /** Longueur maximale de la version déclarée par le runner (F-81 / SF-81-03). */
+    public static final int MAX_RUNNER_VERSION_LENGTH = 64;
 
     @Id
     @GeneratedValue
@@ -90,6 +93,19 @@ public class RunnerHost {
      */
     @Column(name = "elevated")
     private Boolean elevated;
+
+    /**
+     * Version du binaire du runner, telle qu'il la <b>déclare</b> dans sa trame {@code ready}
+     * (F-81 / SF-81-03). Nulle tant qu'aucun runner ne s'est connecté, ou si le runner est antérieur
+     * à la version qui porte l'information dans son manifeste.
+     *
+     * <p>Elle sert à <b>répondre</b> à « son runner est-il à jour ? » au lieu de le deviner, et à
+     * écrire une ligne de journal quand il est en retard. Elle ne sert à <b>rien d'autre</b> : la
+     * gateway ne refuse aucun runner sur cette valeur et n'en dégrade aucun. Un poste qui travaille
+     * ne s'arrête pas parce qu'une version a bougé.</p>
+     */
+    @Column(name = "runner_version", length = MAX_RUNNER_VERSION_LENGTH)
+    private String runnerVersion;
 
     /**
      * <b>État de mission</b> déclaré par le propriétaire (F-60 / SF-60-01) : où en est le travail

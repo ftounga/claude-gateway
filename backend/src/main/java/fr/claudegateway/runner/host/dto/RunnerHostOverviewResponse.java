@@ -32,6 +32,11 @@ import fr.claudegateway.terminals.dto.TerminalPreview;
  * omission : un identifiant constant ressemblerait à une entité et finirait envoyé à un endpoint qui
  * répondrait 404. Nul, il est inexploitable par construction.</p>
  *
+ * @param runnerVersion  version du binaire que le runner de ce poste <b>déclare</b> (F-81 /
+ *                       SF-81-03), ou {@code null} s'il n'a jamais rien déclaré. Rendue pour que
+ *                       « son runner est-il à jour ? » ait une réponse au lieu d'être devinée — et
+ *                       pour <b>rien d'autre</b> : aucun écran n'en tire un refus, aucun geste n'en
+ *                       dépend, et la gateway ne bloque aucun runner sur sa valeur
  * @param virtual        vrai pour le poste « Hébergé » : ni appairage, ni runner, ni suppression
  * @param connected      vrai si un runner de ce poste est joignable maintenant, tous replicas confondus
  * @param missionStatus  état de mission <b>déclaré</b> par le propriétaire, indépendant de {@code connected}
@@ -58,6 +63,7 @@ public record RunnerHostOverviewResponse(
         String os,
         String shell,
         Boolean elevated,
+        String runnerVersion,
         boolean virtual,
         boolean connected,
         HostMissionStatus missionStatus,
@@ -79,7 +85,7 @@ public record RunnerHostOverviewResponse(
      * Le poste <b>virtuel</b> « Hébergé » (F-71 / SF-71-01).
      *
      * <p>Tout ce qui décrit une machine est nul : pas de racine, pas de système, pas
-     * d'interpréteur, jamais vu, jamais créé. {@code missionStatus} l'est aussi — une mission se
+     * d'interpréteur, pas de version de runner, jamais vu, jamais créé. {@code missionStatus} l'est aussi — une mission se
      * déclare sur un client, et il n'y a ici ni client ni machine.</p>
      *
      * <p>{@code activeProjects} et {@code lastActivityAt} restent à zéro et à nul : « ce qui
@@ -92,7 +98,7 @@ public record RunnerHostOverviewResponse(
      */
     public static RunnerHostOverviewResponse hosted(List<HostProjectSummary> projects,
             int liveTerminals) {
-        return new RunnerHostOverviewResponse(null, HOSTED_NAME, null, null, null, null, true,
+        return new RunnerHostOverviewResponse(null, HOSTED_NAME, null, null, null, null, null, true,
                 false, null, null, null, null, 0, liveTerminals, null, false, null, projects);
     }
 
