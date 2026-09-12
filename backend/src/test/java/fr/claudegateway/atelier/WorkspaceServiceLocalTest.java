@@ -73,7 +73,11 @@ class WorkspaceServiceLocalTest {
         // La porte de confirmation est ARMÉE à la création (F-73 / SF-73-02, ADR-019). Ce test
         // affirmait l'inverse depuis SF-47-04 : ce défaut-là avait été pris quand le confinement
         // du runner paraissait exister — il n'existait pas pour bash, il est retiré (SF-73-01).
-        assertThat(created.isAgentAskBeforeBash()).isTrue();
+        // SF-73-04 : la porte est DÉSARMÉE par défaut, à titre temporaire (décision du PO du
+        // 2026-09-12). Armée, elle rendait toute première commande d'un projet neuf
+        // impossible : l'invite d'autorisation ne s'affiche pas, et le tour expirait au bout
+        // de 120 s. Ce test rebascule le jour où l'affichage est réparé et la porte réarmée.
+        assertThat(created.isAgentAskBeforeBash()).isFalse();
         // Rien n'est alloué de ce dont on ne se servira jamais (D4).
         verify(storage, never()).putFile(any(), any(), any());
     }
@@ -126,13 +130,17 @@ class WorkspaceServiceLocalTest {
     }
 
     @Test
-    void aBareWorkspaceCarriesTheArmedDefaultToo() {
+    void aBareWorkspaceCarriesTheUnarmedDefaultToo() {
         // Le défaut est porté par l'ENTITÉ, pas seulement par createLocal : les projets créés
         // depuis une archive ou un dépôt Git héritent du même régime (F-73, arbitrage A5). La
-        // colonne porte le même défaut (migration 073) pour tout INSERT qui l'omettrait.
-        assertThat(new Workspace().isAgentAskBeforeBash()).isTrue();
+        // colonne porte le même défaut (migration 077) pour tout INSERT qui l'omettrait.
+        // SF-73-04 : la porte est DÉSARMÉE par défaut, à titre temporaire (décision du PO du
+        // 2026-09-12). Armée, elle rendait toute première commande d'un projet neuf
+        // impossible : l'invite d'autorisation ne s'affiche pas, et le tour expirait au bout
+        // de 120 s. Ce test rebascule le jour où l'affichage est réparé et la porte réarmée.
+        assertThat(new Workspace().isAgentAskBeforeBash()).isFalse();
         assertThat(Workspace.builder().userId(userId).name("x").build().isAgentAskBeforeBash())
-                .isTrue();
+                .isFalse();
     }
 
     @Test

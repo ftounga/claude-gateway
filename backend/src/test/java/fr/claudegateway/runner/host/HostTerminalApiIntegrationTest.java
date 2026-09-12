@@ -109,8 +109,9 @@ class HostTerminalApiIntegrationTest {
                 .andExpect(jsonPath("$.projectPath").value(""))
                 .andExpect(jsonPath("$.hostTerminal").value(true))
                 .andExpect(jsonPath("$.executionTarget").value("RUNNER"))
-                // P4 : la porte de confirmation de F-73, armée ici comme partout.
-                .andExpect(jsonPath("$.askBeforeBash").value(true));
+                // P4 : la porte de confirmation de F-73, ici comme partout — DÉSARMÉE par défaut
+                // depuis SF-73-04, à titre temporaire (décision du PO du 2026-09-12).
+                .andExpect(jsonPath("$.askBeforeBash").value(false));
     }
 
     @Test

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      SF-73-04 — La porte de confirmation redevient DÉSARMÉE par défaut. Décision du PO le
+      2026-09-12, prise devant un défaut constaté en production.
+
+      SF-73-02 (migration 073) avait armé la porte à la création, et le raisonnement tenait : le
+      confinement retiré, la confirmation devenait ce qui s'interpose. Mais il supposait que l'invite
+      S'AFFICHE — et elle ne s'affiche pas. Deux tours consécutifs le 2026-09-12 : « Autorisation
+      demandée », puis « Aucune décision dans le délai : commande refusée », deux fois, 247 s pour
+      rien. Toute première commande d'un projet neuf attend deux minutes puis échoue.
+
+      CE QUE CE RETOUR ARRIÈRE COÛTE, et que le PO assume : depuis F-73 le confinement n'existe plus.
+      Porte désarmée, un projet neuf exécute donc des commandes sur la machine sans confinement ET
+      sans confirmation. Restent le journal d'audit, le coupe-circuit, et la déclaration de portée au
+      démarrage du runner.
+
+      Ce n'est ni la fin de F-73 ni celle de l'ADR-019 : c'est une mesure d'attente, explicitement
+      temporaire. Le défaut d'affichage (famille F-47) doit être traité, et la porte réarmée ensuite.
+
+      Comme en 073, seul le DÉFAUT DE COLONNE change : AUCUN `UPDATE`. Les projets existants gardent
+      exactement le réglage qu'ils portent — y compris ceux créés armés depuis le 2026-09-12. Rien ne
+      se désarme dans le dos de personne.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="077-workspaces-ask-before-bash-unarmed-postgresql" author="claude-gateway" dbms="postgresql">
+        <addDefaultValue tableName="workspaces" columnName="agent_ask_before_bash"
+                         columnDataType="boolean" defaultValueBoolean="false"/>
+        <rollback>
+            <addDefaultValue tableName="workspaces" columnName="agent_ask_before_bash"
+                             columnDataType="boolean" defaultValueBoolean="true"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="077-workspaces-ask-before-bash-unarmed-h2" author="claude-gateway" dbms="h2">
+        <addDefaultValue tableName="workspaces" columnName="agent_ask_before_bash"
+                         columnDataType="boolean" defaultValueBoolean="false"/>
+        <rollback>
+            <addDefaultValue tableName="workspaces" columnName="agent_ask_before_bash"
+                             columnDataType="boolean" defaultValueBoolean="true"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

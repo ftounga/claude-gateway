@@ -247,8 +247,10 @@ class RunnerGuardrailsApiIntegrationTest {
 
     @Test
     void aFreshLocalProjectAsksBeforeRunningAnything() throws Exception {
-        // F-73 / SF-73-02 (ADR-019) : la porte redevient armée à la création. C'est ce qui remplace
-        // le confinement retiré par SF-73-01 — lequel n'existait déjà pas pour bash.
+        // SF-73-04 : la porte est DÉSARMÉE à la création, à titre TEMPORAIRE (décision du PO du
+        // 2026-09-12). SF-73-02 l'avait armée quelques heures plus tôt pour remplacer le confinement
+        // retiré par SF-73-01 — mais le dispositif suppose que l'invite s'affiche, et elle ne
+        // s'affiche pas : deux tours en production ont expiré au bout de 120 s sans décision.
         mockMvc.perform(post("/api/workspaces/local")
                         .contextPath("/api")
                         .header("Authorization", "Bearer " + ownerToken)
@@ -256,7 +258,10 @@ class RunnerGuardrailsApiIntegrationTest {
                         .content("{\"name\":\"Projet neuf\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.executionTarget").value("RUNNER"))
-                .andExpect(jsonPath("$.askBeforeBash").value(true));
+                // SF-73-04 : DÉSARMÉE par défaut, à titre temporaire (décision du PO du
+                // 2026-09-12) — l'invite d'autorisation ne s'affiche pas, et armée la
+                // porte rendait toute première commande d'un projet neuf impossible.
+                .andExpect(jsonPath("$.askBeforeBash").value(false));
     }
 
     @Test

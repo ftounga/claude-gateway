@@ -157,14 +157,15 @@ public class WorkspaceService {
                 .name(cleaned)
                 .source(WorkspaceSource.LOCAL)
                 .executionTarget(WorkspaceExecutionTarget.RUNNER)
-                // La porte de confirmation est ARMÉE PAR DÉFAUT (F-73 / SF-73-02, décision du PO
-                // du 2026-09-12 qui retranche OQ-14 — ADR-019). Elle annule le défaut de SF-47-04,
-                // pris quand le confinement du runner paraissait exister : il n'existait pas pour
-                // bash, et il est retiré depuis SF-73-01. La porte reste réglable projet par projet
-                // depuis l'en-tête du terminal ; le journal d'audit et le coupe-circuit, eux, ne se
-                // désactivent pas. Posé explicitement ici, même si l'entité porte le même défaut :
-                // c'est le chemin de création du mode runner, celui que cette décision vise.
-                .agentAskBeforeBash(true)
+                // La porte de confirmation est DÉSARMÉE par défaut (SF-73-04), à titre TEMPORAIRE
+                // et sur décision du PO du 2026-09-12. SF-73-02 l'avait armée quelques heures plus
+                // tôt ; le raisonnement tenait, mais il supposait que l'invite s'affiche — et elle
+                // ne s'affiche pas (deux tours en production : « Aucune décision dans le délai »,
+                // 247 s pour rien). Armée, la porte rendait toute première commande d'un projet
+                // neuf impossible. Posé explicitement ici, même si l'entité porte le même défaut :
+                // c'est le chemin de création du mode runner, celui que la décision vise.
+                // Le journal d'audit et le coupe-circuit, eux, ne se désactivent pas.
+                .agentAskBeforeBash(false)
                 .build()));
     }
 

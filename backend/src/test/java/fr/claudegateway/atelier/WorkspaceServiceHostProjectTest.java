@@ -100,7 +100,11 @@ class WorkspaceServiceHostProjectTest {
         assertThat(created.executionTargetOrDefault()).isEqualTo(WorkspaceExecutionTarget.RUNNER);
         // La porte de confirmation reste armée à la création (F-73 / SF-73-02, ADR-019) : un
         // quatrième chemin de création qui l'oublierait désarmerait la porte sans que ça se voie.
-        assertThat(created.isAgentAskBeforeBash()).isTrue();
+        // SF-73-04 : la porte est DÉSARMÉE par défaut, à titre temporaire (décision du PO du
+        // 2026-09-12). Armée, elle rendait toute première commande d'un projet neuf
+        // impossible : l'invite d'autorisation ne s'affiche pas, et le tour expirait au bout
+        // de 120 s. Ce test rebascule le jour où l'affichage est réparé et la porte réarmée.
+        assertThat(created.isAgentAskBeforeBash()).isFalse();
         // Un projet qui vit sur la machine n'alloue rien dans le stockage de la gateway.
         verify(storage, never()).putFile(any(), any(), any());
     }
