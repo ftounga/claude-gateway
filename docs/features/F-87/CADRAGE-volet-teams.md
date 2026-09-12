@@ -278,22 +278,36 @@ et F-91 sont les deux morceaux lourds, et ils viennent quand le reste fonctionne
 
 ---
 
-## 9. Les décisions qui restent au PO
+## 9. Les décisions, tranchées
 
-1. **Ce qu'on dit à l'utilisateur** avant de traiter les paroles de tiers, et en quels termes.
-   *Recommandation* : une fois par conversation ou réunion, avant le premier traitement, en nommant ce
-   qui sera lu et où cela ira — la doctrine de la déclaration de portée du runner (F-57).
-2. **La rétention** des textes et images remontés : avec le compte rendu, supprimés avec lui ?
-   *Recommandation* : oui. Un cache de conversations de clients est un entrepôt que personne n'a
-   demandé.
-3. **Le poids du paquet runner.** Playwright et `ffmpeg` sont lourds, le modèle de transcription
-   aussi. *Recommandation* : téléchargés **à la demande**, au premier usage, jamais embarqués — le
-   paquet autonome fait déjà 40 Mo.
-4. **Jusqu'où remonter.** « La dernière semaine » est facile à dire et coûteux à obtenir : c'est le
-   défilement qui décide du temps et du risque de casse. *Recommandation* : un plafond dit, et
-   négociable dans la demande.
+**Tranchées le 2026-09-12 par le PO** : *« s'il y a d'autres cadrages, je suis ta reco. Et prends
+toujours l'arbitrage qui donne la solution la plus complète. »*
 
----
+**D1 — Ce qu'on dit avant de traiter les paroles de tiers.** Une annonce **une fois par réunion ou
+par conversation**, avant le premier traitement, qui **nomme ce qui sera lu et où cela ira**. C'est la
+doctrine de la déclaration de portée du runner (F-57), transposée. Pas à chaque tour : une annonce
+répétée cesse d'être lue.
+
+**D2 — La rétention.** Les textes et images remontés vivent **avec le compte rendu, et sont
+supprimés avec lui**. Aucun cache de conversations de clients : ce serait un entrepôt de données
+sensibles que personne n'a demandé, et qu'il faudrait un jour expliquer.
+
+**D3 — Le poids du paquet runner.** Le pilotage du navigateur, `ffmpeg` et le modèle de transcription
+sont **téléchargés au premier usage**, jamais embarqués. Le paquet autonome fait déjà 40 Mo, et la
+plupart des utilisateurs n'ouvriront jamais Teams. Le téléchargement **se voit** et **se dit** — c'est
+une minute d'attente la première fois, pas une panne.
+
+**D4 — Jusqu'où remonter.** Un **plafond annoncé** (par défaut : une semaine, ou un nombre de
+messages), **négociable dans la demande** — « remonte jusqu'au 1er septembre » doit marcher. Le
+plafond existe parce que c'est le défilement qui décide du temps et du risque de casse ; il est
+**dit**, jamais silencieux, et le résultat porte toujours la fenêtre réellement lue.
+
+**D5 — Le droit.** Une **option mensuelle**, sur le modèle de F-40 : elle **ouvre l'accès, elle
+n'ajoute pas de jetons** — la consommation tombe sur le quota existant. Un essai se donne par **code
+d'accès** (F-62), le mécanisme existe déjà. **Le MONTANT reste À CONFIRMER PAR LE PO** : aucun agent
+ne fixe un prix, et cette règle-là ne se délègue pas. Ordre de grandeur mesuré pour éclairer la
+décision — le coût fournisseur d'un usage intensif est d'**une dizaine de dollars par mois** ; c'est
+un plancher, pas un prix.
 
 ## 10. Hors périmètre
 
