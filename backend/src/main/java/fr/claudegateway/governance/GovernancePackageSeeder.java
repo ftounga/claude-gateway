@@ -59,7 +59,8 @@ public class GovernancePackageSeeder {
 
     private static final String NAME = "Le savoir durable";
 
-    private static final String SUMMARY = "Le travail est jetable, le savoir est durable : des "
+    private static final String SUMMARY = "Le travail est jetable, le savoir est durable : une "
+            + "carte à la racine du poste où la connaissance s'accumule d'un projet à l'autre, des "
             + "livrables qui ne disent pas quel outil les a écrits, la promotion de tout élément "
             + "durable vers la carte du projet, et un juge de fin de tour qui alerte plutôt que de "
             + "laisser passer.";
@@ -81,8 +82,26 @@ public class GovernancePackageSeeder {
     private record SeededFile(String resource, String path, GovernanceFileKind kind) {
     }
 
-    /** Les fichiers déposés, dans l'ordre où l'écran les annoncera. */
+    /**
+     * Les fichiers déposés, dans l'ordre où l'écran les annoncera.
+     *
+     * <p><b>La carte d'abord</b> (F-92 / SF-92-01) : ce sont les seuls qui se posent à la
+     * <b>racine du poste</b>, et ce sont eux qui font exister la destination du savoir. Les annoncer
+     * en tête dit la bonne chose à qui lit l'annonce avant d'activer — le reste est l'outillage d'un
+     * projet, la carte est ce qui lui survit.</p>
+     *
+     * <p>Les chemins de carte sont <b>plats</b> : la carte, ce sont les fichiers <b>de la racine</b>,
+     * quelle que soit cette racine (« dev » chez un poste, « infra » chez un autre). Aucun dossier
+     * n'est créé — un dossier serait pris pour un projet, et c'est précisément la confusion que cette
+     * disposition évite.</p>
+     */
     private static final List<SeededFile> FILES = List.of(
+            new SeededFile("carte/README.md", "README.md", GovernanceFileKind.MAP),
+            new SeededFile("carte/acces.md", "acces.md", GovernanceFileKind.MAP),
+            new SeededFile("carte/reseau.md", "reseau.md", GovernanceFileKind.MAP),
+            new SeededFile("carte/plateformes.md", "plateformes.md", GovernanceFileKind.MAP),
+            new SeededFile("carte/donnees.md", "donnees.md", GovernanceFileKind.MAP),
+            new SeededFile("carte/exploitation.md", "exploitation.md", GovernanceFileKind.MAP),
             new SeededFile("GOUVERNANCE.md", "GOUVERNANCE.md", GovernanceFileKind.TEMPLATE),
             new SeededFile("PLAN-ACTION.md", "PLAN-ACTION.md", GovernanceFileKind.TEMPLATE),
             new SeededFile("STATE.md", "STATE.md", GovernanceFileKind.TEMPLATE),

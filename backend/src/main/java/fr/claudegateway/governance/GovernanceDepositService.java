@@ -18,6 +18,7 @@ import fr.claudegateway.governance.dto.GovernanceDepositEntry;
 import fr.claudegateway.governance.dto.GovernanceDepositPlan;
 import fr.claudegateway.governance.dto.GovernanceFileView;
 import fr.claudegateway.governance.dto.GovernanceProjectDepositPlan;
+import fr.claudegateway.governance.dto.GovernanceRootDepositPlan;
 
 /**
  * L'annonce, puis le dépôt (F-51 / SF-51-03, regrainé par F-75 / SF-75-01).
@@ -27,10 +28,21 @@ import fr.claudegateway.governance.dto.GovernanceProjectDepositPlan;
  * feature — un paquet écrit sur la machine de l'utilisateur, l'écran doit donc pouvoir le dire avant.
  * L'annonce ne modifie rien.</p>
  *
- * <p><b>Un poste, tous ses dossiers.</b> L'activation vit sur le poste depuis F-75 ; les
- * <b>artefacts</b>, eux, restent par projet — un {@code STATE.md} est le journal d'un dossier, pas
+ * <p><b>Un poste, tous ses dossiers — et sa racine.</b> L'activation vit sur le poste depuis F-75 ;
+ * les <b>artefacts</b>, eux, restent par projet — un {@code STATE.md} est le journal d'un dossier, pas
  * d'une machine. Le dépôt parcourt donc tous les dossiers du poste, et un dossier ajouté demain
  * recevra les mêmes fichiers sans que personne ne recoche quoi que ce soit.</p>
+ *
+ * <p><b>Et la carte, elle, se pose une seule fois</b> (F-92 / SF-92-01). Les fichiers de genre
+ * {@link GovernanceFileKind#MAP} n'ont rien à faire dans un projet : ils vivent à la <b>racine du
+ * poste</b>, à côté des dossiers de projets, et c'est ce qui leur permet d'accumuler ce que chaque
+ * projet fait apparaître. Le genre décide donc du point de chute, et un même dépôt écrit à deux
+ * endroits de nature différente.</p>
+ *
+ * <p><b>La carte n'est jamais écrasée, et le doute n'écrit pas.</b> À la racine, la présence d'un
+ * fichier est établie <b>par une lecture de ce fichier</b> ({@link GovernanceHostFiles}) et non par
+ * l'arborescence : à la racine d'un poste réel, celle-ci est récursive et tronquée (SF-38-21), et
+ * conclure « absent » d'une liste incomplète ferait écraser la carte d'un client.</p>
  *
  * <p><b>Le dépôt ne détruit rien.</b> {@link #deposit} crée ce qui manque et <b>laisse tel quel</b>
  * tout fichier déjà présent — contenu différent compris. C'est la promesse d'idempotence de la
@@ -50,14 +62,16 @@ public class GovernanceDepositService {
     private final GovernanceActivationRepository activations;
     private final GovernancePackageService packageService;
     private final GovernanceProjectFiles projectFiles;
+    private final GovernanceHostFiles hostFiles;
     private final GovernanceHostScope hostScope;
 
     public GovernanceDepositService(GovernanceActivationRepository activations,
             GovernancePackageService packageService, GovernanceProjectFiles projectFiles,
-            GovernanceHostScope hostScope) {
+            GovernanceHostFiles hostFiles, GovernanceHostScope hostScope) {
         this.activations = activations;
         this.packageService = packageService;
         this.projectFiles = projectFiles;
+        this.hostFiles = hostFiles;
         this.hostScope = hostScope;
     }
 
@@ -70,14 +84,26 @@ public class GovernanceDepositService {
     public GovernanceDepositPlan plan(UUID userId, GovernanceHostRef host, UUID packageId) {
         GovernancePackage pkg = packageService.requirePublished(packageId);
         List<GovernancePackageFile> files = packageService.filesOf(pkg.getId());
+        List<GovernancePackageFile> mapFiles = filesOfKind(files, GovernanceFileKind.MAP);
+        List<GovernancePackageFile> projectFilesOfPackage = projectScopedFiles(files);
 
         List<GovernanceProjectDepositPlan> projects = new ArrayList<>();
         for (Workspace workspace : hostScope.projectsOf(userId, host)) {
             Optional<Set<String>> present = projectFiles.listPaths(userId, workspace);
             projects.add(new GovernanceProjectDepositPlan(workspace.getId(), workspace.getName(),
-                    workspace.getProjectPath(), present.isPresent(), entriesFor(files, present)));
+                    workspace.getProjectPath(), present.isPresent(),
+                    entriesFor(projectFilesOfPackage, present)));
         }
-        return describe(pkg, files, userId, host, projects);
+        return describe(pkg, files, userId, host, planRoot(userId, host, mapFiles), projects);
+    }
+
+    /**
+     * Ce que la carte deviendrait, <b>sans rien écrire</b>. Une lecture par fichier de carte, et
+     * jamais de conclusion tirée d'une arborescence tronquée.
+     */
+    private GovernanceRootDepositPlan planRoot(UUID userId, GovernanceHostRef host,
+            List<GovernancePackageFile> mapFiles) {
+        return rootPlan(userId, host, mapFiles, false).plan();
     }
 
     /**
@@ -98,10 +124,17 @@ public class GovernanceDepositService {
         GovernancePackage pkg = packageService.requirePublished(packageId);
         List<GovernancePackageFile> files = packageService.filesOf(pkg.getId());
 
+        List<GovernancePackageFile> mapFiles = filesOfKind(files, GovernanceFileKind.MAP);
+        List<GovernancePackageFile> projectFilesOfPackage = projectScopedFiles(files);
+
+        // La carte d'abord : c'est la destination du savoir, et un poste qui ne l'a pas encore n'a
+        // nulle part où promouvoir (F-92). Un poste sans racine — « Hébergé » — ne retient rien.
+        RootDeposit root = rootPlan(userId, host, mapFiles, true);
+
         List<GovernanceProjectDepositPlan> projects = new ArrayList<>();
-        boolean everythingInPlace = true;
+        boolean everythingInPlace = root.complete();
         for (Workspace workspace : hostScope.projectsOf(userId, host)) {
-            ProjectDeposit done = depositOn(userId, workspace, files);
+            ProjectDeposit done = depositOn(userId, workspace, projectFilesOfPackage);
             everythingInPlace &= done.complete();
             projects.add(new GovernanceProjectDepositPlan(workspace.getId(), workspace.getName(),
                     workspace.getProjectPath(), done.readable(), done.entries()));
@@ -110,7 +143,7 @@ public class GovernanceDepositService {
         // Un poste sans dossier passe APPLIED : il n'y a rien à attendre, et le premier dossier
         // ajouté demain recevra les fichiers à sa création.
         applyStatus(activation, pkg, everythingInPlace);
-        return describe(pkg, files, userId, host, projects);
+        return describe(pkg, files, userId, host, root.plan(), projects);
     }
 
     /**
@@ -131,8 +164,11 @@ public class GovernanceDepositService {
                 try {
                     GovernancePackage pkg = packageService.requirePublished(
                             activation.getPackageId());
+                    // Un dossier neuf reçoit les gabarits et les skills. Pas la carte : elle vit à
+                    // la racine du poste et s'y trouve déjà — la recopier dans chaque projet serait
+                    // exactement la duplication que F-92 supprime.
                     ProjectDeposit done = depositOn(userId, workspace,
-                            packageService.filesOf(pkg.getId()));
+                            projectScopedFiles(packageService.filesOf(pkg.getId())));
                     if (!done.complete()) {
                         // Le nouveau dossier n'a pas tout reçu : l'activation redevient en attente,
                         // et le geste « appliquer » reste offert. Dire « appliqué » alors qu'un
@@ -152,6 +188,100 @@ public class GovernanceDepositService {
     }
 
     // -------------------------------------------------------------- internes
+
+    /** Ce qu'un dépôt a donné à la racine du poste : le plan rendu, et s'il ne reste rien à faire. */
+    private record RootDeposit(GovernanceRootDepositPlan plan, boolean complete) {
+    }
+
+    /**
+     * Ce que la carte deviendra (ou vient de devenir) à la racine du poste.
+     *
+     * @param write vrai pour <b>déposer</b> ; faux pour se contenter d'<b>annoncer</b>
+     */
+    private RootDeposit rootPlan(UUID userId, GovernanceHostRef host,
+            List<GovernancePackageFile> mapFiles, boolean write) {
+        if (mapFiles.isEmpty()) {
+            // Ce paquet n'apporte pas de carte : il n'y a rien à dire, et rien à attendre.
+            return new RootDeposit(
+                    new GovernanceRootDepositPlan(hostFiles.supports(host), true, null, List.of()),
+                    true);
+        }
+        if (!hostFiles.supports(host)) {
+            // Le poste « Hébergé » n'est pas une machine : pas de racine, donc pas de carte. Ce
+            // n'est PAS un échec de dépôt — le retenir en attente laisserait l'activation
+            // éternellement « en attente » d'une racine qui n'existera jamais.
+            return new RootDeposit(new GovernanceRootDepositPlan(false, false,
+                    "Ce poste n'est pas une machine : la carte vit à la racine d'un poste réel. "
+                            + "Connectez une machine pour qu'elle ait une carte.",
+                    unknownEntries(mapFiles)), true);
+        }
+        List<GovernanceDepositEntry> done = new ArrayList<>(mapFiles.size());
+        boolean complete = true;
+        boolean readable = false;
+        for (GovernancePackageFile file : mapFiles) {
+            // Re-normalisé au moment d'agir : un chemin stocké avant un durcissement de la règle ne
+            // doit pas pouvoir sortir de la racine.
+            String path = GovernancePath.normalizeOrNull(file.getPath());
+            if (path == null) {
+                complete = false;
+                continue;
+            }
+            GovernanceHostFiles.Presence presence = hostFiles.presence(userId, host, path);
+            switch (presence) {
+                case PRESENT -> {
+                    readable = true;
+                    done.add(entry(path, file, GovernanceDepositAction.KEEP));
+                }
+                case ABSENT -> {
+                    readable = true;
+                    if (write) {
+                        boolean written = hostFiles.write(userId, host, path, file.getContent());
+                        done.add(entry(path, file, written ? GovernanceDepositAction.CREATE
+                                : GovernanceDepositAction.UNKNOWN));
+                        complete &= written;
+                    } else {
+                        done.add(entry(path, file, GovernanceDepositAction.CREATE));
+                        complete = false; // Annoncer n'écrit pas : il reste quelque chose à faire.
+                    }
+                }
+                // Machine éteinte, droits refusés, chemin occupé par un dossier : on NE SAIT PAS.
+                // Et on n'écrit pas — écrire ici signifierait écraser la carte d'un client.
+                default -> {
+                    done.add(entry(path, file, GovernanceDepositAction.UNKNOWN));
+                    complete = false;
+                }
+            }
+        }
+        String message = readable ? null
+                : "La racine de ce poste n'a pas pu être lue : lancez le runner sur la machine, "
+                        + "puis reprenez avec « Appliquer ». Rien n'a été écrit.";
+        return new RootDeposit(
+                new GovernanceRootDepositPlan(true, readable, message, List.copyOf(done)), complete);
+    }
+
+    /** Les fichiers du paquet d'un genre donné, dans l'ordre du paquet. */
+    private static List<GovernancePackageFile> filesOfKind(List<GovernancePackageFile> files,
+            GovernanceFileKind kind) {
+        return files.stream().filter(file -> file.getKind() == kind).toList();
+    }
+
+    /**
+     * Les fichiers qui se posent <b>dans un projet</b> : tout sauf la carte.
+     *
+     * <p>Écrit en négatif à dessein : un genre ajouté demain atterrira dans les projets — le
+     * comportement historique — plutôt que de disparaître silencieusement du dépôt.</p>
+     */
+    private static List<GovernancePackageFile> projectScopedFiles(
+            List<GovernancePackageFile> files) {
+        return files.stream().filter(file -> file.getKind() != GovernanceFileKind.MAP).toList();
+    }
+
+    /** Toutes les entrées en « on ne sait pas » : rien n'a été lu, rien ne sera écrit. */
+    private static List<GovernanceDepositEntry> unknownEntries(List<GovernancePackageFile> files) {
+        return files.stream()
+                .map(file -> entry(file.getPath(), file, GovernanceDepositAction.UNKNOWN))
+                .toList();
+    }
 
     /** Ce qu'un dépôt a donné dans un dossier. */
     private record ProjectDeposit(boolean readable, boolean complete,
@@ -222,12 +352,13 @@ public class GovernanceDepositService {
     }
 
     private GovernanceDepositPlan describe(GovernancePackage pkg, List<GovernancePackageFile> files,
-            UUID userId, GovernanceHostRef host, List<GovernanceProjectDepositPlan> projects) {
+            UUID userId, GovernanceHostRef host, GovernanceRootDepositPlan root,
+            List<GovernanceProjectDepositPlan> projects) {
         List<GovernanceFileView> brought = files.stream()
                 .map(file -> new GovernanceFileView(file.getPath(), file.getKind().name()))
                 .toList();
         return new GovernanceDepositPlan(pkg.getId(), pkg.getSlug(), pkg.getVersion(), host.ref(),
-                hostScope.nameOf(userId, host), List.copyOf(brought), List.copyOf(projects),
+                hostScope.nameOf(userId, host), List.copyOf(brought), root, List.copyOf(projects),
                 pkg.getRules() != null, pkg.controlIdList().size());
     }
 

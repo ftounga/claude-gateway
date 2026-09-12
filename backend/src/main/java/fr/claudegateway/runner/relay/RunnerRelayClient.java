@@ -116,6 +116,11 @@ public class RunnerRelayClient {
      * ignoré — c'est déjà un chemin de rattrapage.
      */
     private void cancelQuietly(RemoteRunnerNode node, UUID workspaceId) {
+        if (workspaceId == null) {
+            // Appel de POSTE : il n'appartient à aucun projet, donc rien à annuler par projet. Le
+            // déréférencer ici transformait un simple délai dépassé en NullPointerException.
+            return;
+        }
         ObjectNode payload = objectMapper.createObjectNode();
         // L'annulation vise le PROJET : plusieurs projets d'un même poste peuvent tourner en
         // parallèle, et l'appel abandonné n'est celui que de l'un d'eux (F-48 / SF-48-01).
@@ -128,7 +133,13 @@ public class RunnerRelayClient {
             long timeoutMs) {
         ObjectNode node = objectMapper.createObjectNode();
         node.put("hostId", target.hostId().toString());
-        node.put("workspaceId", target.workspaceId().toString());
+        if (target.workspaceId() != null) {
+            // FACULTATIF : un appel de POSTE n'a pas de projet — le parcours des dossiers d'une
+            // racine (F-71) et le dépôt de la carte (F-92) en sont. Le déréférencer sans garde
+            // faisait échouer ces appels par NullPointerException dès que le runner vivait sur un
+            // autre pod, c'est-à-dire de façon intermittente et inexplicable.
+            node.put("workspaceId", target.workspaceId().toString());
+        }
         node.put("project", target.safeProjectPath());
         node.put("callId", callId);
         node.put("tool", tool);

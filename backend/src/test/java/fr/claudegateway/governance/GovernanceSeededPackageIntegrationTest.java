@@ -70,8 +70,15 @@ class GovernanceSeededPackageIntegrationTest {
                         .as("contrôle « %s » inconnu du registre", control.id()).isTrue());
 
         assertThat(pkg.files()).extracting(file -> file.path())
-                .containsExactly("GOUVERNANCE.md", "PLAN-ACTION.md", "STATE.md",
-                        ".claude/skills/explique.md", ".claude/skills/plan-dashboard.md");
+                .containsExactly("README.md", "acces.md", "reseau.md", "plateformes.md",
+                        "donnees.md", "exploitation.md", "GOUVERNANCE.md", "PLAN-ACTION.md",
+                        "STATE.md", ".claude/skills/explique.md", ".claude/skills/plan-dashboard.md");
+        // F-92 / SF-92-01 : la carte est annoncée comme telle. Sans le genre, l'écran ne saurait pas
+        // dire qu'elle se pose à la RACINE et non dans chaque dossier.
+        assertThat(pkg.files()).filteredOn(file -> "MAP".equals(file.kind()))
+                .extracting(file -> file.path())
+                .containsExactly("README.md", "acces.md", "reseau.md", "plateformes.md",
+                        "donnees.md", "exploitation.md");
     }
 
     @Test

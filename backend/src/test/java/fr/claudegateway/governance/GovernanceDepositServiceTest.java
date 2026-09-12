@@ -46,6 +46,8 @@ class GovernanceDepositServiceTest {
     @Mock
     private GovernanceProjectFiles projectFiles;
     @Mock
+    private GovernanceHostFiles hostFiles;
+    @Mock
     private GovernanceHostScope hostScope;
 
     private GovernanceDepositService service;
@@ -60,7 +62,8 @@ class GovernanceDepositServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new GovernanceDepositService(activations, packageService, projectFiles, hostScope);
+        service = new GovernanceDepositService(activations, packageService, projectFiles, hostFiles,
+                hostScope);
         workspace = Workspace.builder().id(workspaceId).userId(alice).name("web").hostId(hostId)
                 .build();
         when(hostScope.projectsOf(alice, host)).thenReturn(List.of(workspace));
