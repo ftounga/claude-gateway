@@ -1569,6 +1569,98 @@ describe('PostesComponent', () => {
       expect(data.file).toBe(carte.files[0]);
     });
 
+    // ------------------------------- ce que la carte a gagné (F-93 / SF-93-03)
+
+    /** Un instant ISO daté de `days` jours en arrière. */
+    function daysAgo(days: number): string {
+      return new Date(Date.now() - days * 86_400_000).toISOString();
+    }
+
+    it('un gain se CONSTATE : la phrase dit depuis quand, et de combien à combien', () => {
+      governanceReturns({
+        ...carte,
+        facts: 16,
+        growth: {
+          since: new Date('2026-09-02T08:00:00Z').toISOString(),
+          sinceFacts: 4,
+          gained: 12,
+          recent: [
+            { path: 'acces.md', title: 'Accès', gained: 3, gainedAt: daysAgo(2) },
+            { path: 'README.md', title: 'La carte', gained: 1, gainedAt: daysAgo(5) },
+          ],
+        },
+      });
+
+      expect(text()).toContain('2 septembre');
+      expect(text()).toContain('de 4 à 16 fait(s)');
+      expect(text()).toContain('acces.md +3');
+      expect(text()).toContain('il y a 2 j');
+    });
+
+    it("sans gain, RIEN ne s'affiche : un « +0 » quotidien apprendrait qu'on ne gagne rien", () => {
+      governanceReturns({
+        ...carte,
+        growth: { since: daysAgo(3), sinceFacts: 3, gained: 0, recent: [] },
+      });
+
+      expect(text()).not.toContain('cette carte est passée');
+    });
+
+    it('un relevé SANS bloc de croissance ne change rien à ce qui était affiché', () => {
+      governanceReturns({ ...carte, growth: null });
+
+      expect(text()).toContain('Carte du poste');
+      expect(text()).not.toContain('cette carte est passée');
+    });
+
+    it('trois lignes au plus : au-delà ce ne serait plus un constat, mais une liste', () => {
+      const recent = [1, 2, 3, 4, 5].map((n) => ({
+        path: `fichier-${n}.md`,
+        title: `Fichier ${n}`,
+        gained: n,
+        gainedAt: daysAgo(n),
+      }));
+      governanceReturns({ ...carte, facts: 20, growth: { since: daysAgo(9), sinceFacts: 5, gained: 15, recent } });
+
+      const lines = (fixture.nativeElement as HTMLElement)
+        .querySelectorAll('.poste__carte-gain-list li');
+      expect(lines.length).toBe(3);
+      expect(lines[0].textContent).toContain('fichier-1.md');
+    });
+
+    it("une date illisible n'affiche JAMAIS « NaN » — la phrase reste vraie sans sa date", () => {
+      governanceReturns({
+        ...carte,
+        facts: 9,
+        growth: {
+          since: 'pas-une-date',
+          sinceFacts: 2,
+          gained: 7,
+          recent: [{ path: 'acces.md', title: 'Accès', gained: 7, gainedAt: 'pas-une-date' }],
+        },
+      });
+
+      expect(text()).not.toContain('NaN');
+      expect(text()).not.toContain('Invalid');
+      expect(text()).toContain('cette carte a gagné 7 fait(s)');
+      expect(text()).toContain('acces.md +7');
+    });
+
+    it('le bloc ne coûte AUCUN appel de plus : il lit le relevé déjà chargé', () => {
+      governanceReturns({
+        ...carte,
+        facts: 16,
+        growth: {
+          since: daysAgo(10),
+          sinceFacts: 4,
+          gained: 12,
+          recent: [{ path: 'acces.md', title: 'Accès', gained: 3, gainedAt: daysAgo(1) }],
+        },
+      });
+
+      expect(governance.getMap).toHaveBeenCalledTimes(1);
+    });
+
     /** Rejoue l'écran avec un relevé de carte donné. */
     function governanceReturns(map: GovernanceMap): void {
       service = spyService();
