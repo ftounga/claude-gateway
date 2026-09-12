@@ -71,6 +71,25 @@ public final class Failures {
     }
 
     /**
+     * Vrai quand l'échec est une <b>poignée de main TLS</b> (F-80 / SF-80-01).
+     *
+     * <p>Ce cas se distingue de tous les autres : il prouve que la connexion a <b>abouti</b> et que
+     * le serveur a présenté un certificat. Il y a donc une chaîne à lire et un émetteur à nommer, là
+     * où un DNS muet ou un port fermé ne laissent rien à regarder.</p>
+     */
+    public static boolean isTlsHandshake(Throwable error) {
+        Map<Throwable, Boolean> seen = new IdentityHashMap<>();
+        for (Throwable current = error;
+                current != null && seen.put(current, Boolean.TRUE) == null;
+                current = current.getCause()) {
+            if (current instanceof SSLException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Description <b>jamais vide</b> : type, message s'il existe, et chaîne des causes.
      *
      * @param error exception à décrire ; {@code null} rend une mention explicite
@@ -124,9 +143,13 @@ public final class Failures {
         // c'est le DNS qui est muet.
         for (Throwable current = error; current != null; current = current.getCause()) {
             if (current instanceof SSLException) {
-                return "Certificat non reconnu par Java — un proxy interceptant le TLS ? "
-                        + "Le truststore d'entreprise se déclare par "
-                        + "-Djavax.net.ssl.trustStore=<fichier>.";
+                // F-80 / SF-80-01 : la prescription « -Djavax.net.ssl.trustStore=<fichier> » a
+                // disparu. Elle était exacte et inutilisable — le fichier n'existe pas, et personne
+                // ne sait qu'il faut extraire une racine du magasin système, la convertir et la
+                // ranger dans une copie de cacerts (D2 du cadrage F-80). Ce qui la remplace est
+                // affiché juste en dessous par la sonde : l'émetteur, NOMMÉ.
+                return "Le certificat présenté n'est signé par aucune autorité connue de Java — "
+                        + "un proxy qui déchiffre le trafic ?";
             }
             // UnresolvedAddressException : la forme que prend la non-résolution dans la pile NIO
             // du client HTTP de la JVM. C'est elle, et non UnknownHostException, qui est remontée

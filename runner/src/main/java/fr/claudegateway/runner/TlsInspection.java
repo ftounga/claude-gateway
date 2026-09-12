@@ -79,19 +79,70 @@ public final class TlsInspection {
      * reconnaîtra, et c'est aussi ce qu'il retrouvera dans son navigateur.</p>
      */
     public static String commonName(String distinguishedName) {
-        if (distinguishedName == null || distinguishedName.isBlank()) {
-            return "";
-        }
-        for (String part : distinguishedName.split(",")) {
-            String piece = part.trim();
-            if (piece.regionMatches(true, 0, "CN=", 0, 3)) {
-                String cn = piece.substring(3).trim();
-                if (!cn.isEmpty()) {
-                    return cn;
+        return attribute(distinguishedName, "CN=", distinguishedName == null ? ""
+                : distinguishedName.trim());
+    }
+
+    /**
+     * Organisation déclarée par un distinguished name ({@code O=}), ou chaîne vide.
+     *
+     * <p>C'est elle que l'utilisateur reconnaît en premier (F-80 / SF-80-01) : sur le poste du PO,
+     * le certificat présenté portait {@code O=Zscaler Inc.} — le nom de l'éditeur, lisible d'un
+     * coup d'œil, là où le {@code CN} de l'autorité ({@code Zscaler Intermediate Root CA}) demande
+     * de savoir ce qu'est une autorité intermédiaire.</p>
+     */
+    public static String organisation(String distinguishedName) {
+        return attribute(distinguishedName, "O=", "");
+    }
+
+    /**
+     * Qui présente ce certificat, en une ligne lisible (F-80 / SF-80-01).
+     *
+     * <p>Deux informations, dans l'ordre où elles servent : l'<b>organisation</b> du certificat
+     * présenté — « Zscaler Inc. » — puis le <b>CN de l'autorité</b> qui l'a signé. La seconde seule
+     * ne dit rien à qui découvre le problème ; la première seule ne permet pas de retrouver la
+     * racine dans un magasin.</p>
+     *
+     * @param chain chaîne présentée par le serveur, du certificat de site vers la racine
+     * @param rootDn distinguished name de la racine non publique
+     * @return par exemple {@code Zscaler Inc. (CN=Zscaler Intermediate Root CA)}, jamais vide dès
+     *     lors que {@code rootDn} n'est pas vide
+     */
+    public static String presenter(List<ChainLink> chain, String rootDn) {
+        String authority = commonName(rootDn);
+        String organisation = "";
+        if (chain != null) {
+            for (ChainLink link : chain) {
+                if (link != null) {
+                    organisation = organisation(link.subject());
+                    break;
                 }
             }
         }
-        return distinguishedName.trim();
+        if (organisation.isEmpty()) {
+            return authority;
+        }
+        if (authority.isEmpty()) {
+            return organisation;
+        }
+        return organisation + " (CN=" + authority + ")";
+    }
+
+    /** Valeur d'un attribut de DN, ou {@code fallback} quand il est absent. */
+    private static String attribute(String distinguishedName, String prefix, String fallback) {
+        if (distinguishedName == null || distinguishedName.isBlank()) {
+            return fallback.isEmpty() ? "" : fallback;
+        }
+        for (String part : distinguishedName.split(",")) {
+            String piece = part.trim();
+            if (piece.regionMatches(true, 0, prefix, 0, prefix.length())) {
+                String value = piece.substring(prefix.length()).trim();
+                if (!value.isEmpty()) {
+                    return value;
+                }
+            }
+        }
+        return fallback;
     }
 
     /**
@@ -113,6 +164,29 @@ public final class TlsInspection {
                 + "Le runner" + nl
                 + "            l'affiche pour le diagnostic ; il ne le contourne pas et ne relâche "
                 + "aucune vérification.";
+    }
+
+    /**
+     * Ce que la console dit quand le <b>contrôle de vol a échoué</b> sur une poignée de main TLS
+     * (F-80 / SF-80-01).
+     *
+     * <p>Ce n'est pas le même message que {@link #message(String, String)} : là-bas, la connexion
+     * fonctionne et l'interception n'est qu'une information. Ici, elle est la <b>cause</b> de
+     * l'échec — et l'utilisateur vient de lire un {@code PKIX path building failed} qui ne nomme
+     * personne.</p>
+     *
+     * <p>Le message tient en trois temps : <b>qui</b> présente le certificat, <b>ce que cela
+     * signifie</b>, et que c'est <b>normal</b>. Aucun remède n'y figure : il appartient au message
+     * de la panne, qui l'affiche juste au-dessus.</p>
+     *
+     * @param presenter tel que {@link #presenter(List, String)} le compose
+     */
+    public static String handshakeFailure(String presenter) {
+        String nl = System.lineSeparator();
+        return "         Certificat présenté par : " + presenter + nl
+                + "         Un équipement du réseau déchiffre le trafic et le re-signe. C'est le "
+                + "fonctionnement" + nl
+                + "         normal d'un proxy d'inspection d'entreprise.";
     }
 
     private static Set<String> normalized(Set<String> names) {

@@ -94,11 +94,29 @@ class FailuresTest {
     @DisplayName("la piste TLS ne tombe que sur un échec TLS")
     void theTlsHintOnlyFiresOnTls() {
         String tls = Failures.hint(new IOException(new SSLHandshakeException("PKIX path building")));
-        assertTrue(tls.contains("truststore"), tls);
+        assertTrue(tls.contains("certificat") || tls.contains("Certificat"), tls);
         assertTrue(tls.contains("?"), "la piste doit rester une question (D1) : " + tls);
+        // F-80 / SF-80-01 : la prescription du truststore a disparu — elle était exacte et
+        // inutilisable, le fichier qu'elle nomme n'existe sur aucun poste.
+        assertFalse(tls.contains("trustStore"), tls);
+        assertFalse(tls.contains("truststore"), tls);
 
         // Sur une autre panne, cette piste enverrait chercher un certificat inexistant.
-        assertFalse(Failures.hint(new IOException("autre chose")).contains("truststore"));
+        assertFalse(Failures.hint(new IOException("autre chose")).contains("certificat"));
+    }
+
+    @Test
+    @DisplayName("un échec de poignée de main TLS se distingue de toutes les autres pannes")
+    void aTlsHandshakeFailureIsToldApart() {
+        // C'est ce qui décide si le runner a quelque chose à LIRE : un échec TLS prouve que le
+        // serveur a présenté un certificat (F-80 / SF-80-01).
+        assertTrue(Failures.isTlsHandshake(
+                new IOException(new SSLHandshakeException("PKIX path building failed"))));
+        assertTrue(Failures.isTlsHandshake(new SSLHandshakeException("certificate_unknown")));
+
+        assertFalse(Failures.isTlsHandshake(new UnknownHostException("portal.example.com")));
+        assertFalse(Failures.isTlsHandshake(new IOException("Tunnel failed, got: 407")));
+        assertFalse(Failures.isTlsHandshake(null));
     }
 
     @Test

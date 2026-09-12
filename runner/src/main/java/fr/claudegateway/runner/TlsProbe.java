@@ -1,15 +1,11 @@
 package fr.claudegateway.runner;
 
 import java.io.File;
-import java.net.HttpURLConnection;
-import java.net.Proxy;
 import java.net.ProxySelector;
 import java.net.URI;
-import java.net.URL;
 import java.security.KeyStore;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashSet;
@@ -17,8 +13,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
-
-import javax.net.ssl.HttpsURLConnection;
 
 /**
  * Sonde TLS (F-57 / SF-57-02) : elle <b>lit</b> la chaîne de certificats que la gateway présente, et
@@ -29,19 +23,16 @@ import javax.net.ssl.HttpsURLConnection;
  * faire échouer un démarrage (D4) — d'où une classe séparée, qui ne lève jamais et se tait au
  * moindre doute.</p>
  *
- * <p><b>Aucune vérification n'est relâchée.</b> La connexion sondée suit exactement les mêmes règles
- * que les autres : même magasin de confiance, même proxy, même vérification de nom d'hôte. On ne
- * pose ici aucun {@code TrustManager} permissif, aucun {@code HostnameVerifier} : si le certificat
- * n'est pas accepté, la sonde échoue et se tait — elle n'ouvre rien que la JVM aurait refusé.</p>
+ * <p><b>La lecture est non validante depuis F-80 / SF-80-01</b>, et c'est le seul changement de
+ * posture : la connexion sondée suivait jusqu'ici les règles de validation de la JVM, et échouait
+ * donc exactement dans le cas qui la justifie — celui où la validation échoue. Elle passe désormais
+ * par {@link TlsChainReader}, qui observe la poignée de main et s'arrête là.</p>
  *
- * <p>Pourquoi {@link HttpsURLConnection} et non le {@code HttpClient} du reste du runner (D5) :
- * ce dernier n'expose pas la chaîne du pair. {@code HttpsURLConnection} l'expose <i>et</i> sait
- * établir le {@code CONNECT} à travers un proxy — soit exactement le cas qui nous intéresse.</p>
+ * <p><b>Rien du canal réel n'est relâché.</b> La lecture de diagnostic n'écrit aucun octet
+ * applicatif, ne pose aucun réglage global, et le trafic du runner emprunte un autre client avec la
+ * vérification ordinaire. Le runner <b>affiche</b>, il ne <b>contourne</b> pas.</p>
  */
 public final class TlsProbe {
-
-    /** Aligné sur le contrôle de vol : au-delà, on fait attendre devant un terminal muet. */
-    private static final int TIMEOUT_MS = 10_000;
 
     /** Chemin du magasin de racines livré avec le JDK, relatif à {@code java.home}. */
     private static final String CACERTS = "lib/security/cacerts";
@@ -60,9 +51,13 @@ public final class TlsProbe {
         this.reader = reader;
     }
 
-    /** Sonde réelle : racines du JDK, chaîne lue par une connexion qui emprunte le proxy du runner. */
+    /**
+     * Sonde réelle : racines du JDK, chaîne lue <b>sans validation</b> par une lecture de diagnostic
+     * qui emprunte le proxy du runner et n'écrit aucun octet applicatif (F-80 / SF-80-01).
+     */
     public static TlsProbe forRuntime(ProxySelector proxySelector) {
-        return new TlsProbe(publicRootsFromJdk(), target -> readChain(target, proxySelector));
+        return new TlsProbe(publicRootsFromJdk(),
+                target -> TlsChainReader.readWithoutValidating(target, proxySelector));
     }
 
     /**
@@ -72,6 +67,39 @@ public final class TlsProbe {
      * @return le message à afficher, ou vide — le silence est le comportement par défaut
      */
     public Optional<String> inspect(String gatewayBaseUrl) {
+        return observe(gatewayBaseUrl)
+                .map(seen -> TlsInspection.message(seen.host(), seen.rootDn()));
+    }
+
+    /**
+     * Ce que le runner <b>ajoute au message d'échec</b> quand le contrôle de vol a buté sur une
+     * poignée de main TLS (F-80 / SF-80-01).
+     *
+     * <p>Même verdict que {@link #inspect(String)} — une racine absente des racines publiques —,
+     * mais formulé comme la <b>cause</b> de l'échec et non comme une information de contexte. Le
+     * silence reste le défaut : une poignée de main qui échoue sur une chaîne <b>publique</b>
+     * (certificat expiré, nom d'hôte faux) ne produit aucune mention d'interception, faux positif
+     * interdit (D2 de F-57).</p>
+     *
+     * @param gatewayBaseUrl URL de la gateway, telle que la configuration l'a normalisée
+     * @return les lignes à afficher sous l'erreur, ou vide
+     */
+    public Optional<String> explainHandshakeFailure(String gatewayBaseUrl) {
+        return observe(gatewayBaseUrl)
+                .map(seen -> TlsInspection.handshakeFailure(
+                        TlsInspection.presenter(seen.chain(), seen.rootDn())));
+    }
+
+    /** Ce que la sonde a vu : l'hôte, la chaîne présentée, et la racine qui la re-signe. */
+    record Seen(String host, List<TlsInspection.ChainLink> chain, String rootDn) {
+    }
+
+    /**
+     * Observation brute, partagée par les deux messages. Ne lève jamais : un diagnostic optionnel
+     * n'a le droit de rien casser — ni le démarrage, ni le code de sortie, ni la lisibilité de la
+     * console (D6 de F-57).
+     */
+    Optional<Seen> observe(String gatewayBaseUrl) {
         try {
             URI target = URI.create(gatewayBaseUrl + "/runner/download/formats");
             String scheme = target.getScheme() == null
@@ -82,10 +110,8 @@ public final class TlsProbe {
             }
             List<TlsInspection.ChainLink> chain = reader.read(target);
             return TlsInspection.interceptingRoot(chain, publicRoots)
-                    .map(root -> TlsInspection.message(target.getHost(), root));
+                    .map(root -> new Seen(target.getHost(), chain, root));
         } catch (Exception silence) {
-            // Un diagnostic optionnel n'a le droit de rien casser : ni le démarrage, ni le code de
-            // sortie, ni la lisibilité de la console (D6).
             return Optional.empty();
         }
     }
@@ -113,44 +139,5 @@ public final class TlsProbe {
             return Set.of();
         }
         return Collections.unmodifiableSet(subjects);
-    }
-
-    /**
-     * Chaîne présentée par le serveur, lue sur une connexion ordinaire.
-     *
-     * <p>Le proxy est celui du runner : sans lui, la sonde échouerait précisément sur les postes
-     * qu'elle sert — ceux qui sont derrière un proxy d'inspection.</p>
-     */
-    private static List<TlsInspection.ChainLink> readChain(URI target, ProxySelector proxySelector)
-            throws Exception {
-        Proxy proxy = Proxy.NO_PROXY;
-        if (proxySelector != null) {
-            List<Proxy> proxies = proxySelector.select(target);
-            if (proxies != null && !proxies.isEmpty() && proxies.get(0) != null) {
-                proxy = proxies.get(0);
-            }
-        }
-        URL url = target.toURL();
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection(proxy);
-        if (!(connection instanceof HttpsURLConnection secure)) {
-            return List.of();
-        }
-        try {
-            secure.setRequestMethod("GET");
-            secure.setConnectTimeout(TIMEOUT_MS);
-            secure.setReadTimeout(TIMEOUT_MS);
-            secure.connect();
-            List<TlsInspection.ChainLink> chain = new ArrayList<>();
-            for (Certificate certificate : secure.getServerCertificates()) {
-                if (certificate instanceof X509Certificate x509) {
-                    chain.add(new TlsInspection.ChainLink(
-                            x509.getSubjectX500Principal().getName(),
-                            x509.getIssuerX500Principal().getName()));
-                }
-            }
-            return chain;
-        } finally {
-            secure.disconnect();
-        }
     }
 }

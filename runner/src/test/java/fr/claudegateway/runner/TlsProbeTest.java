@@ -65,6 +65,59 @@ class TlsProbeTest {
         assertTrue(line.get().contains("ne le contourne pas"), line.get());
     }
 
+    // ------------------------------------------------------------------ F-80 / SF-80-01
+
+    @Test
+    void a_failed_handshake_names_who_presented_the_certificate() {
+        // Le cas observé chez le PO : O= porte l'éditeur, l'émetteur porte le CN de l'autorité.
+        TlsProbe probe = new TlsProbe(Set.of(PUBLIC_ROOT), target -> List.of(
+                new TlsInspection.ChainLink(
+                        "CN=portal.ng-itconsulting.com, O=Zscaler Inc.",
+                        "CN=Zscaler Intermediate Root CA (zscaler.net) (t)")));
+
+        Optional<String> lines = probe.explainHandshakeFailure("https://portal.ng-itconsulting.com/api");
+
+        assertTrue(lines.isPresent(), "un échec TLS est LE cas où la chaîne explique tout");
+        assertTrue(lines.get().contains("Zscaler Inc."), lines.get());
+        assertTrue(lines.get().contains("Zscaler Intermediate Root CA"), lines.get());
+        assertTrue(lines.get().contains("déchiffre"), lines.get());
+        assertTrue(lines.get().contains("normal"), lines.get());
+    }
+
+    @Test
+    void a_failed_handshake_on_a_public_chain_says_nothing_about_interception() {
+        // Certificat expiré, nom d'hôte faux… : la poignée de main échoue sans qu'un équipement
+        // intercepte. Crier à l'interception ici détruirait la confiance dans tous les autres
+        // messages du runner (D2 de F-57).
+        TlsProbe probe = new TlsProbe(Set.of(PUBLIC_ROOT), target -> List.of(
+                new TlsInspection.ChainLink("CN=portal.example.com", PUBLIC_ROOT)));
+
+        assertEquals(Optional.empty(),
+                probe.explainHandshakeFailure("https://portal.example.com/api"));
+    }
+
+    @Test
+    void a_failing_diagnostic_read_stays_silent_on_the_failure_path_too() {
+        TlsProbe probe = new TlsProbe(Set.of(PUBLIC_ROOT), target -> {
+            throw new java.io.IOException("connexion coupée");
+        });
+
+        assertEquals(Optional.empty(),
+                probe.explainHandshakeFailure("https://portal.example.com/api"));
+    }
+
+    @Test
+    void a_plain_http_gateway_is_never_probed_on_the_failure_path_either() {
+        AtomicBoolean called = new AtomicBoolean(false);
+        TlsProbe probe = new TlsProbe(Set.of(PUBLIC_ROOT), target -> {
+            called.set(true);
+            return List.of();
+        });
+
+        assertEquals(Optional.empty(), probe.explainHandshakeFailure("http://localhost:8080/api"));
+        assertFalse(called.get());
+    }
+
     @Test
     void a_malformed_gateway_url_stays_silent() {
         TlsProbe probe = new TlsProbe(Set.of(PUBLIC_ROOT), target -> List.of(

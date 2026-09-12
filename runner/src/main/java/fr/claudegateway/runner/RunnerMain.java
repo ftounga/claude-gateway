@@ -96,18 +96,20 @@ public final class RunnerMain {
         // Contrôle de vol (SF-38-25) : la gateway est-elle joignable depuis CE terminal ? La question
         // se pose avant l'appairage, parce que sa réponse n'a rien de métier — et qu'un échec réseau
         // survenu au milieu de l'appairage mêlait deux sujets sans rapport (D4).
-        String unreachable = new NetworkPreflight(httpClient, OperatingSystem.current())
-                .check(config.gatewayBaseUrl());
-        if (unreachable != null) {
-            console.error(unreachable);
+        NetworkPreflight.Verdict flight = new NetworkPreflight(httpClient, OperatingSystem.current())
+                .verify(config.gatewayBaseUrl());
+        TlsProbe probe = TlsProbe.forRuntime(proxyResolver);
+        if (flight.unreachable()) {
+            console.error(flight.message());
+            handshakeDiagnosis(flight, probe, config.gatewayBaseUrl()).ifPresent(console::error);
             return 5;
         }
         console.info("Réseau    : gateway joignable");
 
-        // Interception TLS (F-57 / SF-57-02) : APRÈS le contrôle de vol, parce que sonder une
-        // gateway injoignable n'apprendrait rien. La sonde ne décide de rien — elle se tait au
-        // moindre doute, et n'a le droit de casser ni le démarrage, ni le code de sortie.
-        TlsProbe.forRuntime(proxyResolver).inspect(config.gatewayBaseUrl()).ifPresent(console::info);
+        // Interception TLS (F-57 / SF-57-02) sur le chemin nominal : une information de contexte, et
+        // rien de plus. La sonde ne décide de rien — elle se tait au moindre doute, et n'a le droit
+        // de casser ni le démarrage, ni le code de sortie.
+        probe.inspect(config.gatewayBaseUrl()).ifPresent(console::info);
 
         TokenStore tokenStore = new TokenStore(config.hostRoot(), home);
 
@@ -174,6 +176,24 @@ public final class RunnerMain {
         } finally {
             stopped.countDown();
         }
+    }
+
+    /**
+     * Ce que la console ajoute <b>sous</b> l'erreur d'un contrôle de vol échoué (F-80 / SF-80-01).
+     *
+     * <p>Le diagnostic passe désormais <b>avant</b> la sortie en {@code 5}. Le commentaire d'origine
+     * — « sonder une gateway injoignable n'apprendrait rien » — est vrai d'un DNS muet et
+     * <b>faux</b> d'un échec TLS : celui-ci prouve au contraire que la connexion a abouti et que le
+     * serveur a présenté un certificat, lisible, qui explique tout.</p>
+     *
+     * <p>D'où la condition, stricte : <b>seul</b> un échec de poignée de main déclenche la sonde.
+     * Sur un DNS muet ou un port fermé, sonder ferait attendre un délai complet pour ne rien
+     * afficher.</p>
+     */
+    static Optional<String> handshakeDiagnosis(NetworkPreflight.Verdict verdict, TlsProbe probe,
+            String gatewayBaseUrl) {
+        return verdict.tlsFailure() ? probe.explainHandshakeFailure(gatewayBaseUrl)
+                : Optional.empty();
     }
 
     /**
@@ -279,7 +299,15 @@ public final class RunnerMain {
                 + ") — relancez ensuite sans aucun argument.");
     }
 
-    private static HttpClient buildHttpClient(ProxyResolver proxyResolver) {
+    /**
+     * Client du <b>trafic</b> — celui par lequel passent réellement l'appairage, les trames et les
+     * résultats d'outils.
+     *
+     * <p>Il ne reçoit <b>jamais</b> le contexte permissif de la lecture de diagnostic
+     * (F-80 / SF-80-01) : le truststore reste celui de la JVM, et un test le vérifie. C'est la
+     * frontière qui rend la sonde acceptable — elle lit, elle ne transporte pas.</p>
+     */
+    static HttpClient buildHttpClient(ProxyResolver proxyResolver) {
         HttpClient.Builder builder = HttpClient.newBuilder()
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .connectTimeout(java.time.Duration.ofSeconds(20));
