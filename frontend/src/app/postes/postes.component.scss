@@ -78,6 +78,14 @@
     }
   }
 
+  /* Les deux sorties d'un refus d'accès, côte à côte (F-85 / SF-85-04). Aucune couleur propre :
+     l'or de marque reste sur le geste principal, l'autre lien est un contour. */
+  &__notice-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cg-space-2);
+  }
+
   &__list {
     display: flex;
     flex-direction: column;

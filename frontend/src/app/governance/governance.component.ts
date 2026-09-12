@@ -21,6 +21,10 @@ import {
   GovernancePackage,
   GovernanceSelection,
 } from '../core/models/governance.models';
+import {
+  FORGE_ACCESS_BILLING_ROUTE,
+  FORGE_ACCESS_CODE_FRAGMENT,
+} from '../shared/forge-access';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import {
   DepositPreviewData,
@@ -77,6 +81,14 @@ export class GovernanceComponent implements OnInit {
   private readonly governance = inject(GovernanceService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
+
+  /**
+   * Où conduire quand l'accès est refusé (F-85 / SF-85-04) : la Facturation, à l'endroit exact de
+   * la section « Vous avez un code d'accès ? ». Lus depuis la source unique, jamais recopiés.
+   */
+  readonly billingRoute = FORGE_ACCESS_BILLING_ROUTE;
+
+  readonly accessCodeFragment = FORGE_ACCESS_CODE_FRAGMENT;
 
   readonly catalog = signal<GovernancePackage[]>([]);
   readonly selection = signal<GovernanceSelection[]>([]);

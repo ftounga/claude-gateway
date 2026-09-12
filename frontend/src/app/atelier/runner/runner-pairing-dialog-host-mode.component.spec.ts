@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { Router, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 
 import { AtelierService } from '../../core/services/atelier.service';
@@ -57,6 +58,8 @@ describe('RunnerPairingDialogComponent — mode poste (F-72 SF-72-02)', () => {
       imports: [RunnerPairingDialogComponent],
       providers: [
         provideNoopAnimations(),
+        // Le refus d'accès CONDUIT (F-85 / SF-85-04) : la fenêtre a désormais un routeur.
+        provideRouter([]),
         { provide: AtelierService, useValue: service },
         {
           provide: MatSnackBar,
@@ -209,5 +212,77 @@ describe('RunnerPairingDialogComponent — mode poste (F-72 SF-72-02)', () => {
     component.createHost();
 
     expect(component.stepSummary('host')).toBe('Poste « EDENRED » créé.');
+  });
+  // ------------------------------------ refus d'accès (F-85 / SF-85-04)
+
+  /**
+   * **Le geste exact de l'incident du 12/09** : le prospect clique « Connecter un poste ». La garde
+   * refuse — et l'écran lui répondait « Veuillez réessayer », c'est-à-dire l'envoyait refaire ce
+   * qui échouera toujours.
+   */
+  describe("un accès refusé dit pourquoi, et où aller", () => {
+    it("ne dit plus « réessayer » quand le code d'appairage est REFUSÉ", () => {
+      setupHostMode();
+      component.hostId.set('h9');
+      service.createHostPairingCode.and.returnValue(
+        throwError(() => new HttpErrorResponse({
+          status: 403,
+          error: { error: 'atelier_forbidden', message: "La Forge demande l'offre Gold." },
+        })),
+      );
+
+      component.generateCode();
+
+      const message = component.generationError() ?? '';
+      expect(message).toContain("n'est pas ouvert");
+      expect(message).toContain('souscrire');
+      expect(message).toContain("code d'accès");
+      expect(message).not.toContain('réessayer');
+      expect(component.accessRefused()).toBeTrue();
+    });
+
+    it("garde son message quand le poste n'existe plus — ce n'est pas un refus d'accès", () => {
+      setupHostMode();
+      component.hostId.set('h9');
+      service.createHostPairingCode.and.returnValue(
+        throwError(() => new HttpErrorResponse({ status: 404 })),
+      );
+
+      component.generateCode();
+
+      expect(component.generationError()).toBe("Ce poste n'existe plus.");
+      expect(component.accessRefused()).toBeFalse();
+    });
+
+    it("nomme les deux sorties quand la CRÉATION du poste est refusée, sans perdre le nom", () => {
+      setupHostMode();
+      component.toggleStep('host');
+      component.newHostName.set('EDENRED');
+      service.createRunnerHost.and.returnValue(
+        throwError(() => new HttpErrorResponse({ status: 403 })),
+      );
+
+      component.createHost();
+      fixture.detectChanges();
+
+      expect(component.attachError() ?? '').toContain("code d'accès");
+      // Non-régression F-72 : retaper le nom serait la friction que la feature supprime.
+      expect(component.newHostName()).toBe('EDENRED');
+      expect(text()).toContain('Où saisir mon code');
+    });
+
+    it("conduit à la section du code, la fenêtre refermée d'abord", () => {
+      setupHostMode();
+      const router = TestBed.inject(Router);
+      const navigate = spyOn(router, 'navigate');
+      const dialogRef = TestBed.inject(MatDialogRef);
+
+      component.goToAccessCode();
+
+      // Fermée d'abord : naviguer derrière un dialogue ouvert laisserait l'utilisateur devant un
+      // parcours qui ne peut plus aboutir.
+      expect(dialogRef.close).toHaveBeenCalled();
+      expect(navigate).toHaveBeenCalledWith(['/billing'], { fragment: 'code-acces' });
+    });
   });
 });

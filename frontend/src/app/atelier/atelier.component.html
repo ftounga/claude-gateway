@@ -4,10 +4,19 @@
        la falaise ×8 se rencontrait, que les deux chemins doivent être visibles — l'option d'abord. -->
   <div class="atelier-upsell">
     <mat-icon class="atelier-upsell-icon">workspace_premium</mat-icon>
-    <h1 class="atelier-upsell-title">La Forge demande l'option Forge, ou l'offre Gold</h1>
+    <h1 class="atelier-upsell-title">
+      L'accès à la Forge n'est pas ouvert sur ce compte
+    </h1>
     <p class="atelier-upsell-text">
       Débloquez un espace de travail où Claude lit, écrit et exécute sur votre projet. L'option
       s'ajoute à votre offre Solo ou Pro, sans changer votre quota de tokens.
+    </p>
+    <!-- F-85 / SF-85-04 : la sortie qui manquait. Les deux chemins d'achat de F-40 restent en
+         place et dans leur ordre — l'option d'abord ; ce qui s'ajoute, c'est le code d'accès, que
+         le panneau ne nommait nulle part. C'est exactement ce qu'avait le prospect du 12/09 : un
+         code reçu par courriel, jamais consommé, faute de savoir où le saisir. -->
+    <p class="atelier-upsell-text">
+      Vous avez reçu un code d'accès ? Il ouvre la Forge sans rien changer à votre offre.
     </p>
     <div class="atelier-upsell-actions">
       <button mat-flat-button color="primary" type="button" (click)="goToBilling()">
@@ -15,6 +24,10 @@
       </button>
       <button mat-stroked-button type="button" (click)="goToBilling()">
         Voir l'offre Gold
+      </button>
+      <!-- Conduit à la SECTION du code, pas seulement à la page. -->
+      <button mat-stroked-button type="button" (click)="goToAccessCode()">
+        Où saisir mon code
       </button>
     </div>
   </div>

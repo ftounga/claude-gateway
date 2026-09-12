@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { Router, provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 
 import { HostFoldersResponse, WorkspaceDetail } from '../../core/models/atelier.models';
@@ -42,6 +43,8 @@ describe('AddProjectDialogComponent (F-72 SF-72-03)', () => {
       imports: [AddProjectDialogComponent],
       providers: [
         provideNoopAnimations(),
+        // Le refus d'accès CONDUIT (F-85 / SF-85-04) : la fenêtre a désormais un routeur.
+        provideRouter([]),
         { provide: AtelierService, useValue: service },
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: MAT_DIALOG_DATA, useValue: { hostId: 'h1', hostName: 'EDENRED' } },
@@ -186,5 +189,41 @@ describe('AddProjectDialogComponent (F-72 SF-72-03)', () => {
     component.openFolder('EDENRED');
     component.close();
     expect(dialogRef.close).toHaveBeenCalledWith(true);
+  });
+  // ------------------------------------ refus d'accès (F-85 / SF-85-04)
+
+  it("nomme les deux sorties quand l'ouverture est refusée, et y conduit", () => {
+    setup();
+    const router = TestBed.inject(Router);
+    const navigate = spyOn(router, 'navigate');
+    service.openHostProject.and.returnValue(
+      throwError(() => new HttpErrorResponse({
+        status: 403,
+        error: { error: 'atelier_forbidden', message: "La Forge demande l'offre Gold." },
+      })),
+    );
+
+    component.openFolder('EDENRED');
+    fixture.detectChanges();
+
+    const message = component.openError() ?? '';
+    expect(message).toContain('souscrire');
+    expect(message).toContain("code d'accès");
+    expect(text()).toContain('Où saisir mon code');
+
+    component.goToAccessCode();
+    expect(navigate).toHaveBeenCalledWith(['/billing'], { fragment: 'code-acces' });
+  });
+
+  it("ne confond pas une gateway tombée avec un refus d'accès", () => {
+    setup();
+    service.openHostProject.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 0 })),
+    );
+
+    component.openFolder('EDENRED');
+
+    expect(component.openError() ?? '').not.toContain("code d'accès");
+    expect(component.accessRefused()).toBeFalse();
   });
 });

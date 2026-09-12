@@ -540,6 +540,21 @@ describe('AtelierComponent', () => {
     expect(text).toContain("Ajouter l'option Forge");
     expect(text).toContain("Voir l'offre Gold");
     expect(text).toContain('quota de tokens');
+    // F-85 / SF-85-04 : la TROISIÈME sortie, celle qu'aucun de ces deux chemins ne nommait — un
+    // code déjà reçu, et personne ne disait où le saisir. Les deux chemins d'achat de F-40 sont
+    // intacts ; ce qui s'ajoute ne remplace rien.
+    expect(text).toContain("code d'accès");
+    expect(text).toContain('Où saisir mon code');
+  });
+
+  it("conduit à la SECTION du code, pas seulement à la page de facturation (SF-85-04)", () => {
+    setup();
+    const router = TestBed.inject(Router);
+    const navigate = spyOn(router, 'navigate');
+
+    component.goToAccessCode();
+
+    expect(navigate).toHaveBeenCalledWith(['/billing'], { fragment: 'code-acces' });
   });
 
   it('charge le mode d\'exécution après un accès accordé et détecte BYOK', () => {

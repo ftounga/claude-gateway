@@ -34,6 +34,7 @@ import {
   TopUpPack,
 } from '../core/models/billing.models';
 import { AccessGrantView } from '../core/models/access-code.models';
+import { FORGE_ACCESS_CODE_FRAGMENT } from '../shared/forge-access';
 import { SeatsView, SeatView } from '../core/models/seat.models';
 import { ApiKeyStatus } from '../core/models/api-key.models';
 import { UsageView } from '../core/models/usage.models';
@@ -82,6 +83,9 @@ export class BillingComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
   private readonly route = inject(ActivatedRoute);
+
+  /** L'ancre n'est honorée qu'une fois : la Facturation relit son droit après chaque activation. */
+  private anchorHonoured = false;
 
   readonly subscription = signal<SubscriptionView | null>(null);
   readonly plans = signal<Plan[]>([]);
@@ -191,9 +195,36 @@ export class BillingComponent implements OnInit {
    */
   loadAccessGrant(): void {
     this.accessCodeService.getGrant().subscribe({
-      next: (grant) => this.accessGrant.set(grant),
+      next: (grant) => {
+        this.accessGrant.set(grant);
+        // La section n'existe dans le DOM qu'une fois le droit connu : on ne peut l'amener sous les
+        // yeux qu'ICI, pas à l'initialisation (F-85 / SF-85-04).
+        setTimeout(() => this.revealAccessCodeSection());
+      },
       error: () => this.accessGrant.set(null),
     });
+  }
+
+  /**
+   * **Amène la section « code d'accès » sous les yeux** quand on arrive par
+   * `/billing#code-acces` — le lien que pose chaque refus d'accès à la Forge (F-85 / SF-85-04).
+   *
+   * <p>Fait <b>ici</b> et non par <code>withInMemoryScrolling</code> : celui-ci est global et
+   * changerait le comportement de <b>toutes</b> les navigations de l'application pour un seul lien.
+   * Même geste que l'ancrage d'une carte de poste (F-79).</p>
+   *
+   * <p>Silencieux quand la section n'existe pas — l'accès est déjà ouvert, ou le fragment a été
+   * recopié de travers. Un lien d'orientation ne doit jamais produire d'erreur.</p>
+   */
+  private revealAccessCodeSection(): void {
+    if (this.anchorHonoured || this.route.snapshot.fragment !== FORGE_ACCESS_CODE_FRAGMENT) {
+      return;
+    }
+    this.anchorHonoured = true;
+    const section = document.getElementById(FORGE_ACCESS_CODE_FRAGMENT);
+    if (section && typeof section.scrollIntoView === 'function') {
+      section.scrollIntoView({ block: 'center' });
+    }
   }
 
   loadTopUps(): void {

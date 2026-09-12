@@ -1,6 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { provideRouter } from '@angular/router';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, throwError } from 'rxjs';
@@ -98,6 +99,8 @@ describe('RunnerPairingDialogComponent (F-38 SF-38-06)', () => {
       imports: [RunnerPairingDialogComponent],
       providers: [
         provideNoopAnimations(),
+        // Le refus d'accès CONDUIT (F-85 / SF-85-04) : la fenêtre a désormais un routeur.
+        provideRouter([]),
         { provide: AtelierService, useValue: service },
         { provide: MatSnackBar, useValue: snackBar },
         { provide: MatDialogRef, useValue: dialogRef },

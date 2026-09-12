@@ -5,6 +5,7 @@ import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { Observable, of, throwError } from 'rxjs';
 
 import { MatDialog } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { POSTES_REFRESH_MS, PostesComponent } from './postes.component';
 import { AtelierService } from '../core/services/atelier.service';
@@ -1345,6 +1346,89 @@ describe('PostesComponent', () => {
 
     // La MÊME pastille que partout ailleurs (F-70) : aucun quatrième registre de couleur.
     expect(actions.querySelector('app-live-badge')).not.toBeNull();
+  });
+
+  // ------------------------------------ refus d'accès (F-85 / SF-85-04)
+
+  /**
+   * **Le test de la feature** : sur LE MÊME geste, un refus d'accès et une gateway tombée doivent
+   * se dire différemment — sans quoi l'un des deux ment.
+   */
+  describe("un accès refusé dit pourquoi, et où aller", () => {
+    /** Remplace la snackbar par un espion dont l'action est observable. */
+    function spySnackBar(): jasmine.Spy {
+      const snackBar = TestBed.inject(MatSnackBar);
+      return spyOn(snackBar, 'open').and.returnValue({
+        onAction: () => of(undefined),
+      } as never);
+    }
+
+    function lastMessage(open: jasmine.Spy): string {
+      return open.calls.mostRecent().args[0] as string;
+    }
+
+    it("nomme les deux sorties sur un 403, et conduit à la section du code", () => {
+      setup();
+      const open = spySnackBar();
+      const router = TestBed.inject(Router);
+      const navigate = spyOn(router, 'navigate');
+      service.openHostTerminal.and.returnValue(
+        throwError(() => new HttpErrorResponse({
+          status: 403,
+          error: { error: 'atelier_forbidden', message: "La Forge demande l'offre Gold." },
+        })),
+      );
+
+      component.openHostTerminal(poste);
+
+      const message = lastMessage(open);
+      expect(message).toContain("n'est pas ouvert");
+      expect(message).toContain('souscrire');
+      expect(message).toContain("code d'accès");
+      // L'action de la snackbar conduit à l'endroit EXACT où le code se saisit.
+      expect(navigate).toHaveBeenCalledWith(['/billing'], { fragment: 'code-acces' });
+    });
+
+    it("dit AUTRE CHOSE quand c'est la gateway qui est tombée, sur le même geste", () => {
+      setup();
+      const open = spySnackBar();
+      service.openHostTerminal.and.returnValue(
+        throwError(() => new HttpErrorResponse({ status: 0 })),
+      );
+
+      component.openHostTerminal(poste);
+
+      const message = lastMessage(open);
+      expect(message).toContain("n'a pas pu être ouvert");
+      expect(message).not.toContain("code d'accès");
+    });
+
+    it("distingue aussi le 403 sur l'état de mission, qui ne regardait aucun statut", () => {
+      setup();
+      const open = spySnackBar();
+      service.setHostMissionStatus.and.returnValue(
+        throwError(() => new HttpErrorResponse({ status: 403 })),
+      );
+
+      component.setMission(poste, 'CLOSED');
+
+      expect(lastMessage(open)).toContain("code d'accès");
+    });
+
+    it('le panneau de refus nomme le code et pointe la section, pas seulement la page', () => {
+      service = jasmine.createSpyObj<AtelierService>('AtelierService',
+        ['runnerHostsOverview', 'setHostMissionStatus']);
+      service.runnerHostsOverview.and.returnValue(
+        throwError(() => new HttpErrorResponse({ status: 403 })),
+      );
+      build();
+
+      expect(text()).toContain("code d'accès");
+      expect(text()).toContain('souscrire');
+      const link = (fixture.nativeElement as HTMLElement)
+        .querySelector('.postes__notice-actions a') as HTMLAnchorElement;
+      expect(link.getAttribute('href')).toBe('/billing#code-acces');
+    });
   });
 
 });

@@ -25,6 +25,11 @@ import {
   ForgeBreadcrumbComponent,
   ForgeCrumb,
 } from '../shared/forge-breadcrumb/forge-breadcrumb.component';
+import {
+  FORGE_ACCESS_CODE_FRAGMENT,
+  isForgeAccessDenied,
+  openForgeAccessSnackBar,
+} from '../shared/forge-access';
 import { httpErrorMessage, MAX_UPLOAD_BYTES, oversizeMessage } from '../shared/http-error.util';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import { MissionBadgeComponent } from '../shared/mission-badge/mission-badge.component';
@@ -618,22 +623,13 @@ export class AtelierComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         // 403 `atelier_forbidden` (non-Gold) : upsell silencieux, sans snackbar d'erreur (SF-28-06).
-        if (this.isAtelierForbidden(err)) {
+        if (isForgeAccessDenied(err)) {
           this.accessDenied.set(true);
           return;
         }
         this.notifyError('Impossible de charger les projets.');
       },
     });
-  }
-
-  /** Vrai si l'erreur est le 403 de gating Gold renvoyé par le backend (`atelier_forbidden`). */
-  private isAtelierForbidden(err: unknown): boolean {
-    return (
-      err instanceof HttpErrorResponse &&
-      err.status === 403 &&
-      (err.error as { error?: string } | null)?.error === 'atelier_forbidden'
-    );
   }
 
   /**
@@ -652,9 +648,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
     });
   }
 
-  /** Redirige vers l'écran de facturation pour souscrire l'offre Gold. */
+  /** Redirige vers l'écran de facturation pour souscrire. */
   goToBilling(): void {
     this.router.navigate(['/billing']);
+  }
+
+  /**
+   * Conduit à **l'endroit exact** où un code d'accès se saisit (F-85 / SF-85-04). C'est la sortie
+   * qu'on oubliait de nommer : beaucoup de ceux qui voient ce panneau ont déjà un code, reçu par
+   * courriel, et ne savent pas où le mettre.
+   */
+  goToAccessCode(): void {
+    this.router.navigate(['/billing'], { fragment: FORGE_ACCESS_CODE_FRAGMENT });
   }
 
   // L'IMPORT D'ARCHIVE ET L'OUVERTURE D'UN DÉPÔT ONT QUITTÉ CET ÉCRAN (F-72 / SF-72-04) : ils
@@ -728,11 +733,13 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.notifyError('Projet introuvable. Il a peut-être déjà été supprimé.');
           return;
         }
-        this.notifyError(
-          err instanceof HttpErrorResponse && err.status === 403
-            ? 'La Forge est nécessaire pour ce geste.'
-            : "Le projet n'a pas pu être supprimé. Rien n'a été effacé.",
-        );
+        if (isForgeAccessDenied(err)) {
+          // Un refus d'ACCÈS n'est pas un échec de suppression : il se dit, et il conduit
+          // (F-85 / SF-85-04).
+          openForgeAccessSnackBar(this.snackBar, this.router);
+          return;
+        }
+        this.notifyError("Le projet n'a pas pu être supprimé. Rien n'a été effacé.");
       },
     });
   }

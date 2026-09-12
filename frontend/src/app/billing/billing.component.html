@@ -405,7 +405,10 @@
       </a>
     </section>
   } @else if (canEnterAccessCode()) {
-    <section class="billing__section" aria-label="Code d'accès">
+    <!-- L'ancre `code-acces` est la DESTINATION de chaque refus d'accès à la Forge (F-85 /
+         SF-85-04) : beaucoup de ceux qui ont un code ne savent pas où le saisir. Son nom vit dans
+         `shared/forge-access.ts` — ici et là-bas, un seul mot. -->
+    <section id="code-acces" class="billing__section" aria-label="Code d'accès">
       <div class="billing__section-head">
         <h2>Vous avez un code d'accès ?</h2>
         <p>

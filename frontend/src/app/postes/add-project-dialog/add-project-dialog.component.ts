@@ -5,9 +5,16 @@ import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/materia
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { Router } from '@angular/router';
 
 import { HostFolder } from '../../core/models/atelier.models';
 import { AtelierService } from '../../core/services/atelier.service';
+import {
+  FORGE_ACCESS_BILLING_ROUTE,
+  FORGE_ACCESS_CODE_FRAGMENT,
+  FORGE_ACCESS_REFUSAL,
+  isForgeAccessDenied,
+} from '../../shared/forge-access';
 
 /** Le poste sous lequel on ajoute des projets, et le dossier d'où l'on part. */
 export interface AddProjectDialogData {
@@ -63,6 +70,7 @@ export class AddProjectDialogComponent {
   readonly data = inject<AddProjectDialogData>(MAT_DIALOG_DATA);
   private readonly atelier = inject(AtelierService);
   private readonly dialogRef = inject(MatDialogRef<AddProjectDialogComponent, boolean>);
+  private readonly router = inject(Router);
 
   /** Dossier parcouru ; chaîne vide = la racine du poste. */
   readonly browsePath = signal('');
@@ -88,6 +96,9 @@ export class AddProjectDialogComponent {
 
   /** Refus de la dernière ouverture, ou `null`. */
   readonly openError = signal<string | null>(null);
+
+  /** Vrai dès qu'un refus **d'accès** a été rendu : la sortie reste sous les yeux (SF-85-04). */
+  readonly accessRefused = signal(false);
 
   /** Vrai dès qu'un projet a été ouvert : la carte devra être relue à la fermeture. */
   private changed = false;
@@ -155,6 +166,14 @@ export class AddProjectDialogComponent {
     return this.opening() === path;
   }
 
+  /** Conduit là où un code d'accès se saisit, la fenêtre refermée d'abord (F-85 / SF-85-04). */
+  goToAccessCode(): void {
+    this.close();
+    void this.router.navigate([FORGE_ACCESS_BILLING_ROUTE], {
+      fragment: FORGE_ACCESS_CODE_FRAGMENT,
+    });
+  }
+
   close(): void {
     // `true` = au moins un projet a été ouvert : l'accueil doit relire sa vue.
     this.dialogRef.close(this.changed);
@@ -193,15 +212,18 @@ export class AddProjectDialogComponent {
    * il nomme le projet qui occupe déjà ce dossier, que l'écran ne connaissait manifestement pas.
    */
   private openErrorMessage(err: unknown): string {
+    if (isForgeAccessDenied(err)) {
+      // Le refus d'ACCÈS nomme les deux sorties et conduit à la Facturation (F-85 / SF-85-04) :
+      // le message seul disait le mur, pas la porte.
+      this.accessRefused.set(true);
+      return FORGE_ACCESS_REFUSAL;
+    }
     if (err instanceof HttpErrorResponse) {
       if (err.status === 409 && typeof err.error?.message === 'string') {
         return err.error.message;
       }
       if (err.status === 400) {
         return "Ce dossier n'est pas exploitable.";
-      }
-      if (err.status === 403) {
-        return 'La Forge est nécessaire pour ce geste.';
       }
       if (err.status === 404) {
         return 'Poste introuvable.';
