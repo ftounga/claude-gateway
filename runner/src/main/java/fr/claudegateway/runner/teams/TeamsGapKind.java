@@ -55,7 +55,20 @@ public enum TeamsGapKind {
      * Une image sortie sans horodatage exploitable (F-90 / SF-90-01) : elle est <b>écartée</b>, car
      * une image mal datée dans un compte rendu est pire qu'une image absente.
      */
-    FRAME_UNDATED("image extraite non datée");
+    FRAME_UNDATED("image extraite non datée"),
+
+    /**
+     * Une parole prononcée <b>avant la première image retenue</b> (F-90 / SF-90-02) : aucune image
+     * n'était en vigueur. La rattacher à la première serait la même faute que prendre l'image
+     * suivante, dans l'autre sens — elle est donc comptée, et rapprochée de rien.
+     */
+    SPOKEN_BEFORE_FIRST_FRAME("parole sans image en vigueur"),
+
+    /**
+     * Une image retenue devant laquelle <b>personne n'a parlé</b> (F-90 / SF-90-02). Elle ne devient
+     * pas un moment — un moment sans citation n'est pas un moment — et elle est comptée.
+     */
+    FRAME_WITHOUT_SPEECH("image sans parole pendant son affichage");
 
     private final String label;
 
