@@ -10,9 +10,16 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatRadioModule } from '@angular/material/radio';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { Router } from '@angular/router';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { AtelierService } from '../../core/services/atelier.service';
+import {
+  FORGE_ACCESS_BILLING_ROUTE,
+  FORGE_ACCESS_CODE_FRAGMENT,
+  FORGE_ACCESS_REFUSAL,
+  isForgeAccessDenied,
+} from '../../shared/forge-access';
 import {
   ProxyAssistantDialogComponent,
   ProxyAssistantDialogData,
@@ -445,6 +452,7 @@ export class RunnerPairingDialogComponent implements OnDestroy {
 
   private readonly atelier = inject(AtelierService);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly router = inject(Router);
   private readonly dialogRef = inject<MatDialogRef<RunnerPairingDialogComponent>>(MatDialogRef);
 
   /** Ouvre l'assistant proxy PAR-DESSUS ce parcours, sans le fermer (F-55 / SF-55-01, D1). */
@@ -695,6 +703,13 @@ export class RunnerPairingDialogComponent implements OnDestroy {
   /** Traduit un refus en phrase utile, et laisse l'étape ouverte : rien n'est perdu. */
   private failAttach(err: unknown): void {
     this.attaching.set(false);
+    if (isForgeAccessDenied(err)) {
+      // Vaut pour les deux modes : le mode PROJET n'avait aucune branche 403 et disait « n'a pas pu
+      // être rattaché », indiscernable d'une panne (F-85 / SF-85-04).
+      this.accessRefused.set(true);
+      this.attachError.set(FORGE_ACCESS_REFUSAL);
+      return;
+    }
     if (this.hostMode) {
       // Le nom saisi est CONSERVÉ : le retaper serait, très exactement, la friction que F-72
       // supprime.
@@ -703,9 +718,7 @@ export class RunnerPairingDialogComponent implements OnDestroy {
         this.attachError.set(err.error.message);
         return;
       }
-      this.attachError.set(err instanceof HttpErrorResponse && err.status === 403
-        ? 'La Forge est nécessaire pour connecter une machine.'
-        : "Le poste n'a pas pu être créé. Veuillez réessayer.");
+      this.attachError.set("Le poste n'a pas pu être créé. Veuillez réessayer.");
       return;
     }
     if (err instanceof HttpErrorResponse && err.status === 400) {
@@ -747,6 +760,12 @@ export class RunnerPairingDialogComponent implements OnDestroy {
 
   /** Message d'erreur de génération affiché dans le dialogue, ou `null`. */
   readonly generationError = signal<string | null>(null);
+
+  /**
+   * Vrai dès qu'un refus **d'accès** a été rendu (F-85 / SF-85-04). Il ne s'éteint pas : un accès
+   * ne s'ouvre pas depuis cette fenêtre, et la sortie doit rester sous les yeux.
+   */
+  readonly accessRefused = signal(false);
 
   /** Téléchargement du jar en vol. */
   readonly downloading = signal(false);
@@ -1397,6 +1416,18 @@ export class RunnerPairingDialogComponent implements OnDestroy {
     return 'jar';
   }
 
+  /**
+   * **Conduit là où un code d'accès se saisit** (F-85 / SF-85-04). La fenêtre se ferme d'abord :
+   * naviguer derrière un dialogue ouvert laisserait l'utilisateur devant un parcours qui ne peut
+   * plus aboutir.
+   */
+  goToAccessCode(): void {
+    this.dialogRef.close();
+    void this.router.navigate([FORGE_ACCESS_BILLING_ROUTE], {
+      fragment: FORGE_ACCESS_CODE_FRAGMENT,
+    });
+  }
+
   /** Demande un nouveau code d'appairage ; remplace celui affiché, le cas échéant. */
   generateCode(): void {
     if (this.generating()) {
@@ -1423,6 +1454,13 @@ export class RunnerPairingDialogComponent implements OnDestroy {
         this.generating.set(false);
         this.pairingCode.set(null);
         this.stopCountdown();
+        if (isForgeAccessDenied(err)) {
+          // C'est LE geste de l'incident du 12/09 : un refus d'accès y était dit « Veuillez
+          // réessayer », c'est-à-dire envoyé refaire ce qui échouera toujours (F-85 / SF-85-04).
+          this.accessRefused.set(true);
+          this.generationError.set(FORGE_ACCESS_REFUSAL);
+          return;
+        }
         this.generationError.set(
           err instanceof HttpErrorResponse && err.status === 404
             ? "Ce poste n'existe plus."

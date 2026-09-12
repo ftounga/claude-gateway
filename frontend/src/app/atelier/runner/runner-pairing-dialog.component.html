@@ -442,6 +442,18 @@
         @if (attachError()) {
           <p class="pairing-error" role="alert">{{ attachError() }}</p>
         }
+        @if (accessRefused()) {
+          <!-- F-85 / SF-85-04 : le refus d'ACCÈS ne se répare pas ici. On nomme la sortie et on y
+               conduit — la fenêtre se ferme, sans quoi la navigation se ferait derrière elle. -->
+          <button
+            mat-stroked-button
+            type="button"
+            class="pairing-access-exit"
+            (click)="goToAccessCode()"
+          >
+            Où saisir mon code
+          </button>
+        }
 
         <div class="pairing-actions">
           <button
@@ -632,6 +644,18 @@
         @if (attachError()) {
           <p class="pairing-error" role="alert">{{ attachError() }}</p>
         }
+        @if (accessRefused()) {
+          <!-- F-85 / SF-85-04 : le refus d'ACCÈS ne se répare pas ici. On nomme la sortie et on y
+               conduit — la fenêtre se ferme, sans quoi la navigation se ferait derrière elle. -->
+          <button
+            mat-stroked-button
+            type="button"
+            class="pairing-access-exit"
+            (click)="goToAccessCode()"
+          >
+            Où saisir mon code
+          </button>
+        }
 
         <div class="pairing-actions">
           @if (chosenLabel(); as chosen) {
@@ -720,6 +744,18 @@
           <!-- Annoncé, comme l'échec de rattachement de l'étape 1 : un échec qu'un lecteur d'écran
                ne signale pas laisse attendre un code qui ne viendra pas (F-56). -->
           <p class="pairing-error" role="alert">{{ error }}</p>
+        }
+        @if (accessRefused()) {
+          <!-- F-85 / SF-85-04 : le refus d'ACCÈS ne se répare pas ici. On nomme la sortie et on y
+               conduit — la fenêtre se ferme, sans quoi la navigation se ferait derrière elle. -->
+          <button
+            mat-stroked-button
+            type="button"
+            class="pairing-access-exit"
+            (click)="goToAccessCode()"
+          >
+            Où saisir mon code
+          </button>
         }
 
         <button

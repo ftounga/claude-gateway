@@ -60,7 +60,13 @@ public class UploadService {
 
         String mediaType = normalizeMediaType(file.getContentType());
         if (!properties.allowedTypeSet().contains(mediaType)) {
-            log.info("Fichier refusé : type hors liste blanche");
+            // Le TYPE refusé et la liste blanche sont journalisés, comme sur le chemin voisin
+            // (DocumentService) : « type hors liste blanche » sans dire lequel a coûté un
+            // aller-retour avec le PO pendant un incident en production — le diagnostic a dû
+            // passer par l'utilisateur. Le type n'est pas une donnée sensible : c'est déjà ce que
+            // le message d'erreur rend à l'appelant. Le nom du fichier, lui, reste dehors.
+            log.info("Fichier refusé : type « {} » hors liste blanche {}",
+                    mediaType, properties.allowedTypeSet());
             throw new UnsupportedFileTypeException("Type de fichier non supporté : " + mediaType);
         }
 

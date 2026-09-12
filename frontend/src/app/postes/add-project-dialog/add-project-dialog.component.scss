@@ -25,6 +25,11 @@
   line-height: 1.5;
 }
 
+/* La sortie d'un refus d'accès (F-85 / SF-85-04). Aucune couleur propre : un contour. */
+.add-project__access-exit {
+  margin: 0 0 var(--cg-space-3);
+}
+
 .add-project__notice {
   display: flex;
   align-items: flex-start;

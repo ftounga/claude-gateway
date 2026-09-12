@@ -18,9 +18,22 @@
     <mat-card class="gouvernance__notice">
       <mat-icon>lock</mat-icon>
       <div>
+        <!-- F-85 / SF-85-04 : le refus nomme LES DEUX sorties et conduit à celle qu'on oubliait. -->
         <h2>La gouvernance fait partie de la Forge</h2>
-        <p>Composer un catalogue et l'appliquer à vos postes demande la Forge.</p>
-        <a mat-flat-button color="primary" routerLink="/billing">Voir les formules</a>
+        <p>
+          Composer un catalogue et l'appliquer à vos postes demande un accès à la Forge. Deux façons
+          de l'ouvrir : souscrire, ou saisir le code d'accès que vous avez reçu par courriel.
+        </p>
+        <div class="gouvernance__notice-actions">
+          <a
+            mat-flat-button
+            color="primary"
+            [routerLink]="billingRoute"
+            [fragment]="accessCodeFragment"
+            >Où saisir mon code</a
+          >
+          <a mat-stroked-button [routerLink]="billingRoute">Voir les formules</a>
+        </div>
       </div>
     </mat-card>
   } @else if (error() === 'network') {

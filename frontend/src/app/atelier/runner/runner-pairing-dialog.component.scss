@@ -299,6 +299,12 @@
   font-size: 12px;
 }
 
+/* La sortie d'un refus d'accès, sous le message qui l'annonce (F-85 / SF-85-04).
+   Aucune couleur propre : un contour, le geste principal du parcours garde l'or de marque. */
+.pairing-access-exit {
+  margin: 0 0 var(--cg-space-3);
+}
+
 .pairing-code-box {
   display: flex;
   align-items: center;

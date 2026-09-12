@@ -23,6 +23,18 @@
     <p class="add-project__error" role="alert">{{ error }}</p>
   }
 
+  @if (accessRefused()) {
+    <!-- F-85 / SF-85-04 : un refus d'accès ne se répare pas ici. On nomme la sortie et on y conduit. -->
+    <button
+      mat-stroked-button
+      type="button"
+      class="add-project__access-exit"
+      (click)="goToAccessCode()"
+    >
+      Où saisir mon code
+    </button>
+  }
+
   @if (loading()) {
     <p class="add-project__notice">
       <mat-spinner diameter="18"></mat-spinner>

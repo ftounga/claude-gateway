@@ -27,6 +27,12 @@ import { HostTone, hostTone } from '../shared/host-identity';
 import { MissionBadgeComponent } from '../shared/mission-badge/mission-badge.component';
 import { TerminalPreviewComponent } from '../shared/terminal-preview/terminal-preview.component';
 import {
+  FORGE_ACCESS_CODE_FRAGMENT,
+  FORGE_ACCESS_BILLING_ROUTE,
+  isForgeAccessDenied,
+  openForgeAccessSnackBar,
+} from '../shared/forge-access';
+import {
   RunnerPairingDialogComponent,
   RunnerPairingDialogData,
 } from '../atelier/runner/runner-pairing-dialog.component';
@@ -158,6 +164,14 @@ export class PostesComponent implements OnInit {
    * et ce gabarit la lit au lieu de répéter `.zip`.
    */
   readonly archiveAccept = ARCHIVE_ACCEPT;
+
+  /**
+   * Où conduire quand l'accès est refusé (F-85 / SF-85-04) : la Facturation, **à l'endroit exact**
+   * de la section « Vous avez un code d'accès ? ». Lus depuis la source unique, jamais recopiés.
+   */
+  readonly billingRoute = FORGE_ACCESS_BILLING_ROUTE;
+
+  readonly accessCodeFragment = FORGE_ACCESS_CODE_FRAGMENT;
 
   readonly hosts = signal<RunnerHostOverview[]>([]);
   /** Premier chargement : c'est le seul moment où l'écran a le droit d'être vide. */
@@ -418,13 +432,11 @@ export class PostesComponent implements OnInit {
         this.openingTerminalHostId.set(null);
         this.router.navigate(['/atelier', terminal.id]);
       },
-      error: () => {
+      error: (err: unknown) => {
         this.openingTerminalHostId.set(null);
-        this.snackBar.open(
-          "Le terminal de ce poste n'a pas pu être ouvert. Rien n'a été créé.",
-          'Fermer',
-          { duration: 6000, panelClass: 'snack-error' },
-        );
+        // Un refus d'ACCÈS n'est pas une panne : le dire « n'a pas pu être ouvert » enverrait
+        // réessayer un geste qui échouera toujours (F-85 / SF-85-04).
+        this.notifyFailure(err, "Le terminal de ce poste n'a pas pu être ouvert. Rien n'a été créé.");
         // L'écran était peut-être en retard — un poste supprimé dans un autre onglet. On relit
         // plutôt que de laisser la carte mentir.
         this.load(false);
@@ -491,8 +503,7 @@ export class PostesComponent implements OnInit {
       },
       error: (err: unknown) => {
         this.openingFolder.set(null);
-        this.snackBar.open(this.openErrorMessage(err), 'Fermer',
-          { duration: 6000, panelClass: 'snack-error' });
+        this.notifyFailure(err, this.openErrorMessage(err));
         // L'écran était peut-être en retard — un projet créé dans un autre onglet. On relit plutôt
         // que de le laisser mentir, sans quoi le même refus se rejouerait.
         this.forgetFolders(hostId);
@@ -593,9 +604,6 @@ export class PostesComponent implements OnInit {
       if (err.status === 409 && typeof err.error?.message === 'string') {
         return err.error.message;
       }
-      if (err.status === 403) {
-        return 'La Forge est nécessaire pour ce geste.';
-      }
       if (err.status === 404) {
         return 'Poste introuvable.';
       }
@@ -630,8 +638,7 @@ export class PostesComponent implements OnInit {
           },
           error: (err: unknown) => {
             this.creating.set(false);
-            this.snackBar.open(gitErrorMessage(err), 'Fermer',
-              { duration: 6000, panelClass: 'snack-error' });
+            this.notifyFailure(err, gitErrorMessage(err));
           },
         });
       });
@@ -685,10 +692,8 @@ export class PostesComponent implements OnInit {
       },
       error: (err: unknown) => {
         this.creating.set(false);
-        this.snackBar.open(
-          httpErrorMessage(err,
-            "L'import du projet a échoué. Vérifiez qu'il s'agit d'une archive .zip."),
-          'Fermer', { duration: 6000, panelClass: 'snack-error' });
+        this.notifyFailure(err, httpErrorMessage(err,
+          "L'import du projet a échoué. Vérifiez qu'il s'agit d'une archive .zip."));
       },
     });
   }
@@ -750,10 +755,9 @@ export class PostesComponent implements OnInit {
             'Fermer', { duration: 4000, panelClass: 'snack-info' });
         }
       },
-      error: () => {
+      error: (err: unknown) => {
         this.savingHostId.set(null);
-        this.snackBar.open("L'état de la mission n'a pas pu être enregistré.", 'Fermer',
-          { duration: 4000, panelClass: 'snack-error' });
+        this.notifyFailure(err, "L'état de la mission n'a pas pu être enregistré.");
       },
     });
   }
@@ -813,8 +817,7 @@ export class PostesComponent implements OnInit {
       },
       error: (err: unknown) => {
         this.deletingHostId.set(null);
-        this.snackBar.open(this.deletionErrorMessage(err), 'Fermer',
-          { duration: 6000, panelClass: 'snack-error' });
+        this.notifyFailure(err, this.deletionErrorMessage(err));
         // La vue était en retard sur la gateway : on la relit plutôt que de la laisser mentir.
         this.load(false);
       },
@@ -829,9 +832,6 @@ export class PostesComponent implements OnInit {
     if (err instanceof HttpErrorResponse) {
       if (err.status === 409 && typeof err.error?.message === 'string') {
         return err.error.message;
-      }
-      if (err.status === 403) {
-        return 'La Forge est nécessaire pour ce geste.';
       }
       if (err.status === 404) {
         return 'Poste introuvable. Il a peut-être déjà été supprimé.';
@@ -892,8 +892,7 @@ export class PostesComponent implements OnInit {
       },
       error: (err: unknown) => {
         this.killingHostId.set(null);
-        this.snackBar.open(this.killErrorMessage(err), 'Fermer',
-          { duration: 6000, panelClass: 'snack-error' });
+        this.notifyFailure(err, this.killErrorMessage(err));
         this.load(false);
       },
     });
@@ -901,14 +900,26 @@ export class PostesComponent implements OnInit {
 
   private killErrorMessage(err: unknown): string {
     if (err instanceof HttpErrorResponse) {
-      if (err.status === 403) {
-        return 'La Forge est nécessaire pour ce geste.';
-      }
       if (err.status === 404) {
         return 'Poste introuvable. Il a peut-être déjà été supprimé.';
       }
     }
     return "La liaison n'a pas pu être coupée. Rien n'a changé.";
+  }
+
+  /**
+   * **Dit l'échec — et distingue le refus d'accès de la panne** (F-85 / SF-85-04).
+   *
+   * <p>Un {@code 403} de la garde et une gateway injoignable se disaient pareil, et l'un des deux
+   * mentait. Le refus d'accès rend désormais les <b>deux sorties</b> — souscrire, ou saisir le code
+   * d'accès reçu — et <b>y conduit</b> ; tout le reste garde son message, qui est le bon.</p>
+   */
+  private notifyFailure(err: unknown, message: string): void {
+    if (isForgeAccessDenied(err)) {
+      openForgeAccessSnackBar(this.snackBar, this.router);
+      return;
+    }
+    this.snackBar.open(message, 'Fermer', { duration: 6000, panelClass: 'snack-error' });
   }
 
   // ---------------------------------------------------------------- libellés

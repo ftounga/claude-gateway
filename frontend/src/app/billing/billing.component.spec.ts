@@ -1044,6 +1044,19 @@ describe('BillingComponent', () => {
       expect(component.accessCodeSubmitDisabled()).toBeTrue();
     });
 
+    /**
+     * F-85 / SF-85-04 : chaque refus d'accès à la Forge conduit ICI. Sans cette ancre, le lien
+     * déposerait l'utilisateur en haut d'une page longue, devant des formules — c'est-à-dire
+     * exactement à côté de ce qu'il cherche.
+     */
+    it("porte l'ancre vers laquelle chaque refus d'accès conduit", () => {
+      setup();
+
+      const section = (fixture.nativeElement as HTMLElement).querySelector('#code-acces');
+      expect(section).not.toBeNull();
+      expect(section?.textContent).toContain("Vous avez un code d'accès ?");
+    });
+
     it("remplace la saisie par le bandeau quand un accès est déjà en cours (pas de cumul à l'écran)", () => {
       setup(null, false, optionAvailable, {}, plans, liveGrant);
 
