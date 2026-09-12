@@ -546,3 +546,26 @@ confiance : il cesse d'être le seul à ignorer celle qui existe. Ce qui compte 
 comprendre puis contourner à la main.
 
 SF-80-02 est donc débloquée.
+
+---
+
+## OQ-18 — Où vit le test qui fait se rencontrer le runner et la gateway ?
+
+**Ouverte le 2026-09-12** par F-81, après une panne d'appairage de deux jours dont la cause ne vivait
+dans **aucun** des deux fichiers concernés : `backend/` et `runner/` sont deux projets Maven
+distincts, et rien ne les fait se rencontrer.
+
+| Voie | Ce qu'elle coûte |
+|---|---|
+| Le **backend** dépend du runner en portée `test` | Une dépendance Maven ; le runner doit être installé localement avant le backend — donc un ordre de construction imposé |
+| Un **troisième module** `contract-tests` dépendant des deux | Un module de plus dans la réaction en chaîne ; le plus propre |
+| Des **instantanés JSON** versionnés, comparés de part et d'autre | Aucune dépendance ; mais compare des **formes**, pas des lectures réelles — un mapper strict d'un côté passerait au travers |
+
+**Recommandation portée au cadrage** : le **troisième module**. Il porte le contrat, ne sert qu'à
+ça, et **dit dans le dépôt que ce contrat existe** — ce que ni `backend/` ni `runner/` ne disent.
+
+**Ce que la réponse engage** : la structure du dépôt et l'ordre de construction, donc le Dockerfile
+du backend (qui construit déjà les paquets du runner) et la CI. C'est le seul point de F-81 qui ne
+soit pas purement additif — SF-81-02 et SF-81-03 ne dépendent pas de la réponse.
+
+**Tranchée par** : le PO. **Non tranchée à ce jour.**
