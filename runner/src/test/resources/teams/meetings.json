@@ -1,0 +1,26 @@
+{
+  "value": [
+    {
+      "id": "MTG-FABRIQUE-0001",
+      "subject": "Comité de migration",
+      "startTime": "2026-09-10T09:00:00.000Z",
+      "endTime": "2026-09-10T10:02:00.000Z",
+      "organizerId": "8:orgid:00000000-0000-0000-0000-000000000001",
+      "threadId": "19:meeting_fabrique@thread.v2",
+      "isRecorded": true,
+      "isTranscriptAvailable": true,
+      "joinWebUrl": "https://teams.microsoft.com/l/meetup-join/19%3ameeting_fabrique%40thread.v2/0",
+      "participants": [
+        { "mri": "8:orgid:00000000-0000-0000-0000-000000000001", "displayName": "Paul Durand" },
+        { "mri": "8:orgid:00000000-0000-0000-0000-000000000002", "displayName": "Francky Tounga" }
+      ]
+    },
+    {
+      "id": "MTG-FABRIQUE-0002",
+      "subject": "Réunion sans horodatage",
+      "organizerId": "8:orgid:00000000-0000-0000-0000-000000000001",
+      "isRecorded": false,
+      "isTranscriptAvailable": false
+    }
+  ]
+}

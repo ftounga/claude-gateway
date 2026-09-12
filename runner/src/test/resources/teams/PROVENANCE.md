@@ -1,0 +1,44 @@
+# Échantillons Teams — provenance, et ce qu'ils prouvent
+
+> **Ces fichiers sont FABRIQUÉS.** Aucun ne provient d'un vrai locataire Microsoft, d'un vrai compte
+> ni d'une vraie conversation. Aucune personne réelle n'y figure ; tous les identifiants sont des
+> zéros et des noms inventés.
+
+## Pourquoi fabriqués
+
+**Nous n'avons aucun compte Teams de test.** C'est une limite du volet, écrite au cadrage
+(`docs/features/F-87/CADRAGE-volet-teams.md`) et répétée ici pour qu'elle ne se perde pas : on ne
+peut donc **rien éprouver contre un vrai Teams** avant le premier branchement chez un utilisateur.
+
+Ces échantillons ont été écrits à la main d'après la **forme publiquement documentée** des réponses
+du service de conversation utilisé par le client web (messages sous `messages[]`, auteur porté par
+`from` et `imdisplayname`, horodatage `originalarrivaltime`, mentions et fichiers sérialisés en
+chaîne dans `properties`, pagination par `_metadata.backwardLink`).
+
+## Ce qu'ils prouvent — et ce qu'ils ne prouvent pas
+
+| | |
+|---|---|
+| **Prouvé** | que l'adaptateur **traduit** correctement une réponse de cette forme : champs lus, horodatages en UTC, mentions, pièces jointes, pagination |
+| **Prouvé** | qu'une réponse **amputée** ne produit **jamais** de message à moitié lu, mais un manque nommé |
+| **Prouvé** | qu'une réponse **inconnue** fait refuser la lecture au lieu de rendre une liste vide silencieuse |
+| **Prouvé** | qu'aucun champ secret glissé dans une réponse ne franchit l'adaptateur |
+| **NON prouvé** | que la forme supposée est **celle que Microsoft sert aujourd'hui** |
+
+**C'est la sonde de santé (SF-87-03) qui est responsable de confronter l'hypothèse au réel** le jour
+du premier branchement : elle compte les champs reconnus et, si elle ne reconnaît rien, **refuse en
+nommant** ce qui a changé et la version observée. Le produit s'apercevra donc qu'il ne sait plus
+lire **avant** l'utilisateur — et jamais en rendant la moitié d'un compte rendu.
+
+## Les fichiers
+
+| Fichier | Ce qu'il porte |
+|---|---|
+| `conversation-messages.json` | page nominale : trois messages, une mention, une pièce jointe, une réaction, une page suivante |
+| `conversation-messages-partial.json` | un message sans auteur, un sans horodatage, un genre inconnu — et deux messages valides |
+| `conversation-messages-unknown.json` | une forme que l'adaptateur ne reconnaît pas du tout |
+| `conversation-messages-secrets.json` | page nominale **empoisonnée** de jetons et de cookies : le test de sécurité vérifie qu'aucun ne ressort |
+| `conversation-list.json` | liste de conversations (tête-à-tête, canal, réunion) |
+| `activity-feed.json` | flux d'activité : deux mentions et une réaction (qui n'en est pas une) |
+| `meetings.json` | une réunion enregistrée avec transcription annoncée |
+| `transcript.json` | trois répliques horodatées |

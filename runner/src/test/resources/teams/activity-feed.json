@@ -1,0 +1,42 @@
+{
+  "activities": [
+    {
+      "activityType": "mention",
+      "activitySubtype": "person",
+      "activityTimestamp": "2026-09-10T08:02:00.000Z",
+      "sourceUserId": "8:orgid:00000000-0000-0000-0000-000000000003",
+      "sourceUserImDisplayName": "Claire Martin",
+      "sourceThreadId": "19:fabrique@thread.v2",
+      "sourceThreadTopic": "Migration MFA",
+      "sourceMessageId": "1757662500000",
+      "messagePreview": "<p>@Francky peux-tu confirmer la date de bascule&nbsp;?</p>"
+    },
+    {
+      "activityType": "reaction",
+      "activityTimestamp": "2026-09-10T09:00:00.000Z",
+      "sourceUserId": "8:orgid:00000000-0000-0000-0000-000000000001",
+      "sourceUserImDisplayName": "Paul Durand",
+      "sourceThreadId": "19:fabrique@thread.v2",
+      "sourceMessageId": "1757662600000",
+      "messagePreview": "Une réaction n'est pas une mention."
+    },
+    {
+      "activityType": "channelMention",
+      "activitySubtype": "channel",
+      "activityTimestamp": "2026-09-11T14:20:00.000Z",
+      "sourceUserId": "8:orgid:00000000-0000-0000-0000-000000000001",
+      "sourceUserImDisplayName": "Paul Durand",
+      "sourceThreadId": "19:fabrique@thread.v2",
+      "sourceThreadTopic": "Migration MFA",
+      "sourceMessageId": "1757662700000",
+      "messagePreview": "Rappel à tout le canal."
+    },
+    {
+      "activityType": "mention",
+      "activityTimestamp": "2026-09-11T15:00:00.000Z",
+      "sourceUserImDisplayName": "Sans identifiant de message",
+      "sourceThreadId": "19:fabrique@thread.v2"
+    }
+  ],
+  "_metadata": {}
+}

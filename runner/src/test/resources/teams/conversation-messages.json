@@ -1,0 +1,52 @@
+{
+  "_metadata": {
+    "backwardLink": "https://teams.microsoft.com/api/chatsvc/emea/v1/users/ME/conversations/19:fabrique@thread.v2/messages?pageSize=50&startTime=1757500000000",
+    "syncState": "https://teams.microsoft.com/api/chatsvc/emea/v1/users/ME/conversations/19:fabrique@thread.v2/messages?syncState=FABRIQUE"
+  },
+  "messages": [
+    {
+      "id": "1757662323000",
+      "conversationid": "19:fabrique@thread.v2",
+      "conversationLink": "https://teams.microsoft.com/api/chatsvc/emea/v1/users/ME/conversations/19:fabrique@thread.v2",
+      "from": "https://teams.microsoft.com/api/chatsvc/emea/v1/users/8:orgid:00000000-0000-0000-0000-000000000001",
+      "imdisplayname": "Paul Durand",
+      "originalarrivaltime": "2026-09-05T09:12:03.412Z",
+      "messagetype": "RichText/Html",
+      "type": "Message",
+      "parentMessageId": "0",
+      "content": "<p>Bonjour <span itemtype=\"http://schema.skype.com/Mention\" itemid=\"0\">Francky</span>, peux-tu relire le plan de migration&nbsp;?</p>",
+      "properties": {
+        "mentions": "[{\"mri\":\"8:orgid:00000000-0000-0000-0000-000000000002\",\"mentionedText\":\"Francky\",\"itemid\":\"0\",\"mentionType\":\"person\"}]",
+        "emotions": [
+          { "key": "like", "users": [{ "mri": "8:orgid:00000000-0000-0000-0000-000000000003" }] }
+        ]
+      }
+    },
+    {
+      "id": "1757662400000",
+      "conversationid": "19:fabrique@thread.v2",
+      "from": "https://teams.microsoft.com/api/chatsvc/emea/v1/users/8:orgid:00000000-0000-0000-0000-000000000002",
+      "imdisplayname": "Francky Tounga",
+      "originalarrivaltime": "2026-09-05T09:31:44.000Z",
+      "messagetype": "RichText/Html",
+      "type": "Message",
+      "parentMessageId": "1757662323000",
+      "content": "<div>Oui, je te l'envoie demain matin.</div>",
+      "properties": {
+        "files": "[{\"itemid\":\"f-0001\",\"title\":\"plan-migration.pdf\",\"fileType\":\"pdf\",\"fileSize\":\"184320\",\"objectUrl\":\"https://contoso.sharepoint.com/fabrique/plan-migration.pdf\"}]",
+        "edittime": "1757662500000"
+      }
+    },
+    {
+      "id": "1757748000000",
+      "conversationid": "19:fabrique@thread.v2",
+      "from": "https://teams.microsoft.com/api/chatsvc/emea/v1/users/8:orgid:00000000-0000-0000-0000-000000000003",
+      "imdisplayname": "Claire Martin",
+      "originalarrivaltime": "2026-09-12T07:05:10.000Z",
+      "messagetype": "Text",
+      "type": "Message",
+      "content": "Le comité est décalé au T3.",
+      "properties": {}
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "entries": [
+    {
+      "id": "cue-0001",
+      "startDateTime": "2026-09-10T09:00:05.120Z",
+      "startOffset": "00:00:05.120",
+      "endOffset": "00:00:09.400",
+      "speakerId": "8:orgid:00000000-0000-0000-0000-000000000001",
+      "speakerDisplayName": "Paul Durand",
+      "text": "Je présente le planning de migration."
+    },
+    {
+      "id": "cue-0002",
+      "startDateTime": "2026-09-10T09:00:11.000Z",
+      "startOffset": "00:00:11.000",
+      "endOffset": "00:00:14.500",
+      "speakerId": "8:orgid:00000000-0000-0000-0000-000000000003",
+      "speakerDisplayName": "Claire Martin",
+      "text": "Le comité est décalé au troisième trimestre."
+    },
+    {
+      "id": "cue-0003",
+      "speakerDisplayName": "Réplique sans horodatage",
+      "text": "Celle-ci ne doit pas être rendue."
+    }
+  ]
+}
