@@ -121,6 +121,14 @@ C'est un commentaire HTML : il ne s'affiche pas dans la réponse. Sans lui, la f
 — non pas pour te punir, mais parce qu'un contrôle qui se tait quand il ne comprend pas ne protège de
 rien.
 
+### Le second regard
+
+Quand un tour a **écrit**, un second regard compare la carte aux notes et liste ce qui est cité là
+et absent d'ici. **Filet best-effort, pas une autorité** : vérifie chaque élément dans le fichier
+cité ; s'il est durable et réellement absent, promeus-le et coche-le ; sinon **ignore-le**. S'il ne
+rend rien de lisible, on te le dit — un filet qui se tait quand il ne comprend pas ne protège de
+rien.
+
 ### Comment écrire un message d'erreur
 
 **Un message d'erreur porte son action corrective**, parce qu'il est lu par un modèle qui doit

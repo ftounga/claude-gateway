@@ -25,6 +25,7 @@ import org.mockito.quality.Strictness;
 
 import fr.claudegateway.governance.control.CommitSansTraceLlmControl;
 import fr.claudegateway.governance.control.JugeFinDeTourControl;
+import fr.claudegateway.governance.control.JugeIndependantControl;
 import fr.claudegateway.governance.control.PromotionDetteBloquanteControl;
 
 /**
@@ -49,7 +50,8 @@ class GovernancePackageSeederTest {
     void setUp() {
         fullRegistry = new GovernanceControlRegistry(List.of(new CommitSansTraceLlmControl(),
                 new JugeFinDeTourControl(destinations),
-                new PromotionDetteBloquanteControl(destinations)));
+                new PromotionDetteBloquanteControl(destinations),
+                new JugeIndependantControl(null, null, destinations)));
         when(packages.save(any(GovernancePackage.class))).thenAnswer(invocation -> {
             GovernancePackage saved = invocation.getArgument(0);
             if (saved.getId() == null) {
@@ -94,8 +96,10 @@ class GovernancePackageSeederTest {
                 // La forme annoncée au modèle est celle que le produit lit (F-93 : « promu »).
                 .contains(fr.claudegateway.governance.control.FinDeTourMarker.FORME
                         .replace("<!-- ", "").replace(" -->", ""));
+        // Le juge indépendant vient EN DERNIER : c'est le seul qui coûte un appel, et le premier
+        // blocage l'emporte (F-50). L'ordre est le garde-fou de dépense (F-94 / SF-94-03).
         assertThat(pkg.controlIdList()).containsExactly("commit-sans-trace-llm", "juge-fin-de-tour",
-                "promotion-dette-bloquante");
+                "promotion-dette-bloquante", "juge-independant");
 
         List<GovernancePackageFile> written = captureFiles();
         assertThat(written).extracting(GovernancePackageFile::getPath)

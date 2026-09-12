@@ -18,6 +18,10 @@ import fr.claudegateway.atelier.checkpoint.AtelierCheckpointContext;
 import fr.claudegateway.atelier.checkpoint.AtelierCheckpointKind;
 import fr.claudegateway.atelier.checkpoint.AtelierCheckpointVerdict;
 import fr.claudegateway.governance.GovernanceMapDestinations;
+import fr.claudegateway.governance.juge.JugeAvis;
+import fr.claudegateway.governance.juge.JugeIndependantService;
+import fr.claudegateway.governance.juge.JugeMemo;
+import fr.claudegateway.governance.juge.JugeVerdict;
 
 /**
  * Les deux contrôles de fin de tour du premier paquet (F-52 / SF-52-02, complétés par F-93 /
@@ -257,5 +261,32 @@ class EndOfTurnControlsTest {
                 .blocked()).isTrue();
         assertThat(juge.evaluate(AtelierCheckpointContext.endOfTurn(null, null, marked, List.of()))
                 .blocked()).isFalse();
+    }
+
+    // ----------------------------------------------------- composition avec F-94
+
+    @Test
+    @DisplayName("LES DEUX JUGES SE COMPOSENT : le marqueur juge une DÉCLARATION, l'audit des FICHIERS")
+    void theTwoJudgesCompose() {
+        // Un tour parfaitement déclaré : le juge du marqueur laisse passer, et il a raison — le
+        // modèle a dit qu'il n'avait rien à promouvoir.
+        String declare = "<!-- fin-de-tour: promotion=aucune; promu=aucune; dette=0 -->";
+        AtelierCheckpointContext tour = AtelierCheckpointContext.endOfTurn(userId, workspaceId,
+                declare, List.of("STATE.md"));
+        assertThat(juge.evaluate(tour).blocked()).isFalse();
+        assertThat(dette.evaluate(tour).blocked()).isFalse();
+
+        // Le juge INDÉPENDANT, lui, a regardé les fichiers — et il a vu ce que le modèle a oublié.
+        // C'est exactement le cas qu'une auto-déclaration ne peut pas attraper : un modèle qui
+        // oublie de promouvoir oublie aussi de le déclarer.
+        JugeIndependantService service = mock(JugeIndependantService.class);
+        when(service.consulter(userId, workspaceId)).thenReturn(JugeAvis.elements(
+                List.of(new JugeVerdict.Element("bastion bst-01", "p/STATE.md"))));
+        JugeIndependantControl audit =
+                new JugeIndependantControl(service, new JugeMemo(), destinations);
+
+        AtelierCheckpointVerdict verdict = audit.evaluate(tour);
+        assertThat(verdict.blocked()).isTrue();
+        assertThat(verdict.correction()).contains("best-effort", "bastion bst-01");
     }
 }
