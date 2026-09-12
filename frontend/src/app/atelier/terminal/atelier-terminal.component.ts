@@ -17,7 +17,9 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { RouterLink } from '@angular/router';
 
 import {
   ForgeBreadcrumbComponent,
@@ -59,6 +61,17 @@ import {
 } from './terminal-diff';
 
 /**
+ * **Commande de reprise d'un poste appairé** (F-82 / SF-82-05), telle que l'en-tête du terminal la
+ * propose quand la machine est connue mais éteinte.
+ *
+ * <p>Le <b>lanceur nu</b>, sans le moindre argument : l'appairage a mémorisé la passerelle et la
+ * racine à côté du jeton (F-46 / SF-46-01). C'est la forme <b>jar</b>, la seule connaissable
+ * d'ici — le dialogue d'appairage, lui, sait quel paquet a été retenu et propose son lanceur
+ * propre ; le terminal, non. L'écran dit donc d'où la lancer plutôt que de fabriquer un chemin.</p>
+ */
+export const RUNNER_RESUME_COMMAND = 'java -jar claude-runner.jar';
+
+/**
  * Vue **terminal immersive** du mode Terminal de l'Atelier (F-30 SF-30-07).
  *
  * <p>Occupe tout l'écran de l'Atelier : ni liste de projets, ni bulles de conversation — un flux
@@ -73,7 +86,7 @@ import {
   selector: 'app-atelier-terminal',
   imports: [
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
-    MatButtonToggleModule, MatIconModule, MatProgressSpinnerModule, MatTooltipModule,
+    MatButtonToggleModule, MatIconModule, MatProgressSpinnerModule, MatTooltipModule, RouterLink,
   ],
   templateUrl: './atelier-terminal.component.html',
   styleUrl: './atelier-terminal.component.scss',
@@ -379,8 +392,6 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   @Output() executionTargetChange = new EventEmitter<WorkspaceExecutionTarget>();
   /** Relevé manuel de l'état runner (F-38 / SF-38-06). */
   @Output() refreshRunner = new EventEmitter<void>();
-  /** Ouverture de l'appairage d'une machine (F-38 / SF-38-01). */
-  @Output() pairRunner = new EventEmitter<void>();
   /** Ouverture du journal d'activité de la machine (F-38 / SF-38-08). */
   @Output() openRunnerAudit = new EventEmitter<void>();
   /** Coupe-circuit : coupe la liaison avec la machine (F-38 / SF-38-08). */
@@ -433,6 +444,92 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     return this.engine === 'LOCAL_MACHINE' ? 'dns' : 'cloud';
   }
 
+  // ------------------------------------------------ état du poste (F-82 / SF-82-05, décision D7)
+
+  /**
+   * <b>L'état du poste, à la place du bouton « Connecter une machine »</b> (F-82 / SF-82-05).
+   *
+   * <p>Le geste de mise en service a quitté le terminal d'un projet : la connexion se fait
+   * <b>par poste</b>, depuis la Forge, et une fois par machine. Ce que ce bouton couvrait
+   * réellement — « mon poste est éteint, je veux le rallumer » — n'est pas une connexion mais une
+   * <b>reprise</b>, et SF-82-04 vient de la mettre en premier.</p>
+   *
+   * <p>Ce qui reste ici est donc un <b>état</b> et non une action : qui (le poste), dans quel état,
+   * et quoi faire — la commande de reprise quand elle a un sens, un lien vers la carte du poste
+   * quand il en existe une.</p>
+   */
+  hostStateLabel(): string {
+    if (!this.hostKnown()) {
+      // Aucun poste : un projet hébergé (F-71) n'a ni machine, ni reprise, ni carte à montrer.
+      return "Ce projet n'est rattaché à aucun poste.";
+    }
+    const host = this.hostNameValue() ?? 'ce poste';
+    if (this.runnerStatus === null) {
+      return `Ce projet vit sur ${host} — état inconnu.`;
+    }
+    return this.runnerStatus.connected
+      ? `Ce projet vit sur ${host} — poste connecté.`
+      : `Ce projet vit sur ${host} — poste non connecté.`;
+  }
+
+  /** Vrai quand le projet est rattaché à une machine dont on peut montrer la carte. */
+  hostKnown(): boolean {
+    return this.hostIdValue() !== null || this.hostNameValue() !== null;
+  }
+
+  /**
+   * <b>La reprise</b> (F-82 / SF-82-04, rappelée ici par SF-82-05) : le poste porte un jeton
+   * utilisable et son runner ne tourne pas. Il n'y a alors <b>aucun code à générer</b> — seulement
+   * à relancer le runner sur la machine.
+   *
+   * <p>Muette dans les deux autres cas, et c'est voulu : un poste connecté n'a rien à reprendre, un
+   * poste sans jeton utilisable — jamais appairé, ou coupé par le coupe-circuit — se remet en
+   * service depuis sa carte, pas d'ici.</p>
+   */
+  resumeAvailable(): boolean {
+    return this.hostKnown()
+      && this.runnerStatus !== null
+      && this.runnerStatus.connected === false
+      && this.runnerStatus.paired === true;
+  }
+
+  /**
+   * La commande de reprise : <b>le lanceur, nu</b>.
+   *
+   * <p>Ni passerelle, ni racine, ni code — l'appairage les a mémorisés à côté du jeton
+   * (F-46 / SF-46-01). Et surtout aucun `cd` préfixé : d'ici on ne connaît pas le dossier où le
+   * runner a été déposé sur la machine, et un chemin d'exemple ferait une commande faussement
+   * prête (même arbitrage qu'à SF-82-04, D5-b). L'écran dit donc <b>d'où</b> la lancer.</p>
+   */
+  readonly resumeCommand = RUNNER_RESUME_COMMAND;
+
+  /** Racine déclarée par la machine, quand la gateway la connaît — pour dire d'où relancer. */
+  hostRootName(): string | null {
+    return this.runnerStatus?.rootName ?? null;
+  }
+
+  /** Ancre de la carte du poste sur l'accueil de la Forge, ou `null` : on ne fabrique pas un lien. */
+  hostAnchor(): string | null {
+    const id = this.hostIdValue();
+    return id ? `poste-${id}` : null;
+  }
+
+  /**
+   * Copie la commande de reprise. Échec <b>doux</b> : un presse-papiers indisponible — page non
+   * sécurisée, navigateur restreint — ne doit rien casser, la commande reste lisible à l'écran.
+   */
+  copyResumeCommand(): void {
+    const clipboard = navigator.clipboard;
+    if (!clipboard || typeof clipboard.writeText !== 'function') {
+      this.snackBar.open('Copie impossible dans ce contexte.', 'Fermer', { duration: 3000 });
+      return;
+    }
+    clipboard.writeText(this.resumeCommand).then(
+      () => this.snackBar.open('Commande de relance copiée.', 'Fermer', { duration: 2000 }),
+      () => this.snackBar.open('Copie impossible dans ce contexte.', 'Fermer', { duration: 3000 }),
+    );
+  }
+
   /**
    * Ce qu'on fait après un tour arrêté sur le plafond de dépense (F-36 / SF-36-04, étendu à la
    * boucle maison par F-39 / SF-39-15).
@@ -477,6 +574,7 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   private static readonly SPINNER_INTERVAL_MS = 120;
 
   private readonly changeDetector = inject(ChangeDetectorRef);
+  private readonly snackBar = inject(MatSnackBar);
 
   /** Image courante du spinner ; seule la ligne vivante la lit. */
   spinnerFrame = AtelierTerminalComponent.SPINNER_FRAMES[0];

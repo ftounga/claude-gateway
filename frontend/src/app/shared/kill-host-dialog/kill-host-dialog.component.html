@@ -11,7 +11,15 @@
     <ul class="kill-host__list">
       <li>La connexion en cours est <strong>fermée</strong>.</li>
       <li>Tous les jetons de ce poste sont <strong>révoqués</strong> : il faudra le réappairer.</li>
-      @if (hasNoProject()) {
+      @if (projectsUnknown()) {
+        <!-- La liste n'a pas pu être lue (SF-82-05, ouverture depuis un terminal) : on le DIT.
+             « Aucun projet » serait une promesse qu'on n'a pas vérifiée. -->
+        <li>
+          <strong>Tous les projets de ce poste</strong> repassent en bac à sable hébergé. Leur liste
+          n'a pas pu être relevée à l'instant : elle est visible sur la carte du poste, dans la
+          Forge.
+        </li>
+      } @else if (hasNoProject()) {
         <li>
           Ce poste <strong>ne porte aucun projet</strong> : aucune cible d'exécution ne change.
         </li>

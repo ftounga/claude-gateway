@@ -18,7 +18,6 @@ import {
   HostFolder,
   HostProjectSummary,
   RunnerHostOverview,
-  RunnerKillResult,
 } from '../core/models/atelier.models';
 import { ForgeBreadcrumbComponent } from '../shared/forge-breadcrumb/forge-breadcrumb.component';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
@@ -51,7 +50,8 @@ import {
 import {
   KillHostDialogComponent,
   KillHostDialogData,
-} from './kill-host-dialog/kill-host-dialog.component';
+} from '../shared/kill-host-dialog/kill-host-dialog.component';
+import { killHostSuccessMessage } from '../shared/kill-host-dialog/kill-host-messages';
 import {
   HostMissionStatus,
   MISSION_STATUSES,
@@ -875,7 +875,7 @@ export class PostesComponent implements OnInit {
     this.atelier.killHost(hostId).subscribe({
       next: (result) => {
         this.killingHostId.set(null);
-        this.snackBar.open(this.killSuccessMessage(host.name, result), 'Fermer',
+        this.snackBar.open(killHostSuccessMessage(host.name, result), 'Fermer',
           { duration: 6000, panelClass: 'snack-info' });
         // C'est la gateway qui fait foi sur ce qu'elle a coupé et ramené : on relit plutôt que de
         // reconstruire l'état de la carte à partir d'une supposition.
@@ -888,23 +888,6 @@ export class PostesComponent implements OnInit {
         this.load(false);
       },
     });
-  }
-
-  /**
-   * Ce que la gateway a **réellement** fait — jamais ce qu'on lui a demandé. Couper une liaison déjà
-   * coupée n'est pas une erreur (le coupe-circuit est idempotent), mais le dire « coupée » alors que
-   * zéro jeton a été révoqué ferait croire à un geste qui n'a rien eu à faire.
-   */
-  private killSuccessMessage(hostName: string, result: RunnerKillResult): string {
-    const returned = result.workspacesReturned > 0
-      ? ` ${result.workspacesReturned} projet(s) ramené(s) au bac à sable.`
-      : '';
-    if (result.revokedTokens === 0 && !result.disconnected) {
-      return `« ${hostName} » n'avait plus de liaison ouverte.${returned}`
-        + ' Le runner, lui, tourne peut-être encore sur la machine.';
-    }
-    return `Liaison coupée avec « ${hostName} » : ${result.revokedTokens} jeton(s) révoqué(s).`
-      + `${returned} Le runner continue de tourner sur la machine tant qu'il n'y est pas arrêté.`;
   }
 
   private killErrorMessage(err: unknown): string {

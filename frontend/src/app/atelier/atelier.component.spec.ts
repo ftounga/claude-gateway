@@ -4,6 +4,10 @@ import { ApplicationRef } from '@angular/core';
 import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ActivatedRoute, ParamMap, Router, provideRouter } from '@angular/router';
+import {
+  KillHostDialogComponent,
+  KillHostDialogData,
+} from '../shared/kill-host-dialog/kill-host-dialog.component';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, throwError } from 'rxjs';
@@ -18,6 +22,7 @@ import { ApiKeyStatus } from '../core/models/api-key.models';
 import {
   AtelierMessage,
   FileContent,
+  RunnerHostOverview,
   WorkspaceDetail,
   WorkspaceSummary,
 } from '../core/models/atelier.models';
@@ -3402,20 +3407,14 @@ describe('AtelierComponent — écrans runner (F-38 SF-38-06)', () => {
     fixture.destroy();
   });
 
-  it('ouvre l\'écran d\'appairage avec le projet courant et relève l\'état au retour', () => {
+  it('n\'offre plus de connecter une machine depuis le terminal d\'un projet (D7)', () => {
+    // F-82 / SF-82-05 : la connexion se fait PAR POSTE, depuis la Forge — une fois par machine.
+    // Ce qui reste ici est un ÉTAT, pas un bouton d'action.
     setup(runnerDetail);
-    dialog.open.and.returnValue(
-      { afterClosed: () => of(undefined) } as MatDialogRef<unknown>);
-    service.getRunnerStatus.calls.reset();
 
-    component.openRunnerPairing();
-
-    expect(dialog.open).toHaveBeenCalled();
-    // Le POSTE voyage avec le projet (F-48 / SF-48-03) : le dialogue n'a pas à redemander ce que
-    // le projet sait déjà.
-    expect(dialog.open.calls.mostRecent().args[1]?.data)
-      .toEqual({ workspaceId: 'w1', workspaceName: 'projet', hostId: null, projectPath: null });
-    expect(service.getRunnerStatus).toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('.terminal-runner-pair')).toBeNull();
+    expect(fixture.nativeElement.textContent as string).not.toContain('Connecter une machine');
+    expect(fixture.nativeElement.querySelector('.terminal-host-state')).not.toBeNull();
     fixture.destroy();
   });
 
@@ -3465,6 +3464,9 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
       'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory', 'getResume', 'restartThread',
       'setExecutionTarget', 'getRunnerStatus', 'createHostPairingCode', 'downloadRunnerJar',
       'confirmToolUse', 'confirmChatToolUse', 'killHost', 'getRunnerAudit', 'interruptChat',
+      // F-82 / SF-82-05 : la confirmation du coupe-circuit NOMME les projets du poste, et le
+      // terminal ne connaît que le sien — il les relève donc avant de la poser.
+      'runnerHostsOverview',
     ]);
     const apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
@@ -3487,6 +3489,13 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
       of({ turns: 0, lastMessageAt: null, threadStartedAt: null, prompt: 'NONE' as const }),
     );
     service.getRunnerStatus.and.returnValue(of({ connected: true, lastSeenAt: null }));
+    service.runnerHostsOverview.and.returnValue(of([{
+      id: 'h1', name: 'EDENRED', connected: true, createdAt: '2026-08-30T00:00:00Z',
+      activeProjects: 0, projects: [
+        { id: 'w1', name: 'projet', executionTarget: 'RUNNER' as const, calls: 0, active: false },
+        { id: 'w2', name: 'autre', executionTarget: 'SANDBOX' as const, calls: 0, active: false },
+      ],
+    } as RunnerHostOverview]));
 
     TestBed.configureTestingModule({
       imports: [AtelierComponent],
@@ -3615,6 +3624,40 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
     expect(component.executionTarget()).toBe('SANDBOX');
     expect(component.runnerTarget()).toBeFalse();
     expect(snackBar.open).toHaveBeenCalled();
+    fixture.destroy();
+  });
+
+  it('pose LA MÊME confirmation que la carte du poste, projets nommés (SF-82-05)', () => {
+    // Le terminal promettait MOINS que ce que le geste fait : ni les projets ramenés au bac à
+    // sable, ni le processus qui continue de tourner. Les deux endroits partagent désormais la
+    // confirmation de SF-82-02 — un seul composant, une seule formulation.
+    setup();
+    dialog.open.and.returnValue({ afterClosed: () => of(false) } as MatDialogRef<unknown>);
+
+    component.killRunner();
+
+    expect(service.runnerHostsOverview).toHaveBeenCalled();
+    expect(dialog.open.calls.mostRecent().args[0]).toBe(KillHostDialogComponent);
+    const data = dialog.open.calls.mostRecent().args[1]?.data as KillHostDialogData;
+    expect(data.hostName).toBe('EDENRED');
+    // NOMMÉS, pas comptés — et le projet déjà au bac à sable est là lui aussi, pour être marqué.
+    expect(data.projects?.map((project) => project.name)).toEqual(['projet', 'autre']);
+    fixture.destroy();
+  });
+
+  it('relevé des projets en échec : liste INCONNUE, jamais « aucun projet »', () => {
+    // Une lecture ratée ne doit pas rendre le coupe-circuit inatteignable — c'est la régression
+    // que SF-82-02 vient de corriger — ni faire promettre qu'aucun projet ne changera de cible.
+    setup();
+    service.runnerHostsOverview.and.returnValue(throwError(() => new Error('réseau')));
+    dialog.open.and.returnValue({ afterClosed: () => of(false) } as MatDialogRef<unknown>);
+
+    component.killRunner();
+
+    expect(dialog.open.calls.mostRecent().args[0]).toBe(KillHostDialogComponent);
+    expect((dialog.open.calls.mostRecent().args[1]?.data as KillHostDialogData).projects).toBeNull();
+    // Le verrou est relâché : le geste reste jouable.
+    expect(component.killingRunner()).toBeFalse();
     fixture.destroy();
   });
 
@@ -3820,14 +3863,15 @@ describe("AtelierComponent — guide d'accueil (F-53 / SF-53-01)", () => {
     component.selectWorkspace(guideSummary);
     fixture.detectChanges();
     dialog.open.and.returnValue({ afterClosed: () => of(undefined) } as MatDialogRef<unknown>);
+    const navigate = spyOn(TestBed.inject(Router), 'navigate');
 
     component.guideConnectHost();
 
-    // C'est le dialogue d'appairage de F-45 / F-48 qui s'ouvre — le guide n'en recopie rien.
-    expect(dialog.open).toHaveBeenCalled();
-    expect(dialog.open.calls.mostRecent().args[1]?.data).toEqual(
-      jasmine.objectContaining({ workspaceId: 'w1' }),
-    );
+    // F-82 / SF-82-05 (D7) : l'étape « poste » mène à la Forge, où l'on connecte une MACHINE. Le
+    // guide ouvrait jusqu'ici la mise en service depuis le projet courant — le chemin même que D7
+    // supprime. Il ne recopie toujours rien : il conduit là où le geste vit.
+    expect(navigate).toHaveBeenCalledWith(['/forge']);
+    expect(dialog.open).not.toHaveBeenCalled();
     fixture.destroy();
   });
 

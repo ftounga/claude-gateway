@@ -1163,15 +1163,17 @@ describe('AtelierTerminalComponent', () => {
     it('ne montre les gestes runner qu\'en cible « ma machine »', () => {
       component.executionTarget = 'SANDBOX';
       fixture.detectChanges();
-      expect(fixture.nativeElement.querySelector('.terminal-runner-pair')).toBeNull();
+      expect(fixture.nativeElement.querySelector('.terminal-host-state')).toBeNull();
       expect(fixture.nativeElement.querySelector('.terminal-runner-kill')).toBeNull();
 
       component.executionTarget = 'RUNNER';
       fixture.detectChanges();
 
-      // Appairage, journal d'audit et coupe-circuit restent atteignables : sans quoi l'écran unique
-      // ferait régresser les acquis F-38 (§4 du cadrage).
-      expect(fixture.nativeElement.querySelector('.terminal-runner-pair')).not.toBeNull();
+      // Journal d'audit et coupe-circuit restent atteignables : sans quoi l'écran unique ferait
+      // régresser les acquis F-38 (§4 du cadrage). L'appairage, lui, a quitté le terminal d'un
+      // projet (F-82 / SF-82-05, D7) : l'état du poste a pris sa place, et il dit quoi faire.
+      expect(fixture.nativeElement.querySelector('.terminal-runner-pair')).toBeNull();
+      expect(fixture.nativeElement.querySelector('.terminal-host-state')).not.toBeNull();
       expect(fixture.nativeElement.querySelector('.terminal-runner-audit')).not.toBeNull();
       expect(fixture.nativeElement.querySelector('.terminal-runner-kill')).not.toBeNull();
       expect(fixture.nativeElement.querySelector('.terminal-runner-refresh')).not.toBeNull();
@@ -1230,15 +1232,17 @@ describe('AtelierTerminalComponent', () => {
       expect(fixture.nativeElement.querySelector('.terminal-hint-runner')).toBeNull();
     });
 
-    it('« Connecter une machine » ouvre l\'appairage déjà en place', () => {
-      const emitted: number[] = [];
-      component.pairRunner.subscribe(() => emitted.push(1));
+    it('mène à la Forge, où l\'on connecte une MACHINE (F-82 / SF-82-05)', () => {
+      // La proposition n'ouvre plus la mise en service depuis le terminal d'un projet : on
+      // connecte un poste, une fois, et ses projets viennent ensuite de sa carte.
       component.runnerHint = 'GIT';
       fixture.detectChanges();
 
-      fixture.nativeElement.querySelector('.terminal-hint-runner-pair').click();
-
-      expect(emitted.length).toBe(1);
+      const cta: HTMLAnchorElement =
+        fixture.nativeElement.querySelector('.terminal-hint-runner-pair');
+      expect(cta.tagName).toBe('A');
+      expect(cta.getAttribute('href')).toBe('/forge');
+      expect(cta.textContent).toContain('Connecter un poste');
     });
 
     it('« Plus tard » remonte au parent, qui décide de la suite', () => {
@@ -1402,6 +1406,112 @@ describe('AtelierTerminalComponent', () => {
       component.submit();
       expect(sent).toHaveBeenCalled();
       expect(fixture.nativeElement.querySelector('.terminal-live-limit')).toBeNull();
+    });
+  });
+
+  // ------------------------------------------- état du poste (F-82 / SF-82-05, décision D7)
+
+  describe('état du poste, à la place du bouton « Connecter une machine »', () => {
+    beforeEach(() => {
+      component.executionTarget = 'RUNNER';
+      component.hostName = 'EDENRED';
+      component.hostId = 'h1';
+    });
+
+    it("ne porte plus aucun geste d'ouverture de la mise en service", () => {
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.terminal-runner-pair')).toBeNull();
+      expect(text()).not.toContain('Connecter une machine');
+    });
+
+    it('dit QUI, DANS QUEL ÉTAT, et mène à la carte du poste', () => {
+      component.runnerStatus = { connected: true, paired: true, lastSeenAt: null };
+      fixture.detectChanges();
+
+      expect(text()).toContain('Ce projet vit sur EDENRED');
+      expect(text()).toContain('poste connecté');
+      const link: HTMLAnchorElement =
+        fixture.nativeElement.querySelector('.terminal-host-state-link');
+      expect(link.getAttribute('href')).toBe('/forge#poste-h1');
+      // Un poste connecté n'a rien à reprendre : aucune commande ne s'affiche.
+      expect(fixture.nativeElement.querySelector('.terminal-host-state-command')).toBeNull();
+    });
+
+    it('un poste appairé mais ÉTEINT propose la reprise, sans code', () => {
+      // Le cas courant — une machine qu'on rallume, un Ctrl-C de la veille (SF-82-04).
+      component.runnerStatus = {
+        connected: false, paired: true, lastSeenAt: null, rootName: 'dev',
+      };
+      fixture.detectChanges();
+
+      expect(text()).toContain('poste non connecté');
+      expect(text()).toContain("aucun code n'est nécessaire");
+      expect(text()).toContain('java -jar claude-runner.jar');
+      // La racine déclarée est NOMMÉE : elle dit d'où relancer.
+      expect(text()).toContain('dev');
+    });
+
+    it("un poste sans jeton utilisable n'affiche AUCUNE commande de reprise", () => {
+      // Jamais appairé, ou coupé par le coupe-circuit : seule sa carte peut le remettre en
+      // service, et une commande de relance y échouerait.
+      component.runnerStatus = { connected: false, paired: false, lastSeenAt: null };
+      fixture.detectChanges();
+
+      expect(text()).toContain('poste non connecté');
+      expect(fixture.nativeElement.querySelector('.terminal-host-state-command')).toBeNull();
+      expect(fixture.nativeElement.querySelector('.terminal-host-state-link')).not.toBeNull();
+    });
+
+    it("une gateway qui ne connaît pas `paired` ne propose pas de reprise", () => {
+      // Champ additif (SF-82-04) : son absence se lit comme `false`, donc le parcours complet.
+      component.runnerStatus = { connected: false, lastSeenAt: null };
+      fixture.detectChanges();
+
+      expect(component.resumeAvailable()).toBeFalse();
+      expect(fixture.nativeElement.querySelector('.terminal-host-state-command')).toBeNull();
+    });
+
+    it('un état jamais relevé se dit inconnu, il ne se devine pas', () => {
+      component.runnerStatus = null;
+      fixture.detectChanges();
+
+      expect(text()).toContain('état inconnu');
+    });
+
+    it("un projet SANS poste n'a ni reprise, ni lien vers une carte qui n'existe pas", () => {
+      // Le poste virtuel « Hébergé » (F-71) n'est pas une machine : il n'a ni runner à relancer,
+      // ni carte de poste à montrer. L'état le DIT.
+      component.hostName = null;
+      component.hostId = null;
+      component.runnerStatus = null;
+      fixture.detectChanges();
+
+      expect(text()).toContain("n'est rattaché à aucun poste");
+      expect(fixture.nativeElement.querySelector('.terminal-host-state-command')).toBeNull();
+      const link: HTMLAnchorElement =
+        fixture.nativeElement.querySelector('.terminal-host-state-link');
+      expect(link.getAttribute('href')).toBe('/forge');
+      expect(link.textContent).toContain('Ouvrir la Forge');
+    });
+
+    it("n'apparaît pas quand les outils tournent dans le bac à sable", () => {
+      component.executionTarget = 'SANDBOX';
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.querySelector('.terminal-host-state')).toBeNull();
+    });
+
+    it('garde le coupe-circuit dans l\'en-tête — le bouton qu\'on cherche quand ça se passe mal', () => {
+      // SF-38-08, confirmé par D7 : quand ça se passe mal, l'utilisateur est DANS le terminal en
+      // train de le regarder. L'obliger à naviguer ajouterait une étape au pire moment.
+      const emitted: number[] = [];
+      component.killRunner.subscribe(() => emitted.push(1));
+      fixture.detectChanges();
+
+      fixture.nativeElement.querySelector('.terminal-runner-kill').click();
+
+      expect(emitted.length).toBe(1);
     });
   });
 });

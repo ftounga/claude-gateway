@@ -205,10 +205,6 @@
       >
         <mat-icon>refresh</mat-icon>
       </button>
-      <button mat-stroked-button type="button" class="terminal-runner-pair" (click)="pairRunner.emit()">
-        <mat-icon>settings_ethernet</mat-icon>
-        Connecter une machine
-      </button>
       <!-- Journal d'activité (F-38 / SF-38-08) : ce qui a été lu, écrit et exécuté. -->
       <button
         mat-icon-button
@@ -236,6 +232,66 @@
     }
   </div>
 
+  <!-- ÉTAT DU POSTE, et non un bouton d'action (F-82 / SF-82-05, décision D7).
+       « Connecter une machine » vivait ici ; il a quitté le terminal d'un projet, parce que la
+       connexion se fait PAR POSTE — une fois par machine, depuis la Forge. Le cas qu'il couvrait
+       réellement (« mon poste est éteint, je veux le rallumer ») n'est pas une connexion mais une
+       REPRISE, et SF-82-04 vient de la mettre en premier.
+       Restent donc trois choses : QUI (le poste), DANS QUEL ÉTAT, et QUOI FAIRE. Un projet
+       hébergé (F-71) n'a ni machine ni reprise : il n'obtient ni commande, ni lien vers une carte
+       de poste qui n'existe pas. -->
+  @if (runnerTarget) {
+    <div class="terminal-host-state" role="status">
+      <mat-icon class="terminal-host-state-icon" aria-hidden="true">
+        {{ hostKnown() ? 'dns' : 'cloud_off' }}
+      </mat-icon>
+      <div class="terminal-host-state-body">
+        <div class="terminal-host-state-text">
+          {{ hostStateLabel() }}
+          @if (!hostKnown()) {
+            Il n'a donc ni machine, ni reprise. Les postes se connectent depuis la Forge, une fois
+            par machine.
+          } @else if (resumeAvailable()) {
+            Son jeton est resté sur son disque : <strong>aucun code n'est nécessaire</strong>, il
+            suffit de relancer le runner sur la machine.
+            @if (hostRootName(); as root) {
+              Elle avait déclaré la racine « {{ root }} ».
+            }
+          }
+        </div>
+        @if (resumeAvailable()) {
+          <span class="terminal-host-state-command">
+            <code>{{ resumeCommand }}</code>
+            <button
+              mat-icon-button
+              type="button"
+              class="terminal-host-state-copy"
+              matTooltip="Copier la commande de relance"
+              aria-label="Copier la commande de relance"
+              (click)="copyResumeCommand()"
+            >
+              <mat-icon>content_copy</mat-icon>
+            </button>
+          </span>
+        }
+      </div>
+      @if (hostAnchor(); as anchor) {
+        <a
+          mat-stroked-button
+          class="terminal-host-state-link"
+          [routerLink]="['/forge']"
+          [fragment]="anchor"
+        >
+          Voir le poste
+        </a>
+      } @else if (!hostKnown()) {
+        <a mat-stroked-button class="terminal-host-state-link" [routerLink]="['/forge']">
+          Ouvrir la Forge
+        </a>
+      }
+    </div>
+  }
+
   <!-- Proposition du runner (F-39 / SF-39-09, décision D6) : elle ne tombe qu'au moment où le bac à
        sable devient réellement la limite, et elle dit le **bénéfice**, pas la fonctionnalité
        (D-L4-9). Un motif inconnu d'une version future ne rend rien plutôt qu'une bande vide. -->
@@ -245,15 +301,17 @@
       <span class="terminal-hint-runner-text">{{ hint }}</span>
       <span class="terminal-hint-runner-actions">
         <button mat-button type="button" (click)="dismissRunnerHint.emit()">Plus tard</button>
-        <button
+        <!-- La proposition MÈNE à la Forge (F-82 / SF-82-05) : elle n'ouvre plus la mise en
+             service depuis le terminal d'un projet. On connecte une MACHINE, une fois, et ses
+             projets viennent ensuite de sa carte. -->
+        <a
           mat-flat-button
           color="primary"
-          type="button"
           class="terminal-hint-runner-pair"
-          (click)="pairRunner.emit()"
+          [routerLink]="['/forge']"
         >
-          Connecter une machine
-        </button>
+          Connecter un poste
+        </a>
       </span>
     </div>
   }

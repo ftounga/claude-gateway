@@ -141,4 +141,21 @@ describe('KillHostDialogComponent', () => {
 
     expect(text()).toContain('Poste CAGIP');
   });
+
+  // ------------------------------------- liste inconnue (F-82 / SF-82-05)
+
+  it('dit que la liste des projets est INCONNUE, jamais qu\'il n\'y en a aucun', () => {
+    // Ouvert depuis un terminal (SF-82-05), le relevé des projets du poste peut ne pas aboutir.
+    // « Aucun projet » est une promesse — que rien ne changera de cible — et la tenir sans avoir
+    // lu serait mentir. Le geste, lui, les ramènera tous au bac à sable.
+    setup({ hostName: 'Poste CAGIP', projects: null });
+
+    expect(fixture.componentInstance.projectsUnknown()).toBeTrue();
+    expect(fixture.componentInstance.hasNoProject()).toBeFalse();
+    expect(text()).toContain('Tous les projets de ce poste');
+    expect(text()).not.toContain('ne porte aucun projet');
+    // Les deux autres blocs restent : le runner tourne toujours, et on dit comment l'arrêter.
+    expect(text()).toContain('continue de tourner');
+    expect(text()).toContain('pkill -f claude-runner.jar');
+  });
 });

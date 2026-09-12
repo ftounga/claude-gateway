@@ -81,19 +81,23 @@ import {
   AtelierStreamAction,
   GitPullRequestResult,
   GitPushResult,
+  HostProjectSummary,
   RunnerStatus,
   WorkspaceDetail,
   WorkspaceExecutionTarget,
   WorkspaceSummary,
 } from '../core/models/atelier.models';
 import {
-  RunnerPairingDialogComponent,
-  RunnerPairingDialogData,
-} from './runner/runner-pairing-dialog.component';
-import {
   RunnerAuditDialogComponent,
   RunnerAuditDialogData,
 } from './runner/runner-audit-dialog.component';
+// La confirmation du coupe-circuit est PARTAGÉE avec la carte du poste (F-82 / SF-82-05) : un seul
+// composant, une seule formulation — deux copies divergeraient à la première retouche.
+import {
+  KillHostDialogComponent,
+  KillHostDialogData,
+} from '../shared/kill-host-dialog/kill-host-dialog.component';
+import { killHostSuccessMessage } from '../shared/kill-host-dialog/kill-host-messages';
 import { chatStepsToBlocks } from './terminal/chat-steps';
 import { derivePreview } from './terminal/terminal-preview';
 
@@ -1751,34 +1755,6 @@ export class AtelierComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Ouvre l'écran d'appairage d'une machine. Au retour, on relève le statut : l'utilisateur vient
-   * peut-être de lancer son runner.
-   */
-  openRunnerPairing(): void {
-    const id = this.activeWorkspaceId();
-    if (!id) {
-      return;
-    }
-    // Le POSTE voyage avec le projet (F-48 / SF-48-03) : le dialogue part de la machine déjà
-    // rattachée, s'il y en a une, plutôt que de redemander ce que le projet sait déjà.
-    const detail = this.activeDetail();
-    const data: RunnerPairingDialogData = {
-      workspaceId: id,
-      workspaceName: this.activeName(),
-      hostId: detail?.hostId ?? this.runnerStatus()?.hostId ?? null,
-      projectPath: detail?.projectPath ?? null,
-    };
-    this.dialog
-      .open(RunnerPairingDialogComponent, {
-        data,
-        width: RunnerPairingDialogComponent.DIALOG_WIDTH,
-        maxWidth: '95vw',
-      })
-      .afterClosed()
-      .subscribe(() => this.refreshRunnerStatus());
-  }
-
-  /**
    * Guide d'accueil — étape « projet » : le guide **mène à l'accueil de la Forge**, où vivent
    * désormais les deux gestes (F-72 / SF-72-04).
    *
@@ -1792,11 +1768,16 @@ export class AtelierComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Guide d'accueil — étape « poste » : le dialogue d'appairage porte déjà la vérification réseau,
-   * la fiche DSI et la commande de lancement (F-45, F-48). Le guide s'y rend, il ne les recopie pas.
+   * Guide d'accueil — étape « poste » : **mène à l'accueil de la Forge** (F-82 / SF-82-05, D7),
+   * d'où l'on connecte une **machine**.
+   *
+   * <p>Il ouvrait jusqu'ici la mise en service depuis le projet courant. C'est précisément le
+   * chemin que D7 supprime : on ne connecte pas un dossier, on connecte un poste — une fois par
+   * machine, et ses projets viennent ensuite de sa carte. Le guide ne recopie rien, il conduit là
+   * où le geste vit, exactement comme son étape « projet » depuis F-72 / SF-72-04.</p>
    */
   guideConnectHost(): void {
-    this.openRunnerPairing();
+    this.router.navigate(['/forge']);
   }
 
   /**
@@ -1819,10 +1800,21 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /**
    * **Coupe-circuit** (F-38 / SF-38-08) : coupe la liaison avec la machine, révoque ses jetons et
-   * ramène le projet sur le sandbox hébergé.
+   * ramène **tous** ses projets sur le sandbox hébergé.
    *
-   * <p>Confirmation préalable — le geste oblige à réappairer la machine ensuite — mais aucune
-   * étape de plus : c'est le bouton qu'on cherche quand quelque chose se passe mal.</p>
+   * <p>Le bouton <b>reste ici</b> (F-82 / SF-82-05, D7) : c'est le geste d'urgence, et quand ça se
+   * passe mal l'utilisateur est <b>dans le terminal en train de le regarder</b> — l'obliger à
+   * naviguer ajouterait une étape au pire moment.</p>
+   *
+   * <p>Mais <b>une seule formulation</b> : sa confirmation promettait moins que ce que le geste
+   * fait — ni les projets ramenés au bac à sable, ni le processus qui continue de tourner sur la
+   * machine. C'est donc exactement {@code KillHostDialogComponent}, celle de la carte du poste
+   * (SF-82-02), qui s'ouvre ici. Un seul composant : deux copies divergeraient à la première
+   * retouche.</p>
+   *
+   * <p>Cette confirmation <b>nomme les projets un par un</b> — et le terminal ne connaît que le
+   * sien. D'où le relevé préalable de l'aperçu des postes, et un troisième état honnête quand il
+   * n'aboutit pas : liste <b>inconnue</b>, jamais « aucun projet ».</p>
    */
   killRunner(): void {
     // Le coupe-circuit vise le POSTE depuis F-48 / SF-48-01 : on ne coupe pas un dossier, on coupe
@@ -1831,25 +1823,39 @@ export class AtelierComponent implements OnInit, OnDestroy {
     if (!hostId || this.killingRunner()) {
       return;
     }
-    const data: ConfirmDialogData = {
-      title: 'Couper la liaison avec le poste',
-      message:
-        'La connexion en cours est fermée, les jetons de ce poste sont révoqués, et TOUS les '
-        + 'projets de cette machine repassent sur le sandbox hébergé. Il faudra réappairer le '
-        + "poste pour l'utiliser à nouveau.",
-      confirmLabel: 'Couper maintenant',
-    };
+    this.killingRunner.set(true);
+    this.atelier.runnerHostsOverview().subscribe({
+      next: (hosts) => {
+        this.killingRunner.set(false);
+        const host = hosts.find((candidate) => candidate.id === hostId) ?? null;
+        this.confirmKillRunner(hostId, host?.name ?? null, host?.projects ?? null);
+      },
+      // Le relevé a échoué : on ouvre quand même — un coupe-circuit qu'on n'atteint plus parce
+      // qu'une lecture a raté serait la régression que SF-82-02 vient de corriger.
+      error: () => {
+        this.killingRunner.set(false);
+        this.confirmKillRunner(hostId, null, null);
+      },
+    });
+  }
+
+  private confirmKillRunner(
+    hostId: string, hostName: string | null, projects: HostProjectSummary[] | null): void {
+    // Le nom est retenu MAINTENANT et porté jusqu'au message final : le geste met l'état runner à
+    // `null`, et le relire ensuite rendrait « ce poste » là où on venait de nommer la machine.
+    const named = hostName ?? this.activeHostName() ?? 'ce poste';
+    const data: KillHostDialogData = { hostName: named, projects };
     this.dialog
-      .open(ConfirmDialogComponent, { data, width: '460px' })
+      .open(KillHostDialogComponent, { data, width: '560px', maxWidth: '95vw' })
       .afterClosed()
       .subscribe((confirmed) => {
-        if (confirmed) {
-          this.performKillRunner(hostId);
+        if (confirmed === true) {
+          this.performKillRunner(hostId, named);
         }
       });
   }
 
-  private performKillRunner(hostId: string): void {
+  private performKillRunner(hostId: string, hostName: string): void {
     this.killingRunner.set(true);
     this.atelier.killHost(hostId).subscribe({
       next: (result) => {
@@ -1865,12 +1871,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
         this.clearPendingConfirmation();
         this.runnerStatus.set(null);
         this.syncRunnerPolling();
-        this.snackBar.open(
-          result.revokedTokens > 0
-            ? `Liaison coupée : ${result.revokedTokens} jeton(s) révoqué(s), `
-              + `${result.workspacesReturned} projet(s) repassé(s) sur le sandbox hébergé.`
-            : 'Aucune liaison active. Les projets de ce poste sont sur le sandbox hébergé.',
-          'Fermer', { duration: 6000 });
+        // Le MÊME message que la carte du poste (SF-82-02) : il dit ce que la gateway a
+        // réellement fait, et que le runner continue de tourner sur la machine.
+        this.snackBar.open(killHostSuccessMessage(hostName, result), 'Fermer', { duration: 6000 });
       },
       error: (err: unknown) => {
         this.killingRunner.set(false);
