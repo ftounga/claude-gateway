@@ -66,6 +66,43 @@ pas à un humain. C'est l'**écran** qui traduit.
 À côté du bouton d'ajout, ce qui est accepté — en noms courants. Aujourd'hui on ne l'apprend qu'en
 échouant.
 
+## 3 bis. SF-85-04 — Un accès refusé dit pourquoi, et où aller
+
+Ajouté le 2026-09-12, **une heure après le reste**, sur le même prospect et le même écran de
+démonstration.
+
+**Ce qui s'est passé.** Après l'échec des `.docx`, il essaie de connecter un poste, puis de
+télécharger le runner. **Rien ne se passe.** Et cette fois, **aucune trace côté serveur** — là où ses
+tentatives d'upload en laissaient cinq.
+
+**La cause.** Il n'a jamais consommé son code d'accès : `plan_code` vide, statut `TRIALING`, zéro
+poste, et les trois codes émis portent un `redeemed_at` nul. Or la Forge est gardée —
+`AtelierAccessService.hasAccess()` rend vrai pour un administrateur, ou pour un compte **habilité**.
+Le refus part donc **avant** toute journalisation métier.
+
+**Le défaut n'est pas la garde, elle est juste.** C'est qu'elle est **muette**. L'utilisateur clique,
+rien n'arrive, et il en déduit que l'outil est cassé — exactement comme pour le `.docx` une heure
+plus tôt.
+
+**C'est le même défaut, sur un autre objet** : le produit sait pourquoi il refuse, et ne le dit pas.
+D'où le rattachement à F-85 plutôt qu'une feature séparée — ce qui se corrige ici est une **manière
+de refuser**, pas un format.
+
+**Ce qu'il faut**, aux endroits où la Forge se refuse — connecter un poste, télécharger le runner,
+ouvrir un projet :
+
+1. **Dire que l'accès n'est pas ouvert**, sans jargon d'abonnement.
+2. **Nommer les deux sorties** : souscrire, **ou saisir un code d'accès** — beaucoup de ces
+   utilisateurs *ont* un code, reçu par courriel, et ne savent pas où le mettre.
+3. **Y conduire** : un lien vers la page Facturation, à l'endroit exact.
+
+**Ce qui ne change pas** : la garde elle-même, les droits, et le fait que le serveur réponde `403`.
+C'est l'**écran** qui doit cesser d'avaler ce 403 en silence.
+
+**Vérifier d'abord** ce que l'écran reçoit réellement : un `403` distinct d'une erreur réseau doit
+être reconnu comme tel, sans quoi « accès refusé » et « la gateway est tombée » se diraient pareil —
+et l'un des deux mentirait.
+
 ## 4. La question qu'il ne faut pas confondre avec celle-ci
 
 **Faut-il accepter `.docx` nativement ?** C'est un **autre sujet**, plus lourd : extraction du texte
