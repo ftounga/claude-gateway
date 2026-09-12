@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "2029.1",
+  "items": [
+    {
+      "uid": "abc",
+      "authoredBy": { "ref": "u/1" },
+      "at": 1789000000,
+      "body": { "kind": "markdown", "value": "Microsoft a tout changé." }
+    }
+  ],
+  "paging": { "next": "cursor:xyz" }
+}
