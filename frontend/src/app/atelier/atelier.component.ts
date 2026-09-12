@@ -40,6 +40,7 @@ import {
   AtelierGuideComponent,
 } from './guide/atelier-guide.component';
 import { WorkstationNoticeComponent } from './notice/workstation-notice.component';
+import { TeamsLink, TeamsLinkService } from './teams/teams-link.service';
 import { AtelierTerminalComponent } from './terminal/atelier-terminal.component';
 import {
   blockLabel as blockLabelOf,
@@ -136,6 +137,16 @@ export { WORKSPACE_TEXT_EXTENSIONS, WORKSPACE_TEXT_ACCEPT } from './atelier.type
 export const RUNNER_STATUS_POLL_MS = 15_000;
 
 /**
+ * Période de relevé de la **liaison Teams** (F-87 / SF-87-03), en millisecondes.
+ *
+ * <p>Quatre fois plus lent que le statut runner, et pour une raison précise : chaque relevé fait
+ * jouer la <b>sonde</b> sur la machine, laquelle demande un geste à la fenêtre Teams de
+ * l'utilisateur. Le geste remet la vue où elle était, mais il reste un geste : on ne le répète pas
+ * toutes les quinze secondes pour une information qui bouge rarement.</p>
+ */
+export const TEAMS_LINK_POLL_MS = 60_000;
+
+/**
  * Écran « Atelier » (F-28, Claude Code Lite). L'utilisateur téléverse un projet `.zip` et discute
  * avec Claude qui lit/édite les fichiers du workspace. Flux unique de conversation (façon Claude
  * Code) + panneau « Fichiers » repliable pour prévisualiser/éditer un fichier.
@@ -176,6 +187,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
   readonly projectsCrumbs: ForgeCrumb[] = [{ label: 'Projets', link: ['/atelier'] }];
 
   private readonly atelier = inject(AtelierService);
+  /** Relevé de la liaison Teams (F-87 / SF-87-03) — un service à part, pour un volet à part. */
+  private readonly teamsLinkService = inject(TeamsLinkService);
   private readonly apiKeyService = inject(ApiKeyService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -477,6 +490,16 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /** Sondage du statut runner ; `null` hors cible `RUNNER`. */
   private runnerStatusTimer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * Dernier état relevé de la **liaison Teams** (F-87 / SF-87-03), ou `null` quand il n'y a pas
+   * lieu de le relever — projet hors machine, ou runner absent. L'indicateur n'apparaît alors pas :
+   * une pastille « navigateur non détecté » sur un projet qui n'a pas de machine serait du bruit.
+   */
+  readonly teamsLink = signal<TeamsLink | null>(null);
+
+  /** Sondage de la liaison Teams ; `null` quand aucun runner n'est connecté. */
+  private teamsLinkTimer: ReturnType<typeof setInterval> | null = null;
 
   /**
    * Chemin du fichier d'instructions du projet (F-34 / SF-34-02), ou `null` s'il n'en porte pas.
@@ -1763,9 +1786,55 @@ export class AtelierComponent implements OnInit, OnDestroy {
         if (status.connected) {
           this.guide.markStep('host');
         }
+        this.syncTeamsLinkPolling(status.connected);
       },
-      error: () => this.runnerStatus.set(null),
+      error: () => {
+        this.runnerStatus.set(null);
+        this.syncTeamsLinkPolling(false);
+      },
     });
+  }
+
+  /**
+   * Relève l'état de la **liaison Teams** (F-87 / SF-87-03). **Silencieux en cas d'échec**, comme
+   * le relevé runner : l'indicateur disparaît plutôt que d'afficher une erreur, et le relevé
+   * suivant corrige. Un navigateur non lancé, lui, n'est pas un échec : c'est un **état**, et il
+   * s'affiche.
+   */
+  refreshTeamsLink(): void {
+    const id = this.activeWorkspaceId();
+    if (!id || !this.runnerTarget()) {
+      return;
+    }
+    this.teamsLinkService.getLink(id).subscribe({
+      next: (link) => this.teamsLink.set(link),
+      error: () => this.teamsLink.set(null),
+    });
+  }
+
+  /**
+   * Le relevé Teams ne tourne que lorsqu'une machine est **connectée** : sans runner, il n'y a
+   * personne pour regarder un navigateur, et l'indicateur n'aurait rien à dire.
+   */
+  private syncTeamsLinkPolling(runnerConnected: boolean): void {
+    if (!runnerConnected) {
+      this.stopTeamsLinkPolling();
+      this.teamsLink.set(null);
+      return;
+    }
+    if (this.teamsLinkTimer === null) {
+      this.refreshTeamsLink();
+      this.teamsLinkTimer = setInterval(
+        () => this.zone.run(() => this.refreshTeamsLink()), TEAMS_LINK_POLL_MS);
+    }
+  }
+
+  /** Arrête le relevé Teams ; idempotent (fermeture de projet, runner perdu, destruction). */
+  private stopTeamsLinkPolling(): void {
+    if (this.teamsLinkTimer !== null) {
+      clearInterval(this.teamsLinkTimer);
+      this.teamsLinkTimer = null;
+    }
   }
 
   /**
@@ -1947,12 +2016,20 @@ export class AtelierComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Arrête le sondage ; idempotent (fermeture de projet, bascule de cible, destruction). */
+  /**
+   * Arrête le sondage ; idempotent (fermeture de projet, bascule de cible, destruction).
+   *
+   * <p>Le relevé de la liaison Teams s'arrête <b>avec</b> lui, ici et nulle part ailleurs : il n'a
+   * de sens que quand une machine répond, et un relevé laissé tourner sur un projet quitté
+   * afficherait l'état du navigateur de quelqu'un d'autre.</p>
+   */
   private stopRunnerPolling(): void {
     if (this.runnerStatusTimer !== null) {
       clearInterval(this.runnerStatusTimer);
       this.runnerStatusTimer = null;
     }
+    this.stopTeamsLinkPolling();
+    this.teamsLink.set(null);
   }
 
   /** Message de bascule : dit franchement quand le réglage ne vaut que pour la prochaine sandbox. */

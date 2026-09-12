@@ -1,0 +1,39 @@
+/* Indicateur de liaison Teams (F-87 / SF-87-03).
+
+   AUCUNE COULEUR N'EST DÉCLARÉE ICI, et c'est la règle du volet : les deux états qui en portent une
+   empruntent les pastilles de statut EXISTANTES (`badge--neutral`, `badge--warning` de §5, telles
+   que §12 les emploie), et l'état « relié » n'en porte aucune — il prend l'encre de la surface,
+   exactement comme le signe de vie (§11). Voir DESIGN_SYSTEM §14. */
+
+:host {
+  display: inline-flex;
+  min-width: 0;
+}
+
+.teams-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.6;
+  white-space: nowrap;
+
+  &__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: currentColor;
+    flex: none;
+  }
+
+  &__label {
+    font-family: var(--cg-font-body);
+  }
+
+  /* Relié : aucune pastille de fond, aucune couleur propre — l'encre de la barre suffit, et c'est
+     ce qui empêche un quatrième registre de couleur d'apparaître dans le produit. */
+  &--linked {
+    color: inherit;
+  }
+}

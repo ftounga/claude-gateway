@@ -42,16 +42,30 @@ public final class ProjectScopes implements ToolScopes {
     private final boolean allowBash;
     private final ShellElection shell;
     private final Console console;
+    /**
+     * Outils du volet Teams (F-87 / SF-87-03) — <b>partagés par tous les projets</b> : la liaison
+     * au navigateur appartient à la <b>machine</b>, pas à un dossier. En fabriquer une par projet
+     * ouvrirait autant de sockets sur le même onglet.
+     */
+    private final fr.claudegateway.runner.teams.TeamsTools teams;
     private final Map<String, ToolRouter> byProject = new ConcurrentHashMap<>();
+
+    /** Portée sans volet Teams : chemins historiques et tests. */
+    public ProjectScopes(Path hostRoot, boolean allowBash, ShellElection shell, Console console) {
+        this(hostRoot, allowBash, shell, console, null);
+    }
 
     /**
      * @param hostRoot  racine <b>du poste</b>, déjà validée par {@link RunnerConfig}
      * @param allowBash exécution de commandes autorisée sur cette machine (SF-38-19)
      * @param shell     interpréteur élu au démarrage (SF-38-27) — élu une fois, pour tous les projets
      * @param console   journal de démarrage ; sert à annoncer les exclusions du premier projet ouvert
+     * @param teams     outils du volet Teams, ou {@code null} si ce runner n'en a pas
      * @throws ToolException {@code io_error} si la racine du poste est illisible
      */
-    public ProjectScopes(Path hostRoot, boolean allowBash, ShellElection shell, Console console) {
+    public ProjectScopes(Path hostRoot, boolean allowBash, ShellElection shell, Console console,
+            fr.claudegateway.runner.teams.TeamsTools teams) {
+        this.teams = teams;
         try {
             this.hostRoot = hostRoot.toRealPath();
         } catch (IOException e) {
@@ -90,7 +104,8 @@ public final class ProjectScopes implements ToolScopes {
         Path folder = resolveFolder(relative);
         ExclusionRules exclusions = ExclusionRules.load(folder, console);
         PathResolver paths = new PathResolver(folder, exclusions);
-        ToolRouter router = new ToolRouter(new FileTools(paths), new BashTool(paths, allowBash, shell));
+        ToolRouter router = new ToolRouter(new FileTools(paths),
+                new BashTool(paths, allowBash, shell), teams);
         ToolRouter raced = byProject.putIfAbsent(relative, router);
         return raced == null ? router : raced;
     }

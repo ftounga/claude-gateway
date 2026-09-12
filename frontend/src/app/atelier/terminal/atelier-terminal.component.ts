@@ -27,6 +27,8 @@ import {
 } from '../../shared/forge-breadcrumb/forge-breadcrumb.component';
 import { LiveBadgeComponent } from '../../shared/live-badge/live-badge.component';
 import { MarkdownPipe } from '../../shared/markdown.pipe';
+import { TeamsLinkBadgeComponent } from '../../shared/teams-link-badge/teams-link-badge.component';
+import { TeamsLink } from '../teams/teams-link.service';
 
 import {
   AtelierEngine,
@@ -86,6 +88,7 @@ export const RUNNER_RESUME_COMMAND = 'java -jar claude-runner.jar';
   selector: 'app-atelier-terminal',
   imports: [
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
+    TeamsLinkBadgeComponent,
     MatButtonToggleModule, MatIconModule, MatProgressSpinnerModule, MatTooltipModule, RouterLink,
   ],
   templateUrl: './atelier-terminal.component.html',
@@ -375,6 +378,13 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   /** Les terminaux vivants, nommés : le bandeau de refus doit dire **lequel fermer**. */
   @Input() liveTerminals: LiveTerminalEntry[] = [];
+
+  /**
+   * **L'état de la liaison Teams** (F-87 / SF-87-03), ou `null` quand il n'a pas lieu d'être relevé
+   * — projet sans machine, runner absent. Il ne porte **aucune action** : c'est une fenêtre sur un
+   * état, pas un panneau de contrôle.
+   */
+  @Input() teamsLink: TeamsLink | null = null;
 
   @Output() draftChange = new EventEmitter<string>();
   @Output() send = new EventEmitter<void>();

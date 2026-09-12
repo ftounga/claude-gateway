@@ -34,7 +34,19 @@ public final class ToolStack {
         // L'interpréteur est élu ici, une fois, et non redécidé à chaque commande (SF-38-27) : c'est
         // le même point de montage qui garantit que les deux transports exécutent sous le même shell.
         ShellElection shell = ShellElection.elect();
-        ProjectScopes scopes = new ProjectScopes(config.hostRoot(), config.allowBash(), shell, console);
+        // Volet Teams (F-87 / SF-87-03) : monté ici, une fois, et partagé par tous les projets — la
+        // liaison au navigateur appartient à la MACHINE. Rien ne se connecte à ce stade : la
+        // session ne se rattache qu'au premier appel, et dit alors ce dont elle a besoin (D3).
+        fr.claudegateway.runner.teams.TeamsTools teams = config.allowTeams()
+                ? new fr.claudegateway.runner.teams.TeamsTools(
+                        new fr.claudegateway.runner.teams.TeamsSession(config.teamsPort(),
+                                fr.claudegateway.runner.teams.TeamsAdapters.current(),
+                                console::info),
+                        fr.claudegateway.runner.teams.BrowserLink.realSleeper())
+                : fr.claudegateway.runner.teams.TeamsTools.disabled(
+                        "Le volet Teams est désactivé sur cette machine (--no-teams).");
+        ProjectScopes scopes =
+                new ProjectScopes(config.hostRoot(), config.allowBash(), shell, console, teams);
 
         // Ce bloc annonce ce que RunnerMain ne peut pas connaître : la racine du poste et
         // l'interpréteur élu. Il ne dit RIEN de l'exécution de commandes (SF-38-26, D1) — cet état
@@ -49,6 +61,11 @@ public final class ToolStack {
         console.info("Listage : le bruit de construction (node_modules, target, dist…) et le "
                 + ".runnerignore de chaque projet sont écartés des listes — ils n'empêchent "
                 + "aucune lecture.");
+        console.info(config.allowTeams()
+                ? "Teams : la liaison est disponible ; elle observera le navigateur de ce poste sur "
+                        + "127.0.0.1:" + config.teamsPort() + " quand on la demandera. Aucun cookie, "
+                        + "aucun jeton ne remonte."
+                : "Teams : désactivé sur cette machine (--no-teams).");
 
         return new ToolStack(
                 new ToolDispatcher(scopes, scopes.capabilities(), shell, sender, console));

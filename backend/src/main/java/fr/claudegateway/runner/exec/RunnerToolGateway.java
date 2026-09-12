@@ -41,6 +41,11 @@ public class RunnerToolGateway {
     public static final long FILE_TOOL_TIMEOUT_MS = 30_000L;
     /** Délai imposé à {@code bash} par le contrat de messages §2.2. */
     public static final long BASH_TIMEOUT_MS = 120_000L;
+    /**
+     * Délai des outils Teams (F-87 / SF-87-03) : plus long que celui des fichiers, parce que la
+     * sonde <b>observe</b> le réseau du navigateur pendant quelques secondes avant de conclure.
+     */
+    public static final long TEAMS_TOOL_TIMEOUT_MS = 20_000L;
     /** Plancher : un délai ridicule ferait échouer la commande avant même son démarrage. */
     public static final long MIN_BASH_TIMEOUT_MS = 1_000L;
     /** Longueur maximale d'une ligne de commande acceptée (le runner applique la même borne). */
@@ -104,6 +109,19 @@ public class RunnerToolGateway {
         ObjectNode input = objectMapper.createObjectNode();
         input.put("query", needle);
         return router.call(target, callId, "search_files", input, FILE_TOOL_TIMEOUT_MS);
+    }
+
+    /**
+     * Demande à la machine l'<b>état de sa liaison Teams</b> (F-87 / SF-87-03).
+     *
+     * <p>Aucun paramètre : la question est « où en est la liaison sur ce poste ». Le runner rend un
+     * objet JSON portant l'état, la phrase à lire et, s'il y a lieu, le remède — la ligne de
+     * commande à coller pour lancer le navigateur. Le délai est plus long que celui des outils
+     * fichiers : la sonde observe le réseau du navigateur pendant quelques secondes.</p>
+     */
+    public RunnerCallResult teamsStatus(RunnerTarget target, String callId) {
+        return router.call(target, callId, "teams_status", objectMapper.createObjectNode(),
+                TEAMS_TOOL_TIMEOUT_MS);
     }
 
     /**

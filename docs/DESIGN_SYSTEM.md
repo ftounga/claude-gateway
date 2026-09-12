@@ -391,6 +391,55 @@ avec le contenu réel de son flux. La règle est donc celle d'un terminal, pas c
 
 ---
 
+## 14 — La liaison Teams (ajout F-87 / SF-87-03, 2026-09-12)
+
+> **Aucune couleur nouvelle, et aucun quatrième registre.** Cette section dit seulement quelles
+> palettes **existantes** l'indicateur de liaison emploie — et pourquoi l'état « relié » n'en emploie
+> aucune.
+
+La barre du terminal porte un **indicateur de liaison Teams**. Il répond à une cinquième question —
+*est-ce que le produit sait lire Teams en ce moment ?* — et il y répond **sans rien ajouter à la
+palette**.
+
+| Question | Registre | Palette | Support |
+|---|---|---|---|
+| *Chez quel client suis-je ?* | **Identité** | §9 — dix tons dérivés du nom | `app-host-badge` |
+| *Où en est la mission ?* | **État de mission** | §5 — pastilles de statut | `app-mission-badge` |
+| *Est-ce que ça vit maintenant ?* | **Vie** | **aucune** — encre de la surface | `app-live-badge` |
+| *Est-ce que ça attend quelque chose de moi ?* | **Décision attendue** | §5 — « En attente » | `app-terminal-preview` |
+| *Le produit sait-il lire Teams ?* | **Liaison** | **aucune**, ou §5 | `app-teams-link-badge` |
+
+### Les trois états, et la palette de chacun
+
+| État | Palette | Libellé écrit |
+|---|---|---|
+| relié | **aucune** — `currentColor`, comme §11 | « Teams relié » |
+| navigateur non détecté | §5 `.badge--neutral` (`#F5F5F5` / `#64748B`) | « Teams : navigateur non détecté » |
+| Teams a changé | §5 « En attente » (`#FFF8E1` / `#F9A825`), la palette de §12 | « Teams a changé » |
+
+### Règles d'emploi — non négociables
+
+- **Rien n'est ajouté à la palette.** L'état normal — relié — ne porte **aucune** couleur : il prend
+  l'encre de la barre, exactement comme le signe de vie (§11). Les deux autres empruntent les
+  pastilles de statut **déjà existantes** de §5. Un cinquième registre rendrait les quatre autres
+  illisibles.
+- **« Teams a changé » emprunte l'ambre de §12**, et c'est délibéré : c'est le seul état où quelque
+  chose est réellement à faire côté produit, et où **plus aucun compte rendu ne sera produit** tant
+  que ce ne sera pas fait. Un état qui bloque la production se lit comme tel.
+- **Le libellé est toujours écrit.** Aucune entrée du composant ne permet de n'afficher que la
+  pastille — même règle qu'en §10, §11 et §12.
+- **L'indicateur ne porte AUCUNE action** : ni bouton, ni lien. C'est une fenêtre sur un état. La
+  seule réparation possible — lancer le navigateur avec son port de débogage — appartient à
+  l'utilisateur ; **la commande exacte est écrite dans l'infobulle**, jamais exécutée par un bouton
+  qui ne pourrait pas tenir sa promesse.
+- **Rien n'est affiché quand il n'y a rien à dire.** Sur un projet sans machine, ou sans runner
+  connecté, l'indicateur **n'apparaît pas** : une pastille « navigateur non détecté » permanente
+  serait du bruit sur un écran qui n'a jamais parlé de Teams.
+- **Composant unique** : `app-teams-link-badge` (`shared/teams-link-badge/`). Aucun écran ne
+  recompose l'indicateur à la main, aucun ne pose de couleur en ligne dessus.
+
+---
+
 ## Logo & marque (ajout 2026-07-03)
 
 - **Logo de l'application** : `frontend/public/claude-portal-logo.png` (« Claude Portal » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« Claude Portal »** (renommé en F-29 SF-29-01 : le terme « Proxy » faisait classer le domaine en catégorie « anonymizer » par les filtres d'entreprise).

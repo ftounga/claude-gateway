@@ -47,6 +47,14 @@
       @if (live) {
         <app-live-badge class="terminal-live" scope="terminal"></app-live-badge>
       }
+      <!-- LIAISON TEAMS (F-87 / SF-87-03) : relié / navigateur non détecté / Teams a changé.
+           IL NE PORTE AUCUNE ACTION — c'est une fenêtre sur un état, pas un panneau de contrôle :
+           seul l'utilisateur peut lancer son navigateur avec son profil, et la commande à coller
+           est écrite dans l'infobulle (la leçon de F-80). Aucun registre de couleur nouveau :
+           voir DESIGN_SYSTEM §14. Rien n'est affiché tant que rien n'a été relevé. -->
+      @if (teamsLink) {
+        <app-teams-link-badge class="terminal-teams" [link]="teamsLink"></app-teams-link-badge>
+      }
       <span class="terminal-bar-actions">
         @if (submitting) {
           <mat-progress-spinner
