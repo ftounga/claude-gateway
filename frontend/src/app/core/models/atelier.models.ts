@@ -625,6 +625,20 @@ export interface AtelierTurnState {
   turnId: string | null;
   cursor: number;
   startedAt: number | null;
+  /**
+   * Ce que le tour attend **à l'instant** (F-84 / SF-84-03), ou `null`. Une demande d'autorisation
+   * est un ÉTAT du tour, pas un événement qu'on rate si l'on n'était pas branché au bon moment.
+   */
+  pending: AtelierTurnPendingApproval | null;
+}
+
+/** Une demande d'autorisation en attente, avec son temps restant **venu de la gateway**. */
+export interface AtelierTurnPendingApproval {
+  toolUseId: string;
+  tool: string;
+  detail: string;
+  /** Temps restant avant expiration, en millisecondes — jamais deviné à l'écran (SF-47-02). */
+  remainingMs: number;
 }
 
 /**

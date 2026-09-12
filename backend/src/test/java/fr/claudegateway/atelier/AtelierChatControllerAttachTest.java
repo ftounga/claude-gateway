@@ -161,6 +161,61 @@ class AtelierChatControllerAttachTest {
         assertThat(ecran.names()).containsExactly("idle");
     }
 
+
+    @Test
+    void lEtatDuTourPorteLattenteEtSonTempsRestant() {
+        LiveTurn turn = liveTurns.open(ALICE, PROJET);
+        turn.publishApprovalRequest(new Payload("rm -rf build"),
+                new fr.claudegateway.atelier.live.PendingApproval("call-1", "bash", "rm -rf build",
+                        120_000L, System.currentTimeMillis() - 100_000L));
+
+        AtelierTurnStateResponse state = controller(new RecordingEmitter(),
+                RelayTurnSource.disabled()).turnState(PROJET);
+
+        assertThat(state.pending()).isNotNull();
+        assertThat(state.pending().toolUseId()).isEqualTo("call-1");
+        assertThat(state.pending().remainingMs())
+                .as("le temps restant vient de la gateway, pas le délai d'origine (SF-47-02)")
+                .isLessThanOrEqualTo(20_000L)
+                .isGreaterThan(15_000L);
+    }
+
+    @Test
+    void sansAttenteLetatDuTourNePorteAucuneInvite() {
+        liveTurns.open(ALICE, PROJET).publish("text", new Payload("je réfléchis"));
+
+        AtelierTurnStateResponse state = controller(new RecordingEmitter(),
+                RelayTurnSource.disabled()).turnState(PROJET);
+
+        assertThat(state.live()).isTrue();
+        assertThat(state.pending()).isNull();
+    }
+
+    @Test
+    void lattenteDunPairEstVisibleDepuisUnAutrePod() {
+        AtelierTurnStateResponse state = controller(new RecordingEmitter(),
+                new FakeRemoteTurn(UUID.randomUUID())).turnState(PROJET);
+
+        assertThat(state.pending()).as("une attente vit sur le pod qui exécute, et voyage avec son état")
+                .isNotNull();
+        assertThat(state.pending().toolUseId()).isEqualTo("call-9");
+        assertThat(state.pending().remainingMs()).isLessThanOrEqualTo(20_000L);
+    }
+
+    @Test
+    void unEcranQuiSeRebrancheVoitLattenteEncoreEnCours() {
+        LiveTurn turn = liveTurns.open(ALICE, PROJET);
+        turn.publishApprovalRequest(new Payload("rm -rf build"),
+                new fr.claudegateway.atelier.live.PendingApproval("call-1", "bash", "rm -rf build",
+                        120_000L, System.currentTimeMillis()));
+        RecordingEmitter ecran = new RecordingEmitter();
+
+        controller(ecran, RelayTurnSource.disabled()).attach(PROJET, 0L);
+
+        assertThat(ecran.names())
+                .containsExactly("attached", "confirm_request", "confirm_state");
+    }
+
     // ------------------------------------------------------------------ montage
 
     private AtelierChatController controller(SseEmitter emitter, RemoteTurnSource remote) {
@@ -181,7 +236,9 @@ class AtelierChatControllerAttachTest {
 
         @Override
         public Optional<RemoteTurnState> findRemoteTurn(UUID userId, UUID workspaceId) {
-            return Optional.of(new RemoteTurnState(turnId, 7L, 1_000L));
+            return Optional.of(new RemoteTurnState(turnId, 7L, 1_000L,
+                    new fr.claudegateway.atelier.live.PendingApproval("call-9", "bash",
+                            "rm -rf build", 120_000L, System.currentTimeMillis() - 100_000L)));
         }
 
         @Override

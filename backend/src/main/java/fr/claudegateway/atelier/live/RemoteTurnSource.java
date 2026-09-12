@@ -40,7 +40,9 @@ public interface RemoteTurnSource {
      * @param turnId      identifiant du tour, tel que le pod propriétaire l'a créé
      * @param cursor      dernier numéro d'événement publié
      * @param startedAtMs instant d'ouverture du tour, en millisecondes depuis l'époque
+     * @param pending     ce que ce tour attend (F-84 / SF-84-03), ou {@code null} — une attente vit
+     *                    chez le pod qui exécute, et voyage donc avec son état
      */
-    record RemoteTurnState(UUID turnId, long cursor, long startedAtMs) {
+    record RemoteTurnState(UUID turnId, long cursor, long startedAtMs, PendingApproval pending) {
     }
 }

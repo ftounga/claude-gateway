@@ -34,6 +34,7 @@ import fr.claudegateway.atelier.dto.AtelierResumeResponse;
 import fr.claudegateway.atelier.dto.AtelierTurnStateResponse;
 import fr.claudegateway.atelier.live.LiveTurn;
 import fr.claudegateway.atelier.live.LiveTurnRegistry;
+import fr.claudegateway.atelier.live.PendingApproval;
 import fr.claudegateway.atelier.live.RemoteTurnSource;
 import fr.claudegateway.atelier.live.SseTurnSubscriber;
 import fr.claudegateway.atelier.live.TurnAsides;
@@ -170,11 +171,14 @@ public class AtelierChatController {
         if (local.isPresent()) {
             LiveTurn turn = local.get();
             return new AtelierTurnStateResponse(true, turn.turnId(), turn.cursor(),
-                    turn.startedAtMs());
+                    turn.startedAtMs(),
+                    turn.pendingApproval().map(AtelierTurnStateResponse.PendingApprovalView::of)
+                            .orElse(null));
         }
         return remoteTurns.findRemoteTurn(userId, id)
                 .map(state -> new AtelierTurnStateResponse(true, state.turnId(), state.cursor(),
-                        state.startedAtMs()))
+                        state.startedAtMs(),
+                        AtelierTurnStateResponse.PendingApprovalView.of(state.pending())))
                 .orElseGet(AtelierTurnStateResponse::idle);
     }
 
@@ -362,14 +366,21 @@ public class AtelierChatController {
                     turn.publish("plan", streamPlan(plan));
                 }
 
+                /**
+                 * Une demande d'autorisation n'est plus seulement relayée : elle devient l'ÉTAT du
+                 * tour (F-84 / SF-84-03). Un écran qui arrive après coup la trouve encore en
+                 * attente, au lieu de l'avoir manquée avec le flux qui la portait.
+                 */
                 @Override
                 public void onConfirmRequest(AtelierConfirmRequest request) {
-                    turn.publish("confirm_request", request);
+                    turn.publishApprovalRequest(request, new PendingApproval(request.toolUseId(),
+                            request.tool(), request.detail(), request.timeoutMs(),
+                            System.currentTimeMillis()));
                 }
 
                 @Override
                 public void onConfirmResolved(AtelierConfirmResolved resolved) {
-                    turn.publish("confirm_resolved", resolved);
+                    turn.publishApprovalResolved(resolved, resolved.toolUseId());
                 }
             };
             AtelierChatResult result = atelierChatService.chatStreaming(userId, workspaceId, message, listener);

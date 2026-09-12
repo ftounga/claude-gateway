@@ -389,6 +389,19 @@ export class AtelierService {
           ? { timeoutMs: payload.timeoutMs }
           : {}),
       });
+    } else if (event === 'confirm_state') {
+      // Ce que le tour attend À L'INSTANT (F-84 / SF-84-03). Il arrive après le rejeu, et son
+      // `timeoutMs` est le TEMPS RESTANT calculé par la gateway : c'est lui qui corrige le compte à
+      // rebours, là où le `confirm_request` rejoué annoncerait encore le délai d'origine (SF-47-02).
+      // Routé vers la même invite : pour l'écran, une attente est une attente.
+      handlers.onConfirmRequest?.({
+        toolUseId: payload.toolUseId ?? '',
+        tool: payload.tool ?? '',
+        detail: payload.detail ?? '',
+        ...(typeof payload.timeoutMs === 'number' && payload.timeoutMs > 0
+          ? { timeoutMs: payload.timeoutMs }
+          : {}),
+      });
     } else if (event === 'confirm_resolved') {
       handlers.onConfirmResolved?.({
         toolUseId: payload.toolUseId ?? '',

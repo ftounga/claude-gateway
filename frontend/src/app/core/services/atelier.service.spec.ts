@@ -967,4 +967,56 @@ describe('AtelierService', () => {
     expect(state?.live).toBeTrue();
     expect(state?.cursor).toBe(12);
   });
+  it("confirm_state porte le temps RESTANT, pas le délai d'origine (F-84 / SF-84-03)", async () => {
+    fakeSseFetch([
+      'event:attached\nid:0\ndata:{"turnId":"t1","cursor":0,"startedAt":0}',
+      // Rejeu de la demande telle qu'elle fut : deux minutes annoncées à l'époque.
+      'event:confirm_request\nid:1\ndata:{"toolUseId":"call-1","tool":"bash","detail":"rm -rf build","timeoutMs":120000}',
+      // Puis l'état du tour, qui corrige : il ne reste que vingt secondes.
+      'event:confirm_state\nid:0\ndata:{"toolUseId":"call-1","tool":"bash","detail":"rm -rf build","timeoutMs":20000}',
+    ]);
+    const delays: (number | undefined)[] = [];
+
+    service.attachTurn('w1', 0, {
+      onConfirmRequest: (r) => delays.push(r.timeoutMs),
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+    });
+    await drain();
+
+    expect(delays).toEqual([120000, 20000]);
+  });
+
+  it("un confirm_state sans délai exploitable n'invente aucun compte à rebours (SF-47-02)", async () => {
+    fakeSseFetch([
+      'event:confirm_state\nid:0\ndata:{"toolUseId":"call-1","tool":"bash","detail":"ls","timeoutMs":0}',
+    ]);
+    let request: { timeoutMs?: number } | undefined;
+
+    service.attachTurn('w1', 0, {
+      onConfirmRequest: (r) => (request = r),
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+    });
+    await drain();
+
+    expect(request?.timeoutMs).toBeUndefined();
+  });
+
+  it("l'état du tour porte ce qu'il attend (F-84 / SF-84-03)", () => {
+    let state: AtelierTurnState | undefined;
+    service.getTurnState('w1').subscribe((s) => (state = s));
+
+    httpMock.expectOne('/api/workspaces/w1/chat/turn').flush({
+      live: true, turnId: 't1', cursor: 3, startedAt: 1000,
+      pending: { toolUseId: 'call-1', tool: 'bash', detail: 'rm -rf build', remainingMs: 20000 },
+    });
+
+    expect(state?.pending?.toolUseId).toBe('call-1');
+    expect(state?.pending?.remainingMs).toBe(20000);
+  });
 });
