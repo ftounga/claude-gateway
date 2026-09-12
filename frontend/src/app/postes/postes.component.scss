@@ -517,6 +517,40 @@
   font-size: 11px;
 }
 
+/* CE QUE LA CARTE A GAGNÉ (F-93 / SF-93-03).
+
+   Une phrase, trois lignes. Le vocabulaire est celui de la section : encre ordinaire pour le
+   constat, gris « inactif » du §5 pour le détail. AUCUN REGISTRE DE PLUS — pas de vert « ça
+   monte » : un gain n'est pas un succès, c'est un fait, et c'est l'ICÔNE qui porte le sens.
+   La différence ne repose donc jamais sur la seule couleur. */
+.poste__carte-gain {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-1);
+  margin: var(--cg-space-2) 0 0;
+  color: var(--cg-text-primary);
+  font-size: 12px;
+
+  mat-icon {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+    color: var(--cg-text-secondary);
+  }
+}
+
+.poste__carte-gain-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cg-space-1) var(--cg-space-3);
+  margin: var(--cg-space-1) 0 0;
+  padding: 0 0 0 var(--cg-space-4);
+  color: var(--cg-text-secondary);
+  font-size: 11px;
+  list-style: none;
+}
+
 .poste__card-actions {
   display: flex;
   justify-content: flex-end;

@@ -203,6 +203,33 @@ export interface GovernanceMapFile {
 }
 
 /**
+ * Un **gain** constaté sur un fichier de la carte (F-93 / SF-93-02).
+ *
+ * Volontairement pauvre : un fichier, un nombre, une date. « acces.md +3, il y a 2 j » se constate ;
+ * une courbe se contemple.
+ */
+export interface GovernanceMapGain {
+  path: string;
+  title: string;
+  gained: number;
+  gainedAt: string;
+}
+
+/**
+ * **Ce que la carte a gagné** (F-93 / SF-93-02).
+ *
+ * C'est la réponse mesurée à la phrase du PO — « à chaque projet, la connaissance de l'infra
+ * augmente ». Le bloc est **absent** tant qu'il n'y a rien à dire : un « +0 » affiché chaque jour
+ * serait pire que rien, il apprendrait qu'on ne gagne rien.
+ */
+export interface GovernanceMapGrowth {
+  since: string | null;
+  sinceFacts: number;
+  gained: number;
+  recent: GovernanceMapGain[];
+}
+
+/**
  * **Ce que la machine sait** — le relevé de la carte d'un poste (F-92 / SF-92-02).
  *
  * Trois « non » différents, parce que ce sont trois gestes différents : `supported` à faux (ce poste
@@ -222,6 +249,8 @@ export interface GovernanceMap {
   filesPresent: number;
   sections: number;
   facts: number;
+  /** Ce que la carte a gagné depuis la première lecture (F-93 / SF-93-02) ; absent s'il n'y a rien à dire. */
+  growth?: GovernanceMapGrowth | null;
 }
 
 /** Le **contenu exact** d'un fichier de carte, lu sur la machine (F-92 / SF-92-02). */

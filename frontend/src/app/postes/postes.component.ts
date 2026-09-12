@@ -15,7 +15,12 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { AtelierService } from '../core/services/atelier.service';
 import { GovernanceService } from '../core/services/governance.service';
-import { GovernanceMap, GovernanceMapFile } from '../core/models/governance.models';
+import {
+  GovernanceMap,
+  GovernanceMapFile,
+  GovernanceMapGain,
+  GovernanceMapGrowth,
+} from '../core/models/governance.models';
 import {
   HostFolder,
   HostProjectSummary,
@@ -80,6 +85,13 @@ export const POSTES_REFRESH_MS = 15_000;
 
 /** Ce qui empêche la vue d'exister — distinct d'un simple hoquet pendant un rafraîchissement. */
 export type PostesError = 'none' | 'network' | 'forbidden';
+
+/**
+ * Gains de carte montrés (F-93 / SF-93-03). **Trois**, pas six : le serveur en retient jusqu'à six,
+ * l'écran en montre ce qu'on lit d'un coup d'œil. Au-delà, ce n'est plus un fait qu'on constate,
+ * c'est une liste — et le PO a dit que ce n'était pas un tableau de bord.
+ */
+export const MAX_SHOWN_GAINS = 3;
 
 /**
  * Liste vide **partagée** : une carte sans dossier connu rend toujours la <b>même</b> référence.
@@ -631,6 +643,64 @@ export class PostesComponent implements OnInit {
       return `aucun fait encore — ${map.filesPresent} / ${map.filesExpected} fichiers en place`;
     }
     return `${map.facts} fait(s) · ${map.filesPresent} / ${map.filesExpected} fichiers`;
+  }
+
+  /**
+   * **Ce que la carte a gagné**, ou `null` s'il n'y a rien à constater (F-93 / SF-93-03).
+   *
+   * <p>Le bloc n'apparaît que lorsqu'un gain existe. Un « +0 depuis le 2 septembre » affiché chaque
+   * jour se lirait comme un reproche et deviendrait invisible en trois jours ; le bloc qui ne paraît
+   * que lorsqu'il a quelque chose à dire <b>est</b> le constat.</p>
+   */
+  mapGrowth(map: GovernanceMap): GovernanceMapGrowth | null {
+    const growth = map.growth;
+    if (!growth) {
+      return null;
+    }
+    return growth.gained > 0 || growth.recent.length > 0 ? growth : null;
+  }
+
+  /**
+   * La phrase du gain — celle que le PO attend : la connaissance de l'infra a augmenté, et voilà de
+   * combien.
+   *
+   * <p>Le point de départ est une <b>date</b>, pas une durée : « il y a 11 j » ne se retient pas,
+   * « le 2 septembre » se retient.</p>
+   */
+  mapGrowthLabel(map: GovernanceMap, growth: GovernanceMapGrowth): string {
+    const since = this.dayLabel(growth.since);
+    if (!since) {
+      return `cette carte a gagné ${growth.gained} fait(s) depuis la première lecture`;
+    }
+    return `depuis le ${since}, cette carte est passée de ${growth.sinceFacts} à ${map.facts} fait(s)`;
+  }
+
+  /** Les gains récents montrés : trois au plus — au-delà ce n'est plus un constat, c'est une liste. */
+  mapRecentGains(growth: GovernanceMapGrowth): GovernanceMapGain[] {
+    return growth.recent.slice(0, MAX_SHOWN_GAINS);
+  }
+
+  /** Une ligne de gain : le fichier, ce qu'il a gagné, et quand on l'a constaté. */
+  mapGainLabel(gain: GovernanceMapGain): string {
+    const when = this.elapsedLabel(gain.gainedAt);
+    return when ? `${gain.path} +${gain.gained} · ${when}` : `${gain.path} +${gain.gained}`;
+  }
+
+  /**
+   * Un jour, en toutes lettres — « 2 septembre ».
+   *
+   * <p>Rend `null` sur une date illisible plutôt qu'un « Invalid Date » : une phrase amputée de sa
+   * date reste vraie, une phrase qui affiche « NaN » n'apprend rien et fait douter du reste.</p>
+   */
+  private dayLabel(instant: string | null | undefined): string | null {
+    if (!instant) {
+      return null;
+    }
+    const date = new Date(instant);
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
+    return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
   }
 
   /** Ce qu'une ligne de fichier dit à droite de son titre. */

@@ -558,6 +558,34 @@
               }
             </ul>
           }
+
+          <!-- CE QUE LA CARTE A GAGNÉ (F-93 / SF-93-03). C'est le point que le PO attend : sans
+               cela, la promotion reste une corvée invisible — on la demande à chaque tour et elle
+               ne rend jamais rien à celui qui la fait. Ici, elle rend une phrase qu'on constate.
+
+               CE N'EST PAS UN TABLEAU DE BORD : une phrase, trois lignes, et rien d'autre. Pas de
+               courbe, pas de pourcentage, pas de « score de connaissance ».
+
+               IL N'APPARAÎT QUE S'IL A QUELQUE CHOSE À DIRE. Un « +0 depuis le 2 septembre »
+               affiché chaque jour se lirait comme un reproche et deviendrait invisible en trois
+               jours.
+
+               AUCUN REGISTRE DE COULEUR DE PLUS : l'encre ordinaire pour la phrase, le gris du §5
+               pour les lignes. Pas de vert « ça monte » — un gain n'est pas un succès, c'est un
+               fait, et l'icône porte le sens plutôt que la couleur. -->
+          @if (mapGrowth(map); as growth) {
+            <p class="poste__carte-gain">
+              <mat-icon>trending_up</mat-icon>
+              <span>{{ mapGrowthLabel(map, growth) }}</span>
+            </p>
+            @if (mapRecentGains(growth).length) {
+              <ul class="poste__carte-gain-list">
+                @for (gain of mapRecentGains(growth); track gain.path) {
+                  <li class="poste__mono">{{ mapGainLabel(gain) }}</li>
+                }
+              </ul>
+            }
+          }
           }
         }
 
