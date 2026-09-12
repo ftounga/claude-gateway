@@ -33,6 +33,20 @@
         <mat-icon>refresh</mat-icon>
         Rafraîchir
       </button>
+      <!-- LE PREMIER DES DEUX GESTES (F-72 / SF-72-02). Il part de la MACHINE : on nomme le
+           client, on vérifie le réseau, on appaire, on lance le runner. Aucun projet n'est créé —
+           ils viendront de la carte, avec « Ajouter un projet ». C'est l'ordre que le parcours
+           d'avant inversait, et c'est de là que venaient les deux entités du même nom. -->
+      <button
+        mat-flat-button
+        color="primary"
+        type="button"
+        (click)="connectHost()"
+        matTooltip="Nommer un client, appairer sa machine, lancer le runner"
+      >
+        <mat-icon>add</mat-icon>
+        Connecter un poste
+      </button>
     </div>
   </header>
 
@@ -67,11 +81,15 @@
       <div>
         <h2>Aucun poste connecté</h2>
         <p>
-          Un poste est une machine appairée <strong>une seule fois</strong>, avec un dossier de
-          travail dessous. Connectez-en un depuis un projet de la Forge : tous les sous-dossiers de
-          sa racine deviennent ensuite disponibles sans rien réinstaller.
+          Un poste est une machine appairée <strong>une seule fois</strong>. On commence par la
+          connecter — le nom du client, le réseau, l'appairage —, et <strong>ensuite</strong> on lui
+          ajoute des projets en cliquant les dossiers de sa racine, autant qu'on veut, sans jamais
+          réappairer.
         </p>
-        <a mat-flat-button color="primary" routerLink="/atelier">Ouvrir la Forge</a>
+        <button mat-flat-button color="primary" type="button" (click)="connectHost()">
+          <mat-icon>add</mat-icon>
+          Connecter un poste
+        </button>
       </div>
     </mat-card>
   } @else {

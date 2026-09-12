@@ -20,6 +20,10 @@ import { LiveBadgeComponent } from '../shared/live-badge/live-badge.component';
 import { HostTone, hostTone } from '../shared/host-identity';
 import { MissionBadgeComponent } from '../shared/mission-badge/mission-badge.component';
 import {
+  RunnerPairingDialogComponent,
+  RunnerPairingDialogData,
+} from '../atelier/runner/runner-pairing-dialog.component';
+import {
   DeleteHostDialogComponent,
   DeleteHostDialogData,
 } from './delete-host-dialog/delete-host-dialog.component';
@@ -188,6 +192,36 @@ export class PostesComponent implements OnInit {
   /** Relecture demandée par l'utilisateur (bouton « Rafraîchir » ou « Réessayer »). */
   refresh(): void {
     this.load(this.hosts().length === 0);
+  }
+
+  /**
+   * **Connecte un poste** (F-72 / SF-72-02) — le premier des deux gestes, et le seul geste de
+   * création qui reste à la racine de la Forge.
+   *
+   * <p>Il part de la <b>machine</b> : on nomme le client, on vérifie le réseau, on appaire, on
+   * lance le runner qui déclare sa racine. <b>Aucun projet n'est créé</b>, et c'est normal — ils
+   * viendront de la carte de ce poste, autant qu'on veut, sans jamais réappairer.</p>
+   *
+   * <p>C'est l'inversion que F-72 apporte : le parcours d'avant partait du <b>projet</b>, puis
+   * ramassait un poste en chemin dans la fenêtre d'appairage, et redemandait le même nom — d'où
+   * deux entités nommées comme le client, et un utilisateur perdu.</p>
+   */
+  connectHost(): void {
+    this.dialog
+      .open(RunnerPairingDialogComponent, {
+        // Aucune donnée de projet : c'est l'absence qui met le dialogue en mode POSTE. Un drapeau
+        // pourrait contredire les données, l'absence non.
+        data: {} satisfies RunnerPairingDialogData,
+        width: RunnerPairingDialogComponent.DIALOG_WIDTH,
+        maxWidth: '95vw',
+        autoFocus: false,
+      })
+      .afterClosed()
+      .subscribe(() => {
+        // Le poste existe peut-être maintenant, connecté ou non : la vue doit le montrer. On relit
+        // sans vider l'écran — un poste de plus n'est pas une raison de faire clignoter le reste.
+        this.load(false);
+      });
   }
 
   /**

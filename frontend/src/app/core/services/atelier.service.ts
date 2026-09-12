@@ -641,6 +641,18 @@ export class AtelierService {
   }
 
   /**
+   * État runner d'un **poste** (F-48 / SF-48-01), relevé par le parcours de mise en service quand
+   * il part de la **machine** et non d'un projet (F-72 / SF-72-02).
+   *
+   * <p>C'est le même relevé, à la même tolérance de 90 s, mais posé sur la bonne ressource : quand
+   * on vient de connecter un poste, <b>aucun projet n'existe encore</b> — et c'est normal. Demander
+   * l'état d'un projet qui n'existe pas n'aurait pas de réponse.</p>
+   */
+  getHostRunnerStatus(hostId: string): Observable<RunnerStatus> {
+    return this.http.get<RunnerStatus>(`/api/runner-hosts/${hostId}/status`);
+  }
+
+  /**
    * Génère le **code d'appairage à usage unique** d'un **poste** (F-38 / SF-38-01, porté à la
    * machine par F-48 / SF-48-01).
    *
