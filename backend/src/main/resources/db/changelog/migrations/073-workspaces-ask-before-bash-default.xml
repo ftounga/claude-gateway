@@ -8,6 +8,12 @@
     <!--
       SF-73-02 — La porte de confirmation redevient ARMÉE PAR DÉFAUT (F-73, ADR-019).
 
+      Numérotée 073 : livrée en 072, elle a croisé le 072 de F-75 (activations de gouvernance par
+      poste), mergé la même heure depuis une autre session. Deux fichiers au même numéro ne cassent
+      rien — Liquibase ordonne par nom de fichier et les changesets sont distincts — mais le prochain
+      auteur de migration lirait « 072 » et en déduirait un numéro libre faux. Renommée avant tout
+      déploiement : aucune base n'avait joué la version 072 de ce fichier.
+
       La migration 044 avait posé `agent_ask_before_bash` à `false` par défaut, et SF-47-04 avait
       aligné les chemins de création sur cette valeur. Ce défaut a été pris le 2026-09-10 alors que
       le confinement du runner *paraissait* exister ; vérification faite le 2026-09-12, il n'existait
@@ -20,7 +26,7 @@
     -->
 
     <!-- ============================ POSTGRESQL ============================ -->
-    <changeSet id="072-workspaces-ask-before-bash-default-postgresql" author="claude-gateway" dbms="postgresql">
+    <changeSet id="073-workspaces-ask-before-bash-default-postgresql" author="claude-gateway" dbms="postgresql">
         <addDefaultValue tableName="workspaces" columnName="agent_ask_before_bash"
                          columnDataType="boolean" defaultValueBoolean="true"/>
         <rollback>
@@ -30,7 +36,7 @@
     </changeSet>
 
     <!-- ================================ H2 ================================ -->
-    <changeSet id="072-workspaces-ask-before-bash-default-h2" author="claude-gateway" dbms="h2">
+    <changeSet id="073-workspaces-ask-before-bash-default-h2" author="claude-gateway" dbms="h2">
         <addDefaultValue tableName="workspaces" columnName="agent_ask_before_bash"
                          columnDataType="boolean" defaultValueBoolean="true"/>
         <rollback>

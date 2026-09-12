@@ -262,7 +262,7 @@ class RunnerGuardrailsApiIntegrationTest {
     @Test
     void anExistingProjectKeepsTheSettingItCarries() throws Exception {
         // Aucune donnée n'est réécrite (F-73, D4) : un projet qui avait éteint la porte la garde
-        // éteinte, et la migration 072 ne touche que le DÉFAUT de colonne.
+        // éteinte, et la migration 073 ne touche que le DÉFAUT de colonne.
         Workspace existing = workspaceRepository.save(Workspace.builder()
                 .userId(owner.getId()).name("Existant")
                 .executionTarget(WorkspaceExecutionTarget.RUNNER)

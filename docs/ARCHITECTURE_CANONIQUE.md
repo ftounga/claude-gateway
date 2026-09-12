@@ -365,11 +365,11 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     ensuite. Une session ouverte avant SF-31-05 n'a donc pas l'outil ; « Réinitialiser la sandbox »
     en rouvre une équipée.
 - **workspaces — validation avant exécution** (F-33 / SF-33-01, migration `044` ; **défaut inversé
-  par F-73 / SF-73-02, migration `072`**). Colonne
+  par F-73 / SF-73-02, migration `073`**). Colonne
   `agent_ask_before_bash (boolean, non nul, défaut **true**)` : quand elle est posée, la session
   d'agent est ouverte avec `permission_policy: always_ask` sur le **seul outil `bash`** (surcharge
   d'outils session-locale, `agent_with_overrides.tools` — l'agent plateforme n'est jamais modifié).
-  **Aucune table nouvelle**, et la migration `072` ne fait **aucun `UPDATE`** : seul le défaut de
+  **Aucune table nouvelle**, et la migration `073` ne fait **aucun `UPDATE`** : seul le défaut de
   colonne change, les projets existants gardent le réglage qu'ils portent. Le défaut est posé aussi
   sur l'**entité** (`@Builder.Default`), pour que tout chemin de création l'hérite (ADR-019).
   - La politique est fixée à l'**ouverture** de session : `PUT /workspaces/{id}/agent/confirmation`
@@ -727,7 +727,7 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     execution_target_runner`. Le garde-fou « projet Git en lecture seule » ne vaut plus que pour
     `SANDBOX` : un projet `GIT` + `RUNNER` est légitime (le dépôt est cloné sur la machine).
   - **`workspaces.agent_ask_before_bash`** (migration `044`, F-33 ; défaut inversé par la migration
-    `072`, F-73) : **`true` par défaut**, et le passage en cible `RUNNER` **n'y touche pas**. La
+    `073`, F-73) : **`true` par défaut**, et le passage en cible `RUNNER` **n'y touche pas**. La
     décision D7 de SF-38-08 forçait la colonne à `true` à chaque bascule et en refusait la
     désactivation (`409 execution_target_runner`) ; SF-38-20 a rouvert la désactivation, **F-47 /
     SF-47-04** a retiré le forçage et mis le défaut à `false` (ADR-018), puis **F-73 / SF-73-02** a

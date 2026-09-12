@@ -129,7 +129,7 @@ class WorkspaceServiceLocalTest {
     void aBareWorkspaceCarriesTheArmedDefaultToo() {
         // Le défaut est porté par l'ENTITÉ, pas seulement par createLocal : les projets créés
         // depuis une archive ou un dépôt Git héritent du même régime (F-73, arbitrage A5). La
-        // colonne porte le même défaut (migration 072) pour tout INSERT qui l'omettrait.
+        // colonne porte le même défaut (migration 073) pour tout INSERT qui l'omettrait.
         assertThat(new Workspace().isAgentAskBeforeBash()).isTrue();
         assertThat(Workspace.builder().userId(userId).name("x").build().isAgentAskBeforeBash())
                 .isTrue();

@@ -210,7 +210,7 @@ public class Workspace {
      * qu'un verrou, désarmé. Le confinement est retiré (SF-73-01) et la porte redevient ce qui
      * s'interpose avant une commande.</p>
      *
-     * <p>Le défaut est posé <b>ici et en base</b> (migration 072) : ici pour tout code Java qui crée
+     * <p>Le défaut est posé <b>ici et en base</b> (migration 073) : ici pour tout code Java qui crée
      * un projet, en base pour tout {@code INSERT} qui omettrait la colonne. Les projets
      * <b>existants</b> ne sont pas modifiés — aucune donnée n'est réécrite.</p>
      *
