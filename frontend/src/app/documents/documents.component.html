@@ -44,7 +44,9 @@
         @if (submitting()) {
           Envoi de {{ selectedFile()?.name }}…
         } @else {
-          PDF, PNG, JPEG ou TIFF — 20 Mo au maximum
+          <!-- F-85 / SF-85-03 : ce qui passe, dit avant l'essai, et dérivé de ce que le serveur
+               accepte — la mention était écrite en dur, plafond compris. -->
+          {{ acceptedFormatsLabel() }}
         }
       </span>
       @if (submitting()) {

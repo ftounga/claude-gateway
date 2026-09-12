@@ -387,6 +387,18 @@ describe('ChatComponent', () => {
     httpMock.expectNone('/api/conversations/null/files');
   });
 
+  it("annonce les formats joignables avant l'essai (F-85 / SF-85-03)", () => {
+    fixture.detectChanges();
+    flushInit();
+    fixture.detectChanges();
+
+    const hint = fixture.nativeElement.querySelector('.composer-formats') as HTMLElement;
+    expect(hint.textContent!.trim()).toBe(
+      'Pièces jointes : PDF, PNG, CSV — 32 Mo au maximum',
+    );
+    expect(hint.textContent).not.toMatch(/[a-z]+\/[a-z0-9.+-]+/);
+  });
+
   it('refuse une pièce jointe .docx en toutes lettres, sans type MIME (F-85 / SF-85-02)', () => {
     fixture.detectChanges();
     flushInit();

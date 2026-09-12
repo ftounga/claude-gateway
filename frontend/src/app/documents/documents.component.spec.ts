@@ -126,6 +126,35 @@ describe('DocumentsComponent', () => {
     expect(fileInput().getAttribute('accept')).toBe('');
   });
 
+  // --- F-85 / SF-85-03 — la liste des formats est visible avant l'essai -------------------------
+
+  /** La mention affichée à côté du bouton « Choisir un fichier ». */
+  function formatsHint(): string {
+    return (
+      fixture.nativeElement.querySelector('.documents__filename') as HTMLElement
+    ).textContent!.trim();
+  }
+
+  it("annonce les formats acceptés avant l'essai, en noms courants et avec le plafond", () => {
+    setup();
+    answerFileFormats(['application/pdf', 'image/png', 'image/jpeg', 'image/tiff']);
+
+    expect(formatsHint()).toBe('PDF, images (PNG, JPEG, TIFF) — 20 Mo au maximum');
+    expect(formatsHint()).not.toMatch(/[a-z]+\/[a-z0-9.+-]+/);
+  });
+
+  it('la mention suit le serveur : un format ajouté y apparaît', () => {
+    setup();
+    answerFileFormats(['application/pdf', 'image/png', 'image/jpeg', 'image/tiff', 'image/webp']);
+
+    expect(formatsHint()).toBe('PDF, images (PNG, JPEG, TIFF, WebP) — 20 Mo au maximum');
+  });
+
+  it("n'annonce rien tant que les formats ne sont pas connus — aucune promesse fausse", () => {
+    setup();
+    expect(formatsHint()).toBe('');
+  });
+
   // --- F-85 / SF-85-02 — le refus parle la langue de l'utilisateur ------------------------------
 
   /** Un `.docx` tel que le navigateur le présente. */

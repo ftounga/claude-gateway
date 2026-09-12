@@ -91,6 +91,19 @@ describe('AtelierFilesComponent', () => {
     } as MatDialogRef<unknown, unknown>);
   }
 
+  it("annonce ce qu'un projet accepte, avant l'essai (F-85 / SF-85-03)", () => {
+    setup();
+    const notes = Array.from(
+      fixture.nativeElement.querySelectorAll('.toolbar-note'),
+    ) as HTMLElement[];
+    const formats = notes.map((note) => note.textContent!.trim()).find((t) => t.startsWith('Texte'));
+
+    // Un projet est textuel : on l'apprenait en essayant un PDF. La mention est dérivée de la même
+    // liste que l'attribut `accept` du sélecteur — les deux ne peuvent pas se contredire.
+    expect(formats).toBe('Texte et code : .txt, .md, .markdown, .js… (56 formats)');
+    expect(component.workspaceTextAllExtensions).toContain('.java');
+  });
+
   it('charge le workspace à l\'init et construit l\'arbre', () => {
     setup();
     expect(service.getWorkspace).toHaveBeenCalledWith('w1');

@@ -128,6 +128,10 @@
         Ajouter un fichier
         <mat-icon iconPositionEnd>arrow_drop_down</mat-icon>
       </button>
+      <!-- F-85 / SF-85-03 : un projet est textuel, et on ne l'apprenait qu'en essayant un PDF. -->
+      <span class="toolbar-note" [matTooltip]="workspaceTextAllExtensions">
+        Texte et code : {{ workspaceTextFormats }}
+      </span>
       <button mat-stroked-button type="button" (click)="newFolder()">
         <mat-icon>create_new_folder</mat-icon>
         Nouveau dossier

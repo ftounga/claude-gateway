@@ -1,6 +1,8 @@
 import {
   acceptedFormatsSentence,
+  extensionsSummary,
   fileRejectionMessage,
+  maxSizeLabel,
   mediaTypeName,
   refusedFormatName,
   rejectionSentences,
@@ -125,6 +127,28 @@ describe('file-format-names (F-85 / SF-85-02)', () => {
       ])!;
       expect(message).not.toContain('PDF');
       expect(message).toContain('Choisissez un fichier dans un des formats acceptés.');
+    });
+  });
+
+  describe('dire ce qui passe avant l’essai (SF-85-03)', () => {
+    it('dit le plafond comme on le dit', () => {
+      expect(maxSizeLabel(20 * 1024 * 1024)).toBe('20 Mo');
+      expect(maxSizeLabel(32 * 1024 * 1024)).toBe('32 Mo');
+      expect(maxSizeLabel(512 * 1024)).toBe('512 Ko');
+      expect(maxSizeLabel(0)).toBe('');
+      expect(maxSizeLabel(null)).toBe('');
+    });
+
+    it('résume une longue liste par ses premières extensions et son total', () => {
+      expect(extensionsSummary(['txt', 'md', 'js', 'java', 'py', 'go'])).toBe(
+        '.txt, .md, .js, .java… (6 formats)',
+      );
+    });
+
+    it('ne résume pas une liste courte : elle tient en entier', () => {
+      expect(extensionsSummary(['zip'])).toBe('.zip');
+      expect(extensionsSummary(['txt', 'md'])).toBe('.txt, .md');
+      expect(extensionsSummary([])).toBe('');
     });
   });
 

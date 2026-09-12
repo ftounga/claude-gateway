@@ -245,6 +245,15 @@ a.active {
   flex: 1;
 }
 
+// F-85 / SF-85-03 — ce qui passe, dit avant l'essai. Aucune couleur nouvelle : la teinte des
+// labels et sous-titres du design system (§Couleurs, « Text secondaire »).
+.composer-formats {
+  margin: 0;
+  padding: 8px 24px 0;
+  font-size: 12px;
+  color: var(--cg-text-secondary);
+}
+
 // ---- Pièces jointes (composer) ----
 .composer-attachments {
   padding: 8px 24px 0;

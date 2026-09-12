@@ -180,6 +180,37 @@ export function acceptedFormatsSentence(mediaTypes: readonly string[]): string {
   return parts.join(', ');
 }
 
+/**
+ * Plafond de taille, dit comme on le dit — « 20 Mo » (F-85 / SF-85-03). Lu au serveur, jamais écrit
+ * en dur : l'écran bibliothèque annonçait « 20 Mo » dans son gabarit, sans rapport avec la
+ * configuration réelle.
+ */
+export function maxSizeLabel(maxBytes: number | null | undefined): string {
+  if (!maxBytes || maxBytes <= 0) {
+    return '';
+  }
+  const megabytes = Math.floor(maxBytes / (1024 * 1024));
+  return megabytes >= 1 ? `${megabytes} Mo` : `${Math.max(1, Math.round(maxBytes / 1024))} Ko`;
+}
+
+/** Nombre d'extensions montrées avant de passer au compte total. Quatre se lisent ; soixante non. */
+const EXTENSIONS_SHOWN = 4;
+
+/**
+ * Résume une longue liste d'extensions : les premières, puis le total (F-85 / SF-85-03).
+ * « .txt, .md, .js, .java… (60 formats) ».
+ */
+export function extensionsSummary(extensions: readonly string[]): string {
+  if (extensions.length === 0) {
+    return '';
+  }
+  const shown = extensions.slice(0, EXTENSIONS_SHOWN).map((extension) => `.${extension}`);
+  if (extensions.length <= EXTENSIONS_SHOWN) {
+    return shown.join(', ');
+  }
+  return `${shown.join(', ')}… (${extensions.length} formats)`;
+}
+
 /** Le remède : ce que l'utilisateur doit faire, maintenant, pour que ça passe. */
 function remedy(file: NamedFile, acceptsPdf: boolean): string {
   const extension = fileExtension(file.name);

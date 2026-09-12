@@ -24,7 +24,9 @@ import { DocumentsService } from '../core/services/documents.service';
 import { FileFormatsService } from '../core/services/file-formats.service';
 import {
   REFUSAL_SNACK_DURATION_MS,
+  acceptedFormatsSentence,
   fileRejectionMessage,
+  maxSizeLabel,
   rejectionSentences,
 } from '../shared/file-format-names';
 import {
@@ -97,6 +99,24 @@ export class DocumentsComponent implements OnInit, AfterViewInit, OnDestroy {
 
   /** Vrai pendant qu'un fichier survole la zone de dépôt : la zone le montre. */
   readonly dragging = signal(false);
+
+  /**
+   * Ce qui est accepté, dit **avant** l'essai (F-85 / SF-85-03).
+   *
+   * <p>L'écran affichait « PDF, PNG, JPEG ou TIFF — 20 Mo au maximum », écrit en dur : deux
+   * promesses qu'aucune configuration ne garantissait. La phrase est maintenant calculée à partir
+   * de ce que le serveur accepte — et vide tant qu'on ne le sait pas, car une liste supposée serait
+   * une promesse fausse.</p>
+   */
+  readonly acceptedFormatsLabel = computed(() => {
+    const profile = this.fileFormats.profile('documents');
+    if (!profile) {
+      return '';
+    }
+    const formats = acceptedFormatsSentence(profile.mediaTypes);
+    const size = maxSizeLabel(profile.maxBytes);
+    return size ? `${formats} — ${size} au maximum` : formats;
+  });
 
   readonly displayedColumns = ['filename', 'mediaType', 'status', 'chunks', 'createdAt', 'actions'];
   readonly dataSource = new MatTableDataSource<DocumentResponse>([]);

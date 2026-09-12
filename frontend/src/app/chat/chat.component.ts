@@ -18,7 +18,9 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 
 import {
   REFUSAL_SNACK_DURATION_MS,
+  acceptedFormatsSentence,
   fileRejectionMessage,
+  maxSizeLabel,
   rejectionSentences,
 } from '../shared/file-format-names';
 import { MarkdownPipe } from '../shared/markdown.pipe';
@@ -120,6 +122,21 @@ export class ChatComponent implements OnInit {
   readonly acceptedAttachmentTypes = computed(
     () => this.fileFormats.profile('attachments')?.mediaTypes ?? null,
   );
+
+  /**
+   * Ce qu'on peut joindre, dit **avant** l'essai (F-85 / SF-85-03) : rien ne l'annonçait, on
+   * l'apprenait en échouant. Vide tant que le serveur n'a pas répondu — on ne promet pas ce qu'on
+   * ne sait pas.
+   */
+  readonly attachmentFormatsLabel = computed(() => {
+    const profile = this.fileFormats.profile('attachments');
+    if (!profile) {
+      return '';
+    }
+    const formats = acceptedFormatsSentence(profile.mediaTypes);
+    const size = maxSizeLabel(profile.maxBytes);
+    return size ? `${formats} — ${size} au maximum` : formats;
+  });
 
   readonly activeTitle = computed(() => {
     const id = this.activeConversationId();

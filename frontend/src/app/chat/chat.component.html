@@ -202,6 +202,11 @@
       </mat-chip-set>
     }
 
+    @if (attachmentFormatsLabel()) {
+      <!-- F-85 / SF-85-03 : ce qu'on peut joindre, dit à côté du trombone et avant l'essai. -->
+      <p class="composer-formats">Pièces jointes : {{ attachmentFormatsLabel() }}</p>
+    }
+
     <form class="composer" [formGroup]="form" (ngSubmit)="send()">
       <input
         #fileInput
