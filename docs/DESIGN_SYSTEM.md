@@ -315,6 +315,48 @@ dans la barre du terminal et sur la carte du poste.
 
 ---
 
+## 12 — Ce qui attend une décision (ajout F-76 / SF-76-02, 2026-09-12)
+
+> **Aucune couleur nouvelle, et surtout pas un quatrième registre.** Cette section ne fait que dire
+> quelle palette **existante** sert à signaler qu'un terminal attend une autorisation — et pourquoi
+> ce signal doit être plus franc que les autres.
+
+Un terminal vivant (§11) porte désormais un **aperçu** : ce qu'il fait, et ses dernières lignes.
+Quatre états seulement — *inactif*, *réfléchit*, *exécute*, **attend votre autorisation**. Le
+dernier n'est pas un état comme les autres : c'est le seul qui **réclame un geste**, et c'est celui
+qui, le 2026-09-08, est resté douze heures invisible (F-47).
+
+| Question | Registre | Palette | Support |
+|---|---|---|---|
+| *Chez quel client suis-je ?* | **Identité** | §9 — dix tons dérivés du nom | Filet gauche + `app-host-badge` |
+| *Où en est la mission ?* | **État de mission** | §5 — pastilles de statut | `app-mission-badge` |
+| *Est-ce que ça vit maintenant ?* | **Vie** | **aucune** — encre de la surface | `app-live-badge` |
+| *Est-ce que ça attend quelque chose de moi ?* | **Décision attendue** | §5 — **« En attente »** (`#FFF8E1` / `#F9A825`) | `app-terminal-preview` |
+
+### Règles d'emploi — non négociables
+
+- **Aucune couleur nouvelle.** L'attente d'autorisation emprunte la pastille **§5 « En attente »**,
+  celle qui sert déjà partout dans l'application à dire qu'on attend quelque chose. Les quatre tons
+  de §5 restent les quatre tons de §5 ; §9 n'est pas touché.
+- **Le libellé est toujours écrit** — « **Attend votre autorisation** » — et aucune entrée du
+  composant ne permet de n'afficher que la couleur. Un point ambre n'a pas suffi le 8 septembre et
+  ne suffira pas davantage demain.
+- **Franchement, mais sans aplat.** Le §8 interdit le fond coloré sur les cartes, et le filet gauche
+  appartient à l'identité du poste (§9). Le signal entre par **la pastille écrite** et par le
+  **liseré de l'aperçu** qui passe à l'ambre — jamais par un fond, jamais par le filet d'identité.
+- **Ce qui attend passe devant.** Là où plusieurs terminaux s'affichent côte à côte, celui qui
+  attend une décision est **placé en tête** et **compté en en-tête**. Un signal qu'il faut chercher
+  n'est pas un signal.
+- **Les dernières lignes sont en JetBrains Mono** (§3), une ligne par ligne, sans repli : un aperçu
+  qui change de hauteur à chaque rafraîchissement fait bouger la page qu'on survole du coin de l'œil.
+- **Composant unique** : `app-terminal-preview` (`shared/terminal-preview/`), à deux densités —
+  `card` (3 lignes, accueil de la Forge) et `tile` (6 lignes, vue de supervision). Aucun écran ne
+  recompose l'aperçu à la main, aucun ne pose de couleur en ligne dessus.
+- **On regarde, on n'écrit pas.** L'aperçu ne porte ni champ de saisie, ni bouton d'envoi : écrire
+  dans une tuile est hors périmètre (F-76), et le terminal qui reçoit ce qu'on tape est à un clic.
+
+---
+
 ## Logo & marque (ajout 2026-07-03)
 
 - **Logo de l'application** : `frontend/public/claude-portal-logo.png` (« Claude Portal » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« Claude Portal »** (renommé en F-29 SF-29-01 : le terme « Proxy » faisait classer le domaine en catégorie « anonymizer » par les filtres d'entreprise).

@@ -825,6 +825,12 @@ export interface HostProjectSummary {
    * dans un onglet depuis refermé.
    */
   liveTerminal?: boolean;
+  /**
+   * **Ce que ce terminal fait** (F-76 / SF-76-01), ou absent quand aucun n'y vit — ou qu'il n'a
+   * encore rien à dire. C'est la **première densité** : on voit qu'un agent attend quelque chose
+   * sans rien ouvrir.
+   */
+  terminalPreview?: TerminalPreview | null;
 }
 
 /**
@@ -883,6 +889,12 @@ export interface RunnerHostOverview {
   hostTerminalId?: string | null;
   /** Vrai si un onglet vit sur le terminal du poste **maintenant** (F-70 / F-74). */
   hostTerminalLive?: boolean;
+  /**
+   * Ce que fait le **terminal du poste** (F-76 / SF-76-01). Rendu parce qu'on y travaille : une
+   * carte muette sur un terminal que la supervision montre en train d'attendre serait le contraire
+   * de « même source, deux densités ».
+   */
+  hostTerminalPreview?: TerminalPreview | null;
   projects: HostProjectSummary[];
 }
 
@@ -919,8 +931,35 @@ export interface HostFoldersResponse {
 }
 
 /**
+ * **Ce qu'un terminal fait à l'instant** (F-76 / SF-76-01).
+ *
+ * <p>Quatre valeurs, et pas un texte libre : l'écran doit pouvoir **trier** (ce qui attend passe
+ * devant), **signaler franchement** et **compter**. Aucune de ces trois règles ne tient sur une
+ * phrase libre. Le *détail*, lui, est libre : c'est lui qui dit « npm test ».</p>
+ */
+export type TerminalActivity = 'IDLE' | 'THINKING' | 'RUNNING' | 'AWAITING_APPROVAL';
+
+/**
+ * **L'aperçu vivant d'un terminal** (F-76) : ce qu'il fait, et ses dernières lignes.
+ *
+ * <p>Le PO a écarté le rejeu de quatre flux complets — illisible dans une tuile. Ce qu'on cherche
+ * du coin de l'œil, c'est *est-ce que ça avance* et *est-ce que ça attend quelque chose de moi* :
+ * quelques lignes y répondent. **Même source, deux densités** — trois lignes sous le nom d'un
+ * projet sur l'accueil, six dans une tuile de supervision.</p>
+ */
+export interface TerminalPreview {
+  activity: TerminalActivity;
+  /** Ce qui est en cours (« npm test »), ou `null` quand il n'y a rien à nommer. */
+  activityDetail?: string | null;
+  /** Les dernières lignes, déjà bornées et nettoyées par la gateway. */
+  lines: string[];
+  /** Instant du relevé, tel que la gateway l'a daté. */
+  at?: string | null;
+}
+
+/**
  * Un **terminal vivant** (F-70 / SF-70-01) : un onglet ouvert, nommé de façon à ce que l'écran
- * puisse dire **lequel fermer**.
+ * puisse dire **lequel fermer** — et, depuis F-76, **ce qu'il est en train de faire**.
  */
 export interface LiveTerminalEntry {
   workspaceId: string;
@@ -928,6 +967,11 @@ export interface LiveTerminalEntry {
   hostId?: string | null;
   hostName?: string | null;
   openedAt: string;
+  /** F-76 : ce que ce terminal fait. Absent d'un backend antérieur — l'écran n'affiche rien. */
+  activity?: TerminalActivity | null;
+  activityDetail?: string | null;
+  previewLines?: string[] | null;
+  activityAt?: string | null;
 }
 
 /**

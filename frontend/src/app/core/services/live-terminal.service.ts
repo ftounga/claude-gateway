@@ -2,6 +2,10 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, computed, inject, signal } from '@angular/core';
 
 import { LiveTerminals } from '../models/atelier.models';
+import {
+  TerminalPreviewReport,
+  samePreview,
+} from '../../atelier/terminal/terminal-preview';
 import { AuthService } from './auth.service';
 
 /** Intervalle du battement de cœur. Aligné sur le délai de grâce du serveur (90 s). */
@@ -9,6 +13,15 @@ const HEARTBEAT_MS = 30_000;
 
 /** Clé de l'identifiant d'onglet. `sessionStorage` : propre à l'onglet, pas au navigateur. */
 const SESSION_KEY = 'cg.terminal.session';
+
+/**
+ * Délai minimal entre deux envois d'aperçu **à activité constante** (F-76 / SF-76-02).
+ *
+ * Un changement d'activité, lui, part **immédiatement** : « attend une autorisation » est le seul
+ * état que l'utilisateur doit voir tout de suite, et le faire patienter cinq secondes de plus
+ * n'économiserait rien de mesurable.
+ */
+export const PREVIEW_MIN_INTERVAL_MS = 5_000;
 
 /**
  * **Le registre des terminaux vivants, vu de l'écran** (F-70 / SF-70-01).
@@ -38,6 +51,18 @@ export class LiveTerminalService {
   private timer: ReturnType<typeof setInterval> | null = null;
   private workspaceId: string | null = null;
 
+  /** Dernier aperçu relevé par l'écran — c'est lui que le prochain battement emportera. */
+  private preview: TerminalPreviewReport | null = null;
+
+  /** Dernier aperçu réellement envoyé : sert à ne pas réémettre deux fois la même chose. */
+  private sentPreview: TerminalPreviewReport | null = null;
+
+  /** Instant du dernier envoi d'aperçu, pour apaiser le simple défilement de lignes. */
+  private lastPreviewSentAt = 0;
+
+  /** Envoi différé d'un aperçu trop rapproché du précédent. Annulé à l'arrêt. */
+  private previewTimer: ReturnType<typeof setTimeout> | null = null;
+
   private readonly state = signal<LiveTerminals | null>(null);
   private readonly holding = signal(false);
   private readonly refused = signal(false);
@@ -65,6 +90,12 @@ export class LiveTerminalService {
     if (this.workspaceId === workspaceId && this.timer !== null) {
       return;
     }
+    // Changer de projet, c'est changer de terminal : l'aperçu du précédent n'a plus cours, et le
+    // laisser en place afficherait le `npm test` d'un autre projet sur la carte de celui-ci.
+    this.stopPreviewTimer();
+    this.preview = null;
+    this.sentPreview = null;
+    this.lastPreviewSentAt = 0;
     this.workspaceId = workspaceId;
     this.refused.set(false);
     this.beat();
@@ -79,6 +110,10 @@ export class LiveTerminalService {
   stop(): void {
     const workspaceId = this.workspaceId;
     this.stopTimer();
+    this.stopPreviewTimer();
+    this.preview = null;
+    this.sentPreview = null;
+    this.lastPreviewSentAt = 0;
     this.workspaceId = null;
     this.holding.set(false);
     this.refused.set(false);
@@ -98,6 +133,45 @@ export class LiveTerminalService {
     });
   }
 
+  /**
+   * **Dit ce que ce terminal est en train de faire** (F-76 / SF-76-02).
+   *
+   * <p>L'aperçu voyage avec le battement de cœur : pas d'appel de plus, pas de canal de plus. Ce
+   * que l'onglet relève ici est ce qui s'affichera sur la carte du poste et dans la tuile de
+   * supervision — l'onglet qui travaille est le seul à savoir, à l'instant, ce qu'il fait.</p>
+   *
+   * <p><b>La cadence suit l'urgence, pas l'horloge.</b> Un <b>changement d'activité</b> part
+   * immédiatement — c'est ce qui fait qu'« attend une autorisation » se voit en quelques secondes
+   * plutôt qu'en trente, et c'est précisément ce qui a manqué le 2026-09-08 (F-47). Un simple
+   * défilement de lignes, lui, est apaisé : il ne presse personne.</p>
+   *
+   * <p>Et l'envoi immédiat part d'ici, c'est-à-dire du gestionnaire d'événement du flux — pas
+   * d'une minuterie. Un onglet en arrière-plan voit ses minuteries ralenties par le navigateur ;
+   * il continue en revanche de traiter ce qui arrive sur son flux.</p>
+   */
+  report(preview: TerminalPreviewReport): void {
+    if (!this.workspaceId || samePreview(preview, this.preview)) {
+      return;
+    }
+    const activityChanged = preview.activity !== this.preview?.activity;
+    this.preview = preview;
+    if (activityChanged) {
+      this.flushPreview();
+      return;
+    }
+    const elapsed = Date.now() - this.lastPreviewSentAt;
+    if (elapsed >= PREVIEW_MIN_INTERVAL_MS) {
+      this.flushPreview();
+      return;
+    }
+    if (this.previewTimer === null) {
+      this.previewTimer = setTimeout(() => {
+        this.previewTimer = null;
+        this.flushPreview();
+      }, PREVIEW_MIN_INTERVAL_MS - elapsed);
+    }
+  }
+
   /** Rejoue immédiatement la prise de place — le bouton « Réessayer » du bandeau de refus. */
   retry(): void {
     if (this.workspaceId) {
@@ -112,9 +186,23 @@ export class LiveTerminalService {
     if (!workspaceId) {
       return;
     }
+    const preview = this.preview;
+    if (preview) {
+      // Le battement EMPORTE le dernier relevé connu : même sans changement d'activité, l'aperçu
+      // ne vieillit jamais de plus de trente secondes.
+      this.sentPreview = preview;
+      this.lastPreviewSentAt = Date.now();
+    }
     this.http
       .post<LiveTerminals>(`/api/workspaces/${workspaceId}/terminal/live`, {
         sessionId: this.sessionId,
+        ...(preview
+          ? {
+              activity: preview.activity,
+              activityDetail: preview.activityDetail,
+              previewLines: preview.previewLines,
+            }
+          : {}),
       })
       .subscribe({
         next: (registry) => {
@@ -143,6 +231,22 @@ export class LiveTerminalService {
       next: (registry) => this.state.set(registry),
       error: () => undefined,
     });
+  }
+
+  /** Envoie tout de suite le dernier relevé : c'est le battement de cœur qui le porte. */
+  private flushPreview(): void {
+    this.stopPreviewTimer();
+    if (samePreview(this.preview, this.sentPreview)) {
+      return;
+    }
+    this.beat();
+  }
+
+  private stopPreviewTimer(): void {
+    if (this.previewTimer !== null) {
+      clearTimeout(this.previewTimer);
+      this.previewTimer = null;
+    }
   }
 
   private stopTimer(): void {
