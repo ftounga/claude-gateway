@@ -526,14 +526,20 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
 - **governance_packages / governance_package_files** — le **catalogue publié** (F-51 / SF-51-01,
   migration `065`). Un **paquet de gouvernance** apporte quatre choses, et rien d'autre : des
   **règles** (texte ajouté à la consigne système du projet), des **contrôles** (identifiants de
-  composants du serveur, branchés sur les crochets de F-50), des **gabarits** et des **skills** — ces
-  deux derniers étant des fichiers déposés dans le projet.
+  composants du serveur, branchés sur les crochets de F-50), des **gabarits**, des **skills** et,
+  depuis F-92 / SF-92-01, des fichiers de **carte** — les trois derniers étant des fichiers déposés
+  sur la machine. **Le genre décide du point de chute** : `SKILL` et `TEMPLATE` dans **chaque
+  projet** du poste, `MAP` **une seule fois, à la racine du poste** — là où vit la carte, à côté des
+  dossiers de projets.
   - `governance_packages` : `id (uuid)`, `slug (varchar 64, unique, immuable)`, `name (varchar 120)`,
     `summary (varchar 500)`, `rules (text)`, `control_ids (varchar 1000, liste à plat)`,
     `version (int)`, `published (boolean)`, `published_at`, `created_at`, `updated_at`. Index
     `(published)`.
   - `governance_package_files` : `id (uuid)`, `package_id (uuid)`, `sort_order (int)`,
-    `path (varchar 255)`, `kind (varchar 16 : SKILL | TEMPLATE)`, `content (text)`, `created_at`.
+    `path (varchar 255)`, `kind (varchar 16 : SKILL | TEMPLATE | MAP)`, `content (text)`,
+    `created_at`. **`MAP` est arrivé sans migration** (F-92 / SF-92-01) : la colonne est un
+    `varchar(16)` **sans contrainte de valeur**, et une valeur de plus n'est donc pas un changement
+    de schéma.
     Index `(package_id, sort_order)`. La colonne s'appelle `sort_order` et non `position` :
     `POSITION` est une fonction SQL standard, donc réservée pour H2.
   - **Pas de `user_id`, et c'est délibéré** : un paquet est un **contenu produit**, comme un plan
