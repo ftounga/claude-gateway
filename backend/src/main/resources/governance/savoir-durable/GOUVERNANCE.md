@@ -43,13 +43,27 @@ de promouvoir oublie aussi de le déclarer. Le second ne tourne que si le tour a
 
 | Fichier | Rôle |
 |---|---|
-| `STATE.md` | L'état du sujet en cours — **jetable** |
+| `STATE.md` | L'état du sujet en cours — **jetable**. Sa section `## Statut` vaut `en cours` ou `clos` |
 | `PLAN-ACTION.md` | La carte du projet — **durable** |
 | `.claude/skills/explique.md` | Expliquer un morceau du projet à partir de ce qui est écrit |
 | `.claude/skills/plan-dashboard.md` | Faire le point sur la carte, promouvoir, compter la dette |
 
 Rien n'est jamais écrasé : un fichier déjà présent est laissé tel quel, et l'écran l'annonce avant
 l'activation.
+
+## Le statut du sujet, et la clôture
+
+`STATE.md` porte une section `## Statut` avec **deux valeurs, et deux seulement** : `en cours` tant
+que le sujet vit, `clos` quand il est terminé. Elle sépare deux situations qui n'appellent pas la
+même réponse :
+
+| Statut | Une case `- [ ]` reste ouverte | Ce qui se passe |
+|---|---|---|
+| `en cours` | oui | **Avertissement** — c'est un état normal : on le dit, on continue |
+| `clos` | oui | **Refus** — remonte-les dans la carte du poste, puis clos |
+
+Un `STATE.md` sans section `Statut` est lu **`en cours`** : on ne clôt jamais un sujet par
+distraction.
 
 ## Comment écrire un refus
 
