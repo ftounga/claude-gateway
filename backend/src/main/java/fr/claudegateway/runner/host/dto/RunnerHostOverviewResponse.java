@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.UUID;
 
 import fr.claudegateway.runner.host.HostMissionStatus;
+import fr.claudegateway.terminals.dto.TerminalPreview;
 
 /**
  * Vue d'ensemble d'un <b>poste</b> (F-49 / SF-49-01) : tout ce qu'un écran doit en savoir, en une
@@ -43,6 +44,10 @@ import fr.claudegateway.runner.host.HostMissionStatus;
  *                       geste — l'endpoint retrouve ou crée — mais il lui faut pour savoir de quel
  *                       terminal on parle
  * @param hostTerminalLive vrai si un onglet vit sur le terminal du poste <b>maintenant</b> (F-70)
+ * @param hostTerminalPreview <b>ce que fait</b> le terminal du poste (F-76 / SF-76-01), ou
+ *                       {@code null} s'il ne vit pas ou n'a rien a dire. Rendu ici parce qu'on y
+ *                       travaille : sans lui, la vue de supervision montrerait une tuile que la
+ *                       carte du poste, elle, laisserait muette
  * @param projects       les projets rangés sous ce poste, les plus actifs d'abord. Le terminal du
  *                       poste n'en fait <b>pas</b> partie : ce n'est pas un projet
  */
@@ -63,6 +68,7 @@ public record RunnerHostOverviewResponse(
         int liveTerminals,
         UUID hostTerminalId,
         boolean hostTerminalLive,
+        TerminalPreview hostTerminalPreview,
         List<HostProjectSummary> projects) {
 
     /** Nom du poste virtuel, écrit <b>par la gateway</b> : deux écrans qui le nommeraient chacun à
@@ -87,7 +93,7 @@ public record RunnerHostOverviewResponse(
     public static RunnerHostOverviewResponse hosted(List<HostProjectSummary> projects,
             int liveTerminals) {
         return new RunnerHostOverviewResponse(null, HOSTED_NAME, null, null, null, null, true,
-                false, null, null, null, null, 0, liveTerminals, null, false, projects);
+                false, null, null, null, null, 0, liveTerminals, null, false, null, projects);
     }
 
     /**
@@ -104,6 +110,11 @@ public record RunnerHostOverviewResponse(
      * @param active           vrai si la dernière activité est plus récente que la fenêtre d'activité
      * @param liveTerminal     vrai si un terminal de <b>cet utilisateur</b> est ouvert sur ce projet
      *                         maintenant (F-70 / SF-70-01) — un onglet vivant, pas un tour en cours
+     * @param terminalPreview  <b>ce que ce terminal fait</b> a l'instant (F-76 / SF-76-01) :
+     *                         quelques lignes et une activite nommee, ou {@code null} quand aucun
+     *                         terminal n'y vit — ou qu'il n'a encore rien a dire. C'est la
+     *                         <b>premiere densite</b> : on voit qu'un agent attend quelque chose
+     *                         sans rien ouvrir
      */
     public record HostProjectSummary(
             UUID id,
@@ -114,6 +125,7 @@ public record RunnerHostOverviewResponse(
             String lastTool,
             long calls,
             boolean active,
-            boolean liveTerminal) {
+            boolean liveTerminal,
+            TerminalPreview terminalPreview) {
     }
 }

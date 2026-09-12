@@ -333,4 +333,164 @@ class LiveTerminalApiIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].liveTerminals").value(0));
     }
+
+    // ------------------------------------------------- l'aperçu vivant (F-76 / SF-76-01)
+
+    /** Corps d'un battement de cœur portant un aperçu. */
+    private String bodyWithPreview(String sessionId, String activity, String detail,
+            String... lines) {
+        StringBuilder joined = new StringBuilder();
+        for (String line : lines) {
+            if (joined.length() > 0) {
+                joined.append(',');
+            }
+            joined.append('"').append(line).append('"');
+        }
+        return "{\"sessionId\":\"" + sessionId + "\",\"activity\":\"" + activity
+                + "\",\"activityDetail\":\"" + detail + "\",\"previewLines\":["
+                + joined + "]}";
+    }
+
+    @Test
+    void theRegisterSaysWhatEachTerminalIsDoing() throws Exception {
+        mockMvc.perform(post(claimUrl(aliceProject.getId())).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bodyWithPreview("tab-1", "RUNNING", "npm test",
+                                "$ npm test", "PASS src/app.spec.ts")))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/terminals/live").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$.terminals[0].activity").value("RUNNING"))
+                .andExpect(jsonPath("$.terminals[0].activityDetail").value("npm test"))
+                .andExpect(jsonPath("$.terminals[0].previewLines[0]").value("$ npm test"))
+                .andExpect(jsonPath("$.terminals[0].previewLines[1]").value("PASS src/app.spec.ts"))
+                .andExpect(jsonPath("$.terminals[0].activityAt").isNotEmpty());
+    }
+
+    @Test
+    void aTerminalThatAwaitsAnApprovalSaysSo() throws Exception {
+        // L'exigence non négociable : c'est le seul état que l'utilisateur DOIT voir, et il doit
+        // pouvoir le voir sans ouvrir l'onglet concerné.
+        mockMvc.perform(post(claimUrl(aliceProject.getId())).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bodyWithPreview("tab-1", "AWAITING_APPROVAL", "rm -rf build",
+                                "Autorisation demandée")))
+                .andExpect(jsonPath("$.terminals[0].activity").value("AWAITING_APPROVAL"));
+    }
+
+    @Test
+    void aHeartbeatWithoutAPreviewErasesNothing() throws Exception {
+        // Ne rien dire n'est pas dire qu'il ne se passe rien : un écran antérieur à F-76 tient sa
+        // place exactement comme avant, sans effacer ce qu'un autre battement a écrit.
+        mockMvc.perform(post(claimUrl(aliceProject.getId())).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bodyWithPreview("tab-1", "RUNNING", "npm test", "PASS")))
+                .andExpect(status().isOk());
+
+        claim(aliceToken, aliceProject.getId(), "tab-1");
+
+        mockMvc.perform(get("/api/terminals/live").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$.terminals[0].activity").value("RUNNING"))
+                .andExpect(jsonPath("$.terminals[0].previewLines[0]").value("PASS"));
+    }
+
+    @Test
+    void theBoundsAreHeldByTheGatewayNotByTheScreen() throws Exception {
+        String[] flood = new String[50];
+        for (int i = 0; i < flood.length; i++) {
+            flood[i] = "ligne " + (i + 1);
+        }
+        mockMvc.perform(post(claimUrl(aliceProject.getId())).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bodyWithPreview("tab-1", "RUNNING", "x".repeat(400), flood)))
+                .andExpect(status().isOk())
+                // Six lignes, et ce sont les DERNIÈRES : un aperçu dit où l'on en est.
+                .andExpect(jsonPath("$.terminals[0].previewLines.length()").value(6))
+                .andExpect(jsonPath("$.terminals[0].previewLines[5]").value("ligne 50"))
+                .andExpect(jsonPath("$.terminals[0].activityDetail").value("x".repeat(120)));
+    }
+
+    @Test
+    void anUnknownActivityIsReadAsIdleRatherThanRefused() throws Exception {
+        // Un écran déployé avant sa gateway perdrait sinon sa PLACE pour un ornement.
+        mockMvc.perform(post(claimUrl(aliceProject.getId())).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bodyWithPreview("tab-1", "DANCING", "valse", "une ligne")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.terminals[0].activity").value("IDLE"))
+                .andExpect(jsonPath("$.terminals[0].previewLines[0]").value("une ligne"));
+    }
+
+    @Test
+    void anActivityThatIsNotALabelAtAllIsRefused() throws Exception {
+        mockMvc.perform(post(claimUrl(aliceProject.getId())).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bodyWithPreview("tab-1", "running!", "x", "y")))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void theOverviewCarriesThePreviewOfEachLiveProject() throws Exception {
+        // PREMIÈRE DENSITÉ : on voit qu'un agent attend quelque chose sans rien ouvrir.
+        mockMvc.perform(post(claimUrl(aliceProject.getId())).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bodyWithPreview("tab-1", "AWAITING_APPROVAL", "git push",
+                                "Autorisation demandée")))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/runner-hosts/overview").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$[0].projects[?(@.name == 'web')].terminalPreview.activity")
+                        .value(org.hamcrest.Matchers.hasItem("AWAITING_APPROVAL")))
+                .andExpect(jsonPath("$[0].projects[?(@.name == 'api')].terminalPreview")
+                        .value(org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.nullValue())));
+    }
+
+    @Test
+    void anotherUsersPreviewNeverReachesMyScreens() throws Exception {
+        mockMvc.perform(post(claimUrl(bobProject.getId())).contextPath("/api")
+                        .header("Authorization", "Bearer " + bobToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bodyWithPreview("tab-1", "RUNNING", "secret-tool",
+                                "ligne confidentielle")))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/terminals/live").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$.terminals").isEmpty());
+        mockMvc.perform(get("/api/runner-hosts/overview").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$..terminalPreview")
+                        .value(org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.nullValue())));
+    }
+
+    @Test
+    void aRefusedFifthTerminalWritesNoPreviewEither() throws Exception {
+        // Non-régression du plafond de F-70, aperçus présents : le garde-fou de dépense ne bouge
+        // pas parce qu'on a ajouté du décor.
+        for (int i = 1; i <= 4; i++) {
+            mockMvc.perform(post(claimUrl(aliceProject.getId())).contextPath("/api")
+                            .header("Authorization", "Bearer " + aliceToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(bodyWithPreview("tab-" + i, "RUNNING", "npm test", "PASS")))
+                    .andExpect(status().isOk());
+        }
+
+        mockMvc.perform(post(claimUrl(aliceProject.getId())).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(bodyWithPreview("tab-5", "RUNNING", "npm test", "PASS")))
+                .andExpect(status().isConflict());
+
+        assertThat(liveTerminalRepository.findByUserIdAndSessionId(aliceId, "tab-5")).isEmpty();
+    }
 }

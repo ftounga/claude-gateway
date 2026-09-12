@@ -379,4 +379,32 @@ class RunnerHostOverviewServiceTest {
         org.mockito.Mockito.verify(auditRepository, org.mockito.Mockito.never())
                 .aggregateActivityByHost(any(), any(), any());
     }
+
+    // --------------------------------------------- l'aperçu vivant (F-76 / SF-76-01)
+
+    @Test
+    void aProjectWithALiveTerminalCarriesWhatItIsDoing() {
+        // PREMIÈRE DENSITÉ : quelques lignes sous le nom du projet, sur la carte du poste. On voit
+        // qu'un agent attend quelque chose sans rien ouvrir.
+        UUID vivant = UUID.randomUUID();
+        UUID muet = UUID.randomUUID();
+        when(hostService.list(alice)).thenReturn(List.of());
+        when(liveTerminals.liveWorkspaceIds(alice)).thenReturn(java.util.Set.of(vivant));
+        when(liveTerminals.previewsByWorkspace(alice)).thenReturn(java.util.Map.of(vivant,
+                new fr.claudegateway.terminals.dto.TerminalPreview(
+                        fr.claudegateway.terminals.TerminalActivity.AWAITING_APPROVAL,
+                        "git push", List.of("Autorisation demandée"), OffsetDateTime.now())));
+        when(workspaceService.listWithoutHost(alice)).thenReturn(
+                List.of(hostedProject(muet, "archive"), hostedProject(vivant, "depot")));
+
+        List<HostProjectSummary> projects = service().overview(alice).getFirst().projects();
+
+        assertThat(projects).filteredOn(p -> p.name().equals("depot")).singleElement()
+                .extracting(p -> p.terminalPreview().activity())
+                .isEqualTo(fr.claudegateway.terminals.TerminalActivity.AWAITING_APPROVAL);
+        // Aucun terminal vivant, aucun aperçu : un booléen et un aperçu qui se contrediraient sur
+        // la même ligne seraient illisibles.
+        assertThat(projects).filteredOn(p -> p.name().equals("archive")).singleElement()
+                .extracting(HostProjectSummary::terminalPreview).isNull();
+    }
 }

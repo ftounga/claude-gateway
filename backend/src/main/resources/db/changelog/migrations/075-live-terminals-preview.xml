@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-76 / SF-76-01 — Ce que chaque terminal vivant est en train de faire.
+
+      F-70 a dit LESQUELS vivent ; F-76 dit CE QU'ILS FONT. La fiche d'un terminal vivant porte
+      désormais son APERÇU : une activité nommée, son détail (« npm test »), et ses dernières
+      lignes. Deux écrans le liront — les cartes de /forge et la vue de supervision — sans ouvrir un
+      seul canal de plus : l'aperçu voyage avec le battement de cœur qui existe déjà.
+
+      POURQUOI SUR CETTE TABLE et pas ailleurs : la ligne existe déjà, une par onglet vivant, avec
+      son projet et son poste. Une table d'aperçus à côté aurait la même clef, la même durée de vie
+      et la même purge — ce serait la même table, en deux morceaux.
+
+      POURQUOI NULLABLE : un onglet qui vient de s'ouvrir n'a encore rien fait. Une fiche sans
+      aperçu est l'état normal des premières secondes, pas une anomalie.
+
+      BORNES : la troncature (6 lignes, 160 caractères, détail 120) est tenue par le SERVICE, pas
+      seulement par la colonne — une borne que l'appelant pourrait contourner n'est pas une borne.
+      `varchar(1024)` est la ceinture, pas la règle.
+
+      Changement PUREMENT ADDITIF : aucune colonne existante n'est touchée, aucune donnée n'est
+      déplacée, aucun index n'est ajouté (ces colonnes ne sont jamais un critère de lecture), et
+      chaque changeSet porte son rollback.
+    -->
+
+    <changeSet id="075-live-terminals-preview-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="live_terminals">
+            <column name="activity" type="varchar(24)"/>
+            <column name="activity_detail" type="varchar(120)"/>
+            <column name="preview_lines" type="varchar(1024)"/>
+            <column name="activity_at" type="timestamptz"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="live_terminals" columnName="activity"/>
+            <dropColumn tableName="live_terminals" columnName="activity_detail"/>
+            <dropColumn tableName="live_terminals" columnName="preview_lines"/>
+            <dropColumn tableName="live_terminals" columnName="activity_at"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="075-live-terminals-preview-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="live_terminals">
+            <column name="activity" type="varchar(24)"/>
+            <column name="activity_detail" type="varchar(120)"/>
+            <column name="preview_lines" type="varchar(1024)"/>
+            <column name="activity_at" type="timestamp with time zone"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="live_terminals" columnName="activity"/>
+            <dropColumn tableName="live_terminals" columnName="activity_detail"/>
+            <dropColumn tableName="live_terminals" columnName="preview_lines"/>
+            <dropColumn tableName="live_terminals" columnName="activity_at"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

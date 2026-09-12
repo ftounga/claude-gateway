@@ -1,8 +1,15 @@
 package fr.claudegateway.terminals;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 
 import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -12,6 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import fr.claudegateway.atelier.WorkspaceRepository;
 import fr.claudegateway.atelier.WorkspaceService;
 import fr.claudegateway.runner.host.RunnerHostRepository;
+import fr.claudegateway.terminals.dto.TerminalPreview;
 
 /**
  * Les <b>bornes</b> du registre des terminaux vivants (F-70 / SF-70-01).
@@ -32,6 +40,8 @@ class LiveTerminalServiceTest {
     @Mock private WorkspaceService workspaceService;
     @Mock private WorkspaceRepository workspaceRepository;
     @Mock private RunnerHostRepository hostRepository;
+
+    private final UUID alice = UUID.randomUUID();
 
     private LiveTerminalService service(int limit, Duration ttl) {
         return new LiveTerminalService(repository, workspaceService, workspaceRepository,
@@ -61,5 +71,68 @@ class LiveTerminalServiceTest {
         assertThat(service(4, null).ttl()).isEqualTo(LiveTerminalService.MIN_TTL);
         // Dans les bornes : la valeur configurée est respectée telle quelle.
         assertThat(service(4, Duration.ofSeconds(90)).ttl()).isEqualTo(Duration.ofSeconds(90));
+    }
+
+    // ------------------------------------------------------------ aperçu (F-76 / SF-76-01)
+
+    private LiveTerminal fiche(UUID workspaceId, TerminalActivity activity, String lines,
+            OffsetDateTime at) {
+        return LiveTerminal.builder()
+                .id(UUID.randomUUID())
+                .userId(alice)
+                .workspaceId(workspaceId)
+                .sessionId("onglet-" + UUID.randomUUID())
+                .openedAt(at)
+                .lastSeenAt(at)
+                .activity(activity)
+                .previewLines(lines)
+                .activityAt(at)
+                .build();
+    }
+
+    @Test
+    void twoTabsOnTheSameProjectKeepTheFreshestPreview() {
+        // La carte d'un poste parle du PROJET, pas de l'onglet : il faut trancher, et le plus
+        // récent est la seule règle qui ne mente jamais sur « où en est-on ».
+        UUID projet = UUID.randomUUID();
+        OffsetDateTime vieux = OffsetDateTime.now().minusSeconds(20);
+        OffsetDateTime recent = OffsetDateTime.now();
+        when(repository.findByUserIdAndLastSeenAtAfterOrderByOpenedAtAsc(eq(alice), any()))
+                .thenReturn(List.of(
+                        fiche(projet, TerminalActivity.RUNNING, "ancien", vieux),
+                        fiche(projet, TerminalActivity.IDLE, "frais", recent)));
+
+        Map<UUID, TerminalPreview> previews =
+                service(4, Duration.ofSeconds(90)).previewsByWorkspace(alice);
+
+        assertThat(previews.get(projet).lines()).containsExactly("frais");
+    }
+
+    @Test
+    void whatAwaitsApprovalWinsOverWhatIsMerelyRunning() {
+        // C'est l'exigence non négociable : au même instant, l'attente passe devant. Un terminal
+        // qui attend une autorisation est resté douze heures invisible le 2026-09-08 (F-47).
+        UUID projet = UUID.randomUUID();
+        OffsetDateTime meme = OffsetDateTime.now();
+        when(repository.findByUserIdAndLastSeenAtAfterOrderByOpenedAtAsc(eq(alice), any()))
+                .thenReturn(List.of(
+                        fiche(projet, TerminalActivity.AWAITING_APPROVAL, "autorisation ?", meme),
+                        fiche(projet, TerminalActivity.RUNNING, "npm test", meme)));
+
+        Map<UUID, TerminalPreview> previews =
+                service(4, Duration.ofSeconds(90)).previewsByWorkspace(alice);
+
+        assertThat(previews.get(projet).activity()).isEqualTo(TerminalActivity.AWAITING_APPROVAL);
+    }
+
+    @Test
+    void aTerminalWithNothingToSayHasNoPreviewAtAll() {
+        // Une tuile qui afficherait « IDLE » et rien d'autre n'apprendrait rien de plus que la
+        // pastille de vie déjà présente depuis F-70.
+        UUID projet = UUID.randomUUID();
+        when(repository.findByUserIdAndLastSeenAtAfterOrderByOpenedAtAsc(eq(alice), any()))
+                .thenReturn(List.of(fiche(projet, null, null, OffsetDateTime.now())));
+
+        assertThat(service(4, Duration.ofSeconds(90)).previewsByWorkspace(alice)).isEmpty();
     }
 }

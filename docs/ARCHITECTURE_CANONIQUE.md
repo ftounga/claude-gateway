@@ -680,8 +680,18 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   vivants, ce sont **quatre consommations simultanées** — le plafond est un garde-fou de dépense,
   pas une contrainte technique.
   - `live_terminals` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `workspace_id (uuid, NOT NULL)`,
-    `session_id (varchar 64, NOT NULL)`, `opened_at`, `last_seen_at`. Index **unique**
-    `(user_id, session_id)`, index `(user_id, last_seen_at)`.
+    `session_id (varchar 64, NOT NULL)`, `opened_at`, `last_seen_at`, et — depuis F-76 / SF-76-01,
+    migration `075` — l'**aperçu vivant** : `activity (varchar 24)`, `activity_detail (varchar 120)`,
+    `preview_lines (varchar 1024)`, `activity_at`. Index **unique** `(user_id, session_id)`, index
+    `(user_id, last_seen_at)`.
+  - **L'aperçu (F-76)** dit **ce que le terminal fait** — `IDLE` / `THINKING` / `RUNNING` /
+    `AWAITING_APPROVAL`, le détail (« npm test ») et ses **dernières lignes**. Il voyage avec le
+    **battement de cœur** qui existe déjà : pas d'endpoint de plus, pas de canal de plus, une
+    écriture sur une ligne qui est déjà là. Bornes tenues **au serveur** (6 lignes, 160 caractères,
+    détail 120) et séquences ANSI retirées — une borne tenue par l'appelant n'est pas une borne.
+    **Aucun index** : ces colonnes ne sont jamais un critère de lecture. Ce n'est **pas** un
+    historique : la fiche porte le **dernier** aperçu, ce qu'un tour a produit vit dans
+    `atelier_messages`. Il meurt avec la place, donc avec l'onglet.
   - **Pourquoi une table et pas un registre en mémoire** : sous HPA, un compteur en mémoire ne
     verrait que les terminaux du pod qui répond, et un garde-fou de dépense qui ne compte qu'un
     replica n'en est pas un. La table est lue par tous les pods et ne passe **pas** par le relais
