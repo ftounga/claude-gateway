@@ -27,6 +27,14 @@ public interface WorkspaceStorage {
      */
     void deleteFile(String key);
 
-    /** Supprime toutes les clés sous le préfixe donné. */
+    /**
+     * Supprime <b>toutes</b> les clés sous le préfixe donné, et ne rend la main qu'une fois le
+     * dernier lot traité. Une implémentation qui doit découper (S3 plafonne {@code DeleteObjects} à
+     * 1 000 clés) le fait ici, pas chez l'appelant.
+     *
+     * @throws WorkspaceStorageDeletionException si l'effacement est <b>incomplet</b> — elle porte le
+     *         nombre de clés effacées et le nombre restantes. Un échec partiel silencieux est
+     *         interdit : l'appelant doit pouvoir dire ce qui est parti (F-79 / SF-79-01).
+     */
     void deletePrefix(String prefix);
 }
