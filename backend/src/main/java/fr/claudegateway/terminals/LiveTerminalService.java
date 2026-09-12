@@ -6,7 +6,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -35,10 +34,21 @@ import fr.claudegateway.terminals.dto.TerminalPreview;
  * quatre tours facturés en parallèle. Le plafond n'est pas une contrainte technique, c'est un
  * garde-fou de dépense — d'où la borne dure à 4 quelle que soit la configuration.</p>
  *
- * <p><b>La course</b> : deux onglets qui prennent la dernière place en même temps insèrent tous les
- * deux, puis <b>recomptent</b>. Celui qui n'est pas dans les {@code limit} places les plus anciennes
- * retire la sienne et reçoit le refus. Aucun verrou de base n'est nécessaire, le résultat est le
- * même sur PostgreSQL et sur H2, et le nombre de survivants ne dépasse jamais le plafond.</p>
+ * <p><b>La course entre deux onglets différents</b> : deux onglets qui prennent la dernière place en
+ * même temps insèrent tous les deux, puis <b>recomptent</b>. Celui qui n'est pas dans les
+ * {@code limit} places les plus anciennes retire la sienne et reçoit le refus. Aucun verrou de base
+ * n'est nécessaire et le résultat est le même sur PostgreSQL et sur H2. Le recompte lit les places
+ * <b>commitées</b> : dans une photo-finish à la milliseconde, deux prises peuvent donc ne pas se
+ * voir et une cinquième place survivre. C'est le comportement de F-70, délibérément conservé —
+ * resserrer ce compte demanderait un verrou, c'est-à-dire <b>changer le plafond</b>, hors périmètre
+ * (voir l'arbitrage A4 du cadrage F-78).</p>
+ *
+ * <p><b>La course d'un onglet avec lui-même</b> (F-78) : c'est l'autre course, et c'est celle qui a
+ * brûlé la production le 2026-09-12. Prendre une place se faisait en deux temps — chercher la fiche,
+ * l'insérer si elle manquait — et deux battements du même onglet arrivant ensemble ne trouvaient
+ * rien tous les deux. Prendre une place est désormais <b>une seule écriture</b> : on renouvelle, et
+ * si personne n'était là, on insère avec le conflit absorbé par le moteur
+ * ({@link LiveTerminalClaimWriter}). Il n'y a plus de « entre les deux ».</p>
  *
  * <p><b>Isolation</b> : {@code userId} vient toujours du jeton, jamais du corps de la requête ; la
  * propriété du projet est vérifiée par {@link WorkspaceService#requireOwned} <b>avant</b> toute
@@ -59,7 +69,16 @@ public class LiveTerminalService {
     /** Délai de grâce maximal : au-delà, un onglet fermé bloquerait une place trop longtemps. */
     static final Duration MAX_TTL = Duration.ofMinutes(10);
 
+    /**
+     * Nombre de tours de la boucle « renouveler, sinon prendre » (F-78). Un seul suffit en
+     * pratique : les deux moteurs <b>attendent</b> la fin de la transaction jumelle avant de dire
+     * que la place est prise. Le second tour ne sert qu'au cas où ce jumeau a été refusé au plafond
+     * et annulé entre-temps ; le troisième est de la pure prudence.
+     */
+    private static final int CLAIM_ATTEMPTS = 3;
+
     private final LiveTerminalRepository repository;
+    private final LiveTerminalClaimWriter claimWriter;
     private final WorkspaceService workspaceService;
     private final WorkspaceRepository workspaceRepository;
     private final RunnerHostRepository hostRepository;
@@ -68,12 +87,14 @@ public class LiveTerminalService {
 
     public LiveTerminalService(
             LiveTerminalRepository repository,
+            LiveTerminalClaimWriter claimWriter,
             WorkspaceService workspaceService,
             WorkspaceRepository workspaceRepository,
             RunnerHostRepository hostRepository,
             @Value("${app.terminals.live.limit:4}") int limit,
             @Value("${app.terminals.live.ttl:PT90S}") Duration ttl) {
         this.repository = repository;
+        this.claimWriter = claimWriter;
         this.workspaceService = workspaceService;
         this.workspaceRepository = workspaceRepository;
         this.hostRepository = hostRepository;
@@ -127,38 +148,79 @@ public class LiveTerminalService {
         OffsetDateTime cutoff = now.minus(ttl);
         repository.deleteStale(userId, cutoff);
 
-        Optional<LiveTerminal> existing = repository.findByUserIdAndSessionId(userId, sessionId);
-        if (existing.isPresent()) {
-            // Battement de cœur : le même appel sert à prendre et à tenir. Un onglet qui a changé
-            // de projet garde sa place plutôt que d'en libérer une pour en reprendre une autre.
-            LiveTerminal terminal = existing.get();
-            terminal.setWorkspaceId(workspaceId);
-            terminal.setLastSeenAt(now);
-            apply(terminal, preview, now);
-            repository.saveAndFlush(terminal);
-            return describe(userId, cutoff);
-        }
-
-        LiveTerminal fresh = LiveTerminal.builder()
+        // La fiche telle qu'elle doit être après cet appel — identifiant compris, parce qu'il
+        // faudra reconnaître SA place au moment d'arbitrer le plafond.
+        LiveTerminal place = LiveTerminal.builder()
+                .id(UUID.randomUUID())
                 .userId(userId)
                 .workspaceId(workspaceId)
                 .sessionId(sessionId)
                 .openedAt(now)
                 .lastSeenAt(now)
                 .build();
-        apply(fresh, preview, now);
-        LiveTerminal claimed = repository.saveAndFlush(fresh);
+        apply(place, preview, now);
 
+        for (int attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
+            // (1) RENOUVELER D'ABORD — le cas de loin le plus fréquent : un onglet ouvert bat
+            // plusieurs fois par minute et ne prend sa place qu'une fois. Le nombre de lignes
+            // touchées EST la réponse, il n'y a rien à lire avant. Renouveler n'ajoute aucune
+            // place : le plafond n'a donc rien à arbitrer ici.
+            if (renew(place, preview != null) > 0) {
+                return describe(userId, cutoff);
+            }
+
+            // (2) SINON PRENDRE — une seule écriture, dont le conflit est absorbé par le moteur.
+            // `false` ne veut pas dire « erreur » : un battement jumeau du même onglet a pris la
+            // place pendant qu'on écrivait. On repasse par (1) pour renouveler LA SIENNE.
+            if (claimWriter.insertIfAbsent(place)) {
+                return describeAfterClaiming(place, cutoff);
+            }
+        }
+
+        // Trois tours sans place : le jumeau aurait été refusé puis annulé à chaque fois. On rend
+        // le registre tel quel plutôt qu'une erreur — le battement suivant, dans quelques
+        // secondes, reprendra une place. Un écran qui perd un battement se rattrape ; un écran qui
+        // reçoit un 500 affiche une panne.
+        return describe(userId, cutoff);
+    }
+
+    /** Le renouvellement, avec ou sans aperçu — ne rien dire n'est pas dire qu'il ne se passe rien. */
+    private int renew(LiveTerminal place, boolean withPreview) {
+        if (!withPreview) {
+            return repository.renew(place.getUserId(), place.getSessionId(), place.getWorkspaceId(),
+                    place.getLastSeenAt());
+        }
+        return repository.renewWithPreview(place.getUserId(), place.getSessionId(),
+                place.getWorkspaceId(), place.getLastSeenAt(), place.getActivity(),
+                place.getActivityDetail(), place.getPreviewLines());
+    }
+
+    /**
+     * Le registre après une place <b>créée</b> — et le seul endroit où le plafond s'arbitre.
+     *
+     * <p>On insère puis on recompte, comme depuis F-70 : celui qui n'est pas dans les
+     * {@code limit} places les plus anciennes se retire. C'est ce qui rend l'arbitrage identique
+     * sur les deux moteurs, sans verrou.</p>
+     *
+     * <p><b>Seule une place réellement créée passe ici</b> — un renouvellement n'ajoute aucune
+     * place et n'a donc rien à faire arbitrer. C'est la propriété que F-78 devait préserver en
+     * changeant l'écriture : un upsert qui insérerait d'abord ferait passer chaque battement par le
+     * plafond.</p>
+     */
+    private LiveTerminalsResponse describeAfterClaiming(LiveTerminal claimed,
+            OffsetDateTime cutoff) {
         List<LiveTerminal> live = repository
-                .findByUserIdAndLastSeenAtAfterOrderByOpenedAtAsc(userId, cutoff);
+                .findByUserIdAndLastSeenAtAfterOrderByOpenedAtAsc(claimed.getUserId(), cutoff);
         if (live.size() > limit && !isKept(live, claimed)) {
             // On ne laisse jamais de trace d'une place refusée : l'écran qui reçoit le 409 doit
-            // pouvoir relire le registre et y compter EXACTEMENT `limit` terminaux.
-            repository.delete(claimed);
+            // pouvoir relire le registre et y compter EXACTEMENT `limit` terminaux. Le retrait est
+            // explicite ET la transaction roule en arrière (l'exception est une RuntimeException) :
+            // deux garanties pour une seule promesse, c'est voulu.
+            repository.deleteByUserIdAndSessionId(claimed.getUserId(), claimed.getSessionId());
             repository.flush();
             throw new LiveTerminalLimitReachedException(limit);
         }
-        return describe(userId, cutoff);
+        return describe(claimed.getUserId(), cutoff);
     }
 
     /**
