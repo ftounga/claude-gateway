@@ -63,10 +63,15 @@ public class TeamsToolCatalog {
     public static final String MEETING_RECORDING = "teams_meeting_recording";
 
     /**
-     * <b>Le catalogue, dans l'ordre où il est donné à l'agent</b> — et la seule liste qui fasse foi
-     * côté gateway. Sa contrepartie côté runner ({@code TeamsTools.CATALOG}) porte exactement les
-     * mêmes noms ; les deux sont verrouillées par un test de chaque côté, parce que deux dépôts de
-     * la même vérité finissent par diverger quand personne ne les compare.
+     * <b>Les outils de LECTURE, dans l'ordre où ils sont donnés à l'agent</b> — et la seule liste
+     * qui fasse foi côté gateway. Sa contrepartie côté runner ({@code TeamsTools.CATALOG}) porte
+     * exactement les mêmes noms ; les deux sont verrouillées par un test de chaque côté, parce que
+     * deux dépôts de la même vérité finissent par diverger quand personne ne les compare.
+     *
+     * <p><b>Ce sont ceux que le RUNNER exécute</b>, et c'est ce qui les distingue de
+     * {@link #PRESENTATION} (F-89 / SF-89-02) : ceux-là ne quittent jamais la gateway — ils posent
+     * un bloc dans le fil, ils ne touchent ni la machine ni le navigateur. Le runner n'a donc rien
+     * à en connaître, et la liste qu'il mirroite ne doit surtout pas les contenir.</p>
      */
     public static final List<String> CATALOG = List.of(STATUS, FIND_CONVERSATIONS,
             READ_CONVERSATION, MENTIONS, SEARCH, FIND_MEETINGS, MEETING_TRANSCRIPT,
@@ -80,6 +85,13 @@ public class TeamsToolCatalog {
 
     /** Les <b>moments</b> (F-89 / SF-89-02) : l'image, à côté de la phrase prononcée. */
     public static final String MOMENTS = "teams_moments";
+
+    /**
+     * <b>Les outils de PRÉSENTATION</b> (F-89 / SF-89-02), dans l'ordre où ils sont donnés — ceux
+     * qui posent un bloc dans le fil. Ils s'exécutent <b>dans la gateway</b> : le runner n'en
+     * connaît aucun, et {@link #CATALOG} ne les contient pas.
+     */
+    public static final List<String> PRESENTATION = List.of(MEETING_CARD, LIST, MOMENTS);
 
     /** Vrai si ce nom d'outil est un outil de <b>présentation</b>, qui pose un bloc dans le fil. */
     public static boolean isPresentation(String tool) {

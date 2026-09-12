@@ -125,6 +125,18 @@ class TeamsToolCatalogTest {
     }
 
     @Test
+    @DisplayName("la panoplie d'un terminal Teams = les outils de LECTURE, puis ceux de PRÉSENTATION")
+    void theBeltIsTheTwoListsInOrder() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(true);
+
+        java.util.List<String> expected = new java.util.ArrayList<>(TeamsToolCatalog.CATALOG);
+        expected.addAll(TeamsToolCatalog.PRESENTATION);
+
+        assertThat(catalog.toolsFor(userId, teamsTerminal())).extracting(AgentTool::name)
+                .containsExactlyElementsOf(expected);
+    }
+
+    @Test
     @DisplayName("isPresentation ne reconnaît QUE les trois outils qui posent un bloc")
     void onlyThePresentationToolsArePresentation() {
         assertThat(TeamsToolCatalog.isPresentation(TeamsToolCatalog.MEETING_CARD)).isTrue();
