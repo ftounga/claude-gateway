@@ -12,8 +12,8 @@
 
 ## Hébergements
 
-_Chez qui ça tourne : fournisseur, compte, région, et **qui paie** — la dernière colonne décide de
-qui peut créer quoi._
+> Chez qui ça tourne : fournisseur, compte, région, et **qui paie** — la dernière colonne décide
+> de qui peut créer quoi.
 
 | Hébergement | Fournisseur | Compte / abonnement | Région | Qui le détient | Source et date |
 |---|---|---|---|---|---|
@@ -39,7 +39,7 @@ qui peut créer quoi._
 
 ## Chaînes de livraison
 
-_Ce qui construit et déploie : d'où part un changement, par où il passe, où il atterrit._
+> Ce qui construit et déploie : d'où part un changement, par où il passe, où il atterrit.
 
 | Chaîne | Déclencheur | Ce qu'elle déploie | Où voir ses exécutions | Source et date |
 |---|---|---|---|---|
@@ -47,7 +47,7 @@ _Ce qui construit et déploie : d'où part un changement, par où il passe, où 
 
 ## Limites mesurées
 
-_Les plafonds réels, constatés — pas ceux de la documentation du fournisseur._
+> Les plafonds réels, constatés — pas ceux de la documentation du fournisseur.
 
 | Limite | Valeur constatée | Ce qui arrive quand on la dépasse | Constaté le | Source |
 |---|---|---|---|---|

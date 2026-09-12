@@ -6,7 +6,7 @@
 
 ## Source de vérité
 
-_Où vit la vérité du réseau chez ce client, et ce que cette carte ne fait donc que résumer._
+> Où vit la vérité du réseau chez ce client, et ce que cette carte ne fait donc que résumer.
 
 | Domaine couvert | Source de vérité (lien) | Qui la tient | Source et date |
 |---|---|---|---|
@@ -26,7 +26,7 @@ _Où vit la vérité du réseau chez ce client, et ce que cette carte ne fait do
 
 ## Noms et domaines
 
-_Qui héberge la zone, qui peut la modifier, et par quel geste._
+> Qui héberge la zone, qui peut la modifier, et par quel geste.
 
 | Domaine / zone | Hébergeur DNS | Qui peut modifier | Geste de modification | Source et date |
 |---|---|---|---|---|
@@ -34,8 +34,8 @@ _Qui héberge la zone, qui peut la modifier, et par quel geste._
 
 ## Flux ouverts
 
-_Ce qui parle à quoi, sur quel port, et **qui l'a autorisé** — c'est cette dernière colonne qu'on
-cherche le jour où un flux tombe._
+> Ce qui parle à quoi, sur quel port, et **qui l'a autorisé** — c'est cette dernière colonne
+> qu'on cherche le jour où un flux tombe.
 
 | Source | Destination | Port / protocole | Autorisé par | Source et date |
 |---|---|---|---|---|

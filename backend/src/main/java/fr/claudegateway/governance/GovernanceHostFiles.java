@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import fr.claudegateway.runner.channel.RunnerCallResult;
+import fr.claudegateway.runner.channel.RunnerErrorCodes;
 import fr.claudegateway.runner.channel.RunnerTarget;
 import fr.claudegateway.runner.audit.RunnerAuditService;
 import fr.claudegateway.runner.exec.RunnerToolGateway;
@@ -29,8 +30,8 @@ import fr.claudegateway.runner.exec.RunnerToolGateway;
  * <p><b>La présence se lit, elle ne se déduit pas.</b> {@link #presence} interroge le fichier
  * lui-même plutôt que l'arborescence. À la racine d'un poste réel, {@code list_files} est récursif et
  * <b>tronqué</b> (SF-38-21) : conclure « absent » d'une liste incomplète ferait écraser la carte d'un
- * client. Trois issues, et une seule autorise à écrire : présent, <b>absent</b> ({@code not_found}
- * exact), ou <b>inconnu</b> — et l'inconnu n'écrit jamais.</p>
+ * client. Quatre issues, et <b>une seule</b> autorise à écrire : présent, <b>absent</b>
+ * ({@code not_found} exact), inconnu, ou machine injoignable — et le doute n'écrit jamais.</p>
  *
  * <p><b>Un poste sans machine n'a pas de racine.</b> Le poste virtuel « Hébergé » (F-71) rend
  * {@link Presence#UNSUPPORTED} sans qu'aucun appel ne parte : il n'y a rien à joindre.</p>
@@ -65,8 +66,18 @@ public class GovernanceHostFiles {
         /** Le runner a dit {@code not_found} : le fichier n'existe pas, on peut le créer. */
         ABSENT,
 
-        /** Machine éteinte, droits refusés, chemin occupé par un dossier… : <b>on n'écrit pas</b>. */
+        /** Droits refusés, chemin occupé par un dossier, fichier trop gros… : <b>on n'écrit pas</b>. */
         UNKNOWN,
+
+        /**
+         * <b>La machine n'a pas répondu du tout</b> — runner éteint, muet, ou sur un autre nœud.
+         *
+         * <p>Distinct de {@link #UNKNOWN} parce que la conclusion l'est : un fichier illisible
+         * n'empêche pas de lire le suivant, une machine injoignable si. Le lecteur de carte
+         * s'arrête là plutôt que d'attendre un délai par fichier (F-92 / SF-92-02) ; le dépôt, lui,
+         * les traite pareil — dans les deux cas, il n'écrit pas.</p>
+         */
+        UNREACHABLE,
 
         /** Ce poste n'est pas une machine : il n'a pas de racine, donc pas de carte. */
         UNSUPPORTED
@@ -124,7 +135,15 @@ public class GovernanceHostFiles {
             return new HostFileRead(Presence.ABSENT, null, false);
         }
         log.debug("Carte du poste illisible (code={})", result.errorCode());
-        return new HostFileRead(Presence.UNKNOWN, null, false);
+        return new HostFileRead(unreachable(result.errorCode()) ? Presence.UNREACHABLE
+                : Presence.UNKNOWN, null, false);
+    }
+
+    /** Vrai si l'échec vient du <b>transport</b> : personne au bout du fil, ou personne à temps. */
+    static boolean unreachable(String errorCode) {
+        return RunnerErrorCodes.RUNNER_UNAVAILABLE.equals(errorCode)
+                || RunnerErrorCodes.RUNNER_TIMEOUT.equals(errorCode)
+                || RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE.equals(errorCode);
     }
 
     /**

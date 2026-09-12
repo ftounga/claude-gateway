@@ -18,7 +18,8 @@
 
 ## Schémas et modèles
 
-_Ce qu'il faut savoir avant d'écrire une requête : les tables qui comptent, les pièges du modèle._
+> Ce qu'il faut savoir avant d'écrire une requête : les tables qui comptent, les pièges du
+> modèle.
 
 | Schéma / table | Ce qu'il porte | Ce qu'il faut savoir avant d'y toucher | Source et date |
 |---|---|---|---|
@@ -26,8 +27,8 @@ _Ce qu'il faut savoir avant d'écrire une requête : les tables qui comptent, le
 
 ## Sauvegardes et restaurations
 
-_Une sauvegarde qu'on n'a jamais restaurée n'est pas une sauvegarde. La colonne « restauration
-éprouvée le » est le seul fait qui compte vraiment ici._
+> Une sauvegarde qu'on n'a jamais restaurée n'est pas une sauvegarde. La colonne « restauration
+> éprouvée le » est le seul fait qui compte vraiment ici.
 
 | Périmètre | Fréquence | Rétention | Où sont les copies | Restauration éprouvée le | Source |
 |---|---|---|---|---|---|
@@ -41,7 +42,7 @@ _Une sauvegarde qu'on n'a jamais restaurée n'est pas une sauvegarde. La colonne
 
 ## Échanges de fichiers
 
-_Comment les données entrent et sortent : canal, format, volume, fenêtre._
+> Comment les données entrent et sortent : canal, format, volume, fenêtre.
 
 | Échange | Sens | Canal | Format / volume | Fenêtre | Source et date |
 |---|---|---|---|---|---|
