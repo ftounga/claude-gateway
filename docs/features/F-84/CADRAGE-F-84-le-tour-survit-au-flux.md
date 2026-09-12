@@ -94,7 +94,9 @@ rejeu —, et n'a pas à devenir un journal d'événements.
 Écarté : écrire chaque événement en base. C'est le chemin chaud d'un tour, chaque sortie de
 commande y passerait, et F-76 avait déjà écarté cette voie pour l'aperçu.
 
-**À CONFIRMER PAR LE PO** — c'est la seule décision de cadrage.
+**CONFIRMÉ PAR LE PO le 2026-09-12** : on réutilise le dispositif `pg_notify` + adresse de pod
+d'ADR-016. Le tampon vit en mémoire du pod qui exécute le tour ; un spectateur arrivé ailleurs est
+relayé. Aucune écriture d'événement en base sur le chemin chaud.
 
 ## 5. Hors périmètre
 
