@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import fr.claudegateway.atelier.live.PendingApproval;
 import fr.claudegateway.atelier.live.RemoteTurnSource;
 import fr.claudegateway.atelier.live.TurnSubscriber;
 
@@ -133,7 +134,8 @@ public class RelayTurnSource implements RemoteTurnSource {
             return Optional.of(new Owner(baseUrl, new RemoteTurnState(
                     parseUuid(node.path("turnId").asText(null)),
                     node.path("cursor").asLong(0L),
-                    node.path("startedAt").asLong(0L))));
+                    node.path("startedAt").asLong(0L),
+                    pendingOf(node.path("pending")))));
         }
         return Optional.empty();
     }
@@ -183,6 +185,25 @@ public class RelayTurnSource implements RemoteTurnSource {
         node.put("workspaceId", workspaceId.toString());
         node.put("cursor", cursor);
         return node.toString();
+    }
+
+    /**
+     * L'attente rapportée par le pair, ou {@code null} (F-84 / SF-84-03).
+     *
+     * <p>Le pair a envoyé un <b>temps restant</b>, pas un délai : on le repose donc sur l'instant
+     * présent. Reconstruire l'attente avec le délai d'origine rallongerait l'échéance de tout le
+     * temps déjà écoulé — exactement le mensonge que SF-47-02 interdit.</p>
+     */
+    private static PendingApproval pendingOf(com.fasterxml.jackson.databind.JsonNode node) {
+        if (node == null || !node.isObject()) {
+            return null;
+        }
+        long remaining = node.path("remainingMs").asLong(0L);
+        if (remaining <= 0L) {
+            return null;
+        }
+        return new PendingApproval(node.path("toolUseId").asText(""), node.path("tool").asText(""),
+                node.path("detail").asText(""), remaining, System.currentTimeMillis());
     }
 
     private static UUID parseUuid(String value) {

@@ -142,7 +142,7 @@ describe('AtelierComponent', () => {
     // rend simplement de quoi se détacher.
     service.attachTurn.and.returnValue(new AbortController());
     service.getTurnState.and.returnValue(
-      of({ live: false, turnId: null, cursor: 0, startedAt: null }),
+      of({ live: false, turnId: null, cursor: 0, startedAt: null, pending: null }),
     );
     // Projet d'archive en bac à sable : la gateway rend donc le moteur hébergé (SF-39-07).
     service.getEngine.and.returnValue(of({
@@ -262,6 +262,33 @@ describe('AtelierComponent', () => {
 
       expect(component.pendingConfirmation()?.toolUseId).toBe('call-1');
       expect(component.pendingConfirmation()?.detail).toBe('rm -rf build');
+    });
+
+    it('le compte à rebours part du temps RESTANT, pas du délai d’origine (SF-84-03)', () => {
+      setup();
+      let handlers: AtelierStreamHandlers | undefined;
+      service.attachTurn.and.callFake((_id, _cursor, given) => {
+        handlers = given;
+        return new AbortController();
+      });
+      component.selectWorkspace(summary);
+      fixture.detectChanges();
+      handlers?.onAttached?.({ turnId: 't1', cursor: 1, startedAt: Date.now() - 100_000 });
+
+      // Le rejeu livre la demande telle qu'elle fut : deux minutes annoncées à l'époque.
+      handlers?.onConfirmRequest?.({
+        toolUseId: 'call-1', tool: 'bash', detail: 'rm -rf build', timeoutMs: 120_000,
+      });
+      // Puis l'état du tour corrige : il ne reste que vingt secondes.
+      handlers?.onConfirmRequest?.({
+        toolUseId: 'call-1', tool: 'bash', detail: 'rm -rf build', timeoutMs: 20_000,
+      });
+      fixture.detectChanges();
+
+      expect(component.pendingConfirmation()?.timeoutMs).toBe(20_000);
+      expect(component.confirmationRemainingMs() ?? 0)
+        .withContext('vingt secondes restantes, pas deux minutes')
+        .toBeLessThanOrEqual(20_000);
     });
 
     it('rien ne tourne : l’écran reste au repos, sans rien annoncer', () => {
@@ -3282,7 +3309,7 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
     // rend simplement de quoi se détacher.
     service.attachTurn.and.returnValue(new AbortController());
     service.getTurnState.and.returnValue(
-      of({ live: false, turnId: null, cursor: 0, startedAt: null }),
+      of({ live: false, turnId: null, cursor: 0, startedAt: null, pending: null }),
     );
     service.getEngine.and.returnValue(of({
       engine: 'HOSTED_SANDBOX' as const, runnerConnected: false, runnerLastSeenAt: null,
@@ -3407,7 +3434,7 @@ describe('AtelierComponent — écrans runner (F-38 SF-38-06)', () => {
     // rend simplement de quoi se détacher.
     service.attachTurn.and.returnValue(new AbortController());
     service.getTurnState.and.returnValue(
-      of({ live: false, turnId: null, cursor: 0, startedAt: null }),
+      of({ live: false, turnId: null, cursor: 0, startedAt: null, pending: null }),
     );
     // Le moteur vient de la gateway (SF-39-07) : ici, il suit la cible du projet sous test.
     service.getEngine.and.returnValue(of({
@@ -3618,7 +3645,7 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
     // rend simplement de quoi se détacher.
     service.attachTurn.and.returnValue(new AbortController());
     service.getTurnState.and.returnValue(
-      of({ live: false, turnId: null, cursor: 0, startedAt: null }),
+      of({ live: false, turnId: null, cursor: 0, startedAt: null, pending: null }),
     );
     // Projet en cible « ma machine » : la gateway rend donc la boucle maison (SF-39-07).
     service.getEngine.and.returnValue(of({
@@ -3874,7 +3901,7 @@ describe("AtelierComponent — guide d'accueil (F-53 / SF-53-01)", () => {
     // rend simplement de quoi se détacher.
     service.attachTurn.and.returnValue(new AbortController());
     service.getTurnState.and.returnValue(
-      of({ live: false, turnId: null, cursor: 0, startedAt: null }),
+      of({ live: false, turnId: null, cursor: 0, startedAt: null, pending: null }),
     );
     service.getEngine.and.returnValue(of({
       engine: 'LOCAL_MACHINE' as const, runnerConnected: options.connected === true,
@@ -4132,7 +4159,7 @@ describe('AtelierComponent — rappel de journalisation (F-57 / SF-57-03)', () =
     // rend simplement de quoi se détacher.
     service.attachTurn.and.returnValue(new AbortController());
     service.getTurnState.and.returnValue(
-      of({ live: false, turnId: null, cursor: 0, startedAt: null }),
+      of({ live: false, turnId: null, cursor: 0, startedAt: null, pending: null }),
     );
     service.getEngine.and.returnValue(of({
       engine: 'LOCAL_MACHINE' as const, runnerConnected: false,

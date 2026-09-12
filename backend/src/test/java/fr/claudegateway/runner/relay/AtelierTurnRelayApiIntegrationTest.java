@@ -20,6 +20,7 @@ import org.springframework.test.context.ActiveProfiles;
 
 import fr.claudegateway.atelier.live.LiveTurn;
 import fr.claudegateway.atelier.live.LiveTurnRegistry;
+import fr.claudegateway.atelier.live.PendingApproval;
 
 /**
  * Le relais d'un <b>tour</b> entre pods, bout à bout (F-84 / SF-84-02).
@@ -143,6 +144,49 @@ class AtelierTurnRelayApiIntegrationTest {
                 payload(UUID.randomUUID(), UUID.randomUUID(), 0L));
 
         assertThat(response.getStatusCode().value()).isEqualTo(401);
+    }
+
+
+    @Test
+    void leProprietaireRapporteCeQueSonTourAttend() {
+        UUID user = UUID.randomUUID();
+        UUID workspace = UUID.randomUUID();
+        LiveTurn turn = liveTurns.open(user, workspace);
+        try {
+            // Une attente posée il y a 100 s sur un délai de 120 s : il en reste 20 (F-84 / SF-84-03).
+            turn.publishApprovalRequest(new Payload("rm -rf build"),
+                    new PendingApproval("call-1", "bash", "rm -rf build", 120_000L,
+                            System.currentTimeMillis() - 100_000L));
+
+            ResponseEntity<String> response = post(relayPort(), OWNER, SECRET,
+                    payload(user, workspace, 0L));
+
+            assertThat(response.getBody()).contains("\"pending\"");
+            assertThat(response.getBody()).contains("\"toolUseId\":\"call-1\"");
+            long remaining = Long.parseLong(
+                    response.getBody().replaceAll(".*\"remainingMs\":(\\d+).*", "$1"));
+            assertThat(remaining)
+                    .as("le temps restant est calculé par le propriétaire, jamais deviné ailleurs")
+                    .isLessThanOrEqualTo(20_000L)
+                    .isGreaterThan(15_000L);
+        } finally {
+            liveTurns.close(turn);
+        }
+    }
+
+    @Test
+    void unTourSansAttenteNenRapporteAucune() {
+        UUID user = UUID.randomUUID();
+        UUID workspace = UUID.randomUUID();
+        LiveTurn turn = liveTurns.open(user, workspace);
+        try {
+            ResponseEntity<String> response = post(relayPort(), OWNER, SECRET,
+                    payload(user, workspace, 0L));
+
+            assertThat(response.getBody()).doesNotContain("\"pending\"");
+        } finally {
+            liveTurns.close(turn);
+        }
     }
 
     // ------------------------------------------------------------------ outillage

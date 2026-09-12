@@ -124,12 +124,24 @@ public class AtelierRelayController {
         if (turn.isEmpty()) {
             return ResponseEntity.ok(Map.of("owner", false));
         }
-        return ResponseEntity.ok(Map.of(
-                "owner", true,
-                "baseUrl", properties.selfBaseUrl(),
-                "turnId", turn.get().turnId().toString(),
-                "cursor", turn.get().cursor(),
-                "startedAt", turn.get().startedAtMs()));
+        Map<String, Object> answer = new java.util.LinkedHashMap<>();
+        answer.put("owner", true);
+        answer.put("baseUrl", properties.selfBaseUrl());
+        answer.put("turnId", turn.get().turnId().toString());
+        answer.put("cursor", turn.get().cursor());
+        answer.put("startedAt", turn.get().startedAtMs());
+        // Ce que ce tour attend (F-84 / SF-84-03). L'attente vit sur le pod qui exécute : elle doit
+        // donc voyager avec l'état, sinon un écran arrivé ailleurs croirait qu'il n'y a rien à
+        // trancher. Le temps restant est calculé ICI, à l'instant de la réponse.
+        turn.get().pendingApproval().ifPresent(pending -> {
+            Map<String, Object> view = new java.util.LinkedHashMap<>();
+            view.put("toolUseId", pending.toolUseId());
+            view.put("tool", pending.tool());
+            view.put("detail", pending.detail());
+            view.put("remainingMs", pending.remainingMs());
+            answer.put("pending", view);
+        });
+        return ResponseEntity.ok(answer);
     }
 
     /**

@@ -52,6 +52,19 @@ public final class LiveTurn {
     /** Curseur d'un spectateur qui n'a rien vu : il reçoit tout ce que le tampon conserve encore. */
     public static final long FROM_START = 0L;
 
+    /** Nom de l'événement qui porte une demande d'autorisation (F-38 / SF-38-08). */
+    public static final String CONFIRM_REQUEST = "confirm_request";
+
+    /** Nom de l'événement qui porte sa résolution. */
+    public static final String CONFIRM_RESOLVED = "confirm_resolved";
+
+    /**
+     * Nom de l'<b>aparté</b> qui dit à un spectateur ce que le tour attend <b>à l'instant</b>
+     * (F-84 / SF-84-03), avec son temps restant exact. Ce n'est pas un événement du tour : il ne
+     * consomme aucun numéro d'ordre et n'entre pas au tampon.
+     */
+    public static final String CONFIRM_STATE = "confirm_state";
+
     private static final Logger log = LoggerFactory.getLogger(LiveTurn.class);
 
     private final UUID turnId = UUID.randomUUID();
@@ -64,6 +77,7 @@ public final class LiveTurn {
     private final Deque<TurnEvent> buffer = new ArrayDeque<>();
     private final List<TurnSubscriber> subscribers = new ArrayList<>();
 
+    private PendingApproval pendingApproval;
     private long lastSeq;
     private long droppedThrough;
     private int bufferedChars;
@@ -130,27 +144,87 @@ public final class LiveTurn {
      *         sérialisée (un événement illisible ne fait jamais échouer un tour)
      */
     public long publish(String name, Object payload) {
-        String json;
+        String json = serialize(name, payload);
+        return json == null ? cursor() : publishJson(name, json);
+    }
+
+    /** Sérialise une charge utile ; {@code null} quand elle est illisible — jamais une exception. */
+    private String serialize(String name, Object payload) {
         try {
-            json = objectMapper.writeValueAsString(payload);
+            return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException ex) {
             // Jamais la charge utile dans le journal : elle peut porter un contenu de fichier.
             log.warn("Événement de tour non sérialisable (événement={}) : ignoré", name);
-            return cursor();
+            return null;
         }
-        return publishJson(name, json);
     }
 
     /** Publie une charge utile déjà sérialisée — le chemin du relais entre pods (SF-84-02). */
     public long publishJson(String name, String json) {
         lock.lock();
         try {
+            if (json == null) {
+                return lastSeq;
+            }
             TurnEvent event = new TurnEvent(++lastSeq, name, json);
             buffer.addLast(event);
             bufferedChars += event.weight();
             trim();
             fanOut(event);
             return event.seq();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Publie une demande d'autorisation <b>et</b> l'enregistre comme état du tour, en un seul geste
+     * (F-84 / SF-84-03).
+     *
+     * <p>Un seul geste, et sous le même verrou que la publication : il n'existe aucun instant où la
+     * demande serait partie sans être l'état du tour, ni l'inverse. Un spectateur qui se branche ne
+     * peut donc jamais tomber entre les deux.</p>
+     */
+    public long publishApprovalRequest(Object payload, PendingApproval pending) {
+        lock.lock();
+        try {
+            pendingApproval = pending;
+            return publishJson(CONFIRM_REQUEST, serialize(CONFIRM_REQUEST, payload));
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Publie la résolution d'une demande et <b>retire</b> l'état — dans cet ordre, pour qu'un écran
+     * qui se branche entre les deux ne trouve jamais une attente déjà close.
+     */
+    public long publishApprovalResolved(Object payload, String toolUseId) {
+        lock.lock();
+        try {
+            if (pendingApproval != null
+                    && (toolUseId == null || toolUseId.equals(pendingApproval.toolUseId()))) {
+                pendingApproval = null;
+            }
+            return publishJson(CONFIRM_RESOLVED, serialize(CONFIRM_RESOLVED, payload));
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Ce que le tour attend <b>à l'instant</b>, ou vide (F-84 / SF-84-03).
+     *
+     * <p>Une attente <b>expirée</b> n'est jamais rendue : elle ne peut plus être tranchée, et
+     * l'afficher inviterait à un clic sans effet.</p>
+     */
+    public java.util.Optional<PendingApproval> pendingApproval() {
+        lock.lock();
+        try {
+            if (pendingApproval == null || !pendingApproval.stillOpen()) {
+                return java.util.Optional.empty();
+            }
+            return java.util.Optional.of(pendingApproval);
         } finally {
             lock.unlock();
         }
@@ -180,6 +254,15 @@ public final class LiveTurn {
                 if (event.seq() > cursor && !subscriber.deliver(event)) {
                     return false;
                 }
+            }
+            // Ce que le tour attend À L'INSTANT, avec son temps restant EXACT (F-84 / SF-84-03).
+            // Le rejeu vient de livrer le `confirm_request` tel qu'il fut, délai d'origine compris ;
+            // cet aparté le corrige. Sans lui, un écran arrivé après coup afficherait deux minutes
+            // là où il en reste vingt secondes — le contraire de la règle de SF-47-02.
+            if (pendingApproval != null && pendingApproval.stillOpen()
+                    && !subscriber.deliver(new TurnEvent(0L, CONFIRM_STATE,
+                            pendingApproval.toJson()))) {
+                return false;
             }
             subscribers.add(subscriber);
             return true;
