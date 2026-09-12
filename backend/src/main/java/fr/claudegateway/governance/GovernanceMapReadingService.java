@@ -1,7 +1,6 @@
 package fr.claudegateway.governance;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -68,16 +67,13 @@ public class GovernanceMapReadingService {
     static final String FILE_UNREADABLE =
             "Ce fichier n'a pas pu être lu sur la machine : vérifiez les droits, puis rechargez.";
 
-    private final GovernanceActivationService activationService;
-    private final GovernancePackageService packageService;
+    private final GovernanceMapDestinations destinations;
     private final GovernanceHostFiles hostFiles;
     private final GovernanceHostScope hostScope;
 
-    public GovernanceMapReadingService(GovernanceActivationService activationService,
-            GovernancePackageService packageService, GovernanceHostFiles hostFiles,
-            GovernanceHostScope hostScope) {
-        this.activationService = activationService;
-        this.packageService = packageService;
+    public GovernanceMapReadingService(GovernanceMapDestinations destinations,
+            GovernanceHostFiles hostFiles, GovernanceHostScope hostScope) {
+        this.destinations = destinations;
         this.hostFiles = hostFiles;
         this.hostScope = hostScope;
     }
@@ -172,32 +168,14 @@ public class GovernanceMapReadingService {
     // -------------------------------------------------------------- internes
 
     /**
-     * Les fichiers de carte attendus sur ce poste : ceux des paquets <b>actifs</b>, dédoublonnés par
-     * chemin et dans l'ordre où ils ont été activés.
+     * Les fichiers de carte attendus sur ce poste.
      *
-     * <p>Deux paquets peuvent apporter le même chemin : le premier activé gagne, comme au dépôt —
-     * qui ne remplace jamais ce qui est déjà là.</p>
+     * <p>Déléguée à {@link GovernanceMapDestinations} depuis F-93 / SF-93-01 : la même liste sert
+     * désormais à <b>rendre</b> la carte et à <b>nommer la destination</b> d'une promotion dans un
+     * message correctif. Deux copies auraient divergé au premier paquet ajouté.</p>
      */
     private Map<String, GovernancePackageFile> expectedFiles(UUID userId, GovernanceHostRef host) {
-        Map<String, GovernancePackageFile> expected = new LinkedHashMap<>();
-        for (GovernanceActivation activation : activationService.activeOn(userId, host)) {
-            GovernancePackage pkg;
-            try {
-                pkg = packageService.requirePublished(activation.getPackageId());
-            } catch (RuntimeException ex) {
-                continue; // Paquet dépublié depuis : sa carte n'est plus attendue.
-            }
-            for (GovernancePackageFile file : packageService.filesOf(pkg.getId())) {
-                if (file.getKind() != GovernanceFileKind.MAP) {
-                    continue;
-                }
-                String path = GovernancePath.normalizeOrNull(file.getPath());
-                if (path != null) {
-                    expected.putIfAbsent(path, file);
-                }
-            }
-        }
-        return expected;
+        return destinations.filesOf(userId, host);
     }
 
     private static GovernanceMapView empty(GovernanceHostRef host, String hostName,

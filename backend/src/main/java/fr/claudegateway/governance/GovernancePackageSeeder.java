@@ -62,8 +62,8 @@ public class GovernancePackageSeeder {
     private static final String SUMMARY = "Le travail est jetable, le savoir est durable : une "
             + "carte à la racine du poste où la connaissance s'accumule d'un projet à l'autre, des "
             + "livrables qui ne disent pas quel outil les a écrits, la promotion de tout élément "
-            + "durable vers la carte du projet, et un juge de fin de tour qui alerte plutôt que de "
-            + "laisser passer.";
+            + "durable vers cette carte — en disant dans quel fichier —, et un juge de fin de tour "
+            + "qui alerte plutôt que de laisser passer.";
 
     /** Racine des ressources du paquet. Ce sont des documents : ils se relisent comme tels. */
     private static final String ROOT = "governance/" + SLUG + "/";
@@ -146,6 +146,16 @@ public class GovernancePackageSeeder {
             return false;
         }
         String rules = readResource(RULES_RESOURCE);
+        String missingRule = ruleMissingFrom(rules);
+        if (missingRule != null) {
+            // Un paquet qui annoncerait une règle absente de son propre texte serait pire qu'un
+            // paquet incomplet : il aurait l'air complet. Les trois invariants de la racine (F-93 /
+            // SF-93-01) sont déclarés une fois dans GovernanceHostRule, et le document DOIT les
+            // citer par leur identifiant — c'est ce par quoi F-95 s'y branchera.
+            log.warn("Paquet « {} » non semé : la règle « {} » ne figure pas dans « {} ».", SLUG,
+                    missingRule, RULES_RESOURCE);
+            return false;
+        }
         if (rules != null && rules.length() > GovernancePackage.MAX_RULES_LENGTH) {
             // Ce texte part dans la consigne système à CHAQUE tour : la borne de F-51 vaut aussi
             // pour ce que le produit livre lui-même, sinon elle ne veut plus rien dire.
@@ -240,6 +250,26 @@ public class GovernancePackageSeeder {
                     .packageId(packageId).position(file.getPosition()).path(file.getPath())
                     .kind(file.getKind()).content(file.getContent()).build());
         }
+    }
+
+    /**
+     * Le premier identifiant de {@link GovernanceHostRule} que le texte de règles ne cite pas.
+     *
+     * <p>Un texte <b>absent</b> n'est pas jugé ici : le « tout ou rien » de {@link #seed()} s'en
+     * charge déjà, et deux messages pour la même cause en rendraient un des deux trompeur.</p>
+     *
+     * @return l'identifiant manquant, ou {@code null} si les trois sont là
+     */
+    static String ruleMissingFrom(String rules) {
+        if (rules == null) {
+            return null;
+        }
+        for (String id : GovernanceHostRule.ids()) {
+            if (!rules.contains(id)) {
+                return id;
+            }
+        }
+        return null;
     }
 
     /**

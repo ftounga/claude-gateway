@@ -41,12 +41,15 @@ class GovernancePackageSeederTest {
     @Mock private GovernancePackageRepository packages;
     @Mock private GovernancePackageFileRepository files;
 
+    @Mock private GovernanceMapDestinations destinations;
+
     private GovernanceControlRegistry fullRegistry;
 
     @BeforeEach
     void setUp() {
         fullRegistry = new GovernanceControlRegistry(List.of(new CommitSansTraceLlmControl(),
-                new JugeFinDeTourControl(), new PromotionDetteBloquanteControl()));
+                new JugeFinDeTourControl(destinations),
+                new PromotionDetteBloquanteControl(destinations)));
         when(packages.save(any(GovernancePackage.class))).thenAnswer(invocation -> {
             GovernancePackage saved = invocation.getArgument(0);
             if (saved.getId() == null) {
@@ -88,7 +91,9 @@ class GovernancePackageSeederTest {
         assertThat(pkg.isPublished()).isTrue();
         assertThat(pkg.getPublishedAt()).isNotNull();
         assertThat(pkg.getRules()).contains("Le travail est jetable, le savoir est durable")
-                .contains("fin-de-tour: promotion=aucune; dette=0");
+                // La forme annoncée au modèle est celle que le produit lit (F-93 : « promu »).
+                .contains(fr.claudegateway.governance.control.FinDeTourMarker.FORME
+                        .replace("<!-- ", "").replace(" -->", ""));
         assertThat(pkg.controlIdList()).containsExactly("commit-sans-trace-llm", "juge-fin-de-tour",
                 "promotion-dette-bloquante");
 
@@ -197,7 +202,7 @@ class GovernancePackageSeederTest {
     void anAbsentControlIsIgnored() {
         when(packages.findBySlug(GovernancePackageSeeder.SLUG)).thenReturn(Optional.empty());
         GovernanceControlRegistry partial =
-                new GovernanceControlRegistry(List.of(new JugeFinDeTourControl()));
+                new GovernanceControlRegistry(List.of(new JugeFinDeTourControl(destinations)));
 
         seeder(partial, true).seed();
 
@@ -219,6 +224,56 @@ class GovernancePackageSeederTest {
         assertThat(amputated.seed()).isFalse();
         verify(packages, never()).save(any());
         verify(files, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("le texte de règles CITE les trois invariants de la racine (F-93)")
+    void theRulesDocumentCitesTheThreeInvariants() {
+        String rules = seeder(fullRegistry, true).readResource("regles.md");
+
+        assertThat(rules).isNotNull();
+        assertThat(GovernancePackageSeeder.ruleMissingFrom(rules)).isNull();
+        for (String id : GovernanceHostRule.ids()) {
+            assertThat(rules).contains(id);
+        }
+    }
+
+    @Test
+    @DisplayName("une règle annoncée mais absente du texte fait renoncer : un paquet ne ment pas")
+    void aRuleMissingFromTheDocumentCancelsEverything() {
+        when(packages.findBySlug(GovernancePackageSeeder.SLUG)).thenReturn(Optional.empty());
+        GovernancePackageSeeder amputated =
+                new GovernancePackageSeeder(packages, files, fullRegistry, true) {
+                    @Override
+                    String readResource(String name) {
+                        String content = super.readResource(name);
+                        return "regles.md".equals(name)
+                                ? content.replace(GovernanceHostRule.NOTE_HORS_DEPOT.id(), "")
+                                : content;
+                    }
+                };
+
+        assertThat(amputated.seed()).isFalse();
+        verify(packages, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("le texte de règles tient sous la borne : il part dans la consigne à CHAQUE tour")
+    void theRulesStayUnderTheLimit() {
+        String rules = seeder(fullRegistry, true).readResource("regles.md");
+
+        // Sans ce test, dépasser la borne ne se verrait qu'à l'exécution : le semeur se contente
+        // d'un avertissement, et le catalogue resterait silencieusement vide.
+        assertThat(rules.length()).isLessThanOrEqualTo(GovernancePackage.MAX_RULES_LENGTH);
+    }
+
+    @Test
+    @DisplayName("le gabarit STATE.md porte la trace de promotion, avec sa destination (F-93)")
+    void theStateTemplateCarriesThePromotionTrace() {
+        String state = seeder(fullRegistry, true).readResource("STATE.md");
+
+        assertThat(state).contains("## Promotions").contains("- [ ]")
+                .contains("-> promu dans plateformes.md");
     }
 
     @Test
