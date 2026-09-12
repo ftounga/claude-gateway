@@ -37,12 +37,15 @@ import fr.claudegateway.atelier.WorkspaceSource;
  *                   n'est rattaché à aucune machine
  * @param projectPath chemin du projet relatif à la racine du poste ; la chaîne vide désigne la
  *                   racine elle-même, {@code null} un projet non rattaché
+ * @param hostTerminal vrai si cette ligne est le <b>terminal du poste</b> (F-74 / SF-74-01) et non
+ *                   un projet. Champ <b>additif</b> : absent de la vue d'un client antérieur, il
+ *                   vaut {@code false} — un projet, le comportement historique
  */
 public record WorkspaceDetailResponse(
         UUID id, String name, int fileCount, List<String> files, OffsetDateTime createdAt,
         WorkspaceSource source, String gitRepoUrl, String gitRepo, String gitBranch, boolean truncated,
         String instructionsPath, boolean askBeforeBash, WorkspaceExecutionTarget executionTarget,
-        UUID hostId, String projectPath) {
+        UUID hostId, String projectPath, boolean hostTerminal) {
 
     public static WorkspaceDetailResponse from(Workspace workspace, List<String> files) {
         return from(workspace, files, false);
@@ -57,7 +60,10 @@ public record WorkspaceDetailResponse(
                 // Le POSTE sur lequel ce projet vit, et son chemin sous la racine de ce poste
                 // (F-48 / SF-48-01). Ce que le runner déclare de la machine — racine, système,
                 // droits, interpréteur — se lit sur le poste, plus sur le projet.
-                workspace.getHostId(), workspace.getProjectPath());
+                workspace.getHostId(), workspace.getProjectPath(),
+                // Le TERMINAL DU POSTE (F-74) se dit dès le détail : l'écran l'ouvre exactement
+                // comme un projet, mais il doit pouvoir le nommer pour ce qu'il est.
+                workspace.isHostTerminal());
     }
 
     /** {@code owner/repo} lisible, ou {@code null} si le workspace n'est pas adossé à un dépôt. */

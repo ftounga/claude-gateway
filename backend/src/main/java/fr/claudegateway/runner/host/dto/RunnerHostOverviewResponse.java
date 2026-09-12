@@ -36,8 +36,15 @@ import fr.claudegateway.runner.host.HostMissionStatus;
  * @param missionStatus  état de mission <b>déclaré</b> par le propriétaire, indépendant de {@code connected}
  * @param lastActivityAt dernière activité observée sur le poste, tous projets confondus
  * @param activeProjects nombre de projets actifs maintenant — « ce qui tourne »
- * @param liveTerminals  nombre de terminaux <b>vivants</b> sur les projets de ce poste (F-70)
- * @param projects       les projets rangés sous ce poste, les plus actifs d'abord
+ * @param liveTerminals  nombre de terminaux <b>vivants</b> sur ce poste (F-70), <b>terminal du
+ *                       poste compris</b> : un onglet ouvert dessus est un onglet ouvert
+ * @param hostTerminalId identifiant du <b>terminal du poste</b> (F-74 / SF-74-01), ou {@code null}
+ *                       s'il n'a jamais été ouvert. L'écran n'en a pas besoin pour proposer le
+ *                       geste — l'endpoint retrouve ou crée — mais il lui faut pour savoir de quel
+ *                       terminal on parle
+ * @param hostTerminalLive vrai si un onglet vit sur le terminal du poste <b>maintenant</b> (F-70)
+ * @param projects       les projets rangés sous ce poste, les plus actifs d'abord. Le terminal du
+ *                       poste n'en fait <b>pas</b> partie : ce n'est pas un projet
  */
 public record RunnerHostOverviewResponse(
         UUID id,
@@ -54,6 +61,8 @@ public record RunnerHostOverviewResponse(
         OffsetDateTime lastActivityAt,
         int activeProjects,
         int liveTerminals,
+        UUID hostTerminalId,
+        boolean hostTerminalLive,
         List<HostProjectSummary> projects) {
 
     /** Nom du poste virtuel, écrit <b>par la gateway</b> : deux écrans qui le nommeraient chacun à
@@ -71,11 +80,14 @@ public record RunnerHostOverviewResponse(
      * tourne » se lit dans le <b>journal du runner</b>, qui n'a rien à dire d'un projet qu'aucun
      * runner n'exécute. Le signe de vie, lui, est exact et rendu — un terminal ouvert sur un projet
      * hébergé est un terminal ouvert.</p>
+     *
+     * <p>Il n'a <b>pas de terminal de poste</b> (F-74 / SF-74-01) : un terminal de poste s'exécute
+     * sur une machine appairée, et il n'y en a aucune ici.</p>
      */
     public static RunnerHostOverviewResponse hosted(List<HostProjectSummary> projects,
             int liveTerminals) {
         return new RunnerHostOverviewResponse(null, HOSTED_NAME, null, null, null, null, true,
-                false, null, null, null, null, 0, liveTerminals, projects);
+                false, null, null, null, null, 0, liveTerminals, null, false, projects);
     }
 
     /**

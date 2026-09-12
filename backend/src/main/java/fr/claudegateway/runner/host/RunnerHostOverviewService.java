@@ -123,6 +123,14 @@ public class RunnerHostOverviewService {
                         activeSince, liveWorkspaceIds.contains(workspace.getId())))
                 .sorted(BY_ACTIVITY_THEN_NAME)
                 .toList();
+        // Le TERMINAL DU POSTE (F-74 / SF-74-01). Il n'est PAS dans `projects` — ce n'est pas un
+        // projet, et `listByHost` l'exclut — mais l'écran doit pouvoir dire de quel terminal il
+        // parle et s'il vit. Nul tant que personne ne l'a ouvert : l'endpoint le crée à la demande,
+        // et créer une ligne pour chaque poste affiché serait écrire au simple fait de regarder.
+        UUID hostTerminalId = workspaceService.findHostTerminal(userId, host.getId())
+                .map(Workspace::getId)
+                .orElse(null);
+        boolean hostTerminalLive = hostTerminalId != null && liveWorkspaceIds.contains(hostTerminalId);
 
         return new RunnerHostOverviewResponse(
                 host.getId(),
@@ -145,11 +153,18 @@ public class RunnerHostOverviewService {
                         .max(Comparator.naturalOrder())
                         .orElse(null),
                 (int) projects.stream().filter(HostProjectSummary::active).count(),
-                // Le signe de vie du poste (F-70) : combien de SES projets ont un terminal ouvert.
+                // Le signe de vie du poste (F-70) : combien de SES terminaux sont ouverts.
                 // Distinct d'`activeProjects`, qui compte ce qui a TOURNÉ récemment — un terminal
                 // peut vivre sans rien exécuter, et une commande peut avoir tourné sans qu'aucun
                 // onglet ne soit resté ouvert.
-                (int) projects.stream().filter(HostProjectSummary::liveTerminal).count(),
+                //
+                // Le TERMINAL DU POSTE (F-74) y est compté : il tient une place dans le plafond de
+                // quatre exactement comme un terminal de projet, et un compteur de poste qui
+                // l'ignorerait afficherait « 0 terminal » sur une machine où l'on travaille.
+                (int) projects.stream().filter(HostProjectSummary::liveTerminal).count()
+                        + (hostTerminalLive ? 1 : 0),
+                hostTerminalId,
+                hostTerminalLive,
                 projects);
     }
 

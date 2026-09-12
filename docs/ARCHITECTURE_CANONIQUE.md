@@ -652,11 +652,22 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     machine, pas un projet.
   - `workspaces` gagne `host_id (uuid, nullable)` et `project_path (varchar 512)` — le chemin du
     projet **relatif à la racine du poste**, chaîne vide pour la racine elle-même.
+  - `workspaces` gagne aussi `host_terminal (boolean, non nul, défaut false)` — **F-74 / SF-74-01,
+    migration `074`** : vrai pour le **terminal du poste**, la ligne qui n'est pas un projet mais
+    le terminal de la machine, posé à sa racine. Un terminal comme les autres **parce que c'est le
+    même objet** : la conversation, le fil, la session, la porte de confirmation, le journal, le
+    registre des terminaux vivants (F-70), l'usage par tour (F-61) et l'héritage de gouvernance
+    (F-75) pendent tous à `workspace_id` et s'appliquent sans une ligne de code de plus. Une table
+    dédiée aurait exigé un second chemin pour chacun. Le booléen à `false` par défaut laisse toute
+    ligne antérieure et toute lecture existante justes par construction. `listByHost` — donc la
+    carte du poste, le contrôle de doublon de F-72 et la garde de suppression de F-69 — rend **les
+    projets**, terminal exclu ; et supprimer le poste emporte son terminal.
   - **Un poste appartient à un seul utilisateur** : ce n'est pas F-17 (espaces d'équipe, V3), rien
     n'est partagé entre comptes, l'isolation `user_id` reste la règle.
   - Endpoints **`POST/GET /runner-hosts`**, **`GET/PUT/DELETE /runner-hosts/{id}`**,
     **`POST /runner-hosts/{id}/pairing-code|kill`**, **`GET /runner-hosts/{id}/tokens|status`**,
-    **`DELETE /runner-hosts/{id}/tokens/{tokenId}`** (JWT, accès Atelier), et
+    **`DELETE /runner-hosts/{id}/tokens/{tokenId}`**, **`POST /runner-hosts/{id}/terminal`**
+    (F-74 : retrouve ou crée le terminal du poste, **idempotent**, `200`) (JWT, accès Atelier), et
     **`PUT /workspaces/{id}/host`** pour rattacher un projet. Volontairement **hors** du préfixe
     `/runner/**`, qui est la chaîne du protocole runner et refuse tout ce qui n'y est pas listé.
   - **Table rase** (décision du PO, 2026-09-10) : la migration `064` **vide** les trois tables runner

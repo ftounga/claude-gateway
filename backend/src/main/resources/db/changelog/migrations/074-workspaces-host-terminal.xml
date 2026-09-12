@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-74 / SF-74-01 — LE TERMINAL DU POSTE.
+
+      Un terminal rattaché au POSTE et non à un projet : c'est ce qui manquait le premier jour d'une
+      mission, quand la racine est vide et qu'il n'y a donc aucun projet d'où cloner un dépôt.
+
+      POURQUOI UNE COLONNE ET NON UNE TABLE (cadrage F-74, décision D1). Tout ce qui fait un terminal
+      pend déjà à `workspace_id` : la conversation, le fil et sa frontière de rejeu, la session
+      d'agent, la porte de confirmation, le journal du runner, le registre des terminaux vivants
+      (F-70), le relevé d'usage par tour (F-61), l'héritage de gouvernance (F-75). Une table dédiée
+      obligerait à un second chemin pour chacun, et « un terminal comme les autres » deviendrait le
+      seul terminal qui n'en est pas un. Réutiliser la ligne, c'est obtenir tout cela sans écrire
+      une ligne de code de plus.
+
+      POURQUOI UNE COLONNE ET NON `project_path = ''`. F-72 autorise explicitement d'ouvrir un
+      PROJET sur la racine. Les deux seraient indiscernables.
+
+      POURQUOI UN BOOLÉEN ET NON UNE ÉNUMÉRATION `kind`. Un `kind` obligerait à relire toutes les
+      requêtes existantes pour y ajouter `kind = 'PROJECT'`. Un booléen à `false` par défaut laisse
+      chaque ligne existante et chaque lecture existante JUSTES PAR CONSTRUCTION : ce qui existait
+      avant cette migration est un projet, et le reste.
+
+      AUCUN `UPDATE`, aucun rétro-remplissage : les postes existants obtiennent leur terminal le jour
+      où on le demande (D2), par un endpoint idempotent.
+
+      Un seul changeSet pour PostgreSQL et H2 : aucun type propre à un moteur n'est employé.
+      Réversible : le rollback rend la colonne.
+    -->
+    <changeSet id="074-workspaces-host-terminal" author="claude-gateway">
+        <addColumn tableName="workspaces">
+            <column name="host_terminal" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="host_terminal"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

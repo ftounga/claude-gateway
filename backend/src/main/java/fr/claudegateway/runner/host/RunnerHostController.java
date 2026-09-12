@@ -165,6 +165,36 @@ public class RunnerHostController {
                 .body(WorkspaceDetailResponse.from(workspace, List.of()));
     }
 
+    /**
+     * <b>Le terminal du poste</b> (F-74 / SF-74-01) : celui qui existe, ou celui qu'on crée.
+     *
+     * <p>Le trou de parcours qu'il bouche : le premier jour d'une mission, la racine du poste est
+     * <b>vide</b> — pas de projet, donc pas de terminal, donc aucun moyen de cloner un dépôt depuis
+     * le produit. Et au-delà du premier jour, beaucoup de gestes n'appartiennent à aucun projet :
+     * {@code git}, un VPN, {@code terraform}, l'installation d'un outil.</p>
+     *
+     * <p><b>Un terminal comme les autres</b> : l'écran reçoit un {@code WorkspaceDetailResponse}
+     * ordinaire et n'a plus qu'à ouvrir {@code /atelier/{id}}. Rien de nouveau à apprendre.</p>
+     *
+     * <p><b>{@code 200} et non {@code 201}</b> : l'appel est <b>idempotent</b> — il demande « le
+     * terminal de ce poste » et le reçoit, qu'il ait fallu le créer ou non. Deux codes pour un seul
+     * sens obligeraient chaque appelant à traiter une distinction dont il n'a que faire.</p>
+     *
+     * <p>Arborescence vide : le contenu vit sur la machine et se lit par le runner (SF-38-17). Le
+     * runner n'a pas à être connecté pour <b>obtenir</b> le terminal — c'est une écriture en base ;
+     * c'est l'exécution d'une commande qui exige une machine joignable, et elle a son refus.</p>
+     */
+    @PostMapping("/{hostId}/terminal")
+    public WorkspaceDetailResponse openTerminal(@PathVariable UUID hostId) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        // L'appartenance D'ABORD : un identifiant de poste venu du client ne suffit jamais à créer
+        // quoi que ce soit dessous.
+        hostService.requireOwned(userId, hostId);
+        return WorkspaceDetailResponse.from(workspaceService.openHostTerminal(userId, hostId),
+                List.of());
+    }
+
     /** Détail d'un poste possédé. */
     @GetMapping("/{hostId}")
     public RunnerHostResponse get(@PathVariable UUID hostId) {
@@ -229,6 +259,11 @@ public class RunnerHostController {
         if (remaining > 0) {
             throw new HostHasProjectsException(host.getName(), remaining);
         }
+        // Le TERMINAL DU POSTE (F-74 / SF-74-01) part avec la machine, et n'a jamais bloqué ce
+        // refus : ce n'est pas un projet, c'est le terminal de la machine qu'on supprime. Le
+        // laisser vivre ferait une ligne orpheline qu'aucun écran ne montre — et le refus
+        // ci-dessus, lui, deviendrait impossible à satisfaire si on l'y comptait.
+        workspaceService.deleteHostTerminal(userId, hostId);
         killSwitchService.kill(userId, hostId);
         hostService.deleteWithCredentials(userId, hostId);
         return ResponseEntity.noContent().build();

@@ -113,6 +113,32 @@ public class Workspace {
     private String projectPath;
 
     /**
+     * Vrai si cette ligne est le <b>terminal du poste</b> (F-74 / SF-74-01) et non un projet : un
+     * terminal rattaché à la machine, posé à sa racine, pour les gestes qui n'appartiennent à aucun
+     * projet — cloner un dépôt le premier jour, monter un VPN, lancer {@code terraform}.
+     *
+     * <p><b>Pourquoi une ligne de {@code workspaces} et pas une table à part</b> (décision D1 du
+     * cadrage F-74) : tout ce qui fait un terminal pend déjà à {@code workspace_id} — la
+     * conversation, le fil et sa frontière de rejeu, la session d'agent, la porte de confirmation,
+     * le journal du runner, le registre des terminaux vivants (F-70), le relevé d'usage par tour
+     * (F-61), l'héritage de gouvernance (F-75). Réutiliser la ligne donne « un terminal comme les
+     * autres » <b>littéralement</b>, au lieu de le réécrire.</p>
+     *
+     * <p><b>Ce n'est pas un projet</b>, et trois lectures en dépendent (décision D3) :
+     * {@link WorkspaceService#listByHost} l'exclut, sans quoi la carte du poste gagnerait un projet
+     * fantôme, le contrôle de doublon de {@link WorkspaceService#openOnHost} interdirait d'ouvrir un
+     * vrai projet sur la racine, et la garde de suppression de F-69 — « refusé tant qu'il reste des
+     * projets » — deviendrait impossible à satisfaire. Symétriquement, supprimer le poste supprime
+     * son terminal : il ne désigne plus rien sans sa machine.</p>
+     *
+     * <p>{@code false} par défaut ici <b>et en base</b> (migration 074) : toute ligne écrite avant
+     * cette colonne, et tout {@code INSERT} qui l'omettrait, reste un projet.</p>
+     */
+    @Column(name = "host_terminal", nullable = false)
+    @Builder.Default
+    private boolean hostTerminal = false;
+
+    /**
      * Vrai si le projet est adossé à un dépôt Git (F-31 / SF-31-02). Volontairement null-tolérant :
      * une entité construite hors du builder (tests, désérialisation partielle) n'est pas un projet
      * Git, et le chemin le plus sûr — celui de l'archive — reste le comportement par défaut.

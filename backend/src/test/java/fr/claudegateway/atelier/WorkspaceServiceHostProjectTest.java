@@ -50,7 +50,7 @@ class WorkspaceServiceHostProjectTest {
                 org.mockito.Mockito.mock(fr.claudegateway.runner.audit.RunnerAuditRepository.class),
                 org.mockito.Mockito.mock(org.springframework.context.ApplicationEventPublisher.class));
         when(workspaceRepository.save(any(Workspace.class))).thenAnswer(i -> i.getArgument(0));
-        when(workspaceRepository.findByUserIdAndHostId(userId, hostId)).thenReturn(List.of());
+        when(workspaceRepository.findByUserIdAndHostIdAndHostTerminalFalse(userId, hostId)).thenReturn(List.of());
     }
 
     private Workspace occupying(String path, String name) {
@@ -123,7 +123,7 @@ class WorkspaceServiceHostProjectTest {
 
     @Test
     void anAlreadyOpenedFolderIsRefusedByName() {
-        when(workspaceRepository.findByUserIdAndHostId(userId, hostId))
+        when(workspaceRepository.findByUserIdAndHostIdAndHostTerminalFalse(userId, hostId))
                 .thenReturn(List.of(occupying("clients/EDENRED", "EDENRED")));
 
         assertThatThrownBy(() -> service.openOnHost(userId, hostId, "clients/EDENRED", "Poste"))
@@ -139,7 +139,7 @@ class WorkspaceServiceHostProjectTest {
         // Un projet à la racine porte un chemin VIDE en base, parfois nul selon son âge : les deux
         // occupent la racine, et les confondre avec « pas de chemin » rouvrirait le doublon.
         Workspace atRoot = occupying(null, "Poste CAGIP");
-        when(workspaceRepository.findByUserIdAndHostId(userId, hostId)).thenReturn(List.of(atRoot));
+        when(workspaceRepository.findByUserIdAndHostIdAndHostTerminalFalse(userId, hostId)).thenReturn(List.of(atRoot));
 
         assertThatThrownBy(() -> service.openOnHost(userId, hostId, "", "Poste CAGIP"))
                 .isInstanceOf(HostProjectExistsException.class);
@@ -147,7 +147,7 @@ class WorkspaceServiceHostProjectTest {
 
     @Test
     void aFolderOpenedOnAnotherPathDoesNotBlock() {
-        when(workspaceRepository.findByUserIdAndHostId(userId, hostId))
+        when(workspaceRepository.findByUserIdAndHostIdAndHostTerminalFalse(userId, hostId))
                 .thenReturn(List.of(occupying("clients/AUTRE", "AUTRE")));
 
         Workspace created = service.openOnHost(userId, hostId, "clients/EDENRED", "Poste");
@@ -157,16 +157,16 @@ class WorkspaceServiceHostProjectTest {
 
     @Test
     void anotherAccountsProjectIsNeverConsulted() {
-        // Isolation : le contrôle de doublon lit `findByUserIdAndHostId(appelant, …)`. Le projet
+        // Isolation : le contrôle de doublon lit les projets de l'APPELANT seulement. Le projet
         // d'un autre compte au même chemin n'est ni vu, ni un obstacle.
         UUID other = UUID.randomUUID();
-        when(workspaceRepository.findByUserIdAndHostId(other, hostId))
+        when(workspaceRepository.findByUserIdAndHostIdAndHostTerminalFalse(other, hostId))
                 .thenReturn(List.of(occupying("clients/EDENRED", "EDENRED")));
 
         Workspace created = service.openOnHost(userId, hostId, "clients/EDENRED", "Poste");
 
         assertThat(created.getUserId()).isEqualTo(userId);
-        verify(workspaceRepository).findByUserIdAndHostId(userId, hostId);
+        verify(workspaceRepository).findByUserIdAndHostIdAndHostTerminalFalse(userId, hostId);
     }
 
     @Test
