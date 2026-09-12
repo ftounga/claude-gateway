@@ -405,5 +405,10 @@
 .poste__card-actions {
   display: flex;
   justify-content: flex-end;
+  // Deux gestes désormais — « Ajouter un projet » et « Terminal du poste » (F-74 / SF-74-02) —
+  // plus la pastille de vie. Ils se replient sur un écran étroit plutôt que de déborder.
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cg-space-2);
   margin-top: var(--cg-space-3);
 }

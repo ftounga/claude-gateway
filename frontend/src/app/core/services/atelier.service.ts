@@ -753,6 +753,20 @@ export class AtelierService {
   }
 
   /**
+   * **Le terminal du poste** (F-74 / SF-74-01) : celui qui existe, ou celui qu'on crée.
+   *
+   * <p>Ce qu'il débloque : le premier jour d'une mission, la racine est **vide** — pas de projet,
+   * donc pas de terminal, donc aucun moyen de cloner un dépôt depuis le produit. Et au-delà, `git`,
+   * un VPN, `terraform`, l'installation d'un outil n'appartiennent à aucun projet.</p>
+   *
+   * <p>**Idempotent** : la gateway répond `200` dans les deux cas et l'écran n'a pas à distinguer
+   * « créé » de « retrouvé » — il demande le terminal de ce poste, il le reçoit, il l'ouvre.</p>
+   */
+  openHostTerminal(hostId: string): Observable<WorkspaceDetail> {
+    return this.http.post<WorkspaceDetail>(`/api/runner-hosts/${hostId}/terminal`, null);
+  }
+
+  /**
    * **Rattache** un projet à un poste (F-48 / SF-48-01) : la machine qui l'exécute, et son chemin
    * relatif sous la racine de cette machine. `hostId` à `null` détache le projet.
    *

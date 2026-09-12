@@ -334,7 +334,8 @@
                et c'est normal, on vient de brancher une machine. Le dire ici évite exactement le
                moment où le parcours d'avant faisait perdre le fil. -->
           Aucun projet sous ce poste — c'est normal si vous venez de le connecter.
-          Ajoutez-en un en cliquant un dossier de sa racine.
+          Ajoutez-en un en cliquant un dossier de sa racine. Et si la racine est <strong>vide</strong>,
+          le <strong>terminal du poste</strong> ci-dessous permet d'y cloner un dépôt.
         }
       </p>
     } @else {
@@ -440,6 +441,35 @@
           <mat-icon>add</mat-icon>
           Ajouter un projet
         </button>
+
+        <!-- LE TERMINAL DU POSTE (F-74 / SF-74-02). Il est ICI, à côté d'« Ajouter un projet »,
+             parce que c'est le geste de l'autre moitié du premier jour : la racine est vide, il
+             n'y a AUCUN dossier à ajouter, et il faut pourtant un terminal pour cloner. Et
+             au-delà du premier jour, `git`, un VPN, `terraform` n'appartiennent à aucun projet.
+
+             UN TERMINAL COMME LES AUTRES : même bouton, même icône, même destination — l'écran de
+             terminal habituel, sa conversation, son historique, ses réglages. Rien de nouveau à
+             apprendre, et AUCUN registre de couleur de plus : le bouton est celui de la carte, et
+             la pastille de vie est exactement celle de F-70. -->
+        <button
+          mat-stroked-button
+          type="button"
+          class="poste__host-terminal"
+          [disabled]="openingTerminalHostId() !== null"
+          (click)="openHostTerminal(host)"
+          [attr.aria-label]="'Ouvrir le terminal du poste ' + host.name"
+          matTooltip="Un terminal à la racine du poste — pour ce qui n'appartient à aucun projet"
+        >
+          @if (openingTerminalHostId() === host.id) {
+            <mat-spinner diameter="18"></mat-spinner>
+          } @else {
+            <mat-icon>terminal</mat-icon>
+          }
+          Terminal du poste
+        </button>
+        @if (host.hostTerminalLive) {
+          <app-live-badge scope="host"></app-live-badge>
+        }
       </div>
     } @else {
       <!-- LES DEUX SOURCES SANS MACHINE (F-72 / SF-72-04). Elles étaient sous « Nouveau projet »,

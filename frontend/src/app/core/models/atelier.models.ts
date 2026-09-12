@@ -62,6 +62,16 @@ export interface WorkspaceSummary {
    * un appel de plus. Champ **additif** : absent d'un backend antérieur ⇒ lu comme `ACTIVE`.</p>
    */
   hostMissionStatus?: HostMissionStatus | null;
+  /**
+   * Vrai si cette ligne est le **terminal du poste** (F-74 / SF-74-01) et non un projet : le
+   * terminal rattaché à la machine, posé à sa racine, pour les gestes qui n'appartiennent à aucun
+   * projet — cloner un dépôt le premier jour, monter un VPN, lancer `terraform`.
+   *
+   * <p>La liste latérale le **montre** — c'est par là qu'on y revient — avec son icône propre et
+   * **sans** le geste « supprimer le projet » : il n'en est pas un, et il se supprime avec son
+   * poste. Champ **additif** : absent d'un backend antérieur ⇒ `false`, un projet.</p>
+   */
+  hostTerminal?: boolean;
 }
 
 /** Corps de `POST /api/workspaces/{id}/git/push` (F-31 / SF-31-04). Les deux champs sont facultatifs. */
@@ -146,6 +156,12 @@ export interface WorkspaceDetail {
    * racine elle-même ; `null`/absent, un projet non rattaché.
    */
   projectPath?: string | null;
+
+  /**
+   * Vrai si ce workspace est le **terminal du poste** (F-74 / SF-74-01) et non un projet. Champ
+   * **additif** : absent d'un backend antérieur ⇒ `false`.
+   */
+  hostTerminal?: boolean;
   /** URL publique du dépôt (jamais le jeton), `null` pour un projet d'archive. */
   gitRepoUrl: string | null;
   /** `owner/repo`, `null` pour un projet d'archive. */
@@ -853,8 +869,20 @@ export interface RunnerHostOverview {
   lastActivityAt?: string | null;
   /** Nombre de projets actifs maintenant — « ce qui tourne ». */
   activeProjects: number;
-  /** Nombre de **terminaux vivants** sur les projets de ce poste (F-70 / SF-70-01). */
+  /**
+   * Nombre de **terminaux vivants** sur ce poste (F-70 / SF-70-01), **terminal du poste compris**
+   * (F-74) : un onglet ouvert dessus tient une place dans le plafond de quatre comme un autre.
+   */
   liveTerminals?: number;
+  /**
+   * Identifiant du **terminal du poste** (F-74 / SF-74-01), ou `null` s'il n'a jamais été ouvert.
+   *
+   * <p>L'écran n'en a pas besoin pour **proposer** le geste — l'endpoint retrouve ou crée — mais il
+   * lui faut pour savoir de quel terminal on parle, et donc s'il vit.</p>
+   */
+  hostTerminalId?: string | null;
+  /** Vrai si un onglet vit sur le terminal du poste **maintenant** (F-70 / F-74). */
+  hostTerminalLive?: boolean;
   projects: HostProjectSummary[];
 }
 
