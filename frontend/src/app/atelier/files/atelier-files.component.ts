@@ -42,6 +42,7 @@ import { AtelierService } from '../../core/services/atelier.service';
 // constantes vaut `undefined` à l'exécution selon l'ordre d'évaluation des modules — l'écran
 // Atelier ne se montait plus.
 import { WORKSPACE_TEXT_ACCEPT, WORKSPACE_TEXT_EXTENSIONS } from '../atelier.types';
+import { extensionsSummary } from '../../shared/file-format-names';
 import { TreeNode, buildTree } from './file-tree';
 import {
   GitBranchDialogComponent,
@@ -124,6 +125,16 @@ export class AtelierFilesComponent implements OnInit {
 
   /** Attribut `accept` du sélecteur PC (texte/code uniquement, réutilisé de SF-28-13). */
   readonly workspaceTextAccept = WORKSPACE_TEXT_ACCEPT;
+
+  /**
+   * Ce qui est accepté ici, dit **avant** l'essai (F-85 / SF-85-03) : un projet est textuel, et rien
+   * ne l'annonçait — on l'apprenait en essayant un PDF. Dérivé de la même liste que l'`accept` : les
+   * deux ne peuvent pas se contredire.
+   */
+  readonly workspaceTextFormats = extensionsSummary(WORKSPACE_TEXT_EXTENSIONS);
+
+  /** La liste complète, pour qui la cherche : soixante extensions ne se lisent pas en ligne. */
+  readonly workspaceTextAllExtensions = WORKSPACE_TEXT_EXTENSIONS.map((e) => `.${e}`).join(', ');
 
   readonly workspaceId = signal<string>('');
   readonly workspaceName = signal<string>('');
