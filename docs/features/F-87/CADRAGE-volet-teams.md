@@ -142,82 +142,82 @@ C'est votre principe **Provider-First**, appliqué à l'interface plutôt qu'à 
 
 ---
 
-## 5. L'expérience : la conversation est l'interface
+## 5. L'expérience : un terminal Teams
 
-### 5.1 Ce qu'on ajoute à l'écran, et ce qu'on n'ajoute pas
+> **Révision du 2026-09-12, après une question du PO** : *« dans le terminal, on verra des captures
+> d'écran ? »* — **Non, pas aujourd'hui.** `AtelierTerminalBlock` ne porte que `output: string`. Les
+> cartes et les images montrées dans l'étude **n'existent pas** : ce sont un **genre de bloc nouveau**.
+> Et le PO a tranché deux choses dans la foulée : **enrichir le fil**, et faire du passage à Teams
+> **un vrai basculement visuel**.
 
-**On n'ajoute aucun écran de commande.** Pas de page « Teams » avec des boutons.
+### 5.1 Un terminal Teams, comme le terminal de poste
 
-**On ajoute deux choses, et deux seulement :**
+**La forme existe déjà dans le produit.** F-74 a créé le **terminal de poste** : même mécanique qu'un
+terminal de projet, rattaché à autre chose, avec sa propre conversation. Le terminal Teams est la
+même idée.
 
-**Un indicateur de liaison**, dans la barre du terminal, à côté du signe de vie du runner (§11 de la
-charte). Il ne porte aucune action : il dit un **état**.
-
-| État | Ce qu'il dit |
+| | |
 |---|---|
-| **Relié** | pastille verte, « Teams relié » |
-| **Navigateur non détecté** | pastille neutre, « Chrome non joignable » — et **comment le lancer** |
-| **Teams a changé** | pastille ambre (§12, « ce qui attend une décision »), « lecture partielle » |
+| **Même mécanique** | le fil, les tours, la reprise (F-84), la place au registre (F-70), l'usage compté par client (F-61) |
+| **Son propre historique** | les échanges Teams ne se mélangent pas aux sessions de code |
+| **Sa propre peau** | le basculement visuel — la mosaïque a déjà montré qu'un fil porte plusieurs apparences (charte §13) |
+| **Ses propres blocs** | cartes, images, engagements — **et seulement là** |
+| **Son propre droit** | il existe, ou il n'existe pas (§5.4) |
 
-**Un volet latéral**, ouvert à la demande, qui montre **ce que la liaison sait** : le compte
-Microsoft relié, la santé de l'adaptateur, et la dernière lecture faite. **C'est une fenêtre sur un
-état, pas un panneau de contrôle.**
+**La règle qui découle du reste, et qui n'est pas négociable** : un **terminal de projet reste
+textuel pour toujours**. Une sortie de commande est exactement ce que la machine a répondu, jamais
+une carte. Les blocs riches n'apparaissent **que** dans le terminal Teams.
 
-### 5.2 Ce que l'agent rend : des cartes vérifiables
+### 5.2 Toujours pas de boutons
 
-Une réponse en texte brut gâcherait le travail. Trois formes de réponse, dans le fil de la
-conversation, au même endroit que le reste :
+Le basculement est **visuel**, pas fonctionnel. On ouvre un terminal Teams comme on ouvre un terminal
+de poste, puis **on parle** — c'est la décision fondatrice du §1, et elle ne bouge pas. Ce qui change,
+c'est qu'on **voit** qu'on a changé d'outil.
 
-**La carte de réunion**
+Deux éléments d'état, sans action : l'**indicateur de liaison** dans la barre (relié / navigateur non
+détecté / Teams a changé), et le compte Microsoft relié.
 
-> **Comité MFA — 11 septembre, 14 h 00 → 15 h 05** · 6 participants
->
-> **Décisions** — le déploiement passe au T3 · l'authentification par SMS est abandonnée
-> **On attend de vous** — la note de cadrage, avant vendredi *(Paul, 14 h 32)*
-> **Vous vous êtes engagé à** — fournir la matrice des rôles *(vous, 14 h 51)*
->
-> *[capture]* *[capture]* *[capture]*
-> Transcription lue : 1 h 05, 412 répliques · **3 répliques non reconnues**
+### 5.3 Ce que l'agent rend : des blocs vérifiables
 
-**La liste d'engagements**
+**Le bloc carte de réunion** — décisions, ce qu'on attend de vous, ce à quoi vous vous êtes engagé.
+Chaque ligne porte **son auteur, son heure, et un lien vers le message**.
 
-Une ligne, un engagement, **un lien vers le message source**. Un clic ouvre le fil dans Teams, à la
-bonne position. Chaque ligne porte **l'auteur** et **l'heure** — parce qu'un engagement sans auteur
-n'est pas un engagement.
+**Le bloc moment** — c'est la réponse à *« montre-moi ce qu'il y avait à l'écran »*. Une image posée
+**à côté de la phrase prononcée pendant qu'elle était affichée**, rapprochées par l'horodatage. Pas
+une galerie en bas de page. L'heure ouvre la transcription à la seconde ; l'image s'agrandit d'un
+clic — **le geste de la mosaïque, qu'on n'invente pas deux fois**.
 
-Et un **niveau de certitude, dit en toutes lettres** : « engagement explicite » (« je te l'envoie
-demain ») ou « **à confirmer** » (« je vais regarder »). **Jamais de score, jamais de pourcentage** :
-un chiffre donne une apparence de mesure à une interprétation.
+**Le bloc liste** — engagements ou mentions. Un **niveau de certitude en toutes lettres**
+(« explicite » / « à confirmer »), **jamais un score** : un chiffre donne une apparence de mesure à
+une interprétation.
 
-**La liste de mentions**
+**Le joli, concrètement** : la charte sans rien y ajouter, **aucun registre de couleur nouveau** ; la
+**densité d'un compte rendu, pas d'un tableau de bord** — *qu'est-ce qu'on attend de moi* doit sauter
+aux yeux en trois secondes ; et **ce qui est incertain se lit comme incertain**, par la typographie,
+pas par un pictogramme d'avertissement.
 
-Groupée par conversation, avec la phrase et son contexte immédiat. Chaque entrée mène au message.
+### 5.4 Le droit, et ce qu'il change techniquement
 
-### 5.3 Ce qui est joli, et pourquoi
+**Le motif existe** : F-40 — *« Option Atelier (droit découplé du plan) »* — ouvre un droit
+indépendamment de l'offre, et les codes d'accès (F-62) passent par le même mécanisme.
 
-**Les cartes reprennent la charte, sans rien y ajouter.** Surface blanche, ombre, accent orange pour
-ce qui est actionnable, navy pour les en-têtes. **Aucun registre de couleur nouveau** — c'est une
-règle du produit, et quatre registres cohabitent déjà.
+**La garde est au niveau de l'outil, pas de l'écran.** `buildTools(workspace)` décide déjà quels
+outils l'agent reçoit — c'est là que `bash` est donné ou non selon la cible. **Sans l'option, les
+outils `teams_*` ne sont simplement pas donnés.**
 
-**La densité est celle d'un compte rendu, pas d'un tableau de bord.** Un compte rendu de réunion se
-lit en diagonale : titres courts, listes serrées, pas de fioriture. Ce qu'on cherche — *qu'est-ce
-qu'on attend de moi* — doit sauter aux yeux en trois secondes, sans faire défiler.
+La nuance compte : **l'agent ne refuse pas, il n'a pas la capacité.** Il ne dira jamais « je pourrais
+mais vous n'avez pas payé » ; il dira qu'il ne sait pas lire Teams. On ne met pas l'utilisateur devant
+une porte fermée à chaque phrase.
 
-**Les captures sont petites, alignées sur le texte, et s'agrandissent d'un clic.** Comme les tuiles
-de la mosaïque (§13) : le geste existe déjà, on ne l'invente pas deux fois.
+**Et la doctrine du produit s'applique telle quelle** : *« l'option ouvre l'accès, elle n'ajoute pas
+de tokens »* (F-40, repris par F-62). La consommation d'un tour Teams tombe sur le **quota existant**
+de l'utilisateur.
 
-**Ce qui est incertain se lit comme incertain.** Un engagement « à confirmer » ne porte pas la même
-graisse qu'un engagement explicite. C'est le travail de la typographie, pas d'un pictogramme
-d'avertissement.
+### 5.5 Le travail long se voit travailler
 
-### 5.4 Le travail long se voit travailler
-
-Télécharger un enregistrement, en extraire les images, transcrire un audio : ce sont des minutes, pas
-des secondes. **La conversation ne se fige pas.** L'agent dit ce qu'il fait, étape par étape, comme
-il le fait déjà pour une commande — c'est le même fil vivant, et depuis F-84 il survit à un
-changement d'écran.
-
----
+Télécharger, extraire, transcrire : des minutes. **La conversation ne se fige pas** — l'agent dit ce
+qu'il fait, étape par étape, comme pour une commande. Et depuis F-84, ce fil survit à un changement
+d'écran.
 
 ## 6. La capture locale
 
@@ -269,7 +269,7 @@ l'intention de montrer.
 |---|---|---|
 | **F-87** | **La liaison Teams** | Se rattacher au navigateur, lire le réseau, l'adaptateur unique, la sonde de santé, l'indicateur. **La fondation** — rien ne marche sans elle, et tout le reste en dépend. |
 | **F-88** | **Les outils de lecture** | Le catalogue donné à l'agent : conversations, mentions, recherche, réunions, transcriptions. |
-| **F-89** | **Ce que l'agent rend** | Les cartes vérifiables : réunion, engagements, mentions. Le lien vers la source sur **chaque** ligne. |
+| **F-89** | **Le terminal Teams** | Un terminal à part, sa peau, son historique, **et un genre de bloc nouveau** — carte, moment, liste. Plus le **droit** : sans l'option, les outils ne sont pas donnés à l'agent. **Ce n'est pas de la mise en forme : c'est étendre ce qu'un terminal sait afficher.** |
 | **F-90** | **Les captures alignées** | Extraction aux changements de plan, alignement par horodatage. Asynchrone. |
 | **F-91** | **L'enregistrement local** | Capture, filigrane, deux usages, transcription sur la machine. |
 
