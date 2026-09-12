@@ -340,3 +340,70 @@
   color: var(--cg-text-secondary);
   font-size: 13px;
 }
+
+/* Les dossiers de la racine qu'on n'a PAS encore ouverts (F-72 / SF-72-03).
+   EN RETRAIT et en GRIS : ce sont des dossiers, pas des projets. Un quatrième OBJET, jamais un
+   quatrième registre de couleur — le gris « archivé / inactif » du §5 existe déjà pour « ce qui
+   n'est pas actif », et aucun des dix tons d'identité (§9) n'est emprunté ici. */
+.poste__unopened {
+  margin: var(--cg-space-3) 0 0;
+  padding-left: var(--cg-space-4);
+  border-left: 2px dashed var(--cg-divider);
+}
+
+.poste__unopened-title {
+  margin: 0 0 var(--cg-space-1);
+  color: var(--cg-text-secondary);
+  font-size: 12px;
+}
+
+.poste__unopened-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cg-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.poste__unopened-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  padding: var(--cg-space-1) var(--cg-space-2);
+  border: 1px solid var(--cg-divider);
+  border-radius: 6px;
+  background: var(--cg-surface-2);
+  color: var(--cg-text-secondary);
+  font-family: var(--cg-font-body);
+  font-size: 12px;
+  cursor: pointer;
+
+  mat-icon {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+  }
+
+  &:hover:not(:disabled) {
+    border-color: var(--cg-accent);
+    color: var(--cg-text-primary);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+}
+
+.poste__unopened-more {
+  margin: var(--cg-space-1) 0 0;
+  color: var(--cg-text-secondary);
+  font-size: 11px;
+}
+
+.poste__card-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--cg-space-3);
+}
