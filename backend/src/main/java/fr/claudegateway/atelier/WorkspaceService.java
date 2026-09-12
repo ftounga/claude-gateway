@@ -472,6 +472,12 @@ public class WorkspaceService {
      * (F-61). Ce sont des pièces de facturation — la dépense a eu lieu — et
      * {@code UsageByClientService} sait déjà nommer « supprimé » un projet absent. Les effacer
      * ferait rétrécir une consommation déjà facturée.</p>
+     *
+     * <p><b>Si le stockage n'efface pas tout</b> (F-79) : {@code deletePrefix} lève, la transaction
+     * est annulée, et le projet — sa conversation, son journal, sa ligne — <b>reste en base</b>.
+     * C'est voulu : un projet dont il reste des fichiers doit rester supprimable, et un second
+     * passage n'aura plus que le reliquat à traiter. Le client reçoit un message qui dit combien de
+     * fichiers sont partis et combien restent, jamais un 500 muet.</p>
      */
     @Transactional
     public void delete(UUID userId, UUID id) {

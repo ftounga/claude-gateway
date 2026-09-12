@@ -46,6 +46,7 @@ import fr.claudegateway.atelier.AtelierAccessDeniedException;
 import fr.claudegateway.atelier.InvalidArchiveException;
 import fr.claudegateway.atelier.InvalidFilePathException;
 import fr.claudegateway.atelier.WorkspaceNotFoundException;
+import fr.claudegateway.atelier.storage.WorkspaceStorageDeletionException;
 import fr.claudegateway.atelier.ExecutionTargetModeException;
 import fr.claudegateway.atelier.git.GitWorkspaceModeException;
 import fr.claudegateway.atelier.git.GitWorkspaceReadOnlyException;
@@ -325,6 +326,21 @@ public class GlobalExceptionHandler {
         log.debug("Workspace/fichier Atelier introuvable ou non possédé");
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ErrorResponse("not_found", ex.getMessage()));
+    }
+
+    /**
+     * Suppression de projet <b>incomplète</b> côté stockage (F-79). Reste un {@code 500} — c'est bien
+     * une panne serveur — mais cesse de mentir : le filet {@code internal_error} laissait croire que
+     * rien n'avait bougé, alors que des fichiers étaient déjà partis. Le message porte les deux
+     * compteurs ; les clés en échec, elles, ne sortent que dans le journal du stockage.
+     */
+    @ExceptionHandler(WorkspaceStorageDeletionException.class)
+    public ResponseEntity<ErrorResponse> handleWorkspaceStorageDeletion(
+            WorkspaceStorageDeletionException ex) {
+        log.error("Suppression de projet incomplète : {} effacée(s), {} restante(s)",
+                ex.deletedCount(), ex.remainingCount());
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse("storage_partial_delete", ex.getMessage()));
     }
 
     @ExceptionHandler(InvalidArchiveException.class)
