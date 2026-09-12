@@ -1,0 +1,85 @@
+<h2 mat-dialog-title>Couper la liaison avec « {{ data.hostName }} » ?</h2>
+
+<mat-dialog-content>
+  <!-- (a) CE QUI CHANGE TOUT DE SUITE. L'effet réel dépasse la coupure, et le libellé ne le laisse
+       pas deviner : tous les projets du poste repassent en bac à sable. Ils sont NOMMÉS. -->
+  <section class="kill-host__block">
+    <h3 class="kill-host__heading">
+      <mat-icon class="kill-host__icon kill-host__icon--cut" aria-hidden="true">link_off</mat-icon>
+      Ce qui change tout de suite
+    </h3>
+    <ul class="kill-host__list">
+      <li>La connexion en cours est <strong>fermée</strong>.</li>
+      <li>Tous les jetons de ce poste sont <strong>révoqués</strong> : il faudra le réappairer.</li>
+      @if (hasNoProject()) {
+        <li>
+          Ce poste <strong>ne porte aucun projet</strong> : aucune cible d'exécution ne change.
+        </li>
+      } @else {
+        <li>
+          Ces projets repassent en <strong>bac à sable hébergé</strong> — on ne coupe pas un dossier,
+          on coupe une machine :
+          <ul class="kill-host__projects">
+            @for (line of lines; track line.name) {
+              <li>
+                <span class="kill-host__project-name">{{ line.name }}</span>
+                @if (line.alreadySandbox) {
+                  <span class="kill-host__project-note">déjà au bac à sable</span>
+                }
+              </li>
+            }
+          </ul>
+        </li>
+      }
+    </ul>
+  </section>
+
+  <!-- (b) CE QUI NE S'ARRÊTE PAS. La phrase qui manquait : le coupe-circuit agit côté gateway, pas
+       sur la machine. Vu du terminal du client, RIEN ne s'arrête. -->
+  <section class="kill-host__block kill-host__block--alert">
+    <h3 class="kill-host__heading">
+      <mat-icon class="kill-host__icon kill-host__icon--alert" aria-hidden="true">
+        report_problem
+      </mat-icon>
+      Ce qui ne s'arrête pas
+    </h3>
+    <p class="kill-host__text">
+      <strong>Le runner continue de tourner sur la machine.</strong> Ce geste agit sur la passerelle,
+      pas sur votre poste : le programme va tenter de se reconnecter, et sera
+      <strong>refusé</strong> — son jeton n'existe plus. Rien ne s'arrêtera de soi-même dans le
+      terminal où il tourne.
+    </p>
+  </section>
+
+  <!-- (c) COMMENT L'ARRÊTER VRAIMENT. L'application le DIT, elle ne le fait pas : arrêter un
+       processus à distance sur la machine d'un client est hors du périmètre du produit. -->
+  <section class="kill-host__block kill-host__block--how">
+    <h3 class="kill-host__heading">
+      <mat-icon class="kill-host__icon" aria-hidden="true">terminal</mat-icon>
+      Pour l'arrêter vraiment, sur la machine
+    </h3>
+    <ul class="kill-host__list">
+      <li>
+        Dans le terminal où le runner tourne : <code class="kill-host__code">Ctrl-C</code>.
+      </li>
+      <li>
+        Ce terminal est fermé — macOS, Linux :
+        <code class="kill-host__code">pkill -f claude-runner.jar</code>
+      </li>
+      <li>
+        Sous Windows : <code class="kill-host__code">taskkill /F /IM java.exe</code>, ou le
+        Gestionnaire des tâches.
+      </li>
+    </ul>
+    <p class="kill-host__text kill-host__text--muted">
+      Cette application ne peut pas arrêter un programme sur votre machine, et ne le fera jamais.
+    </p>
+  </section>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-stroked-button type="button" (click)="cancel()">Annuler</button>
+  <button mat-flat-button color="warn" type="button" (click)="confirm()">
+    Couper la liaison
+  </button>
+</mat-dialog-actions>

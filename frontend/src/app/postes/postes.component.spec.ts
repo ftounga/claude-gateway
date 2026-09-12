@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testin
 import { HttpErrorResponse } from '@angular/common/http';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ActivatedRoute, Router, provideRouter } from '@angular/router';
-import { of, throwError } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 
 import { MatDialog } from '@angular/material/dialog';
 
@@ -82,7 +82,12 @@ describe('PostesComponent', () => {
   function spyService(): jasmine.SpyObj<AtelierService> {
     const spy = jasmine.createSpyObj<AtelierService>('AtelierService',
       ['runnerHostsOverview', 'setHostMissionStatus', 'deleteRunnerHost', 'runnerHostFolders',
-        'openHostProject', 'openHostTerminal', 'createGitWorkspace', 'createWorkspace']);
+        'openHostProject', 'openHostTerminal', 'createGitWorkspace', 'createWorkspace',
+        'killHost']);
+    // F-82 / SF-82-02 : le coupe-circuit vit désormais sur la carte du poste. Réponse par défaut
+    // d'une liaison bien coupée — les tests qui visent un autre chemin la remplacent.
+    spy.killHost.and.returnValue(
+      of({ revokedTokens: 1, disconnected: true, workspacesReturned: 2 }));
     // F-74 / SF-74-02 : le terminal DU POSTE. L'appel est idempotent côté gateway — elle retrouve
     // ou crée, et répond 200 dans les deux cas.
     spy.openHostTerminal.and.returnValue(
@@ -807,6 +812,107 @@ describe('PostesComponent', () => {
 
     expect(component.hosts().length).toBe(1);
     expect(component.deletingHostId()).toBeNull();
+  });
+
+  // ------------------------------------- le coupe-circuit (F-82 / SF-82-02)
+
+  // Son bouton ne vivait que dans l'en-tête d'un terminal. Or un poste connecté SANS AUCUN PROJET
+  // n'a pas de terminal, donc pas de bouton : la machine était branchée et on ne pouvait rien en
+  // faire depuis l'application. C'est la situation vécue le 2026-09-12.
+
+  it('propose « Couper la liaison » dans le menu de la carte, sous le même menu que la suppression',
+    () => {
+      setup();
+      const trigger = (fixture.nativeElement as HTMLElement)
+        .querySelector('.poste__menu-trigger') as HTMLButtonElement;
+
+      trigger.click();
+      fixture.detectChanges();
+
+      expect(document.body.textContent).toContain('Couper la liaison');
+      expect(document.body.textContent).toContain('Supprimer le poste');
+      // Jamais en accès direct : le geste n'existe que DANS le menu de dépassement.
+      expect((fixture.nativeElement as HTMLElement)
+        .querySelector('.poste__head-side button:not(.poste__menu-trigger)')).toBeNull();
+    });
+
+  it('coupe la liaison depuis la carte d\'un poste SANS AUCUN PROJET — le cas vécu', () => {
+    dialogAnswer = true;
+    setup([{ ...poste, projects: [], activeProjects: 0 }]);
+
+    component.killHost(component.hosts()[0]);
+    fixture.detectChanges();
+
+    expect(service.killHost).toHaveBeenCalledOnceWith('h1');
+    // Et la vue est relue : c'est la gateway qui fait foi sur ce qu'elle a coupé.
+    expect(service.runnerHostsOverview).toHaveBeenCalledTimes(2);
+  });
+
+  it('passe au dialogue les projets NOMMÉS, pas leur nombre', () => {
+    setup();
+
+    component.killHost(component.hosts()[0]);
+
+    const data = dialog.open.calls.mostRecent().args[1]?.data as {
+      hostName: string;
+      projects: { name: string }[];
+    };
+    expect(data.hostName).toBe('Poste CAGIP');
+    expect(data.projects.map((p) => p.name)).toEqual(['web', 'api']);
+  });
+
+  it('n\'appelle rien quand le dialogue est refermé sans confirmer', () => {
+    setup();
+
+    component.killHost(component.hosts()[0]);
+
+    expect(service.killHost).not.toHaveBeenCalled();
+  });
+
+  it('ne coupe rien sur le poste « Hébergé » : ce n\'est pas une machine', () => {
+    dialogAnswer = true;
+    setup([heberge]);
+
+    component.killHost(heberge);
+
+    expect(dialog.open).not.toHaveBeenCalled();
+    expect(service.killHost).not.toHaveBeenCalled();
+  });
+
+  it('ignore un second clic pendant l\'aller-retour', () => {
+    dialogAnswer = true;
+    setup([{ ...poste, projects: [] }]);
+    // Une réponse qui n'arrive jamais : le verrou doit tenir pendant tout l'aller-retour.
+    service.killHost.and.returnValue(new Observable(() => undefined));
+
+    component.killHost(component.hosts()[0]);
+    component.killHost(component.hosts()[0]);
+
+    expect(service.killHost).toHaveBeenCalledTimes(1);
+    expect(component.killingHostId()).toBe('h1');
+  });
+
+  it('relâche le verrou et relit la vue quand la gateway refuse', () => {
+    dialogAnswer = true;
+    setup([{ ...poste, projects: [] }]);
+    service.killHost.and.returnValue(throwError(() => new HttpErrorResponse({ status: 404 })));
+
+    component.killHost(component.hosts()[0]);
+    fixture.detectChanges();
+
+    expect(component.killingHostId()).toBeNull();
+    expect(service.runnerHostsOverview).toHaveBeenCalledTimes(2);
+  });
+
+  it('ne change rien à ce que fait le coupe-circuit : un seul appel, celui qui existait déjà', () => {
+    dialogAnswer = true;
+    setup([{ ...poste, projects: [] }]);
+
+    component.killHost(component.hosts()[0]);
+
+    expect(service.killHost).toHaveBeenCalledOnceWith('h1');
+    expect(service.deleteRunnerHost).not.toHaveBeenCalled();
+    expect(service.setHostMissionStatus).not.toHaveBeenCalled();
   });
 
 

@@ -9,11 +9,17 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 
 import { MatDialog } from '@angular/material/dialog';
+import { MatDividerModule } from '@angular/material/divider';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { AtelierService } from '../core/services/atelier.service';
-import { HostFolder, HostProjectSummary, RunnerHostOverview } from '../core/models/atelier.models';
+import {
+  HostFolder,
+  HostProjectSummary,
+  RunnerHostOverview,
+  RunnerKillResult,
+} from '../core/models/atelier.models';
 import { ForgeBreadcrumbComponent } from '../shared/forge-breadcrumb/forge-breadcrumb.component';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import { LiveBadgeComponent } from '../shared/live-badge/live-badge.component';
@@ -42,6 +48,10 @@ import {
   DeleteHostDialogComponent,
   DeleteHostDialogData,
 } from './delete-host-dialog/delete-host-dialog.component';
+import {
+  KillHostDialogComponent,
+  KillHostDialogData,
+} from './kill-host-dialog/kill-host-dialog.component';
 import {
   HostMissionStatus,
   MISSION_STATUSES,
@@ -95,13 +105,15 @@ const EMPTY_HOSTED: RunnerHostOverview = {
  * secondes, et <b>rien du tout</b> quand l'onglet est masqué — une vue que personne ne regarde n'a
  * aucune raison d'appeler la gateway.</p>
  *
- * <p><b>Presque en lecture seule</b> : renommer une machine, la couper ou révoquer un jeton restent
- * dans le dialogue de mise en service — une vue d'ensemble qui porterait tous ces gestes sur chaque
- * carte deviendrait un champ de mines. Deux exceptions, et deux seulement : l'<b>état de mission</b>
- * (F-60 / SF-60-02), qui est la question même de cet écran, et <b>supprimer le poste</b> (F-69 /
+ * <p><b>Presque en lecture seule</b> : renommer une machine ou révoquer un jeton restent dans le
+ * dialogue de mise en service — une vue d'ensemble qui porterait tous ces gestes sur chaque carte
+ * deviendrait un champ de mines. Trois exceptions, et trois seulement : l'<b>état de mission</b>
+ * (F-60 / SF-60-02), qui est la question même de cet écran ; <b>supprimer le poste</b> (F-69 /
  * SF-69-02), parce que les postes ne sont listés <b>nulle part ailleurs</b> — inventer un écran de
- * réglages pour un seul bouton serait disproportionné. Cette dernière est sous menu de dépassement,
- * derrière un dialogue, et son cas dangereux est <b>refusé par la gateway</b>.</p>
+ * réglages pour un seul bouton serait disproportionné ; et <b>couper la liaison</b> (F-82 /
+ * SF-82-02), parce que son bouton ne vivait que dans l'en-tête d'un terminal et qu'<b>un poste
+ * connecté sans aucun projet n'a pas de terminal</b>. Les deux dernières sont sous menu de
+ * dépassement, derrière un dialogue, et jamais en accès direct sur la carte.</p>
  *
  * <p>L'isolation est garantie côté gateway : l'appel ne porte aucun identifiant, la vue part du
  * JWT.</p>
@@ -118,6 +130,7 @@ const EMPTY_HOSTED: RunnerHostOverview = {
     TerminalPreviewComponent,
     MatButtonModule,
     MatCardModule,
+    MatDividerModule,
     MatIconModule,
     MatMenuModule,
     MatProgressSpinnerModule,
@@ -197,6 +210,12 @@ export class PostesComponent implements OnInit {
 
   /** Poste dont la suppression est en cours : la carte se verrouille le temps de l'aller-retour. */
   readonly deletingHostId = signal<string | null>(null);
+
+  /**
+   * Poste dont le coupe-circuit est en cours (F-82 / SF-82-02). Même verrou que la suppression, et
+   * pour la même raison : un second clic pendant l'aller-retour partirait deux fois.
+   */
+  readonly killingHostId = signal<string | null>(null);
 
   // -------------------------- les dossiers non encore ouverts (F-72 / SF-72-03)
 
@@ -810,6 +829,94 @@ export class PostesComponent implements OnInit {
       }
     }
     return "Le poste n'a pas pu être supprimé. Rien n'a été effacé.";
+  }
+
+  // ------------------------------------------------ coupe-circuit (F-82 / SF-82-02)
+
+  /**
+   * **Coupe la liaison** avec un poste — le coupe-circuit de SF-38-08, enfin atteignable là où
+   * vivent les postes.
+   *
+   * <p>Son bouton ne vivait que dans l'en-tête d'un terminal. Or <b>un poste connecté sans aucun
+   * projet n'a pas de terminal, donc pas de bouton</b> : on voyait la machine branchée sans rien
+   * pouvoir en faire. C'est le cas vécu le 2026-09-12.</p>
+   *
+   * <p>Ce que fait le coupe-circuit est <b>inchangé</b> : cette subfeature le rend atteignable et
+   * compréhensible, elle ne le redessine pas. Toute la valeur est donc dans le dialogue, qui dit
+   * ce que le libellé ne laissait pas deviner — les projets ramenés au bac à sable, le processus qui
+   * continue de tourner sur la machine, et comment l'arrêter <b>là-bas</b>.</p>
+   */
+  killHost(host: RunnerHostOverview): void {
+    // Le poste « Hébergé » n'est pas une machine (F-71) : il n'y a aucune liaison à couper. La garde
+    // est ici en plus du gabarit, pour que ce soit vrai du CODE et pas seulement de l'affichage.
+    if (host.id === null || this.killingHostId() !== null) {
+      return;
+    }
+    const data: KillHostDialogData = {
+      hostName: host.name,
+      projects: host.projects ?? [],
+    };
+    this.dialog
+      .open(KillHostDialogComponent, { data, width: '560px', maxWidth: '95vw' })
+      .afterClosed()
+      .subscribe((confirmed) => {
+        if (confirmed === true) {
+          this.performHostKill(host);
+        }
+      });
+  }
+
+  private performHostKill(host: RunnerHostOverview): void {
+    const hostId = host.id;
+    if (hostId === null) {
+      return;
+    }
+    this.killingHostId.set(hostId);
+    this.atelier.killHost(hostId).subscribe({
+      next: (result) => {
+        this.killingHostId.set(null);
+        this.snackBar.open(this.killSuccessMessage(host.name, result), 'Fermer',
+          { duration: 6000, panelClass: 'snack-info' });
+        // C'est la gateway qui fait foi sur ce qu'elle a coupé et ramené : on relit plutôt que de
+        // reconstruire l'état de la carte à partir d'une supposition.
+        this.load(false);
+      },
+      error: (err: unknown) => {
+        this.killingHostId.set(null);
+        this.snackBar.open(this.killErrorMessage(err), 'Fermer',
+          { duration: 6000, panelClass: 'snack-error' });
+        this.load(false);
+      },
+    });
+  }
+
+  /**
+   * Ce que la gateway a **réellement** fait — jamais ce qu'on lui a demandé. Couper une liaison déjà
+   * coupée n'est pas une erreur (le coupe-circuit est idempotent), mais le dire « coupée » alors que
+   * zéro jeton a été révoqué ferait croire à un geste qui n'a rien eu à faire.
+   */
+  private killSuccessMessage(hostName: string, result: RunnerKillResult): string {
+    const returned = result.workspacesReturned > 0
+      ? ` ${result.workspacesReturned} projet(s) ramené(s) au bac à sable.`
+      : '';
+    if (result.revokedTokens === 0 && !result.disconnected) {
+      return `« ${hostName} » n'avait plus de liaison ouverte.${returned}`
+        + ' Le runner, lui, tourne peut-être encore sur la machine.';
+    }
+    return `Liaison coupée avec « ${hostName} » : ${result.revokedTokens} jeton(s) révoqué(s).`
+      + `${returned} Le runner continue de tourner sur la machine tant qu'il n'y est pas arrêté.`;
+  }
+
+  private killErrorMessage(err: unknown): string {
+    if (err instanceof HttpErrorResponse) {
+      if (err.status === 403) {
+        return 'La Forge est nécessaire pour ce geste.';
+      }
+      if (err.status === 404) {
+        return 'Poste introuvable. Il a peut-être déjà été supprimé.';
+      }
+    }
+    return "La liaison n'a pas pu être coupée. Rien n'a changé.";
   }
 
   // ---------------------------------------------------------------- libellés
