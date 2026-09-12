@@ -1,6 +1,5 @@
 package fr.claudegateway.atelier;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Executor;
@@ -30,6 +29,9 @@ import fr.claudegateway.atelier.dto.AtelierChatResponse;
 import fr.claudegateway.atelier.dto.AtelierChatResponse.AtelierAction;
 import fr.claudegateway.atelier.dto.AtelierMessageResponse;
 import fr.claudegateway.atelier.dto.AtelierResumeResponse;
+import fr.claudegateway.atelier.live.LiveTurn;
+import fr.claudegateway.atelier.live.LiveTurnRegistry;
+import fr.claudegateway.atelier.live.SseTurnSubscriber;
 import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.byok.ByokKeyRequiredException;
 import fr.claudegateway.quota.QuotaExceededException;
@@ -63,16 +65,19 @@ public class AtelierChatController {
     private final CurrentUser currentUser;
     private final AtelierAccessService atelierAccess;
     private final Executor chatStreamExecutor;
+    private final LiveTurnRegistry liveTurns;
 
     public AtelierChatController(AtelierChatService atelierChatService,
             AtelierThreadService atelierThreadService, CurrentUser currentUser,
             AtelierAccessService atelierAccess,
-            @Qualifier("chatStreamExecutor") Executor chatStreamExecutor) {
+            @Qualifier("chatStreamExecutor") Executor chatStreamExecutor,
+            LiveTurnRegistry liveTurns) {
         this.atelierChatService = atelierChatService;
         this.atelierThreadService = atelierThreadService;
         this.currentUser = currentUser;
         this.atelierAccess = atelierAccess;
         this.chatStreamExecutor = chatStreamExecutor;
+        this.liveTurns = liveTurns;
     }
 
     @PostMapping
@@ -98,7 +103,7 @@ public class AtelierChatController {
         // booléen (jamais d'exception synchrone => pas de 406 sur cet endpoint SSE) et l'erreur d'accès
         // est émise DANS le flux ({@code error: forbidden}), comme les autres erreurs de pré-vol.
         boolean hasAccess = atelierAccess.hasAccess();
-        SseEmitter emitter = new SseEmitter(STREAM_TIMEOUT_MS);
+        SseEmitter emitter = newEmitter();
         fr.claudegateway.chat.SseStreamDispatch.submit(chatStreamExecutor, emitter,
                 () -> relay(emitter, userId, id, request.message(), hasAccess));
         return emitter;
@@ -190,8 +195,28 @@ public class AtelierChatController {
                 .toList();
     }
 
-    /** Exécute la boucle tool-use en relayant chaque étape ; traduit toute erreur en événement SSE. */
+    /**
+     * L'émetteur du flux. Isolé en une méthode pour qu'un test puisse fournir celui d'un
+     * <b>navigateur parti</b> — l'objet même que F-84 devait cesser de confondre avec un ordre
+     * d'arrêt. Jamais redéfini en production.
+     */
+    SseEmitter newEmitter() {
+        return new SseEmitter(STREAM_TIMEOUT_MS);
+    }
+
+    /**
+     * Exécute la boucle tool-use en <b>publiant</b> chaque étape dans le tour vivant, et traduit
+     * toute erreur en événement {@code error}.
+     *
+     * <p><b>F-84 / SF-84-01</b> : l'émetteur n'est plus le destinataire des étapes, il est
+     * <b>abonné</b> au tour. Un envoi qui échoue détache ce seul spectateur ; le tour, lui, continue.
+     * Il ne s'arrête plus que parce qu'il a fini, parce qu'il a atteint son plafond, ou parce que
+     * l'utilisateur l'a <b>interrompu</b> explicitement (F-32 / SF-38-07) — jamais parce qu'un
+     * navigateur est parti.</p>
+     */
     private void relay(SseEmitter emitter, UUID userId, UUID workspaceId, String message, boolean hasAccess) {
+        LiveTurn turn = liveTurns.open(userId, workspaceId);
+        turn.attach(new SseTurnSubscriber(emitter), LiveTurn.FROM_START);
         try {
             if (!hasAccess) {
                 throw new AtelierAccessDeniedException();
@@ -199,159 +224,73 @@ public class AtelierChatController {
             AtelierProgressListener listener = new AtelierProgressListener() {
                 @Override
                 public void onAction(AtelierStepEvent step) {
-                    sendAction(emitter, step);
+                    turn.publish("action", step);
                 }
 
                 @Override
                 public void onText(String text) {
-                    sendText(emitter, text);
+                    turn.publish("text", new StreamText(text));
                 }
 
                 @Override
                 public void onOutput(String chunk) {
-                    sendOutput(emitter, chunk);
+                    turn.publish("output", new StreamOutput(chunk));
                 }
 
                 @Override
                 public void onProgress(long tokens) {
-                    sendProgress(emitter, tokens);
+                    turn.publish("progress", new StreamProgress(tokens));
                 }
 
                 @Override
                 public void onPlan(fr.claudegateway.atelier.AtelierPlan plan) {
-                    sendPlan(emitter, plan);
+                    turn.publish("plan", streamPlan(plan));
                 }
 
                 @Override
                 public void onConfirmRequest(AtelierConfirmRequest request) {
-                    sendConfirmRequest(emitter, request);
+                    turn.publish("confirm_request", request);
                 }
 
                 @Override
                 public void onConfirmResolved(AtelierConfirmResolved resolved) {
-                    sendConfirmResolved(emitter, resolved);
+                    turn.publish("confirm_resolved", resolved);
                 }
             };
             AtelierChatResult result = atelierChatService.chatStreaming(userId, workspaceId, message, listener);
-            emitter.send(SseEmitter.event().name("done")
-                    .data(new StreamDone(result.reply(), result.actions(), result.messageId(),
-                            result.inputTokens(), result.outputTokens(), result.activeSeconds(),
-                            result.budgetReached())));
-            emitter.complete();
+            turn.publish("done", new StreamDone(result.reply(), result.actions(), result.messageId(),
+                    result.inputTokens(), result.outputTokens(), result.activeSeconds(),
+                    result.budgetReached()));
         } catch (AtelierAccessDeniedException ex) {
-            sendError(emitter, "forbidden");
+            turn.publish("error", new StreamError("forbidden"));
         } catch (QuotaExceededException ex) {
-            sendError(emitter, "quota_exceeded");
+            turn.publish("error", new StreamError("quota_exceeded"));
         } catch (ByokKeyRequiredException ex) {
             // Offre BYOK sans clé (F-41 / SF-41-02) : refus nommé dans le flux, jamais `internal_error`.
-            sendError(emitter, "byok_key_required");
+            turn.publish("error", new StreamError("byok_key_required"));
         } catch (WorkspaceNotFoundException ex) {
-            sendError(emitter, "workspace_not_found");
+            turn.publish("error", new StreamError("workspace_not_found"));
         } catch (AIProviderUnavailableException ex) {
-            sendError(emitter, "provider_unavailable");
+            turn.publish("error", new StreamError("provider_unavailable"));
         } catch (AIProviderException ex) {
-            sendError(emitter, "provider_error");
-        } catch (StreamAbortedException | IOException ex) {
-            // Le client s'est déconnecté pendant l'émission : on clôt sans persister davantage.
-            emitter.complete();
+            turn.publish("error", new StreamError("provider_error"));
         } catch (RuntimeException ex) {
-            log.warn("Échec inattendu du relais SSE de l'atelier");
-            sendError(emitter, "internal_error");
+            log.warn("Échec inattendu de la boucle d'atelier");
+            turn.publish("error", new StreamError("internal_error"));
+        } finally {
+            // Le tour est fini : les spectateurs encore branchés voient leur flux se clore, et le
+            // tour quitte le registre. C'est le SEUL endroit qui clôt un flux de tour.
+            liveTurns.close(turn);
         }
     }
 
-    /** Émet une étape d'action ; une déconnexion client interrompt le relais. */
-    private void sendAction(SseEmitter emitter, AtelierStepEvent step) {
-        try {
-            emitter.send(SseEmitter.event().name("action").data(step));
-        } catch (IOException | IllegalStateException ex) {
-            throw new StreamAbortedException();
-        }
+    /** Le plan tel qu'il part sur le fil : la liste complète, qui remplace la précédente. */
+    private static StreamPlan streamPlan(fr.claudegateway.atelier.AtelierPlan plan) {
+        return new StreamPlan(plan.steps().stream()
+                .map(step -> new StreamPlanStep(step.title(), step.status().label()))
+                .toList());
     }
 
-    /** Émet un commentaire de tour ; une déconnexion client interrompt le relais. */
-    private void sendText(SseEmitter emitter, String text) {
-        try {
-            emitter.send(SseEmitter.event().name("text").data(new StreamText(text)));
-        } catch (IOException | IllegalStateException ex) {
-            throw new StreamAbortedException();
-        }
-    }
-
-    /**
-     * Émet un fragment de sortie de commande (F-38 / SF-38-07). Une déconnexion client ne doit pas
-     * tuer le tour : contrairement aux étapes, la sortie est un <b>confort d'affichage</b>, et la
-     * commande tourne déjà sur la machine de l'utilisateur. On abandonne le relais, pas le travail.
-     */
-    private void sendOutput(SseEmitter emitter, String chunk) {
-        try {
-            emitter.send(SseEmitter.event().name("output").data(new StreamOutput(chunk)));
-        } catch (IOException | IllegalStateException ex) {
-            // Client parti : la sortie reste agrégée pour le modèle et pour le fil persisté.
-        }
-    }
-
-    /**
-     * Émet la consommation cumulée du tour (F-39 / SF-39-15). Une déconnexion du client ne doit pas
-     * tuer le tour : comme la sortie de commande, c'est un <b>confort d'affichage</b>, et le tour
-     * tourne déjà. On abandonne le relais, pas le travail.
-     */
-    /**
-     * Émet le plan de travail du tour (F-39 / SF-39-13). Même règle que la consommation : c'est un
-     * confort d'affichage, un client parti n'arrête pas le travail.
-     */
-    private void sendPlan(SseEmitter emitter, fr.claudegateway.atelier.AtelierPlan plan) {
-        try {
-            emitter.send(SseEmitter.event().name("plan").data(new StreamPlan(
-                    plan.steps().stream()
-                            .map(step -> new StreamPlanStep(step.title(), step.status().label()))
-                            .toList())));
-        } catch (IOException | IllegalStateException ex) {
-            // Client parti : le plan reste persisté avec le tour, et se relit au rechargement.
-        }
-    }
-
-    private void sendProgress(SseEmitter emitter, long tokens) {
-        try {
-            emitter.send(SseEmitter.event().name("progress").data(new StreamProgress(tokens)));
-        } catch (IOException | IllegalStateException ex) {
-            // Client parti : la consommation reste relevée et persistée avec le tour.
-        }
-    }
-
-    /**
-     * Émet une demande d'autorisation (F-38 / SF-38-08). Une déconnexion du client interrompt le
-     * relais : sans écran pour trancher, la commande ne doit pas être lancée « en attendant ».
-     */
-    private void sendConfirmRequest(SseEmitter emitter, AtelierConfirmRequest request) {
-        try {
-            emitter.send(SseEmitter.event().name("confirm_request").data(request));
-        } catch (IOException | IllegalStateException ex) {
-            throw new StreamAbortedException();
-        }
-    }
-
-    /** Émet la résolution d'une demande d'autorisation, pour que l'écran retire l'invite. */
-    private void sendConfirmResolved(SseEmitter emitter, AtelierConfirmResolved resolved) {
-        try {
-            emitter.send(SseEmitter.event().name("confirm_resolved").data(resolved));
-        } catch (IOException | IllegalStateException ex) {
-            throw new StreamAbortedException();
-        }
-    }
-
-    private void sendError(SseEmitter emitter, String code) {
-        try {
-            emitter.send(SseEmitter.event().name("error").data(new StreamError(code)));
-        } catch (IOException | IllegalStateException ignored) {
-            // Client déjà parti : rien à faire de plus.
-        }
-        emitter.complete();
-    }
-
-    /** Interruption interne : le client a fermé le flux pendant l'émission. */
-    private static final class StreamAbortedException extends RuntimeException {
-    }
 
     /** Charges utiles JSON des événements SSE. */
     record StreamText(String text) {

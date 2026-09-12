@@ -47,7 +47,8 @@ class AtelierAgentControllerTest {
 
     private MockMvc mockMvc(AtelierAgentProperties properties) {
         AtelierAgentController controller = new AtelierAgentController(
-                sessionService, access, properties, currentUser, Runnable::run);
+                sessionService, access, properties, currentUser, Runnable::run,
+                new fr.claudegateway.atelier.live.LiveTurnRegistry(new com.fasterxml.jackson.databind.ObjectMapper()));
         return MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -338,7 +339,8 @@ class AtelierAgentControllerTest {
     /** Contrôleur monté avec l'advice d'erreurs global : les codes JSON sont ceux de production. */
     private MockMvc mockMvcWithErrorHandling() {
         AtelierAgentController controller = new AtelierAgentController(
-                sessionService, access, props(true), currentUser, Runnable::run);
+                sessionService, access, props(true), currentUser, Runnable::run,
+                new fr.claudegateway.atelier.live.LiveTurnRegistry(new com.fasterxml.jackson.databind.ObjectMapper()));
         return MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new fr.claudegateway.shared.error.GlobalExceptionHandler())
                 .build();
