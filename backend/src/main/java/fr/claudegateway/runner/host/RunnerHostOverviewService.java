@@ -24,6 +24,7 @@ import fr.claudegateway.runner.audit.RunnerAuditRepository;
 import fr.claudegateway.runner.host.dto.RunnerHostOverviewResponse;
 import fr.claudegateway.runner.host.dto.RunnerHostOverviewResponse.HostProjectSummary;
 import fr.claudegateway.terminals.LiveTerminalService;
+import fr.claudegateway.terminals.dto.TerminalPreview;
 
 /**
  * La <b>vue d'ensemble des postes</b> (F-49 / SF-49-01) : en une lecture, tous les postes d'un
@@ -95,14 +96,18 @@ public class RunnerHostOverviewService {
         // question « ce projet a-t-il un terminal ouvert » se pose sur chaque ligne de chaque carte,
         // et une requête par projet ferait payer l'affichage d'un booléen au prix d'un balayage.
         Set<UUID> live = liveTerminals.liveWorkspaceIds(userId);
+        // ET UNE SEULE lecture des aperçus (F-76 / SF-76-01), pour la même raison : la question
+        // « que fait ce terminal » se pose sur chaque ligne de chaque carte. Deux onglets sur le
+        // même projet sont déjà départagés par le registre — la carte parle du projet.
+        Map<UUID, TerminalPreview> previews = liveTerminals.previewsByWorkspace(userId);
         List<RunnerHostOverviewResponse> hosts = new java.util.ArrayList<>(
                 hostService.list(userId).stream()
-                        .map(host -> describe(userId, host, since, activeSince, live))
+                        .map(host -> describe(userId, host, since, activeSince, live, previews))
                         .sorted(BY_LAST_SEEN_THEN_CREATED)
                         .toList());
         // Le poste « Hébergé » (F-71 / SF-71-01), EN DERNIER et seulement s'il porte quelque chose.
         // En dernier parce qu'il n'est pas une machine : les machines d'abord, le bac à sable après.
-        describeHosted(userId, live).ifPresent(hosts::add);
+        describeHosted(userId, live, previews).ifPresent(hosts::add);
         return List.copyOf(hosts);
     }
 
@@ -116,11 +121,13 @@ public class RunnerHostOverviewService {
                             Comparator.nullsLast(Comparator.reverseOrder()));
 
     private RunnerHostOverviewResponse describe(UUID userId, RunnerHost host, OffsetDateTime since,
-            OffsetDateTime activeSince, Set<UUID> liveWorkspaceIds) {
+            OffsetDateTime activeSince, Set<UUID> liveWorkspaceIds,
+            Map<UUID, TerminalPreview> previews) {
         Map<UUID, RunnerAuditActivity> activity = activityByProject(userId, host.getId(), since);
         List<HostProjectSummary> projects = workspaceService.listByHost(userId, host.getId()).stream()
                 .map(workspace -> summarize(userId, workspace, activity.get(workspace.getId()),
-                        activeSince, liveWorkspaceIds.contains(workspace.getId())))
+                        activeSince, liveWorkspaceIds.contains(workspace.getId()),
+                        previews.get(workspace.getId())))
                 .sorted(BY_ACTIVITY_THEN_NAME)
                 .toList();
         // Le TERMINAL DU POSTE (F-74 / SF-74-01). Il n'est PAS dans `projects` — ce n'est pas un
@@ -165,6 +172,10 @@ public class RunnerHostOverviewService {
                         + (hostTerminalLive ? 1 : 0),
                 hostTerminalId,
                 hostTerminalLive,
+                // L'aperçu du TERMINAL DU POSTE (F-74), au même titre que celui d'un projet : on y
+                // travaille, et une carte muette sur un terminal que la supervision montre en train
+                // d'attendre serait le contraire de « même source, deux densités ».
+                hostTerminalLive ? previews.get(hostTerminalId) : null,
                 projects);
     }
 
@@ -181,14 +192,15 @@ public class RunnerHostOverviewService {
      * il est tenu par le runner, et aucun runner n'exécute ces projets.</p>
      */
     private Optional<RunnerHostOverviewResponse> describeHosted(UUID userId,
-            Set<UUID> liveWorkspaceIds) {
+            Set<UUID> liveWorkspaceIds, Map<UUID, TerminalPreview> previews) {
         List<Workspace> orphans = workspaceService.listWithoutHost(userId);
         if (orphans.isEmpty()) {
             return Optional.empty();
         }
         List<HostProjectSummary> projects = orphans.stream()
                 .map(workspace -> summarize(userId, workspace, null, OffsetDateTime.now(),
-                        liveWorkspaceIds.contains(workspace.getId())))
+                        liveWorkspaceIds.contains(workspace.getId()),
+                        previews.get(workspace.getId())))
                 .sorted(BY_ACTIVITY_THEN_NAME)
                 .toList();
         return Optional.of(RunnerHostOverviewResponse.hosted(projects,
@@ -213,7 +225,8 @@ public class RunnerHostOverviewService {
     }
 
     private HostProjectSummary summarize(UUID userId, Workspace workspace,
-            RunnerAuditActivity activity, OffsetDateTime activeSince, boolean liveTerminal) {
+            RunnerAuditActivity activity, OffsetDateTime activeSince, boolean liveTerminal,
+            TerminalPreview preview) {
         OffsetDateTime lastActivityAt = activity == null ? null : activity.getLastAt();
         boolean active = lastActivityAt != null && lastActivityAt.isAfter(activeSince);
         return new HostProjectSummary(
@@ -227,7 +240,11 @@ public class RunnerHostOverviewService {
                 activity == null ? null : lastTool(userId, workspace.getId()),
                 activity == null ? 0L : activity.getCalls(),
                 active,
-                liveTerminal);
+                liveTerminal,
+                // Un aperçu sans terminal vivant n'existe pas — la fiche meurt avec l'onglet — mais
+                // on le dit quand même ici : un booléen et un aperçu qui se contrediraient sur la
+                // même ligne seraient illisibles.
+                liveTerminal ? preview : null);
     }
 
     private String lastTool(UUID userId, UUID workspaceId) {

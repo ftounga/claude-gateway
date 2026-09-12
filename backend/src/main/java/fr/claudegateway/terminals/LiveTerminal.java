@@ -7,6 +7,8 @@ import org.hibernate.annotations.UuidGenerator;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -75,4 +77,40 @@ public class LiveTerminal {
     /** Dernier battement de cœur. Au-delà du délai de grâce, la place n'est plus vivante. */
     @Column(name = "last_seen_at", nullable = false)
     private OffsetDateTime lastSeenAt;
+
+    /**
+     * <b>Ce que ce terminal fait à l'instant</b> (F-76 / SF-76-01). {@code null} tant qu'aucun
+     * relevé n'est arrivé — un onglet qui vient de s'ouvrir n'a encore rien fait, et {@code IDLE}
+     * serait déjà une affirmation.
+     *
+     * <p>Stocké en clair plutôt qu'en ordinal : une colonne qu'on lit en production doit se lire
+     * sans table de correspondance, et un ordinal se décale au premier ajout dans l'énumération.</p>
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "activity", length = 24)
+    private TerminalActivity activity;
+
+    /**
+     * Ce qui est en cours, en clair : « npm test ». Borné et nettoyé <b>au serveur</b>
+     * ({@link TerminalPreviewSanitizer}) — une borne tenue par l'appelant n'est pas une borne.
+     */
+    @Column(name = "activity_detail", length = 120)
+    private String activityDetail;
+
+    /**
+     * Les dernières lignes du terminal, séparées par des sauts de ligne. Un document d'affichage,
+     * jamais un critère de lecture : aucune requête ne filtre dessus, d'où l'absence d'index.
+     *
+     * <p><b>Ce n'est pas l'historique</b> : la fiche porte le <b>dernier</b> aperçu, elle
+     * n'accumule pas. Ce qu'un tour a réellement produit vit dans {@code atelier_messages}.</p>
+     */
+    @Column(name = "preview_lines", length = 1024)
+    private String previewLines;
+
+    /**
+     * Instant du relevé. C'est lui qui <b>départage deux onglets</b> ouverts sur le même projet
+     * quand un écran parle du projet et non de l'onglet.
+     */
+    @Column(name = "activity_at")
+    private OffsetDateTime activityAt;
 }

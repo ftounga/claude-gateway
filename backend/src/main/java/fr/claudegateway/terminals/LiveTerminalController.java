@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.terminals.dto.LiveTerminalClaimRequest;
 import fr.claudegateway.terminals.dto.LiveTerminalsResponse;
+import fr.claudegateway.terminals.dto.TerminalPreview;
 import jakarta.validation.Valid;
 
 /**
@@ -48,7 +49,14 @@ public class LiveTerminalController {
     @PostMapping("/workspaces/{id}/terminal/live")
     public LiveTerminalsResponse claim(@PathVariable UUID id,
             @Valid @RequestBody LiveTerminalClaimRequest request) {
-        return liveTerminals.claim(currentUser.requireId(), id, request.sessionId());
+        // L'APERÇU VOYAGE AVEC LE BATTEMENT DE CŒUR (F-76 / SF-76-01) : pas d'endpoint de plus,
+        // pas de canal de plus. Un appel qui n'en porte pas laisse en place celui de la fiche —
+        // ne rien dire n'est pas dire qu'il ne se passe rien.
+        TerminalPreview preview = request.hasPreview()
+                ? new TerminalPreview(TerminalActivity.parse(request.activity()),
+                        request.activityDetail(), request.previewLines(), null)
+                : null;
+        return liveTerminals.claim(currentUser.requireId(), id, request.sessionId(), preview);
     }
 
     /**

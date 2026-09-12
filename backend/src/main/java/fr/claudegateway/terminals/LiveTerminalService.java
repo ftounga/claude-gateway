@@ -20,6 +20,7 @@ import fr.claudegateway.atelier.WorkspaceService;
 import fr.claudegateway.runner.host.RunnerHost;
 import fr.claudegateway.runner.host.RunnerHostRepository;
 import fr.claudegateway.terminals.dto.LiveTerminalsResponse;
+import fr.claudegateway.terminals.dto.TerminalPreview;
 
 /**
  * Le <b>registre des terminaux vivants</b> (F-70 / SF-70-01) : qui vit, combien, et à partir de
@@ -101,6 +102,23 @@ public class LiveTerminalService {
      */
     @Transactional
     public LiveTerminalsResponse claim(UUID userId, UUID workspaceId, String sessionId) {
+        return claim(userId, workspaceId, sessionId, null);
+    }
+
+    /**
+     * Prend une place pour cet onglet ou renouvelle la sienne, et y range <b>ce qu'il est en train
+     * de faire</b> (F-76 / SF-76-01).
+     *
+     * <p>Un {@code preview} nul <b>n'efface rien</b> : c'est l'appel d'un écran qui n'a rien de neuf
+     * à dire, ou d'un écran antérieur à F-76. Pour dire « il ne se passe plus rien », on envoie un
+     * aperçu {@code IDLE} — le silence n'est pas une affirmation.</p>
+     *
+     * @param preview aperçu déjà validé par la couche web, borné et nettoyé ici
+     * @throws LiveTerminalLimitReachedException si le plafond est atteint (aucune ligne laissée)
+     */
+    @Transactional
+    public LiveTerminalsResponse claim(UUID userId, UUID workspaceId, String sessionId,
+            TerminalPreview preview) {
         // Isolation d'abord : un projet qui n'est pas à lui est INEXISTANT (404), et rien n'est
         // écrit. Vérifier après l'insertion laisserait une ligne pour un projet d'autrui.
         workspaceService.requireOwned(userId, workspaceId);
@@ -116,17 +134,20 @@ public class LiveTerminalService {
             LiveTerminal terminal = existing.get();
             terminal.setWorkspaceId(workspaceId);
             terminal.setLastSeenAt(now);
+            apply(terminal, preview, now);
             repository.saveAndFlush(terminal);
             return describe(userId, cutoff);
         }
 
-        LiveTerminal claimed = repository.saveAndFlush(LiveTerminal.builder()
+        LiveTerminal fresh = LiveTerminal.builder()
                 .userId(userId)
                 .workspaceId(workspaceId)
                 .sessionId(sessionId)
                 .openedAt(now)
                 .lastSeenAt(now)
-                .build());
+                .build();
+        apply(fresh, preview, now);
+        LiveTerminal claimed = repository.saveAndFlush(fresh);
 
         List<LiveTerminal> live = repository
                 .findByUserIdAndLastSeenAtAfterOrderByOpenedAtAsc(userId, cutoff);
@@ -170,7 +191,77 @@ public class LiveTerminalService {
         return ids;
     }
 
+    /**
+     * <b>L'aperçu vivant de chaque projet</b> de cet utilisateur (F-76 / SF-76-01) — une seule
+     * lecture, pour les écrans qui affichent beaucoup de projets (la vue d'ensemble des postes).
+     *
+     * <p><b>Deux onglets sur le même projet</b> : la vue d'ensemble parle du <i>projet</i>, pas de
+     * l'onglet. On garde donc le relevé <b>le plus récent</b> ; et, à instant égal, celui qui
+     * <b>attend une autorisation</b> — c'est celui que l'utilisateur doit voir, et le départager
+     * autrement reviendrait à tirer à pile ou face sur la seule information qui presse.</p>
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, TerminalPreview> previewsByWorkspace(UUID userId) {
+        Map<UUID, TerminalPreview> previews = new HashMap<>();
+        for (LiveTerminal terminal : repository.findByUserIdAndLastSeenAtAfterOrderByOpenedAtAsc(
+                userId, OffsetDateTime.now().minus(ttl))) {
+            TerminalPreview preview = previewOf(terminal);
+            if (preview == null) {
+                continue;
+            }
+            previews.merge(terminal.getWorkspaceId(), preview, LiveTerminalService::mostTelling);
+        }
+        return previews;
+    }
+
     // ------------------------------------------------------------------ interne
+
+    /** Celui des deux aperçus qu'il faut montrer : l'attente d'abord, puis le plus récent. */
+    private static TerminalPreview mostTelling(TerminalPreview current, TerminalPreview candidate) {
+        if (current.awaitsApproval() != candidate.awaitsApproval()) {
+            return current.awaitsApproval() ? current : candidate;
+        }
+        if (current.at() == null) {
+            return candidate;
+        }
+        if (candidate.at() == null) {
+            return current;
+        }
+        return candidate.at().isAfter(current.at()) ? candidate : current;
+    }
+
+    /**
+     * Range l'aperçu sur la fiche, <b>borné et nettoyé ici</b> : la troncature faite par l'écran
+     * décrit le client d'aujourd'hui, pas ce que la table accepte.
+     */
+    private static void apply(LiveTerminal terminal, TerminalPreview preview, OffsetDateTime now) {
+        if (preview == null) {
+            return;
+        }
+        terminal.setActivity(preview.activity());
+        terminal.setActivityDetail(TerminalPreviewSanitizer.detail(preview.activityDetail()));
+        List<String> lines = TerminalPreviewSanitizer.lines(preview.lines());
+        terminal.setPreviewLines(lines.isEmpty() ? null : String.join("\n", lines));
+        terminal.setActivityAt(now);
+    }
+
+    /** L'aperçu d'une fiche, ou {@code null} quand il n'y a rien à montrer. */
+    private static TerminalPreview previewOf(LiveTerminal terminal) {
+        TerminalPreview preview = new TerminalPreview(
+                terminal.getActivity(),
+                terminal.getActivityDetail(),
+                splitLines(terminal.getPreviewLines()),
+                terminal.getActivityAt());
+        return preview.isEmpty() ? null : preview;
+    }
+
+    /** Découpe les lignes rangées en un seul document. Jamais nul : une liste vide se parcourt. */
+    private static List<String> splitLines(String stored) {
+        if (stored == null || stored.isEmpty()) {
+            return List.of();
+        }
+        return List.of(stored.split("\n", -1));
+    }
 
     /** Vrai si cette place fait partie des {@code limit} plus anciennes — celles qui restent. */
     private boolean isKept(List<LiveTerminal> live, LiveTerminal claimed) {
@@ -203,7 +294,11 @@ public class LiveTerminalService {
                             workspace == null ? null : workspace.getName(),
                             hostId,
                             hostId == null ? null : hostNames.get(hostId),
-                            terminal.getOpenedAt());
+                            terminal.getOpenedAt(),
+                            terminal.getActivity(),
+                            terminal.getActivityDetail(),
+                            splitLines(terminal.getPreviewLines()),
+                            terminal.getActivityAt());
                 })
                 .toList();
         return new LiveTerminalsResponse(limit, described.size(), described);

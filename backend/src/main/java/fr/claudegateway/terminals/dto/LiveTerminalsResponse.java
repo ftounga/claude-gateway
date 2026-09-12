@@ -4,6 +4,8 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import fr.claudegateway.terminals.TerminalActivity;
+
 /**
  * L'état complet du registre des terminaux vivants d'un utilisateur (F-70 / SF-70-01).
  *
@@ -20,6 +22,10 @@ public record LiveTerminalsResponse(int limit, int live, List<LiveTerminal> term
     /**
      * Un terminal vivant, nommé de façon à ce que l'écran puisse dire <b>lequel fermer</b>.
      *
+     * <p><b>L'aperçu vivant</b> (F-76 / SF-76-01) voyage ici : l'activité, son détail et les dernières
+     * lignes. C'est <b>la seule lecture</b> dont la vue de supervision a besoin — une tuile par
+     * terminal, avec de quoi la peindre entièrement, sans un appel de plus par tuile.</p>
+     *
      * <p>{@code hostName} est résolu depuis les <b>postes de l'utilisateur</b>, jamais depuis le
      * {@code host_id} du projet : c'est la règle posée en SF-49-03 pour qu'un projet pointant vers
      * la machine d'un autre ne puisse pas en révéler le nom. Un poste non résolu rend {@code null}.</p>
@@ -29,6 +35,15 @@ public record LiveTerminalsResponse(int limit, int live, List<LiveTerminal> term
             String workspaceName,
             UUID hostId,
             String hostName,
-            OffsetDateTime openedAt) {
+            OffsetDateTime openedAt,
+            TerminalActivity activity,
+            String activityDetail,
+            List<String> previewLines,
+            OffsetDateTime activityAt) {
+
+        /** Liste jamais nulle : un écran qui itère ne doit pas avoir à s'en méfier. */
+        public LiveTerminal {
+            previewLines = previewLines == null ? List.of() : List.copyOf(previewLines);
+        }
     }
 }
