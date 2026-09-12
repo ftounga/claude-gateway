@@ -2626,6 +2626,26 @@ describe('AtelierComponent', () => {
     expect(triggers.length).toBe(2);
   });
 
+  // ---- F-74 / SF-74-02 : le terminal du poste se nomme, et n'est pas un projet ----
+
+  it('marque le terminal du poste de son icône, et lui retire le geste de suppression', () => {
+    setup();
+    component.workspaces.set([
+      summary,
+      { ...summary, id: 'wt1', name: 'Terminal du poste', hostTerminal: true },
+    ]);
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    const icons = Array.from(root.querySelectorAll('.workspace-list mat-icon[matListItemIcon]'))
+      .map((icon) => icon.textContent?.trim());
+
+    expect(icons).toContain('terminal');
+    // Il n'est pas un projet : le supprimer comme tel produirait une recréation silencieuse au
+    // clic suivant. Il se supprime AVEC SON POSTE.
+    expect(root.querySelectorAll('.workspace-menu-trigger').length).toBe(1);
+  });
+
   it('ouvre le dialogue en lui passant le nom du projet et son poste (F-69)', () => {
     setup();
     dialog.open.and.returnValue({ afterClosed: () => of(false) } as MatDialogRef<unknown, unknown>);

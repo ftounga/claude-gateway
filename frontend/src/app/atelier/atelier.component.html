@@ -174,8 +174,15 @@
             [class.active]="workspace.id === activeWorkspaceId()"
             (click)="selectWorkspace(workspace)"
           >
+            <!-- LE TERMINAL DU POSTE (F-74 / SF-74-02) se NOMME pour ce qu'il est : ce n'est ni un
+                 dossier importé ni un dépôt, c'est le terminal de la machine. Même liste, même
+                 ligne, même clic — seule l'icône change. -->
             <mat-icon matListItemIcon>{{
-              workspace.source === 'GIT' ? 'hub' : 'folder_zip'
+              workspace.hostTerminal
+                ? 'terminal'
+                : workspace.source === 'GIT'
+                  ? 'hub'
+                  : 'folder_zip'
             }}</mat-icon>
             <span matListItemTitle class="workspace-name">{{ workspace.name }}</span>
             <!-- Appartenance (F-49 / SF-49-03) : la pastille du poste ET son nom écrit. Un projet
@@ -203,6 +210,10 @@
                  cette liste est la SEULE à montrer TOUS les projets — y compris ceux rattachés à
                  aucun poste, qui sont précisément les essais qu'on veut balayer. `$event.stopPropagation()`
                  pour ne pas ouvrir le projet en cliquant sur le menu qui va le supprimer. -->
+            <!-- PAS pour le terminal du poste (F-74 / SF-74-02) : ce n'est pas un projet, et
+                 « supprimer le projet » y produirait une recréation silencieuse au clic suivant —
+                 un geste dont l'effet ne se comprendrait pas. Il se supprime AVEC SON POSTE. -->
+            @if (!workspace.hostTerminal) {
             <button
               matListItemMeta
               mat-icon-button
@@ -226,6 +237,7 @@
                 <span>Supprimer le projet</span>
               </button>
             </mat-menu>
+            }
           </a>
         }
       </mat-nav-list>

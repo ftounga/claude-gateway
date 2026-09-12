@@ -223,6 +223,13 @@ export class PostesComponent implements OnInit {
   readonly creating = signal(false);
 
   /**
+   * Poste dont le **terminal** est en cours d'ouverture (F-74 / SF-74-02) : le bouton se verrouille
+   * le temps de l'aller-retour. Deux clics rapides ne créeraient pas deux terminaux — l'endpoint est
+   * idempotent — mais ils lanceraient deux navigations, et la seconde annulerait la première.
+   */
+  readonly openingTerminalHostId = signal<string | null>(null);
+
+  /**
    * Nombre de dossiers non ouverts montrés sur une carte. Huit tient dans une carte sans la faire
    * dérouler ; en afficher trente la rendrait illisible — et la lisibilité est le **seul** critère
    * ici : c'est le poste qui est facturé (F-65), pas les projets.
@@ -351,6 +358,48 @@ export class PostesComponent implements OnInit {
   /** Ouvre le terminal du projet — le « à un clic » que la vue promet. */
   openTerminal(project: HostProjectSummary): void {
     this.router.navigate(['/atelier', project.id]);
+  }
+
+  // -------------------------------------------- terminal du poste (F-74 / SF-74-02)
+
+  /**
+   * **Ouvre le terminal du poste** — un terminal comme les autres, rattaché à la machine.
+   *
+   * <p>Ce qu'il débloque : le premier jour d'une mission, la racine est <b>vide</b> — pas de projet,
+   * donc pas de terminal, donc aucun moyen de cloner un dépôt depuis le produit. Et au-delà, `git`,
+   * un VPN, `terraform`, l'installation d'un outil n'appartiennent à aucun projet.</p>
+   *
+   * <p>L'appel est <b>idempotent</b> : la gateway retrouve le terminal ou le crée, et rend le même
+   * `200` dans les deux cas. L'écran n'a donc rien à distinguer — il demande, il ouvre.</p>
+   *
+   * <p>La navigation n'a lieu <b>qu'au succès</b> : partir vers un terminal qu'on n'a pas obtenu
+   * afficherait une page d'erreur à la place d'un message, et perdrait la carte au passage.</p>
+   */
+  openHostTerminal(host: RunnerHostOverview): void {
+    const hostId = host.id;
+    if (hostId === null || this.openingTerminalHostId() !== null) {
+      // Le poste « Hébergé » n'est pas une machine (F-71) : un terminal de poste n'y voudrait rien
+      // dire. Le gabarit n'offre pas ce geste ; la garde le rend vrai du CODE aussi.
+      return;
+    }
+    this.openingTerminalHostId.set(hostId);
+    this.atelier.openHostTerminal(hostId).subscribe({
+      next: (terminal) => {
+        this.openingTerminalHostId.set(null);
+        this.router.navigate(['/atelier', terminal.id]);
+      },
+      error: () => {
+        this.openingTerminalHostId.set(null);
+        this.snackBar.open(
+          "Le terminal de ce poste n'a pas pu être ouvert. Rien n'a été créé.",
+          'Fermer',
+          { duration: 6000, panelClass: 'snack-error' },
+        );
+        // L'écran était peut-être en retard — un poste supprimé dans un autre onglet. On relit
+        // plutôt que de laisser la carte mentir.
+        this.load(false);
+      },
+    });
   }
 
   // -------------------------------------------- ajouter un projet (F-72 / SF-72-03)

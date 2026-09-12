@@ -82,7 +82,11 @@ describe('PostesComponent', () => {
   function spyService(): jasmine.SpyObj<AtelierService> {
     const spy = jasmine.createSpyObj<AtelierService>('AtelierService',
       ['runnerHostsOverview', 'setHostMissionStatus', 'deleteRunnerHost', 'runnerHostFolders',
-        'openHostProject', 'createGitWorkspace', 'createWorkspace']);
+        'openHostProject', 'openHostTerminal', 'createGitWorkspace', 'createWorkspace']);
+    // F-74 / SF-74-02 : le terminal DU POSTE. L'appel est idempotent côté gateway — elle retrouve
+    // ou crée, et répond 200 dans les deux cas.
+    spy.openHostTerminal.and.returnValue(
+      of({ id: 'wt1', name: 'Terminal du poste', hostTerminal: true } as WorkspaceDetail));
     // F-72 / SF-72-04 : les deux sources SANS MACHINE — dépôt GitHub, archive — ont rejoint la
     // carte « Hébergé », qui est l'endroit juste : elles vivent chez la gateway.
     spy.createGitWorkspace.and.returnValue(of({ id: 'w7', name: 'hello' } as WorkspaceDetail));
@@ -1087,6 +1091,63 @@ describe('PostesComponent', () => {
     component.onZipPicked({ target: { files: [file], value: 'x' } } as unknown as Event);
 
     expect(service.createWorkspace).not.toHaveBeenCalled();
+  });
+
+  // -------------------------------------------- terminal du poste (F-74 / SF-74-02)
+
+  it('offre « Terminal du poste » sur une machine, et jamais sur « Hébergé »', () => {
+    setup();
+    const root = fixture.nativeElement as HTMLElement;
+    const machine = root.querySelector('.poste:not(.poste--heberge)') as HTMLElement;
+    const heberge = root.querySelector('.poste--heberge') as HTMLElement;
+
+    expect(machine.querySelector('.poste__host-terminal')).not.toBeNull();
+    // « Hébergé » n'est pas une machine (F-71) : un terminal de poste n'y voudrait rien dire.
+    expect(heberge.querySelector('.poste__host-terminal')).toBeNull();
+  });
+
+  it('ouvre le terminal du poste, puis navigue vers lui', () => {
+    setup();
+    const router = TestBed.inject(Router);
+    const navigate = spyOn(router, 'navigate');
+
+    component.openHostTerminal(poste);
+
+    expect(service.openHostTerminal).toHaveBeenCalledWith('h1');
+    expect(navigate).toHaveBeenCalledWith(['/atelier', 'wt1']);
+    expect(component.openingTerminalHostId()).toBeNull();
+  });
+
+  it('ne navigue PAS quand l\'ouverture du terminal du poste échoue', () => {
+    setup();
+    service.openHostTerminal.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 0 })));
+    const router = TestBed.inject(Router);
+    const navigate = spyOn(router, 'navigate');
+
+    component.openHostTerminal(poste);
+
+    // Partir vers un terminal qu'on n'a pas obtenu afficherait une page d'erreur à la place d'un
+    // message, et perdrait la carte au passage.
+    expect(navigate).not.toHaveBeenCalled();
+    expect(component.openingTerminalHostId()).toBeNull();
+  });
+
+  it('ne tente rien sur le poste « Hébergé »', () => {
+    setup();
+
+    component.openHostTerminal(component.hostedHost());
+
+    expect(service.openHostTerminal).not.toHaveBeenCalled();
+  });
+
+  it('montre la pastille de vie quand un onglet vit sur le terminal du poste', () => {
+    setup([{ ...poste, hostTerminalId: 'wt1', hostTerminalLive: true }]);
+    const actions = (fixture.nativeElement as HTMLElement)
+      .querySelector('.poste:not(.poste--heberge) .poste__card-actions') as HTMLElement;
+
+    // La MÊME pastille que partout ailleurs (F-70) : aucun quatrième registre de couleur.
+    expect(actions.querySelector('app-live-badge')).not.toBeNull();
   });
 
 });

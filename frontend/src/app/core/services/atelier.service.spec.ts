@@ -625,6 +625,20 @@ describe('AtelierService', () => {
     expect(received?.code).toBe('AB12CD');
   });
 
+  it('ouvre le terminal du poste via POST /api/runner-hosts/{id}/terminal (F-74 / SF-74-01)', () => {
+    let terminal: WorkspaceDetail | undefined;
+    service.openHostTerminal('h1').subscribe((r: WorkspaceDetail) => (terminal = r));
+
+    const req = httpMock.expectOne('/api/runner-hosts/h1/terminal');
+    expect(req.request.method).toBe('POST');
+    // Aucun corps : l'appel ne demande rien d'autre que « le terminal de ce poste ».
+    expect(req.request.body).toBeNull();
+    req.flush({ id: 'wt1', name: 'Terminal du poste', hostTerminal: true, projectPath: '' });
+
+    expect(terminal?.hostTerminal).toBeTrue();
+    expect(terminal?.projectPath).toBe('');
+  });
+
   it('liste les postes via GET /api/runner-hosts (F-48 / SF-48-03)', () => {
     let hosts: RunnerHost[] | undefined;
     service.listRunnerHosts().subscribe((r: RunnerHost[]) => (hosts = r));
