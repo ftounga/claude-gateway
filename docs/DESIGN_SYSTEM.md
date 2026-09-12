@@ -357,6 +357,40 @@ qui, le 2026-09-08, est resté douze heures invisible (F-47).
 
 ---
 
+## 13 — Un terminal en lecture seule (ajout F-83 / SF-83-01 et SF-83-02, 2026-09-12)
+
+> **Aucune couleur nouvelle.** Cette section ne fait que dire **quelle surface existante** porte un
+> terminal qu'on regarde sans y écrire, et **quel budget de chrome** l'entoure.
+
+F-76 avait montré des **aperçus** — quelques lignes, dans une carte. F-83 montre **le terminal**,
+avec le contenu réel de son flux. La règle est donc celle d'un terminal, pas celle d'une carte.
+
+| Question | Registre | Palette | Support |
+|---|---|---|---|
+| *Est-ce bien un terminal ?* | **Surface de terminal** | §2 — `--cg-navy-2` (`#141D33`) | `app-atelier-terminal` `[readOnly]` |
+| *Chez quel client suis-je ?* | **Identité** | §9 — dix tons dérivés du nom | Filet gauche + `app-host-badge` |
+| *Est-ce que ça attend quelque chose de moi ?* | **Décision attendue** | §5 — « En attente » (`#FFF8E1` / `#F9A825`) | Mention écrite dans le flux + anneau de la tuile |
+
+### Règles d'emploi — non négociables
+
+- **Le fond d'un terminal en lecture seule est `--cg-navy-2`** (`#141D33`), et il est **vérifié par
+  test**. On doit *reconnaître* un terminal, pas découvrir un composant. Le jeton existe dans la
+  table §2 : rien n'est ajouté à la palette.
+- **§8 n'est pas contourné.** L'interdiction du « fond coloré » vise les **cartes** ; un terminal
+  n'en est pas une, et il peint son fond depuis F-30. Une tuile de mosaïque **est** un terminal.
+- **Un seul composant**, et c'est le terminal lui-même (`AtelierTerminalComponent` en `[readOnly]`).
+  Aucun écran ne recompose une transcription à la main : deux rendus divergeraient à la première
+  retouche.
+- **Le chrome est un budget, pas une conséquence.** Là où plusieurs terminaux s'affichent ensemble,
+  tout ce qui n'est pas du flux se réduit à **une ligne d'en-tête de page (24 px)** et **une ligne
+  par tuile (20 px)**. Mesuré : **au moins 85 % de la hauteur utile revient aux flux** (90 % relevé
+  à quatre tuiles sur 800 px), et c'est un **test** qui le tient.
+- **On regarde, on n'écrit pas.** Un terminal en lecture seule ne porte ni champ de saisie, ni
+  bouton d'envoi, ni bouton de décision. Ce qui attend une autorisation garde son **libellé écrit**
+  (§12) et perd ses boutons : décider est un geste du terminal entier, à un clic.
+
+---
+
 ## Logo & marque (ajout 2026-07-03)
 
 - **Logo de l'application** : `frontend/public/claude-portal-logo.png` (« Claude Portal » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« Claude Portal »** (renommé en F-29 SF-29-01 : le terme « Proxy » faisait classer le domaine en catégorie « anonymizer » par les filtres d'entreprise).

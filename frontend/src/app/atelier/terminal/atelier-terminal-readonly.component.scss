@@ -1,0 +1,77 @@
+/* ------------------------------------------------------------------ F-83 / SF-83-01
+   LE MÊME TERMINAL, EN LECTURE SEULE.
+
+   Deux exigences littérales du PO, et rien d'autre :
+
+   1. LE FOND EST CELUI DU TERMINAL — `--cg-navy-2` (#141D33), nommé par son hexadécimal. Aucune
+      couleur nouvelle : le jeton existe depuis la charte (§2, « Navy 2 »), et le terminal l'emploie
+      déjà pour ses filets, son invite d'autorisation et ses marqueurs. On doit RECONNAÎTRE un
+      terminal, pas découvrir un composant.
+   2. LE TERMINAL PREND TOUTE LA PLACE — ici, littéralement : plus de barre, plus de réglages, plus
+      d'invite. Il ne reste que le flux, et le peu de marge qu'il faut pour ne pas coller au bord. */
+.terminal-view--readonly {
+  background: var(--cg-navy-2);
+
+  /* Le flux occupe TOUT : le chrome ayant disparu, `flex: 1` du scrollback suffit — on resserre
+     seulement le rembourrage, qui n'a plus à s'aligner sur une barre absente. */
+  .terminal-scrollback {
+    padding: var(--cg-space-2);
+  }
+}
+
+/* Terminal ouvert sur lequel rien ne tourne : AU REPOS, et dit comme tel. Ce n'est pas une
+   anomalie, et ce n'est surtout pas l'endroit où rejouer un aperçu — F-76 le fait déjà là où il a
+   du sens, sur l'accueil de la Forge. */
+.terminal-hint--idle {
+  font-family: var(--cg-font-mono);
+  font-size: 12px;
+}
+
+/* CE QUI ATTEND UNE DÉCISION, EN LECTURE SEULE (charte §12, palette §5 « En attente »).
+   Pas de boutons — décider est un geste du terminal entier. Restent le LIBELLÉ ÉCRIT et la
+   commande : un point ambre n'a pas suffi le 8 septembre et ne suffira pas davantage ici, où l'on
+   regarde quatre choses à la fois. */
+.terminal-ask-readonly {
+  margin: var(--cg-space-3) 0;
+  padding: var(--cg-space-2);
+  border: 1px solid #f9a825;
+  border-radius: 4px;
+}
+
+.terminal-ask-readonly-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  margin: 0;
+  padding: 0 var(--cg-space-1);
+  border-radius: 4px;
+  /* Pastille §5 « En attente » — exactement celle qui sert déjà partout ailleurs. */
+  background: #fff8e1;
+  color: #f9a825;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.terminal-ask-readonly-icon {
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+}
+
+.terminal-ask-readonly-command {
+  margin: var(--cg-space-1) 0 0;
+  padding: var(--cg-space-1);
+  border-radius: 4px;
+  background: var(--cg-primary);
+  color: var(--cg-surface);
+  font-family: var(--cg-font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.terminal-ask-readonly-hint {
+  margin: var(--cg-space-1) 0 0;
+  font-size: 11px;
+  color: var(--cg-text-secondary);
+}

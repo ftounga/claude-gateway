@@ -1,0 +1,244 @@
+/* La mosaïque (F-83 / SF-83-02) — quatre vrais terminaux, en même temps.
+
+   LA RÈGLE DE CET ÉCRAN, ET ELLE VIENT DU PO : les terminaux prennent une TRÈS GROSSE PARTIE de
+   l'écran. Tout le reste — en-tête de page, en-tête de tuile, marges — se réduit à l'indispensable.
+   Deux lignes de chrome au total : une pour la page, une par tuile. Mesuré par test.
+
+   AUCUNE COULEUR NOUVELLE. Trois registres, tous déjà dans la charte : le fond du terminal
+   (`--cg-navy-2`, §2 / §13), l'identité du poste (§9, filet + pastille), et l'attente d'une
+   décision (§5 « En attente », #FFF8E1 / #F9A825 — voir §12). */
+
+:host {
+  display: block;
+  height: 100%;
+}
+
+.mosaique {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+  padding: var(--cg-space-1);
+  gap: var(--cg-space-1);
+  /* Fond navy de la charte : la page EST un mur de terminaux, et les tuiles s'y détachent. */
+  background: var(--cg-primary);
+}
+
+/* UNE SEULE LIGNE. Pas de titre à trente pixels, pas de sous-titre explicatif : cet écran n'a pas
+   besoin d'être présenté, il se regarde. */
+.mosaique__head {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  /* HAUTEUR FERME, ET C'EST VOULU : le chrome de cet écran est un budget, pas une conséquence.
+     24 px sur 800, c'est 3 % — le reste appartient aux flux. */
+  flex: 0 0 24px;
+  height: 24px;
+  overflow: hidden;
+  padding: 0 var(--cg-space-1);
+  color: var(--cg-divider);
+  font-size: 12px;
+  line-height: 24px;
+}
+
+.mosaique__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cg-surface);
+}
+
+.mosaique__back,
+.mosaique__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  color: var(--cg-accent-2);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.mosaique__spacer {
+  flex: 1 1 auto;
+}
+
+/* Le compte d'attente, ÉCRIT. Palette §5 « En attente » — la pastille qui sert déjà partout. */
+.mosaique__awaiting {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  margin: 0;
+  padding: 0 var(--cg-space-1);
+  border-radius: 4px;
+  background: #fff8e1;
+  color: #f9a825;
+  font-weight: 500;
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+  }
+}
+
+.mosaique__live,
+.mosaique__updated {
+  color: var(--cg-text-secondary);
+}
+
+/* Un état qui n'est plus frais se DIT. L'effacer ferait croire que tout s'est arrêté. */
+.mosaique__updated--stale {
+  color: #f9a825;
+}
+
+.mosaique__notice {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--cg-space-3);
+  flex: 1 1 auto;
+  padding: var(--cg-space-4);
+  color: var(--cg-divider);
+
+  h2 {
+    margin: 0 0 var(--cg-space-1);
+    font-size: 18px;
+    color: var(--cg-surface);
+  }
+
+  p {
+    margin: 0 0 var(--cg-space-3);
+  }
+}
+
+/* LA GRILLE PREND TOUT LE RESTE. `min-height: 0` est ce qui permet aux tuiles de se partager la
+   hauteur au lieu de déborder : sans lui, un flux long pousserait la page hors de l'écran. */
+.mosaique__grid {
+  display: grid;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: var(--cg-space-1);
+  grid-template-columns: 1fr;
+  grid-auto-rows: minmax(0, 1fr);
+
+  /* Un seul terminal : il prend tout. Trois ou quatre : DEUX PAR DEUX, toujours — c'est le
+     nombre pour lequel le plafond de F-70 a été fait, et empiler quatre flux en colonne les
+     réduirait à des bandeaux. Deux : côte à côte dès qu'il y a la largeur pour deux terminaux.
+
+     Pourquoi deux par deux sans point de rupture : la part d'écran qui revient aux flux dépend du
+     NOMBRE DE LIGNES (chaque ligne coûte un en-tête de tuile). Quatre tuiles en colonne, c'est
+     quatre en-têtes ; deux par deux, c'est deux. La règle est donc la même partout, et l'écran
+     étroit trouve sa réponse dans l'agrandissement d'une tuile, pas dans un empilement. */
+  &[data-count='3'],
+  &[data-count='4'] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (min-width: 700px) {
+    &[data-count='2'] {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+}
+
+/* UNE TUILE EST UN TERMINAL. Le filet gauche porte l'identité du poste (§9) ; il n'est jamais
+   emprunté par autre chose — l'attente entre par un anneau, pas par lui. */
+.mosaique__tile {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border-left: 3px solid var(--cg-navy-2);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--cg-navy-2);
+}
+
+/* CE QUI ATTEND UNE DÉCISION SE VOIT DE LOIN : un anneau ambre (§5), et non un fond — la tuile
+   doit rester un terminal reconnaissable. La mention écrite, elle, est dans le flux (SF-83-01). */
+.mosaique__tile--awaiting {
+  box-shadow: inset 0 0 0 2px #f9a825;
+}
+
+/* UNE LIGNE, et rien de plus : de quoi savoir chez qui l'on est et y entrer. */
+.mosaique__tile-head {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  /* Même budget, à l'échelle de la tuile : une ligne, et pas une de plus. */
+  flex: 0 0 20px;
+  height: 20px;
+  overflow: hidden;
+  padding: 0 var(--cg-space-1);
+  font-size: 11px;
+  line-height: 20px;
+  color: var(--cg-text-secondary);
+}
+
+.mosaique__project {
+  color: var(--cg-surface);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mosaique__host {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mosaique__hosted {
+  font-size: 14px;
+  width: 14px;
+  height: 14px;
+}
+
+.mosaique__truncated {
+  flex: 0 0 auto;
+  padding: 0 var(--cg-space-1);
+  border-radius: 4px;
+  background: var(--cg-primary);
+  color: var(--cg-divider);
+}
+
+.mosaique__enter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--cg-space-1);
+  flex: 0 0 auto;
+  color: var(--cg-accent-2);
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--cg-accent);
+    outline-offset: 2px;
+  }
+
+  mat-icon {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+  }
+}
+
+/* LE FLUX PREND TOUT LE RESTE DE LA TUILE. C'est le point de l'écran. */
+.mosaique__flux {
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+}

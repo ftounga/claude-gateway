@@ -113,6 +113,17 @@ export const routes: Routes = [
           import('./supervision/supervision.component').then((m) => m.SupervisionComponent),
       },
       {
+        // F-83 / SF-83-02 — **la mosaïque** : quatre vrais terminaux, vivants, en même temps. La
+        // supervision de F-76 montre des aperçus ; celle-ci montre le CONTENU RÉEL des flux, ce
+        // que le PO demandait depuis le début. Les deux coexistent : on survole l'une, on regarde
+        // travailler dans l'autre.
+        // Deux segments, comme `forge/supervision` : elle ne masque ni `forge` (un segment), ni
+        // `atelier/:id` (autre préfixe), ni `forge/supervision` (segment final différent).
+        path: 'forge/mosaique',
+        loadComponent: () =>
+          import('./mosaique/mosaique.component').then((m) => m.MosaiqueComponent),
+      },
+      {
         // L'ancienne adresse (F-49 / SF-49-02) continue de répondre : un onglet resté ouvert ou un
         // lien collé la veille s'ouvre sur la même page. `pathMatch: 'full'` pour ne capter que le
         // chemin exact, cible absolue pour ne pas dépendre de la résolution du parent pathless.

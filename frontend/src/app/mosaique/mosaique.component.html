@@ -1,0 +1,124 @@
+<section class="mosaique">
+  <!-- L'EN-TÊTE TIENT SUR UNE LIGNE, et c'est une exigence littérale du PO : « les terminaux
+       prennent une très grosse partie de l'écran ». Une mosaïque dont la moitié de la surface sert
+       à encadrer rate son objet. Reste ici le strict nécessaire : d'où l'on vient, ce que ça coûte,
+       ce qui attend une décision. -->
+  <header class="mosaique__head">
+    <a class="mosaique__back" routerLink="/forge" aria-label="Retour à la Forge">
+      <mat-icon aria-hidden="true">arrow_back</mat-icon>
+      Forge
+    </a>
+    <h1 class="mosaique__title">Mosaïque</h1>
+
+    <!-- CE QUI ATTEND UNE DÉCISION, COMPTÉ EN TOUTES LETTRES. Premier des trois signaux, avec la
+         mise en tête de la tuile et son anneau. Aucun ne suffit seul : le 2026-09-08, la demande
+         ÉTAIT à l'écran et elle a échappé douze heures (F-47). -->
+    @if (awaitingCount() > 0) {
+      <p class="mosaique__awaiting" role="status">
+        <mat-icon aria-hidden="true">pan_tool</mat-icon>
+        {{ awaitingLabel() }}
+      </p>
+    }
+
+    <span class="mosaique__spacer"></span>
+
+    <!-- Ce que ça engage (F-70) : le même compte, et la même phrase, que sur l'accueil de la Forge.
+         Regarder ne consomme rien ; ouvrir, si. -->
+    <span class="mosaique__live">Terminaux vivants : {{ liveCount() }} / {{ limit() }}</span>
+    @if (lastUpdatedLabel(); as updated) {
+      <span class="mosaique__updated" [class.mosaique__updated--stale]="stale()">
+        @if (stale()) {
+          dernier état connu à {{ updated }}
+        } @else {
+          {{ updated }}
+        }
+      </span>
+    }
+    <a
+      class="mosaique__link"
+      routerLink="/forge/supervision"
+      title="Les aperçus, en une page"
+    >Aperçus</a>
+  </header>
+
+  @if (loading()) {
+    <div class="mosaique__notice">
+      <mat-spinner diameter="40"></mat-spinner>
+    </div>
+  } @else if (failed()) {
+    <!-- Rien n'a jamais répondu : il n'y a rien à conserver, et rien à inventer. -->
+    <div class="mosaique__notice">
+      <mat-icon>cloud_off</mat-icon>
+      <div>
+        <h2>L'état des terminaux n'a pas pu être lu</h2>
+        <p>La gateway n'a pas répondu. Rien n'est perdu : cette vue est en lecture seule.</p>
+        <button mat-flat-button color="primary" type="button" (click)="refresh()">Réessayer</button>
+      </div>
+    </div>
+  } @else if (tiles().length === 0) {
+    <div class="mosaique__notice">
+      <mat-icon>grid_view</mat-icon>
+      <div>
+        <h2>Aucun terminal ouvert</h2>
+        <p>
+          Cette vue montre les terminaux <strong>vivants</strong> — un onglet ouvert sur un projet.
+          Ouvrez-en un depuis la Forge et son flux apparaîtra ici.
+        </p>
+        <a mat-flat-button color="primary" routerLink="/forge">Aller à la Forge</a>
+      </div>
+    </div>
+  } @else {
+    <div class="mosaique__grid" [attr.data-count]="tiles().length">
+      @for (tile of tiles(); track tile.workspaceId) {
+        <!-- UNE TUILE EST UN TERMINAL. Pas une carte qui en parle : le composant du terminal
+             lui-même, en lecture seule (SF-83-01), avec le contenu réel de son flux. -->
+        <article
+          class="mosaique__tile"
+          [class.mosaique__tile--awaiting]="tile.awaiting"
+          [style.borderLeftColor]="tile.tone?.solid"
+        >
+          <!-- L'EN-TÊTE D'UNE TUILE TIENT SUR UNE LIGNE. La couleur du client (SF-49-03) entre par
+               le filet et la pastille ; le nom du poste reste ÉCRIT — quatre terminaux, c'est
+               souvent quatre clients, et c'est le seul repère qui évite de se tromper de fenêtre. -->
+          <header class="mosaique__tile-head">
+            @if (tile.hostName) {
+              <app-host-badge [name]="tile.hostName" size="sm" [showName]="false"></app-host-badge>
+            } @else {
+              <!-- Poste « Hébergé » (F-71) : il n'identifie AUCUNE machine, il ne prend donc aucun
+                   des dix tons du §9. -->
+              <mat-icon class="mosaique__hosted" aria-hidden="true">cloud</mat-icon>
+            }
+            <span class="mosaique__project">{{ tile.projectName }}</span>
+            <span class="mosaique__host">{{ hostLabel(tile) }}</span>
+            @if (tile.view.truncated()) {
+              <!-- Le tampon du tour est borné : dire le trou vaut mieux que le maquiller. -->
+              <span class="mosaique__truncated" title="Ce tour a commencé avant ce branchement">
+                suite du tour
+              </span>
+            }
+            <span class="mosaique__spacer"></span>
+            <!-- LE SEUL GESTE D'UNE TUILE : entrer. Écrire — et autoriser — se fait dans le
+                 terminal entier, devant son flux entier. -->
+            <a
+              class="mosaique__enter"
+              [routerLink]="['/atelier', tile.workspaceId]"
+              [attr.aria-label]="'Entrer dans le terminal de ' + tile.projectName"
+            >
+              Entrer
+              <mat-icon aria-hidden="true">arrow_forward</mat-icon>
+            </a>
+          </header>
+
+          <app-atelier-terminal
+            class="mosaique__flux"
+            [readOnly]="true"
+            [projectName]="tile.projectName"
+            [streaming]="tile.view.stream()"
+            [pendingConfirmation]="tile.view.pending()"
+            [elapsedLabel]="tile.view.elapsedLabel()"
+          ></app-atelier-terminal>
+        </article>
+      }
+    </div>
+  }
+</section>

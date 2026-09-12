@@ -127,4 +127,30 @@ describe('app.routes', () => {
       expect(paths.indexOf('forge')).toBeLessThan(paths.indexOf('forge/supervision'));
     });
   });
+
+  // ---- F-83 / SF-83-02 : la mosaïque, à côté de la supervision et sans rien masquer ----
+
+  describe('la mosaïque (F-83)', () => {
+    function children(): Route[] {
+      return routes[guardedParentIndex()].children ?? [];
+    }
+
+    it('déclare /forge/mosaique sous la route authentifiée', () => {
+      const mosaique = children().find((c) => c.path === 'forge/mosaique');
+
+      expect(mosaique).withContext('/forge/mosaique absente').toBeDefined();
+      expect(mosaique?.loadComponent).toBeDefined();
+    });
+
+    it('coexiste avec la supervision : deux densités, deux écrans, aucun masqué', () => {
+      const paths = children().map((c) => c.path);
+
+      // La supervision de F-76 n'est pas remplacée : ses aperçus gardent leur sens là où l'on ne
+      // veut précisément PAS de flux.
+      expect(paths).toContain('forge/supervision');
+      expect(paths).toContain('forge/mosaique');
+      expect(paths).toContain('atelier/:id');
+      expect(paths.indexOf('forge')).toBeLessThan(paths.indexOf('forge/mosaique'));
+    });
+  });
 });

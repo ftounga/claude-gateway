@@ -89,7 +89,11 @@ export const RUNNER_RESUME_COMMAND = 'java -jar claude-runner.jar';
     MatButtonToggleModule, MatIconModule, MatProgressSpinnerModule, MatTooltipModule, RouterLink,
   ],
   templateUrl: './atelier-terminal.component.html',
-  styleUrl: './atelier-terminal.component.scss',
+  // DEUX FEUILLES, ET C'EST DÉLIBÉRÉ (F-83 / SF-83-02) : la peau « lecture seule » vit à part.
+  // Le budget de style par composant (12 kB, `angular.json`) est une limite de build, et la feuille
+  // du terminal en était à un cheveu ; l'y avoir ajoutée a cassé `ng build` sans casser les tests.
+  // Séparer range aussi ce qui appartient à un mode dans un fichier qui le nomme.
+  styleUrls: ['./atelier-terminal.component.scss', './atelier-terminal-readonly.component.scss'],
 })
 export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
