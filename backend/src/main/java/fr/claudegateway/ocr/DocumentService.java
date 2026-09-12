@@ -2,6 +2,7 @@ package fr.claudegateway.ocr;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import org.slf4j.Logger;
@@ -10,6 +11,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
+import fr.claudegateway.docx.DocxExtraction;
+import fr.claudegateway.docx.DocxTextExtractor;
 import fr.claudegateway.ocr.provider.OcrDocument;
 import fr.claudegateway.ocr.provider.OcrExtraction;
 import fr.claudegateway.ocr.provider.OcrJobResult;
@@ -21,9 +24,19 @@ import fr.claudegateway.upload.FileTooLargeException;
 import fr.claudegateway.upload.UnsupportedFileTypeException;
 
 /**
- * Cœur du pipeline OCR (F-05 / SF-05-01) : valide un document soumis, décide du régime (image =
- * synchrone, PDF/TIFF = asynchrone), délègue l'extraction à l'interface {@link OcrProvider} (jamais
- * un SDK en direct) et persiste l'état sur l'entité {@link Document} portant le {@code user_id}.
+ * Cœur du pipeline documentaire (F-05 / SF-05-01) : valide un document soumis, décide du régime,
+ * délègue l'extraction et persiste l'état sur l'entité {@link Document} portant le {@code user_id}.
+ *
+ * <p><b>Quatre voies, pas trois</b> (F-86 / SF-86-02) :</p>
+ * <ul>
+ *   <li>image (PNG/JPEG) → OCR <b>synchrone</b> chez le fournisseur ({@link OcrProvider});</li>
+ *   <li>PDF/TIFF → OCR <b>asynchrone</b> (job + worker de relance);</li>
+ *   <li>Word ({@code .docx}) → extraction <b>locale</b> ({@link DocxTextExtractor}), qui ne passe
+ *       <b>pas</b> par {@link OcrProvider} : ses deux gestes décrivent une reconnaissance de
+ *       caractères sur une image, or un {@code .docx} n'est pas une image — il n'y a rien à
+ *       reconnaître, seulement à lire ;</li>
+ *   <li>texte → transmis tel quel par les chemins voisins.</li>
+ * </ul>
  *
  * <p>Le contenu binaire n'est jamais conservé : seul le texte extrait et le brut fournisseur le sont.
  * Les échecs fournisseur sont enregistrés sur le document (statut {@code FAILED}, message neutre),
@@ -34,16 +47,26 @@ public class DocumentService {
 
     private static final Logger log = LoggerFactory.getLogger(DocumentService.class);
 
+    /**
+     * Les types qui ne disent rien : c'est ce que le navigateur annonce pour un fichier dont le
+     * poste ne connaît pas l'extension. Seuls ceux-là déclenchent un examen du contenu.
+     */
+    private static final Set<String> UNDECLARED_TYPES =
+            Set.of("application/octet-stream", "application/x-zip-compressed");
+
     private final DocumentRepository documentRepository;
     private final OcrProvider ocrProvider;
+    private final DocxTextExtractor docxTextExtractor;
     private final OcrProperties properties;
 
     public DocumentService(
             DocumentRepository documentRepository,
             OcrProvider ocrProvider,
+            DocxTextExtractor docxTextExtractor,
             OcrProperties properties) {
         this.documentRepository = documentRepository;
         this.ocrProvider = ocrProvider;
+        this.docxTextExtractor = docxTextExtractor;
         this.properties = properties;
     }
 
@@ -73,6 +96,13 @@ public class DocumentService {
                     "Document trop volumineux : " + (size / (1024 * 1024)) + " Mo, maximum " + maxMb + " Mo.");
         }
         String mediaType = normalizeMediaType(file.getContentType());
+        byte[] content = null;
+        if (!properties.allowedTypeSet().contains(mediaType) && isUndeclared(mediaType)) {
+            // Seul chemin qui lit le fichier avant de l'avoir accepté, et seulement quand le type
+            // déclaré ne dit rien : voir resolveByContent. Le chemin nominal est inchangé.
+            content = readContent(file);
+            mediaType = resolveByContent(mediaType, content);
+        }
         if (!properties.allowedTypeSet().contains(mediaType)) {
             log.info("Document refusé : type « {} » hors liste blanche {}", mediaType, properties.allowedTypeSet());
             // Le type déclaré est dit à l'utilisateur : un PDF annoncé `application/octet-stream` par
@@ -82,9 +112,11 @@ public class DocumentService {
         }
         String filename = StringUtils.cleanPath(
                 StringUtils.hasText(file.getOriginalFilename()) ? file.getOriginalFilename() : "document");
-        byte[] content = readContent(file);
+        if (content == null) {
+            content = readContent(file);
+        }
 
-        OcrMode mode = properties.isSyncType(mediaType) ? OcrMode.SYNC : OcrMode.ASYNC;
+        OcrMode mode = resolveMode(mediaType);
         Document document = Document.builder()
                 .userId(userId)
                 .filename(filename)
@@ -94,6 +126,13 @@ public class DocumentService {
                 .ocrMode(mode)
                 .build();
 
+        if (mode == OcrMode.LOCAL) {
+            // Quatrième voie (F-86) : rien ne sort de la machine, et rien n'est persisté si le
+            // fichier n'est pas lisible — l'exception remonte en 422, comme un refus de type.
+            extractLocally(document, content);
+            return documentRepository.save(document);
+        }
+
         OcrDocument ocrDocument = new OcrDocument(filename, mediaType, content);
         if (mode == OcrMode.SYNC) {
             extractSynchronously(document, ocrDocument);
@@ -101,6 +140,45 @@ public class DocumentService {
             submitAsynchronously(document, ocrDocument);
         }
         return documentRepository.save(document);
+    }
+
+    /**
+     * Le régime d'extraction du type : <b>local d'abord</b> (F-86 : Word ne va chez aucun OCR),
+     * puis le routage synchrone/asynchrone existant.
+     */
+    private OcrMode resolveMode(String mediaType) {
+        if (properties.isLocalType(mediaType)) {
+            return OcrMode.LOCAL;
+        }
+        return properties.isSyncType(mediaType) ? OcrMode.SYNC : OcrMode.ASYNC;
+    }
+
+    /** Vrai si le type déclaré ne dit rien de ce que le fichier est. */
+    private boolean isUndeclared(String mediaType) {
+        return UNDECLARED_TYPES.contains(mediaType)
+                && properties.allowedTypeSet().contains(OcrProperties.DOCX_MEDIA_TYPE);
+    }
+
+    /**
+     * Le type à retenir quand celui que le navigateur déclare ne vaut rien.
+     *
+     * <p>Un poste sans suite bureautique installée n'associe aucun type MIME à l'extension
+     * {@code .docx} : le navigateur annonce {@code application/octet-stream}, ou rien. Refuser là
+     * serait refuser exactement la personne que F-86 existe pour servir — celle qui découvre le
+     * produit avec son premier fichier.
+     *
+     * <p>C'est la symétrie du garde-fou de SF-86-01 : un fichier <b>renommé</b> est refusé sur son
+     * contenu, donc un fichier <b>mal déclaré</b> est admis sur son contenu. Dans les deux sens,
+     * c'est le contenu qui décide, jamais le nom ni l'étiquette. Le reniflage ne s'applique
+     * <b>qu'</b>à un type déclaré vide ou générique : un type déclaré et faux ({@code image/bmp}
+     * pour un exécutable) n'ouvre aucune porte, et un type déclaré et accepté n'est jamais examiné.
+     */
+    private String resolveByContent(String declaredType, byte[] content) {
+        if (docxTextExtractor.looksLikeDocx(content)) {
+            log.info("Document déclaré « {} » reconnu comme document Word sur son contenu", declaredType);
+            return OcrProperties.DOCX_MEDIA_TYPE;
+        }
+        return declaredType;
     }
 
     /** Liste des documents de l'utilisateur courant (isolation {@code user_id}). */
@@ -189,6 +267,25 @@ public class DocumentService {
             log.warn("Polling OCR en échec (document={}) — réessai au prochain cycle", document.getId());
             return false;
         }
+    }
+
+    /**
+     * Extraction Word, <b>sur la machine</b> (F-86 / SF-86-02). Aucun appel à {@link OcrProvider} :
+     * un {@code .docx} n'est pas une image, il n'y a rien à reconnaître, seulement à lire.
+     *
+     * <p>Un échec n'est <b>pas</b> enregistré en {@code FAILED} : les statuts {@code FAILED}
+     * existants sont des échecs <i>fournisseur</i>, survenus après coup sur un document valide dont
+     * l'utilisateur attend le résultat. Un {@code .docx} illisible est un échec <i>de la requête</i>,
+     * découvert immédiatement — au même titre qu'un type refusé ou une taille excessive, deux refus
+     * qui ne persistent rien. L'exception remonte donc, et le contrôleur d'erreurs la rend en 422
+     * avec la phrase destinée à l'utilisateur.
+     */
+    private void extractLocally(Document document, byte[] content) {
+        DocxExtraction extraction = docxTextExtractor.extract(content);
+        document.setExtractedText(extraction.text());
+        document.setStatus(DocumentStatus.EXTRACTED);
+        // Ni contenu, ni nom de fichier : seuls le type et un compte d'images non lues.
+        log.info("Document Word extrait sur la machine ({} image(s) non lue(s))", extraction.ignoredImages());
     }
 
     private void extractSynchronously(Document document, OcrDocument ocrDocument) {

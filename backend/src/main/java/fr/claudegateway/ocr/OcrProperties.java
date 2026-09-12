@@ -15,17 +15,25 @@ import org.springframework.util.unit.DataSize;
  * @param maxSize      taille maximale d'un document soumis
  * @param allowedTypes liste blanche des types MIME acceptés
  * @param syncTypes    sous-ensemble traité en OCR synchrone (images) ; le reste part en asynchrone
+ * @param localTypes   sous-ensemble extrait <b>sur la machine</b>, sans fournisseur (F-86 : Word).
+ *                     Testé <b>avant</b> {@code syncTypes} : ces types ne vont chez aucun OCR
  */
 @ConfigurationProperties(prefix = "app.ocr")
 public record OcrProperties(
         String provider,
         DataSize maxSize,
         List<String> allowedTypes,
-        List<String> syncTypes) {
+        List<String> syncTypes,
+        List<String> localTypes) {
+
+    /** Le type MIME d'un document Word {@code .docx} (OOXML WordprocessingML). */
+    public static final String DOCX_MEDIA_TYPE =
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
     private static final List<String> DEFAULT_ALLOWED =
-            List.of("application/pdf", "image/png", "image/jpeg", "image/tiff");
+            List.of("application/pdf", "image/png", "image/jpeg", "image/tiff", DOCX_MEDIA_TYPE);
     private static final List<String> DEFAULT_SYNC = List.of("image/png", "image/jpeg");
+    private static final List<String> DEFAULT_LOCAL = List.of(DOCX_MEDIA_TYPE);
 
     public OcrProperties {
         if (provider == null || provider.isBlank()) {
@@ -39,6 +47,9 @@ public record OcrProperties(
         }
         if (syncTypes == null || syncTypes.isEmpty()) {
             syncTypes = DEFAULT_SYNC;
+        }
+        if (localTypes == null || localTypes.isEmpty()) {
+            localTypes = DEFAULT_LOCAL;
         }
     }
 
@@ -70,5 +81,17 @@ public record OcrProperties(
     /** Vrai si le type MIME doit être traité en OCR synchrone (image), faux ⇒ asynchrone. */
     public boolean isSyncType(String mediaType) {
         return mediaType != null && syncTypes.stream().anyMatch(t -> t.equalsIgnoreCase(mediaType));
+    }
+
+    /**
+     * Vrai si le type MIME s'extrait <b>sur la machine</b>, sans fournisseur OCR (F-86 : Word).
+     *
+     * <p>Interrogé <b>avant</b> {@link #isSyncType(String)} : un type local ne va chez aucun OCR,
+     * ni synchrone ni asynchrone. Le routage du pipeline reste ainsi entièrement lisible en
+     * configuration, comme {@code sync-types} — le jour où un autre format se lit sur la machine,
+     * il s'ajoute sans livraison.
+     */
+    public boolean isLocalType(String mediaType) {
+        return mediaType != null && localTypes.stream().anyMatch(t -> t.equalsIgnoreCase(mediaType));
     }
 }

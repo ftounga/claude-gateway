@@ -36,7 +36,8 @@ class AllowedTypesDerivationTest {
                 "stub",
                 DataSize.ofMegabytes(20),
                 List.of("application/PDF", "image/TIFF", "application/pdf"),
-                List.of("image/png"));
+                List.of("image/png"),
+                null);
 
         assertThat(properties.normalizedAllowedTypes())
                 .containsExactly("application/pdf", "image/tiff");
@@ -47,13 +48,14 @@ class AllowedTypesDerivationTest {
     @Test
     void emptyConfigurationFallsBackToDefaultsOnBothViews() {
         UploadProperties upload = new UploadProperties(List.of(), null);
-        OcrProperties ocr = new OcrProperties(null, null, List.of(), List.of());
+        OcrProperties ocr = new OcrProperties(null, null, List.of(), List.of(), List.of());
 
         assertThat(upload.normalizedAllowedTypes()).contains("application/pdf");
         assertThat(upload.allowedTypeSet())
                 .containsExactlyInAnyOrderElementsOf(upload.normalizedAllowedTypes());
         assertThat(ocr.normalizedAllowedTypes())
-                .containsExactly("application/pdf", "image/png", "image/jpeg", "image/tiff");
+                .containsExactly("application/pdf", "image/png", "image/jpeg", "image/tiff",
+                        OcrProperties.DOCX_MEDIA_TYPE);
         assertThat(ocr.allowedTypeSet())
                 .containsExactlyInAnyOrderElementsOf(ocr.normalizedAllowedTypes());
     }
