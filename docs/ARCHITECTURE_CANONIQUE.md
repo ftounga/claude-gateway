@@ -582,6 +582,21 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     un nettoyage ultérieur — garder l'original est ce qui rend la reprise réversible.
   - `applied_version` **fige** la version appliquée : un poste peut rester en v2 pendant que le
     paquet passe en v3. Rien ne met à jour un poste dans le dos de son propriétaire.
+  - `governance_map_growth` — **ce que la carte a gagné** (F-93 / SF-93-02, migration `078`) :
+    `id (uuid)`, `user_id (uuid)`, `host_id (uuid)`, `path (varchar 512)`, `facts (int)`,
+    `observed_at`, `first_facts (int)`, `first_seen_at`, `last_gain (int, nullable)`,
+    `last_gain_at (nullable)`. Unicité `(user_id, host_id, path)`.
+    **Une ligne par fichier de carte, jamais un journal** : la question tient en une phrase —
+    « qu'est-ce que la carte a gagné, et quand ? » — et un journal d'observations grossirait sans fin
+    pour la même réponse. `first_*` donne le point de départ, `facts`/`observed_at` l'état courant,
+    `last_gain*` le dernier gain. **On constate, on ne croit pas sur parole** : ce qui est retenu est
+    le **delta observé** du nombre de faits, jamais ce qu'un modèle a déclaré avoir promu — le delta
+    vaut quelle que soit la main qui a écrit. Une **première** observation pose une référence et ne
+    rend **aucun gain** (une carte déjà pleine le premier jour n'a rien gagné) ; une **diminution**
+    met simplement le compte à jour (une carte qu'on élague a été rangée, pas appauvrie) ; une
+    lecture **tronquée** n'écrit rien (un compte incomplet n'est pas un compte). L'écriture vit dans
+    sa propre transaction et toute panne est absorbée : **un journal de croissance n'empêche jamais
+    de lire une carte**.
   - **Isolation** : `user_id` est **en tête** de chaque index d'unicité et aucune méthode de
     repository n'existe sans lui — c'est une propriété des interfaces, pas une précaution des
     appelants. Le **poste** est en outre vérifié comme **possédé** avant toute écriture, et ses
@@ -860,7 +875,7 @@ Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 rée
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations/governance_host_activations via `user_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations/governance_host_activations/governance_map_growth via `user_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
 
 ---
 

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-93 / SF-93-02 — CE QUE LA CARTE A GAGNÉ.
+
+      SF-92-02 compte les faits d'une carte, et l'écran les affiche. Un compteur ne montre pourtant
+      AUCUNE augmentation : il dit 16 aujourd'hui et 16 demain, et rien ne distingue une carte qui
+      grossit d'une carte morte. Ce qui manquait est la MÉMOIRE DE LA LECTURE PRÉCÉDENTE — sans elle,
+      la promotion reste une corvée invisible, et « à chaque projet, la connaissance de l'infra
+      augmente » reste une phrase.
+
+      UNE LIGNE PAR FICHIER DE CARTE, pas un journal. La question à laquelle cette table répond tient
+      en une phrase — « qu'est-ce que la carte a gagné, et quand ? » —, et un journal d'observations
+      grossirait sans fin pour la même réponse. `first_facts` / `first_seen_at` donnent le point de
+      départ, `facts` / `observed_at` l'état courant, `last_gain` / `last_gain_at` le dernier gain.
+
+      ON CONSTATE, ON NE CROIT PAS SUR PAROLE. Ce qui est retenu est le DELTA OBSERVÉ du nombre de
+      faits, jamais ce qu'un modèle a déclaré avoir promu : le cadrage (§5) a déjà jugé
+      l'auto-déclaration insuffisante — un modèle qui oublie de promouvoir oubliera de le déclarer.
+      Le delta, lui, vaut quelle que soit la main qui a écrit : un tour d'agent, le terminal du
+      poste, ou l'utilisateur dans son éditeur.
+
+      ISOLATION : `user_id` est en TÊTE de l'index d'unicité, et aucune lecture n'existe sans lui.
+
+      RÉVERSIBLE sans condition : la table est neuve, aucune donnée existante n'est touchée, et son
+      effacement rend l'état antérieur intact — le relevé de carte continue de fonctionner sans elle,
+      simplement sans dire ce qui a été gagné.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="078-governance-map-growth-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="governance_map_growth">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="path" type="varchar(512)"><constraints nullable="false"/></column>
+            <column name="facts" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="observed_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="first_facts" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="first_seen_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="last_gain" type="int"/>
+            <column name="last_gain_at" type="timestamptz"/>
+        </createTable>
+        <createIndex tableName="governance_map_growth"
+                     indexName="idx_governance_map_growth_user_host_path" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="path"/>
+        </createIndex>
+        <rollback><dropTable tableName="governance_map_growth"/></rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="078-governance-map-growth-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="governance_map_growth">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="path" type="varchar(512)"><constraints nullable="false"/></column>
+            <column name="facts" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="observed_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="first_facts" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="first_seen_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="last_gain" type="int"/>
+            <column name="last_gain_at" type="timestamp with time zone"/>
+        </createTable>
+        <createIndex tableName="governance_map_growth"
+                     indexName="idx_governance_map_growth_user_host_path" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="path"/>
+        </createIndex>
+        <rollback><dropTable tableName="governance_map_growth"/></rollback>
+    </changeSet>
+
+</databaseChangeLog>
