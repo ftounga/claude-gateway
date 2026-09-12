@@ -37,6 +37,7 @@ import fr.claudegateway.terminals.dto.TerminalPreview;
 class LiveTerminalServiceTest {
 
     @Mock private LiveTerminalRepository repository;
+    @Mock private LiveTerminalClaimWriter claimWriter;
     @Mock private WorkspaceService workspaceService;
     @Mock private WorkspaceRepository workspaceRepository;
     @Mock private RunnerHostRepository hostRepository;
@@ -44,8 +45,8 @@ class LiveTerminalServiceTest {
     private final UUID alice = UUID.randomUUID();
 
     private LiveTerminalService service(int limit, Duration ttl) {
-        return new LiveTerminalService(repository, workspaceService, workspaceRepository,
-                hostRepository, limit, ttl);
+        return new LiveTerminalService(repository, claimWriter, workspaceService,
+                workspaceRepository, hostRepository, limit, ttl);
     }
 
     @Test

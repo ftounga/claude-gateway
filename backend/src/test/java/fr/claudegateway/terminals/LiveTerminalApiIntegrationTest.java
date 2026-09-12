@@ -8,7 +8,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -471,6 +480,112 @@ class LiveTerminalApiIntegrationTest {
                         .header("Authorization", "Bearer " + aliceToken))
                 .andExpect(jsonPath("$..terminalPreview")
                         .value(org.hamcrest.Matchers.everyItem(org.hamcrest.Matchers.nullValue())));
+    }
+
+    // ------------------------------------------ la concurrence (F-78 / SF-78-01)
+
+    /** Nombre d'appels lancés ensemble. Sous la taille du pool de connexions (10 par défaut). */
+    private static final int CONCURRENT_CALLERS = 8;
+
+    /** Lance {@code callers} battements en même temps et rend le code HTTP rendu à chacun. */
+    private List<Integer> beatTogether(int callers, java.util.function.IntFunction<String> body)
+            throws Exception {
+        ExecutorService pool = Executors.newFixedThreadPool(callers);
+        CountDownLatch gate = new CountDownLatch(1);
+        List<Future<Integer>> pending = new ArrayList<>();
+        try {
+            for (int i = 0; i < callers; i++) {
+                final String content = body.apply(i);
+                pending.add(pool.submit(() -> {
+                    gate.await();
+                    return mockMvc.perform(post(claimUrl(aliceProject.getId())).contextPath("/api")
+                                    .header("Authorization", "Bearer " + aliceToken)
+                                    .contentType(MediaType.APPLICATION_JSON).content(content))
+                            .andReturn().getResponse().getStatus();
+                }));
+            }
+            gate.countDown();
+            List<Integer> statuses = new ArrayList<>();
+            for (Future<Integer> future : pending) {
+                statuses.add(future.get(60, TimeUnit.SECONDS));
+            }
+            return statuses;
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void concurrentHeartbeatsOfTheSameTabNeverCollide() throws Exception {
+        // LE DÉFAUT DU 2026-09-12, REPRODUIT. F-76 a branché trois sources d'envoi sur ce seul
+        // appel — battement de 30 s, envoi immédiat au changement d'activité, envoi apaisé à 5 s au
+        // défilement des lignes. Quand deux arrivent ensemble, l'ancienne prise de place les
+        // laissait insérer tous les deux et le second violait idx_live_terminals_user_session :
+        // 500 en boucle, à un écran qui ne demandait qu'à tenir sa place.
+        List<Integer> statuses = beatTogether(CONCURRENT_CALLERS, i -> i % 2 == 0
+                ? bodyWithPreview("tab-1", "RUNNING", "npm test", "PASS")
+                : body("tab-1"));
+
+        // ZÉRO ERREUR. Pas un seul 500 : c'est toute la feature.
+        assertThat(statuses).containsOnly(200);
+        // UNE SEULE PLACE : un onglet ne consomme jamais qu'une place, même en se bousculant.
+        assertThat(liveTerminalRepository.count()).isEqualTo(1);
+        assertThat(liveTerminalRepository.findByUserIdAndSessionId(aliceId, "tab-1")).isPresent();
+    }
+
+    @Test
+    void concurrentHeartbeatsKeepTheOldestOpenedAt() throws Exception {
+        // opened_at décide QUI garde sa place quand deux prises se croisent. Un renouvellement qui
+        // le remettrait à l'instant présent ferait passer un vieil onglet pour un nouveau et
+        // changerait qui est refusé au plafond.
+        claim(aliceToken, aliceProject.getId(), "tab-1");
+        OffsetDateTime firstOpening = liveTerminalRepository
+                .findByUserIdAndSessionId(aliceId, "tab-1").orElseThrow().getOpenedAt();
+
+        assertThat(beatTogether(CONCURRENT_CALLERS, i -> body("tab-1"))).containsOnly(200);
+
+        assertThat(liveTerminalRepository.findByUserIdAndSessionId(aliceId, "tab-1").orElseThrow()
+                .getOpenedAt()).isEqualTo(firstOpening);
+    }
+
+    @Test
+    void concurrentTabsRacingForTheLastPlacesNeverGetAnError() throws Exception {
+        // L'AUTRE COURSE : huit ONGLETS DIFFÉRENTS qui se jettent ensemble sur les places libres.
+        // Ce qui est vérifié ici, c'est qu'aucun n'obtient une panne : soit sa place, soit le refus
+        // du PO. Le compte EXACT de quatre, lui, est tenu par les tests séquentiels du plafond —
+        // le recompte lit les places COMMITÉES, propriété de F-70 que F-78 ne change pas.
+        List<Integer> statuses = beatTogether(CONCURRENT_CALLERS, i -> body("race-" + i));
+
+        assertThat(statuses).isSubsetOf(200, 409);
+        assertThat(statuses).contains(200);
+        // L'index unique n'a pas été bousculé : pas deux lignes pour un même onglet.
+        Set<String> sessions = new HashSet<>();
+        liveTerminalRepository.findAll().forEach(terminal -> sessions.add(terminal.getSessionId()));
+        assertThat(sessions).hasSize((int) liveTerminalRepository.count());
+    }
+
+    @Test
+    void aTabRefusedWhileBeatingLeavesTheRegisterAtExactlyFour() throws Exception {
+        // Le cinquième onglet bat, encore et encore, comme le fait un vrai écran refusé. Chaque
+        // battement doit rendre le MÊME refus, et ne JAMAIS laisser de trace : l'écran qui reçoit
+        // le 409 relit le registre et doit y compter exactement quatre.
+        for (int i = 1; i <= 4; i++) {
+            claim(aliceToken, aliceProject.getId(), "tab-" + i);
+        }
+
+        for (int beat = 0; beat < 3; beat++) {
+            mockMvc.perform(post(claimUrl(aliceProject.getId())).contextPath("/api")
+                            .header("Authorization", "Bearer " + aliceToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(bodyWithPreview("tab-5", "RUNNING", "npm test", "PASS")))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.error").value("terminal_limit_reached"));
+        }
+
+        mockMvc.perform(get("/api/terminals/live").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$.live").value(4));
+        assertThat(liveTerminalRepository.findByUserIdAndSessionId(aliceId, "tab-5")).isEmpty();
     }
 
     @Test
