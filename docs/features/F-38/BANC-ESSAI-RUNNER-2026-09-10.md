@@ -1,7 +1,13 @@
-# Banc d'essai runner — protocole du 2026-09-10
+# Banc d'essai runner — protocole du 2026-09-10, révisé le 2026-09-12
 
-> Première mise en service **après F-48** : le poste est désormais l'unité. Un seul appairage
-> pour toute une racine. À dérouler chez un client, dans l'ordre, en notant ce qui coince.
+> **Le parcours a entièrement changé le 2026-09-12** (F-72 à F-76), après la séance de test du PO.
+> On **connecte un poste**, puis on y **ajoute des projets** — et non plus l'inverse. Le
+> **confinement n'existe plus** et la **porte de confirmation est réarmée par défaut**. Le poste a
+> son **propre terminal**. La **gouvernance s'active par poste**, et l'on **lit les fichiers avant
+> d'accepter**. Enfin, une **vue de supervision** montre les terminaux au travail.
+>
+> Le poste reste l'unité (F-48) : un seul appairage pour toute une racine. À dérouler chez un
+> client, dans l'ordre, en notant ce qui coince.
 
 ---
 
@@ -118,42 +124,106 @@ sur la seule virgule, il devenait une entrée unique ne correspondant à aucun h
 exclusions tombaient en silence. Le runner le signale sans en faire une erreur — mais `curl`, lui,
 attend toujours des virgules.
 
-## Étape 1 — Le poste
+## Étape 1 — Connecter un poste
 
-1. ☐ Créer un **poste** dans l'application, nommé du client (ex. `CAGIP`)
-2. ☐ Déclarer la **racine** : le dossier qui contient les projets (ex. `~/dev`, `C:\dev`)
+**Le parcours a entièrement changé (F-72) : on part de la machine, plus du projet.** À la racine de
+la Forge, « Nouveau projet » **a disparu** ; il ne reste que **« Connecter un poste »**.
+
+1. ☐ « Connecter un poste » → le nommer du nom du **client** (ex. `CAGIP`). **Le nom n'est demandé
+   qu'une fois** : plus de seconde saisie dans le dialogue d'appairage, plus deux entités du même nom
+2. ☐ Vérifier l'accès réseau — l'étape 0 ci-dessus, désormais **dans l'écran** (F-45, F-55)
 3. ☐ Générer le code d'appairage — **maintenant seulement** : il expire en 5 minutes
 4. ☐ Télécharger le format proposé (le poste consulté est présélectionné)
-5. ☐ Lancer le runner
+5. ☐ Lancer le runner, qui **déclare lui-même sa racine**
+6. ☐ **Vérifier qu'à ce stade le poste ne porte aucun projet, et que l'écran le dit** : on vient de
+   brancher une machine, c'est normal. Un écran qui aurait seulement l'air vide est un défaut à noter
 
-**Ce qu'on vérifie ici** : un seul appairage suffit pour toute la racine. C'est le gain de F-48.
+**Ce qu'on vérifie ici** : un seul appairage pour toute la racine (F-48), et **une seule intention,
+un seul nom** (F-72). Le parcours de mise en service est le même qu'avant — proxy, `407`, paquet
+autonome, commande de reprise —, seul son **mode** change ; il se déduit de l'absence de projet.
 
-## Étape 2 — Les projets
+## Étape 2 — Y ajouter des projets
 
-6. ☐ Ouvrir un **premier projet** = un dossier sous la racine → aucun code, aucune installation
-7. ☐ Ouvrir un **second projet** → même chose, et **sa propre conversation**
-8. ☐ Vérifier que le projet A ne peut pas lire le projet B *(confinement par sous-dossier)*
+7. ☐ Sur la carte du poste, **« Ajouter un projet »** → l'explorateur liste les dossiers de la
+   racine ; **cliquer** un dossier suffit — aucun chemin à taper, aucun nom à redonner
+8. ☐ Recommencer pour un **second projet** → **sans jamais réappairer**, et avec **sa propre
+   conversation**. C'est le bénéfice de F-48, enfin atteignable depuis l'écran
+9. ☐ Re-cliquer le **même dossier** → l'écran doit **refuser** en **nommant** le projet déjà ouvert
+   (et non faire semblant de réussir)
+10. ☐ Les dossiers **non encore ouverts** apparaissent-ils sur la carte, **en retrait** ? On voit ce
+    que la machine contient **sans que rien ne soit créé** ; au-delà de huit, la liste est
+    **tronquée et le dit** ; le bruit (dossiers cachés, `node_modules`, `.runnerignore`) n'y figure pas
+11. ☐ Un **dépôt GitHub** ou une **archive** n'a pas de machine : passer par la carte **« Hébergé »**
+    (F-71), désormais **toujours affichée, même vide**, puisqu'elle porte ces gestes
 
-## Étape 3 — L'exécution
+> **Le confinement par sous-dossier n'existe plus** (F-73). L'ancien point « vérifier que le projet A
+> ne peut pas lire le projet B » **est retiré du protocole** : il éprouvait une promesse qui n'a
+> jamais été tenue pour `bash`. Ce n'est pas un défaut à noter — c'est la décision.
 
-9. ☐ Demander un listing → doit répondre **sans demander d'autorisation** (porte désarmée par défaut)
-10. ☐ Armer la porte dans les réglages, redemander une commande → l'invite doit **apparaître tout de suite**
-11. ☐ Cliquer « Autoriser » → la commande s'exécute
-12. ☐ Vérifier le journal d'audit
+## Étape 3 — Le terminal du poste
 
-## Étape 4 — Le reste
+12. ☐ Sur la carte d'une **machine** (jamais sur « Hébergé », qui n'en est pas une),
+    **« Terminal du poste »** → un terminal **à la racine, sans projet** : c'est là qu'on fait un
+    `git clone`, un VPN, un `terraform`, l'installation d'un outil — **et tout le premier jour, quand
+    la racine est vide et qu'il n'y a aucun dossier à ajouter** (F-74)
+13. ☐ Vérifier qu'il **n'apparaît pas comme un projet** sur la carte, qu'il se **nomme** dans la
+    liste latérale, et qu'il porte le même **signe de vie** que les autres — il compte dans le
+    plafond de quatre (F-70)
 
-13. ☐ Le **guide d'accueil** se déclenche-t-il à la première connexion ?
-14. ☐ La **vue d'ensemble** montre-t-elle le poste, son système, son interpréteur, ses projets ?
-14 bis. ☐ **L'appartenance se voit-elle ?** Chaque poste porte une couleur et des initiales, reprises
-    dans la liste des projets **et dans la barre du terminal**. Deux clients ouverts côte à côte
-    doivent se distinguer d'un coup d'œil — c'est le point à juger à l'œil, il n'a jamais été vu
-    en vrai.
-14 ter. ☐ Le menu dit-il **Forge** partout, et plus jamais « Atelier » ?
-14 quater. ☐ Le runner annonce-t-il au démarrage **par où il sort** (direct, proxy, relais local) et
-    sous quels droits ?
-15. ☐ Le **chatbot d'aide** répond-il à « comment configurer un proxy » ?
-16. ☐ Activer un **paquet de gouvernance** → l'écran annonce-t-il ce qu'il va écrire, et où ?
+## Étape 4 — L'exécution, porte armée
+
+14. ☐ Demander une commande → **l'invite doit apparaître** : la porte de confirmation est
+    **réarmée par défaut** (F-73), à l'inverse du protocole précédent. Les projets créés avant
+    gardent le réglage qu'ils avaient
+15. ☐ **L'invite dit-elle la portée** — ce que la commande peut atteindre ? C'est ce qui remplace le
+    confinement : un utilisateur informé décide, un utilisateur rassuré à tort ne décide pas
+16. ☐ Cliquer « Autoriser » → la commande s'exécute
+17. ☐ Désarmer la porte dans les réglages → la commande suivante passe sans invite
+18. ☐ Vérifier le **journal d'audit**, puis le **coupe-circuit**
+19. ☐ Au démarrage, le runner annonce-t-il sa **portée**, **par où il sort** (direct, proxy, relais
+    local) et **sous quels droits** ?
+
+## Étape 5 — Voir travailler ses terminaux
+
+20. ☐ Ouvrir **deux ou trois terminaux** sur des clients différents, les faire travailler, puis
+    **« Voir travailler »** depuis l'accueil de la Forge (`/forge/supervision`) → **une tuile par
+    terminal** : ses dernières lignes, ce qu'il fait à l'instant, la **couleur du client**, un clic
+    pour entrer (F-76)
+21. ☐ Provoquer une **attente d'autorisation** dans l'un d'eux, puis **regarder ailleurs** : la tuile
+    doit **passer en tête**, se signaler **franchement**, et l'en-tête la **compter en toutes
+    lettres**. **C'est le point le plus important de la séance** — c'est exactement ce qui a échappé
+    douze heures le 2026-09-08
+22. ☐ Revenir sur l'**accueil de la Forge** : chaque projet actif montre-t-il ses dernières lignes
+    **sous son nom**, sans qu'on ait eu besoin d'ouvrir la vue de supervision ?
+23. ☐ Ouvrir un **cinquième** terminal → refus explicite (« quatre terminaux actifs au maximum »),
+    les quatre à fermer étant **nommés**. Vérifier que la vue de supervision, elle, **ne prend aucune
+    place** au registre : regarder ne coûte pas un flux
+
+## Étape 6 — La gouvernance, par poste
+
+24. ☐ Dans `/gouvernance`, **choisir un poste** — et non un projet : l'activation a changé de grain
+    (F-75). Retenir un paquet, l'activer **une fois**
+25. ☐ **Avant d'accepter, peut-on lire ?** Cliquer un fichier du paquet doit l'**ouvrir en lecture
+    seule**. Quand le fichier **existe déjà** sur la machine, le **différentiel** doit montrer ce qui
+    sera **laissé en place** : le dépôt est idempotent et n'écrase jamais
+26. ☐ L'écran annonce-t-il **ce qu'il va écrire et où**, et l'activation est-elle une **vraie
+    confirmation** — la liste des fichiers, leur contenu, ceux qui existent déjà ?
+27. ☐ Vérifier que **tous les dossiers du poste** l'ont reçue, puis **ajouter un projet après coup**
+    → hérite-t-il **sans qu'on y pense** ? C'est tout l'intérêt du bootstrap idempotent
+
+## Étape 7 — Le reste
+
+28. ☐ Le **guide d'accueil** se déclenche-t-il à la première connexion, et conduit-il bien à
+    « Connecter un poste » (et à « Hébergé » pour un dépôt) ?
+29. ☐ La **vue d'ensemble** montre-t-elle le poste, son système, son interpréteur, ses projets ?
+30. ☐ **L'appartenance se voit-elle ?** Chaque poste porte une couleur et des initiales, reprises
+    dans la liste des projets, **dans la barre du terminal** et **sur les tuiles de supervision**.
+    Deux clients ouverts côte à côte doivent se distinguer d'un coup d'œil — c'est le point à juger
+    à l'œil, il n'a jamais été vu en vrai
+31. ☐ Le menu dit-il **Forge** partout, et plus jamais « Atelier » ?
+32. ☐ Le **chatbot d'aide** répond-il à « comment configurer un proxy » ?
+33. ☐ **Supprimer** un projet, puis le poste (F-69) : la garde refuse-t-elle tant qu'il reste des
+    projets, et le **terminal du poste** part-il bien avec le poste ?
 
 ---
 

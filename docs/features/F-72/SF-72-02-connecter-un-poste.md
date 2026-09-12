@@ -10,7 +10,7 @@
 
 ## Statut
 
-`done`
+`done` — mergée le 2026-09-12 (PR #397)
 
 ## Date de création
 
