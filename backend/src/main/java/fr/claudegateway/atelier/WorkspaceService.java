@@ -147,12 +147,14 @@ public class WorkspaceService {
                 .name(cleaned)
                 .source(WorkspaceSource.LOCAL)
                 .executionTarget(WorkspaceExecutionTarget.RUNNER)
-                // L'exécution est AUTORISÉE PAR DÉFAUT (F-47 / SF-47-04, décision du PO du
-                // 2026-09-10 qui tranche OQ-14). Sur une machine que l'utilisateur a lui-même
-                // connectée, avec son propre appairage, dans un dossier qu'il a lui-même désigné,
-                // la première commande n'attend plus un clic. La porte reste activable projet par
-                // projet ; le journal d'audit et le coupe-circuit, eux, ne se désactivent pas.
-                .agentAskBeforeBash(false)
+                // La porte de confirmation est ARMÉE PAR DÉFAUT (F-73 / SF-73-02, décision du PO
+                // du 2026-09-12 qui retranche OQ-14 — ADR-019). Elle annule le défaut de SF-47-04,
+                // pris quand le confinement du runner paraissait exister : il n'existait pas pour
+                // bash, et il est retiré depuis SF-73-01. La porte reste réglable projet par projet
+                // depuis l'en-tête du terminal ; le journal d'audit et le coupe-circuit, eux, ne se
+                // désactivent pas. Posé explicitement ici, même si l'entité porte le même défaut :
+                // c'est le chemin de création du mode runner, celui que cette décision vise.
+                .agentAskBeforeBash(true)
                 .build()));
     }
 

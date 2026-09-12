@@ -486,9 +486,9 @@ public class RunnerCallDispatcher {
      *
      * <p>Le projet voyage <b>par appel</b> parce que le runner est désormais appairé à une machine
      * et non à un dossier : c'est cette valeur — le chemin relatif du projet sous la racine du poste,
-     * {@code ""} pour la racine — sur laquelle le runner referme son confinement à chaque appel
-     * (SF-48-02). Elle est toujours émise, y compris vide : un champ absent laisserait le runner
-     * choisir, et le confinement ne se déduit pas.</p>
+     * {@code ""} pour la racine — qui donne au runner le <b>dossier de départ</b> du tour (SF-48-02 ;
+     * depuis F-73 / SF-73-01 elle ne borne plus ce qu'un tour peut atteindre). Elle est toujours
+     * émise, y compris vide : un champ absent laisserait le runner choisir où démarrer.</p>
      */
     private String toolCallFrame(String callId, String tool, JsonNode input, long timeoutMs,
             String projectPath) {

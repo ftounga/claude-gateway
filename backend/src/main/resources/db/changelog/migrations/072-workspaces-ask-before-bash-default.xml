@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      SF-73-02 — La porte de confirmation redevient ARMÉE PAR DÉFAUT (F-73, ADR-019).
+
+      La migration 044 avait posé `agent_ask_before_bash` à `false` par défaut, et SF-47-04 avait
+      aligné les chemins de création sur cette valeur. Ce défaut a été pris le 2026-09-10 alors que
+      le confinement du runner *paraissait* exister ; vérification faite le 2026-09-12, il n'existait
+      pas pour `bash` — seul le `cwd` d'une commande passait par la garde, jamais la commande
+      elle-même. Le confinement est retiré (SF-73-01), la porte redevient ce qui s'interpose.
+
+      Seul le DÉFAUT DE COLONNE change : AUCUN `UPDATE`. Les projets existants gardent exactement le
+      réglage qu'ils portent — celui qui l'avait éteint l'avait voulu, et rien ne se réarme dans son
+      dos. Réversible : le rollback ramène le défaut à `false`, sans toucher aux données non plus.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="072-workspaces-ask-before-bash-default-postgresql" author="claude-gateway" dbms="postgresql">
+        <addDefaultValue tableName="workspaces" columnName="agent_ask_before_bash"
+                         columnDataType="boolean" defaultValueBoolean="true"/>
+        <rollback>
+            <addDefaultValue tableName="workspaces" columnName="agent_ask_before_bash"
+                             columnDataType="boolean" defaultValueBoolean="false"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="072-workspaces-ask-before-bash-default-h2" author="claude-gateway" dbms="h2">
+        <addDefaultValue tableName="workspaces" columnName="agent_ask_before_bash"
+                         columnDataType="boolean" defaultValueBoolean="true"/>
+        <rollback>
+            <addDefaultValue tableName="workspaces" columnName="agent_ask_before_bash"
+                             columnDataType="boolean" defaultValueBoolean="false"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
