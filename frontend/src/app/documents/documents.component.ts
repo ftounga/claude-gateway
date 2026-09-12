@@ -23,6 +23,11 @@ import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 import { DocumentsService } from '../core/services/documents.service';
 import { FileFormatsService } from '../core/services/file-formats.service';
 import {
+  REFUSAL_SNACK_DURATION_MS,
+  fileRejectionMessage,
+  rejectionSentences,
+} from '../shared/file-format-names';
+import {
   ConfirmDialogComponent,
   ConfirmDialogData,
 } from '../chat/confirm-dialog/confirm-dialog.component';
@@ -85,6 +90,14 @@ export class DocumentsComponent implements OnInit, AfterViewInit, OnDestroy {
    */
   readonly accept = computed(() => this.fileFormats.accept('documents'));
 
+  /** La liste blanche du serveur, ou `null` tant qu'elle n'est pas connue (F-85 / SF-85-02). */
+  readonly acceptedMediaTypes = computed(
+    () => this.fileFormats.profile('documents')?.mediaTypes ?? null,
+  );
+
+  /** Vrai pendant qu'un fichier survole la zone de dépôt : la zone le montre. */
+  readonly dragging = signal(false);
+
   readonly displayedColumns = ['filename', 'mediaType', 'status', 'chunks', 'createdAt', 'actions'];
   readonly dataSource = new MatTableDataSource<DocumentResponse>([]);
   readonly loading = signal(true);
@@ -123,12 +136,55 @@ export class DocumentsComponent implements OnInit, AfterViewInit, OnDestroy {
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input.files && input.files.length > 0 ? input.files[0] : null;
-    this.selectedFile.set(file);
     // Le champ est vidé pour que re-choisir le même fichier redéclenche bien un `change`.
     input.value = '';
-    if (file) {
-      this.submit();
+    this.handleFile(file);
+  }
+
+  /**
+   * Un fichier **déposé** est un fichier choisi (F-85 / SF-85-02).
+   *
+   * <p>Déposer un document sur cet écran ne faisait rien : le navigateur quittait la page pour
+   * afficher le fichier. Le dépôt passe par exactement le même chemin que le sélecteur — donc par
+   * le même message de refus, ce que le test vérifie caractère pour caractère.</p>
+   */
+  onDrop(event: DragEvent): void {
+    event.preventDefault();
+    this.dragging.set(false);
+    const file = event.dataTransfer?.files?.[0] ?? null;
+    this.handleFile(file);
+  }
+
+  /** Sans `preventDefault`, le navigateur refuse le dépôt et ouvre le fichier à la place. */
+  onDragOver(event: DragEvent): void {
+    event.preventDefault();
+    this.dragging.set(true);
+  }
+
+  /** Le survol s'arrête : la zone reprend son apparence de repos. */
+  onDragLeave(): void {
+    this.dragging.set(false);
+  }
+
+  /**
+   * Le point de passage unique des deux gestes — choisir et déposer.
+   *
+   * <p>Le fichier est refusé <b>ici</b>, avant d'être envoyé, quand la liste blanche du serveur est
+   * connue (SF-85-01). Quand elle ne l'est pas, l'écran n'a rien de vrai à dire : il laisse partir
+   * le fichier et laisse parler le serveur.</p>
+   */
+  private handleFile(file: File | null): void {
+    if (!file) {
+      return;
     }
+    const refusal = fileRejectionMessage(file, this.acceptedMediaTypes());
+    if (refusal) {
+      this.selectedFile.set(null);
+      this.notify(refusal, 'snack-error', REFUSAL_SNACK_DURATION_MS);
+      return;
+    }
+    this.selectedFile.set(file);
+    this.submit();
   }
 
   submit(): void {
@@ -146,7 +202,8 @@ export class DocumentsComponent implements OnInit, AfterViewInit, OnDestroy {
       },
       error: (error: HttpErrorResponse) => {
         this.submitting.set(false);
-        this.notify(this.submitErrorMessage(error), 'snack-error');
+        const duration = error.status === 415 ? REFUSAL_SNACK_DURATION_MS : undefined;
+        this.notify(this.submitErrorMessage(error), 'snack-error', duration);
       },
     });
   }
@@ -237,7 +294,16 @@ export class DocumentsComponent implements OnInit, AfterViewInit, OnDestroy {
   private submitErrorMessage(error: HttpErrorResponse): string {
     const detail = typeof error.error?.message === 'string' ? error.error.message : null;
     if (error.status === 415) {
-      return detail ?? 'Format refusé. Formats acceptés : PDF, PNG, JPEG, TIFF.';
+      // F-85 / SF-85-02 : le serveur garde son message exact — il s'adresse à un appelant d'API.
+      // C'est l'écran qui traduit, avec la fonction commune : le refus dit ici la même chose que
+      // celui de la garde locale, au caractère près.
+      const file = this.selectedFile();
+      const accepted = this.acceptedMediaTypes();
+      if (file && accepted) {
+        return rejectionSentences(file, accepted);
+      }
+      // Liste blanche inconnue : rien de vrai à dire sur ce qui passe, on laisse parler le serveur.
+      return detail ?? 'Format refusé.';
     }
     if (error.status === 413) {
       return detail ?? 'Document trop volumineux (20 Mo au maximum).';
@@ -248,7 +314,11 @@ export class DocumentsComponent implements OnInit, AfterViewInit, OnDestroy {
     return detail ?? 'Impossible de soumettre le document.';
   }
 
-  private notify(message: string, panelClass: string): void {
-    this.snackBar.open(message, 'Fermer', { duration: 5000, panelClass: [panelClass] });
+  /**
+   * Un refus de format tient en trois phrases et donne une manipulation à faire : il reste affiché
+   * plus longtemps (F-85 / SF-85-02). Un message qui disparaît avant d'être lu ne dit rien.
+   */
+  private notify(message: string, panelClass: string, duration = 5000): void {
+    this.snackBar.open(message, 'Fermer', { duration, panelClass: [panelClass] });
   }
 }

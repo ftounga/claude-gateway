@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { HttpResponse, provideHttpClient } from '@angular/common/http';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { of, throwError } from 'rxjs';
 
@@ -223,10 +224,12 @@ describe('ChatComponent', () => {
     fixture.detectChanges();
     flushInit();
 
-    pickFile(new File(['x'], 'bad.exe', { type: 'application/x-msdownload' }));
+    // Le fichier est acceptable (F-85 / SF-85-02 : un `.exe` n'atteindrait plus le serveur, il est
+    // refusé à l'écran). Ce qui est testé ici reste l'échec **du téléversement**.
+    pickFile(new File(['x'], 'contrat.pdf', { type: 'application/pdf' }));
     httpMock.expectOne('/api/upload').flush(
-      { error: 'unsupported_file_type', message: 'non' },
-      { status: 415, statusText: 'Unsupported Media Type' },
+      { error: 'provider_unavailable', message: 'non' },
+      { status: 503, statusText: 'Service Unavailable' },
     );
     expect(component.attachments()[0].status).toBe('error');
     expect(component.attachments()[0].serverId).toBeUndefined();
@@ -382,6 +385,45 @@ describe('ChatComponent', () => {
 
     component.loadConversationFiles();
     httpMock.expectNone('/api/conversations/null/files');
+  });
+
+  it('refuse une pièce jointe .docx en toutes lettres, sans type MIME (F-85 / SF-85-02)', () => {
+    fixture.detectChanges();
+    flushInit();
+    const snack = spyOn(TestBed.inject(MatSnackBar), 'open').and.callThrough();
+
+    const file = new File(['x'], 'rapport.docx', {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    });
+    const input = document.createElement('input');
+    input.type = 'file';
+    Object.defineProperty(input, 'files', { value: [file] });
+    component.onFilesPicked({ target: input } as unknown as Event);
+
+    const message = snack.calls.mostRecent().args[0] as string;
+    expect(message).not.toMatch(/[a-z]+\/[a-z0-9.+-]+/);
+    expect(message).toContain('Les fichiers Word (.docx) ne sont pas acceptés.');
+    expect(message).toContain('PDF');
+    // Rien n'est parti : aucune pièce jointe en cours, aucun appel de téléversement.
+    expect(component.attachments().length).toBe(0);
+  });
+
+  it('traduit le 415 du serveur dans le même message (F-85 / SF-85-02)', () => {
+    fixture.detectChanges();
+    flushInit();
+    const snack = spyOn(TestBed.inject(MatSnackBar), 'open').and.callThrough();
+
+    // Un fichier que la garde locale laisse passer (type déclaré accepté) mais que le serveur
+    // refuse : c'est le seul cas où le 415 revient encore.
+    pickFile(new File(['x'], 'rapport.docx', { type: 'application/pdf' }));
+    httpMock.expectOne('/api/upload').flush(
+      { error: 'unsupported_file_type', message: 'Type de fichier non supporté : application/pdf' },
+      { status: 415, statusText: 'Unsupported Media Type' },
+    );
+
+    const message = snack.calls.mostRecent().args[0] as string;
+    expect(message).not.toMatch(/[a-z]+\/[a-z0-9.+-]+/);
+    expect(message).toContain('Les fichiers Word (.docx) ne sont pas acceptés.');
   });
 
   it("pose sur le sélecteur de pièce jointe un accept dérivé du serveur (F-85 / SF-85-01)", () => {

@@ -29,6 +29,13 @@
     display: none;
   }
 
+  // F-85 / SF-85-02 — la carte accepte un dépôt. L'état de survol n'introduit aucune couleur :
+  // il emprunte l'orange d'action (--cg-accent) déjà utilisé par le bouton de la même carte.
+  &__submit--dragging {
+    outline: 2px dashed var(--cg-accent);
+    outline-offset: -8px;
+  }
+
   &__submit-row {
     display: flex;
     align-items: center;
