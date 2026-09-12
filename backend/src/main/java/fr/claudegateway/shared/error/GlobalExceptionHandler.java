@@ -43,6 +43,7 @@ import fr.claudegateway.auth.InvalidCredentialsException;
 import fr.claudegateway.auth.InvalidPasswordResetTokenException;
 import fr.claudegateway.auth.InvalidVerificationTokenException;
 import fr.claudegateway.atelier.AtelierAccessDeniedException;
+import fr.claudegateway.teams.TeamsAccessDeniedException;
 import fr.claudegateway.atelier.InvalidArchiveException;
 import fr.claudegateway.atelier.InvalidFilePathException;
 import fr.claudegateway.atelier.WorkspaceNotFoundException;
@@ -124,6 +125,18 @@ public class GlobalExceptionHandler {
         log.debug("Accès Atelier refusé : ni admin ni détenteur du droit d'Atelier (F-40)");
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(new ErrorResponse("atelier_forbidden", ex.getMessage()));
+    }
+
+    /**
+     * Droit du <b>volet Teams</b> refusé (F-89 / SF-89-01). Code distinct de
+     * {@code atelier_forbidden} : les confondre ferait proposer l'offre Gold à quelqu'un qui l'a
+     * déjà et à qui il manque seulement l'option Teams.
+     */
+    @ExceptionHandler(TeamsAccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleTeamsAccessDenied(TeamsAccessDeniedException ex) {
+        log.debug("Accès Teams refusé : ni admin ni détenteur du droit Teams (F-89)");
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ErrorResponse("teams_forbidden", ex.getMessage()));
     }
 
     // --------------------------------------------- Codes d'accès à durée limitée (F-62)

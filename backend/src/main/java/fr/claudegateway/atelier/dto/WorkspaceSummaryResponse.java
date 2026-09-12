@@ -30,11 +30,15 @@ import fr.claudegateway.runner.host.HostMissionStatus;
  * <p>{@code hostTerminal} (F-74 / SF-74-01) distingue le <b>terminal du poste</b> d'un projet. La
  * liste le montre — c'est par là qu'on y revient — mais avec son icône propre et <b>sans</b> le
  * geste « supprimer le projet » : il n'en est pas un, et il se supprime avec son poste.</p>
+ *
+ * <p>{@code teamsTerminal} (F-89 / SF-89-01) fait de même pour le <b>terminal Teams</b> : même
+ * icône propre, même absence de « supprimer le projet », et surtout le signal que ce terminal-là
+ * n'affiche pas la même chose que les autres.</p>
  */
 public record WorkspaceSummaryResponse(
         UUID id, String name, OffsetDateTime createdAt, WorkspaceSource source, String gitRepo,
         WorkspaceExecutionTarget executionTarget, String hostName,
-        HostMissionStatus hostMissionStatus, boolean hostTerminal) {
+        HostMissionStatus hostMissionStatus, boolean hostTerminal, boolean teamsTerminal) {
 
     /** Résumé d'un projet dont on ne cherche pas à nommer le poste. */
     public static WorkspaceSummaryResponse from(Workspace workspace) {
@@ -59,6 +63,6 @@ public record WorkspaceSummaryResponse(
         return new WorkspaceSummaryResponse(workspace.getId(), workspace.getName(),
                 workspace.getCreatedAt(), workspace.sourceOrDefault(), fullName,
                 workspace.executionTargetOrDefault(), hostName, hostMissionStatus,
-                workspace.isHostTerminal());
+                workspace.isHostTerminal(), workspace.isTeamsTerminal());
     }
 }

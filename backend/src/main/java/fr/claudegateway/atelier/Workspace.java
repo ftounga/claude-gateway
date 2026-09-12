@@ -139,6 +139,30 @@ public class Workspace {
     private boolean hostTerminal = false;
 
     /**
+     * Vrai si cette ligne est le <b>terminal Teams</b> du poste (F-89 / SF-89-01) : le terminal où
+     * l'on parle de réunions et de conversations, et <b>le seul</b> où l'agent reçoit les outils
+     * {@code teams_*} et où le fil sait afficher autre chose que du texte (SF-89-02).
+     *
+     * <p><b>Un second booléen, et non une énumération</b> (décision D-89-2) : un {@code kind}
+     * obligerait à relire toutes les requêtes existantes pour y ajouter {@code kind = 'PROJECT'} ;
+     * un booléen à {@code false} par défaut laisse chaque ligne et chaque lecture existantes justes
+     * par construction. Même arbitrage qu'en F-74, pour la même raison.</p>
+     *
+     * <p><b>Et non {@link #hostTerminal} réutilisé</b> : le terminal du poste ouvre un shell à la
+     * racine de la machine ; celui-ci ne parle jamais à un shell. Les confondre ferait apparaître
+     * des cartes de réunion dans le terminal du poste — ce que la règle non négociable du cadrage
+     * interdit : <i>un terminal de projet reste textuel pour toujours</i>.</p>
+     *
+     * <p>Comme le terminal du poste, <b>ce n'est pas un projet</b> : {@link WorkspaceService#listByHost}
+     * l'exclut, et supprimer le poste le supprime.</p>
+     *
+     * <p>{@code false} par défaut ici <b>et en base</b> (migration 078).</p>
+     */
+    @Column(name = "teams_terminal", nullable = false)
+    @Builder.Default
+    private boolean teamsTerminal = false;
+
+    /**
      * Vrai si le projet est adossé à un dépôt Git (F-31 / SF-31-02). Volontairement null-tolérant :
      * une entité construite hors du builder (tests, désérialisation partielle) n'est pas un projet
      * Git, et le chemin le plus sûr — celui de l'archive — reste le comportement par défaut.

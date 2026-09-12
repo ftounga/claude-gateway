@@ -53,8 +53,13 @@ import fr.claudegateway.terminals.dto.TerminalPreview;
  *                       {@code null} s'il ne vit pas ou n'a rien a dire. Rendu ici parce qu'on y
  *                       travaille : sans lui, la vue de supervision montrerait une tuile que la
  *                       carte du poste, elle, laisserait muette
- * @param projects       les projets rangés sous ce poste, les plus actifs d'abord. Le terminal du
- *                       poste n'en fait <b>pas</b> partie : ce n'est pas un projet
+ * @param teamsTerminalId identifiant du <b>terminal Teams</b> du poste (F-89 / SF-89-01), ou
+ *                       {@code null} s'il n'a jamais été ouvert — ou si le compte n'a pas l'option :
+ *                       la carte n'a alors rien à proposer
+ * @param teamsTerminalLive vrai si un onglet vit sur le terminal Teams <b>maintenant</b> (F-70)
+ * @param projects       les projets rangés sous ce poste, les plus actifs d'abord. Ni le terminal du
+ *                       poste ni le terminal Teams n'en font <b>partie</b> : ce ne sont pas des
+ *                       projets
  */
 public record RunnerHostOverviewResponse(
         UUID id,
@@ -75,6 +80,8 @@ public record RunnerHostOverviewResponse(
         UUID hostTerminalId,
         boolean hostTerminalLive,
         TerminalPreview hostTerminalPreview,
+        UUID teamsTerminalId,
+        boolean teamsTerminalLive,
         List<HostProjectSummary> projects) {
 
     /** Nom du poste virtuel, écrit <b>par la gateway</b> : deux écrans qui le nommeraient chacun à
@@ -99,7 +106,10 @@ public record RunnerHostOverviewResponse(
     public static RunnerHostOverviewResponse hosted(List<HostProjectSummary> projects,
             int liveTerminals) {
         return new RunnerHostOverviewResponse(null, HOSTED_NAME, null, null, null, null, null, true,
-                false, null, null, null, null, 0, liveTerminals, null, false, null, projects);
+                false, null, null, null, null, 0, liveTerminals, null, false, null,
+                // Le poste virtuel « Hébergé » n'a PAS de terminal Teams : ce n'est pas une machine,
+                // aucun navigateur n'y est observable (F-71, repris par F-89 / SF-89-01).
+                null, false, projects);
     }
 
     /**

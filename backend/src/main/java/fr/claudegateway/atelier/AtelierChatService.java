@@ -207,6 +207,12 @@ public class AtelierChatService implements RelayInterruptTarget {
      * rien n'est actif : la consigne système est alors celle d'avant F-51, à l'octet près.
      */
     private final ProjectRulesSource projectRules;
+    /**
+     * Catalogue d'outils du volet Teams (F-89 / SF-89-01), <b>et sa garde</b>. Vide tant que le
+     * workspace n'est pas un terminal Teams ou que le droit n'est pas ouvert : la panoplie est alors
+     * celle d'avant F-89, à l'identique.
+     */
+    private final fr.claudegateway.teams.TeamsToolCatalog teamsToolCatalog;
 
     /**
      * Tours pour lesquels une interruption a été demandée (F-38 / SF-38-07, même geste que F-32).
@@ -279,7 +285,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         this(workspaceService, messageRepository, agentProvider, byokKeyService, quotaService,
                 gitWorkspaceService, runnerToolGateway, runnerCallDispatcher, confirmationGate,
                 runnerAuditService, relayBroadcaster, runnerHostService, atelierProperties,
-                AtelierCheckpointRunner.none(), ProjectRulesSource.NONE);
+                AtelierCheckpointRunner.none(), ProjectRulesSource.NONE,
+                fr.claudegateway.teams.TeamsToolCatalog.none());
     }
 
     /**
@@ -301,7 +308,30 @@ public class AtelierChatService implements RelayInterruptTarget {
         this(workspaceService, messageRepository, agentProvider, byokKeyService, quotaService,
                 gitWorkspaceService, runnerToolGateway, runnerCallDispatcher, confirmationGate,
                 runnerAuditService, relayBroadcaster, runnerHostService, atelierProperties,
-                checkpointRunner, ProjectRulesSource.NONE);
+                checkpointRunner, ProjectRulesSource.NONE,
+                fr.claudegateway.teams.TeamsToolCatalog.none());
+    }
+
+    /**
+     * Forme de F-51, conservée pour les appelants (et les tests) antérieurs au volet Teams : aucun
+     * outil {@code teams_*} n'est jamais donné, donc la panoplie d'avant F-89, à l'identique.
+     */
+    public AtelierChatService(WorkspaceService workspaceService, AtelierMessageRepository messageRepository,
+            AiAgentProvider agentProvider, ByokKeyService byokKeyService, QuotaService quotaService,
+            fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService,
+            RunnerToolGateway runnerToolGateway,
+            fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher,
+            RunnerConfirmationGate confirmationGate,
+            RunnerAuditService runnerAuditService,
+            RunnerRelayBroadcaster relayBroadcaster,
+            fr.claudegateway.runner.host.RunnerHostService runnerHostService,
+            AtelierProperties atelierProperties,
+            AtelierCheckpointRunner checkpointRunner,
+            ProjectRulesSource projectRules) {
+        this(workspaceService, messageRepository, agentProvider, byokKeyService, quotaService,
+                gitWorkspaceService, runnerToolGateway, runnerCallDispatcher, confirmationGate,
+                runnerAuditService, relayBroadcaster, runnerHostService, atelierProperties,
+                checkpointRunner, projectRules, fr.claudegateway.teams.TeamsToolCatalog.none());
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -316,7 +346,10 @@ public class AtelierChatService implements RelayInterruptTarget {
             fr.claudegateway.runner.host.RunnerHostService runnerHostService,
             AtelierProperties atelierProperties,
             AtelierCheckpointRunner checkpointRunner,
-            ProjectRulesSource projectRules) {
+            ProjectRulesSource projectRules,
+            fr.claudegateway.teams.TeamsToolCatalog teamsToolCatalog) {
+        this.teamsToolCatalog = teamsToolCatalog == null
+                ? fr.claudegateway.teams.TeamsToolCatalog.none() : teamsToolCatalog;
         this.checkpointRunner = checkpointRunner;
         this.projectRules = projectRules == null ? ProjectRulesSource.NONE : projectRules;
         this.workspaceService = workspaceService;
@@ -437,7 +470,7 @@ public class AtelierChatService implements RelayInterruptTarget {
                 .workspaceId(workspaceId).userId(userId).role("USER").content(userText).build());
 
         String system = buildSystemPrompt(userId, workspace);
-        List<AgentTool> tools = buildTools(workspace);
+        List<AgentTool> tools = buildTools(userId, workspace);
 
         // Plan du tour (F-39 / SF-39-13) : local, donc jamais partagé entre utilisateurs.
         java.util.concurrent.atomic.AtomicReference<AtelierPlan> planOfTurn =
@@ -1507,8 +1540,14 @@ public class AtelierChatService implements RelayInterruptTarget {
      * <p>La condition n'est pas cosmétique : en cible {@code SANDBOX}, il n'existe aucun endroit où
      * exécuter une commande — le backend est une gateway, il n'exécute rien lui-même. Exposer
      * l'outil reviendrait à promettre au modèle une capacité qui n'aboutirait qu'à des erreurs.</p>
+     *
+     * <p><b>C'est aussi ici que le volet Teams est ouvert ou fermé</b> (F-89 / SF-89-01) : le
+     * catalogue {@code teams_*} n'est ajouté que si le workspace est un <b>terminal Teams</b> et que
+     * le <b>droit</b> est ouvert. Sans l'un ou l'autre, les outils ne sont pas donnés — l'agent ne
+     * refuse pas, il n'a pas la capacité. La règle vit dans {@code TeamsToolCatalog}, à un seul
+     * endroit, pour qu'aucun outil ajouté plus tard n'échappe à la garde.</p>
      */
-    List<AgentTool> buildTools(Workspace workspace) {
+    List<AgentTool> buildTools(java.util.UUID userId, Workspace workspace) {
         Map<String, Object> stringProp = Map.of("type", "string");
         List<AgentTool> tools = new ArrayList<>(fileTools(stringProp, workspace.isRunnerTarget()));
         if (workspace.isRunnerTarget()) {
@@ -1549,6 +1588,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                                                         "enum", List.of("pending", "active", "done"))),
                                         "required", List.of("title")))),
                         "required", List.of("steps"))));
+        // Le volet Teams, en dernier : ce qui précède est la panoplie de tout terminal, ce qui suit
+        // n'existe que là où Teams a été payé ET où l'on est dans SON terminal (F-89 / SF-89-01).
+        tools.addAll(teamsToolCatalog.toolsFor(userId, workspace));
         return List.copyOf(tools);
     }
 

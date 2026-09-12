@@ -108,6 +108,20 @@ public class Subscription {
     @Column(name = "atelier_option_cancel_at")
     private OffsetDateTime atelierOptionCancelAt;
 
+    /**
+     * Statut de l'<b>option Teams</b> (F-89 / SF-89-01, décision D5 du cadrage du volet Teams) ;
+     * {@code null} tant qu'aucune option n'a été souscrite. Comme pour l'Atelier, cette colonne ne
+     * porte qu'un <b>état</b> : le droit se lit dans {@code TeamsEntitlementService}, jamais ici.
+     *
+     * <p><b>Aucune colonne de tarif, aucun identifiant Stripe</b> : le montant et le parcours
+     * d'achat de l'option Teams sont <b>à confirmer par le PO</b>. Ils viendront avec la
+     * souscription, le jour où le montant sera tranché — comme en F-40, où SF-40-01 a livré la règle
+     * et SF-40-02 le moyen de l'exercer.</p>
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "teams_option_status", length = 16)
+    private SubscriptionStatus teamsOptionStatus;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

@@ -40,12 +40,16 @@ import fr.claudegateway.atelier.WorkspaceSource;
  * @param hostTerminal vrai si cette ligne est le <b>terminal du poste</b> (F-74 / SF-74-01) et non
  *                   un projet. Champ <b>additif</b> : absent de la vue d'un client antérieur, il
  *                   vaut {@code false} — un projet, le comportement historique
+ * @param teamsTerminal vrai si cette ligne est le <b>terminal Teams</b> (F-89 / SF-89-01). C'est
+ *                   <b>le</b> champ qui décide de la peau du terminal et du droit d'y afficher des
+ *                   blocs riches : un terminal de projet reste textuel pour toujours. Champ
+ *                   <b>additif</b> : absent, il vaut {@code false}
  */
 public record WorkspaceDetailResponse(
         UUID id, String name, int fileCount, List<String> files, OffsetDateTime createdAt,
         WorkspaceSource source, String gitRepoUrl, String gitRepo, String gitBranch, boolean truncated,
         String instructionsPath, boolean askBeforeBash, WorkspaceExecutionTarget executionTarget,
-        UUID hostId, String projectPath, boolean hostTerminal) {
+        UUID hostId, String projectPath, boolean hostTerminal, boolean teamsTerminal) {
 
     public static WorkspaceDetailResponse from(Workspace workspace, List<String> files) {
         return from(workspace, files, false);
@@ -63,7 +67,10 @@ public record WorkspaceDetailResponse(
                 workspace.getHostId(), workspace.getProjectPath(),
                 // Le TERMINAL DU POSTE (F-74) se dit dès le détail : l'écran l'ouvre exactement
                 // comme un projet, mais il doit pouvoir le nommer pour ce qu'il est.
-                workspace.isHostTerminal());
+                workspace.isHostTerminal(),
+                // Le TERMINAL TEAMS (F-89) se dit ici aussi, et pour une raison de plus : c'est de
+                // ce drapeau que l'écran tire le droit d'afficher autre chose que du texte.
+                workspace.isTeamsTerminal());
     }
 
     /** {@code owner/repo} lisible, ou {@code null} si le workspace n'est pas adossé à un dépôt. */

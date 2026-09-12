@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-89 / SF-89-01 — LE TERMINAL TEAMS, ET LE DROIT QUI L'OUVRE.
+
+      DEUX COLONNES, ET RIEN D'AUTRE. La première fait exister un terminal Teams ; la seconde fait
+      exister l'option qui l'ouvre. Les deux sont ADDITIVES : aucune ligne existante n'est modifiée,
+      aucun `UPDATE`, aucun rétro-remplissage.
+
+      POURQUOI UNE COLONNE ET NON UNE TABLE (décision D-89-1, vérifiée et non supposée). Tout ce qui
+      fait un terminal pend déjà à `workspace_id` : la conversation (`atelier_messages`), la
+      frontière de rejeu, la session d'agent, la porte de confirmation, le journal du runner, le
+      registre des terminaux vivants (`live_terminals.workspace_id`, F-70), le relevé d'usage par
+      tour (`usage_turns`, F-61), l'héritage de gouvernance (F-75). Une table dédiée obligerait à un
+      second chemin pour chacun, et « un terminal comme les autres » deviendrait le seul qui n'en est
+      pas un. C'est la voie de F-74 / SF-74-01 (`host_terminal`), reprise parce qu'elle a été
+      vérifiée ici, pas parce qu'elle existait.
+
+      POURQUOI UN SECOND BOOLÉEN ET NON UNE ÉNUMÉRATION `kind` (D-89-2). Un `kind` obligerait à
+      relire toutes les requêtes existantes pour y ajouter `kind = 'PROJECT'`. Un booléen à `false`
+      par défaut laisse chaque ligne et chaque lecture existantes JUSTES PAR CONSTRUCTION.
+
+      POURQUOI PAS `host_terminal` RÉUTILISÉ. Le terminal du poste ouvre un shell à la racine ; le
+      terminal Teams ne parle jamais à un shell et affiche des blocs qu'un terminal de projet
+      n'affichera jamais (SF-89-02). Les confondre ferait apparaître des cartes dans le terminal du
+      poste — ce que la règle non négociable du cadrage interdit.
+
+      L'OPTION : UN ÉTAT, PAS UN PRIX. `teams_option_status` porte l'état d'une option mensuelle sur
+      le modèle de F-40 (`atelier_option_status`). Le MONTANT et le parcours d'achat sont RÉSERVÉS AU
+      PO (décision D5 du cadrage) : aucune colonne de tarif, aucun identifiant Stripe n'est ajouté
+      ici — ils viendront avec la souscription, le jour où le montant sera tranché.
+
+      Un seul changeSet par colonne, pour PostgreSQL et H2 : aucun type propre à un moteur.
+      Réversibles : le rollback rend chaque colonne.
+    -->
+    <changeSet id="078-workspaces-teams-terminal" author="claude-gateway">
+        <addColumn tableName="workspaces">
+            <column name="teams_terminal" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="workspaces" columnName="teams_terminal"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="078-subscriptions-teams-option-status" author="claude-gateway">
+        <addColumn tableName="subscriptions">
+            <!-- Nullable : « aucune option souscrite ». Tout abonnement existant garde EXACTEMENT
+                 le droit qu'il avait — l'option est une source de droit de plus, jamais de moins. -->
+            <column name="teams_option_status" type="varchar(16)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="subscriptions" columnName="teams_option_status"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

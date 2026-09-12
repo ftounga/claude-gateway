@@ -43,6 +43,13 @@ public class WorkspaceService {
      */
     public static final String HOST_TERMINAL_NAME = "Terminal du poste";
 
+    /**
+     * Nom du <b>terminal Teams</b> (F-89 / SF-89-01), écrit par la gateway pour la même raison : il
+     * apparaît tel quel au registre des terminaux vivants (F-70) et dans le relevé de consommation
+     * par client (F-61), où « Terminal Teams » se lit sans explication.
+     */
+    public static final String TEAMS_TERMINAL_NAME = "Terminal Teams";
+
     private static final String CLAUDE_MD = "CLAUDE.md";
     private static final byte[] DEFAULT_CLAUDE_MD = ("# CLAUDE.md\n\n"
             + "Conventions et contexte de ce projet, à destination de Claude.\n"
@@ -267,7 +274,8 @@ public class WorkspaceService {
      * F-69 — veulent tous les trois <b>les projets</b>.</p>
      */
     public List<Workspace> listByHost(UUID userId, UUID hostId) {
-        return workspaceRepository.findByUserIdAndHostIdAndHostTerminalFalse(userId, hostId);
+        return workspaceRepository.findByUserIdAndHostIdAndHostTerminalFalseAndTeamsTerminalFalse(
+                userId, hostId);
     }
 
     /**
@@ -322,6 +330,53 @@ public class WorkspaceService {
     @Transactional
     public void deleteHostTerminal(UUID userId, UUID hostId) {
         findHostTerminal(userId, hostId).ifPresent(terminal -> delete(userId, terminal.getId()));
+    }
+
+    /**
+     * <b>Le terminal Teams d'un poste</b> (F-89 / SF-89-01) : celui qui existe, ou celui qu'on crée.
+     *
+     * <p>Le volet Teams se pilote <b>par la conversation</b> (cadrage §1) : il n'y a pas d'écran à
+     * boutons, il y a un terminal où l'on parle. Celui-ci est rattaché au <b>poste</b> parce que
+     * c'est là que vit le navigateur observé (F-87) : sans machine, rien à lire.</p>
+     *
+     * <p><b>Son propre historique</b> — et c'est tout l'intérêt d'une seconde ligne plutôt que d'un
+     * mode sur le terminal du poste : les comptes rendus de réunion ne se mélangent pas aux sessions
+     * de code, ni dans le fil, ni dans le rejeu, ni dans le relevé d'usage.</p>
+     *
+     * <p><b>Idempotent</b>, comme {@link #openHostTerminal} : rappeler rend le même terminal.</p>
+     *
+     * <p><b>Le droit n'est pas vérifié ici</b> : il l'est par l'appelant
+     * ({@code TeamsAccessService.requireAccess()}), au même endroit que l'appartenance du poste. Un
+     * service de domaine ne lit pas un abonnement.</p>
+     *
+     * @param hostId poste, dont l'appartenance a <b>déjà</b> été vérifiée par l'appelant
+     */
+    @Transactional
+    public Workspace openTeamsTerminal(UUID userId, UUID hostId) {
+        return findTeamsTerminal(userId, hostId).orElseGet(() -> {
+            Workspace terminal = createLocal(userId, TEAMS_TERMINAL_NAME);
+            terminal.setHostId(hostId);
+            // La racine : il n'y a pas de projet. Ce terminal ne lit pas de fichiers, il lit Teams.
+            terminal.setProjectPath("");
+            terminal.setTeamsTerminal(true);
+            return terminal;
+        });
+    }
+
+    /** Le terminal Teams d'un poste, s'il a déjà été ouvert (isolation {@code user_id}). */
+    public Optional<Workspace> findTeamsTerminal(UUID userId, UUID hostId) {
+        return workspaceRepository.findFirstByUserIdAndHostIdAndTeamsTerminalTrue(userId, hostId);
+    }
+
+    /**
+     * Supprime le terminal Teams d'un poste s'il en a un. Sans effet s'il n'y en a pas.
+     *
+     * <p>Même raison qu'en F-74 : sans sa machine, un terminal Teams ne désigne plus rien — le
+     * navigateur qu'il observait n'existe plus pour le produit.</p>
+     */
+    @Transactional
+    public void deleteTeamsTerminal(UUID userId, UUID hostId) {
+        findTeamsTerminal(userId, hostId).ifPresent(terminal -> delete(userId, terminal.getId()));
     }
 
 
