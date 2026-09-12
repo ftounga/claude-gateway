@@ -580,3 +580,22 @@ rien nommer) et les instantanés JSON versionnés (ils comparent des **formes**,
 réelles — un mapper strict d'un côté passerait au travers, c'est-à-dire exactement le défaut vécu).
 
 SF-81-01 est donc débloquée.
+
+**MISE EN ŒUVRE le 2026-09-12 (PR #420) — question close.** Le module `contract-tests/` existe, à la
+racine du dépôt, aux côtés de `backend/` et `runner/`. Il ne contient que des tests, ne publie aucun
+artefact, et personne ne dépend de lui.
+
+Ce que la réponse engageait, et comment cela s'est réglé :
+
+- **L'image de production.** Rien à changer : `backend/Dockerfile` copie `runner/…` puis `backend/…`
+  **explicitement**, jamais la racine du dépôt. Le module lui est invisible. La condition à tenir est
+  écrite dans son POM : **ne pas créer de POM réacteur racine**, c'est lui qui le ferait entrer dans
+  la réaction en chaîne et dans le contexte de l'image.
+- **L'ordre de construction.** Il n'est pas *imposé*, il est *scripté* : `scripts/contract-tests.sh`
+  installe le runner (avec son jar mince, classifieur `thin`), installe le backend en jar de
+  **bibliothèque** (`clean install -Dspring-boot.repackage.skip=true` — sans le `clean`, un `verify`
+  antérieur laisse un fat-jar que `maven-jar-plugin` juge « à jour » et qu'`install` publie),
+  vérifie l'artefact installé, puis joue le module. `cd backend && ./mvnw verify` reste **inchangé**.
+- **La CI.** Reste à câbler : `.github/workflows/backend.yml` ne joue que la suite du backend, et la
+  livraison de F-81 n'avait pas le droit de modifier `.github/`. L'ajout est d'**une ligne** —
+  une étape `run: ./scripts/contract-tests.sh`. C'est le seul reste ouvert de cette question.
