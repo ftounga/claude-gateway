@@ -39,25 +39,53 @@ export interface GovernancePackage {
 export interface GovernanceSelection {
   pkg: GovernancePackage;
   defaultApplied: boolean;
+  /** Nombre de mes **postes** où ce paquet est actif. */
   activeProjects: number;
 }
 
-/** État d'application d'un paquet sur un projet. */
+/** État d'application d'un paquet sur un poste. */
 export type GovernanceActivationStatus = 'PENDING' | 'APPLIED';
 
-/** Un paquet actif sur un projet. */
+/** Un paquet actif sur un poste — et donc sur tous ses dossiers (F-75). */
 export interface GovernanceActivation {
   pkg: GovernancePackage;
   appliedVersion: number;
-  /** Le paquet a été republié depuis : le projet applique une version antérieure. */
+  /** Le paquet a été republié depuis : le poste applique une version antérieure. */
   outdated: boolean;
   status: GovernanceActivationStatus;
   appliedAt: string | null;
 }
 
-/** Ce qui s'applique à un projet, et ce qui pourrait s'y appliquer. */
-export interface GovernanceProject {
-  workspaceId: string;
+/** Un dossier rangé sous un poste, vu depuis la gouvernance. */
+export interface GovernanceHostProject {
+  id: string;
+  name: string;
+  path: string | null;
+}
+
+/**
+ * Un poste **gouvernable** (F-75 / SF-75-01).
+ *
+ * `ref` est ce qui s'écrit dans une URL : un identifiant, ou le mot réservé `hosted`. `id` reste
+ * **nul** pour le poste « Hébergé » — décision F-71 : ce poste est une vue, il n'a pas
+ * d'identifiant.
+ */
+export interface GovernanceHostSummary {
+  ref: string;
+  id: string | null;
+  name: string;
+  virtual: boolean;
+  projects: number;
+  active: number;
+}
+
+/** Ce qui s'applique à un poste, ce qui pourrait s'y appliquer, et les dossiers concernés. */
+export interface GovernanceHost {
+  ref: string;
+  id: string | null;
+  name: string;
+  virtual: boolean;
+  projects: GovernanceHostProject[];
   active: GovernanceActivation[];
   available: GovernancePackage[];
 }
@@ -65,28 +93,64 @@ export interface GovernanceProject {
 /** Ce qui arrivera — ou est arrivé — à un fichier. */
 export type GovernanceDepositAction = 'CREATE' | 'KEEP' | 'UNKNOWN';
 
-/** Une ligne de l'annonce : un fichier, et son sort. */
+/** Une ligne de l'annonce : un fichier, et son sort dans un dossier donné. */
 export interface GovernanceDepositEntry {
   path: string;
   kind: GovernanceFileKind;
   action: GovernanceDepositAction;
 }
 
+/** Ce qu'un paquet fera dans **un** dossier du poste. `readable` à faux : machine éteinte. */
+export interface GovernanceProjectDepositPlan {
+  workspaceId: string;
+  name: string;
+  path: string | null;
+  readable: boolean;
+  entries: GovernanceDepositEntry[];
+}
+
 /**
  * L'annonce faite **avant** qu'un paquet n'écrive quoi que ce soit.
  *
- * C'est l'exigence centrale de F-51 : un paquet écrit sur la machine de l'utilisateur, donc l'écran
- * dit **quoi** et **où** avant. `readable` à faux signifie que le projet n'a pas pu être lu — chaque
- * ligne est alors indéterminée, et on ne le cache pas.
+ * Depuis F-75, « où » est au pluriel : on active sur un **poste**, et les fichiers se posent dans
+ * **chacun de ses dossiers**. L'annonce est donc faite dossier par dossier.
  */
 export interface GovernanceDepositPlan {
   packageId: string;
   slug: string;
   version: number;
-  readable: boolean;
-  entries: GovernanceDepositEntry[];
+  hostRef: string;
+  hostName: string;
+  files: GovernanceFile[];
+  projects: GovernanceProjectDepositPlan[];
   rules: boolean;
   controls: number;
+}
+
+/** Ce qu'un dossier porte **aujourd'hui** sous le chemin d'un fichier du paquet. */
+export interface GovernanceProjectFile {
+  workspaceId: string;
+  name: string;
+  readable: boolean;
+  exists: boolean;
+  identical: boolean;
+  content: string | null;
+  truncated: boolean;
+}
+
+/**
+ * Un fichier du paquet, **ouvert avant d'accepter** (F-75 / SF-75-02).
+ *
+ * Le dépôt n'écrase jamais : quand un fichier existe déjà, c'est **lui** qui restera. Le
+ * différentiel est calculé à l'écran, à partir de ces deux contenus.
+ */
+export interface GovernanceFileComparison {
+  path: string;
+  kind: GovernanceFileKind;
+  content: string;
+  truncated: boolean;
+  projects: GovernanceProjectFile[];
+  omitted: number;
 }
 
 /** Corps du geste « retenir » / « changer le drapeau ». */

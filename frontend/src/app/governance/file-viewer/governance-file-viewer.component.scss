@@ -1,0 +1,162 @@
+/**
+ * Lecture d'un fichier et de son différentiel (F-75 / SF-75-03).
+ *
+ * Aucun quatrième registre de couleur : identité du client (SF-49-03), état de mission (F-60) et
+ * signe de vie (F-70) restent les trois seuls. Ici, le différentiel se lit d'abord au **signe**
+ * (« + » / « − ») et au filet latéral ; la teinte de fond ne fait que doubler ce que le signe dit
+ * déjà.
+ */
+.viewer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-3);
+
+  &__loading {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+    padding: var(--cg-space-4);
+    color: var(--cg-text-secondary);
+  }
+
+  &__header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--cg-space-2);
+
+    code {
+      font-family: var(--cg-font-mono);
+      font-size: 13px;
+      word-break: break-all;
+      color: var(--cg-text-primary);
+    }
+  }
+
+  &__kind {
+    flex: 0 0 auto;
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__lead,
+  &__aside,
+  &__truncated {
+    margin: 0;
+    color: var(--cg-text-secondary);
+    font-size: 13px;
+  }
+
+  &__truncated {
+    padding: var(--cg-space-2);
+    border-left: 4px solid var(--cg-accent);
+    background: var(--cg-surface-2);
+    border-radius: 4px;
+  }
+
+  &__code {
+    max-height: 320px;
+    overflow: auto;
+    padding: var(--cg-space-2);
+    border: 1px solid var(--cg-divider);
+    border-radius: 8px;
+    background: var(--cg-surface-2);
+    font-family: var(--cg-font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  &__line {
+    display: flex;
+    gap: var(--cg-space-2);
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--cg-text-primary);
+    border-left: 4px solid transparent;
+    padding-left: var(--cg-space-1);
+
+    &--removed {
+      border-left-color: var(--cg-text-secondary);
+      background: rgba(107, 122, 141, 0.12);
+    }
+
+    &--added {
+      border-left-color: var(--cg-accent);
+      background: rgba(201, 151, 58, 0.14);
+    }
+  }
+
+  &__sign {
+    flex: 0 0 auto;
+    width: 12px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__text {
+    flex: 1 1 auto;
+  }
+
+  &__legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cg-space-3);
+    padding-top: var(--cg-space-2);
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cg-space-1);
+
+    &::before {
+      content: '';
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+      border: 1px solid var(--cg-divider);
+    }
+
+    &--kept::before {
+      background: rgba(107, 122, 141, 0.12);
+      border-left: 4px solid var(--cg-text-secondary);
+    }
+
+    &--brought::before {
+      background: rgba(201, 151, 58, 0.14);
+      border-left: 4px solid var(--cg-accent);
+    }
+  }
+
+  &__same,
+  &__notice {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+    margin: var(--cg-space-3) 0 0;
+    color: var(--cg-text-secondary);
+    font-size: 13px;
+
+    mat-icon {
+      flex: 0 0 auto;
+      color: var(--cg-text-secondary);
+    }
+  }
+}
+
+.viewer__notice {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-3);
+  color: var(--cg-text-secondary);
+
+  p {
+    margin: 0;
+  }
+
+  &--inline {
+    padding: var(--cg-space-3) 0 0;
+  }
+}

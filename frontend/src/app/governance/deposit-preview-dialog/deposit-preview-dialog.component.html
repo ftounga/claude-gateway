@@ -1,61 +1,118 @@
 <h2 mat-dialog-title>Ce que « {{ data.packageName }} » va écrire</h2>
 
 <mat-dialog-content class="preview">
-  <p class="preview__intro">
-    Ce paquet écrit dans <strong>{{ data.projectName }}</strong>. Rien n'est jamais écrasé : un
-    fichier déjà présent est laissé tel quel.
-  </p>
-
-  @if (!data.plan.readable) {
-    <div class="preview__warning">
-      <mat-icon>cloud_off</mat-icon>
-      <p>
-        Le projet n'a pas pu être lu — la machine est peut-être éteinte. Impossible de dire ce qui
-        existe déjà. Vous pouvez activer quand même : les règles s'appliqueront tout de suite, les
-        fichiers seront déposés dès que le projet sera joignable.
-      </p>
-    </div>
-  }
-
-  @if (data.plan.entries.length === 0) {
-    <p class="preview__empty">
-      Ce paquet ne dépose aucun fichier. Il n'apporte que des règles et des contrôles.
-    </p>
+  @if (openedPath(); as path) {
+    <button mat-button type="button" class="preview__back" (click)="close()">
+      <mat-icon>arrow_back</mat-icon>
+      Revenir à la liste
+    </button>
+    <app-governance-file-viewer
+      [file]="opened()"
+      [loading]="reading()"
+      [failed]="readFailed()"
+    ></app-governance-file-viewer>
   } @else {
-    <p class="preview__summary">
-      {{ createdCount }} fichier(s) à créer, {{ keptCount }} déjà présent(s).
+    <p class="preview__intro">
+      Ce paquet écrit dans les dossiers du poste <strong>{{ data.hostName }}</strong>. Rien n'est
+      jamais écrasé : un fichier déjà présent est laissé tel quel.
+      <strong>Cliquez un fichier pour le lire</strong> avant d'accepter.
     </p>
-    <ul class="preview__files">
-      @for (entry of data.plan.entries; track entry.path) {
-        <li class="preview__file" [class.preview__file--kept]="entry.action === 'KEEP'">
-          <mat-icon>{{ actionIcon(entry.action) }}</mat-icon>
-          <div>
-            <code>{{ entry.path }}</code>
-            <span class="preview__verdict">
-              {{ entry.kind === 'SKILL' ? 'skill' : 'gabarit' }} — {{ actionLabel(entry.action) }}
-            </span>
-          </div>
+
+    @if (noProjects()) {
+      <div class="preview__warning">
+        <mat-icon>folder_off</mat-icon>
+        <p>
+          Ce poste ne porte encore aucun dossier. La gouvernance s'y applique quand même : le
+          premier dossier que vous y ajouterez en héritera, sans rien recocher.
+        </p>
+      </div>
+    } @else if (unreadableProjects() > 0) {
+      <div class="preview__warning">
+        <mat-icon>cloud_off</mat-icon>
+        <p>
+          {{ unreadableProjects() }} dossier(s) n'ont pas pu être lus — la machine est peut-être
+          éteinte. Impossible de dire ce qui y existe déjà. Vous pouvez activer quand même : les
+          règles s'appliqueront tout de suite, les fichiers seront déposés dès que le poste sera
+          joignable.
+        </p>
+      </div>
+    }
+
+    @if (data.plan.files.length === 0) {
+      <p class="preview__empty">
+        Ce paquet ne dépose aucun fichier. Il n'apporte que des règles et des contrôles.
+      </p>
+    } @else {
+      <ul class="preview__files">
+        @for (outcome of outcomes(); track outcome.file.path) {
+          <li class="preview__file">
+            <button
+              class="preview__file-button"
+              type="button"
+              (click)="open(outcome.file.path)"
+              [attr.aria-label]="'Lire ' + outcome.file.path"
+            >
+              <mat-icon>{{ outcomeIcon(outcome) }}</mat-icon>
+              <span class="preview__file-body">
+                <code>{{ outcome.file.path }}</code>
+                <span class="preview__verdict">
+                  {{ outcome.file.kind === 'SKILL' ? 'skill' : 'gabarit' }} —
+                  {{ outcomeLabel(outcome) }}
+                </span>
+              </span>
+              <mat-icon class="preview__chevron">chevron_right</mat-icon>
+            </button>
+          </li>
+        }
+      </ul>
+
+      @if (data.plan.projects.length > 0) {
+        <details class="preview__projects">
+          <summary>Le détail, dossier par dossier ({{ data.plan.projects.length }})</summary>
+          @for (project of data.plan.projects; track project.workspaceId) {
+            <div class="preview__project">
+              <strong>{{ project.name }}</strong>
+              @if (!project.readable) {
+                <span class="preview__verdict">non lisible — machine peut-être éteinte</span>
+              } @else {
+                <ul>
+                  @for (entry of project.entries; track entry.path) {
+                    <li>
+                      <code>{{ entry.path }}</code>
+                      <span class="preview__verdict">{{ actionLabel(entry.action) }}</span>
+                    </li>
+                  }
+                </ul>
+              }
+            </div>
+          }
+        </details>
+      }
+    }
+
+    <ul class="preview__effects">
+      @if (data.plan.rules) {
+        <li><mat-icon>gavel</mat-icon> Des règles rejoindront la consigne de chaque dossier.</li>
+      }
+      @if (data.plan.controls > 0) {
+        <li>
+          <mat-icon>verified_user</mat-icon>
+          {{ data.plan.controls }} contrôle(s) pourront bloquer une écriture ou une fin de tour.
         </li>
       }
     </ul>
   }
-
-  <ul class="preview__effects">
-    @if (data.plan.rules) {
-      <li><mat-icon>gavel</mat-icon> Des règles rejoindront la consigne du projet.</li>
-    }
-    @if (data.plan.controls > 0) {
-      <li>
-        <mat-icon>verified_user</mat-icon>
-        {{ data.plan.controls }} contrôle(s) pourront bloquer une écriture ou une fin de tour.
-      </li>
-    }
-  </ul>
 </mat-dialog-content>
 
 <mat-dialog-actions align="end">
   <button mat-button type="button" (click)="cancel()">Annuler</button>
-  <button mat-flat-button color="primary" type="button" (click)="confirm()">
-    Activer sur ce projet
+  <button
+    mat-flat-button
+    color="primary"
+    type="button"
+    [disabled]="reading()"
+    (click)="confirm()"
+  >
+    Activer sur {{ data.hostName }}
   </button>
 </mat-dialog-actions>
