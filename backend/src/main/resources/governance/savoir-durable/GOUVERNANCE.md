@@ -29,9 +29,15 @@ qui comptait. C'est pour cela que les deux autres existent.
 | `commit-sans-trace-llm` | Avant chaque commande | Un `git commit` dont le message porte une trace d'assistant : co-signature, mention « Generated with… », lien de session, émoji robot |
 | `juge-fin-de-tour` | En fin de tour | Une réponse sans marqueur de fin de tour, ou qui déclare du durable non encore promu |
 | `promotion-dette-bloquante` | En fin de tour | Une clôture alors qu'une case reste non cochée dans la carte du projet |
+| `juge-independant` | En fin de tour, **si le tour a écrit** | Rien : il **signale**. Un second regard compare la carte du poste aux notes du projet et liste ce qui est cité là et absent d'ici — une **liste à vérifier**, pas un verdict |
 
 Tous les refus sont **bornés** : après quelques passages, la main revient au modèle. Aucun contrôle
 ne peut prendre un message en otage.
+
+Les deux derniers ne font pas le même travail, et c'est voulu. `juge-fin-de-tour` lit **ce que tu
+déclares** : il est gratuit, et il attrape le cas où tu sais toi-même que tu n'as pas promu.
+`juge-independant` lit **les fichiers** : il attrape le cas où tu as oublié — et un modèle qui oublie
+de promouvoir oublie aussi de le déclarer. Le second ne tourne que si le tour a écrit.
 
 ## Les fichiers déposés
 

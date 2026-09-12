@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import fr.claudegateway.governance.control.CommitSansTraceLlmControl;
 import fr.claudegateway.governance.control.JugeFinDeTourControl;
+import fr.claudegateway.governance.control.JugeIndependantControl;
 import fr.claudegateway.governance.control.PromotionDetteBloquanteControl;
 
 /**
@@ -74,9 +75,14 @@ public class GovernancePackageSeeder {
     /**
      * Les contrôles cités, <b>dans cet ordre</b>. L'ordre compte : le premier blocage l'emporte
      * (F-50), et réclamer le marqueur avant de compter la dette rend la correction lisible.
+     *
+     * <p><b>Le juge indépendant vient en dernier</b> (F-94 / SF-94-03), et ce n'est pas cosmétique :
+     * c'est le seul qui coûte un appel. Rangé après les contrôles gratuits, il n'est consulté que si
+     * la forme est déjà bonne — l'ordre <b>est</b> le garde-fou de dépense.</p>
      */
     private static final List<String> CONTROL_IDS = List.of(
-            CommitSansTraceLlmControl.ID, JugeFinDeTourControl.ID, PromotionDetteBloquanteControl.ID);
+            CommitSansTraceLlmControl.ID, JugeFinDeTourControl.ID, PromotionDetteBloquanteControl.ID,
+            JugeIndependantControl.ID);
 
     /** Un fichier apporté : sa ressource, son chemin dans le projet, son genre. */
     private record SeededFile(String resource, String path, GovernanceFileKind kind) {
