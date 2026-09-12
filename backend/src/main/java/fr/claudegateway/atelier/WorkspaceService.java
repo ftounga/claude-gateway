@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -33,6 +34,14 @@ public class WorkspaceService {
 
     /** Longueur maximale du nom d'un projet : borne de la colonne `workspaces.name`. */
     private static final int MAX_NAME_LENGTH = 255;
+
+    /**
+     * Nom du <b>terminal du poste</b> (F-74 / SF-74-01), écrit par la gateway et jamais demandé : le
+     * client a déjà été nommé à la connexion du poste. Ce nom apparaît tel quel dans le relevé de
+     * consommation par client (F-61), où une ligne de plus sous un client doit se lire sans
+     * explication.
+     */
+    public static final String HOST_TERMINAL_NAME = "Terminal du poste";
 
     private static final String CLAUDE_MD = "CLAUDE.md";
     private static final byte[] DEFAULT_CLAUDE_MD = ("# CLAUDE.md\n\n"
@@ -248,10 +257,72 @@ public class WorkspaceService {
         return workspace;
     }
 
-    /** Projets rattachés à un poste (isolation {@code user_id}). */
+    /**
+     * <b>Projets</b> rattachés à un poste (isolation {@code user_id}).
+     *
+     * <p>Le <b>terminal du poste</b> (F-74 / SF-74-01) n'en fait pas partie : ce n'est pas un
+     * projet. C'est ici que l'exclusion est posée, une fois, parce que les trois appelants — la
+     * carte du poste, le contrôle de doublon d'{@link #openOnHost} et la garde de suppression de
+     * F-69 — veulent tous les trois <b>les projets</b>.</p>
+     */
     public List<Workspace> listByHost(UUID userId, UUID hostId) {
-        return workspaceRepository.findByUserIdAndHostId(userId, hostId);
+        return workspaceRepository.findByUserIdAndHostIdAndHostTerminalFalse(userId, hostId);
     }
+
+    /**
+     * <b>Le terminal du poste</b> (F-74 / SF-74-01) : celui qui existe, ou celui qu'on crée.
+     *
+     * <p>Ce qui manquait : le premier jour d'une mission, la racine est vide — pas de projet, donc
+     * pas de terminal, donc aucun moyen de cloner un dépôt depuis le produit. Et au-delà du premier
+     * jour, beaucoup de gestes n'appartiennent à aucun projet : {@code git}, un VPN,
+     * {@code terraform}, l'installation d'un outil.</p>
+     *
+     * <p><b>Un terminal comme les autres</b> : c'est une ligne de {@code workspaces}, donc il a sa
+     * conversation, son historique, ses réglages, il compte dans le plafond de quatre terminaux
+     * vivants (F-70) et il suit la porte de confirmation (F-73). Rien de tout cela n'est écrit
+     * ici — tout vient de ce que le terminal d'un projet fait déjà.</p>
+     *
+     * <p><b>Idempotent</b> : rappeler rend le même terminal. Un second terminal de poste sur la même
+     * machine n'aurait aucun sens et couperait la conversation en deux.</p>
+     *
+     * <p>Créé par {@link #createLocal} : mêmes valeurs initiales qu'un projet local — {@code LOCAL},
+     * cible {@code RUNNER}, porte de confirmation armée — et surtout <b>le même événement de
+     * création</b>, donc le même héritage de gouvernance depuis le poste (F-75).</p>
+     *
+     * @param hostId poste, dont l'appartenance a <b>déjà</b> été vérifiée par l'appelant
+     */
+    @Transactional
+    public Workspace openHostTerminal(UUID userId, UUID hostId) {
+        return findHostTerminal(userId, hostId).orElseGet(() -> {
+            Workspace terminal = createLocal(userId, HOST_TERMINAL_NAME);
+            terminal.setHostId(hostId);
+            // La RACINE du poste : c'est là qu'on clone, qu'on installe, qu'on configure. Depuis
+            // F-73 / SF-73-01 ce chemin n'est plus une borne — c'est un dossier de départ.
+            terminal.setProjectPath("");
+            terminal.setHostTerminal(true);
+            return terminal;
+        });
+    }
+
+    /** Le terminal d'un poste, s'il a déjà été ouvert (isolation {@code user_id}). */
+    public Optional<Workspace> findHostTerminal(UUID userId, UUID hostId) {
+        return workspaceRepository.findFirstByUserIdAndHostIdAndHostTerminalTrue(userId, hostId);
+    }
+
+    /**
+     * Supprime le terminal d'un poste s'il en a un, avec tout ce qui y pend — conversation, journal,
+     * fichiers. Sans effet s'il n'y en a pas.
+     *
+     * <p>Appelé à la <b>suppression du poste</b> (F-69) : un terminal de poste ne désigne plus rien
+     * sans sa machine, et le laisser vivre ferait une ligne orpheline qu'aucun écran ne montre.
+     * Ce n'est pas une cascade sur les <b>projets</b> — ceux-là continuent de refuser la
+     * suppression tant qu'ils sont là.</p>
+     */
+    @Transactional
+    public void deleteHostTerminal(UUID userId, UUID hostId) {
+        findHostTerminal(userId, hostId).ifPresent(terminal -> delete(userId, terminal.getId()));
+    }
+
 
     /**
      * Projets <b>sans poste</b> (F-71 / SF-71-01), isolation {@code user_id}.

@@ -93,7 +93,7 @@ class HostProjectsApiIntegrationTest {
                 .andExpect(jsonPath("$.projectPath").value("clients/EDENRED"))
                 .andExpect(jsonPath("$.executionTarget").value("RUNNER"));
 
-        assertThat(workspaceRepository.findByUserIdAndHostId(aliceId, aliceHost.getId())).hasSize(1);
+        assertThat(workspaceRepository.findByUserIdAndHostIdAndHostTerminalFalse(aliceId, aliceHost.getId())).hasSize(1);
     }
 
     @Test
@@ -127,7 +127,7 @@ class HostProjectsApiIntegrationTest {
                         org.hamcrest.Matchers.containsString("EDENRED")));
 
         // Le défaut vécu par le PO : deux entités du même nom. Il n'y en a toujours qu'une.
-        assertThat(workspaceRepository.findByUserIdAndHostId(aliceId, aliceHost.getId())).hasSize(1);
+        assertThat(workspaceRepository.findByUserIdAndHostIdAndHostTerminalFalse(aliceId, aliceHost.getId())).hasSize(1);
     }
 
     @Test
@@ -139,7 +139,7 @@ class HostProjectsApiIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("invalid_project_path"));
 
-        assertThat(workspaceRepository.findByUserIdAndHostId(aliceId, aliceHost.getId())).isEmpty();
+        assertThat(workspaceRepository.findByUserIdAndHostIdAndHostTerminalFalse(aliceId, aliceHost.getId())).isEmpty();
     }
 
     @Test
@@ -190,6 +190,6 @@ class HostProjectsApiIntegrationTest {
                     .andExpect(status().isCreated());
         }
 
-        assertThat(workspaceRepository.findByUserIdAndHostId(aliceId, aliceHost.getId())).hasSize(3);
+        assertThat(workspaceRepository.findByUserIdAndHostIdAndHostTerminalFalse(aliceId, aliceHost.getId())).hasSize(3);
     }
 }

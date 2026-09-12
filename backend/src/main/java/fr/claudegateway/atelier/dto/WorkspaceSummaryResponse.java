@@ -26,11 +26,15 @@ import fr.claudegateway.runner.host.HostMissionStatus;
  * {@code ACTIVE}, {@code PENDING}, {@code CLOSED} —, ou {@code null} pour un projet non rattaché.
  * Il voyage avec le nom, par la même lecture et sous la même isolation : la liste des projets et
  * l'en-tête du terminal peuvent dire <b>où en est la mission</b> sans un appel de plus.</p>
+ *
+ * <p>{@code hostTerminal} (F-74 / SF-74-01) distingue le <b>terminal du poste</b> d'un projet. La
+ * liste le montre — c'est par là qu'on y revient — mais avec son icône propre et <b>sans</b> le
+ * geste « supprimer le projet » : il n'en est pas un, et il se supprime avec son poste.</p>
  */
 public record WorkspaceSummaryResponse(
         UUID id, String name, OffsetDateTime createdAt, WorkspaceSource source, String gitRepo,
         WorkspaceExecutionTarget executionTarget, String hostName,
-        HostMissionStatus hostMissionStatus) {
+        HostMissionStatus hostMissionStatus, boolean hostTerminal) {
 
     /** Résumé d'un projet dont on ne cherche pas à nommer le poste. */
     public static WorkspaceSummaryResponse from(Workspace workspace) {
@@ -54,6 +58,7 @@ public record WorkspaceSummaryResponse(
                 : workspace.getGitOwner() + "/" + workspace.getGitRepo();
         return new WorkspaceSummaryResponse(workspace.getId(), workspace.getName(),
                 workspace.getCreatedAt(), workspace.sourceOrDefault(), fullName,
-                workspace.executionTargetOrDefault(), hostName, hostMissionStatus);
+                workspace.executionTargetOrDefault(), hostName, hostMissionStatus,
+                workspace.isHostTerminal());
     }
 }
