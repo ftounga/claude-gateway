@@ -7,7 +7,8 @@ import {
 } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
-import { HttpErrorResponse } from '@angular/common/http';
+import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { of, throwError } from 'rxjs';
 
@@ -20,6 +21,26 @@ describe('DocumentsComponent', () => {
   let component: DocumentsComponent;
   let service: jasmine.SpyObj<DocumentsService>;
   let dialog: jasmine.SpyObj<MatDialog>;
+  let httpMock: HttpTestingController;
+
+  /**
+   * Répond à la lecture des formats du serveur (F-85 / SF-85-01). L'appel est optionnel dans les
+   * tests qui ne s'y intéressent pas : `match` n'échoue pas s'il n'a pas eu lieu.
+   */
+  function answerFileFormats(mediaTypes: string[]): void {
+    httpMock.match('/api/file-formats').forEach((request) =>
+      request.flush({
+        documents: { mediaTypes, maxBytes: 20971520 },
+        attachments: { mediaTypes: ['application/pdf'], maxBytes: 33554432 },
+      }),
+    );
+    fixture.detectChanges();
+  }
+
+  /** L'élément `input[type=file]` du bouton « Choisir un fichier ». */
+  function fileInput(): HTMLInputElement {
+    return fixture.nativeElement.querySelector('input[type=file]') as HTMLInputElement;
+  }
 
   /** Ouvre un `MatDialogRef` factice dont `afterClosed()` renvoie `result`. */
   function stubDialog(result: boolean): void {
@@ -65,13 +86,41 @@ describe('DocumentsComponent', () => {
         provideRouter([]),
         { provide: DocumentsService, useValue: service },
         { provide: MatDialog, useValue: dialog },
+        provideHttpClient(),
+        provideHttpClientTesting(),
       ],
     });
+    httpMock = TestBed.inject(HttpTestingController);
 
     fixture = TestBed.createComponent(DocumentsComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
   }
+
+  // --- F-85 / SF-85-01 — le sélecteur ne propose que ce qui passe -------------------------------
+
+  it("dérive l'accept du sélecteur de la liste blanche du serveur", () => {
+    setup();
+    answerFileFormats(['application/pdf', 'image/png', 'image/jpeg', 'image/tiff']);
+
+    expect(fileInput().getAttribute('accept')).toBe(
+      'application/pdf,image/png,image/jpeg,image/tiff',
+    );
+  });
+
+  it("un format ajouté au serveur apparaît dans l'accept sans toucher à l'écran", () => {
+    // Ce test et le précédent partagent le même code d'écran : seule la réponse du serveur diffère.
+    // C'est ce qui interdit à l'écran et au serveur de diverger.
+    setup();
+    answerFileFormats(['application/pdf', 'image/png', 'image/jpeg', 'image/tiff', 'image/bmp']);
+
+    expect(fileInput().getAttribute('accept')).toContain('image/bmp');
+  });
+
+  it("laisse l'accept vide tant que le serveur n'a pas répondu", () => {
+    setup();
+    expect(fileInput().getAttribute('accept')).toBe('');
+  });
 
   it('loads the document list on init', () => {
     setup();

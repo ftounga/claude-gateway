@@ -24,6 +24,7 @@ import {
 } from './library-picker/library-picker-dialog.component';
 import { ChatService } from '../core/services/chat.service';
 import { ExportService } from '../core/services/export.service';
+import { FileFormatsService } from '../core/services/file-formats.service';
 import { UploadService } from '../core/services/upload.service';
 import { ChatMessage, ConversationFile, ConversationSummary } from '../core/models/chat.models';
 import { ExportFormat } from '../core/models/export.models';
@@ -74,6 +75,7 @@ export class ChatComponent implements OnInit {
   private readonly chatService = inject(ChatService);
   private readonly exportService = inject(ExportService);
   private readonly uploadService = inject(UploadService);
+  private readonly fileFormats = inject(FileFormatsService);
   private readonly fb = inject(FormBuilder);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
@@ -98,6 +100,16 @@ export class ChatComponent implements OnInit {
   /** Vrai tant qu'au moins une pièce jointe est en cours de téléversement (bloque l'envoi). */
   readonly uploading = computed(() => this.attachments().some((a) => a.status === 'uploading'));
 
+  /**
+   * L'attribut `accept` du sélecteur de pièce jointe, **dérivé** de `app.upload.allowed-types`
+   * (F-85 / SF-85-01).
+   *
+   * <p>Ce sélecteur n'en portait aucun : le système d'exploitation proposait tout, y compris les
+   * `.docx` que le serveur refuse. Chaîne vide tant que le serveur n'a pas répondu — comportement
+   * d'avant, rattrapé par le message de refus.</p>
+   */
+  readonly attachmentAccept = computed(() => this.fileFormats.accept('attachments'));
+
   readonly activeTitle = computed(() => {
     const id = this.activeConversationId();
     const conversation = this.conversations().find((c) => c.id === id);
@@ -109,6 +121,7 @@ export class ChatComponent implements OnInit {
   });
 
   ngOnInit(): void {
+    this.fileFormats.load();
     this.chatService.getModels().subscribe({
       next: (res) => {
         this.models.set(res.models);

@@ -207,6 +207,7 @@
         #fileInput
         type="file"
         class="file-input"
+        [accept]="attachmentAccept()"
         hidden
         (change)="onFilesPicked($event)"
       />
