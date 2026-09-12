@@ -16,6 +16,7 @@ import {
   AtelierResume,
   AtelierStreamAction,
   AtelierStreamHandlers,
+  AtelierTurnState,
   CreateGitWorkspaceRequest,
   ExecutionTargetRequest,
   FileContent,
@@ -247,19 +248,95 @@ export class AtelierService {
     }
   }
 
+  /**
+   * **Se rebrancher** sur le tour en cours d'un projet (F-84 / SF-84-02).
+   *
+   * Rouvrir le terminal ne relance rien : l'écran rejoue ce qu'il a manqué depuis `cursor`, puis
+   * reprend le direct. `cursor = 0` — le cas d'un écran neuf — veut dire « je n'ai rien vu ».
+   *
+   * Rend un `AbortController` : quitter l'écran **détache le spectateur**, et c'est tout. Depuis
+   * F-84, abandonner ce flux n'arrête plus le tour — c'était précisément le défaut.
+   */
+  attachTurn(id: string, cursor: number, handlers: AtelierStreamHandlers): AbortController {
+    const abort = new AbortController();
+    void this.readTurnStream(id, cursor, handlers, abort);
+    return abort;
+  }
+
+  /** L'état du tour d'un projet : est-ce que ça tourne, et à quel curseur (F-84 / SF-84-02). */
+  getTurnState(id: string): Observable<AtelierTurnState> {
+    return this.http.get<AtelierTurnState>(`/api/workspaces/${id}/chat/turn`);
+  }
+
+  /** Lit le flux de rebranchement ; un abandon (écran quitté) n'est jamais une erreur à signaler. */
+  private async readTurnStream(
+    id: string,
+    cursor: number,
+    handlers: AtelierStreamHandlers,
+    abort: AbortController,
+  ): Promise<void> {
+    try {
+      const token = this.auth.token();
+      const response = await fetch(
+        `/api/workspaces/${id}/chat/attach?cursor=${encodeURIComponent(String(cursor))}`,
+        {
+          method: 'GET',
+          headers: {
+            Accept: 'text/event-stream',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          signal: abort.signal,
+        },
+      );
+      if (!response.ok || !response.body) {
+        // Se rebrancher est un CONFORT : échouer ici ne doit pas afficher une panne sur un écran
+        // qui, par ailleurs, fonctionne. On reste simplement sans direct.
+        handlers.onIdle?.();
+        return;
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        let sep: number;
+        while ((sep = buffer.indexOf('\n\n')) >= 0) {
+          this.dispatchSseEvent(buffer.slice(0, sep), handlers);
+          buffer = buffer.slice(sep + 2);
+        }
+      }
+    } catch {
+      // Abandon volontaire (écran quitté) ou réseau coupé : dans les deux cas, plus de direct.
+      handlers.onIdle?.();
+    }
+  }
+
   /** Parse un événement SSE (`event:` + `data:`) et route vers le bon callback. */
   private dispatchSseEvent(raw: string, handlers: AtelierStreamHandlers): void {
     let event = 'message';
     let data = '';
+    let id = '';
     for (const line of raw.split('\n')) {
       if (line.startsWith('event:')) {
         event = line.slice('event:'.length).trim();
       } else if (line.startsWith('data:')) {
         data += line.slice('data:'.length).trim();
+      } else if (line.startsWith('id:')) {
+        // Le numéro d'ordre de l'événement (F-84 / SF-84-02) : c'est le curseur à renvoyer pour se
+        // rebrancher. Les apartés de branchement portent 0 et ne le font jamais avancer.
+        id = line.slice('id:'.length).trim();
       }
     }
     if (!data) {
       return;
+    }
+    const seq = Number(id);
+    if (Number.isFinite(seq) && seq > 0) {
+      handlers.onSeq?.(seq);
     }
     let payload: Partial<AtelierStreamAction> & { text?: string; error?: string } & {
       reply?: string;
@@ -279,6 +356,11 @@ export class AtelierService {
       budgetReached?: boolean;
       /** Plan de travail relayé au fil de l'eau (F-39 / SF-39-13). */
       steps?: AtelierPlanStep[];
+      /** Rebranchement sur un tour en cours (F-84 / SF-84-02). */
+      turnId?: string | null;
+      cursor?: number;
+      startedAt?: number;
+      droppedThrough?: number;
     };
     try {
       payload = JSON.parse(data);
@@ -333,6 +415,20 @@ export class AtelierService {
         activeSeconds: payload.activeSeconds,
         budgetReached: payload.budgetReached === true,
       });
+    } else if (event === 'attached') {
+      // L'écran s'est rebranché sur un tour en cours (F-84 / SF-84-02) : ce qui suit est le rejeu.
+      handlers.onAttached?.({
+        turnId: payload.turnId ?? null,
+        cursor: typeof payload.cursor === 'number' ? payload.cursor : 0,
+        startedAt: typeof payload.startedAt === 'number' ? payload.startedAt : 0,
+      });
+    } else if (event === 'idle') {
+      // Rien ne tourne : l'état d'avant F-84, dit explicitement plutôt que deviné.
+      handlers.onIdle?.();
+    } else if (event === 'truncated') {
+      handlers.onTruncated?.(
+        typeof payload.droppedThrough === 'number' ? payload.droppedThrough : 0,
+      );
     } else if (event === 'error') {
       handlers.onError(payload.error ?? 'provider_error');
     }

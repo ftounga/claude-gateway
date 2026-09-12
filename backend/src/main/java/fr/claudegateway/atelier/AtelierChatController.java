@@ -1,6 +1,7 @@
 package fr.claudegateway.atelier;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Executor;
 
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -29,9 +31,12 @@ import fr.claudegateway.atelier.dto.AtelierChatResponse;
 import fr.claudegateway.atelier.dto.AtelierChatResponse.AtelierAction;
 import fr.claudegateway.atelier.dto.AtelierMessageResponse;
 import fr.claudegateway.atelier.dto.AtelierResumeResponse;
+import fr.claudegateway.atelier.dto.AtelierTurnStateResponse;
 import fr.claudegateway.atelier.live.LiveTurn;
 import fr.claudegateway.atelier.live.LiveTurnRegistry;
+import fr.claudegateway.atelier.live.RemoteTurnSource;
 import fr.claudegateway.atelier.live.SseTurnSubscriber;
+import fr.claudegateway.atelier.live.TurnAsides;
 import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.byok.ByokKeyRequiredException;
 import fr.claudegateway.quota.QuotaExceededException;
@@ -65,19 +70,24 @@ public class AtelierChatController {
     private final CurrentUser currentUser;
     private final AtelierAccessService atelierAccess;
     private final Executor chatStreamExecutor;
+    private final Executor turnAttachExecutor;
     private final LiveTurnRegistry liveTurns;
+    private final RemoteTurnSource remoteTurns;
 
     public AtelierChatController(AtelierChatService atelierChatService,
             AtelierThreadService atelierThreadService, CurrentUser currentUser,
             AtelierAccessService atelierAccess,
             @Qualifier("chatStreamExecutor") Executor chatStreamExecutor,
-            LiveTurnRegistry liveTurns) {
+            @Qualifier("turnAttachExecutor") Executor turnAttachExecutor,
+            LiveTurnRegistry liveTurns, RemoteTurnSource remoteTurns) {
         this.atelierChatService = atelierChatService;
         this.atelierThreadService = atelierThreadService;
         this.currentUser = currentUser;
         this.atelierAccess = atelierAccess;
         this.chatStreamExecutor = chatStreamExecutor;
+        this.turnAttachExecutor = turnAttachExecutor;
         this.liveTurns = liveTurns;
+        this.remoteTurns = remoteTurns;
     }
 
     @PostMapping
@@ -107,6 +117,111 @@ public class AtelierChatController {
         fr.claudegateway.chat.SseStreamDispatch.submit(chatStreamExecutor, emitter,
                 () -> relay(emitter, userId, id, request.message(), hasAccess));
         return emitter;
+    }
+
+
+    /**
+     * <b>Se rebrancher</b> sur le tour en cours de ce projet (F-84 / SF-84-02).
+     *
+     * <p>L'écran rouvre le terminal et rejoue ce qu'il a manqué depuis son <b>curseur</b>, puis
+     * reprend le direct — ni doublon, ni trou. Chaque événement porte son numéro dans le champ
+     * {@code id:} du protocole SSE : c'est ce numéro qu'un écran renvoie ici s'il se rebranche à
+     * nouveau. {@code cursor=0} (le défaut) veut dire « je n'ai rien vu », et convient à un écran
+     * neuf.</p>
+     *
+     * <p>Aucun tour vivant — ni ici, ni chez un pair joignable — et le flux dit {@code idle} puis se
+     * clôt : c'est la <b>dégradation vers l'état d'origine</b>, celle de {@code RunnerCallRouter}.
+     * Rien n'est deviné.</p>
+     *
+     * <p><b>Une vue rouverte n'est pas un flux de plus</b> : ce rebranchement passe par un exécuteur
+     * distinct de celui des flux émetteurs, et ne prend aucune place au registre des terminaux
+     * vivants (F-70) — la place appartient à l'onglet, qui n'a pas changé.</p>
+     *
+     * <p><b>Isolation</b> : le tour est cherché par le couple {@code (userId, workspaceId)}. Le tour
+     * d'un autre utilisateur est <b>introuvable</b>, pas « refusé » : on ne se rebranche jamais sur
+     * le tour d'autrui.</p>
+     */
+    @GetMapping(path = "/attach", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter attach(@PathVariable UUID id,
+            @RequestParam(name = "cursor", required = false) Long cursor) {
+        UUID userId = currentUser.requireId();
+        // Gating résolu ICI, comme pour le flux d'émission : le pool n'hérite pas du SecurityContext,
+        // et un refus doit partir DANS le flux (jamais un 406 sur un endpoint SSE).
+        boolean hasAccess = atelierAccess.hasAccess();
+        long from = cursor == null || cursor < 0 ? LiveTurn.FROM_START : cursor;
+        SseEmitter emitter = newEmitter();
+        fr.claudegateway.chat.SseStreamDispatch.submit(turnAttachExecutor, emitter,
+                () -> attachRelay(emitter, userId, id, from, hasAccess));
+        return emitter;
+    }
+
+    /**
+     * L'état du tour de ce projet (F-84 / SF-84-02) : vivant ou non, et à quel curseur il en est.
+     *
+     * <p>Endpoint JSON classique. Un tour qui tourne sur un <b>autre pod</b> est rendu comme vivant :
+     * la question posée est « est-ce que ça tourne ? », et l'endroit où cela tourne n'est pas une
+     * affaire d'écran.</p>
+     */
+    @GetMapping("/turn")
+    public AtelierTurnStateResponse turnState(@PathVariable UUID id) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        Optional<LiveTurn> local = liveTurns.find(userId, id);
+        if (local.isPresent()) {
+            LiveTurn turn = local.get();
+            return new AtelierTurnStateResponse(true, turn.turnId(), turn.cursor(),
+                    turn.startedAtMs());
+        }
+        return remoteTurns.findRemoteTurn(userId, id)
+                .map(state -> new AtelierTurnStateResponse(true, state.turnId(), state.cursor(),
+                        state.startedAtMs()))
+                .orElseGet(AtelierTurnStateResponse::idle);
+    }
+
+    /**
+     * Branche ce spectateur sur le tour : d'abord ici, sinon chez un pair, sinon {@code idle}.
+     *
+     * <p>Dans le cas <b>local</b>, cette méthode rend la main alors que le flux reste ouvert : le
+     * spectateur est inscrit au tour, et c'est la fin du tour qui clôra son flux. Dans le cas
+     * <b>relayé</b>, elle tient le thread pendant la lecture du pair — d'où l'exécuteur dédié.</p>
+     */
+    private void attachRelay(SseEmitter emitter, UUID userId, UUID workspaceId, long cursor,
+            boolean hasAccess) {
+        SseTurnSubscriber subscriber = new SseTurnSubscriber(emitter);
+        if (!hasAccess) {
+            subscriber.deliver(TurnAsides.error("forbidden"));
+            subscriber.finish();
+            return;
+        }
+        Optional<LiveTurn> local = liveTurns.find(userId, workspaceId);
+        if (local.isPresent()) {
+            LiveTurn turn = local.get();
+            if (!subscriber.deliver(TurnAsides.attached(turn.turnId(), turn.cursor(),
+                    turn.startedAtMs()))) {
+                return;
+            }
+            if (!turn.attach(subscriber, cursor)) {
+                // Le tour s'est terminé entre la recherche et le branchement, ou le spectateur est
+                // parti pendant le rejeu : dans les deux cas, il n'y a plus rien à suivre.
+                subscriber.finish();
+            }
+            return;
+        }
+        Optional<RemoteTurnSource.RemoteTurnState> remote =
+                remoteTurns.findRemoteTurn(userId, workspaceId);
+        if (remote.isEmpty()) {
+            subscriber.deliver(TurnAsides.idle());
+            subscriber.finish();
+            return;
+        }
+        if (!subscriber.deliver(TurnAsides.attached(remote.get().turnId(), remote.get().cursor(),
+                remote.get().startedAtMs()))) {
+            return;
+        }
+        // Le pair peut avoir terminé son tour entre la sonde et le flux : le relais rend alors
+        // `false`, et le flux se clôt sans rien inventer.
+        remoteTurns.streamRemoteTurn(userId, workspaceId, cursor, subscriber);
+        subscriber.finish();
     }
 
     /**

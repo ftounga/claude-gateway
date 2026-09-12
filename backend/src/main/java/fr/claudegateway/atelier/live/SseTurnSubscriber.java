@@ -35,7 +35,12 @@ public final class SseTurnSubscriber implements TurnSubscriber {
     @Override
     public boolean deliver(TurnEvent event) {
         try {
-            emitter.send(SseEmitter.event().name(event.name())
+            // Le numéro d'ordre voyage dans le champ `id:` du protocole SSE (F-84 / SF-84-02) :
+            // c'est le champ prévu pour ça, et aucune charge utile ne change — un écran qui
+            // l'ignore se comporte exactement comme avant. C'est le curseur qu'il renverra pour se
+            // rebrancher sans doublon ni trou. Les apartés (`attached`, `idle`) portent 0 : ils ne
+            // sont pas des événements du tour et ne doivent jamais faire avancer un curseur.
+            emitter.send(SseEmitter.event().name(event.name()).id(Long.toString(event.seq()))
                     .data(event.json().getBytes(StandardCharsets.UTF_8), RAW_BYTES));
             return true;
         } catch (IOException | RuntimeException ex) {

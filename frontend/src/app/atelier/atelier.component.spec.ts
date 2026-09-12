@@ -21,6 +21,7 @@ import { LiveTerminalService } from '../core/services/live-terminal.service';
 import { ApiKeyStatus } from '../core/models/api-key.models';
 import {
   AtelierMessage,
+  AtelierStreamHandlers,
   FileContent,
   RunnerHostOverview,
   WorkspaceDetail,
@@ -106,6 +107,8 @@ describe('AtelierComponent', () => {
       'importLibrary',
       'chat',
       'streamChat',
+      'attachTurn',
+      'getTurnState',
       'streamAgent',
       'resetAgentSession',
       'renameWorkspace',
@@ -135,6 +138,12 @@ describe('AtelierComponent', () => {
     service.getRunnerStatus.and.returnValue(of({ connected: false, lastSeenAt: null }));
     service.getWorkspace.and.returnValue(of(detail));
     service.getHistory.and.returnValue(of([]));
+    // F-84 / SF-84-02 : par défaut, aucun tour n'est en cours — se rebrancher ne trouve rien et
+    // rend simplement de quoi se détacher.
+    service.attachTurn.and.returnValue(new AbortController());
+    service.getTurnState.and.returnValue(
+      of({ live: false, turnId: null, cursor: 0, startedAt: null }),
+    );
     // Projet d'archive en bac à sable : la gateway rend donc le moteur hébergé (SF-39-07).
     service.getEngine.and.returnValue(of({
       engine: 'HOSTED_SANDBOX' as const, runnerConnected: false, runnerLastSeenAt: null,
@@ -174,6 +183,108 @@ describe('AtelierComponent', () => {
    * coûté douze heures le 2026-09-08 : une demande d'autorisation arrive **pendant** qu'un tour
    * est en cours, et c'est elle — pas « ça travaille » — que l'aperçu doit porter.
    */
+
+  /**
+   * **Revenir sur un tour en cours** (F-84 / SF-84-02).
+   *
+   * Ce qui se vérifie ici est le geste du PO, celui par lequel le défaut a été rapporté : quitter
+   * le terminal pendant qu'il réfléchit, puis y revenir. Depuis F-84, partir détache le spectateur
+   * et revenir le rebranche — le tour, lui, n'a jamais cessé.
+   */
+  describe('revenir sur un tour en cours (F-84 / SF-84-02)', () => {
+    it('se rebranche en ouvrant un projet, depuis le début de ce qui reste', () => {
+      setup();
+
+      component.selectWorkspace(summary);
+      fixture.detectChanges();
+
+      expect(service.attachTurn).toHaveBeenCalled();
+      const [id, cursor] = service.attachTurn.calls.mostRecent().args;
+      expect(id).toBe(summary.id);
+      expect(cursor)
+        .withContext("un écran recréé n'a rien vu : il n'a rien à ne pas rejouer")
+        .toBe(0);
+    });
+
+    it('quitter l’écran DÉTACHE le spectateur, et rien de plus', () => {
+      setup();
+      const abort = new AbortController();
+      const aborted = spyOn(abort, 'abort');
+      service.attachTurn.and.returnValue(abort);
+      component.selectWorkspace(summary);
+      fixture.detectChanges();
+
+      component.ngOnDestroy();
+
+      expect(aborted).toHaveBeenCalled();
+      expect(service.interruptChat)
+        .withContext('quitter un écran n’a jamais été une demande d’interruption')
+        .not.toHaveBeenCalled();
+    });
+
+    it('un tour rejoint remet l’écran en travail, avec la durée du TOUR', () => {
+      setup();
+      let handlers: AtelierStreamHandlers | undefined;
+      service.attachTurn.and.callFake((_id, _cursor, given) => {
+        handlers = given;
+        return new AbortController();
+      });
+      component.selectWorkspace(summary);
+      fixture.detectChanges();
+
+      handlers?.onAttached?.({ turnId: 't1', cursor: 4, startedAt: Date.now() - 90_000 });
+      fixture.detectChanges();
+
+      expect(component.submitting()).toBeTrue();
+      expect(component.execElapsedSeconds())
+        .withContext('le tour tourne depuis 90 s, pas depuis que cet écran existe')
+        .toBeGreaterThanOrEqual(89);
+    });
+
+    it('une autorisation posée pendant l’absence est encore là au retour', () => {
+      setup();
+      let handlers: AtelierStreamHandlers | undefined;
+      service.attachTurn.and.callFake((_id, _cursor, given) => {
+        handlers = given;
+        return new AbortController();
+      });
+      component.selectWorkspace(summary);
+      fixture.detectChanges();
+
+      handlers?.onAttached?.({ turnId: 't1', cursor: 0, startedAt: Date.now() });
+      handlers?.onConfirmRequest?.({
+        toolUseId: 'call-1',
+        tool: 'bash',
+        detail: 'rm -rf build',
+        timeoutMs: 120_000,
+      });
+      fixture.detectChanges();
+
+      expect(component.pendingConfirmation()?.toolUseId).toBe('call-1');
+      expect(component.pendingConfirmation()?.detail).toBe('rm -rf build');
+    });
+
+    it('rien ne tourne : l’écran reste au repos, sans rien annoncer', () => {
+      setup();
+      let handlers: AtelierStreamHandlers | undefined;
+      service.attachTurn.and.callFake((_id, _cursor, given) => {
+        handlers = given;
+        return new AbortController();
+      });
+      component.selectWorkspace(summary);
+      fixture.detectChanges();
+      snackBar.open.calls.reset();
+
+      handlers?.onIdle?.();
+      fixture.detectChanges();
+
+      expect(component.submitting()).toBeFalse();
+      expect(snackBar.open)
+        .withContext('un écran au repos n’est pas une anomalie à signaler')
+        .not.toHaveBeenCalled();
+    });
+  });
+
   describe('aperçu vivant (F-76)', () => {
     it('dit qu’il attend une autorisation, dès qu’il l’affiche', () => {
       setup();
@@ -354,6 +465,8 @@ describe('AtelierComponent', () => {
       'importLibrary',
       'chat',
       'streamChat',
+      'attachTurn',
+      'getTurnState',
       'getHistory',
       'getResume',
       'restartThread',
@@ -435,6 +548,8 @@ describe('AtelierComponent', () => {
       'importLibrary',
       'chat',
       'streamChat',
+      'attachTurn',
+      'getTurnState',
       'getHistory',
       'getResume',
       'restartThread',
@@ -481,6 +596,8 @@ describe('AtelierComponent', () => {
       'importLibrary',
       'chat',
       'streamChat',
+      'attachTurn',
+      'getTurnState',
       'getHistory',
       'getResume',
       'restartThread',
@@ -3140,6 +3257,8 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
       'createWorkspace', 'listWorkspaces', 'getWorkspace',
       'getEngine', 'getFile', 'writeFile',
       'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory', 'getResume', 'restartThread',
+      'attachTurn',
+      'getTurnState',
     ]);
     const apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
@@ -3159,6 +3278,12 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
     service.listWorkspaces.and.returnValue(of([urlSummary]));
     service.getWorkspace.and.returnValue(of(urlDetail));
     service.getHistory.and.returnValue(of([]));
+    // F-84 / SF-84-02 : par défaut, aucun tour n'est en cours — se rebrancher ne trouve rien et
+    // rend simplement de quoi se détacher.
+    service.attachTurn.and.returnValue(new AbortController());
+    service.getTurnState.and.returnValue(
+      of({ live: false, turnId: null, cursor: 0, startedAt: null }),
+    );
     service.getEngine.and.returnValue(of({
       engine: 'HOSTED_SANDBOX' as const, runnerConnected: false, runnerLastSeenAt: null,
       recommendRunner: false, recommendReason: null,
@@ -3263,6 +3388,8 @@ describe('AtelierComponent — écrans runner (F-38 SF-38-06)', () => {
       'getEngine', 'getFile', 'writeFile',
       'importLibrary', 'chat', 'streamChat', 'streamAgent', 'resetAgentSession', 'getHistory', 'getResume', 'restartThread',
       'setExecutionTarget', 'getRunnerStatus', 'createHostPairingCode', 'downloadRunnerJar',
+      'attachTurn',
+      'getTurnState',
     ]);
     const apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
@@ -3276,6 +3403,12 @@ describe('AtelierComponent — écrans runner (F-38 SF-38-06)', () => {
     service.listWorkspaces.and.returnValue(of([runnerSummary]));
     service.getWorkspace.and.returnValue(of(detail));
     service.getHistory.and.returnValue(of([]));
+    // F-84 / SF-84-02 : par défaut, aucun tour n'est en cours — se rebrancher ne trouve rien et
+    // rend simplement de quoi se détacher.
+    service.attachTurn.and.returnValue(new AbortController());
+    service.getTurnState.and.returnValue(
+      of({ live: false, turnId: null, cursor: 0, startedAt: null }),
+    );
     // Le moteur vient de la gateway (SF-39-07) : ici, il suit la cible du projet sous test.
     service.getEngine.and.returnValue(of({
       engine: detail.executionTarget === 'RUNNER'
@@ -3467,6 +3600,8 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
       // F-82 / SF-82-05 : la confirmation du coupe-circuit NOMME les projets du poste, et le
       // terminal ne connaît que le sien — il les relève donc avant de la poser.
       'runnerHostsOverview',
+      'attachTurn',
+      'getTurnState',
     ]);
     const apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
@@ -3479,6 +3614,12 @@ describe('AtelierComponent — garde-fous runner (F-38 / SF-38-08)', () => {
     service.listWorkspaces.and.returnValue(of([summary]));
     service.getWorkspace.and.returnValue(of(runnerDetail));
     service.getHistory.and.returnValue(of([]));
+    // F-84 / SF-84-02 : par défaut, aucun tour n'est en cours — se rebrancher ne trouve rien et
+    // rend simplement de quoi se détacher.
+    service.attachTurn.and.returnValue(new AbortController());
+    service.getTurnState.and.returnValue(
+      of({ live: false, turnId: null, cursor: 0, startedAt: null }),
+    );
     // Projet en cible « ma machine » : la gateway rend donc la boucle maison (SF-39-07).
     service.getEngine.and.returnValue(of({
       engine: 'LOCAL_MACHINE' as const, runnerConnected: true, runnerLastSeenAt: null,
@@ -3715,6 +3856,8 @@ describe("AtelierComponent — guide d'accueil (F-53 / SF-53-01)", () => {
       'getEngine', 'getFile', 'writeFile', 'importLibrary', 'chat', 'streamChat', 'streamAgent',
       'resetAgentSession', 'getHistory', 'getResume', 'restartThread', 'setExecutionTarget',
       'getRunnerStatus', 'createHostPairingCode', 'downloadRunnerJar', 'killHost', 'getRunnerAudit',
+      'attachTurn',
+      'getTurnState',
     ]);
     const apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
     const snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
@@ -3727,6 +3870,12 @@ describe("AtelierComponent — guide d'accueil (F-53 / SF-53-01)", () => {
     service.listWorkspaces.and.returnValue(of(projects));
     service.getWorkspace.and.returnValue(of(guideDetail));
     service.getHistory.and.returnValue(of([]));
+    // F-84 / SF-84-02 : par défaut, aucun tour n'est en cours — se rebrancher ne trouve rien et
+    // rend simplement de quoi se détacher.
+    service.attachTurn.and.returnValue(new AbortController());
+    service.getTurnState.and.returnValue(
+      of({ live: false, turnId: null, cursor: 0, startedAt: null }),
+    );
     service.getEngine.and.returnValue(of({
       engine: 'LOCAL_MACHINE' as const, runnerConnected: options.connected === true,
       runnerLastSeenAt: null, recommendRunner: false, recommendReason: null,
@@ -3966,6 +4115,8 @@ describe('AtelierComponent — rappel de journalisation (F-57 / SF-57-03)', () =
       'getEngine', 'getFile', 'writeFile', 'importLibrary', 'chat', 'streamChat', 'streamAgent',
       'resetAgentSession', 'getHistory', 'getResume', 'restartThread', 'setExecutionTarget',
       'getRunnerStatus', 'createHostPairingCode', 'downloadRunnerJar', 'killHost', 'getRunnerAudit',
+      'attachTurn',
+      'getTurnState',
     ]);
     const apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
     const snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
@@ -3977,6 +4128,12 @@ describe('AtelierComponent — rappel de journalisation (F-57 / SF-57-03)', () =
     } as ApiKeyStatus));
     service.listWorkspaces.and.returnValue(of([summary]));
     service.getHistory.and.returnValue(of([]));
+    // F-84 / SF-84-02 : par défaut, aucun tour n'est en cours — se rebrancher ne trouve rien et
+    // rend simplement de quoi se détacher.
+    service.attachTurn.and.returnValue(new AbortController());
+    service.getTurnState.and.returnValue(
+      of({ live: false, turnId: null, cursor: 0, startedAt: null }),
+    );
     service.getEngine.and.returnValue(of({
       engine: 'LOCAL_MACHINE' as const, runnerConnected: false,
       runnerLastSeenAt: null, recommendRunner: false, recommendReason: null,

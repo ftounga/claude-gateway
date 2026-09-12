@@ -4,6 +4,7 @@ import { provideHttpClient } from '@angular/common/http';
 
 import { AtelierService } from './atelier.service';
 import {
+  AtelierTurnState,
   AtelierChatResponse,
   AtelierConfirmRequest,
   AtelierEngineStatus,
@@ -851,5 +852,119 @@ describe('AtelierService', () => {
 
     expect(entries?.length).toBe(1);
     expect(entries?.[0].outcome).toBe('DENIED');
+  });
+  // ---- F-84 / SF-84-02 : se rebrancher sur un tour en cours ----
+
+  /** Laisse le flux se dérouler : `attachTurn` rend un contrôleur, pas une promesse. */
+  async function drain(): Promise<void> {
+    for (let i = 0; i < 5; i++) {
+      await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
+  it('se rebranche, rejoue depuis le curseur et suit le numéro d\'ordre (F-84 / SF-84-02)', async () => {
+    const fetchSpy = fakeSseFetch([
+      'event:attached\nid:0\ndata:{"turnId":"t1","cursor":7,"startedAt":1000}',
+      'event:text\nid:8\ndata:{"text":"la suite"}',
+      'event:action\nid:9\ndata:{"type":"read","path":"pom.xml"}',
+    ]);
+    const seen: string[] = [];
+    let cursor = 0;
+
+    service.attachTurn('w1', 7, {
+      onAttached: (state) => seen.push(`attached:${state.turnId}:${state.cursor}`),
+      onSeq: (seq) => (cursor = seq),
+      onAction: (a) => seen.push(`action:${a.type}`),
+      onText: (t) => seen.push(`text:${t}`),
+      onDone: () => undefined,
+      onError: () => undefined,
+    });
+    await drain();
+
+    expect(fetchSpy.calls.mostRecent().args[0])
+      .toBe('/api/workspaces/w1/chat/attach?cursor=7');
+    expect(seen).toEqual(['attached:t1:7', 'text:la suite', 'action:read']);
+    expect(cursor).withContext('le curseur suit le dernier événement de TOUR').toBe(9);
+  });
+
+  it('un aparté de branchement ne fait jamais avancer le curseur (F-84 / SF-84-02)', async () => {
+    fakeSseFetch(['event:attached\nid:0\ndata:{"turnId":"t1","cursor":0,"startedAt":0}']);
+    let cursor = -1;
+
+    service.attachTurn('w1', 0, {
+      onSeq: (seq) => (cursor = seq),
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+    });
+    await drain();
+
+    expect(cursor).toBe(-1);
+  });
+
+  it('sans tour vivant, le flux dit idle et rien d\'autre (F-84 / SF-84-02)', async () => {
+    fakeSseFetch(['event:idle\ndata:{"live":false}']);
+    const seen: string[] = [];
+
+    service.attachTurn('w1', 0, {
+      onIdle: () => seen.push('idle'),
+      onAction: () => seen.push('action'),
+      onText: () => seen.push('text'),
+      onDone: () => seen.push('done'),
+      onError: () => seen.push('error'),
+    });
+    await drain();
+
+    expect(seen).toEqual(['idle']);
+  });
+
+  it('un rejeu amputé est annoncé, jamais maquillé (F-84 / SF-84-01)', async () => {
+    fakeSseFetch([
+      'event:truncated\nid:20\ndata:{"fromSeq":0,"droppedThrough":20}',
+      'event:text\nid:21\ndata:{"text":"la suite"}',
+    ]);
+    let dropped = -1;
+
+    service.attachTurn('w1', 0, {
+      onTruncated: (through) => (dropped = through),
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+    });
+    await drain();
+
+    expect(dropped).toBe(20);
+  });
+
+  it('un échec de rebranchement ne signale jamais une panne (F-84 / SF-84-02)', async () => {
+    spyOn(window, 'fetch').and.returnValue(Promise.reject(new Error('réseau')));
+    const seen: string[] = [];
+
+    service.attachTurn('w1', 0, {
+      onIdle: () => seen.push('idle'),
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: (code) => seen.push(`error:${code}`),
+    });
+    await drain();
+
+    expect(seen).withContext('se rebrancher est un confort, pas une opération critique')
+      .toEqual(['idle']);
+  });
+
+  it("lit l'état du tour d'un projet (F-84 / SF-84-02)", () => {
+    let state: AtelierTurnState | undefined;
+    service.getTurnState('w1').subscribe((s) => (state = s));
+
+    const req = httpMock.expectOne('/api/workspaces/w1/chat/turn');
+    expect(req.request.method).toBe('GET');
+    req.flush({ live: true, turnId: 't1', cursor: 12, startedAt: 1000 });
+
+    expect(state?.live).toBeTrue();
+    expect(state?.cursor).toBe(12);
   });
 });
