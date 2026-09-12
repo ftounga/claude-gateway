@@ -51,6 +51,8 @@ class GovernanceMapReadingServiceTest {
     private GovernanceHostFiles hostFiles;
     @Mock
     private GovernanceHostScope hostScope;
+    @Mock
+    private GovernanceMapGrowthService growthService;
 
     private GovernanceMapReadingService service;
 
@@ -66,7 +68,7 @@ class GovernanceMapReadingServiceTest {
         // la ferait diverger.
         service = new GovernanceMapReadingService(
                 new GovernanceMapDestinations(activations, packages, packageFiles, hostScope),
-                hostFiles, hostScope);
+                hostFiles, hostScope, growthService);
         when(hostScope.nameOf(alice, host)).thenReturn("FREE");
         when(hostFiles.supports(host)).thenReturn(true);
 
@@ -236,5 +238,74 @@ class GovernanceMapReadingServiceTest {
         assertThat(content.present()).isFalse();
         assertThat(content.content()).isEmpty();
         assertThat(content.message()).contains("Appliquer");
+    }
+
+    // ------------------------------------------- ce que la carte a gagné (F-93 / SF-93-02)
+
+    @SuppressWarnings("unchecked")
+    private List<GovernanceMapGrowthService.Observation> captureObservations() {
+        org.mockito.ArgumentCaptor<List<GovernanceMapGrowthService.Observation>> captor =
+                org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(growthService).observe(eq(alice), eq(host), captor.capture());
+        return captor.getValue();
+    }
+
+    @Test
+    @DisplayName("chaque fichier LU ENTIÈREMENT est observé, avec son titre et son compte de faits")
+    void everyFullyReadFileIsObserved() {
+        reads("README.md", Presence.PRESENT, "# La carte\n\n## Contacts\n\n- Réseau : ticket\n");
+        reads("acces.md", Presence.PRESENT, "# Accès\n");
+
+        service.describe(alice, host);
+
+        assertThat(captureObservations()).extracting("path", "title", "facts").containsExactly(
+                org.assertj.core.groups.Tuple.tuple("README.md", "La carte", 1),
+                org.assertj.core.groups.Tuple.tuple("acces.md", "Accès", 0));
+    }
+
+    @Test
+    @DisplayName("un fichier TRONQUÉ n'est pas observé : un compte incomplet n'est pas un compte")
+    void atruncatedFileIsNeverObserved() {
+        when(hostFiles.read(alice, host, "README.md"))
+                .thenReturn(new HostFileRead(Presence.PRESENT, "# La carte\n\n- un fait\n", true));
+        reads("acces.md", Presence.PRESENT, "# Accès\n");
+
+        service.describe(alice, host);
+
+        assertThat(captureObservations()).extracting("path").containsExactly("acces.md");
+    }
+
+    @Test
+    @DisplayName("un fichier absent ou illisible n'est pas observé")
+    void anabsentOrUnreadableFileIsNeverObserved() {
+        reads("README.md", Presence.ABSENT, null);
+        reads("acces.md", Presence.UNKNOWN, null);
+
+        service.describe(alice, host);
+
+        assertThat(captureObservations()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("machine devenue muette : RIEN n'est retenu, et le relevé ne porte pas de gain")
+    void anunreachableMachineRetainsNothing() {
+        when(hostFiles.read(alice, host, "README.md"))
+                .thenReturn(new HostFileRead(Presence.UNREACHABLE, null, false));
+
+        GovernanceMapView view = service.describe(alice, host);
+
+        assertThat(view.readable()).isFalse();
+        assertThat(view.growth()).isNull();
+        verify(growthService, never()).observe(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("les trois « non » ne portent jamais de bloc de croissance")
+    void thethreeRefusalsCarryNoGrowth() {
+        GovernanceHostRef hosted = GovernanceHostRef.HOSTED;
+        when(hostFiles.supports(hosted)).thenReturn(false);
+        when(hostScope.nameOf(alice, hosted)).thenReturn("Hébergé");
+
+        assertThat(service.describe(alice, hosted).growth()).isNull();
     }
 }

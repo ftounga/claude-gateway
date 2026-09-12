@@ -29,8 +29,12 @@ import java.util.UUID;
  * @param filesPresent  nombre de ceux qui existent réellement sur la machine
  * @param sections  total des sections de la carte
  * @param facts     <b>total des faits</b> — le seul chiffre qui répond à la question du PO
+ * @param growth    <b>ce que la carte a gagné</b> depuis la première lecture (F-93 / SF-93-02), ou
+ *                  {@code null} s'il n'y a rien à en dire : un « +0 » affiché chaque jour serait pire
+ *                  que rien — il apprendrait qu'on ne gagne rien
  */
 public record GovernanceMapView(String hostRef, UUID hostId, String hostName, boolean supported,
         boolean governed, boolean readable, String message, List<GovernanceMapFileView> files,
-        int filesExpected, int filesPresent, int sections, int facts) {
+        int filesExpected, int filesPresent, int sections, int facts,
+        GovernanceMapGrowthView growth) {
 }

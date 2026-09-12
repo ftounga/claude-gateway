@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import fr.claudegateway.governance.GovernanceHostFiles.HostFileRead;
 import fr.claudegateway.governance.GovernanceHostFiles.Presence;
+import fr.claudegateway.governance.GovernanceMapGrowthService.Observation;
 import fr.claudegateway.governance.dto.GovernanceMapFileContent;
 import fr.claudegateway.governance.dto.GovernanceMapFileView;
 import fr.claudegateway.governance.dto.GovernanceMapView;
@@ -33,6 +34,11 @@ import fr.claudegateway.governance.dto.GovernanceMapView;
  * ({@link Presence#UNREACHABLE}), les suivantes ne partent pas et le relevé est rendu « non lu »,
  * avec son geste. Un fichier simplement illisible, lui, n'arrête rien : le suivant peut très bien
  * répondre.</p>
+ *
+ * <p><b>Elle retient aussi ce qu'elle a vu</b> (F-93 / SF-93-02) : chaque fichier lu entièrement est
+ * observé, pour que la lecture suivante puisse dire <b>ce que la carte a gagné</b>. C'est la seule
+ * écriture de ce chemin de lecture, et elle vit dans sa propre transaction — perdre une trace de
+ * croissance coûte une phrase, perdre la carte coûterait la feature.</p>
  *
  * <p><b>Trois « non » différents.</b> Poste sans machine, poste non gouverné, machine muette : trois
  * situations, trois gestes à proposer. Les fondre en « carte indisponible » enverrait l'utilisateur
@@ -70,12 +76,15 @@ public class GovernanceMapReadingService {
     private final GovernanceMapDestinations destinations;
     private final GovernanceHostFiles hostFiles;
     private final GovernanceHostScope hostScope;
+    private final GovernanceMapGrowthService growthService;
 
     public GovernanceMapReadingService(GovernanceMapDestinations destinations,
-            GovernanceHostFiles hostFiles, GovernanceHostScope hostScope) {
+            GovernanceHostFiles hostFiles, GovernanceHostScope hostScope,
+            GovernanceMapGrowthService growthService) {
         this.destinations = destinations;
         this.hostFiles = hostFiles;
         this.hostScope = hostScope;
+        this.growthService = growthService;
     }
 
     /** Le relevé de la carte d'un poste <b>déjà vérifié possédé</b>. */
@@ -91,6 +100,10 @@ public class GovernanceMapReadingService {
         }
 
         List<GovernanceMapFileView> files = new ArrayList<>(expected.size());
+        // Ce qui sera retenu pour dire, à la prochaine lecture, CE QUE LA CARTE A GAGNÉ (F-93 /
+        // SF-93-02). Seul un fichier lu ENTIÈREMENT y entre : un compte incomplet n'est pas un
+        // compte, et retenu comme référence il ferait apparaître un gain fantôme.
+        List<Observation> observations = new ArrayList<>(expected.size());
         boolean reachable = true;
         int present = 0;
         int sections = 0;
@@ -127,10 +140,17 @@ public class GovernanceMapReadingService {
             facts += digest.facts();
             files.add(new GovernanceMapFileView(path, digest.title(), true, true, digest.sections(),
                     digest.facts(), read.truncated(), null));
+            if (!read.truncated()) {
+                observations.add(new Observation(path, digest.title(), digest.facts()));
+            }
         }
         return new GovernanceMapView(host.ref(), host.publicId(), hostName, true, true, reachable,
                 reachable ? null : UNREACHABLE, List.copyOf(files), expected.size(), present,
-                sections, facts);
+                sections, facts,
+                // Machine devenue muette en chemin : on ne retient RIEN. Un relevé partiel ferait
+                // dire « la carte a gagné » sur la moitié des fichiers, et mentirait dès la
+                // lecture suivante.
+                reachable ? growthService.observe(userId, host, observations) : null);
     }
 
     /**
@@ -181,7 +201,7 @@ public class GovernanceMapReadingService {
     private static GovernanceMapView empty(GovernanceHostRef host, String hostName,
             boolean supported, boolean governed, String message) {
         return new GovernanceMapView(host.ref(), host.publicId(), hostName, supported, governed,
-                false, message, List.of(), 0, 0, 0, 0);
+                false, message, List.of(), 0, 0, 0, 0, null);
     }
 
     private static GovernanceMapFileView unreadable(String path, String title) {

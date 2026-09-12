@@ -112,6 +112,9 @@ class GovernanceMapApiIntegrationTest {
                 .andExpect(jsonPath("$.supported").value(true))
                 .andExpect(jsonPath("$.governed").value(false))
                 .andExpect(jsonPath("$.facts").value(0))
+                // F-93 / SF-93-02 : rien à dire, donc RIEN n'est dit. Un « +0 » affiché chaque jour
+                // apprendrait qu'on ne gagne rien.
+                .andExpect(jsonPath("$.growth").doesNotExist())
                 .andExpect(jsonPath("$.message").value(
                         org.hamcrest.Matchers.containsString("Le savoir durable")));
     }
