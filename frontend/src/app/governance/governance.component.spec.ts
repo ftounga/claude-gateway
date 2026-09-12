@@ -7,28 +7,26 @@ import { of, throwError } from 'rxjs';
 
 import { GovernanceComponent } from './governance.component';
 import { GovernanceService } from '../core/services/governance.service';
-import { AtelierService } from '../core/services/atelier.service';
 import {
   GovernanceDepositPlan,
+  GovernanceHost,
+  GovernanceHostSummary,
   GovernancePackage,
-  GovernanceProject,
   GovernanceSelection,
 } from '../core/models/governance.models';
-import { WorkspaceSummary } from '../core/models/atelier.models';
 import { DepositPreviewData } from './deposit-preview-dialog/deposit-preview-dialog.component';
 
 /**
- * L'écran de gouvernance (F-51 / SF-51-05).
+ * L'écran de gouvernance (F-51 / SF-51-05, regrainé par F-75 / SF-75-03).
  *
  * Ce que ces tests protègent avant tout : **aucune activation n'est envoyée tant que l'annonce n'a
- * pas été confirmée**. C'est l'exigence centrale de la feature — un paquet écrit sur la machine de
- * l'utilisateur.
+ * pas été confirmée**, et **l'activation vise un poste**, jamais un dossier. Le grain n'est pas un
+ * détail d'affichage : c'est la décision de la feature.
  */
 describe('GovernanceComponent', () => {
   let fixture: ComponentFixture<GovernanceComponent>;
   let component: GovernanceComponent;
   let governance: jasmine.SpyObj<GovernanceService>;
-  let atelier: jasmine.SpyObj<AtelierService>;
   let dialog: jasmine.SpyObj<MatDialog>;
 
   const pkg: GovernancePackage = {
@@ -45,30 +43,44 @@ describe('GovernanceComponent', () => {
     ],
   };
 
-  const selection: GovernanceSelection[] = [
-    { pkg, defaultApplied: false, activeProjects: 0 },
+  const selection: GovernanceSelection[] = [{ pkg, defaultApplied: false, activeProjects: 0 }];
+
+  const hosts: GovernanceHostSummary[] = [
+    { ref: 'h1', id: 'h1', name: 'EDENRED', virtual: false, projects: 2, active: 0 },
+    { ref: 'hosted', id: null, name: 'Hébergé', virtual: true, projects: 1, active: 0 },
   ];
 
-  const workspaces: WorkspaceSummary[] = [
-    {
-      id: 'w1',
-      name: 'web',
-      createdAt: new Date().toISOString(),
-      source: 'ARCHIVE',
-      gitRepo: null,
-    } as WorkspaceSummary,
-  ];
-
-  const emptyProject: GovernanceProject = { workspaceId: 'w1', active: [], available: [pkg] };
+  const emptyHost: GovernanceHost = {
+    ref: 'h1',
+    id: 'h1',
+    name: 'EDENRED',
+    virtual: false,
+    projects: [
+      { id: 'w1', name: 'web', path: 'web' },
+      { id: 'w2', name: 'api', path: 'api' },
+    ],
+    active: [],
+    available: [pkg],
+  };
 
   const plan: GovernanceDepositPlan = {
     packageId: 'p1',
     slug: 'livrables',
     version: 2,
-    readable: true,
-    entries: [
-      { path: 'STATE.md', kind: 'TEMPLATE', action: 'KEEP' },
-      { path: '.claude/skills/explique.md', kind: 'SKILL', action: 'CREATE' },
+    hostRef: 'h1',
+    hostName: 'EDENRED',
+    files: pkg.files,
+    projects: [
+      {
+        workspaceId: 'w1',
+        name: 'web',
+        path: 'web',
+        readable: true,
+        entries: [
+          { path: 'STATE.md', kind: 'TEMPLATE', action: 'KEEP' },
+          { path: '.claude/skills/explique.md', kind: 'SKILL', action: 'CREATE' },
+        ],
+      },
     ],
     rules: true,
     controls: 0,
@@ -84,27 +96,28 @@ describe('GovernanceComponent', () => {
     governance = jasmine.createSpyObj<GovernanceService>('GovernanceService', [
       'getCatalog',
       'getSelection',
-      'getProject',
+      'getHosts',
+      'getHost',
       'select',
       'deselect',
       'preview',
+      'readFile',
       'activate',
       'apply',
       'deactivate',
     ]);
-    atelier = jasmine.createSpyObj<AtelierService>('AtelierService', ['listWorkspaces']);
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
 
     governance.getCatalog.and.returnValue(of([pkg]));
     governance.getSelection.and.returnValue(of(selection));
-    governance.getProject.and.returnValue(of(emptyProject));
+    governance.getHosts.and.returnValue(of(hosts));
+    governance.getHost.and.returnValue(of(emptyHost));
     governance.preview.and.returnValue(of(plan));
-    governance.activate.and.returnValue(of(emptyProject));
+    governance.activate.and.returnValue(of(emptyHost));
     governance.select.and.returnValue(of(selection));
     governance.deselect.and.returnValue(of(void 0));
     governance.deactivate.and.returnValue(of(void 0));
     governance.apply.and.returnValue(of(plan));
-    atelier.listWorkspaces.and.returnValue(of(workspaces));
 
     await TestBed.configureTestingModule({
       imports: [GovernanceComponent],
@@ -112,7 +125,6 @@ describe('GovernanceComponent', () => {
         provideNoopAnimations(),
         provideRouter([]),
         { provide: GovernanceService, useValue: governance },
-        { provide: AtelierService, useValue: atelier },
         { provide: MatDialog, useValue: dialog },
       ],
     }).compileComponents();
@@ -121,13 +133,21 @@ describe('GovernanceComponent', () => {
     component = fixture.componentInstance;
   });
 
-  it('charge le catalogue, la sélection et les projets, et choisit le premier projet', () => {
+  it('charge le catalogue, la sélection et les POSTES, et choisit le premier', () => {
     fixture.detectChanges();
 
     expect(component.catalog().length).toBe(1);
-    expect(component.selection().length).toBe(1);
-    expect(component.selectedWorkspaceId()).toBe('w1');
-    expect(governance.getProject).toHaveBeenCalledWith('w1');
+    expect(component.hosts().length).toBe(2);
+    expect(component.selectedHostRef()).toBe('h1');
+    expect(governance.getHost).toHaveBeenCalledWith('h1');
+  });
+
+  it('nomme les dossiers du poste : ce sont eux qui recevront les fichiers', () => {
+    fixture.detectChanges();
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+    expect(text).toContain('web');
+    expect(text).toContain('api');
   });
 
   it('affiche les chemins que le paquet déposerait', () => {
@@ -144,12 +164,12 @@ describe('GovernanceComponent', () => {
 
     component.activate(pkg);
 
-    expect(governance.preview).toHaveBeenCalledWith('w1', 'p1');
+    expect(governance.preview).toHaveBeenCalledWith('h1', 'p1');
     expect(dialog.open).toHaveBeenCalled();
     expect(governance.activate).not.toHaveBeenCalled();
   });
 
-  it("active une fois l'annonce confirmée, et lui passe le plan rendu par l'aperçu", () => {
+  it("active sur le POSTE une fois l'annonce confirmée, et passe le plan au dialogue", () => {
     fixture.detectChanges();
     dialogClosing(true);
 
@@ -157,15 +177,15 @@ describe('GovernanceComponent', () => {
 
     const data = dialog.open.calls.mostRecent().args[1]?.data as DepositPreviewData;
     expect(data.plan).toBe(plan);
-    expect(data.projectName).toBe('web');
-    expect(governance.activate).toHaveBeenCalledWith('w1', 'p1');
+    expect(data.hostRef).toBe('h1');
+    expect(data.hostName).toBe('EDENRED');
+    expect(data.packageId).toBe('p1');
+    expect(governance.activate).toHaveBeenCalledWith('h1', 'p1');
   });
 
   it("n'active pas en aveugle quand l'aperçu échoue", () => {
     fixture.detectChanges();
-    governance.preview.and.returnValue(
-      throwError(() => new HttpErrorResponse({ status: 500 })),
-    );
+    governance.preview.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
 
     component.activate(pkg);
 
@@ -173,16 +193,30 @@ describe('GovernanceComponent', () => {
     expect(governance.activate).not.toHaveBeenCalled();
   });
 
-  it("laisse activer quand le projet n'a pas pu être lu — les règles s'appliquent sans disque", () => {
+  it('laisse activer quand un dossier n’a pas pu être lu — les règles s’appliquent sans disque', () => {
     fixture.detectChanges();
-    governance.preview.and.returnValue(of({ ...plan, readable: false }));
+    governance.preview.and.returnValue(
+      of({
+        ...plan,
+        projects: [{ workspaceId: 'w1', name: 'web', path: null, readable: false, entries: [] }],
+      }),
+    );
     dialogClosing(true);
 
     component.activate(pkg);
 
     const data = dialog.open.calls.mostRecent().args[1]?.data as DepositPreviewData;
-    expect(data.plan.readable).toBeFalse();
+    expect(data.plan.projects[0].readable).toBeFalse();
     expect(governance.activate).toHaveBeenCalled();
+  });
+
+  it('peut viser le poste « Hébergé » par son mot réservé', () => {
+    fixture.detectChanges();
+
+    component.chooseHost('hosted');
+
+    expect(governance.getHost).toHaveBeenCalledWith('hosted');
+    expect(component.selectedHostName()).toBe('Hébergé');
   });
 
   it('retient un paquet, et met la sélection à jour', () => {
@@ -225,25 +259,21 @@ describe('GovernanceComponent', () => {
       appliedAt: null,
     });
 
-    expect(governance.deactivate).toHaveBeenCalledWith('w1', 'p1');
+    expect(governance.deactivate).toHaveBeenCalledWith('h1', 'p1');
   });
 
   it('un 403 affiche le bandeau Forge et arrête là', () => {
-    governance.getCatalog.and.returnValue(
-      throwError(() => new HttpErrorResponse({ status: 403 })),
-    );
+    governance.getCatalog.and.returnValue(throwError(() => new HttpErrorResponse({ status: 403 })));
 
     fixture.detectChanges();
 
     expect(component.error()).toBe('forbidden');
     expect(component.loading()).toBeFalse();
-    expect(governance.getProject).not.toHaveBeenCalled();
+    expect(governance.getHost).not.toHaveBeenCalled();
   });
 
   it('une panne réseau propose de réessayer', () => {
-    governance.getCatalog.and.returnValue(
-      throwError(() => new HttpErrorResponse({ status: 0 })),
-    );
+    governance.getCatalog.and.returnValue(throwError(() => new HttpErrorResponse({ status: 0 })));
 
     fixture.detectChanges();
 
@@ -257,8 +287,9 @@ describe('GovernanceComponent', () => {
     dialogClosing(true);
     component.activate(pkg);
 
-    expect(governance.preview).toHaveBeenCalledWith('w1', 'p1');
-    expect(governance.activate).toHaveBeenCalledWith('w1', 'p1');
+    expect(governance.preview).toHaveBeenCalledWith('h1', 'p1');
+    expect(governance.activate).toHaveBeenCalledWith('h1', 'p1');
     expect(governance.getSelection).toHaveBeenCalledWith();
+    expect(governance.getHosts).toHaveBeenCalledWith();
   });
 });

@@ -1,0 +1,107 @@
+@if (loading) {
+  <div class="viewer__loading">
+    <mat-spinner diameter="28"></mat-spinner>
+    <span>Lecture du fichier…</span>
+  </div>
+} @else if (failed) {
+  <div class="viewer__notice">
+    <mat-icon>error_outline</mat-icon>
+    <p>Ce fichier n'a pas pu être lu. Le reste de l'annonce reste valable.</p>
+  </div>
+} @else {
+  <!-- L'alias `as` n'est accepté que sur un `@if` primaire, jamais sur un `@else if` : le bloc est
+       donc imbriqué plutôt que chaîné. -->
+  @if (data(); as file) {
+  <div class="viewer">
+    <header class="viewer__header">
+      <code>{{ file.path }}</code>
+      <span class="viewer__kind">{{ file.kind === 'SKILL' ? 'skill' : 'gabarit' }}</span>
+    </header>
+
+    @if (file.truncated) {
+      <p class="viewer__truncated">
+        Contenu tronqué à l'affichage : le fichier est plus long que ce qui tient ici.
+      </p>
+    }
+
+    @if (existing().length === 0) {
+      <p class="viewer__lead">
+        Ce fichier n'existe dans aucun de vos dossiers : il y sera <strong>créé tel quel</strong>.
+        Voici son contenu.
+      </p>
+      <div class="viewer__code" role="region" tabindex="0" aria-label="Contenu du fichier">
+        @for (line of broughtLines(); track $index) {
+          <div class="viewer__line">{{ line }}</div>
+        }
+      </div>
+    } @else {
+      <p class="viewer__lead">
+        Ce fichier existe déjà dans {{ existing().length }} de vos dossiers. Le dépôt
+        <strong>n'écrase jamais</strong> : c'est le fichier en place qui sera gardé, et celui du
+        paquet ne sera pas écrit. Voici la différence.
+      </p>
+
+      <mat-tab-group
+        [selectedIndex]="selected()"
+        (selectedIndexChange)="selected.set($event)"
+        animationDuration="0ms"
+      >
+        @for (project of existing(); track project.workspaceId) {
+          <mat-tab [label]="project.name">
+            @if (contentUnknown(project)) {
+              <p class="viewer__notice viewer__notice--inline">
+                <mat-icon>help_outline</mat-icon>
+                Le fichier est bien là, mais son contenu n'a pas pu être lu. Il sera laissé tel
+                quel.
+              </p>
+            } @else if (unchanged(project)) {
+              <p class="viewer__same">
+                <mat-icon>check_circle_outline</mat-icon>
+                Ce dossier porte déjà exactement ce fichier. Rien ne changerait.
+              </p>
+            } @else {
+              <div class="viewer__legend">
+                <span class="viewer__legend-item viewer__legend-item--kept">en place — gardé</span>
+                <span class="viewer__legend-item viewer__legend-item--brought">
+                  apporté par le paquet — non écrit
+                </span>
+              </div>
+              <div class="viewer__code" role="region" tabindex="0" aria-label="Différentiel">
+                @for (line of diffOf(project); track $index) {
+                  <div
+                    class="viewer__line"
+                    [class.viewer__line--removed]="line.change === 'removed'"
+                    [class.viewer__line--added]="line.change === 'added'"
+                  >
+                    <span class="viewer__sign" aria-hidden="true">{{ sign(line) }}</span>
+                    <span class="viewer__text">{{ line.text }}</span>
+                  </div>
+                }
+              </div>
+            }
+          </mat-tab>
+        }
+      </mat-tab-group>
+
+      @if (missing().length > 0) {
+        <p class="viewer__aside">
+          Dans {{ missing().length }} autre(s) dossier(s), ce fichier n'existe pas : il y sera créé.
+        </p>
+      }
+    }
+
+    @if (unreadable().length > 0) {
+      <p class="viewer__aside">
+        {{ unreadable().length }} dossier(s) n'ont pas pu être lus — la machine est peut-être
+        éteinte. Impossible de dire ce qu'ils contiennent.
+      </p>
+    }
+
+    @if (file.omitted > 0) {
+      <p class="viewer__aside">
+        {{ file.omitted }} dossier(s) supplémentaires n'ont pas été inspectés.
+      </p>
+    }
+  </div>
+}
+}
