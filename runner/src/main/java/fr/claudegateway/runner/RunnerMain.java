@@ -14,8 +14,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * connexion sortante WSS, heartbeat, et arrêt propre au {@code Ctrl-C}.
  *
  * <p>Codes de sortie : {@code 0} arrêt normal, {@code 2} usage/config invalide, {@code 3} appairage
- * refusé/erreur HTTP, {@code 4} jeton refusé sans code de réappairage disponible, {@code 1} erreur
- * inattendue.</p>
+ * refusé/erreur HTTP, {@code 4} jeton refusé sans code de réappairage disponible, {@code 5} gateway
+ * injoignable au contrôle de vol, {@code 6} aucun transport n'a tenu (F-82 / SF-82-03),
+ * {@code 1} erreur inattendue.</p>
  */
 public final class RunnerMain {
 
@@ -155,7 +156,15 @@ public final class RunnerMain {
         // Repli de transport (SF-38-09) : le WebSocket d'abord, le long-polling HTTP si le reseau le
         // tue. Une session est portee par l'un OU l'autre, jamais les deux.
         TransportFallbackPolicy fallbackPolicy = new TransportFallbackPolicy(config.transport());
-        RunnerConnection connection = new RunnerConnection(httpClient, config, console, fallbackPolicy);
+        // Journal de transport (F-82 / SF-82-03) : ce qui a ete tente, pourquoi ca a echoue, ce qui
+        // a ete retenu. Il ne decide RIEN — la bascule reste celle de SF-38-09, inchangee.
+        TransportJournal journal = new TransportJournal();
+        if (config.transport() == RunnerConfig.Transport.WEBSOCKET) {
+            journal.noFallback("--transport websocket impose la socket (retirez le drapeau pour "
+                    + "autoriser le repli long-polling HTTP).");
+        }
+        RunnerConnection connection =
+                new RunnerConnection(httpClient, config, console, fallbackPolicy, journal);
         AtomicReference<PollingConnection> polling = new AtomicReference<>();
         AtomicBoolean shuttingDown = new AtomicBoolean(false);
         CountDownLatch stopped = new CountDownLatch(1);
@@ -175,8 +184,8 @@ public final class RunnerMain {
         console.info("Appuyez sur Ctrl-C pour arrêter le runner.");
         try {
             runSession(token, config, console, httpClient, connection, fallbackPolicy, polling,
-                    shuttingDown);
-            return 0;
+                    shuttingDown, journal);
+            return transportVerdict(console, journal, shuttingDown);
         } catch (RunnerConnection.AuthRejectedException e) {
             console.warn(e.getMessage() + " — jeton effacé.");
             tokenStore.clear();
@@ -185,8 +194,8 @@ public final class RunnerMain {
                 try {
                     String fresh = pairAndStore(config, tokenStore, httpClient, home);
                     runSession(fresh, config, console, httpClient, connection, fallbackPolicy, polling,
-                            shuttingDown);
-                    return 0;
+                            shuttingDown, journal);
+                    return transportVerdict(console, journal, shuttingDown);
                 } catch (PairingClient.PairingException pe) {
                     console.error(pe.getMessage());
                     return 3;
@@ -203,6 +212,26 @@ public final class RunnerMain {
         } finally {
             stopped.countDown();
         }
+    }
+
+    /**
+     * Ce que la console dit <b>au moment où la session se termine</b>, et le code de sortie qui en
+     * découle (F-82 / SF-82-03).
+     *
+     * <p>Le défaut corrigé n'est pas le repli — l'instruction de SF-82-03 a établi qu'il est
+     * présent, câblé et atteignable. C'est le <b>silence</b> : les messages de transport existaient,
+     * dispersés dans le défilement, mais rien ne réunissait jamais quel transport avait été essayé,
+     * pourquoi il avait échoué, et lequel avait été retenu. Et un échec <b>total</b> de transport
+     * sortait en {@code 0}, « arrêt normal », ce qui dit « tout s'est bien passé » à qui lit le code
+     * de sortie.</p>
+     *
+     * <p>Un arrêt <b>demandé</b> reste un {@code 0} même si rien ne s'était établi : l'utilisateur a
+     * appuyé sur {@code Ctrl-C}, ce n'est pas une panne de réseau.</p>
+     */
+    static int transportVerdict(Console console, TransportJournal journal,
+            AtomicBoolean shuttingDown) {
+        journal.summaryLines().forEach(console::info);
+        return journal.exitCode(shuttingDown.get());
     }
 
     /**
@@ -252,7 +281,8 @@ public final class RunnerMain {
      */
     private void runSession(String token, RunnerConfig config, Console console, HttpClient httpClient,
             RunnerConnection connection, TransportFallbackPolicy fallbackPolicy,
-            AtomicReference<PollingConnection> polling, AtomicBoolean shuttingDown) {
+            AtomicReference<PollingConnection> polling, AtomicBoolean shuttingDown,
+            TransportJournal journal) {
         if (!fallbackPolicy.startsWithPolling()) {
             connection.run(token);
             if (!connection.fellBackToPolling()) {
@@ -264,8 +294,8 @@ public final class RunnerMain {
         if (shuttingDown.get()) {
             return;
         }
-        PollingConnection fallback =
-                new PollingConnection(new HttpPollingClient(httpClient, config, token), config, console);
+        PollingConnection fallback = new PollingConnection(
+                new HttpPollingClient(httpClient, config, token), config, console, journal);
         polling.set(fallback);
         if (shuttingDown.get()) {
             // Arret demande pendant le montage : ne pas ouvrir une boucle que personne n'arretera.

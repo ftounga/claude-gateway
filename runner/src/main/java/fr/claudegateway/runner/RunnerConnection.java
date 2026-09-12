@@ -43,6 +43,8 @@ public final class RunnerConnection {
     private final Backoff backoff;
 
     private final TransportFallbackPolicy fallbackPolicy;
+    /** Ce qui a été tenté et pourquoi ça a échoué (F-82 / SF-82-03) — il ne décide de rien. */
+    private final TransportJournal journal;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile boolean fellBackToPolling;
     private volatile WebSocket webSocket;
@@ -64,10 +66,21 @@ public final class RunnerConnection {
      */
     public RunnerConnection(HttpClient httpClient, RunnerConfig config, Console console,
             TransportFallbackPolicy fallbackPolicy) {
+        this(httpClient, config, console, fallbackPolicy, new TransportJournal());
+    }
+
+    /**
+     * @param journal consigne le transport tenté, le motif de son échec et ce qui a été retenu
+     *                (F-82 / SF-82-03). Il <b>n'influe sur rien</b> : la bascule reste décidée par
+     *                {@code fallbackPolicy}, dont ni les seuils ni le comptage ne sont touchés.
+     */
+    public RunnerConnection(HttpClient httpClient, RunnerConfig config, Console console,
+            TransportFallbackPolicy fallbackPolicy, TransportJournal journal) {
         this.httpClient = httpClient;
         this.config = config;
         this.console = console;
         this.fallbackPolicy = fallbackPolicy;
+        this.journal = journal;
         this.backoff = new Backoff(Duration.ofSeconds(1), Duration.ofSeconds(30));
     }
 
@@ -96,7 +109,10 @@ public final class RunnerConnection {
         dispatcher = ToolStack.create(config, console, sender).dispatcher();
         router = new FrameRouter(dispatcher, console);
         URI uri = config.webSocketUri(token);
-        console.info("Cible WebSocket : " + safeUri(uri));
+        String target = safeUri(uri);
+        console.info("Cible WebSocket : " + target);
+        // Le jeton est déjà expurgé par safeUri : rien de secret n'entre dans le journal.
+        journal.attempted(TransportJournal.Transport.WEBSOCKET, target);
 
         try {
             while (running.get()) {
@@ -109,7 +125,12 @@ public final class RunnerConnection {
                     latch.await(); // attend la fermeture/erreur de la socket
                     // Une socket qui meurt en quelques secondes est la signature d'un proxy qui
                     // coupe l'upgrade : elle compte comme un echec de transport (SF-38-09).
-                    fallbackPolicy.recordSessionEnded(Duration.ofNanos(System.nanoTime() - startedAt));
+                    Duration lifetime = Duration.ofNanos(System.nanoTime() - startedAt);
+                    fallbackPolicy.recordSessionEnded(lifetime);
+                    if (lifetime.compareTo(TransportFallbackPolicy.SHORT_SESSION) < 0) {
+                        journal.failed(TransportJournal.Transport.WEBSOCKET,
+                                "socket coupée après " + lifetime.toMillis() + " ms");
+                    }
                 } catch (AuthRejectedException e) {
                     // Un jeton refuse n'est pas un probleme de tuyau : aucun repli ne le reparerait.
                     throw e;
@@ -119,6 +140,7 @@ public final class RunnerConnection {
                 } catch (RuntimeException e) {
                     console.warn("Connexion échouée : " + Failures.describeWithHint(e));
                     fallbackPolicy.recordTransportFailure();
+                    journal.failed(TransportJournal.Transport.WEBSOCKET, Failures.describe(e));
                 }
                 if (!running.get()) {
                     break;
@@ -181,6 +203,7 @@ public final class RunnerConnection {
             throw new RunnerException(Failures.describe(cause), cause);
         }
         console.info("Runner connecté.");
+        journal.established(TransportJournal.Transport.WEBSOCKET);
         // La file d'émission est branchée sur la socket courante avant toute trame sortante.
         sender.attach(frame -> ws.sendText(frame, true));
         sender.send(dispatcher.readyFrame(runnerVersion()));
