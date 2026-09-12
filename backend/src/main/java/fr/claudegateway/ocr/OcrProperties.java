@@ -47,9 +47,24 @@ public record OcrProperties(
         return maxSize.toBytes();
     }
 
-    /** Ensemble normalisé (minuscules) des types autorisés. */
+    /**
+     * Liste normalisée (minuscules, sans doublon, ordre de la configuration) des types autorisés.
+     *
+     * <p>C'est <b>la</b> liste : {@link #allowedTypeSet()} — dont la validation se sert pour refuser
+     * — en dérive, et l'endpoint {@code GET /api/file-formats} la publie telle quelle (F-85 /
+     * SF-85-01). Une seule liste, deux vues : l'écran ne peut pas proposer ce que le serveur
+     * refuse. L'ordre est conservé parce que l'écran s'en sert pour énoncer les formats.
+     */
+    public List<String> normalizedAllowedTypes() {
+        return allowedTypes.stream()
+                .map(String::toLowerCase)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    /** Ensemble normalisé (minuscules) des types autorisés, dérivé de {@link #normalizedAllowedTypes()}. */
     public Set<String> allowedTypeSet() {
-        return allowedTypes.stream().map(String::toLowerCase).collect(Collectors.toSet());
+        return Set.copyOf(normalizedAllowedTypes());
     }
 
     /** Vrai si le type MIME doit être traité en OCR synchrone (image), faux ⇒ asynchrone. */

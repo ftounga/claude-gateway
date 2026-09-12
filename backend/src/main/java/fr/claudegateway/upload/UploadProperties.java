@@ -31,9 +31,24 @@ public record UploadProperties(List<String> allowedTypes, DataSize maxSize) {
         }
     }
 
-    /** Ensemble normalisé (minuscules) des types autorisés. */
+    /**
+     * Liste normalisée (minuscules, sans doublon, ordre de la configuration) des types autorisés.
+     *
+     * <p>C'est <b>la</b> liste : {@link #allowedTypeSet()} — dont la validation se sert pour refuser
+     * — en dérive, et l'endpoint {@code GET /api/file-formats} la publie telle quelle (F-85 /
+     * SF-85-01). Une seule liste, deux vues : l'écran ne peut pas proposer ce que le serveur
+     * refuse. L'ordre est conservé parce que l'écran s'en sert pour énoncer les formats.
+     */
+    public List<String> normalizedAllowedTypes() {
+        return allowedTypes.stream()
+                .map(t -> t.toLowerCase())
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    /** Ensemble normalisé (minuscules) des types autorisés, dérivé de {@link #normalizedAllowedTypes()}. */
     public Set<String> allowedTypeSet() {
-        return allowedTypes.stream().map(t -> t.toLowerCase()).collect(Collectors.toSet());
+        return Set.copyOf(normalizedAllowedTypes());
     }
 
     /** Plafond en octets. */

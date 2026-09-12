@@ -5,6 +5,7 @@ import {
   OnDestroy,
   OnInit,
   ViewChild,
+  computed,
   inject,
   signal,
 } from '@angular/core';
@@ -20,6 +21,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTableDataSource, MatTableModule } from '@angular/material/table';
 
 import { DocumentsService } from '../core/services/documents.service';
+import { FileFormatsService } from '../core/services/file-formats.service';
 import {
   ConfirmDialogComponent,
   ConfirmDialogData,
@@ -72,6 +74,16 @@ export class DocumentsComponent implements OnInit, AfterViewInit, OnDestroy {
   private readonly documentsService = inject(DocumentsService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly dialog = inject(MatDialog);
+  private readonly fileFormats = inject(FileFormatsService);
+
+  /**
+   * L'attribut `accept` du sélecteur, **dérivé** de `app.ocr.allowed-types` (F-85 / SF-85-01).
+   *
+   * <p>Il était auparavant recopié à la main dans le gabarit : au premier format ajouté au serveur,
+   * le sélecteur aurait continué de le cacher. Chaîne vide tant que le serveur n'a pas répondu — le
+   * sélecteur propose alors tout, comme avant, et le refus reste expliqué.</p>
+   */
+  readonly accept = computed(() => this.fileFormats.accept('documents'));
 
   readonly displayedColumns = ['filename', 'mediaType', 'status', 'chunks', 'createdAt', 'actions'];
   readonly dataSource = new MatTableDataSource<DocumentResponse>([]);
@@ -86,6 +98,7 @@ export class DocumentsComponent implements OnInit, AfterViewInit, OnDestroy {
   private pollHandle: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit(): void {
+    this.fileFormats.load();
     this.refresh();
   }
 

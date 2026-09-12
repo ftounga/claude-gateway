@@ -22,6 +22,7 @@ import {
 import { ForgeBreadcrumbComponent } from '../shared/forge-breadcrumb/forge-breadcrumb.component';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import { LiveBadgeComponent } from '../shared/live-badge/live-badge.component';
+import { ARCHIVE_ACCEPT } from '../shared/file-selectors';
 import { HostTone, hostTone } from '../shared/host-identity';
 import { MissionBadgeComponent } from '../shared/mission-badge/mission-badge.component';
 import { TerminalPreviewComponent } from '../shared/terminal-preview/terminal-preview.component';
@@ -149,6 +150,14 @@ export class PostesComponent implements OnInit {
 
   /** Les trois états proposés au choix, dans l'ordre : du plus vivant au plus rangé. */
   readonly missionStatuses = MISSION_STATUSES;
+
+  /**
+   * L'attribut `accept` du sélecteur d'archive, **dérivé** de `ARCHIVE_EXTENSIONS` (F-85 /
+   * SF-85-01). L'import d'archive n'a pas de liste blanche en configuration serveur — une archive
+   * est validée en la décompressant — sa source unique vit donc dans `shared/file-selectors.ts`,
+   * et ce gabarit la lit au lieu de répéter `.zip`.
+   */
+  readonly archiveAccept = ARCHIVE_ACCEPT;
 
   readonly hosts = signal<RunnerHostOverview[]>([]);
   /** Premier chargement : c'est le seul moment où l'écran a le droit d'être vide. */

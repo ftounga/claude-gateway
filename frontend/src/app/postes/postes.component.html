@@ -539,7 +539,7 @@
         #zipInput
         type="file"
         class="poste__zip-input"
-        accept=".zip,application/zip"
+        [accept]="archiveAccept"
         hidden
         (change)="onZipPicked($event)"
       />

@@ -13,8 +13,19 @@ describe('ChatComponent', () => {
   let component: ChatComponent;
   let httpMock: HttpTestingController;
 
-  /** Répond aux appels d'initialisation (modèles + conversations). */
+  /** Répond aux appels d'initialisation (formats acceptés + modèles + conversations). */
   function flushInit(): void {
+    // F-85 / SF-85-01 : l'écran lit au serveur ce qu'il accepte, au lieu de le recopier.
+    httpMock.expectOne('/api/file-formats').flush({
+      documents: {
+        mediaTypes: ['application/pdf', 'image/png', 'image/jpeg', 'image/tiff'],
+        maxBytes: 20971520,
+      },
+      attachments: {
+        mediaTypes: ['application/pdf', 'image/png', 'text/csv'],
+        maxBytes: 33554432,
+      },
+    });
     httpMock
       .expectOne('/api/chat/models')
       .flush({ defaultModel: 'claude-opus-4-8', models: ['claude-opus-4-8', 'claude-sonnet-5'] });
@@ -371,6 +382,18 @@ describe('ChatComponent', () => {
 
     component.loadConversationFiles();
     httpMock.expectNone('/api/conversations/null/files');
+  });
+
+  it("pose sur le sélecteur de pièce jointe un accept dérivé du serveur (F-85 / SF-85-01)", () => {
+    fixture.detectChanges();
+    flushInit();
+    fixture.detectChanges();
+
+    const input = fixture.nativeElement.querySelector(
+      'input.file-input[type=file]',
+    ) as HTMLInputElement;
+    // Ce sélecteur n'avait aucun `accept` : le système proposait tout, `.docx` compris.
+    expect(input.getAttribute('accept')).toBe('application/pdf,image/png,text/csv');
   });
 
   it('formats file sizes in o / Ko / Mo (F-23)', () => {

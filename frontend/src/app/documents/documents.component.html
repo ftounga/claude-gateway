@@ -15,7 +15,7 @@
       #fileInput
       type="file"
       class="documents__file-input"
-      accept="application/pdf,image/png,image/jpeg,image/tiff"
+      [accept]="accept()"
       (change)="onFileSelected($event)"
     />
     <div class="documents__submit-row">
