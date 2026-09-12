@@ -518,4 +518,16 @@ démarrage nomme la racine détectée —, avec `--no-system-trust` pour qui veu
 sous inspection TLS, c'est-à-dire une grande part des clients visés. Tant qu'elle n'est pas tranchée,
 SF-80-02 ne peut pas être développée — seule SF-80-01 (le diagnostic) l'est sans risque.
 
-**Tranchée par** : le PO. **Non tranchée à ce jour.**
+**TRANCHÉE PAR LE PO le 2026-09-12 : automatique et annoncé.**
+
+Le runner additionne le magasin du système à celui de la JDK **sans rien demander**, et la ligne de
+transparence du démarrage **nomme la racine d'entreprise détectée**. `--no-system-trust` reste
+disponible pour qui veut la confiance stricte.
+
+**Le motif de la décision** : refuser ce que le poste accorde déjà partout ne protège personne — le
+navigateur, `curl` et le système suivent l'intercepteur de toute façon. Le runner n'ajoute aucune
+confiance : il cesse d'être le seul à ignorer celle qui existe. Ce qui compte est que l'utilisateur
+**l'apprenne**, et c'est la mention au démarrage qui s'en charge — pas un échec qu'il faudrait
+comprendre puis contourner à la main.
+
+SF-80-02 est donc débloquée.
