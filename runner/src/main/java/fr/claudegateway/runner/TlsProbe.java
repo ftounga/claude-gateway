@@ -57,7 +57,8 @@ public final class TlsProbe {
      */
     public static TlsProbe forRuntime(ProxySelector proxySelector) {
         return new TlsProbe(publicRootsFromJdk(),
-                target -> TlsChainReader.readWithoutValidating(target, proxySelector));
+                target -> TlsChainReader.readWithoutValidating(target, proxySelector,
+                        TlsChainReader.STARTUP_TIMEOUT_MS));
     }
 
     /**
@@ -67,8 +68,26 @@ public final class TlsProbe {
      * @return le message à afficher, ou vide — le silence est le comportement par défaut
      */
     public Optional<String> inspect(String gatewayBaseUrl) {
-        return observe(gatewayBaseUrl)
-                .map(seen -> TlsInspection.message(seen.host(), seen.rootDn()));
+        return observe(gatewayBaseUrl).map(TlsProbe::contextLine);
+    }
+
+    /** La ligne {@code TLS :} du chemin nominal, à partir d'une observation déjà faite. */
+    static String contextLine(Seen seen) {
+        return TlsInspection.message(seen.host(), seen.rootDn());
+    }
+
+    /** Les lignes du chemin d'échec, à partir d'une observation déjà faite. */
+    static String failureLines(Seen seen) {
+        return TlsInspection.handshakeFailure(
+                TlsInspection.presenter(seen.chain(), seen.rootDn()));
+    }
+
+    /**
+     * Nom court de la racine d'entreprise constatée — celui que la ligne de transparence affiche
+     * (F-80 / SF-80-02). Vient de <b>notre propre connexion</b>, jamais du magasin du poste.
+     */
+    static String enterpriseRootName(Seen seen) {
+        return TlsInspection.presenter(seen.chain(), seen.rootDn());
     }
 
     /**
@@ -85,9 +104,7 @@ public final class TlsProbe {
      * @return les lignes à afficher sous l'erreur, ou vide
      */
     public Optional<String> explainHandshakeFailure(String gatewayBaseUrl) {
-        return observe(gatewayBaseUrl)
-                .map(seen -> TlsInspection.handshakeFailure(
-                        TlsInspection.presenter(seen.chain(), seen.rootDn())));
+        return observe(gatewayBaseUrl).map(TlsProbe::failureLines);
     }
 
     /** Ce que la sonde a vu : l'hôte, la chaîne présentée, et la racine qui la re-signe. */

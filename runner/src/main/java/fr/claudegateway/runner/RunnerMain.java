@@ -46,7 +46,8 @@ public final class RunnerMain {
             console.error(e.getMessage());
             console.info("Usage : java -jar claude-runner.jar --gateway <url> --root <racine du poste> "
                     + "--code <code-appairage> [--label <libellé>] [--heartbeat-interval <s>] "
-                    + "[--no-bash] [--transport auto|websocket|polling]");
+                    + "[--no-bash] [--no-system-trust] "
+                    + "[--transport auto|websocket|polling]");
             console.info("La racine du poste est le dossier sous lequel vivent vos projets "
                     + "(par exemple ~/dev) : un seul appairage y suffit pour tous.");
             console.info("Reprise : java -jar claude-runner.jar — sans argument, depuis un poste "
@@ -69,12 +70,28 @@ public final class RunnerMain {
 
         ProxyResolver proxyResolver = ProxyResolver.fromEnv(env);
 
+        // Truststore (F-80 / SF-80-02) : le cacerts de la JDK PLUS le magasin du système, sans que
+        // personne ait rien demandé (OQ-17, tranchée par le PO). Résolu ICI, avant tout, parce que
+        // c'est de la configuration — aucune I/O réseau — et parce que la ligne de transparence
+        // ci-dessous doit pouvoir l'annoncer. Magasin absent ou illisible : repli silencieux.
+        TrustStores.Trust trust = TrustStores.resolve(config.systemTrust());
+
+        // Observation TLS, UNE fois (F-80 / SF-80-02, D3). Elle précède la déclaration parce que
+        // c'est elle qui peut nommer la racine d'entreprise, et qu'on ne nomme que ce que NOTRE
+        // connexion a montré — jamais une racine moissonnée dans le magasin du poste (D2). Lecture
+        // non validante de SF-80-01 : aucun octet applicatif n'y transite, et elle se tait sur
+        // toute panne. Le résultat sert ensuite trois fois, sans seconde poignée de main.
+        TlsProbe probe = TlsProbe.forRuntime(proxyResolver);
+        Optional<TlsProbe.Seen> seen = probe.observe(config.gatewayBaseUrl());
+
         // Déclaration de transparence (F-57 / SF-57-01) : ce que fait ce programme, sous quels
-        // droits (SF-38-18), par quelle route, et ce qu'il ne cherche pas. Un bloc, pas des lignes
-        // dispersées : ces informations répondent toutes à la même question — « qu'est-ce que ce
-        // programme fait sur ma machine ? » — et se lisent ensemble ou pas du tout (D1).
+        // droits (SF-38-18), par quelle route, à quoi il se fie (SF-80-02), et ce qu'il ne cherche
+        // pas. Un bloc, pas des lignes dispersées : ces informations répondent toutes à la même
+        // question — « qu'est-ce que ce programme fait sur ma machine ? » (D1).
         Privileges privileges = Privileges.detect();
-        StartupDisclosure.lines(privileges, proxyResolver.route()).forEach(console::info);
+        StartupDisclosure.lines(privileges, proxyResolver.route(), trust, config.systemTrust(),
+                        seen.map(TlsProbe::enterpriseRootName).orElse(null))
+                .forEach(console::info);
         // F-55 / SF-55-03 : un NO_PROXY à la forme Windows est accepté, et c'est dit — parce que le
         // MÊME NO_PROXY sera lu par `curl` dans le terminal d'à côté, où il ne marchera pas. Ce
         // n'est pas une erreur : rien n'est cassé ici, et la ligne n'apparaît que dans ce cas (D2).
@@ -91,25 +108,24 @@ public final class RunnerMain {
 
         // Plus de ligne « Proxy d'entreprise détecté » ici : la route est désormais dite dans le bloc
         // de transparence ci-dessus, avec son adresse expurgée et la variable qui l'a décidée.
-        HttpClient httpClient = buildHttpClient(proxyResolver);
+        HttpClient httpClient = buildHttpClient(proxyResolver, trust);
 
         // Contrôle de vol (SF-38-25) : la gateway est-elle joignable depuis CE terminal ? La question
         // se pose avant l'appairage, parce que sa réponse n'a rien de métier — et qu'un échec réseau
         // survenu au milieu de l'appairage mêlait deux sujets sans rapport (D4).
         NetworkPreflight.Verdict flight = new NetworkPreflight(httpClient, OperatingSystem.current())
                 .verify(config.gatewayBaseUrl());
-        TlsProbe probe = TlsProbe.forRuntime(proxyResolver);
         if (flight.unreachable()) {
             console.error(flight.message());
-            handshakeDiagnosis(flight, probe, config.gatewayBaseUrl()).ifPresent(console::error);
+            handshakeDiagnosis(flight, seen).ifPresent(console::error);
             return 5;
         }
         console.info("Réseau    : gateway joignable");
 
         // Interception TLS (F-57 / SF-57-02) sur le chemin nominal : une information de contexte, et
-        // rien de plus. La sonde ne décide de rien — elle se tait au moindre doute, et n'a le droit
-        // de casser ni le démarrage, ni le code de sortie.
-        probe.inspect(config.gatewayBaseUrl()).ifPresent(console::info);
+        // rien de plus. Elle réutilise l'observation du démarrage — la sonde ne décide de rien, se
+        // tait au moindre doute, et n'a le droit de casser ni le démarrage, ni le code de sortie.
+        seen.map(TlsProbe::contextLine).ifPresent(console::info);
 
         TokenStore tokenStore = new TokenStore(config.hostRoot(), home);
 
@@ -190,10 +206,9 @@ public final class RunnerMain {
      * Sur un DNS muet ou un port fermé, sonder ferait attendre un délai complet pour ne rien
      * afficher.</p>
      */
-    static Optional<String> handshakeDiagnosis(NetworkPreflight.Verdict verdict, TlsProbe probe,
-            String gatewayBaseUrl) {
-        return verdict.tlsFailure() ? probe.explainHandshakeFailure(gatewayBaseUrl)
-                : Optional.empty();
+    static Optional<String> handshakeDiagnosis(NetworkPreflight.Verdict verdict,
+            Optional<TlsProbe.Seen> seen) {
+        return verdict.tlsFailure() ? seen.map(TlsProbe::failureLines) : Optional.empty();
     }
 
     /**
@@ -308,12 +323,23 @@ public final class RunnerMain {
      * frontière qui rend la sonde acceptable — elle lit, elle ne transporte pas.</p>
      */
     static HttpClient buildHttpClient(ProxyResolver proxyResolver) {
+        return buildHttpClient(proxyResolver, TrustStores.Trust.jdkOnly());
+    }
+
+    static HttpClient buildHttpClient(ProxyResolver proxyResolver, TrustStores.Trust trust) {
         HttpClient.Builder builder = HttpClient.newBuilder()
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .connectTimeout(java.time.Duration.ofSeconds(20));
         // Proxy : variables d'environnement d'entreprise si présentes, sinon sélecteur JVM par défaut
-        // (propriétés système http(s).proxyHost). Le truststore reste géré par la JVM.
+        // (propriétés système http(s).proxyHost).
         builder.proxy(proxyResolver.hasProxy() ? proxyResolver : ProxySelector.getDefault());
+        // Truststore (F-80 / SF-80-02) : le cacerts de la JDK PLUS le magasin du système, quand ce
+        // dernier apporte quelque chose. Sinon rien n'est posé et la JVM décide, comme avant. Le
+        // WebSocket en dérive (newWebSocketBuilder), tout comme le long-polling et l'appairage :
+        // un seul client, donc un seul truststore, pour TOUT le trafic du runner.
+        if (trust != null && trust.context() != null) {
+            builder.sslContext(trust.context());
+        }
         return builder.build();
     }
 

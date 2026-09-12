@@ -18,12 +18,19 @@ OUT="${2:?usage: package-windows.sh <jar> <sortie>}"
 JDK_VERSION=21
 JDK_URL="https://api.adoptium.net/v3/binary/latest/${JDK_VERSION}/ga/windows/x64/jdk/hotspot/normal/eclipse"
 
-# Modules de la JVM réduite. Les quatre premiers viennent de `jdeps` sur le jar réel ; les deux
+# Modules de la JVM réduite. Les quatre premiers viennent de `jdeps` sur le jar réel ; les trois
 # derniers ne sont PAS visibles par jdeps :
 #   - jdk.crypto.ec  : courbes elliptiques. Sans lui, la poignée de main TLS échoue sur la plupart
 #                      des serveurs modernes — il est chargé comme service, jamais référencé.
 #   - jdk.unsupported: sun.misc.Unsafe, utilisé par des bibliothèques tierces.
-MODULES="java.base,java.desktop,java.net.http,java.sql,jdk.crypto.ec,jdk.unsupported"
+#   - jdk.crypto.mscapi (F-80 / SF-80-02) : le fournisseur SunMSCAPI, et avec lui le magasin de
+#                      certificats de Windows (`Windows-ROOT`). Le paquet embarque sa PROPRE JVM,
+#                      donc son propre `cacerts` : sans ce module, `KeyStore.getInstance
+#                      ("Windows-ROOT")` lève dans l'image, le repli silencieux s'applique, et la
+#                      confiance au magasin du poste ne servirait qu'aux lancements par .jar —
+#                      c'est-à-dire à personne sur un poste d'entreprise. C'est le module qui rend
+#                      SF-80-02 vraie pour ce paquet.
+MODULES="java.base,java.desktop,java.net.http,java.sql,jdk.crypto.ec,jdk.crypto.mscapi,jdk.unsupported"
 
 WORK="${OUT}/.work"
 rm -rf "$WORK" "${OUT}/claude-runner-windows-x64.zip"

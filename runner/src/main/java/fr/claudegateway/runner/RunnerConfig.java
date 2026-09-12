@@ -35,18 +35,20 @@ public final class RunnerConfig {
     private final String label;
     private final Duration heartbeatInterval;
     private final boolean allowBash;
+    private final boolean systemTrust;
     private final Transport transport;
     private final Path resumedFrom;
 
     private RunnerConfig(String gatewayBaseUrl, Path workspaceRoot, String pairingCode,
-            String label, Duration heartbeatInterval, boolean allowBash, Transport transport,
-            Path resumedFrom) {
+            String label, Duration heartbeatInterval, boolean allowBash, boolean systemTrust,
+            Transport transport, Path resumedFrom) {
         this.gatewayBaseUrl = gatewayBaseUrl;
         this.workspaceRoot = workspaceRoot;
         this.pairingCode = pairingCode;
         this.label = label;
         this.heartbeatInterval = heartbeatInterval;
         this.allowBash = allowBash;
+        this.systemTrust = systemTrust;
         this.transport = transport;
         this.resumedFrom = resumedFrom;
     }
@@ -88,6 +90,10 @@ public final class RunnerConfig {
         // reste accepté sans effet : une ligne de commande valide hier ne doit pas échouer demain.
         String noBash = pick(cli, "no-bash", env, "CLAUDE_RUNNER_NO_BASH");
         pick(cli, "allow-bash", env, "CLAUDE_RUNNER_ALLOW_BASH"); // toléré, sans effet (D2)
+        // Confiance au magasin du système (F-80 / SF-80-02) : ACTIVE par défaut — OQ-17, tranchée
+        // par le PO le 2026-09-12, « automatique et annoncé ». `--no-system-trust` est le drapeau
+        // INVERSE : il rétablit la confiance stricte, c'est-à-dire le cacerts de la JDK seul.
+        String noSystemTrust = pick(cli, "no-system-trust", env, "CLAUDE_RUNNER_NO_SYSTEM_TRUST");
         String transport = pick(cli, "transport", env, "CLAUDE_RUNNER_TRANSPORT");
 
         // Reprise (F-46 / SF-46-01) : ce que la mémoire complète, et seulement ce qui manque. Une
@@ -150,7 +156,7 @@ public final class RunnerConfig {
 
         return new RunnerConfig(normalizedGateway, root, normalizedCode, normalizedLabel, hb,
                 // Entre deux consignes contradictoires, on retient la plus restrictive (D3).
-                !isTrue(noBash), Transport.parse(transport), resumedFrom);
+                !isTrue(noBash), !isTrue(noSystemTrust), Transport.parse(transport), resumedFrom);
     }
 
     /** URL absolue de l'endpoint d'appairage, {@code {gateway}/runner/pair}. */
@@ -240,6 +246,22 @@ public final class RunnerConfig {
     }
 
     /**
+     * Confiance au magasin de certificats du système d'exploitation (F-80 / SF-80-02).
+     *
+     * <p><b>Vraie par défaut</b> — OQ-17, tranchée par le PO le 2026-09-12 : le runner additionne le
+     * {@code cacerts} de la JDK et le magasin du poste <b>sans rien demander</b>, et l'annonce au
+     * démarrage. C'est exactement la confiance que le navigateur et {@code curl} accordent déjà
+     * là ; un runner qui refuse ce que le système accepte n'est pas plus sûr, il est seulement
+     * inutilisable.</p>
+     *
+     * <p>{@code --no-system-trust} (ou {@code CLAUDE_RUNNER_NO_SYSTEM_TRUST=true}) rétablit la
+     * confiance stricte.</p>
+     */
+    public boolean systemTrust() {
+        return systemTrust;
+    }
+
+    /**
      * Transport demandé (F-38 / SF-38-09). {@code AUTO} par défaut : WebSocket d'abord, repli
      * long-polling si le réseau le tue. {@code WEBSOCKET} ne se replie jamais, {@code POLLING} ne
      * tente même pas la socket (réseau déjà connu comme hostile).
@@ -311,7 +333,7 @@ public final class RunnerConfig {
      * avaler l'argument suivant. La forme {@code --allow-bash=false} reste acceptée.
      */
     private static final java.util.Set<String> BOOLEAN_FLAGS =
-            java.util.Set.of("allow-bash", "no-bash");
+            java.util.Set.of("allow-bash", "no-bash", "no-system-trust");
 
     private static Map<String, String> parseArgs(String[] args) {
         Map<String, String> map = new HashMap<>();

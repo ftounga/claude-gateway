@@ -77,10 +77,33 @@ Le runner **refuse explicitement** — sans jamais redemander un code en silence
 | `--label` | `CLAUDE_RUNNER_LABEL` | aucun | Libellé du jeton affiché dans l'UI (≤ 100 caractères) |
 | `--heartbeat-interval` | `CLAUDE_RUNNER_HEARTBEAT_INTERVAL` | `30` (s) | Période du heartbeat |
 | `--allow-bash` | `CLAUDE_RUNNER_ALLOW_BASH` | **`false`** | Autorise l'exécution de commandes (`bash`) sur cette machine |
+| `--no-system-trust` | `CLAUDE_RUNNER_NO_SYSTEM_TRUST` | **absent** | Confiance stricte : le `cacerts` de la JDK **seul**, sans le magasin du système (F-80 / SF-80-02) |
 
 L'argument CLI prime toujours sur la variable d'environnement. `--allow-bash` est un **drapeau** :
 il s'écrit seul (il n'avale pas l'argument suivant) ; `--allow-bash=false` le remet à l'état par
 défaut.
+
+## Confiance TLS (F-80 / SF-80-02)
+
+Le runner **additionne** le `cacerts` de la JDK et le magasin de certificats du système :
+`/etc/ssl/certs/ca-certificates.crt` (et les variantes RHEL) sous Linux/WSL, le trousseau sous
+macOS, `Windows-ROOT` sous Windows. C'est **automatique**, et c'est **annoncé** au démarrage :
+
+```
+Confiance : magasin de la JDK + magasin du système (/etc/ssl/certs/ca-certificates.crt)
+            — racine d'entreprise détectée : Zscaler Inc. (CN=Zscaler Intermediate Root CA)
+```
+
+**Ce n'est pas un relâchement** : c'est exactement la confiance que le navigateur et `curl`
+accordent déjà sur ce poste. La JVM, elle, n'a jamais lu ce magasin — c'est la raison pour laquelle
+le runner échouait seul là où `curl` répondait `200`, derrière un proxy qui déchiffre le TLS.
+
+**Additionner, jamais remplacer** : une racine publique retirée du magasin d'un poste reste
+reconnue. Magasin absent ou illisible (conteneur minimal) : repli silencieux sur le `cacerts` de la
+JDK, jamais une erreur. `--no-system-trust` rétablit la confiance stricte.
+
+La racine nommée dans la ligne ci-dessus est celle que **la gateway présente réellement**, lue sur
+notre propre connexion — jamais une racine moissonnée dans le magasin du poste.
 
 ## Exécution de commandes (SF-38-07)
 
