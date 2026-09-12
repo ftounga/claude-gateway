@@ -280,6 +280,26 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   /** Durée écoulée du run en cours, déjà formatée. */
   @Input() elapsedLabel = '';
 
+  /**
+   * **Lecture seule** (F-83 / SF-83-01) : le même terminal, le même flux, **sans un geste**.
+   *
+   * <p>C'est ce qui permet à la mosaïque de F-83 de montrer <b>le terminal</b> — le vrai, avec le
+   * contenu réel de son flux — plutôt qu'une copie qui divergerait à la première retouche. Une
+   * tuile montre donc exactement ce qu'un terminal ouvert montre : blocs, sorties, commentaire de
+   * l'agent, plan et ligne vivante.</p>
+   *
+   * <p><b>Ce qui disparaît</b> est tout ce qui sert à <b>agir</b> : la barre d'en-tête, le réglage
+   * d'exécution, l'état du poste, la publication, le bandeau de plafond — et l'<b>invite</b>. Le PO
+   * l'a posé deux fois : écrire reste un geste pris dans le terminal entier, devant son flux, et
+   * les terminaux doivent prendre une <b>très grosse partie de l'écran</b> ; tout ce qui n'est pas
+   * du terminal se réduit ici à rien.</p>
+   *
+   * <p><b>Ce qui ne disparaît pas</b> : une autorisation attendue. Elle perd ses boutons — décider
+   * est un geste — mais garde son <b>libellé écrit</b> et la commande en cause. C'est l'exigence
+   * non négociable de F-76, et elle vaut plus encore là où l'on regarde quatre choses à la fois.</p>
+   */
+  @Input() readOnly = false;
+
   /** Vrai pendant un envoi : l'invite est désactivée. */
   @Input() submitting = false;
 
@@ -666,6 +686,11 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   /** Envoie la demande saisie (touche Entrée ou bouton), sauf pendant un envoi. */
   submit(): void {
+    // LECTURE SEULE STRICTE (F-83 / SF-83-01) : le gabarit ne rend aucune invite, et le code refuse
+    // aussi — un envoi n'a pas à dépendre du seul fait qu'un champ soit absent de l'écran.
+    if (this.readOnly) {
+      return;
+    }
     // Le refus du plafond bloque l'envoi — c'est ce qui fait du plafond un garde-fou de dépense
     // plutôt qu'un message décoratif (F-70 / SF-70-01).
     if (this.liveLimitReached) {
