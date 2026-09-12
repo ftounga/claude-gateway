@@ -32,7 +32,7 @@ class FileToolsTest {
 
     @BeforeEach
     void setUp() {
-        tools = new FileTools(new PathGuard(root));
+        tools = new FileTools(new PathResolver(root));
     }
 
     // ---------------------------------------------------------------- read_file
@@ -93,10 +93,19 @@ class FileToolsTest {
     }
 
     @Test
-    void refuseUnCheminHorsRacineALaLecture() {
-        ToolOutcome outcome = tools.execute("read_file", input("path", "../secret.txt"));
+    void litUnFichierHorsDuDossierDuProjet(@TempDir Path outside) throws IOException {
+        // F-73 / SF-73-01 : ce test affirmait l'inverse jusqu'au 2026-09-12. Le confinement a été
+        // retiré parce qu'il n'existait déjà pas pour bash — le tenir ici seul ne protégeait rien.
+        Path voisin = Files.writeString(outside.resolve("voisin.txt"), "contenu du voisin");
 
-        assertEquals("path_outside_root", outcome.errorCode());
+        ToolOutcome relatif = tools.execute("read_file",
+                input("path", "../" + outside.getFileName() + "/voisin.txt"));
+        ToolOutcome absolu = tools.execute("read_file", input("path", voisin.toString()));
+
+        assertTrue(relatif.ok(), relatif.errorCode());
+        assertEquals("contenu du voisin", relatif.content());
+        assertTrue(absolu.ok(), absolu.errorCode());
+        assertEquals("contenu du voisin", absolu.content());
     }
 
     // --------------------------------------------------------------- write_file
@@ -127,16 +136,16 @@ class FileToolsTest {
     }
 
     @Test
-    void refuseUneEcritureHorsRacineSansToucherAuFichierCible(@TempDir Path outside) throws IOException {
-        Path victim = Files.writeString(outside.resolve("secret.txt"), "intact");
+    void ecritHorsDuDossierDuProjet(@TempDir Path outside) throws IOException {
+        Path cible = Files.writeString(outside.resolve("note.txt"), "avant");
         ObjectNode input = MAPPER.createObjectNode();
-        input.put("path", "../" + outside.getFileName() + "/secret.txt");
-        input.put("content", "compromis");
+        input.put("path", "../" + outside.getFileName() + "/note.txt");
+        input.put("content", "après");
 
         ToolOutcome outcome = tools.execute("write_file", input);
 
-        assertEquals("path_outside_root", outcome.errorCode());
-        assertEquals("intact", Files.readString(victim));
+        assertTrue(outcome.ok(), outcome.errorCode());
+        assertEquals("après", Files.readString(cible));
     }
 
     @Test

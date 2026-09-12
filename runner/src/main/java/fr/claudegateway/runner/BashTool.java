@@ -24,18 +24,31 @@ import com.fasterxml.jackson.databind.JsonNode;
  *       qui refuse donc l'appel avant émission — mais le refus qui fait foi est celui d'ici.</li>
  *   <li><b>Une commande à la fois</b> : un sémaphore à un jeton. La boucle tool-use est séquentielle,
  *       la limite ne coûte rien, et elle interdit qu'un enchaînement inattendu lance N processus.</li>
- *   <li><b>Confinement</b> : le {@code cwd} passe par le {@link PathGuard} — relatif, sous la racine,
- *       exclusions comprises. Aucun {@code cwd} n'échappe à la racine {@code --workspace}.</li>
  *   <li><b>Bornes</b> : sortie diffusée plafonnée, délai armé par l'aiguilleur, processus
  *       {@code destroyForcibly} dès que l'appel est abandonné.</li>
  * </ol>
+ *
+ * <p><b>Ce qu'il n'y a PAS, et ce que disait faussement ce commentaire.</b> Il affirmait jusqu'au
+ * 2026-09-12 qu'« une commande ne s'exécute jamais hors de la racine exposée ». C'était vrai de son
+ * {@code cwd} et <b>faux de tout le reste</b> : la ligne de commande n'a jamais été inspectée, et
+ * {@code cat ../autre-client/.env} s'exécutait sans obstacle. La phrase a induit le product owner en
+ * erreur pendant des jours ; elle est remplacée ici par ce qui est vrai. Le {@code cwd} est le
+ * <b>répertoire de départ</b> du processus, rien de plus. Une commande va où le compte qui a lancé le
+ * runner peut aller.</p>
+ *
+ * <p>Aucune inspection de la commande n'a été ajoutée en remplacement, et c'est délibéré : un shell
+ * ne se confine pas par liste d'interdits — une variable, un {@code eval} ou un encodage en viennent
+ * à bout. Seule une mise en conteneur confinerait, au prix de l'usage même du produit. Ce qui
+ * s'interpose désormais est la <b>porte de confirmation</b> (armée par défaut depuis F-73), le
+ * <b>journal d'audit</b>, le <b>coupe-circuit</b>, et le fait que l'application le <b>dise</b>.</p>
  *
  * <p><b>Threads</b> (piège identifié au cadrage) : {@code stdout} et {@code stderr} sont pompés sur
  * <b>deux threads dédiés</b>. Lire un {@code Process} en bloquant sur le thread du heartbeat ferait
  * passer le runner pour « déconnecté » en pleine exécution. Le thread appelant, lui, ne fait
  * qu'attendre la fin du processus.</p>
  *
- * <p><b>Anti-fuite</b> : aucun message d'erreur ne cite un chemin absolu de la machine.</p>
+ * <p><b>Messages</b> : une erreur ne cite que le chemin <b>demandé</b>, tel qu'il a été écrit —
+ * on ne complète jamais avec l'arborescence de la machine.</p>
  */
 public final class BashTool {
 
@@ -52,19 +65,19 @@ public final class BashTool {
      */
     static final int MAX_STREAM_BYTES = 262_144;
 
-    private final PathGuard guard;
+    private final PathResolver paths;
     private final boolean enabled;
     private final ShellElection shell;
     private final Semaphore slot = new Semaphore(1);
 
     /**
-     * @param guard   confinement des chemins ({@code cwd}) à la racine {@code --workspace}
+     * @param paths   résolution du {@code cwd} — dossier de <b>départ</b>, pas une borne (F-73)
      * @param enabled exécution autorisée sur cette machine (vrai sauf {@code --no-bash}, SF-38-19)
      * @param shell   interpréteur élu au démarrage (F-38 / SF-38-27) — l'outil ne choisit plus
      *                lui-même, il exécute sous celui que la machine a réellement
      */
-    public BashTool(PathGuard guard, boolean enabled, ShellElection shell) {
-        this.guard = guard;
+    public BashTool(PathResolver paths, boolean enabled, ShellElection shell) {
+        this.paths = paths;
         this.enabled = enabled;
         this.shell = shell;
     }
@@ -224,21 +237,25 @@ public final class BashTool {
     }
 
     /**
-     * Répertoire d'exécution : la racine {@code --workspace} par défaut, sinon le {@code cwd} demandé
-     * — <b>toujours</b> résolu par le {@link PathGuard}, donc relatif, confiné, et refusé s'il est
-     * exclu. Une commande ne s'exécute jamais hors de la racine exposée.
+     * Répertoire <b>de départ</b> du processus : le dossier du projet par défaut, sinon le
+     * {@code cwd} demandé — résolu par le {@link PathResolver}, qui accepte un chemin relatif, un
+     * chemin absolu ou un {@code ~/…}. Il doit exister et être un dossier, sans quoi la commande
+     * échouerait sans qu'on sache pourquoi.
+     *
+     * <p><b>Ce n'est pas une borne</b> : rien n'empêche la commande de sortir de ce dossier dès sa
+     * première ligne, et ce n'était déjà pas le cas avant F-73.</p>
      */
     private Path resolveWorkingDirectory(JsonNode input) {
         JsonNode value = input == null ? null : input.get("cwd");
         if (value == null || !value.isTextual() || value.asText().isBlank()) {
-            return guard.root();
+            return paths.root();
         }
-        PathGuard.Resolved resolved = guard.resolve(value.asText());
+        PathResolver.Resolved resolved = paths.resolve(value.asText());
         if (!Files.exists(resolved.path())) {
-            throw new ToolException("not_found", "Dossier introuvable : " + resolved.relative());
+            throw new ToolException("not_found", "Dossier introuvable : " + resolved.display());
         }
         if (!Files.isDirectory(resolved.path())) {
-            throw new ToolException("not_a_file", "Le chemin n'est pas un dossier : " + resolved.relative());
+            throw new ToolException("not_a_file", "Le chemin n'est pas un dossier : " + resolved.display());
         }
         return resolved.path();
     }

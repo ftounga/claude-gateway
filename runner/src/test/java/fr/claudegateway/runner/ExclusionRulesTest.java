@@ -13,56 +13,49 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Filtre d'exclusion du runner (F-38 / SF-38-10, décision D10) : liste par défaut non désactivable,
- * {@code .runnerignore} avec repli {@code .gitignore}, motifs résolus relativement à la racine.
+ * Filtre de listage du runner (F-38 / SF-38-10, revu par F-73 / SF-73-01) : bruit de construction,
+ * {@code .runnerignore} avec repli {@code .gitignore}, motifs résolus relativement au dossier du
+ * projet. <b>Plus aucune liste de secrets</b> : tout est négociable, parce que plus rien ici ne
+ * prétend protéger.
  */
 class ExclusionRulesTest {
 
     @TempDir
     Path root;
 
-    // ------------------------------------------------- liste par défaut non désactivable
+    // ------------------------------------------------- plus aucune liste de secrets (F-73)
 
     @Test
-    void excluteLaListeParDefautSansFichierDeRegles() {
+    void nExcluePlusAucunSecretSansFichierDeRegles() {
         ExclusionRules rules = ExclusionRules.load(root, null);
 
         assertEquals("(aucun)", rules.source());
         assertEquals(0, rules.userRuleCount());
-        assertTrue(rules.isExcludedFile(".env"));
-        assertTrue(rules.isExcludedFile("cert.pem"));
-        assertTrue(rules.isExcludedFile("infra/tls/serveur.pem"));
-        assertTrue(rules.isExcludedFile("id_rsa"));
-        assertTrue(rules.isExcludedFile(".ssh/id_rsa.pub"));
-        assertTrue(rules.isExcludedFile(".aws/credentials"));
-        assertTrue(rules.isExcludedFile(".kube/config"));
-        assertTrue(rules.isExcludedFile(".ssh/config"));
+        // Chacune de ces lignes affirmait l'inverse avant le 2026-09-12. La garde ne tenait que
+        // sur les outils fichiers : `cat .env` par bash n'a jamais rien rencontré.
+        assertFalse(rules.isExcludedFile(".env"));
+        assertFalse(rules.isExcludedFile("cert.pem"));
+        assertFalse(rules.isExcludedFile("infra/tls/serveur.pem"));
+        assertFalse(rules.isExcludedFile("id_rsa"));
+        assertFalse(rules.isExcludedFile(".ssh/id_rsa.pub"));
+        assertFalse(rules.isExcludedFile(".aws/credentials"));
+        assertFalse(rules.isExcludedFile(".kube/config"));
+        assertFalse(rules.isExcludedFile(".ssh/config"));
     }
 
     @Test
-    void excluteLaDenyListAToutesLesProfondeurs() {
-        ExclusionRules rules = ExclusionRules.defaultsOnly();
-
-        assertTrue(rules.isExcludedFile("apps/api/.env"));
-        assertTrue(rules.isExcludedFile("projet/.kube/config"));
-        assertTrue(rules.isExcludedFile("home/.aws/credentials"));
-        assertTrue(rules.isExcludedDirectory("projet/.ssh"));
-    }
-
-    @Test
-    void uneNegationNeReactiveJamaisLaListeParDefaut() throws IOException {
-        Files.writeString(root.resolve(".runnerignore"), "!.env\n!*.pem\n!.ssh/\n");
+    void uneRegleUtilisateurSurUnSecretResteNegociable() throws IOException {
+        Files.writeString(root.resolve(".runnerignore"), ".env\n!apps/api/.env\n");
 
         ExclusionRules rules = ExclusionRules.load(root, null);
 
-        assertTrue(rules.isExcludedFile(".env"));
-        assertTrue(rules.isExcludedFile("cle.pem"));
-        assertTrue(rules.isExcludedFile(".ssh/id_rsa"));
+        assertTrue(rules.isExcludedFile(".env"), "l'utilisateur peut toujours écarter ce qu'il veut");
+        assertFalse(rules.isExcludedFile("apps/api/.env"), "et sa négation l'emporte désormais");
     }
 
     @Test
     void neExcluteNiClaudeMdNiLesSkills() {
-        ExclusionRules rules = ExclusionRules.defaultsOnly();
+        ExclusionRules rules = ExclusionRules.noiseOnly();
 
         assertFalse(rules.isExcludedFile("CLAUDE.md"));
         assertFalse(rules.isExcludedFile(".claude/skills/revue.md"));
@@ -166,7 +159,7 @@ class ExclusionRulesTest {
         ExclusionRules rules = ExclusionRules.load(root, null);
 
         assertEquals(0, rules.userRuleCount());
-        assertTrue(rules.isExcludedFile(".env"), "la liste par défaut s'applique quand même");
+        assertTrue(rules.isExcludedFile("node_modules/x.js"), "le bruit s'écarte quand même");
     }
 
     @Test
@@ -192,7 +185,7 @@ class ExclusionRulesTest {
 
     @Test
     void unCheminVideNEstJamaisExclu() {
-        assertFalse(ExclusionRules.defaultsOnly().isExcludedDirectory(""));
+        assertFalse(ExclusionRules.noiseOnly().isExcludedDirectory(""));
     }
 
     // --- Bruit de construction écarté par défaut (F-38 / SF-38-21) ---------------------------
@@ -201,7 +194,7 @@ class ExclusionRulesTest {
     void ecarteLeBruitDeConstructionSansAucuneRegle() {
         // Le banc d'essai : 40 590 fichiers dont 40 112 dans node_modules, et l'utilisateur
         // recevait 4 829 lignes de dépendances au lieu des 478 fichiers de son projet.
-        ExclusionRules rules = ExclusionRules.defaultsOnly();
+        ExclusionRules rules = ExclusionRules.noiseOnly();
 
         assertTrue(rules.isExcludedFile("frontend/node_modules/rxjs/index.js"));
         assertTrue(rules.isExcludedFile("backend/target/classes/App.class"));
@@ -215,19 +208,18 @@ class ExclusionRulesTest {
 
     @Test
     void uneNegationExpliciteAnnuleLeBruitParDefaut() {
-        // Négociable, contrairement à la liste de secrets : on écarte du bruit, on ne protège pas.
+        // On écarte du bruit pour que la liste reste lisible ; on ne protège rien.
         ExclusionRules rules = ExclusionRules.of(List.of("!node_modules/"));
 
         assertFalse(rules.isExcludedFile("frontend/node_modules/rxjs/index.js"));
     }
 
     @Test
-    void leBruitNeProtegeJamaisUnSecret() {
-        // La liste de secrets reste évaluée en dernier et gagne toujours (D10) : la rendre
-        // négociable serait tout autre chose que d'écarter du bruit.
+    void toutEstNegociableDepuisF73() {
+        // Plus aucune règle n'écrase les autres : la dernière qui correspond l'emporte, point.
         ExclusionRules rules = ExclusionRules.of(List.of("!.env", "!node_modules/"));
 
-        assertTrue(rules.isExcludedFile(".env"));
+        assertFalse(rules.isExcludedFile(".env"));
         assertFalse(rules.isExcludedFile("frontend/node_modules/rxjs/index.js"));
     }
 }

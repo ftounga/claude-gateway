@@ -8,36 +8,32 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Résout, et retient, le <b>confinement d'un projet</b> sous la racine du poste
- * (F-48 / SF-48-02).
+ * Résout, et retient, le <b>dossier de travail d'un projet</b> sous la racine du poste
+ * (F-48 / SF-48-02, revu par F-73 / SF-73-01).
  *
- * <p><b>Le point dur de tout le chantier.</b> Depuis SF-48-01, le runner est appairé à une machine et
- * lancé à sa racine (par exemple {@code ~/dev}) ; les projets sont des sous-dossiers. Si la garde
- * restait celle de la racine, un agent travaillant sur le projet A pourrait lire — voire écrire —
- * dans le projet B. Cette classe est ce qui l'en empêche : elle fabrique un {@link PathGuard} par
- * projet, et c'est celui-là que les outils reçoivent.</p>
+ * <p><b>Ce que cette classe n'est plus.</b> Elle portait le confinement par projet : un agent
+ * travaillant sur le projet A ne devait pas atteindre le projet B. Le product owner a retiré ce
+ * confinement le 2026-09-12, après vérification qu'il n'existait <b>déjà pas</b> pour {@code bash} —
+ * seul le {@code cwd} passait par la garde, jamais la commande. Il ne tenait donc que sur les outils
+ * fichiers, et ce qui ne tient qu'à moitié ne tient pas.</p>
  *
- * <p><b>Régime local, décision non réversible du cadrage.</b> La gateway <i>indique</i> le projet du
- * tour ; c'est ce processus qui <i>refuse</i> d'en sortir. Déplacer la garantie dans la gateway
- * ferait dépendre la promesse centrale du mode runner d'un composant réseau — un défaut côté serveur
- * ouvrirait alors toute la racine. Ici, un runner compromis côté réseau ne peut toujours pas sortir
- * du dossier qu'on lui a désigné.</p>
- *
- * <p><b>Deux vérifications, dans cet ordre</b> : la forme du chemin (relatif, sans {@code ..}, sans
- * lettre de lecteur) <b>puis</b> sa canonicalisation ({@link Path#toRealPath}) — un lien symbolique
- * du projet A vers le projet B est donc refusé, exactement comme le fait déjà {@link PathGuard} pour
- * les fichiers.</p>
+ * <p><b>Ce qu'elle fait aujourd'hui.</b> Elle traduit le projet annoncé par la gateway en un
+ * <b>dossier de départ</b> : celui où {@code bash} démarre, celui d'où part le balayage de
+ * {@code list_files}, celui sous lequel se résolvent les chemins relatifs. La normalisation du
+ * chemin de projet est conservée — relatif, sans {@code ..}, sans lettre de lecteur — non plus
+ * comme une garantie de sécurité, mais comme un contrôle de <b>validité</b> : une valeur malformée
+ * ferait démarrer le tour ailleurs, en silence, et c'est exactement ce qu'on ne veut pas.</p>
  *
  * <p><b>Exclusions par projet</b> : {@code .runnerignore} est lu <b>dans le dossier du projet</b>.
- * C'est un fichier de projet, et c'est là que l'utilisateur l'écrit. La liste par défaut non
- * désactivable (D10) s'applique partout, inchangée.</p>
+ * C'est un fichier de projet, et c'est là que l'utilisateur l'écrit. Il n'élague plus que le
+ * <b>listage</b> (F-73) : plus aucune liste de secrets non désactivable.</p>
  *
- * <p>Le résultat est <b>retenu par projet</b> : une arborescence ne se canonicalise pas à chaque
- * appel, et les exclusions ne se relisent pas à chaque outil.</p>
+ * <p>Le résultat est <b>retenu par projet</b> : une arborescence ne se résout pas à chaque appel, et
+ * les exclusions ne se relisent pas à chaque outil.</p>
  */
 public final class ProjectScopes implements ToolScopes {
 
-    /** Longueur maximale d'un chemin de projet accepté (même borne que {@link PathGuard}). */
+    /** Longueur maximale d'un chemin de projet accepté (même borne que {@link PathResolver}). */
     static final int MAX_PROJECT_LENGTH = 4096;
 
     private static final String OUTSIDE_ROOT = "path_outside_root";
@@ -93,17 +89,18 @@ public final class ProjectScopes implements ToolScopes {
         }
         Path folder = resolveFolder(relative);
         ExclusionRules exclusions = ExclusionRules.load(folder, console);
-        PathGuard guard = new PathGuard(folder, exclusions);
-        ToolRouter router = new ToolRouter(new FileTools(guard), new BashTool(guard, allowBash, shell));
+        PathResolver paths = new PathResolver(folder, exclusions);
+        ToolRouter router = new ToolRouter(new FileTools(paths), new BashTool(paths, allowBash, shell));
         ToolRouter raced = byProject.putIfAbsent(relative, router);
         return raced == null ? router : raced;
     }
 
     /**
-     * Dossier réel du projet, canonicalisé et vérifié sous la racine du poste.
+     * Dossier réel du projet, résolu sous la racine du poste. C'est un contrôle de <b>validité</b>
+     * de la valeur reçue, pas une borne posée sur ce que le tour pourra atteindre (F-73).
      *
      * @throws ToolException {@code not_found} si le dossier n'existe pas ou n'en est pas un,
-     *                       {@code path_outside_root} s'il sort de la racine
+     *                       {@code path_outside_root} si la valeur reçue sort de la racine du poste
      */
     private Path resolveFolder(String relative) {
         if (relative.isEmpty()) {
@@ -120,13 +117,11 @@ public final class ProjectScopes implements ToolScopes {
         }
         Path real;
         try {
+            // Canonicalisation : un dossier de départ doit être un vrai dossier, lisible maintenant.
+            // Ce qu'il pointe après résolution des liens n'est plus refusé (F-73).
             real = candidate.toRealPath();
         } catch (IOException e) {
             throw new ToolException("io_error", "Dossier de projet illisible : " + relative);
-        }
-        // Après résolution des liens : un lien du projet A vers le projet B ne donne pas accès à B.
-        if (!real.startsWith(hostRoot)) {
-            throw outside(relative);
         }
         return real;
     }

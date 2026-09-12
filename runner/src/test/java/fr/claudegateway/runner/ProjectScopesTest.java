@@ -18,13 +18,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
- * Le point dur de F-48 (SF-48-02) : le runner est lancé à la racine du <b>poste</b>, et chaque tour
- * est borné au <b>projet</b> qu'il vise.
+ * Le runner est lancé à la racine du <b>poste</b> (F-48 / SF-48-02) ; chaque tour reçoit le
+ * <b>projet</b> où il travaille.
  *
- * <p>Ce que ces tests protègent tient en une phrase : <b>le projet A ne doit jamais atteindre le
- * projet B</b>, alors même que les deux vivent sous la racine que le runner a reçue. C'est la
- * promesse qui rend le mode runner acceptable sur un poste d'entreprise, et le cadrage la déclare
- * non réversible.</p>
+ * <p><b>Ce que ces tests protègent a changé le 2026-09-12</b> (F-73 / SF-73-01). Ils affirmaient
+ * « le projet A n'atteint jamais le projet B » — une promesse qui ne tenait que sur les outils
+ * fichiers : un {@code cd ../projet-b} par {@code bash} n'a jamais été inspecté. Le product owner a
+ * retiré le confinement plutôt que de continuer à l'annoncer. Ce qui reste vérifié ici est ce qui
+ * est vrai : le projet donne le <b>dossier de départ</b>, et une valeur de projet malformée est
+ * refusée <b>avant</b> toute exécution.</p>
  */
 class ProjectScopesTest {
 
@@ -75,21 +77,19 @@ class ProjectScopesTest {
         assertEquals("contenu de A", outcome.content());
     }
 
-    // -------------------------------------------------- la propriété qui compte
+    // -------------------------------------------- ce que le projet est, et ce qu'il n'est pas
 
     @Test
-    void unProjetNAtteintPasSonVoisinMemeSousLaMemeRacine() {
-        // Le fichier existe, il est sous la racine du poste, et il reste inaccessible : c'est
-        // exactement ce que F-48 devait préserver en élargissant la racine du runner.
+    void unProjetAtteintSonVoisinCarLeConfinementEstRetire() {
         ToolOutcome outcome = scopes().forProject("projet-a")
                 .execute("read_file", read("../projet-b/secret.txt"), ToolContext.none());
 
-        assertTrue(!outcome.ok());
-        assertEquals("path_outside_root", outcome.errorCode());
+        assertTrue(outcome.ok(), outcome.errorCode());
+        assertEquals("contenu de B", outcome.content());
     }
 
     @Test
-    void unLienSymboliqueVersLeVoisinEstRefuse() throws IOException {
+    void unLienSymboliqueVersLeVoisinEstSuivi() throws IOException {
         try {
             Files.createSymbolicLink(projectA.resolve("raccourci"), projectB);
         } catch (UnsupportedOperationException | IOException e) {
@@ -99,8 +99,8 @@ class ProjectScopesTest {
         ToolOutcome outcome = scopes().forProject("projet-a")
                 .execute("read_file", read("raccourci/secret.txt"), ToolContext.none());
 
-        assertTrue(!outcome.ok());
-        assertEquals("path_outside_root", outcome.errorCode());
+        assertTrue(outcome.ok(), outcome.errorCode());
+        assertEquals("contenu de B", outcome.content());
     }
 
     @Test

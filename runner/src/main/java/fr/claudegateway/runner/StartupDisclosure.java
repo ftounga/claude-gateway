@@ -30,17 +30,31 @@ public final class StartupDisclosure {
     /**
      * Les lignes du bloc de transparence, dans l'ordre où elles se lisent.
      *
+     * <p>Depuis F-73 / SF-73-01, la ligne <b>Portée</b> remplace ce que le confinement disait à la
+     * place du runner. Elle est ici parce qu'elle est devenue la seule information exacte sur ce que
+     * ce programme peut atteindre : il n'y a plus de garde entre lui et le disque. Le ton reste
+     * <b>factuel</b> — c'est la machine de celui qui lit, et c'est lui qui a lancé ce programme.</p>
+     *
      * @param privileges droits courants (SF-38-18) — le compte, et s'il est administrateur
      * @param route route sortante telle que le runner la connaît (SF-57-01)
-     * @return quatre lignes, jamais vides, jamais nulles
+     * @return cinq lignes, jamais vides, jamais nulles
      */
     public static List<String> lines(Privileges privileges, ProxyResolver.Route route) {
         String nl = System.lineSeparator();
         return List.of(
                 "Ce runner : exécute sur cette machine les commandes que vous autorisez depuis "
                         + "la Forge," + nl
-                        + "            dans le dossier du projet visé — rien d'autre, et rien sans "
+                        + "            avec les droits du compte ci-dessous. Rien ne s'exécute sans "
                         + "votre geste.",
+                // La portée est dite en premier, avant le compte : c'est elle qui a changé, et c'est
+                // elle qui n'était pas vraie avant (le dossier du projet ne bornait rien).
+                "Portée    : aucune restriction de dossier. Le dossier du projet est le point de "
+                        + "départ," + nl
+                        + "            pas une limite : une commande lit et écrit partout où ce "
+                        + "compte le peut," + nl
+                        + "            y compris .env, clés SSH et .aws/. Ce qui est lu part chez le "
+                        + "fournisseur" + nl
+                        + "            dans le contexte du tour.",
                 "Compte    : " + account(privileges),
                 "Route     : " + route(route),
                 // Le rappel est ICI, et pas seulement dans l'application (SF-57-01, D4) : le runner

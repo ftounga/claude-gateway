@@ -99,11 +99,15 @@ Une fois activée :
 
 | Outil | Entrée | Sortie |
 |---|---|---|
-| `bash` | `command`, `cwd` (optionnel, relatif) | sortie diffusée **ligne à ligne** + code de sortie |
+| `bash` | `command`, `cwd` (optionnel) | sortie diffusée **ligne à ligne** + code de sortie |
 
 - La commande est passée à `/bin/sh -c` (`cmd.exe /c` sous Windows) et tourne **avec vos droits**,
-  dans la racine `--workspace` par défaut. Un `cwd` demandé passe par la même garde de confinement
-  que les fichiers : ni `..`, ni chemin absolu, ni dossier exclu.
+  dans le dossier du projet par défaut. Un `cwd` demandé n'est qu'un **point de départ** : il doit
+  exister, et il peut être relatif, absolu ou `~/…`.
+- **Une commande n'est pas bornée à ce dossier** (F-73). Elle va où votre compte peut aller. Aucune
+  inspection de la ligne de commande n'est faite, et c'est délibéré : une liste d'interdits se
+  contourne par une variable ou un script intermédiaire — seule une mise en conteneur confinerait
+  vraiment, et elle interdirait l'usage même de ce produit.
 - `stdout` et `stderr` sont pompés sur **deux threads dédiés** et diffusés au fil de l'eau ; le
   heartbeat continue pendant une commande longue.
 - `stdin` est fermé au démarrage : une commande qui lit l'entrée standard reçoit EOF au lieu de
@@ -115,52 +119,58 @@ Une fois activée :
   une information.
 - Le bouton **Interrompre** de la Forge tue le processus (`destroyForcibly`) et arrête le tour.
 
-## Outils fichiers et confinement (SF-38-04)
+## Outils fichiers (SF-38-04, revu par F-73)
 
 Le runner exécute quatre outils, reçus de la gateway sur la connexion WSS :
 
 | Outil | Entrée | Sortie |
 |---|---|---|
-| `list_files` | — | chemins relatifs des fichiers de la racine, triés, un par ligne |
+| `list_files` | — | chemins des fichiers du dossier du projet, triés, un par ligne |
 | `read_file` | `path` | contenu texte UTF-8 (borné à 512 Kio, au-delà `truncated`) |
 | `write_file` | `path`, `content` | écrit le fichier, crée les dossiers parents manquants |
 | `search_files` | `query` | lignes `chemin:ligne: texte`, bornées à 8 000 caractères |
 
-**Confinement — la vérification qui fait foi est celle du runner** : tout chemin est résolu de façon
-canonique (liens symboliques compris) et doit rester sous `--workspace`. Un `..`, un chemin absolu,
-une lettre de lecteur Windows ou un lien qui sort de la racine sont refusés (`path_outside_root`) —
-**rien n'est lu ni écrit**. Les messages d'erreur renvoyés à la gateway ne citent que des chemins
-**relatifs** : le chemin absolu de votre machine ne sort jamais du poste.
+**Aucun confinement de chemin depuis F-73.** Un chemin relatif se résout sous le dossier du projet ;
+un `..`, un chemin absolu ou un `~/…` sont **acceptés**. Ces outils lisent et écrivent partout où
+votre compte le peut — y compris un `.env`, une clé privée ou `~/.ssh/`. La garde qui existait ici
+ne tenait que sur ces quatre outils : un `cat .env` passé à `bash` n'a jamais rien rencontré, et une
+protection qui ne couvre que la moitié des chemins n'en est pas une. Ce qui s'interpose désormais est
+la **porte de confirmation** (armée par défaut), le **journal d'audit**, le **coupe-circuit** — et le
+fait que l'application le **dise**, au démarrage du runner comme au moment d'autoriser.
+
+> **Ce que cela implique, dit franchement** : la porte ne couvre que `bash`. Une lecture de fichier
+> ne demande rien, et son contenu part chez le fournisseur dans le contexte du tour. Lancez le runner
+> avec le compte et sur la machine qui conviennent à ce régime.
 
 Bornes appliquées localement : lecture refusée au-delà de 8 Mio (`too_large`), écriture refusée
 au-delà de 512 Kio, 20 000 fichiers au plus pour `list_files`, fichiers binaires et fichiers de plus
 d'1 Mio ignorés par `search_files`. Chaque appel a son propre délai (30 s par défaut) et peut être
 interrompu depuis la session. La console affiche chaque appel exécuté et sa durée.
 
-## Exclusions (SF-38-10)
+## Filtre de listage (SF-38-10, revu par F-73)
 
-Le filtre d'exclusion est appliqué **sur votre machine, avant toute lecture, écriture ou listing** :
-ce qui est exclu ne quitte jamais le poste. Il est traversé par **les quatre** outils — deviner le
-chemin d'un fichier exclu ne le rend pas lisible, il répond `excluded`.
+Le filtre n'élague plus que **ce qui est listé** : `list_files` et `search_files`. Il ne refuse
+**aucune** lecture ni écriture d'un chemin **nommé** — un fichier écarté de la liste se lit très bien
+en le demandant. C'est une question de lisibilité, pas de protection.
 
-Deux jeux de règles :
+Deux jeux de règles, **toutes négociables** :
 
-1. **Vos règles** — `.runnerignore` à la racine `--workspace`. S'il est absent, **repli** sur le
-   `.gitignore` de la racine. Syntaxe gitignore : `#` commentaire, `!` négation, `/` final =
-   dossier uniquement, `/` initial ou interne = motif ancré à la racine, sinon nom de base à
-   n'importe quelle profondeur, jokers `*`, `?`, `**`. La dernière règle qui correspond l'emporte.
+1. **Le bruit de construction** — `node_modules/`, `target/`, `build/`, `dist/`, `.angular/`,
+   `.venv/`, `vendor/`, `.terraform/`… (SF-38-21). Évalué en premier ; un `!node_modules/` l'annule.
+2. **Vos règles** — `.runnerignore` dans le dossier du projet. S'il est absent, **repli** sur le
+   `.gitignore` du projet. Syntaxe gitignore : `#` commentaire, `!` négation, `/` final =
+   dossier uniquement, `/` initial ou interne = motif ancré à la racine du projet, sinon nom de base
+   à n'importe quelle profondeur, jokers `*`, `?`, `**`. La dernière règle qui correspond l'emporte.
    (Les classes de caractères `[a-z]` ne sont pas interprétées : elles sont comparées littéralement.)
-2. **La liste par défaut, non désactivable** (décision D10) — `.env`, `*.pem`, `id_rsa*`, `.aws/`,
-   `.kube/config`, `.ssh/`. Elle est évaluée **en dernier** et **gagne toujours** : un `!.env` dans
-   votre `.runnerignore` ne la réactive pas.
 
-Un dossier exclu est élagué du balayage : son contenu n'est ni listé, ni ouvert, ni lu. Les règles
-sont chargées **au démarrage** — modifier `.runnerignore` demande un redémarrage du runner, qui
-affiche alors la source et le nombre de règles retenues.
+Un dossier exclu est élagué du balayage : son contenu n'est ni listé ni parcouru par la recherche.
+Les règles sont chargées **au premier appel sur le projet** — modifier `.runnerignore` demande un
+redémarrage du runner.
 
-> La liste par défaut est volontairement littérale et courte. Elle ne couvre **pas** `.env.local`,
-> `id_ed25519`, `*.key`, `.npmrc`… : ajoutez-les à votre `.runnerignore`. Et pointez `--workspace`
-> sur le dossier de projet voulu, pas sur `$HOME`.
+> **La liste de secrets non désactivable a été retirée** le 2026-09-12 (F-73). `.env`, `*.pem`,
+> `id_rsa*`, `.aws/`, `.kube/config` et `.ssh/` sont désormais traités comme n'importe quel fichier.
+> Un `.runnerignore` peut toujours les écarter des **listes**, mais plus rien n'empêche leur lecture
+> si le modèle les demande par leur nom.
 
 ## Jeton
 
@@ -215,14 +225,17 @@ pas dessus comme sur une protection.
 
 ### Ce qui protège réellement
 
-- **La porte de confirmation** : aucune commande ne part sans un geste de l'utilisateur, et elle
-  n'est pas désactivable en mode runner.
+- **La porte de confirmation** : aucune commande `bash` ne part sans un geste de l'utilisateur. Elle
+  est **armée par défaut** sur tout projet créé depuis le 2026-09-12 (F-73), et reste réglable
+  projet par projet.
 - **Le journal d'audit** : chaque appel est tracé, y compris les refus.
-- **Les exclusions `.runnerignore`** : un chemin exclu n'est ni listé, ni lisible.
 - **Le coupe-circuit** : révoquer les jetons coupe la liaison immédiatement.
+- **Ce qui est dit** : le bloc de démarrage ci-dessus, et l'écran au moment d'autoriser.
 
-À noter : la racine `--workspace` confine les **outils fichiers**, pas ce qu'une commande `bash`
-touche ensuite. Un shell reste un shell.
+À noter, et c'est la limite à connaître : **la porte ne couvre que `bash`**. Les outils fichiers ne
+demandent rien — une lecture de `.env` ou de `~/.ssh/id_rsa` ne pose aucune question, et son contenu
+part chez le fournisseur dans le contexte du tour. Un shell reste un shell, et un runner reste un
+programme qui travaille avec vos droits sur votre machine.
 
 ### Recommandation
 

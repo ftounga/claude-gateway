@@ -1,5 +1,6 @@
 package fr.claudegateway.runner;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -23,14 +24,63 @@ class StartupDisclosureTest {
         return String.join("\n", lines);
     }
 
+    private static List<String> lines(String user, boolean elevated, Map<String, String> env) {
+        return StartupDisclosure.lines(Privileges.of(user, elevated),
+                ProxyResolver.fromEnv(env).route());
+    }
+
     @Test
     void it_says_what_the_runner_does_before_anything_else() {
         String text = block("francky", false, Map.of());
 
         assertTrue(text.contains("Ce runner :"), text);
         assertTrue(text.contains("exécute sur cette machine les commandes que vous autorisez"), text);
-        // « rien sans votre geste » : la porte de confirmation est ce qui protège réellement.
-        assertTrue(text.contains("rien sans votre geste"), text);
+        // La porte de confirmation est ce qui protège réellement — et depuis F-73, la seule chose.
+        assertTrue(text.contains("sans votre geste"), text);
+    }
+
+    // ------------------------------------------------------------------ F-73 / SF-73-01
+
+    @Test
+    void it_states_its_scope_before_naming_the_account() {
+        List<String> lines = lines("francky", false, Map.of());
+
+        assertEquals(5, lines.size(), lines.toString());
+        assertTrue(lines.get(1).startsWith("Portée    :"), lines.toString());
+        assertTrue(lines.get(2).startsWith("Compte    :"), lines.toString());
+    }
+
+    @Test
+    void the_scope_line_says_there_is_no_folder_restriction_and_what_that_means() {
+        String text = block("francky", false, Map.of());
+
+        assertTrue(text.contains("aucune restriction de dossier"), text);
+        assertTrue(text.contains("point de départ"), text);
+        // Les fichiers sensibles sont nommés : c'est le risque que le product owner a assumé,
+        // et l'assumer suppose de le dire (F-73, D8).
+        assertTrue(text.contains(".env"), text);
+        assertTrue(text.contains("clés SSH"), text);
+        assertTrue(text.contains(".aws/"), text);
+        assertTrue(text.contains("part chez le fournisseur"), text);
+    }
+
+    @Test
+    void the_block_never_promises_a_confinement_it_does_not_have() {
+        String text = block("francky", false, Map.of());
+
+        assertFalse(text.contains("confiné"), text);
+        assertFalse(text.contains("dans le dossier du projet visé"), text);
+    }
+
+    @Test
+    void the_block_informs_without_alarming() {
+        // F-73, D6 : c'est sa machine, il a lancé ce programme lui-même. On informe, on n'effraie
+        // pas — un bloc alarmiste se saute, et sauter ce bloc est exactement ce qu'on ne veut pas.
+        String text = block("francky", false, Map.of()).toLowerCase(java.util.Locale.ROOT);
+
+        for (String cri : new String[] {"attention", "danger", "alerte", "risque", "!"}) {
+            assertFalse(text.contains(cri), "mot alarmiste « " + cri + " » : " + text);
+        }
     }
 
     @Test

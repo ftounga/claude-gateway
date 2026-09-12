@@ -11,36 +11,35 @@ import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
 /**
- * Filtre d'exclusion appliqué <b>sur la machine de l'utilisateur</b> (F-38 / SF-38-10, décision
- * D10) : ce qui est exclu ne quitte jamais la machine.
+ * Filtre de <b>listage</b> appliqué sur la machine de l'utilisateur (F-38 / SF-38-10, puis
+ * F-73 / SF-73-01).
  *
- * <p>Deux jeux de règles, évalués dans cet ordre :</p>
+ * <p><b>Ce que ce filtre n'est plus.</b> Jusqu'à F-73, il portait aussi une liste de secrets non
+ * désactivable ({@code .env}, {@code *.pem}, {@code id_rsa*}, {@code .aws/}, {@code .kube/config},
+ * {@code .ssh/}) et refusait tout chemin <b>adressé</b> qui y correspondait. Le product owner l'a
+ * retirée le 2026-09-12, en même temps que le confinement : elle ne protégeait que les outils
+ * fichiers, alors qu'un simple {@code cat .env} passé à {@code bash} n'a jamais rien rencontré. Une
+ * garde qui ne tient que sur la moitié des chemins n'est pas une garde, c'est une phrase. Ce qui
+ * remplace la phrase : la porte de confirmation, armée par défaut, et ce que l'application dit.</p>
+ *
+ * <p><b>Ce qu'il est.</b> Un filtre de <b>lisibilité</b>, appliqué au seul balayage de
+ * {@code list_files} et {@code search_files}. Deux jeux de règles, toutes négociables :</p>
  * <ol>
- *   <li>les <b>règles utilisateur</b>, lues dans {@code .runnerignore} à la racine
- *       {@code --workspace} — à défaut, <b>repli</b> sur {@code .gitignore} ; syntaxe gitignore, la
- *       <b>dernière règle qui correspond l'emporte</b> (négation {@code !} comprise) ;</li>
- *   <li>la <b>liste par défaut non désactivable</b> ({@link #DEFAULT_DENY}), évaluée <b>en dernier</b>
- *       et qui <b>gagne toujours</b> : une négation utilisateur ({@code !.env}) ne la réactive
- *       jamais.</li>
+ *   <li>le <b>bruit de construction</b> ({@link #DEFAULT_NOISE}), évalué en premier ;</li>
+ *   <li>les <b>règles utilisateur</b>, lues dans {@code .runnerignore} à la racine du projet — à
+ *       défaut, <b>repli</b> sur {@code .gitignore} ; syntaxe gitignore, la <b>dernière règle qui
+ *       correspond l'emporte</b> (négation {@code !} comprise, y compris sur le bruit).</li>
  * </ol>
  *
- * <p>Les motifs se résolvent <b>relativement à la racine</b>, sur un chemin déjà normalisé par
- * {@link PathGuard} (séparateur {@code /}, sans {@code ..}, sans {@code /} initial). Un chemin est
- * exclu dès que lui-même <b>ou l'un de ses dossiers ancêtres</b> l'est — comme git, aucune négation
- * ne réactive un fichier situé sous un dossier exclu.</p>
+ * <p>Les motifs se résolvent <b>relativement au dossier du projet</b>, sur un chemin normalisé
+ * (séparateur {@code /}, sans {@code /} initial). Un chemin est exclu dès que lui-même <b>ou l'un de
+ * ses dossiers ancêtres</b> l'est — comme git, aucune négation ne réactive un fichier situé sous un
+ * dossier exclu.</p>
  *
- * <p><b>Aucun motif « fichiers cachés »</b> n'est ajouté à la liste par défaut : un motif du type
- * {@code .*} exclurait {@code .claude/skills/**}, que la construction du prompt système lit pour
- * amorcer l'agent, et les conventions du projet disparaîtraient en silence.</p>
+ * <p><b>Aucun motif « fichiers cachés »</b> : un {@code .*} exclurait {@code .claude/skills/**},
+ * que la construction du prompt système lit pour amorcer l'agent.</p>
  */
 public final class ExclusionRules {
-
-    /**
-     * Liste par défaut <b>non désactivable</b> (D10). Volontairement littérale et courte : elle est
-     * évaluée en dernier et ne peut pas être neutralisée par {@code .runnerignore}.
-     */
-    public static final List<String> DEFAULT_DENY =
-            List.of(".env", "*.pem", "id_rsa*", ".aws/", ".kube/config", ".ssh/");
 
     /**
      * <b>Bruit de construction</b>, écarté par défaut (F-38 / SF-38-21) : dépendances installées,
@@ -51,10 +50,9 @@ public final class ExclusionRules {
      * bornes du listage — 20 000 entrées puis 512 Ko — et l'utilisateur recevait <b>4 829 lignes de
      * dépendances</b> au lieu des 478 fichiers de son projet.</p>
      *
-     * <p><b>Négociable</b>, contrairement à {@link #DEFAULT_DENY} : ces motifs sont évalués
-     * <b>avant</b> les règles utilisateur, si bien qu'une négation ({@code !node_modules/}) les
-     * annule. On écarte du bruit, on ne protège pas un secret — le contournement doit rester
-     * possible pour qui sait ce qu'il fait.</p>
+     * <p><b>Négociable</b> : ces motifs sont évalués <b>avant</b> les règles utilisateur, si bien
+     * qu'une négation ({@code !node_modules/}) les annule. On écarte du bruit, on ne protège rien —
+     * le contournement doit rester possible pour qui sait ce qu'il fait.</p>
      */
     public static final List<String> DEFAULT_NOISE = List.of(
             "node_modules/", "target/", "build/", "dist/", "out/",
@@ -85,31 +83,27 @@ public final class ExclusionRules {
     private final List<Rule> noiseRules;
 
     private final List<Rule> userRules;
-    private final List<Rule> denyRules;
     private final String source;
 
-    private ExclusionRules(List<Rule> userRules, List<Rule> denyRules, String source) {
-        this(compileAll(DEFAULT_NOISE, false, null), userRules, denyRules, source);
+    private ExclusionRules(List<Rule> userRules, String source) {
+        this(compileAll(DEFAULT_NOISE, null), userRules, source);
     }
 
-    private ExclusionRules(List<Rule> noiseRules, List<Rule> userRules, List<Rule> denyRules,
-            String source) {
+    private ExclusionRules(List<Rule> noiseRules, List<Rule> userRules, String source) {
         this.noiseRules = noiseRules;
         this.userRules = userRules;
-        this.denyRules = denyRules;
         this.source = source;
     }
 
     /**
-     * Charge les règles d'une racine : {@code .runnerignore} s'il existe, sinon {@code .gitignore},
-     * sinon la seule liste par défaut. Ne lève jamais : un fichier illisible produit un
-     * avertissement et un repli sur la liste par défaut.
+     * Charge les règles d'un dossier de projet : {@code .runnerignore} s'il existe, sinon
+     * {@code .gitignore}, sinon le seul bruit de construction. Ne lève jamais : un fichier illisible
+     * produit un avertissement et un repli sur le bruit seul.
      *
-     * @param root    racine {@code --workspace}
+     * @param root    dossier du projet
      * @param console sortie d'avertissement, éventuellement {@code null}
      */
     public static ExclusionRules load(Path root, Console console) {
-        List<Rule> deny = compileAll(DEFAULT_DENY, true, null);
         Path runnerIgnore = root.resolve(RUNNER_IGNORE);
         Path gitIgnore = root.resolve(GIT_IGNORE);
         Path file;
@@ -122,21 +116,20 @@ public final class ExclusionRules {
             source = GIT_IGNORE;
         } else {
             // Aucun fichier de règles : le bruit de construction est écarté quand même (SF-38-21).
-            return new ExclusionRules(List.of(), deny, "(aucun)");
+            return new ExclusionRules(List.of(), "(aucun)");
         }
         List<String> lines = readLines(file, source, console);
-        return new ExclusionRules(compileAll(lines, false, console), deny, source);
+        return new ExclusionRules(compileAll(lines, console), source);
     }
 
-    /** Règles par défaut seules — utile aux tests et à tout appel sans fichier de règles. */
-    public static ExclusionRules defaultsOnly() {
-        return new ExclusionRules(List.of(), compileAll(DEFAULT_DENY, true, null), "(aucun)");
+    /** Bruit de construction seul — aucun fichier de règles, aucune liste de secrets (F-73). */
+    public static ExclusionRules noiseOnly() {
+        return new ExclusionRules(List.of(), "(aucun)");
     }
 
-    /** Règles par défaut plus des règles utilisateur fournies en mémoire (tests). */
+    /** Bruit de construction plus des règles utilisateur fournies en mémoire (tests). */
     static ExclusionRules of(List<String> userPatterns) {
-        return new ExclusionRules(compileAll(userPatterns, false, null),
-                compileAll(DEFAULT_DENY, true, null), "(mémoire)");
+        return new ExclusionRules(compileAll(userPatterns, null), "(mémoire)");
     }
 
     /**
@@ -144,8 +137,7 @@ public final class ExclusionRules {
      * de correspondance elle-même, où vingt motifs de plus fausseraient la lecture.
      */
     static ExclusionRules ofWithoutNoise(List<String> userPatterns) {
-        return new ExclusionRules(List.of(), compileAll(userPatterns, false, null),
-                compileAll(DEFAULT_DENY, true, null), "(mémoire)");
+        return new ExclusionRules(List.of(), compileAll(userPatterns, null), "(mémoire)");
     }
 
     /** Origine des règles utilisateur : {@code .runnerignore}, {@code .gitignore} ou {@code (aucun)}. */
@@ -153,7 +145,7 @@ public final class ExclusionRules {
         return source;
     }
 
-    /** Nombre de règles utilisateur retenues (les règles par défaut ne sont pas comptées). */
+    /** Nombre de règles utilisateur retenues (le bruit de construction n'est pas compté). */
     public int userRuleCount() {
         return userRules.size();
     }
@@ -191,8 +183,9 @@ public final class ExclusionRules {
     }
 
     /**
-     * Verdict pour un chemin donné, sans remonter aux ancêtres : dernière règle utilisateur qui
-     * correspond, puis liste par défaut qui écrase toujours le verdict.
+     * Verdict pour un chemin donné, sans remonter aux ancêtres : bruit d'abord, règles utilisateur
+     * ensuite, <b>la dernière qui correspond l'emporte</b>. Plus aucune règle n'écrase les autres
+     * depuis F-73 : tout est négociable, parce que plus rien ici ne prétend protéger.
      */
     private boolean matches(String path, boolean directory) {
         boolean excluded = false;
@@ -204,11 +197,6 @@ public final class ExclusionRules {
         for (Rule rule : userRules) {
             if (rule.matches(path, directory)) {
                 excluded = !rule.negated();
-            }
-        }
-        for (Rule rule : denyRules) {
-            if (rule.matches(path, directory)) {
-                return true; // non désactivable : gagne toujours (D10)
             }
         }
         return excluded;
@@ -233,7 +221,7 @@ public final class ExclusionRules {
         }
     }
 
-    private static List<Rule> compileAll(List<String> patterns, boolean mandatory, Console console) {
+    private static List<Rule> compileAll(List<String> patterns, Console console) {
         List<Rule> rules = new ArrayList<>();
         int ignored = 0;
         for (String raw : patterns) {
@@ -241,7 +229,7 @@ public final class ExclusionRules {
                 warn(console, "Plus de " + MAX_RULES + " règles d'exclusion : les suivantes sont ignorées.");
                 break;
             }
-            Rule rule = Rule.compile(raw, mandatory);
+            Rule rule = Rule.compile(raw);
             if (rule == null) {
                 if (raw != null && !raw.isBlank() && !raw.strip().startsWith("#")) {
                     ignored++;
@@ -262,10 +250,7 @@ public final class ExclusionRules {
         }
     }
 
-    /**
-     * Une règle compilée. {@code negated} n'est jamais vrai pour une règle de la liste par défaut :
-     * la négation est une notion purement utilisateur.
-     */
+    /** Une règle compilée, négation comprise. */
     private record Rule(Pattern pattern, boolean negated, boolean directoryOnly) {
 
         boolean matches(String path, boolean directory) {
@@ -278,12 +263,8 @@ public final class ExclusionRules {
         /**
          * Compile une ligne de syntaxe gitignore, ou renvoie {@code null} si elle n'est pas une
          * règle (ligne vide, commentaire, motif inexploitable).
-         *
-         * @param mandatory règle de la liste par défaut : la négation est refusée et le motif est
-         *                  comparé à <b>n'importe quelle profondeur</b>, y compris s'il contient un
-         *                  {@code /} (un {@code projet/.kube/config} est exclu comme celui de la racine)
          */
-        static Rule compile(String rawLine, boolean mandatory) {
+        static Rule compile(String rawLine) {
             if (rawLine == null) {
                 return null;
             }
@@ -293,9 +274,6 @@ public final class ExclusionRules {
             }
             boolean negated = false;
             if (line.startsWith("!")) {
-                if (mandatory) {
-                    return null; // une entrée non désactivable ne peut pas être une négation
-                }
                 negated = true;
                 line = line.substring(1).strip();
             }
@@ -306,17 +284,12 @@ public final class ExclusionRules {
             }
             // Ancrage : un motif qui commence par « / » ou qui contient un « / » interne vise un
             // chemin depuis la racine ; sinon il vise un nom de base à n'importe quelle profondeur.
-            // La liste par défaut n'est jamais ancrée : elle doit mordre quelle que soit la
-            // profondeur (un « projet/.kube/config » vaut celui de la racine).
             boolean anchored = line.startsWith("/") || line.contains("/");
             while (line.startsWith("/")) {
                 line = line.substring(1);
             }
             if (line.isEmpty()) {
                 return null;
-            }
-            if (mandatory) {
-                anchored = false;
             }
             String regex = (anchored ? "" : "(?:.*/)?") + toRegex(line);
             try {

@@ -365,7 +365,9 @@ fait qu'on redécouvre à chaque vague.
 ## ADR-018 — L'exécution est autorisée par défaut sur une machine connectée (tranche OQ-14)
 
 **Date** : 2026-09-10
-**Statut** : Acceptée
+**Statut** : **Supersédée par ADR-019 le 2026-09-12** — le défaut retenu ici (`false`) a été pris
+alors que le confinement du runner *paraissait* exister. Vérification faite, il n'existait pas pour
+`bash`. Le point 3 (« exclusions de secrets non désactivables ») est également retiré.
 **Décideur** : product owner
 
 **Contexte.** En cible `RUNNER`, la porte de confirmation était **armée par défaut** :
@@ -408,3 +410,58 @@ terminal (F-33 / SF-33-01), et l'invite garde tout ce que F-47 lui a donné quan
 Toute demande de réarmement automatique — à la bascule de cible, au ré-appairage, à l'élévation de
 droits — est renvoyée à cet ADR : elle rouvre un arbitrage du product owner, pas une option
 technique.
+
+---
+
+## ADR-019 — Le confinement du runner est retiré, la porte de confirmation est réarmée (supersède ADR-018)
+
+**Date** : 2026-09-12
+**Statut** : Acceptée
+**Décideur** : product owner
+
+**Contexte — une phrase fausse, crue pendant des jours.** Le code du runner affirmait, depuis
+SF-38-07, qu'« une commande ne s'exécute jamais hors de la racine exposée ». C'était vrai du `cwd`
+d'une commande, que `BashTool.resolveWorkingDirectory` fait bien passer par le `PathGuard`, et
+**faux de tout le reste** : la ligne de commande n'a jamais été inspectée. `cat ../autre-client/.env`,
+`ls ~`, `cd /etc` s'exécutaient sans obstacle. Cette phrase a été reprise de subfeature en
+subfeature — F-48 en a fait « le point dur du chantier » — jusqu'à ce que le product owner teste le
+produit et constate le contraire.
+
+Le confinement ne tenait donc que sur les **quatre outils fichiers**, doublé d'une liste de secrets
+non désactivable (`.env`, `*.pem`, `id_rsa*`, `.aws/`, `.kube/config`, `.ssh/`). Deux gardes sur la
+moitié des chemins, contournables par l'autre moitié.
+
+**Et l'on ne peut pas corriger en serrant.** Un shell ne se confine pas par inspection de texte :
+toute liste d'interdits se contourne par une variable, un `eval`, un script intermédiaire ou un
+encodage. Seule une mise en **conteneur** confinerait réellement — ce qui interdirait l'usage même du
+produit, dont la raison d'être est de travailler sur la machine du client, avec ses outils, ses accès
+et son réseau.
+
+**Décision.**
+
+1. **Le confinement est retiré partout**, outils fichiers compris. `PathGuard` devient
+   `PathResolver` : il résout (relatif au projet, absolu, `~/…`), il ne refuse plus aucun
+   emplacement. Ne subsistent que des bornes de **forme** et de **taille**.
+2. **Les exclusions de secrets sont retirées.** `ExclusionRules.DEFAULT_DENY` disparaît. Le filtre
+   restant (`.runnerignore`, `.gitignore`, bruit de construction) n'élague plus que le **listage**,
+   et tout y est négociable par une négation.
+3. **La porte de confirmation redevient armée par défaut** (`agent_ask_before_bash = true` à la
+   création). Cela **annule le défaut d'ADR-018**, pris quand le confinement paraissait exister. Les
+   projets **existants ne sont pas modifiés**.
+4. **L'application le dit.** Le runner annonce sa portée au démarrage (`StartupDisclosure`, F-57), et
+   l'écran le dit **là où l'on autorise une commande**. Ton **factuel**, jamais alarmiste : c'est la
+   machine de l'utilisateur, et c'est lui qui a lancé le runner.
+5. **Journal d'audit et coupe-circuit : inchangés.** Ils constatent et ils coupent ; ils n'ont jamais
+   prétendu empêcher.
+
+**Risque assumé, et écrit.** La porte ne couvre que `bash`. Un `read_file` sur un `.env`, une clé
+privée ou `~/.ssh/id_rsa` **ne demande rien**, et son contenu part chez le fournisseur dans le
+contexte du tour. Le product owner a tranché en connaissance de cause : *« il doit pouvoir tout
+faire »*. La contrepartie est que ce qui est **lu avant d'autoriser** devient la seule chose entre
+l'utilisateur et une fuite de secret client — d'où le point 4, qui n'est pas décoratif.
+
+**Conséquences.** `OQ-14` est retranchée dans l'autre sens. Toute subfeature qui réécrit une
+promesse de confinement — dans le code, la console, la documentation ou l'écran — contredit cet ADR.
+Un test du module runner (`NoConfinementPromiseTest`) empêche la phrase de revenir. La
+conteneurisation du runner reste **hors périmètre** ; le jour où elle serait décidée, elle rouvrirait
+cet ADR, pas une option technique.

@@ -39,7 +39,7 @@ public final class PairingClient {
      * du dossier (F-38 / SF-38-15) et les droits sous lesquels le runner tourne (SF-38-18).
      *
      * <p>Le <b>nom</b> du dossier seulement, jamais le chemin absolu : la gateway n'a aucune raison
-     * de connaître l'arborescence de la machine, et le {@code PathGuard} ne lui remonte déjà que des
+     * de connaître l'arborescence de la machine, et le {@code PathResolver} ne lui remonte déjà que des
      * chemins relatifs.</p>
      */
     public StoredToken pair(String pairUrl, String code, String label, String rootName,
