@@ -34,7 +34,7 @@ n'écrase jamais et laisse l'existant en place.
 
 ### Cas nominal
 
-1. `GET /governance/hosts/{hostRef}/{packageId}/files?path=…` rend le contenu **du fichier tel que le
+1. `GET /governance/hosts/{hostRef}/{packageId}/file?path=…` rend le contenu **du fichier tel que le
    paquet l'apporte**, et, pour chaque projet du poste où un fichier porte déjà ce chemin, le contenu
    **actuel** de ce fichier.
 2. La réponse dit, par projet : `identical` (rien ne changerait et rien ne serait laissé de
@@ -98,7 +98,7 @@ Aucune.
 
 | Méthode | Chemin | Rôle |
 |---|---|---|
-| `GET` | `/governance/hosts/{hostRef}/{packageId}/files?path=…` | Contenu apporté + contenu existant par projet |
+| `GET` | `/governance/hosts/{hostRef}/{packageId}/file?path=…` | Contenu apporté + contenu existant par projet |
 
 ### Composants backend
 
