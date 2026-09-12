@@ -36,6 +36,7 @@ import fr.claudegateway.runner.host.dto.HostProjectRequest;
 import fr.claudegateway.runner.host.dto.RunnerHostOverviewResponse;
 import fr.claudegateway.runner.host.dto.RunnerHostRequest;
 import fr.claudegateway.runner.host.dto.RunnerHostResponse;
+import fr.claudegateway.teams.TeamsAccessService;
 import jakarta.validation.Valid;
 
 /**
@@ -62,6 +63,8 @@ public class RunnerHostController {
     private final WorkspaceService workspaceService;
     private final RunnerHostFolderBrowser folderBrowser;
     private final AtelierAccessService atelierAccess;
+    /** Droit du volet Teams (F-89 / SF-89-01) : sans lui, le terminal Teams n'existe pas. */
+    private final TeamsAccessService teamsAccess;
     private final CurrentUser currentUser;
 
     public RunnerHostController(RunnerHostService hostService,
@@ -69,7 +72,7 @@ public class RunnerHostController {
             RunnerTokenService tokenService, RunnerStatusService statusService,
             RunnerKillSwitchService killSwitchService, WorkspaceService workspaceService,
             RunnerHostFolderBrowser folderBrowser, AtelierAccessService atelierAccess,
-            CurrentUser currentUser) {
+            TeamsAccessService teamsAccess, CurrentUser currentUser) {
         this.hostService = hostService;
         this.overviewService = overviewService;
         this.pairingService = pairingService;
@@ -79,6 +82,7 @@ public class RunnerHostController {
         this.workspaceService = workspaceService;
         this.folderBrowser = folderBrowser;
         this.atelierAccess = atelierAccess;
+        this.teamsAccess = teamsAccess;
         this.currentUser = currentUser;
     }
 
@@ -195,6 +199,31 @@ public class RunnerHostController {
                 List.of());
     }
 
+    /**
+     * <b>Le terminal Teams du poste</b> (F-89 / SF-89-01) : celui qui existe, ou celui qu'on crée.
+     *
+     * <p>C'est le point d'entrée du volet Teams, et il n'y en a pas d'autre : Teams n'est pas un
+     * écran à boutons, c'est un terminal où l'on parle (cadrage §1). Le terminal est rattaché au
+     * <b>poste</b> parce que c'est là que vit le navigateur observé (F-87).</p>
+     *
+     * <p><b>Deux gardes, dans cet ordre.</b> Le droit Teams d'abord — sans l'option, ce terminal
+     * n'existe pas pour ce compte, et la réponse est un refus, pas un terminal vide. L'appartenance
+     * du poste ensuite : un identifiant venu du client ne suffit jamais à créer quoi que ce soit
+     * dessous.</p>
+     *
+     * <p><b>{@code 200} et non {@code 201}</b>, et arborescence vide : mêmes raisons qu'au terminal
+     * du poste ci-dessus.</p>
+     */
+    @PostMapping("/{hostId}/teams-terminal")
+    public WorkspaceDetailResponse openTeamsTerminal(@PathVariable UUID hostId) {
+        atelierAccess.requireAccess();
+        teamsAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        hostService.requireOwned(userId, hostId);
+        return WorkspaceDetailResponse.from(workspaceService.openTeamsTerminal(userId, hostId),
+                List.of());
+    }
+
     /** Détail d'un poste possédé. */
     @GetMapping("/{hostId}")
     public RunnerHostResponse get(@PathVariable UUID hostId) {
@@ -264,6 +293,10 @@ public class RunnerHostController {
         // laisser vivre ferait une ligne orpheline qu'aucun écran ne montre — et le refus
         // ci-dessus, lui, deviendrait impossible à satisfaire si on l'y comptait.
         workspaceService.deleteHostTerminal(userId, hostId);
+        // Et le TERMINAL TEAMS (F-89 / SF-89-01), pour la même raison exactement : sans sa machine,
+        // il n'observe plus aucun navigateur. Son droit n'est PAS exigé ici — on supprime, et on ne
+        // demande pas à quelqu'un qui a résilié l'option de la reprendre pour effacer ses traces.
+        workspaceService.deleteTeamsTerminal(userId, hostId);
         killSwitchService.kill(userId, hostId);
         hostService.deleteWithCredentials(userId, hostId);
         return ResponseEntity.noContent().build();

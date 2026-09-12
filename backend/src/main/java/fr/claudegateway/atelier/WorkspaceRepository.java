@@ -28,13 +28,20 @@ public interface WorkspaceRepository extends JpaRepository<Workspace, UUID> {
      * {@code openOnHost} interdirait d'ouvrir un vrai projet sur la racine, et un poste portant son
      * terminal ne serait plus jamais supprimable (F-69).</p>
      */
-    List<Workspace> findByUserIdAndHostIdAndHostTerminalFalse(UUID userId, UUID hostId);
+    List<Workspace> findByUserIdAndHostIdAndHostTerminalFalseAndTeamsTerminalFalse(
+            UUID userId, UUID hostId);
 
     /**
      * Le <b>terminal du poste</b> (F-74 / SF-74-01), isolation {@code user_id}. Il n'y en a qu'un
      * par poste : l'endpoint qui l'expose le <b>retrouve ou le crée</b>, jamais deux fois.
      */
     Optional<Workspace> findFirstByUserIdAndHostIdAndHostTerminalTrue(UUID userId, UUID hostId);
+
+    /**
+     * Le <b>terminal Teams</b> d'un poste (F-89 / SF-89-01), isolation {@code user_id}. Un seul par
+     * poste, pour la même raison qu'en F-74 : un second couperait la conversation en deux.
+     */
+    Optional<Workspace> findFirstByUserIdAndHostIdAndTeamsTerminalTrue(UUID userId, UUID hostId);
 
     /**
      * Projets <b>sans poste</b> (F-71 / SF-71-01), isolation {@code user_id} : un dépôt GitHub, une

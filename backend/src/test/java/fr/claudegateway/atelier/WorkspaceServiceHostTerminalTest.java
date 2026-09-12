@@ -96,14 +96,14 @@ class WorkspaceServiceHostTerminalTest {
         // laisserait plus jamais supprimer.
         service.listByHost(userId, hostId);
 
-        verify(workspaceRepository).findByUserIdAndHostIdAndHostTerminalFalse(userId, hostId);
+        verify(workspaceRepository).findByUserIdAndHostIdAndHostTerminalFalseAndTeamsTerminalFalse(userId, hostId);
     }
 
     @Test
     void aRealProjectCanStillBeOpenedOnTheRootBesideTheTerminal() {
         // Le terminal occupe le chemin « » — mais il n'est pas un projet, donc il n'est pas un
         // doublon. F-72 autorise toujours d'ouvrir un projet SUR la racine.
-        when(workspaceRepository.findByUserIdAndHostIdAndHostTerminalFalse(userId, hostId))
+        when(workspaceRepository.findByUserIdAndHostIdAndHostTerminalFalseAndTeamsTerminalFalse(userId, hostId))
                 .thenReturn(List.of());
 
         Workspace project = service.openOnHost(userId, hostId, "", "Poste CAGIP");

@@ -138,6 +138,15 @@ public class RunnerHostOverviewService {
                 .map(Workspace::getId)
                 .orElse(null);
         boolean hostTerminalLive = hostTerminalId != null && liveWorkspaceIds.contains(hostTerminalId);
+        // Le TERMINAL TEAMS (F-89 / SF-89-01), exactement de la même façon et pour les mêmes
+        // raisons : hors de `projects`, nul tant que personne ne l'a ouvert. Aucun droit n'est lu
+        // ici — s'il existe, c'est qu'il a été ouvert, donc que le droit était là ce jour-là ; et
+        // un compte qui a résilié doit continuer de VOIR ses comptes rendus.
+        UUID teamsTerminalId = workspaceService.findTeamsTerminal(userId, host.getId())
+                .map(Workspace::getId)
+                .orElse(null);
+        boolean teamsTerminalLive = teamsTerminalId != null
+                && liveWorkspaceIds.contains(teamsTerminalId);
 
         return new RunnerHostOverviewResponse(
                 host.getId(),
@@ -172,13 +181,16 @@ public class RunnerHostOverviewService {
                 // quatre exactement comme un terminal de projet, et un compteur de poste qui
                 // l'ignorerait afficherait « 0 terminal » sur une machine où l'on travaille.
                 (int) projects.stream().filter(HostProjectSummary::liveTerminal).count()
-                        + (hostTerminalLive ? 1 : 0),
+                        + (hostTerminalLive ? 1 : 0)
+                        + (teamsTerminalLive ? 1 : 0),
                 hostTerminalId,
                 hostTerminalLive,
                 // L'aperçu du TERMINAL DU POSTE (F-74), au même titre que celui d'un projet : on y
                 // travaille, et une carte muette sur un terminal que la supervision montre en train
                 // d'attendre serait le contraire de « même source, deux densités ».
                 hostTerminalLive ? previews.get(hostTerminalId) : null,
+                teamsTerminalId,
+                teamsTerminalLive,
                 projects);
     }
 
