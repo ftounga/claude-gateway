@@ -93,4 +93,57 @@ class TeamsToolCatalogTest {
                 .isNotEmpty()
                 .allSatisfy(tool -> assertThat(tool.name()).startsWith(TeamsToolCatalog.PREFIX));
     }
+
+    @Test
+    @DisplayName("les trois outils de PRÉSENTATION sont donnés — et seulement là (F-89 / SF-89-02)")
+    void thePresentationToolsAreGivenToo() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(true);
+
+        assertThat(catalog.toolsFor(userId, teamsTerminal())).extracting(AgentTool::name)
+                .contains(TeamsToolCatalog.MEETING_CARD, TeamsToolCatalog.LIST,
+                        TeamsToolCatalog.MOMENTS);
+        assertThat(catalog.toolsFor(userId, projectTerminal())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("AUCUN SCHÉMA D'OUTIL NE PORTE DE SCORE : la certitude est une énumération de mots")
+    void noSchemaCarriesAScore() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(true);
+
+        for (AgentTool tool : catalog.toolsFor(userId, teamsTerminal())) {
+            String schema = tool.inputSchema().toString().toLowerCase(java.util.Locale.ROOT);
+            assertThat(schema)
+                    .as("un chiffre donnerait une apparence de mesure à une interprétation (%s)",
+                            tool.name())
+                    .doesNotContain("score")
+                    .doesNotContain("confidence")
+                    .doesNotContain("probabilit")
+                    .doesNotContain("pourcentage")
+                    .doesNotContain("\"number\"")
+                    .doesNotContain("\"integer\"");
+        }
+    }
+
+    @Test
+    @DisplayName("la panoplie d'un terminal Teams = les outils de LECTURE, puis ceux de PRÉSENTATION")
+    void theBeltIsTheTwoListsInOrder() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(true);
+
+        java.util.List<String> expected = new java.util.ArrayList<>(TeamsToolCatalog.CATALOG);
+        expected.addAll(TeamsToolCatalog.PRESENTATION);
+
+        assertThat(catalog.toolsFor(userId, teamsTerminal())).extracting(AgentTool::name)
+                .containsExactlyElementsOf(expected);
+    }
+
+    @Test
+    @DisplayName("isPresentation ne reconnaît QUE les trois outils qui posent un bloc")
+    void onlyThePresentationToolsArePresentation() {
+        assertThat(TeamsToolCatalog.isPresentation(TeamsToolCatalog.MEETING_CARD)).isTrue();
+        assertThat(TeamsToolCatalog.isPresentation(TeamsToolCatalog.LIST)).isTrue();
+        assertThat(TeamsToolCatalog.isPresentation(TeamsToolCatalog.MOMENTS)).isTrue();
+        assertThat(TeamsToolCatalog.isPresentation(TeamsToolCatalog.STATUS)).isFalse();
+        assertThat(TeamsToolCatalog.isPresentation("bash")).isFalse();
+        assertThat(TeamsToolCatalog.isPresentation(null)).isFalse();
+    }
 }

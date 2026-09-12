@@ -62,9 +62,13 @@ class TeamsReadingCatalogTest {
     }
 
     @Test
-    @DisplayName("Les HUIT outils du catalogue sont donnés, dans l'ordre annoncé")
+    @DisplayName("Les HUIT outils de LECTURE sont donnés, dans l'ordre annoncé et EN PREMIER")
     void the_whole_catalog_is_given() {
-        assertThat(tools()).extracting(AgentTool::name).containsExactlyElementsOf(EXPECTED);
+        // Depuis F-89 / SF-89-02, la panoplie d'un terminal Teams porte aussi les outils de
+        // PRÉSENTATION — ceux qui posent un bloc dans le fil et ne quittent jamais la gateway. Le
+        // catalogue de LECTURE, lui, ne bouge pas : il reste ces huit-là, dans cet ordre, et c'est
+        // exactement ce que le runner mirroite.
+        assertThat(tools()).extracting(AgentTool::name).startsWith(EXPECTED.toArray(String[]::new));
     }
 
     @Test
@@ -72,7 +76,11 @@ class TeamsReadingCatalogTest {
     void the_declared_catalog_matches_the_constant() {
         assertThat(TeamsToolCatalog.CATALOG).containsExactlyElementsOf(EXPECTED);
         assertThat(tools()).extracting(AgentTool::name)
-                .containsExactlyElementsOf(TeamsToolCatalog.CATALOG);
+                .containsSequence(TeamsToolCatalog.CATALOG);
+        // Et LE RUNNER NE CONNAÎT AUCUN outil de présentation : les y ajouter le ferait échouer sur
+        // des outils qu'il ne sait pas exécuter, alors qu'ils s'exécutent chez nous.
+        assertThat(TeamsToolCatalog.CATALOG)
+                .doesNotContainAnyElementsOf(TeamsToolCatalog.PRESENTATION);
     }
 
     @Test

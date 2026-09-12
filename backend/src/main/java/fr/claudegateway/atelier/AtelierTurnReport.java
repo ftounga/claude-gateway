@@ -52,7 +52,21 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Block(String tool, String command, String toolUseId, String threadId,
-            String output, boolean hasOutput, boolean error, boolean expanded) {
+            String output, boolean hasOutput, boolean error, boolean expanded,
+            fr.claudegateway.teams.block.TeamsBlockCard card) {
+
+        /**
+         * Forme <b>textuelle</b> — celle de tous les blocs, partout sauf dans un terminal Teams.
+         *
+         * <p>C'est la règle non négociable du volet Teams écrite dans une signature : un bloc de
+         * terminal de projet <b>ne peut pas</b> porter de carte, parce qu'aucun appelant de ce
+         * constructeur n'en fournit. Une sortie de commande est exactement ce que la machine a
+         * répondu.</p>
+         */
+        public Block(String tool, String command, String toolUseId, String threadId, String output,
+                boolean hasOutput, boolean error, boolean expanded) {
+            this(tool, command, toolUseId, threadId, output, hasOutput, error, expanded, null);
+        }
     }
 
     /** Nombre de blocs conservés : au-delà, on ne relit plus une transcription, on la fouille. */
@@ -112,7 +126,11 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
         }
         String tail = output.substring(output.length() - MAX_BLOCK_OUTPUT_CHARS);
         return new Block(block.tool(), block.command(), block.toolUseId(), block.threadId(),
-                "… (début tronqué)\n" + tail, block.hasOutput(), block.error(), block.expanded());
+                "… (début tronqué)\n" + tail, block.hasOutput(), block.error(), block.expanded(),
+                // Le BLOC RICHE survit au bornage (F-89 / SF-89-02) : il n'est pas du texte, il ne
+                // pèse pas le poids d'une sortie de commande, et le perdre en tronquant ferait
+                // disparaître un compte rendu entier pour cause de sortie trop longue.
+                block.card());
     }
 
     /**
