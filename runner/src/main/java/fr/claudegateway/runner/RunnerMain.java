@@ -48,6 +48,8 @@ public final class RunnerMain {
                     + "--code <code-appairage> [--label <libellé>] [--heartbeat-interval <s>] "
                     + "[--no-bash] [--no-system-trust] "
                     + "[--transport auto|websocket|polling]");
+            console.info("Vérifier l'accès sans appairer : java -jar claude-runner.jar "
+                    + "--gateway <url> --check");
             console.info("La racine du poste est le dossier sous lequel vivent vos projets "
                     + "(par exemple ~/dev) : un seul appairage y suffit pour tous.");
             console.info("Reprise : java -jar claude-runner.jar — sans argument, depuis un poste "
@@ -126,6 +128,16 @@ public final class RunnerMain {
         // rien de plus. Elle réutilise l'observation du démarrage — la sonde ne décide de rien, se
         // tait au moindre doute, et n'a le droit de casser ni le démarrage, ni le code de sortie.
         seen.map(TlsProbe::contextLine).ifPresent(console::info);
+
+        // Contrôle de vol SEUL (F-80 / SF-80-03) : on s'arrête ici. C'est le test de référence que
+        // l'écran de mise en service propose — le seul qui emprunte exactement le chemin du runner,
+        // là où un `curl` répond 200 sur un poste dont le proxy déchiffre le TLS. Il ne consomme
+        // aucun code d'appairage, et n'écrit aucun jeton : il peut être rejoué autant qu'il faut.
+        if (config.checkOnly()) {
+            console.info("Contrôle de vol terminé (--check) : aucun appairage, aucune connexion "
+                    + "ouverte, aucun jeton écrit.");
+            return 0;
+        }
 
         TokenStore tokenStore = new TokenStore(config.hostRoot(), home);
 
