@@ -31,14 +31,26 @@ public final class PollingConnection {
     private final Console console;
     private final Backoff backoff = new Backoff(Duration.ofSeconds(1), Duration.ofSeconds(30));
     private final AtomicBoolean running = new AtomicBoolean(false);
+    /** Ce qui a été tenté et pourquoi ça a échoué (F-82 / SF-82-03) — il ne décide de rien. */
+    private final TransportJournal journal;
 
     private FrameSender sender;
     private ToolDispatcher dispatcher;
 
     public PollingConnection(PollingTransport transport, RunnerConfig config, Console console) {
+        this(transport, config, console, new TransportJournal());
+    }
+
+    /**
+     * @param journal consigne le transport tenté et le motif de son échec (F-82 / SF-82-03). Il
+     *                n'influe sur rien : la boucle de repli est inchangée.
+     */
+    public PollingConnection(PollingTransport transport, RunnerConfig config, Console console,
+            TransportJournal journal) {
         this.transport = transport;
         this.config = config;
         this.console = console;
+        this.journal = journal;
     }
 
     /**
@@ -64,6 +76,8 @@ public final class PollingConnection {
         });
 
         console.info("Repli long-polling actif : " + config.pollUrl());
+        // L'URL de poll ne porte JAMAIS le jeton — il voyage en en-tête X-Runner-Token.
+        journal.attempted(TransportJournal.Transport.POLLING, config.pollUrl());
         sender.send(dispatcher.readyFrame(runnerVersion()));
 
         try {
@@ -89,11 +103,15 @@ public final class PollingConnection {
             try {
                 frames = transport.poll(POLL_WAIT_MS);
                 backoff.reset();
+                // Un poll qui aboutit EST la preuve que ce transport porte la session.
+                journal.established(TransportJournal.Transport.POLLING);
             } catch (PollingTransport.ChannelClosedException e) {
                 // La gateway a coupé (coupe-circuit, balayage) : repoller n'y changerait rien.
                 console.warn(e.getMessage());
+                journal.failed(TransportJournal.Transport.POLLING, e.getMessage());
                 return;
             } catch (IOException e) {
+                journal.failed(TransportJournal.Transport.POLLING, Failures.describe(e));
                 if (!running.get()) {
                     return;
                 }
