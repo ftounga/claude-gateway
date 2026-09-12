@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      F-81 / SF-81-01 — LE CONTRAT ENTRE LE RUNNER ET LA GATEWAY.
+
+      Ce module n'existe que pour une chose : faire se rencontrer `backend/` et `runner/`, qui sont
+      deux projets Maven distincts et ne se voient pas. Le 2026-09-10, SF-48-01 a renommé
+      `workspaceId` en `hostId` dans la réponse d'appairage — d'un seul côté. Rien n'a cassé : ni la
+      compilation, ni les tests, ni l'image. AUCUN appairage de machine neuve n'a fonctionné pendant
+      deux jours. Le défaut ne vivait dans aucun des deux fichiers ; il vivait ENTRE les deux.
+
+      Le module porte donc le contrat, et SON EXISTENCE MÊME dit dans le dépôt que ce contrat existe
+      — ce que ni `backend/` ni `runner/` ne disaient (OQ-18, tranchée par le PO le 2026-09-12 ;
+      écartés : la dépendance `test` du backend vers le runner, et les instantanés JSON versionnés,
+      qui comparent des FORMES et non des lectures réelles).
+
+      IL NE CONTIENT QUE DES TESTS. Aucun `src/main`, aucun artefact publié, aucune dépendance de
+      quiconque envers lui.
+
+      ==========================================================================================
+      COMMENT LE JOUER — `./scripts/contract-tests.sh` depuis la racine du dépôt.
+
+      Les deux dépendances doivent être INSTALLÉES au préalable dans le dépôt local, et le backend
+      DOIT l'être sans son repackage Spring Boot :
+
+          cd runner   && ./mvnw install -DskipTests
+          cd backend  && ./mvnw install -DskipTests -Dspring-boot.repackage.skip=true
+          cd contract-tests && ./mvnw test
+
+      Pourquoi `spring-boot.repackage.skip` : `repackage` remplace l'artefact principal par un
+      fat-jar dont les classes vivent sous `BOOT-INF/classes`. Dépendre de CET artefact ne compile
+      pas. L'alternative documentée (`<classifier>exec</classifier>` sur le plugin) obligerait à
+      changer `backend/Dockerfile`, qui copie `target/*.jar` et en verrait alors deux — on ne touche
+      pas au chemin de production pour un module de test.
+
+      ==========================================================================================
+      POURQUOI IL N'Y A PAS DE POM RÉACTEUR À LA RACINE, ET POURQUOI IL NE FAUT PAS EN CRÉER.
+
+      `backend/Dockerfile` ne copie jamais la racine du dépôt : il copie `runner/...` puis
+      `backend/...`, explicitement. Ce répertoire lui est donc INVISIBLE, et l'image de production ne
+      le construit pas — sans qu'une seule ligne du Dockerfile ait à changer. Un POM réacteur racine
+      remettrait ce module dans la réaction en chaîne de `cd backend && ./mvnw verify` et dans le
+      contexte de l'image. Le runner est déjà autonome pour la même raison ; ce module l'est aussi.
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.0</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>fr.claudegateway</groupId>
+    <artifactId>claude-gateway-contract-tests</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>jar</packaging>
+    <name>claude-gateway-contract-tests</name>
+    <description>Tests de contrat runner ↔ gateway (F-81)</description>
+
+    <properties>
+        <java.version>21</java.version>
+        <maven.deploy.skip>true</maven.deploy.skip>
+        <maven.install.skip>true</maven.install.skip>
+    </properties>
+
+    <dependencies>
+        <!--
+          LES DEUX CÔTÉS DU CONTRAT. Portée `test` : ce module ne publie rien et personne ne dépend
+          de lui. Le backend est attendu en jar de BIBLIOTHÈQUE (voir l'en-tête).
+        -->
+        <dependency>
+            <groupId>fr.claudegateway</groupId>
+            <artifactId>claude-gateway-backend</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+            <scope>test</scope>
+        </dependency>
+        <!--
+          Classifieur `thin` : les classes du runner SANS le fat-jar. Le fat-jar embarque sa propre
+          copie de Jackson, qui doublerait celle de Spring Boot sur le chemin de classes — deux
+          versions de la même bibliothèque dans la JVM qui vérifie justement qu'aucune divergence ne
+          passe. Avec le jar mince, Jackson redevient une dépendance déclarée, arbitrée par un seul
+          BOM (celui du parent Spring Boot).
+        -->
+        <dependency>
+            <groupId>fr.claudegateway</groupId>
+            <artifactId>claude-runner</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+            <classifier>thin</classifier>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- JUnit 5, AssertJ, Mockito — versions alignées par le parent Spring Boot. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <!-- Aucun `src/main` : il n'y a pas d'artefact à produire. -->
+                    <skipIfEmpty>true</skipIfEmpty>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
