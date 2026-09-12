@@ -35,6 +35,8 @@ class GovernanceRulesProviderTest {
 
     private final UUID alice = UUID.randomUUID();
     private final UUID workspace = UUID.randomUUID();
+    /** Le poste qui gouverne ce dossier : depuis F-75, l'activation ne vit plus sur le projet. */
+    private final UUID host = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
@@ -49,7 +51,7 @@ class GovernanceRulesProviderTest {
     }
 
     private GovernanceActivation activationOf(GovernancePackage pkg) {
-        return GovernanceActivation.builder().userId(alice).workspaceId(workspace)
+        return GovernanceActivation.builder().userId(alice).hostId(host)
                 .packageId(pkg.getId()).appliedVersion(1)
                 .status(GovernanceActivationStatus.APPLIED).build();
     }
@@ -57,7 +59,7 @@ class GovernanceRulesProviderTest {
     @Test
     @DisplayName("aucun paquet actif : rien n'est ajouté, et aucun paquet n'est même lu")
     void noActivationMeansNoReadAtAll() {
-        when(activationService.activeOn(alice, workspace)).thenReturn(List.of());
+        when(activationService.activeOnWorkspace(alice, workspace)).thenReturn(List.of());
 
         assertThat(provider.rulesFor(alice, workspace)).isNull();
         verify(packageService, never()).require(any());
@@ -67,7 +69,7 @@ class GovernanceRulesProviderTest {
     @DisplayName("un paquet actif porte ses règles, sous son nom")
     void namesEachPackage() {
         GovernancePackage livrables = pkg("Livrables sans trace", "Aucun livrable ne suggère un LLM.");
-        when(activationService.activeOn(alice, workspace))
+        when(activationService.activeOnWorkspace(alice, workspace))
                 .thenReturn(List.of(activationOf(livrables)));
 
         String rules = provider.rulesFor(alice, workspace);
@@ -81,7 +83,7 @@ class GovernanceRulesProviderTest {
     void keepsActivationOrder() {
         GovernancePackage premier = pkg("Premier", "Règle A.");
         GovernancePackage second = pkg("Second", "Règle B.");
-        when(activationService.activeOn(alice, workspace))
+        when(activationService.activeOnWorkspace(alice, workspace))
                 .thenReturn(List.of(activationOf(premier), activationOf(second)));
 
         String rules = provider.rulesFor(alice, workspace);
@@ -94,7 +96,7 @@ class GovernanceRulesProviderTest {
     void skipsPackageWithoutRules() {
         GovernancePackage muet = pkg("Muet", "   ");
         GovernancePackage parlant = pkg("Parlant", "Règle.");
-        when(activationService.activeOn(alice, workspace))
+        when(activationService.activeOnWorkspace(alice, workspace))
                 .thenReturn(List.of(activationOf(muet), activationOf(parlant)));
 
         assertThat(provider.rulesFor(alice, workspace)).doesNotContain("## Muet")
@@ -105,7 +107,7 @@ class GovernanceRulesProviderTest {
     @DisplayName("si aucun paquet actif ne porte de règles, rien n'est ajouté")
     void allSilentMeansNothing() {
         GovernancePackage muet = pkg("Muet", null);
-        when(activationService.activeOn(alice, workspace)).thenReturn(List.of(activationOf(muet)));
+        when(activationService.activeOnWorkspace(alice, workspace)).thenReturn(List.of(activationOf(muet)));
 
         assertThat(provider.rulesFor(alice, workspace)).isNull();
     }
@@ -115,7 +117,7 @@ class GovernanceRulesProviderTest {
     void truncatesAndSaysSo() {
         GovernancePackage enorme = pkg("Énorme",
                 "x".repeat(GovernanceRulesProvider.MAX_RULES_BLOCK_CHARS + 500));
-        when(activationService.activeOn(alice, workspace)).thenReturn(List.of(activationOf(enorme)));
+        when(activationService.activeOnWorkspace(alice, workspace)).thenReturn(List.of(activationOf(enorme)));
 
         String rules = provider.rulesFor(alice, workspace);
 
@@ -131,8 +133,8 @@ class GovernanceRulesProviderTest {
         UUID gone = UUID.randomUUID();
         when(packageService.require(gone))
                 .thenThrow(new GovernancePackageNotFoundException("Paquet introuvable."));
-        when(activationService.activeOn(alice, workspace)).thenReturn(List.of(
-                GovernanceActivation.builder().userId(alice).workspaceId(workspace).packageId(gone)
+        when(activationService.activeOnWorkspace(alice, workspace)).thenReturn(List.of(
+                GovernanceActivation.builder().userId(alice).hostId(host).packageId(gone)
                         .appliedVersion(1).status(GovernanceActivationStatus.APPLIED).build(),
                 activationOf(parlant)));
 
@@ -142,7 +144,7 @@ class GovernanceRulesProviderTest {
     @Test
     @DisplayName("une lecture impossible rend un tour sans règles, pas un tour raté")
     void unreadableActivationsAreIgnored() {
-        when(activationService.activeOn(alice, workspace))
+        when(activationService.activeOnWorkspace(alice, workspace))
                 .thenThrow(new IllegalStateException("base indisponible"));
 
         assertThat(provider.rulesFor(alice, workspace)).isNull();
@@ -153,19 +155,19 @@ class GovernanceRulesProviderTest {
     void noIdentityMeansNoLookup() {
         assertThat(provider.rulesFor(null, workspace)).isNull();
         assertThat(provider.rulesFor(alice, null)).isNull();
-        verify(activationService, never()).activeOn(any(), any());
+        verify(activationService, never()).activeOnWorkspace(any(), any());
     }
 
     @Test
     @DisplayName("les règles sont lues pour le couple (utilisateur, projet) du tour, et lui seul")
     void readsOnlyTheTurnScope() {
         GovernancePackage parlant = pkg("Parlant", "Règle.");
-        when(activationService.activeOn(alice, workspace))
+        when(activationService.activeOnWorkspace(alice, workspace))
                 .thenReturn(List.of(activationOf(parlant)));
 
         provider.rulesFor(alice, workspace);
 
-        verify(activationService).activeOn(alice, workspace);
+        verify(activationService).activeOnWorkspace(alice, workspace);
         org.mockito.Mockito.verifyNoMoreInteractions(activationService);
     }
 }

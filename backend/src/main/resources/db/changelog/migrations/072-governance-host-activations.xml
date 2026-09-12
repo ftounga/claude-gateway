@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-75 / SF-75-01 — L'activation change de grain : le POSTE, et non le projet.
+
+      F-51 posait l'activation sur le PROJET. Erreur de grain : la gouvernance se pose UNE FOIS au
+      niveau de la machine ; ce sont les ARTEFACTS qui sont par sujet (le STATE.md de chaque dossier,
+      la dette de promotion). On active désormais une fois sur un poste, et tout dossier ajouté demain
+      sous sa racine en hérite — ce que l'activation par projet interdisait. AUCUNE dérogation par
+      dossier (tranché par le PO le 2026-09-12).
+
+      REPRISE DES DONNÉES. Chaque activation existante est reportée sur le poste de son projet, en
+      dédoublonnant : n projets d'un même poste donnaient n lignes, ils n'en donnent plus qu'une. Une
+      activation portée par un projet SANS poste est reportée sur la clé réservée du poste virtuel
+      « Hébergé » (F-71) — rien n'est perdu, et aucun projet ne reste gouverné par une ligne
+      inaccessible. La ligne retenue est la plus ancienne du groupe, et son identifiant est réutilisé :
+      aucune génération d'UUID en SQL, donc rien qui dépende du SGBD.
+
+      STATUT REPRIS À `PENDING`, DÉLIBÉRÉMENT. Le grain du dépôt change : « appliqué » signifiait
+      « tout est en place dans CE projet », il signifie maintenant « tout est en place dans TOUS les
+      dossiers du poste ». Recopier `APPLIED` serait affirmer quelque chose qu'on n'a pas vérifié.
+      `PENDING` est honnête et sans conséquence : le geste « appliquer » est offert à l'écran, et le
+      dépôt ne réécrit jamais un fichier existant.
+
+      RÉVERSIBLE. `governance_activations` n'est NI modifiée NI supprimée : elle reste en place avec
+      ses données d'origine. Le rollback de ce changelog efface la table neuve et rend l'état
+      antérieur intact. Sa suppression appartiendra à un nettoyage ultérieur, une fois la reprise
+      observée en production.
+
+      ISOLATION : `user_id` est en TÊTE de l'index d'unicité, et aucune lecture n'existe sans lui.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="072-governance-host-activations-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="governance_host_activations">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="package_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="applied_version" type="int"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="applied_at" type="timestamptz"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="governance_host_activations"
+                     indexName="idx_governance_host_activations_user_host_package" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="package_id"/>
+        </createIndex>
+        <rollback><dropTable tableName="governance_host_activations"/></rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="072-governance-host-activations-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="governance_host_activations">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="package_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="applied_version" type="int"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="applied_at" type="timestamp with time zone"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="governance_host_activations"
+                     indexName="idx_governance_host_activations_user_host_package" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="package_id"/>
+        </createIndex>
+        <rollback><dropTable tableName="governance_host_activations"/></rollback>
+    </changeSet>
+
+    <!-- ===================== REPRISE (les deux SGBD) ====================== -->
+    <changeSet id="072-governance-activations-carry-over" author="claude-gateway">
+        <preConditions onFail="MARK_RAN">
+            <tableExists tableName="governance_activations"/>
+        </preConditions>
+        <comment>
+            Reporte chaque activation par projet sur le poste de son projet, dédoublonnée.
+            Un projet sans poste porte sa gouvernance sur le poste virtuel « Hébergé ».
+        </comment>
+        <sql>
+            INSERT INTO governance_host_activations
+                (id, user_id, host_id, package_id, applied_version, status, applied_at, created_at, updated_at)
+            SELECT a.id,
+                   a.user_id,
+                   COALESCE(w.host_id, '00000000-0000-0000-0000-000000000000'),
+                   a.package_id,
+                   a.applied_version,
+                   'PENDING',
+                   NULL,
+                   a.created_at,
+                   a.updated_at
+            FROM governance_activations a
+            JOIN workspaces w ON w.id = a.workspace_id
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM governance_activations b
+                JOIN workspaces w2 ON w2.id = b.workspace_id
+                WHERE b.user_id = a.user_id
+                  AND b.package_id = a.package_id
+                  AND COALESCE(w2.host_id, '00000000-0000-0000-0000-000000000000')
+                      = COALESCE(w.host_id, '00000000-0000-0000-0000-000000000000')
+                  AND (b.created_at &lt; a.created_at
+                       OR (b.created_at = a.created_at AND b.id &lt; a.id))
+            )
+        </sql>
+        <rollback>
+            <sql>DELETE FROM governance_host_activations</sql>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

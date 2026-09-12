@@ -553,25 +553,42 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `default_applied (boolean)`, `created_at`, `updated_at`. Unicité `(user_id, package_id)`.
     Retenir un paquet **n'active rien** : c'est un geste de bibliothèque. Le seul automatisme est
     `default_applied`, qui fait embarquer le paquet par les projets **à venir** de cet utilisateur.
-  - `governance_activations` : `id (uuid)`, `user_id (uuid)`, `workspace_id (uuid)`,
-    `package_id (uuid)`, `applied_version (int)`, `status (varchar 16 : PENDING | APPLIED)`,
-    `applied_at`, `created_at`, `updated_at`. Unicité `(user_id, workspace_id, package_id)`.
-    Tant que la ligne existe, les règles du paquet rejoignent la consigne système du projet et ses
-    contrôles se branchent sur les crochets de F-50 (SF-51-04).
-  - `applied_version` **fige** la version appliquée : un projet peut rester en v2 pendant que le
-    paquet passe en v3. Rien ne met à jour un projet dans le dos de son propriétaire.
+  - `governance_host_activations` — **l'activation, au grain du POSTE** (F-75 / SF-75-01, migration
+    `072`) : `id (uuid)`, `user_id (uuid)`, `host_id (uuid)`, `package_id (uuid)`,
+    `applied_version (int)`, `status (varchar 16 : PENDING | APPLIED)`, `applied_at`, `created_at`,
+    `updated_at`. Unicité `(user_id, host_id, package_id)`.
+    Tant que la ligne existe, les règles du paquet rejoignent la consigne système de **tous les
+    projets du poste** et ses contrôles se branchent sur les crochets de F-50 (SF-51-04).
+    **Pourquoi le poste et non le projet** : la gouvernance se pose **une fois au niveau de la
+    machine** ; ce sont les *artefacts* qui sont par sujet (le `STATE.md` de chaque dossier, la dette
+    de promotion). On active une fois sur un client, et **tout dossier ajouté demain sous sa racine
+    en hérite**. **Aucune dérogation par dossier** (tranché par le PO le 2026-09-12) : une
+    gouvernance qui se contourne au cas par cas cesse d'en être une.
+    Le poste **« Hébergé »** (F-71) — les projets sans machine — est gouvernable par le mot réservé
+    `hosted` ; en base, ses lignes portent la clé technique `00000000-0000-0000-0000-000000000000`,
+    qui **ne sort jamais par l'API** (F-71 : ce poste est une vue, il n'a pas d'identifiant public).
+  - `governance_activations` (migration `066`) — **vestige** de l'activation par projet. La table est
+    **laissée en place, inchangée**, et la migration `072` en **reporte** le contenu sur le poste de
+    chaque projet, dédoublonné, statut repris à `PENDING` (le grain du dépôt a changé : « appliqué »
+    signifie désormais « en place dans **tous** les dossiers du poste »). Sa suppression appartient à
+    un nettoyage ultérieur — garder l'original est ce qui rend la reprise réversible.
+  - `applied_version` **fige** la version appliquée : un poste peut rester en v2 pendant que le
+    paquet passe en v3. Rien ne met à jour un poste dans le dos de son propriétaire.
   - **Isolation** : `user_id` est **en tête** de chaque index d'unicité et aucune méthode de
     repository n'existe sans lui — c'est une propriété des interfaces, pas une précaution des
-    appelants. Le projet est en outre vérifié comme **possédé** avant toute écriture, et les
-    activations sont effacées avec lui.
+    appelants. Le **poste** est en outre vérifié comme **possédé** avant toute écriture, et ses
+    activations sont effacées avec lui. Supprimer un **dossier**, en revanche, n'éteint plus rien :
+    la gouvernance appartient à la machine.
   - **Le dépôt ne détruit jamais rien** (SF-51-03) : il crée ce qui manque et **laisse tel quel** tout
     fichier déjà présent, contenu différent compris. La désactivation retire les règles et les
     contrôles, mais **laisse les fichiers** : ils appartiennent au projet dès qu'ils y sont.
   - Endpoints **`GET /governance/selection`**, **`PUT/DELETE /governance/selection/{packageId}`**,
-    **`GET /workspaces/{id}/governance`**, **`GET .../governance/{packageId}/preview`** (l'annonce :
-    ce qui sera écrit et où, **sans rien écrire**), **`POST .../governance/{packageId}`**,
-    **`POST .../governance/{packageId}/apply`**, **`DELETE .../governance/{packageId}`** (JWT, accès
-    Atelier).
+    **`GET /governance/hosts`** (mes postes gouvernables), **`GET /governance/hosts/{hostRef}`**,
+    **`GET /governance/hosts/{hostRef}/{packageId}/preview`** (l'annonce : ce qui sera écrit et où,
+    **dossier par dossier**, **sans rien écrire**), **`POST /governance/hosts/{hostRef}/{packageId}`**,
+    **`POST .../{packageId}/apply`**, **`DELETE .../{packageId}`** (JWT, accès Atelier).
+    `hostRef` = identifiant d'un poste possédé, ou le mot réservé `hosted`. **Il n'existe plus aucune
+    route d'activation par projet** (`/workspaces/{id}/governance**` retirée par F-75).
 
 - **access_codes** — les **codes d'accès à durée limitée** (F-62 / SF-62-01, migration `067`). Un
   code émis par l'ADMIN ouvre à qui le saisit le **droit** d'accès à la Forge pendant 24 h.
@@ -794,7 +811,7 @@ Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 rée
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations via `user_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations/governance_host_activations via `user_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
 
 ---
 

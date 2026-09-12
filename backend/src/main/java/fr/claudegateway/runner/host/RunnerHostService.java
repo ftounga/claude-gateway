@@ -4,6 +4,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,23 +29,33 @@ public class RunnerHostService implements RunnerShellRecorder {
     private final SeatLedgerService seatLedgerService;
     private final RunnerTokenRepository tokenRepository;
     private final RunnerPairingCodeRepository pairingCodeRepository;
+    private final ApplicationEventPublisher events;
 
     public RunnerHostService(RunnerHostRepository repository, SeatLedgerService seatLedgerService,
             RunnerTokenRepository tokenRepository,
-            RunnerPairingCodeRepository pairingCodeRepository) {
+            RunnerPairingCodeRepository pairingCodeRepository, ApplicationEventPublisher events) {
         this.repository = repository;
         this.seatLedgerService = seatLedgerService;
         this.tokenRepository = tokenRepository;
         this.pairingCodeRepository = pairingCodeRepository;
+        this.events = events;
     }
 
-    /** Crée un poste au nom libre. Le nom est requis : c'est ce qui le rend reconnaissable. */
+    /**
+     * Crée un poste au nom libre. Le nom est requis : c'est ce qui le rend reconnaissable.
+     *
+     * <p>Le poste <b>annonce</b> sa naissance (F-75 / SF-75-01) : la gouvernance y embarque ce qui
+     * est marqué « appliqué par défaut ». L'annonce est un événement et non un appel, pour que ce
+     * service n'ait jamais à connaître le module gouvernance — qui, lui, le connaît déjà.</p>
+     */
     @Transactional
     public RunnerHost create(UUID userId, String name) {
-        return repository.save(RunnerHost.builder()
+        RunnerHost host = repository.save(RunnerHost.builder()
                 .userId(userId)
                 .name(requireName(name))
                 .build());
+        events.publishEvent(RunnerHostLifecycleEvent.created(userId, host.getId()));
+        return host;
     }
 
     /** Postes de l'utilisateur, les plus récents d'abord. */
@@ -144,6 +155,10 @@ public class RunnerHostService implements RunnerShellRecorder {
         pairingCodeRepository.deleteByHostId(hostId);
         seatLedgerService.forgetHost(host.getId());
         repository.delete(host);
+        // La gouvernance activée sur ce poste ne lui survit pas (F-75 / SF-75-01). L'annonce est
+        // faite DANS la transaction : une activation orpheline serait une gouvernance qui s'applique
+        // à une machine qui n'existe plus.
+        events.publishEvent(RunnerHostLifecycleEvent.deleted(userId, hostId));
     }
 
     /**

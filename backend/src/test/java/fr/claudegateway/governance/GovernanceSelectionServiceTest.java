@@ -92,7 +92,7 @@ class GovernanceSelectionServiceTest {
         service.deselect(alice, pkg.getId());
 
         verify(selections).deleteByUserIdAndPackageId(alice, pkg.getId());
-        verify(activations, never()).deleteByUserIdAndWorkspaceIdAndPackageId(any(), any(), any());
+        verify(activations, never()).deleteByUserIdAndHostIdAndPackageId(any(), any(), any());
     }
 
     @Test

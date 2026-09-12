@@ -23,25 +23,31 @@ import org.springframework.test.web.servlet.MockMvc;
 import fr.claudegateway.atelier.WorkspaceRepository;
 import fr.claudegateway.atelier.WorkspaceService;
 import fr.claudegateway.auth.JwtService;
+import fr.claudegateway.runner.host.RunnerHostRepository;
 import fr.claudegateway.user.AuthProvider;
 import fr.claudegateway.user.User;
 import fr.claudegateway.user.UserRepository;
 import fr.claudegateway.user.UserRole;
 
 /**
- * F-51 / SF-51-03 — l'annonce puis le dépôt, de bout en bout, sur un projet en stockage.
+ * F-51 / SF-51-03, regrainé par F-75 / SF-75-01 — l'annonce puis le dépôt, de bout en bout, sur le
+ * poste « Hébergé » et ses dossiers en stockage.
  *
- * <p>Deux choses sont vérifiées sur la vraie chaîne : l'aperçu <b>n'écrit rien</b>, et le dépôt
- * <b>n'écrase pas</b> un fichier que l'utilisateur avait déjà.</p>
+ * <p>Trois choses sont vérifiées sur la vraie chaîne : l'aperçu <b>n'écrit rien</b>, le dépôt
+ * <b>n'écrase pas</b> un fichier que l'utilisateur avait déjà, et il atteint <b>tous les dossiers du
+ * poste</b> — le sens même du déplacement de grain.</p>
  */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class GovernanceDepositApiIntegrationTest {
 
+    private static final String HOSTED = "/api/governance/hosts/hosted";
+
     @Autowired private MockMvc mockMvc;
     @Autowired private UserRepository userRepository;
     @Autowired private WorkspaceRepository workspaceRepository;
+    @Autowired private RunnerHostRepository hosts;
     @Autowired private WorkspaceService workspaceService;
     @Autowired private GovernancePackageRepository packages;
     @Autowired private GovernancePackageFileRepository packageFiles;
@@ -62,6 +68,7 @@ class GovernanceDepositApiIntegrationTest {
         packageFiles.deleteAll();
         packages.deleteAll();
         workspaceRepository.deleteAll();
+        hosts.deleteAll();
         userRepository.deleteAll();
 
         User alice = seedUser("alice-depot@example.com");
@@ -69,7 +76,7 @@ class GovernanceDepositApiIntegrationTest {
         aliceToken = jwtService.generateToken(alice);
         bobToken = jwtService.generateToken(seedUser("bob-depot@example.com"));
 
-        // Projet en stockage : `create` sème un CLAUDE.md, ce qui donne un fichier préexistant réel.
+        // Projet en stockage, donc sans machine : il est rangé sous le poste « Hébergé » (F-71).
         project = workspaceService.create(aliceId, "web", zipWith("STATE.md", "# Mon état à moi\n"))
                 .workspace().getId();
 
@@ -111,20 +118,23 @@ class GovernanceDepositApiIntegrationTest {
     }
 
     @Test
-    @DisplayName("l'aperçu annonce CREATE et KEEP, et n'écrit rien")
+    @DisplayName("l'aperçu annonce CREATE et KEEP dossier par dossier, et n'écrit rien")
     void previewAnnouncesWithoutWriting() throws Exception {
         retain();
 
-        mockMvc.perform(get("/api/workspaces/" + project + "/governance/" + packageId + "/preview")
+        mockMvc.perform(get(HOSTED + "/" + packageId + "/preview")
                         .contextPath("/api").header("Authorization", "Bearer " + aliceToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.readable").value(true))
+                .andExpect(jsonPath("$.hostRef").value("hosted"))
                 .andExpect(jsonPath("$.rules").value(true))
-                .andExpect(jsonPath("$.entries", Matchers.hasSize(2)))
-                .andExpect(jsonPath("$.entries[0].path").value("STATE.md"))
-                .andExpect(jsonPath("$.entries[0].action").value("KEEP"))
-                .andExpect(jsonPath("$.entries[1].path").value(".claude/skills/explique.md"))
-                .andExpect(jsonPath("$.entries[1].action").value("CREATE"));
+                .andExpect(jsonPath("$.files", Matchers.hasSize(2)))
+                .andExpect(jsonPath("$.projects", Matchers.hasSize(1)))
+                .andExpect(jsonPath("$.projects[0].readable").value(true))
+                .andExpect(jsonPath("$.projects[0].entries[0].path").value("STATE.md"))
+                .andExpect(jsonPath("$.projects[0].entries[0].action").value("KEEP"))
+                .andExpect(jsonPath("$.projects[0].entries[1].path")
+                        .value(".claude/skills/explique.md"))
+                .andExpect(jsonPath("$.projects[0].entries[1].action").value("CREATE"));
 
         // Rien n'a été écrit : le skill annoncé n'existe toujours pas.
         assertThat(workspaceService.tree(aliceId, project))
@@ -136,7 +146,7 @@ class GovernanceDepositApiIntegrationTest {
     void depositCreatesAndNeverOverwrites() throws Exception {
         retain();
 
-        mockMvc.perform(post("/api/workspaces/" + project + "/governance/" + packageId)
+        mockMvc.perform(post(HOSTED + "/" + packageId)
                         .contextPath("/api").header("Authorization", "Bearer " + aliceToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.active[0].status").value("APPLIED"));
@@ -150,39 +160,75 @@ class GovernanceDepositApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("une activation atteint TOUS les dossiers du poste, pas seulement l'un d'eux")
+    void depositReachesEveryFolderOfTheHost() throws Exception {
+        UUID second = workspaceService.create(aliceId, "api", zipWith("README.md", "hello"))
+                .workspace().getId();
+        retain();
+
+        mockMvc.perform(post(HOSTED + "/" + packageId)
+                        .contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk());
+
+        assertThat(workspaceService.tree(aliceId, project)).contains(".claude/skills/explique.md");
+        assertThat(workspaceService.tree(aliceId, second))
+                .contains("STATE.md", ".claude/skills/explique.md");
+        // UNE activation pour le poste, et non une par dossier : c'est tout le déplacement de F-75.
+        assertThat(activations.findAll()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("un dossier ajouté ensuite hérite du poste, sans que rien ne soit recoché")
+    void aFolderAddedLaterInheritsFromItsHost() throws Exception {
+        retain();
+        mockMvc.perform(post(HOSTED + "/" + packageId)
+                        .contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk());
+
+        UUID later = workspaceService.create(aliceId, "demain", zipWith("README.md", "hello"))
+                .workspace().getId();
+
+        assertThat(workspaceService.tree(aliceId, later))
+                .contains("STATE.md", ".claude/skills/explique.md");
+        assertThat(activations.findAll()).hasSize(1);
+    }
+
+    @Test
     @DisplayName("appliquer une seconde fois ne change rien")
     void applyIsIdempotent() throws Exception {
         retain();
-        mockMvc.perform(post("/api/workspaces/" + project + "/governance/" + packageId)
+        mockMvc.perform(post(HOSTED + "/" + packageId)
                 .contextPath("/api").header("Authorization", "Bearer " + aliceToken));
 
-        mockMvc.perform(post("/api/workspaces/" + project + "/governance/" + packageId + "/apply")
+        mockMvc.perform(post(HOSTED + "/" + packageId + "/apply")
                         .contextPath("/api").header("Authorization", "Bearer " + aliceToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.entries[0].action").value("KEEP"))
-                .andExpect(jsonPath("$.entries[1].action").value("KEEP"));
+                .andExpect(jsonPath("$.projects[0].entries[0].action").value("KEEP"))
+                .andExpect(jsonPath("$.projects[0].entries[1].action").value("KEEP"));
 
         assertThat(workspaceService.readFile(aliceId, project, "STATE.md"))
                 .isEqualTo("# Mon état à moi\n");
     }
 
     @Test
-    @DisplayName("appliquer un paquet non actif sur ce projet rend 404")
+    @DisplayName("appliquer un paquet non actif sur ce poste rend 404")
     void applyOnInactivePackageIsNotFound() throws Exception {
-        mockMvc.perform(post("/api/workspaces/" + project + "/governance/" + packageId + "/apply")
+        mockMvc.perform(post(HOSTED + "/" + packageId + "/apply")
                         .contextPath("/api").header("Authorization", "Bearer " + aliceToken))
                 .andExpect(status().isNotFound());
     }
 
     @Test
-    @DisplayName("l'aperçu et l'application sur le projet d'un autre n'écrivent rien")
+    @DisplayName("l'aperçu et l'application par un autre compte n'écrivent rien")
     void nothingCrossesAccounts() throws Exception {
         retain();
 
-        mockMvc.perform(get("/api/workspaces/" + project + "/governance/" + packageId + "/preview")
+        // Bob a son propre poste « Hébergé » : vide. Il ne voit ni ne touche les dossiers d'Alice.
+        mockMvc.perform(get(HOSTED + "/" + packageId + "/preview")
                         .contextPath("/api").header("Authorization", "Bearer " + bobToken))
-                .andExpect(status().isNotFound());
-        mockMvc.perform(post("/api/workspaces/" + project + "/governance/" + packageId + "/apply")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.projects", Matchers.hasSize(0)));
+        mockMvc.perform(post(HOSTED + "/" + packageId + "/apply")
                         .contextPath("/api").header("Authorization", "Bearer " + bobToken))
                 .andExpect(status().isNotFound());
 
@@ -192,8 +238,8 @@ class GovernanceDepositApiIntegrationTest {
     }
 
     @Test
-    @DisplayName("un projet neuf embarque la sélection marquée « appliquée par défaut »")
-    void newProjectEmbarksDefaults() throws Exception {
+    @DisplayName("un dossier neuf embarque la sélection marquée « appliquée par défaut »")
+    void newFolderEmbarksDefaults() throws Exception {
         mockMvc.perform(put("/api/governance/selection/" + packageId).contextPath("/api")
                         .header("Authorization", "Bearer " + aliceToken)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"defaultApplied\":true}"))
@@ -202,7 +248,7 @@ class GovernanceDepositApiIntegrationTest {
         UUID fresh = workspaceService.create(aliceId, "neuf", zipWith("README.md", "hello"))
                 .workspace().getId();
 
-        mockMvc.perform(get("/api/workspaces/" + fresh + "/governance").contextPath("/api")
+        mockMvc.perform(get(HOSTED).contextPath("/api")
                         .header("Authorization", "Bearer " + aliceToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.active", Matchers.hasSize(1)))
