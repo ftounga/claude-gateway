@@ -265,4 +265,31 @@ class RunnerHostFolderBrowserTest {
         verify(gateway, never()).listFiles(any(), any());
         verify(auditService, never()).recordCall(any(), any(), any(), any(), any(), any());
     }
+
+    @Test
+    void theMapFilesOfTheRootAreNeverProposedAsProjects() {
+        // F-92 / SF-92-01 — LE POINT DE CONCEPTION À TRACER. La carte du poste est faite de
+        // FICHIERS posés à la racine, et les projets candidats sont des DOSSIERS. Les deux ne
+        // peuvent pas se confondre, et ce test le fige : si un jour un chemin sans « / » devenait
+        // un dossier candidat, la carte apparaîtrait comme six projets à ouvrir.
+        owned();
+        listing(String.join("\n",
+                "README.md",
+                "acces.md",
+                "reseau.md",
+                "plateformes.md",
+                "donnees.md",
+                "exploitation.md",
+                "migration-dns/STATE.md",
+                "bascule-b2b/STATE.md"), false);
+        when(workspaceService.listByHost(alice, hostId)).thenReturn(List.of());
+
+        HostFoldersResponse response = browser().folders(alice, hostId, null);
+
+        assertThat(response.folders()).extracting(HostFolder::name)
+                .containsExactly("bascule-b2b", "migration-dns");
+        assertThat(response.folders()).extracting(HostFolder::name)
+                .doesNotContain("README.md", "acces.md", "reseau.md", "plateformes.md",
+                        "donnees.md", "exploitation.md");
+    }
 }

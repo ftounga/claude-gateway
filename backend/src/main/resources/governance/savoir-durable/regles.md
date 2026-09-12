@@ -5,13 +5,36 @@ notes.
 
 ### Où vit quoi
 
-| Fichier | Ce qu'il porte | Durée de vie |
-|---|---|---|
-| `STATE.md` | L'état du sujet en cours : où j'en suis, ce que je viens d'apprendre, la prochaine étape | Jetable — il meurt avec le sujet |
-| `PLAN-ACTION.md` | **La carte du projet** : les décisions prises, les contraintes, ce qui reste à faire | Durable — il survit à tous les sujets |
+| Fichier | Où | Ce qu'il porte | Durée de vie |
+|---|---|---|---|
+| `STATE.md` | dans le projet | L'état du sujet en cours : où j'en suis, ce que je viens d'apprendre, la prochaine étape | Jetable — il meurt avec le sujet |
+| `PLAN-ACTION.md` | dans le projet | **La carte du projet** : les décisions prises, les contraintes, ce qui reste à faire | Durable — il survit à tous les sujets |
+| `README.md`, `acces.md`, `reseau.md`, `plateformes.md`, `donnees.md`, `exploitation.md` | **à la racine du poste** | **La carte du poste** : ce que la machine sait du client, tous projets confondus | Durable — elle survit à tous les projets |
 
 Écris dans `STATE.md` sans hésiter : c'est un brouillon. N'écris dans `PLAN-ACTION.md` que ce qui
 servira encore dans six mois.
+
+### La carte du poste
+
+**La carte, ce sont les fichiers `.md` posés à la racine du poste**, à côté des dossiers de projets.
+Les projets sont des **dossiers**, la carte des **fichiers** : aucune confusion possible, et aucune
+convention de chemin n'est imposée — la racine est celle de la machine, quel que soit son nom.
+
+C'est l'endroit où la connaissance s'accumule : **à chaque projet qu'on ajoute, la connaissance de
+l'infrastructure augmente.** Un projet meurt avec son sujet ; ce qu'il a fait apparaître de durable
+reste sur la carte et sert au projet suivant.
+
+**Règle d'écriture, sans exception : n'y mettre que des faits**, chacun avec sa **date** (sous la
+forme `constaté le AAAA-MM-JJ`) et sa **source** (qui l'a dit, ou ce qui l'a montré). Trois
+interdits qui vont avec :
+
+1. **Pas de duplication** — quand la source de vérité existe ailleurs (wiki, dépôt, ticket), on
+   **pointe** vers elle. Une copie devient fausse sans prévenir.
+2. **Pas de secret** — jamais un mot de passe, une clé ou un jeton. On note **où** le secret vit et
+   **qui** l'accorde.
+3. **Pas de supposition** — ce qui n'a pas été vérifié se note comme non vérifié, ou ne se note pas.
+
+Le **terminal du poste** s'ouvre à la racine : c'est de là qu'on lit et qu'on écrit la carte.
 
 ### La règle des livrables
 

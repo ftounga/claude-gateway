@@ -41,6 +41,7 @@ class RunnerRelayClientTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final AtomicReference<String> presentedSecret = new AtomicReference<>();
     private final AtomicReference<String> presentedOrigin = new AtomicReference<>();
+    private final AtomicReference<String> presentedBody = new AtomicReference<>();
     private final UUID workspaceId = UUID.randomUUID();
 
     @BeforeEach
@@ -66,7 +67,8 @@ class RunnerRelayClientTest {
         server.createContext("/api/internal/runner/call", exchange -> {
             presentedSecret.set(exchange.getRequestHeaders().getFirst(RunnerRelayAuthFilter.SECRET_HEADER));
             presentedOrigin.set(exchange.getRequestHeaders().getFirst(RunnerRelayAuthFilter.ORIGIN_HEADER));
-            exchange.getRequestBody().readAllBytes();
+            presentedBody.set(new String(exchange.getRequestBody().readAllBytes(),
+                    StandardCharsets.UTF_8));
             behaviour.serve(exchange);
             exchange.close();
         });
@@ -115,6 +117,34 @@ class RunnerRelayClientTest {
         assertThat(result.streamed()).isEqualTo("undeux");
         assertThat(presentedSecret.get()).isEqualTo(SECRET);
         assertThat(presentedOrigin.get()).isNotBlank();
+    }
+
+    @Test
+    void aHostLevelCallIsRelayedWithoutAProject() {
+        // F-92 / SF-92-01 — un appel de POSTE ne porte aucun projet : parcourir les dossiers d'une
+        // racine (F-71) ou y déposer la carte (F-92). Le champ était déréférencé sans garde, si bien
+        // que ces appels échouaient par NullPointerException dès que le runner vivait sur un autre
+        // pod — donc de façon intermittente, et inexplicable depuis l'écran.
+        RemoteRunnerNode node = peer(exchange -> {
+            exchange.getResponseHeaders().add("Content-Type", "application/x-ndjson");
+            exchange.sendResponseHeaders(200, 0);
+            try (OutputStream out = exchange.getResponseBody()) {
+                line(out, "{\"type\":\"result\",\"ok\":true,\"content\":\"a.md\\nb.md\","
+                        + "\"truncated\":false,\"exitCode\":null,\"durationMs\":3,\"bytes\":null,"
+                        + "\"errorCode\":null,\"errorMessage\":null,\"streamed\":\"\","
+                        + "\"streamTruncated\":false}");
+            }
+        });
+
+        RunnerCallResult result = client.call(node,
+                new fr.claudegateway.runner.channel.RunnerTarget(workspaceId, null, ""), "toolu_2",
+                "list_files", objectMapper.createObjectNode(), 30_000L, null);
+
+        assertThat(result.ok()).isTrue();
+        assertThat(result.content()).isEqualTo("a.md\nb.md");
+        // Le champ est simplement ABSENT de la trame : le pair sait déjà le lire ainsi.
+        assertThat(presentedBody.get()).doesNotContain("workspaceId");
+        assertThat(presentedBody.get()).contains("\"project\":\"\"");
     }
 
     @Test

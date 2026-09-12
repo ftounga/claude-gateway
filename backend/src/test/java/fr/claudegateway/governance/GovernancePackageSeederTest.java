@@ -94,12 +94,45 @@ class GovernancePackageSeederTest {
 
         List<GovernancePackageFile> written = captureFiles();
         assertThat(written).extracting(GovernancePackageFile::getPath)
-                .containsExactly("GOUVERNANCE.md", "PLAN-ACTION.md", "STATE.md",
-                        ".claude/skills/explique.md", ".claude/skills/plan-dashboard.md");
+                .containsExactly("README.md", "acces.md", "reseau.md", "plateformes.md",
+                        "donnees.md", "exploitation.md", "GOUVERNANCE.md", "PLAN-ACTION.md",
+                        "STATE.md", ".claude/skills/explique.md", ".claude/skills/plan-dashboard.md");
         assertThat(written).extracting(GovernancePackageFile::getKind)
-                .containsExactly(GovernanceFileKind.TEMPLATE, GovernanceFileKind.TEMPLATE,
-                        GovernanceFileKind.TEMPLATE, GovernanceFileKind.SKILL,
-                        GovernanceFileKind.SKILL);
+                .containsExactly(GovernanceFileKind.MAP, GovernanceFileKind.MAP,
+                        GovernanceFileKind.MAP, GovernanceFileKind.MAP, GovernanceFileKind.MAP,
+                        GovernanceFileKind.MAP, GovernanceFileKind.TEMPLATE,
+                        GovernanceFileKind.TEMPLATE, GovernanceFileKind.TEMPLATE,
+                        GovernanceFileKind.SKILL, GovernanceFileKind.SKILL);
+    }
+
+    @Test
+    @DisplayName("F-92 : la carte est STRUCTURÉE et VIDE — des en-têtes, la règle d'écriture, aucun fait")
+    void theMapIsStructuredButEmpty() {
+        when(packages.findBySlug(GovernancePackageSeeder.SLUG)).thenReturn(Optional.empty());
+
+        seeder(fullRegistry, true).seed();
+
+        List<GovernancePackageFile> map = captureFiles().stream()
+                .filter(file -> file.getKind() == GovernanceFileKind.MAP).toList();
+        assertThat(map).hasSize(6);
+        for (GovernancePackageFile file : map) {
+            // Un chemin PLAT : la carte, ce sont les fichiers de la racine. Un dossier serait pris
+            // pour un projet — exactement la confusion que cette disposition évite.
+            assertThat(file.getPath()).doesNotContain("/");
+            // La règle d'écriture est dans le gabarit lui-même : un modèle qui ouvre le fichier la
+            // lit, même s'il n'a jamais vu les règles du paquet.
+            assertThat(file.getContent()).containsIgnoringCase("faits").contains("datés")
+                    .contains("leur source");
+            assertThat(file.getContent()).startsWith("# ");
+        }
+        GovernancePackageFile readme = map.get(0);
+        assertThat(readme.getPath()).isEqualTo("README.md");
+        assertThat(readme.getContent()).contains("## Contacts").contains("## Les grands domaines")
+                .contains("## Annuaire des projets").contains("constaté le AAAA-MM-JJ");
+        GovernancePackageFile acces = map.get(1);
+        assertThat(acces.getPath()).isEqualTo("acces.md");
+        assertThat(acces.getContent()).contains("## Récapitulatif VPN").contains("## Les pièges")
+                .contains("| Constaté le |");
     }
 
     @Test

@@ -12,17 +12,22 @@ import java.util.UUID;
  * un <b>poste</b>, et les fichiers se posent dans <b>chacun de ses dossiers</b>. L'annonce est donc
  * faite dossier par dossier — une ligne unique laisserait croire à une seule écriture.</p>
  *
+ * <p>Depuis F-92 / SF-92-01, il y a un endroit de plus, et un seul : la <b>racine du poste</b>, où se
+ * pose la carte. Elle a sa propre section ({@code root}) parce qu'elle n'est pas un dossier de plus —
+ * elle est <b>unique</b> pour tout le poste, et la mêler aux projets ferait croire le contraire.</p>
+ *
  * @param packageId le paquet concerné
  * @param slug      son identifiant lisible
  * @param version   la version qui serait appliquée
  * @param hostRef   le poste visé, tel qu'il s'écrit dans une URL
  * @param hostName  son nom lisible — un identifiant ne dit rien à personne
  * @param files     ce que le paquet apporte : chemin et nature, dans l'ordre du paquet
+ * @param root      ce qui arrivera à la <b>racine du poste</b> — la carte (F-92 / SF-92-01)
  * @param projects  ce qui arrivera dans chaque dossier du poste ; vide si le poste n'en porte aucun
  * @param rules     vrai si le paquet ajoute des règles à la consigne système des projets
  * @param controls  nombre de contrôles que le paquet branche sur les crochets de la boucle
  */
 public record GovernanceDepositPlan(UUID packageId, String slug, int version, String hostRef,
-        String hostName, List<GovernanceFileView> files,
+        String hostName, List<GovernanceFileView> files, GovernanceRootDepositPlan root,
         List<GovernanceProjectDepositPlan> projects, boolean rules, int controls) {
 }
