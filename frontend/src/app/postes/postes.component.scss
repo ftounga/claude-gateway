@@ -290,6 +290,12 @@
     font-weight: 500;
   }
 
+  /* L'aperçu vivant (F-76 / SF-76-02) prend TOUTE la largeur sous le nom : la rangée est un flex
+     qui enveloppe, et un aperçu coincé entre le nom et le bouton serait illisible des deux côtés. */
+  &__preview {
+    flex: 1 0 100%;
+  }
+
   &__path {
     color: var(--cg-text-secondary);
     font-size: 12px;

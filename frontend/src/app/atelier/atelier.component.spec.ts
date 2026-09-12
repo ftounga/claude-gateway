@@ -13,6 +13,7 @@ import { MAX_UPLOAD_BYTES } from '../shared/http-error.util';
 import { AtelierComponent, delayLabel, toThreadItem } from './atelier.component';
 import { AtelierService } from '../core/services/atelier.service';
 import { ApiKeyService } from '../core/services/api-key.service';
+import { LiveTerminalService } from '../core/services/live-terminal.service';
 import { ApiKeyStatus } from '../core/models/api-key.models';
 import {
   AtelierMessage,
@@ -161,6 +162,40 @@ describe('AtelierComponent', () => {
   }
 
   // ------------------------------ « Nouveau projet » a disparu (F-72 / SF-72-04)
+
+
+  /**
+   * Ce terminal **dit ce qu'il fait** (F-76 / SF-76-02). Ce qui se vérifie ici est la règle qui a
+   * coûté douze heures le 2026-09-08 : une demande d'autorisation arrive **pendant** qu'un tour
+   * est en cours, et c'est elle — pas « ça travaille » — que l'aperçu doit porter.
+   */
+  describe('aperçu vivant (F-76)', () => {
+    it('dit qu’il attend une autorisation, dès qu’il l’affiche', () => {
+      setup();
+      component.selectWorkspace(summary);
+      fixture.detectChanges();
+      const live = TestBed.inject(LiveTerminalService);
+      const report = spyOn(live, 'report');
+
+      component.pendingConfirmation.set({
+        toolUseId: 'call-1',
+        tool: 'bash',
+        detail: 'rm -rf build',
+        source: 'LOCAL_MACHINE',
+        answering: false,
+        denying: false,
+        reason: '',
+        deadline: null,
+        timeoutMs: null,
+      });
+      fixture.detectChanges();
+
+      expect(report).toHaveBeenCalled();
+      const preview = report.calls.mostRecent().args[0];
+      expect(preview.activity).toBe('AWAITING_APPROVAL');
+      expect(preview.activityDetail).toBe('rm -rf build');
+    });
+  });
 
   it('n\'offre plus « Nouveau projet » à la racine', () => {
     setup();

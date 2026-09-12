@@ -364,6 +364,16 @@
                 <span class="projet__path poste__mono">{{ projectPathLabel(project) }}</span>
               }
             </div>
+            <!-- PREMIÈRE DENSITÉ (F-76 / SF-76-02) : quelques lignes sous le nom du projet. On voit
+                 qu'un agent attend quelque chose SANS RIEN OUVRIR — la vue de supervision reste un
+                 écran qu'on ouvre quand on surveille, mais l'accueil le dit déjà.
+                 Rien n'est affiché quand il n'y a rien à dire : une ligne « Inactif » sous chaque
+                 projet n'apprendrait rien de plus que la pastille de vie. -->
+            <app-terminal-preview
+              class="projet__preview"
+              [preview]="project.terminalPreview"
+              density="card"
+            ></app-terminal-preview>
             <div class="projet__side">
               @if (projectActivityLabel(project); as activity) {
                 <span class="projet__activity">{{ activity }}</span>
@@ -471,6 +481,14 @@
           <app-live-badge scope="host"></app-live-badge>
         }
       </div>
+      <!-- Le terminal du poste (F-74) travaille comme un autre : il dit donc ce qu'il fait comme
+           un autre (F-76 / SF-76-02). Le taire ici le laisserait apparaître dans la vue de
+           supervision sans que la carte en dise un mot — deux densités qui se contrediraient. -->
+      <app-terminal-preview
+        class="poste__host-terminal-preview"
+        [preview]="host.hostTerminalPreview"
+        density="card"
+      ></app-terminal-preview>
     } @else {
       <!-- LES DEUX SOURCES SANS MACHINE (F-72 / SF-72-04). Elles étaient sous « Nouveau projet »,
            à la racine — la porte qui faisait partir du PROJET au lieu du poste. Le geste est le

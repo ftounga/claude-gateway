@@ -1,0 +1,85 @@
+/* L'aperçu vivant d'un terminal (F-76 / SF-76-02).
+
+   AUCUNE COULEUR NOUVELLE. Trois registres cohabitent déjà (DESIGN_SYSTEM §5 statut, §9 identité du
+   poste, §10 état de mission) et un quatrième les rendrait tous illisibles. L'aperçu se contente de
+   l'encre secondaire de la charte ; l'attente d'autorisation emprunte la pastille §5 « En attente »
+   (`.badge--warning`, définie globalement), celle qui sert déjà partout à dire qu'on attend.
+
+   NI FOND COLORÉ, NI FILET D'IDENTITÉ : le §8 interdit les aplats colorés sur les cartes, et le
+   filet gauche appartient à l'identité du poste (§9). L'aperçu n'entre que par un liseré neutre. */
+
+:host {
+  display: block;
+  min-width: 0;
+}
+
+/* Rien à dire, rien à occuper : sans cela, l'hôte vide garderait sa gouttière dans la rangée du
+   projet et creuserait un blanc sous chaque ligne muette. */
+:host(:empty) {
+  display: none;
+}
+
+.preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-1);
+  margin-top: var(--cg-space-1);
+  padding-left: var(--cg-space-2);
+  border-left: 2px solid var(--cg-divider);
+  min-width: 0;
+
+  /* Ce qui attend une décision se voit DE LOIN : le liseré neutre passe à l'ambre de la palette
+     §5. Ce n'est pas une couleur de plus — c'est exactement celle de la pastille qui l'accompagne,
+     et le libellé reste écrit juste à côté. */
+  &--awaiting {
+    border-left-color: #f9a825;
+  }
+
+  &__activity {
+    margin: 0;
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__awaiting {
+    align-self: flex-start;
+
+    mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+    }
+  }
+
+  &__detail {
+    margin: 0;
+    font-family: var(--cg-font-mono);
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Les dernières lignes. Monospace (§3), et CHAQUE LIGNE SUR UNE SEULE LIGNE : un aperçu qui se
+     replie sur trois hauteurs pour une commande longue déforme la carte à chaque rafraîchissement,
+     et ce qu'on cherche du coin de l'œil ne doit pas faire bouger la page. */
+  &__lines {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  &__line {
+    font-family: var(--cg-font-mono);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--cg-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

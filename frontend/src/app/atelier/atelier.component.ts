@@ -95,6 +95,7 @@ import {
   RunnerAuditDialogData,
 } from './runner/runner-audit-dialog.component';
 import { chatStepsToBlocks } from './terminal/chat-steps';
+import { derivePreview } from './terminal/terminal-preview';
 
 // Les types et constantes du fil vivent dans `atelier.types` (F-30 SF-30-07) : la vue terminal les
 // consomme aussi, et les garder ici créerait une dépendance circulaire. Réexportés pour compatibilité.
@@ -187,6 +188,47 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /** Les terminaux vivants, nommés — le bandeau de refus doit dire lequel fermer. */
   readonly liveTerminalList = computed(() => this.liveTerminals.registry()?.terminals ?? []);
+
+  /**
+   * **Ce terminal dit ce qu'il fait** (F-76 / SF-76-02).
+   *
+   * <p>Un effet, et non un appel recopié à chaque événement du flux : l'aperçu est une
+   * <b>conséquence</b> de l'état affiché — la demande d'autorisation en attente, le tour en cours,
+   * les blocs visibles — et non un troisième état à tenir à jour. Ce qui est à l'écran et ce qui
+   * est relevé ne peuvent donc pas diverger.</p>
+   *
+   * <p>C'est le service qui décide <b>quand</b> l'envoyer : immédiatement si l'activité change,
+   * apaisé si seules les lignes défilent. Rien n'est envoyé tant qu'aucune place n'est tenue — il
+   * n'y a pas de fiche à décorer.</p>
+   */
+  private readonly livePreviewSync = effect(() => {
+    if (!this.activeWorkspaceId()) {
+      return;
+    }
+    const pending = this.pendingConfirmation();
+    const streaming = this.execStreaming();
+    const blocks = streaming?.blocks ?? this.lastTerminalBlocks();
+    this.liveTerminals.report(derivePreview({
+      // La commande soumise à décision passe AVANT tout le reste : une demande d'autorisation
+      // arrive pendant qu'un tour est « en cours », et répondre « ça travaille » à ce moment-là
+      // est exactement ce qui a coûté douze heures le 2026-09-08 (F-47).
+      awaitingCommand: pending ? (pending.detail || pending.tool) : null,
+      running: streaming !== null || this.submitting(),
+      blocks,
+    }));
+  });
+
+  /** Les blocs du dernier tour terminé : ce qu'on voit encore à l'écran quand rien ne tourne. */
+  private lastTerminalBlocks() {
+    const messages = this.messages();
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const terminal = messages[index].terminal;
+      if (terminal && terminal.length > 0) {
+        return terminal;
+      }
+    }
+    return [];
+  }
 
   /**
    * Le terminal ouvert **prend** une place, et la rend en le refermant (F-70 / SF-70-01).

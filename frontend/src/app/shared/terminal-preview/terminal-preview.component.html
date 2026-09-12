@@ -1,0 +1,35 @@
+<!-- L'aperçu vivant d'un terminal (F-76 / SF-76-02).
+
+     UN COMPOSANT, DEUX DENSITÉS : trois lignes sous le nom d'un projet sur l'accueil de la Forge,
+     six dans une tuile de supervision. Même source, deux tailles — jamais deux vérités.
+
+     CE QUI ATTEND UNE AUTORISATION SE DIT EN TOUTES LETTRES. Le 2026-09-08, une demande est restée
+     douze heures sans réponse (F-47) ; un point de couleur n'aurait pas suffi ce jour-là. La
+     pastille emprunte la palette de STATUT (§5 « En attente »), déjà employée partout dans
+     l'application pour dire qu'on attend quelque chose : aucun quatrième registre de couleur. -->
+@if (visible()) {
+  <div class="preview" [class.preview--awaiting]="awaiting()">
+    @if (awaiting()) {
+      <span class="badge badge--warning preview__awaiting">
+        <!-- L'icône accompagne le libellé ; elle ne le remplace jamais (§9, §10, §11). -->
+        <mat-icon aria-hidden="true">pan_tool</mat-icon>
+        Attend votre autorisation
+      </span>
+      @if (detail(); as command) {
+        <p class="preview__detail">{{ command }}</p>
+      }
+    } @else {
+      <p class="preview__activity">{{ activityLabel() }}</p>
+    }
+
+    @if (lines().length > 0) {
+      <!-- Les DERNIÈRES lignes : un aperçu dit où l'on en est. En lecture seule — écrire dans une
+           tuile est hors périmètre, et le terminal qui reçoit ce qu'on tape est à un clic. -->
+      <div class="preview__lines">
+        @for (line of lines(); track $index) {
+          <span class="preview__line">{{ line }}</span>
+        }
+      </div>
+    }
+  </div>
+}

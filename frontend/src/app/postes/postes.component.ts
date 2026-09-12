@@ -19,6 +19,7 @@ import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import { LiveBadgeComponent } from '../shared/live-badge/live-badge.component';
 import { HostTone, hostTone } from '../shared/host-identity';
 import { MissionBadgeComponent } from '../shared/mission-badge/mission-badge.component';
+import { TerminalPreviewComponent } from '../shared/terminal-preview/terminal-preview.component';
 import {
   RunnerPairingDialogComponent,
   RunnerPairingDialogData,
@@ -114,6 +115,7 @@ const EMPTY_HOSTED: RunnerHostOverview = {
     HostBadgeComponent,
     LiveBadgeComponent,
     MissionBadgeComponent,
+    TerminalPreviewComponent,
     MatButtonModule,
     MatCardModule,
     MatIconModule,

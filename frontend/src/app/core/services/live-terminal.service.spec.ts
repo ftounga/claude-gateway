@@ -136,4 +136,103 @@ describe('LiveTerminalService', () => {
     moved.flush({ ...registry, terminals: [] });
     expect(service.live()).toBe(true);
   });
+
+  // ---------------------------------------- l'aperçu vivant (F-76 / SF-76-02)
+
+  describe('l’aperçu', () => {
+
+    const running = {
+      activity: 'RUNNING' as const,
+      activityDetail: 'npm test',
+      previewLines: ['$ npm test', 'PASS'],
+    };
+
+    function claimed(): void {
+      service.start(workspaceId);
+      http.expectOne(`/api/workspaces/${workspaceId}/terminal/live`).flush(registry);
+    }
+
+    it('part IMMÉDIATEMENT quand l’activité change', () => {
+      // C'est l'exigence non négociable : « attend une autorisation » doit se voir en quelques
+      // secondes, pas au battement suivant.
+      claimed();
+
+      service.report(running);
+
+      const request = http.expectOne(`/api/workspaces/${workspaceId}/terminal/live`);
+      expect(request.request.body.activity).toBe('RUNNING');
+      expect(request.request.body.activityDetail).toBe('npm test');
+      expect(request.request.body.previewLines).toEqual(['$ npm test', 'PASS']);
+      request.flush(registry);
+    });
+
+    it('ne renvoie pas deux fois le même relevé', () => {
+      claimed();
+      service.report(running);
+      http.expectOne(`/api/workspaces/${workspaceId}/terminal/live`).flush(registry);
+
+      service.report({ ...running, previewLines: ['$ npm test', 'PASS'] });
+
+      http.expectNone(`/api/workspaces/${workspaceId}/terminal/live`);
+    });
+
+    it('apaise le simple défilement de lignes', () => {
+      // À activité constante, rien ne presse : un envoi toutes les cinq secondes suffit à un
+      // aperçu qu'on regarde du coin de l'œil.
+      jasmine.clock().install();
+      try {
+        claimed();
+        service.report(running);
+        http.expectOne(`/api/workspaces/${workspaceId}/terminal/live`).flush(registry);
+
+        service.report({ ...running, previewLines: ['$ npm test', 'PASS', 'PASS bis'] });
+        http.expectNone(`/api/workspaces/${workspaceId}/terminal/live`);
+
+        jasmine.clock().tick(5_000);
+        const deferred = http.expectOne(`/api/workspaces/${workspaceId}/terminal/live`);
+        expect(deferred.request.body.previewLines.length).toBe(3);
+        deferred.flush(registry);
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it('ne relève rien tant qu’aucune place n’est tenue', () => {
+      // Il n'y a pas de fiche à décorer : le relevé n'a nulle part où aller.
+      service.report(running);
+
+      http.expectNone(`/api/workspaces/${workspaceId}/terminal/live`);
+    });
+
+    it('n’abandonne aucune minuterie d’aperçu derrière lui', () => {
+      jasmine.clock().install();
+      try {
+        claimed();
+        service.report(running);
+        http.expectOne(`/api/workspaces/${workspaceId}/terminal/live`).flush(registry);
+        service.report({ ...running, previewLines: ['autre'] });
+
+        service.stop();
+        jasmine.clock().tick(30_000);
+
+        http.expectNone(`/api/workspaces/${workspaceId}/terminal/live`);
+      } finally {
+        jasmine.clock().uninstall();
+      }
+    });
+
+    it('oublie l’aperçu du projet précédent quand l’onglet change de projet', () => {
+      // Laisser l'aperçu en place afficherait le `npm test` d'un autre projet sur la carte de
+      // celui-ci.
+      claimed();
+      service.report(running);
+      http.expectOne(`/api/workspaces/${workspaceId}/terminal/live`).flush(registry);
+
+      service.start('w-2');
+
+      const request = http.expectOne('/api/workspaces/w-2/terminal/live');
+      expect(request.request.body.activity).toBeUndefined();
+      request.flush(registry);
+    });
+  });
 });

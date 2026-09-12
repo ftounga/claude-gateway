@@ -645,6 +645,91 @@ describe('PostesComponent', () => {
       expect(component.liveTerminalCount()).toBe(3);
     });
   });
+  /**
+   * L'aperçu vivant sur la carte du poste (F-76 / SF-76-02) — la **première densité**. Ce qui s'y
+   * vérifie : qu'on voie **qu'un agent attend quelque chose sans rien ouvrir**, et que rien ne
+   * s'affiche quand il n'y a rien à dire.
+   */
+  describe('aperçu des terminaux (F-76)', () => {
+    it('montre ce que fait le terminal, sous le nom du projet', () => {
+      setup([
+        {
+          ...poste,
+          liveTerminals: 1,
+          projects: [
+            {
+              ...poste.projects[0],
+              liveTerminal: true,
+              terminalPreview: {
+                activity: 'RUNNING',
+                activityDetail: 'npm test',
+                lines: ['$ npm test', 'PASS src/app.spec.ts'],
+              },
+            },
+            { ...poste.projects[1], liveTerminal: false },
+          ],
+        },
+      ]);
+      const lines = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.projet'));
+      expect(lines[0].textContent).toContain('Exécute npm test');
+      expect(lines[0].textContent).toContain('PASS src/app.spec.ts');
+      expect(lines[1].querySelector('.preview')).toBeNull();
+    });
+
+    it('signale FRANCHEMENT le projet qui attend une autorisation', () => {
+      // C'est exactement ce qui a échappé à l'utilisateur pendant douze heures le 2026-09-08.
+      setup([
+        {
+          ...poste,
+          liveTerminals: 1,
+          projects: [
+            {
+              ...poste.projects[0],
+              liveTerminal: true,
+              terminalPreview: {
+                activity: 'AWAITING_APPROVAL',
+                activityDetail: 'rm -rf build',
+                lines: ['Autorisation demandée'],
+              },
+            },
+            poste.projects[1],
+          ],
+        },
+      ]);
+      const dom = fixture.nativeElement as HTMLElement;
+      // Le libellé est ÉCRIT : la couleur ne le porte jamais seule.
+      expect(dom.textContent).toContain('Attend votre autorisation');
+      expect(dom.querySelector('.preview--awaiting')).not.toBeNull();
+    });
+
+    it("n'affiche aucun bloc quand la gateway ne rend pas d'aperçu", () => {
+      // Un backend antérieur à F-76, ou un terminal qui vient de s'ouvrir : la carte reste
+      // exactement ce qu'elle était.
+      setup([{ ...poste, liveTerminals: 1, projects: [{ ...poste.projects[0], liveTerminal: true }] }]);
+      const dom = fixture.nativeElement as HTMLElement;
+      expect(dom.querySelector('.preview')).toBeNull();
+      // Non-régression F-70 : la pastille de vie et le compteur restent là.
+      expect(dom.querySelector('app-live-badge')).not.toBeNull();
+      expect(dom.querySelector('.postes__live')?.textContent).toContain('Terminaux vivants : 1 / 4');
+    });
+
+    it('montre aussi ce que fait le terminal DU POSTE (F-74)', () => {
+      setup([
+        {
+          ...poste,
+          hostTerminalId: 'ht-1',
+          hostTerminalLive: true,
+          hostTerminalPreview: {
+            activity: 'RUNNING',
+            activityDetail: 'git clone',
+            lines: ['$ git clone', 'Cloning...'],
+          },
+        },
+      ]);
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('Exécute git clone');
+    });
+  });
+
   // ------------------------------------------- suppression d'un poste (F-69 / SF-69-02)
 
   it('propose « Supprimer le poste » dans le menu de la carte', () => {
