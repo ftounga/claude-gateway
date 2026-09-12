@@ -1,7 +1,12 @@
+<!-- LA PEAU DU TERMINAL TEAMS (F-89 / SF-89-03, charte §15). AUCUNE COULEUR NOUVELLE : la surface
+     reste `--cg-primary`, celle de tout terminal — on doit RECONNAÎTRE un terminal, pas découvrir
+     un écran. Ce qui bascule est la TYPOGRAPHIE : un compte rendu est de la prose, pas une sortie
+     de shell, et le monospace dirait faux ici. -->
 <section
   class="terminal-view"
   [class.terminal-view--readonly]="readOnly"
-  [attr.aria-label]="readOnly ? 'Terminal du projet, en lecture seule' : 'Terminal du projet'"
+  [class.terminal-view--teams]="teamsTerminal"
+  [attr.aria-label]="teamsTerminal ? 'Terminal Teams' : (readOnly ? 'Terminal du projet, en lecture seule' : 'Terminal du projet')"
 >
   <!-- EN-TÊTE — TOUT LE CHROME DU TERMINAL (F-83 / SF-83-01).
        Une tuile de mosaïque montre LE FLUX, et rien d'autre : le PO a demandé que les terminaux
@@ -442,6 +447,16 @@
                   </button>
                 }
               }
+              @if (cardOf(block); as card) {
+                <ng-container
+                  *ngTemplateOutlet="teamsCardTemplate; context: { $implicit: card }"
+                ></ng-container>
+              } @else if (block.card) {
+                <!-- UN TERMINAL DE PROJET RESTE TEXTUEL POUR TOUJOURS (F-89). Le bloc n'est pas
+                     masqué : masquer ferait disparaître une information sans le dire. La règle
+                     interdit la CARTE, pas le contenu. -->
+                <pre class="terminal-output">{{ cardAsText(block.card) }}</pre>
+              }
             </div>
           }
         }
@@ -563,6 +578,16 @@
                 }
               </button>
             }
+          }
+              @if (cardOf(block); as card) {
+            <ng-container
+              *ngTemplateOutlet="teamsCardTemplate; context: { $implicit: card }"
+            ></ng-container>
+          } @else if (block.card) {
+            <!-- UN TERMINAL DE PROJET RESTE TEXTUEL POUR TOUJOURS (F-89). Le bloc n'est pas
+             masqué : masquer ferait disparaître une information sans le dire. La règle
+             interdit la CARTE, pas le contenu. -->
+            <pre class="terminal-output">{{ cardAsText(block.card) }}</pre>
           }
         </div>
       }
@@ -755,3 +780,132 @@
     </form>
   }
 </section>
+
+<!-- ====================================================================== F-89 / SF-89-03
+     LE COMPTE RENDU DANS LE FIL — carte de réunion, moments, liste.
+
+     UN SEUL GABARIT, réutilisé par l'historique et par le tour en cours : deux rendus
+     divergeraient à la première retouche, et c'est un compte rendu — ce qu'il affirme doit être
+     le même partout.
+
+     LA DENSITÉ D'UN COMPTE RENDU, PAS D'UN TABLEAU DE BORD. Les sections viennent DANS L'ORDRE OÙ
+     L'AGENT LES A ÉCRITES, et l'outil lui demande de mettre en premier ce qu'on attend du lecteur :
+     « qu'est-ce qu'on attend de moi » doit sauter aux yeux sans faire défiler.
+
+     CE QUI EST INCERTAIN SE LIT COMME INCERTAIN, par la TYPOGRAPHIE : italique, et la mention
+     « à confirmer » ÉCRITE. Aucun pictogramme d'avertissement, aucune couleur d'alerte — un
+     triangle jaune dirait « danger » là où la ligne dit « je l'ai déduit ». Et AUCUN CHIFFRE :
+     un pourcentage donnerait une apparence de mesure à une interprétation. -->
+<ng-template #teamsCardTemplate let-card>
+  <article class="teams-card" [attr.aria-label]="card.title">
+    <header class="teams-card__head">
+      <h3 class="teams-card__title">{{ card.title }}</h3>
+      @if (card.subtitle) {
+        <p class="teams-card__subtitle">{{ card.subtitle }}</p>
+      }
+    </header>
+
+    @for (section of card.sections; track $index) {
+      @if (section.lines.length > 0) {
+        <section class="teams-card__section">
+          @if (section.title) {
+            <h4 class="teams-card__section-title">{{ section.title }}</h4>
+          }
+          <ul class="teams-card__lines">
+            @for (line of section.lines; track $index) {
+              <li
+                class="teams-card__line"
+                [class.teams-card__line--uncertain]="isUncertain(line)"
+              >
+                <p class="teams-card__text">{{ line.text }}</p>
+                <!-- CHAQUE LIGNE PORTE SON MESSAGE SOURCE ET SON LIEN : c'est ce qui rend une
+                     affirmation vérifiable d'un clic, et c'est toute la valeur du compte rendu. -->
+                <p class="teams-card__source">
+                  @if (line.author) {
+                    <span class="teams-card__author">{{ line.author }}</span>
+                  }
+                  @if (shortTime(line.at)) {
+                    <span class="teams-card__time" [matTooltip]="line.at">{{ shortTime(line.at) }}</span>
+                  }
+                  <span class="teams-card__certainty">{{ certaintyLabel(line.certainty) }}</span>
+                  @if (line.webUrl) {
+                    <a
+                      class="teams-card__link"
+                      [href]="line.webUrl"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      >ouvrir le message</a
+                    >
+                  }
+                </p>
+              </li>
+            }
+          </ul>
+        </section>
+      }
+    }
+
+    <!-- LE BLOC MOMENT : l'image posée À CÔTÉ de la phrase prononcée pendant qu'elle était
+         affichée — jamais une galerie en bas de page. C'est l'horodatage qui les rapproche.
+         Un moment SANS image reste un moment : la phrase et l'heure suffisent. -->
+    @if (card.moments.length > 0) {
+      <ul class="teams-card__moments">
+        @for (moment of card.moments; track $index) {
+          <li class="teams-moment" [class.teams-moment--zoomed]="isMomentZoomed(moment)">
+            <div class="teams-moment__shot">
+              @if (moment.imageId && !isMomentImageBroken(moment)) {
+                <!-- UN CLIC AGRANDIT, UN SECOND REND L'IMAGE À SA PLACE, ÉCHAP FERME : le geste de
+                     la mosaïque (charte §13, F-83 / SF-83-03), qu'on n'invente pas deux fois. Le
+                     libellé dit L'ÉTAT, jamais une icône seule. -->
+                <button
+                  type="button"
+                  class="teams-moment__zoom"
+                  (click)="toggleMomentZoom(moment)"
+                  [attr.aria-label]="momentZoomLabel(moment)"
+                  [attr.aria-pressed]="isMomentZoomed(moment)"
+                >
+                  <img
+                    class="teams-moment__image"
+                    [src]="momentImageUrl(moment)"
+                    [alt]="'Ce qui etait a l ecran a ' + shortTime(moment.at)"
+                    (error)="onMomentImageError(moment)"
+                  />
+                </button>
+              } @else if (moment.imageId) {
+                <p class="teams-moment__missing">Image indisponible.</p>
+              }
+            </div>
+            <div class="teams-moment__said">
+              @if (moment.webUrl) {
+                <a
+                  class="teams-moment__time"
+                  [href]="moment.webUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  [matTooltip]="'Ouvrir la transcription à ' + moment.at"
+                  >{{ shortTime(moment.at) }}</a
+                >
+              } @else {
+                <span class="teams-moment__time" [matTooltip]="moment.at">{{ shortTime(moment.at) }}</span>
+              }
+              <p class="teams-moment__quote">
+                @if (momentSpeaker(moment)) {
+                  <span class="teams-moment__speaker">{{ momentSpeaker(moment) }}</span>
+                }
+                {{ moment.quote }}
+              </p>
+            </div>
+          </li>
+        }
+      </ul>
+    }
+
+    <!-- CE QUI A ÉTÉ LU, ET CE QUI NE L'A PAS ÉTÉ — toujours visible, JAMAIS REPLIÉ : un trou
+         qu'il faut déplier est un trou qu'on ne voit pas. C'est la règle qui prime sur toutes les
+         autres dans ce volet : échouer bruyamment, jamais à moitié faux. -->
+    <footer class="teams-card__foot">
+      <p class="teams-card__window">Fenêtre lue : {{ card.window }}</p>
+      <p class="teams-card__gaps">{{ gapsLabel(card) }}</p>
+    </footer>
+  </article>
+</ng-template>

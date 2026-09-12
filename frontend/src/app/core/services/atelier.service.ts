@@ -44,6 +44,8 @@ import {
   WorkspaceSummary,
   WriteFileRequest,
   AtelierPlanStep,
+  AtelierTeamsCard,
+  TeamsAccess,
 } from '../models/atelier.models';
 
 /**
@@ -356,6 +358,8 @@ export class AtelierService {
       budgetReached?: boolean;
       /** Plan de travail relayé au fil de l'eau (F-39 / SF-39-13). */
       steps?: AtelierPlanStep[];
+      /** Bloc riche posé dans le fil d'un terminal Teams (F-89 / SF-89-02). */
+      card?: AtelierTeamsCard;
       /** Rebranchement sur un tour en cours (F-84 / SF-84-02). */
       turnId?: string | null;
       cursor?: number;
@@ -416,6 +420,13 @@ export class AtelierService {
     } else if (event === 'plan') {
       // Plan de travail du tour (F-39 / SF-39-13) : la liste complète, qui remplace la précédente.
       handlers.onPlan?.(payload.steps ?? []);
+    } else if (event === 'card') {
+      // Un BLOC RICHE posé dans le fil (F-89 / SF-89-02). Il arrive déjà validé : chaque ligne
+      // porte sa source, la certitude est un mot, la fenêtre lue est dite. L'écran ne filtre rien.
+      // Un bloc sans carte est ignoré plutôt que rendu vide — mieux vaut rien qu'un cadre creux.
+      if (payload.card) {
+        handlers.onCard?.({ toolUseId: payload.toolUseId ?? '', card: payload.card });
+      }
     } else if (event === 'done') {
       handlers.onDone({
         reply: payload.reply ?? '',
@@ -873,6 +884,38 @@ export class AtelierService {
    */
   openHostTerminal(hostId: string): Observable<WorkspaceDetail> {
     return this.http.post<WorkspaceDetail>(`/api/runner-hosts/${hostId}/terminal`, null);
+  }
+
+  /**
+   * **Le terminal Teams d'un poste** (F-89 / SF-89-01) : celui qui existe, ou celui qu'on crée.
+   *
+   * <p>C'est le point d'entrée du volet Teams, et il n'y en a pas d'autre : Teams n'est pas un
+   * écran à boutons, c'est un terminal où l'on parle. **Idempotent**, comme celui du poste.</p>
+   *
+   * <p>Répond `403` sans l'option Teams — mais l'écran ne devrait jamais provoquer ce refus : il lit
+   * le droit d'abord ({@link #teamsAccess}) et n'affiche le geste que s'il existe.</p>
+   */
+  openTeamsTerminal(hostId: string): Observable<WorkspaceDetail> {
+    return this.http.post<WorkspaceDetail>(`/api/runner-hosts/${hostId}/teams-terminal`, null);
+  }
+
+  /**
+   * **Le droit Teams du compte** (F-89 / SF-89-01). Répond `200` dans tous les cas : ne pas avoir
+   * l'option est un **état**, pas une erreur.
+   *
+   * <p>C'est ce qui permet de décider si la carte d'un poste porte le geste « Terminal Teams ». Un
+   * bouton qui mène à un 403 ne serait pas une porte, ce serait un piège.</p>
+   */
+  teamsAccess(): Observable<TeamsAccess> {
+    return this.http.get<TeamsAccess>('/api/teams/access');
+  }
+
+  /**
+   * **L'adresse d'une image de moment** (F-89 / SF-89-02) — jamais construite ailleurs, pour qu'un
+   * changement de route ne laisse pas un gabarit en arrière.
+   */
+  momentImageUrl(workspaceId: string, imageId: string): string {
+    return `/api/workspaces/${workspaceId}/teams/moments/${encodeURIComponent(imageId)}`;
   }
 
   /**

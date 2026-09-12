@@ -1,0 +1,242 @@
+/* ------------------------------------------------------------------ F-89 / SF-89-03
+   LA PEAU DU TERMINAL TEAMS, ET LE COMPTE RENDU DANS LE FIL (charte §15).
+
+   AUCUNE COULEUR NOUVELLE, ET AUCUN CINQUIÈME REGISTRE. La charte en compte déjà quatre
+   (identité §9, mission §10, vie §11, décision attendue §12) ; un de plus rendrait les quatre
+   autres illisibles. Tout ce qui suit n'emploie que des jetons de §2.
+
+   LE BASCULEMENT EST TYPOGRAPHIQUE, PAS CHROMATIQUE. La surface reste `--cg-primary` : on doit
+   RECONNAÎTRE un terminal (§13), pas découvrir un écran. Ce qui bascule est la police — un compte
+   rendu est de la PROSE, pas une sortie de shell, et le monospace y dirait faux.
+
+   LA DENSITÉ D'UN COMPTE RENDU, PAS D'UN TABLEAU DE BORD : pas de cadres imbriqués, pas de
+   pastilles, pas de colonnes. Une hiérarchie de trois niveaux (titre, section, ligne), des
+   interlignes serrés, et « qu'est-ce qu'on attend de moi » en tête sans avoir à faire défiler. */
+
+.terminal-view--teams {
+  /* Le flux en prose. Les heures et les identifiants restent en monospace là où ils sont écrits :
+     ce sont des données, et elles se comparent à l'œil. */
+  .terminal-scrollback {
+    font-family: var(--cg-font-body);
+  }
+
+  /* La demande de l'utilisateur garde son invite `>` : on tape toujours dans un terminal. */
+  .terminal-request {
+    font-family: var(--cg-font-body);
+  }
+}
+
+/* ---------------------------------------------------------------- le bloc lui-même */
+
+.teams-card {
+  margin: var(--cg-space-3) 0;
+  padding: var(--cg-space-3);
+  /* La surface blanche des cartes de §5 — le seul endroit du terminal où l'on LIT un document
+     plutôt qu'on ne regarde défiler une sortie. Aucun fond coloré : §8 tient. */
+  background: var(--cg-surface);
+  color: var(--cg-text-primary);
+  border-radius: 4px;
+}
+
+.teams-card__head {
+  margin-bottom: var(--cg-space-2);
+}
+
+.teams-card__title {
+  margin: 0;
+  font-family: var(--cg-font-heading);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.teams-card__subtitle {
+  margin: var(--cg-space-1) 0 0;
+  font-size: 12px;
+  color: var(--cg-text-secondary);
+}
+
+.teams-card__section {
+  margin-top: var(--cg-space-3);
+
+  &:first-of-type {
+    margin-top: var(--cg-space-2);
+  }
+}
+
+.teams-card__section-title {
+  margin: 0 0 var(--cg-space-1);
+  font-size: 14px;
+  font-weight: 600;
+  /* Un filet, pas une pastille : ce qui ouvre la carte est ce qu'on attend du lecteur, et il n'a
+     pas besoin d'une couleur pour le trouver — il est en tête. */
+  border-bottom: 1px solid var(--cg-divider);
+  padding-bottom: var(--cg-space-1);
+}
+
+.teams-card__lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.teams-card__line {
+  padding: var(--cg-space-1) 0;
+
+  & + & {
+    border-top: 1px solid var(--cg-divider);
+  }
+}
+
+.teams-card__text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+/* CE QUI EST INCERTAIN SE LIT COMME INCERTAIN — PAR LA TYPOGRAPHIE.
+   Italique, et la mention « à confirmer » écrite juste dessous. Aucun pictogramme d'avertissement,
+   aucune couleur d'alerte : un triangle jaune dirait « danger » là où la ligne dit seulement
+   « je l'ai déduit ». Et aucun chiffre : un pourcentage donnerait une apparence de mesure à une
+   interprétation. */
+.teams-card__line--uncertain .teams-card__text {
+  font-style: italic;
+}
+
+.teams-card__source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cg-space-2);
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--cg-text-secondary);
+}
+
+.teams-card__time {
+  font-family: var(--cg-font-mono);
+}
+
+.teams-card__certainty {
+  font-style: italic;
+}
+
+.teams-card__link {
+  color: var(--cg-accent);
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: underline;
+  }
+}
+
+/* ---------------------------------------------------------------- les moments */
+
+.teams-card__moments {
+  margin: var(--cg-space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* L'IMAGE À CÔTÉ DE LA PHRASE, jamais une galerie en bas de page : c'est l'alignement qui fait la
+   valeur, et deux colonnes le disent mieux que n'importe quelle légende. */
+.teams-moment {
+  display: flex;
+  gap: var(--cg-space-3);
+  align-items: flex-start;
+  padding: var(--cg-space-2) 0;
+
+  & + & {
+    border-top: 1px solid var(--cg-divider);
+  }
+}
+
+.teams-moment__shot {
+  flex: 0 0 200px;
+}
+
+.teams-moment__zoom {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 1px solid var(--cg-divider);
+  border-radius: 4px;
+  background: none;
+  cursor: zoom-in;
+  overflow: hidden;
+}
+
+.teams-moment__image {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.teams-moment__missing {
+  margin: 0;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--cg-text-secondary);
+}
+
+/* AGRANDIE : la tuile prend toute la largeur et le texte passe dessous. Le geste de la mosaïque
+   (§13) — un clic agrandit, un second rend l'image à sa place, Échap ferme — sans quitter la page
+   ni rouvrir le fil. */
+.teams-moment--zoomed {
+  display: block;
+
+  .teams-moment__shot {
+    flex: none;
+  }
+
+  .teams-moment__zoom {
+    cursor: zoom-out;
+  }
+
+  .teams-moment__said {
+    margin-top: var(--cg-space-2);
+  }
+}
+
+.teams-moment__said {
+  flex: 1;
+  min-width: 0;
+}
+
+.teams-moment__time {
+  font-family: var(--cg-font-mono);
+  font-size: 12px;
+  color: var(--cg-accent);
+  text-decoration: none;
+}
+
+.teams-moment__quote {
+  margin: 2px 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.teams-moment__speaker {
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- ce qui a été lu, et ce qui non */
+
+/* TOUJOURS VISIBLE, JAMAIS REPLIÉ : un trou qu'il faut déplier est un trou qu'on ne voit pas.
+   En texte secondaire — c'est un pied de page, pas une alerte — mais présent sans un geste. */
+.teams-card__foot {
+  margin-top: var(--cg-space-3);
+  padding-top: var(--cg-space-2);
+  border-top: 1px solid var(--cg-divider);
+  font-size: 12px;
+  color: var(--cg-text-secondary);
+}
+
+.teams-card__window,
+.teams-card__gaps {
+  margin: 0;
+}
+
+.teams-card__gaps {
+  margin-top: 2px;
+  font-style: italic;
+}

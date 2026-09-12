@@ -72,6 +72,14 @@ export interface WorkspaceSummary {
    * poste. Champ **additif** : absent d'un backend antérieur ⇒ `false`, un projet.</p>
    */
   hostTerminal?: boolean;
+  /**
+   * Vrai si cette ligne est le **terminal Teams** (F-89 / SF-89-01) : le terminal où l'on parle de
+   * réunions et de conversations, et **le seul** où le fil sache afficher autre chose que du texte.
+   *
+   * <p>Comme le terminal du poste, la liste le montre avec son icône propre et **sans** le geste
+   * « supprimer le projet ». Champ **additif** : absent d'un backend antérieur ⇒ `false`.</p>
+   */
+  teamsTerminal?: boolean;
 }
 
 /** Corps de `POST /api/workspaces/{id}/git/push` (F-31 / SF-31-04). Les deux champs sont facultatifs. */
@@ -162,6 +170,12 @@ export interface WorkspaceDetail {
    * **additif** : absent d'un backend antérieur ⇒ `false`.
    */
   hostTerminal?: boolean;
+  /**
+   * Vrai si ce workspace est le **terminal Teams** (F-89 / SF-89-01). C'est **le** champ qui décide
+   * de la peau du terminal et du droit d'y afficher des blocs riches : un terminal de projet reste
+   * textuel pour toujours. Champ **additif** : absent ⇒ `false`.
+   */
+  teamsTerminal?: boolean;
   /** URL publique du dépôt (jamais le jeton), `null` pour un projet d'archive. */
   gitRepoUrl: string | null;
   /** `owner/repo`, `null` pour un projet d'archive. */
@@ -579,6 +593,16 @@ export interface AtelierStreamHandlers {
   onPlan?: (steps: AtelierPlanStep[]) => void;
 
   /**
+   * **Un bloc riche posé dans le fil** (F-89 / SF-89-02) : carte, moments, liste. Relayé au fil de
+   * l'eau comme le plan — un compte rendu qui n'apparaîtrait qu'à la fin du tour laisserait l'écran
+   * muet pendant qu'un agent lit trente fils.
+   *
+   * **Optionnel** : un appelant qui ne s'y abonne pas ne voit aucune différence, et un backend
+   * antérieur n'émet jamais cet événement.
+   */
+  onCard?: (event: AtelierCardEvent) => void;
+
+  /**
    * Numéro d'ordre du dernier événement reçu (F-84 / SF-84-02), lu dans le champ `id:` du
    * protocole SSE. C'est le **curseur** : en se rebranchant, l'écran le renvoie et ne reçoit que
    * ce qu'il a manqué — ni doublon, ni trou.
@@ -804,6 +828,89 @@ export interface AtelierTerminalBlock {
   error: boolean;
   /** Repli de l'affichage des sorties longues (piloté par l'utilisateur). */
   expanded: boolean;
+  /**
+   * **Bloc riche** (F-89 / SF-89-02) : carte de réunion, moments, liste. Absent partout ailleurs —
+   * et c'est la règle non négociable du volet Teams : *un terminal de projet reste textuel pour
+   * toujours*. Une sortie de commande est exactement ce que la machine a répondu, jamais une carte.
+   *
+   * <p>Le bloc arrive **déjà validé** : chaque ligne porte sa source, sa certitude est un mot, et le
+   * bloc porte la fenêtre réellement lue. L'écran n'a rien à filtrer — un écran qui écarterait les
+   * lignes sans source afficherait un compte rendu amputé sans le dire.</p>
+   */
+  card?: AtelierTeamsCard | null;
+}
+
+/**
+ * **Le niveau de certitude d'une ligne** (F-89 / SF-89-02), tel que le backend le rend.
+ *
+ * <p>Deux valeurs, et **jamais un score** : un chiffre donnerait une apparence de mesure à une
+ * interprétation. « 82 % » se lit comme une mesure ; « à confirmer » se lit comme ce que c'est.</p>
+ */
+export type AtelierTeamsCertainty = 'EXPLICITE' | 'A_CONFIRMER';
+
+/** Les trois genres de bloc riche. Liste close : l'écran en connaît exactement trois. */
+export type AtelierTeamsCardKind = 'MEETING_CARD' | 'LIST' | 'MOMENTS';
+
+/**
+ * **Une ligne vérifiable** d'un bloc riche (F-89 / SF-89-02) : ce qui est dit, par qui, quand, et
+ * **où le vérifier**. `messageId` ou `webUrl` — au moins l'un des deux — est garanti par le backend.
+ */
+export interface AtelierTeamsLine {
+  text: string;
+  author: string;
+  /** Horodatage ISO-8601 rendu par l'adaptateur Teams, ou chaîne vide. */
+  at: string;
+  messageId: string;
+  /** Lien qui ouvre le fil à la bonne position, ou chaîne vide. */
+  webUrl: string;
+  certainty: AtelierTeamsCertainty;
+}
+
+/** Une section d'un bloc : un titre, et les lignes qui en relèvent. */
+export interface AtelierTeamsSection {
+  title: string;
+  lines: AtelierTeamsLine[];
+}
+
+/**
+ * **Un moment** : l'image de ce qui était à l'écran, à côté de la phrase prononcée pendant qu'elle
+ * l'était. C'est l'horodatage qui les rapproche. `imageId` peut être vide : un moment sans image
+ * reste un moment.
+ */
+export interface AtelierTeamsMoment {
+  at: string;
+  quote: string;
+  speaker: string;
+  imageId: string;
+  /** Lien qui ouvre la transcription à la seconde, ou chaîne vide. */
+  webUrl: string;
+}
+
+/**
+ * **Un bloc riche du fil d'un terminal Teams** (F-89 / SF-89-02).
+ *
+ * <p>`window` porte la fenêtre **réellement lue** et `gaps` **ce qui n'a pas pu l'être** : les deux
+ * s'affichent toujours, jamais repliés — un trou qu'il faut déplier est un trou qu'on ne voit pas.</p>
+ */
+export interface AtelierTeamsCard {
+  kind: AtelierTeamsCardKind;
+  title: string;
+  subtitle: string;
+  window: string;
+  sections: AtelierTeamsSection[];
+  moments: AtelierTeamsMoment[];
+  gaps: string[];
+}
+
+/** Charge utile de l'événement SSE `card` (F-89 / SF-89-02). */
+export interface AtelierCardEvent {
+  toolUseId: string;
+  card: AtelierTeamsCard;
+}
+
+/** Le droit Teams du compte (F-89 / SF-89-01), réponse de `GET /api/teams/access`. */
+export interface TeamsAccess {
+  entitled: boolean;
 }
 
 /**
@@ -979,6 +1086,13 @@ export interface RunnerHostOverview {
    * de « même source, deux densités ».
    */
   hostTerminalPreview?: TerminalPreview | null;
+  /**
+   * Identifiant du **terminal Teams** du poste (F-89 / SF-89-01), ou `null` s'il n'a jamais été
+   * ouvert — ou si le compte n'a pas l'option, auquel cas la carte n'a rien à proposer.
+   */
+  teamsTerminalId?: string | null;
+  /** Vrai si un onglet vit sur le terminal Teams **maintenant** (F-70 / F-89). */
+  teamsTerminalLive?: boolean;
   projects: HostProjectSummary[];
 }
 

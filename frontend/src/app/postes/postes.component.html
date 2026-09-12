@@ -639,6 +639,38 @@
         @if (host.hostTerminalLive) {
           <app-live-badge scope="host"></app-live-badge>
         }
+
+        <!-- LE TERMINAL TEAMS (F-89 / SF-89-03). Il est ICI, à côté du terminal du poste, parce
+             que c'est la même nature de geste : un terminal rattaché à la MACHINE — celle dont on
+             observe le navigateur (F-87) — et non à un projet.
+
+             PAS DE BOUTON SANS LE DROIT. Ni grisé, ni menant à un refus : le terminal Teams existe,
+             ou il n'existe pas. Un bouton qui mène à un 403 n'est pas une porte, c'est un piège.
+
+             TOUJOURS PAS D'ÉCRAN À BOUTONS : ce geste-ci n'ouvre pas une fonctionnalité, il ouvre
+             une CONVERSATION. Tout le reste — les mentions, un compte rendu, ce qu'on attend de
+             vous — se demande en parlant, et c'est la décision fondatrice du cadrage. -->
+        @if (showTeamsTerminal(host)) {
+          <button
+            mat-stroked-button
+            type="button"
+            class="poste__teams-terminal"
+            [disabled]="openingTeamsHostId() !== null"
+            (click)="openTeamsTerminal(host)"
+            [attr.aria-label]="'Ouvrir le terminal Teams de ' + host.name"
+            matTooltip="Un terminal à part pour Teams — on y parle de réunions et de conversations, pas de code"
+          >
+            @if (openingTeamsHostId() === host.id) {
+              <mat-spinner diameter="18"></mat-spinner>
+            } @else {
+              <mat-icon>forum</mat-icon>
+            }
+            Terminal Teams
+          </button>
+          @if (host.teamsTerminalLive) {
+            <app-live-badge scope="host"></app-live-badge>
+          }
+        }
       </div>
       <!-- Le terminal du poste (F-74) travaille comme un autre : il dit donc ce qu'il fait comme
            un autre (F-76 / SF-76-02). Le taire ici le laisserait apparaître dans la vue de

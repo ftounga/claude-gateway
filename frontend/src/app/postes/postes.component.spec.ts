@@ -88,7 +88,12 @@ describe('PostesComponent', () => {
     const spy = jasmine.createSpyObj<AtelierService>('AtelierService',
       ['runnerHostsOverview', 'setHostMissionStatus', 'deleteRunnerHost', 'runnerHostFolders',
         'openHostProject', 'openHostTerminal', 'createGitWorkspace', 'createWorkspace',
-        'killHost']);
+        'killHost', 'teamsAccess', 'openTeamsTerminal']);
+    // F-89 / SF-89-03 : le droit Teams, lu UNE FOIS au chargement. Fermé par défaut — les tests
+    // qui visent le volet Teams l'ouvrent explicitement, comme un compte qui a souscrit l'option.
+    spy.teamsAccess.and.returnValue(of({ entitled: false }));
+    spy.openTeamsTerminal.and.returnValue(
+      of({ id: 'wtt1', name: 'Terminal Teams', teamsTerminal: true } as WorkspaceDetail));
     // F-82 / SF-82-02 : le coupe-circuit vit désormais sur la carte du poste. Réponse par défaut
     // d'une liaison bien coupée — les tests qui visent un autre chemin la remplacent.
     spy.killHost.and.returnValue(
@@ -426,7 +431,10 @@ describe('PostesComponent', () => {
   }));
 
   it('affiche l’erreur et un bouton Réessayer quand le premier chargement échoue', () => {
-    service = jasmine.createSpyObj<AtelierService>('AtelierService', ['runnerHostsOverview', 'setHostMissionStatus']);
+    service = jasmine.createSpyObj<AtelierService>('AtelierService',
+      ['runnerHostsOverview', 'setHostMissionStatus', 'teamsAccess']);
+    // F-89 / SF-89-03 : le droit Teams est lu au chargement, même quand la vue échoue.
+    service.teamsAccess.and.returnValue(of({ entitled: false }));
     service.runnerHostsOverview.and.returnValue(throwError(() => new Error('réseau')));
     build();
 
@@ -435,7 +443,9 @@ describe('PostesComponent', () => {
   });
 
   it("dit que la vue appartient à la Forge quand l'accès est refusé", fakeAsync(() => {
-    service = jasmine.createSpyObj<AtelierService>('AtelierService', ['runnerHostsOverview', 'setHostMissionStatus']);
+    service = jasmine.createSpyObj<AtelierService>('AtelierService',
+      ['runnerHostsOverview', 'setHostMissionStatus', 'teamsAccess']);
+    service.teamsAccess.and.returnValue(of({ entitled: false }));
     service.runnerHostsOverview.and.returnValue(
       throwError(() => new HttpErrorResponse({ status: 403 })),
     );
@@ -1386,6 +1396,92 @@ describe('PostesComponent', () => {
     expect(service.openHostTerminal).not.toHaveBeenCalled();
   });
 
+  // ------------------------------------------------------------------ F-89 / SF-89-03
+  // LE TERMINAL TEAMS SUR LA CARTE DU POSTE.
+  //
+  // Ce qui s'y joue tient en une phrase du cadrage : « son propre droit — il existe, ou il
+  // n'existe pas ». Pas de bouton grisé, pas de bouton qui mène à un refus. Un bouton qui mène à
+  // un 403 n'est pas une porte, c'est un piège.
+
+  /** Le bouton « Terminal Teams » de la première carte réelle, ou `null`. */
+  function teamsButton(): HTMLElement | null {
+    return (fixture.nativeElement as HTMLElement)
+      .querySelector('.poste:not(.poste--heberge) .poste__teams-terminal');
+  }
+
+  it('SANS LE DROIT, il n\'y a PAS DE BOUTON — ni grisé, ni menant à un refus', () => {
+    setup();
+
+    expect(teamsButton()).toBeNull();
+  });
+
+  it('avec le droit, la carte d\'un poste réel porte « Terminal Teams »', () => {
+    service = spyService();
+    service.runnerHostsOverview.and.returnValue(of([poste]));
+    service.teamsAccess.and.returnValue(of({ entitled: true }));
+    build();
+
+    expect(teamsButton()).not.toBeNull();
+    expect(teamsButton()?.textContent).toContain('Terminal Teams');
+  });
+
+  it('« Hébergé » ne le porte jamais : ce n\'est pas une machine, aucun navigateur à observer', () => {
+    service = spyService();
+    service.runnerHostsOverview.and.returnValue(of([poste]));
+    service.teamsAccess.and.returnValue(of({ entitled: true }));
+    build();
+
+    expect(component.showTeamsTerminal(component.hostedHost())).toBeFalse();
+  });
+
+  it('FAIL-CLOSED : une lecture du droit qui échoue laisse le bouton absent', () => {
+    service = spyService();
+    service.runnerHostsOverview.and.returnValue(of([poste]));
+    service.teamsAccess.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+    build();
+
+    expect(component.teamsEntitled()).toBeFalse();
+    expect(teamsButton()).toBeNull();
+  });
+
+  it('ouvre le terminal Teams, puis navigue vers lui', () => {
+    setup();
+    const router = TestBed.inject(Router);
+    const navigate = spyOn(router, 'navigate');
+
+    component.openTeamsTerminal(poste);
+
+    expect(service.openTeamsTerminal).toHaveBeenCalledWith('h1');
+    expect(navigate).toHaveBeenCalledWith(['/atelier', 'wtt1']);
+    expect(component.openingTeamsHostId()).toBeNull();
+  });
+
+  it('ne navigue PAS quand l\'ouverture échoue', () => {
+    setup();
+    service.openTeamsTerminal.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 0 })));
+    const router = TestBed.inject(Router);
+    const navigate = spyOn(router, 'navigate');
+
+    component.openTeamsTerminal(poste);
+
+    expect(navigate).not.toHaveBeenCalled();
+    expect(component.openingTeamsHostId()).toBeNull();
+  });
+
+  it('montre la pastille de vie quand un onglet vit sur le terminal Teams', () => {
+    service = spyService();
+    service.runnerHostsOverview.and.returnValue(
+      of([{ ...poste, teamsTerminalId: 'wtt1', teamsTerminalLive: true }]));
+    service.teamsAccess.and.returnValue(of({ entitled: true }));
+    build();
+
+    // La MÊME pastille que partout ailleurs (F-70) : aucun registre de couleur de plus.
+    const actions = (fixture.nativeElement as HTMLElement)
+      .querySelector('.poste:not(.poste--heberge) .poste__card-actions') as HTMLElement;
+    expect(actions.querySelectorAll('app-live-badge').length).toBe(1);
+  });
+
   it('montre la pastille de vie quand un onglet vit sur le terminal du poste', () => {
     setup([{ ...poste, hostTerminalId: 'wt1', hostTerminalLive: true }]);
     const actions = (fixture.nativeElement as HTMLElement)
@@ -1464,7 +1560,8 @@ describe('PostesComponent', () => {
 
     it('le panneau de refus nomme le code et pointe la section, pas seulement la page', () => {
       service = jasmine.createSpyObj<AtelierService>('AtelierService',
-        ['runnerHostsOverview', 'setHostMissionStatus']);
+        ['runnerHostsOverview', 'setHostMissionStatus', 'teamsAccess']);
+      service.teamsAccess.and.returnValue(of({ entitled: false }));
       service.runnerHostsOverview.and.returnValue(
         throwError(() => new HttpErrorResponse({ status: 403 })),
       );

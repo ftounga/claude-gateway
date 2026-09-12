@@ -440,6 +440,84 @@ palette**.
 
 ---
 
+## 15 — Le compte rendu dans le fil (ajout F-89 / SF-89-03, 2026-09-12)
+
+> **Aucune couleur nouvelle, et aucun cinquième registre.** Cette section dit comment un **compte
+> rendu** se lit dans un terminal — et pourquoi le basculement vers Teams est **typographique**, pas
+> chromatique.
+
+Le terminal Teams est un terminal comme les autres : même mécanique, même surface, même barre. Ce
+qui change est **ce qu'il affiche** — des blocs riches (carte de réunion, moments, liste) — et **la
+façon de les lire**.
+
+### Le basculement est typographique
+
+| | Terminal de projet | Terminal Teams |
+|---|---|---|
+| Surface | `--cg-primary` | `--cg-primary` — **la même** |
+| Flux | `--cg-font-mono` | `--cg-font-body` |
+| Blocs | texte uniquement | texte **+** carte, moments, liste |
+
+**Pourquoi pas une couleur.** La charte porte déjà quatre registres — identité (§9), mission (§10),
+vie (§11), décision attendue (§12) — et §14 a posé la règle : *un cinquième rendrait les quatre
+autres illisibles*. La typographie dit la même chose, et le dit plus juste : **un compte rendu est de
+la prose, pas une sortie de shell**, et le monospace y affirmerait « ceci est exactement ce que la
+machine a répondu » — ce qui serait faux.
+
+**Pourquoi la surface ne change pas.** On doit **reconnaître un terminal** (§13), pas découvrir un
+écran. Ce qui bascule est le contenu, jamais le cadre.
+
+### Le bloc lui-même
+
+| Élément | Registre | Palette |
+|---|---|---|
+| Le bloc | **surface de carte** | §2 — `--cg-surface` (le blanc des cartes de §5) |
+| Titre du bloc | Space Grotesk 600, 18 px | encre `--cg-text-primary` |
+| Titre de section | Inter 600, 14 px, filet sous le titre | filet `--cg-divider` |
+| Ligne | Inter 400, 14 px | encre `--cg-text-primary` |
+| Source d'une ligne (auteur, heure, certitude, lien) | 12 px | `--cg-text-secondary`, lien `--cg-accent` |
+| Heures et identifiants | `--cg-font-mono` | — |
+
+### Règles d'emploi — non négociables
+
+- **Un terminal de projet reste textuel pour toujours.** Une sortie de commande est exactement ce que
+  la machine a répondu, jamais une carte. Les blocs riches n'existent que dans le terminal Teams —
+  et un bloc qui y arriverait malgré tout est rendu **en texte**, jamais masqué : masquer ferait
+  disparaître une information sans le dire. Trois verrous le tiennent (deux côté gateway, un ici),
+  chacun sous test.
+- **Chaque ligne porte son auteur, son heure, et un lien vers son message.** Une affirmation qu'on ne
+  peut pas ouvrir d'un clic n'a pas sa place dans un compte rendu. Les liens s'ouvrent dans un
+  nouvel onglet, `rel="noopener noreferrer"`.
+- **Ce qui est incertain se lit comme incertain — par la TYPOGRAPHIE.** Italique, et la mention
+  « à confirmer » **écrite en toutes lettres**. **Aucun pictogramme d'avertissement, aucune couleur
+  d'alerte** : un triangle jaune dirait « danger » là où la ligne dit seulement « je l'ai déduit ».
+  Un test vérifie qu'aucune icône n'apparaît dans une carte.
+- **Jamais un score, jamais un pourcentage.** Deux mots, et rien d'autre — « explicite » ou
+  « à confirmer ». Un chiffre donnerait une apparence de mesure à une interprétation. Le champ
+  n'existe pas dans le modèle, et un test parcourt les schémas d'outils pour qu'il ne réapparaisse
+  jamais.
+- **La densité d'un compte rendu, pas d'un tableau de bord.** Pas de cadres imbriqués, pas de
+  pastilles, pas de colonnes de chiffres. Une hiérarchie de trois niveaux — titre, section, ligne —
+  et **ce qu'on attend du lecteur en premier** : « qu'est-ce qu'on attend de moi » doit sauter aux
+  yeux en trois secondes, **sans faire défiler**.
+- **Ce qui a été lu et ce qui ne l'a pas été sont TOUJOURS visibles, jamais repliés.** En pied de
+  bloc, en texte secondaire — mais présents sans un geste : *un trou qu'il faut déplier est un trou
+  qu'on ne voit pas*. Une liste de manques vide se lit « aucun manque signalé », **jamais** « tout a
+  été lu ».
+- **L'image d'un moment est posée À CÔTÉ de la phrase**, jamais en galerie de bas de page : c'est
+  l'alignement qui fait la valeur. Un moment **sans image reste un moment** — la phrase et l'heure
+  suffisent ; une image qui ne charge pas **le dit**, à sa place.
+- **Une image s'agrandit d'un clic — et c'est le geste de §13**, celui de la mosaïque
+  (F-83 / SF-83-03), qu'on n'invente pas deux fois : un clic agrandit, un second rend l'image à sa
+  place, **Échap** ferme. C'est un **état d'écran**, jamais une adresse. Le libellé du bouton dit
+  **l'état** (« Agrandir l'image de 14:32 »), jamais une icône seule.
+- **Le point d'entrée est un bouton de carte, comme les autres.** « Terminal Teams » vit à côté de
+  « Terminal du poste », avec la même apparence et la même pastille de vie (§11). **Sans le droit, il
+  n'y a pas de bouton** — ni grisé, ni menant à un refus : un bouton qui mène à un 403 n'est pas une
+  porte, c'est un piège.
+
+---
+
 ## Logo & marque (ajout 2026-07-03)
 
 - **Logo de l'application** : `frontend/public/claude-portal-logo.png` (« Claude Portal » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« Claude Portal »** (renommé en F-29 SF-29-01 : le terme « Proxy » faisait classer le domaine en catégorie « anonymizer » par les filtres d'entreprise).
