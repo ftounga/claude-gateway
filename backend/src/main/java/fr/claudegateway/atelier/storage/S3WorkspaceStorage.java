@@ -7,6 +7,7 @@ import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import fr.claudegateway.atelier.AtelierProperties;
@@ -52,6 +53,19 @@ public class S3WorkspaceStorage implements WorkspaceStorage {
     private final S3Client s3Client;
     private final String bucket;
 
+    /**
+     * Constructeur de production. L'annotation n'est <b>pas</b> décorative : depuis que SF-79-01 a
+     * ajouté le constructeur d'injection ci-dessous, la classe en a <b>deux</b>. Spring ne choisit
+     * tout seul que lorsqu'il n'y en a qu'un ; avec deux, il cherche un constructeur <b>sans
+     * argument</b>, n'en trouve pas, et le contexte entier échoue au démarrage —
+     * {@code NoSuchMethodException: S3WorkspaceStorage.<init>()}. Le 2026-09-12, cela a empêché
+     * tout démarrage du backend en production ; seule la bascule progressive de Kubernetes, qui a
+     * gardé l'ancien pod, a évité la panne.
+     *
+     * <p>Aucun test ne l'avait vu : les tests d'intégration utilisent le stockage en mémoire, et ce
+     * bean n'est donc jamais construit par Spring — il ne l'est qu'en production.</p>
+     */
+    @Autowired
     public S3WorkspaceStorage(AtelierProperties properties) {
         this(S3Client.builder().build(), properties.bucket());
     }
