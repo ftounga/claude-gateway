@@ -10,7 +10,7 @@
 
 ## Statut
 
-`ready`
+`done` — mergée le 2026-09-13 (PR #465)
 
 ## Date de création
 
