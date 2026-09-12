@@ -159,19 +159,18 @@ public final class RunnerMain {
         AtomicReference<PollingConnection> polling = new AtomicReference<>();
         AtomicBoolean shuttingDown = new AtomicBoolean(false);
         CountDownLatch stopped = new CountDownLatch(1);
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            shuttingDown.set(true);
-            connection.stop();
-            PollingConnection active = polling.get();
-            if (active != null) {
-                active.stop();
-            }
-            try {
-                stopped.await();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }, "runner-shutdown"));
+        // Arrêt (F-82 / SF-82-01) : l'attente est BORNÉE, et l'échec de fermeture est dit. Le corps
+        // du crochet vit dans RunnerShutdown — c'est le Runnable que la JVM exécute, et celui que le
+        // test exécute : aucune imitation ne s'intercale entre les deux.
+        Runtime.getRuntime().addShutdownHook(new Thread(
+                RunnerShutdown.task(shuttingDown, () -> {
+                    connection.stop();
+                    PollingConnection active = polling.get();
+                    if (active != null) {
+                        active.stop();
+                    }
+                }, stopped, RunnerShutdown.GRACE, console),
+                "runner-shutdown"));
 
         console.info("Appuyez sur Ctrl-C pour arrêter le runner.");
         try {
