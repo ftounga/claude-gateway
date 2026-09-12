@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import fr.claudegateway.atelier.storage.WorkspaceStorage;
 import fr.claudegateway.runner.audit.RunnerAuditRepository;
+import fr.claudegateway.runner.host.HostProjectExistsException;
 import fr.claudegateway.runner.host.RunnerProjectPath;
 
 /**
@@ -156,6 +157,66 @@ public class WorkspaceService {
                 // c'est le chemin de création du mode runner, celui que cette décision vise.
                 .agentAskBeforeBash(true)
                 .build()));
+    }
+
+    /**
+     * <b>Ouvre un projet sur un dossier du poste</b> (F-72 / SF-72-01) : la création et le
+     * rattachement, <b>en une seule transaction</b>.
+     *
+     * <p>Pourquoi ensemble : avec deux appels, un échec au second laissait un projet <b>sans
+     * poste</b>, portant le nom du client — exactement la seconde « entité EDENRED » que F-72
+     * supprime. Ici, ou les deux sont écrits, ou rien ne l'est.</p>
+     *
+     * <p><b>Aucun nom n'est demandé</b> (décision D5) : le projet prend le <b>dernier segment</b> du
+     * chemin, et le nom du <b>poste</b> quand c'est la racine. Le client a déjà été nommé à la
+     * connexion du poste ; le redemander est la question de trop.</p>
+     *
+     * <p>Le runner n'a <b>pas</b> à être connecté : ouvrir un projet est une écriture en base.
+     * Exiger une machine joignable empêcherait de préparer ses projets le soir pour le lendemain.
+     * C'est la <b>lecture</b> des dossiers (SF-71-02) qui exige le runner, et elle a son refus.</p>
+     *
+     * @param hostId   poste, dont l'appartenance a <b>déjà</b> été vérifiée par l'appelant
+     * @param rawPath  chemin relatif sous la racine ; {@code null} ou vide = la racine du poste
+     * @param hostName nom du poste, qui sert de nom au projet quand c'est la racine
+     * @throws fr.claudegateway.runner.host.InvalidProjectPathException chemin inexploitable
+     * @throws fr.claudegateway.runner.host.HostProjectExistsException  dossier déjà ouvert
+     */
+    @Transactional
+    public Workspace openOnHost(UUID userId, UUID hostId, String rawPath, String hostName) {
+        String path = RunnerProjectPath.normalize(rawPath);
+        // Doublon refusé (isolation : on ne lit que les projets de l'appelant). C'est le défaut
+        // vécu par le PO — ouvrir deux fois le même dossier produisait deux projets du même nom.
+        for (Workspace existing : listByHost(userId, hostId)) {
+            String occupied = existing.getProjectPath() == null ? "" : existing.getProjectPath();
+            if (occupied.equals(path)) {
+                throw new HostProjectExistsException(existing.getName(), path);
+            }
+        }
+        Workspace workspace = createLocal(userId, projectNameFor(path, hostName));
+        workspace.setHostId(hostId);
+        workspace.setProjectPath(path);
+        return workspace;
+    }
+
+    /**
+     * Nom du projet ouvert sur un dossier : le <b>dernier segment</b> du chemin, ou le nom du poste
+     * à la racine. Tronqué à la borne de la colonne plutôt que refusé — un dossier au nom très long
+     * est un dossier légitime, et échouer ici ferait échouer un geste que rien n'oblige à refuser.
+     */
+    private static String projectNameFor(String path, String hostName) {
+        int slash = path.lastIndexOf('/');
+        String candidate = slash < 0 ? path : path.substring(slash + 1);
+        if (candidate.isBlank()) {
+            candidate = hostName == null ? "" : hostName.trim();
+        }
+        if (candidate.isBlank()) {
+            // Inatteignable en pratique : un poste porte toujours un nom non vide (SF-48-01). La
+            // garde évite qu'un jour une valeur vide fasse échouer la création sur « nom requis ».
+            candidate = "Projet";
+        }
+        return candidate.length() > MAX_NAME_LENGTH
+                ? candidate.substring(0, MAX_NAME_LENGTH)
+                : candidate;
     }
 
     /**

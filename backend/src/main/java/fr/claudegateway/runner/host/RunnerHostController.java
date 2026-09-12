@@ -3,6 +3,7 @@ package fr.claudegateway.runner.host;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -15,7 +16,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.atelier.AtelierAccessService;
+import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceService;
+import fr.claudegateway.atelier.dto.WorkspaceDetailResponse;
 import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.runner.RunnerKillSwitchService;
 import fr.claudegateway.runner.RunnerPairingService;
@@ -29,6 +32,7 @@ import fr.claudegateway.runner.dto.RunnerStatusResponse;
 import fr.claudegateway.runner.dto.RunnerTokenResponse;
 import fr.claudegateway.runner.host.dto.HostFoldersResponse;
 import fr.claudegateway.runner.host.dto.HostMissionRequest;
+import fr.claudegateway.runner.host.dto.HostProjectRequest;
 import fr.claudegateway.runner.host.dto.RunnerHostOverviewResponse;
 import fr.claudegateway.runner.host.dto.RunnerHostRequest;
 import fr.claudegateway.runner.host.dto.RunnerHostResponse;
@@ -132,6 +136,33 @@ public class RunnerHostController {
             @RequestParam(name = "path", required = false) String path) {
         atelierAccess.requireAccess();
         return folderBrowser.folders(currentUser.requireId(), hostId, path);
+    }
+
+    /**
+     * <b>Ouvre un projet sur un dossier du poste</b> (F-72 / SF-72-01) — le second des deux gestes :
+     * on a connecté une machine, on lui ajoute maintenant des projets, autant de fois qu'on veut et
+     * <b>sans jamais réappairer</b>.
+     *
+     * <p>Un seul appel crée le projet <b>et</b> le rattache. Le parcours d'avant en demandait deux,
+     * dans l'autre sens — créer un projet, puis lui trouver un poste — et un échec au second
+     * laissait un projet sans machine, portant le nom du client : la seconde « entité EDENRED ».</p>
+     *
+     * <p><b>Aucun nom n'est demandé</b> : le projet prend celui de son dossier, et celui du poste
+     * quand c'est la racine. Le nom n'est demandé <b>qu'une fois</b>, à la connexion du poste.</p>
+     */
+    @PostMapping("/{hostId}/projects")
+    public ResponseEntity<WorkspaceDetailResponse> openProject(@PathVariable UUID hostId,
+            @Valid @RequestBody(required = false) HostProjectRequest request) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        RunnerHost host = hostService.requireOwned(userId, hostId);
+        String path = request == null ? null : request.path();
+        Workspace workspace = workspaceService.openOnHost(userId, hostId, path, host.getName());
+        // Arborescence vide : le projet vit sur la MACHINE, et son contenu se lit par le runner
+        // (SF-38-17). Aller le chercher ici obligerait à joindre le poste pour une création qui,
+        // elle, n'en a pas besoin.
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(WorkspaceDetailResponse.from(workspace, List.of()));
     }
 
     /** Détail d'un poste possédé. */
