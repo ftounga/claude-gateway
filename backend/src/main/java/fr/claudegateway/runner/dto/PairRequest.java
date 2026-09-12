@@ -1,5 +1,7 @@
 package fr.claudegateway.runner.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -13,7 +15,14 @@ import jakarta.validation.constraints.Size;
  * la gateway ne peut pas les deviner, et c'est au moment d'autoriser une commande qu'ils comptent.</p>
  *
  * <p>Tout est facultatif sauf le code — un runner qui ne déclare rien reste appairable.</p>
+ *
+ * <p><b>Tolérant aux champs inconnus (F-81 / SF-81-02).</b> Ce corps est écrit par un runner
+ * installé sur la machine d'un client : il vit plus longtemps que la gateway qu'il a connue, et
+ * peut aussi être plus récent qu'elle. Un champ qu'il ajoutera demain doit être <b>ignoré</b>,
+ * jamais faire échouer la lecture entière. L'annotation est portée par la classe plutôt que laissée
+ * à la configuration Jackson du moment : elle voyage ainsi avec elle, quel que soit le mapper.</p>
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record PairRequest(
         @NotBlank @Size(max = 8) String code,
         @Size(max = 100) String label,

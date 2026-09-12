@@ -1,5 +1,7 @@
 package fr.claudegateway.runner.relay;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.util.UUID;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -25,7 +27,13 @@ import fr.claudegateway.runner.channel.RunnerTarget;
  * @param tool        nom d'outil, exactement celui exposé au modèle
  * @param input       arguments, recopiés verbatim ; {@code null} ou non-objet vaut {@code {}}
  * @param timeoutMs   délai armé côté runner
+ *
+ * <p><b>Tolérant aux champs inconnus (F-81 / SF-81-02).</b> Cette enveloppe est écrite par un
+ * <b>autre pod</b> de la gateway. Pendant une bascule progressive, deux versions cohabitent : le
+ * pod qui émet peut être plus récent que celui qui lit. Un champ ajouté ne doit pas transformer
+ * un relais d'appel en erreur — ce serait un tour d'atelier perdu, sur un poste qui travaille.</p>
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record RelayCallRequest(UUID hostId, UUID workspaceId, String project, String callId,
         String tool, JsonNode input, long timeoutMs) {
 
