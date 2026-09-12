@@ -475,6 +475,52 @@ final class TeamsAdapterV1 implements TeamsAdapter {
 
     // ------------------------------------------------------------------ pagination et santé
 
+    /**
+     * L'utilisateur relié, lu dans une réponse de profil (F-88 / SF-88-01).
+     *
+     * <p>Deux sources, dans cet ordre : le corps s'il porte un identifiant, sinon l'<b>adresse</b> —
+     * une requête de profil nomme l'utilisateur qu'elle décrit dans son chemin. Aucune des deux
+     * n'est un secret : un identifiant de personne n'est pas un jeton de session.</p>
+     *
+     * <p>Vide si la réponse n'est pas un profil, ou si elle ne nomme personne : mieux vaut ne pas
+     * savoir qui est l'utilisateur que de croire à tort qu'on le sait.</p>
+     */
+    @Override
+    public Optional<TeamsParticipant> self(String url, JsonNode body) {
+        if (classify(url) != TeamsPayloadKind.PROFILE) {
+            return Optional.empty();
+        }
+        JsonNode entry = body;
+        if (entry != null && entry.get("value") != null && entry.get("value").isObject()) {
+            entry = entry.get("value");
+        }
+        String mri = mriOf(TeamsJson.text(entry, "mri", "id", "objectId", "skypeId"));
+        if (mri.isEmpty()) {
+            mri = selfIdFromUrl(url);
+        }
+        if (mri.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(new TeamsParticipant(mri,
+                TeamsJson.text(entry, "displayName", "givenName", "userPrincipalName"),
+                TeamsJson.text(entry, "email", "userPrincipalName", "upn"), true));
+    }
+
+    /** « …/users/8:orgid:…/profile » → l'identifiant. Jamais « me », qui ne nomme personne. */
+    private static String selfIdFromUrl(String url) {
+        if (url == null) {
+            return "";
+        }
+        String[] segments = url.split("/");
+        for (int index = 0; index < segments.length - 1; index++) {
+            if ("users".equalsIgnoreCase(segments[index])) {
+                String candidate = segments[index + 1];
+                return candidate.contains(":") ? candidate : "";
+            }
+        }
+        return "";
+    }
+
     @Override
     public Optional<String> nextPage(String url, JsonNode body) {
         if (body == null) {

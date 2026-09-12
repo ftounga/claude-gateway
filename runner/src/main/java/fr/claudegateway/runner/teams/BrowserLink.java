@@ -186,6 +186,25 @@ public final class BrowserLink implements AutoCloseable {
      *
      * @return vrai si la page a bougé ; faux si elle était déjà en haut, ou n'a pas de conteneur
      */
+    /**
+     * <b>Un</b> geste de défilement, qui dit s'il a servi à quelque chose (F-88 / SF-88-01).
+     *
+     * <p>{@link #scrollUp(int, Sleeper)} rend le nombre de gestes tentés, pas leur effet : la
+     * récolte, elle, doit savoir quand la page ne remonte plus pour s'arrêter et <b>nommer</b> le
+     * trou plutôt que de tourner quarante fois dans le vide.</p>
+     */
+    public boolean scrollUpOnce(Sleeper sleeper) {
+        ObjectNode params = mapper.createObjectNode();
+        params.put("expression", SCROLL_UP);
+        params.put("returnByValue", true);
+        boolean moved = connection.send(CdpCommands.EVALUATE, params)
+                .path("result").path("value").asBoolean(false);
+        if (moved && sleeper != null) {
+            sleeper.sleep(SCROLL_SETTLE_MS);
+        }
+        return moved;
+    }
+
     public boolean nudge(Sleeper sleeper) {
         ObjectNode params = mapper.createObjectNode();
         params.put("expression", NUDGE);
