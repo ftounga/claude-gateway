@@ -568,4 +568,15 @@ distincts, et rien ne les fait se rencontrer.
 du backend (qui construit déjà les paquets du runner) et la CI. C'est le seul point de F-81 qui ne
 soit pas purement additif — SF-81-02 et SF-81-03 ne dépendent pas de la réponse.
 
-**Tranchée par** : le PO. **Non tranchée à ce jour.**
+**TRANCHÉE PAR LE PO le 2026-09-12 : le troisième module.**
+
+Un module `contract-tests` dépendant du backend et du runner, qui ne sert qu'à cela. Il porte le
+contrat, et **son existence même dit dans le dépôt que ce contrat existe** — ce que ni `backend/` ni
+`runner/` ne disaient, et c'est précisément ce silence qui a laissé la panne du 2026-09-10 durer deux
+jours.
+
+Écartés : la dépendance `test` du backend vers le runner (elle impose un ordre de construction sans
+rien nommer) et les instantanés JSON versionnés (ils comparent des **formes**, pas des lectures
+réelles — un mapper strict d'un côté passerait au travers, c'est-à-dire exactement le défaut vécu).
+
+SF-81-01 est donc débloquée.
