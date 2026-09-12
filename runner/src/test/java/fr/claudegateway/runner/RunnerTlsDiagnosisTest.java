@@ -39,7 +39,9 @@ class RunnerTlsDiagnosisTest {
         NetworkPreflight.Verdict verdict =
                 new NetworkPreflight.Verdict("La gateway n'est pas joignable", true);
 
-        Optional<String> lines = RunnerMain.handshakeDiagnosis(verdict, probe, GATEWAY);
+        // L'observation est faite UNE fois, au démarrage (SF-80-02, D3), et réutilisée ici.
+        Optional<String> lines =
+                RunnerMain.handshakeDiagnosis(verdict, probe.observe(GATEWAY));
 
         assertTrue(lines.isPresent());
         assertTrue(lines.get().contains("Zscaler Inc."), lines.get());
@@ -50,15 +52,18 @@ class RunnerTlsDiagnosisTest {
     void aNonTlsFailureNeverProbes() {
         // Un DNS muet ou un port fermé ne laissent aucun certificat à lire : sonder y coûterait un
         // délai d'attente complet pour n'afficher aucune ligne.
-        AtomicBoolean read = new AtomicBoolean(false);
-        TlsProbe probe = new TlsProbe(Set.of(PUBLIC_ROOT), target -> {
-            read.set(true);
-            return List.of();
+        AtomicBoolean used = new AtomicBoolean(false);
+        TlsProbe probe = new TlsProbe(Set.of(PUBLIC_ROOT), target -> List.of(
+                new TlsInspection.ChainLink("CN=portal, O=Zscaler Inc.", "CN=Zscaler Root CA")));
+        Optional<TlsProbe.Seen> seen = probe.observe(GATEWAY).map(value -> {
+            used.set(true);
+            return value;
         });
+        used.set(false);
         NetworkPreflight.Verdict verdict = new NetworkPreflight.Verdict("DNS muet", false);
 
-        assertEquals(Optional.empty(), RunnerMain.handshakeDiagnosis(verdict, probe, GATEWAY));
-        assertFalse(read.get(), "aucune lecture ne doit être tentée hors d'un échec TLS");
+        assertEquals(Optional.empty(), RunnerMain.handshakeDiagnosis(verdict, seen));
+        assertFalse(used.get(), "hors d'un échec TLS, l'observation ne doit pas être exploitée");
     }
 
     @Test

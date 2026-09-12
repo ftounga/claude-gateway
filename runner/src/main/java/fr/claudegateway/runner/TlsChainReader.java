@@ -52,7 +52,15 @@ import javax.net.ssl.X509TrustManager;
 final class TlsChainReader {
 
     /** Aligné sur le contrôle de vol : au-delà, on fait attendre devant un terminal muet. */
-    private static final int TIMEOUT_MS = 10_000;
+    static final int TIMEOUT_MS = 10_000;
+
+    /**
+     * Délai de l'observation faite <b>au démarrage</b>, avant la moindre ligne de transparence
+     * (F-80 / SF-80-02). Plus court que le contrôle de vol : elle précède tout affichage, et un
+     * pare-feu qui avale les paquets sans répondre ne doit pas faire patienter dix secondes devant
+     * un terminal vide.
+     */
+    static final int STARTUP_TIMEOUT_MS = 5_000;
 
     /** Port par défaut de {@code https}, quand l'URL n'en porte pas. */
     private static final int DEFAULT_HTTPS_PORT = 443;
@@ -71,6 +79,12 @@ final class TlsChainReader {
      */
     static List<TlsInspection.ChainLink> readWithoutValidating(URI target,
             ProxySelector proxySelector) throws Exception {
+        return readWithoutValidating(target, proxySelector, TIMEOUT_MS);
+    }
+
+    /** Même lecture, avec un délai choisi par l'appelant. */
+    static List<TlsInspection.ChainLink> readWithoutValidating(URI target,
+            ProxySelector proxySelector, int timeoutMs) throws Exception {
         String host = target.getHost();
         if (host == null || host.isBlank()) {
             return List.of();
@@ -82,11 +96,11 @@ final class TlsChainReader {
         SSLContext diagnostic = SSLContext.getInstance("TLS");
         diagnostic.init(null, new TrustManager[] { DiagnosticTrust.INSTANCE }, null);
 
-        try (Socket transport = connect(host, port, proxySelector, target)) {
-            transport.setSoTimeout(TIMEOUT_MS);
+        try (Socket transport = connect(host, port, proxySelector, target, timeoutMs)) {
+            transport.setSoTimeout(timeoutMs);
             try (SSLSocket secure = (SSLSocket) diagnostic.getSocketFactory()
                     .createSocket(transport, host, port, true)) {
-                secure.setSoTimeout(TIMEOUT_MS);
+                secure.setSoTimeout(timeoutMs);
                 secure.setUseClientMode(true);
                 // SNI explicite : sans lui, un serveur mutualisé présente le certificat par défaut,
                 // qui n'est pas celui dont on cherche l'émetteur. Aucune vérification de nom d'hôte
@@ -118,19 +132,19 @@ final class TlsChainReader {
      * corps de requête. C'est le prix d'accès au serveur sur un poste derrière un proxy, c'est-à-dire
      * exactement le poste que ce diagnostic sert.</p>
      */
-    private static Socket connect(String host, int port, ProxySelector proxySelector, URI target)
-            throws IOException {
+    private static Socket connect(String host, int port, ProxySelector proxySelector, URI target,
+            int timeoutMs) throws IOException {
         Proxy proxy = firstProxy(proxySelector, target);
         if (proxy == null || proxy.type() != Proxy.Type.HTTP
                 || !(proxy.address() instanceof InetSocketAddress relay)) {
             Socket direct = new Socket();
-            direct.connect(new InetSocketAddress(host, port), TIMEOUT_MS);
+            direct.connect(new InetSocketAddress(host, port), timeoutMs);
             return direct;
         }
         Socket tunnel = new Socket();
-        tunnel.connect(new InetSocketAddress(relay.getHostString(), relay.getPort()), TIMEOUT_MS);
+        tunnel.connect(new InetSocketAddress(relay.getHostString(), relay.getPort()), timeoutMs);
         try {
-            tunnel.setSoTimeout(TIMEOUT_MS);
+            tunnel.setSoTimeout(timeoutMs);
             openTunnel(tunnel, host, port);
         } catch (IOException | RuntimeException failed) {
             tunnel.close();

@@ -26,8 +26,13 @@ JDK_VERSION=21
 JDK_URL="https://api.adoptium.net/v3/binary/latest/${JDK_VERSION}/ga/mac/${ARCH}/jdk/hotspot/normal/eclipse"
 ARCHIVE="claude-runner-macos-${ARCH}.tar.gz"
 
-# Identiques à Windows : les quatre premiers viennent de `jdeps`, les deux derniers sont invisibles
-# pour lui (jdk.crypto.ec est chargé comme service — sans lui la poignée de main TLS échoue).
+# Les quatre premiers viennent de `jdeps`, les deux derniers sont invisibles pour lui
+# (jdk.crypto.ec est chargé comme service — sans lui la poignée de main TLS échoue).
+#
+# F-80 / SF-80-02 — magasin du système : rien à ajouter ici, contrairement à Windows. Le fournisseur
+# `Apple`, qui expose le trousseau (`KeychainStore`), vit dans `java.base` sur les builds macOS ;
+# il est donc déjà présent dans cette image. Et si une version de JDK venait à en décider autrement,
+# le runner retomberait silencieusement sur le `cacerts` du paquet — jamais une erreur (D4).
 MODULES="java.base,java.desktop,java.net.http,java.sql,jdk.crypto.ec,jdk.unsupported"
 
 WORK="${OUT}/.work-macos-${ARCH}"
