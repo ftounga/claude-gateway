@@ -777,6 +777,43 @@ describe('PostesComponent', () => {
     expect(card.id).toBe('');
   });
 
+  // -------------------------------------------- « Connecter un poste » (F-72 / SF-72-02)
+
+  it('offre « Connecter un poste » en tête d\'écran', () => {
+    setup();
+
+    expect(text()).toContain('Connecter un poste');
+  });
+
+  it('propose le même geste quand aucun poste n\'existe encore', () => {
+    setup([]);
+
+    // L'écran vide DIT le nouvel ordre : la machine d'abord, les projets ensuite.
+    expect(text()).toContain('Connecter un poste');
+    expect(text()).toContain('ensuite');
+  });
+
+  it('ouvre le parcours en mode POSTE : aucun projet ne lui est passé', () => {
+    setup();
+
+    component.connectHost();
+
+    expect(dialog.open).toHaveBeenCalledTimes(1);
+    const config = dialog.open.calls.mostRecent().args[1] as { data?: Record<string, unknown> };
+    // C'est l'ABSENCE de projet qui met le dialogue en mode poste.
+    expect(config.data).toEqual({});
+  });
+
+  it('relit la vue à la fermeture du parcours', () => {
+    setup();
+    service.runnerHostsOverview.calls.reset();
+
+    component.connectHost();
+
+    // Le poste existe peut-être maintenant, connecté ou non : la vue doit le montrer.
+    expect(service.runnerHostsOverview).toHaveBeenCalledTimes(1);
+  });
+
 });
 
 /** Le DOM rend les couleurs en `rgb(...)` : on compare ce qu'il rend, pas ce qu'on a écrit. */

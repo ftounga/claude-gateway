@@ -1,4 +1,4 @@
-<h2 mat-dialog-title>Connecter une machine</h2>
+<h2 mat-dialog-title>{{ hostMode ? 'Connecter un poste' : 'Connecter une machine' }}</h2>
 <mat-dialog-content>
   <!-- La conclusion (F-45 / SF-45-05, D6). Elle REMPLACE le parcours : c'est la seule information
        attendue depuis le début, et elle vivait jusqu'ici en bas de l'étape 4, invisible sur un
@@ -9,8 +9,13 @@
       <div>
         <p class="pairing-conclusion-title">Machine connectée</p>
         <dl class="pairing-conclusion-facts">
-          <dt>Projet</dt>
-          <dd>{{ data.workspaceName }}</dd>
+          @if (hostMode) {
+            <dt>Poste</dt>
+            <dd>{{ attachedHost()?.name }}</dd>
+          } @else {
+            <dt>Projet</dt>
+            <dd>{{ workspaceName }}</dd>
+          }
           @if (shellLabel(); as shell) {
             <!-- L'interpréteur élu par le runner (SF-38-27) : c'est lui qui exécutera les commandes,
                  et il n'est pas le même sur toutes les machines. -->
@@ -26,6 +31,16 @@
           La machine reste connectée tant que le runner tourne. Vous pouvez fermer cette fenêtre :
           il n'y a pas de nouvel appairage à faire au prochain lancement.
         </p>
+        @if (hostMode) {
+          <!-- LA SUITE, DITE (F-72 / SF-72-02). Sans cette phrase, l'écran se referme sur une
+               machine connectée et AUCUN projet — ce qui est l'état juste, mais que rien ne dit.
+               C'est précisément là que le parcours d'avant faisait perdre le fil. -->
+          <p class="pairing-conclusion-text">
+            <strong>Aucun projet n'existe encore, et c'est normal</strong> : vous venez de brancher
+            une machine. Ajoutez-en depuis la carte de ce poste, avec
+            <strong>« Ajouter un projet »</strong> — autant que vous voulez, sans jamais réappairer.
+          </p>
+        }
       </div>
     </section>
   } @else {
@@ -33,7 +48,11 @@
       Le runner tourne sur votre machine et ouvre lui-même la connexion vers cette passerelle : aucun
       port à ouvrir <strong>en entrée</strong> — il lui faut en revanche une <strong>sortie
       HTTPS</strong>, que l'étape 1 vérifie. Il s'affiche en clair et s'arrête au <code>Ctrl-C</code>.
-      Projet appairé : <strong>{{ data.workspaceName }}</strong>.
+      @if (hostMode) {
+        Vous connectez une <strong>machine</strong> : les projets viendront ensuite, depuis sa carte.
+      } @else {
+        Projet appairé : <strong>{{ workspaceName }}</strong>.
+      }
     </p>
   }
 
@@ -303,7 +322,9 @@
           }
         </span>
         <span class="pairing-step-head-text">
-          <span class="pairing-step-title">Choisir le poste</span>
+          <span class="pairing-step-title">
+            {{ hostMode ? 'Nommer le client' : 'Choisir le poste' }}
+          </span>
           @if (stepSummary('host'); as summary) {
             <span class="pairing-step-summary">{{ summary }}</span>
           }
@@ -314,7 +335,59 @@
       </button>
     </h3>
 
-    @if (isOpen('host')) {
+    @if (isOpen('host') && hostMode) {
+      <!-- MODE POSTE (F-72 / SF-72-02) : une seule question, le nom. Ni liste de postes, ni
+           explorateur, ni rattachement — il n'y a pas de projet à ranger. C'est l'inversion que
+           F-72 apporte : on branche une machine, les projets viendront de sa carte. -->
+      <div class="pairing-step-body">
+        <p class="pairing-hint">
+          Un <strong>poste</strong> est une machine : une racine, un runner, <strong>un seul
+          appairage</strong>. Donnez-lui le nom du client ou de la machine — il ne sera plus
+          redemandé.
+        </p>
+
+        <mat-form-field appearance="outline" class="pairing-field">
+          <mat-label>Nom du client ou de la machine</mat-label>
+          <input
+            matInput
+            [ngModel]="newHostName()"
+            (ngModelChange)="newHostName.set($event)"
+            name="newHostName"
+            placeholder="EDENRED"
+            maxlength="100"
+          />
+          <mat-hint>Un nom libre : celui d'un client, d'une machine, de ce que vous voulez.</mat-hint>
+        </mat-form-field>
+
+        <p class="pairing-hint">
+          <strong>Aucun projet ne sera créé ici</strong>, et c'est normal : on branche d'abord la
+          machine. Une fois le runner lancé, la carte de ce poste listera les dossiers de sa racine,
+          et il suffira de cliquer.
+        </p>
+
+        @if (attachError()) {
+          <p class="pairing-error" role="alert">{{ attachError() }}</p>
+        }
+
+        <div class="pairing-actions">
+          <button
+            mat-flat-button
+            color="primary"
+            type="button"
+            [disabled]="!canCreateHost()"
+            (click)="createHost()"
+          >
+            @if (attaching()) {
+              <mat-spinner diameter="18"></mat-spinner>
+            } @else {
+              Créer le poste
+            }
+          </button>
+        </div>
+      </div>
+    }
+
+    @if (isOpen('host') && !hostMode) {
       <div class="pairing-step-body">
         <p class="pairing-hint">
           Un <strong>poste</strong> est une machine : une racine, un runner, un seul appairage. Vos
@@ -772,7 +845,9 @@
     @if (isOpen('launch')) {
       <div class="pairing-step-body">
         <mat-form-field appearance="outline" class="pairing-field" subscriptSizing="dynamic">
-          <mat-label>Racine du projet sur la machine</mat-label>
+          <mat-label>
+            {{ hostMode ? 'Racine du poste sur la machine' : 'Racine du projet sur la machine' }}
+          </mat-label>
           <!-- Le chemin d'exemple suit le format retenu (F-45 / SF-45-02) : un chemin Unix sous un
                bouton « pour Windows » invitait à recopier une forme qui ne marche pas. Placeholder et
                non valeur : le runner refuse tout accès hors de la racine annoncée, et pré-remplir un

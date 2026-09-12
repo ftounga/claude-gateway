@@ -33,8 +33,12 @@ import {
  * chercher.</p>
  */
 export interface RunnerPairingDialogData {
-  workspaceId: string;
-  workspaceName: string;
+  /**
+   * Projet à mettre en service. **Absent** = mode <b>poste</b> (F-72 / SF-72-02) : on connecte une
+   * machine, et à ce stade <b>aucun projet n'existe — c'est normal</b>.
+   */
+  workspaceId?: string | null;
+  workspaceName?: string | null;
   /** Poste déjà rattaché au projet, ou `null`/absent. */
   hostId?: string | null;
   /** Chemin du projet sous la racine du poste, ou `null`/absent. */
@@ -403,16 +407,24 @@ export class RunnerPairingDialogComponent implements OnDestroy {
     this.hostId.set(this.data.hostId ?? null);
     this.projectPath.set(this.data.projectPath ?? null);
     this.selectedHostId.set(this.data.hostId ?? NEW_HOST);
-    this.loadHosts();
-    // Le dossier se DÉSIGNE (F-71 / SF-71-03) : dès qu'un poste est connu, on demande ses
-    // sous-dossiers à la machine plutôt que d'offrir un champ à remplir.
-    if (this.data.hostId) {
-      this.browseFolders(this.data.hostId, this.data.projectPath ?? '');
+    // Mode POSTE (F-72 / SF-72-02) : il n'y a ni projet à ranger, ni poste à choisir — on en crée
+    // un. Relever la liste des postes n'aurait rien à en faire, et l'explorateur de dossiers non
+    // plus : la machine n'est pas encore là pour lister.
+    if (!this.hostMode) {
+      this.loadHosts();
+      // Le dossier se DÉSIGNE (F-71 / SF-71-03) : dès qu'un poste est connu, on demande ses
+      // sous-dossiers à la machine plutôt que d'offrir un champ à remplir.
+      if (this.data.hostId) {
+        this.browseFolders(this.data.hostId, this.data.projectPath ?? '');
+      }
     }
     // F-45 / SF-45-02 : une fois la commande lancée, rien à l'écran ne disait si la machine s'était
     // appairée. L'information existait déjà côté gateway ; il suffisait de la relever.
-    this.readRunnerStatus();
-    this.statusPoll = setInterval(() => this.readRunnerStatus(), RUNNER_STATUS_POLL_MS);
+    // En mode poste, il n'y a rien à relever tant que le poste n'est pas créé : le minuteur
+    // démarrera à ce moment-là (battre à vide serait du bruit, pas de la surveillance).
+    if (!this.hostMode) {
+      this.startStatusPoll();
+    }
   }
 
   /**
@@ -424,6 +436,34 @@ export class RunnerPairingDialogComponent implements OnDestroy {
     this.atelier.listRunnerHosts().subscribe({
       next: (hosts) => this.hosts.set(hosts),
       error: () => this.hosts.set([]),
+    });
+  }
+
+  /**
+   * <b>Crée le poste</b> — le premier des deux gestes de F-72 (SF-72-02).
+   *
+   * <p>Une seule question : <b>le nom du client ou de la machine</b>. Ni projet, ni dossier, ni
+   * rattachement — <b>aucun projet n'existe à ce stade, et c'est normal</b> : on vient de brancher
+   * une machine. Le parcours enchaîne directement sur le code d'appairage.</p>
+   */
+  createHost(): void {
+    if (!this.canCreateHost()) {
+      return;
+    }
+    this.attaching.set(true);
+    this.attachError.set(null);
+    this.atelier.createRunnerHost(this.newHostName().trim()).subscribe({
+      next: (host) => {
+        this.attaching.set(false);
+        this.hosts.update((hosts) => [host, ...hosts]);
+        this.hostId.set(host.id);
+        this.selectedHostId.set(host.id);
+        // Le code d'appairage appartient à une machine : on ne pouvait pas en demander un avant.
+        this.step.set('code');
+        // La machine peut maintenant se signaler : on commence à l'écouter.
+        this.startStatusPoll();
+      },
+      error: (err: unknown) => this.failAttach(err),
     });
   }
 
@@ -452,10 +492,17 @@ export class RunnerPairingDialogComponent implements OnDestroy {
   }
 
   private attachWorkspace(hostId: string): void {
+    const workspaceId = this.data.workspaceId;
+    if (!workspaceId) {
+      // Inatteignable : le gabarit n'offre pas ce geste en mode poste. La garde est là pour que ce
+      // soit vrai du CODE et pas seulement du gabarit.
+      this.attaching.set(false);
+      return;
+    }
     // Un poste qu'on vient de créer n'a pas de runner : le projet est à la racine que
     // l'utilisateur passera au runner. La chaîne vide est ce choix, il n'est pas « absent ».
     const where = this.projectPath() ?? '';
-    this.atelier.attachWorkspaceToHost(this.data.workspaceId, hostId, where)
+    this.atelier.attachWorkspaceToHost(workspaceId, hostId, where)
       .subscribe({
         next: (detail) => {
           this.attaching.set(false);
@@ -582,6 +629,19 @@ export class RunnerPairingDialogComponent implements OnDestroy {
   /** Traduit un refus en phrase utile, et laisse l'étape ouverte : rien n'est perdu. */
   private failAttach(err: unknown): void {
     this.attaching.set(false);
+    if (this.hostMode) {
+      // Le nom saisi est CONSERVÉ : le retaper serait, très exactement, la friction que F-72
+      // supprime.
+      if (err instanceof HttpErrorResponse && err.status === 400
+          && typeof err.error?.message === 'string') {
+        this.attachError.set(err.error.message);
+        return;
+      }
+      this.attachError.set(err instanceof HttpErrorResponse && err.status === 403
+        ? 'La Forge est nécessaire pour connecter une machine.'
+        : "Le poste n'a pas pu être créé. Veuillez réessayer.");
+      return;
+    }
     if (err instanceof HttpErrorResponse && err.status === 400) {
       this.attachError.set(
         "Ce chemin n'est pas exploitable : il est relatif à la racine du poste, sans « .. » "
@@ -596,6 +656,22 @@ export class RunnerPairingDialogComponent implements OnDestroy {
     this.attachError.set("Le projet n'a pas pu être rattaché. Veuillez réessayer.");
   }
   readonly data = inject<RunnerPairingDialogData>(MAT_DIALOG_DATA);
+
+  /**
+   * **Mode poste** (F-72 / SF-72-02) : le parcours part de la <b>machine</b> et non d'un projet.
+   *
+   * <p>C'est l'inversion que F-72 apporte. Avant, on créait un projet en croyant déclarer un
+   * client, puis on lui cherchait un poste, puis un dossier — trois questions pour une intention,
+   * et deux entités du même nom. Ici, on connecte une machine ; les projets viendront ensuite,
+   * depuis sa carte, autant de fois qu'on veut et <b>sans jamais réappairer</b>.</p>
+   *
+   * <p>Déduit de l'absence de projet dans les données d'ouverture, jamais d'un drapeau : un drapeau
+   * pourrait contredire les données, l'absence non.</p>
+   */
+  readonly hostMode = this.data.workspaceId == null;
+
+  /** Nom du projet mis en service, ou `null` en mode poste — il n'y en a pas encore. */
+  readonly workspaceName = this.data.workspaceName ?? null;
 
   /** Code d'appairage en cours, ou `null` : jamais rechargé, jamais ré-affiché après expiration. */
   readonly pairingCode = signal<RunnerPairingCode | null>(null);
@@ -740,6 +816,13 @@ export class RunnerPairingDialogComponent implements OnDestroy {
    * l'écran le dit. C'est le seul dossier connaissable à cet instant, et c'est une réponse, pas un
    * champ vide.</p>
    */
+  /**
+   * Vrai quand « Créer le poste » est possible (F-72 / SF-72-02) : un nom, et pas d'appel déjà en
+   * vol. Le nom est la <b>seule</b> question de ce mode — et il n'est posé qu'une fois.
+   */
+  readonly canCreateHost = computed(
+    () => !this.attaching() && this.newHostName().trim().length > 0);
+
   readonly canAttach = computed(() => {
     if (this.attaching()) {
       return false;
@@ -1035,6 +1118,10 @@ export class RunnerPairingDialogComponent implements OnDestroy {
   /** Ce que l'en-tête replié rapporte du poste, ou une chaîne vide tant qu'il n'y en a pas. */
   private hostSummary(): string {
     const host = this.attachedHost();
+    if (this.hostMode) {
+      // Mode poste : il n'y a pas de projet à situer — seulement une machine, nommée.
+      return host === null ? '' : `Poste « ${host.name} » créé.`;
+    }
     if (host === null) {
       return this.hostId() === null ? '' : 'Projet rattaché à un poste.';
     }
@@ -1260,7 +1347,17 @@ export class RunnerPairingDialogComponent implements OnDestroy {
    * battre à vide (D4).
    */
   private readRunnerStatus(): void {
-    this.atelier.getRunnerStatus(this.data.workspaceId).subscribe({
+    // Mode poste (F-72 / SF-72-02) : l'état se lit sur LE POSTE, puisqu'il n'y a pas de projet.
+    const workspaceId = this.data.workspaceId;
+    const hostId = this.hostId();
+    if (this.hostMode && hostId === null) {
+      // Rien à relever : le poste n'existe pas encore.
+      return;
+    }
+    const request = this.hostMode || !workspaceId
+      ? this.atelier.getHostRunnerStatus(hostId!)
+      : this.atelier.getRunnerStatus(workspaceId);
+    request.subscribe({
       next: (status) => {
         this.runnerLastSeenAt.set(status.lastSeenAt);
         // Champ additif (F-45 / SF-45-05) : une gateway antérieure ne l'envoie pas, et la
@@ -1283,6 +1380,16 @@ export class RunnerPairingDialogComponent implements OnDestroy {
         }
       },
     });
+  }
+
+  /**
+   * Relève l'état tout de suite, puis à intervalle. Idempotent : appelé deux fois, il ne laisse
+   * jamais deux minuteurs derrière lui.
+   */
+  private startStatusPoll(): void {
+    this.stopStatusPoll();
+    this.readRunnerStatus();
+    this.statusPoll = setInterval(() => this.readRunnerStatus(), RUNNER_STATUS_POLL_MS);
   }
 
   private stopStatusPoll(): void {
