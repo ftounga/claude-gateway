@@ -31,6 +31,13 @@ final class FakeCdpConnection implements CdpConnection {
     private final java.util.Deque<String[]> onNextScroll = new java.util.ArrayDeque<>();
     /** Les fils que le geste d'ouverture saura trouver dans la page. */
     private final java.util.Set<String> reachable = new java.util.LinkedHashSet<>();
+    /** Ce que la page livrera à la PROCHAINE recherche (F-88 / SF-88-02). */
+    private final java.util.Deque<String[]> onNextSearch = new java.util.ArrayDeque<>();
+    /** Les questions réellement posées dans le champ de recherche. */
+    private final List<String> searches = new ArrayList<>();
+
+    /** Le contenu du champ de recherche, ou {@code null} si la page n'en a pas. */
+    private String searchField;
 
     private boolean open = true;
     private boolean scrollMoves = true;
@@ -72,6 +79,9 @@ final class FakeCdpConnection implements CdpConnection {
             result.putObject("result").put("value", route);
             return result;
         }
+        if (expression.contains("searchbox")) {
+            return searchGesture(expression, result);
+        }
         if (expression.contains(".click()")) {
             String opened = "";
             for (String candidate : reachable) {
@@ -94,6 +104,45 @@ final class FakeCdpConnection implements CdpConnection {
         boolean moved = scrollMoves && (delivery != null || !stopWhenNothingLeft);
         result.putObject("result").put("value", moved);
         return result;
+    }
+
+    /** Le faux champ de recherche : la question posée, et ce que la page sert en retour. */
+    private JsonNode searchGesture(String expression, ObjectNode result) {
+        String assigned = assignedValue(expression);
+        boolean asking = expression.contains("field.focus()");
+        if (searchField == null) {
+            if (asking) {
+                ObjectNode value = result.putObject("result").putObject("value");
+                value.put("done", false);
+                value.put("previous", "");
+            } else {
+                result.putObject("result").put("value", false);
+            }
+            return result;
+        }
+        if (asking) {
+            ObjectNode value = result.putObject("result").putObject("value");
+            value.put("done", true);
+            value.put("previous", searchField);
+            searchField = assigned;
+            searches.add(assigned);
+            String[] delivery = onNextSearch.poll();
+            if (delivery != null) {
+                emitResponse(delivery[0], delivery[1], delivery[2]);
+            }
+            return result;
+        }
+        searchField = assigned;
+        result.putObject("result").put("value", true);
+        return result;
+    }
+
+    /** La valeur que le script écrit dans le champ, lue dans son littéral JSON. */
+    private static String assignedValue(String expression) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("field\\.value = \"((?:[^\"\\\\]|\\\\.)*)\"")
+                .matcher(expression);
+        return matcher.find() ? matcher.group(1) : "";
     }
 
     @Override
@@ -165,6 +214,24 @@ final class FakeCdpConnection implements CdpConnection {
     /** Un fil que le geste d'ouverture saura atteindre dans la page. */
     void reachable(String conversationId) {
         reachable.add(conversationId);
+    }
+
+    /** La page a un champ de recherche, qui porte ce texte. */
+    void hasSearchField(String current) {
+        searchField = current == null ? "" : current;
+    }
+
+    /** Ce que la page livrera à la prochaine recherche. */
+    void deliverOnSearch(String requestId, String url, String body) {
+        onNextSearch.add(new String[] { requestId, url, body });
+    }
+
+    List<String> searches() {
+        return List.copyOf(searches);
+    }
+
+    String searchField() {
+        return searchField;
     }
 
     int scrolls() {

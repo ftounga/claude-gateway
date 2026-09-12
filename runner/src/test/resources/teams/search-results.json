@@ -1,0 +1,32 @@
+{
+  "value": [
+    {
+      "score": 0.91,
+      "message": {
+        "id": "1757100000000",
+        "conversationid": "19:fabrique@thread.v2",
+        "from": "https://teams.microsoft.com/api/chatsvc/emea/v1/users/8:orgid:00000000-0000-0000-0000-000000000001",
+        "imdisplayname": "Paul Durand",
+        "originalarrivaltime": "2026-09-04T10:22:00.000Z",
+        "messagetype": "Text",
+        "type": "Message",
+        "content": "Francky s'occupe du MFA, on cale le point vendredi.",
+        "properties": {}
+      }
+    },
+    {
+      "score": 0.74,
+      "message": {
+        "id": "1757200000000",
+        "conversationid": "19:fabrique-tete-a-tete@unq.gbl.spaces",
+        "from": "https://teams.microsoft.com/api/chatsvc/emea/v1/users/8:orgid:00000000-0000-0000-0000-000000000003",
+        "imdisplayname": "Claire Martin",
+        "originalarrivaltime": "2026-09-06T16:45:00.000Z",
+        "messagetype": "Text",
+        "type": "Message",
+        "content": "Je passe le sujet MFA a Francky, il connait le dossier.",
+        "properties": {}
+      }
+    }
+  ]
+}

@@ -96,7 +96,13 @@ final class TeamsViews {
     }
 
     static void meeting(ArrayNode target, TeamsMeeting meeting) {
-        ObjectNode node = target.addObject();
+        meeting(target.addObject(), meeting);
+    }
+
+    static void meeting(ObjectNode node, TeamsMeeting meeting) {
+        if (meeting == null) {
+            return;
+        }
         node.put("id", meeting.id());
         node.put("subject", meeting.subject());
         TeamsToolResult.instant(node, "startedAt", meeting.startedAt());

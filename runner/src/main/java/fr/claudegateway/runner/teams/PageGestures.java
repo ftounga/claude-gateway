@@ -94,6 +94,49 @@ final class PageGestures {
         return conversationId != null && !conversationId.isBlank() && show(conversationId);
     }
 
+    /**
+     * <b>Pose une question à l'index de Teams</b> (F-88 / SF-88-02) : la requête est écrite dans le
+     * champ de recherche de la page, et c'est <b>Teams</b> qui cherche.
+     *
+     * <p>C'est le gisement « le nom écrit en clair » — « Francky s'occupe du MFA ». Sans ce geste,
+     * la recherche ne répondrait que si l'utilisateur avait tapé la requête lui-même, et la moitié
+     * des engagements serait perdue.</p>
+     *
+     * <p><b>Fragilité assumée</b> : ce geste dépend du DOM, il cassera plus vite que le reste. Quand
+     * il ne trouve pas de champ, il rend {@link Ask#notFound()} — et l'outil <b>le dit</b> au lieu de
+     * rendre une liste vide, qui se lirait « personne n'a écrit votre nom ».</p>
+     */
+    Ask ask(String query) {
+        String needle = query == null ? "" : query.strip();
+        if (needle.isEmpty()) {
+            return Ask.notFound();
+        }
+        JsonNode value = evaluate(askScript(needle));
+        if (value == null || !value.isObject() || !value.path("done").asBoolean(false)) {
+            return Ask.notFound();
+        }
+        if (sleeper != null) {
+            sleeper.sleep(SETTLE_MS);
+        }
+        return new Ask(true, value.path("previous").asText(""));
+    }
+
+    /** Remet le champ de recherche tel qu'il était. */
+    boolean restoreSearch(Ask previous) {
+        if (previous == null || !previous.done()) {
+            return false;
+        }
+        return evaluateBoolean(fillScript(previous.previous()));
+    }
+
+    /** Ce qu'un geste {@code ask} a trouvé : le champ existait-il, et que portait-il ? */
+    record Ask(boolean done, String previous) {
+
+        static Ask notFound() {
+            return new Ask(false, "");
+        }
+    }
+
     // ------------------------------------------------------------------ exécution
 
     private String evaluateText(String expression) {
@@ -122,6 +165,36 @@ final class PageGestures {
      * identifiant de fil contient des caractères (deux-points, arobase) qu'une concaténation naïve
      * laisserait s'échapper du littéral.</p>
      */
+    /** Le champ de recherche de la page, s'il existe. Aucune donnée n'en est lue : seul le geste. */
+    private static final String SEARCH_FIELD =
+            " const field = document.querySelector('input[type=\"search\"]')"
+                    + " || document.querySelector('[role=\"searchbox\"]')"
+                    + " || document.querySelector('[data-tid*=\"search\" i] input')"
+                    + " || document.querySelector('input[placeholder*=\"echerch\" i]')"
+                    + " || document.querySelector('input[placeholder*=\"earch\" i]');";
+
+    private String askScript(String query) {
+        return "(() => {" + SEARCH_FIELD
+                + " if (!field) { return { done: false, previous: '' }; }"
+                + " const previous = field.value || '';"
+                + " field.focus();"
+                + " field.value = " + TextNode.valueOf(query).toString() + ";"
+                + " field.dispatchEvent(new Event('input', { bubbles: true }));"
+                + " field.dispatchEvent(new KeyboardEvent('keydown',"
+                + "   { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));"
+                + " return { done: true, previous: previous };"
+                + "})()";
+    }
+
+    private String fillScript(String value) {
+        return "(() => {" + SEARCH_FIELD
+                + " if (!field) { return false; }"
+                + " field.value = " + TextNode.valueOf(value == null ? "" : value).toString() + ";"
+                + " field.dispatchEvent(new Event('input', { bubbles: true }));"
+                + " return true;"
+                + "})()";
+    }
+
     private String clickScript(String conversationId) {
         String needle = TextNode.valueOf(conversationId.toLowerCase(Locale.ROOT)).toString();
         return "(() => {"
