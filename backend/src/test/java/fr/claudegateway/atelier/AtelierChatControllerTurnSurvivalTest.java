@@ -87,7 +87,8 @@ class AtelierChatControllerTurnSurvivalTest {
     /** Le contrôleur monté sur un exécuteur synchrone et sur l'émetteur d'un navigateur parti. */
     private AtelierChatController controller() {
         return new AtelierChatController(chatService, threadService, currentUser, access,
-                Runnable::run, liveTurns) {
+                Runnable::run, Runnable::run, liveTurns,
+                fr.claudegateway.runner.relay.RelayTurnSource.disabled()) {
             @Override
             SseEmitter newEmitter() {
                 return new DeadEmitter();

@@ -49,6 +49,24 @@ final class RelayGestureRequests {
         }
     }
 
+    /**
+     * Désignation d'un <b>tour vivant</b> pour la sonde et le flux relayés (F-84 / SF-84-02).
+     * Même règle que les autres enveloppes : le {@code userId} est un critère d'appartenance rejoué,
+     * jamais une authentification.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record TurnRequest(UUID userId, UUID workspaceId, Long cursor) {
+
+        boolean isValid() {
+            return userId != null && workspaceId != null;
+        }
+
+        /** Curseur exploitable : absent ou négatif vaut « je n'ai rien vu ». */
+        long safeCursor() {
+            return cursor == null || cursor < 0 ? 0L : cursor;
+        }
+    }
+
     /** Interruption d'un tour d'atelier (contrat §6, clef {@code userId:workspaceId}). */
     @JsonIgnoreProperties(ignoreUnknown = true)
     record InterruptRequest(UUID userId, UUID workspaceId, String reason) {

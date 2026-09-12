@@ -577,6 +577,54 @@ export interface AtelierStreamHandlers {
    * chaque appel : elle remplace la précédente. Additif — un backend antérieur ne l'émet pas.
    */
   onPlan?: (steps: AtelierPlanStep[]) => void;
+
+  /**
+   * Numéro d'ordre du dernier événement reçu (F-84 / SF-84-02), lu dans le champ `id:` du
+   * protocole SSE. C'est le **curseur** : en se rebranchant, l'écran le renvoie et ne reçoit que
+   * ce qu'il a manqué — ni doublon, ni trou.
+   *
+   * **Optionnel** : un appelant qui ne s'y abonne pas se comporte exactement comme avant.
+   */
+  onSeq?: (seq: number) => void;
+
+  /**
+   * L'écran vient de se **rebrancher** sur un tour en cours (F-84 / SF-84-02). Ce qui suit est le
+   * rejeu de ce qui a été manqué, puis le direct.
+   */
+  onAttached?: (state: AtelierTurnAttached) => void;
+
+  /**
+   * **Rien ne tourne** sur ce projet (F-84 / SF-84-02) — ni ici, ni chez un pair joignable. C'est la
+   * dégradation vers l'état d'origine : l'écran n'affiche rien de vivant, et n'invente rien.
+   */
+  onIdle?: () => void;
+
+  /**
+   * Le rejeu commence **après un trou** : le tampon du tour, borné, avait déjà relâché les
+   * événements antérieurs (F-84 / SF-84-01). Dire le trou vaut mieux que le maquiller.
+   */
+  onTruncated?: (droppedThrough: number) => void;
+}
+
+/** Ce que dit la gateway quand un écran se rebranche sur un tour en cours (F-84 / SF-84-02). */
+export interface AtelierTurnAttached {
+  /** Identifiant du tour rejoint, pour distinguer un tour d'un autre sur le même projet. */
+  turnId: string | null;
+  /** Dernier numéro d'événement publié au moment du branchement. */
+  cursor: number;
+  /** Instant d'ouverture du tour, en millisecondes depuis l'époque. */
+  startedAt: number;
+}
+
+/**
+ * L'état du tour d'un projet (F-84 / SF-84-02), tel que `GET /api/workspaces/{id}/chat/turn` le
+ * rend. Un tour qui tourne sur un autre pod est un tour qui tourne : l'écran n'a pas à le savoir.
+ */
+export interface AtelierTurnState {
+  live: boolean;
+  turnId: string | null;
+  cursor: number;
+  startedAt: number | null;
 }
 
 /**

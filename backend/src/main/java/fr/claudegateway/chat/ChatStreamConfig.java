@@ -46,4 +46,32 @@ class ChatStreamConfig {
         executor.initialize();
         return executor;
     }
+
+    /**
+     * Exécuteur des <b>rebranchements</b> sur un tour en cours (F-84 / SF-84-02).
+     *
+     * <p>Volontairement <b>distinct</b> de {@code chatStreamExecutor}. Celui-là compte des flux
+     * <b>émetteurs</b> : chacun ouvre un tour, consomme des tokens et se facture, et c'est pourquoi
+     * un refus s'y dit. Une vue rouverte, elle, est une <b>lectrice</b> : elle n'ouvre aucun tour et
+     * ne coûte rien. Les faire concourir refuserait un rebranchement ({@code stream_busy}) au moment
+     * précis où l'on veut revoir le travail déjà en cours — c'est-à-dire le contraire de ce que F-84
+     * livre.</p>
+     *
+     * <p>Même forme que son voisin : file de capacité nulle, donc aucun rebranchement muet en
+     * attente, et threads recyclés au repos.</p>
+     */
+    @Bean("turnAttachExecutor")
+    Executor turnAttachExecutor(
+            @Value("${app.chat.attach.core-threads:4}") int coreThreads,
+            @Value("${app.chat.attach.max-threads:32}") int maxThreads) {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(Math.max(1, coreThreads));
+        executor.setMaxPoolSize(Math.max(Math.max(1, coreThreads), maxThreads));
+        executor.setQueueCapacity(0);
+        executor.setKeepAliveSeconds(60);
+        executor.setAllowCoreThreadTimeOut(true);
+        executor.setThreadNamePrefix("turn-attach-");
+        executor.initialize();
+        return executor;
+    }
 }

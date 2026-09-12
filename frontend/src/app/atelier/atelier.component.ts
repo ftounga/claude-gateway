@@ -79,6 +79,7 @@ import {
   AtelierTerminalBlock,
   AtelierRole,
   AtelierStreamAction,
+  AtelierStreamHandlers,
   GitPullRequestResult,
   GitPushResult,
   HostProjectSummary,
@@ -1102,6 +1103,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.loadHistory(workspace.id);
     this.loadResumeState(workspace.id);
     this.refreshTree(workspace.id);
+    // Un tour peut très bien être EN COURS sur ce projet, lancé avant l'ouverture de cet écran
+    // (F-84 / SF-84-02) : on s'y rebranche plutôt que de faire comme s'il n'existait pas.
+    this.reattachTurn(workspace.id);
   }
 
   private loadHistory(id: string): void {
@@ -1211,6 +1215,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
       return;
     }
 
+    // Le flux d'émission qui s'ouvre porte tous les événements du nouveau tour : garder en plus un
+    // rebranchement sur l'ancien afficherait deux fois la même chose (F-84 / SF-84-02).
+    this.detachTurn();
     this.streaming.set({ steps: [], text: '' });
     // La boucle maison s'affiche dans la même vue terminal que le flux d'agent : les étapes du tour
     // sont converties en blocs (commande puis sortie) au fil de l'eau (D-L4-5).
@@ -2154,11 +2161,149 @@ export class AtelierComponent implements OnInit, OnDestroy {
     }
   }
 
+
+  // ------------------------------------------------------- F-84 / SF-84-02 : revenir sur un tour
+
+  /**
+   * Le rebranchement en cours, s'il y en a un. L'abandonner **détache le spectateur** : depuis F-84
+   * (SF-84-01), cela n'arrête plus le tour — c'était précisément le défaut.
+   */
+  private turnAttach: AbortController | null = null;
+
+  /** Dernier numéro d'événement reçu : le curseur d'un éventuel rebranchement suivant. */
+  private turnCursor = 0;
+
+  /**
+   * **Se rebrancher sur le tour en cours** (F-84 / SF-84-02).
+   *
+   * Rouvrir un projet ne relance rien : l'écran rejoue ce qu'il a manqué, puis reprend le direct.
+   * Le curseur repart de zéro parce que l'écran, lui, repart de zéro — un composant recréé n'a
+   * gardé aucun événement, il n'y a donc rien à ne pas rejouer.
+   */
+  private reattachTurn(id: string): void {
+    this.detachTurn();
+    this.turnCursor = 0;
+    this.turnAttach = this.atelier.attachTurn(id, 0, this.attachHandlers(id));
+  }
+
+  /** Abandonne le rebranchement. Idempotent, et sans effet sur le tour lui-même. */
+  private detachTurn(): void {
+    this.turnAttach?.abort();
+    this.turnAttach = null;
+  }
+
+  /**
+   * Ce que fait l'écran de ce qu'il reçoit d'un tour **déjà commencé**.
+   *
+   * La différence avec un tour qu'on vient de lancer tient en une chose : aucun message optimiste
+   * n'a été posé ici, puisque ce tour a été demandé avant. La fin de tour **recharge donc le fil**
+   * plutôt que d'y ajouter une réponse — c'est le serveur qui sait ce qui a été dit.
+   */
+  private attachHandlers(id: string): AtelierStreamHandlers {
+    return {
+      onSeq: (seq) => {
+        this.turnCursor = seq;
+      },
+      onAttached: (state) =>
+        this.zone.run(() => {
+          this.submitting.set(true);
+          this.streaming.set({ steps: [], text: '' });
+          this.execStreaming.set({ status: '', blocks: [], text: '', tokens: null, plan: [] });
+          this.startExecTimer();
+          // La durée vient du tour, pas de l'écran : il tourne peut-être depuis dix minutes, et
+          // repartir de zéro afficherait une mesure fausse.
+          if (state.startedAt > 0) {
+            this.execElapsedSeconds.set(
+              Math.max(0, Math.round((Date.now() - state.startedAt) / 1000)),
+            );
+          }
+        }),
+      // Rien ne tourne sur ce projet : l'écran reste tel quel. C'est l'état d'avant F-84, et il
+      // n'y a rien à annoncer — un écran au repos n'est pas une anomalie.
+      onIdle: () => undefined,
+      onTruncated: () =>
+        this.zone.run(() =>
+          this.snackBar.open(
+            "Ce tour a commencé il y a un moment : seule la suite est rejouée.",
+            'Fermer',
+            { duration: 5000 },
+          ),
+        ),
+      onAction: (action) =>
+        this.zone.run(() => {
+          this.streaming.update((current) =>
+            current ? { ...current, steps: [...current.steps, action] } : current,
+          );
+          this.mirrorLocalSteps();
+        }),
+      onText: (text) =>
+        this.zone.run(() => {
+          this.streaming.update((current) =>
+            current ? { ...current, text: current.text + text } : current,
+          );
+          this.execStreaming.update((current) =>
+            current ? { ...current, text: current.text + text } : current,
+          );
+        }),
+      onOutput: (chunk) =>
+        this.zone.run(() => {
+          this.streaming.update((current) => {
+            if (!current || current.steps.length === 0) {
+              return current;
+            }
+            const steps = [...current.steps];
+            const last = steps[steps.length - 1];
+            steps[steps.length - 1] = { ...last, output: (last.output ?? '') + chunk };
+            return { ...current, steps };
+          });
+          this.mirrorLocalSteps();
+        }),
+      // Une autorisation demandée PENDANT l'absence est rejouée ici : c'est tout l'objet de F-84 —
+      // elle n'est plus perdue avec le flux qui l'a portée.
+      onConfirmRequest: (request) =>
+        this.zone.run(() => this.showConfirmation(request, 'LOCAL_MACHINE')),
+      onConfirmResolved: (resolved) => this.zone.run(() => this.clearConfirmation(resolved)),
+      onProgress: (tokens) =>
+        this.zone.run(() =>
+          this.execStreaming.update((current) => (current ? { ...current, tokens } : current)),
+        ),
+      onPlan: (steps) =>
+        this.zone.run(() =>
+          this.execStreaming.update((current) => (current ? { ...current, plan: steps } : current)),
+        ),
+      onDone: () =>
+        this.zone.run(() => {
+          this.submitting.set(false);
+          this.interrupting.set(false);
+          this.stopExecTimer();
+          this.streaming.set(null);
+          this.execStreaming.set(null);
+          this.clearPendingConfirmation();
+          // Le fil est rechargé plutôt que complété : ce tour a été demandé avant l'ouverture de
+          // cet écran, qui n'a donc aucun message optimiste à corriger.
+          this.loadHistory(id);
+          this.refreshTree(id);
+        }),
+      onError: () =>
+        this.zone.run(() => {
+          this.submitting.set(false);
+          this.interrupting.set(false);
+          this.stopExecTimer();
+          this.streaming.set(null);
+          this.execStreaming.set(null);
+          this.clearPendingConfirmation();
+        }),
+    };
+  }
+
   /** Quitter l'écran ne doit laisser tourner ni le chronomètre, ni le sondage du statut runner. */
   ngOnDestroy(): void {
     // Quitter l'écran rend la place : un terminal qui n'est plus affiché n'est plus vivant, et
     // le hors-périmètre de F-70 est explicite — aucun agent ne travaille onglet fermé.
     this.liveTerminals.stop();
+    // Quitter l'écran DÉTACHE le spectateur, et rien de plus (F-84 / SF-84-01) : le tour continue
+    // côté gateway, et l'écran s'y rebranchera en revenant.
+    this.detachTurn();
     this.stopExecTimer();
     this.stopRunnerPolling();
     // Un compte à rebours laissé tourner survivrait à l'écran qu'il décompte (F-47 / SF-47-02).
