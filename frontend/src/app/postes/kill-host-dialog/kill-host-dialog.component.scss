@@ -1,0 +1,114 @@
+// Confirmation du coupe-circuit d'un poste (F-82 / SF-82-02) — conforme à docs/DESIGN_SYSTEM.md.
+//
+// AUCUNE couleur nouvelle, et AUCUN registre nouveau. Le rouge est `--cg-error` (§2, « alertes
+// destructives »), la surface secondaire `--cg-surface-2`, l'encre `--cg-text-primary` /
+// `--cg-text-secondary`. Ni ton d'identité de poste (§9), ni pastille de mission (§10), ni signe de
+// vie (§11) n'entrent ici : ce dialogue pose une question, il n'identifie rien.
+//
+// Espacements : uniquement les jetons `--cg-space-*` (multiples de 4px).
+
+.kill-host__block {
+  margin-bottom: var(--cg-space-4);
+
+  &:last-of-type {
+    margin-bottom: 0;
+  }
+}
+
+.kill-host__block--alert,
+.kill-host__block--how {
+  padding: var(--cg-space-3);
+  border-radius: 8px;
+  background: var(--cg-surface-2);
+}
+
+.kill-host__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-space-2);
+  margin: 0 0 var(--cg-space-2);
+  font-family: var(--cg-font-heading);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--cg-text-primary);
+}
+
+.kill-host__icon {
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+  color: var(--cg-text-secondary);
+
+  &--cut,
+  &--alert {
+    color: var(--cg-error);
+  }
+}
+
+.kill-host__list {
+  margin: 0;
+  padding-left: var(--cg-space-4);
+  color: var(--cg-text-secondary);
+  line-height: 1.5;
+
+  li + li {
+    margin-top: var(--cg-space-1);
+  }
+
+  strong {
+    color: var(--cg-text-primary);
+  }
+}
+
+// Les projets NOMMÉS. Une liste longue défile dans le dialogue plutôt que de pousser les boutons
+// hors de l'écran : ce qu'on jette doit rester lisible, et le geste doit rester atteignable.
+.kill-host__projects {
+  margin: var(--cg-space-2) 0 0;
+  padding-left: var(--cg-space-3);
+  max-height: 160px;
+  overflow-y: auto;
+  list-style: none;
+
+  li {
+    display: flex;
+    align-items: baseline;
+    gap: var(--cg-space-2);
+    padding: var(--cg-space-1) 0;
+  }
+}
+
+.kill-host__project-name {
+  font-family: var(--cg-font-mono);
+  font-size: 13px;
+  color: var(--cg-text-primary);
+}
+
+.kill-host__project-note {
+  font-size: 12px;
+  color: var(--cg-text-secondary);
+}
+
+.kill-host__text {
+  margin: 0;
+  color: var(--cg-text-secondary);
+  line-height: 1.5;
+
+  strong {
+    color: var(--cg-text-primary);
+  }
+
+  &--muted {
+    margin-top: var(--cg-space-2);
+    font-size: 13px;
+  }
+}
+
+.kill-host__code {
+  font-family: var(--cg-font-mono);
+  font-size: 13px;
+  padding: 0 var(--cg-space-1);
+  border-radius: 4px;
+  background: var(--cg-surface);
+  border: 1px solid var(--cg-divider);
+  color: var(--cg-text-primary);
+}

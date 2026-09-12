@@ -275,27 +275,36 @@
             {{ activity }}
           </span>
         }
-        <!-- Le SEUL geste destructif de cet écran (F-69 / SF-69-02), et il y est parce que les
-             postes ne sont listés nulle part ailleurs. Sous menu de dépassement, derrière un
-             dialogue, et refusé par la gateway tant qu'il reste des projets.
-             Absent du poste « Hébergé » : il n'existe aucune ligne en base à supprimer. -->
+        <!-- Les gestes destructifs de cet écran, et ils y sont parce que les postes ne sont listés
+             nulle part ailleurs. TOUS sous menu de dépassement, derrière un dialogue — jamais en
+             accès direct sur la carte.
+             « Supprimer le poste » (F-69 / SF-69-02) est refusé par la gateway tant qu'il reste des
+             projets. « Couper la liaison » (F-82 / SF-82-02) le rejoint ici : son bouton ne vivait
+             que dans l'en-tête d'un terminal, donc introuvable sur un poste connecté SANS AUCUN
+             projet — qui n'a pas de terminal. C'était exactement la situation vécue.
+             Absents du poste « Hébergé » : ce n'est pas une machine (F-71). -->
         @if (!isHosted(host)) {
         <button
           mat-icon-button
           type="button"
           class="poste__menu-trigger"
           [matMenuTriggerFor]="hostMenu"
-          [disabled]="deletingHostId() === host.id"
+          [disabled]="deletingHostId() === host.id || killingHostId() === host.id"
           [attr.aria-label]="'Actions sur ' + host.name"
           matTooltip="Actions sur ce poste"
         >
-          @if (deletingHostId() === host.id) {
+          @if (deletingHostId() === host.id || killingHostId() === host.id) {
             <mat-spinner diameter="18"></mat-spinner>
           } @else {
             <mat-icon>more_vert</mat-icon>
           }
         </button>
         <mat-menu #hostMenu="matMenu">
+          <button mat-menu-item type="button" (click)="killHost(host)">
+            <mat-icon>power_settings_new</mat-icon>
+            <span>Couper la liaison…</span>
+          </button>
+          <mat-divider></mat-divider>
           <button mat-menu-item type="button" (click)="deleteHost(host)">
             <mat-icon>delete_outline</mat-icon>
             <span>Supprimer le poste</span>
