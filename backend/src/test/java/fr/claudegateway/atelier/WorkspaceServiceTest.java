@@ -40,9 +40,6 @@ class WorkspaceServiceTest {
     @org.mockito.Mock
     private AtelierMessageRepository atelierMessageRepository;
 
-    @Mock
-    private fr.claudegateway.governance.GovernanceActivationRepository governanceActivations;
-
     /** Journal du runner : purgé avec le projet depuis F-69 / SF-69-01. */
     @Mock
     private fr.claudegateway.runner.audit.RunnerAuditRepository runnerAudit;
@@ -54,7 +51,6 @@ class WorkspaceServiceTest {
         return new WorkspaceService(workspaceRepository, storage,
                 new AtelierProperties("in-memory", null, "atelier/", maxTotal, maxEntries, maxFile, null, null, null, null, null, null, true),
                 atelierMessageRepository,
-                governanceActivations,
                 runnerAudit,
                 org.mockito.Mockito.mock(
                         org.springframework.context.ApplicationEventPublisher.class));
@@ -200,7 +196,8 @@ class WorkspaceServiceTest {
 
         // Conversation, réglages, journal : tout ce que le PO range dans « côté gateway ».
         verify(atelierMessageRepository).deleteByWorkspaceId(workspaceId);
-        verify(governanceActivations).deleteByUserIdAndWorkspaceId(alice, workspaceId);
+        // Plus aucune activation de gouvernance ici : depuis F-75 elles vivent sur le POSTE, et
+        // supprimer un dossier ne doit pas eteindre la gouvernance de la machine.
         verify(runnerAudit).deleteByUserIdAndWorkspaceId(alice, workspaceId);
         verify(workspaceRepository).delete(any(Workspace.class));
     }

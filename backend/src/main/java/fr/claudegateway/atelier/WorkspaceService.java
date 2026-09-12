@@ -18,7 +18,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import fr.claudegateway.atelier.storage.WorkspaceStorage;
-import fr.claudegateway.governance.GovernanceActivationRepository;
 import fr.claudegateway.runner.audit.RunnerAuditRepository;
 import fr.claudegateway.runner.host.RunnerProjectPath;
 
@@ -44,19 +43,16 @@ public class WorkspaceService {
     private final WorkspaceStorage storage;
     private final AtelierProperties properties;
     private final AtelierMessageRepository atelierMessageRepository;
-    private final GovernanceActivationRepository governanceActivations;
     private final RunnerAuditRepository runnerAudit;
     private final ApplicationEventPublisher events;
 
     public WorkspaceService(WorkspaceRepository workspaceRepository, WorkspaceStorage storage,
             AtelierProperties properties, AtelierMessageRepository atelierMessageRepository,
-            GovernanceActivationRepository governanceActivations, RunnerAuditRepository runnerAudit,
-            ApplicationEventPublisher events) {
+            RunnerAuditRepository runnerAudit, ApplicationEventPublisher events) {
         this.workspaceRepository = workspaceRepository;
         this.storage = storage;
         this.properties = properties;
         this.atelierMessageRepository = atelierMessageRepository;
-        this.governanceActivations = governanceActivations;
         this.runnerAudit = runnerAudit;
         this.events = events;
     }
@@ -348,7 +344,8 @@ public class WorkspaceService {
         Workspace workspace = requireOwned(userId, id);
         storage.deletePrefix(prefixOf(userId, id));
         atelierMessageRepository.deleteByWorkspaceId(id);
-        governanceActivations.deleteByUserIdAndWorkspaceId(userId, id);
+        // Plus aucune activation de gouvernance à purger ici : depuis F-75, elles vivent sur le
+        // POSTE, et supprimer un dossier ne doit surtout pas éteindre la gouvernance de la machine.
         runnerAudit.deleteByUserIdAndWorkspaceId(userId, id);
         workspaceRepository.delete(workspace);
     }

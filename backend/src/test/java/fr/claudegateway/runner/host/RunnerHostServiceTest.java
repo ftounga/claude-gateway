@@ -40,7 +40,8 @@ class RunnerHostServiceTest {
 
     private RunnerHostService service() {
         return new RunnerHostService(repository, seatLedgerService, tokenRepository,
-                pairingCodeRepository);
+                pairingCodeRepository, org.mockito.Mockito.mock(
+                        org.springframework.context.ApplicationEventPublisher.class));
     }
 
     @Test

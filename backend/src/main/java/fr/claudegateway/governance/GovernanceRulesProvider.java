@@ -54,7 +54,7 @@ public class GovernanceRulesProvider implements ProjectRulesSource {
         }
         List<GovernanceActivation> active;
         try {
-            active = activationService.activeOn(userId, workspaceId);
+            active = activationService.activeOnWorkspace(userId, workspaceId);
         } catch (RuntimeException ex) {
             log.debug("Règles de gouvernance illisibles ({})", ex.getClass().getSimpleName());
             return null;

@@ -78,7 +78,7 @@ public class GovernanceCheckpointDelegate {
             AtelierCheckpointKind kind) {
         List<GovernanceActivation> active;
         try {
-            active = activationService.activeOn(context.userId(), context.workspaceId());
+            active = activationService.activeOnWorkspace(context.userId(), context.workspaceId());
         } catch (RuntimeException ex) {
             log.debug("Contrôles de gouvernance ignorés : activations illisibles ({})",
                     ex.getClass().getSimpleName());

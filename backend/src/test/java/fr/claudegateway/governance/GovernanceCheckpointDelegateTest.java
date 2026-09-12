@@ -41,6 +41,8 @@ class GovernanceCheckpointDelegateTest {
 
     private final UUID alice = UUID.randomUUID();
     private final UUID workspace = UUID.randomUUID();
+    /** Le poste qui gouverne ce dossier : depuis F-75, l'activation ne vit plus sur le projet. */
+    private final UUID host = UUID.randomUUID();
     private final List<String> called = new ArrayList<>();
 
     private GovernanceCheckpointDelegate delegateWith(GovernanceControl... controls) {
@@ -58,8 +60,8 @@ class GovernanceCheckpointDelegateTest {
                 .name("P").version(1).published(true)
                 .controlIds(String.join(",", controlIds)).build();
         when(packageService.require(pkg.getId())).thenReturn(pkg);
-        when(activationService.activeOn(alice, workspace)).thenReturn(List.of(
-                GovernanceActivation.builder().userId(alice).workspaceId(workspace)
+        when(activationService.activeOnWorkspace(alice, workspace)).thenReturn(List.of(
+                GovernanceActivation.builder().userId(alice).hostId(host)
                         .packageId(pkg.getId()).appliedVersion(1)
                         .status(GovernanceActivationStatus.APPLIED).build()));
     }
@@ -72,7 +74,7 @@ class GovernanceCheckpointDelegateTest {
     @Test
     @DisplayName("sans paquet actif, on rend « passe » sans lire aucun paquet")
     void noActivationMeansNoLookup() {
-        when(activationService.activeOn(alice, workspace)).thenReturn(List.of());
+        when(activationService.activeOnWorkspace(alice, workspace)).thenReturn(List.of());
         GovernanceCheckpointDelegate delegate = delegateWith(control("a", true));
 
         assertThat(delegate.evaluate(AtelierCheckpointKind.AFTER_FILE_WRITE, writeContext()).blocked())
@@ -134,7 +136,7 @@ class GovernanceCheckpointDelegateTest {
     @Test
     @DisplayName("des activations illisibles rendent « passe », jamais un tour raté")
     void unreadableActivationsProceed() {
-        when(activationService.activeOn(alice, workspace))
+        when(activationService.activeOnWorkspace(alice, workspace))
                 .thenThrow(new IllegalStateException("base indisponible"));
         GovernanceCheckpointDelegate delegate = delegateWith(control("a", true));
 
@@ -151,7 +153,7 @@ class GovernanceCheckpointDelegateTest {
         assertThat(delegate.evaluate(AtelierCheckpointKind.END_OF_TURN, null).blocked()).isFalse();
         assertThat(delegate.evaluate(AtelierCheckpointKind.END_OF_TURN,
                 AtelierCheckpointContext.endOfTurn(null, null, "fini", List.of())).blocked()).isFalse();
-        verify(activationService, never()).activeOn(any(), any());
+        verify(activationService, never()).activeOnWorkspace(any(), any());
     }
 
     @Test
