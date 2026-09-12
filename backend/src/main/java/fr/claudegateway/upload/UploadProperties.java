@@ -7,6 +7,8 @@ import java.util.stream.Collectors;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.util.unit.DataSize;
 
+import fr.claudegateway.ocr.OcrProperties;
+
 /**
  * Contraintes de validation des téléversements (F-04). Externalisées pour être ajustables sans
  * changement de code (arbitrage réversible : liste blanche MIME + plafond de taille).
@@ -20,7 +22,10 @@ public record UploadProperties(List<String> allowedTypes, DataSize maxSize) {
     private static final List<String> DEFAULT_TYPES = List.of(
             "application/pdf",
             "image/png", "image/jpeg", "image/gif", "image/webp",
-            "text/plain", "text/markdown", "text/csv");
+            "text/plain", "text/markdown", "text/csv",
+            // Word (F-86 / SF-86-03) : accepté ici, mais converti en texte avant transmission —
+            // le fournisseur ne lit pas les `.docx`. Voir UploadService.
+            OcrProperties.DOCX_MEDIA_TYPE);
 
     public UploadProperties {
         if (allowedTypes == null || allowedTypes.isEmpty()) {

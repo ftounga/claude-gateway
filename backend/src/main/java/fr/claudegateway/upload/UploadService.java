@@ -1,10 +1,13 @@
 package fr.claudegateway.upload;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.Set;
 import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -12,28 +15,44 @@ import org.springframework.web.multipart.MultipartFile;
 import fr.claudegateway.ai.AIProvider;
 import fr.claudegateway.ai.ProviderFileReference;
 import fr.claudegateway.ai.ProviderFileUpload;
+import fr.claudegateway.docx.DocxExtraction;
+import fr.claudegateway.docx.DocxTextExtractor;
+import fr.claudegateway.ocr.OcrProperties;
 
 /**
  * Cœur de l'upload F-04 : valide la requête (présence, type MIME, taille), <b>transmet</b> le
  * fichier au fournisseur via l'interface {@link AIProvider} (jamais Anthropic en direct), puis
  * persiste uniquement les <b>métadonnées</b> ({@link UploadedFile}) portant le {@code user_id}
  * courant. Aucun OCR, aucune indexation, aucun stockage du contenu binaire (PROJECT.md §11.6).
+ *
+ * <p><b>Une exception de forme, pas de principe</b> (F-86 / SF-86-03) : un {@code .docx} est
+ * converti en texte <i>avant</i> d'être transmis, parce que le fournisseur ne sait pas lire un
+ * {@code .docx}. Relayer ce que le fournisseur sait lire est le métier d'une gateway ; rien n'est
+ * indexé ni persisté pour autant, et le texte n'existe que le temps de l'appel. Voir
+ * {@code toTransmit}.
  */
 @Service
 public class UploadService {
 
     private static final Logger log = LoggerFactory.getLogger(UploadService.class);
 
+    /** Les types qui ne disent rien : seuls ceux-là déclenchent un examen du contenu (SF-86-02). */
+    private static final Set<String> UNDECLARED_TYPES =
+            Set.of("application/octet-stream", "application/x-zip-compressed");
+
     private final AIProvider aiProvider;
     private final UploadedFileRepository uploadedFileRepository;
+    private final DocxTextExtractor docxTextExtractor;
     private final UploadProperties properties;
 
     public UploadService(
             AIProvider aiProvider,
             UploadedFileRepository uploadedFileRepository,
+            DocxTextExtractor docxTextExtractor,
             UploadProperties properties) {
         this.aiProvider = aiProvider;
         this.uploadedFileRepository = uploadedFileRepository;
+        this.docxTextExtractor = docxTextExtractor;
         this.properties = properties;
     }
 
@@ -59,6 +78,16 @@ public class UploadService {
         }
 
         String mediaType = normalizeMediaType(file.getContentType());
+        byte[] content = null;
+        if (!properties.allowedTypeSet().contains(mediaType) && isUndeclared(mediaType)) {
+            // Même règle qu'en SF-86-02 : un type qui ne dit rien fait examiner le contenu, un type
+            // déclaré et faux n'ouvre aucune porte, un type déclaré et accepté n'est jamais examiné.
+            content = readContent(file);
+            if (docxTextExtractor.looksLikeDocx(content)) {
+                log.info("Fichier déclaré « {} » reconnu comme document Word sur son contenu", mediaType);
+                mediaType = OcrProperties.DOCX_MEDIA_TYPE;
+            }
+        }
         if (!properties.allowedTypeSet().contains(mediaType)) {
             // Le TYPE refusé et la liste blanche sont journalisés, comme sur le chemin voisin
             // (DocumentService) : « type hors liste blanche » sans dire lequel a coûté un
@@ -73,11 +102,15 @@ public class UploadService {
         String filename = StringUtils.cleanPath(
                 StringUtils.hasText(file.getOriginalFilename()) ? file.getOriginalFilename() : "fichier");
 
-        byte[] content = readContent(file);
+        if (content == null) {
+            content = readContent(file);
+        }
+
+        // Ce qui part chez le fournisseur : le fichier tel quel, sauf pour Word — voir toTransmit.
+        ProviderFileUpload transmitted = toTransmit(filename, mediaType, content);
 
         // Transmission au fournisseur via l'interface neutre (jamais Anthropic en direct).
-        ProviderFileReference reference = aiProvider.uploadFile(
-                new ProviderFileUpload(filename, mediaType, content));
+        ProviderFileReference reference = aiProvider.uploadFile(transmitted);
 
         return uploadedFileRepository.save(UploadedFile.builder()
                 .userId(userId)
@@ -86,6 +119,46 @@ public class UploadService {
                 .mediaType(mediaType)
                 .sizeBytes(size)
                 .build());
+    }
+
+    /** Vrai si le type déclaré ne dit rien, et qu'un document Word serait accepté s'il en était un. */
+    private boolean isUndeclared(String mediaType) {
+        return UNDECLARED_TYPES.contains(mediaType)
+                && properties.allowedTypeSet().contains(OcrProperties.DOCX_MEDIA_TYPE);
+    }
+
+    /**
+     * Ce qui part réellement chez le fournisseur (F-86 / SF-86-03).
+     *
+     * <p>Tous les types passent <b>tels quels</b> — sauf Word. <b>Le fournisseur ne lit pas les
+     * {@code .docx}</b> : un bloc {@code document} prend du PDF ou du texte, un bloc {@code image}
+     * une image. Laisser partir le zip ferait échouer le tour <i>après</i> que l'écran a accepté le
+     * fichier : un refus déplacé plus loin et rendu plus obscur, soit exactement le contraire de ce
+     * que F-86 vient corriger.
+     *
+     * <p>La gateway relaie donc ce que le fournisseur sait lire : le texte. Ce n'est pas
+     * réimplémenter une capacité du modèle — lire un zip n'en est pas une — et F-04 n'est pas
+     * dénaturée : rien n'est indexé, rien du contenu n'est persisté, le texte n'existe que le temps
+     * de l'appel, exactement comme les octets d'un PDF aujourd'hui.
+     *
+     * <p>La copie transmise est nommée {@code <nom d'origine>.txt} : le nom dit les deux, ce que
+     * l'utilisateur a joint et ce que le fournisseur détient.
+     *
+     * @throws fr.claudegateway.docx.InvalidDocxException si le Word est illisible — levée
+     *                                                    <b>avant</b> tout appel au fournisseur
+     */
+    private ProviderFileUpload toTransmit(String filename, String mediaType, byte[] content) {
+        if (!OcrProperties.DOCX_MEDIA_TYPE.equals(mediaType)) {
+            return new ProviderFileUpload(filename, mediaType, content);
+        }
+        DocxExtraction extraction = docxTextExtractor.extract(content);
+        // Ni contenu ni nom de fichier journalisés : seul le compte d'images non lues.
+        log.info("Pièce jointe Word convertie en texte avant transmission ({} image(s) non lue(s))",
+                extraction.ignoredImages());
+        return new ProviderFileUpload(
+                filename + ".txt",
+                MediaType.TEXT_PLAIN_VALUE,
+                extraction.text().getBytes(StandardCharsets.UTF_8));
     }
 
     private static String normalizeMediaType(String contentType) {
