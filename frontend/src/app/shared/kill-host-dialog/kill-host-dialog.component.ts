@@ -8,8 +8,15 @@ import { HostProjectSummary } from '../../core/models/atelier.models';
 /** Le poste visé par le coupe-circuit, et ce qui vit dessous. */
 export interface KillHostDialogData {
   hostName: string;
-  /** Les projets du poste, tels que la gateway les rend. Ils sont **nommés**, jamais comptés seuls. */
-  projects: HostProjectSummary[];
+  /**
+   * Les projets du poste, tels que la gateway les rend. Ils sont **nommés**, jamais comptés seuls.
+   *
+   * <p>`null` = la liste n'a <b>pas pu être lue</b> (F-82 / SF-82-05). Ce n'est pas la même chose
+   * qu'une liste vide, et le dialogue ne les confond pas : « aucun projet » est une promesse — que
+   * rien ne changera de cible —, et la tenir sans avoir lu serait mentir. L'écran des postes, lui,
+   * a toujours la liste sous la main.</p>
+   */
+  projects: HostProjectSummary[] | null;
 }
 
 /** Un projet tel que le dialogue le présente : son nom, et s'il va réellement changer de cible. */
@@ -62,9 +69,19 @@ export class KillHostDialogComponent {
     alreadySandbox: project.executionTarget === 'SANDBOX',
   }));
 
+  /**
+   * La liste n'a pas pu être lue (F-82 / SF-82-05) — le relevé de l'aperçu des postes n'a pas
+   * abouti au moment d'ouvrir la confirmation depuis un terminal. On le **dit** plutôt que de
+   * laisser croire que ce poste ne porte aucun projet : le geste, lui, les ramènera tous au bac à
+   * sable de toute façon.
+   */
+  projectsUnknown(): boolean {
+    return this.data.projects === null || this.data.projects === undefined;
+  }
+
   /** Le cas vécu par le PO : une machine branchée qui ne porte aucun projet. */
   hasNoProject(): boolean {
-    return this.lines.length === 0;
+    return !this.projectsUnknown() && this.lines.length === 0;
   }
 
   /** Les projets qui vont réellement changer de cible — ceux qui ne sont pas déjà au bac à sable. */

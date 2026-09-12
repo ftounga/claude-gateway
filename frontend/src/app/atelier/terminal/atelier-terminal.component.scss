@@ -82,15 +82,24 @@
 
 // Proposition du runner (F-39 / SF-39-09) : mise en valeur Gold de la charte — c'est une
 // opportunité, pas une erreur. Aucune couleur nouvelle : l'accent orange déjà en place.
-.terminal-hint-runner {
+// Les deux bandes sous l'en-tête : la proposition de runner (F-39) et l'état du poste (F-82 /
+// SF-82-05). Même gabarit, écrit une fois — elles se suivent à l'écran, et deux copies auraient
+// divergé au premier réglage.
+.terminal-hint-runner,
+.terminal-host-state {
   display: flex;
   align-items: center;
   gap: var(--cg-space-2);
   padding: var(--cg-space-2) var(--cg-space-3);
   border-bottom: 1px solid var(--cg-navy-2);
-  border-left: 3px solid var(--cg-accent);
   color: var(--cg-divider);
   font-size: 13px;
+}
+
+// Le liseré d'accent est réservé à la PROPOSITION : l'accent marque un geste (DESIGN_SYSTEM §2),
+// or l'état du poste n'en propose aucun — il dit ce qui est.
+.terminal-hint-runner {
+  border-left: 3px solid var(--cg-accent);
 }
 
 .terminal-hint-runner-icon {
@@ -98,7 +107,8 @@
   flex-shrink: 0;
 }
 
-.terminal-hint-runner-text {
+.terminal-hint-runner-text,
+.terminal-host-state-body {
   flex: 1;
 }
 
@@ -190,6 +200,21 @@
 
 .terminal-target-toggle {
   font-size: 12px;
+}
+
+// ÉTAT DU POSTE (F-82 / SF-82-05) — la place laissée par « Connecter une machine ». Le gabarit de
+// la bande est partagé plus haut ; AUCUNE couleur nouvelle, aucun registre nouveau.
+.terminal-host-state {
+  line-height: 1.5;
+
+  code {
+    font-family: var(--cg-font-mono);
+  }
+}
+
+.terminal-host-state-icon,
+.terminal-host-state-link {
+  flex-shrink: 0;
 }
 
 .terminal-bar-actions {
