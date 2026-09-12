@@ -54,8 +54,8 @@ private boolean agentAskBeforeBash = true`) et par la **colonne** (`DEFAULT TRUE
 projets créés depuis une **archive** (`createFromArchive`) et depuis un **dépôt Git**
 (`createFromGit`) héritent du même régime, sans ligne de code par chemin de création.
 
-**(3) Les projets existants ne sont pas modifiés** (D4). La migration **change le défaut de la
-colonne**, elle ne fait **aucun `UPDATE`** : un projet qui avait éteint la porte la garde éteinte,
+**(3) Les projets existants ne sont pas modifiés** (D4). La migration `073` **change le défaut de
+la colonne**, elle ne fait **aucun `UPDATE`** : un projet qui avait éteint la porte la garde éteinte,
 un projet qui l'avait allumée la garde allumée.
 
 **(4) Le réglage reste celui de l'utilisateur.** `PATCH` du réglage
@@ -135,8 +135,9 @@ Aucun endpoint créé ni modifié. Changent de **valeur par défaut** dans les r
 
 ### Migration Liquibase
 
-`backend/src/main/resources/db/changelog/migrations/072-workspaces-ask-before-bash-default.xml`
-(`072` = premier numéro libre après `071-live-terminals.xml`).
+`backend/src/main/resources/db/changelog/migrations/073-workspaces-ask-before-bash-default.xml`
+(livrée en `072`, **renommée `073`** : F-75 avait pris `072` la même heure depuis une autre session ;
+renommage fait avant tout déploiement, aucune base n'avait joué l'ancien nom).
 Deux changesets (`postgresql`, `h2`), chacun un `addDefaultValue` avec `rollback` vers `false`.
 **Aucun `UPDATE`** : les lignes existantes ne sont pas touchées.
 
