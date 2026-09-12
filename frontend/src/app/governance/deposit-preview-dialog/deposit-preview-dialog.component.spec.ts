@@ -197,4 +197,63 @@ describe('DepositPreviewDialogComponent', () => {
     component.cancel();
     expect(dialogRef.close).toHaveBeenCalledWith(false);
   });
+
+  // ------------------------------------------ la carte du poste (F-92 / SF-92-01)
+
+  describe('la carte, annoncée à part', () => {
+    /** Un paquet qui apporte, en plus des gabarits, la carte du poste. */
+    const withMap: GovernanceDepositPlan = {
+      ...plan,
+      files: [...plan.files, { path: 'README.md', kind: 'MAP' }],
+      root: {
+        supported: true,
+        readable: true,
+        message: null,
+        entries: [{ path: 'README.md', kind: 'MAP', action: 'CREATE' }],
+      },
+    };
+
+    it('situe la carte à la RACINE, pas dans les dossiers', async () => {
+      await build(data({ plan: withMap }));
+
+      const content = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(content).toContain('La carte, à la racine de EDENRED');
+      expect(content).toContain('une seule fois');
+      expect(content).toContain('fichier de carte — sera créé');
+    });
+
+    it("ne dit JAMAIS « indéterminé » d'un fichier de carte", async () => {
+      await build(data({ plan: withMap }));
+
+      // Sans la séparation, README.md n'aurait d'entrée dans aucun dossier et serait rendu
+      // « indéterminé dans 1 dossier(s) » — un mensonge d'écran.
+      expect(component.outcomes().map((outcome) => outcome.file.path))
+        .toEqual(['STATE.md', '.claude/skills/explique.md']);
+    });
+
+    it("dit qu'un poste sans racine n'aura jamais de carte", async () => {
+      await build(data({
+        plan: {
+          ...withMap,
+          root: {
+            supported: false,
+            readable: false,
+            message: "Ce poste n'est pas une machine : connectez une machine.",
+            entries: [{ path: 'README.md', kind: 'MAP', action: 'UNKNOWN' }],
+          },
+        },
+      }));
+
+      expect(component.mapUnsupported()).toBeTrue();
+      expect((fixture.nativeElement as HTMLElement).textContent)
+        .toContain("n'est pas une machine");
+    });
+
+    it("n'affiche aucune section de carte quand le paquet n'en apporte pas", async () => {
+      await build(data());
+
+      expect(component.mapEntries()).toEqual([]);
+      expect((fixture.nativeElement as HTMLElement).querySelector('.preview__map')).toBeNull();
+    });
+  });
 });

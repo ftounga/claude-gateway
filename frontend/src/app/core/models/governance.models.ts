@@ -5,8 +5,13 @@
  * où l'écran ajoute du sens est l'annonce faite **avant** l'activation — voir `GovernanceDepositPlan`.
  */
 
-/** Genre d'un fichier apporté par un paquet. Le mot sert à l'annonce, pas au mécanisme. */
-export type GovernanceFileKind = 'SKILL' | 'TEMPLATE';
+/**
+ * Genre d'un fichier apporté par un paquet.
+ *
+ * Depuis F-92, le genre décide **où** le fichier se pose : `SKILL` et `TEMPLATE` dans **chaque
+ * projet** du poste, `MAP` **une seule fois, à la racine du poste** — là où vit la carte.
+ */
+export type GovernanceFileKind = 'SKILL' | 'TEMPLATE' | 'MAP';
 
 /** Un fichier qu'un paquet déposerait : **où**, et de quelle nature. Jamais son contenu. */
 export interface GovernanceFile {
@@ -122,9 +127,25 @@ export interface GovernanceDepositPlan {
   hostRef: string;
   hostName: string;
   files: GovernanceFile[];
+  /** Ce qui arrivera **à la racine du poste** — la carte (F-92). Absent des versions antérieures. */
+  root?: GovernanceRootDepositPlan | null;
   projects: GovernanceProjectDepositPlan[];
   rules: boolean;
   controls: number;
+}
+
+/**
+ * Ce qu'un paquet fera **à la racine du poste** — la carte (F-92 / SF-92-01).
+ *
+ * Distincte des dossiers parce que l'endroit l'est : les gabarits se posent dans **chaque** projet,
+ * la carte **une fois**, à côté d'eux. `supported` à faux : ce poste n'est pas une machine, il n'a
+ * pas de racine. `readable` à faux : la machine n'a pas répondu — **rien n'est écrit**.
+ */
+export interface GovernanceRootDepositPlan {
+  supported: boolean;
+  readable: boolean;
+  message: string | null;
+  entries: GovernanceDepositEntry[];
 }
 
 /** Ce qu'un dossier porte **aujourd'hui** sous le chemin d'un fichier du paquet. */
@@ -156,4 +177,59 @@ export interface GovernanceFileComparison {
 /** Corps du geste « retenir » / « changer le drapeau ». */
 export interface GovernanceSelectionRequest {
   defaultApplied: boolean;
+}
+
+/** Une section d'un fichier de carte, et le nombre de **faits** qu'elle porte (F-92 / SF-92-02). */
+export interface GovernanceMapSection {
+  title: string;
+  facts: number;
+}
+
+/**
+ * Un fichier de carte, tel que l'écran le montre **sans ouvrir un terminal**.
+ *
+ * `present` et `readable` ne disent pas la même chose : un fichier absent est à reposer, un fichier
+ * illisible est une machine à réparer. Une machine éteinte n'est jamais rendue comme une carte vide.
+ */
+export interface GovernanceMapFile {
+  path: string;
+  title: string;
+  present: boolean;
+  readable: boolean;
+  sections: GovernanceMapSection[];
+  facts: number;
+  truncated: boolean;
+  message: string | null;
+}
+
+/**
+ * **Ce que la machine sait** — le relevé de la carte d'un poste (F-92 / SF-92-02).
+ *
+ * Trois « non » différents, parce que ce sont trois gestes différents : `supported` à faux (ce poste
+ * n'est pas une machine), `governed` à faux (rien n'est activé), `readable` à faux (la machine n'a
+ * pas répondu). `message` porte le geste correspondant.
+ */
+export interface GovernanceMap {
+  hostRef: string;
+  hostId: string | null;
+  hostName: string;
+  supported: boolean;
+  governed: boolean;
+  readable: boolean;
+  message: string | null;
+  files: GovernanceMapFile[];
+  filesExpected: number;
+  filesPresent: number;
+  sections: number;
+  facts: number;
+}
+
+/** Le **contenu exact** d'un fichier de carte, lu sur la machine (F-92 / SF-92-02). */
+export interface GovernanceMapFileContent {
+  path: string;
+  title: string;
+  present: boolean;
+  content: string;
+  truncated: boolean;
+  message: string | null;
 }

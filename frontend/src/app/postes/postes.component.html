@@ -491,6 +491,84 @@
         }
       }
 
+      <!-- LA CARTE DU POSTE (F-92 / SF-92-03). C'est la pièce qui manquait : le produit savait
+           porter le TRAVAIL — les projets ci-dessus — mais pas le SAVOIR. La carte, ce sont les
+           fichiers `.md` posés à la RACINE, à côté des dossiers de projets ; les projets sont des
+           dossiers, la carte des fichiers, et les deux ne se confondent jamais.
+
+           LA MONTRER ICI EST CE QUI LA FAIT EXISTER : un fichier qu'on ne voit jamais n'est pas un
+           savoir, c'est un fichier. On voit ce que la machine sait SANS OUVRIR UN TERMINAL.
+
+           AUCUN REGISTRE DE COULEUR DE PLUS : un fichier encore vide emprunte le gris « inactif »
+           du §5, exactement comme les dossiers non ouverts ci-dessus. Ni ton d'identité (§9), ni
+           pastille de mission (§10), ni signe de vie (§11). -->
+      <section class="poste__carte">
+        <p class="poste__carte-title">
+          <mat-icon>map</mat-icon>
+          Carte du poste
+          @if (hostMap(host); as map) {
+            @if (map.governed && map.readable) {
+              <span class="poste__carte-summary">{{ mapSummary(map) }}</span>
+            }
+          }
+        </p>
+
+        @if (!host.connected) {
+          <!-- AUCUN APPEL n'est parti : le dire coûte moins qu'un délai pour l'apprendre. -->
+          <p class="poste__carte-hint">
+            La carte n'a pas été lue : lancez le runner sur la machine, puis
+            <strong>Rafraîchir</strong>.
+          </p>
+        } @else {
+          @if (hostMap(host); as map) {
+          @if (!map.governed || !map.readable) {
+            <!-- Le message du serveur, REPRIS TEL QUEL : il porte déjà son action corrective, et
+                 la réécrire ici la ferait diverger au premier changement. -->
+            <p class="poste__carte-hint">{{ map.message }}</p>
+            @if (!map.governed) {
+              <a mat-stroked-button routerLink="/governance">
+                <mat-icon>gavel</mat-icon>
+                Ouvrir la gouvernance
+              </a>
+            }
+          } @else {
+            @if (map.facts === 0) {
+              <p class="poste__carte-hint">
+                La carte est posée mais encore vide. Chaque projet ouvert sous ce poste doit y
+                laisser ce qu'il a appris : <strong>à chaque projet, la connaissance augmente</strong>.
+              </p>
+            }
+            <ul class="poste__carte-list">
+              @for (file of map.files; track file.path) {
+                <li>
+                  <button
+                    type="button"
+                    class="poste__carte-item"
+                    [class.poste__carte-item--empty]="file.facts === 0"
+                    (click)="openMapFile(host, file)"
+                    [attr.aria-label]="'Ouvrir ' + file.path"
+                    [matTooltip]="file.message ?? 'Lire ce fichier de la carte'"
+                  >
+                    <mat-icon>{{ file.present ? 'description' : 'help_outline' }}</mat-icon>
+                    <span class="poste__carte-item-title">{{ file.title }}</span>
+                    <span class="poste__mono poste__carte-item-path">{{ file.path }}</span>
+                    <span class="poste__carte-item-facts">{{ mapFileLabel(file) }}</span>
+                  </button>
+                </li>
+              }
+            </ul>
+          }
+          }
+        }
+
+        <!-- CE QUE LE TERMINAL DU POSTE SERT (F-92 / SF-92-03) : aujourd'hui, rien ne l'indique.
+             Il s'ouvre à la racine — là où vit la carte — et c'est de là qu'on l'écrit. -->
+        <p class="poste__carte-hint">
+          Le <strong>terminal du poste</strong> s'ouvre à la racine, là où vit la carte : c'est de là
+          qu'on l'écrit.
+        </p>
+      </section>
+
       <div class="poste__card-actions">
         <!-- « Ajouter un projet », autant de fois qu'on veut, SANS JAMAIS RÉAPPAIRER : c'est tout
              le bénéfice de F-48, enfin atteignable depuis l'écran. -->
@@ -521,7 +599,7 @@
           [disabled]="openingTerminalHostId() !== null"
           (click)="openHostTerminal(host)"
           [attr.aria-label]="'Ouvrir le terminal du poste ' + host.name"
-          matTooltip="Un terminal à la racine du poste — pour ce qui n'appartient à aucun projet"
+          matTooltip="Un terminal à la racine du poste — là où vit la carte, et pour ce qui n'appartient à aucun projet"
         >
           @if (openingTerminalHostId() === host.id) {
             <mat-spinner diameter="18"></mat-spinner>

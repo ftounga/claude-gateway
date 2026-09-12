@@ -38,9 +38,49 @@
       </div>
     }
 
+    <!-- LA CARTE DU POSTE (F-92 / SF-92-01), annoncée à part des gabarits. L'endroit est
+         différent : les gabarits et les skills se posent dans CHAQUE dossier, la carte UNE FOIS,
+         à la racine, à côté d'eux. Les fondre ferait croire à une carte par projet. -->
+    @if (mapEntries().length > 0) {
+      <section class="preview__map">
+        <p class="preview__map-title">
+          <mat-icon>map</mat-icon>
+          La carte, à la racine de {{ data.hostName }}
+        </p>
+        <p class="preview__intro">
+          Ces fichiers se posent <strong>une seule fois</strong>, à la racine du poste, à côté des
+          dossiers de projets. C'est là que la connaissance du client s'accumule d'un projet à
+          l'autre. Ils ne sont <strong>jamais écrasés</strong>.
+        </p>
+        @if (mapUnsupported() || mapUnreadable()) {
+          <div class="preview__warning">
+            <mat-icon>{{ mapUnsupported() ? 'cloud_off' : 'help_outline' }}</mat-icon>
+            <p>{{ mapMessage() }}</p>
+          </div>
+        }
+        <ul class="preview__files">
+          @for (entry of mapEntries(); track entry.path) {
+            <li class="preview__file preview__file--map">
+              <mat-icon>{{ entry.action === 'KEEP' ? 'lock' : 'note_add' }}</mat-icon>
+              <span class="preview__file-body">
+                <code>{{ entry.path }}</code>
+                <span class="preview__verdict">
+                  fichier de carte — {{ actionLabel(entry.action) }}
+                </span>
+              </span>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+
     @if (data.plan.files.length === 0) {
       <p class="preview__empty">
         Ce paquet ne dépose aucun fichier. Il n'apporte que des règles et des contrôles.
+      </p>
+    } @else if (outcomes().length === 0) {
+      <p class="preview__empty">
+        Ce paquet n'apporte rien d'autre que sa carte : aucun gabarit ni skill dans les dossiers.
       </p>
     } @else {
       <ul class="preview__files">

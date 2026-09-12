@@ -89,7 +89,11 @@ export class DepositPreviewDialogComponent {
    * lignes, et personne ne lirait la quarantième.</p>
    */
   readonly outcomes = computed<FileOutcome[]>(() =>
-    this.data.plan.files.map((file) => {
+    this.data.plan.files
+      // La CARTE (F-92) ne se pose pas dans les dossiers : la compter ici la ferait apparaître
+      // « indéterminée dans N dossiers », ce qui serait faux. Elle a sa propre section.
+      .filter((file) => file.kind !== 'MAP')
+      .map((file) => {
       let created = 0;
       let kept = 0;
       let unknown = 0;
@@ -106,9 +110,33 @@ export class DepositPreviewDialogComponent {
             unknown++;
         }
       }
-      return { file, created, kept, unknown };
-    }),
+        return { file, created, kept, unknown };
+      }),
   );
+
+  /**
+   * Ce que le paquet pose **à la racine du poste** — la carte (F-92 / SF-92-01).
+   *
+   * <p>Une section à part, parce que l'endroit est à part : les gabarits et les skills se posent
+   * dans <b>chaque</b> dossier, la carte <b>une fois</b>, à côté d'eux. Les fondre ferait croire à
+   * une carte par projet — l'exact contraire de ce que F-92 apporte.</p>
+   */
+  readonly mapEntries = computed(() => this.data.plan.root?.entries ?? []);
+
+  /** Vrai si ce poste n'a pas de racine (poste « Hébergé ») : il n'aura jamais de carte. */
+  readonly mapUnsupported = computed(
+    () => this.mapEntries().length > 0 && this.data.plan.root?.supported === false,
+  );
+
+  /** Vrai si la racine n'a pas pu être lue : **rien n'est écrit**, et le geste reste offert. */
+  readonly mapUnreadable = computed(
+    () => this.mapEntries().length > 0
+      && this.data.plan.root?.supported === true
+      && this.data.plan.root?.readable === false,
+  );
+
+  /** Le message du serveur pour la racine, repris **tel quel** : il porte son action corrective. */
+  readonly mapMessage = computed(() => this.data.plan.root?.message ?? null);
 
   /** Le verdict d'un fichier, en clair. Un mot juste vaut mieux qu'un code. */
   outcomeLabel(outcome: FileOutcome): string {
