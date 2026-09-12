@@ -10,7 +10,7 @@
 
 ## Statut
 
-`in-progress`
+`done`
 
 ## Date de création
 
