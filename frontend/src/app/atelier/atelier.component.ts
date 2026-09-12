@@ -610,25 +610,10 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.router.navigate(['/billing']);
   }
 
-  /** Téléverse l'archive `.zip` sélectionnée → crée le workspace, l'ouvre et rafraîchit la liste. */
-  onZipPicked(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file) {
-      return;
-    }
-    // Contrôle client : inutile d'envoyer une archive manifestement hors limite (l'ingress la
-    // couperait avec un 413 opaque). On explique la cause et l'action corrective immédiatement.
-    if (file.size > MAX_UPLOAD_BYTES) {
-      this.notifyError(oversizeMessage(file.size));
-      return;
-    }
-    // Nom proposé à la création (F-28 SF-28-16) : pré-rempli avec le nom de l'archive, modifiable.
-    // Annuler la saisie annule l'import — l'utilisateur a choisi un fichier, pas encore un projet.
-    const suggested = file.name.replace(/\.zip$/i, '');
-    this.promptForName('Nommer le projet', suggested, (name) => this.uploadZip(file, name));
-  }
+  // L'IMPORT D'ARCHIVE ET L'OUVERTURE D'UN DÉPÔT ONT QUITTÉ CET ÉCRAN (F-72 / SF-72-04) : ils
+  // vivent sur la carte « Hébergé » de l'accueil de la Forge, où ils sont enfin à leur place —
+  // un dépôt ou une archive n'a pas de machine. Le bouton « Nouveau projet » qui les portait
+  // faisait partir du PROJET au lieu du poste, et c'est de là que venait la confusion.
 
   /** Demande un nom à l'utilisateur, pré-rempli, puis exécute l'action. Annuler ne fait rien. */
   private promptForName(title: string, initialValue: string, then: (name: string) => void): void {
@@ -735,105 +720,6 @@ export class AtelierComponent implements OnInit, OnDestroy {
           ),
       });
     });
-  }
-
-  private uploadZip(file: File, name: string): void {
-    this.creating.set(true);
-    this.atelier.createWorkspace(file, name).subscribe({
-      next: (workspace) => {
-        this.creating.set(false);
-        this.adoptWorkspace(workspace);
-        this.snackBar.open('Projet importé.', 'Fermer', { duration: 3000 });
-      },
-      error: (err) => {
-        this.creating.set(false);
-        this.notifyError(
-          httpErrorMessage(err, "L'import du projet a échoué. Vérifiez qu'il s'agit d'une archive .zip."),
-        );
-      },
-    });
-  }
-
-  /**
-   * Ouvre un projet qui vit **déjà sur la machine** de l'utilisateur (F-38 / SF-38-16).
-   *
-   * <p>Le parcours tient d'un seul tenant, parce qu'il est interrompu par une action hors du
-   * navigateur — lancer une commande. On demande donc un <b>nom</b>, rien d'autre, puis on
-   * enchaîne immédiatement sur l'écran d'appairage, où vivent le code, le binaire et la commande à
-   * coller. Aucun chemin n'est demandé ici : c'est le runner qui déclarera sa racine.</p>
-   */
-  openLocalProjectDialog(): void {
-    this.promptForName('Projet sur ma machine', '', (name) => {
-      this.creating.set(true);
-      this.atelier.createLocalWorkspace(name).subscribe({
-        next: (workspace) => {
-          this.creating.set(false);
-          this.adoptWorkspace(workspace);
-          // Enchaînement immédiat : un projet local sans machine connectée n'a nulle part où
-          // travailler, et le dire après coup ferait perdre le fil au moment précis où il faut
-          // sortir du navigateur.
-          this.openRunnerPairing();
-        },
-        error: (err: unknown) => {
-          this.creating.set(false);
-          this.notifyError(
-            httpErrorMessage(err, "Le projet n'a pas pu être créé. Veuillez réessayer."),
-          );
-        },
-      });
-    });
-  }
-
-  /**
-   * Ouvre un projet sur un **dépôt GitHub** (F-31 / SF-31-02) : plus d'export/réimport manuel, le
-   * dépôt est cloné dans l'espace d'exécution de Claude. Le jeton d'accès n'est pas saisi ici — il
-   * est enregistré une fois pour toutes dans les réglages, chiffré côté backend.
-   */
-  openGitRepoDialog(): void {
-    this.dialog
-      .open(GitRepoDialogComponent, { width: '520px', autoFocus: false })
-      .afterClosed()
-      .subscribe((picked: PickedGitRepository | undefined) => {
-        if (!picked) {
-          return;
-        }
-        this.creating.set(true);
-        this.atelier.createGitWorkspace(picked).subscribe({
-          next: (workspace) => {
-            this.creating.set(false);
-            this.adoptWorkspace(workspace);
-            this.snackBar.open('Dépôt ouvert.', 'Fermer', { duration: 3000 });
-          },
-          error: (err) => {
-            this.creating.set(false);
-            this.notifyError(this.gitErrorMessage(err));
-          },
-        });
-      });
-  }
-
-  /**
-   * Message d'erreur d'ouverture de dépôt. Chaque cause appelle une action différente — enregistrer
-   * un jeton, corriger l'URL, réessayer plus tard — et les confondre laisserait l'utilisateur sans
-   * geste à faire.
-   */
-  private gitErrorMessage(err: unknown): string {
-    const code =
-      err instanceof HttpErrorResponse ? (err.error as { error?: string } | null)?.error : undefined;
-    switch (code) {
-      case 'git_token_missing':
-        return 'Aucun jeton GitHub enregistré : ajoutez-en un dans vos réglages.';
-      case 'invalid_git_token':
-        return 'GitHub a refusé votre jeton. Remplacez-le dans vos réglages.';
-      case 'invalid_git_repository':
-        return 'Dépôt introuvable, ou hors de portée de votre jeton GitHub.';
-      case 'invalid_git_branch':
-        return 'Nom de branche invalide.';
-      case 'github_unavailable':
-        return 'GitHub est momentanément indisponible. Réessayez dans un instant.';
-      default:
-        return httpErrorMessage(err, "L'ouverture du dépôt a échoué.");
-    }
   }
 
   /**
@@ -1851,11 +1737,16 @@ export class AtelierComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Guide d'accueil — étape « projet » : le guide n'ouvre rien de neuf, il déclenche le parcours
-   * « Sur ma machine » qui existe déjà (F-38 / SF-38-16).
+   * Guide d'accueil — étape « projet » : le guide **mène à l'accueil de la Forge**, où vivent
+   * désormais les deux gestes (F-72 / SF-72-04).
+   *
+   * <p>Il ouvrait jusqu'ici le parcours « Sur ma machine », c'est-à-dire celui qui part du
+   * <b>projet</b> — le défaut même que F-72 supprime : on créait un projet en croyant déclarer un
+   * client, puis on redemandait un poste. Le guide n'a rien à recopier : il conduit là où les deux
+   * gestes sont, dans le bon ordre.</p>
    */
   guideCreateProject(): void {
-    this.openLocalProjectDialog();
+    this.router.navigate(['/forge']);
   }
 
   /**

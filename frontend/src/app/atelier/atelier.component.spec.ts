@@ -160,6 +160,49 @@ describe('AtelierComponent', () => {
     fixture.detectChanges();
   }
 
+  // ------------------------------ « Nouveau projet » a disparu (F-72 / SF-72-04)
+
+  it('n\'offre plus « Nouveau projet » à la racine', () => {
+    setup();
+    fixture.detectChanges();
+
+    // Ce bouton ne posait pas la mauvaise question : il la posait dans le MAUVAIS ORDRE. On
+    // créait un projet en croyant déclarer un client, puis on redemandait un poste.
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('Nouveau projet');
+    expect((fixture.nativeElement as HTMLElement).querySelector('.zip-input')).toBeNull();
+  });
+
+  it('mène à l\'accueil de la Forge, où vivent les deux gestes', () => {
+    setup();
+    fixture.detectChanges();
+    const link = (fixture.nativeElement as HTMLElement)
+      .querySelector('.sidebar-header a[href]') as HTMLAnchorElement;
+
+    expect(link?.textContent).toContain('Connecter un poste');
+    expect(link?.getAttribute('href')).toBe('/forge');
+  });
+
+  it('dit le nouvel ordre quand la liste est vide : le poste, PUIS les projets', () => {
+    setup();
+    component.workspaces.set([]);
+    fixture.detectChanges();
+    const empty = (fixture.nativeElement as HTMLElement)
+      .querySelector('.sidebar-empty') as HTMLElement;
+
+    expect(empty.textContent).toContain('Connectez d\'abord un poste');
+    expect(empty.textContent).toContain('Hébergé');
+  });
+
+  it('conduit le guide d\'accueil vers la Forge, et non vers l\'ancien parcours', () => {
+    setup();
+    const router = TestBed.inject(Router);
+    const navigate = spyOn(router, 'navigate');
+
+    component.guideCreateProject();
+
+    expect(navigate).toHaveBeenCalledWith(['/forge']);
+  });
+
   // ------------------------------------------------ appartenance dans la liste (F-49 / SF-49-03)
 
   it('ÉCRIT le nom du poste et pose sa pastille sur un projet rattaché', () => {
@@ -426,95 +469,9 @@ describe('AtelierComponent', () => {
     expect(snackBar.open).toHaveBeenCalled();
   });
 
-  it('creates a workspace when a zip is picked and opens it', () => {
-    setup();
-    service.createWorkspace.and.returnValue(of(detail));
-    const file = new File(['zip'], 'projet.zip', { type: 'application/zip' });
-    const event = { target: { files: [file], value: 'x' } } as unknown as Event;
-
-    // Le nommage à la création (F-28 SF-28-16) passe par le dialogue de saisie.
-    dialog.open.and.returnValue({
-      afterClosed: () => of('projet'),
-    } as MatDialogRef<unknown, unknown>);
-    component.onZipPicked(event);
-
-    // Le nom saisi accompagne désormais l'archive (F-28 SF-28-16).
-    expect(service.createWorkspace).toHaveBeenCalledWith(file, 'projet');
-    expect(component.activeWorkspaceId()).toBe('w1');
-    expect(component.tree()).toEqual(['src/main.ts']);
-  });
-
-  it('notifies when workspace creation fails', () => {
-    setup();
-    service.createWorkspace.and.returnValue(throwError(() => new Error('bad zip')));
-    const file = new File(['zip'], 'bad.zip', { type: 'application/zip' });
-    const event = { target: { files: [file], value: 'x' } } as unknown as Event;
-
-    // Le nommage à la création (F-28 SF-28-16) passe par le dialogue de saisie.
-    dialog.open.and.returnValue({
-      afterClosed: () => of('projet'),
-    } as MatDialogRef<unknown, unknown>);
-    component.onZipPicked(event);
-
-    expect(snackBar.open).toHaveBeenCalled();
-    expect(component.activeWorkspaceId()).toBeNull();
-  });
-
-  it('rejette côté client une archive trop volumineuse sans appeler le backend', () => {
-    setup();
-    const file = new File(['x'], 'gros.zip', { type: 'application/zip' });
-    Object.defineProperty(file, 'size', { value: MAX_UPLOAD_BYTES + 1 });
-    const event = { target: { files: [file], value: 'x' } } as unknown as Event;
-
-    // Le nommage à la création (F-28 SF-28-16) passe par le dialogue de saisie.
-    dialog.open.and.returnValue({
-      afterClosed: () => of('projet'),
-    } as MatDialogRef<unknown, unknown>);
-    component.onZipPicked(event);
-
-    expect(service.createWorkspace).not.toHaveBeenCalled();
-    expect(component.creating()).toBeFalse();
-    const message = snackBar.open.calls.mostRecent().args[0] as string;
-    expect(message).toContain('trop volumineuse');
-    expect(message).toContain('node_modules');
-  });
-
-  it('affiche le message backend lorsque la création échoue avec un corps structuré', () => {
-    setup();
-    const error = new HttpErrorResponse({
-      status: 400,
-      error: { error: 'invalid_archive', message: "Un fichier de l'archive est trop volumineux." },
-    });
-    service.createWorkspace.and.returnValue(throwError(() => error));
-    const file = new File(['zip'], 'projet.zip', { type: 'application/zip' });
-    const event = { target: { files: [file], value: 'x' } } as unknown as Event;
-
-    // Le nommage à la création (F-28 SF-28-16) passe par le dialogue de saisie.
-    dialog.open.and.returnValue({
-      afterClosed: () => of('projet'),
-    } as MatDialogRef<unknown, unknown>);
-    component.onZipPicked(event);
-
-    expect(snackBar.open.calls.mostRecent().args[0]).toBe(
-      "Un fichier de l'archive est trop volumineux.",
-    );
-  });
-
-  it('traduit un 413 ingress en message « trop volumineuse » à l\'import', () => {
-    setup();
-    const error = new HttpErrorResponse({ status: 413, error: '<html>413</html>' });
-    service.createWorkspace.and.returnValue(throwError(() => error));
-    const file = new File(['zip'], 'projet.zip', { type: 'application/zip' });
-    const event = { target: { files: [file], value: 'x' } } as unknown as Event;
-
-    // Le nommage à la création (F-28 SF-28-16) passe par le dialogue de saisie.
-    dialog.open.and.returnValue({
-      afterClosed: () => of('projet'),
-    } as MatDialogRef<unknown, unknown>);
-    component.onZipPicked(event);
-
-    expect(snackBar.open.calls.mostRecent().args[0]).toContain('trop volumineuse');
-  });
+  // L'IMPORT D'ARCHIVE A QUITTÉ CET ÉCRAN (F-72 / SF-72-04) : il vit sur la carte « Hébergé » de
+  // l'accueil de la Forge, et ses tests avec lui (`postes.component.spec.ts`). Le bouton
+  // « Nouveau projet » qui le portait faisait partir du PROJET au lieu du poste.
 
   it('loads history and tree when a workspace is selected', () => {
     setup();
@@ -1381,80 +1338,8 @@ describe('AtelierComponent', () => {
 
   // ---- F-31 SF-31-02 : ouverture d'un projet sur un dépôt Git ----
 
-  it("ouvre un dépôt via le dialogue et adopte le projet créé", () => {
-    setup();
-    dialog.open.and.returnValue({
-      afterClosed: () => of({ repoUrl: 'https://github.com/octocat/hello', branch: 'main' }),
-    } as MatDialogRef<unknown, unknown>);
-    service.createGitWorkspace.and.returnValue(of(gitDetail));
-
-    component.openGitRepoDialog();
-
-    expect(service.createGitWorkspace).toHaveBeenCalledWith({
-      repoUrl: 'https://github.com/octocat/hello',
-      branch: 'main',
-    });
-    expect(component.activeWorkspaceId()).toBe('w2');
-    expect(component.activeIsGit()).toBeTrue();
-    expect(component.activeDetail()?.gitBranch).toBe('main');
-    expect(component.workspaces()[0].source).toBe('GIT');
-    expect(component.workspaces()[0].gitRepo).toBe('octocat/hello');
-    expect(component.creating()).toBeFalse();
-  });
-
-  it("n'appelle rien si le dialogue de dépôt est fermé sans choix", () => {
-    setup();
-    dialog.open.and.returnValue({ afterClosed: () => of(undefined) } as MatDialogRef<unknown, unknown>);
-
-    component.openGitRepoDialog();
-
-    expect(service.createGitWorkspace).not.toHaveBeenCalled();
-    expect(component.creating()).toBeFalse();
-  });
-
-  it("oriente vers les réglages quand aucun jeton GitHub n'est enregistré", () => {
-    setup();
-    dialog.open.and.returnValue({
-      afterClosed: () => of({ repoUrl: 'https://github.com/octocat/hello' }),
-    } as MatDialogRef<unknown, unknown>);
-    service.createGitWorkspace.and.returnValue(
-      throwError(
-        () =>
-          new HttpErrorResponse({ status: 400, error: { error: 'git_token_missing' } }),
-      ),
-    );
-
-    component.openGitRepoDialog();
-
-    expect(snackBar.open.calls.mostRecent().args[0]).toContain('réglages');
-    expect(component.creating()).toBeFalse();
-  });
-
-  it("distingue un dépôt hors de portée d'une panne GitHub", () => {
-    setup();
-    dialog.open.and.returnValue({
-      afterClosed: () => of({ repoUrl: 'https://github.com/octocat/secret' }),
-    } as MatDialogRef<unknown, unknown>);
-    service.createGitWorkspace.and.returnValue(
-      throwError(
-        () =>
-          new HttpErrorResponse({ status: 400, error: { error: 'invalid_git_repository' } }),
-      ),
-    );
-
-    component.openGitRepoDialog();
-    expect(snackBar.open.calls.mostRecent().args[0]).toContain('introuvable');
-
-    service.createGitWorkspace.and.returnValue(
-      throwError(
-        () =>
-          new HttpErrorResponse({ status: 503, error: { error: 'github_unavailable' } }),
-      ),
-    );
-
-    component.openGitRepoDialog();
-    expect(snackBar.open.calls.mostRecent().args[0]).toContain('indisponible');
-  });
+  // L'OUVERTURE D'UN DÉPÔT A QUITTÉ CET ÉCRAN (F-72 / SF-72-04), et ses tests avec elle
+  // (`postes.component.spec.ts`) : un dépôt n'a pas de machine, il vit sous le poste « Hébergé ».
 
   it("un projet d'archive n'est jamais présenté comme un dépôt", () => {
     setup();
@@ -1468,12 +1353,17 @@ describe('AtelierComponent', () => {
 
   it("aligne le mode sur Terminal à l'ouverture d'un projet Git", () => {
     setup();
-    dialog.open.and.returnValue({
-      afterClosed: () => of({ repoUrl: 'https://github.com/octocat/hello' }),
-    } as MatDialogRef<unknown, unknown>);
-    service.createGitWorkspace.and.returnValue(of(gitDetail));
+    // Depuis F-72 / SF-72-04, un dépôt s'ouvre depuis la carte « Hébergé » et l'écran le reçoit
+    // comme n'importe quel projet : c'est la SÉLECTION qui aligne le mode, et c'est ce qui compte.
+    service.getWorkspace.and.returnValue(of(gitDetail));
 
-    component.openGitRepoDialog();
+    component.selectWorkspace({
+      id: 'w2',
+      name: 'hello',
+      createdAt: '2026-08-25T00:00:00Z',
+      source: 'GIT',
+      gitRepo: 'octocat/hello',
+    });
 
     expect(component.engine()).toBe('HOSTED_SANDBOX');
   });
@@ -2996,49 +2886,9 @@ describe('AtelierComponent', () => {
   });
   // ------------------------------------------------- SF-38-16 : projet sur ma machine
 
-  it('creates a local project from a name alone, then opens pairing', () => {
-    setup();
-    const localDetail = { ...detail, id: 'w-local', source: 'LOCAL' as const, executionTarget: 'RUNNER' as const };
-    service.createLocalWorkspace.and.returnValue(of(localDetail));
-    // Le dialogue sert deux fois : la saisie du nom, puis l'écran d'appairage.
-    dialog.open.and.returnValue({
-      afterClosed: () => of('runner-claude'),
-    } as MatDialogRef<unknown, unknown>);
-
-    component.openLocalProjectDialog();
-
-    // Un NOM, et rien d'autre : aucun chemin ne transite.
-    expect(service.createLocalWorkspace).toHaveBeenCalledWith('runner-claude');
-    expect(component.activeWorkspaceId()).toBe('w-local');
-    // L'appairage s'enchaîne : un projet local sans machine n'a nulle part où travailler.
-    expect(dialog.open).toHaveBeenCalledTimes(2);
-  });
-
-  it('does not create anything when the name dialog is dismissed', () => {
-    setup();
-    dialog.open.and.returnValue({
-      afterClosed: () => of(undefined),
-    } as MatDialogRef<unknown, unknown>);
-
-    component.openLocalProjectDialog();
-
-    expect(service.createLocalWorkspace).not.toHaveBeenCalled();
-  });
-
-  it('reports a creation failure without leaving the button spinning', () => {
-    setup();
-    service.createLocalWorkspace.and.returnValue(
-      throwError(() => new HttpErrorResponse({ status: 500 })),
-    );
-    dialog.open.and.returnValue({
-      afterClosed: () => of('runner-claude'),
-    } as MatDialogRef<unknown, unknown>);
-
-    component.openLocalProjectDialog();
-
-    expect(snackBar.open).toHaveBeenCalled();
-    expect(component.creating()).toBeFalse();
-  });
+  // « SUR MA MACHINE » A DISPARU DE CET ÉCRAN (F-72 / SF-72-04) : on ne part plus du projet. On
+  // connecte un poste depuis l'accueil de la Forge, puis on lui ajoute des projets en cliquant les
+  // dossiers de sa racine — le nom n'est demandé qu'une fois.
 
   it('shows the machine folder only once the runner has declared it', () => {
     setup();

@@ -24,6 +24,16 @@ import {
   RunnerPairingDialogData,
 } from '../atelier/runner/runner-pairing-dialog.component';
 import {
+  GitRepoDialogComponent,
+  PickedGitRepository,
+} from '../atelier/git/git-repo-dialog.component';
+import { gitErrorMessage } from '../atelier/git/git-error.util';
+import {
+  TextPromptDialogComponent,
+  TextPromptDialogData,
+} from '../atelier/files/text-prompt-dialog.component';
+import { MAX_UPLOAD_BYTES, httpErrorMessage, oversizeMessage } from '../shared/http-error.util';
+import {
   AddProjectDialogComponent,
   AddProjectDialogData,
 } from './add-project-dialog/add-project-dialog.component';
@@ -52,6 +62,22 @@ export type PostesError = 'none' | 'network' | 'forbidden';
  * Un `[]` neuf à chaque appel changerait de référence à chaque cycle de détection.
  */
 const EMPTY_FOLDERS: HostFolder[] = [];
+
+/**
+ * La carte « Hébergé » **vide** (F-72 / SF-72-04). Elle est toujours à l'écran depuis qu'elle porte
+ * les deux gestes sans machine : une carte de gestes qui disparaît quand elle est vide met ses
+ * gestes hors de portée. Constante partagée — une référence stable, jamais un objet neuf à chaque
+ * cycle de détection.
+ */
+const EMPTY_HOSTED: RunnerHostOverview = {
+  id: null,
+  name: 'Hébergé',
+  virtual: true,
+  connected: false,
+  activeProjects: 0,
+  createdAt: '',
+  projects: [],
+};
 
 /**
  * Écran **Postes** (F-49 / SF-49-02) : le seul endroit d'où l'on voit **toutes ses machines** —
@@ -116,15 +142,33 @@ export class PostesComponent implements OnInit {
   /** Heure de la dernière lecture réussie — ce qui permet de juger si la vue vieillit. */
   readonly lastUpdatedAt = signal<Date | null>(null);
 
+  /**
+   * Les **machines**, à l'exclusion du poste « Hébergé » — qui n'en est pas une (F-71) et qui a
+   * désormais sa propre place, en bas de l'écran (F-72 / SF-72-04).
+   */
+  readonly realHosts = computed(() => this.hosts().filter((host) => !this.isHosted(host)));
+
+  /**
+   * Le poste **« Hébergé »** tel que la gateway le rend, ou une carte **vide** quand elle n'en rend
+   * aucun (F-72 / SF-72-04, arbitrage A2).
+   *
+   * <p>SF-71-01 le masquait quand il ne portait rien, parce qu'il ne portait **que** des projets.
+   * Il porte maintenant les deux seules portes d'entrée sans machine — dépôt GitHub, archive — et
+   * une carte de gestes qui disparaît quand elle est vide met ses gestes hors de portée. La
+   * gateway, elle, n'est pas touchée : c'est l'écran qui complète.</p>
+   */
+  readonly hostedHost = computed<RunnerHostOverview>(() =>
+    this.hosts().find((host) => this.isHosted(host)) ?? EMPTY_HOSTED);
+
   readonly isEmpty = computed(() => !this.loading() && this.error() === 'none'
-    && this.hosts().length === 0);
+    && this.realHosts().length === 0);
 
   /**
    * **Ce qui reste au premier plan** (F-60 / SF-60-02) : les missions en cours et en attente. Un
    * poste clôturé n'est pas perdu, il descend dans le repli — « se ranger sans disparaître ».
    */
   readonly openHosts = computed(() =>
-    this.hosts().filter((host) => !isMissionClosed(host.missionStatus)));
+    this.realHosts().filter((host) => !isMissionClosed(host.missionStatus)));
 
   /**
    * **Terminaux vivants**, tous postes confondus (F-70 / SF-70-01). Affiché en tête d'écran avec ce
@@ -138,7 +182,7 @@ export class PostesComponent implements OnInit {
 
   /** Les missions clôturées, rangées : hors de la vue principale, à un clic de la consultation. */
   readonly closedHosts = computed(() =>
-    this.hosts().filter((host) => isMissionClosed(host.missionStatus)));
+    this.realHosts().filter((host) => isMissionClosed(host.missionStatus)));
 
   /**
    * Repli des clôturées : **refermé** à l'ouverture de l'écran. Sa raison d'être est de retirer
@@ -175,6 +219,9 @@ export class PostesComponent implements OnInit {
   /** Chemin dont l'ouverture est en vol : la ligne se verrouille le temps de l'aller-retour. */
   readonly openingFolder = signal<string | null>(null);
 
+  /** Création en cours depuis la carte « Hébergé » — dépôt GitHub ou archive (F-72 / SF-72-04). */
+  readonly creating = signal(false);
+
   /**
    * Nombre de dossiers non ouverts montrés sur une carte. Huit tient dans une carte sans la faire
    * dérouler ; en afficher trente la rendrait illisible — et la lisibilité est le **seul** critère
@@ -187,7 +234,7 @@ export class PostesComponent implements OnInit {
    * et le dit ; le repli, lui, reste présent et ouvrable — rien n'a disparu.
    */
   readonly allClosed = computed(() => !this.loading() && this.error() === 'none'
-    && this.hosts().length > 0 && this.openHosts().length === 0);
+    && this.realHosts().length > 0 && this.openHosts().length === 0);
 
   private timer: ReturnType<typeof setInterval> | null = null;
 
@@ -475,6 +522,96 @@ export class PostesComponent implements OnInit {
       }
     }
     return "Le projet n'a pas pu être ouvert. Veuillez réessayer.";
+  }
+
+  // ------------------------ les sources sans machine (F-72 / SF-72-04) ------------------------
+
+  /**
+   * **Ouvre un dépôt GitHub** (F-31 / SF-31-02) — depuis la carte « Hébergé », qui est l'endroit
+   * juste : un dépôt n'a pas de machine, il vit chez la gateway.
+   *
+   * <p>Le geste est celui d'avant, au mot près ; seul son <b>emplacement</b> change. Il était sous
+   * « Nouveau projet », à la racine — la porte qui faisait partir du projet au lieu du poste.</p>
+   */
+  openGitRepo(): void {
+    this.dialog
+      .open(GitRepoDialogComponent, { width: '520px', autoFocus: false })
+      .afterClosed()
+      .subscribe((picked: PickedGitRepository | undefined) => {
+        if (!picked) {
+          return;
+        }
+        this.creating.set(true);
+        this.atelier.createGitWorkspace(picked).subscribe({
+          next: (workspace) => {
+            this.creating.set(false);
+            this.snackBar.open(`Dépôt « ${workspace.name} » ouvert.`, 'Fermer',
+              { duration: 4000, panelClass: 'snack-info' });
+            this.load(false);
+          },
+          error: (err: unknown) => {
+            this.creating.set(false);
+            this.snackBar.open(gitErrorMessage(err), 'Fermer',
+              { duration: 6000, panelClass: 'snack-error' });
+          },
+        });
+      });
+  }
+
+  /**
+   * **Importe une archive `.zip`** — l'autre source sans machine.
+   *
+   * <p>La taille est contrôlée <b>avant</b> l'envoi : l'ingress couperait une archive hors limite
+   * par un 413 opaque, et l'utilisateur n'aurait aucun geste à faire.</p>
+   */
+  onZipPicked(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) {
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      this.snackBar.open(oversizeMessage(file.size), 'Fermer',
+        { duration: 6000, panelClass: 'snack-error' });
+      return;
+    }
+    // Le nom EST demandé ici, et c'est cohérent : une archive n'a pas de dossier sur une machine
+    // dont on pourrait tirer son nom. Le nom du fichier est proposé, modifiable.
+    const data: TextPromptDialogData = {
+      title: 'Nommer le projet',
+      label: 'Nom du projet',
+      confirmLabel: 'Valider',
+      initialValue: file.name.replace(/\.zip$/i, ''),
+      hint: 'Une étiquette : deux projets peuvent porter le même nom.',
+    };
+    this.dialog
+      .open(TextPromptDialogComponent, { data, width: '420px' })
+      .afterClosed()
+      .subscribe((name: string | undefined) => {
+        if (name && name.trim().length > 0) {
+          this.uploadZip(file, name.trim());
+        }
+      });
+  }
+
+  private uploadZip(file: File, name: string): void {
+    this.creating.set(true);
+    this.atelier.createWorkspace(file, name).subscribe({
+      next: () => {
+        this.creating.set(false);
+        this.snackBar.open('Projet importé.', 'Fermer',
+          { duration: 4000, panelClass: 'snack-info' });
+        this.load(false);
+      },
+      error: (err: unknown) => {
+        this.creating.set(false);
+        this.snackBar.open(
+          httpErrorMessage(err,
+            "L'import du projet a échoué. Vérifiez qu'il s'agit d'une archive .zip."),
+          'Fermer', { duration: 6000, panelClass: 'snack-error' });
+      },
+    });
   }
 
   // -------------------------------------------- état de mission (F-60 / SF-60-02)
