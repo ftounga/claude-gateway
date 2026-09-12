@@ -367,4 +367,145 @@ describe('MosaiqueComponent (F-83 / SF-83-02)', () => {
 
     expect(dom().querySelector('.mosaique__live')?.textContent).toContain('2 / 4');
   });
+
+  // ------------------------------------------- F-83 / SF-83-03 : agrandir une tuile
+
+  describe('agrandir une tuile (SF-83-03)', () => {
+    /** Le bouton d'agrandissement de la n-ième tuile affichée. */
+    function zoomButton(index = 0): HTMLButtonElement {
+      return dom().querySelectorAll('.mosaique__zoom')[index] as HTMLButtonElement;
+    }
+
+    async function twoTiles(): Promise<void> {
+      await setup([
+        terminal({ workspaceId: 'w-1', workspaceName: 'web', openedAt: '2026-09-12T08:00:00Z' }),
+        terminal({ workspaceId: 'w-2', workspaceName: 'api', openedAt: '2026-09-12T09:00:00Z' }),
+      ]);
+    }
+
+    it('un clic agrandit, un second rend la tuile à la mosaïque', async () => {
+      await twoTiles();
+
+      zoomButton().click();
+      fixture.detectChanges();
+
+      expect(component.zoomed()).toBe('w-1');
+      expect(dom().querySelector('.mosaique__tile--zoomed')).not.toBeNull();
+
+      zoomButton().click();
+      fixture.detectChanges();
+
+      expect(component.zoomed()).toBeNull();
+      expect(dom().querySelector('.mosaique__tile--zoomed')).toBeNull();
+    });
+
+    it('Échap rend la mosaïque', async () => {
+      await twoTiles();
+      zoomButton().click();
+      fixture.detectChanges();
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      fixture.detectChanges();
+
+      expect(component.zoomed()).toBeNull();
+    });
+
+    it('N\'OUVRE AUCUN FLUX DE PLUS : agrandir est une mise en page, pas un branchement', async () => {
+      await twoTiles();
+      const before = fetchSpy.calls.count();
+
+      zoomButton().click();
+      fixture.detectChanges();
+      await settle();
+      zoomButton().click();
+      fixture.detectChanges();
+      await settle();
+
+      // C'est le critère écrit au cadrage : « agrandir puis réduire, le flux n'est pas rouvert ».
+      expect(fetchSpy.calls.count()).toBe(before);
+      http.expectNone((request) => request.url.includes('/terminal/live'));
+    });
+
+    it('garde LE MÊME terminal : même nœud avant, pendant et après', async () => {
+      await twoTiles();
+      const before = dom().querySelectorAll('app-atelier-terminal')[0];
+
+      zoomButton().click();
+      fixture.detectChanges();
+      const during = dom().querySelectorAll('app-atelier-terminal')[0];
+      zoomButton().click();
+      fixture.detectChanges();
+      const after = dom().querySelectorAll('app-atelier-terminal')[0];
+
+      expect(during).toBe(before);
+      expect(after).toBe(before);
+    });
+
+    it('masque les autres tuiles sans les détruire : leurs terminaux restent dans le document', async () => {
+      await twoTiles();
+
+      zoomButton().click();
+      fixture.detectChanges();
+
+      // Les deux terminaux sont TOUJOURS là : c'est ce qui fait qu'on ne rouvre rien au retour.
+      expect(dom().querySelectorAll('app-atelier-terminal').length).toBe(2);
+      expect(dom().querySelectorAll('.mosaique__tile--hidden').length).toBe(1);
+    });
+
+    it('compte encore les attentes des tuiles masquées : agrandir ne rend pas aveugle', async () => {
+      await setup([
+        terminal({ workspaceId: 'w-1', workspaceName: 'web', openedAt: '2026-09-12T08:00:00Z' }),
+        terminal({
+          workspaceId: 'w-2',
+          workspaceName: 'api',
+          openedAt: '2026-09-12T09:00:00Z',
+          activity: 'AWAITING_APPROVAL',
+        }),
+      ]);
+
+      // On agrandit la tuile qui N'attend PAS (la seconde après le tri).
+      zoomButton(1).click();
+      fixture.detectChanges();
+
+      expect(component.zoomed()).toBe('w-1');
+      expect(dom().querySelector('.mosaique__awaiting')?.textContent)
+        .toContain('1 terminal attend votre autorisation');
+    });
+
+    it('« Entrer » n\'agrandit pas : ce sont deux gestes distincts', async () => {
+      await twoTiles();
+
+      (dom().querySelector('.mosaique__enter') as HTMLAnchorElement).click();
+      fixture.detectChanges();
+
+      expect(component.zoomed()).toBeNull();
+    });
+
+    it('une tuile agrandie qui quitte le registre rend la mosaïque', async () => {
+      await twoTiles();
+      zoomButton().click();
+      fixture.detectChanges();
+      expect(component.zoomed()).toBe('w-1');
+
+      component.refresh();
+      http.expectOne(REGISTRY).flush(registry([terminal({ workspaceId: 'w-2' })]));
+      fixture.detectChanges();
+      await settle();
+
+      expect(component.zoomed()).toBeNull();
+    });
+
+    it('dit son état au clavier : un libellé écrit, jamais une icône seule', async () => {
+      await twoTiles();
+
+      expect(zoomButton().getAttribute('aria-pressed')).toBe('false');
+      expect(zoomButton().getAttribute('aria-label')).toBe('Agrandir web');
+
+      zoomButton().click();
+      fixture.detectChanges();
+
+      expect(zoomButton().getAttribute('aria-pressed')).toBe('true');
+      expect(zoomButton().getAttribute('aria-label')).toBe('Rendre web à la mosaïque');
+    });
+  });
 });
