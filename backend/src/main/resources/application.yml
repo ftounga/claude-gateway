@@ -349,6 +349,26 @@ app:
       # TEMPORAIRES du fournisseur (429 trop de requêtes, 529 surchargé) : un 500 n'est jamais
       # rejoué, la série d'outils du tour pourrait être exécutée deux fois.
       agent-max-attempts: ${ANTHROPIC_AGENT_MAX_ATTEMPTS:3}
+  governance:
+    # Le JUGE INDÉPENDANT (F-94 / SF-94-02) : un SECOND appel qui compare la carte du poste aux
+    # notes des projets et répond à une question unique — « qu'est-ce qui est cité là et absent
+    # d'ici ? ». Best-effort : son résultat est une LISTE À VÉRIFIER, jamais une autorité.
+    juge:
+      # Coupe-circuit. `false` : aucun appel n'est jamais émis, la gouvernance continue sans filet
+      # sémantique (le marqueur de fin de tour, lui, reste gratuit et actif).
+      enabled: ${APP_GOVERNANCE_JUGE_ENABLED:true}
+      # Modèle du juge. Vide => le modèle RAPIDE du catalogue : un audit de forme close sur une
+      # matière déjà rassemblée n'a pas besoin du modèle le plus cher. Cette porte permet de viser
+      # un modèle plus capable SANS livraison si la qualité des verdicts le demande.
+      model: ${APP_GOVERNANCE_JUGE_MODEL:}
+      # Plafond de sortie : un verdict tient en quelques lignes, le raisonnement qui le précède en
+      # peu. Borné à [100, 4000] ; hors bornes => défaut.
+      max-tokens: ${APP_GOVERNANCE_JUGE_MAX_TOKENS:1000}
+      # LE GARDE-FOU QUI COMPTE : ce qu'on accepte d'ajouter à la fin d'un tour. Le délai HTTP du
+      # chat est de 120 s — sans borne propre, un fournisseur lent ajouterait deux minutes avant
+      # que l'utilisateur ne voie sa réponse. Dépassé, on rend la main et la session se termine
+      # normalement. Borné à [PT5S, PT120S].
+      timeout: ${APP_GOVERNANCE_JUGE_TIMEOUT:PT25S}
   byok:
     # Chiffrement des clés API utilisateur (F-03, OQ-06 : AWS KMS envelope encryption).
     # kms-key-id vide => BYOK dormant (l'ajout de clé renvoie 503), sauf si local-key est fourni.
