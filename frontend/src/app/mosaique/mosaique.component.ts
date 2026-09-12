@@ -2,6 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import {
   Component,
   DestroyRef,
+  HostListener,
   NgZone,
   OnDestroy,
   OnInit,
@@ -102,6 +103,14 @@ export class MosaiqueComponent implements OnInit, OnDestroy {
   /** Heure du dernier état réellement obtenu. */
   readonly lastUpdated = signal<Date | null>(null);
 
+  /**
+   * Le projet dont la tuile est **agrandie** (F-83 / SF-83-03), ou `null` — la mosaïque.
+   *
+   * <p>Un état d'écran, pas une adresse : porter l'agrandissement dans l'URL rouvrirait la page — et
+   * donc les quatre flux — au moindre retour arrière, ce que cet écran passe son temps à éviter.</p>
+   */
+  readonly zoomed = signal<string | null>(null);
+
   /** Les tuiles, **ce qui attend une décision d'abord** — le tri fait partie du signal (§12). */
   readonly tiles = computed<MosaiqueTile[]>(() => {
     const terminals = this.registry()?.terminals ?? [];
@@ -157,6 +166,37 @@ export class MosaiqueComponent implements OnInit, OnDestroy {
     this.load();
   }
 
+  /**
+   * **Agrandir une tuile, et la rendre à la mosaïque** (F-83 / SF-83-03).
+   *
+   * <p>C'est la réponse à l'écran de portable, prévue dès le cadrage : quatre flux complets tiennent
+   * sur un grand écran, et sur un petit on en regarde un à la fois — sans quitter la page.</p>
+   *
+   * <p><b>Le flux n'est pas rouvert au passage.</b> Agrandir ne change que la mise en page : les
+   * quatre lectures restent branchées, les quatre terminaux restent dans le document, et celui qu'on
+   * agrandit garde son défilement et son contenu. C'est le critère écrit au cadrage, et c'est un
+   * test qui le tient.</p>
+   */
+  toggleZoom(workspaceId: string): void {
+    this.zoomed.update((current) => (current === workspaceId ? null : workspaceId));
+  }
+
+  /** Le libellé du bouton dit **l'état**, jamais une icône seule. */
+  zoomLabel(tile: MosaiqueTile): string {
+    return this.zoomed() === tile.workspaceId
+      ? `Rendre ${tile.projectName} à la mosaïque`
+      : `Agrandir ${tile.projectName}`;
+  }
+
+  /**
+   * Échap rend la mosaïque. Le geste standard pour « revenir », et il ne coûte aucun pixel — sur
+   * cet écran, chaque ligne de chrome est comptée.
+   */
+  @HostListener('document:keydown.escape')
+  closeZoom(): void {
+    this.zoomed.set(null);
+  }
+
   /** Ce que la tuile écrit sous le nom du projet : chez qui l'on est. */
   hostLabel(tile: MosaiqueTile): string {
     return tile.hostName ?? 'Hébergé';
@@ -199,6 +239,12 @@ export class MosaiqueComponent implements OnInit, OnDestroy {
         view.close();
         this.views.delete(workspaceId);
       }
+    }
+    // Une tuile agrandie qui quitte le registre rend la mosaïque : on ne garde pas un
+    // agrandissement sur un terminal qui n'existe plus.
+    const zoomed = this.zoomed();
+    if (zoomed !== null && !seen.has(zoomed)) {
+      this.zoomed.set(null);
     }
     for (const terminal of terminals) {
       if (!this.views.has(terminal.workspaceId)) {
