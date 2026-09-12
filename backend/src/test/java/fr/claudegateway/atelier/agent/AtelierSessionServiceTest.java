@@ -1339,8 +1339,8 @@ class AtelierSessionServiceTest {
 
     @Test
     void aProjectWithoutTheOptionOpensItsSessionWithoutAnyPermissionPolicy() {
-        // La porte est ARMÉE par défaut depuis F-73 / SF-73-02 : ce cas-ci est celui d'un projet
-        // où l'utilisateur l'a explicitement éteinte, et il vérifie que le réglage est bien lu.
+        // Ce cas-ci est celui d'un projet où le réglage est explicitement éteint, et il vérifie que
+        // la valeur portée par le projet est bien lue — quel que soit le défaut du moment.
         stubNominalRun();
         Workspace disarmed = ws(null);
         disarmed.setAgentAskBeforeBash(false);
@@ -1352,15 +1352,19 @@ class AtelierSessionServiceTest {
     }
 
     @Test
-    void aFreshProjectOpensItsSessionAskingBeforeShellCommands() {
-        // Le défaut de l'entité (F-73 / SF-73-02) arrive jusqu'à la politique d'outils de la
-        // session : c'est le chemin complet, du champ en base à ce que le fournisseur reçoit.
+    void aFreshProjectOpensItsSessionWithoutAskingBeforeShellCommands() {
+        // Le défaut de l'entité arrive jusqu'à la politique d'outils de la session : c'est le chemin
+        // complet, du champ en base à ce que le fournisseur reçoit. Ce qu'il transporte a changé —
+        // SF-73-04 désarme la porte par défaut, à titre TEMPORAIRE (décision du PO du 2026-09-12) :
+        // l'invite d'autorisation ne s'affiche pas, et armée la porte rendait toute première
+        // commande d'un projet neuf impossible (deux tours expirés à 120 s en production).
+        // Ce test rebascule le jour où l'affichage est réparé et la porte réarmée.
         stubNominalRun();
 
         service(enabled()).runTask(USER, WORKSPACE, "go");
 
         assertThat(permissionsSentAtSessionOpening())
-                .isEqualTo(SessionPermissions.of(true));
+                .isEqualTo(SessionPermissions.of(false));
     }
 
     @Test

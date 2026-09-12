@@ -69,7 +69,11 @@ class WorkspaceServiceHostTerminalTest {
         assertThat(terminal.getExecutionTarget()).isEqualTo(WorkspaceExecutionTarget.RUNNER);
         // La porte de confirmation de F-73 / SF-73-02, ARMÉE : un terminal de poste ne desserre
         // rien. C'est la décision P4 du PO, et elle vaut aussi pour lui.
-        assertThat(terminal.isAgentAskBeforeBash()).isTrue();
+        // SF-73-04 : la porte est DÉSARMÉE par défaut, à titre temporaire (décision du PO du
+        // 2026-09-12). Armée, elle rendait toute première commande d'un projet neuf
+        // impossible : l'invite d'autorisation ne s'affiche pas, et le tour expirait au bout
+        // de 120 s. Ce test rebascule le jour où l'affichage est réparé et la porte réarmée.
+        assertThat(terminal.isAgentAskBeforeBash()).isFalse();
     }
 
     @Test

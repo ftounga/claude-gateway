@@ -229,21 +229,30 @@ public class Workspace {
      * de session : la politique d'outils est fixée pour toute la vie de la session, une bascule ne
      * change donc pas une sandbox déjà ouverte.
      *
-     * <p><b>{@code true} par défaut</b> depuis F-73 / SF-73-02 (ADR-019). SF-47-04 l'avait mis à
-     * {@code false} le 2026-09-10, dans un dispositif qu'on croyait à deux verrous : la porte
-     * <i>et</i> le confinement du runner. Vérification faite, ce confinement n'existait pas pour
-     * {@code bash} — seul le {@code cwd} passait par la garde, jamais la commande. Il ne restait
-     * qu'un verrou, désarmé. Le confinement est retiré (SF-73-01) et la porte redevient ce qui
-     * s'interpose avant une commande.</p>
+     * <p><b>{@code false} par défaut</b> depuis SF-73-04 (migration 077), <b>à titre temporaire et
+     * sur décision du PO du 2026-09-12</b>. SF-73-02 l'avait armée quelques heures plus tôt, et le
+     * raisonnement tenait : le confinement retiré (SF-73-01), la porte devenait ce qui s'interpose.
+     * Mais il supposait que <b>l'invite s'affiche</b> — et elle ne s'affiche pas. Deux tours
+     * consécutifs en production le même jour : « Autorisation demandée », puis « Aucune décision
+     * dans le délai : commande refusée », deux fois, 247 s pour rien. Armée, la porte rendait
+     * <b>toute première commande d'un projet neuf</b> impossible.</p>
      *
-     * <p>Le défaut est posé <b>ici et en base</b> (migration 073) : ici pour tout code Java qui crée
+     * <p><b>Ce que ce défaut coûte, et qui est assumé</b> : le confinement n'existe plus depuis
+     * F-73. Porte désarmée, un projet neuf exécute donc des commandes sur la machine <b>sans
+     * confinement et sans confirmation</b>. Restent le journal d'audit, le coupe-circuit, et la
+     * déclaration de portée au démarrage du runner. Ce n'est <b>ni la fin de F-73 ni celle de
+     * l'ADR-019</b> : le défaut d'affichage (famille F-47) doit être traité, et la porte réarmée
+     * ensuite.</p>
+     *
+     * <p>Le défaut est posé <b>ici et en base</b> (migration 077) : ici pour tout code Java qui crée
      * un projet, en base pour tout {@code INSERT} qui omettrait la colonne. Les projets
-     * <b>existants</b> ne sont pas modifiés — aucune donnée n'est réécrite.</p>
+     * <b>existants</b> ne sont pas modifiés — aucune donnée n'est réécrite, y compris ceux créés
+     * armés entre les deux décisions.</p>
      *
      * <p><b>Limite connue, assumée par le PO</b> : cette porte ne couvre que l'outil {@code bash}.
      * Une lecture de fichier ne demande rien.</p>
      */
     @Column(name = "agent_ask_before_bash", nullable = false)
     @Builder.Default
-    private boolean agentAskBeforeBash = true;
+    private boolean agentAskBeforeBash = false;
 }
