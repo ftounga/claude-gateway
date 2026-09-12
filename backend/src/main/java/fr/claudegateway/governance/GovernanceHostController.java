@@ -9,11 +9,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.atelier.AtelierAccessService;
 import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.governance.dto.GovernanceDepositPlan;
+import fr.claudegateway.governance.dto.GovernanceFileComparison;
 import fr.claudegateway.governance.dto.GovernanceHostSummary;
 import fr.claudegateway.governance.dto.GovernanceHostView;
 
@@ -40,15 +42,18 @@ public class GovernanceHostController {
 
     private final GovernanceActivationService activationService;
     private final GovernanceDepositService depositService;
+    private final GovernanceFileReadingService fileReadingService;
     private final GovernanceHostScope hostScope;
     private final AtelierAccessService atelierAccess;
     private final CurrentUser currentUser;
 
     public GovernanceHostController(GovernanceActivationService activationService,
-            GovernanceDepositService depositService, GovernanceHostScope hostScope,
+            GovernanceDepositService depositService,
+            GovernanceFileReadingService fileReadingService, GovernanceHostScope hostScope,
             AtelierAccessService atelierAccess, CurrentUser currentUser) {
         this.activationService = activationService;
         this.depositService = depositService;
+        this.fileReadingService = fileReadingService;
         this.hostScope = hostScope;
         this.atelierAccess = atelierAccess;
         this.currentUser = currentUser;
@@ -81,6 +86,28 @@ public class GovernanceHostController {
         atelierAccess.requireAccess();
         UUID userId = currentUser.requireId();
         return depositService.plan(userId, hostScope.require(userId, hostRef), packageId);
+    }
+
+    /**
+     * <b>Lire avant d'accepter</b> (F-75 / SF-75-02) : le contenu exact d'un fichier que le paquet
+     * déposerait, et ce que chaque dossier du poste porte déjà sous ce chemin.
+     *
+     * <p>Sans cela, on approuve un dépôt de fichiers à l'aveugle sur la machine d'un client. Et
+     * comme le dépôt n'écrase jamais, c'est l'<b>existant</b> qui restera quand il y en a un : le
+     * voir est la seule façon de savoir ce qu'on accepte.</p>
+     *
+     * <p>Seuls les chemins <b>apportés par le paquet</b> sont lisibles ici. C'est une lecture de
+     * gouvernance, pas un explorateur de fichiers.</p>
+     */
+    @GetMapping("/{hostRef}/{packageId}/file")
+    public GovernanceFileComparison file(@PathVariable String hostRef, @PathVariable UUID packageId,
+            @RequestParam(name = "path", required = false) String path) {
+        atelierAccess.requireAccess();
+        if (path == null || path.isBlank()) {
+            throw new InvalidGovernancePackageException("Chemin de fichier requis.");
+        }
+        UUID userId = currentUser.requireId();
+        return fileReadingService.read(userId, hostScope.require(userId, hostRef), packageId, path);
     }
 
     /**

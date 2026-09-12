@@ -101,6 +101,36 @@ public class GovernanceProjectFiles {
         }
     }
 
+    /**
+     * Lit un fichier du projet, <b>là où il vit réellement</b> (F-75 / SF-75-02).
+     *
+     * <p>C'est ce qui permet à l'écran de montrer le <b>différentiel</b> avant d'accepter : le dépôt
+     * n'écrase jamais, donc quand un fichier est déjà là, c'est <i>lui</i> qui restera — et il faut
+     * pouvoir le lire pour le savoir.</p>
+     *
+     * <p><b>Le contenu n'est jamais journalisé.</b> C'est le fichier de l'utilisateur, sur la machine
+     * d'un client ; une trace de lecture le recopierait dans les journaux de la gateway.</p>
+     *
+     * @return le contenu, ou {@link Optional#empty()} si le fichier n'existe pas ou n'a pas pu être lu
+     */
+    public Optional<String> read(UUID userId, Workspace workspace, String path) {
+        String rel = GovernancePath.normalizeOrNull(path);
+        if (rel == null) {
+            return Optional.empty();
+        }
+        try {
+            if (workspace.isRunnerTarget()) {
+                RunnerCallResult result = runnerToolGateway.readFile(RunnerTargets.of(workspace),
+                        UUID.randomUUID().toString(), rel);
+                return result.ok() ? Optional.ofNullable(result.content()) : Optional.empty();
+            }
+            return Optional.ofNullable(workspaceService.readFile(userId, workspace.getId(), rel));
+        } catch (RuntimeException ex) {
+            log.debug("Lecture de gouvernance impossible ({})", ex.getClass().getSimpleName());
+            return Optional.empty();
+        }
+    }
+
     /** Les chemins présents, ou une liste vide si le projet est illisible. Confort de lecture. */
     public List<String> listPathsOrEmpty(UUID userId, Workspace workspace) {
         return listPaths(userId, workspace).map(List::copyOf).orElseGet(List::of);

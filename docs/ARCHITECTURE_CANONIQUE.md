@@ -585,7 +585,13 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - Endpoints **`GET /governance/selection`**, **`PUT/DELETE /governance/selection/{packageId}`**,
     **`GET /governance/hosts`** (mes postes gouvernables), **`GET /governance/hosts/{hostRef}`**,
     **`GET /governance/hosts/{hostRef}/{packageId}/preview`** (l'annonce : ce qui sera écrit et où,
-    **dossier par dossier**, **sans rien écrire**), **`POST /governance/hosts/{hostRef}/{packageId}`**,
+    **dossier par dossier**, **sans rien écrire**),
+    **`GET /governance/hosts/{hostRef}/{packageId}/file?path=…`** (**lire avant d'accepter**,
+    F-75 / SF-75-02 : le contenu apporté par le paquet, et ce que chaque dossier porte **déjà** sous
+    ce chemin — puisque le dépôt n'écrase jamais, c'est l'existant qui restera. Seuls les chemins
+    **apportés par le paquet** sont lisibles : une lecture de gouvernance, pas un explorateur de
+    fichiers. Contenus bornés à 200 000 caractères et dossiers inspectés bornés à 20, coupe et
+    omissions **annoncées**), **`POST /governance/hosts/{hostRef}/{packageId}`**,
     **`POST .../{packageId}/apply`**, **`DELETE .../{packageId}`** (JWT, accès Atelier).
     `hostRef` = identifiant d'un poste possédé, ou le mot réservé `hosted`. **Il n'existe plus aucune
     route d'activation par projet** (`/workspaces/{id}/governance**` retirée par F-75).

@@ -238,6 +238,56 @@ class GovernanceDepositApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("lire avant d'accepter : le contenu apporté, et celui qui est déjà là")
+    void readsBeforeAccepting() throws Exception {
+        retain();
+
+        mockMvc.perform(get(HOSTED + "/" + packageId + "/file").param("path", "STATE.md")
+                        .contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.path").value("STATE.md"))
+                .andExpect(jsonPath("$.kind").value("TEMPLATE"))
+                .andExpect(jsonPath("$.content").value("# Gabarit du paquet\n"))
+                .andExpect(jsonPath("$.projects", Matchers.hasSize(1)))
+                .andExpect(jsonPath("$.projects[0].exists").value(true))
+                .andExpect(jsonPath("$.projects[0].identical").value(false))
+                // Le dépôt n'écrase jamais : c'est CE contenu-là qui restera, et on le voit.
+                .andExpect(jsonPath("$.projects[0].content").value("# Mon état à moi\n"));
+
+        // Lire n'écrit rien.
+        assertThat(workspaceService.tree(aliceId, project))
+                .doesNotContain(".claude/skills/explique.md");
+    }
+
+    @Test
+    @DisplayName("sans chemin, la lecture est refusée ; hors du paquet, elle est introuvable")
+    void readingIsBoundedToThePackage() throws Exception {
+        retain();
+
+        mockMvc.perform(get(HOSTED + "/" + packageId + "/file")
+                        .contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isBadRequest());
+
+        // CLAUDE.md existe bel et bien dans le dossier — mais le paquet ne l'apporte pas.
+        mockMvc.perform(get(HOSTED + "/" + packageId + "/file").param("path", "CLAUDE.md")
+                        .contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("la lecture d'un fichier sur le poste d'un autre ne rend aucun contenu")
+    void readingNeverCrossesAccounts() throws Exception {
+        retain();
+
+        mockMvc.perform(get(HOSTED + "/" + packageId + "/file").param("path", "STATE.md")
+                        .contextPath("/api").header("Authorization", "Bearer " + bobToken))
+                .andExpect(status().isOk())
+                // Bob a son propre poste « Hébergé », vide : il lit le paquet, jamais les dossiers
+                // d'Alice.
+                .andExpect(jsonPath("$.projects", Matchers.hasSize(0)));
+    }
+
+    @Test
     @DisplayName("un dossier neuf embarque la sélection marquée « appliquée par défaut »")
     void newFolderEmbarksDefaults() throws Exception {
         mockMvc.perform(put("/api/governance/selection/" + packageId).contextPath("/api")
