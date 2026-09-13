@@ -11,7 +11,7 @@ maquette 2, encart « Réponse préparée pour votre manager »)
 
 ## Statut
 
-`in-progress`
+`done` — PR #542
 
 ## Date de création
 
