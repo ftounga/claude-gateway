@@ -41,6 +41,20 @@ public interface BillingProvider {
     CheckoutSession createAtelierOptionCheckoutSession(AtelierOptionCheckoutCommand command);
 
     /**
+     * Crée une session de paiement hébergée pour l'<b>option Vigie</b> (F-107 / SF-107-03) : un abonnement
+     * mensuel distinct de celui du plan, marqué {@code kind=vigie_option}.
+     *
+     * <p>Méthode par défaut <b>indisponible</b> : un fournisseur qui ne sait pas vendre l'option ne la
+     * vend pas (503), plutôt que de la vendre comme un plan.</p>
+     *
+     * @throws BillingProviderUnavailableException si le fournisseur ou le price ID n'est pas configuré
+     * @throws BillingProviderException            en cas d'échec d'appel au fournisseur
+     */
+    default CheckoutSession createVigieOptionCheckoutSession(VigieOptionCheckoutCommand command) {
+        throw new BillingProviderUnavailableException("Option Vigie non proposée par ce fournisseur.");
+    }
+
+    /**
      * Programme la résiliation d'un abonnement <b>en fin de période</b> (F-40 / SF-40-02) : le
      * service reste dû jusqu'au terme déjà payé, et le fournisseur émettra l'événement de
      * suppression à ce terme. Ne coupe rien sur-le-champ.

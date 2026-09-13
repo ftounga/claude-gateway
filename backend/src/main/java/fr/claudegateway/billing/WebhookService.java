@@ -60,6 +60,12 @@ public class WebhookService {
                     applyAtelierOptionState(event, SubscriptionStatus.fromStripe(event.status()), false);
             case ATELIER_OPTION_DELETED ->
                     applyAtelierOptionState(event, SubscriptionStatus.CANCELED, true);
+            case VIGIE_OPTION_COMPLETED ->
+                    applyVigieOptionState(event, SubscriptionStatus.ACTIVE, true);
+            case VIGIE_OPTION_UPDATED ->
+                    applyVigieOptionState(event, SubscriptionStatus.fromStripe(event.status()), false);
+            case VIGIE_OPTION_DELETED ->
+                    applyVigieOptionState(event, SubscriptionStatus.CANCELED, true);
             case SUBSCRIPTION_UPDATED -> applySubscriptionUpdate(event);
             case SUBSCRIPTION_DELETED -> applySubscriptionDeleted(event);
             case UNHANDLED -> log.debug("Événement de facturation non géré, ignoré");
@@ -195,8 +201,80 @@ public class WebhookService {
         return true;
     }
 
+    /**
+     * Applique un événement d'<b>option Vigie</b> (F-107 / SF-107-03), sur le modèle exact de l'option
+     * Forge : état dans {@code teams_option_status}, identifiant du second abonnement dans sa colonne, et
+     * <b>jamais</b> le plan, son statut ni {@code stripe_subscription_id}.
+     */
+    private void applyVigieOptionState(BillingEvent event, SubscriptionStatus status,
+            boolean clearScheduledCancellation) {
+        Optional<Subscription> found = resolveForVigieOption(event);
+        if (found.isEmpty()) {
+            log.warn("Événement d'option Vigie sans abonnement correspondant : ignoré");
+            return;
+        }
+        Subscription subscription = found.get();
+        if (StringUtils.hasText(event.stripeCustomerId())) {
+            subscription.setStripeCustomerId(event.stripeCustomerId());
+        }
+        if (StringUtils.hasText(event.stripeSubscriptionId())) {
+            subscription.setVigieOptionStripeSubscriptionId(event.stripeSubscriptionId());
+        }
+        subscription.setTeamsOptionStatus(status);
+        if (clearScheduledCancellation) {
+            subscription.setVigieOptionCancelAt(null);
+        }
+        subscriptionRepository.save(subscription);
+    }
+
+    /**
+     * Seconde ligne de défense de l'option Vigie : un événement d'abonnement sans métadonnée dont
+     * l'identifiant désigne l'option Vigie ne doit jamais tomber sur le plan.
+     *
+     * @return {@code true} si l'événement portait sur l'option Vigie et lui a été appliqué
+     */
+    private boolean applyToVigieOptionIfConcerned(BillingEvent event, SubscriptionStatus status,
+            boolean clearScheduledCancellation) {
+        if (!StringUtils.hasText(event.stripeSubscriptionId())) {
+            return false;
+        }
+        Optional<Subscription> found = subscriptionRepository
+                .findByVigieOptionStripeSubscriptionId(event.stripeSubscriptionId());
+        if (found.isEmpty()) {
+            return false;
+        }
+        Subscription subscription = found.get();
+        subscription.setTeamsOptionStatus(status);
+        if (clearScheduledCancellation) {
+            subscription.setVigieOptionCancelAt(null);
+        }
+        subscriptionRepository.save(subscription);
+        return true;
+    }
+
+    private Optional<Subscription> resolveForVigieOption(BillingEvent event) {
+        if (StringUtils.hasText(event.stripeSubscriptionId())) {
+            Optional<Subscription> byOption = subscriptionRepository
+                    .findByVigieOptionStripeSubscriptionId(event.stripeSubscriptionId());
+            if (byOption.isPresent()) {
+                return byOption;
+            }
+        }
+        if (event.userId() != null) {
+            Optional<Subscription> byUser = subscriptionRepository.findByUserId(event.userId());
+            if (byUser.isPresent()) {
+                return byUser;
+            }
+        }
+        if (StringUtils.hasText(event.stripeCustomerId())) {
+            return subscriptionRepository.findByStripeCustomerId(event.stripeCustomerId());
+        }
+        return Optional.empty();
+    }
+
     private void applySubscriptionUpdate(BillingEvent event) {
-        if (applyToAtelierOptionIfConcerned(event, SubscriptionStatus.fromStripe(event.status()), false)) {
+        if (applyToAtelierOptionIfConcerned(event, SubscriptionStatus.fromStripe(event.status()), false)
+                || applyToVigieOptionIfConcerned(event, SubscriptionStatus.fromStripe(event.status()), false)) {
             return;
         }
         Optional<Subscription> found = resolve(event);
@@ -227,7 +305,8 @@ public class WebhookService {
     private void applySubscriptionDeleted(BillingEvent event) {
         // Fin effective d'une option résiliée : le droit se referme, la date programmée s'efface,
         // et le plan n'est pas touché.
-        if (applyToAtelierOptionIfConcerned(event, SubscriptionStatus.CANCELED, true)) {
+        if (applyToAtelierOptionIfConcerned(event, SubscriptionStatus.CANCELED, true)
+                || applyToVigieOptionIfConcerned(event, SubscriptionStatus.CANCELED, true)) {
             return;
         }
         Optional<Subscription> found = resolve(event);

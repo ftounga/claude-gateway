@@ -196,8 +196,9 @@
               <p class="billing__card-tokens">
                 {{ plan.tokens | number }} tokens inclus{{ tokensSuffix(plan) }}
               </p>
-              @if (plan.code === 'GOLD') {
-                <p class="billing__card-feature">Forge (Claude Code Lite) incluse</p>
+              <!-- F-107 / SF-107-03 : un Gold se distingue par l'espace qu'il inclut. -->
+              @if (planSpacesLabel(plan); as spaces) {
+                <p class="billing__card-feature">{{ spaces }}</p>
               }
             }
             <button
@@ -330,6 +331,112 @@
     </section>
   }
 
+  <!-- ===== Option Vigie (F-107 / SF-107-03) : Teams, Radar et réunions, en supplément ===== -->
+  @if (vigieOption(); as vigie) {
+    <section class="billing__section" aria-label="Option Vigie">
+      <div class="billing__section-head">
+        <h2>Option Vigie</h2>
+        <p>
+          La Vigie — le Radar de ce que l'organisation attend, vos conversations Teams et vos réunions —
+          pour un client suivi.
+        </p>
+      </div>
+
+      <article class="billing__card billing__card--option">
+        <div class="billing__option-main">
+          <div class="billing__card-flags">
+            @if (vigie.includedInPlan) {
+              <span class="billing__flag billing__flag--current">Incluse dans votre offre</span>
+            } @else if (vigieOptionEnding()) {
+              <span class="billing__flag billing__flag--current">Se termine bientôt</span>
+            } @else if (vigieOptionActive()) {
+              <span class="billing__flag billing__flag--reco">Active</span>
+            } @else if (vigieOptionForAdministrator()) {
+              <span class="billing__flag billing__flag--current">Incluse (administrateur)</span>
+            }
+          </div>
+
+          <h3 class="billing__card-name">Vigie</h3>
+
+          @if (vigie.includedInPlan) {
+            <p class="billing__card-tokens">
+              Votre offre comprend déjà la Vigie : l'option n'a pas lieu d'être.
+            </p>
+          } @else if (vigieOptionForAdministrator()) {
+            <p class="billing__card-tokens">
+              Votre compte administrateur a accès à la Vigie sans l'option : rien ne vous est facturé.
+            </p>
+          } @else {
+            <p class="billing__card-price">
+              <span class="amount">{{ vigie.priceEur }} €</span><span class="per">/ mois</span>
+            </p>
+            <p class="billing__card-tokens">
+              S'ajoute à votre offre. <strong>Votre quota de tokens ne change pas</strong> : la synchro du
+              Radar a sa propre réserve, qui ne mange jamais celui de vos conversations.
+            </p>
+            @if (vigie.goldCarrier) {
+              <p class="billing__card-tokens">
+                Sur Gold Forge, l'offre <strong>Gold complet</strong> comprend la Forge et la Vigie pour
+                moins cher que l'offre et l'option réunies.
+              </p>
+            }
+            @if (!vigie.available) {
+              <p class="billing__card-tokens">L'option Vigie n'est pas encore proposée à la souscription.</p>
+            }
+            @if (vigieOptionEnding() && vigie.cancelAt) {
+              <p class="billing__card-tokens">
+                Résiliation programmée : votre accès reste ouvert jusqu'au
+                {{ vigie.cancelAt | date: 'longDate' }}.
+              </p>
+            }
+          }
+        </div>
+
+        <div class="billing__option-action">
+          @if (vigie.includedInPlan) {
+            <button mat-stroked-button type="button" class="billing__card-cta is-outline" [disabled]="true">
+              Déjà incluse
+            </button>
+          } @else if (vigieOptionEnding()) {
+            <button mat-stroked-button type="button" class="billing__card-cta is-outline" [disabled]="true">
+              Résiliation programmée
+            </button>
+          } @else if (vigieOptionActive()) {
+            <button
+              mat-stroked-button
+              type="button"
+              class="billing__card-cta is-outline"
+              [disabled]="vigieOptionInProgress()"
+              (click)="cancelVigieOption()"
+            >
+              @if (vigieOptionInProgress()) { Traitement… } @else { Résilier l'option }
+            </button>
+          } @else if (vigieOptionForAdministrator()) {
+            <button mat-stroked-button type="button" class="billing__card-cta is-outline" [disabled]="true">
+              Incluse (administrateur)
+            </button>
+          } @else {
+            <button
+              mat-flat-button
+              color="primary"
+              type="button"
+              class="billing__card-cta"
+              [disabled]="!vigie.available || vigieOptionInProgress()"
+              (click)="subscribeVigieOption()"
+            >
+              @if (vigieOptionInProgress()) {
+                Redirection…
+              } @else if (!vigie.available) {
+                Bientôt disponible
+              } @else {
+                Ajouter l'option
+              }
+            </button>
+          }
+        </div>
+      </article>
+    </section>
+  }
 
   <!-- ===== Postes comptés (F-65 / SF-65-02) =====
        Placée APRÈS l'option Forge et AVANT les recharges : c'est une propriété de l'abonnement

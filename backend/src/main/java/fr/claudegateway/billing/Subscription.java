@@ -122,6 +122,18 @@ public class Subscription {
     @Column(name = "teams_option_status", length = 16)
     private SubscriptionStatus teamsOptionStatus;
 
+    /**
+     * Identifiant de l'abonnement fournisseur de l'<b>option Vigie</b> (F-107 / SF-107-03), dont l'état
+     * vit dans {@link #teamsOptionStatus} — l'option Vigie remplace l'option Teams. Distinct de
+     * {@link #stripeSubscriptionId} : une résiliation d'option ne doit jamais annuler le plan.
+     */
+    @Column(name = "vigie_option_stripe_subscription_id", length = 64)
+    private String vigieOptionStripeSubscriptionId;
+
+    /** Terme d'une résiliation d'option Vigie programmée ; {@code null} sinon (F-107 / SF-107-03). */
+    @Column(name = "vigie_option_cancel_at")
+    private OffsetDateTime vigieOptionCancelAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

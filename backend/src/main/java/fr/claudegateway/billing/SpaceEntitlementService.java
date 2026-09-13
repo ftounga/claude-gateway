@@ -50,12 +50,14 @@ public class SpaceEntitlementService {
      * La règle de chaque espace.
      *
      * <ul>
-     *   <li><b>Forge</b> : incluse dans Gold seul (ADR-012 ; BYOK en est sorti avec SF-107-01) ; option
-     *       portée par Solo, Pro et BYOK ; état dans {@code atelier_option_status}.</li>
-     *   <li><b>Vigie</b> : incluse dans aucun plan (décision D5 du volet Teams, reprise par F-106) ;
-     *       option portée par tout plan mensuel, Gold compris ; état dans {@code teams_option_status}.
-     *       {@code DAILY} ne porte rien : un pass journée ne porte pas un abonnement mensuel.</li>
+     *   <li><b>Forge</b> : incluse dans Gold Forge ({@code GOLD}, ADR-012) et Gold complet ; option
+     *       portée par Solo, Pro, BYOK (SF-107-01) et Gold Vigie ; état dans {@code atelier_option_status}.</li>
+     *   <li><b>Vigie</b> : incluse dans Gold Vigie et Gold complet (F-107 / SF-107-03) ; option portée
+     *       par Solo, Pro, BYOK et Gold Forge ; état dans {@code teams_option_status} — l'option Vigie
+     *       remplace l'option Teams (cadrage F-107 §3).</li>
      * </ul>
+     *
+     * <p>{@code DAILY} ne porte rien : un pass journée ne porte pas un abonnement mensuel.</p>
      */
     private static final Map<EntitlementSpace, SpaceRule> RULES = rules();
 
@@ -189,11 +191,11 @@ public class SpaceEntitlementService {
     private static Map<EntitlementSpace, SpaceRule> rules() {
         Map<EntitlementSpace, SpaceRule> rules = new EnumMap<>(EntitlementSpace.class);
         rules.put(EntitlementSpace.FORGE, new SpaceRule(
-                EnumSet.of(PlanCode.GOLD),
-                EnumSet.of(PlanCode.SOLO, PlanCode.PRO, PlanCode.BYOK),
+                EnumSet.of(PlanCode.GOLD, PlanCode.GOLD_COMPLETE),
+                EnumSet.of(PlanCode.SOLO, PlanCode.PRO, PlanCode.BYOK, PlanCode.GOLD_VIGIE),
                 Subscription::getAtelierOptionStatus));
         rules.put(EntitlementSpace.VIGIE, new SpaceRule(
-                EnumSet.noneOf(PlanCode.class),
+                EnumSet.of(PlanCode.GOLD_VIGIE, PlanCode.GOLD_COMPLETE),
                 EnumSet.of(PlanCode.SOLO, PlanCode.PRO, PlanCode.GOLD, PlanCode.BYOK),
                 Subscription::getTeamsOptionStatus));
         return Map.copyOf(rules);

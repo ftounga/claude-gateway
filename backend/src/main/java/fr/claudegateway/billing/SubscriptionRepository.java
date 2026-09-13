@@ -26,6 +26,9 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
      */
     Optional<Subscription> findByAtelierOptionStripeSubscriptionId(String atelierOptionStripeSubscriptionId);
 
+    /** Abonnement dont l'<b>option Vigie</b> (F-107 / SF-107-03) porte cet identifiant fournisseur (index unique). */
+    Optional<Subscription> findByVigieOptionStripeSubscriptionId(String vigieOptionStripeSubscriptionId);
+
     /** Suppression RGPD : l'abonnement d'un utilisateur (isolation {@code user_id}). */
     void deleteByUserId(UUID userId);
 }

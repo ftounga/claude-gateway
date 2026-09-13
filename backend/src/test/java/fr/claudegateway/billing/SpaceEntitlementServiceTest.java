@@ -259,6 +259,8 @@ class SpaceEntitlementServiceTest {
             assertThat(service.isOptionCarrier(PlanCode.PRO, FORGE)).isTrue();
             assertThat(service.isOptionCarrier(PlanCode.BYOK, FORGE)).isTrue();
             assertThat(service.isOptionCarrier(PlanCode.GOLD, FORGE)).isFalse();
+            assertThat(service.isOptionCarrier(PlanCode.GOLD_COMPLETE, FORGE)).isFalse();
+            assertThat(service.isOptionCarrier(PlanCode.GOLD_VIGIE, FORGE)).as("SF-107-03").isTrue();
             assertThat(service.isOptionCarrier(PlanCode.DAILY, FORGE)).isFalse();
             assertThat(service.isOptionCarrier(null, FORGE)).isFalse();
         }
@@ -375,8 +377,9 @@ class SpaceEntitlementServiceTest {
         }
 
         @Test
-        void noPlanIsIncluding() {
-            for (PlanCode plan : PlanCode.values()) {
+        void noPlanOfBeforeF107IsIncluding() {
+            for (PlanCode plan : new PlanCode[] {PlanCode.SOLO, PlanCode.PRO, PlanCode.DAILY, PlanCode.GOLD,
+                    PlanCode.BYOK}) {
                 assertThat(service.isIncludedInPlan(vigie(plan, SubscriptionStatus.ACTIVE, null), VIGIE))
                         .as(plan.name()).isFalse();
             }
@@ -424,7 +427,68 @@ class SpaceEntitlementServiceTest {
             assertThat(service.isOptionCarrier(PlanCode.GOLD, VIGIE)).isTrue();
             assertThat(service.isOptionCarrier(PlanCode.BYOK, VIGIE)).isTrue();
             assertThat(service.isOptionCarrier(PlanCode.DAILY, VIGIE)).isFalse();
+            assertThat(service.isOptionCarrier(PlanCode.GOLD_VIGIE, VIGIE)).isFalse();
+            assertThat(service.isOptionCarrier(PlanCode.GOLD_COMPLETE, VIGIE)).isFalse();
             assertThat(service.isOptionCarrier(null, VIGIE)).isFalse();
+        }
+    }
+
+    // =====================================================================================
+    // SF-107-03 — Gold Vigie et Gold complet
+    // =====================================================================================
+
+    private Subscription both(PlanCode plan, SubscriptionStatus status, SubscriptionStatus forgeOption,
+            SubscriptionStatus vigieOption) {
+        return Subscription.builder().userId(userId).planCode(plan).status(status)
+                .atelierOptionStatus(forgeOption).teamsOptionStatus(vigieOption).build();
+    }
+
+    @Nested
+    @DisplayName("SF-107-03 — un Gold se distingue par l'espace qu'il inclut")
+    class SpaceGolds {
+
+        @Test
+        @DisplayName("Gold Forge (GOLD) : Forge incluse, Vigie par l'option seulement")
+        void goldForgeIncludesForgeAndCarriesVigie() {
+            Subscription gold = both(PlanCode.GOLD, SubscriptionStatus.ACTIVE, null, null);
+            assertThat(service.isEntitled(gold, FORGE)).isTrue();
+            assertThat(service.isIncludedInPlan(gold, VIGIE)).isFalse();
+
+            Subscription withVigie = both(PlanCode.GOLD, SubscriptionStatus.ACTIVE, null, SubscriptionStatus.ACTIVE);
+            assertThat(service.isEntitled(withVigie, VIGIE)).isTrue();
+            assertThat(service.isGrantedByOption(withVigie, VIGIE)).isTrue();
+        }
+
+        @Test
+        @DisplayName("Gold Vigie : Vigie incluse, Forge refusée sans option, ouverte avec")
+        void goldVigieIncludesVigieAndCarriesForge() {
+            Subscription goldVigie = both(PlanCode.GOLD_VIGIE, SubscriptionStatus.ACTIVE, null, null);
+            assertThat(service.isEntitled(goldVigie, VIGIE)).isTrue();
+            assertThat(service.isIncludedInPlan(goldVigie, VIGIE)).isTrue();
+            assertThat(service.isEntitled(goldVigie, FORGE)).isFalse();
+
+            Subscription withForge = both(PlanCode.GOLD_VIGIE, SubscriptionStatus.ACTIVE, SubscriptionStatus.ACTIVE, null);
+            assertThat(service.isEntitled(withForge, FORGE)).isTrue();
+            assertThat(service.isGrantedByOption(withForge, FORGE)).isTrue();
+        }
+
+        @Test
+        @DisplayName("Gold complet : les deux espaces inclus, sursis compris")
+        void goldCompleteIncludesBothSpaces() {
+            Subscription complete = both(PlanCode.GOLD_COMPLETE, SubscriptionStatus.PAST_DUE, null, null);
+            assertThat(service.isEntitled(complete, FORGE)).isTrue();
+            assertThat(service.isEntitled(complete, VIGIE)).isTrue();
+            assertThat(service.isIncludedInPlan(complete, FORGE)).isTrue();
+            assertThat(service.isIncludedInPlan(complete, VIGIE)).isTrue();
+        }
+
+        @Test
+        @DisplayName("Gold complet résilié : plus rien d'inclus")
+        void canceledGoldCompleteOpensNothing() {
+            when(accessGrantService.isGrantedWithGrace(userId)).thenReturn(false);
+            Subscription complete = both(PlanCode.GOLD_COMPLETE, SubscriptionStatus.CANCELED, null, null);
+            assertThat(service.isEntitled(complete, FORGE)).isFalse();
+            assertThat(service.isEntitled(complete, VIGIE)).isFalse();
         }
     }
 

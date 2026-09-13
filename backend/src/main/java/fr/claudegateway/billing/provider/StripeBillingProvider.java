@@ -39,6 +39,9 @@ public class StripeBillingProvider implements BillingProvider {
     /** Métadonnée qui distingue une session/abonnement d'option Atelier (F-40) d'un plan. */
     private static final String ATELIER_OPTION_KIND = "atelier_option";
 
+    /** Métadonnée qui distingue une session/abonnement d'option Vigie (F-107 / SF-107-03) d'un plan. */
+    private static final String VIGIE_OPTION_KIND = "vigie_option";
+
     private final BillingProperties.Stripe config;
 
     public StripeBillingProvider(BillingProperties properties) {
@@ -148,12 +151,25 @@ public class StripeBillingProvider implements BillingProvider {
 
     @Override
     public CheckoutSession createAtelierOptionCheckoutSession(AtelierOptionCheckoutCommand command) {
+        return createOptionCheckoutSession(command.userId(), command.customerEmail(),
+                command.existingCustomerId(), command.priceId(), ATELIER_OPTION_KIND, "l'option Forge");
+    }
+
+    @Override
+    public CheckoutSession createVigieOptionCheckoutSession(VigieOptionCheckoutCommand command) {
+        return createOptionCheckoutSession(command.userId(), command.customerEmail(),
+                command.existingCustomerId(), command.priceId(), VIGIE_OPTION_KIND, "l'option Vigie");
+    }
+
+    /** Session d'abonnement d'option (Forge ou Vigie) : même parcours, métadonnée {@code kind} propre. */
+    private CheckoutSession createOptionCheckoutSession(UUID userId, String customerEmail,
+            String existingCustomerId, String priceId, String kind, String optionLabel) {
         if (!config.isConfigured()) {
             throw new BillingProviderUnavailableException("Fournisseur de paiement non configuré.");
         }
-        if (!StringUtils.hasText(command.priceId())) {
+        if (!StringUtils.hasText(priceId)) {
             throw new BillingProviderUnavailableException(
-                    "Aucun price ID configuré pour l'option Forge.");
+                    "Aucun price ID configuré pour " + optionLabel + ".");
         }
 
         // L'option est un ABONNEMENT mensuel, distinct de celui du plan : le mode ne dépend d'aucun
@@ -163,22 +179,22 @@ public class StripeBillingProvider implements BillingProvider {
                 .setMode(SessionCreateParams.Mode.SUBSCRIPTION)
                 .setSuccessUrl(config.successUrl())
                 .setCancelUrl(config.cancelUrl())
-                .setClientReferenceId(command.userId().toString())
-                .putMetadata("userId", command.userId().toString())
-                .putMetadata("kind", ATELIER_OPTION_KIND)
+                .setClientReferenceId(userId.toString())
+                .putMetadata("userId", userId.toString())
+                .putMetadata("kind", kind)
                 .setSubscriptionData(SessionCreateParams.SubscriptionData.builder()
-                        .putMetadata("userId", command.userId().toString())
-                        .putMetadata("kind", ATELIER_OPTION_KIND)
+                        .putMetadata("userId", userId.toString())
+                        .putMetadata("kind", kind)
                         .build())
                 .addLineItem(SessionCreateParams.LineItem.builder()
-                        .setPrice(command.priceId())
+                        .setPrice(priceId)
                         .setQuantity(1L)
                         .build());
 
-        if (StringUtils.hasText(command.existingCustomerId())) {
-            builder.setCustomer(command.existingCustomerId());
-        } else if (StringUtils.hasText(command.customerEmail())) {
-            builder.setCustomerEmail(command.customerEmail());
+        if (StringUtils.hasText(existingCustomerId)) {
+            builder.setCustomer(existingCustomerId);
+        } else if (StringUtils.hasText(customerEmail)) {
+            builder.setCustomerEmail(customerEmail);
         }
 
         try {
@@ -190,7 +206,7 @@ public class StripeBillingProvider implements BillingProvider {
             return new CheckoutSession(session.getUrl(), session.getId());
         } catch (StripeException ex) {
             // On ne journalise ni la clé ni le détail brut : message métier neutre.
-            log.warn("Échec de création de la session de souscription à l'option Atelier");
+            log.warn("Échec de création de la session de souscription à une option ({})", kind);
             throw new BillingProviderException("Échec de création de la session de paiement.", ex);
         }
     }
@@ -293,9 +309,11 @@ public class StripeBillingProvider implements BillingProvider {
 
         // Option Atelier (F-40) : distinguée par la métadonnée kind=atelier_option. L'identifiant
         // d'abonnement porté ici est celui de l'OPTION, jamais celui du plan.
-        if (ATELIER_OPTION_KIND.equals(kind)) {
+        if (ATELIER_OPTION_KIND.equals(kind) || VIGIE_OPTION_KIND.equals(kind)) {
             return new BillingEvent(
-                    BillingEventType.ATELIER_OPTION_COMPLETED,
+                    ATELIER_OPTION_KIND.equals(kind)
+                            ? BillingEventType.ATELIER_OPTION_COMPLETED
+                            : BillingEventType.VIGIE_OPTION_COMPLETED,
                     userId,
                     session.getCustomer(),
                     session.getSubscription(),
@@ -355,18 +373,24 @@ public class StripeBillingProvider implements BillingProvider {
         // Option Atelier (F-40) : un SECOND abonnement chez le fournisseur. Le traiter comme celui
         // du plan écraserait le plan — résilier l'option annulerait l'abonnement. La métadonnée est
         // posée à la création de l'abonnement (subscription_data), donc dès le premier événement.
-        BillingEventType effectiveType = ATELIER_OPTION_KIND.equals(kind)
-                ? (type == BillingEventType.SUBSCRIPTION_DELETED
-                        ? BillingEventType.ATELIER_OPTION_DELETED
-                        : BillingEventType.ATELIER_OPTION_UPDATED)
-                : type;
+        boolean deleted = type == BillingEventType.SUBSCRIPTION_DELETED;
+        boolean optionKind = ATELIER_OPTION_KIND.equals(kind) || VIGIE_OPTION_KIND.equals(kind);
+        BillingEventType effectiveType;
+        if (ATELIER_OPTION_KIND.equals(kind)) {
+            effectiveType = deleted ? BillingEventType.ATELIER_OPTION_DELETED : BillingEventType.ATELIER_OPTION_UPDATED;
+        } else if (VIGIE_OPTION_KIND.equals(kind)) {
+            // F-107 / SF-107-03 : l'option Vigie est, elle aussi, un second abonnement.
+            effectiveType = deleted ? BillingEventType.VIGIE_OPTION_DELETED : BillingEventType.VIGIE_OPTION_UPDATED;
+        } else {
+            effectiveType = type;
+        }
 
         return new BillingEvent(
                 effectiveType,
                 userId,
                 subscription.getCustomer(),
                 subscription.getId(),
-                ATELIER_OPTION_KIND.equals(kind) ? null : planCode,
+                optionKind ? null : planCode,
                 subscription.getStatus(),
                 toOffsetDateTime(subscription.getCurrentPeriodEnd()),
                 event.getId(),

@@ -294,10 +294,10 @@ Aucun de ces points n'est tranché par F-64 : ce sont des décisions commerciale
 |---|---|---|
 | Option Forge sur Solo / Pro | 40 € (inchangé) | l'actuelle option Atelier |
 | **Option Forge sur BYOK** | **70 €** | **servie depuis F-107 / SF-107-01** (§1, §3) — montant configuré, price à créer par le PO |
-| **Option Vigie** (Solo, Pro, BYOK) | **69 €** | Teams + Radar, un client suivi, réserve de synchro 3 M jetons |
-| Gold Forge | 199 € (l'actuel Gold) | 12 M jetons + Forge |
-| **Gold Vigie** | **229 €** (2 290 €/an) | 12 M jetons + Vigie |
-| **Gold complet** | **249 €** | 12 M jetons + Forge + Vigie (Vigie remisée de 25 %) |
+| **Option Vigie** (Solo, Pro, BYOK, Gold Forge) | **69 €** | Teams + Radar, un client suivi, réserve de synchro 3 M jetons — **configurée depuis F-107 / SF-107-03** (`vigie-option-display-price`, price `STRIPE_PRICE_VIGIE_OPTION` à créer par le PO) |
+| Gold Forge | 199 € (l'actuel Gold, code `GOLD`) | 12 M jetons + Forge — **libellé servi depuis SF-107-03** |
+| **Gold Vigie** | **229 €** (2 290 €/an) | 12 M jetons + Vigie — **configuré depuis SF-107-03** (code `GOLD_VIGIE`, prices `STRIPE_PRICE_GOLD_VIGIE[_YEARLY]` à créer) |
+| **Gold complet** | **249 €** | 12 M jetons + Forge + Vigie (Vigie remisée de 25 %) — **configuré depuis SF-107-03** (code `GOLD_COMPLETE`, price `STRIPE_PRICE_GOLD_COMPLETE` à créer ; aucun annuel décidé) |
 | **Client en plus — Forge** | 39 € (2e-3e, 2 M) · 29 € (4e-6e, 1,5 M) · 19 € (7e+, 1 M) | 0 jeton en BYOK |
 | **Client en plus — Vigie** | **39 €** fixe | 3 M jetons de synchro |
 | Essai Vigie | 2 semaines, code d'accès | réserve 3 M, première synchro offerte |

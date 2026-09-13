@@ -32,6 +32,7 @@ import {
   SubscriptionStatus,
   SubscriptionView,
   TopUpPack,
+  VigieOptionView,
 } from '../core/models/billing.models';
 import { AccessGrantView } from '../core/models/access-code.models';
 import { FORGE_ACCESS_CODE_FRAGMENT } from '../shared/forge-access';
@@ -103,6 +104,10 @@ export class BillingComponent implements OnInit {
   readonly atelierOption = signal<AtelierOptionView | null>(null);
   /** Vrai pendant un appel de souscription ou de résiliation de l'option (bouton désactivé). */
   readonly atelierOptionInProgress = signal(false);
+  /** État de l'option Vigie (F-107 / SF-107-03), ou null tant qu'il n'a pas pu être chargé. */
+  readonly vigieOption = signal<VigieOptionView | null>(null);
+  /** Vrai pendant un appel de souscription ou de résiliation de l'option Vigie. */
+  readonly vigieOptionInProgress = signal(false);
   /**
    * Statut de la clé BYOK (F-03), ou null tant qu'il n'a pas pu être chargé. Lu ici uniquement pour
    * savoir s'il faut rappeler à un abonné BYOK de déposer sa clé (F-41 / SF-41-03).
@@ -137,6 +142,7 @@ export class BillingComponent implements OnInit {
     this.loadPlans();
     this.loadTopUps();
     this.loadAtelierOption();
+    this.loadVigieOption();
     this.loadApiKeyStatus();
     this.loadAccessGrant();
     this.loadSeats();
@@ -186,6 +192,14 @@ export class BillingComponent implements OnInit {
     this.billingService.getAtelierOption().subscribe({
       next: (option) => this.atelierOption.set(option),
       error: () => this.atelierOption.set(null),
+    });
+  }
+
+  /** État de l'option Vigie (F-107 / SF-107-03). Échec non bloquant : la section reste masquée. */
+  loadVigieOption(): void {
+    this.billingService.getVigieOption().subscribe({
+      next: (option) => this.vigieOption.set(option),
+      error: () => this.vigieOption.set(null),
     });
   }
 
@@ -733,6 +747,115 @@ export class BillingComponent implements OnInit {
         return 'La facturation est momentanément indisponible.';
       default:
         return "Impossible de mettre à jour l'option Forge.";
+    }
+  }
+
+  // ------------------------------------------------ Offres par espace (F-107 / SF-107-03)
+
+  /**
+   * Ce qu'une carte d'offre dit des espaces qu'elle inclut. Seuls les Gold incluent un espace ; les
+   * autres offres le reçoivent par option (sections Option Forge / Option Vigie).
+   */
+  planSpacesLabel(plan: Plan): string | null {
+    switch (plan.code) {
+      case 'GOLD':
+        return 'Forge (Claude Code Lite) incluse';
+      case 'GOLD_VIGIE':
+        return 'Vigie incluse — Teams, Radar, réunions';
+      case 'GOLD_COMPLETE':
+        return 'Forge et Vigie incluses';
+      default:
+        return null;
+    }
+  }
+
+  /** Vrai si l'option Vigie est en cours (souscrite et pas encore fermée). */
+  vigieOptionActive(): boolean {
+    const status = this.vigieOption()?.status;
+    return status === 'ACTIVE' || status === 'PAST_DUE';
+  }
+
+  /** Vrai si une résiliation d'option Vigie est programmée. */
+  vigieOptionEnding(): boolean {
+    return this.vigieOptionActive() && !!this.vigieOption()?.cancelAt;
+  }
+
+  /** Vrai si la Vigie est ouverte par le rôle administrateur, sans option payée en cours. */
+  vigieOptionForAdministrator(): boolean {
+    const option = this.vigieOption();
+    return !!option && option.includedForAdministrator && !option.includedInPlan && !this.vigieOptionActive();
+  }
+
+  /** Lance la souscription de l'option Vigie et redirige vers le paiement. */
+  subscribeVigieOption(): void {
+    if (this.vigieOptionInProgress()) {
+      return;
+    }
+    this.vigieOptionInProgress.set(true);
+    this.billingService.startVigieOptionCheckout().subscribe({
+      next: (res) => this.redirect(res.checkoutUrl),
+      error: (error: HttpErrorResponse) => {
+        this.vigieOptionInProgress.set(false);
+        this.notify(this.vigieOptionErrorMessage(error), 'snack-error');
+        this.loadVigieOption();
+      },
+    });
+  }
+
+  /** Résilie l'option Vigie après confirmation explicite (`MatDialog`). */
+  cancelVigieOption(): void {
+    if (this.vigieOptionInProgress()) {
+      return;
+    }
+    const data: ConfirmDialogData = {
+      title: "Résilier l'option Vigie",
+      message:
+        "Votre accès à la Vigie reste ouvert jusqu'à la fin de la période déjà payée, " +
+        'puis ne sera pas reconduit. Votre offre et votre quota de tokens ne changent pas.',
+      confirmLabel: 'Résilier',
+    };
+    this.dialog
+      .open(ConfirmDialogComponent, { data, width: '440px' })
+      .afterClosed()
+      .subscribe((confirmed) => {
+        if (confirmed) {
+          this.performVigieOptionCancel();
+        }
+      });
+  }
+
+  private performVigieOptionCancel(): void {
+    this.vigieOptionInProgress.set(true);
+    this.billingService.cancelVigieOption().subscribe({
+      next: (option) => {
+        this.vigieOptionInProgress.set(false);
+        this.vigieOption.set(option);
+        this.notify("Option Vigie résiliée. Votre accès reste ouvert jusqu'à la fin de la période.", 'snack-success');
+      },
+      error: (error: HttpErrorResponse) => {
+        this.vigieOptionInProgress.set(false);
+        this.notify(this.vigieOptionErrorMessage(error), 'snack-error');
+        this.loadVigieOption();
+      },
+    });
+  }
+
+  /** Traduit un refus de l'API d'option Vigie en message actionnable. */
+  private vigieOptionErrorMessage(error: HttpErrorResponse): string {
+    const apiError = error.error as ApiError | undefined;
+    switch (apiError?.error) {
+      case 'no_active_subscription':
+        return "Souscrivez d'abord une offre Solo, Pro, BYOK ou Gold Forge pour ajouter l'option Vigie.";
+      case 'vigie_option_included':
+        return 'La Vigie est déjà incluse dans votre offre.';
+      case 'vigie_option_already_active':
+        return "L'option Vigie est déjà active sur votre compte.";
+      case 'vigie_option_not_active':
+        return 'Aucune option Vigie à résilier.';
+      case 'billing_unavailable':
+        return 'La facturation est momentanément indisponible.';
+      default:
+        return "Impossible de mettre à jour l'option Vigie.";
     }
   }
 

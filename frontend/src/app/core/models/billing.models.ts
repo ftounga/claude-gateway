@@ -149,3 +149,26 @@ export interface AtelierOptionView {
    */
   includedForAdministrator?: boolean;
 }
+
+/**
+ * État de l'option Vigie (F-107 / SF-107-03) : Teams, Radar et réunions, en supplément d'une offre Solo,
+ * Pro, BYOK ou Gold Forge. Comme l'option Forge, elle **ne change aucun quota** de conversation.
+ */
+export interface VigieOptionView {
+  /** Montant d'affichage EUR (ex. "69"), renvoyé par le backend — jamais une constante d'écran. */
+  priceEur: string;
+  /** Droit Vigie effectif, quelle qu'en soit la source. */
+  entitled: boolean;
+  /** Le droit vient de l'offre (Gold Vigie, Gold complet) : l'option serait sans objet. */
+  includedInPlan: boolean;
+  /** Statut de l'option, ou null si jamais souscrite. */
+  status: SubscriptionStatus | null;
+  /** Terme d'une résiliation programmée, ou null. */
+  cancelAt: string | null;
+  /** L'option est réellement souscriptible (paiement configuré côté serveur). */
+  available: boolean;
+  /** Le droit vient du rôle administrateur : rien n'est facturé. */
+  includedForAdministrator: boolean;
+  /** L'offre porteuse est Gold Forge : Gold complet revient moins cher que l'offre plus l'option. */
+  goldCarrier: boolean;
+}

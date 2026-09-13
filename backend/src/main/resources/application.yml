@@ -442,6 +442,10 @@ app:
         # Offre BYOK (F-41) : la plateforme seule, servie par la clé Anthropic du client.
         # Vide ⇒ le plan n'est ni listé ni souscriptible, comme tout plan sans price.
         BYOK: ${STRIPE_PRICE_BYOK:}
+        # F-107 / SF-107-03 — les deux lignes d'offre par espace. VIDES PAR DÉFAUT : aucun price n'est
+        # créé par un agent ; tant qu'ils le sont, ces offres ne sont ni listées ni souscriptibles.
+        GOLD_VIGIE: ${STRIPE_PRICE_GOLD_VIGIE:}
+        GOLD_COMPLETE: ${STRIPE_PRICE_GOLD_COMPLETE:}
       # Mapping plan -> price ID Stripe ANNUEL (F-43). Un engagement annuel encaissé d'avance :
       # trésorerie et rétention. Vide ⇒ le plan n'est proposé qu'au mois, exactement comme un plan
       # sans price n'est pas proposé du tout.
@@ -451,6 +455,7 @@ app:
         SOLO: ${STRIPE_PRICE_SOLO_YEARLY:}
         PRO: ${STRIPE_PRICE_PRO_YEARLY:}
         GOLD: ${STRIPE_PRICE_GOLD_YEARLY:}
+        GOLD_VIGIE: ${STRIPE_PRICE_GOLD_VIGIE_YEARLY:}
       # Mapping pack de tokens (top-up, F-21) -> price ID Stripe (paiement one-shot). Par environnement.
       topup-prices:
         DAY: ${STRIPE_PRICE_TOPUP_DAY:}
@@ -468,6 +473,11 @@ app:
         # ne facture donc que la plateforme. Valeur commerciale réversible, ajustable par
         # environnement sans changement de code.
         BYOK: ${APP_BILLING_BYOK_PRICE:29}
+        # F-107 / SF-107-03 — décidés par le PO le 2026-09-13 (cadrage F-107 §9, docs/TARIFS.md).
+        # Gold Vigie : 199 − 40 (Forge) + 69 (Vigie) = 228, arrondi à 229. Gold complet : Gold Forge +
+        # Vigie remisée de 25 % (199 + 51,75), UN SEUL quota — la remise ne porte jamais sur les jetons.
+        GOLD_VIGIE: ${STRIPE_DISPLAY_PRICE_GOLD_VIGIE:229}
+        GOLD_COMPLETE: ${STRIPE_DISPLAY_PRICE_GOLD_COMPLETE:249}
       # Montants d'affichage (EUR) des PACKS DE RECHARGE (F-67). Même patron que display-prices
       # ci-dessus, et pour la même raison : un prix est une décision commerciale, réversible sans
       # redéploiement (OQ-07). Jusqu'ici AUCUN montant de recharge n'était exposé par l'API — l'écran
@@ -495,6 +505,8 @@ app:
         SOLO: ${STRIPE_DISPLAY_PRICE_SOLO_YEARLY:240}
         PRO: ${STRIPE_DISPLAY_PRICE_PRO_YEARLY:990}
         GOLD: ${STRIPE_DISPLAY_PRICE_GOLD_YEARLY:1990}
+        # Gold Vigie à l'année : 2 290 € (F-107 §9). Gold complet : aucun annuel décidé, aucune entrée.
+        GOLD_VIGIE: ${STRIPE_DISPLAY_PRICE_GOLD_VIGIE_YEARLY:2290}
       # Option Atelier (F-40) : le droit d'accès à l'Atelier, découplé du plan. Souscrite en
       # supplément d'un plan Solo/Pro, elle ouvre l'Atelier sans changer AUCUN quota — sans elle,
       # y accéder depuis Solo (24 €) imposait de passer à Gold (199 €), une falaise ×8 devant la
@@ -512,6 +524,12 @@ app:
       # proposée, sans erreur.
       atelier-option-byok-price-id: ${STRIPE_PRICE_ATELIER_OPTION_BYOK:}
       atelier-option-byok-display-price: ${APP_BILLING_ATELIER_OPTION_BYOK_PRICE:70}
+      # F-107 / SF-107-03 — l'OPTION VIGIE (Teams + Radar + réunions, un client suivi, réserve de synchro),
+      # qui remplace l'option Teams. Même prix sur Solo, Pro, BYOK et Gold Forge : 69 € (décidé par le PO
+      # le 2026-09-13). Abonnement DISTINCT du plan. Price ID VIDE par défaut : l'option est dormante et
+      # l'écran dit qu'elle arrive, sans erreur.
+      vigie-option-price-id: ${STRIPE_PRICE_VIGIE_OPTION:}
+      vigie-option-display-price: ${APP_BILLING_VIGIE_OPTION_PRICE:69}
       # URLs de retour Checkout (frontend). Surchargées par environnement.
       success-url: ${STRIPE_SUCCESS_URL:http://localhost:4200/billing?checkout=success}
       cancel-url: ${STRIPE_CANCEL_URL:http://localhost:4200/billing?checkout=cancel}
@@ -581,6 +599,10 @@ app:
       # abonnement historique qui porterait ce code garde son quota au lieu de tomber a zero.
       DAILY: ${APP_QUOTA_DAILY_TOKENS:500000}
       GOLD: ${APP_QUOTA_GOLD_TOKENS:12000000}
+      # F-107 / SF-107-03 : les deux Gold ont le MÊME quota (cadrage §3) — un Gold se distingue par
+      # l'espace qu'il inclut, pas par sa profondeur. Gold complet : un seul quota de 12 M.
+      GOLD_VIGIE: ${APP_QUOTA_GOLD_VIGIE_TOKENS:12000000}
+      GOLD_COMPLETE: ${APP_QUOTA_GOLD_COMPLETE_TOKENS:12000000}
       # Offre BYOK (F-41) : allocation NULLE, et c'est le contrat de l'offre — les jetons sont
       # sur le compte Anthropic du client. Ce zéro n'est PAS un abonnement expiré : le pré-vol
       # de quota le distingue (EntitlementService.isCustomerKeyBilled), sans quoi un client

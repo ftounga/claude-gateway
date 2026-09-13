@@ -12,6 +12,7 @@ import {
   SubscriptionView,
   TopUpCheckoutRequest,
   TopUpPacksResponse,
+  VigieOptionView,
 } from '../models/billing.models';
 
 /**
@@ -74,5 +75,20 @@ export class BillingService {
   /** Résilie l'option Atelier en fin de période : l'accès reste ouvert jusqu'au terme payé. */
   cancelAtelierOption(): Observable<AtelierOptionView> {
     return this.http.post<AtelierOptionView>('/api/billing/atelier-option/cancel', {});
+  }
+
+  /** État de l'option Vigie (F-107 / SF-107-03). */
+  getVigieOption(): Observable<VigieOptionView> {
+    return this.http.get<VigieOptionView>('/api/billing/vigie-option');
+  }
+
+  /** Souscrit l'option Vigie : renvoie l'URL de paiement de l'abonnement supplémentaire. */
+  startVigieOptionCheckout(): Observable<CheckoutResponse> {
+    return this.http.post<CheckoutResponse>('/api/billing/vigie-option/checkout', {});
+  }
+
+  /** Résilie l'option Vigie en fin de période. */
+  cancelVigieOption(): Observable<VigieOptionView> {
+    return this.http.post<VigieOptionView>('/api/billing/vigie-option/cancel', {});
   }
 }

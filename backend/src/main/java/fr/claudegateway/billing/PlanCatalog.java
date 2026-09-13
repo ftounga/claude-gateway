@@ -21,8 +21,13 @@ public class PlanCatalog {
     private static final List<Plan> PLANS = List.of(
             new Plan(PlanCode.SOLO, "Solo", ProviderMode.HOSTED, BillingPeriod.MONTHLY),
             new Plan(PlanCode.PRO, "Pro", ProviderMode.HOSTED, BillingPeriod.MONTHLY),
-            new Plan(PlanCode.GOLD, "Gold", ProviderMode.HOSTED, BillingPeriod.MONTHLY),
-            new Plan(PlanCode.BYOK, "BYOK", ProviderMode.BYOK, BillingPeriod.MONTHLY));
+            // F-107 / SF-107-03 : l'actuel Gold est rebaptisé « Gold Forge » à l'affichage, code inchangé.
+            new Plan(PlanCode.GOLD, "Gold Forge", ProviderMode.HOSTED, BillingPeriod.MONTHLY),
+            new Plan(PlanCode.BYOK, "BYOK", ProviderMode.BYOK, BillingPeriod.MONTHLY),
+            // Les deux lignes d'offre par espace (F-107 §9). Listées seulement quand le PO a créé
+            // leur price : un plan sans price n'est ni listé ni souscriptible.
+            new Plan(PlanCode.GOLD_VIGIE, "Gold Vigie", ProviderMode.HOSTED, BillingPeriod.MONTHLY),
+            new Plan(PlanCode.GOLD_COMPLETE, "Gold complet", ProviderMode.HOSTED, BillingPeriod.MONTHLY));
 
     /** Liste immuable des plans du catalogue. */
     public List<Plan> plans() {

@@ -17,6 +17,7 @@ import {
   PlansResponse,
   SubscriptionView,
   TopUpPacksResponse,
+  VigieOptionView,
 } from '../core/models/billing.models';
 import { AccessGrantView } from '../core/models/access-code.models';
 import { ApiKeyStatus } from '../core/models/api-key.models';
@@ -213,6 +214,9 @@ describe('BillingComponent', () => {
       'getAtelierOption',
       'startAtelierOptionCheckout',
       'cancelAtelierOption',
+      'getVigieOption',
+      'startVigieOptionCheckout',
+      'cancelVigieOption',
     ]);
     billingService.getSubscription.and.returnValue(of(byok.subscription ?? subscription));
     billingService.getPlans.and.returnValue(of(catalog));
@@ -222,6 +226,8 @@ describe('BillingComponent', () => {
         ? of(option)
         : throwError(() => new HttpErrorResponse({ status: 500 })),
     );
+    // F-107 / SF-107-03 : section Option Vigie masquée par défaut ; ses tests la chargent eux-mêmes.
+    billingService.getVigieOption.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
 
     apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
     const keyStatus = byok.apiKey ?? absentKey;
@@ -459,11 +465,15 @@ describe('BillingComponent', () => {
       'getAtelierOption',
       'startAtelierOptionCheckout',
       'cancelAtelierOption',
+      'getVigieOption',
+      'startVigieOptionCheckout',
+      'cancelVigieOption',
     ]);
     billingService.getSubscription.and.returnValue(of(subscription));
     billingService.getPlans.and.returnValue(of(plans));
     billingService.getTopUps.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
     billingService.getAtelierOption.and.returnValue(of(optionAvailable));
+    billingService.getVigieOption.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
 
     apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
     apiKeyService.getStatus.and.returnValue(of(absentKey));
@@ -599,6 +609,79 @@ describe('BillingComponent', () => {
     component.changePlan('SOLO');
 
     expect(component.changeInProgress()).toBeNull();
+  });
+
+  // ------------------------------------------------ Offres par espace (F-107 / SF-107-03)
+
+  const vigieAvailable: VigieOptionView = {
+    priceEur: '69',
+    entitled: false,
+    includedInPlan: false,
+    status: null,
+    cancelAt: null,
+    available: false,
+    includedForAdministrator: false,
+    goldCarrier: false,
+  };
+
+  it('dit quel espace chaque Gold inclut', () => {
+    setup();
+    component.plans.set([
+      ...plans.plans,
+      {
+        code: 'GOLD_VIGIE', label: 'Gold Vigie', providerMode: 'HOSTED', period: 'MONTHLY',
+        tokens: 12000000, priceEur: '229', yearlyPriceEur: '2290', yearlyAvailable: false,
+      },
+      {
+        code: 'GOLD_COMPLETE', label: 'Gold complet', providerMode: 'HOSTED', period: 'MONTHLY',
+        tokens: 12000000, priceEur: '249', yearlyPriceEur: null, yearlyAvailable: false,
+      },
+    ]);
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Vigie incluse — Teams, Radar, réunions');
+    expect(text).toContain('Forge et Vigie incluses');
+    expect(text).toContain('229 €');
+    expect(text).toContain('249 €');
+  });
+
+  it("présente l'option Vigie au montant du serveur, sans achat tant qu'elle n'est pas proposée", () => {
+    setup();
+    component.vigieOption.set(vigieAvailable);
+    fixture.detectChanges();
+
+    const section = (fixture.nativeElement as HTMLElement)
+      .querySelector('section[aria-label="Option Vigie"]') as HTMLElement;
+    expect(section).not.toBeNull();
+    expect(section.textContent).toContain('69 €');
+    expect(section.textContent).toContain("L'option Vigie n'est pas encore proposée à la souscription.");
+    const cta = section.querySelector('.billing__option-action button') as HTMLButtonElement;
+    expect(cta.disabled).toBeTrue();
+    expect(cta.textContent).toContain('Bientôt disponible');
+  });
+
+  it("dit l'option Vigie incluse sur Gold Vigie, et signale Gold complet à un Gold Forge", () => {
+    setup();
+    component.vigieOption.set({ ...vigieAvailable, includedInPlan: true, entitled: true });
+    fixture.detectChanges();
+    let section = (fixture.nativeElement as HTMLElement)
+      .querySelector('section[aria-label="Option Vigie"]') as HTMLElement;
+    expect(section.textContent).toContain('Incluse dans votre offre');
+    expect(section.textContent).not.toContain('69 €');
+
+    component.vigieOption.set({ ...vigieAvailable, available: true, goldCarrier: true });
+    fixture.detectChanges();
+    section = (fixture.nativeElement as HTMLElement)
+      .querySelector('section[aria-label="Option Vigie"]') as HTMLElement;
+    expect(section.textContent).toContain('Gold complet');
+    billingService.startVigieOptionCheckout.and.returnValue(
+      throwError(() => new HttpErrorResponse({ status: 503, error: { error: 'billing_unavailable' } })),
+    );
+    billingService.getVigieOption.and.returnValue(of(vigieAvailable));
+    component.subscribeVigieOption();
+    expect(billingService.startVigieOptionCheckout).toHaveBeenCalled();
+    expect(component.vigieOptionInProgress()).toBeFalse();
   });
 
   // ------------------------------------------------ Option Forge (F-40 / SF-40-03)

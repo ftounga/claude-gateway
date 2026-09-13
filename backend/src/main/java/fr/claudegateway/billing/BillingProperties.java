@@ -33,7 +33,7 @@ public record BillingProperties(
         if (stripe == null) {
             stripe = new Stripe(
                     null, null, Map.of(), Map.of(), null, null, Map.of(), null, null,
-                    Map.of(), Map.of(), Map.of(), null, null);
+                    Map.of(), Map.of(), Map.of(), null, null, null, null);
         }
     }
 
@@ -62,6 +62,10 @@ public record BillingProperties(
      *                                     n'a aucune marge sur les jetons pour porter la plateforme.
      * @param atelierOptionByokDisplayPrice montant d'affichage EUR de l'option Forge sur BYOK
      *                                     (cosmétique, défaut 70)
+     * @param vigieOptionPriceId      price ID de l'<b>option Vigie</b> (F-107 / SF-107-03), même price sur
+     *                                tout plan porteur — vide par défaut => option non souscriptible
+     * @param vigieOptionDisplayPrice montant d'affichage EUR de l'option Vigie (cosmétique, défaut 69,
+     *                                décidé par le PO le 2026-09-13)
      */
     public record Stripe(
             String secretKey,
@@ -77,7 +81,32 @@ public record BillingProperties(
             Map<String, String> yearlyDisplayPrices,
             Map<String, String> topupDisplayPrices,
             String atelierOptionByokPriceId,
-            String atelierOptionByokDisplayPrice) {
+            String atelierOptionByokDisplayPrice,
+            String vigieOptionPriceId,
+            String vigieOptionDisplayPrice) {
+
+        /**
+         * Constructeur d'avant F-107 / SF-107-03 : sans option Vigie (price vide, montant par défaut).
+         */
+        public Stripe(
+                String secretKey,
+                String webhookSecret,
+                Map<String, String> prices,
+                Map<String, String> topupPrices,
+                String successUrl,
+                String cancelUrl,
+                Map<String, String> displayPrices,
+                String atelierOptionPriceId,
+                String atelierOptionDisplayPrice,
+                Map<String, String> yearlyPrices,
+                Map<String, String> yearlyDisplayPrices,
+                Map<String, String> topupDisplayPrices,
+                String atelierOptionByokPriceId,
+                String atelierOptionByokDisplayPrice) {
+            this(secretKey, webhookSecret, prices, topupPrices, successUrl, cancelUrl, displayPrices,
+                    atelierOptionPriceId, atelierOptionDisplayPrice, yearlyPrices, yearlyDisplayPrices,
+                    topupDisplayPrices, atelierOptionByokPriceId, atelierOptionByokDisplayPrice, null, null);
+        }
 
         /**
          * Constructeur d'avant F-107 : l'option n'avait qu'un plan porteur tarifaire. Conservé pour
@@ -99,7 +128,7 @@ public record BillingProperties(
                 Map<String, String> topupDisplayPrices) {
             this(secretKey, webhookSecret, prices, topupPrices, successUrl, cancelUrl, displayPrices,
                     atelierOptionPriceId, atelierOptionDisplayPrice, yearlyPrices, yearlyDisplayPrices,
-                    topupDisplayPrices, null, null);
+                    topupDisplayPrices, null, null, null, null);
         }
 
         @ConstructorBinding
@@ -136,6 +165,10 @@ public record BillingProperties(
             if (atelierOptionByokDisplayPrice == null || atelierOptionByokDisplayPrice.isBlank()) {
                 // Décidé par le PO le 2026-09-13 (F-107 §9) : BYOK + Forge = 29 + 70 = 99 €.
                 atelierOptionByokDisplayPrice = "70";
+            }
+            if (vigieOptionDisplayPrice == null || vigieOptionDisplayPrice.isBlank()) {
+                // Décidé par le PO le 2026-09-13 (F-107 §9) : 69 €, même prix sur Solo, Pro, BYOK et Gold.
+                vigieOptionDisplayPrice = "69";
             }
         }
 
@@ -237,6 +270,15 @@ public record BillingProperties(
         /** Montant d'affichage EUR de l'option Forge pour ce plan porteur (F-107 / SF-107-01). */
         public String atelierOptionDisplayPrice(PlanCode carrier) {
             return carrier == PlanCode.BYOK ? atelierOptionByokDisplayPrice : atelierOptionDisplayPrice;
+        }
+
+        /**
+         * Vrai si l'option Vigie (F-107 / SF-107-03) est réellement souscriptible : fournisseur configuré
+         * <b>et</b> price ID d'option renseigné. Un seul price, quel que soit le plan porteur (§9 : « même
+         * prix partout »).
+         */
+        public boolean isVigieOptionConfigured() {
+            return isConfigured() && vigieOptionPriceId != null && !vigieOptionPriceId.isBlank();
         }
 
         /**
