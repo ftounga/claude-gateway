@@ -290,6 +290,56 @@ class TeamsBlockCardsTest {
     }
 
     @Nested
+    @DisplayName("F-91 — la mention d'un enregistrement local")
+    class RecordingNotice {
+
+        @Test
+        @DisplayName("la mention est lue et rendue : la trace voyage jusqu'au compte rendu")
+        void theNoticeIsCarried() {
+            TeamsBlockCard card = readCard("""
+                    {"title": "T", "window": "W", "gaps": [],
+                     "recordingNotice": "Ce compte rendu provient d'un ENREGISTREMENT LOCAL.",
+                     "sections": [{"title": "S", "lines": [
+                       {"text": "x", "messageId": "m-1"}]}]}
+                    """);
+
+            assertThat(card.recordingNotice())
+                    .isEqualTo("Ce compte rendu provient d'un ENREGISTREMENT LOCAL.");
+            assertThat(card.fromLocalRecording()).isTrue();
+        }
+
+        @Test
+        @DisplayName("absente : acceptée — la plupart des blocs ne viennent pas d'une capture")
+        void anAbsentNoticeIsFine() {
+            TeamsBlockCard card = readCard(VALID_CARD);
+
+            assertThat(card.recordingNotice()).isEmpty();
+            assertThat(card.fromLocalRecording()).isFalse();
+        }
+
+        @Test
+        @DisplayName("trop longue : REFUS, comme tout le reste — on ne tronque jamais")
+        void anOverlongNoticeIsRefused() {
+            assertThatThrownBy(() -> readCard("""
+                    {"title": "T", "window": "W", "gaps": [], "recordingNotice": "%s",
+                     "sections": [{"title": "S", "lines": [
+                       {"text": "x", "messageId": "m-1"}]}]}
+                    """.formatted("m".repeat(TeamsBlockCards.MAX_NOTICE_CHARS + 1))))
+                    .isInstanceOf(TeamsBlockRejectedException.class);
+        }
+
+        @Test
+        @DisplayName("un bloc d'avant F-91 se relit sans mention, et sans casser")
+        void anOlderCardStillReads() {
+            TeamsBlockCard card = new TeamsBlockCard(TeamsBlockCard.Kind.LIST, "T", "", "W",
+                    java.util.List.of(), java.util.List.of(), java.util.List.of());
+
+            assertThat(card.recordingNotice()).isEmpty();
+            assertThat(card.fromLocalRecording()).isFalse();
+        }
+    }
+
+    @Nested
     @DisplayName("Pas de score, nulle part")
     class NoScore {
 

@@ -798,6 +798,15 @@
      un pourcentage donnerait une apparence de mesure à une interprétation. -->
 <ng-template #teamsCardTemplate let-card>
   <article class="teams-card" [attr.aria-label]="card.title">
+    <!-- LA MENTION D'UN ENREGISTREMENT LOCAL (F-91 / SF-91-03) — AU-DESSUS DU TITRE, et jamais
+         repliée. C'est une information sur la NATURE de ce qu'on va lire, pas une note de bas de
+         page : ce compte rendu vient d'une capture faite sur le poste, dont les participants n'ont
+         pas été avertis par Teams. Elle se lit par la TYPOGRAPHIE — aucune couleur nouvelle, aucun
+         pictogramme d'alerte : un triangle jaune dirait « danger » là où la phrase dit « voici d'où
+         cela vient ». -->
+    @if (card.recordingNotice) {
+      <p class="teams-card__recording">{{ card.recordingNotice }}</p>
+    }
     <header class="teams-card__head">
       <h3 class="teams-card__title">{{ card.title }}</h3>
       @if (card.subtitle) {

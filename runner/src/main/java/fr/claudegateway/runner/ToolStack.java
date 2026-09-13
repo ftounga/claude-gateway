@@ -45,6 +45,7 @@ public final class ToolStack {
                         fr.claudegateway.runner.teams.BrowserLink.realSleeper())
                         .withMoments(moments(config, console))
                         .withCapture(capture(config, console))
+                        .withTranscription(transcription(config, console))
                 : fr.claudegateway.runner.teams.TeamsTools.disabled(
                         "Le volet Teams est désactivé sur cette machine (--no-teams).");
         ProjectScopes scopes =
@@ -128,6 +129,25 @@ public final class ToolStack {
                 fr.claudegateway.runner.teams.BrowserLink.realSleeper(),
                 console::info)
                 .withWitness(new fr.claudegateway.runner.teams.CaptureWitness());
+    }
+
+    /**
+     * <b>La transcription locale</b> (F-91 / SF-91-03), montée ici comme le reste.
+     *
+     * <p>Rien n'est téléchargé à ce stade : le modèle n'est rapatrié qu'à la première transcription
+     * (D3). Et <b>rien ne sort de la machine</b> : le seul trafic de ce chemin est ce
+     * rapatriement-là, vers une adresse en dur dans le code — jamais l'audio, jamais la vidéo.</p>
+     */
+    private static fr.claudegateway.runner.teams.TranscriptionWorker transcription(
+            RunnerConfig config, Console console) {
+        fr.claudegateway.runner.teams.TeamsWorkFolder folder =
+                new fr.claudegateway.runner.teams.TeamsWorkFolder(config.hostRoot());
+        fr.claudegateway.runner.teams.ProcessRunner processes =
+                fr.claudegateway.runner.teams.ProcessRunner.real();
+        return fr.claudegateway.runner.teams.TranscriptionWorker.over(
+                new fr.claudegateway.runner.teams.LocalToolchain(folder, processes, console::info),
+                processes,
+                new fr.claudegateway.runner.teams.CaptureStore(folder));
     }
 
     public ToolDispatcher dispatcher() {

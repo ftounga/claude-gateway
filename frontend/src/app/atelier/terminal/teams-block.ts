@@ -97,7 +97,14 @@ export function cardOf(
  * auteur, son heure, son niveau de certitude et son lien. Tout ce que la carte montre, en texte.</p>
  */
 export function cardAsText(card: AtelierTeamsCard): string {
-  const lines: string[] = [card.title];
+  const lines: string[] = [];
+  // **La mention en PREMIÈRE ligne** (F-91 / SF-91-03), jamais en bas : quelqu'un qui copie ce
+  // compte rendu ailleurs doit emporter avec lui l'information que les participants n'ont pas été
+  // avertis par Teams. La trace voyage avec l'artefact, texte compris.
+  if (card.recordingNotice) {
+    lines.push(card.recordingNotice, '');
+  }
+  lines.push(card.title);
   if (card.subtitle) {
     lines.push(card.subtitle);
   }

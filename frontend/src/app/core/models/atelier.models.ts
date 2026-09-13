@@ -900,6 +900,15 @@ export interface AtelierTeamsCard {
   sections: AtelierTeamsSection[];
   moments: AtelierTeamsMoment[];
   gaps: string[];
+  /**
+   * **La mention d'un enregistrement local** (F-91 / SF-91-03), ou chaîne vide.
+   *
+   * <p>Quand elle est là, ce compte rendu ne vient pas de ce que Teams avait déjà : il vient d'une
+   * capture faite sur le poste, dont **les participants n'ont pas été avertis par Teams**. Elle se
+   * lit **avant le titre**, parce que c'est une information sur la nature de ce qu'on va lire, pas
+   * une note de bas de page.</p>
+   */
+  recordingNotice?: string;
 }
 
 /** Charge utile de l'événement SSE `card` (F-89 / SF-89-02). */

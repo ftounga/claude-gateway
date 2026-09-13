@@ -47,6 +47,12 @@ public final class TeamsBlockCards {
     public static final int MAX_MESSAGE_ID_CHARS = 200;
     public static final int MAX_URL_CHARS = 1_000;
     public static final int MAX_IMAGE_ID_CHARS = 64;
+    /**
+     * La mention d'un enregistrement local (F-91 / SF-91-03). Assez longue pour dire d'où
+     * l'artefact vient et que Teams n'a averti personne ; pas assez pour devenir un paragraphe que
+     * l'œil saute.
+     */
+    public static final int MAX_NOTICE_CHARS = 600;
 
     private TeamsBlockCards() {
     }
@@ -84,8 +90,14 @@ public final class TeamsBlockCards {
         } else {
             sections.addAll(readSections(node));
         }
+        // F-91 / SF-91-03 — la mention d'un enregistrement local. FACULTATIVE, et c'est délibéré :
+        // la plupart des blocs ne viennent pas d'une capture, et l'exiger ferait refuser tous les
+        // autres. Ce que le produit garantit par construction, c'est le filigrane dans l'image, la
+        // ligne au journal d'audit et la mention en tête du fichier de transcription ; celle-ci
+        // dépend de l'agent, à qui les descriptions d'outils l'ordonnent.
+        String recordingNotice = optional(node, "recordingNotice", MAX_NOTICE_CHARS);
         TeamsBlockCard card = new TeamsBlockCard(kind, title, subtitle, window,
-                List.copyOf(sections), List.copyOf(moments), List.copyOf(gaps));
+                List.copyOf(sections), List.copyOf(moments), List.copyOf(gaps), recordingNotice);
         if (card.allLines().size() > MAX_LINES) {
             throw new TeamsBlockRejectedException("Ce bloc porte " + card.allLines().size()
                     + " lignes ; le maximum est " + MAX_LINES + ". Découpe en plusieurs blocs "
