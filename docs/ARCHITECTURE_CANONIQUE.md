@@ -1079,11 +1079,24 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     dit d'un fil (`IGNORE` : ignorer ce fil ; `READ_CHANNEL` : lire ce canal en entier), unique
     `(user_id, host_id, conversation_ref, rule)`, correction souveraine. Les deux sont purgées avec le Radar.
 
+- **pages / page_versions** — les **pages** (F-109 / SF-109-01, migration `098` ; cadrage
+  `docs/features/F-109/CADRAGE-F-109-les-pages.md`). `pages` : un document HTML rendu par l'agent,
+  rattaché à son **lieu** (`space` `FORGE`|`VIGIE`, `host_id` nullable, `workspace_id` nullable),
+  `title` (120), `description` (300), `current_version`. `page_versions` : une ligne par version conservée
+  (`version` unique par page, `size_bytes` HTML **et** pièces jointes, `attachment_count`). FK `users`
+  et `pages` en cascade ; index `(user_id, host_id, space)`, `(user_id, workspace_id)`, `page_versions(user_id)`.
+  **Contenu hors base**, dans le stockage objet de l'Atelier sous `pages/{userId}/{pageId}/v{N}/`
+  (`index.html`, `files/{nom}`). Bornes : 8 Mo par version, 500 Mo par compte, 10 versions par page
+  (les plus anciennes purgées). **Service en origine opaque** : `Content-Security-Policy: sandbox
+  allow-scripts allow-popups` (jamais `allow-same-origin`), `connect-src 'none'`, `form-action 'none'`,
+  CDN en liste close (`PageContentPolicy`). L'écran lit une page par **ticket signé** (HMAC, clé dérivée
+  du secret JWT, 10 min, non-JWT) sur `GET /p/{jeton}/**` — **la seule route ouverte sans compte**.
+
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files via `user_id` ; tables `radar_*` via `user_id` **et** `host_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files/pages/page_versions via `user_id` ; tables `radar_*` via `user_id` **et** `host_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
 
 ---
 
