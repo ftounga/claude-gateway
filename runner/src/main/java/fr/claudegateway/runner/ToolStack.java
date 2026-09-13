@@ -48,6 +48,8 @@ public final class ToolStack {
                         .withTranscription(transcription(config, console))
                         // F-100 / SF-100-02 — la synchro du soir : remontée par le jeton du poste.
                         .withRadarUplink(radarUplink(config), console::info)
+                        // F-100 / SF-100-05 — le dossier de dépôt du Radar, sous la racine du poste.
+                        .withRadarDeposit(config.hostRoot(), console::info)
                         // F-108 / SF-108-03 — les fichiers Microsoft 365 : dossier fixe des
                         // téléchargements, dossiers synchronisés de la machine préférés.
                         .withFiles(new fr.claudegateway.runner.teams.TeamsWorkFolder(

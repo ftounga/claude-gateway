@@ -139,6 +139,10 @@ public final class TeamsTools implements ToolExecutor {
     /** Ce qui sérialise les outils de lecture et les étapes de la synchro (F-100 / SF-100-03). */
     private final Object teamsLock = new Object();
 
+    /** Le dossier de dépôt du Radar (F-100 / SF-100-05) et le dossier de travail de ses transcriptions. */
+    private java.nio.file.Path radarDepot;
+    private TeamsWorkFolder radarWork;
+
     /** Où dire les gestes de la synchro (F-108 §4.6) ; rien tant que la synchro n'est pas branchée. */
     private java.util.function.Consumer<String> radarSay = line -> { };
 
@@ -199,6 +203,32 @@ public final class TeamsTools implements ToolExecutor {
         return this;
     }
 
+    /**
+     * Branche le <b>dossier de dépôt</b> du Radar (F-100 / SF-100-05) : {@code <racine>/radar/depot/}, créé s'il
+     * manque et annoncé. Les enregistrements qu'on y dépose sont transcrits sur la machine ; seul le texte
+     * remonte.
+     */
+    public TeamsTools withRadarDeposit(java.nio.file.Path hostRoot, java.util.function.Consumer<String> say) {
+        if (!enabled || hostRoot == null) {
+            return this;
+        }
+        java.nio.file.Path depot = hostRoot.resolve("radar").resolve("depot");
+        try {
+            java.nio.file.Files.createDirectories(depot);
+            if (say != null) {
+                say.accept("Radar : déposez les enregistrements hors Teams dans " + depot
+                        + " — ils seront transcrits sur cette machine à la prochaine synchro, seul le texte remonte.");
+            }
+        } catch (java.io.IOException e) {
+            if (say != null) {
+                say.accept("Radar : le dossier de dépôt " + depot + " n'a pas pu être créé ; il sera relevé s'il existe.");
+            }
+        }
+        this.radarDepot = depot;
+        this.radarWork = new TeamsWorkFolder(hostRoot);
+        return this;
+    }
+
     /** Le travail de synchro déjà monté (tests). */
     TeamsTools withRadarAgent(RadarSyncAgent agent) {
         this.radarAgent = agent;
@@ -211,10 +241,29 @@ public final class TeamsTools implements ToolExecutor {
             return RadarCollector.unavailable();
         }
         // F-100 / SF-100-03 : la collecte Teams, sur la liaison et le registre du volet.
-        return new TeamsRadarCollector(session, this::ledger, sleeper, java.time.Instant::now,
+        RadarCollector teams = new TeamsRadarCollector(session, this::ledger, sleeper, java.time.Instant::now,
                 record -> radarSay.accept("Radar : geste " + record.action() + " sur " + record.domain() + " — "
                         + record.result()),
                 teamsLock);
+        // F-100 / SF-100-05 : puis le dossier de dépôt, transcrit sur la machine par le moteur de F-91.
+        RadarDepositCollector deposit = null;
+        if (radarDepot != null) {
+            TranscriptionWorker worker = transcription;
+            RadarDepositCollector.Transcriber transcriber = worker == null ? null
+                    : (id, file, startedAt) -> {
+                        java.nio.file.Path into;
+                        try {
+                            into = radarWork.workDir(id);
+                        } catch (java.io.IOException e) {
+                            TranscriptionJob refused = new TranscriptionJob(id);
+                            refused.failed("Le dossier de travail de la transcription n'a pas pu être créé.", "");
+                            return refused;
+                        }
+                        return worker.startOrResumeFile(id, file, into, startedAt, "Dépôt Radar", radarSay);
+                    };
+            deposit = new RadarDepositCollector(radarDepot, transcriber, java.time.Instant::now, sleeper);
+        }
+        return RadarCollectors.chain(teams, deposit);
     }
 
     /**

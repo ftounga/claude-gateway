@@ -92,6 +92,42 @@ class RunnerRadarBatchApiIntegrationTest extends RadarSyncIntegrationTestBase {
     }
 
     @Test
+    @DisplayName("SF-100-05 : un enregistrement déposé a son curseur sous DEPOT, et part dans depot_done — du poste seul")
+    void depositRecordingCursor() throws Exception {
+        RadarSync sync = running(aliceA);
+        String token = runnerToken(aliceA);
+        String recording = "{\"batch\":{\"batchKey\":\"depot:k1\",\"exchanges\":[{\"source\":\"LOCAL_RECORDING\","
+                + "\"conversationRef\":\"depot:abc\",\"title\":\"Comité budget\",\"messages\":[{"
+                + "\"sourceRef\":\"depot:abc/1\",\"occurredAt\":\"2026-09-12T14:30:05Z\",\"fromMe\":false,"
+                + "\"text\":\"On valide le budget IAM.\"}]}]},"
+                + "\"cursors\":[{\"ref\":\"depot:abc\",\"kind\":\"RECORDING\",\"at\":\"2026-09-12T14:30:05Z\"}]}";
+
+        postBatch(sync.getId(), token, recording).andExpect(status().isOk()).andExpect(jsonPath("$.cursors").value(1));
+
+        assertThat(syncCursors.findByUserIdAndHostIdAndSourceAndConversationRef(alice.getId(), aliceA.hostId(),
+                RadarSyncCursor.SOURCE_DEPOT, "depot:abc")).isPresent();
+        assertThat(syncCursors.findByUserIdAndHostIdAndSourceAndConversationRef(alice.getId(), aliceA.hostId(),
+                RadarSyncCursor.SOURCE_TEAMS, "depot:abc")).isEmpty();
+
+        // Fin de la synchro, puis la suivante : depot_done porte l'enregistrement, et rien du poste B.
+        mockMvc.perform(post("/api/runner/radar/syncs/" + sync.getId() + "/finish").contextPath("/api")
+                .header(HEADER, token).contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"SUCCEEDED\"}"))
+                .andExpect(status().isOk());
+        syncCursors.save(RadarSyncCursor.builder().userId(alice.getId()).hostId(aliceB.hostId())
+                .source(RadarSyncCursor.SOURCE_DEPOT).conversationRef("depot:poste-b").cursorAt(OffsetDateTime.now()).build());
+        org.mockito.Mockito.clearInvocations(router);
+        launcher.start(aliceA, RadarSyncTrigger.MANUAL, null);
+        org.mockito.ArgumentCaptor<com.fasterxml.jackson.databind.JsonNode> input =
+                org.mockito.ArgumentCaptor.forClass(com.fasterxml.jackson.databind.JsonNode.class);
+        org.mockito.Mockito.verify(router).call(any(fr.claudegateway.runner.channel.RunnerTarget.class),
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.eq(RadarSyncLauncher.COLLECT),
+                input.capture(), org.mockito.ArgumentMatchers.anyLong());
+        assertThat(input.getValue().path("depot_done")).hasSize(1);
+        assertThat(input.getValue().path("depot_done").get(0).asText()).isEqualTo("depot:abc");
+        assertThat(input.getValue().path("cursors")).isEmpty();
+    }
+
+    @Test
     @DisplayName("Lot hors contrat : 400 et aucun curseur bougé ; curseur dans le futur : 400")
     void invalidBatchMovesNoCursor() throws Exception {
         RadarSync sync = running(aliceA);
