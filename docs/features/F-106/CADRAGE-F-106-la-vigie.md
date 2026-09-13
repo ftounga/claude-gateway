@@ -1,7 +1,7 @@
 # F-106 — La Vigie : l'espace du pilotage, à côté de la Forge
 
 > Cadrage du 2026-09-13, sur proposition du PO. **Cadrage seul : la livraison attend le go du PO.**
-> **Le nom « Vigie » est une proposition, à confirmer par le PO.**
+> **Le nom « Vigie » a été confirmé par le PO le 2026-09-13.**
 > Liée à F-98 (Forge refondue), F-99 → F-105 (le Radar) et F-107 (l'offre par espace).
 
 ## 1. La proposition, dans les mots du PO

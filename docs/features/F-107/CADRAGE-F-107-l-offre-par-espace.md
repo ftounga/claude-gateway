@@ -1,8 +1,8 @@
 # F-107 — L'offre par espace : la plateforme se paie, en BYOK aussi
 
-> Cadrage du 2026-09-13. **Cadrage seul : la livraison attend le go du PO.** **Tous les montants sont
-> À CONFIRMER PAR LE PO** : ce cadrage fixe une structure, jamais un prix. Aucun price Stripe n'est
-> créé par un agent.
+> Cadrage du 2026-09-13. **Cadrage seul : la livraison attend le go du PO.** **Les montants ont été
+> décidés par le PO le 2026-09-13, un par un, sur propositions argumentées : voir §9.** Aucun price
+> Stripe n'est créé par un agent.
 > Source de vérité de la grille : `docs/TARIFS.md`, à mettre à jour à la livraison.
 
 ## 1. Le constat du PO
@@ -69,9 +69,11 @@ lisibilité. **Le PO peut la rétablir** si la mesure de l'essai montre un publi
 
 - Le supplément par poste (F-65) **s'applique à tous les plans, BYOK compris**. En BYOK il n'apporte
   aucun jeton : il paie la place.
-- **Un client compte une fois**, qu'il soit activé dans la Forge, la Vigie ou les deux (F-106 §3) :
-  c'est une mission, une machine.
-- Montant, dégressivité et quota apporté : **À CONFIRMER PAR LE PO** (déjà suivis en OQ-16 point 8).
+- ~~Un client compte une fois, quel que soit l'espace.~~ **Révisé avec le PO (§9)** : le supplément est
+  **par espace**. Un client en plus dans la Forge coûte des jetons ; un client en plus suivi par la
+  Vigie coûte une synchro **chaque nuit**, qu'il soit aussi dans la Forge ou non. Chaque espace facture
+  ce qu'il coûte. L'**appairage** et la **clôture de mission** restent uniques (F-106 §3).
+- Montants, paliers et jetons apportés : **décidés**, §9.
 
 ## 5. Le découpage
 
@@ -88,11 +90,9 @@ lisibilité. **Le PO peut la rétablir** si la mesure de l'essai montre un publi
 | Décision | État |
 |---|---|
 | Option Radar à part, essai de deux semaines | **Tranché** (2026-09-13), porté par l'option Vigie |
-| Nom « Vigie » | À confirmer |
-| Montant option Forge sur BYOK (40 € aujourd'hui sur Solo / Pro) | **À CONFIRMER PAR LE PO** |
-| Montant Gold Vigie, option Vigie, enveloppe de synchro | **À CONFIRMER PAR LE PO**, après l'essai |
-| Gold complet : oui / non, remise | **À CONFIRMER PAR LE PO** |
-| Supplément par poste : montant, dégressivité | **À CONFIRMER PAR LE PO** (OQ-16 point 8) |
+| Nom « Vigie » | **Tranché** (2026-09-13) |
+| Gold complet et sa remise | **Tranché** : oui, −25 % sur la Vigie (§9) |
+| Tous les montants | **Tranchés** (§9) ; la réserve Vigie est **revalidée après l'essai** |
 | Création des prices Stripe | PO |
 
 ## 7. Préoccupations transversales
@@ -110,3 +110,45 @@ lisibilité. **Le PO peut la rétablir** si la mesure de l'essai montre un publi
 - Toute modification d'un montant existant (Solo, Pro, Gold, option Atelier, recharges).
 - Toute action dans Stripe.
 - Des offres d'équipe ou d'organisation (V3, F-17).
+
+## 9. La grille décidée avec le PO — 2026-09-13
+
+Décidée **montant par montant**, sur propositions chiffrées. Coûts au pire calculés à la **valeur d'un
+jeton de quota, 9 $/M** (`TARIFS.md` §8.1), 1 $ ≈ 0,92 €.
+
+| Élément | Décision | Raison retenue |
+|---|---|---|
+| Nom du second espace | **Vigie** | fait la paire avec la Forge : un lieu où l'on fabrique, un lieu d'où l'on voit venir |
+| **Option Forge sur BYOK** | **70 €** → BYOK + Forge = **99 €** | BYOK n'a aucune marge sur les jetons pour porter la plateforme ; le contournement de Gold passe de 170 € à 39 € d'économie pour un usage maximal |
+| Option Forge sur Solo / Pro | **40 €, inchangée** | — |
+| **Option Vigie** (Solo, Pro, BYOK) | **69 €**, même prix partout, comprend **un client suivi** | la Vigie coûte chaque nuit, la Forge non ; marge au pire 64 % |
+| **Gold Forge** | **199 €**, l'actuel Gold, inchangé | aucun abonnement ne change |
+| **Gold Vigie** | **229 €** (2 290 €/an) | déduit : 199 − 40 (Forge) + 69 (Vigie) = 228, arrondi |
+| **Gold complet** | **249 €** | Gold Forge + Vigie remisée de **25 %** (199 + 51,75) ; **un seul** quota de 12 M ; la remise ne porte que sur la plateforme, jamais sur les jetons |
+| **Réserve de synchro Vigie** | **3 M jetons / mois / client suivi** (≈ 25 € au pire) | valeur de départ ; **définitive après l'essai = consommation mesurée × 1,5**, revalidée avec le PO |
+| Première synchro (30 jours) | **hors réserve**, une fois par client | la seule vraiment longue ; ne doit pas vider le premier mois |
+| Réserve épuisée | synchro arrêtée proprement, position gardée, résumé qui le dit ; **complétée par une recharge** ; le quota des conversations **jamais** touché | — |
+| **Essai Vigie** | **2 semaines**, code d'accès, réserve d'essai **3 M**, première synchro offerte | mesurer le coût réel avant la réserve définitive |
+| **Client en plus — Forge** | 2e et 3e : **39 €** (2,0 M jetons) · 4e à 6e : **29 €** (1,5 M) · 7e et suivants : **19 €** (1,0 M) ; BYOK : même prix, **0 jeton** | même nombre de jetons par euro à chaque palier (`STRATEGIE-TARIFAIRE.md` §6) ; marge au pire ≈ 56 % à tous les paliers |
+| **Client en plus — Vigie** | **39 € fixe**, apporte **3 M jetons de synchro** | pas de dégressivité : chaque synchro coûte vraiment ; marge au pire 36 % |
+
+**Deux erreurs de calcul relevées pendant la décision, et corrigées avec le PO** : (1) une dégressivité
+Vigie à 19 € aurait fait perdre de l'argent au-delà de 6 clients (synchro jusqu'à 25 €) ; (2) les
+premières valeurs de jetons (5 M Vigie, 2 M à tous les paliers Forge) avaient été calculées au coût
+moyen observé (≈ 5,5 $/M) au lieu de la valeur d'un jeton de quota (9 $/M) — elles auraient laissé
+passer jusqu'à 41 € de synchro pour 39 € facturés. **Aucun prix n'a bougé ; les jetons ont été recalés.**
+
+**Exemple — le cas du PO** : Gold complet, 4 clients dans la Forge, 2 suivis par la Vigie :
+249 + (39 + 39 + 29) + 39 = **395 € / mois**.
+
+### Conséquences pour la livraison
+
+- **Le prix d'une option dépend du plan** (Forge : 40 € sur Solo / Pro, 70 € sur BYOK) : une clé de
+  montant et un price ID **par plan porteur**, là où F-40 n'en a qu'un.
+- **Le supplément devient un supplément par espace** : deux prices à paliers chez Stripe (Forge
+  dégressif, Vigie fixe), et côté quota la table `app.seat.quota-tiers` alimentée pour la Forge
+  (2,0 / 1,5 / 1,0 M), une réserve de synchro par client suivi pour la Vigie. `host_seat_months` compte
+  désormais un mois-poste **par espace**.
+- **SF-107-01** (BYOK) peut partir seule : elle ne demande que le price « option Forge BYOK ».
+- `docs/TARIFS.md` et **OQ-16 point 8** sont mis à jour à la livraison ; d'ici là, `TARIFS.md` porte
+  cette grille comme **décidée, non servie**.

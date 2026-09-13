@@ -265,6 +265,27 @@ Aucun de ces points n'est tranché par F-64 : ce sont des décisions commerciale
 
 ---
 
+## 7 bis. Grille décidée le 2026-09-13, **pas encore servie** (F-106, F-107)
+
+> **Rien de cette section n'est facturé aujourd'hui.** Décidée par le PO, montant par montant ; elle
+> entre dans §1 à §3 le jour où F-107 est livrée. Détail et raisons : `docs/features/F-107/CADRAGE-F-107-l-offre-par-espace.md` §9.
+
+| Offre | Mensuel | Contenu |
+|---|---|---|
+| Option Forge sur Solo / Pro | 40 € (inchangé) | l'actuelle option Atelier |
+| **Option Forge sur BYOK** | **70 €** | corrige BYOK, qui comprend aujourd'hui l'Atelier pour 29 € |
+| **Option Vigie** (Solo, Pro, BYOK) | **69 €** | Teams + Radar, un client suivi, réserve de synchro 3 M jetons |
+| Gold Forge | 199 € (l'actuel Gold) | 12 M jetons + Forge |
+| **Gold Vigie** | **229 €** (2 290 €/an) | 12 M jetons + Vigie |
+| **Gold complet** | **249 €** | 12 M jetons + Forge + Vigie (Vigie remisée de 25 %) |
+| **Client en plus — Forge** | 39 € (2e-3e, 2 M) · 29 € (4e-6e, 1,5 M) · 19 € (7e+, 1 M) | 0 jeton en BYOK |
+| **Client en plus — Vigie** | **39 €** fixe | 3 M jetons de synchro |
+| Essai Vigie | 2 semaines, code d'accès | réserve 3 M, première synchro offerte |
+
+La réserve de synchro (3 M) est une **valeur de départ**, revalidée après l'essai (mesuré × 1,5).
+
+---
+
 ## 8. Comment le quota se décompte, et ce qui l'alimente
 
 *Ces deux sections étaient les **places réservées** ouvertes par F-64. **Les deux features ont été
