@@ -60,6 +60,8 @@ public class RunnerHostOverviewService {
     private final RunnerStatusService statusService;
     private final RunnerAuditRepository auditRepository;
     private final LiveTerminalService liveTerminals;
+    /** Où en est le runner de chaque poste (F-111 / SF-111-01). */
+    private final RunnerUpdateAdvisor updateAdvisor;
     private final Duration observedWindow;
     private final Duration activeWithin;
 
@@ -69,6 +71,7 @@ public class RunnerHostOverviewService {
             RunnerStatusService statusService,
             RunnerAuditRepository auditRepository,
             LiveTerminalService liveTerminals,
+            RunnerUpdateAdvisor updateAdvisor,
             @Value("${app.runner.overview.observed-window:PT1H}") Duration observedWindow,
             @Value("${app.runner.overview.active-within:PT2M}") Duration activeWithin) {
         this.hostService = hostService;
@@ -76,6 +79,7 @@ public class RunnerHostOverviewService {
         this.statusService = statusService;
         this.auditRepository = auditRepository;
         this.liveTerminals = liveTerminals;
+        this.updateAdvisor = updateAdvisor;
         this.observedWindow = clamp(observedWindow, Duration.ofMinutes(1), MAX_OBSERVED_WINDOW);
         // Un projet ne peut pas être « actif » sur une fenêtre qu'on n'observe pas.
         this.activeWithin = clamp(activeWithin, Duration.ofSeconds(1), this.observedWindow);
@@ -193,7 +197,10 @@ public class RunnerHostOverviewService {
                 teamsTerminalLive,
                 projects,
                 // Les espaces sont posés par HostSpaceService (F-106) : cette vue ne les lit pas.
-                List.of("FORGE"));
+                List.of("FORGE"),
+                // F-111 / SF-111-01 : un terminal Teams ouvert veut dire que le poste sert Teams ; le
+                // client actif dans la Vigie est ajouté par withSpaces.
+                updateAdvisor.advise(host, teamsTerminalId != null));
     }
 
     /**

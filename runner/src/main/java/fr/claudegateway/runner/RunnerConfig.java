@@ -390,7 +390,9 @@ public final class RunnerConfig {
      * avaler l'argument suivant. La forme {@code --allow-bash=false} reste acceptée.
      */
     private static final java.util.Set<String> BOOLEAN_FLAGS =
-            java.util.Set.of("allow-bash", "no-bash", "no-system-trust", "check", "no-teams");
+            java.util.Set.of("allow-bash", "no-bash", "no-system-trust", "check", "no-teams",
+                    // F-111 / SF-111-02 : lu par le lanceur ; accepté sans effet par le runner.
+                    "no-launcher");
 
     private static Map<String, String> parseArgs(String[] args) {
         Map<String, String> map = new HashMap<>();

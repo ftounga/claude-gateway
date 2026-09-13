@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-111 / SF-111-01 — Ce que le runner déclare de LUI-MÊME, au-delà de sa version (076).
+
+      Pour dire « mise à jour disponible », « requise » ou « manuelle une dernière fois », la gateway
+      doit savoir, en plus de la version : le niveau de CONTRAT que parle le runner (F-81), la
+      version de JAVA qui l'exécute (une version qui exige un Java plus récent ne s'installe pas d'un
+      clic), s'il tourne sous le LANCEUR (sans lui, aucune mise à jour automatique), et ses CAPACITÉS
+      (un poste qui sert Teams avec un runner qui ne l'annonce pas doit être mis à jour).
+
+      Colonnes et non carte en mémoire, pour la raison de 076 : la trame arrive sur le pod de la
+      socket, la vue d'ensemble est servie par un autre (SF-38-12).
+
+      Toutes nullables et sans défaut : NULL veut dire « ce runner ne l'a jamais déclaré » — c'est
+      exactement le cas des runners antérieurs à F-111, que la Forge traite comme sans lanceur.
+      RIEN N'EST REFUSÉ sur ces valeurs.
+    -->
+    <changeSet id="101-runner-hosts-runner-declaration" author="claude-gateway">
+        <addColumn tableName="runner_hosts">
+            <column name="runner_contract" type="integer"/>
+            <column name="runner_java" type="integer"/>
+            <column name="runner_launcher" type="boolean"/>
+            <column name="runner_capabilities" type="varchar(255)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="runner_hosts" columnName="runner_capabilities"/>
+            <dropColumn tableName="runner_hosts" columnName="runner_launcher"/>
+            <dropColumn tableName="runner_hosts" columnName="runner_java"/>
+            <dropColumn tableName="runner_hosts" columnName="runner_contract"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -404,6 +404,45 @@ class RunnerCallDispatcherTest {
     }
 
     @Test
+    void handsTheCompleteDeclarationToTheRecorder() throws Exception {
+        // F-111 / SF-111-01 : contrat, Java, lanceur et capacités voyagent avec la version.
+        java.util.List<fr.claudegateway.runner.host.RunnerDeclaration> declarations =
+                new java.util.ArrayList<>();
+        java.util.List<UUID> hosts = new java.util.ArrayList<>();
+        fr.claudegateway.runner.host.RunnerVersionRecorder recorder =
+                new fr.claudegateway.runner.host.RunnerVersionRecorder() {
+                    @Override
+                    public void recordRunnerVersion(UUID id, String declared) {
+                    }
+
+                    @Override
+                    public void recordRunnerDeclaration(UUID id,
+                            fr.claudegateway.runner.host.RunnerDeclaration declaration) {
+                        hosts.add(id);
+                        declarations.add(declaration);
+                    }
+                };
+        RunnerCallDispatcher complet = new RunnerCallDispatcher(registry, objectMapper,
+                recordedShells::put, recorder,
+                new fr.claudegateway.runner.ServedRunnerVersion("", "1.0.0"), liveness, 120L);
+
+        complet.onFrame(identity, "ready", objectMapper.readTree(
+                "{\"type\":\"ready\",\"protocol\":1,\"capabilities\":[\"files\",\"teams\",\"Mauvais nom\"],"
+                        + "\"runnerVersion\":\"1.0.0-202609131412-f30b4c0\",\"contract\":1,"
+                        + "\"javaVersion\":21,\"launcher\":true,\"hostId\":\"" + UUID.randomUUID() + "\"}"));
+
+        assertThat(hosts).as("l'identité vient de la session, jamais d'un champ de trame")
+                .containsExactly(hostId);
+        fr.claudegateway.runner.host.RunnerDeclaration declaration = declarations.getFirst();
+        assertThat(declaration.version()).isEqualTo("1.0.0-202609131412-f30b4c0");
+        assertThat(declaration.contract()).isEqualTo(1);
+        assertThat(declaration.javaVersion()).isEqualTo(21);
+        assertThat(declaration.launcher()).isTrue();
+        assertThat(declaration.capabilities()).as("un nom de capacité mal formé est écarté")
+                .containsExactly("files", "teams");
+    }
+
+    @Test
     void recordsNothingWhenTheRunnerDeclaresNoVersion() throws Exception {
         // Runner anterieur : le champ est absent, ou n'est pas une chaine. Rien n'est ecrit.
         dispatcher.onFrame(identity, "ready", objectMapper.readTree(

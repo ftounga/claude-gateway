@@ -79,6 +79,8 @@ class RunnerHostOverviewApiIntegrationTest {
     private RunnerHost seedHost(UUID userId, String name, OffsetDateTime lastSeenAt) {
         return hostRepository.save(RunnerHost.builder().userId(userId).name(name).rootName("dev")
                 .os("linux").shell("posix").runnerVersion("0.0.1").elevated(false)
+                // F-111 / SF-111-01 : les colonnes de la migration 101 se lisent et s'écrivent.
+                .runnerContract(1).runnerJava(21).runnerLauncher(true).runnerCapabilities("files")
                 .lastSeenAt(lastSeenAt).build());
     }
 
@@ -104,6 +106,9 @@ class RunnerHostOverviewApiIntegrationTest {
                 .andExpect(jsonPath("$[0].shell").value("posix"))
                 // F-81 / SF-81-03 : « son runner est-il a jour ? » a desormais une reponse.
                 .andExpect(jsonPath("$[0].runnerVersion").value("0.0.1"))
+                // F-111 / SF-111-01 : aucune version servie en test — rien à comparer, rien d'inventé.
+                .andExpect(jsonPath("$[0].runnerUpdate.status").value("UNKNOWN"))
+                .andExpect(jsonPath("$[0].runnerUpdate.installedVersion").value("0.0.1"))
                 .andExpect(jsonPath("$[0].elevated").value(false))
                 .andExpect(jsonPath("$[0].connected").value(false))
                 .andExpect(jsonPath("$[0].activeProjects").value(1))

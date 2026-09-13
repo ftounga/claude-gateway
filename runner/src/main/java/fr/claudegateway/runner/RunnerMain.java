@@ -66,6 +66,8 @@ public final class RunnerMain {
         }
 
         console.info("Runner claude-gateway (F-38).");
+        // F-111 / SF-111-01 : la version réelle, dite dès la première ligne.
+        console.info("Version   : " + RunnerBuild.current().id());
         if (config.resumedFrom() != null) {
             console.info(ResumeMessages.resumedFrom(config.resumedFrom()));
         }
@@ -187,6 +189,9 @@ public final class RunnerMain {
                     }
                 }, stopped, RunnerShutdown.GRACE, console),
                 "runner-shutdown"));
+        // F-111 / SF-111-02 : sous un lanceur, le runner le surveille. Un lanceur tué sans crochet
+        // (SIGKILL, fin de session brutale) ne doit pas laisser un runner orphelin connecté.
+        fr.claudegateway.runner.launcher.LauncherWatch.startIfUnderLauncher(env, console);
 
         console.info("Appuyez sur Ctrl-C pour arrêter le runner.");
         try {

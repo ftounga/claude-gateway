@@ -75,6 +75,28 @@ class ServedRunnerVersionTest {
         assertThat(new ServedRunnerVersion(faux.toString(), "").version()).isNull();
     }
 
+    @Test
+    @DisplayName("F-111 : lit la version réelle, le contrat et le Java minimal dans le jar servi")
+    void litLaVersionReelleDuJarServi() throws Exception {
+        Path jar = dossier.resolve("claude-runner.jar");
+        Manifest manifeste = new Manifest();
+        manifeste.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        manifeste.getMainAttributes().put(Attributes.Name.IMPLEMENTATION_VERSION, "1.0.0");
+        try (OutputStream flux = Files.newOutputStream(jar);
+                JarOutputStream sortie = new JarOutputStream(flux, manifeste)) {
+            sortie.putNextEntry(new java.util.jar.JarEntry("runner-build.properties"));
+            sortie.write("version=1.0.0\nstamp=202609131412\ncommit=f30b4c0\ncontract=2\njava=21\n"
+                    .getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+            sortie.closeEntry();
+        }
+
+        ServedRunnerVersion servie = new ServedRunnerVersion(jar.toString(), "");
+
+        assertThat(servie.version()).isEqualTo("1.0.0-202609131412-f30b4c0");
+        assertThat(servie.contract()).isEqualTo(2);
+        assertThat(servie.minJava()).isEqualTo(21);
+    }
+
     private Path jarAvecVersion(String version) throws Exception {
         Path jar = dossier.resolve("claude-runner.jar");
         Manifest manifeste = new Manifest();

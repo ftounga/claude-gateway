@@ -24,7 +24,6 @@ public final class PollingConnection {
     /** Attente demandée à la gateway pour un poll ; borne serveur : {@code app.runner.poll.max-wait-ms}. */
     static final long POLL_WAIT_MS = 25_000L;
 
-    private static final String FALLBACK_VERSION = "0.0.1";
 
     private final PollingTransport transport;
     private final RunnerConfig config;
@@ -78,7 +77,10 @@ public final class PollingConnection {
         console.info("Repli long-polling actif : " + config.pollUrl());
         // L'URL de poll ne porte JAMAIS le jeton — il voyage en en-tête X-Runner-Token.
         journal.attempted(TransportJournal.Transport.POLLING, config.pollUrl());
-        sender.send(dispatcher.readyFrame(runnerVersion()));
+        // F-111 : la version réelle, et la présence du lanceur (SF-111-02) — sans lui, aucune mise à
+        // jour d'un clic.
+        sender.send(dispatcher.readyFrame(RunnerBuild.current(),
+                fr.claudegateway.runner.launcher.LauncherWatch.underLauncher(System.getenv())));
 
         try {
             loop(router);
@@ -139,8 +141,4 @@ public final class PollingConnection {
         }
     }
 
-    private static String runnerVersion() {
-        String version = PollingConnection.class.getPackage().getImplementationVersion();
-        return version == null || version.isBlank() ? FALLBACK_VERSION : version;
-    }
 }

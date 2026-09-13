@@ -14,7 +14,12 @@ COPY runner/mvnw runner/pom.xml ./
 RUN ./mvnw dependency:go-offline -q
 
 COPY runner/src/ src/
-RUN ./mvnw clean package -DskipTests -q
+# Version réelle du runner (F-111 / SF-111-01) : numéro du pom + date de construction + COMMIT.
+# Le commit ne se devine pas depuis l'image (le dépôt git n'y entre pas) : il est passé par
+#   docker build --build-arg RUNNER_COMMIT=$(git rev-parse --short HEAD) …
+# Sans lui, la version reste exacte et ordonnée (numéro + date), le commit vaut `inconnu`.
+ARG RUNNER_COMMIT=inconnu
+RUN ./mvnw clean package -DskipTests -q -Drunner.commit=${RUNNER_COMMIT}
 
 # Paquet autonome Windows (F-44 / SF-44-01) : le runner AVEC sa propre JVM, pour les postes où
 # aucun Java 21 n'est installable — le cas rencontré chez un client le 2026-09-07 (poste

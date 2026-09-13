@@ -228,6 +228,25 @@ class ToolDispatcherTest {
     }
 
     @Test
+    void declareLaVersionReelleLeContratJavaEtLeLanceurDansLaTrameReady() throws Exception {
+        // F-111 / SF-111-01 : l'identifiant de construction remplace le « 0.0.1 » de tous les postes.
+        RunnerBuild build = RunnerBuild.of("1.4.0", "202609131412", "f30b4c0");
+
+        JsonNode ready = MAPPER.readTree(dispatcher.readyFrame(build, true));
+
+        assertEquals("1.4.0-202609131412-f30b4c0", ready.path("runnerVersion").asText());
+        assertEquals("1.4.0", ready.path("runnerBuild").path("version").asText());
+        assertEquals("202609131412", ready.path("runnerBuild").path("stamp").asText());
+        assertEquals("f30b4c0", ready.path("runnerBuild").path("commit").asText());
+        assertEquals(RunnerBuild.CONTRACT, ready.path("contract").asInt());
+        assertEquals(Runtime.version().feature(), ready.path("javaVersion").asInt());
+        assertTrue(ready.path("launcher").asBoolean());
+        // Ce qui existait reste là : capacités et genre de trame.
+        assertEquals("ready", ready.path("type").asText());
+        assertEquals("files", ready.path("capabilities").get(0).asText());
+    }
+
+    @Test
     void annonceLaCapaciteFichiersDansLaTrameReady() throws Exception {
         JsonNode ready = MAPPER.readTree(dispatcher.readyFrame("1.2.3"));
 

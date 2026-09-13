@@ -53,6 +53,7 @@ import {
 import { RadarExporter } from './radar-export/radar-export';
 import { RadarScheduleComponent } from './radar-schedule/radar-schedule.component';
 import { HostMailAddressComponent } from '../shared/host-mail-address/host-mail-address.component';
+import { RunnerUpdateNoticeComponent } from '../shared/runner-update/runner-update-notice.component';
 import {
   RadarVerificationDialogComponent,
   RadarVerificationDialogData,
@@ -100,6 +101,7 @@ export type VigieError = 'none' | 'network' | 'forbidden' | 'not-entitled';
     RadarDirectoryComponent,
     RadarScheduleComponent,
     HostMailAddressComponent,
+    RunnerUpdateNoticeComponent,
     SpacePitchComponent,
     TeamsLinkBadgeComponent,
     MatButtonModule,

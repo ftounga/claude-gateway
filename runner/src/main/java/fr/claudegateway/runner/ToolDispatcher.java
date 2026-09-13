@@ -96,6 +96,33 @@ public final class ToolDispatcher implements AutoCloseable {
      * qu'une fois, alors que celle-ci doit rester vraie à chaque lancement (décision D4).</p>
      */
     public String readyFrame(String runnerVersion) {
+        return write(readyNode(runnerVersion));
+    }
+
+    /**
+     * La trame d'annonce avec la <b>version réelle</b> (F-111 / SF-111-01) : l'identifiant de
+     * construction dans {@code runnerVersion} (le champ lu depuis SF-81-03), son détail dans
+     * {@code runnerBuild}, le niveau de {@code contract}, la version de Java qui exécute ce runner et
+     * la présence du lanceur — ce qui permet à la gateway de dire si une mise à jour est possible d'un
+     * clic, requise, ou manuelle.
+     */
+    public String readyFrame(RunnerBuild build, boolean launcher) {
+        ObjectNode frame = readyNode(build.id());
+        ObjectNode detail = frame.putObject("runnerBuild");
+        detail.put("version", build.version());
+        if (build.stamp() != null) {
+            detail.put("stamp", build.stamp());
+        }
+        if (build.commit() != null) {
+            detail.put("commit", build.commit());
+        }
+        frame.put("contract", RunnerBuild.CONTRACT);
+        frame.put("javaVersion", RunnerBuild.javaMajor());
+        frame.put("launcher", launcher);
+        return write(frame);
+    }
+
+    private ObjectNode readyNode(String runnerVersion) {
         ObjectNode frame = mapper.createObjectNode();
         frame.put("type", "ready");
         frame.put("protocol", 1);
@@ -106,7 +133,7 @@ public final class ToolDispatcher implements AutoCloseable {
         if (shell != null) {
             frame.put("shell", shell.declaredName());
         }
-        return write(frame);
+        return frame;
     }
 
     /** Traite une trame {@code tool_call}. Ne lève jamais. */

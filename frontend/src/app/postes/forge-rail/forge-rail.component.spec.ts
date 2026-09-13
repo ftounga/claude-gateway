@@ -53,6 +53,21 @@ describe('ForgeRailComponent', () => {
     expect(rows(root)[1].textContent).toContain('Hors ligne · vu il y a');
   });
 
+  it('écrit la mise à jour du runner en toutes lettres, et rien quand il est à jour (F-111)', () => {
+    const update = {
+      status: 'AVAILABLE' as const, required: false, installedVersion: '1.0.0', installedId: '1.0.0',
+      servedVersion: '1.1.0', servedId: '1.1.0', installedJava: 21, requiredJava: 21, teamsMissing: false,
+      notes: [],
+    };
+    const root = render(groupHosts([
+      host('h1', 'FREE', { runnerUpdate: update }),
+      host('h2', 'CAGIP', { runnerUpdate: { ...update, status: 'UP_TO_DATE' } }),
+    ], (h) => h.connected, ''));
+
+    expect(rows(root)[0].querySelector('.forge-rail__update')?.textContent?.trim()).toBe('Mise à jour disponible');
+    expect(rows(root)[1].querySelector('.forge-rail__update')).toBeNull();
+  });
+
   it('écrit « Jamais connecté » pour un poste qui n’a jamais battu', () => {
     const root = render(groupHosts([host('h9', 'Richemont', { connected: false, lastSeenAt: null })],
       (h) => h.connected, ''));
