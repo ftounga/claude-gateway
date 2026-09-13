@@ -126,7 +126,11 @@ class RadarSyncPlannerIntegrationTest extends RadarSyncIntegrationTestBase {
         when(liveness.isAlive(any(), any())).thenReturn(true);
         runnerAcceptsSyncs();
         RadarSync manual = launcher.start(aliceA, RadarSyncTrigger.MANUAL, null);
-        manual.setHeartbeatAt(AT_2205_PARIS.minusMinutes(1)); // vivante au moment du passage
+        // Vivante au moment du passage ET pour le lanceur, qui juge l'abandon à l'horloge réelle :
+        // un battement figé au 13 septembre deviendrait « abandonné » dès le lendemain du jour d'écriture.
+        OffsetDateTime passage = AT_2205_PARIS.minusMinutes(1);
+        OffsetDateTime realNow = OffsetDateTime.now();
+        manual.setHeartbeatAt(realNow.isAfter(passage) ? realNow : passage);
         syncs.save(manual);
 
         assertThat(planner.runOnce(AT_2205_PARIS)).isZero();
