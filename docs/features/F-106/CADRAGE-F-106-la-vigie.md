@@ -31,8 +31,8 @@ chacun complet pour son métier**, règlent les deux.
 ## 3. La décision structurante : un client, une machine, deux espaces
 
 **On n'importe pas un poste dans la Vigie, on l'y active.** Le client (le poste) reste **une seule
-entité** : une machine, un runner, un appairage, une place facturable (F-65). Les deux espaces sont
-deux **regards** sur ce même client.
+entité** : une machine, un runner, un appairage, une clôture de mission. Les deux espaces sont
+deux **regards** sur ce même client. *(La facturation, elle, est par espace : F-107 §9.)*
 
 Pourquoi pas une copie :
 - **Le runner est indispensable aux deux.** La Vigie lit Teams par le navigateur **de cette
