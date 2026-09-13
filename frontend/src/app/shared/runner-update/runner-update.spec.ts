@@ -12,7 +12,7 @@ describe('runner-update (F-111 / SF-111-01)', () => {
   const view = (extra: Partial<RunnerUpdateView> = {}): RunnerUpdateView => ({
     status: 'AVAILABLE', required: false, installedVersion: '1.0.0', installedId: '1.0.0-202609131412-aaa',
     servedVersion: '1.1.0', servedId: '1.1.0-202609200900-bbb', installedJava: 21, requiredJava: 21,
-    teamsMissing: false, notes: [], ...extra,
+    teamsMissing: false, notes: [], updatable: true, ...extra,
   });
 
   describe('les mots', () => {
@@ -106,6 +106,11 @@ describe('runner-update (F-111 / SF-111-01)', () => {
       const data = dialog.open.calls.mostRecent().args[1]?.data as { platform: string; hostName: string };
       expect(data.platform).toBe('windows');
       expect(data.hostName).toBe('CAGIP');
+    });
+
+    it('met ce qu’apporte la version en infobulle de la pastille (F-111 / SF-111-03)', () => {
+      render(host(view({ notes: ['Mise à jour d’un clic.', 'Version réelle.'] })));
+      expect(fixture.componentInstance.notes()).toBe('Mise à jour d’un clic. · Version réelle.');
     });
 
     it('n’écrit que la version quand le runner est à jour', () => {

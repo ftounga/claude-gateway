@@ -57,6 +57,14 @@ public class RunnerSecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/runner/download/macos-aarch64").permitAll()
                         .requestMatchers(HttpMethod.GET, "/runner/download/macos-x64").permitAll()
                         .requestMatchers(HttpMethod.GET, "/runner/download/formats").permitAll()
+                        // Mise à jour du runner (F-111 / SF-111-03) : manifeste, jar signé, empreinte et
+                        // signature. Même nature que le téléchargement — un client public ; ce qui
+                        // protège est la signature Ed25519 vérifiée PAR LE RUNNER avec sa clé embarquée,
+                        // pas l'accès. Déclarées une par une : le seul joker est la version.
+                        .requestMatchers(HttpMethod.GET, "/runner/update/manifest").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/runner/update/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/runner/update/*/sha256").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/runner/update/*/signature").permitAll()
                         // Relais local `px` servi par la gateway (F-59 / SF-59-01) : même nature
                         // encore — un binaire tiers public, sans jeton ni secret. Et l'exiger
                         // authentifié manquerait la cible : celui qui en a besoin est justement

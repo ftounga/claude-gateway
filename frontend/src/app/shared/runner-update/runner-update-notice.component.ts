@@ -32,6 +32,8 @@ import { platformFromOs, runnerVersionLabel, updateNotice } from './runner-updat
         [class.badge--error]="n.tone === 'error'"
         [class.badge--warning]="n.tone === 'warning'"
         [class.badge--info]="n.tone === 'info'"
+        [matTooltip]="notes()"
+        [matTooltipDisabled]="!notes()"
         role="status"
       >
         <mat-icon aria-hidden="true">{{ n.manual ? 'download' : 'system_update_alt' }}</mat-icon>
@@ -82,6 +84,8 @@ export class RunnerUpdateNoticeComponent {
 
   readonly version = computed(() => runnerVersionLabel(this.host().runnerUpdate, this.host().runnerVersion));
   readonly notice = computed(() => updateNotice(this.host().runnerUpdate));
+  /** Ce qu'apporte la version servie (F-111 / SF-111-03), en infobulle de la pastille. */
+  readonly notes = computed(() => (this.host().runnerUpdate?.notes ?? []).join(' · '));
 
   showManual(): void {
     const update = this.host().runnerUpdate;

@@ -20,6 +20,8 @@ import java.util.List;
  * @param requiredJava     Java minimal du runner servi
  * @param teamsMissing     vrai si un runner antérieur à F-111 n'annonce pas {@code teams}
  * @param notes            ce qu'apporte la version servie (liste courte), vide si inconnue
+ * @param updatable        vrai si la gateway sert une version <b>signée</b> de ce runner (F-111 /
+ *                         SF-111-03) : sans elle, aucune mise à jour d'un clic n'est possible
  */
 public record RunnerUpdateView(
         String status,
@@ -31,7 +33,8 @@ public record RunnerUpdateView(
         Integer installedJava,
         int requiredJava,
         boolean teamsMissing,
-        List<String> notes) {
+        List<String> notes,
+        boolean updatable) {
 
     /** Les statuts possibles. */
     public enum Status {
@@ -65,6 +68,6 @@ public record RunnerUpdateView(
         boolean nowRequired = required || (usesTeams && teamsMissing && older());
         return nowRequired == required ? this
                 : new RunnerUpdateView(status, true, installedVersion, installedId, servedVersion,
-                        servedId, installedJava, requiredJava, teamsMissing, notes);
+                        servedId, installedJava, requiredJava, teamsMissing, notes, updatable);
     }
 }

@@ -3,11 +3,13 @@ package fr.claudegateway.runner.host;
 import java.util.Arrays;
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import fr.claudegateway.runner.ServedRunnerVersion;
 import fr.claudegateway.runner.host.dto.RunnerUpdateView;
 import fr.claudegateway.runner.host.dto.RunnerUpdateView.Status;
+import fr.claudegateway.runner.update.RunnerUpdateArtifacts;
 
 /**
  * Dit où en est le runner d'un poste (F-111 / SF-111-01) : à jour, mise à jour disponible d'un clic,
@@ -20,14 +22,35 @@ import fr.claudegateway.runner.host.dto.RunnerUpdateView.Status;
 public class RunnerUpdateAdvisor {
 
     private final ServedRunnerVersion served;
+    /** Les artefacts signés servis (F-111 / SF-111-03) : notes et possibilité d'installer. */
+    private final RunnerUpdateArtifacts artifacts;
 
-    public RunnerUpdateAdvisor(ServedRunnerVersion served) {
+    @Autowired
+    public RunnerUpdateAdvisor(ServedRunnerVersion served, RunnerUpdateArtifacts artifacts) {
         this.served = served;
+        this.artifacts = artifacts;
+    }
+
+    /** Sans artefacts de mise à jour (tests) : rien n'est installable, aucune note. */
+    public RunnerUpdateAdvisor(ServedRunnerVersion served) {
+        this(served, null);
     }
 
     /** Le conseil pour ce poste, sachant s'il sert Teams. */
     public RunnerUpdateView advise(RunnerHost host, boolean usesTeams) {
-        return advise(host, served.version(), served.minJava(), usesTeams);
+        RunnerUpdateView view = advise(host, served.version(), served.minJava(), usesTeams);
+        if (artifacts == null) {
+            return view;
+        }
+        // Les notes et la signature ne valent que pour la version que la gateway compare : un manifeste
+        // d'une autre version (empaquetage incohérent) ne promet rien.
+        return artifacts.manifest()
+                .filter(manifest -> manifest.id().equals(view.servedId()))
+                .map(manifest -> new RunnerUpdateView(view.status(), view.required(), view.installedVersion(),
+                        view.installedId(), view.servedVersion(), view.servedId(), view.installedJava(),
+                        view.requiredJava(), view.teamsMissing(), manifest.notes(),
+                        artifacts.signedUpdateAvailable()))
+                .orElse(view);
     }
 
     /**
@@ -49,7 +72,7 @@ public class RunnerUpdateAdvisor {
                 || status == Status.MANUAL_JAVA;
         return new RunnerUpdateView(status.name(), older && usesTeams && teamsMissing,
                 RunnerVersions.semantic(installedId), installedId, RunnerVersions.semantic(servedId),
-                servedId, host.getRunnerJava(), minJava, teamsMissing, List.of());
+                servedId, host.getRunnerJava(), minJava, teamsMissing, List.of(), false);
     }
 
     private static Status status(RunnerHost host, String installedId, String servedId, int minJava) {
