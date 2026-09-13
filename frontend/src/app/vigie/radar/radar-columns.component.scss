@@ -1,0 +1,214 @@
+/* Les trois colonnes (F-102 / SF-102-02) — DESIGN_SYSTEM.md §17 : pastilles §5, bleu §9 (index 0) pour
+   « nouveau », « clos ? » et « se réveille », filet orange §2 pour ce qui est dû. Aucune autre couleur. */
+:host {
+  display: block;
+}
+
+.radar-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: var(--cg-space-3);
+  align-items: start;
+
+  @media (max-width: 1019px) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+
+    .radar-columns__mid {
+      grid-column: 1 / -1;
+      order: -1;
+    }
+  }
+
+  /* Téléphone : une colonne, ce que je dois faire d'abord. */
+  @media (max-width: 639px) {
+    grid-template-columns: minmax(0, 1fr);
+
+    .radar-columns__mid {
+      order: 0;
+    }
+  }
+
+  &__panel {
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--cg-divider);
+    border-radius: 8px;
+    background: var(--cg-surface);
+  }
+
+  &__hd {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cg-space-2);
+    padding: var(--cg-space-2) var(--cg-space-3);
+    border-bottom: 1px solid var(--cg-divider);
+
+    h4 {
+      margin: 0;
+      font-family: var(--cg-font-heading);
+      font-size: 14px;
+      font-weight: 600;
+    }
+  }
+
+  &__n {
+    font-family: var(--cg-font-mono);
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__grow {
+    flex: 1;
+  }
+
+  &__order {
+    display: inline-flex;
+    border: 1px solid var(--cg-divider);
+    border-radius: 8px;
+    overflow: hidden;
+
+    button {
+      padding: var(--cg-space-1) var(--cg-space-2);
+      border: 0;
+      background: var(--cg-surface);
+      color: var(--cg-text-secondary);
+      font: 500 12px var(--cg-font-body);
+      cursor: pointer;
+    }
+
+    &--on {
+      background: var(--cg-bg) !important;
+      color: var(--cg-text-primary) !important;
+    }
+  }
+
+  &__item,
+  &__subj {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-1);
+    padding: var(--cg-space-2) var(--cg-space-3);
+    border-bottom: 1px solid var(--cg-divider);
+
+    &:last-child {
+      border-bottom: 0;
+    }
+  }
+
+  /* Ce qui est dû : un filet orange, jamais un fond. */
+  &__item--due {
+    box-shadow: inset 4px 0 0 var(--cg-orange);
+  }
+
+  &__t {
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.4;
+  }
+
+  &__m,
+  &__ft {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cg-space-1) var(--cg-space-2);
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+
+    a {
+      color: inherit;
+    }
+  }
+
+  &__src {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__nm {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--cg-text-primary);
+    text-decoration: none;
+
+    &:hover,
+    &:focus-visible {
+      text-decoration: underline;
+      text-decoration-color: var(--cg-orange);
+    }
+  }
+
+  &__subj {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--cg-space-3);
+
+    > .radar-state {
+      grid-column: 2;
+      grid-row: 1;
+      align-self: start;
+    }
+
+    .radar-columns__ln,
+    .radar-columns__ft,
+    .radar-columns__acts {
+      grid-column: 1 / -1;
+    }
+  }
+
+  &__ln {
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--cg-text-secondary);
+
+    b {
+      color: var(--cg-text-primary);
+      font-weight: 600;
+    }
+  }
+
+  &__acts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cg-space-2);
+    margin-top: var(--cg-space-1);
+
+    &:empty {
+      display: none;
+    }
+  }
+
+  &__empty,
+  &__error p {
+    margin: 0;
+    padding: var(--cg-space-3);
+    font-size: 13px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__error {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+  }
+
+  &__loading {
+    display: flex;
+    justify-content: center;
+    padding: var(--cg-space-4);
+  }
+}
+
+/* Les pastilles d'état : les tons §5, et le bleu §9 index 0 (encre sur teinte, AA prouvé). */
+.radar-state {
+  white-space: nowrap;
+
+  &--success { background: #E8F5E9; color: var(--cg-success); }
+  &--warning { background: #FFF8E1; color: #F9A825; }
+  &--error   { background: #FFEBEE; color: var(--cg-error); }
+  &--neutral { background: #F5F5F5; color: var(--cg-text-secondary); }
+  &--blue    { background: #E7EFF9; color: #386599; }
+}

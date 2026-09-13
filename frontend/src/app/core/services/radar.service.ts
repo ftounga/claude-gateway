@@ -2,7 +2,16 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { RadarBrief, RadarSyncStarted, RadarThreadRule } from '../models/radar.models';
+import {
+  CommitmentGesture,
+  RadarBoard,
+  RadarBrief,
+  RadarClosure,
+  RadarCorrection,
+  RadarSubjectState,
+  RadarSyncStarted,
+  RadarThreadRule,
+} from '../models/radar.models';
 
 /**
  * **Le Radar d'un client**, lu et piloté depuis son onglet dans la Vigie (F-102).
@@ -46,5 +55,50 @@ export class RadarService {
 
   removeThreadRule(hostId: string, ruleId: string): Observable<void> {
     return this.http.delete<void>(`${this.base(hostId)}/thread-rules/${ruleId}`);
+  }
+
+  // ---------------------------------------------------------------- les trois colonnes (SF-102-02)
+
+  /** À faire par moi · sujets en cours · j'attends des autres. */
+  board(hostId: string): Observable<RadarBoard> {
+    return this.http.get<RadarBoard>(`${this.base(hostId)}/board`);
+  }
+
+  /** *Fait*, *Pas moi*, *Reporter* (avec la nouvelle échéance), *C'est moi*, *Abandonner* — souverains (F-99). */
+  correctCommitment(hostId: string, commitmentId: string, action: CommitmentGesture,
+    dueDate: string | null = null): Observable<RadarCorrection> {
+    return this.http.post<RadarCorrection>(`${this.base(hostId)}/commitments/${commitmentId}/corrections`,
+      dueDate === null ? { action } : { action, dueDate });
+  }
+
+  /** *Clore* un sujet : immédiat ; rend ses engagements encore ouverts. */
+  closeSubject(hostId: string, subjectId: string): Observable<RadarClosure> {
+    return this.http.post<RadarClosure>(`${this.base(hostId)}/subjects/${subjectId}/close`, null);
+  }
+
+  /** Confirmer un « clos ? ». */
+  confirmClosure(hostId: string, subjectId: string): Observable<RadarClosure> {
+    return this.http.post<RadarClosure>(`${this.base(hostId)}/subjects/${subjectId}/close-proposal/confirm`, null);
+  }
+
+  /** Refuser un « clos ? » : le sujet reste ouvert. */
+  rejectClosure(hostId: string, subjectId: string): Observable<RadarCorrection> {
+    return this.http.post<RadarCorrection>(`${this.base(hostId)}/subjects/${subjectId}/close-proposal/reject`, null);
+  }
+
+  /** Laisser clos un sujet qui se réveille. */
+  dismissWake(hostId: string, subjectId: string): Observable<RadarCorrection> {
+    return this.http.post<RadarCorrection>(`${this.base(hostId)}/subjects/${subjectId}/wake/dismiss`, null);
+  }
+
+  /** Dire l'état d'un sujet — y compris le rouvrir. */
+  setSubjectState(hostId: string, subjectId: string, state: RadarSubjectState): Observable<RadarCorrection> {
+    return this.http.post<RadarCorrection>(`${this.base(hostId)}/subjects/${subjectId}/corrections`,
+      { action: 'SET_STATE', state });
+  }
+
+  /** Annuler un geste. */
+  undo(hostId: string, correctionId: string): Observable<RadarCorrection> {
+    return this.http.post<RadarCorrection>(`${this.base(hostId)}/corrections/${correctionId}/undo`, null);
   }
 }
