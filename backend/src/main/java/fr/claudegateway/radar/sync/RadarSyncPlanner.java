@@ -21,6 +21,8 @@ import fr.claudegateway.radar.RadarSyncRunningException;
 import fr.claudegateway.radar.RadarSyncTrigger;
 import fr.claudegateway.radar.RadarTeamsDisabledException;
 import fr.claudegateway.runner.RunnerLiveness;
+import fr.claudegateway.runner.host.ClientSpace;
+import fr.claudegateway.runner.host.HostSpaceService;
 import fr.claudegateway.teams.TeamsAccessService;
 
 /**
@@ -42,11 +44,15 @@ public class RadarSyncPlanner {
     private final RadarSyncLauncher launcher;
     private final RunnerLiveness liveness;
     private final TeamsAccessService teamsAccess;
+    /** Les espaces d'un client (F-106 / SF-106-01) : un client hors de la Vigie ne se synchronise pas. */
+    private final HostSpaceService hostSpaces;
     private final TransactionTemplate transactions;
     private final Clock clock;
 
     public RadarSyncPlanner(RadarHostSettingsRepository settings, RadarSyncLauncher launcher, RunnerLiveness liveness,
-            TeamsAccessService teamsAccess, PlatformTransactionManager transactionManager, Clock clock) {
+            TeamsAccessService teamsAccess, HostSpaceService hostSpaces,
+            PlatformTransactionManager transactionManager, Clock clock) {
+        this.hostSpaces = hostSpaces;
         this.settings = settings;
         this.launcher = launcher;
         this.liveness = liveness;
@@ -98,6 +104,9 @@ public class RadarSyncPlanner {
         OffsetDateTime slot = RadarSlots.slotInstant(due, time, zone);
         if (!teamsAccess.hasAccess(row.getUserId())) {
             return false; // plus de droit : rien ne part, le créneau sera réexaminé
+        }
+        if (!hostSpaces.isActiveForOwner(row.getUserId(), row.getHostId(), ClientSpace.VIGIE)) {
+            return false; // retiré de la Vigie (F-106) : rien ne part, le créneau sera réexaminé
         }
         if (!liveness.isAlive(row.getUserId(), row.getHostId())) {
             if (row.getMissedSlotAt() == null || !row.getMissedSlotAt().isEqual(slot)) {

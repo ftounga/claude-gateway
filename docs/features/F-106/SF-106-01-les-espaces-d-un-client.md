@@ -51,7 +51,9 @@ jamais le dupliquer : activer, retirer, lire, et filtrer les API par espace, iso
    Forge. Chaque poste porte désormais `spaces` (ex. `["FORGE","VIGIE"]`).
 7. **Les API de la Vigie** (Radar : `/radar/hosts/{hostId}/…` lecture, corrections, vérification
    guidée) exigent que le poste soit **activé dans la Vigie** ; export et purge restent ouverts à
-   la seule possession (on récupère et on efface ses données même après retrait).
+   la seule possession (on récupère et on efface ses données même après retrait). La
+   **planification du soir** (F-100 / SF-100-02) ne lance aucune synchro pour un client hors de la
+   Vigie.
 8. **Clôture de mission commune** : l'état de mission reste une colonne du poste ; clôturer depuis
    un espace se lit dans l'autre (même valeur dans les deux vues d'ensemble).
 9. **Suppression** : la suppression d'un poste et celle du compte effacent ses lignes d'espace.
@@ -87,6 +89,7 @@ jamais le dupliquer : activer, retirer, lire, et filtrer les API par espace, iso
 - [ ] `overview?space=VIGIE` n'inclut jamais « Hébergé » ; `overview` sans paramètre est inchangé
       pour un compte dont tous les postes sont dans la Forge.
 - [ ] Le Radar d'un poste non activé dans la Vigie répond 409 ; l'export et la purge répondent.
+- [ ] La planification ne synchronise pas un client retiré de la Vigie (créneau non consommé).
 - [ ] Clôturer la mission d'un poste activé dans les deux espaces se lit dans les deux vues.
 - [ ] Supprimer le poste ou le compte ne laisse aucune ligne `host_spaces`.
 
@@ -160,7 +163,10 @@ jamais le dupliquer : activer, retirer, lire, et filtrer les API par espace, iso
   création ; `RunnerHostRequest` gagne `space`.
 - `RunnerHostOverviewService.overview(userId, space)` ; `RunnerHostOverviewResponse.spaces`.
 - `RunnerHostController` : trois routes, `?space=`, garde Teams sur `VIGIE`.
-- `RadarScopeResolver.requireInVigie` ; `RadarController.scope`, `RadarSyncController.scope`.
+- `RadarScopeResolver.requireInVigie` ; `RadarController.scope`, `RadarSyncController.scope`
+  (vérification, planification, « Synchroniser maintenant ») ; `RadarSyncPlanner` (lecture
+  `HostSpaceService.isActiveForOwner`, sans vérification de possession : le couple vient d'une ligne
+  `radar_host_settings` isolée).
 - Purge : `HostSpaceService` écoute `RunnerHostLifecycleEvent.DELETED` ; `AccountService.deleteAccount`.
 - `GlobalExceptionHandler` : 409 `host_last_space`, 409 `host_not_in_space`, 400 espace inconnu.
 
@@ -198,6 +204,7 @@ jamais le dupliquer : activer, retirer, lire, et filtrer les API par espace, iso
       (rejoué en SQL sur des postes insérés).
 - [ ] Radar : `RadarIntegrationTestBase` active la Vigie sur ses postes ; test 409
       `host_not_in_space` après retrait, export et purge toujours servis.
+- [ ] `RadarSyncPlannerIntegrationTest` — un client retiré de la Vigie n'est pas synchronisé.
 - [ ] Non-régression : `RunnerHostOverviewApiIntegrationTest`, `HostDeletionApiIntegrationTest`,
       suite Radar, `AccountService` (suppression de compte).
 

@@ -42,6 +42,23 @@ class RadarSyncPlannerIntegrationTest extends RadarSyncIntegrationTestBase {
     }
 
     @Test
+    @DisplayName("F-106 : un client retiré de la Vigie ne se synchronise pas, et son créneau reste à traiter")
+    void aHostOutsideTheVigieIsNotSynchronized() {
+        enable(aliceA, "22:00", "Europe/Paris", YESTERDAY);
+        when(liveness.isAlive(alice.getId(), aliceA.hostId())).thenReturn(true);
+        runnerAcceptsSyncs();
+        hostSpaces.findByUserIdAndHostId(alice.getId(), aliceA.hostId()).stream()
+                .filter(row -> row.getSpace() == fr.claudegateway.runner.host.ClientSpace.VIGIE)
+                .forEach(hostSpaces::delete);
+
+        assertThat(planner.runOnce(AT_2205_PARIS)).isZero();
+
+        assertThat(syncs.findAll()).isEmpty();
+        assertThat(settingsOf(aliceA).getLastSlotDate()).isEqualTo(YESTERDAY);
+        verify(router, never()).call(any(RunnerTarget.class), anyString(), eq(RadarSyncLauncher.COLLECT), any(), anyLong());
+    }
+
+    @Test
     @DisplayName("Créneau dû et runner vivant : une synchro SCHEDULED, créneau traité ; rien de plus au passage suivant")
     void scheduledSlot() {
         enable(aliceA, "22:00", "Europe/Paris", YESTERDAY);

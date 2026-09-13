@@ -75,6 +75,16 @@ public class HostSpaceService {
     }
 
     /**
+     * Vrai si le poste de cet utilisateur est activé dans l'espace — <b>sans</b> vérifier la
+     * possession : réservé aux traitements de fond dont le couple (utilisateur, poste) vient déjà
+     * d'une ligne isolée (la planification du Radar). Un poste sans ligne est lu comme la Forge.
+     */
+    @Transactional(readOnly = true)
+    public boolean isActiveForOwner(UUID userId, UUID hostId, ClientSpace space) {
+        return effective(repository.findByUserIdAndHostId(userId, hostId)).contains(space);
+    }
+
+    /**
      * Exige que ce poste possédé soit activé dans l'espace.
      *
      * @throws RunnerHostNotFoundException si le poste est inconnu ou d'autrui (vérifié d'abord)
