@@ -64,6 +64,15 @@ export interface RadarScheduleDialogData {
         <p class="schedule__authorized">Autorisation du client confirmée le {{ authorizedOn() }}.</p>
       }
 
+      <!-- LE RÉSUMÉ DU MATIN PAR COURRIEL (F-110 / SF-110-04) : une option par client. -->
+      <mat-checkbox class="schedule__morning-email" [checked]="morningEmail()" (change)="morningEmail.set($event.checked)">
+        Recevoir le résumé du matin par courriel
+      </mat-checkbox>
+      <p class="schedule__note schedule__morning-email-note">
+        Envoyé après la synchro du soir, à l'adresse de réception du client (réglée dans son en-tête), sinon à
+        l'adresse de votre compte.
+      </p>
+
       <p class="schedule__note">Régler l'heure ne lance pas de synchro : la première partira au prochain créneau.</p>
 
       @if (error(); as message) {
@@ -88,8 +97,13 @@ export interface RadarScheduleDialogData {
     }
 
     .schedule__enabled,
-    .schedule__authorization {
+    .schedule__authorization,
+    .schedule__morning-email {
       display: block;
+    }
+
+    .schedule__morning-email {
+      margin-top: var(--cg-space-3);
     }
 
     .schedule__time-row {
@@ -136,6 +150,8 @@ export class RadarScheduleDialogComponent {
   readonly enabled = signal(this.data.schedule?.clientAuthorizedAt ? this.data.schedule.enabled : true);
   readonly syncTime = signal(this.data.schedule?.syncTime || DEFAULT_SYNC_TIME);
   readonly authorized = signal(false);
+  /** Le résumé du matin par courriel (F-110 / SF-110-04). */
+  readonly morningEmail = signal(this.data.schedule?.morningEmail ?? false);
   readonly saving = signal(false);
   readonly error = signal<string | null>(null);
 
@@ -153,7 +169,7 @@ export class RadarScheduleDialogComponent {
       return;
     }
     const request = scheduleRequest(this.data.schedule, this.enabled(), this.syncTime(),
-      this.authorizationRequired() && this.authorized(), this.browserZone);
+      this.authorizationRequired() && this.authorized(), this.browserZone, this.morningEmail());
     this.saving.set(true);
     this.error.set(null);
     this.radar.updateSchedule(this.data.hostId, request).subscribe({

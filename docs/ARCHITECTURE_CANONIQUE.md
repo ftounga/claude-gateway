@@ -1091,6 +1091,13 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     rattrapage) et **`running_sync_id` — le verrou : une seule synchro par poste, pris par mise à jour
     conditionnelle**. Sur `radar_syncs`, `trigger_kind` (`SCHEDULED`, `MANUAL`, `CATCH_UP`),
     `scheduled_for`, `heartbeat_at` (abandon après 15 min sans battement) et `progress` (JSON borné).
+  - **Résumé du matin par courriel** (F-110 / SF-110-04, migration `103`) : sur `radar_host_settings`,
+    `morning_email` (option par client, `false` par défaut) et `morning_email_sync_id` (dernière synchro du soir
+    traitée ; posée à l'activation, puis **prise par mise à jour conditionnelle** — un seul courriel par synchro).
+    `RadarMorningMailWorker` → `RadarMorningMail.runOnce()` : droit Vigie + client dans la Vigie, dernière synchro
+    `SCHEDULED`/`CATCH_UP` terminée `SUCCEEDED`/`PARTIAL`, analyse posée (ou > 2 h), écartée au-delà de 18 h ;
+    courriel `MORNING_SUMMARY` mis en file dans `client_emails` (même transaction que le marqueur) vers
+    `resolveRecipient` — phrases et compteurs de `RadarBriefService`, relances dues, lien `/vigie/{hostId}`.
   - **Collecte incrémentale** (F-100 / SF-100-03, migration `088`) : `radar_sync_cursors` — **où la
     collecte en est, par fil et par poste** (`source` `TEAMS` / `DEPOT`, `conversation_ref`, `kind`,
     `cursor_at`), unique `(user_id, host_id, source, conversation_ref)` ; le curseur n'avance qu'une fois le

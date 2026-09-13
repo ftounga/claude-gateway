@@ -36,9 +36,17 @@ public class RadarScheduleService {
         this.clock = clock;
     }
 
-    /** Ce que l'écran demande : activer, l'heure, le fuseau, l'autorisation du client. */
+    /**
+     * Ce que l'écran demande : activer, l'heure, le fuseau, l'autorisation du client — et, depuis F-110 / SF-110-04,
+     * le résumé du matin par courriel ({@code null} = inchangé).
+     */
     public record ScheduleRequest(Boolean enabled, String syncTime, String timeZone,
-            Boolean clientAuthorizationConfirmed) {
+            Boolean clientAuthorizationConfirmed, Boolean morningEmail) {
+
+        /** Forme d'avant F-110 : le résumé par courriel est inchangé. */
+        public ScheduleRequest(Boolean enabled, String syncTime, String timeZone, Boolean clientAuthorizationConfirmed) {
+            this(enabled, syncTime, timeZone, clientAuthorizationConfirmed, null);
+        }
     }
 
     /** La synchro qui tient le poste. */
@@ -48,14 +56,14 @@ public class RadarScheduleService {
 
     /** Ce que l'écran rend. */
     public record ScheduleView(boolean enabled, OffsetDateTime clientAuthorizedAt, String syncTime, String timeZone,
-            OffsetDateTime nextSyncAt, OffsetDateTime missedSlotAt, RunningView running) {
+            OffsetDateTime nextSyncAt, OffsetDateTime missedSlotAt, RunningView running, boolean morningEmail) {
     }
 
     @Transactional(readOnly = true)
     public ScheduleView view(RadarScope scope) {
         return settings.findByUserIdAndHostId(scope.userId(), scope.hostId())
                 .map(row -> view(scope, row))
-                .orElseGet(() -> new ScheduleView(false, null, "22:00", "Europe/Paris", null, null, null));
+                .orElseGet(() -> new ScheduleView(false, null, "22:00", "Europe/Paris", null, null, null, false));
     }
 
     /**
@@ -87,6 +95,13 @@ public class RadarScheduleService {
             row.setClientAuthorizedAt(now);
         }
         row.setEnabled(request.enabled());
+        if (request.morningEmail() != null) {
+            if (request.morningEmail() && !row.isMorningEmail()) {
+                // Activer n'envoie pas le résumé d'une synchro du soir déjà passée : elle est notée traitée.
+                row.setMorningEmailSyncId(latestEveningSyncId(scope));
+            }
+            row.setMorningEmail(request.morningEmail());
+        }
         row.setSyncTime(time);
         row.setTimeZone(zoneId.getId());
         row.setLastSlotDate(RadarSlots.dueSlotDate(now, localTime, zoneId));
@@ -126,6 +141,21 @@ public class RadarScheduleService {
             }
         }
         return new ScheduleView(row.isEnabled(), row.getClientAuthorizedAt(), row.getSyncTime(), row.getTimeZone(),
-                next, row.getMissedSlotAt(), running);
+                next, row.getMissedSlotAt(), running, row.isMorningEmail());
+    }
+
+    /**
+     * La dernière synchro du soir (planifiée ou rattrapée) <b>terminée</b> du poste ; ou {@code null}. Une synchro
+     * encore en cours n'est pas notée : son résumé partira.
+     */
+    private UUID latestEveningSyncId(RadarScope scope) {
+        return syncs.findByUserIdAndHostIdOrderByStartedAtDesc(scope.userId(), scope.hostId(),
+                        org.springframework.data.domain.PageRequest.of(0, 20)).stream()
+                .filter(sync -> sync.getTriggerKind() == RadarSyncTrigger.SCHEDULED
+                        || sync.getTriggerKind() == RadarSyncTrigger.CATCH_UP)
+                .filter(sync -> sync.getFinishedAt() != null && sync.getStatus() != RadarSyncStatus.RUNNING)
+                .map(RadarSync::getId)
+                .findFirst()
+                .orElse(null);
     }
 }

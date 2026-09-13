@@ -112,6 +112,34 @@ public class RadarBriefService {
                 warning, lastSync == null ? List.of() : coverageLines(lastSync.coverage()));
     }
 
+    /**
+     * <b>Les relances dues</b>, en lignes lisibles (F-110 / SF-110-04, le résumé du matin par courriel) :
+     * « Julie Martin — « envoyer le PV » », les plus anciennes d'abord. Même règle que le compteur du résumé.
+     *
+     * @param scope poste du propriétaire
+     * @param max   nombre de lignes au plus
+     */
+    public List<String> dueFollowUps(RadarScope scope, int max) {
+        LocalDate today = OffsetDateTime.now(clock).atZoneSameInstant(ZoneOffset.UTC).toLocalDate();
+        Set<UUID> live = subjects.findByUserIdAndHostId(scope.userId(), scope.hostId()).stream()
+                .filter(s -> s.getMergedIntoId() == null)
+                .map(RadarSubject::getId)
+                .collect(Collectors.toSet());
+        Map<UUID, RadarPerson> directory = people.findByUserIdAndHostIdOrderByDisplayNameAsc(scope.userId(),
+                scope.hostId()).stream().collect(Collectors.toMap(RadarPerson::getId, Function.identity()));
+        return commitments.findByUserIdAndHostId(scope.userId(), scope.hostId()).stream()
+                .filter(c -> c.getStatus() != null && c.getStatus().isPending() && !c.isDisowned())
+                .filter(c -> live.contains(c.getSubjectId()))
+                .filter(c -> followUpDue(c, today))
+                .sorted(Comparator.comparing(RadarCommitment::getFollowUpDueOn))
+                .limit(Math.max(0, max))
+                .map(c -> {
+                    String who = personOf(c, directory);
+                    return (who == null ? "" : who + " — ") + quote(c.getDescription());
+                })
+                .toList();
+    }
+
     // -------------------------------------------------------------------------------- phrases
 
     private List<BriefSentence> sentences(List<RadarSubject> live, List<RadarCommitment> pending,

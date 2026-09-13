@@ -29,6 +29,10 @@ app:
     # appelé directement.
     sync:
       enabled: false
+    # F-110 / SF-110-04 : travailleur du résumé du matin par courriel désactivé en tests ; RadarMorningMail.runOnce()
+    # est appelé directement.
+    morning-mail:
+      enabled: false
     # F-101 : travailleur d'analyse du Radar désactivé en tests ; la file est testée en appelant
     # RadarAnalysisQueue.runOnce()/runHost()/expireRaw() directement.
     analysis:

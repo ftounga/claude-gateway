@@ -402,6 +402,6 @@ Voir §10. Sa seule trace est dans SF-104-02 : **coller un courriel**.
 - **Écrire** dans Teams, envoyer une relance à la place de l'utilisateur.
 - **Lire Outlook** (retiré par le PO : volume d'entreprise ; les courriels entrent collés, SF-104-02).
 - Graph, mode application, droits sur le tenant.
-- Le résumé du matin envoyé par courriel ou notification (ajout possible plus tard, sans rien réécrire).
+- Le résumé du matin envoyé par notification (push, Teams). Le résumé par courriel n'est plus hors périmètre : il est livré par F-110 / SF-110-04 (option par client dans le réglage de la synchro du soir).
 - Zoom, Meet, Webex **en direct** ; leurs enregistrements entrent par le dépôt (§9).
 - Un Radar partagé entre plusieurs consultants d'une même mission (V3, F-17).
