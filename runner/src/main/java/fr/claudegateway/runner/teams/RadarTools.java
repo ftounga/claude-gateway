@@ -30,6 +30,9 @@ final class RadarTools {
     /** L'annulation de la synchro en cours (SF-100-04). */
     static final String CANCEL = "teams_radar_cancel";
 
+    /** Le dépôt d'un enregistrement depuis l'écran, par morceaux (F-104 / SF-104-04). */
+    static final String DEPOSIT = "teams_radar_deposit";
+
     /** Fenêtre de décodage de la vérification : large, on compte ce que Teams a servi. */
     private static final Duration VERIFY_LOOKBACK = Duration.ofDays(400);
 

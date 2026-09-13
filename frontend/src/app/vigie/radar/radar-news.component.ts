@@ -2,6 +2,7 @@ import { Component, computed, inject, input, output, signal } from '@angular/cor
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
@@ -10,6 +11,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { RadarNews } from '../../core/models/radar.models';
 import { RadarService } from '../../core/services/radar.service';
+import { RadarDepositDialogComponent } from './radar-deposit-dialog.component';
 import { NEWS_MAX_CHARS, looksLikePastedMail, newsErrorOf, newsUndoErrorOf } from './radar-news';
 
 /**
@@ -27,6 +29,7 @@ import { NEWS_MAX_CHARS, looksLikePastedMail, newsErrorOf, newsUndoErrorOf } fro
 export class RadarNewsComponent {
   private readonly radar = inject(RadarService);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly dialog = inject(MatDialog);
 
   readonly hostId = input.required<string>();
   /** Le registre a changé (nouvelle écrite ou annulée) : l'onglet relit le résumé et les colonnes. */
@@ -89,6 +92,17 @@ export class RadarNewsComponent {
         this.snackBar.open(newsUndoErrorOf(err), 'Fermer', { duration: 6000, panelClass: 'snack-error' });
       },
     });
+  }
+
+  /** *Déposer un enregistrement* (F-104 / SF-104-04) : le fichier part sur la machine du client. */
+  deposit(): void {
+    this.dialog.open(RadarDepositDialogComponent, { data: { hostId: this.hostId() }, autoFocus: 'first-tabbable' })
+      .afterClosed().subscribe((done) => {
+        if (done) {
+          this.snackBar.open(`Enregistrement déposé sur le poste : « ${done.title} ».`, 'Fermer',
+            { duration: 5000, panelClass: 'snack-success' });
+        }
+      });
   }
 
   dismiss(): void {

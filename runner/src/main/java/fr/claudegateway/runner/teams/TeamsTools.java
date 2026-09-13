@@ -141,6 +141,8 @@ public final class TeamsTools implements ToolExecutor {
 
     /** Le dossier de dépôt du Radar (F-100 / SF-100-05) et le dossier de travail de ses transcriptions. */
     private java.nio.file.Path radarDepot;
+    /** Le dépôt d'un enregistrement depuis l'écran (F-104 / SF-104-04), dans le même dossier. */
+    private RadarDepositReceiver radarDeposit;
     private TeamsWorkFolder radarWork;
 
     /** Où dire les gestes de la synchro (F-108 §4.6) ; rien tant que la synchro n'est pas branchée. */
@@ -226,6 +228,7 @@ public final class TeamsTools implements ToolExecutor {
         }
         this.radarDepot = depot;
         this.radarWork = new TeamsWorkFolder(hostRoot);
+        this.radarDeposit = RadarDepositReceiver.real(depot);
         return this;
     }
 
@@ -330,6 +333,11 @@ public final class TeamsTools implements ToolExecutor {
 
     @Override
     public ToolOutcome execute(String tool, JsonNode input, ToolContext context) {
+        // F-104 / SF-104-04 : un dépôt d'enregistrement écrit un fichier, il ne touche ni la liaison ni le
+        // registre d'observation — il ne prend donc pas le verrou, et n'attend jamais une étape de synchro.
+        if (RadarTools.DEPOSIT.equals(tool)) {
+            return deposit(input);
+        }
         // F-100 / SF-100-03 : la synchro du soir lit avec la même liaison et le même registre, depuis son
         // propre fil. Un outil de lecture et une étape de synchro ne se croisent jamais dans le registre
         // (qui n'est pas sûr vis-à-vis des fils) : ils passent l'un après l'autre. Une étape de synchro
@@ -1470,6 +1478,25 @@ public final class TeamsTools implements ToolExecutor {
     }
 
     /** Les appels du Radar (F-100), sur la même liaison et le même registre que les outils de lecture. */
+    /** Le dépôt d'un enregistrement (F-104 / SF-104-04) : refusé, en le disant, sans volet ni dossier. */
+    private ToolOutcome deposit(JsonNode input) {
+        if (!enabled || radarDeposit == null) {
+            com.fasterxml.jackson.databind.node.ObjectNode refused =
+                    new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+            refused.put("accepted", false);
+            refused.put("reason", "TEAMS_DISABLED");
+            refused.put("sentence", "Le volet Teams est désactivé sur ce poste : pas de dossier de dépôt du Radar.");
+            return ToolOutcome.ok(refused.toString());
+        }
+        return radarDeposit.handle(input);
+    }
+
+    /** Le dépôt monté sur un dossier donné (tests). */
+    TeamsTools withRadarDepositReceiver(RadarDepositReceiver receiver) {
+        this.radarDeposit = receiver;
+        return this;
+    }
+
     private RadarTools radar() {
         return enabled ? new RadarTools(session, this::ledger, sleeper, "", radarAgent)
                 : new RadarTools(null, null, null, disabledReason, null);

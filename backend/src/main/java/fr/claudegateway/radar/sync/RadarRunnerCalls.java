@@ -49,4 +49,14 @@ public class RadarRunnerCalls {
         }
         return result;
     }
+
+    /**
+     * Appelle un outil du Radar sur le poste du périmètre <b>sans ligne d'audit</b> (F-104 / SF-104-04) : réservé
+     * aux morceaux d'un dépôt d'enregistrement, dont l'ouverture et la fin sont, elles, journalisées — mille
+     * lignes pour un fichier n'apprendraient rien de plus.
+     */
+    public RunnerCallResult relay(RadarScope scope, String tool, JsonNode input, long timeoutMs) {
+        return router.call(new RunnerTarget(scope.hostId(), null, ""), UUID.randomUUID().toString(), tool, input,
+                timeoutMs);
+    }
 }

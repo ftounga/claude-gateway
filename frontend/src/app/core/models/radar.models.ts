@@ -226,3 +226,25 @@ export interface RadarNewsUndo {
   evidenceId: string;
   undone: number;
 }
+
+// ------------------------------------------------------------ Déposer un enregistrement (F-104 / SF-104-04)
+
+/** Un dépôt ouvert sur le poste. */
+export interface RadarDepositOpened {
+  uploadId: string;
+  chunkBytes: number;
+  maxBytes: number;
+}
+
+/** Un morceau reçu par le poste. */
+export interface RadarDepositChunk {
+  received: number;
+}
+
+/** Un enregistrement déposé dans le dossier du poste. */
+export interface RadarDepositDone {
+  fileName: string;
+  title: string;
+  recordedAt: string;
+  sizeBytes: number;
+}

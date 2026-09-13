@@ -8,6 +8,9 @@ import {
   RadarBrief,
   RadarClosure,
   RadarCorrection,
+  RadarDepositChunk,
+  RadarDepositDone,
+  RadarDepositOpened,
   RadarNews,
   RadarNewsUndo,
   RadarSubjectState,
@@ -109,6 +112,33 @@ export class RadarService {
   /** Annule une nouvelle entière : toutes ses écritures, puis sa preuve. */
   undoNews(hostId: string, evidenceId: string): Observable<RadarNewsUndo> {
     return this.http.post<RadarNewsUndo>(`${this.base(hostId)}/news/${evidenceId}/undo`, null);
+  }
+
+  // ---------------------------------------------------------------- Déposer un enregistrement (F-104 / SF-104-04)
+
+  /** Ouvre un dépôt sur le poste : le fichier ira sur la machine, jamais dans la gateway. */
+  openDeposit(hostId: string, fileName: string, sizeBytes: number, title: string,
+    recordedAt: string): Observable<RadarDepositOpened> {
+    return this.http.post<RadarDepositOpened>(`${this.base(hostId)}/recordings`,
+      { fileName, sizeBytes, title, recordedAt });
+  }
+
+  /** Un morceau du fichier, à sa position. */
+  sendDepositChunk(hostId: string, uploadId: string, offset: number, chunk: Blob): Observable<RadarDepositChunk> {
+    return this.http.put<RadarDepositChunk>(`${this.base(hostId)}/recordings/${uploadId}/chunks`, chunk, {
+      params: { offset: String(offset) },
+      headers: { 'Content-Type': 'application/octet-stream' },
+    });
+  }
+
+  /** Termine le dépôt : le fichier apparaît dans le dossier du poste, avec son titre et sa date. */
+  finishDeposit(hostId: string, uploadId: string): Observable<RadarDepositDone> {
+    return this.http.post<RadarDepositDone>(`${this.base(hostId)}/recordings/${uploadId}/finish`, null);
+  }
+
+  /** Abandonne le dépôt. */
+  abortDeposit(hostId: string, uploadId: string): Observable<void> {
+    return this.http.delete<void>(`${this.base(hostId)}/recordings/${uploadId}`);
   }
 
   /** Annuler un geste. */
