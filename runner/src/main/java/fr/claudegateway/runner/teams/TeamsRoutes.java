@@ -34,6 +34,9 @@ final class TeamsRoutes {
      */
     static final String CONVERSATIONS = "https://teams.microsoft.com/v2/#/conversations";
 
+    /** Le flux d'activité (F-89 / SF-89-06), ouvert pour lire les mentions à l'écran. Hypothèse, comme les autres. */
+    static final String ACTIVITY = "https://teams.microsoft.com/v2/#/activity";
+
     /** Hôtes du client web de Teams : une route y est reportée pour ne pas changer de site. */
     private static final java.util.List<String> TEAMS_HOSTS =
             java.util.List.of("teams.microsoft.com", "teams.cloud.microsoft", "teams.live.com");

@@ -60,6 +60,14 @@ public class TeamsToolCatalog {
     /** La transcription d'une réunion enregistrée (F-88 / SF-88-02). */
     public static final String MEETING_TRANSCRIPT = "teams_meeting_transcript";
     /**
+     * La règle de conformité d'une transcription au téléchargement bloqué (F-89 / SF-89-06, cadrage F-87
+     * §9 bis) : elle voyage dans la consigne de l'outil, pour que l'agent la connaisse AVANT de lire.
+     */
+    public static final String DOWNLOAD_BLOCKED_RULE = "Si le résultat porte « downloadBlocked » à vrai, le "
+            + "téléchargement a été bloqué par l'organisateur : sers-toi des répliques pour répondre et "
+            + "résumer, mais ne recopie JAMAIS la transcription brute — ni dans un fichier, ni en bloc "
+            + "intégral dans le fil — et signale ce blocage à l'utilisateur.";
+    /**
      * L'enregistrement d'une réunion (F-88 / SF-88-02) — <b>rapatrié sur la machine par Chrome</b>
      * depuis F-108 / SF-108-05. Une lecture : aucune confirmation.
      */
@@ -492,7 +500,9 @@ public class TeamsToolCatalog {
                 "La transcription d'une réunion enregistrée : les répliques horodatées, avec leur "
                         + "locuteur. Trouve d'abord la réunion avec " + FIND_MEETINGS + ". Si rien "
                         + "ne revient, dis-le : une réunion non enregistrée n'a pas de "
-                        + "transcription, et il ne faut surtout pas en inventer le contenu.",
+                        + "transcription, et il ne faut surtout pas en inventer le contenu. "
+                        + "« source » dit d'où viennent les répliques (reseau ou ecran). "
+                        + DOWNLOAD_BLOCKED_RULE,
                 Map.of("type", "object",
                         "properties", Map.of("meeting_id", text),
                         "required", List.of("meeting_id"))));

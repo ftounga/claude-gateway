@@ -135,12 +135,28 @@ final class RadarTools {
         book.conversations().forEach(conversation -> threads.add(conversation.id()));
         book.messagesOf("", null).forEach(message -> threads.add(message.conversationId()));
         threads.remove("");
+        String conversationsSource = threads.isEmpty() ? TeamsTools.SOURCE_NONE : TeamsTools.SOURCE_NETWORK;
+        TeamsScreenFallback screen = new TeamsScreenFallback(link, sleeper, null);
+        if (threads.isEmpty()) {
+            // F-89 / SF-89-06 : le réseau n'a rien servi — la liste AFFICHÉE compte aussi, et on le dit.
+            try {
+                TeamsScreenFallback.ScreenList listed = screen.list(TeamsScreen.CONVERSATIONS, TeamsRoutes.CONVERSATIONS);
+                if (listed.found()) {
+                    TeamsScreenFallback.conversations(listed.items()).forEach(conversation -> threads.add(conversation.id()));
+                    conversationsSource = threads.isEmpty() ? TeamsTools.SOURCE_NONE : TeamsTools.SOURCE_SCREEN;
+                }
+            } catch (BrowserLinkException e) {
+                // la garde a refusé la lecture d'écran : la case reste non cochée, avec sa phrase
+            }
+        }
         ObjectNode conversations = checks.putObject("conversations");
         conversations.put("ok", !threads.isEmpty());
         conversations.put("count", threads.size());
+        conversations.put("source", conversationsSource);
         conversations.put("sentence", threads.isEmpty()
                 ? "Aucune conversation vue : ouvrez un fil dans Teams."
-                : threads.size() + " conversation(s) vue(s).");
+                : threads.size() + " conversation(s) vue(s)"
+                        + (TeamsTools.SOURCE_SCREEN.equals(conversationsSource) ? " à l'écran (le réseau n'a rien servi)." : "."));
 
         int meetingsSeen = book.meetings().size();
         ObjectNode meetings = checks.putObject("meetings");
@@ -151,12 +167,34 @@ final class RadarTools {
                 : meetingsSeen + " réunion(s) vue(s).");
 
         int cues = book.transcriptOf("").size();
+        String transcriptsSource = cues > 0 ? TeamsTools.SOURCE_NETWORK : TeamsTools.SOURCE_NONE;
+        Boolean downloadBlocked = null;
+        if (cues == 0 && link.observer().denied(TeamsPayloadKind.MEETING_TRANSCRIPT) == 0) {
+            // F-89 / SF-89-06 : aucune réplique par le réseau — le panneau de transcription AFFICHÉ compte aussi.
+            try {
+                TeamsScreenFallback.ScreenTranscript shown = screen.transcript(null);
+                if (!shown.cues().isEmpty()) {
+                    cues = shown.cues().size();
+                    transcriptsSource = TeamsTools.SOURCE_SCREEN;
+                    downloadBlocked = shown.downloadBlocked();
+                }
+            } catch (BrowserLinkException e) {
+                // la garde a refusé : la case suit les règles d'avant
+            }
+        }
         ObjectNode transcripts = checks.putObject("transcripts");
         transcripts.put("ok", cues > 0);
         transcripts.put("count", cues);
+        transcripts.put("source", transcriptsSource);
+        if (downloadBlocked != null) {
+            transcripts.put("downloadBlocked", downloadBlocked.booleanValue());
+        }
         if (cues > 0) {
             transcripts.put("reason", "SEEN");
-            transcripts.put("sentence", "Transcription lue (" + cues + " réplique(s)).");
+            transcripts.put("sentence", "Transcription lue" + (TeamsTools.SOURCE_SCREEN.equals(transcriptsSource)
+                    ? " à l'écran" : "") + " (" + cues + " réplique(s))."
+                    + (Boolean.TRUE.equals(downloadBlocked) ? " Téléchargement bloqué par l'organisateur : le Radar "
+                            + "s'en servira pour l'analyse, sans jamais la conserver en entier." : ""));
         } else if (link.observer().denied(TeamsPayloadKind.MEETING_TRANSCRIPT) > 0) {
             transcripts.put("reason", "ACCESS_DENIED");
             transcripts.put("sentence", "Accès à la transcription refusé : votre rôle dans la réunion ne "

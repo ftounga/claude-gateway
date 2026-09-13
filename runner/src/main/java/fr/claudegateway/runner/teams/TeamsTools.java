@@ -4,6 +4,7 @@ import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -493,8 +494,21 @@ public final class TeamsTools implements ToolExecutor {
 
         String query = TeamsAsk.text(input, "query", "who", "topic");
         int limit = (int) Math.max(1, Math.min(200, TeamsAsk.number(input, 50, "limit")));
+        List<TeamsConversation> listed = book.conversations();
+        String source = listed.isEmpty() ? SOURCE_NONE : SOURCE_NETWORK;
+        List<TeamsGap> screenGaps = new ArrayList<>();
+        if (listed.isEmpty()) {
+            // F-89 / SF-89-06 : le réseau n'a rien servi — lire la liste AFFICHÉE.
+            TeamsScreenFallback.ScreenList screen = screen(link).list(TeamsScreen.CONVERSATIONS, TeamsRoutes.CONVERSATIONS);
+            screenGaps.addAll(screen.gaps());
+            if (screen.found()) {
+                listed = TeamsScreenFallback.conversations(screen.items());
+                source = listed.isEmpty() ? SOURCE_NONE : SOURCE_SCREEN;
+                viewport = joined(viewport, screen.viewport());
+            }
+        }
         List<TeamsConversation> matching = new ArrayList<>();
-        for (TeamsConversation conversation : book.conversations()) {
+        for (TeamsConversation conversation : listed) {
             if (matches(conversation, query)) {
                 matching.add(conversation);
             }
@@ -508,14 +522,18 @@ public final class TeamsTools implements ToolExecutor {
         ArrayNode items = result.array("conversations");
         matching.forEach(conversation -> TeamsViews.conversation(items, conversation));
         List<TeamsGap> gaps = new ArrayList<>(book.gaps());
+        markSource(result, source);
         if (matching.isEmpty()) {
             gaps.add(TeamsGap.of(TeamsGapKind.NOTHING_OBSERVED,
                     query.isEmpty() ? "liste des conversations" : query,
-                    "aucune conversation servie par Teams depuis le rattachement ne correspond"));
+                    SOURCE_SCREEN.equals(source) ? "aucune conversation affichée ne correspond"
+                            : "aucune conversation servie par Teams depuis le rattachement ne correspond"));
         }
+        gaps.addAll(screenGaps);
         ObservationDiagnostic seen = link.observer().diagnostic();
         gaps = diagnosed(gaps, seen);
         StringBuilder text = new StringBuilder(sentence(matching.size(), "conversation", gaps, book, query));
+        sayScreen(text, source);
         explain(result, gaps, seen, text);
         result.window(ask.window().covering(null, null, false, false))
                 .gaps(gaps)
@@ -541,10 +559,20 @@ public final class TeamsTools implements ToolExecutor {
         TeamsLedger book = ledger();
         TeamsAsk ask = TeamsAsk.of(input, null);
         String wanted = TeamsAsk.text(input, "conversation_id", "conversationId", "id");
+        PageGestures gestures = new PageGestures(link, sleeper);
+        String shownBefore = gestures.shownConversationId();
 
         TeamsHarvester.Harvest harvest =
-                new TeamsHarvester(link, book, new PageGestures(link, sleeper))
-                        .readConversation(wanted, ask.window());
+                new TeamsHarvester(link, book, gestures).readConversation(wanted, ask.window());
+        String source = harvest.messages().isEmpty() ? SOURCE_NONE : SOURCE_NETWORK;
+        if (harvest.messages().isEmpty() && !harvest.conversationId().isEmpty()) {
+            // F-89 / SF-89-06 : le réseau n'a rien servi pour ce fil (cache local) — lire l'ÉCRAN.
+            TeamsHarvester.Harvest onScreen = screen(link).thread(gestures, harvest, shownBefore, ask.window());
+            if (onScreen != null) {
+                harvest = onScreen;
+                source = harvest.messages().isEmpty() ? SOURCE_NONE : SOURCE_SCREEN;
+            }
+        }
 
         TeamsConversation conversation = book.conversation(harvest.conversationId());
         String label = conversation == null ? harvest.conversationId() : conversation.label();
@@ -563,6 +591,8 @@ public final class TeamsTools implements ToolExecutor {
         StringBuilder text = new StringBuilder(new TeamsReading<>(harvest.messages(), readGaps,
                 harvest.window(), harvest.health()).summary("messages"));
         ask.notes().forEach(note -> text.append(' ').append(note));
+        markSource(result, source);
+        sayScreen(text, source);
         if (harvest.messages().isEmpty()) {
             // Relevé réel du 2026-09-13 : ouvrir un fil n'a produit AUCUN appel de messages — le nouveau
             // Teams sert l'historique depuis son cache local. On ne prétend pas le contraire.
@@ -612,6 +642,19 @@ public final class TeamsTools implements ToolExecutor {
         int limit = (int) Math.max(1, Math.min(TeamsAsk.MAX_CAP,
                 TeamsAsk.number(input, ask.window().cap(), "max_mentions", "limit")));
         List<TeamsMentionEvent> events = book.mentionsIn(ask.window());
+        String source = events.isEmpty() ? SOURCE_NONE : SOURCE_NETWORK;
+        List<TeamsGap> screenGaps = new ArrayList<>();
+        String viewport = "";
+        if (events.isEmpty()) {
+            // F-89 / SF-89-06 : rien par le réseau — lire le flux d'activité AFFICHÉ.
+            TeamsScreenFallback.ScreenList screen = screen(link).list(TeamsScreen.ACTIVITY, TeamsRoutes.ACTIVITY);
+            screenGaps.addAll(screen.gaps());
+            viewport = screen.viewport();
+            if (screen.found()) {
+                events = TeamsScreenFallback.mentions(screen.items(), ask.window());
+                source = events.isEmpty() ? SOURCE_NONE : SOURCE_SCREEN;
+            }
+        }
         if (events.size() > limit) {
             events = events.subList(0, limit);
         }
@@ -620,6 +663,7 @@ public final class TeamsTools implements ToolExecutor {
                 TeamsLinkState.LINKED);
         ArrayNode items = result.array("mentions");
         events.forEach(event -> TeamsViews.mention(items, event));
+        markSource(result, source);
 
         List<TeamsGap> gaps = new ArrayList<>(harvested);
         if (events.isEmpty()) {
@@ -630,7 +674,9 @@ public final class TeamsTools implements ToolExecutor {
         gaps = diagnosed(gaps, seen);
         StringBuilder text = new StringBuilder(count(events.size(), "mention trouvée", "mentions trouvées")
                 + " dans le flux d'activité, " + ask.window().describe() + '.');
+        gaps.addAll(screenGaps);
         appendGaps(text, gaps);
+        sayScreen(text, source);
         explain(result, gaps, seen, text);
         if (book.self() == null) {
             // On rend ce que le flux porte, et on dit qu'on n'a pas pu vérifier qu'il s'agit bien de
@@ -643,6 +689,7 @@ public final class TeamsTools implements ToolExecutor {
                         events.isEmpty() ? null : events.get(events.size() - 1).at(),
                         events.isEmpty() ? null : events.get(0).at(), false, false))
                 .gaps(gaps)
+                .viewport(viewport)
                 .health(book.health())
                 .with("firstUse", firstUse())
                 .text(text.toString());
@@ -807,6 +854,16 @@ public final class TeamsTools implements ToolExecutor {
         TeamsMeeting meeting = book.meeting(meetingId);
         List<TeamsTranscriptCue> cues =
                 meetingId.isEmpty() ? List.of() : book.transcriptOf(meetingId);
+        String source = cues.isEmpty() ? SOURCE_NONE : SOURCE_NETWORK;
+        TeamsScreenFallback.ScreenTranscript onScreen = null;
+        if (cues.isEmpty() && !meetingId.isEmpty()) {
+            // F-89 / SF-89-06 : aucune réplique par le réseau — lire le panneau de transcription AFFICHÉ.
+            onScreen = screen(link).transcript(meeting);
+            if (!onScreen.cues().isEmpty()) {
+                cues = onScreen.cues();
+                source = SOURCE_SCREEN;
+            }
+        }
 
         TeamsToolResult result = new TeamsToolResult(MEETING_TRANSCRIPT,
                 session.adapter().version(), TeamsLinkState.LINKED);
@@ -815,9 +872,25 @@ public final class TeamsTools implements ToolExecutor {
             TeamsViews.meeting(result.put("meeting"), meeting);
         }
         ArrayNode items = result.array("cues");
-        cues.forEach(cue -> TeamsViews.cue(items, cue));
+        for (int index = 0; index < cues.size(); index++) {
+            TeamsViews.cue(items, cues.get(index));
+            if (onScreen != null && SOURCE_SCREEN.equals(source)) {
+                ((ObjectNode) items.get(index)).put("offset", onScreen.offsets().get(index));
+            }
+        }
+        markSource(result, source);
+        Boolean downloadBlocked = onScreen == null ? null : onScreen.downloadBlocked();
+        if (downloadBlocked != null) {
+            result.json().put("downloadBlocked", downloadBlocked.booleanValue());
+            if (downloadBlocked) {
+                result.with("usage", DOWNLOAD_BLOCKED_RULE);
+            }
+        }
 
         List<TeamsGap> gaps = new ArrayList<>(harvested);
+        if (onScreen != null) {
+            gaps.addAll(onScreen.gaps());
+        }
         if (meetingId.isEmpty()) {
             gaps.add(TeamsGap.of(TeamsGapKind.MISSING_FIELD, "transcription", "meeting_id"));
         } else if (cues.isEmpty()) {
@@ -831,6 +904,10 @@ public final class TeamsTools implements ToolExecutor {
         StringBuilder text = new StringBuilder(count(cues.size(), "réplique lue", "répliques lues")
                 + (meeting == null ? "" : " pour « " + meeting.subject() + " »") + '.');
         appendGaps(text, gaps);
+        sayScreen(text, source);
+        if (Boolean.TRUE.equals(downloadBlocked)) {
+            text.append(' ').append(DOWNLOAD_BLOCKED_RULE);
+        }
         explain(result, gaps, seen, text);
         if (cues.isEmpty() && !meetingId.isEmpty()) {
             text.append(" Ouvrez la transcription dans Teams, puis redemandez : je lirai ce qu'il"
@@ -839,6 +916,7 @@ public final class TeamsTools implements ToolExecutor {
         result.window(ask.window().covering(cues.isEmpty() ? null : cues.get(0).at(),
                         cues.isEmpty() ? null : cues.get(cues.size() - 1).at(), false, true))
                 .gaps(gaps)
+                .viewport(onScreen == null ? "" : onScreen.viewport())
                 .health(book.health())
                 .notice(cues.isEmpty() ? "" : scope.announceOnce(meetingId,
                         "la transcription de cette réunion",
@@ -1646,6 +1724,44 @@ public final class TeamsTools implements ToolExecutor {
         return "Rien n'était servi : j'ai ouvert " + what + " dans votre fenêtre Teams pour que Teams "
                 + (what.startsWith("la liste") ? "la" : "le") + " charge"
                 + (restored ? ", puis j'ai remis la vue." : " ; la vue n'a pas pu être remise.");
+    }
+
+    // ------------------------------------------------------------------ F-89 / SF-89-06 : l'écran
+
+    static final String SOURCE_NETWORK = "reseau";
+    static final String SOURCE_SCREEN = "ecran";
+    static final String SOURCE_NONE = "aucune";
+
+    /** La règle de conformité d'une transcription au téléchargement bloqué (cadrage F-87 §9 bis). */
+    static final String DOWNLOAD_BLOCKED_RULE = "Téléchargement de la transcription bloqué par l'organisateur : "
+            + "sers-t'en pour répondre et résumer, ne recopie JAMAIS la transcription brute (ni fichier, ni bloc "
+            + "intégral dans le fil), et signale ce blocage à l'utilisateur.";
+
+    private void markSource(TeamsToolResult result, String source) {
+        result.json().put("source", source);
+        if (SOURCE_SCREEN.equals(source)) {
+            result.json().put("screenVersion", TeamsScreen.VERSION);
+        }
+    }
+
+    private static void sayScreen(StringBuilder text, String source) {
+        if (SOURCE_SCREEN.equals(source)) {
+            text.append(" Lu à l'écran : le réseau n'a rien servi pour cette demande (lecture d'écran ")
+                    .append(TeamsScreen.VERSION).append(").");
+        }
+    }
+
+    private static String joined(String first, String second) {
+        if (first == null || first.isBlank()) {
+            return second == null ? "" : second;
+        }
+        return second == null || second.isBlank() ? first : first + " " + second;
+    }
+
+    /** La lecture d'écran de repli (F-89 / SF-89-06), sur cette liaison, gestes journalisés. */
+    private TeamsScreenFallback screen(BrowserLink link) {
+        return new TeamsScreenFallback(link, sleeper, record -> gestureSay().accept("Teams : geste "
+                + record.action() + " sur " + record.domain() + " — " + record.result()));
     }
 
     /** Où dire les gestes des outils de lecture (§4.6 de F-108) : la console des outils fichiers si montée. */

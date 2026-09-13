@@ -63,6 +63,24 @@ class TeamsToolCatalogTest {
     }
 
     @Test
+    @DisplayName("SF-89-06 : la consigne de la transcription interdit la recopie brute quand le téléchargement est bloqué")
+    void theTranscriptInstructionForbidsRawCopyWhenDownloadIsBlocked() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(true);
+
+        AgentTool transcript = catalog.toolsFor(userId, teamsTerminal()).stream()
+                .filter(tool -> TeamsToolCatalog.MEETING_TRANSCRIPT.equals(tool.name()))
+                .findFirst().orElseThrow();
+
+        assertThat(transcript.description())
+                .contains("downloadBlocked")
+                .contains("ne recopie JAMAIS la transcription brute")
+                .contains("ni dans un fichier")
+                .contains("signale ce blocage")
+                .contains("résumer")
+                .contains("source");
+    }
+
+    @Test
     @DisplayName("sans le droit : AUCUN outil teams_*, et pas davantage un outil qui refuserait")
     void noToolAtAllWithoutTheRight() {
         when(teamsAccess.hasAccess(userId)).thenReturn(false);

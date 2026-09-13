@@ -305,6 +305,21 @@ final class FakeCdpConnection implements CdpConnection {
      */
     private JsonNode evaluate(String expression) {
         ObjectNode result = mapper.createObjectNode();
+        if (expression.contains("/*cg-screen:")) {
+            // F-89 / SF-89-06 : la lecture d'écran, appliquée à l'écran de papier affiché (ou à rien).
+            screenScripts.add(expression);
+            PaperScreen shown = screenFor(route);
+            if (shown == null) {
+                result.putObject("result").set("value", expression.contains("/*cg-screen:position*/")
+                        ? mapper.getNodeFactory().numberNode(-1)
+                        : expression.contains("/*cg-screen:control*/")
+                                ? mapper.createObjectNode().put("panel", false)
+                                : mapper.createObjectNode().put("found", false).put("moved", false));
+                return result;
+            }
+            result.putObject("result").set("value", shown.evaluate(expression));
+            return result;
+        }
         JsonNode files = sharePointScript(expression, result);
         if (files != null) {
             return files;
@@ -317,6 +332,14 @@ final class FakeCdpConnection implements CdpConnection {
             return searchGesture(expression, result);
         }
         if (expression.contains(".click()")) {
+            for (Map.Entry<String, PaperScreen> entry : screensOnClick.entrySet()) {
+                if (expression.contains(entry.getKey())) {
+                    clickedSelectors.add(entry.getKey());
+                    screens.put("", entry.getValue());
+                    result.putObject("result").put("value", true);
+                    return result;
+                }
+            }
             String opened = "";
             for (String candidate : reachable) {
                 if (expression.contains(candidate.toLowerCase(java.util.Locale.ROOT))) {
@@ -515,6 +538,41 @@ final class FakeCdpConnection implements CdpConnection {
     /** Même livraison, avec son statut HTTP (un refus 403, F-100). */
     void deliverOnScroll(String requestId, String url, String body, int status) {
         onNextScroll.add(new String[] { requestId, url, body, String.valueOf(status) });
+    }
+
+    /** Écrans de papier par fragment de route (F-89 / SF-89-06) ; clé vide : quelle que soit la route. */
+    private final Map<String, PaperScreen> screens = new java.util.LinkedHashMap<>();
+    /** Écrans qui n'apparaissent qu'après un clic sur un sélecteur contenant ce fragment. */
+    private final Map<String, PaperScreen> screensOnClick = new java.util.LinkedHashMap<>();
+    private final List<String> screenScripts = new ArrayList<>();
+    private final List<String> clickedSelectors = new ArrayList<>();
+
+    /** Cet écran est affiché quand la route contient ce fragment ({@code ""} : toujours). */
+    void screen(String routeFragment, PaperScreen screen) {
+        screens.put(routeFragment, screen);
+    }
+
+    /** Cet écran apparaît (sur toute route) après un clic dont le sélecteur contient ce fragment. */
+    void screenOnClick(String selectorFragment, PaperScreen screen) {
+        screensOnClick.put(selectorFragment, screen);
+    }
+
+    List<String> screenScripts() {
+        return List.copyOf(screenScripts);
+    }
+
+    List<String> clickedSelectors() {
+        return List.copyOf(clickedSelectors);
+    }
+
+    private PaperScreen screenFor(String currentRoute) {
+        PaperScreen found = null;
+        for (Map.Entry<String, PaperScreen> entry : screens.entrySet()) {
+            if (entry.getKey().isEmpty() || (currentRoute != null && currentRoute.contains(entry.getKey()))) {
+                found = entry.getValue();
+            }
+        }
+        return found;
     }
 
     /** L'onglet est sur cette adresse (F-89 / SF-89-05). */

@@ -146,8 +146,13 @@ class TeamsBlindLinkTest {
         JsonNode json = mapper.readTree(rendered);
 
         assertEquals(0, json.path("conversations").size());
-        JsonNode gap = json.path("gaps").get(json.path("gaps").size() - 1);
-        assertEquals("NOTHING_OBSERVED", gap.path("kind").asText());
+        JsonNode gap = null;
+        for (JsonNode candidate : json.path("gaps")) {
+            if ("NOTHING_OBSERVED".equals(candidate.path("kind").asText())) {
+                gap = candidate;
+            }
+        }
+        assertTrue(gap != null, json.path("gaps").toString());
         assertTrue(gap.path("detail").asText().contains("Teams a répondu par des chemins que l'adaptateur ne reconnaît pas"),
                 gap.toString());
         assertTrue(json.path("text").asText().contains(ObservationDiagnostic.SURVEY_COMMAND), json.path("text").asText());

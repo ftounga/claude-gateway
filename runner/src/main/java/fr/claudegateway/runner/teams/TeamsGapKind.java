@@ -112,7 +112,13 @@ public enum TeamsGapKind {
     WRITE_FAILED("écriture refusée par Microsoft 365"),
 
     /** Un nom que SharePoint refuserait : l'écriture n'est pas tentée (F-108 / SF-108-04). */
-    INVALID_NAME("nom refusé");
+    INVALID_NAME("nom refusé"),
+
+    /**
+     * La lecture de l'écran n'a pas trouvé la structure attendue (F-89 / SF-89-06) : Teams a changé
+     * d'écran, ou la vue n'est pas affichée. Rien n'est rendu à la place — un résultat à moitié faux.
+     */
+    SCREEN_CHANGED("Teams a changé d'écran");
 
     private final String label;
 
