@@ -169,6 +169,16 @@ public class RunnerToolGateway {
                 // recopier un objet quelconque ferait traverser le réseau à ce qu'on n'a pas lu.
             });
         }
+        // F-90 / SF-90-03 — LA SEULE exception au « workspaceId n'est jamais transmis au runner »
+        // (RunnerTarget). Les outils de captures font REMONTER des images : la machine doit savoir
+        // dans QUEL terminal Teams les déposer. Elle ne le décide pas pour autant — la route de
+        // dépôt revérifie que ce terminal appartient bien au compte du jeton présenté, si bien que
+        // l'isolation `user_id` tient sans dépendre de ce que le runner affirme. L'exception est
+        // donc nommée ici, restreinte à ces deux outils, plutôt que d'ouvrir le champ à tous.
+        if (fr.claudegateway.teams.TeamsToolCatalog.MEETING_MOMENTS.equals(tool)
+                || fr.claudegateway.teams.TeamsToolCatalog.MOMENTS_STATUS.equals(tool)) {
+            payload.put("workspace_id", String.valueOf(target.workspaceId()));
+        }
         return router.call(target, callId, tool, payload, teamsTimeoutFor(tool));
     }
 

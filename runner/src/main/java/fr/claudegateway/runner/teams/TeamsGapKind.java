@@ -68,7 +68,14 @@ public enum TeamsGapKind {
      * Une image retenue devant laquelle <b>personne n'a parlé</b> (F-90 / SF-90-02). Elle ne devient
      * pas un moment — un moment sans citation n'est pas un moment — et elle est comptée.
      */
-    FRAME_WITHOUT_SPEECH("image sans parole pendant son affichage");
+    FRAME_WITHOUT_SPEECH("image sans parole pendant son affichage"),
+
+    /**
+     * Une image retenue que la gateway n'a pas acceptée (F-90 / SF-90-03). Son moment est rendu
+     * <b>sans capture</b>, et le compte est dit : perdre une image sur soixante et le dire vaut
+     * mieux que perdre le compte rendu — mais le taire serait le rendre faux.
+     */
+    UPLOAD_REFUSED("image retenue non remontée");
 
     private final String label;
 

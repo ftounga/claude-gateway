@@ -43,6 +43,7 @@ public final class ToolStack {
                                 fr.claudegateway.runner.teams.TeamsAdapters.current(),
                                 console::info),
                         fr.claudegateway.runner.teams.BrowserLink.realSleeper())
+                        .withMoments(moments(config, console))
                 : fr.claudegateway.runner.teams.TeamsTools.disabled(
                         "Le volet Teams est désactivé sur cette machine (--no-teams).");
         ProjectScopes scopes =
@@ -69,6 +70,35 @@ public final class ToolStack {
 
         return new ToolStack(
                 new ToolDispatcher(scopes, scopes.capabilities(), shell, sender, console));
+    }
+
+    /**
+     * Le travail long des captures (F-90 / SF-90-03), monté ici comme le reste — <b>une fois</b>,
+     * partagé par les deux transports.
+     *
+     * <p>Rien ne se télécharge et rien ne se connecte à ce stade : {@code ffmpeg} n'est cherché
+     * qu'au premier travail (D3), et le jeton n'est lu que pour savoir <b>si</b> une remontée est
+     * possible. Quand il n'y en a pas, l'uploader le <b>dit</b> au lieu de faire semblant.</p>
+     */
+    private static fr.claudegateway.runner.teams.MomentsWorker moments(RunnerConfig config,
+            Console console) {
+        fr.claudegateway.runner.teams.TeamsWorkFolder folder =
+                new fr.claudegateway.runner.teams.TeamsWorkFolder(config.hostRoot());
+        fr.claudegateway.runner.teams.ProcessRunner processes =
+                fr.claudegateway.runner.teams.ProcessRunner.real();
+        fr.claudegateway.runner.teams.LocalToolchain toolchain =
+                new fr.claudegateway.runner.teams.LocalToolchain(folder, processes, console::info);
+        String token = new TokenStore(config.hostRoot(),
+                java.nio.file.Path.of(System.getProperty("user.home", "."))).load()
+                .map(StoredToken::token).orElse("");
+        fr.claudegateway.runner.teams.MomentUploader uploader = token.isBlank()
+                ? fr.claudegateway.runner.teams.MomentUploader.unavailable(
+                        "ce poste n'a pas de jeton runner : aucune image ne peut remonter")
+                : fr.claudegateway.runner.teams.MomentUploader.over(
+                        java.net.http.HttpClient.newHttpClient(), config.gatewayBaseUrl(), token);
+        return new fr.claudegateway.runner.teams.MomentsWorker(
+                new fr.claudegateway.runner.teams.MomentsJobStore(folder),
+                new fr.claudegateway.runner.teams.SceneFrames(toolchain, processes), uploader);
     }
 
     public ToolDispatcher dispatcher() {

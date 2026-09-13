@@ -38,7 +38,11 @@ class TeamsReadingCatalogTest {
     private static final List<String> EXPECTED = List.of(
             "teams_status", "teams_find_conversations", "teams_read_conversation", "teams_mentions",
             "teams_search", "teams_find_meetings", "teams_meeting_transcript",
-            "teams_meeting_recording");
+            "teams_meeting_recording",
+            // F-90 / SF-90-03 — les deux outils de captures. Ce sont bien des outils de LECTURE au
+            // sens de ce catalogue : le RUNNER les exécute, contrairement aux outils de
+            // présentation qui ne quittent jamais la gateway.
+            "teams_meeting_moments", "teams_moments_status");
 
     @Mock private TeamsAccessService teamsAccess;
 
@@ -62,12 +66,13 @@ class TeamsReadingCatalogTest {
     }
 
     @Test
-    @DisplayName("Les HUIT outils de LECTURE sont donnés, dans l'ordre annoncé et EN PREMIER")
+    @DisplayName("Les DIX outils de LECTURE sont donnés, dans l'ordre annoncé et EN PREMIER")
     void the_whole_catalog_is_given() {
         // Depuis F-89 / SF-89-02, la panoplie d'un terminal Teams porte aussi les outils de
         // PRÉSENTATION — ceux qui posent un bloc dans le fil et ne quittent jamais la gateway. Le
-        // catalogue de LECTURE, lui, ne bouge pas : il reste ces huit-là, dans cet ordre, et c'est
-        // exactement ce que le runner mirroite.
+        // catalogue de LECTURE, lui, ne grandit qu'avec ce que le RUNNER sait exécuter : depuis
+        // F-90 / SF-90-03, ces dix-là, dans cet ordre, et c'est exactement ce que le runner
+        // mirroite.
         assertThat(tools()).extracting(AgentTool::name).startsWith(EXPECTED.toArray(String[]::new));
     }
 
