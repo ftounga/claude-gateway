@@ -1,0 +1,380 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-99 / SF-99-01 — LE REGISTRE DU RADAR.
+
+      Neuf tables, et une règle qui les traverse toutes : chaque ligne porte `user_id` ET `host_id`.
+      Le Radar d'un poste ne voit jamais celui d'un autre poste, y compris du même utilisateur.
+
+      - radar_subjects         : le sujet (nom, état, prochaine étape, échéance, dernière activité)
+      - radar_subject_aliases  : les autres noms d'un sujet (écrits à partir de SF-99-03)
+      - radar_subject_facts    : le résumé, PHRASE PAR PHRASE
+      - radar_people           : l'annuaire du poste, une personne par identité de source
+      - radar_subject_roles    : le rôle d'une personne SUR UN SUJET (décide, pilote, expert, informé)
+      - radar_commitments      : qui doit quoi à qui, et les mises en relation
+      - radar_evidence         : LA PREUVE — unique par identifiant de source (idempotence, jamais de
+                                 doublon) ; citation courte (280), lien profond
+      - radar_evidence_links   : ce que chaque preuve justifie. PAS DE FAIT SANS PREUVE : une phrase, un
+                                 état, un engagement, un rôle n'existent qu'accompagnés d'un lien
+      - radar_syncs            : les synchros et leur couverture
+
+      Aucune clé étrangère : même choix que usage_turns ou governance_* — la purge est explicite
+      (SF-99-05), et une table du Radar ne doit jamais bloquer la suppression d'un poste.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="081-radar-registry-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="radar_subjects">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="name" type="varchar(200)"><constraints nullable="false"/></column>
+            <column name="state" type="varchar(20)"><constraints nullable="false"/></column>
+            <column name="next_step" type="varchar(500)"/>
+            <column name="due_date" type="date"/>
+            <column name="last_activity_at" type="timestamptz"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_subjects" indexName="idx_radar_subjects_scope_state">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="state"/>
+        </createIndex>
+        <createTable tableName="radar_subject_aliases">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="subject_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="alias" type="varchar(200)"><constraints nullable="false"/></column>
+            <column name="normalized" type="varchar(200)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_subject_aliases" indexName="idx_radar_subject_aliases_unique" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="subject_id"/>
+            <column name="normalized"/>
+        </createIndex>
+        <createTable tableName="radar_subject_facts">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="subject_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="position" type="int"><constraints nullable="false"/></column>
+            <column name="text" type="varchar(500)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_subject_facts" indexName="idx_radar_subject_facts_scope_subject">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="subject_id"/>
+        </createIndex>
+        <createTable tableName="radar_people">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="source_key" type="varchar(320)"><constraints nullable="false"/></column>
+            <column name="display_name" type="varchar(200)"><constraints nullable="false"/></column>
+            <column name="job_title" type="varchar(200)"/>
+            <column name="last_interaction_at" type="timestamptz"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_people" indexName="idx_radar_people_unique" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="source_key"/>
+        </createIndex>
+        <createTable tableName="radar_subject_roles">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="subject_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="person_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="role" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_subject_roles" indexName="idx_radar_subject_roles_unique" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="subject_id"/>
+            <column name="person_id"/>
+        </createIndex>
+        <createTable tableName="radar_commitments">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="subject_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="direction" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="description" type="varchar(500)"><constraints nullable="false"/></column>
+            <column name="from_person_id" type="uuid"/>
+            <column name="to_person_id" type="uuid"/>
+            <column name="other_person_id" type="uuid"/>
+            <column name="due_date" type="date"/>
+            <column name="due_deduced" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="certainty" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="extraction_key" type="varchar(128)"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_commitments" indexName="idx_radar_commitments_scope_subject">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="subject_id"/>
+        </createIndex>
+        <createIndex tableName="radar_commitments" indexName="idx_radar_commitments_extraction_key" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="extraction_key"/>
+        </createIndex>
+        <createTable tableName="radar_evidence">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="source" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="source_ref" type="varchar(512)"><constraints nullable="false"/></column>
+            <column name="occurred_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="quote" type="varchar(280)"><constraints nullable="false"/></column>
+            <column name="deep_link" type="varchar(2048)"/>
+            <column name="author_person_id" type="uuid"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_evidence" indexName="idx_radar_evidence_source_unique" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="source"/>
+            <column name="source_ref"/>
+        </createIndex>
+        <createTable tableName="radar_evidence_links">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="evidence_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="subject_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="target_kind" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="target_id" type="uuid"/>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_evidence_links" indexName="idx_radar_evidence_links_scope_subject">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="subject_id"/>
+        </createIndex>
+        <createIndex tableName="radar_evidence_links" indexName="idx_radar_evidence_links_scope_evidence">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="evidence_id"/>
+        </createIndex>
+        <createTable tableName="radar_syncs">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="started_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="finished_at" type="timestamptz"/>
+            <column name="coverage" type="text"/>
+            <column name="consumed_tokens" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_syncs" indexName="idx_radar_syncs_scope_started">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="started_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="radar_syncs"/>
+            <dropTable tableName="radar_evidence_links"/>
+            <dropTable tableName="radar_evidence"/>
+            <dropTable tableName="radar_commitments"/>
+            <dropTable tableName="radar_subject_roles"/>
+            <dropTable tableName="radar_people"/>
+            <dropTable tableName="radar_subject_facts"/>
+            <dropTable tableName="radar_subject_aliases"/>
+            <dropTable tableName="radar_subjects"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ============================ H2 ============================ -->
+    <changeSet id="081-radar-registry-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="radar_subjects">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="name" type="varchar(200)"><constraints nullable="false"/></column>
+            <column name="state" type="varchar(20)"><constraints nullable="false"/></column>
+            <column name="next_step" type="varchar(500)"/>
+            <column name="due_date" type="date"/>
+            <column name="last_activity_at" type="timestamp with time zone"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_subjects" indexName="idx_radar_subjects_scope_state">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="state"/>
+        </createIndex>
+        <createTable tableName="radar_subject_aliases">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="subject_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="alias" type="varchar(200)"><constraints nullable="false"/></column>
+            <column name="normalized" type="varchar(200)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_subject_aliases" indexName="idx_radar_subject_aliases_unique" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="subject_id"/>
+            <column name="normalized"/>
+        </createIndex>
+        <createTable tableName="radar_subject_facts">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="subject_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="position" type="int"><constraints nullable="false"/></column>
+            <column name="text" type="varchar(500)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_subject_facts" indexName="idx_radar_subject_facts_scope_subject">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="subject_id"/>
+        </createIndex>
+        <createTable tableName="radar_people">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="source_key" type="varchar(320)"><constraints nullable="false"/></column>
+            <column name="display_name" type="varchar(200)"><constraints nullable="false"/></column>
+            <column name="job_title" type="varchar(200)"/>
+            <column name="last_interaction_at" type="timestamp with time zone"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_people" indexName="idx_radar_people_unique" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="source_key"/>
+        </createIndex>
+        <createTable tableName="radar_subject_roles">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="subject_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="person_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="role" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_subject_roles" indexName="idx_radar_subject_roles_unique" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="subject_id"/>
+            <column name="person_id"/>
+        </createIndex>
+        <createTable tableName="radar_commitments">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="subject_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="direction" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="description" type="varchar(500)"><constraints nullable="false"/></column>
+            <column name="from_person_id" type="uuid"/>
+            <column name="to_person_id" type="uuid"/>
+            <column name="other_person_id" type="uuid"/>
+            <column name="due_date" type="date"/>
+            <column name="due_deduced" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="certainty" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="extraction_key" type="varchar(128)"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_commitments" indexName="idx_radar_commitments_scope_subject">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="subject_id"/>
+        </createIndex>
+        <createIndex tableName="radar_commitments" indexName="idx_radar_commitments_extraction_key" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="extraction_key"/>
+        </createIndex>
+        <createTable tableName="radar_evidence">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="source" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="source_ref" type="varchar(512)"><constraints nullable="false"/></column>
+            <column name="occurred_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="quote" type="varchar(280)"><constraints nullable="false"/></column>
+            <column name="deep_link" type="varchar(2048)"/>
+            <column name="author_person_id" type="uuid"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_evidence" indexName="idx_radar_evidence_source_unique" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="source"/>
+            <column name="source_ref"/>
+        </createIndex>
+        <createTable tableName="radar_evidence_links">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="evidence_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="subject_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="target_kind" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="target_id" type="uuid"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_evidence_links" indexName="idx_radar_evidence_links_scope_subject">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="subject_id"/>
+        </createIndex>
+        <createIndex tableName="radar_evidence_links" indexName="idx_radar_evidence_links_scope_evidence">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="evidence_id"/>
+        </createIndex>
+        <createTable tableName="radar_syncs">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="started_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="finished_at" type="timestamp with time zone"/>
+            <column name="coverage" type="varchar(1000000)"/>
+            <column name="consumed_tokens" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_syncs" indexName="idx_radar_syncs_scope_started">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="started_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="radar_syncs"/>
+            <dropTable tableName="radar_evidence_links"/>
+            <dropTable tableName="radar_evidence"/>
+            <dropTable tableName="radar_commitments"/>
+            <dropTable tableName="radar_subject_roles"/>
+            <dropTable tableName="radar_people"/>
+            <dropTable tableName="radar_subject_facts"/>
+            <dropTable tableName="radar_subject_aliases"/>
+            <dropTable tableName="radar_subjects"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
