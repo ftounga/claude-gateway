@@ -102,7 +102,9 @@
   } @else {
     <!-- MAÎTRE–DÉTAIL (F-98, décision D1) : la colonne des postes à gauche, UN SEUL poste ouvert à
          droite. La page ne grandit plus avec le nombre de clients. -->
-    <div class="forge-split">
+    <!-- TÉLÉPHONE (F-98 / SF-98-05) : sous 820 px, `/forge` est la liste, `/forge/<id>` le détail.
+         La classe dit lequel des deux est ouvert ; les règles CSS font le reste. -->
+    <div class="forge-split" [class.forge-split--detail-open]="detailOpen()">
       <app-forge-rail
         class="forge-split__rail"
         [groups]="groups()"
@@ -116,6 +118,10 @@
       ></app-forge-rail>
 
       <div class="forge-split__detail">
+        <a class="forge-split__back" routerLink="/forge" aria-label="Retour à la liste des postes">
+          <mat-icon aria-hidden="true">arrow_back</mat-icon>
+          Postes
+        </a>
         @if (isEmpty()) {
           <mat-card class="postes__notice">
             <mat-icon>devices</mat-icon>
@@ -523,12 +529,26 @@
           </p>
 
           @if (!online(host)) {
-            <!-- AUCUN APPEL n'est parti : le dire coûte moins qu'un délai pour l'apprendre. -->
-            <p class="poste__carte-hint">
-              La carte n'a pas été lue : lancez le runner sur la machine, puis
-              <strong>Rafraîchir</strong>.
-            </p>
+            <!-- AUCUN APPEL n'est parti. F-98 / SF-98-05 : dire ce qu'on voit, pas la mécanique — et
+                 plus rien à cliquer : la carte est relue d'elle-même au retour en ligne. -->
+            <p class="poste__carte-hint">Poste hors ligne : la carte sera lue à la prochaine connexion.</p>
           } @else {
+            <!-- CE QUE LA CARTE EST, ET COMMENT L'ENRICHIR (F-98 / SF-98-05) : une phrase, et le geste.
+                 « Écrire dans la carte » ouvre le terminal du poste, qui s'ouvre à la racine où elle vit. -->
+            <div class="poste__carte-lede">
+              <p>Ce que vous savez de l'infrastructure de ce client. Chaque projet l'enrichit.</p>
+              <button
+                mat-stroked-button
+                type="button"
+                class="poste__carte-write"
+                [disabled]="openingTerminalHostId() !== null"
+                (click)="openHostTerminal(host)"
+                [attr.aria-label]="'Écrire dans la carte de ' + host.name"
+              >
+                <mat-icon>edit_note</mat-icon>
+                Écrire dans la carte
+              </button>
+            </div>
             @if (hostMap(host); as map) {
               @if (!map.governed || !map.readable) {
                 <!-- Le message du serveur, REPRIS TEL QUEL : il porte déjà son action corrective. -->
@@ -584,12 +604,6 @@
               }
             }
           }
-
-          <!-- CE QUE LE TERMINAL DU POSTE SERT (F-92 / SF-92-03). -->
-          <p class="poste__carte-hint">
-            Le <strong>terminal du poste</strong> s'ouvre à la racine, là où vit la carte : c'est de là
-            qu'on l'écrit.
-          </p>
         </section>
       }
 

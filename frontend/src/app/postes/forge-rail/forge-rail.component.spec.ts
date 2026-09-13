@@ -47,9 +47,17 @@ describe('ForgeRailComponent', () => {
     expect(Array.from(root.querySelectorAll('.forge-rail__group')).map((g) => g.textContent?.trim()))
       .toEqual(['En ligne', 'Hors ligne', 'Sans machine']);
     expect(rows(root)[0].textContent).toContain('FREE');
-    expect(rows(root)[0].textContent).toContain('en ligne · vu il y a');
+    // F-98 / SF-98-05 : écrit comme une phrase.
+    expect(rows(root)[0].textContent).toContain('En ligne · vu il y a');
     expect(rows(root)[0].querySelector('.forge-rail__count')?.textContent?.trim()).toBe('2');
-    expect(rows(root)[1].textContent).toContain('hors ligne');
+    expect(rows(root)[1].textContent).toContain('Hors ligne · vu il y a');
+  });
+
+  it('écrit « Jamais connecté » pour un poste qui n’a jamais battu', () => {
+    const root = render(groupHosts([host('h9', 'Richemont', { connected: false, lastSeenAt: null })],
+      (h) => h.connected, ''));
+
+    expect(rows(root)[0].textContent).toContain('Jamais connecté');
   });
 
   it('porte le drapeau « attend » quand une autorisation attend (§12)', () => {

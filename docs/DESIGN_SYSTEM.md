@@ -589,7 +589,13 @@ poste ouvert.
   Un groupe vide n'est pas rendu.
 - **Un seul poste ouvert**, désigné par l'URL `/forge/:hostRef`. La couleur d'identité entre par la
   pastille et le filet de la ligne ouverte ; elle ne qualifie jamais un état.
-- **Le statut date, il n'affirme pas** : « en ligne · vu il y a 12 s », jamais « Connecté » seul.
+- **Le statut date, il n'affirme pas** : « En ligne · vu il y a 12 s », « Hors ligne · vu il y a
+  18 min », « Jamais connecté » — jamais « Connecté » seul.
+- **Les textes disent ce qu'on voit et ce qu'on peut faire**, jamais la mécanique : « Poste hors
+  ligne : la carte sera lue à la prochaine connexion. », pas « la carte n'a pas été lue : lancez le
+  runner, puis Rafraîchir ».
+- **Téléphone (< 820 px)** : `/forge` montre la colonne plein écran, `/forge/<id>` le détail plein
+  écran avec un lien « ← Postes » (13 px secondaire) ; la même URL sert les deux tailles.
 
 ---
 

@@ -417,6 +417,12 @@ export class PostesComponent implements OnInit {
     return defaultHostRef(hosts, (host) => this.online(host));
   });
 
+  /**
+   * Vrai quand l'URL désigne un poste (`/forge/<id>`) : sur téléphone, c'est le détail qui s'affiche,
+   * avec son retour ; sur `/forge`, c'est la liste (F-98 / SF-98-05). Même URL, deux tailles.
+   */
+  readonly detailOpen = computed(() => this.routeHostRef() !== null);
+
   /** Le poste ouvert à droite — un seul, quel que soit le nombre de clients. */
   readonly selectedHost = computed<RunnerHostOverview>(() =>
     this.fleetHosts().find((host) => hostRef(host) === this.selectedRef()) ?? this.hostedHost());
@@ -1491,11 +1497,17 @@ export class PostesComponent implements OnInit {
     }
     this.atelier.runnerHostsOverview().subscribe({
       next: (hosts) => {
+        // Ce que l'écran savait AVANT ce relevé : qui était hors ligne (F-98 / SF-98-05). Lu sur
+        // l'état partagé, pour qu'un refus reçu dans un terminal compte comme n'importe quelle panne.
+        const offlineBefore = new Set(this.realHosts()
+          .filter((host) => host.id !== null && !this.online(host))
+          .map((host) => host.id as string));
         // L'état partagé d'abord (F-97 / SF-97-02) : c'est lui que lisent la pastille et les lectures
         // qui suivent. Un refus plus récent que ce relevé y reste en vigueur.
         for (const host of hosts) {
           this.presence.record(host.id, host.connected, host.lastSeenAt);
         }
+        this.forgetMapsBackOnline(hosts, offlineBefore);
         this.hosts.set(hosts.map((host) => ({ ...host, projects: host.projects ?? [] })));
         // La racine de chaque poste connecté, lue UNE fois (F-72 / SF-72-03, arbitrage A1) : le
         // sondage de 15 s ne la rejoue pas — lire la machine du client 240 fois par heure pour une
@@ -1524,6 +1536,22 @@ export class PostesComponent implements OnInit {
         }
       },
     });
+  }
+
+  /**
+   * **La carte d'un poste revenu en ligne est relue, une fois** (F-98 / SF-98-05).
+   *
+   * <p>La règle A1 (F-72 / SF-72-03) tient : le sondage ne relit jamais la carte. Mais « la carte sera
+   * lue à la prochaine connexion » est une promesse, et c'est ce passage hors ligne → en ligne qui la
+   * tient — sans rien à cliquer, et sans aucun sondage de la machine en plus. Oublier la carte suffit :
+   * la lecture qui suit la relit, et l'intégrité avec elle.</p>
+   */
+  private forgetMapsBackOnline(hosts: RunnerHostOverview[], offlineBefore: Set<string>): void {
+    for (const host of hosts) {
+      if (host.id !== null && offlineBefore.has(host.id) && this.online(host)) {
+        this.forgetMap(host.id);
+      }
+    }
   }
 
   private startPolling(): void {

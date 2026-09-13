@@ -51,9 +51,13 @@ export class ForgeRailComponent {
     return this.presence.isOnline(host.id, host.connected);
   }
 
-  /** « en ligne · vu il y a 12 s » — daté, jamais affirmé (F-97). */
+  /**
+   * « En ligne · vu il y a 12 s », « Hors ligne · vu il y a 18 min », « Jamais connecté » — daté, jamais
+   * affirmé (F-97), et écrit comme une phrase (F-98 / SF-98-05).
+   */
   stateLabel(host: RunnerHostOverview): string {
-    return this.presence.label(host.id, host.connected, host.lastSeenAt);
+    const label = this.presence.label(host.id, host.connected, host.lastSeenAt);
+    return label.charAt(0).toUpperCase() + label.slice(1);
   }
 
   /** Couleur du filet de sélection : celle du poste (§9), aucune pour « Hébergé ». */
