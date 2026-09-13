@@ -267,18 +267,16 @@ describe('PostesComponent', () => {
     expect(mark.style.background).not.toBe('');
   });
 
-  it('porte la couleur du poste sur sa pastille d\'en-tête ET sur le filet de chaque projet', () => {
+  it('porte la couleur du poste sur sa pastille d\'en-tête, et aucune sur les tuiles', () => {
     setup();
     const root = fixture.nativeElement as HTMLElement;
-    const mark = headMark();
     const projects = root.querySelectorAll<HTMLElement>('.projet');
 
-    expect(mark.style.background).toContain(hexToRgb(hostTone('Poste CAGIP').solid));
+    expect(headMark().style.background).toContain(hexToRgb(hostTone('Poste CAGIP').solid));
     expect(projects.length).toBe(2);
-    projects.forEach((project) => {
-      // Le projet reprend le filet de SA machine : c'est ce qui le rattache visuellement.
-      expect(project.style.borderLeftColor).toBe(hexToRgb(hostTone('Poste CAGIP').solid));
-    });
+    // La grille ne montre que les projets du poste ouvert : l'identité est déjà dans l'en-tête et la
+    // ligne ouverte de la colonne (§16) — aucune tuile ne la répète.
+    projects.forEach((project) => expect(project.getAttribute('style')).toBeNull());
   });
 
   it('donne à deux postes de noms différents deux couleurs différentes', () => {
@@ -345,7 +343,7 @@ describe('PostesComponent', () => {
     expect(text()).not.toContain('Administrateur');
   });
 
-  it('rend les projets du poste, dans l’ordre donné par la gateway', () => {
+  it('rend les projets du poste en tuiles, ceux qui travaillent d’abord', () => {
     setup();
     const projects = (fixture.nativeElement as HTMLElement).querySelectorAll('.projet');
     expect(projects.length).toBe(2);
@@ -373,12 +371,6 @@ describe('PostesComponent', () => {
     const neuf = { ...poste, activeProjects: 0, lastActivityAt: null };
     setup([neuf]);
     expect(component.activityLabel(neuf)).toBeNull();
-  });
-
-  it('nomme la racine quand le projet n’a pas de sous-dossier', () => {
-    setup();
-    expect(component.projectPathLabel(poste.projects[1])).toBe('la racine');
-    expect(component.projectPathLabel(poste.projects[0])).toBe('web');
   });
 
   it("montre le dernier outil, jamais sa cible", () => {
@@ -991,6 +983,130 @@ describe('PostesComponent', () => {
     });
   });
 
+  describe('les projets en grille (F-98 / SF-98-03)', () => {
+    const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+
+    const flotte: RunnerHostOverview = {
+      ...poste,
+      projects: [
+        { ...poste.projects[1], id: 'a', name: 'zeta', lastActivityAt: minutesAgo(1), active: false },
+        { ...poste.projects[1], id: 'b', name: 'Alpha', lastActivityAt: minutesAgo(30), active: false },
+        {
+          ...poste.projects[1], id: 'c', name: 'migration', lastActivityAt: minutesAgo(60),
+          liveTerminal: true,
+          terminalPreview: { activity: 'AWAITING_APPROVAL', activityDetail: 'aws s3 ls', lines: [] },
+        },
+        { ...poste.projects[1], id: 'd', name: 'beta', lastActivityAt: null, active: false },
+      ],
+    };
+
+    function names(): string[] {
+      return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.projet__name'))
+        .map((node) => node.textContent?.trim() ?? '');
+    }
+
+    function sortBy(key: string): void {
+      ((fixture.nativeElement as HTMLElement)
+        .querySelector(`[data-sort="${key}"]`) as HTMLButtonElement).click();
+      fixture.detectChanges();
+    }
+
+    it('range les tuiles dans une grille, ce qui attend en tête par défaut', () => {
+      setup([flotte]);
+      const grid = (fixture.nativeElement as HTMLElement).querySelector('.poste__grid') as HTMLElement;
+
+      expect(grid.querySelectorAll('app-forge-project-tile').length).toBe(4);
+      expect(component.projectSort()).toBe('actifs');
+      expect(names()).toEqual(['migration', 'zeta', 'Alpha', 'beta']);
+      const first = grid.querySelector('.projet') as HTMLElement;
+      expect(first.classList).toContain('projet--awaiting');
+      expect(first.textContent).toContain('Attend votre autorisation');
+      expect(first.textContent).toContain('aws s3 ls');
+    });
+
+    it('trie A → Z, puis par activité récente', () => {
+      setup([flotte]);
+
+      sortBy('alpha');
+      expect(names()).toEqual(['Alpha', 'beta', 'migration', 'zeta']);
+
+      sortBy('recents');
+      expect(names()).toEqual(['zeta', 'Alpha', 'migration', 'beta']);
+    });
+
+    it('une tuile sans aperçu dit depuis quand elle est au repos', () => {
+      setup([flotte]);
+      const tiles = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.projet'));
+
+      expect(tiles[2].textContent).toContain('Au repos · dernier tour il y a 30 min');
+      expect(tiles[3].textContent).toContain('Au repos · aucun tour');
+    });
+
+    it('« Ouvrir » entre dans le terminal du projet', () => {
+      setup([flotte]);
+      const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      ((fixture.nativeElement as HTMLElement).querySelector('.projet__open') as HTMLButtonElement).click();
+
+      expect(navigate).toHaveBeenCalledWith(['/atelier', 'c']);
+    });
+
+    it('le filtre de la colonne ne garde dans la grille que les projets qui correspondent', () => {
+      setup([flotte]);
+
+      component.filter.set('ALPH');
+      fixture.detectChanges();
+
+      expect(names()).toEqual(['Alpha']);
+      expect(text()).toContain('1 projet correspond au filtre');
+    });
+
+    it('LE CRITÈRE DE LA FEATURE : 4 postes, 15 projets, 1440 × 900 — la colonne et 12 tuiles sans défiler', () => {
+      // Les dimensions de la fenêtre de test sont fixées par karma.conf.js (--window-size=1440,900).
+      // (moins la barre de défilement de la page de test, comme sur un vrai portable)
+      expect(window.innerWidth).withContext('fenêtre de test attendue en 1440 px').toBeGreaterThanOrEqual(1400);
+      const quinze: RunnerHostOverview = {
+        ...poste,
+        id: 'h1', name: 'EDENRED', activeProjects: 0,
+        projects: Array.from({ length: 15 }, (_, i) => ({
+          ...poste.projects[1], id: `p${i}`, name: `projet-${i}`, projectPath: `projet-${i}`,
+          lastActivityAt: minutesAgo(10 + i),
+        })),
+      };
+      setup([
+        quinze,
+        { ...poste, id: 'h2', name: 'FREE' },
+        { ...poste, id: 'h3', name: 'CAGIP', connected: false },
+        { ...poste, id: 'h4', name: 'Richemont', connected: false, lastSeenAt: null, projects: [] },
+      ]);
+      const root = fixture.nativeElement as HTMLElement;
+      root.style.display = 'block';
+      root.style.width = `${window.innerWidth}px`;
+      fixture.detectChanges();
+
+      // La barre de l'application (64 px, §4) est au-dessus de la Forge dans la vraie page.
+      const pageTop = root.getBoundingClientRect().top - 64;
+      const bottomOf = (node: Element) => node.getBoundingClientRect().bottom - pageTop;
+      const tiles = Array.from(root.querySelectorAll('app-forge-project-tile'));
+      const rows = Array.from(root.querySelectorAll('.forge-rail__host'));
+
+      expect(tiles.length).toBe(15);
+      expect(rows.length).toBe(5);
+      expect(bottomOf(tiles[11])).withContext('la 12e tuile doit tenir dans 900 px').toBeLessThanOrEqual(900);
+      expect(bottomOf(rows[rows.length - 1])).withContext('toute la colonne doit tenir').toBeLessThanOrEqual(900);
+    });
+
+    it('un filtre qui retient le poste par son nom garde toute la grille', () => {
+      setup([flotte]);
+
+      component.filter.set('cagip');
+      fixture.detectChanges();
+
+      expect(names().length).toBe(4);
+      expect(text()).not.toContain('au filtre');
+    });
+  });
+
   /**
    * Le signe de vie sur la carte du poste (F-70 / SF-70-02). Le PO a tranché **le même** signe qu'au
    * terminal : une pastille et le mot écrit. Ce qui se vérifie ici, c'est qu'il soit lisible **et**
@@ -1461,19 +1577,16 @@ describe('PostesComponent', () => {
     expect(text()).toContain('Ajouter un projet');
   });
 
-  it('montre les dossiers de la racine QUI NE SONT PAS encore ouverts', () => {
+  it('compte dans la tuile fantôme les dossiers de la racine QUI NE SONT PAS encore ouverts', () => {
     setup();
-    const items = Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll('.poste__unopened-item'),
-    ).map((node) => node.textContent?.trim() ?? '');
+    const ghost = (fixture.nativeElement as HTMLElement).querySelector('.poste__ghost') as HTMLElement;
 
-    // `web` est déjà pris par un projet (`used`) : le proposer ferait ouvrir deux fois le même
-    // dossier, c'est-à-dire le défaut que F-72 supprime.
-    expect(items.some((label) => label.includes('EDENRED'))).toBeTrue();
-    expect(items.some((label) => label.includes('web'))).toBeFalse();
+    // `web` est déjà pris par un projet (`used`) : il ne compte pas — seul EDENRED reste à ouvrir.
+    expect(ghost.textContent).toContain('1 dossier non ouvert');
+    expect(ghost.textContent).toContain('dev');
   });
 
-  it('tronque la liste des dossiers au seuil, et le DIT', () => {
+  it('compte TOUS les dossiers non ouverts, sans liste qui ferait grandir la page', () => {
     service = spyService();
     service.runnerHostsOverview.and.returnValue(of([poste]));
     service.runnerHostFolders.and.returnValue(of({
@@ -1486,14 +1599,11 @@ describe('PostesComponent', () => {
     }));
     build();
 
-    const items = (fixture.nativeElement as HTMLElement)
-      .querySelectorAll('.poste__unopened-item');
-    expect(items.length).toBe(component.maxUnopenedShown);
-    // Une liste incomplète se DIT (SF-38-21).
-    expect(text()).toContain('et 4 autres');
+    expect(text()).toContain('12 dossiers non ouverts');
+    expect(text()).not.toContain('dossier-3');
   });
 
-  it('dit quand la machine elle-même a tronqué sa liste', () => {
+  it('dit quand la machine elle-même a tronqué sa liste : le compte est un minimum', () => {
     service = spyService();
     service.runnerHostsOverview.and.returnValue(of([poste]));
     service.runnerHostFolders.and.returnValue(of({
@@ -1503,16 +1613,25 @@ describe('PostesComponent', () => {
     }));
     build();
 
-    expect(text()).toContain('tronquée');
+    expect(text()).toContain('1+ dossiers non ouverts');
   });
 
-  it('ne lit AUCUN dossier sur un poste déconnecté, et n\'affiche pas la section', () => {
+  it('« Parcourir » ouvre l\'explorateur « Ajouter un projet » du poste', () => {
+    setup();
+
+    ((fixture.nativeElement as HTMLElement).querySelector('.poste__ghost-browse') as HTMLButtonElement)
+      .click();
+
+    expect(dialog.open).toHaveBeenCalledTimes(1);
+    expect(dialog.open.calls.mostRecent().args[1]?.data).toEqual({ hostId: 'h1', hostName: 'Poste CAGIP' });
+  });
+
+  it('ne lit AUCUN dossier sur un poste déconnecté, et n\'affiche pas de tuile fantôme', () => {
     setup([{ ...poste, connected: false }]);
 
-    // Personne ne peut lister sans machine : une liste vide ferait croire à une racine sans
-    // sous-dossier.
+    // Personne ne peut lister sans machine : un « 0 dossier » ferait croire à une racine vide.
     expect(service.runnerHostFolders).not.toHaveBeenCalled();
-    expect((fixture.nativeElement as HTMLElement).querySelector('.poste__unopened')).toBeNull();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.poste__ghost')).toBeNull();
   });
 
   it('ne lit aucun dossier pour le poste « Hébergé » : il n\'a pas de machine', () => {
@@ -1547,35 +1666,6 @@ describe('PostesComponent', () => {
     expect(service.runnerHostFolders).toHaveBeenCalledTimes(1);
   });
 
-  it('ouvre un projet d\'un clic sur un dossier non ouvert, sans demander de nom', () => {
-    setup();
-
-    component.openFolderAsProject(poste, { name: 'EDENRED', path: 'EDENRED', used: false });
-
-    expect(service.openHostProject).toHaveBeenCalledWith('h1', 'EDENRED');
-  });
-
-  it('relit la vue après une ouverture', () => {
-    setup();
-    service.runnerHostsOverview.calls.reset();
-
-    component.openFolderAsProject(poste, { name: 'EDENRED', path: 'EDENRED', used: false });
-
-    expect(service.runnerHostsOverview).toHaveBeenCalledTimes(1);
-  });
-
-  it('reprend le refus de doublon de la gateway, tel quel', () => {
-    setup();
-    service.openHostProject.and.returnValue(throwError(() => new HttpErrorResponse({
-      status: 409,
-      error: { error: 'host_project_exists', message: 'Ce dossier est déjà ouvert : EDENRED.' },
-    })));
-
-    component.openFolderAsProject(poste, { name: 'EDENRED', path: 'EDENRED', used: false });
-
-    expect(component.openingFolder()).toBeNull();
-  });
-
   it('n\'ouvre rien sur le poste « Hébergé », même si on le lui demande', () => {
     const heberge = {
       id: null, name: 'Hébergé', virtual: true, connected: false, activeProjects: 0,
@@ -1584,10 +1674,9 @@ describe('PostesComponent', () => {
     setup([heberge]);
 
     component.addProject(heberge);
-    component.openFolderAsProject(heberge, { name: 'x', path: 'x', used: false });
 
     expect(dialog.open).not.toHaveBeenCalled();
-    expect(service.openHostProject).not.toHaveBeenCalled();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.poste__ghost')).toBeNull();
   });
 
   // ---------------- les sources sans machine, sur la carte « Hébergé » (F-72 / SF-72-04)
@@ -1617,7 +1706,7 @@ describe('PostesComponent', () => {
     expect(card.textContent).not.toContain('Ajouter un projet');
     expect(card.textContent).not.toContain('Supprimer le poste');
     expect(card.querySelector('.poste__mission')).toBeNull();
-    expect(card.querySelector('.poste__unopened')).toBeNull();
+    expect(card.querySelector('.poste__ghost')).toBeNull();
   });
 
   it('ouvre un dépôt GitHub puis relit la vue', () => {

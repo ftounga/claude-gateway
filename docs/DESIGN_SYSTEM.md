@@ -561,6 +561,17 @@ poste ouvert.
 | Onglets | texte 14 px 500 `--cg-text-secondary`, actif en encre principale avec **filet bas de 2 px `--cg-orange`** ; filet de la barre `--cg-divider` |
 | Résumé d'onglet | fait chiffré en JetBrains Mono 11 px sur `--cg-bg` (« 4 », « 12 faits », « hors ligne ») ; **état** en pastille §5 : « à appliquer » `badge--warning`, « à corriger » `badge--error` |
 
+### Les projets en grille (`app-forge-project-tile`)
+
+| Élément | Règle |
+|---|---|
+| Grille | `repeat(auto-fill, minmax(232px, 1fr))`, écart 12 px ; tri segmenté *Actifs d'abord · A → Z · Récents* (filet `--cg-divider`, option active sur `--cg-bg`) |
+| Tuile | surface `#FFFFFF`, bordure 1 px `--cg-divider`, **rayon 8 px** (9 dans la maquette), ~150 px de haut ; **aucune couleur d'identité** : la tuile vit sous l'en-tête de son poste |
+| Contenu central | **un seul** : l'attente (§12) › l'aperçu des dernières lignes › « Au repos · dernier tour … » en 12 px secondaire. L'attente et l'aperçu passent par `app-terminal-preview`, **jamais recomposés** — la maquette dessinait un aperçu sombre ; c'est le composant unique du §12 qui fait foi |
+| Attente | **filet ambre** `#F9A825` et anneau de 4 px `#FFF8E1` (§5 « En attente ») — un filet, jamais un fond |
+| Pied | « Actif » (`badge--success`), dernier outil daté, « Ouvrir → » en `mat-button` compact |
+| Tuile fantôme | pointillés 1 px `--cg-divider`, rayon 8 px, texte secondaire, compte en encre principale, « Parcourir » en `mat-stroked-button` |
+
 ### Règles d'emploi — non négociables
 
 - **L'ordre dit l'urgence.** *À regarder* (une autorisation attend) › *En ligne* › *Hors ligne* ›

@@ -1,0 +1,107 @@
+/* La tuile de projet (F-98 / SF-98-03) — DESIGN_SYSTEM.md §16.
+   Bordure `--cg-divider`, rayon 8 px, surface blanche. L'attente (§12) entre par un FILET ambre et un
+   anneau pâle — jamais un fond. Aucune couleur d'identité (§9) : la tuile vit sous l'en-tête du poste. */
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.projet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-2);
+  height: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 12px var(--cg-space-3);
+  border: 1px solid var(--cg-divider);
+  border-radius: 8px;
+  background: var(--cg-surface);
+
+  &--awaiting {
+    border-color: #F9A825;
+    box-shadow: 0 0 0 4px #FFF8E1;
+  }
+
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+    min-width: 0;
+  }
+
+  &__name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--cg-text-primary);
+  }
+
+  &__live {
+    margin-left: auto;
+    flex: none;
+  }
+
+  &__path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--cg-font-mono);
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__center {
+    flex: 1;
+    min-height: 44px;
+    min-width: 0;
+  }
+
+  &__quiet {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    margin: 0;
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__foot {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+    min-width: 0;
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__active {
+    font-size: 11px;
+
+    mat-icon {
+      width: 14px;
+      height: 14px;
+      font-size: 14px;
+    }
+  }
+
+  &__activity {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__spacer {
+    flex: 1;
+  }
+
+  /* « Ouvrir → » compact : la tuile reste à ~150 px de haut, douze tiennent sur un portable. */
+  &__open {
+    flex: none;
+    --mdc-text-button-container-height: 28px;
+    --mat-text-button-horizontal-padding: 8px;
+  }
+}
