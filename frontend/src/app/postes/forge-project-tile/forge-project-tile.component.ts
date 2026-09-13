@@ -1,8 +1,11 @@
 import { Component, computed, inject, input, output } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { MatMenuModule } from '@angular/material/menu';
+import { RouterLink } from '@angular/router';
 
 import { HostProjectSummary } from '../../core/models/atelier.models';
+import { RadarSubjectRef } from '../../core/models/radar-subject.models';
 import { HostPresenceService, elapsedLabel } from '../../core/services/host-presence.service';
 import { LiveBadgeComponent } from '../../shared/live-badge/live-badge.component';
 import { TerminalPreviewComponent } from '../../shared/terminal-preview/terminal-preview.component';
@@ -20,7 +23,7 @@ import { tileCenter } from '../forge-projects';
  */
 @Component({
   selector: 'app-forge-project-tile',
-  imports: [LiveBadgeComponent, MatButtonModule, MatIconModule, TerminalPreviewComponent],
+  imports: [LiveBadgeComponent, MatButtonModule, MatIconModule, MatMenuModule, RouterLink, TerminalPreviewComponent],
   templateUrl: './forge-project-tile.component.html',
   styleUrl: './forge-project-tile.component.scss',
 })
@@ -31,7 +34,18 @@ export class ForgeProjectTileComponent {
   /** Le projet vit chez la gateway (F-71) : il n'a pas de chemin sous une racine. */
   readonly hosted = input(false);
 
+  /** Le poste du projet, pour l'adresse d'un sujet de la Vigie (F-106 / SF-106-06). */
+  readonly hostRef = input<string | null>(null);
+  /** Les sujets de la Vigie liés à ce projet ; la passerelle n'existe que s'il y en a. */
+  readonly vigieSubjects = input<RadarSubjectRef[]>([]);
+
   readonly open = output<HostProjectSummary>();
+
+  /** « 1 sujet dans la Vigie », « 3 sujets dans la Vigie ». */
+  readonly vigieLabel = computed(() => {
+    const count = this.vigieSubjects().length;
+    return count === 1 ? '1 sujet dans la Vigie' : `${count} sujets dans la Vigie`;
+  });
 
   readonly center = computed(() => tileCenter(this.project()));
 

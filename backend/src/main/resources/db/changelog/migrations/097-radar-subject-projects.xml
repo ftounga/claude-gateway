@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-106 / SF-106-06 — LE LIEN ENTRE UN SUJET ET UN PROJET.
+
+      Une ligne par paire (sujet de la Vigie, projet de la Forge) d'un même poste. `origin` dit d'où vient
+      la ligne (USER : déclarée ; PROPOSED : proposée par l'analyse), `state` ce qu'il en est
+      (CONFIRMED, PROPOSED, REFUSED). L'unicité (subject_id, workspace_id) RETIENT LE REFUS : une paire
+      refusée n'est jamais reproposée.
+
+      Pas de clé étrangère, comme le reste du Radar (la purge efface par périmètre). Types portables : un
+      seul changeSet pour PostgreSQL et H2.
+    -->
+    <changeSet id="097-radar-subject-projects" author="claude-gateway">
+        <createTable tableName="radar_subject_projects">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="host_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="subject_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="workspace_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="origin" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="state" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addUniqueConstraint tableName="radar_subject_projects" columnNames="subject_id, workspace_id"
+                constraintName="uk_radar_subject_projects_pair"/>
+        <createIndex tableName="radar_subject_projects" indexName="idx_radar_subject_projects_workspace">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="workspace_id"/>
+        </createIndex>
+        <createIndex tableName="radar_subject_projects" indexName="idx_radar_subject_projects_subject">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="subject_id"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="radar_subject_projects"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

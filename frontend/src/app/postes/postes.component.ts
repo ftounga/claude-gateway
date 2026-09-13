@@ -19,6 +19,7 @@ import { AtelierService } from '../core/services/atelier.service';
 import { GovernanceService } from '../core/services/governance.service';
 import { HostPresenceService } from '../core/services/host-presence.service';
 import { VigieService } from '../core/services/vigie.service';
+import { RadarSubjectRef } from '../core/models/radar-subject.models';
 import {
   GovernanceIntegrite,
   GovernanceIntegriteConstat,
@@ -336,6 +337,15 @@ export class PostesComponent implements OnInit {
   private readonly mapsRead = new Set<string>();
 
   /**
+   * **Les sujets de la Vigie liés à chaque projet** (F-106 / SF-106-06), par identifiant de projet. Lus une
+   * fois par client activé dans la Vigie, et sur « Rafraîchir » — un lien ne bouge pas au sondage.
+   */
+  private readonly projectSubjects = signal<Record<string, RadarSubjectRef[]>>({});
+
+  /** Clients dont les sujets liés ont déjà été lus dans cette page. */
+  private readonly projectSubjectsRead = new Set<string>();
+
+  /**
    * **L'intégrité de chaque poste** (F-95 / SF-95-03) — ce qui empêche la gouvernance de
    * fonctionner, et ce qui la fait vieillir mal.
    *
@@ -533,6 +543,7 @@ export class PostesComponent implements OnInit {
     // carte ». Le sondage automatique, lui, ne les relit jamais.
     this.foldersRead.clear();
     this.mapsRead.clear();
+    this.projectSubjectsRead.clear();
     this.integritesRead.clear();
     this.loadGovernanceHosts();
     this.load(this.hosts().length === 0);
@@ -1027,6 +1038,32 @@ export class PostesComponent implements OnInit {
    * <p>Un poste <b>non connecté</b> n'est pas interrogé du tout : la section le dit et propose son
    * geste, plutôt que de faire attendre un délai pour l'apprendre.</p>
    */
+  /**
+   * Lit, une fois par client activé dans la Vigie, les sujets liés à ses projets (F-106 / SF-106-06).
+   * Silencieux : la Vigie absente ou illisible ne dit rien sur la tuile.
+   */
+  private loadProjectSubjects(hosts: RunnerHostOverview[]): void {
+    for (const host of hosts) {
+      const hostId = host.id;
+      if (hostId === null || host.virtual === true || !this.inVigie(host) || this.projectSubjectsRead.has(hostId)) {
+        continue;
+      }
+      this.projectSubjectsRead.add(hostId);
+      this.vigie.projectSubjects(hostId).subscribe((list) => {
+        const byProject: Record<string, RadarSubjectRef[]> = {};
+        for (const entry of list ?? []) {
+          byProject[entry.workspaceId] = entry.subjects;
+        }
+        this.projectSubjects.update((all) => ({ ...all, ...byProject }));
+      });
+    }
+  }
+
+  /** Les sujets de la Vigie liés à ce projet — aucun si le client n'est pas (ou plus) dans la Vigie. */
+  vigieSubjectsOf(host: RunnerHostOverview, project: HostProjectSummary): RadarSubjectRef[] {
+    return this.inVigie(host) ? this.projectSubjects()[project.id] ?? [] : [];
+  }
+
   private loadMaps(hosts: RunnerHostOverview[]): void {
     for (const host of hosts) {
       const hostId = host.id;
@@ -1521,6 +1558,7 @@ export class PostesComponent implements OnInit {
         // motif. Six lectures de fichier toutes les 15 s sur la machine d'un client n'ont aucun
         // sens pour un contenu qui bouge quelques fois par jour.
         this.loadMaps(hosts);
+        this.loadProjectSubjects(hosts);
         this.error.set('none');
         this.loading.set(false);
         this.lastUpdatedAt.set(new Date());

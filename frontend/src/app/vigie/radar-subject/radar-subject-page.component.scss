@@ -136,6 +136,44 @@
     color: var(--cg-error);
   }
 
+  // Le projet dans la Forge (F-106 / SF-106-06).
+  &__projects,
+  &__linked {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  &__linked-project {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cg-space-1) var(--cg-space-2);
+  }
+
+  &__proposal {
+    padding: var(--cg-space-2) var(--cg-space-3);
+    border: 1px solid var(--cg-divider);
+    border-radius: 8px;
+    background: var(--cg-surface);
+  }
+
+  &__proposal-question {
+    display: flex;
+    gap: var(--cg-space-2);
+    margin: 0;
+    font-size: 14px;
+  }
+
+  &__proposal-actions {
+    display: flex;
+    gap: var(--cg-space-2);
+    margin-top: var(--cg-space-2);
+  }
+
   &__h-row {
     display: flex;
     align-items: baseline;

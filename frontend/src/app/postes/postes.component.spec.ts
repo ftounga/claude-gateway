@@ -79,7 +79,9 @@ describe('PostesComponent', () => {
   };
 
   beforeEach(() => {
-    vigieSpy = jasmine.createSpyObj<VigieService>('VigieService', ['activate']);
+    vigieSpy = jasmine.createSpyObj<VigieService>('VigieService', ['activate', 'projectSubjects']);
+    // F-106 / SF-106-06 : par défaut, aucun sujet de la Vigie n'est lié à un projet.
+    vigieSpy.projectSubjects.and.returnValue(of([]));
     vigieSpy.activate.and.returnValue(
       of({ hostId: 'h1', name: 'Poste CAGIP', missionStatus: 'ACTIVE', spaces: ['FORGE', 'VIGIE'] }));
     // Par défaut, l'utilisateur n'a rien confirmé : c'est l'état le plus sûr pour un test, et
@@ -2409,6 +2411,32 @@ describe('PostesComponent', () => {
     });
   });
 
+
+  // F-106 / SF-106-06 — la passerelle d'un projet vers la Vigie.
+  describe('sujets de la Vigie sur la tuile d\'un projet (F-106 / SF-106-06)', () => {
+    it('un client activé dans la Vigie : ses sujets liés sont lus une fois et la tuile les annonce', () => {
+      vigieSpy.projectSubjects.and.returnValue(of([
+        { workspaceId: 'w1', subjects: [{ id: 's1', name: 'MFA' }, { id: 's2', name: 'Licences' }] },
+      ]));
+      setup([{ ...poste, spaces: ['FORGE', 'VIGIE'] }]);
+
+      expect(vigieSpy.projectSubjects).toHaveBeenCalledOnceWith('h1');
+      const passerelles = Array.from(fixture.nativeElement.querySelectorAll('.projet__vigie')) as HTMLElement[];
+      expect(passerelles.length).toBe(1);
+      expect(passerelles[0].textContent).toContain('2 sujets dans la Vigie');
+
+      component.refresh();
+      fixture.detectChanges();
+      expect(vigieSpy.projectSubjects).toHaveBeenCalledTimes(2);
+    });
+
+    it('un client absent de la Vigie : rien n\'est lu, rien n\'est dit', () => {
+      setup([{ ...poste, spaces: ['FORGE'] }]);
+
+      expect(vigieSpy.projectSubjects).not.toHaveBeenCalled();
+      expect(fixture.nativeElement.querySelector('.projet__vigie')).toBeNull();
+    });
+  });
 });
 
 /** Le DOM rend les couleurs en `rgb(...)` : on compare ce qu'il rend, pas ce qu'on a écrit. */

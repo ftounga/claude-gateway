@@ -161,3 +161,45 @@ export interface RadarNewsUndoResult {
   evidenceId: string;
   undone: number;
 }
+
+/** D'où vient un lien sujet ↔ projet (F-106 / SF-106-06). */
+export type RadarSubjectProjectOrigin = 'USER' | 'PROPOSED';
+
+/** Ce qu'il en est d'un lien : confirmé, ou une question posée par l'analyse. */
+export type RadarSubjectProjectState = 'CONFIRMED' | 'PROPOSED';
+
+/** Un projet de la Forge lié au sujet, ou proposé. */
+export interface RadarSubjectProjectLink {
+  workspaceId: string;
+  name: string;
+  projectPath: string | null;
+  origin: RadarSubjectProjectOrigin;
+  state: RadarSubjectProjectState;
+}
+
+/** Un projet du poste qu'on peut lier. */
+export interface RadarProjectCandidate {
+  workspaceId: string;
+  name: string;
+  projectPath: string | null;
+}
+
+/** `GET /api/radar/hosts/{hostId}/subjects/{subjectId}/projects` (F-106 / SF-106-06). */
+export interface RadarSubjectProjects {
+  /** Le client est activé dans la Forge : « Voir le projet dans la Forge » a une destination. */
+  inForge: boolean;
+  links: RadarSubjectProjectLink[];
+  candidates: RadarProjectCandidate[];
+}
+
+/** Un sujet nommé, pour la passerelle de la Forge. */
+export interface RadarSubjectRef {
+  id: string;
+  name: string;
+}
+
+/** `GET /api/radar/hosts/{hostId}/project-subjects` : les sujets liés, projet par projet. */
+export interface RadarProjectSubjects {
+  workspaceId: string;
+  subjects: RadarSubjectRef[];
+}

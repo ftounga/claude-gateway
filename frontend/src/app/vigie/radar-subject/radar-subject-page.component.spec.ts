@@ -10,6 +10,7 @@ import {
   RadarEvidenceView,
   RadarManagerAnswer,
   RadarSubjectDetail,
+  RadarSubjectProjects,
   RadarUnknownView,
 } from '../../core/models/radar-subject.models';
 import { VigiePerson } from '../../core/models/vigie.models';
@@ -67,6 +68,17 @@ describe('RadarSubjectPageComponent', () => {
     ],
   });
 
+  const noProjects: RadarSubjectProjects = { inForge: true, links: [], candidates: [] };
+
+  const withProjects = (): RadarSubjectProjects => ({
+    inForge: true,
+    links: [
+      { workspaceId: 'w1', name: 'billing', projectPath: 'clients/billing-api', origin: 'PROPOSED', state: 'PROPOSED' },
+      { workspaceId: 'w2', name: 'infra', projectPath: 'infra', origin: 'USER', state: 'CONFIRMED' },
+    ],
+    candidates: [{ workspaceId: 'w3', name: 'web', projectPath: null }],
+  });
+
   const paul: VigiePerson = { id: 'paul', displayName: 'Paul Martin', jobTitle: 'Manager sécurité',
     lastInteractionAt: null, subjects: [] };
 
@@ -77,9 +89,11 @@ describe('RadarSubjectPageComponent', () => {
     answer?: Observable<RadarManagerAnswer>;
     terminal?: Observable<WorkspaceDetail>;
     subjectId?: string;
+    projects?: Observable<RadarSubjectProjects>;
   } = {}): HTMLElement {
     subjects = jasmine.createSpyObj<RadarSubjectService>('RadarSubjectService',
-      ['subject', 'unknowns', 'managerAnswer', 'undoNews']);
+      ['subject', 'unknowns', 'managerAnswer', 'undoNews', 'projects', 'linkProject', 'unlinkProject']);
+    subjects.projects.and.returnValue(options.projects ?? of(noProjects));
     subjects.undoNews.and.returnValue(of({ evidenceId: 'p3', undone: 1 }));
     subjects.subject.and.returnValue(options.subject ?? of(mfa()));
     subjects.unknowns.and.returnValue(options.unknowns ?? of([]));
@@ -426,5 +440,69 @@ describe('RadarSubjectPageComponent', () => {
     subjects.undoNews.and.returnValue(throwError(() => new HttpErrorResponse({ status: 409 })));
     component.undoNews(mfa().chronology[0]);
     expect(snackBar.open).toHaveBeenCalledWith(jasmine.stringContaining('Rien n’a été annulé'), 'Fermer', jasmine.any(Object));
+  });
+
+  // ------------------------------------------------ le projet dans la Forge (F-106 / SF-106-06)
+
+  it('le projet dans la Forge : une proposition en question, un lien confirmé avec sa passerelle, le menu des projets', () => {
+    const root = build({ projects: of(withProjects()) });
+
+    expect(subjects.projects).toHaveBeenCalledOnceWith('h1', 's1');
+    expect(text(root.querySelector('.radar-subject__proposal-question')))
+      .toContain('Ce sujet concerne-t-il le projet billing (clients/billing-api) ?');
+    const linked = root.querySelectorAll('.radar-subject__linked-project');
+    expect(linked.length).toBe(1);
+    expect(text(linked[0])).toContain('infra');
+    expect(linked[0].querySelector('.radar-subject__forge-link')?.getAttribute('href')).toBe('/forge/h1');
+    expect(root.querySelector('.radar-subject__link-project')).not.toBeNull();
+    expect(root.querySelector('.radar-subject__projects-empty')).toBeNull();
+  });
+
+  it('« Oui, lier » confirme, « Non » refuse, « Délier » défait : la section suit la réponse', () => {
+    const root = build({ projects: of(withProjects()) });
+    const confirmed: RadarSubjectProjects = {
+      inForge: true,
+      links: [
+        { workspaceId: 'w1', name: 'billing', projectPath: 'clients/billing-api', origin: 'PROPOSED', state: 'CONFIRMED' },
+        { workspaceId: 'w2', name: 'infra', projectPath: 'infra', origin: 'USER', state: 'CONFIRMED' },
+      ],
+      candidates: [{ workspaceId: 'w3', name: 'web', projectPath: null }],
+    };
+    subjects.linkProject.and.returnValue(of(confirmed));
+
+    (root.querySelector('.radar-subject__proposal-yes') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(subjects.linkProject).toHaveBeenCalledOnceWith('h1', 's1', 'w1');
+    expect(root.querySelector('.radar-subject__proposal')).toBeNull();
+    expect(root.querySelectorAll('.radar-subject__linked-project').length).toBe(2);
+
+    subjects.unlinkProject.and.returnValue(of(noProjects));
+    (root.querySelector('.radar-subject__unlink') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(subjects.unlinkProject).toHaveBeenCalledOnceWith('h1', 's1', 'w1');
+    expect(text(root.querySelector('.radar-subject__projects-empty'))).toBe('Aucun projet de la Forge sur ce poste.');
+  });
+
+  it('client absent de la Forge : pas de « Voir le projet dans la Forge » ; lecture en échec : dit, la page reste', () => {
+    let root = build({ projects: of({ ...withProjects(), inForge: false }) });
+    expect(root.querySelector('.radar-subject__forge-link')).toBeNull();
+
+    TestBed.resetTestingModule();
+    root = build({ projects: throwError(() => new HttpErrorResponse({ status: 500 })) });
+    expect(root.querySelector('.radar-subject__projects-error')).not.toBeNull();
+    expect(text(root.querySelector('.radar-subject__title'))).toBe('MFA prestataires');
+  });
+
+  it('un lien refusé par la gateway : dit, rien ne change', () => {
+    const root = build({ projects: of(withProjects()) });
+    subjects.linkProject.and.returnValue(throwError(() => new HttpErrorResponse({ status: 404 })));
+
+    component.linkProject('w3');
+    fixture.detectChanges();
+
+    expect(snackBar.open).toHaveBeenCalledWith(jasmine.any(String), 'Fermer', jasmine.any(Object));
+    expect(root.querySelectorAll('.radar-subject__linked-project').length).toBe(1);
+    expect(component.projectBusy()).toBeNull();
   });
 });

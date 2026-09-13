@@ -5,13 +5,17 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { catchError, forkJoin, of } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import {
   RadarEvidenceView,
   RadarManagerAnswer,
+  RadarProjectCandidate,
   RadarSubjectDetail,
+  RadarSubjectProjectLink,
+  RadarSubjectProjects,
   RadarUnknownView,
 } from '../../core/models/radar-subject.models';
 import { VigiePerson } from '../../core/models/vigie.models';
@@ -51,7 +55,7 @@ export type SubjectPageError = 'none' | 'not-found' | 'not-in-vigie' | 'not-enti
  */
 @Component({
   selector: 'app-radar-subject-page',
-  imports: [RouterLink, MatButtonModule, MatIconModule, MatProgressSpinnerModule, SpacePitchComponent],
+  imports: [RouterLink, MatButtonModule, MatIconModule, MatMenuModule, MatProgressSpinnerModule, SpacePitchComponent],
   templateUrl: './radar-subject-page.component.html',
   styleUrl: './radar-subject-page.component.scss',
 })
@@ -83,6 +87,35 @@ export class RadarSubjectPageComponent implements OnInit {
   readonly openingConversation = signal(false);
   /** La nouvelle en cours d'annulation (F-104 / SF-104-02). */
   readonly undoingNews = signal<string | null>(null);
+
+  /**
+   * **Le projet dans la Forge** (F-106 / SF-106-06) : liens, propositions et projets liables. `null` en
+   * lecture, `'error'` s'il n'a pas pu être lu — la page n'en dépend pas.
+   */
+  readonly projects = signal<RadarSubjectProjects | 'error' | null>(null);
+  /** Le projet dont le lien est en cours d'écriture : un geste à la fois. */
+  readonly projectBusy = signal<string | null>(null);
+
+  readonly proposedProjects = computed<RadarSubjectProjectLink[]>(() => {
+    const projects = this.projects();
+    return projects && projects !== 'error' ? projects.links.filter((link) => link.state === 'PROPOSED') : [];
+  });
+
+  readonly linkedProjects = computed<RadarSubjectProjectLink[]>(() => {
+    const projects = this.projects();
+    return projects && projects !== 'error' ? projects.links.filter((link) => link.state === 'CONFIRMED') : [];
+  });
+
+  /** Le client est activé dans la Forge : le lien « Voir le projet dans la Forge » a une destination. */
+  readonly projectsInForge = computed(() => {
+    const projects = this.projects();
+    return !!projects && projects !== 'error' && projects.inForge;
+  });
+
+  readonly projectCandidates = computed<RadarProjectCandidate[]>(() => {
+    const projects = this.projects();
+    return projects && projects !== 'error' ? projects.candidates : [];
+  });
 
   /** Qui est dans ce sujet : qui décide, qui pilote, les experts, les informés. */
   readonly roles = computed(() => peopleByRole(this.detail()?.people));
@@ -214,6 +247,51 @@ export class RadarSubjectPageComponent implements OnInit {
     });
   }
 
+  // ------------------------------------------------------------ le projet dans la Forge (F-106 / SF-106-06)
+
+  /** « Chemin sous la racine » d'un projet, pour le distinguer d'un homonyme. */
+  projectPathLabel(path: string | null | undefined): string {
+    return path?.trim() ? path : 'la racine';
+  }
+
+  /** Lie le sujet au projet — ou confirme la proposition. */
+  linkProject(workspaceId: string): void {
+    this.writeProject(workspaceId, true);
+  }
+
+  /** Délie — ou refuse la proposition : le Radar ne la reposera pas. */
+  unlinkProject(workspaceId: string): void {
+    this.writeProject(workspaceId, false);
+  }
+
+  private writeProject(workspaceId: string, link: boolean): void {
+    const hostRef = this.hostRef();
+    const subjectId = this.subjectId();
+    if (!hostRef || !subjectId || this.projectBusy() !== null) {
+      return;
+    }
+    const seq = this.requestSeq;
+    this.projectBusy.set(workspaceId);
+    const write = link
+      ? this.subjects.linkProject(hostRef, subjectId, workspaceId)
+      : this.subjects.unlinkProject(hostRef, subjectId, workspaceId);
+    write.subscribe({
+      next: (projects) => {
+        this.projectBusy.set(null);
+        if (seq === this.requestSeq) {
+          this.projects.set(projects);
+        }
+      },
+      error: (err: unknown) => {
+        this.projectBusy.set(null);
+        this.snackBar.open(httpErrorMessage(err, link
+          ? "Le lien n'a pas pu être posé. Rien n'a changé."
+          : "Le lien n'a pas pu être défait. Rien n'a changé."),
+        'Fermer', { duration: 6000, panelClass: 'snack-error' });
+      },
+    });
+  }
+
   // ------------------------------------------------------------ annuler une nouvelle (F-104 / SF-104-02)
 
   /** Une note de l'utilisateur ou un courriel collé : c'est une nouvelle, elle s'annule entière. */
@@ -309,6 +387,21 @@ export class RadarSubjectPageComponent implements OnInit {
     this.answerError.set(null);
     this.preparingAnswer.set(false);
     this.loadHostName(hostRef);
+    this.projects.set(null);
+    this.projectBusy.set(null);
+    // Le projet dans la Forge (SF-106-06) ne retient pas la page non plus.
+    this.subjects.projects(hostRef, subjectId).subscribe({
+      next: (projects) => {
+        if (seq === this.requestSeq) {
+          this.projects.set(projects);
+        }
+      },
+      error: () => {
+        if (seq === this.requestSeq) {
+          this.projects.set('error');
+        }
+      },
+    });
     // Les manques ne retiennent pas la page : ils arrivent quand ils arrivent, ou disent qu'ils manquent.
     this.subjects.unknowns(hostRef, subjectId).subscribe({
       next: (unknowns) => {

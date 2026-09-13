@@ -5,6 +5,7 @@ import { Observable } from 'rxjs';
 import {
   RadarManagerAnswer,
   RadarNewsUndoResult,
+  RadarSubjectProjects,
   RadarSubjectDetail,
   RadarUnknownView,
 } from '../models/radar-subject.models';
@@ -42,6 +43,27 @@ export class RadarSubjectService {
   }
 
   /** Annule une nouvelle (F-104 / SF-104-02) : toutes ses écritures, puis sa preuve. */
+  /** Les projets liés au sujet, les propositions et les projets liables (F-106 / SF-106-06). */
+  projects(hostId: string, subjectId: string): Observable<RadarSubjectProjects> {
+    return this.http.get<RadarSubjectProjects>(
+      `/api/radar/hosts/${encodeURIComponent(hostId)}/subjects/${encodeURIComponent(subjectId)}/projects`);
+  }
+
+  /** Lie le sujet au projet, ou confirme la proposition. */
+  linkProject(hostId: string, subjectId: string, workspaceId: string): Observable<RadarSubjectProjects> {
+    return this.http.put<RadarSubjectProjects>(this.projectUrl(hostId, subjectId, workspaceId), null);
+  }
+
+  /** Délie, ou refuse la proposition : la paire ne sera plus proposée. */
+  unlinkProject(hostId: string, subjectId: string, workspaceId: string): Observable<RadarSubjectProjects> {
+    return this.http.delete<RadarSubjectProjects>(this.projectUrl(hostId, subjectId, workspaceId));
+  }
+
+  private projectUrl(hostId: string, subjectId: string, workspaceId: string): string {
+    return `/api/radar/hosts/${encodeURIComponent(hostId)}/subjects/${encodeURIComponent(subjectId)}`
+      + `/projects/${encodeURIComponent(workspaceId)}`;
+  }
+
   undoNews(hostId: string, evidenceId: string): Observable<RadarNewsUndoResult> {
     return this.http.post<RadarNewsUndoResult>(
       `/api/radar/hosts/${encodeURIComponent(hostId)}/news/${encodeURIComponent(evidenceId)}/undo`, null);

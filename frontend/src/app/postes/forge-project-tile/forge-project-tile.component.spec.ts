@@ -1,4 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { provideRouter } from '@angular/router';
 
 import { HostProjectSummary } from '../../core/models/atelier.models';
 import { HostPresenceService } from '../../core/services/host-presence.service';
@@ -90,5 +92,41 @@ describe('ForgeProjectTileComponent', () => {
     expect(opened).toEqual(['w1']);
     expect(root.querySelector('.projet__open')?.getAttribute('aria-label'))
       .toBe('Ouvrir le terminal de security-assessment');
+  });
+
+  describe('la passerelle vers la Vigie (F-106 / SF-106-06)', () => {
+    function renderWith(subjects: { id: string; name: string }[]): HTMLElement {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        imports: [ForgeProjectTileComponent],
+        providers: [provideRouter([]), provideNoopAnimations()],
+      });
+      fixture = TestBed.createComponent(ForgeProjectTileComponent);
+      fixture.componentRef.setInput('project', base);
+      fixture.componentRef.setInput('hostRef', 'h1');
+      fixture.componentRef.setInput('vigieSubjects', subjects);
+      fixture.detectChanges();
+      return fixture.nativeElement as HTMLElement;
+    }
+
+    it('aucun sujet : rien', () => {
+      expect(renderWith([]).querySelector('.projet__vigie')).toBeNull();
+    });
+
+    it('un sujet : un lien vers sa page', () => {
+      const link = renderWith([{ id: 's1', name: 'MFA' }]).querySelector('a.projet__vigie');
+      expect(link?.textContent).toContain('1 sujet dans la Vigie');
+      expect(link?.getAttribute('href')).toBe('/vigie/h1/sujets/s1');
+    });
+
+    it('plusieurs sujets : un menu', () => {
+      const button = renderWith([{ id: 's1', name: 'MFA' }, { id: 's2', name: 'Licences' }])
+        .querySelector('button.projet__vigie') as HTMLButtonElement;
+      expect(button.textContent).toContain('2 sujets dans la Vigie');
+      button.click();
+      fixture.detectChanges();
+      const items = Array.from(document.querySelectorAll('.projet__vigie-subject')) as HTMLAnchorElement[];
+      expect(items.map((a) => a.getAttribute('href'))).toEqual(['/vigie/h1/sujets/s1', '/vigie/h1/sujets/s2']);
+    });
   });
 });
