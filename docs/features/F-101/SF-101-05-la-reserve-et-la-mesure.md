@@ -14,7 +14,7 @@ grille décidée F-107 : « réserve de synchro 3 M jetons par client suivi, rev
 
 ## Statut
 
-`in-progress`
+`done` — livrée le 2026-09-13 (PR #517)
 
 ## Date de création
 
