@@ -90,7 +90,32 @@ public class GovernancePackageFile {
     @Column(name = "generated", nullable = false)
     private boolean generated = true;
 
+    /**
+     * Les empreintes des contenus <b>antérieurs</b> publiés à ce chemin, une par ligne, les plus
+     * récentes d'abord (F-96 / SF-96-02).
+     *
+     * <p>C'est la <b>deuxième</b> façon de reconnaître un artefact intact : un fichier dont le
+     * contenu est exactement l'un de ceux que le produit a publiés ici n'a, par construction, été
+     * touché par personne. Sans ce registre, la mise à jour ne toucherait que les postes activés
+     * <b>après</b> F-96 — c'est-à-dire pas ceux qui portent la dette.</p>
+     *
+     * <p>Le format est délibérément pauvre (du texte, une empreinte par ligne) : ce registre est
+     * lu avec le fichier et n'est jamais interrogé seul.</p>
+     */
+    @Column(name = "known_digests", length = GovernanceKnownDigests.MAX_LENGTH)
+    private String knownDigests;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
+
+    /** Les empreintes antérieures, dans l'ordre stocké. Jamais {@code null}. */
+    public java.util.List<String> knownDigestList() {
+        return GovernanceKnownDigests.parse(knownDigests);
+    }
+
+    /** Fixe les empreintes antérieures ; une liste vide efface le registre. */
+    public void setKnownDigestList(java.util.List<String> digests) {
+        this.knownDigests = GovernanceKnownDigests.join(digests);
+    }
 }

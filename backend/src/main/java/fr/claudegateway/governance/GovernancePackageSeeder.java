@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -72,6 +73,15 @@ public class GovernancePackageSeeder {
 
     /** Le fichier de règles, qui rejoint la consigne système — il n'est pas déposé sur le disque. */
     private static final String RULES_RESOURCE = "regles.md";
+
+    /**
+     * Les empreintes des contenus que ce paquet a <b>déjà publiés</b> (F-96 / SF-96-02).
+     *
+     * <p>Sans elles, un poste activé avant F-96 — qui ne porte aucune empreinte de dépôt — verrait
+     * tous ses artefacts classés « modifiés localement » : la mise à jour ne toucherait que les
+     * postes nés après elle, c'est-à-dire <b>pas</b> ceux qui portent la dette.</p>
+     */
+    private static final String KNOWN_DIGESTS_RESOURCE = "empreintes-anterieures.txt";
 
     /**
      * Les contrôles cités, <b>dans cet ordre</b>. L'ordre compte : le premier blocage l'emporte
@@ -174,6 +184,11 @@ public class GovernancePackageSeeder {
                     GovernancePackage.MAX_RULES_LENGTH);
             return false;
         }
+        // Le registre des empreintes déjà publiées, tel que le produit le livre. Une ressource
+        // absente n'est PAS fatale : ce n'est pas un fichier déposé, et le « tout ou rien » ne s'y
+        // applique pas — le paquet reste utile, simplement sans rattrapage.
+        Map<String, List<String>> declared = declaredDigests();
+
         List<GovernancePackageFile> desired = new ArrayList<>(FILES.size());
         int position = 0;
         for (SeededFile file : FILES) {
@@ -186,14 +201,17 @@ public class GovernancePackageSeeder {
                         + "chemin invalide.", SLUG, file.resource());
                 return false;
             }
-            desired.add(GovernancePackageFile.builder().position(position++).path(path)
+            GovernancePackageFile built = GovernancePackageFile.builder().position(position++)
+                    .path(path)
                     // TOUT ce que le produit livre est un ARTEFACT GÉNÉRÉ (F-96 / SF-96-01) : un
                     // skill, un gabarit, un fichier de carte. Le produit les a écrits, il a donc le
                     // droit de les corriger — mais SEULEMENT là où ils sont restés intacts. Un
                     // gabarit rempli a été touché : il redevient du contenu utilisateur, et rien ne
                     // l'écrase plus jamais.
                     .generated(true)
-                    .kind(file.kind()).content(content).build());
+                    .kind(file.kind()).content(content).build();
+            built.setKnownDigestList(declared.getOrDefault(path, List.of()));
+            desired.add(built);
         }
         List<String> controlIds = knownControls();
 
@@ -202,7 +220,67 @@ public class GovernancePackageSeeder {
             create(rules, controlIds, desired);
             return true;
         }
+        // Le registre d'empreintes SURVIT à la republication : « efface puis réécrit » le perdrait
+        // à chaque démarrage, c'est-à-dire toujours. Et le contenu qu'on remplace y entre.
+        carryDigests(existing.get().getId(), desired);
         return updateIfChanged(existing.get(), rules, controlIds, desired);
+    }
+
+    /**
+     * Reporte sur les fichiers à écrire les empreintes déjà connues du chemin, et <b>y ajoute celle
+     * du contenu qu'on remplace</b> (F-96 / SF-96-02).
+     *
+     * <p>Sans ce report, le registre serait remis à zéro à chaque republication — et la
+     * reconnaissance d'un artefact d'avant-hier ne fonctionnerait jamais.</p>
+     */
+    private void carryDigests(java.util.UUID packageId, List<GovernancePackageFile> desired) {
+        Map<String, GovernancePackageFile> stored = files
+                .findByPackageIdOrderByPositionAsc(packageId).stream()
+                .collect(java.util.stream.Collectors.toMap(GovernancePackageFile::getPath,
+                        file -> file, (first, second) -> first));
+        for (GovernancePackageFile file : desired) {
+            GovernancePackageFile previous = stored.get(file.getPath());
+            if (previous == null) {
+                continue;
+            }
+            List<String> replaced = GovernanceDigest.sameContent(previous.getContent(),
+                    file.getContent()) ? List.of()
+                            : List.of(GovernanceDigest.of(previous.getContent()));
+            file.setKnownDigestList(GovernanceKnownDigests.merge(replaced,
+                    previous.knownDigestList(), file.knownDigestList()));
+        }
+    }
+
+    /**
+     * Les empreintes déclarées par la ressource, par chemin de dépôt.
+     *
+     * <p>Une ligne mal formée est <b>ignorée</b> plutôt que fatale : une empreinte manquante coûte
+     * un fichier non reconnu — donc <b>conservé</b> —, là où un démarrage raté coûte le produit.</p>
+     */
+    private Map<String, List<String>> declaredDigests() {
+        String raw = readResource(KNOWN_DIGESTS_RESOURCE);
+        if (raw == null) {
+            log.debug("Aucune empreinte antérieure déclarée pour « {} ».", SLUG);
+            return Map.of();
+        }
+        Map<String, List<String>> byPath = new java.util.LinkedHashMap<>();
+        for (String line : raw.split("\n")) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+                continue;
+            }
+            String[] parts = trimmed.split("\\s+", 2);
+            if (parts.length != 2 || parts[0].length() != GovernanceDigest.LENGTH) {
+                log.debug("Ligne d'empreinte ignorée dans « {} ».", KNOWN_DIGESTS_RESOURCE);
+                continue;
+            }
+            String path = GovernancePath.normalizeOrNull(parts[1]);
+            if (path == null) {
+                continue;
+            }
+            byPath.computeIfAbsent(path, key -> new ArrayList<>()).add(parts[0]);
+        }
+        return byPath;
     }
 
     private void create(String rules, List<String> controlIds, List<GovernancePackageFile> desired) {
@@ -253,6 +331,7 @@ public class GovernancePackageSeeder {
             GovernancePackageFile b = desired.get(i);
             if (!a.getPath().equals(b.getPath()) || a.getKind() != b.getKind()
                     || a.isGenerated() != b.isGenerated()
+                    || !a.knownDigestList().equals(b.knownDigestList())
                     || !Objects.equals(a.getContent(), b.getContent())) {
                 return false;
             }
@@ -267,7 +346,8 @@ public class GovernancePackageSeeder {
             files.save(GovernancePackageFile.builder()
                     .packageId(packageId).position(file.getPosition()).path(file.getPath())
                     .kind(file.getKind()).content(file.getContent())
-                    .generated(file.isGenerated()).build());
+                    .generated(file.isGenerated())
+                    .knownDigests(GovernanceKnownDigests.join(file.knownDigestList())).build());
         }
     }
 

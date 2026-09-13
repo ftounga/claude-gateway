@@ -410,4 +410,29 @@ class GovernanceDepositApiIntegrationTest {
         assertThat(deposits.findByUserIdAndHostIdAndPackageId(UUID.randomUUID(),
                 GovernanceHostRef.HOSTED_ID, packageId)).isEmpty();
     }
+
+    @Test
+    @DisplayName("un poste D'AVANT F-96, sans empreinte, reçoit quand même la correction")
+    void aPosteFromBeforeF96StillGetsTheCorrection() throws Exception {
+        // Le dossier porte DÉJÀ le skill, dans sa version d'alors, et aucune empreinte de dépôt
+        // n'existe : c'est exactement l'état d'un poste activé avant F-96.
+        workspaceService.writeFile(aliceId, project, ".claude/skills/explique.md", "# explique\n");
+        assertThat(deposits.findAll()).isEmpty();
+
+        GovernancePackageFile skill = packageFiles.findByPackageIdOrderByPositionAsc(packageId)
+                .stream().filter(file -> file.getPath().startsWith(".claude")).findFirst()
+                .orElseThrow();
+        skill.setContent("# explique, corrigé\n");
+        // Le produit sait ce qu'il a publié ici : c'est ce qui rattrape la dette.
+        skill.setKnownDigestList(java.util.List.of(GovernanceDigest.of("# explique\n")));
+        packageFiles.save(skill);
+        retain();
+
+        mockMvc.perform(post(HOSTED + "/" + packageId)
+                        .contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk());
+
+        assertThat(workspaceService.readFile(aliceId, project, ".claude/skills/explique.md"))
+                .isEqualTo("# explique, corrigé\n");
+    }
 }

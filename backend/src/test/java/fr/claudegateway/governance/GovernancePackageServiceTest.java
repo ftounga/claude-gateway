@@ -286,4 +286,30 @@ class GovernancePackageServiceTest {
             }
         };
     }
+
+    @Test
+    @DisplayName("republier RETIENT l'empreinte du contenu remplacé (F-96 / SF-96-02)")
+    void republishingRemembersTheReplacedContent() {
+        UUID id = UUID.randomUUID();
+        GovernancePackage existing = GovernancePackage.builder().id(id).slug("livrables")
+                .name("Livrables").version(3).published(true).build();
+        when(packages.findById(id)).thenReturn(Optional.of(existing));
+        GovernancePackageFile stored = GovernancePackageFile.builder().packageId(id).position(0)
+                .path("STATE.md").kind(GovernanceFileKind.TEMPLATE).content("# Avant\n").build();
+        stored.setKnownDigestList(List.of("b".repeat(64)));
+        when(files.findByPackageIdOrderByPositionAsc(id)).thenReturn(List.of(stored));
+
+        service.update(id, new GovernancePackageRequest("livrables", "Livrables", null, "Règle.",
+                List.of(), List.of(new GovernancePackageFileRequest("STATE.md", "TEMPLATE",
+                        "# Après\n", null))));
+
+        org.mockito.ArgumentCaptor<GovernancePackageFile> captor =
+                org.mockito.ArgumentCaptor.forClass(GovernancePackageFile.class);
+        verify(files).save(captor.capture());
+        // Sans ce report, « efface puis réécrit » viderait le registre à CHAQUE publication : une
+        // correction n'atteindrait jamais un poste qui porte la version d'avant.
+        assertThat(captor.getValue().knownDigestList())
+                .containsExactly(GovernanceDigest.of("# Avant\n"), "b".repeat(64));
+        assertThat(captor.getValue().isGenerated()).isTrue();
+    }
 }

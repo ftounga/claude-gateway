@@ -202,7 +202,39 @@ class GovernanceHostApiIntegrationTest {
                 .andExpect(jsonPath("$", Matchers.hasSize(1)))
                 .andExpect(jsonPath("$[0].name").value("EDENRED"))
                 .andExpect(jsonPath("$[0].projects").value(1))
-                .andExpect(jsonPath("$[0].active").value(0));
+                .andExpect(jsonPath("$[0].active").value(0))
+                // Aucun paquet actif : rien n'attend (F-96 / SF-96-02).
+                .andExpect(jsonPath("$[0].outdated").value(0));
+    }
+
+    @Test
+    @DisplayName("la liste des postes DIT qu'une mise à jour attend — sans toucher la machine")
+    void listsHostsWithAPendingUpdate() throws Exception {
+        mockMvc.perform(put("/api/governance/selection/" + publishedId).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post(hostPath(aliceHost) + "/" + publishedId)
+                        .contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/governance/hosts").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].active").value(1))
+                .andExpect(jsonPath("$[0].outdated").value(0));
+
+        // Le paquet est republié : le poste applique désormais une version antérieure.
+        GovernancePackage republished = packages.findById(publishedId).orElseThrow();
+        republished.setVersion(republished.getVersion() + 1);
+        packages.save(republished);
+
+        // Sans ce compte, l'attente ne se verrait que sur le poste DÉJÀ OUVERT — et le geste
+        // « appliquer » existerait sans jamais être fait.
+        mockMvc.perform(get("/api/governance/hosts").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].outdated").value(1));
     }
 
     @Test
