@@ -1,0 +1,136 @@
+<title>Terminal Teams, trois peaux</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@600;700&display=swap">
+<style>
+  :root{--pg-ground:#F5F6FA;--pg-surface:#FFFFFF;--pg-ink:#0F172A;--pg-soft:#5B6780;--pg-rule:#E2E8F0;--pg-accent:#B85E22}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--pg-ground:#0B1020;--pg-surface:#141D33;--pg-ink:#E6EAF3;--pg-soft:#A2ADC3;--pg-rule:#263150;--pg-accent:#F2A873}}
+  :root[data-theme="dark"]{--pg-ground:#0B1020;--pg-surface:#141D33;--pg-ink:#E6EAF3;--pg-soft:#A2ADC3;--pg-rule:#263150;--pg-accent:#F2A873}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--pg-ground);color:var(--pg-ink);font:15px/1.55 Inter,system-ui,sans-serif}
+  .page{max-width:1240px;margin:0 auto;padding-inline:20px;padding-block:44px 64px;display:flex;flex-direction:column;gap:26px}
+  h1{font:700 clamp(1.8rem,3.6vw,2.4rem)/1.1 "Space Grotesk",Inter,sans-serif;margin:0;letter-spacing:-.01em}
+  h2{font:600 1.15rem/1.3 "Space Grotesk",Inter,sans-serif;margin:0}
+  p{margin:0;max-width:70ch;color:var(--pg-soft)}
+  .eyebrow{font:500 .72rem "JetBrains Mono",monospace;letter-spacing:.13em;text-transform:uppercase;color:var(--pg-accent)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:18px}
+  .opt{display:flex;flex-direction:column;gap:10px}
+  .opt .lbl{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .opt .lbl span{font:500 .8rem "JetBrains Mono",monospace;color:var(--pg-soft)}
+  .opt p{font-size:.9rem}
+  .term{border-radius:10px;overflow:hidden;border:1px solid rgba(0,0,0,.25);box-shadow:0 18px 40px -24px rgba(15,23,42,.5);font-size:13px;line-height:1.5}
+  .bar{display:flex;align-items:center;gap:8px;padding:9px 12px;font:600 12.5px Inter,sans-serif}
+  .bar .ini{width:22px;height:22px;border-radius:6px;background:#597731;color:#fff;display:flex;align-items:center;justify-content:center;font:700 10px "Space Grotesk",sans-serif}
+  .bar .tag{margin-left:auto;font:500 11px Inter;padding:2px 8px;border-radius:999px}
+  .body{padding:14px 14px 16px;display:flex;flex-direction:column;gap:9px;min-height:250px}
+  .you{font-family:"JetBrains Mono",monospace;font-size:12px}
+  .h{font-weight:700}
+  .step{font-family:"JetBrains Mono",monospace;font-size:11.5px}
+  .card{border-radius:8px;padding:10px 11px;display:flex;flex-direction:column;gap:4px}
+  .card .t{font:600 13px "Space Grotesk",sans-serif}
+  .card .l{font-size:12px}
+  .mono{font-family:"JetBrains Mono",monospace;font-size:11px}
+
+  /* Référence : terminal de poste */
+  .ref{background:#141D33;color:#C9D2E3}
+  .ref .bar{background:#0E1628;color:#E6EAF3;border-bottom:1px solid #243052}
+  .ref .tag{background:#1C2742;color:#A2ADC3}
+  .ref .you{color:#8FA0BF}.ref .h{color:#FFFFFF}.ref .step{color:#7C8AA6}
+
+  /* A — Prune */
+  .a{background:#231A36;color:#D9CFEA}
+  .a .bar{background:#1B1429;color:#F1EAFB;border-bottom:1px solid #3A2C55}
+  .a .tag{background:#3A2C55;color:#E0D2F5}
+  .a .you{color:#B5A6CF}.a .h{color:#FFFFFF}.a .step{color:#9C8CB8}
+  .a .card{background:#2E2345;border:1px solid #43335F}.a .card .l{color:#CFC3E2}
+
+  /* B — Pétrole */
+  .b{background:#0D2A30;color:#CBE3E3}
+  .b .bar{background:#0A2126;color:#E8F6F5;border-bottom:1px solid #1F4A52}
+  .b .tag{background:#1C434A;color:#BFE3E1}
+  .b .you{color:#93BDBE}.b .h{color:#FFFFFF}.b .step{color:#7FA7A8}
+  .b .card{background:#133840;border:1px solid #235059}.b .card .l{color:#C2DCDC}
+
+  /* C — Papier */
+  .c{background:#F7F5F0;color:#2A2F3A}
+  .c .bar{background:#ECE8DF;color:#1F2430;border-bottom:1px solid #DCD6C8}
+  .c .tag{background:#DCD6C8;color:#3D4350}
+  .c .you{color:#6B7180}.c .h{color:#111827}.c .step{color:#7A7F8C}
+  .c .card{background:#FFFFFF;border:1px solid #E4DFD3}.c .card .l{color:#3D4350}
+  .c .body{font-family:Inter,sans-serif}
+
+  .rec{font:600 .8rem Inter;color:var(--pg-accent)}
+  .note{border-top:1px solid var(--pg-rule);padding-top:18px;display:flex;flex-direction:column;gap:8px}
+</style>
+
+<div class="page">
+  <div>
+    <p class="eyebrow">claude-gateway · correctif F-89</p>
+    <h1>Terminal Teams, trois peaux</h1>
+  </div>
+  <p>Vous aviez demandé un vrai basculement visuel. La livraison de F-89 l'a réduit à un changement de police, sur le même fond que les autres terminaux. Voici trois fonds à comparer au terminal de poste. Contenu d'exemple.</p>
+
+  <div class="grid">
+    <div class="opt">
+      <div class="lbl"><h2>Référence — terminal de poste</h2><span>#141D33</span></div>
+      <div class="term ref">
+        <div class="bar"><span class="ini">CA</span>CAGIP · Terminal du poste<span class="tag">~/dev</span></div>
+        <div class="body">
+          <span class="you">› liste les projets et leur état</span>
+          <span class="step">$ ls ~/dev && cat corp/STATE.md</span>
+          <span class="h">Deux projets actifs</span>
+          <span>corp avance ; socle-reseau-corp attend l'ouverture des flux.</span>
+        </div>
+      </div>
+      <p>Commandes, fichiers, sortie brute. Le terminal que vous connaissez.</p>
+    </div>
+
+    <div class="opt">
+      <div class="lbl"><h2>A — Prune</h2><span>#231A36</span><span class="rec">recommandé</span></div>
+      <div class="term a">
+        <div class="bar"><span class="ini">CA</span>CAGIP · Conversations Teams<span class="tag">Teams relié</span></div>
+        <div class="body">
+          <span class="you">› résume la réunion Data Platform</span>
+          <span class="step">lecture · transcription (écran) · 41 min</span>
+          <div class="card"><span class="t">Présentation projet Data Platform</span><span class="l">Offre AWS internationale portée par CAPFM ; accès Jira via Rémi.</span><span class="mono">12 sept. · 41 min · 4 intervenants</span></div>
+          <span class="h">Ce qu'on attend de vous</span>
+          <span>Demander l'ouverture des flux avant la remise des accès.</span>
+        </div>
+      </div>
+      <p>Chaud et sombre : on reste dans un terminal, mais on sait au premier regard qu'on parle à Teams. S'éloigne franchement du bleu marine sans rappeler la marque Microsoft.</p>
+    </div>
+
+    <div class="opt">
+      <div class="lbl"><h2>B — Pétrole</h2><span>#0D2A30</span></div>
+      <div class="term b">
+        <div class="bar"><span class="ini">CA</span>CAGIP · Conversations Teams<span class="tag">Teams relié</span></div>
+        <div class="body">
+          <span class="you">› résume la réunion Data Platform</span>
+          <span class="step">lecture · transcription (écran) · 41 min</span>
+          <div class="card"><span class="t">Présentation projet Data Platform</span><span class="l">Offre AWS internationale portée par CAPFM ; accès Jira via Rémi.</span><span class="mono">12 sept. · 41 min · 4 intervenants</span></div>
+          <span class="h">Ce qu'on attend de vous</span>
+          <span>Demander l'ouverture des flux avant la remise des accès.</span>
+        </div>
+      </div>
+      <p>Sombre et froid. Distinct, mais reste proche du bleu du terminal de poste : la différence se voit moins vite.</p>
+    </div>
+
+    <div class="opt">
+      <div class="lbl"><h2>C — Papier</h2><span>#F7F5F0</span></div>
+      <div class="term c">
+        <div class="bar"><span class="ini">CA</span>CAGIP · Conversations Teams<span class="tag">Teams relié</span></div>
+        <div class="body">
+          <span class="you">› résume la réunion Data Platform</span>
+          <span class="step">lecture · transcription (écran) · 41 min</span>
+          <div class="card"><span class="t">Présentation projet Data Platform</span><span class="l">Offre AWS internationale portée par CAPFM ; accès Jira via Rémi.</span><span class="mono">12 sept. · 41 min · 4 intervenants</span></div>
+          <span class="h">Ce qu'on attend de vous</span>
+          <span>Demander l'ouverture des flux avant la remise des accès.</span>
+        </div>
+      </div>
+      <p>Clair : la rupture la plus nette, le compte rendu se lit comme un document. Mais ce n'est plus vraiment un terminal, et il éblouit à côté d'une mosaïque sombre.</p>
+    </div>
+  </div>
+
+  <div class="note">
+    <h2>Dans tous les cas</h2>
+    <p>La barre du terminal Teams porte « Conversations Teams » et l'indicateur de liaison ; les sorties de commande éventuelles restent en police machine ; la couleur d'identité du client (ici CAGIP, vert) reste la même partout. La mosaïque applique la même peau à une tuile Teams.</p>
+  </div>
+</div>
