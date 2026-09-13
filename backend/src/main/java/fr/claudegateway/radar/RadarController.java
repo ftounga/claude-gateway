@@ -231,6 +231,7 @@ public class RadarController {
     /** Droit d'abord, possession ensuite : sans le droit, on ne dit rien des postes. */
     private RadarScope scope(UUID hostId) {
         teamsAccess.requireAccess();
-        return scopeResolver.require(currentUser.requireId(), hostId);
+        // F-106 / SF-106-01 : une API de la Vigie ne lit que les clients activés dans la Vigie.
+        return scopeResolver.requireInVigie(currentUser.requireId(), hostId);
     }
 }

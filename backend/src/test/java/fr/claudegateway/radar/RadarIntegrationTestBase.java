@@ -32,6 +32,7 @@ abstract class RadarIntegrationTestBase {
     @Autowired protected JwtService jwtService;
     @Autowired protected UserRepository userRepository;
     @Autowired protected RunnerHostRepository hostRepository;
+    @Autowired protected fr.claudegateway.runner.host.HostSpaceRepository hostSpaces;
     @Autowired protected RadarRegistry registry;
     @Autowired protected RadarSubjectRepository subjects;
     @Autowired protected RadarSubjectAliasRepository aliases;
@@ -64,6 +65,7 @@ abstract class RadarIntegrationTestBase {
     @BeforeEach
     void resetRadar() {
         cleanRadarTables();
+        hostSpaces.deleteAll();
         hostRepository.deleteAll();
         userRepository.deleteAll();
         alice = seedUser("alice-radar@example.com", UserRole.ADMIN);
@@ -97,8 +99,14 @@ abstract class RadarIntegrationTestBase {
                 .provider(AuthProvider.LOCAL).role(role).build());
     }
 
+    /** Un poste activé dans la Forge et dans la Vigie : les API du Radar sont celles de la Vigie (F-106). */
     protected UUID seedHost(UUID userId, String name) {
-        return hostRepository.save(RunnerHost.builder().userId(userId).name(name).build()).getId();
+        UUID hostId = hostRepository.save(RunnerHost.builder().userId(userId).name(name).build()).getId();
+        for (fr.claudegateway.runner.host.ClientSpace space : fr.claudegateway.runner.host.ClientSpace.values()) {
+            hostSpaces.save(fr.claudegateway.runner.host.HostSpace.builder().userId(userId).hostId(hostId)
+                    .space(space).activatedAt(OffsetDateTime.now()).build());
+        }
+        return hostId;
     }
 
     /** Une preuve Teams neuve, à l'instant donné. */

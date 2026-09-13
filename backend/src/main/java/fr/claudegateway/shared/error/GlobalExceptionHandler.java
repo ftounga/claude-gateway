@@ -624,6 +624,29 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("not_found", ex.getMessage()));
     }
 
+    @ExceptionHandler(fr.claudegateway.runner.host.InvalidClientSpaceException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidClientSpace(
+            fr.claudegateway.runner.host.InvalidClientSpaceException ex) {
+        // F-106 / SF-106-01 : un espace qui n'est ni FORGE ni VIGIE.
+        return ResponseEntity.badRequest().body(new ErrorResponse("invalid_space", ex.getMessage()));
+    }
+
+    @ExceptionHandler(fr.claudegateway.runner.host.HostLastSpaceException.class)
+    public ResponseEntity<ErrorResponse> handleHostLastSpace(
+            fr.claudegateway.runner.host.HostLastSpaceException ex) {
+        // F-106 / SF-106-01 : le dernier espace d'un client ne se retire pas — 409, l'état s'y oppose.
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("host_last_space", ex.getMessage()));
+    }
+
+    @ExceptionHandler(fr.claudegateway.runner.host.HostNotInSpaceException.class)
+    public ResponseEntity<ErrorResponse> handleHostNotInSpace(
+            fr.claudegateway.runner.host.HostNotInSpaceException ex) {
+        // F-106 / SF-106-01 : poste possédé (vérifié avant), mais pas activé dans cet espace.
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("host_not_in_space", ex.getMessage()));
+    }
+
     @ExceptionHandler(fr.claudegateway.runner.host.HostHasProjectsException.class)
     public ResponseEntity<ErrorResponse> handleHostHasProjects(
             fr.claudegateway.runner.host.HostHasProjectsException ex) {

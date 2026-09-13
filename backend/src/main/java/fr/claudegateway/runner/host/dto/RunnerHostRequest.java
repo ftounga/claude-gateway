@@ -14,7 +14,15 @@ import jakarta.validation.constraints.Size;
  * demande entière. Aucune exception, parce qu'une exception aurait demandé une liste d'exceptions —
  * et c'est une liste tenue à la main qui a laissé {@code StoredToken} être le seul DTO strict du
  * runner, jusqu'à la panne d'appairage du 2026-09-10.</p>
+ *
+ * @param space espace où le poste naît (F-106 / SF-106-01) : {@code FORGE} (défaut) ou {@code VIGIE}.
+ *              Ignoré au renommage.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record RunnerHostRequest(@NotBlank @Size(max = 100) String name) {
+public record RunnerHostRequest(@NotBlank @Size(max = 100) String name, String space) {
+
+    /** Corps de renommage ou de création dans la Forge. */
+    public RunnerHostRequest(String name) {
+        this(name, null);
+    }
 }
