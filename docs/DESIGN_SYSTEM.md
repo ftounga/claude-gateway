@@ -551,6 +551,16 @@ poste ouvert.
 | Attente | pastille §5 « En attente » (`badge--warning`) écrite « *k* attend » à la place du compte |
 | Compte | nombre de projets en JetBrains Mono 12 px ; « *k* projet(s) trouvé(s) » quand le filtre ne retient le poste que par ses projets |
 
+### Le poste ouvert : en-tête et onglets
+
+| Élément | Règle |
+|---|---|
+| Surface | le détail est posé **sur le fond de page** : ni carte, ni filet d'appartenance — l'identité entre par la pastille et le filet de la ligne ouverte |
+| En-tête | `app-host-badge` `lg` (48 px), nom en Space Grotesk 700 20 px ; dessous, en 12 px secondaire : état de mission (§10), pastille de présence écrite (`badge--success` « En ligne » / `badge--neutral` « Hors ligne », « Jamais connecté »), racine et interpréteur en JetBrains Mono encre principale, « vu il y a … » |
+| Actions | à droite, `mat-stroked-button` : Terminal du poste, Teams (si droit), menu « ··· » (gestes destructifs, jamais en accès direct) |
+| Onglets | texte 14 px 500 `--cg-text-secondary`, actif en encre principale avec **filet bas de 2 px `--cg-orange`** ; filet de la barre `--cg-divider` |
+| Résumé d'onglet | fait chiffré en JetBrains Mono 11 px sur `--cg-bg` (« 4 », « 12 faits », « hors ligne ») ; **état** en pastille §5 : « à appliquer » `badge--warning`, « à corriger » `badge--error` |
+
 ### Règles d'emploi — non négociables
 
 - **L'ordre dit l'urgence.** *À regarder* (une autorisation attend) › *En ligne* › *Hors ligne* ›

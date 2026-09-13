@@ -29,6 +29,10 @@ describe('PostesComponent', () => {
   let dialogAnswer: boolean;
   /** Les paramètres de la route — `/forge/:hostRef` (F-98 / SF-98-01). */
   let params$: BehaviorSubject<ParamMap>;
+  /** Les paramètres de requête — `?onglet=` (F-98 / SF-98-02). */
+  let query$: BehaviorSubject<ParamMap>;
+  /** L'onglet ouvert à la construction de l'écran ; `null` = Projets. */
+  let initialTab: string | null;
 
   const poste: RunnerHostOverview = {
     id: 'h1',
@@ -75,6 +79,7 @@ describe('PostesComponent', () => {
     // Par défaut, l'utilisateur n'a rien confirmé : c'est l'état le plus sûr pour un test, et
     // Jasmine tire l'ordre au sort — sans cette remise à zéro, un test en contaminerait un autre.
     dialogAnswer = false;
+    initialTab = null;
   });
 
   function setup(hosts: RunnerHostOverview[] = [poste]): void {
@@ -177,12 +182,25 @@ describe('PostesComponent', () => {
     fixture.detectChanges();
   }
 
-  function build(fragment: string | null = null): void {
+  /** Ouvre un onglet par l'URL, comme `?onglet=<tab>` (F-98 / SF-98-02). */
+  function openTab(tab: string | null): void {
+    query$.next(convertToParamMap(tab ? { onglet: tab } : {}));
+    fixture.detectChanges();
+  }
+
+  /** La route simulée : fragment, `hostRef`, `?onglet=`. */
+  function routeMock(fragment: string | null): unknown {
     params$ = new BehaviorSubject<ParamMap>(convertToParamMap({}));
+    query$ = new BehaviorSubject<ParamMap>(convertToParamMap(initialTab ? { onglet: initialTab } : {}));
+    return { snapshot: { fragment }, paramMap: params$, queryParamMap: query$ };
+  }
+
+  function build(fragment: string | null = null): void {
     governance = jasmine.createSpyObj<GovernanceService>('GovernanceService',
-      ['getMap', 'readMapFile', 'getIntegrite']);
+      ['getMap', 'readMapFile', 'getIntegrite', 'getHosts']);
     governance.getMap.and.returnValue(of(carte));
     governance.getIntegrite.and.returnValue(of(integriteSaine));
+    governance.getHosts.and.returnValue(of([]));
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
     dialog.open.and.returnValue({ afterClosed: () => of(dialogAnswer) } as never);
     TestBed.configureTestingModule({
@@ -194,7 +212,7 @@ describe('PostesComponent', () => {
         provideRouter([]),
         provideNoopAnimations(),
         // Déclaré APRÈS `provideRouter` : c'est ce jeton-là que l'écran lit pour son ancrage.
-        { provide: ActivatedRoute, useValue: { snapshot: { fragment }, paramMap: params$ } },
+        { provide: ActivatedRoute, useValue: routeMock(fragment) },
       ],
     });
     fixture = TestBed.createComponent(PostesComponent);
@@ -204,6 +222,12 @@ describe('PostesComponent', () => {
 
   function text(): string {
     return (fixture.nativeElement as HTMLElement).textContent ?? '';
+  }
+
+  /** La pastille d'initiales de l'en-tête du poste ouvert (F-98 / SF-98-02). */
+  function headMark(): HTMLElement {
+    return (fixture.nativeElement as HTMLElement)
+      .querySelector('.poste__head .host-badge__mark') as HTMLElement;
   }
 
   // ------------------------------------------------------------------ rendu
@@ -243,17 +267,17 @@ describe('PostesComponent', () => {
     expect(mark.style.background).not.toBe('');
   });
 
-  it('porte la couleur du poste sur le filet de sa carte ET sur celui de chaque projet', () => {
+  it('porte la couleur du poste sur sa pastille d\'en-tête ET sur le filet de chaque projet', () => {
     setup();
     const root = fixture.nativeElement as HTMLElement;
-    const card = root.querySelector('.poste') as HTMLElement;
+    const mark = headMark();
     const projects = root.querySelectorAll<HTMLElement>('.projet');
 
-    expect(card.style.borderLeftColor).not.toBe('');
+    expect(mark.style.background).toContain(hexToRgb(hostTone('Poste CAGIP').solid));
     expect(projects.length).toBe(2);
     projects.forEach((project) => {
       // Le projet reprend le filet de SA machine : c'est ce qui le rattache visuellement.
-      expect(project.style.borderLeftColor).toBe(card.style.borderLeftColor);
+      expect(project.style.borderLeftColor).toBe(hexToRgb(hostTone('Poste CAGIP').solid));
     });
   });
 
@@ -262,14 +286,12 @@ describe('PostesComponent', () => {
       { ...poste, id: 'h1', name: 'Poste bureau' },
       { ...poste, id: 'h2', name: 'Poste maison' },
     ]);
-    const card = () => (fixture.nativeElement as HTMLElement)
-      .querySelector<HTMLElement>('.poste:not(.poste--heberge)')!;
-    const first = card().style.borderLeftColor;
+    const first = headMark().style.background;
 
     openHost('h2');
 
     expect(first).not.toBe('');
-    expect(card().style.borderLeftColor).not.toBe(first);
+    expect(headMark().style.background).not.toBe(first);
   });
 
   it('ÉCRIT le nom du poste à côté de sa couleur — elle ne porte jamais seule l\'information', () => {
@@ -281,11 +303,10 @@ describe('PostesComponent', () => {
 
   it('tire la même couleur que la fonction pure partagée', () => {
     setup();
-    const card = (fixture.nativeElement as HTMLElement).querySelector('.poste') as HTMLElement;
     const expected = hostTone('Poste CAGIP').solid.toLowerCase();
     const [r, g, b] = [1, 3, 5].map((i) => parseInt(expected.slice(i, i + 2), 16));
 
-    expect(card.style.borderLeftColor).toContain(`${r}, ${g}, ${b}`);
+    expect(headMark().style.background).toContain(`${r}, ${g}, ${b}`);
   });
 
   it('marque le poste déconnecté avec la pastille neutre', () => {
@@ -419,9 +440,10 @@ describe('PostesComponent', () => {
     fixture.detectChanges();
 
     const badge = (fixture.nativeElement as HTMLElement)
-      .querySelector('.poste:not(.poste--heberge) .badge--neutral') as HTMLElement;
+      .querySelector('.poste:not(.poste--heberge) .poste__presence.badge--neutral') as HTMLElement;
     expect(badge).not.toBeNull();
-    expect(badge.textContent).toContain('hors ligne · vu il y a');
+    expect(badge.textContent).toContain('Hors ligne');
+    expect(text()).toContain('hors ligne · vu il y a');
     expect(service.runnerHostsOverview.calls.count()).toBe(calls);
   });
 
@@ -540,24 +562,19 @@ describe('PostesComponent', () => {
     // couleur d'identité. Deux postes de même état mais de noms différents gardent deux filets
     // différents ; le filet ne dépend que du nom.
     setup([mission('h1', 'Poste CAGIP', 'PENDING'), mission('h2', 'Poste Bercy', 'PENDING')]);
-    const card = () => (fixture.nativeElement as HTMLElement)
-      .querySelector<HTMLElement>('.poste:not(.poste--heberge)')!;
-
-    expect(card().style.borderLeftColor).toBe(hexToRgb(hostTone('Poste CAGIP').solid));
+    expect(headMark().style.background).toContain(hexToRgb(hostTone('Poste CAGIP').solid));
     openHost('h2');
-    expect(card().style.borderLeftColor).toBe(hexToRgb(hostTone('Poste Bercy').solid));
+    expect(headMark().style.background).toContain(hexToRgb(hostTone('Poste Bercy').solid));
   });
 
   it("donne le même filet à un même nom, quels que soient les états de mission", () => {
     setup([mission('h1', 'Poste CAGIP', 'ACTIVE'), mission('h2', 'Poste CAGIP', 'CLOSED')]);
-    const card = () => (fixture.nativeElement as HTMLElement)
-      .querySelector<HTMLElement>('.poste:not(.poste--heberge)')!;
-    const active = card().style.borderLeftColor;
+    const active = headMark().style.background;
 
     openHost('h2');
 
     expect(active).not.toBe('');
-    expect(card().style.borderLeftColor).toBe(active);
+    expect(headMark().style.background).toBe(active);
   });
 
   it("n'emprunte aucune couleur d'identité pour la pastille d'état", () => {
@@ -801,6 +818,179 @@ describe('PostesComponent', () => {
     });
   });
 
+  describe('le poste ouvert et ses onglets (F-98 / SF-98-02)', () => {
+    function tabs(): HTMLElement[] {
+      return Array.from((fixture.nativeElement as HTMLElement)
+        .querySelectorAll<HTMLElement>('.poste__tab'));
+    }
+
+    function tab(name: string): HTMLElement {
+      return tabs().find((node) => node.getAttribute('data-tab') === name) as HTMLElement;
+    }
+
+    it('dit dans l\'en-tête qui, dans quel état, et ce que la machine a déclaré', () => {
+      setup();
+      const head = (fixture.nativeElement as HTMLElement).querySelector('.poste__head') as HTMLElement;
+
+      expect(head.querySelector('h2')?.textContent?.trim()).toBe('Poste CAGIP');
+      expect(head.querySelector('.poste__presence')?.textContent).toContain('En ligne');
+      expect(head.textContent).toContain('vu il y a');
+      expect(head.textContent).toContain('dev');
+      expect(head.textContent).toContain('linux');
+      expect(head.textContent).toContain('posix');
+      expect(head.textContent).toContain('Runner');
+      // Les gestes du poste vivent dans l'en-tête : plus de bloc « terminal » dédié.
+      expect(head.querySelector('.poste__host-terminal')).not.toBeNull();
+      expect(head.querySelector('.poste__menu-trigger')).not.toBeNull();
+    });
+
+    it('dit « Jamais connecté » sans inventer de date', () => {
+      setup([{ ...poste, id: 'h9', connected: false, lastSeenAt: null }]);
+      const head = (fixture.nativeElement as HTMLElement).querySelector('.poste__head') as HTMLElement;
+
+      expect(head.querySelector('.poste__presence')?.textContent).toContain('Jamais connecté');
+      expect(head.textContent).not.toContain('vu il y a');
+    });
+
+    it('propose quatre onglets à une machine, et Projets seul à « Hébergé »', () => {
+      setup();
+      expect(tabs().map((node) => node.getAttribute('data-tab')))
+        .toEqual(['projets', 'carte', 'gouvernance', 'activite']);
+
+      openHost('heberge');
+      expect(tabs().map((node) => node.getAttribute('data-tab'))).toEqual(['projets']);
+    });
+
+    it('chaque onglet porte son résumé sans être ouvert', () => {
+      setup();
+
+      expect(tab('projets').textContent).toContain('2');
+      expect(tab('carte').textContent).toContain('3 faits');
+      expect(tab('gouvernance').querySelector('.badge')).toBeNull();
+      expect(tab('projets').getAttribute('aria-selected')).toBe('true');
+    });
+
+    it('l\'onglet Carte dit « hors ligne » quand le poste l\'est', () => {
+      setup([{ ...poste, connected: false }]);
+
+      expect(tab('carte').textContent).toContain('hors ligne');
+    });
+
+    it('« à appliquer » quand une mise à jour de paquet attend, et le bandeau dans Gouvernance', () => {
+      service = spyService();
+      service.runnerHostsOverview.and.returnValue(of([poste]));
+      build();
+      governance.getHosts.and.returnValue(of([
+        { ref: 'h1', id: 'h1', name: 'Poste CAGIP', virtual: false, projects: 2, active: 1, outdated: 2 },
+      ]));
+      component.refresh();
+      fixture.detectChanges();
+
+      const flag = tab('gouvernance').querySelector('.badge') as HTMLElement;
+      expect(flag.textContent?.trim()).toBe('à appliquer');
+      expect(flag.classList).toContain('badge--warning');
+
+      openTab('gouvernance');
+      expect(text()).toContain('Une version plus récente de 2 paquet(s) existe.');
+      expect(text()).toContain('Rien n\'a été écrit sur cette machine');
+    });
+
+    it('« à corriger » quand l\'intégrité relève une erreur', () => {
+      setup();
+      governance.getIntegrite.and.returnValue(of({
+        ...integriteSaine,
+        errors: [{ rule: 'carte/fichier-absent', target: 'reseau.md', message: 'manque' }],
+      }));
+      component.refresh();
+      fixture.detectChanges();
+
+      const flag = tab('gouvernance').querySelector('.badge') as HTMLElement;
+      expect(flag.textContent?.trim()).toBe('à corriger');
+      expect(flag.classList).toContain('badge--error');
+    });
+
+    it('lit les mises à jour une fois, les relit sur « Rafraîchir », jamais au sondage', fakeAsync(() => {
+      setup();
+      expect(governance.getHosts).toHaveBeenCalledTimes(1);
+
+      tick(POSTES_REFRESH_MS);
+      expect(governance.getHosts).toHaveBeenCalledTimes(1);
+
+      component.refresh();
+      expect(governance.getHosts).toHaveBeenCalledTimes(2);
+      fixture.destroy();
+    }));
+
+    it('une lecture des mises à jour en échec reste silencieuse', () => {
+      setup();
+      governance.getHosts.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+      component.refresh();
+      fixture.detectChanges();
+
+      expect(tab('gouvernance').querySelector('.badge')).toBeNull();
+      expect(component.outdatedOn(poste)).toBe(0);
+    });
+
+    it('?onglet=carte ouvre la carte ; un onglet inconnu ouvre Projets', () => {
+      setup();
+
+      openTab('carte');
+      expect(component.activeTab()).toBe('carte');
+      expect(text()).toContain('Carte du poste');
+      expect(text()).not.toContain('Ajouter un projet');
+
+      openTab('radar');
+      expect(component.activeTab()).toBe('projets');
+      expect(text()).toContain('Ajouter un projet');
+    });
+
+    it('« Hébergé » retombe sur Projets quel que soit l\'onglet demandé', () => {
+      setup();
+      openTab('carte');
+
+      openHost('heberge');
+
+      expect(component.activeTab()).toBe('projets');
+    });
+
+    it('cliquer un onglet le met dans l\'URL, et Projets l\'en retire', () => {
+      setup();
+      const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      tab('gouvernance').click();
+      expect(navigate).toHaveBeenCalledWith([], jasmine.objectContaining({
+        queryParams: { onglet: 'gouvernance' }, queryParamsHandling: 'merge',
+      }));
+
+      tab('projets').click();
+      expect(navigate).toHaveBeenCalledWith([], jasmine.objectContaining({
+        queryParams: { onglet: null },
+      }));
+    });
+
+    it('l\'onglet Activité dit ce qui tourne et les projets par activité récente', () => {
+      setup();
+      openTab('activite');
+
+      expect(text()).toContain('1 projet actif');
+      const items = Array.from((fixture.nativeElement as HTMLElement)
+        .querySelectorAll('.poste__activity-list li')).map((node) => node.textContent ?? '');
+      expect(items.length).toBe(1);
+      expect(items[0]).toContain('web');
+      expect(items[0]).toContain('bash');
+    });
+
+    it('« Hébergé » garde ses deux gestes sans machine dans son en-tête', () => {
+      setup();
+      openHost('heberge');
+      const head = (fixture.nativeElement as HTMLElement).querySelector('.poste__head') as HTMLElement;
+
+      expect(head.textContent).toContain('Ouvrir un dépôt GitHub');
+      expect(head.textContent).toContain('Importer une archive .zip');
+      expect(head.textContent).toContain('chez la gateway');
+    });
+  });
+
   /**
    * Le signe de vie sur la carte du poste (F-70 / SF-70-02). Le PO a tranché **le même** signe qu'au
    * terminal : une pastille et le mot écrit. Ce qui se vérifie ici, c'est qu'il soit lisible **et**
@@ -943,6 +1133,7 @@ describe('PostesComponent', () => {
           },
         },
       ]);
+      openTab('activite');
       expect((fixture.nativeElement as HTMLElement).textContent).toContain('Exécute git clone');
     });
   });
@@ -1044,8 +1235,10 @@ describe('PostesComponent', () => {
       expect(document.body.textContent).toContain('Couper la liaison');
       expect(document.body.textContent).toContain('Supprimer le poste');
       // Jamais en accès direct : le geste n'existe que DANS le menu de dépassement.
-      expect((fixture.nativeElement as HTMLElement)
-        .querySelector('.poste__head-side button:not(.poste__menu-trigger)')).toBeNull();
+      const direct = Array.from((fixture.nativeElement as HTMLElement)
+        .querySelectorAll('.poste__actions button:not(.poste__menu-trigger)'))
+        .map((button) => button.textContent ?? '');
+      expect(direct.some((label) => label.includes('Couper') || label.includes('Supprimer'))).toBeFalse();
     });
 
   it('coupe la liaison depuis la carte d\'un poste SANS AUCUN PROJET — le cas vécu', () => {
@@ -1580,7 +1773,7 @@ describe('PostesComponent', () => {
     build();
 
     expect(teamsButton()).not.toBeNull();
-    expect(teamsButton()?.textContent).toContain('Terminal Teams');
+    expect(teamsButton()?.textContent).toContain('Teams');
   });
 
   it('« Hébergé » ne le porte jamais : ce n\'est pas une machine, aucun navigateur à observer', () => {
@@ -1635,18 +1828,16 @@ describe('PostesComponent', () => {
     build();
 
     // La MÊME pastille que partout ailleurs (F-70) : aucun registre de couleur de plus.
-    const actions = (fixture.nativeElement as HTMLElement)
-      .querySelector('.poste:not(.poste--heberge) .poste__card-actions') as HTMLElement;
-    expect(actions.querySelectorAll('app-live-badge').length).toBe(1);
+    expect(teamsButton()?.querySelectorAll('app-live-badge').length).toBe(1);
   });
 
   it('montre la pastille de vie quand un onglet vit sur le terminal du poste', () => {
     setup([{ ...poste, hostTerminalId: 'wt1', hostTerminalLive: true }]);
-    const actions = (fixture.nativeElement as HTMLElement)
-      .querySelector('.poste:not(.poste--heberge) .poste__card-actions') as HTMLElement;
+    const button = (fixture.nativeElement as HTMLElement)
+      .querySelector('.poste:not(.poste--heberge) .poste__host-terminal') as HTMLElement;
 
     // La MÊME pastille que partout ailleurs (F-70) : aucun quatrième registre de couleur.
-    expect(actions.querySelector('app-live-badge')).not.toBeNull();
+    expect(button.querySelector('app-live-badge')).not.toBeNull();
   });
 
   // ------------------------------------ refus d'accès (F-85 / SF-85-04)
@@ -1736,6 +1927,9 @@ describe('PostesComponent', () => {
   // --------------------------------------------- la carte du poste (F-92 / SF-92-03)
 
   describe('la carte du poste', () => {
+    // F-98 / SF-98-02 : la carte vit dans son onglet.
+    beforeEach(() => initialTab = 'carte');
+
     it('montre ce que la machine sait, sans ouvrir un terminal', () => {
       setup();
 
@@ -1926,9 +2120,10 @@ describe('PostesComponent', () => {
     /** Construit l'écran en imposant ce que la lecture de carte répond. */
     function buildWithMap(answer: Observable<GovernanceMap>): void {
       governance = jasmine.createSpyObj<GovernanceService>('GovernanceService',
-        ['getMap', 'readMapFile', 'getIntegrite']);
+        ['getMap', 'readMapFile', 'getIntegrite', 'getHosts']);
       governance.getMap.and.returnValue(answer);
       governance.getIntegrite.and.returnValue(of(integriteSaine));
+      governance.getHosts.and.returnValue(of([]));
       dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
       dialog.open.and.returnValue({ afterClosed: () => of(dialogAnswer) } as never);
       TestBed.resetTestingModule();
@@ -1940,7 +2135,7 @@ describe('PostesComponent', () => {
           { provide: MatDialog, useValue: dialog },
           provideRouter([]),
           provideNoopAnimations(),
-          { provide: ActivatedRoute, useValue: { snapshot: { fragment: null }, paramMap: of(convertToParamMap({})) } },
+          { provide: ActivatedRoute, useValue: routeMock(null) },
         ],
       });
       fixture = TestBed.createComponent(PostesComponent);
@@ -1952,6 +2147,9 @@ describe('PostesComponent', () => {
   // ------------------------------------- l'intégrité du poste (F-95 / SF-95-03)
 
   describe("l'intégrité du poste", () => {
+    // F-98 / SF-98-02 : l'intégrité quitte la carte pour l'onglet Gouvernance.
+    beforeEach(() => initialTab = 'gouvernance');
+
     it('se lit avec la carte, une fois par page, sur un poste connecté', () => {
       setup();
 
@@ -2015,7 +2213,7 @@ describe('PostesComponent', () => {
       fixture.detectChanges();
 
       expect(text()).not.toContain('Intégrité —');
-      expect(text()).toContain('Carte du poste');
+      expect(text()).toContain('Rien à appliquer');
     });
   });
 
