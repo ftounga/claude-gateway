@@ -144,7 +144,7 @@ final class TeamsLedger {
                         put(mentions, keyOf(event), event, MAX_MENTIONS));
                 account(reading);
             }
-            case MEETING_DETAILS -> {
+            case MEETING_DETAILS, CALENDAR_EVENT -> {
                 TeamsReading<TeamsMeeting> reading = adapter.meetings(url, response.body());
                 reading.items().forEach(meeting -> put(meetings, meeting.id(), meeting, MAX_MEETINGS));
                 account(reading);

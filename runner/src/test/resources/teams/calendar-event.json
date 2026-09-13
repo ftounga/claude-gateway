@@ -1,0 +1,13 @@
+{
+  "id": "AAMkAGFABRIQUE-EVENT-0001",
+  "iCalUId": "040000008200E00074C5B7101A82E008FABRIQUE",
+  "subject": "Revue d'architecture IAM",
+  "start": { "dateTime": "2026-09-12T13:00:00.0000000", "timeZone": "UTC" },
+  "end": { "dateTime": "2026-09-12T14:00:00.0000000", "timeZone": "UTC" },
+  "organizer": { "emailAddress": { "name": "Paul Durand", "address": "paul.durand@fabrique.invalid" } },
+  "attendees": [
+    { "type": "required", "emailAddress": { "name": "Claire Martin", "address": "claire.martin@fabrique.invalid" } },
+    { "type": "required", "emailAddress": { "name": "Francky Tounga", "address": "francky@fabrique.invalid" } }
+  ],
+  "onlineMeeting": { "joinUrl": "https://teams.microsoft.com/l/meetup-join/19%3ameeting_revue-iam%40thread.v2/0" }
+}

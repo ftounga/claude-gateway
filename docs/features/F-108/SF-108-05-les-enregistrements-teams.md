@@ -193,3 +193,9 @@ chemin.
   `.vtt` voisin puis transcription locale.
 - **Décision (réversible)** : l'origine du temps d'un `.vtt` est le début de réunion observé (ou
   `video_started_at`), comme pour les répliques Teams — même hypothèse que F-90.
+- **Constat du relevé réel du 2026-09-13** (noté par F-89 / SF-89-05, rien de réécrit ici) : à
+  l'étape « réunion passée », Teams web lit l'enregistrement **en flux** —
+  `/_api/v2.1/drives/{id}/items/{id}/content` en `application/dash+xml` depuis un **worker** (un
+  manifeste de lecture, pas le fichier) et `/personal/{id}/_layouts/15/streamembed.aspx` (lecteur
+  intégré, onglet + service worker). Ni l'un ni l'autre n'est un `.mp4` téléchargeable : le
+  téléchargement **par Chrome** reste l'approche de cette sous-feature.

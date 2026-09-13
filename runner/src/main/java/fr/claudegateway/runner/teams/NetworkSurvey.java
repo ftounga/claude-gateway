@@ -51,6 +51,11 @@ public final class NetworkSurvey {
 
     private static final String RESPONSE_RECEIVED = "Network.responseReceived";
     private static final String ATTACHED_TO_TARGET = "Target.attachedToTarget";
+    private static final String WEBSOCKET_CREATED = "Network.webSocketCreated";
+    private static final String WEBSOCKET_FRAME = "Network.webSocketFrameReceived";
+
+    /** Sockets distinctes (hôte + chemin) retenues au plus. */
+    static final int MAX_SOCKETS = 200;
     private static final Set<String> STATIC_TYPES = Set.of("script", "stylesheet", "image", "font");
     private static final List<String> STATIC_EXTENSIONS = List.of(".js", ".css", ".png", ".jpg",
             ".jpeg", ".svg", ".woff", ".woff2", ".map", ".ico", ".gif", ".webp", ".ttf");
@@ -61,6 +66,10 @@ public final class NetworkSurvey {
     private final Map<String, Origin> sessions = new ConcurrentHashMap<>();
     private final Map<String, Entry> entries = new LinkedHashMap<>();
     private final Set<String> watchedTabs = ConcurrentHashMap.newKeySet();
+    /** Sockets par hôte et chemin (F-89 / SF-89-05) : comptées, jamais lues. */
+    private final Map<String, Socket> sockets = new LinkedHashMap<>();
+    /** « session|requestId » d'une socket ouverte → clé de sa ligne. */
+    private final Map<String, String> openSockets = new java.util.HashMap<>();
 
     private volatile int step;
     private int outsideMicrosoft;
@@ -76,6 +85,7 @@ public final class NetworkSurvey {
     public void watchTeamsTab(CdpConnection connection) {
         connection.onSessionEvent(RESPONSE_RECEIVED,
                 (sessionId, params) -> onResponse(sessionId, Origin.TEAMS_TAB, params));
+        watchSockets(connection, Origin.TEAMS_TAB);
         connection.onSessionEvent(ATTACHED_TO_TARGET,
                 (parent, params) -> onAttached(connection, params));
         connection.send(CdpCommands.NETWORK_ENABLE, mapper.createObjectNode());
@@ -94,8 +104,66 @@ public final class NetworkSurvey {
         }
         connection.onSessionEvent(RESPONSE_RECEIVED,
                 (sessionId, params) -> onResponse(sessionId, Origin.OTHER_TAB, params));
+        watchSockets(connection, Origin.OTHER_TAB);
         connection.send(CdpCommands.NETWORK_ENABLE, mapper.createObjectNode());
         return true;
+    }
+
+    /**
+     * <b>Les sockets</b> (F-89 / SF-89-05) : l'hôte, le chemin sans requête et le nombre de trames reçues
+     * — jamais leur contenu. C'est ce qui dira si messages et transcriptions arrivent par ce canal, que
+     * l'observation des réponses HTTP ne voit pas.
+     */
+    private void watchSockets(CdpConnection connection, Origin tabOrigin) {
+        connection.onSessionEvent(WEBSOCKET_CREATED, (sessionId, params) -> onSocket(sessionId, tabOrigin, params));
+        connection.onSessionEvent(WEBSOCKET_FRAME, (sessionId, params) -> onSocketFrame(sessionId, params));
+    }
+
+    private void onSocket(String sessionId, Origin tabOrigin, JsonNode params) {
+        if (params == null) {
+            return;
+        }
+        Origin origin = tabOrigin;
+        String session = sessionId == null ? "" : sessionId;
+        if (!session.isBlank()) {
+            origin = sessions.get(session);
+            if (origin == null) {
+                return;
+            }
+        }
+        String url = ObservedResponse.withoutQuery(params.path("url").asText(""));
+        synchronized (this) {
+            if (url.isEmpty() || !MicrosoftDomains.isMicrosoftFamily(url)) {
+                outsideMicrosoft++;
+                return;
+            }
+            String host = SurveyPaths.hostMotif(url);
+            String path = SurveyPaths.template(url);
+            String key = host + ' ' + path;
+            Socket socket = sockets.get(key);
+            if (socket == null) {
+                if (sockets.size() >= MAX_SOCKETS) {
+                    dropped++;
+                    return;
+                }
+                socket = new Socket(host, path, step);
+                sockets.put(key, socket);
+            }
+            socket.opened++;
+            socket.origins.add(origin.name());
+            openSockets.put(session + '|' + params.path("requestId").asText(""), key);
+        }
+    }
+
+    private synchronized void onSocketFrame(String sessionId, JsonNode params) {
+        if (params == null) {
+            return;
+        }
+        String key = openSockets.get((sessionId == null ? "" : sessionId) + '|' + params.path("requestId").asText(""));
+        Socket socket = key == null ? null : sockets.get(key);
+        if (socket != null) {
+            socket.frames++; // la trame est comptée ; son contenu (payloadData) n'est jamais lu
+        }
     }
 
     /** Vrai si cet onglet est déjà écouté. */
@@ -178,7 +246,10 @@ public final class NetworkSurvey {
 
     private synchronized void record(Origin origin, String url, String resourceType, String mime,
             int status) {
-        if (url.isEmpty() || !MicrosoftDomains.isAllowed(url)) {
+        // F-89 / SF-89-05 : relevé élargi à la FAMILLE d'hôtes Microsoft (comptage seulement ; les gestes et
+        // l'écoute des cadres restent bornés à MicrosoftDomains.isAllowed). Le premier relevé réel avait
+        // compté 176 réponses « hors domaines » sans pouvoir dire lesquelles.
+        if (url.isEmpty() || !MicrosoftDomains.isMicrosoftFamily(url)) {
             outsideMicrosoft++;
             return;
         }
@@ -233,7 +304,58 @@ public final class NetworkSurvey {
     public synchronized Snapshot snapshot() {
         List<Entry> copy = new ArrayList<>();
         entries.values().forEach(entry -> copy.add(entry.copy()));
-        return new Snapshot(copy, outsideMicrosoft, staticResources, dropped, refusedTargets);
+        List<Socket> socketCopy = new ArrayList<>();
+        sockets.values().forEach(socket -> socketCopy.add(socket.copy()));
+        return new Snapshot(copy, outsideMicrosoft, staticResources, dropped, refusedTargets, socketCopy);
+    }
+
+    /** Une socket relevée : hôte, chemin gabarisé, origines, ouvertures et trames — jamais une trame lue. */
+    public static final class Socket {
+
+        final String host;
+        final String path;
+        final int firstStep;
+        final Set<String> origins = new LinkedHashSet<>();
+        int opened;
+        int frames;
+
+        Socket(String host, String path, int firstStep) {
+            this.host = host;
+            this.path = path;
+            this.firstStep = firstStep;
+        }
+
+        Socket copy() {
+            Socket copy = new Socket(host, path, firstStep);
+            copy.origins.addAll(origins);
+            copy.opened = opened;
+            copy.frames = frames;
+            return copy;
+        }
+
+        public String host() {
+            return host;
+        }
+
+        public String path() {
+            return path;
+        }
+
+        public int opened() {
+            return opened;
+        }
+
+        public int frames() {
+            return frames;
+        }
+
+        public Set<String> origins() {
+            return Set.copyOf(origins);
+        }
+
+        public int firstStep() {
+            return firstStep;
+        }
     }
 
     /** Un chemin relevé : ce qui a le droit d'être écrit, et rien d'autre. */
@@ -306,8 +428,19 @@ public final class NetworkSurvey {
      * @param staticResources  scripts, styles, images, polices écartés
      * @param dropped          réponses de chemins nouveaux au-delà de {@link #MAX_ENTRIES}
      * @param refusedTargets   cibles attachées hors domaines Microsoft, jamais écoutées
+     * @param sockets          sockets WebSocket de la famille Microsoft, par hôte et chemin (F-89 / SF-89-05)
      */
     public record Snapshot(List<Entry> entries, int outsideMicrosoft, int staticResources, int dropped,
-            int refusedTargets) {
+            int refusedTargets, List<Socket> sockets) {
+
+        public Snapshot {
+            sockets = sockets == null ? List.of() : List.copyOf(sockets);
+        }
+
+        /** Forme d'avant F-89 / SF-89-05 : aucune socket relevée. */
+        public Snapshot(List<Entry> entries, int outsideMicrosoft, int staticResources, int dropped,
+                int refusedTargets) {
+            this(entries, outsideMicrosoft, staticResources, dropped, refusedTargets, List.of());
+        }
     }
 }

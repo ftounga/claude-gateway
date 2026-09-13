@@ -60,6 +60,36 @@ public final class MicrosoftDomains {
         return matches(host, ALLOWED);
     }
 
+    /**
+     * La <b>famille d'hôtes Microsoft</b>, pour le <b>relevé et le comptage seulement</b> (F-89 /
+     * SF-89-05). Le premier relevé réel a compté 176 réponses « hors domaines Microsoft » sans détail :
+     * la liste des gestes est trop étroite pour dire par où Teams passe. Cette liste-ci est plus large,
+     * et <b>n'autorise rien</b> : aucun geste, aucune écoute de cadre, aucune lecture de corps ne la
+     * consulte — {@link #isAllowed(String)} reste la seule garde des actions (F-108 inchangé).
+     */
+    private static final List<String> FAMILY = List.of(
+            "*.microsoft.com",
+            "*.skype.com",
+            "*.office.net",
+            "*.cloud.microsoft",
+            "*.svc.ms",
+            "*.live.com",
+            "*.sharepoint.com",
+            "*.office.com");
+
+    /**
+     * Vrai si l'adresse appartient à la famille d'hôtes Microsoft — <b>pour compter et relever</b>,
+     * jamais pour agir. Une page d'identification n'en est pas : elle n'est ni détaillée ni comptée
+     * comme trafic de Teams.
+     */
+    public static boolean isMicrosoftFamily(String url) {
+        String host = hostOf(url);
+        if (host.isEmpty() || matches(host, SIGN_IN)) {
+            return false;
+        }
+        return matches(host, ALLOWED) || matches(host, FAMILY);
+    }
+
     /** Vrai si l'adresse est une page d'identification Microsoft (§4.2). */
     public static boolean isSignIn(String url) {
         return matches(hostOf(url), SIGN_IN);
