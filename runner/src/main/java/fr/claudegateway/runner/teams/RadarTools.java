@@ -27,6 +27,9 @@ final class RadarTools {
     /** Le lancement de la synchro du soir (SF-100-02). */
     static final String COLLECT = "teams_radar_collect";
 
+    /** L'annulation de la synchro en cours (SF-100-04). */
+    static final String CANCEL = "teams_radar_cancel";
+
     /** Fenêtre de décodage de la vérification : large, on compte ce que Teams a servi. */
     private static final Duration VERIFY_LOOKBACK = Duration.ofDays(400);
 
@@ -47,6 +50,14 @@ final class RadarTools {
     }
 
     // ------------------------------------------------------------------ synchro (SF-100-02)
+
+    /** Annule la synchro en cours si c'est celle demandée (SF-100-04). */
+    ToolOutcome cancel(com.fasterxml.jackson.databind.JsonNode input) {
+        String syncId = input == null ? "" : input.path("sync_id").asText("").strip();
+        ObjectNode answer = mapper.createObjectNode();
+        answer.put("cancelled", agent != null && agent.cancel(syncId));
+        return ToolOutcome.ok(answer.toString());
+    }
 
     /**
      * <b>Lance la synchro</b> demandée par la gateway : le runner accepte et rend la main, le travail

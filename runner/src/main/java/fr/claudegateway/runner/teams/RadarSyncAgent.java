@@ -37,6 +37,8 @@ public final class RadarSyncAgent {
     private final Consumer<String> say;
 
     private String runningSyncId;
+    /** Le contexte de la synchro en cours, pour l'annuler (SF-100-04). */
+    private volatile Context current;
 
     /**
      * @param ticker battement périodique ; {@code null} : seuls les battements de la collecte partent
@@ -84,6 +86,21 @@ public final class RadarSyncAgent {
         return new Acceptance(true, null, null);
     }
 
+    /**
+     * <b>Annule</b> la synchro en cours si c'est celle-là (F-100 / SF-100-04) : la collecte s'arrête à sa
+     * prochaine étape, et aucune fin n'est envoyée — la gateway a déjà clos.
+     *
+     * @return vrai si la synchro en cours était celle-là
+     */
+    synchronized boolean cancel(String syncId) {
+        Context context = current;
+        if (syncId == null || runningSyncId == null || !runningSyncId.equals(syncId) || context == null) {
+            return false;
+        }
+        context.stop();
+        return true;
+    }
+
     /** La synchro en cours sur ce poste, ou {@code null}. */
     synchronized String runningSyncId() {
         return runningSyncId;
@@ -91,6 +108,7 @@ public final class RadarSyncAgent {
 
     private void run(RadarAssignment assignment) {
         Context context = new Context(assignment.syncId());
+        current = context;
         ScheduledFuture<?> beat = null;
         try {
             say.accept("Radar : synchro " + assignment.trigger().toLowerCase(java.util.Locale.ROOT)
@@ -123,6 +141,7 @@ public final class RadarSyncAgent {
             }
             synchronized (this) {
                 runningSyncId = null;
+                current = null;
             }
         }
     }
@@ -202,6 +221,10 @@ public final class RadarSyncAgent {
         @Override
         public boolean stopped() {
             return stopped.get();
+        }
+
+        void stop() {
+            stopped.set(true);
         }
     }
 }
