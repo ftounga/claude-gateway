@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 
 import {
   RadarManagerAnswer,
+  RadarNewsUndoResult,
   RadarSubjectDetail,
   RadarUnknownView,
 } from '../models/radar-subject.models';
@@ -38,5 +39,11 @@ export class RadarSubjectService {
   managerAnswer(hostId: string, subjectId: string): Observable<RadarManagerAnswer> {
     return this.http.post<RadarManagerAnswer>(
       `/api/radar/hosts/${encodeURIComponent(hostId)}/subjects/${encodeURIComponent(subjectId)}/manager-answer`, null);
+  }
+
+  /** Annule une nouvelle (F-104 / SF-104-02) : toutes ses écritures, puis sa preuve. */
+  undoNews(hostId: string, evidenceId: string): Observable<RadarNewsUndoResult> {
+    return this.http.post<RadarNewsUndoResult>(
+      `/api/radar/hosts/${encodeURIComponent(hostId)}/news/${encodeURIComponent(evidenceId)}/undo`, null);
   }
 }

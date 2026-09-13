@@ -8,6 +8,8 @@ import {
   RadarBrief,
   RadarClosure,
   RadarCorrection,
+  RadarNews,
+  RadarNewsUndo,
   RadarSubjectState,
   RadarSyncStarted,
   RadarThreadRule,
@@ -95,6 +97,18 @@ export class RadarService {
   setSubjectState(hostId: string, subjectId: string, state: RadarSubjectState): Observable<RadarCorrection> {
     return this.http.post<RadarCorrection>(`${this.base(hostId)}/subjects/${subjectId}/corrections`,
       { action: 'SET_STATE', state });
+  }
+
+  // ---------------------------------------------------------------- Donner la nouvelle (F-104 / SF-104-02)
+
+  /** Une nouvelle, ou un courriel collé : un tour d'agent muni des outils Radar, **décompté**. */
+  giveNews(hostId: string, text: string): Observable<RadarNews> {
+    return this.http.post<RadarNews>(`${this.base(hostId)}/news`, { text });
+  }
+
+  /** Annule une nouvelle entière : toutes ses écritures, puis sa preuve. */
+  undoNews(hostId: string, evidenceId: string): Observable<RadarNewsUndo> {
+    return this.http.post<RadarNewsUndo>(`${this.base(hostId)}/news/${evidenceId}/undo`, null);
   }
 
   /** Annuler un geste. */

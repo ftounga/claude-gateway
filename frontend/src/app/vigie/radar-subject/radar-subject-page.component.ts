@@ -21,6 +21,7 @@ import { VigieService } from '../../core/services/vigie.service';
 import { RADAR_DRAFT_STATE } from '../../shared/radar-draft';
 import { SpacePitchComponent } from '../../shared/space-pitch/space-pitch.component';
 import { httpErrorMessage } from '../../shared/http-error.util';
+import { newsUndoErrorOf } from '../radar/radar-news';
 import {
   dayLabel,
   evidenceNumbers,
@@ -80,6 +81,8 @@ export class RadarSubjectPageComponent implements OnInit {
   readonly preparingAnswer = signal(false);
   readonly answerError = signal<string | null>(null);
   readonly openingConversation = signal(false);
+  /** La nouvelle en cours d'annulation (F-104 / SF-104-02). */
+  readonly undoingNews = signal<string | null>(null);
 
   /** Qui est dans ce sujet : qui décide, qui pilote, les experts, les informés. */
   readonly roles = computed(() => peopleByRole(this.detail()?.people));
@@ -207,6 +210,51 @@ export class RadarSubjectPageComponent implements OnInit {
         this.openingConversation.set(false);
         this.snackBar.open(httpErrorMessage(err, "La conversation n'a pas pu être ouverte. Rien n'a été créé."),
           'Fermer', { duration: 6000, panelClass: 'snack-error' });
+      },
+    });
+  }
+
+  // ------------------------------------------------------------ annuler une nouvelle (F-104 / SF-104-02)
+
+  /** Une note de l'utilisateur ou un courriel collé : c'est une nouvelle, elle s'annule entière. */
+  isNews(evidence: RadarEvidenceView): boolean {
+    return evidence.source === 'USER_NOTE' || evidence.source === 'PASTED_MAIL';
+  }
+
+  /** Annule la nouvelle : toutes ses écritures, puis sa preuve ; la page se relit. */
+  undoNews(evidence: RadarEvidenceView): void {
+    const hostRef = this.hostRef();
+    if (!hostRef || !this.isNews(evidence) || this.undoingNews() !== null) {
+      return;
+    }
+    this.undoingNews.set(evidence.id);
+    this.subjects.undoNews(hostRef, evidence.id).subscribe({
+      next: () => {
+        this.undoingNews.set(null);
+        this.snackBar.open('Nouvelle annulée : le Radar a tout défait.', 'Fermer', { duration: 4000, panelClass: 'snack-success' });
+        this.reloadAfterUndo(hostRef);
+      },
+      error: (err: unknown) => {
+        this.undoingNews.set(null);
+        this.snackBar.open(newsUndoErrorOf(err), 'Fermer', { duration: 6000, panelClass: 'snack-error' });
+      },
+    });
+  }
+
+  /** Relit la page ; un sujet né de cette nouvelle n'existe plus : retour au Radar du client. */
+  private reloadAfterUndo(hostRef: string): void {
+    const subjectId = this.subjectId();
+    if (!subjectId) {
+      return;
+    }
+    this.subjects.subject(hostRef, subjectId).subscribe({
+      next: () => this.load(),
+      error: (err: unknown) => {
+        if (err instanceof HttpErrorResponse && err.status === 404) {
+          void this.router.navigate(['/vigie', hostRef]);
+          return;
+        }
+        this.load();
       },
     });
   }

@@ -501,3 +501,10 @@
     }
   }
 }
+
+/* F-104 / SF-104-02 : « Annuler cette nouvelle », discret sous la citation. */
+.radar-subject__undo-news {
+  align-self: flex-start;
+  margin-top: var(--cg-space-1);
+  color: var(--cg-text-secondary);
+}

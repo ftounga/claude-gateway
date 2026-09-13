@@ -78,7 +78,9 @@ describe('RadarSubjectPageComponent', () => {
     terminal?: Observable<WorkspaceDetail>;
     subjectId?: string;
   } = {}): HTMLElement {
-    subjects = jasmine.createSpyObj<RadarSubjectService>('RadarSubjectService', ['subject', 'unknowns', 'managerAnswer']);
+    subjects = jasmine.createSpyObj<RadarSubjectService>('RadarSubjectService',
+      ['subject', 'unknowns', 'managerAnswer', 'undoNews']);
+    subjects.undoNews.and.returnValue(of({ evidenceId: 'p3', undone: 1 }));
     subjects.subject.and.returnValue(options.subject ?? of(mfa()));
     subjects.unknowns.and.returnValue(options.unknowns ?? of([]));
     subjects.managerAnswer.and.returnValue(options.answer ?? of(prepared));
@@ -389,5 +391,40 @@ describe('RadarSubjectPageComponent', () => {
     expect(errorOf(new HttpErrorResponse({ status: 400 }))).toBe('not-found');
     expect(errorOf(new HttpErrorResponse({ status: 503 }))).toBe('network');
     expect(errorOf(new Error('x'))).toBe('network');
+  });
+
+  // ------------------------------------------------------------ F-104 / SF-104-02 : annuler une nouvelle
+
+  it('une note ou un courriel collé porte « Annuler cette nouvelle » ; un message Teams non', () => {
+    const root = build();
+
+    const buttons = Array.from(root.querySelectorAll('.radar-subject__undo-news'));
+    expect(buttons.length).toBe(1);
+    expect(root.querySelector('#preuve-p3 .radar-subject__undo-news')).not.toBeNull();
+    expect(root.querySelector('#preuve-p2 .radar-subject__undo-news')).toBeNull();
+  });
+
+  it('annuler la nouvelle : appel sous le poste, snackbar, page relue', () => {
+    const root = build();
+    subjects.subject.calls.reset();
+
+    (root.querySelector('#preuve-p3 .radar-subject__undo-news') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(subjects.undoNews).toHaveBeenCalledOnceWith('h1', 'p3');
+    expect(snackBar.open).toHaveBeenCalledWith('Nouvelle annulée : le Radar a tout défait.', 'Fermer', jasmine.any(Object));
+    expect(subjects.subject).toHaveBeenCalled();
+    expect(router.navigate).not.toHaveBeenCalled();
+  });
+
+  it("annuler la nouvelle qui avait créé le sujet : retour au Radar du client ; conflit : dit, rien d'annulé", () => {
+    build();
+    subjects.subject.and.returnValue(throwError(() => new HttpErrorResponse({ status: 404 })));
+    component.undoNews(mfa().chronology[0]);
+    expect(router.navigate).toHaveBeenCalledWith(['/vigie', 'h1']);
+
+    subjects.undoNews.and.returnValue(throwError(() => new HttpErrorResponse({ status: 409 })));
+    component.undoNews(mfa().chronology[0]);
+    expect(snackBar.open).toHaveBeenCalledWith(jasmine.stringContaining('Rien n’a été annulé'), 'Fermer', jasmine.any(Object));
   });
 });

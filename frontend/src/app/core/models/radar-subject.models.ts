@@ -155,3 +155,9 @@ export interface RadarUnknownView {
   evidenceIds: string[];
   commitmentId: string | null;
 }
+
+/** Une nouvelle annulée depuis la chronologie (F-104 / SF-104-02). */
+export interface RadarNewsUndoResult {
+  evidenceId: string;
+  undone: number;
+}

@@ -1,0 +1,85 @@
+<!-- DONNER LA NOUVELLE (F-104 / SF-104-02, maquette 1 : le composeur en bas du Radar). -->
+<section class="radar-news" aria-label="Donner la nouvelle">
+  @if (news(); as n) {
+    <div class="radar-news__answer" role="status">
+      <div class="radar-news__answer-head">
+        <mat-icon aria-hidden="true">{{ n.source === 'PASTED_MAIL' ? 'mail' : 'sticky_note_2' }}</mat-icon>
+        <p class="radar-news__understood">{{ n.understanding }}</p>
+      </div>
+      @if (n.mail; as mail) {
+        <p class="radar-news__mail">
+          Courriel de {{ mail.sender }}{{ mail.subject ? ' — « ' + mail.subject + ' »' : '' }},
+          @if (mail.datedFromMail) {
+            daté du {{ mailDate(mail.sentAt) }}.
+          } @else {
+            date illisible : daté du collage.
+          }
+        </p>
+      }
+      @if (n.changes.length > 0) {
+        <ul class="radar-news__changes">
+          @for (change of n.changes; track $index) {
+            <li>
+              @if (change.subjectId) {
+                <a [routerLink]="['/vigie', hostId(), 'sujets', change.subjectId]">{{ change.sentence }}</a>
+              } @else {
+                {{ change.sentence }}
+              }
+            </li>
+          }
+        </ul>
+      }
+      @if (n.stoppedEarly) {
+        <p class="radar-news__partial">
+          <span class="badge badge--warning">Lecture interrompue</span>
+          Le Radar s'est arrêté avant la fin : vérifiez ce qui a été écrit.
+        </p>
+      }
+      <div class="radar-news__answer-actions">
+        @if (n.evidenceId) {
+          <button mat-stroked-button type="button" [disabled]="undoing()" (click)="undo()">
+            @if (undoing()) {
+              <mat-spinner diameter="16"></mat-spinner>
+            } @else {
+              <mat-icon>undo</mat-icon>
+            }
+            Annuler cette nouvelle
+          </button>
+        }
+        <button mat-button type="button" (click)="dismiss()">Fermer</button>
+      </div>
+    </div>
+  }
+
+  <form class="radar-news__composer" (ngSubmit)="give()">
+    <mat-form-field appearance="outline" class="radar-news__field" subscriptSizing="dynamic">
+      <mat-label>Donner une nouvelle, ou coller un courriel</mat-label>
+      <textarea
+        matInput
+        name="news"
+        rows="2"
+        [maxLength]="maxChars"
+        [readonly]="sending()"
+        [ngModel]="text()"
+        (ngModelChange)="text.set($event)"
+        placeholder="Paul m'a dit que le pilote MFA glisse à octobre. Et le sujet LDAP peut être considéré comme clos."
+      ></textarea>
+      @if (isMail()) {
+        <mat-hint class="radar-news__hint--mail">Courriel reconnu : la preuve sera datée du courriel, l'expéditeur rattaché à l'annuaire.</mat-hint>
+      } @else {
+        <mat-hint>Le Radar écrit ce que vous dites ; tout est annulable. Compte dans votre consommation.</mat-hint>
+      }
+    </mat-form-field>
+    <button mat-flat-button color="primary" type="submit" class="radar-news__send" [disabled]="!canSend()">
+      @if (sending()) {
+        <mat-spinner diameter="16"></mat-spinner>
+        Le Radar lit…
+      } @else {
+        Donner la nouvelle
+      }
+    </button>
+  </form>
+  @if (error(); as message) {
+    <p class="radar-news__error" role="alert">{{ message }}</p>
+  }
+</section>
