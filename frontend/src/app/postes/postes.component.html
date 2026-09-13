@@ -246,6 +246,10 @@
             <app-live-badge scope="host" [count]="host.liveTerminals"></app-live-badge>
           }
         </div>
+        <!-- LES COURRIELS DU CLIENT (F-110 / SF-110-01) : une machine seulement — « Hébergé » n'est pas un client. -->
+        @if (!isHosted(host) && host.id) {
+          <app-host-mail-address class="poste__mail" [hostId]="host.id" [hostName]="host.name"></app-host-mail-address>
+        }
       </div>
 
       <div class="poste__actions">

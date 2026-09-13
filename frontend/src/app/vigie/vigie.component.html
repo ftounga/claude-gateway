@@ -160,6 +160,8 @@
                 <!-- LA SYNCHRO DU SOIR (F-100 / SF-100-07) : activée ou non, l'heure, la prochaine ; Régler. -->
                 @if (host.id; as hostId) {
                   <app-radar-schedule class="vigie__schedule" [hostId]="hostId" [hostName]="host.name"></app-radar-schedule>
+                  <!-- LES COURRIELS DU CLIENT (F-110 / SF-110-01) : l'adresse de réception vérifiée, ou le repli dit. -->
+                  <app-host-mail-address class="vigie__mail" [hostId]="hostId" [hostName]="host.name"></app-host-mail-address>
                 }
               </div>
 

@@ -12,6 +12,8 @@ import { AtelierService } from '../core/services/atelier.service';
 import { GovernanceService } from '../core/services/governance.service';
 import { HostPresenceService } from '../core/services/host-presence.service';
 import { VigieService } from '../core/services/vigie.service';
+import { MailService } from '../core/services/mail.service';
+import { EMPTY } from 'rxjs';
 import { CloseMissionDialogComponent } from '../vigie/close-mission-dialog/close-mission-dialog.component';
 import { GovernanceIntegrite, GovernanceMap } from '../core/models/governance.models';
 import { RunnerHostOverview, WorkspaceDetail } from '../core/models/atelier.models';
@@ -218,6 +220,7 @@ describe('PostesComponent', () => {
         { provide: AtelierService, useValue: service },
         { provide: VigieService, useValue: vigieSpy },
         { provide: GovernanceService, useValue: governance },
+        { provide: MailService, useValue: jasmine.createSpyObj<MailService>('MailService', { address: EMPTY }) },
         { provide: MatDialog, useValue: dialog },
         provideRouter([]),
         provideNoopAnimations(),
@@ -2379,6 +2382,7 @@ describe('PostesComponent', () => {
           { provide: VigieService, useValue: vigieSpy },
         { provide: VigieService, useValue: vigieSpy },
           { provide: GovernanceService, useValue: governance },
+          { provide: MailService, useValue: jasmine.createSpyObj<MailService>('MailService', { address: EMPTY }) },
           { provide: MatDialog, useValue: dialog },
           provideRouter([]),
           provideNoopAnimations(),

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-110 / SF-110-01 — L'ADRESSE DE RÉCEPTION D'UN CLIENT.
+
+      Une ligne au plus par poste : l'adresse où l'utilisateur reçoit, pour CE client, les courriels qu'il
+      s'envoie (F-110 : on s'écrit à soi, jamais à un tiers). Elle n'est utilisée qu'une fois VÉRIFIÉE
+      (`verified_at` non nul) par un code à 6 chiffres envoyé à l'adresse ; seule l'EMPREINTE SHA-256 du code
+      est conservée (`code_hash`), valable jusqu'à `code_expires_at`, 5 essais au plus (`code_attempts`).
+
+      Clés étrangères EN CASCADE vers `runner_hosts` et `users` : l'adresse ne survit ni au poste ni au
+      compte, sans purge à écrire ailleurs. Types portables : un seul changeSet pour PostgreSQL et H2.
+    -->
+    <changeSet id="100-host-mail-addresses" author="claude-gateway">
+        <createTable tableName="host_mail_addresses">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"
+                             foreignKeyName="fk_host_mail_addresses_user"
+                             references="users(id)" deleteCascade="true"/>
+            </column>
+            <column name="host_id" type="uuid">
+                <constraints nullable="false"
+                             foreignKeyName="fk_host_mail_addresses_host"
+                             references="runner_hosts(id)" deleteCascade="true"/>
+            </column>
+            <column name="address" type="varchar(254)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="verified_at" type="timestamp with time zone"/>
+            <column name="code_hash" type="varchar(64)"/>
+            <column name="code_expires_at" type="timestamp with time zone"/>
+            <column name="code_sent_at" type="timestamp with time zone"/>
+            <column name="code_attempts" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="host_mail_addresses" indexName="idx_host_mail_addresses_host" unique="true">
+            <column name="host_id"/>
+        </createIndex>
+        <createIndex tableName="host_mail_addresses" indexName="idx_host_mail_addresses_user_host">
+            <column name="user_id"/>
+            <column name="host_id"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="host_mail_addresses"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
