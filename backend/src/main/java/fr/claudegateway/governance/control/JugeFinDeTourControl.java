@@ -50,9 +50,17 @@ public class JugeFinDeTourControl implements GovernanceControl {
                     + "propre à ce projet va dans PLAN-ACTION.md";
 
     private final GovernanceMapDestinations destinations;
+    private final PromotionReportee reportees;
 
+    /** Forme d'avant F-93 / SF-93-04 : un registre de reports propre à ce contrôle. */
     public JugeFinDeTourControl(GovernanceMapDestinations destinations) {
+        this(destinations, new PromotionReportee());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public JugeFinDeTourControl(GovernanceMapDestinations destinations, PromotionReportee reportees) {
         this.destinations = destinations;
+        this.reportees = reportees;
     }
 
     @Override
@@ -74,9 +82,14 @@ public class JugeFinDeTourControl implements GovernanceControl {
 
     @Override
     public AtelierCheckpointVerdict evaluate(AtelierCheckpointContext context) {
+        AtelierCheckpointVerdict claimed = claimIfDue(context, destinations, reportees);
+        if (claimed != null) {
+            return claimed;
+        }
         String reply = context == null ? null : context.replyText();
         Optional<FinDeTourMarker> marker = FinDeTourMarker.parse(reply);
         if (marker.isEmpty()) {
+            // Hors ligne aussi : poser le marqueur n'écrit rien sur la machine (F-93 / SF-93-04, D2).
             return AtelierCheckpointVerdict.block(
                     "termine ta réponse par le marqueur de fin de tour, exactement sous cette forme : "
                             + FinDeTourMarker.FORME + " — « promotion » liste ce que ce tour a fait "
@@ -86,6 +99,13 @@ public class JugeFinDeTourControl implements GovernanceControl {
                             + "cases « - [ ] » qui restent non cochées dans le projet.");
         }
         FinDeTourMarker parsed = marker.get();
+        if (!parsed.nothingToPromote() && context.machineOffline()) {
+            // F-93 / SF-93-04 : la carte vit sur la machine, et la machine ne répond pas. Réclamer
+            // une écriture impossible ferait tourner le modèle jusqu'à la borne de F-50 : on reporte.
+            reportees.reporter(context.userId(), context.workspaceId(), parsed.promotions(),
+                    parsed.dette());
+            return AtelierCheckpointVerdict.deferred(PromotionReportee.NOTICE);
+        }
         if (!parsed.nothingToPromote()) {
             List<String> carte =
                     destinations.pathsForProject(context.userId(), context.workspaceId());
@@ -97,5 +117,24 @@ public class JugeFinDeTourControl implements GovernanceControl {
                     + "réponse avec « promotion=aucune ; promu=<élément> -> <fichier> ».");
         }
         return AtelierCheckpointVerdict.proceed();
+    }
+
+    /**
+     * <b>Réclame</b> une promotion reportée (F-93 / SF-93-04) — seulement quand le tour a constaté
+     * que le poste répond : on ne réclame pas une écriture sans savoir qu'elle est possible.
+     *
+     * @return le refus de réclamation, ou {@code null} s'il n'y a rien à réclamer
+     */
+    static AtelierCheckpointVerdict claimIfDue(AtelierCheckpointContext context,
+            GovernanceMapDestinations destinations, PromotionReportee reportees) {
+        if (context == null || context.machine() != fr.claudegateway.atelier.checkpoint.AtelierMachineReach.REACHED
+                || !reportees.estDue(context.userId(), context.workspaceId())) {
+            return null;
+        }
+        return reportees.reclamer(context.userId(), context.workspaceId())
+                .map(report -> AtelierCheckpointVerdict.block(PromotionReportee.reclamation(report,
+                        GovernanceMapDestinations.cite(
+                                destinations.pathsForProject(context.userId(), context.workspaceId())))))
+                .orElse(null);
     }
 }

@@ -123,6 +123,44 @@ class GovernanceCheckpointDelegateTest {
     }
 
     @Test
+    @DisplayName("un report cède au blocage qui suit, et passe seul sinon (F-93 / SF-93-04)")
+    void aDeferralYieldsToABlockAndIsKeptOtherwise() {
+        activate("reporte", "bloque");
+        GovernanceControl deferring = new GovernanceControl() {
+            @Override
+            public String id() {
+                return "reporte";
+            }
+
+            @Override
+            public AtelierCheckpointKind kind() {
+                return AtelierCheckpointKind.AFTER_FILE_WRITE;
+            }
+
+            @Override
+            public String description() {
+                return "reporte";
+            }
+
+            @Override
+            public AtelierCheckpointVerdict evaluate(AtelierCheckpointContext context) {
+                called.add("reporte");
+                return AtelierCheckpointVerdict.deferred("promotion reportée : poste hors ligne");
+            }
+        };
+
+        AtelierCheckpointVerdict blocked = delegateWith(deferring, control("bloque", true))
+                .evaluate(AtelierCheckpointKind.AFTER_FILE_WRITE, writeContext());
+        assertThat(blocked.blocked()).isTrue();
+        assertThat(blocked.hasNotice()).isFalse();
+
+        AtelierCheckpointVerdict deferred = delegateWith(deferring, control("bloque", false))
+                .evaluate(AtelierCheckpointKind.AFTER_FILE_WRITE, writeContext());
+        assertThat(deferred.blocked()).isFalse();
+        assertThat(deferred.notice()).isEqualTo("promotion reportée : poste hors ligne");
+    }
+
+    @Test
     @DisplayName("un identifiant que le produit ne fournit plus est ignoré, sans casser les autres")
     void unknownControlIdIsIgnored() {
         activate("disparu", "present");

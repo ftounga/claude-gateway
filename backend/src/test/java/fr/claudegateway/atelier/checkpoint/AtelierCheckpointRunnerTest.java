@@ -211,4 +211,64 @@ class AtelierCheckpointRunnerTest {
         assertThat(message).isEqualTo(
                 "Écriture contrôlée : Retire la clé en clair de config.ts, puis reprends.");
     }
+
+    // ------------------------------------------------------------------ F-93 / SF-93-04
+
+    private static ScriptedCheckpoint deferring(String name, String notice, List<String> log) {
+        return new ScriptedCheckpoint(name, AtelierCheckpointKind.AFTER_FILE_WRITE,
+                AtelierCheckpointVerdict.deferred(notice), null, log);
+    }
+
+    @Test
+    void aDeferredVerdictDoesNotBlockAndCarriesItsNotice() {
+        List<String> log = new ArrayList<>();
+        AtelierCheckpointRunner runner = new AtelierCheckpointRunner(List.of(
+                passing("un", log), deferring("deux", "promotion reportée : poste hors ligne", log)));
+
+        AtelierCheckpointVerdict verdict = runner.run(AtelierCheckpointKind.AFTER_FILE_WRITE, context());
+
+        assertThat(verdict.blocked()).isFalse();
+        assertThat(verdict.hasNotice()).isTrue();
+        assertThat(verdict.notice()).isEqualTo("promotion reportée : poste hors ligne");
+        assertThat(log).containsExactly("un", "deux");
+    }
+
+    @Test
+    void aBlockingCheckpointWinsOverAnEarlierDeferral() {
+        // Le premier BLOCAGE garde la priorité : un report ne fait jamais taire une correction.
+        List<String> log = new ArrayList<>();
+        AtelierCheckpointRunner runner = new AtelierCheckpointRunner(List.of(
+                deferring("reporte", "reporté", log), blocking("bloque", "Corrige.", log),
+                deferring("apres", "autre", log)));
+
+        AtelierCheckpointVerdict verdict = runner.run(AtelierCheckpointKind.AFTER_FILE_WRITE, context());
+
+        assertThat(verdict.blocked()).isTrue();
+        assertThat(verdict.correction()).isEqualTo("Corrige.");
+        assertThat(verdict.hasNotice()).isFalse();
+        assertThat(log).containsExactly("reporte", "bloque");
+    }
+
+    @Test
+    void theFirstNoticeIsTheOneKept() {
+        List<String> log = new ArrayList<>();
+        AtelierCheckpointRunner runner = new AtelierCheckpointRunner(List.of(
+                deferring("un", "première", log), deferring("deux", "seconde", log)));
+
+        assertThat(runner.run(AtelierCheckpointKind.AFTER_FILE_WRITE, context()).notice())
+                .isEqualTo("première");
+    }
+
+    @Test
+    void theEndOfTurnContextCarriesWhatTheTurnSawOfTheMachine() {
+        assertThat(AtelierCheckpointContext.endOfTurn(userId, workspaceId, "x", List.of()).machine())
+                .isEqualTo(AtelierMachineReach.UNKNOWN);
+        AtelierCheckpointContext offline = AtelierCheckpointContext.endOfTurn(userId, workspaceId, "x",
+                List.of(), AtelierMachineReach.OFFLINE);
+        assertThat(offline.machineOffline()).isTrue();
+        assertThat(AtelierCheckpointContext.endOfTurn(userId, workspaceId, "x", List.of(), null).machine())
+                .isEqualTo(AtelierMachineReach.UNKNOWN);
+        assertThat(AtelierCheckpointVerdict.proceed().hasNotice()).isFalse();
+        assertThat(new AtelierCheckpointVerdict(true, "x").notice()).isNull();
+    }
 }

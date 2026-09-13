@@ -41,10 +41,20 @@ import java.util.UUID;
  *                     exécution ; {@code null} sur les autres points d'accroche
  * @param cwd          répertoire de travail demandé pour cette commande ; {@code null} si l'appel
  *                     n'en portait pas
+ * @param machine      ce que le tour a constaté de la machine (F-93 / SF-93-04) ; jamais
+ *                     {@code null}, {@link AtelierMachineReach#UNKNOWN} par défaut
  */
 public record AtelierCheckpointContext(AtelierCheckpointKind kind, UUID userId, UUID workspaceId,
         String toolName, String path, String content, String replyText, List<String> writtenPaths,
-        String command, String cwd) {
+        String command, String cwd, AtelierMachineReach machine) {
+
+    /** Forme d'avant F-93 / SF-93-04 : la machine n'est pas renseignée. */
+    public AtelierCheckpointContext(AtelierCheckpointKind kind, UUID userId, UUID workspaceId,
+            String toolName, String path, String content, String replyText,
+            List<String> writtenPaths, String command, String cwd) {
+        this(kind, userId, workspaceId, toolName, path, content, replyText, writtenPaths, command,
+                cwd, AtelierMachineReach.UNKNOWN);
+    }
 
     /**
      * Chemins conservés dans le contexte de fin de tour. Au-delà, ce n'est plus une information mais
@@ -63,6 +73,12 @@ public record AtelierCheckpointContext(AtelierCheckpointKind kind, UUID userId, 
     public AtelierCheckpointContext {
         writtenPaths = boundedCopy(writtenPaths);
         command = bounded(command);
+        machine = machine == null ? AtelierMachineReach.UNKNOWN : machine;
+    }
+
+    /** Vrai si le tour a constaté que la machine ne répondait pas (F-93 / SF-93-04). */
+    public boolean machineOffline() {
+        return machine == AtelierMachineReach.OFFLINE;
     }
 
     /** Contexte d'une écriture de fichier aboutie. */
@@ -91,8 +107,17 @@ public record AtelierCheckpointContext(AtelierCheckpointKind kind, UUID userId, 
      */
     public static AtelierCheckpointContext endOfTurn(UUID userId, UUID workspaceId, String replyText,
             List<String> writtenPaths) {
+        return endOfTurn(userId, workspaceId, replyText, writtenPaths, AtelierMachineReach.UNKNOWN);
+    }
+
+    /**
+     * Contexte d'une fin de tour, avec ce que le tour a constaté de la machine (F-93 / SF-93-04) :
+     * c'est ce qui permet à un contrôle de ne pas réclamer une écriture impossible.
+     */
+    public static AtelierCheckpointContext endOfTurn(UUID userId, UUID workspaceId, String replyText,
+            List<String> writtenPaths, AtelierMachineReach machine) {
         return new AtelierCheckpointContext(AtelierCheckpointKind.END_OF_TURN, userId, workspaceId,
-                null, null, null, replyText, writtenPaths, null, null);
+                null, null, null, replyText, writtenPaths, null, null, machine);
     }
 
     /** Borne la commande sans jamais la refuser : un contrôle juge ce qu'il voit, pas une exception. */

@@ -64,13 +64,18 @@ public class GovernanceCheckpointDelegate {
         if (context == null || context.userId() == null || context.workspaceId() == null) {
             return AtelierCheckpointVerdict.proceed();
         }
+        AtelierCheckpointVerdict deferred = null;
         for (GovernanceControl control : controlsFor(context, kind)) {
             AtelierCheckpointVerdict verdict = control.evaluate(context);
             if (verdict != null && verdict.blocked()) {
                 return verdict;
             }
+            // F-93 / SF-93-04 : un report est retenu, et cède à tout blocage qui suivrait.
+            if (deferred == null && verdict != null && verdict.hasNotice()) {
+                deferred = verdict;
+            }
         }
-        return AtelierCheckpointVerdict.proceed();
+        return deferred == null ? AtelierCheckpointVerdict.proceed() : deferred;
     }
 
     /** Les contrôles de ce point d'accroche, cités par les paquets actifs, dans l'ordre du catalogue. */
