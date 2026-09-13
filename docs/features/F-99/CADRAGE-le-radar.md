@@ -33,7 +33,7 @@ Précisions du PO après la maquette :
 | Qui déclenche | l'utilisateur, par une question | **la synchro du soir**, et l'utilisateur quand il veut |
 | Mémoire | **aucune** : chaque question relit Teams depuis zéro | un **registre** qui s'accumule |
 | Unité | la conversation, la réunion | **le sujet**, qui traverse les sources |
-| Sources | Teams | Teams (**périmètre suivi**), **enregistrements hors Teams**, **nouvelles de l'utilisateur**, **courriels collés** par l'utilisateur |
+| Sources | Teams | Teams (**tout ce qui a bougé**, découvert seul), **enregistrements hors Teams**, **nouvelles de l'utilisateur**, **courriels collés** par l'utilisateur |
 | Ce qu'on n'a pas demandé | invisible | **signalé** : promesse oubliée, relance due, sujet silencieux, tâche sans porteur |
 | Forme | un terminal, sans boutons | **un écran pour l'état, le chat pour le nourrir** |
 
@@ -275,29 +275,32 @@ F-102 : Teams seul, synchro du soir, résumé du matin.
 >
 > D'où **SF-100-00**, **SF-100-01** et le contenu élargi de SF-100-03 ci-dessous.
 
-**Le périmètre suivi — réponse à la question du PO** (« au moment de configurer un client dans la
-Vigie, peut-on lui donner toutes les URL nécessaires ? ») :
-- **Les adresses techniques, non** : on ne les demande jamais. Celles d'une transcription ou d'un
-  enregistrement n'existent qu'**après** chaque réunion, et les hôtes internes de Microsoft
-  (SharePoint / OneDrive du tenant) se **détectent** pendant la vérification guidée.
-- **Les liens de ce qu'on veut suivre, oui**, et c'est ce qui rend la synchro robuste. Dans Teams,
-  *Copier le lien* d'un groupe, d'un canal, d'une conversation ou d'une réunion récurrente donne un
-  lien qui porte l'**identifiant du fil** (`19:…@thread.v2`, déjà lu par `TeamsRoutes`). On ne garde
-  que cet identifiant, jamais le reste de l'adresse.
-- **Ce que ça apporte** : un volume et un coût **bornés** ; les conversations privées **non lues**
-  sauf choix explicite ; des fils atteints **directement** par leur identifiant au lieu d'être
-  cherchés ; une couverture **par élément suivi** (« Copil infra : pas de transcription »).
-- **Le filet** : les **mentions** restent lues partout (flux d'activité). Un fil hors périmètre où
-  l'utilisateur est mentionné produit une proposition dans le résumé : *« nouveau fil actif où l'on vous
-  mentionne : le suivre ? »*.
+**Rien à déclarer à l'avance — correction du PO, 2026-09-13.** Une première version proposait de
+coller à l'activation les liens des fils à suivre. Le PO l'a refusée : *« ça signifie déjà savoir à
+l'avance quoi suivre »*. C'est tout le problème qu'il décrit : les sujets naissent dans des fils qu'on
+ne connaissait pas la veille. **Le Radar découvre, l'utilisateur écarte après coup.**
+
+- **Ce qui est lu** : **toutes les conversations** (privées, de groupe, de réunion) **actives depuis la
+  dernière synchro**, découvertes dans la liste que Teams charge lui-même, triée par activité — on la
+  parcourt jusqu'à atteindre des fils plus anciens que le curseur. Dans les **canaux d'équipe**, souvent
+  très volumineux : les fils où l'utilisateur a **écrit, répondu ou été mentionné** ; les autres canaux
+  actifs sont **comptés** dans la couverture (« 6 canaux actifs non lus ») et l'utilisateur peut dire
+  *lire ce canal* depuis le résumé.
+- **Les exclusions s'apprennent** : sur un sujet, une preuve ou dans la couverture, *ignorer ce fil* —
+  correction souveraine (règle §4.2), jamais remise en cause par une synchro, annulable.
+- **Le volume est tenu par la mécanique, pas par un périmètre** : le tri rapide écarte l'essentiel des
+  messages avant l'extraction (SF-101-02), la réserve borne la dépense (SF-101-05), et une synchro qui
+  s'arrête à réserve épuisée **le dit**.
+- **Les adresses techniques ne sont jamais demandées** : celles des transcriptions n'existent qu'après
+  chaque réunion, et les hôtes Microsoft du tenant se détectent pendant la vérification guidée.
 
 | SF | Titre | Contenu |
 |---|---|---|
 | **SF-100-00** | **Le relevé réel** | **Préalable au développement du Radar.** Sur le poste du client qui motive la demande, avec l'accord du PO : l'utilisateur ouvre un fil, une réunion passée, son récapitulatif, sa transcription. Le runner relève **hôtes, chemins et formes** des réponses (jamais les corps ni les requêtes). Livrable : la table réelle des adresses (Teams, SharePoint / OneDrive), les écarts avec `TeamsUrls`, et les gestes nécessaires. Aucune donnée client ne quitte la machine |
-| **SF-100-01** | **Le périmètre et la vérification guidée** | À l'activation d'un client dans la Vigie (F-106) : coller les liens des groupes, canaux, conversations et réunions récurrentes à suivre (identifiant du fil extrait, lien refusé s'il n'en porte pas, nom du fil affiché pour confirmer) ; *mes mentions partout* (oui par défaut), *mes conversations privées* (non par défaut). Puis **vérification guidée** : ouvrir un fil suivi, puis une réunion passée et sa transcription ; l'écran coche ce que le runner a vu (✓ conversations, ✓ réunions, ✓ transcriptions) et **détecte les hôtes Microsoft du tenant**. Le périmètre se modifie ensuite à tout moment. **Chaque nouveau client refait la vérification** : les tenants diffèrent, c'est le relevé réel rendu permanent |
+| **SF-100-01** | **La vérification guidée** | À l'activation d'un client dans la Vigie (F-106), **sans rien déclarer de ce qu'il faut suivre** : **vérification guidée** — ouvrir un fil suivi, puis une réunion passée et sa transcription ; l'écran coche ce que le runner a vu (✓ conversations, ✓ réunions, ✓ transcriptions) et **détecte les hôtes Microsoft du tenant**. **Chaque nouveau client refait la vérification** : les tenants diffèrent, c'est le relevé réel rendu permanent |
 | SF-100-02 | La planification | Heure par poste (22 h par défaut), *Synchroniser maintenant*, **une seule synchro à la fois par poste** tous pods confondus, rattrapage à la prochaine connexion du runner |
-| SF-100-03 | La collecte Teams incrémentale | Runner : **fils du périmètre** atteints par leur identifiant, curseur par fil, points de reprise, fenêtre de 30 jours à la première synchro, remontée par lots idempotents ; flux des mentions pour le filet. **Pour les réunions des fils suivis** : deux gestes nouveaux sur le modèle de `show` — *afficher le calendrier sur une période* et *afficher une réunion et son onglet Transcription* (vue de l'utilisateur remise ensuite) ; **reconnaissance des hôtes détectés** (SharePoint / OneDrive) dans l'adaptateur unique. Toujours par `Runtime.evaluate`, sans `Page.navigate` : la liste blanche CDP ne bouge pas. **La vidéo n'est pas nécessaire au Radar** : l'enregistrement reste où il est |
-| SF-100-04 | La couverture et la progression | Rapport **par élément suivi** (lu, échoué, sans transcription), échecs bruyants avec le geste (session Microsoft expirée), progression et annulation ; propositions « le suivre ? » |
+| SF-100-03 | La collecte Teams incrémentale | Runner : **découverte des fils actifs** depuis la dernière synchro dans la liste de conversations de Teams (parcourue jusqu'au curseur), canaux d'équipe limités aux fils où l'utilisateur a écrit, répondu ou été mentionné, fils ignorés écartés ; curseur par fil, points de reprise, fenêtre de 30 jours à la première synchro, remontée par lots idempotents. **Pour les réunions** : deux gestes nouveaux sur le modèle de `show` — *afficher le calendrier sur une période* et *afficher une réunion et son onglet Transcription* (vue de l'utilisateur remise ensuite) ; **reconnaissance des hôtes détectés** (SharePoint / OneDrive) dans l'adaptateur unique. Toujours par `Runtime.evaluate`, sans `Page.navigate` : la liste blanche CDP ne bouge pas. **La vidéo n'est pas nécessaire au Radar** : l'enregistrement reste où il est |
+| SF-100-04 | La couverture et la progression | Rapport par source et par fil (lu, échoué, sans transcription, canaux actifs non lus), échecs bruyants avec le geste (session Microsoft expirée), progression et annulation ; *lire ce canal* et *ignorer ce fil* depuis la couverture |
 | SF-100-05 | Le dossier de dépôt | `<racine>/radar/depot/` relevé par la synchro, transcription sur la machine (F-91), seul le texte remonte |
 
 ### F-101 — La lecture des échanges
