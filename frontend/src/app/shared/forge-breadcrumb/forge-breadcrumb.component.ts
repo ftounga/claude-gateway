@@ -16,6 +16,8 @@ export interface ForgeCrumb {
   link: unknown[];
   /** Ancre de page visée, ex. `poste-<id>`. Absente quand on ne sait pas où pointer précisément. */
   fragment?: string | null;
+  /** Paramètres de requête du niveau (F-106 / SF-106-03 : `?onglet=conversations`). */
+  queryParams?: Record<string, string> | null;
   /**
    * Nom du poste : quand il est là, le niveau porte **la pastille d'identité** (SF-49-03) au lieu
    * d'un texte nu. La couleur reste dérivée du nom, jamais transmise.
@@ -74,8 +76,21 @@ export class ForgeBreadcrumbComponent {
    * Le fil complet : « Forge » puis les niveaux reçus, amputés de ceux dont le libellé est vide.
    * Les filtrer ici plutôt que dans le gabarit garde une seule définition de « dernier niveau ».
    */
+  private readonly rootValue = signal<'forge' | 'vigie'>('forge');
+
+  /**
+   * L'espace d'où l'on vient (F-106 / SF-106-03) : la Forge par défaut, la Vigie pour un terminal
+   * Teams — qui y a déménagé.
+   */
+  @Input()
+  set root(value: 'forge' | 'vigie' | null | undefined) {
+    this.rootValue.set(value === 'vigie' ? 'vigie' : 'forge');
+  }
+
   readonly trail = computed<ForgeCrumb[]>(() => [
-    { label: 'Forge', link: this.forgeLink },
+    this.rootValue() === 'vigie'
+      ? { label: 'Vigie', link: ['/vigie'] }
+      : { label: 'Forge', link: this.forgeLink },
     ...this.received().filter((crumb) => (crumb.label ?? '').trim().length > 0),
   ]);
 }

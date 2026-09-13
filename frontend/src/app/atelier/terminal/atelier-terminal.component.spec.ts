@@ -118,6 +118,22 @@ describe('AtelierTerminalComponent', () => {
     expect(trail[2].textContent?.trim()).toBe('mon-projet');
   });
 
+  it('un terminal Teams ramène à son client dans la Vigie (F-106 / SF-106-03)', () => {
+    component.hostName = 'Poste CAGIP';
+    component.hostId = 'h1';
+    component.projectId = 'wtt1';
+    component.projectName = 'Terminal Teams';
+    component.teamsTerminal = true;
+    fixture.detectChanges();
+    const trail: HTMLAnchorElement[] = Array.from(
+      fixture.nativeElement.querySelectorAll('.forge-crumb'),
+    );
+
+    expect(trail[0].textContent?.trim()).toBe('Vigie');
+    expect(trail[0].getAttribute('href')).toBe('/vigie');
+    expect(trail[1].getAttribute('href')).toBe('/vigie/h1?onglet=conversations');
+  });
+
   it('omet le niveau du poste quand le projet n\'est rattaché à aucune machine', () => {
     component.hostName = null;
     component.projectId = 'w1';

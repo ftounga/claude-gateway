@@ -11,6 +11,7 @@ import { POSTES_REFRESH_MS, PostesComponent } from './postes.component';
 import { AtelierService } from '../core/services/atelier.service';
 import { GovernanceService } from '../core/services/governance.service';
 import { HostPresenceService } from '../core/services/host-presence.service';
+import { VigieService } from '../core/services/vigie.service';
 import { GovernanceIntegrite, GovernanceMap } from '../core/models/governance.models';
 import { RunnerHostOverview, WorkspaceDetail } from '../core/models/atelier.models';
 import { hostInitials, hostTone } from '../shared/host-identity';
@@ -25,6 +26,8 @@ describe('PostesComponent', () => {
   let service: jasmine.SpyObj<AtelierService>;
   let governance: jasmine.SpyObj<GovernanceService>;
   let dialog: jasmine.SpyObj<MatDialog>;
+  /** Les espaces d'un client (F-106 / SF-106-03) : activer dans la Vigie depuis la Forge. */
+  let vigieSpy: jasmine.SpyObj<VigieService>;
   /** Ce que le dialogue de suppression renvoie : `true` = l'utilisateur a confirmé. */
   let dialogAnswer: boolean;
   /** Les paramètres de la route — `/forge/:hostRef` (F-98 / SF-98-01). */
@@ -76,6 +79,9 @@ describe('PostesComponent', () => {
   };
 
   beforeEach(() => {
+    vigieSpy = jasmine.createSpyObj<VigieService>('VigieService', ['activate']);
+    vigieSpy.activate.and.returnValue(
+      of({ hostId: 'h1', name: 'Poste CAGIP', missionStatus: 'ACTIVE', spaces: ['FORGE', 'VIGIE'] }));
     // Par défaut, l'utilisateur n'a rien confirmé : c'est l'état le plus sûr pour un test, et
     // Jasmine tire l'ordre au sort — sans cette remise à zéro, un test en contaminerait un autre.
     dialogAnswer = false;
@@ -207,6 +213,7 @@ describe('PostesComponent', () => {
       imports: [PostesComponent],
       providers: [
         { provide: AtelierService, useValue: service },
+        { provide: VigieService, useValue: vigieSpy },
         { provide: GovernanceService, useValue: governance },
         { provide: MatDialog, useValue: dialog },
         provideRouter([]),
@@ -1882,14 +1889,31 @@ describe('PostesComponent', () => {
     expect(teamsButton()).toBeNull();
   });
 
-  it('avec le droit, la carte d\'un poste réel porte « Terminal Teams »', () => {
+  it('avec le droit, un client activé dans la Vigie porte « Ouvrir dans la Vigie » (F-106 / SF-106-03)', () => {
     service = spyService();
-    service.runnerHostsOverview.and.returnValue(of([poste]));
+    service.runnerHostsOverview.and.returnValue(of([{ ...poste, spaces: ['FORGE', 'VIGIE'] }]));
     service.teamsAccess.and.returnValue(of({ entitled: true }));
     build();
 
-    expect(teamsButton()).not.toBeNull();
-    expect(teamsButton()?.textContent).toContain('Teams');
+    const link = teamsButton() as HTMLAnchorElement | null;
+    expect(link).not.toBeNull();
+    expect(link?.textContent).toContain('Ouvrir dans la Vigie');
+    expect(link?.getAttribute('href')).toBe('/vigie/h1?onglet=conversations');
+    // Le terminal Teams ne s'ouvre plus depuis la Forge.
+    expect(service.openTeamsTerminal).not.toHaveBeenCalled();
+  });
+
+  it('avec le droit, un client hors Vigie n’a pas de lien mais « Activer dans la Vigie » au menu', () => {
+    service = spyService();
+    service.runnerHostsOverview.and.returnValue(of([{ ...poste, spaces: ['FORGE'] }]));
+    service.teamsAccess.and.returnValue(of({ entitled: true }));
+    build();
+
+    expect(teamsButton()).toBeNull();
+    const menu = (fixture.nativeElement as HTMLElement).querySelector('.poste__menu-trigger') as HTMLElement;
+    menu.click();
+    fixture.detectChanges();
+    expect(document.querySelector('.poste__activate-vigie')?.textContent).toContain('Activer dans la Vigie');
   });
 
   it('« Hébergé » ne le porte jamais : ce n\'est pas une machine, aucun navigateur à observer', () => {
@@ -1901,9 +1925,9 @@ describe('PostesComponent', () => {
     expect(component.showTeamsTerminal(component.hostedHost())).toBeFalse();
   });
 
-  it('FAIL-CLOSED : une lecture du droit qui échoue laisse le bouton absent', () => {
+  it('FAIL-CLOSED : une lecture du droit qui échoue laisse la porte absente', () => {
     service = spyService();
-    service.runnerHostsOverview.and.returnValue(of([poste]));
+    service.runnerHostsOverview.and.returnValue(of([{ ...poste, spaces: ['FORGE', 'VIGIE'] }]));
     service.teamsAccess.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
     build();
 
@@ -1911,39 +1935,37 @@ describe('PostesComponent', () => {
     expect(teamsButton()).toBeNull();
   });
 
-  it('ouvre le terminal Teams, puis navigue vers lui', () => {
+  it('active le client dans la Vigie, puis y ouvre ses conversations', () => {
     setup();
     const router = TestBed.inject(Router);
-    const navigate = spyOn(router, 'navigate');
+    const navigate = spyOn(router, 'navigate').and.resolveTo(true);
 
-    component.openTeamsTerminal(poste);
+    component.activateInVigie(poste);
 
-    expect(service.openTeamsTerminal).toHaveBeenCalledWith('h1');
-    expect(navigate).toHaveBeenCalledWith(['/atelier', 'wtt1']);
-    expect(component.openingTeamsHostId()).toBeNull();
+    expect(vigieSpy.activate).toHaveBeenCalledWith('h1', 'VIGIE');
+    expect(navigate).toHaveBeenCalledWith(['/vigie', 'h1'], { queryParams: { onglet: 'conversations' } });
+    expect(component.activatingVigieHostId()).toBeNull();
   });
 
-  it('ne navigue PAS quand l\'ouverture échoue', () => {
+  it("ne navigue PAS quand l'activation échoue", () => {
     setup();
-    service.openTeamsTerminal.and.returnValue(
-      throwError(() => new HttpErrorResponse({ status: 0 })));
+    vigieSpy.activate.and.returnValue(throwError(() => new HttpErrorResponse({ status: 0 })));
     const router = TestBed.inject(Router);
     const navigate = spyOn(router, 'navigate');
 
-    component.openTeamsTerminal(poste);
+    component.activateInVigie(poste);
 
     expect(navigate).not.toHaveBeenCalled();
-    expect(component.openingTeamsHostId()).toBeNull();
+    expect(component.activatingVigieHostId()).toBeNull();
   });
 
-  it('montre la pastille de vie quand un onglet vit sur le terminal Teams', () => {
+  it('montre la pastille de vie du terminal Teams sur « Ouvrir dans la Vigie »', () => {
     service = spyService();
     service.runnerHostsOverview.and.returnValue(
-      of([{ ...poste, teamsTerminalId: 'wtt1', teamsTerminalLive: true }]));
+      of([{ ...poste, spaces: ['FORGE', 'VIGIE'], teamsTerminalId: 'wtt1', teamsTerminalLive: true }]));
     service.teamsAccess.and.returnValue(of({ entitled: true }));
     build();
 
-    // La MÊME pastille que partout ailleurs (F-70) : aucun registre de couleur de plus.
     expect(teamsButton()?.querySelectorAll('app-live-badge').length).toBe(1);
   });
 
@@ -2297,6 +2319,8 @@ describe('PostesComponent', () => {
         imports: [PostesComponent],
         providers: [
           { provide: AtelierService, useValue: service },
+          { provide: VigieService, useValue: vigieSpy },
+        { provide: VigieService, useValue: vigieSpy },
           { provide: GovernanceService, useValue: governance },
           { provide: MatDialog, useValue: dialog },
           provideRouter([]),

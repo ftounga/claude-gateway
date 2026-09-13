@@ -18,6 +18,9 @@ import { AtelierService } from '../core/services/atelier.service';
 import { HostPresenceService } from '../core/services/host-presence.service';
 import { VigieService } from '../core/services/vigie.service';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
+import { LiveBadgeComponent } from '../shared/live-badge/live-badge.component';
+import { TeamsLinkBadgeComponent } from '../shared/teams-link-badge/teams-link-badge.component';
+import { TeamsLink, TeamsLinkService } from '../atelier/teams/teams-link.service';
 import { MissionBadgeComponent } from '../shared/mission-badge/mission-badge.component';
 import {
   FORGE_ACCESS_BILLING_ROUTE,
@@ -74,7 +77,9 @@ export type VigieError = 'none' | 'network' | 'forbidden' | 'not-entitled';
     RouterLink,
     ForgeRailComponent,
     HostBadgeComponent,
+    LiveBadgeComponent,
     MissionBadgeComponent,
+    TeamsLinkBadgeComponent,
     MatButtonModule,
     MatCardModule,
     MatIconModule,
@@ -94,6 +99,7 @@ export class VigieComponent implements OnInit {
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly teamsLinks = inject(TeamsLinkService);
 
   readonly billingRoute = FORGE_ACCESS_BILLING_ROUTE;
   readonly accessCodeFragment = FORGE_ACCESS_CODE_FRAGMENT;
@@ -110,6 +116,11 @@ export class VigieComponent implements OnInit {
   /** L'annuaire par client, lu à l'ouverture de l'onglet Personnes. */
   readonly people = signal<Record<string, VigiePerson[] | 'error'>>({});
   readonly busyHostId = signal<string | null>(null);
+  /** Client dont la conversation Teams est en cours d'ouverture (F-106 / SF-106-03). */
+  readonly openingConversationHostId = signal<string | null>(null);
+  /** L'état de la liaison Teams par client (F-87), relevé une fois sur son terminal Teams. */
+  readonly links = signal<Record<string, TeamsLink>>({});
+  private readonly linksRead = new Set<string>();
 
   private readonly countsRead = new Set<string>();
   private readonly peopleRead = new Set<string>();
@@ -190,6 +201,7 @@ export class VigieComponent implements OnInit {
   }
 
   refresh(): void {
+    this.linksRead.clear();
     this.countsRead.clear();
     this.peopleRead.clear();
     this.load(this.hosts().length === 0);
@@ -254,6 +266,36 @@ export class VigieComponent implements OnInit {
   subjectsLabel(person: VigiePerson): string {
     const count = person.subjects?.length ?? 0;
     return count === 1 ? '1 sujet' : `${count} sujets`;
+  }
+
+  // ------------------------------------------------------------ Teams (F-106 / SF-106-03)
+
+  /** La liaison Teams du client, ou `null` quand il n'y a rien à dire (§14). */
+  linkOf(host: RunnerHostOverview): TeamsLink | null {
+    return host.id === null ? null : this.links()[host.id] ?? null;
+  }
+
+  /**
+   * **Ouvre la conversation Teams du client** — son terminal Teams, créé s'il n'existe pas —, puis
+   * y navigue. C'est la porte du volet Teams, qui a déménagé de la Forge.
+   */
+  openConversation(host: RunnerHostOverview): void {
+    const hostId = host.id;
+    if (hostId === null || this.openingConversationHostId() !== null) {
+      return;
+    }
+    this.openingConversationHostId.set(hostId);
+    this.atelier.openTeamsTerminal(hostId).subscribe({
+      next: (terminal) => {
+        this.openingConversationHostId.set(null);
+        void this.router.navigate(['/atelier', terminal.id]);
+      },
+      error: (err: unknown) => {
+        this.openingConversationHostId.set(null);
+        this.fail(err, "La conversation n'a pas pu être ouverte. Rien n'a été créé.");
+        this.load(false);
+      },
+    });
   }
 
   // ------------------------------------------------------------ ajouter, retirer
@@ -392,6 +434,7 @@ export class VigieComponent implements OnInit {
         this.error.set('none');
         this.loading.set(false);
         this.loadCounts(clients);
+        this.loadLinks(clients);
         this.revealClosedSelection();
         if (this.activeTab() === 'personnes') {
           this.loadPeople(this.selectedHost());
@@ -423,6 +466,25 @@ export class VigieComponent implements OnInit {
       this.vigie.radarCounts(hostId).subscribe({
         next: (counts) => this.radarCounts.update((all) => ({ ...all, [hostId]: counts })),
         error: () => this.countsRead.delete(hostId),
+      });
+    }
+  }
+
+  /**
+   * La liaison Teams de chaque client qui a un terminal Teams et une machine en ligne, une fois par
+   * page. Silencieuse : un relevé en échec n'affiche rien (§14).
+   */
+  private loadLinks(hosts: RunnerHostOverview[]): void {
+    for (const host of hosts) {
+      const hostId = host.id;
+      const terminalId = host.teamsTerminalId ?? null;
+      if (hostId === null || terminalId === null || !this.online(host) || this.linksRead.has(hostId)) {
+        continue;
+      }
+      this.linksRead.add(hostId);
+      this.teamsLinks.getLink(terminalId).subscribe({
+        next: (link) => this.links.update((all) => ({ ...all, [hostId]: link })),
+        error: () => undefined,
       });
     }
   }

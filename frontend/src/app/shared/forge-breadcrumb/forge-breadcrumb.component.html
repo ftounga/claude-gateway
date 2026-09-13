@@ -10,6 +10,7 @@
       [class.forge-crumb--host]="!!crumb.hostName"
       [routerLink]="crumb.link"
       [fragment]="crumb.fragment ?? undefined"
+      [queryParams]="crumb.queryParams ?? undefined"
       [attr.aria-current]="last ? 'page' : null"
     >
       @if (crumb.hostName) {

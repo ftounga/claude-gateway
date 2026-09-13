@@ -214,10 +214,15 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     const trail: ForgeCrumb[] = [];
     const host = this.hostNameValue();
     if (host) {
+      // F-106 / SF-106-03 : un terminal Teams ramène à son client dans la Vigie, où il a déménagé.
+      const inVigie = this.teamsTerminalValue();
       trail.push({
         label: host,
         // F-98 / SF-98-01 : une adresse par poste. L'ancien fragment `#poste-<id>` redirige encore.
-        link: this.hostIdValue() ? ['/forge', this.hostIdValue()] : ['/forge'],
+        link: this.hostIdValue()
+          ? [inVigie ? '/vigie' : '/forge', this.hostIdValue()]
+          : [inVigie ? '/vigie' : '/forge'],
+        queryParams: inVigie && this.hostIdValue() ? { onglet: 'conversations' } : null,
         hostName: host,
         missionStatus: this.hostMissionValue(),
       });
@@ -340,7 +345,16 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * (`--cg-primary`). Ce qui bascule est la typographie et le contenu — un compte rendu est de la
    * prose, pas une sortie de shell (charte §15).</p>
    */
-  @Input() teamsTerminal = false;
+  @Input()
+  set teamsTerminal(value: boolean | null | undefined) {
+    this.teamsTerminalValue.set(value === true);
+  }
+  get teamsTerminal(): boolean {
+    return this.teamsTerminalValue();
+  }
+
+  /** Terminal Teams : son fil ramène à la Vigie (F-106 / SF-106-03). */
+  private readonly teamsTerminalValue = signal(false);
 
   /** Vrai pendant un envoi : l'invite est désactivée. */
   @Input() submitting = false;

@@ -160,6 +160,11 @@
                   @if (presenceSeen(host); as seen) {
                     <span class="poste__fact">{{ seen }}</span>
                   }
+                  <!-- LA LIAISON TEAMS (F-87, §14), déménagée de la Forge : une fenêtre sur un état, sans
+                       action ; rien quand il n'y a rien à dire. -->
+                  @if (online(host) && linkOf(host); as link) {
+                    <app-teams-link-badge class="vigie__teams-link" [link]="link"></app-teams-link-badge>
+                  }
                 </div>
               </div>
 
@@ -240,14 +245,37 @@
                   </div>
                 }
                 @case ('conversations') {
+                  <!-- LE TERMINAL TEAMS (F-89), déménagé de la Forge (F-106 / SF-106-03). Teams n'est pas
+                       un écran à boutons : on y parle. L'onglet en est la porte. -->
                   <div class="vigie__placeholder vigie__conversations">
                     <mat-icon aria-hidden="true">forum</mat-icon>
                     <div>
-                      <h3>Les conversations de ce client</h3>
+                      <h3>
+                        Les conversations de {{ host.name }}
+                        @if (host.teamsTerminalLive) {
+                          <app-live-badge scope="host"></app-live-badge>
+                        }
+                      </h3>
                       <p>
-                        Le terminal Teams, où l'on parle de ce que ce client a dit ou demandé,
-                        s'ouvre encore depuis la Forge. Il s'installe dans cet onglet.
+                        Demandez ce que vous voulez savoir de ce client, comme à un collègue :
+                        « qu'attend Paul de moi ? », « résume le fil sur la migration DNS ». La réponse
+                        cite ses sources Teams.
                       </p>
+                      <button
+                        mat-flat-button
+                        color="primary"
+                        type="button"
+                        class="vigie__open-conversation"
+                        [disabled]="openingConversationHostId() !== null"
+                        (click)="openConversation(host)"
+                      >
+                        @if (openingConversationHostId() === host.id) {
+                          <mat-spinner diameter="18"></mat-spinner>
+                        } @else {
+                          <mat-icon>forum</mat-icon>
+                        }
+                        Ouvrir la conversation
+                      </button>
                     </div>
                   </div>
                 }
@@ -255,11 +283,22 @@
                   <div class="vigie__placeholder vigie__reunions">
                     <mat-icon aria-hidden="true">event</mat-icon>
                     <div>
-                      <h3>Les réunions de ce client</h3>
+                      <h3>Les réunions de {{ host.name }}</h3>
                       <p>
-                        Réunions, captures et enregistrements se demandent dans le terminal Teams.
-                        Ils s'installent dans cet onglet.
+                        Comptes rendus, captures d'écran des moments clés et enregistrements se demandent
+                        dans la conversation : « résume la réunion d'hier », « montre-moi le schéma
+                        présenté à 14 h ».
                       </p>
+                      <button
+                        mat-stroked-button
+                        type="button"
+                        class="vigie__open-meetings"
+                        [disabled]="openingConversationHostId() !== null"
+                        (click)="openConversation(host)"
+                      >
+                        <mat-icon>forum</mat-icon>
+                        Ouvrir la conversation
+                      </button>
                     </div>
                   </div>
                 }
