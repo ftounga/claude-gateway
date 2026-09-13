@@ -68,6 +68,11 @@ public class RunnerToolGateway {
      * document), puis remettre la vue. Vingt secondes couperaient la plupart des lectures au milieu.
      */
     public static final long TEAMS_FILES_TIMEOUT_MS = 180_000L;
+    /**
+     * Délai d'un <b>dépôt</b> ou d'un <b>remplacement de version</b> (F-108 / SF-108-04) : le runner
+     * attend jusqu'à cinq minutes que la page ait envoyé le fichier.
+     */
+    public static final long TEAMS_UPLOAD_TIMEOUT_MS = 360_000L;
     /** Plancher : un délai ridicule ferait échouer la commande avant même son démarrage. */
     public static final long MIN_BASH_TIMEOUT_MS = 1_000L;
     /** Longueur maximale d'une ligne de commande acceptée (le runner applique la même borne). */
@@ -207,6 +212,13 @@ public class RunnerToolGateway {
     static long teamsTimeoutFor(String tool) {
         if (fr.claudegateway.teams.TeamsToolCatalog.CAPTURE_START.equals(tool)) {
             return TEAMS_CAPTURE_START_TIMEOUT_MS;
+        }
+        if (fr.claudegateway.teams.TeamsToolCatalog.UPLOAD_FILE.equals(tool)
+                || fr.claudegateway.teams.TeamsToolCatalog.REPLACE_VERSION.equals(tool)) {
+            return TEAMS_UPLOAD_TIMEOUT_MS;
+        }
+        if (fr.claudegateway.teams.TeamsToolCatalog.isWrite(tool)) {
+            return TEAMS_FILES_TIMEOUT_MS;
         }
         if (fr.claudegateway.teams.TeamsToolCatalog.LIST_FILES.equals(tool)
                 || fr.claudegateway.teams.TeamsToolCatalog.READ_FILE.equals(tool)

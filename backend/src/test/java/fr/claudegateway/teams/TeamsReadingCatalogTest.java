@@ -48,7 +48,10 @@ class TeamsReadingCatalogTest {
             // ils tournent, c'est qu'ils CRÉENT au lieu de relire (voir TeamsToolCatalog.CAPTURE).
             "teams_capture_start", "teams_capture_stop", "teams_capture_status",
             // F-108 / SF-108-03 — les deux outils de LECTURE des fichiers Microsoft 365.
-            "teams_list_files", "teams_read_file");
+            "teams_list_files", "teams_read_file",
+            // F-108 / SF-108-04 — les six ÉCRITURES : le runner les exécute, après autorisation.
+            "teams_create_folder", "teams_upload_file", "teams_rename", "teams_move", "teams_delete",
+            "teams_replace_version");
 
     @Mock private TeamsAccessService teamsAccess;
 

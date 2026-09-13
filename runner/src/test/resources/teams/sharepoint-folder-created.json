@@ -1,0 +1,14 @@
+{
+  "odata.type": "SP.Folder",
+  "odata.id": "https://contoso.sharepoint.com/sites/ProjetIAM/_api/Web/GetFolderByServerRelativePath(decodedurl='/sites/ProjetIAM/Shared Documents/General/Livrables 2026')",
+  "Exists": true,
+  "IsWOPIEnabled": false,
+  "ItemCount": 0,
+  "Name": "Livrables 2026",
+  "ProgID": null,
+  "ServerRelativeUrl": "/sites/ProjetIAM/Shared Documents/General/Livrables 2026",
+  "TimeCreated": "2026-09-13T10:00:00Z",
+  "TimeLastModified": "2026-09-13T10:00:00Z",
+  "UniqueId": "00000000-0000-0000-0000-00000000f003",
+  "WelcomePage": ""
+}

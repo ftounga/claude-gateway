@@ -217,6 +217,12 @@ class RunnerToolGatewayTest {
                 .isEqualTo(RunnerToolGateway.TEAMS_FILES_TIMEOUT_MS);
         assertThat(RunnerToolGateway.teamsTimeoutFor("teams_meeting_recording"))
                 .isEqualTo(RunnerToolGateway.TEAMS_FILES_TIMEOUT_MS);
+        assertThat(RunnerToolGateway.teamsTimeoutFor("teams_upload_file"))
+                .isEqualTo(RunnerToolGateway.TEAMS_UPLOAD_TIMEOUT_MS);
+        assertThat(RunnerToolGateway.teamsTimeoutFor("teams_replace_version"))
+                .isEqualTo(RunnerToolGateway.TEAMS_UPLOAD_TIMEOUT_MS);
+        assertThat(RunnerToolGateway.teamsTimeoutFor("teams_delete"))
+                .isEqualTo(RunnerToolGateway.TEAMS_FILES_TIMEOUT_MS);
         assertThat(RunnerToolGateway.teamsTimeoutFor("teams_status"))
                 .isEqualTo(RunnerToolGateway.TEAMS_TOOL_TIMEOUT_MS);
     }

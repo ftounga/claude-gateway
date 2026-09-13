@@ -102,7 +102,8 @@ public class TeamsToolCatalog {
     public static final List<String> CATALOG = List.of(STATUS, FIND_CONVERSATIONS,
             READ_CONVERSATION, MENTIONS, SEARCH, FIND_MEETINGS, MEETING_TRANSCRIPT,
             MEETING_RECORDING, MEETING_MOMENTS, MOMENTS_STATUS, CAPTURE_START, CAPTURE_STOP,
-            CAPTURE_STATUS, LIST_FILES, READ_FILE);
+            CAPTURE_STATUS, LIST_FILES, READ_FILE, "teams_create_folder", "teams_upload_file",
+            "teams_rename", "teams_move", "teams_delete", "teams_replace_version");
 
     /**
      * <b>Les outils qui CRÉENT</b> (F-91), par opposition à tous les autres, qui <b>relisent</b>.
@@ -195,6 +196,146 @@ public class TeamsToolCatalog {
     }
 
     /**
+     * <b>Le libellé clair d'un appel d'écriture</b>, tiré de ses paramètres (F-108 / SF-108-04) — ce
+     * que l'utilisateur lit avant d'autoriser. Chaque écriture a sa phrase : un renommage dit l'ancien
+     * et le nouveau nom, un dépôt et un remplacement disent <b>le chemin du fichier local</b> — sans
+     * lui, on pourrait faire autoriser l'envoi d'un fichier qu'on n'a pas choisi sous un nom anodin.
+     * Les adresses web deviennent « site › bibliothèque › dossier ».
+     *
+     * @param args lecture d'un paramètre texte par son nom ({@code null} ou vide s'il manque)
+     */
+    public static String describeWriteCall(String tool, java.util.function.Function<String, String> args) {
+        String name = param(args, "name");
+        String target = param(args, "target");
+        String file = param(args, "file");
+        String location = first(param(args, "location"), param(args, "parent"));
+        String destination = param(args, "destination");
+        String item = target.isEmpty() ? name : lastSegment(target);
+        String targetPlace = target.isEmpty() ? readableLocation(location) : readableLocation(parentOf(target));
+        return switch (tool == null ? "" : tool) {
+            case CREATE_FOLDER -> describeWrite(CREATE_FOLDER, name, readableLocation(location));
+            case UPLOAD_FILE -> {
+                String remote = name.isEmpty() ? lastSegment(file) : name;
+                String place = readableLocation(first(location, destination));
+                yield "Déposer le fichier local « " + (file.isEmpty() ? "(non précisé)" : file) + " »"
+                        + (remote.isEmpty() ? "" : " sous le nom « " + remote + " »")
+                        + (place.isEmpty() ? "" : " dans " + place);
+            }
+            case RENAME -> target.isEmpty()
+                    ? describeWrite(RENAME, name, readableLocation(location))
+                    : "Renommer « " + item + " » en « " + (name.isEmpty() ? "(sans nom)" : name) + " »"
+                            + (targetPlace.isEmpty() ? "" : " dans " + targetPlace);
+            case MOVE -> describeWrite(MOVE, item, readableLocation(first(destination, location)));
+            case DELETE -> describeWrite(DELETE, item, targetPlace) + " (corbeille du site)";
+            case REPLACE_VERSION -> describeWrite(REPLACE_VERSION, item, targetPlace)
+                    + (file.isEmpty() ? "" : " par le fichier local « " + file + " »");
+            default -> describeWrite(tool, first(name, target, file),
+                    readableLocation(first(location, destination)));
+        };
+    }
+
+    /**
+     * Une adresse web SharePoint / OneDrive en clair : « ProjetIAM › Shared Documents › General ».
+     * Un emplacement déjà en clair est rendu tel quel.
+     */
+    public static String readableLocation(String raw) {
+        String value = raw == null ? "" : raw.strip();
+        if (!value.toLowerCase(java.util.Locale.ROOT).startsWith("http")) {
+            return value;
+        }
+        String afterScheme = value.substring(value.indexOf("://") < 0 ? 0 : value.indexOf("://") + 3);
+        int slash = afterScheme.indexOf('/');
+        String host = slash < 0 ? afterScheme : afterScheme.substring(0, slash);
+        String path = slash < 0 ? "" : afterScheme.substring(slash);
+        String query = "";
+        int question = path.indexOf('?');
+        if (question >= 0) {
+            query = path.substring(question + 1);
+            path = path.substring(0, question);
+        }
+        int hash = path.indexOf('#');
+        if (hash >= 0) {
+            path = path.substring(0, hash);
+        }
+        path = decode(path);
+        if (path.toLowerCase(java.util.Locale.ROOT).endsWith(".aspx")) {
+            for (String pair : query.split("&")) {
+                if (pair.toLowerCase(java.util.Locale.ROOT).startsWith("id=")) {
+                    path = decode(pair.substring(3));
+                }
+            }
+        }
+        List<String> segments = new ArrayList<>();
+        for (String segment : path.split("/")) {
+            if (!segment.isBlank()) {
+                segments.add(segment);
+            }
+        }
+        if (!segments.isEmpty() && segments.get(0).startsWith(":")) {
+            segments = segments.subList(Math.min(2, segments.size()), segments.size());
+        }
+        if (segments.size() >= 2) {
+            String prefix = segments.get(0).toLowerCase(java.util.Locale.ROOT);
+            if ("personal".equals(prefix)) {
+                segments = new ArrayList<>(segments.subList(2, segments.size()));
+                segments.add(0, "OneDrive");
+            } else if ("sites".equals(prefix) || "teams".equals(prefix)) {
+                segments = segments.subList(1, segments.size());
+            }
+        }
+        return segments.isEmpty() ? host : String.join(" › ", segments);
+    }
+
+    private static String lastSegment(String raw) {
+        String value = raw == null ? "" : raw.strip();
+        int question = value.indexOf('?');
+        if (question >= 0) {
+            value = value.substring(0, question);
+        }
+        while (value.endsWith("/") || value.endsWith("\\")) {
+            value = value.substring(0, value.length() - 1);
+        }
+        int cut = Math.max(value.lastIndexOf('/'), value.lastIndexOf('\\'));
+        return decode(cut >= 0 ? value.substring(cut + 1) : value);
+    }
+
+    private static String parentOf(String raw) {
+        String value = raw == null ? "" : raw.strip();
+        int question = value.indexOf('?');
+        if (question >= 0) {
+            value = value.substring(0, question);
+        }
+        while (value.endsWith("/")) {
+            value = value.substring(0, value.length() - 1);
+        }
+        int cut = value.lastIndexOf('/');
+        return cut > value.indexOf("://") + 2 ? value.substring(0, cut) : "";
+    }
+
+    private static String decode(String value) {
+        try {
+            return java.net.URLDecoder.decode(value.replace("+", "%2B"),
+                    java.nio.charset.StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            return value;
+        }
+    }
+
+    private static String param(java.util.function.Function<String, String> args, String name) {
+        String value = args == null ? null : args.apply(name);
+        return value == null ? "" : value.strip();
+    }
+
+    private static String first(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value.strip();
+            }
+        }
+        return "";
+    }
+
+    /**
      * Préfixe commun à tous les outils du volet. Sert à une seule chose, mais elle compte : un test
      * peut vérifier qu'<b>aucun</b> outil commençant par {@code teams_} n'est donné là où le droit
      * n'est pas ouvert, sans avoir à énumérer un catalogue qui grandira.
@@ -241,6 +382,7 @@ public class TeamsToolCatalog {
         tools.addAll(readingTools());
         tools.addAll(captureTools());
         tools.addAll(fileReadingTools());
+        tools.addAll(fileWriteTools());
         tools.addAll(presentationTools());
         return List.copyOf(tools);
     }
@@ -538,6 +680,60 @@ public class TeamsToolCatalog {
                 Map.of("type", "object",
                         "properties", Map.of("file", text),
                         "required", List.of("file"))));
+        return tools;
+    }
+
+    /**
+     * <b>Les six écritures</b> (F-108 / SF-108-04). Chacune est soumise à l'autorisation du terminal
+     * AVANT d'être émise (SF-108-02) ; leurs descriptions le disent au modèle, pour qu'il n'annonce
+     * jamais une écriture comme faite avant le résultat, et pour qu'il enchaîne la modification d'un
+     * document par lecture → modification locale → remplacement de version.
+     */
+    private List<AgentTool> fileWriteTools() {
+        Map<String, Object> text = Map.of("type", "string");
+        Map<String, Object> address = Map.of("type", "string",
+                "description", "Adresse web SharePoint / OneDrive (lien de la bibliothèque ou de "
+                        + "l'élément, tel que " + LIST_FILES + " te l'a rendu).");
+        Map<String, Object> localFile = Map.of("type", "string",
+                "description", "Chemin ABSOLU du fichier sur la machine.");
+        String common = " L'utilisateur doit l'AUTORISER dans le terminal avant qu'elle parte : "
+                + "n'annonce rien comme fait avant le résultat, et si « done » est faux, dis ce qui "
+                + "manque. Adaptateur écrit sur la documentation Microsoft, à confirmer sur poste réel.";
+        List<AgentTool> tools = new ArrayList<>();
+        tools.add(new AgentTool(CREATE_FOLDER,
+                "Crée un dossier dans une bibliothèque Teams / SharePoint / OneDrive. Refuse si un "
+                        + "élément porte déjà ce nom." + common,
+                Map.of("type", "object", "properties", Map.of("location", address, "name", text),
+                        "required", List.of("location", "name"))));
+        tools.add(new AgentTool(UPLOAD_FILE,
+                "Dépose un fichier de la machine dans une bibliothèque. N'écrase JAMAIS : si le fichier "
+                        + "existe, utilise " + REPLACE_VERSION + "." + common,
+                Map.of("type", "object", "properties", Map.of("file", localFile, "location", address,
+                                "name", Map.of("type", "string",
+                                        "description", "Nom à donner au fichier déposé (défaut : "
+                                                + "celui du fichier local).")),
+                        "required", List.of("file", "location"))));
+        tools.add(new AgentTool(RENAME,
+                "Renomme un fichier ou un dossier, sans jamais écraser un élément existant." + common,
+                Map.of("type", "object", "properties", Map.of("target", address, "name", text),
+                        "required", List.of("target", "name"))));
+        tools.add(new AgentTool(MOVE,
+                "Déplace un fichier ou un dossier vers un autre dossier DU MÊME SITE, sans jamais "
+                        + "écraser." + common,
+                Map.of("type", "object", "properties", Map.of("target", address, "destination", address),
+                        "required", List.of("target", "destination"))));
+        tools.add(new AgentTool(DELETE,
+                "Supprime un fichier ou un dossier : il va dans la CORBEILLE du site, d'où il reste "
+                        + "restaurable — dis-le." + common,
+                Map.of("type", "object", "properties", Map.of("target", address),
+                        "required", List.of("target"))));
+        tools.add(new AgentTool(REPLACE_VERSION,
+                "Remplace un document par une NOUVELLE VERSION tirée d'un fichier de la machine — c'est "
+                        + "ainsi qu'on MODIFIE un document : " + READ_FILE + " → modification de la copie "
+                        + "locale → cet outil. SharePoint garde l'historique des versions : l'ancienne "
+                        + "reste restaurable, dis-le." + common,
+                Map.of("type", "object", "properties", Map.of("target", address, "file", localFile),
+                        "required", List.of("target", "file"))));
         return tools;
     }
 

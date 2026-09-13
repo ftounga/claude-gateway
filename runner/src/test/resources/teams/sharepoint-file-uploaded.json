@@ -1,0 +1,14 @@
+{
+  "odata.type": "SP.File",
+  "CheckInComment": "",
+  "CheckOutType": 2,
+  "ContentTag": "{00000000-0000-0000-0000-00000000A003},1,1",
+  "Exists": true,
+  "Length": "24",
+  "Name": "rapport.docx",
+  "ServerRelativeUrl": "/sites/ProjetIAM/Shared Documents/General/rapport.docx",
+  "TimeCreated": "2026-09-13T10:01:00Z",
+  "TimeLastModified": "2026-09-13T10:01:00Z",
+  "UIVersionLabel": "1.0",
+  "UniqueId": "00000000-0000-0000-0000-00000000a003"
+}

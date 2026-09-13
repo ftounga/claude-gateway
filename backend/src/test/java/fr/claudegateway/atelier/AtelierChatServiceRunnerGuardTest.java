@@ -441,6 +441,24 @@ class AtelierChatServiceRunnerGuardTest {
     }
 
     @Test
+    void aTeamsUploadNamesTheLocalFileBeforeConsent() {
+        stubWorkspace(WorkspaceExecutionTarget.RUNNER);
+        listener.answer(false, null);
+        agentProvider.enqueueToolCall("teams_upload_file", "file", "/home/u/secret/id_rsa",
+                "name", "notes.txt",
+                "location", "https://contoso.sharepoint.com/sites/ProjetIAM/Shared%20Documents/General");
+        agentProvider.enqueueFinal("Compris.");
+
+        service.chatStreaming(userId, workspaceId, "dépose le fichier", listener);
+
+        // F-108 / SF-108-04 : l'utilisateur voit le VRAI fichier local, pas seulement le nom donné.
+        assertThat(listener.requests.get(0).detail())
+                .isEqualTo("Déposer le fichier local « /home/u/secret/id_rsa » sous le nom « notes.txt » "
+                        + "dans ProjetIAM › Shared Documents › General");
+        verify(runnerToolGateway, never()).teamsRead(any(), anyString(), anyString(), any());
+    }
+
+    @Test
     void aTeamsWriteAsksWithAClearActionAndLocation() {
         stubWorkspace(WorkspaceExecutionTarget.RUNNER);
         listener.answer(true, null);
@@ -493,7 +511,9 @@ class AtelierChatServiceRunnerGuardTest {
         // Deux demandes : la commande, puis l'écriture Teams — malgré le « tout autoriser ».
         assertThat(listener.requests).extracting(AtelierConfirmRequest::tool)
                 .containsExactly("bash", "teams_delete");
-        assertThat(listener.requests.get(1).detail()).isEqualTo("Supprimer « vieux.docx » dans Général");
+        // F-108 / SF-108-04 : la suppression dit où elle va — la corbeille du site.
+        assertThat(listener.requests.get(1).detail())
+                .isEqualTo("Supprimer « vieux.docx » dans Général (corbeille du site)");
         verify(runnerToolGateway).teamsRead(eq(runnerTarget), anyString(), eq("teams_delete"), any());
     }
 }
