@@ -187,6 +187,16 @@ final class FakeCdpConnection implements CdpConnection {
         purged.add(requestId);
     }
 
+    /** Un cadre ou un worker qui s'attache (F-108 / SF-108-01, §4.8), à l'adresse donnée. */
+    void emitAttached(String url) {
+        ObjectNode params = mapper.createObjectNode();
+        params.putObject("targetInfo").put("url", url);
+        Consumer<JsonNode> listener = listeners.get("Target.attachedToTarget");
+        if (listener != null) {
+            listener.accept(params);
+        }
+    }
+
     void scrollStopsMoving() {
         scrollMoves = false;
     }

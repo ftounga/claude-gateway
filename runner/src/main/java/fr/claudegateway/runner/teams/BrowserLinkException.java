@@ -32,6 +32,15 @@ public final class BrowserLinkException extends RuntimeException {
     /** Une commande de débogage hors liste blanche a été demandée. */
     public static final String COMMAND_REFUSED = "command_refused";
 
+    /** Un geste d'action a été tenté hors des domaines Microsoft autorisés (F-108, §4.1). */
+    public static final String DOMAIN_REFUSED = "domain_refused";
+
+    /** Un geste d'action a été tenté sur une page d'identification Microsoft (F-108, §4.2). */
+    public static final String SIGN_IN_REFUSED = "sign_in_refused";
+
+    /** Une saisie a été tentée dans un champ de type mot de passe (F-108, §4.3). */
+    public static final String PASSWORD_FIELD_REFUSED = "password_field_refused";
+
     private final String code;
 
     public BrowserLinkException(String code, String message) {

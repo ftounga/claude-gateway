@@ -193,14 +193,14 @@ class TeamsReadingToolsTest {
     }
 
     @Test
-    @DisplayName("Les gestes de F-88 n'ouvrent AUCUNE commande de débogage nouvelle")
-    void the_debug_whitelist_is_untouched() {
-        assertEquals(java.util.List.of("Browser.getVersion", "Page.enable", "Network.enable",
-                "Network.getResponseBody", "Runtime.evaluate"), CdpCommands.allowed(),
-                "la liste blanche de SF-87-02 est une décision de sécurité : elle ne se rouvre pas");
-        assertFalse(CdpCommands.isAllowed("Page.navigate"));
-        assertFalse(CdpCommands.isAllowed("Input.dispatchKeyEvent"));
+    @DisplayName("La lecture de F-88 reste faite par le réseau ; les cookies restent refusés")
+    void reading_stays_network_and_cookies_stay_refused() {
+        // SF-108-01 a ouvert les GESTES D'ACTION (navigation, saisie), gardés par domaine ailleurs.
+        // Ce que ce test garde encore : la LECTURE ne s'appuie sur aucune commande cookie/stockage,
+        // et ces refus-là ne se sont pas rouverts.
         assertFalse(CdpCommands.isAllowed("Network.getAllCookies"));
+        assertFalse(CdpCommands.isAllowed("Network.getCookies"));
+        assertFalse(CdpCommands.isAllowed("Storage.getCookies"));
     }
 
     @Test

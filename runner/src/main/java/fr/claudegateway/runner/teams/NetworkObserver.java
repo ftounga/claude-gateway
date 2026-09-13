@@ -31,6 +31,7 @@ public final class NetworkObserver {
     public static final int MAX_BODY_BYTES = 4 * 1024 * 1024;
 
     private static final String RESPONSE_RECEIVED = "Network.responseReceived";
+    private static final String ATTACHED_TO_TARGET = "Target.attachedToTarget";
 
     private final CdpConnection connection;
     private final TeamsAdapter adapter;
@@ -39,6 +40,8 @@ public final class NetworkObserver {
     /** Réponses vues, dans l'ordre d'arrivée : identifiant de requête → adresse sans requête. */
     private final Map<String, Pending> pending = new LinkedHashMap<>();
     private final List<TeamsGap> gaps = new ArrayList<>();
+    /** Cadres et workers réellement retenus pour l'observation — filtrés sur les domaines (§4.8). */
+    private final List<String> attachedFrames = new ArrayList<>();
 
     public NetworkObserver(CdpConnection connection, TeamsAdapter adapter) {
         this.connection = connection;
@@ -53,6 +56,41 @@ public final class NetworkObserver {
     public void start() {
         connection.send(CdpCommands.NETWORK_ENABLE, mapper.createObjectNode());
         connection.onEvent(RESPONSE_RECEIVED, this::onResponse);
+    }
+
+    /**
+     * <b>Élargit l'observation aux cadres et workers de la page</b> (F-108 / SF-108-01, §4.8) —
+     * <b>filtrée sur les mêmes domaines</b>. Lève les angles morts relevés en F-100 : le lecteur
+     * Stream intégré, le service worker.
+     *
+     * <p>L'auto-attach est demandé au navigateur ; mais un cadre ou un worker qui a quitté les
+     * domaines Microsoft <b>n'est pas retenu</b> — un iframe publicitaire, une page tierce embarquée
+     * ne sont jamais observés. Le filtre est ici, au moment où le cadre s'annonce, et il refait le
+     * même jugement que les gestes : {@link MicrosoftDomains#isAllowed(String)}.</p>
+     */
+    public void observeFrames() {
+        ObjectNode params = mapper.createObjectNode();
+        params.put("autoAttach", true);
+        params.put("waitForDebuggerOnStart", false);
+        params.put("flatten", true);
+        connection.send(CdpCommands.SET_AUTO_ATTACH, params);
+        connection.onEvent(ATTACHED_TO_TARGET, this::onAttached);
+    }
+
+    private void onAttached(JsonNode params) {
+        if (params == null) {
+            return;
+        }
+        String url = ObservedResponse.withoutQuery(params.path("targetInfo").path("url").asText(""));
+        // §4.8 : un cadre ou un worker hors liste n'est pas attaché. Le refus est le défaut.
+        if (!url.isEmpty() && MicrosoftDomains.isAllowed(url)) {
+            attachedFrames.add(url);
+        }
+    }
+
+    /** Les cadres et workers retenus pour l'observation (domaines Microsoft uniquement). */
+    public List<String> attachedFrames() {
+        return List.copyOf(attachedFrames);
     }
 
     private void onResponse(JsonNode params) {

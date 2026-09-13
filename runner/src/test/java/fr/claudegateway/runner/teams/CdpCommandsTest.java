@@ -21,9 +21,17 @@ import org.junit.jupiter.params.provider.ValueSource;
 class CdpCommandsTest {
 
     @Test
-    @DisplayName("Cinq commandes, et cinq seulement")
-    void exactly_five_commands() {
-        assertEquals(5, CdpCommands.allowed().size(), CdpCommands.allowed().toString());
+    @DisplayName("La liste blanche : les cinq de lecture, plus les gestes d'action de F-108")
+    void the_whitelist_covers_reading_and_action() {
+        // SF-87-02 a posé cinq commandes de lecture ; SF-108-01 y ajoute les gestes d'action,
+        // strictement nécessaires (cadrage §4) — ni plus, ni moins. Ce test GARDE la liste : il est
+        // mis à jour quand elle change à dessein, jamais supprimé.
+        assertEquals(java.util.List.of("Browser.getVersion", "Page.enable", "Network.enable",
+                "Network.getResponseBody", "Runtime.evaluate", "Page.navigate",
+                "Input.dispatchMouseEvent", "Input.dispatchKeyEvent", "Input.insertText",
+                "DOM.getDocument", "DOM.querySelector", "DOM.setFileInputFiles",
+                "Browser.setDownloadBehavior", "Target.setAutoAttach"),
+                CdpCommands.allowed(), CdpCommands.allowed().toString());
         CdpCommands.allowed().forEach(method -> assertDoesNotThrow(
                 () -> CdpCommands.assertAllowed(method), method));
     }
@@ -31,34 +39,36 @@ class CdpCommandsTest {
     @ParameterizedTest
     @ValueSource(strings = {"Network.getCookies", "Network.getAllCookies", "Network.setCookie",
             "Storage.getCookies", "Network.clearBrowserCookies"})
-    @DisplayName("Aucune commande ne peut atteindre les cookies de la session")
-    void cookies_are_out_of_reach(String method) {
+    @DisplayName("Aucune commande ne peut atteindre les cookies ou le stockage de la session")
+    void cookies_and_storage_stay_out_of_reach(String method) {
         BrowserLinkException refused = assertThrows(BrowserLinkException.class,
                 () -> CdpCommands.assertAllowed(method));
 
         assertEquals(BrowserLinkException.COMMAND_REFUSED, refused.code());
-        assertTrue(refused.getMessage().contains("cookies"), refused.getMessage());
+        assertTrue(refused.getMessage().contains("cookies") || refused.getMessage().contains("stockage"),
+                refused.getMessage());
         assertFalse(CdpCommands.isAllowed(method));
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"Page.navigate", "Input.dispatchKeyEvent", "Input.dispatchMouseEvent"})
-    @DisplayName("On lit, on ne pilote pas : naviguer et taper au clavier sont refusés")
-    void driving_the_page_is_refused(String method) {
-        BrowserLinkException refused = assertThrows(BrowserLinkException.class,
-                () -> CdpCommands.assertAllowed(method));
-        assertTrue(refused.getMessage().contains("le volet Teams lit, il ne pilote pas"),
-                refused.getMessage());
+    @ValueSource(strings = {"Page.navigate", "Input.dispatchKeyEvent", "Input.dispatchMouseEvent",
+            "Input.insertText", "DOM.setFileInputFiles", "Browser.setDownloadBehavior",
+            "Target.setAutoAttach"})
+    @DisplayName("F-108 : les gestes d'action sont dans la liste blanche (gardés par domaine ailleurs)")
+    void action_gestures_are_allowed(String method) {
+        assertTrue(CdpCommands.isAllowed(method), method);
+        assertDoesNotThrow(() -> CdpCommands.assertAllowed(method));
     }
 
     @Test
     @DisplayName("Le refus dit ce qui était autorisé : il est réparable")
     void a_refusal_says_what_is_allowed() {
+        // Une commande hors liste, qui n'a jamais été un geste du volet.
         BrowserLinkException refused = assertThrows(BrowserLinkException.class,
-                () -> CdpCommands.assertAllowed("DOM.getDocument"));
+                () -> CdpCommands.assertAllowed("DOM.setAttributeValue"));
 
         assertTrue(refused.getMessage().contains("Network.getResponseBody"));
-        assertTrue(refused.getMessage().contains("DOM.getDocument"));
+        assertTrue(refused.getMessage().contains("DOM.setAttributeValue"));
     }
 
     @Test
