@@ -59,7 +59,7 @@ Changer la mécanique du terminal Teams, ses blocs ou ses outils.
 
 ## Statut
 
-`in-review`
+`done` — mergée le 2026-09-14 (PR #573)
 
 ## Date de création
 
