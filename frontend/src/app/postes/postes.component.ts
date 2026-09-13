@@ -69,6 +69,11 @@ import {
   DeleteHostDialogData,
 } from './delete-host-dialog/delete-host-dialog.component';
 import {
+  CloseMissionDialogComponent,
+  CloseMissionDialogData,
+  CloseMissionDialogResult,
+} from '../vigie/close-mission-dialog/close-mission-dialog.component';
+import {
   MapFileDialogComponent,
   MapFileDialogData,
 } from './map-file-dialog/map-file-dialog.component';
@@ -1265,19 +1270,53 @@ export class PostesComponent implements OnInit {
     if (host.id === null || this.mission(host) === status || this.savingHostId() !== null) {
       return;
     }
-    this.savingHostId.set(host.id);
-    this.atelier.setHostMissionStatus(host.id, status).subscribe({
+    const hostId = host.id;
+    if (isMissionClosed(status) && this.inVigie(host)) {
+      // F-99 / SF-99-07 : un client de la Vigie a un Radar — son export, et son effacement, sont proposés.
+      this.dialog
+        .open<CloseMissionDialogComponent, CloseMissionDialogData, CloseMissionDialogResult>(
+          CloseMissionDialogComponent,
+          { data: { hostId, hostName: host.name }, width: '560px', maxWidth: '95vw', autoFocus: false })
+        .afterClosed()
+        .subscribe((result) => {
+          if (result?.confirmed === true) {
+            this.saveMission(host, status, result.purgeRadar === true);
+          }
+        });
+      return;
+    }
+    this.saveMission(host, status, false);
+  }
+
+  private saveMission(host: RunnerHostOverview, status: HostMissionStatus, purgeRadar: boolean): void {
+    if (host.id === null) {
+      return;
+    }
+    const hostId = host.id;
+    this.savingHostId.set(hostId);
+    this.atelier.setHostMissionStatus(hostId, status).subscribe({
       next: (updated) => {
         this.savingHostId.set(null);
         // C'est la réponse qui décide, pas la valeur demandée.
         const confirmed = normalizeMissionStatus(updated.missionStatus);
         this.hosts.update((hosts) => hosts.map((h) =>
           h.id === host.id ? { ...h, missionStatus: confirmed } : h));
-        if (isMissionClosed(confirmed)) {
+        if (!isMissionClosed(confirmed)) {
+          return;
+        }
+        if (!purgeRadar) {
           // La carte vient de quitter la vue principale : on dit où elle est allée.
           this.snackBar.open(`Mission clôturée. « ${host.name} » est rangé, rien n'est coupé.`,
             'Fermer', { duration: 4000, panelClass: 'snack-info' });
+          return;
         }
+        // La purge vient APRÈS la clôture confirmée : la gateway exige une mission close (SF-99-05).
+        this.vigie.purgeRadar(hostId, 'MISSION_CLOSED').subscribe({
+          next: () => this.snackBar.open(`Mission clôturée. « ${host.name} » est rangé, et son Radar est effacé.`,
+            'Fermer', { duration: 5000, panelClass: 'snack-info' }),
+          error: () => this.snackBar.open("Mission clôturée, mais son Radar n'a pas pu être effacé.",
+            'Fermer', { duration: 8000, panelClass: 'snack-error' }),
+        });
       },
       error: (err: unknown) => {
         this.savingHostId.set(null);
@@ -1308,6 +1347,8 @@ export class PostesComponent implements OnInit {
     const data: DeleteHostDialogData = {
       hostName: host.name,
       remainingProjects: host.projects.length,
+      // F-99 / SF-99-07 : la suppression efface son Radar — l'écran le dit et propose l'export.
+      radarHostId: this.inVigie(host) ? host.id : null,
     };
     this.dialog
       .open(DeleteHostDialogComponent, { data, width: '520px' })

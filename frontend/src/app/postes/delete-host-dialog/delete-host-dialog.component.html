@@ -37,7 +37,19 @@
         <li>L'appairage de cette machine, et ses jetons d'accès.</li>
         <li>Ce que la machine avait déclaré : sa racine, son système, son interpréteur.</li>
         <li>Sa ligne dans la Forge — la carte disparaît de cet écran.</li>
+        @if (data.radarHostId) {
+          <li class="delete-host__radar">Son Radar dans la Vigie : sujets, engagements et annuaire.</li>
+        }
       </ul>
+      @if (data.radarHostId) {
+        <!-- L'EXPORT AVANT LA PURGE (F-99 / SF-99-07). -->
+        <app-radar-export-offer
+          class="delete-host__export"
+          [hostId]="data.radarHostId"
+          [hostName]="data.hostName"
+          lead="Avant de supprimer, gardez une copie de son Radar en Markdown."
+        ></app-radar-export-offer>
+      }
     </section>
 
     <section class="delete-host__block delete-host__block--safe">

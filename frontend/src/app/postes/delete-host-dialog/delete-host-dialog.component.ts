@@ -3,11 +3,18 @@ import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 
+import { RadarExportOfferComponent } from '../../vigie/radar-export/radar-export-offer.component';
+
 /** Le poste visé, et ce qui vit encore dessous. */
 export interface DeleteHostDialogData {
   hostName: string;
   /** Nombre de projets encore rattachés. Au-dessus de zéro, le dialogue devient un refus. */
   remainingProjects: number;
+  /**
+   * Le poste, s'il est activé dans la Vigie : sa suppression efface son Radar (F-99 / SF-99-05) — le
+   * dialogue le dit et propose l'export (SF-99-07). `null` ou absent sinon.
+   */
+  radarHostId?: string | null;
 }
 
 /**
@@ -27,7 +34,7 @@ export interface DeleteHostDialogData {
  */
 @Component({
   selector: 'app-delete-host-dialog',
-  imports: [MatDialogModule, MatButtonModule, MatIconModule],
+  imports: [MatDialogModule, MatButtonModule, MatIconModule, RadarExportOfferComponent],
   templateUrl: './delete-host-dialog.component.html',
   styleUrl: './delete-host-dialog.component.scss',
 })

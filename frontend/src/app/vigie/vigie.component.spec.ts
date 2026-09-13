@@ -6,7 +6,7 @@ import { BehaviorSubject, of, throwError } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
-import { RunnerHostOverview, WorkspaceDetail } from '../core/models/atelier.models';
+import { RunnerHost, RunnerHostOverview, WorkspaceDetail } from '../core/models/atelier.models';
 import { VigieRadarCounts } from '../core/models/vigie.models';
 import { RadarBrief } from '../core/models/radar.models';
 import { AtelierService } from '../core/services/atelier.service';
@@ -16,6 +16,8 @@ import { TeamsLink, TeamsLinkService } from '../atelier/teams/teams-link.service
 import { RunnerPairingDialogComponent } from '../atelier/runner/runner-pairing-dialog.component';
 import { AddClientDialogComponent } from './add-client-dialog/add-client-dialog.component';
 import { RemoveClientDialogComponent } from './remove-client-dialog/remove-client-dialog.component';
+import { CloseMissionDialogComponent } from './close-mission-dialog/close-mission-dialog.component';
+import { RadarExporter } from './radar-export/radar-export';
 import { VIGIE_REFRESH_MS, VigieComponent } from './vigie.component';
 
 /** La Vigie, l'écran (F-106 / SF-106-02). */
@@ -28,6 +30,7 @@ describe('VigieComponent', () => {
   let teamsLinks: jasmine.SpyObj<TeamsLinkService>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
   let radar: jasmine.SpyObj<RadarService>;
+  let exporter: jasmine.SpyObj<RadarExporter>;
   let router: Router;
   let params$: BehaviorSubject<ParamMap>;
   let query$: BehaviorSubject<ParamMap>;
@@ -72,7 +75,9 @@ describe('VigieComponent', () => {
     counts?: Record<string, VigieRadarCounts>;
   } = {}): HTMLElement {
     atelier = jasmine.createSpyObj<AtelierService>('AtelierService',
-      ['teamsAccess', 'runnerHostsOverview', 'openTeamsTerminal']);
+      ['teamsAccess', 'runnerHostsOverview', 'openTeamsTerminal', 'setHostMissionStatus']);
+    atelier.setHostMissionStatus.and.returnValue(of({ id: 'h1', missionStatus: 'CLOSED' } as unknown as RunnerHost));
+    exporter = jasmine.createSpyObj<RadarExporter>('RadarExporter', ['download']);
     atelier.openTeamsTerminal.and.returnValue(of({ id: 'wtt1', name: 'Terminal Teams' } as WorkspaceDetail));
     teamsLinks = jasmine.createSpyObj<TeamsLinkService>('TeamsLinkService', ['getLink']);
     teamsLinks.getLink.and.returnValue(of(linked));
@@ -109,6 +114,7 @@ describe('VigieComponent', () => {
         { provide: MatDialog, useValue: dialog },
         { provide: MatSnackBar, useValue: snackBar },
         { provide: RadarService, useValue: radar },
+        { provide: RadarExporter, useValue: exporter },
         { provide: ActivatedRoute, useValue: { snapshot: {}, paramMap: params$, queryParamMap: query$ } },
       ],
     });
@@ -463,5 +469,81 @@ describe('VigieComponent', () => {
     expect(component.error()).toBe('not-entitled');
     expect(root.querySelector('app-space-pitch')?.textContent).toContain('La Vigie');
     expect(atelier.runnerHostsOverview).not.toHaveBeenCalled();
+  });
+
+  // ---- F-99 / SF-99-07 : exporter le Radar, et le proposer avant toute purge ----
+
+  it("exporter le Radar : téléchargement, nom dit ; un échec est dit", () => {
+    build();
+    exporter.download.and.returnValue(of('radar-edenred-2026-09-13.md'));
+
+    component.exportRadar(component.selectedHost()!);
+
+    expect(exporter.download).toHaveBeenCalledOnceWith('h1', 'EDENRED');
+    expect(snackBar.open.calls.mostRecent().args[0]).toBe('Radar exporté : radar-edenred-2026-09-13.md');
+    expect(vigie.purgeRadar).not.toHaveBeenCalled();
+
+    exporter.download.and.returnValue(throwError(() => new HttpErrorResponse({ status: 404 })));
+    component.exportRadar(component.selectedHost()!);
+    expect(snackBar.open.calls.mostRecent().args[0]).toContain("n'a pas pu être exporté");
+  });
+
+  it('le retrait passe le client au dialogue, pour proposer l’export', () => {
+    build();
+    dialogResults.set(RemoveClientDialogComponent, { confirmed: false, purgeRadar: false });
+
+    component.removeClient(component.selectedHost()!);
+
+    expect((dialog.open.calls.mostRecent().args[1]?.data as { hostId: string }).hostId).toBe('h1');
+    expect(vigie.remove).not.toHaveBeenCalled();
+  });
+
+  it('clôturer la mission sans cocher : clôture seule, rien d’effacé', () => {
+    build();
+    dialogResults.set(CloseMissionDialogComponent, { confirmed: true, purgeRadar: false });
+
+    component.closeMission(component.selectedHost()!);
+
+    expect((dialog.open.calls.mostRecent().args[1]?.data as { hostId: string }).hostId).toBe('h1');
+    expect(atelier.setHostMissionStatus).toHaveBeenCalledOnceWith('h1', 'CLOSED');
+    expect(vigie.purgeRadar).not.toHaveBeenCalled();
+    expect(snackBar.open.calls.mostRecent().args[0]).toContain("rien n'est coupé");
+  });
+
+  it('clôturer en cochant : la purge MISSION_CLOSED part après la clôture confirmée', () => {
+    build();
+    dialogResults.set(CloseMissionDialogComponent, { confirmed: true, purgeRadar: true });
+
+    component.closeMission(component.selectedHost()!);
+
+    expect(atelier.setHostMissionStatus).toHaveBeenCalledOnceWith('h1', 'CLOSED');
+    expect(vigie.purgeRadar).toHaveBeenCalledOnceWith('h1', 'MISSION_CLOSED');
+    expect(snackBar.open.calls.mostRecent().args[0]).toContain('son Radar est effacé');
+  });
+
+  it('clôture refusée ou non confirmée par la gateway : aucune purge ; annuler : rien', () => {
+    build();
+    dialogResults.set(CloseMissionDialogComponent, { confirmed: true, purgeRadar: true });
+    atelier.setHostMissionStatus.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+    component.closeMission(component.selectedHost()!);
+    expect(vigie.purgeRadar).not.toHaveBeenCalled();
+    expect(component.busyHostId()).toBeNull();
+
+    atelier.setHostMissionStatus.and.returnValue(of({ id: 'h1', missionStatus: 'ACTIVE' } as unknown as RunnerHost));
+    component.closeMission(component.selectedHost()!);
+    expect(vigie.purgeRadar).not.toHaveBeenCalled();
+
+    atelier.setHostMissionStatus.calls.reset();
+    dialogResults.set(CloseMissionDialogComponent, { confirmed: false, purgeRadar: false });
+    component.closeMission(component.selectedHost()!);
+    expect(atelier.setHostMissionStatus).not.toHaveBeenCalled();
+  });
+
+  it('une mission déjà close ne propose pas de la clôturer', () => {
+    build({ hosts: [client('h1', 'EDENRED', { missionStatus: 'CLOSED' })], hostRef: 'h1' });
+
+    component.closeMission(component.selectedHost()!);
+
+    expect(dialog.open).not.toHaveBeenCalled();
   });
 });

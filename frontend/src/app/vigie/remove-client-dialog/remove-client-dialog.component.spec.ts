@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 
+import { RadarExporter } from '../radar-export/radar-export';
 import {
   RemoveClientDialogComponent,
   RemoveClientDialogData,
@@ -20,6 +21,7 @@ describe('RemoveClientDialogComponent', () => {
         provideNoopAnimations(),
         { provide: MAT_DIALOG_DATA, useValue: data },
         { provide: MatDialogRef, useValue: dialogRef },
+        { provide: RadarExporter, useValue: jasmine.createSpyObj<RadarExporter>('RadarExporter', ['download']) },
       ],
     });
     fixture = TestBed.createComponent(RemoveClientDialogComponent);
@@ -45,6 +47,17 @@ describe('RemoveClientDialogComponent', () => {
     root.querySelector<HTMLButtonElement>('.remove-client__confirm')?.click();
 
     expect(dialogRef.close).toHaveBeenCalledWith({ confirmed: true, purgeRadar: true });
+  });
+
+  it("propose l'export du Radar seulement quand son effacement est coché (SF-99-07)", () => {
+    const root = setup({ hostId: 'h1', hostName: 'EDENRED', inForge: true });
+    expect(root.querySelector('app-radar-export-offer')).toBeNull();
+
+    fixture.componentInstance.purgeRadar.set(true);
+    fixture.detectChanges();
+
+    expect(root.querySelector('app-radar-export-offer')?.textContent).toContain("Avant d'effacer");
+    expect(dialogRef.close).not.toHaveBeenCalled();
   });
 
   it("ne propose pas le retrait d'un client qui n'est que dans la Vigie", () => {

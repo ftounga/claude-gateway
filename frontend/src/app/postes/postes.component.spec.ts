@@ -12,6 +12,7 @@ import { AtelierService } from '../core/services/atelier.service';
 import { GovernanceService } from '../core/services/governance.service';
 import { HostPresenceService } from '../core/services/host-presence.service';
 import { VigieService } from '../core/services/vigie.service';
+import { CloseMissionDialogComponent } from '../vigie/close-mission-dialog/close-mission-dialog.component';
 import { GovernanceIntegrite, GovernanceMap } from '../core/models/governance.models';
 import { RunnerHostOverview, WorkspaceDetail } from '../core/models/atelier.models';
 import { hostInitials, hostTone } from '../shared/host-identity';
@@ -653,6 +654,52 @@ describe('PostesComponent', () => {
     expect(component.mission(component.hosts()[0])).toBe('ACTIVE');
     expect(component.openHosts().length).toBe(1);
     expect(component.savingHostId()).toBeNull();
+  });
+
+  // F-99 / SF-99-07 : clôturer un client de la Vigie propose l'export et l'effacement de son Radar.
+  it('client de la Vigie : la clôture passe par le dialogue ; refermé, rien ne part', () => {
+    setup([{ ...mission('h1', 'Poste CAGIP', 'ACTIVE'), spaces: ['FORGE', 'VIGIE'] }]);
+    dialog.open.and.returnValue({ afterClosed: () => of(undefined) } as never);
+
+    component.setMission(component.hosts()[0], 'CLOSED');
+
+    expect(dialog.open.calls.mostRecent().args[0]).toBe(CloseMissionDialogComponent);
+    expect(dialog.open.calls.mostRecent().args[1]?.data).toEqual({ hostId: 'h1', hostName: 'Poste CAGIP' });
+    expect(service.setHostMissionStatus).not.toHaveBeenCalled();
+  });
+
+  it('client de la Vigie, case cochée : clôture, puis purge MISSION_CLOSED ; décochée : pas de purge', () => {
+    setup([{ ...mission('h1', 'Poste CAGIP', 'ACTIVE'), spaces: ['FORGE', 'VIGIE'] }]);
+    vigieSpy.purgeRadar = jasmine.createSpy('purgeRadar').and.returnValue(of({}));
+    service.setHostMissionStatus.and.returnValue(
+      of({ id: 'h1', name: 'Poste CAGIP', connected: true, missionStatus: 'CLOSED', createdAt: new Date().toISOString() }));
+    dialog.open.and.returnValue({ afterClosed: () => of({ confirmed: true, purgeRadar: true }) } as never);
+
+    component.setMission(component.hosts()[0], 'CLOSED');
+
+    expect(service.setHostMissionStatus).toHaveBeenCalledWith('h1', 'CLOSED');
+    expect(vigieSpy.purgeRadar).toHaveBeenCalledOnceWith('h1', 'MISSION_CLOSED');
+    expect(component.closedHosts().length).toBe(1);
+  });
+
+  it('client de la Vigie, clôture refusée : aucune purge', () => {
+    setup([{ ...mission('h1', 'Poste CAGIP', 'ACTIVE'), spaces: ['FORGE', 'VIGIE'] }]);
+    vigieSpy.purgeRadar = jasmine.createSpy('purgeRadar').and.returnValue(of({}));
+    service.setHostMissionStatus.and.returnValue(throwError(() => new Error('réseau')));
+    dialog.open.and.returnValue({ afterClosed: () => of({ confirmed: true, purgeRadar: true }) } as never);
+
+    component.setMission(component.hosts()[0], 'CLOSED');
+
+    expect(vigieSpy.purgeRadar).not.toHaveBeenCalled();
+    expect(component.openHosts().length).toBe(1);
+  });
+
+  it('la suppression d’un poste de la Vigie passe le poste au dialogue (Radar dit, export proposé)', () => {
+    setup([{ ...poste, spaces: ['FORGE', 'VIGIE'] }]);
+
+    component.deleteHost(component.hosts()[0]);
+
+    expect((dialog.open.calls.mostRecent().args[1]?.data as { radarHostId: string }).radarHostId).toBe('h1');
   });
 
   it("n'appelle pas la gateway pour l'état déjà en place", () => {

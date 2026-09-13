@@ -45,6 +45,12 @@ import {
   RemoveClientDialogData,
   RemoveClientDialogResult,
 } from './remove-client-dialog/remove-client-dialog.component';
+import {
+  CloseMissionDialogComponent,
+  CloseMissionDialogData,
+  CloseMissionDialogResult,
+} from './close-mission-dialog/close-mission-dialog.component';
+import { RadarExporter } from './radar-export/radar-export';
 import { RadarBoardComponent } from './radar/radar-board.component';
 import { RadarDirectoryComponent } from './radar-directory/radar-directory.component';
 import {
@@ -108,6 +114,9 @@ export class VigieComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
   private readonly destroyRef = inject(DestroyRef);
   private readonly teamsLinks = inject(TeamsLinkService);
+  private readonly exporter = inject(RadarExporter);
+
+  readonly isMissionClosed = isMissionClosed;
 
   readonly billingRoute = FORGE_ACCESS_BILLING_ROUTE;
   readonly accessCodeFragment = FORGE_ACCESS_CODE_FRAGMENT;
@@ -365,7 +374,7 @@ export class VigieComponent implements OnInit {
     if (hostId === null || this.busyHostId() !== null) {
       return;
     }
-    const data: RemoveClientDialogData = { hostName: host.name, inForge: this.inForge(host) };
+    const data: RemoveClientDialogData = { hostId, hostName: host.name, inForge: this.inForge(host) };
     this.dialog
       .open<RemoveClientDialogComponent, RemoveClientDialogData, RemoveClientDialogResult>(
         RemoveClientDialogComponent, { data, width: '520px', maxWidth: '95vw', autoFocus: false })
@@ -375,6 +384,71 @@ export class VigieComponent implements OnInit {
           this.doRemove(hostId, host.name, result.purgeRadar === true);
         }
       });
+  }
+
+  // ------------------------------------------------------------ export, clôture de mission (F-99 / SF-99-07)
+
+  /** Télécharge le Radar du client en Markdown ; rien n'est effacé. */
+  exportRadar(host: RunnerHostOverview): void {
+    const hostId = host.id;
+    if (hostId === null) {
+      return;
+    }
+    this.exporter.download(hostId, host.name).subscribe({
+      next: (fileName) => this.snackBar.open(`Radar exporté : ${fileName}`, 'Fermer', { duration: 5000 }),
+      error: (err: unknown) => this.fail(err, "Le Radar n'a pas pu être exporté."),
+    });
+  }
+
+  /**
+   * **Clôture la mission** du client : il se range, rien n'est coupé. L'export de son Radar est proposé,
+   * son effacement est une case décochée ; la purge ne part qu'après la clôture confirmée par la gateway.
+   */
+  closeMission(host: RunnerHostOverview): void {
+    const hostId = host.id;
+    if (hostId === null || this.busyHostId() !== null || isMissionClosed(host.missionStatus)) {
+      return;
+    }
+    this.dialog
+      .open<CloseMissionDialogComponent, CloseMissionDialogData, CloseMissionDialogResult>(
+        CloseMissionDialogComponent,
+        { data: { hostId, hostName: host.name }, width: '560px', maxWidth: '95vw', autoFocus: false })
+      .afterClosed()
+      .subscribe((result) => {
+        if (result?.confirmed === true) {
+          this.doCloseMission(hostId, host.name, result.purgeRadar === true);
+        }
+      });
+  }
+
+  private doCloseMission(hostId: string, name: string, purgeRadar: boolean): void {
+    this.busyHostId.set(hostId);
+    this.atelier.setHostMissionStatus(hostId, 'CLOSED').subscribe({
+      next: (updated) => {
+        const done = (message: string, error = false) => {
+          this.busyHostId.set(null);
+          this.snackBar.open(message, 'Fermer',
+            { duration: error ? 8000 : 5000, panelClass: error ? 'snack-error' : 'snack-info' });
+          this.load(false);
+        };
+        if (!isMissionClosed(updated.missionStatus)) {
+          done("La mission n'a pas été clôturée. Rien n'a été effacé.", true);
+          return;
+        }
+        if (!purgeRadar) {
+          done(`Mission clôturée. « ${name} » est rangé, rien n'est coupé.`);
+          return;
+        }
+        this.vigie.purgeRadar(hostId, 'MISSION_CLOSED').subscribe({
+          next: () => done(`Mission clôturée. « ${name} » est rangé, et son Radar est effacé.`),
+          error: () => done("Mission clôturée, mais son Radar n'a pas pu être effacé.", true),
+        });
+      },
+      error: (err: unknown) => {
+        this.busyHostId.set(null);
+        this.fail(err, "La mission n'a pas pu être clôturée. Rien n'a changé.");
+      },
+    });
   }
 
   private doRemove(hostId: string, name: string, purgeRadar: boolean): void {
