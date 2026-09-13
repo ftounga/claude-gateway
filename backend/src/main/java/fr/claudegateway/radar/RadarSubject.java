@@ -72,6 +72,22 @@ public class RadarSubject {
     @Column(name = "last_activity_at")
     private OffsetDateTime lastActivityAt;
 
+    /** Le nom a été corrigé par l'utilisateur : une synchro ne le change plus (SF-99-02). */
+    @Column(name = "name_sovereign", nullable = false)
+    private boolean nameSovereign;
+
+    /** L'état a été dit par l'utilisateur : une synchro ne le change plus (SF-99-02). */
+    @Column(name = "state_sovereign", nullable = false)
+    private boolean stateSovereign;
+
+    /** La prochaine étape a été dite par l'utilisateur (SF-99-02). */
+    @Column(name = "next_step_sovereign", nullable = false)
+    private boolean nextStepSovereign;
+
+    /** L'échéance a été dite par l'utilisateur (SF-99-02). */
+    @Column(name = "due_date_sovereign", nullable = false)
+    private boolean dueDateSovereign;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

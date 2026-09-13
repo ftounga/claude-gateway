@@ -79,7 +79,7 @@ public class RadarReadService {
      */
     public List<SubjectSummary> subjects(RadarScope scope, RadarSubjectState state, boolean includeClosed) {
         Map<UUID, Long> open = commitments.findByUserIdAndHostId(scope.userId(), scope.hostId()).stream()
-                .filter(c -> c.getStatus().isPending())
+                .filter(c -> c.getStatus().isPending() && !c.isDisowned())
                 .collect(Collectors.groupingBy(RadarCommitment::getSubjectId, Collectors.counting()));
         return subjects.findByUserIdAndHostId(scope.userId(), scope.hostId()).stream()
                 .filter(s -> state == null || s.getState() == state)
@@ -135,16 +135,21 @@ public class RadarReadService {
 
         return new SubjectDetail(subject.getId(), subject.getName(), subject.getState(),
                 subject.getNextStep(), subject.getDueDate(), subject.getLastActivityAt(),
-                subject.getCreatedAt(), aliasViews,
+                subject.getCreatedAt(), subject.isNameSovereign(), subject.isStateSovereign(),
+                subject.isNextStepSovereign(), subject.isDueDateSovereign(), aliasViews,
                 evidenceOf(subjectLinks, RadarLinkKind.STATE, null),
                 evidenceOf(subjectLinks, RadarLinkKind.NEXT_STEP, null),
                 evidenceOf(subjectLinks, RadarLinkKind.DUE_DATE, null),
                 summary, roleViews, commitmentViews, chronology);
     }
 
-    /** Les engagements du poste, échéance la plus proche d'abord. */
+    /**
+     * Les engagements du poste, échéance la plus proche d'abord.
+     *
+     * @param includeDisowned les engagements désavoués (« pas moi ») sortent des listes par défaut
+     */
     public List<CommitmentView> commitments(RadarScope scope, RadarCommitmentDirection direction,
-            RadarCommitmentStatus status) {
+            RadarCommitmentStatus status, boolean includeDisowned) {
         Map<UUID, RadarSubject> subjectsById = subjects.findByUserIdAndHostId(scope.userId(), scope.hostId())
                 .stream().collect(Collectors.toMap(RadarSubject::getId, Function.identity()));
         Map<UUID, RadarPerson> directory = directory(scope);
@@ -152,6 +157,7 @@ public class RadarReadService {
         return commitments.findByUserIdAndHostId(scope.userId(), scope.hostId()).stream()
                 .filter(c -> direction == null || c.getDirection() == direction)
                 .filter(c -> status == null || c.getStatus() == status)
+                .filter(c -> includeDisowned || !c.isDisowned())
                 .filter(c -> subjectsById.containsKey(c.getSubjectId()))
                 .sorted(byDueDate())
                 .map(c -> commitmentView(c, subjectsById.get(c.getSubjectId()), directory, allLinks))
@@ -205,7 +211,7 @@ public class RadarReadService {
         return new CommitmentView(c.getId(), c.getSubjectId(), subject.getName(), c.getDirection(),
                 c.getDescription(), ref(directory, c.getFromPersonId()), ref(directory, c.getToPersonId()),
                 ref(directory, c.getOtherPersonId()), c.getDueDate(), c.isDueDeduced(), c.getStatus(),
-                c.getCertainty(), evidenceOf(scopeLinks, RadarLinkKind.COMMITMENT, c.getId()),
+                c.getCertainty(), c.isSovereign(), c.isDisowned(), evidenceOf(scopeLinks, RadarLinkKind.COMMITMENT, c.getId()),
                 c.getCreatedAt(), c.getUpdatedAt());
     }
 
