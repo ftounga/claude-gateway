@@ -90,7 +90,9 @@ public class RadarSyncBatchService {
             sync.setHeartbeatAt(now);
             int count = 0;
             for (CursorInput cursor : parsed) {
-                if (advance(scope, source, cursor)) {
+                // SF-100-05 : un enregistrement du dossier de dépôt a son curseur sous la source DEPOT.
+                String cursorSource = "RECORDING".equals(cursor.kind()) ? RadarSyncCursor.SOURCE_DEPOT : source;
+                if (advance(scope, cursorSource, cursor)) {
                     count++;
                 }
             }

@@ -116,6 +116,11 @@ public class RadarSyncLauncher {
                     }
                     node.put("at", cursor.getCursorAt().toInstant().toString());
                 });
+        // SF-100-05 : les enregistrements du dossier de dépôt déjà transcrits.
+        var depotDone = input.putArray("depot_done");
+        cursors.findByUserIdAndHostIdAndSourceOrderByCursorAtDesc(scope.userId(), scope.hostId(),
+                RadarSyncCursor.SOURCE_DEPOT, org.springframework.data.domain.PageRequest.of(0, MAX_CURSORS))
+                .forEach(cursor -> depotDone.add(cursor.getConversationRef()));
         var ignored = input.putArray("ignored");
         var readChannels = input.putArray("read_channels");
         rules.findByUserIdAndHostIdOrderByCreatedAtDesc(scope.userId(), scope.hostId()).forEach(rule -> {

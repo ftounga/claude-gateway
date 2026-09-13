@@ -59,6 +59,10 @@ class RadarCoverageSummaryTest {
                 + "peut-être incomplète, 6 canaux actifs non lus, 1 transcription refusée.");
         assertThat(RadarCoverageSummary.of(sync(RadarSyncStatus.PARTIAL), null, null, Map.of(), PARIS).headline())
                 .isEqualTo("Synchro partielle : tout n'a pas pu être lu.");
+        // SF-100-05 : les enregistrements déposés non transcrits sont comptés.
+        assertThat(RadarCoverageSummary.of(sync(RadarSyncStatus.PARTIAL),
+                json("{\"depot\":{\"found\":3,\"transcribed\":1,\"failed\":1,\"unavailable\":1}}"), null, Map.of(), PARIS)
+                .headline()).isEqualTo("Synchro partielle : 2 enregistrements déposés non transcrits.");
     }
 
     @Test
