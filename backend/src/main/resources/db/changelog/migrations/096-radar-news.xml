@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-104 / SF-104-01 — NOURRIR LE RADAR : LA PREUVE D'UNE CORRECTION.
+
+      Les outils Radar (terminal Teams, Donner la nouvelle) écrivent des CORRECTIONS SOUVERAINES, comme
+      les gestes de l'écran — mais ces corrections ont une preuve : la parole de l'utilisateur, rangée en
+      `radar_evidence` (USER_NOTE ou PASTED_MAIL). `evidence_id` relie chaque correction à la nouvelle qui
+      l'a portée : c'est ce qui permet d'annuler UNE NOUVELLE ENTIÈRE depuis la chronologie (SF-104-02).
+
+      NULLABLE, sans défaut : toute correction écrite avant F-104 est un geste de l'écran, sans preuve, et
+      reste juste telle quelle. Pas de clé étrangère, comme le reste du Radar (la purge efface par
+      périmètre). Types portables : un seul changeSet pour PostgreSQL et H2.
+    -->
+    <changeSet id="096-radar-corrections-evidence" author="claude-gateway">
+        <addColumn tableName="radar_corrections">
+            <column name="evidence_id" type="uuid"/>
+        </addColumn>
+        <createIndex tableName="radar_corrections" indexName="idx_radar_corrections_scope_evidence">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="evidence_id"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="radar_corrections" indexName="idx_radar_corrections_scope_evidence"/>
+            <dropColumn tableName="radar_corrections" columnName="evidence_id"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

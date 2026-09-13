@@ -40,11 +40,18 @@ public class RadarCorrectionService {
     private final RadarCorrectionRepository corrections;
     private final RadarCorrectionJournal journalWriter;
     private final RadarStructureService structure;
+    private final RadarEvidenceLinkRepository links;
+    private final RadarSubjectFactRepository facts;
+    private final RadarSubjectRoleRepository roles;
 
     public RadarCorrectionService(RadarRegistry registry, RadarSubjectRepository subjects,
             RadarCommitmentRepository commitments, RadarSubjectAliasRepository aliases,
             RadarCorrectionRepository corrections, RadarCorrectionJournal journalWriter,
-            RadarStructureService structure) {
+            RadarStructureService structure, RadarEvidenceLinkRepository links,
+            RadarSubjectFactRepository facts, RadarSubjectRoleRepository roles) {
+        this.links = links;
+        this.facts = facts;
+        this.roles = roles;
         this.registry = registry;
         this.subjects = subjects;
         this.commitments = commitments;
@@ -190,6 +197,16 @@ public class RadarCorrectionService {
         if (correction.getUndoneAt() != null) {
             throw new RadarCorrectionConflictException("Cette correction est déjà annulée.");
         }
+        if (correction.getAction() == RadarCorrectionAction.CREATE_SUBJECT) {
+            undoSubjectCreation(scope, correction);
+            correction.setUndoneAt(OffsetDateTime.now());
+            return journalWriter.view(corrections.save(correction));
+        }
+        if (correction.getAction() == RadarCorrectionAction.ADD_COMMITMENT) {
+            undoCommitmentAddition(scope, correction);
+            correction.setUndoneAt(OffsetDateTime.now());
+            return journalWriter.view(corrections.save(correction));
+        }
         if (correction.getAction() == RadarCorrectionAction.MERGE
                 || correction.getAction() == RadarCorrectionAction.SPLIT) {
             structure.undo(scope, correction);
@@ -232,6 +249,59 @@ public class RadarCorrectionService {
         }
         correction.setUndoneAt(OffsetDateTime.now());
         return journalWriter.view(corrections.save(correction));
+    }
+
+    // ------------------------------------------------------------ créations dites par l'utilisateur (F-104)
+
+    /**
+     * Défait la création d'un sujet née d'une nouvelle (F-104 / SF-104-01) : le sujet est supprimé
+     * <b>s'il n'a rien reçu d'autre</b> que la preuve qui l'a créé. Sinon, il a une vie propre — une
+     * synchro y a rangé une preuve, un engagement y est rattaché, un autre sujet y a été fusionné —, et
+     * le supprimer effacerait ce qui ne vient pas de cette nouvelle.
+     */
+    private void undoSubjectCreation(RadarScope scope, RadarCorrection correction) {
+        RadarSubject subject = registry.requireSubject(scope, correction.getTargetId());
+        refuseIfCorrectedSince(scope, correction, "Ce sujet a été corrigé depuis : annulez d'abord ces corrections.");
+        boolean absorbedOthers = subjects.findByUserIdAndHostId(scope.userId(), scope.hostId()).stream()
+                .anyMatch(other -> subject.getId().equals(other.getMergedIntoId()));
+        boolean hasCommitments = !commitments.findByUserIdAndHostIdAndSubjectId(
+                scope.userId(), scope.hostId(), subject.getId()).isEmpty();
+        List<RadarEvidenceLink> subjectLinks = links.findByUserIdAndHostIdAndSubjectId(
+                scope.userId(), scope.hostId(), subject.getId());
+        boolean foreignEvidence = subjectLinks.stream()
+                .anyMatch(link -> !link.getEvidenceId().equals(correction.getEvidenceId()));
+        if (subject.getMergedIntoId() != null || absorbedOthers || hasCommitments || foreignEvidence) {
+            throw new RadarCorrectionConflictException(
+                    "Ce sujet a reçu d'autres éléments depuis sa création : fusionnez-le ou clôturez-le plutôt.");
+        }
+        links.deleteAll(subjectLinks);
+        facts.deleteAll(facts.findByUserIdAndHostIdAndSubjectIdOrderByPositionAsc(
+                scope.userId(), scope.hostId(), subject.getId()));
+        roles.deleteAll(roles.findByUserIdAndHostIdAndSubjectId(scope.userId(), scope.hostId(), subject.getId()));
+        aliases.deleteAll(aliases.findByUserIdAndHostIdAndSubjectIdOrderByCreatedAtAsc(
+                scope.userId(), scope.hostId(), subject.getId()));
+        subjects.delete(subject);
+    }
+
+    /**
+     * Défait l'ajout d'un engagement dit par l'utilisateur (F-104 / SF-104-01) : l'engagement et ses liens
+     * sont supprimés, sauf s'il a été corrigé depuis.
+     */
+    private void undoCommitmentAddition(RadarScope scope, RadarCorrection correction) {
+        RadarCommitment commitment = registry.requireCommitment(scope, correction.getTargetId());
+        refuseIfCorrectedSince(scope, correction, "Cet engagement a été corrigé depuis : annulez d'abord ces corrections.");
+        links.deleteAll(links.findByUserIdAndHostIdAndTargetKindAndTargetId(
+                scope.userId(), scope.hostId(), RadarLinkKind.COMMITMENT, commitment.getId()));
+        commitments.delete(commitment);
+    }
+
+    private void refuseIfCorrectedSince(RadarScope scope, RadarCorrection correction, String message) {
+        boolean corrected = corrections.findByUserIdAndHostIdAndTargetIdAndUndoneAtIsNull(
+                        scope.userId(), scope.hostId(), correction.getTargetId()).stream()
+                .anyMatch(other -> !other.getId().equals(correction.getId()));
+        if (corrected) {
+            throw new RadarCorrectionConflictException(message);
+        }
     }
 
     // ------------------------------------------------------------------------------------ aides

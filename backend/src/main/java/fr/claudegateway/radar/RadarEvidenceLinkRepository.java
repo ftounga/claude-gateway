@@ -21,6 +21,9 @@ public interface RadarEvidenceLinkRepository extends JpaRepository<RadarEvidence
 
     List<RadarEvidenceLink> findByUserIdAndHostId(UUID userId, UUID hostId);
 
+    /** Les liens d'une preuve (F-104 : annuler une nouvelle). */
+    List<RadarEvidenceLink> findByUserIdAndHostIdAndEvidenceId(UUID userId, UUID hostId, UUID evidenceId);
+
     /** Purge du Radar d'un poste (SF-99-05) : suppression en masse, filtrée sur le périmètre. */
     @Modifying
     @Query("delete from RadarEvidenceLink x where x.userId = :userId and x.hostId = :hostId")

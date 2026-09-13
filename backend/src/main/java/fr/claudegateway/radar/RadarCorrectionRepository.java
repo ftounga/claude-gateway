@@ -22,6 +22,10 @@ public interface RadarCorrectionRepository extends JpaRepository<RadarCorrection
     List<RadarCorrection> findByUserIdAndHostIdAndTargetIdAndUndoneAtIsNull(
             UUID userId, UUID hostId, UUID targetId);
 
+    /** Les corrections portées par une nouvelle (F-104), plus récentes d'abord. */
+    List<RadarCorrection> findByUserIdAndHostIdAndEvidenceIdOrderByCreatedAtDesc(
+            UUID userId, UUID hostId, UUID evidenceId);
+
     /** Purge du Radar d'un poste (SF-99-05) : suppression en masse, filtrée sur le périmètre. */
     @Modifying
     @Query("delete from RadarCorrection x where x.userId = :userId and x.hostId = :hostId")

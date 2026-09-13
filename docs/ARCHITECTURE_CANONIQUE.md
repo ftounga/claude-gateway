@@ -1000,6 +1000,15 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     nuit, balayage par périmètre `(user_id, host_id)`) et **ne clôt jamais** ; une activité postérieure
     à la clôture **réveille** (`woke_at`) sans rouvrir. Gestes journalisés : `CLOSE`, `CONFIRM_CLOSE`,
     `REJECT_CLOSE`, `DISMISS_WAKE`.
+  - **Nourrir le Radar** (F-104 / SF-104-01, migration `096`) : `radar_corrections.evidence_id`
+    (nullable, index `(user_id, host_id, evidence_id)`) — la **preuve** d'une correction dite par
+    l'utilisateur à un agent muni des **outils Radar** (`RadarToolCatalog` / `RadarToolExecutor` :
+    `radar_find_subject`, `radar_update_subject`, `radar_close_subject`, `radar_add_engagement`,
+    `radar_mark_engagement`, `radar_merge_subjects`). La preuve est la **parole de l'utilisateur**
+    (`USER_NOTE`, ou `PASTED_MAIL` daté du courriel), jamais un paramètre du modèle ; chaque écriture est
+    une correction souveraine journalisée, marquée de sa preuve, rangée dans la chronologie. Actions
+    ajoutées : `CREATE_SUBJECT` et `ADD_COMMITMENT`, annulables tant que l'objet n'a rien reçu d'autre.
+    Garde : terminal Teams d'un poste activé dans la Vigie, droit Vigie.
   - **Purge et export** (F-99 / SF-99-05, migration `085`) : `radar_purges` (`reason` : `MISSION_CLOSED`,
     `VIGIE_REMOVED`, `USER_REQUEST`, `HOST_DELETED` ; `purged_at`, `subjects_count`, `evidence_count`) —
     **trace sans contenu**. La purge supprime en masse toutes les lignes `radar_*` du périmètre ; elle
