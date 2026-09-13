@@ -20,6 +20,12 @@ public enum BillingEventType {
     ATELIER_OPTION_UPDATED,
     /** Abonnement d'<b>option Atelier</b> supprimé/résilié côté fournisseur : le droit se referme. */
     ATELIER_OPTION_DELETED,
+    /** Souscription de l'<b>option Vigie</b> (F-107 / SF-107-03) finalisée : ouvre le droit Vigie. */
+    VIGIE_OPTION_COMPLETED,
+    /** Cycle de vie de l'abonnement d'<b>option Vigie</b> mis à jour (statut). */
+    VIGIE_OPTION_UPDATED,
+    /** Abonnement d'<b>option Vigie</b> supprimé/résilié côté fournisseur : le droit se referme. */
+    VIGIE_OPTION_DELETED,
     /** Cycle de vie d'un abonnement mis à jour (statut, période, plan). */
     SUBSCRIPTION_UPDATED,
     /** Abonnement supprimé/annulé côté fournisseur. */

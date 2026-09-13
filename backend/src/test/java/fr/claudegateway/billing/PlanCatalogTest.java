@@ -10,10 +10,28 @@ class PlanCatalogTest {
     private final PlanCatalog catalog = new PlanCatalog();
 
     @Test
-    void exposesSoloProGoldAndByokPlans() {
+    void exposesSoloProGoldByokAndTheTwoSpaceGolds() {
         assertThat(catalog.plans())
                 .extracting(Plan::code)
-                .containsExactlyInAnyOrder(PlanCode.SOLO, PlanCode.PRO, PlanCode.GOLD, PlanCode.BYOK);
+                .containsExactlyInAnyOrder(PlanCode.SOLO, PlanCode.PRO, PlanCode.GOLD, PlanCode.BYOK,
+                        PlanCode.GOLD_VIGIE, PlanCode.GOLD_COMPLETE);
+    }
+
+    @Test
+    void goldIsShownAsGoldForgeAndTheTwoNewGoldsAreHostedMonthly() {
+        // F-107 / SF-107-03 : le code GOLD ne change pas (aucun abonnement ne change), son libellé si.
+        assertThat(catalog.plans()).filteredOn(p -> p.code() == PlanCode.GOLD)
+                .extracting(Plan::label).containsExactly("Gold Forge");
+        assertThat(catalog.plans()).filteredOn(p -> p.code() == PlanCode.GOLD_VIGIE)
+                .extracting(Plan::label).containsExactly("Gold Vigie");
+        assertThat(catalog.plans()).filteredOn(p -> p.code() == PlanCode.GOLD_COMPLETE)
+                .extracting(Plan::label).containsExactly("Gold complet");
+        assertThat(catalog.plans())
+                .filteredOn(p -> p.code() == PlanCode.GOLD_VIGIE || p.code() == PlanCode.GOLD_COMPLETE)
+                .allSatisfy(p -> {
+                    assertThat(p.providerMode()).isEqualTo(ProviderMode.HOSTED);
+                    assertThat(p.period()).isEqualTo(BillingPeriod.MONTHLY);
+                });
     }
 
     @Test

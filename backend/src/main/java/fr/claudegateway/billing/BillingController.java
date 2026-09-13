@@ -22,6 +22,7 @@ import fr.claudegateway.billing.dto.SubscriptionResponse;
 import fr.claudegateway.billing.dto.TopUpCheckoutRequest;
 import fr.claudegateway.billing.dto.TopUpPackResponse;
 import fr.claudegateway.billing.dto.TopUpPacksResponse;
+import fr.claudegateway.billing.dto.VigieOptionResponse;
 import fr.claudegateway.billing.seat.SeatQuotaService;
 import fr.claudegateway.quota.EntitlementService;
 import fr.claudegateway.quota.QuotaProperties;
@@ -42,6 +43,7 @@ public class BillingController {
     private final TopUpCatalog topUpCatalog;
     private final TopUpService topUpService;
     private final AtelierOptionService atelierOptionService;
+    private final VigieOptionService vigieOptionService;
     private final SeatQuotaService seatQuotaService;
     private final CurrentUser currentUser;
     private final BillingProperties billingProperties;
@@ -55,6 +57,7 @@ public class BillingController {
             TopUpCatalog topUpCatalog,
             TopUpService topUpService,
             AtelierOptionService atelierOptionService,
+            VigieOptionService vigieOptionService,
             SeatQuotaService seatQuotaService,
             CurrentUser currentUser,
             BillingProperties billingProperties,
@@ -66,6 +69,7 @@ public class BillingController {
         this.topUpCatalog = topUpCatalog;
         this.topUpService = topUpService;
         this.atelierOptionService = atelierOptionService;
+        this.vigieOptionService = vigieOptionService;
         this.seatQuotaService = seatQuotaService;
         this.currentUser = currentUser;
         this.billingProperties = billingProperties;
@@ -210,5 +214,31 @@ public class BillingController {
     @PostMapping("/atelier-option/cancel")
     public AtelierOptionResponse cancelAtelierOption() {
         return AtelierOptionResponse.from(atelierOptionService.cancel(currentUser.requireId()));
+    }
+
+    /**
+     * État de l'<b>option Vigie</b> (F-107 / SF-107-03) : prix d'affichage, droit effectif, droit inclus à
+     * l'offre (Gold Vigie, Gold complet), statut et terme d'une résiliation programmée.
+     */
+    @GetMapping("/vigie-option")
+    public VigieOptionResponse vigieOption() {
+        return VigieOptionResponse.from(vigieOptionService.describe(currentUser.requireId()));
+    }
+
+    /**
+     * Souscrit l'option Vigie : session de paiement d'un abonnement <b>supplémentaire</b>. 409 si la Vigie
+     * est incluse, sans plan porteur en cours ou déjà active ; 503 si le paiement n'est pas configuré.
+     */
+    @PostMapping("/vigie-option/checkout")
+    public CheckoutResponse vigieOptionCheckout() {
+        AuthenticatedUser user = currentUser.principal()
+                .orElseThrow(() -> new IllegalStateException("Aucun utilisateur authentifié"));
+        return CheckoutResponse.from(vigieOptionService.startCheckout(user.id(), user.email()));
+    }
+
+    /** Résilie l'option Vigie en fin de période. 409 si aucune option n'est en cours. */
+    @PostMapping("/vigie-option/cancel")
+    public VigieOptionResponse cancelVigieOption() {
+        return VigieOptionResponse.from(vigieOptionService.cancel(currentUser.requireId()));
     }
 }

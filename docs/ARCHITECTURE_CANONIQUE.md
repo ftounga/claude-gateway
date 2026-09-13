@@ -209,8 +209,10 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `atelier_option_status (nullable ; même énumération que status — F-40, migration 054)`,
     `atelier_option_stripe_subscription_id (interne, nullable, unique, jamais exposé — F-40, migration 054)`,
     `atelier_option_cancel_at (nullable ; terme d'une résiliation programmée — F-40, migration 055)`,
-    `teams_option_status (nullable ; même énumération que status — F-89 / SF-89-01, migration 078)`,
-    `created_at`, `updated_at`. Index `user_id`, `stripe_subscription_id`, `atelier_option_stripe_subscription_id` (unique).
+    `teams_option_status (nullable ; même énumération que status — F-89 / SF-89-01, migration 078 ; état de l'option Vigie depuis F-107 / SF-107-03)`,
+    `vigie_option_stripe_subscription_id (interne, nullable, unique, jamais exposé — F-107 / SF-107-03, migration 093)`,
+    `vigie_option_cancel_at (nullable ; terme d'une résiliation d'option Vigie programmée — migration 093)`,
+    `created_at`, `updated_at`. Index `user_id`, `stripe_subscription_id`, `atelier_option_stripe_subscription_id` (unique), `vigie_option_stripe_subscription_id` (unique).
   - **Droit d'Atelier (F-40)** : l'accès à l'Atelier n'est plus un test de **plan** (`plan_code = GOLD`)
     mais un test de **droit**, porté par le plan Gold actif **ou** par l'option Atelier active sur un
     plan Solo/Pro actif. La règle vit dans `SpaceEntitlementService` (paquet `billing`, espace `FORGE`,

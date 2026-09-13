@@ -27,6 +27,9 @@ import fr.claudegateway.ai.AIProviderUnavailableException;
 import fr.claudegateway.billing.AtelierOptionAlreadyActiveException;
 import fr.claudegateway.billing.AtelierOptionIncludedInPlanException;
 import fr.claudegateway.billing.AtelierOptionNotActiveException;
+import fr.claudegateway.billing.VigieOptionAlreadyActiveException;
+import fr.claudegateway.billing.VigieOptionIncludedInPlanException;
+import fr.claudegateway.billing.VigieOptionNotActiveException;
 import fr.claudegateway.billing.NoActiveSubscriptionException;
 import fr.claudegateway.billing.UnknownBillingPeriodException;
 import fr.claudegateway.billing.UnknownPlanException;
@@ -773,6 +776,27 @@ public class GlobalExceptionHandler {
         log.debug("Résiliation d'option Atelier refusée : aucune option en cours");
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(new ErrorResponse("atelier_option_not_active", ex.getMessage()));
+    }
+
+    @ExceptionHandler(VigieOptionIncludedInPlanException.class)
+    public ResponseEntity<ErrorResponse> handleVigieOptionIncluded(VigieOptionIncludedInPlanException ex) {
+        log.debug("Souscription d'option Vigie refusée : la Vigie est déjà incluse à l'offre");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("vigie_option_included", ex.getMessage()));
+    }
+
+    @ExceptionHandler(VigieOptionAlreadyActiveException.class)
+    public ResponseEntity<ErrorResponse> handleVigieOptionAlreadyActive(VigieOptionAlreadyActiveException ex) {
+        log.debug("Souscription d'option Vigie refusée : option déjà active");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("vigie_option_already_active", ex.getMessage()));
+    }
+
+    @ExceptionHandler(VigieOptionNotActiveException.class)
+    public ResponseEntity<ErrorResponse> handleVigieOptionNotActive(VigieOptionNotActiveException ex) {
+        log.debug("Résiliation d'option Vigie refusée : aucune option en cours");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("vigie_option_not_active", ex.getMessage()));
     }
 
     @ExceptionHandler(UnknownBillingPeriodException.class)

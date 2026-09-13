@@ -17,7 +17,10 @@ public enum PlanCode {
      * {@code TopUpCatalog}, qui porte le même nom commercial et qui, lui, se vend.
      */
     DAILY,
-    /** Offre Gold (ADR-012) : plan dédié qui débloque l'accès à l'Atelier (F-28). */
+    /**
+     * Offre Gold (ADR-012) : plan dédié qui débloque l'accès à l'Atelier (F-28). Depuis F-107 /
+     * SF-107-03, affichée <b>« Gold Forge »</b> : le code ne change pas, aucun abonnement ne change.
+     */
     GOLD,
     /**
      * Offre <b>BYOK</b> (F-41) : la plateforme seule, <b>aucune allocation de jetons</b>. Depuis
@@ -25,5 +28,15 @@ public enum PlanCode {
      * à un prix propre à BYOK. Les appels sont servis par la clé Anthropic du client
      * (F-03) et facturés sur son propre compte fournisseur (PROJECT.md §11.8).
      */
-    BYOK
+    BYOK,
+    /**
+     * Offre <b>Gold Vigie</b> (F-107 / SF-107-03) : le quota de Gold et l'espace Vigie (Teams, Radar,
+     * réunions) inclus ; la Forge s'y ajoute par l'option.
+     */
+    GOLD_VIGIE,
+    /**
+     * Offre <b>Gold complet</b> (F-107 / SF-107-03) : un seul quota, celui de Gold, et les deux espaces
+     * inclus — la Vigie remisée de 25 %, la remise ne portant jamais sur les jetons.
+     */
+    GOLD_COMPLETE
 }

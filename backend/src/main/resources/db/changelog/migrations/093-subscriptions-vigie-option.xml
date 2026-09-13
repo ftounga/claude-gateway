@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-107 / SF-107-03 — L'OPTION VIGIE SE VEND.
+
+      L'option Vigie remplace l'option Teams (cadrage F-107 §3). Son ÉTAT vit déjà dans
+      `teams_option_status` (migration 078) : il n'y manquait que le parcours d'achat, sur le modèle
+      exact de l'option Forge (migrations 054 et 055).
+
+      DEUX COLONNES ADDITIVES, NULLABLE :
+        - `vigie_option_stripe_subscription_id` : l'option est un abonnement fournisseur DISTINCT de
+          celui du plan ; le confondre avec `stripe_subscription_id` ferait qu'une résiliation
+          d'option annulerait le plan. Index UNIQUE : c'est lui qui route un événement d'abonnement
+          vers l'option (seconde ligne de défense du webhook) ;
+        - `vigie_option_cancel_at` : terme d'une résiliation programmée.
+
+      Aucune ligne existante n'est modifiée, aucun rétro-remplissage. Aucun type propre à un moteur :
+      un seul changeSet pour PostgreSQL et H2. Réversible : le rollback rend l'état antérieur.
+    -->
+    <changeSet id="093-subscriptions-vigie-option" author="claude-gateway">
+        <addColumn tableName="subscriptions">
+            <column name="vigie_option_stripe_subscription_id" type="varchar(64)"/>
+            <column name="vigie_option_cancel_at" type="timestamptz"/>
+        </addColumn>
+        <createIndex tableName="subscriptions" indexName="ux_subscriptions_vigie_option_sub_id" unique="true">
+            <column name="vigie_option_stripe_subscription_id"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="subscriptions" indexName="ux_subscriptions_vigie_option_sub_id"/>
+            <dropColumn tableName="subscriptions" columnName="vigie_option_cancel_at"/>
+            <dropColumn tableName="subscriptions" columnName="vigie_option_stripe_subscription_id"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

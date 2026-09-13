@@ -62,6 +62,76 @@ class WebhookServiceTest {
                 .build();
     }
 
+    // ------------------------------------------------ option Vigie (F-107 / SF-107-03)
+
+    @Test
+    void vigieOptionCompletedOpensTheRightWithoutTouchingThePlan() {
+        UUID userId = UUID.randomUUID();
+        Subscription sub = soloFor(userId, null, null);
+        when(repository.findByUserId(userId)).thenReturn(Optional.of(sub));
+        when(repository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(provider.parseWebhookEvent("p", "s")).thenReturn(new BillingEvent(
+                BillingEventType.VIGIE_OPTION_COMPLETED, userId, "cus_1", "sub_vigie",
+                null, "active", null, "evt_v1", null));
+
+        service.handle("p", "s");
+
+        assertThat(sub.getTeamsOptionStatus()).isEqualTo(SubscriptionStatus.ACTIVE);
+        assertThat(sub.getVigieOptionStripeSubscriptionId()).isEqualTo("sub_vigie");
+        assertThat(sub.getStripeSubscriptionId()).isEqualTo("sub_plan");
+        assertThat(sub.getPlanCode()).isEqualTo(PlanCode.SOLO);
+        assertThat(sub.getStatus()).isEqualTo(SubscriptionStatus.ACTIVE);
+        assertThat(sub.getAtelierOptionStatus()).as("l'option Forge n'est pas touchée").isNull();
+    }
+
+    @Test
+    void vigieOptionUpdatedAndDeletedOnlyMoveTheVigieOption() {
+        UUID userId = UUID.randomUUID();
+        Subscription sub = soloFor(userId, SubscriptionStatus.ACTIVE, "sub_option");
+        sub.setTeamsOptionStatus(SubscriptionStatus.ACTIVE);
+        sub.setVigieOptionStripeSubscriptionId("sub_vigie");
+        sub.setVigieOptionCancelAt(OffsetDateTime.now().plusDays(3));
+        when(repository.findByVigieOptionStripeSubscriptionId("sub_vigie")).thenReturn(Optional.of(sub));
+        when(repository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(provider.parseWebhookEvent("p", "s")).thenReturn(new BillingEvent(
+                BillingEventType.VIGIE_OPTION_UPDATED, userId, "cus_1", "sub_vigie",
+                null, "past_due", null, "evt_v2", null));
+
+        service.handle("p", "s");
+        assertThat(sub.getTeamsOptionStatus()).isEqualTo(SubscriptionStatus.PAST_DUE);
+        assertThat(sub.getVigieOptionCancelAt()).as("une mise à jour ne dit rien du terme").isNotNull();
+
+        when(provider.parseWebhookEvent("p2", "s")).thenReturn(new BillingEvent(
+                BillingEventType.VIGIE_OPTION_DELETED, userId, "cus_1", "sub_vigie",
+                null, "canceled", null, "evt_v3", null));
+        service.handle("p2", "s");
+
+        assertThat(sub.getTeamsOptionStatus()).isEqualTo(SubscriptionStatus.CANCELED);
+        assertThat(sub.getVigieOptionCancelAt()).isNull();
+        assertThat(sub.getStatus()).isEqualTo(SubscriptionStatus.ACTIVE);
+        assertThat(sub.getAtelierOptionStatus()).isEqualTo(SubscriptionStatus.ACTIVE);
+    }
+
+    @Test
+    void aPlainSubscriptionEventCarryingTheVigieOptionIdNeverTouchesThePlan() {
+        UUID userId = UUID.randomUUID();
+        Subscription sub = soloFor(userId, null, null);
+        sub.setTeamsOptionStatus(SubscriptionStatus.ACTIVE);
+        sub.setVigieOptionStripeSubscriptionId("sub_vigie");
+        when(repository.findByVigieOptionStripeSubscriptionId("sub_vigie")).thenReturn(Optional.of(sub));
+        when(repository.save(any())).thenAnswer(i -> i.getArgument(0));
+        when(provider.parseWebhookEvent("p", "s")).thenReturn(new BillingEvent(
+                BillingEventType.SUBSCRIPTION_DELETED, userId, "cus_1", "sub_vigie",
+                null, "canceled", null, "evt_v4", null));
+
+        service.handle("p", "s");
+
+        assertThat(sub.getTeamsOptionStatus()).isEqualTo(SubscriptionStatus.CANCELED);
+        assertThat(sub.getStatus()).as("le plan survit à la résiliation de l'option Vigie")
+                .isEqualTo(SubscriptionStatus.ACTIVE);
+        verify(repository, never()).findByStripeCustomerId(any());
+    }
+
     // ------------------------------------------------ option Atelier (F-40 / SF-40-02)
 
     @Test
