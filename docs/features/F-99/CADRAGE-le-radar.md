@@ -231,6 +231,75 @@ nombre de clients, pas avec le nombre de questions.
 **Ordre** : F-99 → F-100 → F-101 → (F-102 ∥ F-103) → F-104 → F-105. Le premier usage réel arrive avec
 F-102 : Teams seul, synchro du soir, résumé du matin.
 
+## 12 bis. Découpage en sous-features (2026-09-13)
+
+> Tient compte de F-106 (le Radar vit dans la **Vigie**) et de F-107 (le **droit** et la **réserve**
+> relèvent de l'option Vigie : SF-107-03 et SF-107-04). F-99 ne porte donc plus le droit.
+
+### F-99 — Le registre de l'organisation
+
+| SF | Titre | Contenu |
+|---|---|---|
+| SF-99-01 | Le modèle | Migrations `radar_subjects`, `radar_subject_aliases`, `radar_people`, `radar_subject_roles`, `radar_commitments`, `radar_evidence`, `radar_syncs` ; `user_id` + `host_id` partout ; contrainte d'unicité par identifiant de source ; tests d'isolation entre deux postes et deux utilisateurs |
+| SF-99-02 | Les corrections souveraines | Marquage « souverain », jamais écrasé par une synchro, journal des corrections, annulation depuis la chronologie |
+| SF-99-03 | Fusionner, séparer, les alias | Fusion et séparation de sujets avec leurs preuves et engagements ; alias appris des corrections |
+| SF-99-04 | La clôture d'un sujet | États `clos ?` / `clos` / `en sommeil` (21 jours) ; réveil d'un sujet clos annoncé, jamais rouvert en silence ; engagements ouverts signalés à la clôture |
+| SF-99-05 | La purge et l'export | Purge à la clôture de mission (F-60) et au retrait de la Vigie (F-106), export Markdown proposé avant |
+
+### F-100 — La synchro du soir
+
+| SF | Titre | Contenu |
+|---|---|---|
+| SF-100-01 | La planification | Heure par poste (22 h par défaut), *Synchroniser maintenant*, **une seule synchro à la fois par poste** tous pods confondus, rattrapage à la prochaine connexion du runner |
+| SF-100-02 | La collecte Teams incrémentale | Runner : curseur par conversation, points de reprise, fenêtre de 30 jours à la première synchro, remontée par lots idempotents |
+| SF-100-03 | La couverture et la progression | Rapport par source (lu, échoué, manquant), échecs bruyants avec le geste (session Microsoft expirée), progression et annulation |
+| SF-100-04 | Le dossier de dépôt | `<racine>/radar/depot/` relevé par la synchro, transcription sur la machine (F-91), seul le texte remonte |
+
+### F-101 — La lecture des échanges
+
+| SF | Titre | Contenu |
+|---|---|---|
+| SF-101-01 | La file d'analyse | Worker asynchrone, lots, reprises, **suppression du texte brut** après analyse (7 jours au plus) |
+| SF-101-02 | Le tri | Passe rapide « engagement, décision, blocage, date, clôture ? », modèle rapide via `AIProvider` |
+| SF-101-03 | L'extraction et le rattachement | Invite portant les sujets ouverts, alias et résumés (cache de prompt) ; forme de sortie stricte ; **aucun fait sans preuve** ; certitude en toutes lettres |
+| SF-101-04 | Engagements, relances, mises en relation | Échéances résolues depuis la date du message, relance due (3 jours ouvrés par défaut), mises en relation, signaux de clôture |
+| SF-101-05 | La réserve et la mesure | Arrêt propre à réserve épuisée, coût relevé par synchro (sert l'essai de F-107), taux de corrections « pas le même sujet » |
+
+### F-102 — Le Radar et le résumé du matin *(dans la Vigie)*
+
+| SF | Titre | Contenu |
+|---|---|---|
+| SF-102-01 | Le résumé du matin | Ce qui a bougé (3 phrases au plus), compteurs, couverture, *Synchroniser maintenant* |
+| SF-102-02 | Les trois colonnes et les gestes | *À faire par moi* · *Sujets en cours* · *J'attends des autres* ; *fait / pas moi / reporter / clore* ; les `probable` posés en questions |
+| SF-102-03 | Flotte, téléphone, charte | Compteur dans le bandeau de la Vigie, écran téléphone, `DESIGN_SYSTEM.md` §17 |
+
+### F-103 — La page sujet
+
+| SF | Titre | Contenu |
+|---|---|---|
+| SF-103-01 | État, résumé sourcé, chronologie | Chaque phrase renvoie à sa preuve ; chronologie multi-sources avec liens profonds |
+| SF-103-02 | Qui, et à qui demander | Personnes et rôles, « ce que le Radar ne sait pas », la personne à interroger |
+| SF-103-03 | La réponse au manager | Réponse préparée, *Copier*, *Ajuster en discutant* |
+| SF-103-04 | L'annuaire | Personnes rencontrées, leurs sujets, leur rôle, dernière interaction |
+
+### F-104 — Nourrir le Radar
+
+| SF | Titre | Contenu |
+|---|---|---|
+| SF-104-01 | Les outils Radar | `radar_find_subject`, `radar_update_subject`, `radar_close_subject`, `radar_add_engagement`, `radar_mark_engagement`, `radar_merge_subjects`, gardés par le droit Vigie dans `buildTools` |
+| SF-104-02 | Donner la nouvelle | Tour d'agent, compréhension affichée, preuve `user_note`, annulation |
+| SF-104-03 | Le Radar au terminal Teams | Les mêmes outils dans le catalogue du terminal de conversation |
+| SF-104-04 | Déposer un enregistrement | Depuis l'écran, relayé au runner par morceaux, taille bornée, date et titre demandés |
+| SF-104-05 | Relances et présentations préparées | Brouillon dans le ton du fil, *Copier* / *Ouvrir la conversation*, jamais envoyé |
+
+### F-105 — Outlook
+
+| SF | Titre | Contenu |
+|---|---|---|
+| SF-105-01 | L'adaptateur Outlook | Lecture réseau d'Outlook web, adaptateur unique, sonde de santé |
+| SF-105-02 | La collecte Outlook | Reçus et envoyés, dossiers choisis, curseurs, dans la synchro du soir |
+| SF-105-03 | Le rattachement des courriels | Preuve `outlook_mail`, liens, mêmes sujets que Teams |
+
 ## 13. Préoccupations transversales
 
 - **Plans / limites : oui.** Composants impactés : `TeamsEntitlementService` (prérequis), nouveau
