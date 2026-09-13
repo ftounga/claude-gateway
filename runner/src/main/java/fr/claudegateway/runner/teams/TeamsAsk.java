@@ -141,6 +141,39 @@ final class TeamsAsk {
         return "";
     }
 
+    /**
+     * Un booléen <b>à trois états</b> : vrai, faux, ou <b>absent</b> (F-91 / SF-91-02).
+     *
+     * <p>{@code null} n'est pas une commodité : c'est la traduction de « la case n'est jamais
+     * pré-cochée ». Rendre {@code false} par défaut confondrait « l'utilisateur a dit non » et
+     * « l'utilisateur n'a rien dit » — deux choses que la confirmation d'un enregistrement de
+     * réunion ne doit surtout pas confondre.</p>
+     */
+    static Boolean flag(JsonNode input, String... fields) {
+        if (input == null) {
+            return null;
+        }
+        for (String field : fields) {
+            JsonNode value = input.get(field);
+            if (value == null || value.isNull()) {
+                continue;
+            }
+            if (value.isBoolean()) {
+                return value.booleanValue();
+            }
+            if (value.isTextual()) {
+                String raw = value.asText().strip().toLowerCase(java.util.Locale.ROOT);
+                if ("true".equals(raw) || "oui".equals(raw) || "yes".equals(raw)) {
+                    return Boolean.TRUE;
+                }
+                if ("false".equals(raw) || "non".equals(raw) || "no".equals(raw)) {
+                    return Boolean.FALSE;
+                }
+            }
+        }
+        return null;
+    }
+
     static long number(JsonNode input, long fallback, String... fields) {
         if (input == null) {
             return fallback;

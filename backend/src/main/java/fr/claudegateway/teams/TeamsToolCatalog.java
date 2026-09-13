@@ -65,6 +65,15 @@ public class TeamsToolCatalog {
     public static final String MEETING_MOMENTS = "teams_meeting_moments";
     /** Où en est ce travail de captures, et — quand il est fini — ses moments (F-90 / SF-90-03). */
     public static final String MOMENTS_STATUS = "teams_moments_status";
+    /**
+     * <b>Démarre un enregistrement local</b> (F-91 / SF-91-02). Le seul outil du volet qui
+     * <b>crée</b> au lieu de relire.
+     */
+    public static final String CAPTURE_START = "teams_capture_start";
+    /** Arrête l'enregistrement local en cours (F-91 / SF-91-02). */
+    public static final String CAPTURE_STOP = "teams_capture_stop";
+    /** Où en est l'enregistrement local, et ceux d'avant (F-91 / SF-91-02). */
+    public static final String CAPTURE_STATUS = "teams_capture_status";
 
     /**
      * <b>Les outils de LECTURE, dans l'ordre où ils sont donnés à l'agent</b> — et la seule liste
@@ -79,7 +88,22 @@ public class TeamsToolCatalog {
      */
     public static final List<String> CATALOG = List.of(STATUS, FIND_CONVERSATIONS,
             READ_CONVERSATION, MENTIONS, SEARCH, FIND_MEETINGS, MEETING_TRANSCRIPT,
-            MEETING_RECORDING, MEETING_MOMENTS, MOMENTS_STATUS);
+            MEETING_RECORDING, MEETING_MOMENTS, MOMENTS_STATUS, CAPTURE_START, CAPTURE_STOP,
+            CAPTURE_STATUS);
+
+    /**
+     * <b>Les outils qui CRÉENT</b> (F-91), par opposition à tous les autres, qui <b>relisent</b>.
+     *
+     * <p>Cette liste n'est pas un classement de confort : c'est ce qui permet au journal d'audit de
+     * distinguer « a lu une conversation » de « a enregistré une réunion », et à un test de vérifier
+     * qu'aucun outil de capture n'échappe à la garde du droit.</p>
+     */
+    public static final List<String> CAPTURE = List.of(CAPTURE_START, CAPTURE_STOP, CAPTURE_STATUS);
+
+    /** Vrai si ce nom d'outil <b>crée un enregistrement</b> plutôt que de relire (F-91). */
+    public static boolean isCapture(String tool) {
+        return tool != null && CAPTURE.contains(tool);
+    }
 
     /** La <b>carte de réunion</b> (F-89 / SF-89-02) : des sections de lignes sourcées. */
     public static final String MEETING_CARD = "teams_meeting_card";
@@ -147,6 +171,7 @@ public class TeamsToolCatalog {
                         + "commande exacte à lancer.",
                 Map.of("type", "object", "properties", Map.of())));
         tools.addAll(readingTools());
+        tools.addAll(captureTools());
         tools.addAll(presentationTools());
         return List.copyOf(tools);
     }
@@ -285,6 +310,81 @@ public class TeamsToolCatalog {
                         + "vigueur, images sans parole.",
                 Map.of("type", "object",
                         "properties", Map.of("job_id", text, "video", text))));
+        return tools;
+    }
+
+    /**
+     * <b>Les trois outils d'enregistrement local</b> (F-91 / SF-91-02).
+     *
+     * <h2>Ils ne sont pas de la même nature que les autres, et leurs descriptions le disent</h2>
+     *
+     * <p>Tout le reste du catalogue <b>relit ce qui existait déjà</b>. Ceux-ci <b>créent</b> — et
+     * les participants ne le sauront pas, là où Teams affiche un bandeau quand c'est lui qui
+     * enregistre. Ces descriptions sont le seul endroit où le modèle apprend cette différence : elles
+     * lui disent d'<b>exiger l'usage</b>, de <b>ne jamais cocher la confirmation à la place de
+     * l'utilisateur</b>, et de <b>répéter</b> ce que le produit ne peut pas garantir.</p>
+     *
+     * <p><b>Et ils vivent dans ce catalogue</b>, donc sous la même garde que les autres : sans le
+     * droit Teams, un terminal ne les reçoit pas — l'agent ne refuse pas, il n'a pas la capacité.</p>
+     */
+    private List<AgentTool> captureTools() {
+        Map<String, Object> text = Map.of("type", "string");
+        List<AgentTool> tools = new ArrayList<>();
+
+        tools.add(new AgentTool(CAPTURE_START,
+                "DÉMARRE un enregistrement local de l'écran et du son de la machine. C'est le SEUL "
+                        + "outil du volet qui CRÉE quelque chose : tous les autres relisent ce que "
+                        + "Teams a déjà. Sers-t'en quand la réunion N'EST PAS enregistrée par Teams "
+                        + "— sans cela il n'y a ni enregistrement ni transcription à lire. "
+                        + "DEUX USAGES, DEUX GESTES : « purpose »: « self » pour l'écran de "
+                        + "l'utilisateur (démo, débogage) démarre sans autre formalité ; "
+                        + "« purpose »: « meeting » pour une réunion à plusieurs exige "
+                        + "« participants_informed »: true. NE COCHE JAMAIS cette confirmation "
+                        + "toi-même : DEMANDE d'abord à l'utilisateur s'il a prévenu les "
+                        + "participants, et ne rappelle l'outil qu'après sa réponse. Le produit NE "
+                        + "PEUT PAS garantir que les participants soient informés — cela ne peut "
+                        + "venir que de l'utilisateur, de vive voix ; répète-lui cette phrase, elle "
+                        + "est dans le résultat. L'enregistrement porte un FILIGRANE incrusté dans "
+                        + "l'image, et le résultat te rend « recordingNotice » : pose-le TEL QUEL "
+                        + "en tête du compte rendu que tu écriras. La vidéo reste sur la machine.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "purpose", Map.of("type", "string",
+                                        "enum", List.of("self", "meeting"),
+                                        "description", "« self » = l'écran de l'utilisateur, "
+                                                + "« meeting » = une réunion à plusieurs. "
+                                                + "Obligatoire : je ne le devine pas."),
+                                "participants_informed", Map.of("type", "boolean",
+                                        "description", "UNIQUEMENT si l'utilisateur t'a dit avoir "
+                                                + "prévenu les participants. Ne le mets jamais à "
+                                                + "true de ta propre initiative."),
+                                "subject", Map.of("type", "string",
+                                        "description", "Sujet de la réunion, pour le compte rendu."),
+                                "audio", Map.of("type", "boolean",
+                                        "description", "Capturer le son (défaut : oui). Sans son, "
+                                                + "il n'y aura AUCUNE transcription."),
+                                "audio_device", Map.of("type", "string",
+                                        "description", "Nom exact du périphérique audio, quand le "
+                                                + "résultat précédent te l'a demandé (Windows)."),
+                                "screen_device", text),
+                        "required", List.of("purpose"))));
+
+        tools.add(new AgentTool(CAPTURE_STOP,
+                "ARRÊTE l'enregistrement local et rend le fichier, sa durée et sa taille. Sans "
+                        + "« capture_id », arrête celui qui tourne. Enchaîne ensuite sur "
+                        + MEETING_MOMENTS + " en lui donnant ce fichier : c'est ce qui produit les "
+                        + "moments. Et répète toujours ce que le résultat dit ne PAS avoir pu "
+                        + "faire — un enregistrement coupé au plafond de durée ne couvre pas toute "
+                        + "la réunion, et le taire rendrait le compte rendu faux.",
+                Map.of("type", "object", "properties", Map.of("capture_id", text))));
+
+        tools.add(new AgentTool(CAPTURE_STATUS,
+                "Dit si un enregistrement local tourne sur la machine, depuis combien de temps, et "
+                        + "liste les précédents. Sans « capture_id », rend celui qui tourne. "
+                        + "Appelle-le quand l'utilisateur demande « est-ce que ça enregistre "
+                        + "toujours ? » — et quand il ne demande rien mais qu'un enregistrement "
+                        + "traîne depuis longtemps, DIS-LE.",
+                Map.of("type", "object", "properties", Map.of("capture_id", text))));
         return tools;
     }
 

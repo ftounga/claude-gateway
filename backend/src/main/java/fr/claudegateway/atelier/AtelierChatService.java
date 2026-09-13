@@ -1448,7 +1448,7 @@ public class AtelierChatService implements RelayInterruptTarget {
      * Cible journalisée d'un appel (F-38 / SF-38-08) : un chemin, un terme recherché ou une commande
      * tronquée — jamais un contenu de fichier ni une sortie de commande.
      */
-    private String auditTarget(AgentToolCall call) {
+    String auditTarget(AgentToolCall call) {
         JsonNode input = call.input();
         return switch (call.name()) {
             case "read_file", "write_file", "edit_file" -> arg(input, "path");
@@ -1458,22 +1458,61 @@ public class AtelierChatService implements RelayInterruptTarget {
             // requête, une réunion —, jamais ce qui est revenu. Un journal d'audit qui porterait
             // le texte des messages d'un client serait précisément l'entrepôt de données sensibles
             // que D2 refuse.
-            default -> call.name() != null
-                    && call.name().startsWith(fr.claudegateway.teams.TeamsToolCatalog.PREFIX)
-                            ? shorten(teamsAuditTarget(input), AUDIT_TARGET_CHARS)
-                            : null;
+            // F-91 : ce qui CRÉE est tracé autrement de ce qui relit — l'usage et la confirmation
+            // déclarée, parce que c'est ce qu'on voudra pouvoir dire six mois plus tard.
+            default -> {
+                if (fr.claudegateway.teams.TeamsToolCatalog.isCapture(call.name())) {
+                    yield shorten(teamsCaptureAuditTarget(call), AUDIT_TARGET_CHARS);
+                }
+                yield call.name() != null
+                        && call.name().startsWith(fr.claudegateway.teams.TeamsToolCatalog.PREFIX)
+                                ? shorten(teamsAuditTarget(input), AUDIT_TARGET_CHARS)
+                                : null;
+            }
         };
     }
 
     /** La cible lisible d'un appel Teams : le fil, la question ou la réunion. Jamais un contenu. */
     private String teamsAuditTarget(JsonNode input) {
-        for (String field : List.of("conversation_id", "meeting_id", "query")) {
+        for (String field : List.of("conversation_id", "meeting_id", "capture_id", "query")) {
             String value = arg(input, field);
             if (value != null && !value.isBlank()) {
                 return field + '=' + value;
             }
         }
         return null;
+    }
+
+    /**
+     * <b>La cible journalisée d'un ENREGISTREMENT LOCAL</b> (F-91 / SF-91-02), et le troisième
+     * endroit où la trace voyage.
+     *
+     * <p>Le filigrane est dans l'image, la mention est en tête du compte rendu — et cette ligne-ci
+     * est dans le <b>journal d'audit</b>. Elle porte <b>l'usage</b> (son propre écran / une réunion
+     * à plusieurs) et <b>la confirmation qui a été donnée</b>, parce que c'est exactement ce qu'on
+     * voudra pouvoir dire six mois plus tard : non pas « il a appelé un outil », mais « il a
+     * enregistré une réunion, en déclarant avoir prévenu ».</p>
+     *
+     * <p>Ce qu'elle ne porte <b>pas</b>, comme toutes les lignes Teams : aucun contenu — ni image,
+     * ni parole, ni nom de participant.</p>
+     */
+    private String teamsCaptureAuditTarget(AgentToolCall call) {
+        JsonNode input = call.input();
+        StringBuilder target = new StringBuilder("enregistrement local");
+        String purpose = arg(input, "purpose");
+        if (purpose != null && !purpose.isBlank()) {
+            target.append(" usage=").append(purpose.strip());
+        }
+        if (input != null && input.path("participants_informed").asBoolean(false)) {
+            target.append(" participants_prevenus=declare");
+        } else if (fr.claudegateway.teams.TeamsToolCatalog.CAPTURE_START.equals(call.name())) {
+            target.append(" participants_prevenus=non_declare");
+        }
+        String captureId = arg(input, "capture_id");
+        if (captureId != null && !captureId.isBlank()) {
+            target.append(" capture=").append(captureId.strip());
+        }
+        return target.toString();
     }
 
     /**

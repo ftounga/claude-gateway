@@ -55,12 +55,23 @@ public final class TeamsTools implements ToolExecutor {
     public static final String MEETING_MOMENTS = "teams_meeting_moments";
     /** Où en est un travail de moments, et — quand il est fini — ses moments (F-90 / SF-90-03). */
     public static final String MOMENTS_STATUS = "teams_moments_status";
+    /**
+     * <b>Démarre un enregistrement local</b> (F-91 / SF-91-02). Le seul outil du volet qui
+     * <b>crée</b> au lieu de relire — et le seul qui puisse refuser pour une raison qui n'est pas
+     * technique.
+     */
+    public static final String CAPTURE_START = "teams_capture_start";
+    /** Arrête l'enregistrement local en cours (F-91 / SF-91-02). */
+    public static final String CAPTURE_STOP = "teams_capture_stop";
+    /** Où en est l'enregistrement local, et ceux d'avant (F-91 / SF-91-02). */
+    public static final String CAPTURE_STATUS = "teams_capture_status";
     public static final String CAPABILITY = "teams";
 
     /** Le catalogue, dans l'ordre où il est donné à l'agent. */
     public static final List<String> CATALOG = List.of(STATUS, FIND_CONVERSATIONS,
             READ_CONVERSATION, MENTIONS, SEARCH, FIND_MEETINGS, MEETING_TRANSCRIPT,
-            MEETING_RECORDING, MEETING_MOMENTS, MOMENTS_STATUS);
+            MEETING_RECORDING, MEETING_MOMENTS, MOMENTS_STATUS, CAPTURE_START, CAPTURE_STOP,
+            CAPTURE_STATUS);
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final TeamsSession session;
@@ -79,6 +90,12 @@ public final class TeamsTools implements ToolExecutor {
      */
     private MomentsWorker momentsWorker;
 
+    /**
+     * L'enregistrement local (F-91). {@code null} quand ce runner n'en a pas — l'outil le <b>dit</b>
+     * alors, il ne fait pas semblant.
+     */
+    private LocalCapture capture;
+
     public TeamsTools(TeamsSession session, BrowserLink.Sleeper sleeper) {
         this.session = session;
         this.probe = new TeamsProbe(session.adapter());
@@ -93,6 +110,16 @@ public final class TeamsTools implements ToolExecutor {
      */
     public TeamsTools withMoments(MomentsWorker worker) {
         this.momentsWorker = worker;
+        return this;
+    }
+
+    /**
+     * Branche l'enregistrement local (F-91 / SF-91-02). Posé après construction pour la même raison
+     * que les moments : le moteur dépend du dossier de travail et du témoin, que le montage des
+     * outils ne connaît pas encore.
+     */
+    public TeamsTools withCapture(LocalCapture value) {
+        this.capture = value;
         return this;
     }
 
@@ -126,6 +153,9 @@ public final class TeamsTools implements ToolExecutor {
             case MEETING_RECORDING -> meetingRecording(input);
             case MEETING_MOMENTS -> meetingMoments(input, context);
             case MOMENTS_STATUS -> momentsStatus(input);
+            case CAPTURE_START -> captureStart(input);
+            case CAPTURE_STOP -> captureStop(input);
+            case CAPTURE_STATUS -> captureStatus(input);
             default -> ToolOutcome.error("unsupported_tool", "Outil Teams inconnu : " + tool);
         };
     }
@@ -773,6 +803,206 @@ public final class TeamsTools implements ToolExecutor {
                         + "permettrait est retirée à l'entrée de la liaison, et ce garde-fou ne se "
                         + "rouvre pas pour une commodité.");
         return ToolOutcome.ok(result.render());
+    }
+
+    // ------------------------------------------------------------------ F-91 : la capture locale
+
+    /**
+     * <b>Démarre un enregistrement local</b> (F-91 / SF-91-02).
+     *
+     * <h2>Le seul outil du volet qui CRÉE</h2>
+     *
+     * <p>Tous les autres relisent ce que Teams a servi. Celui-ci fabrique un artefact — et les
+     * participants ne le sauront pas, là où Teams affiche un bandeau quand c'est lui qui enregistre.
+     * D'où la seule différence de forme du catalogue : <b>cet outil refuse</b>, et il refuse pour
+     * une raison qui n'est pas technique.</p>
+     *
+     * <h2>Il ne demande PAS la liaison au navigateur</h2>
+     *
+     * <p>Volontairement : capturer son propre écran n'a rien à voir avec Teams web. Refuser une
+     * démo parce que le navigateur n'est pas rattaché serait une friction gratuite, et les frictions
+     * gratuites usent celle qui compte.</p>
+     */
+    private ToolOutcome captureStart(JsonNode input) {
+        TeamsToolResult result = new TeamsToolResult(CAPTURE_START, adapterVersion(),
+                TeamsLinkState.LINKED);
+        if (!enabled || capture == null) {
+            return captureUnavailable(result);
+        }
+        LocalCapture.Request request = new LocalCapture.Request(
+                TeamsAsk.text(input, "purpose", "usage"),
+                TeamsAsk.flag(input, "participants_informed", "participantsInformed"),
+                !Boolean.FALSE.equals(TeamsAsk.flag(input, "audio")),
+                identity(TeamsAsk.text(input, "identity", "recorded_by")),
+                TeamsAsk.text(input, "subject", "meeting_subject"),
+                TeamsAsk.text(input, "screen_device", "screenDevice"),
+                TeamsAsk.text(input, "audio_device", "audioDevice"));
+        CaptureRecord record;
+        try {
+            record = capture.start(request);
+        } catch (CaptureRefusedException refused) {
+            return captureRefused(result, refused);
+        }
+        renderCapture(result, record);
+        // D1, appliqué à ce qui CRÉE plutôt qu'à ce qui relit : la portée nomme ce qui sera
+        // enregistré et où cela ira — une fois, pour cette capture.
+        result.notice(scope.announceOnce("capture:" + record.id(),
+                "TOUT CE QUI PASSERA À L'ÉCRAN de ce poste et tout ce qui s'y dira, pendant que "
+                        + "l'enregistrement tourne — y compris ce que vous n'aviez pas l'intention "
+                        + "de montrer. La vidéo et l'audio RESTENT sur cette machine ; seuls le "
+                        + "compte rendu et les images retenues remonteront, et ils vivront avec lui",
+                record.subject().isEmpty() ? record.purpose().label() : record.subject()));
+        result.text(record.describe(null) + System.lineSeparator() + capture.ceiling().sentence()
+                + System.lineSeparator() + CaptureConsent.NOT_GUARANTEED);
+        return ToolOutcome.ok(result.render());
+    }
+
+    /** <b>Arrête</b> l'enregistrement local (F-91 / SF-91-02). Sans identifiant : celui qui tourne. */
+    private ToolOutcome captureStop(JsonNode input) {
+        TeamsToolResult result = new TeamsToolResult(CAPTURE_STOP, adapterVersion(),
+                TeamsLinkState.LINKED);
+        if (!enabled || capture == null) {
+            return captureUnavailable(result);
+        }
+        CaptureRecord record;
+        try {
+            record = capture.stop(TeamsAsk.text(input, "capture_id", "captureId", "id"));
+        } catch (CaptureRefusedException refused) {
+            return captureRefused(result, refused);
+        }
+        renderCapture(result, record);
+        result.text(record.describe(null));
+        return ToolOutcome.ok(result.render());
+    }
+
+    /**
+     * <b>Où en est l'enregistrement local</b> (F-91 / SF-91-02), et ceux d'avant.
+     *
+     * <p>Sans identifiant, il rend celui <b>qui tourne</b> : c'est ce qui permet de l'arrêter quand
+     * l'agent a changé de tour et ne se souvient plus de rien.</p>
+     */
+    private ToolOutcome captureStatus(JsonNode input) {
+        TeamsToolResult result = new TeamsToolResult(CAPTURE_STATUS, adapterVersion(),
+                TeamsLinkState.LINKED);
+        if (!enabled || capture == null) {
+            return captureUnavailable(result);
+        }
+        String id = TeamsAsk.text(input, "capture_id", "captureId", "id");
+        CaptureRecord record = id.isEmpty() ? capture.current().orElse(null)
+                : capture.find(id).orElse(null);
+        ArrayNode previous = result.array("captures");
+        for (CaptureRecord known : capture.all()) {
+            ObjectNode entry = previous.addObject();
+            entry.put("captureId", known.id());
+            entry.put("state", known.state().name());
+            entry.put("purpose", known.purpose().name());
+            entry.put("startedAt", known.startedAt() == null ? "" : known.startedAt().toString());
+            entry.put("video", known.video());
+        }
+        if (record == null) {
+            // Zéro capture ET un manque nommé : une réponse vide se lirait « tout va bien ».
+            result.window(null)
+                    .gaps(List.of(TeamsGap.of(TeamsGapKind.NOTHING_OBSERVED,
+                            id.isEmpty() ? "enregistrement local" : "capture " + id,
+                            id.isEmpty() ? "aucun enregistrement local ne tourne sur cette machine"
+                                    : "aucun enregistrement local ne porte cet identifiant")))
+                    .health(TeamsHealth.full(0))
+                    .with("firstUse", firstUse())
+                    .text(id.isEmpty()
+                            ? "Aucun enregistrement local ne tourne sur cette machine."
+                            : "Je ne connais aucun enregistrement local sous cet identifiant.");
+            return ToolOutcome.ok(result.render());
+        }
+        renderCapture(result, record);
+        result.text(record.describe(null));
+        return ToolOutcome.ok(result.render());
+    }
+
+    /**
+     * Ce qu'un résultat de capture porte, toujours : l'identifiant, l'état, <b>le filigrane tel
+     * qu'il est incrusté</b>, et <b>la mention à poser en tête du compte rendu</b>.
+     *
+     * <p>Les deux derniers ne sont pas décoratifs : ils sont les deux autres endroits où la trace
+     * voyage. L'image en porte une, le compte rendu doit porter l'autre.</p>
+     */
+    private void renderCapture(TeamsToolResult result, CaptureRecord record) {
+        result.with("captureId", record.id());
+        result.with("state", record.state().name());
+        result.with("stateLabel", record.state().label());
+        result.with("purpose", record.purpose().name());
+        result.json().put("running", !record.isOver());
+        result.json().put("participantsInformed", record.participantsInformed());
+        result.json().put("audio", record.audio());
+        result.with("startedAt", record.startedAt() == null ? "" : record.startedAt().toString());
+        result.with("stoppedAt", record.stoppedAt() == null ? "" : record.stoppedAt().toString());
+        result.with("elapsed", CaptureRecord.clock(record.elapsed(null)));
+        result.with("video", record.video());
+        result.json().put("bytes", record.bytes());
+        result.with("watermark", record.watermark());
+        result.with("recordingNotice", record.mention());
+        result.with("devices", record.devices());
+        result.with("subject", record.subject());
+        result.with("failure", record.failure());
+        result.with("remedy", record.remedy());
+        result.window(null).gaps(record.gaps()).health(TeamsHealth.full(0))
+                .with("firstUse", firstUse());
+    }
+
+    /**
+     * <b>Un refus rendu comme un SUCCÈS d'outil</b> — règle de forme n° 1 du volet.
+     *
+     * <p>Une erreur d'outil ferait dire à l'agent « je n'ai pas réussi », là où il faut dire
+     * « confirmez que vous avez prévenu les participants, et voici pourquoi ». Le refus porte donc
+     * son code, sa phrase et son remède, et l'agent les répète.</p>
+     */
+    private ToolOutcome captureRefused(TeamsToolResult result, CaptureRefusedException refused) {
+        result.with("refused", refused.code());
+        result.json().put("running", false);
+        result.with("remedy", refused.remedy());
+        result.window(null)
+                .gaps(List.of(TeamsGap.of(TeamsGapKind.NOTHING_OBSERVED, "enregistrement local",
+                        "rien n'a été enregistré : " + refused.getMessage())))
+                .health(TeamsHealth.full(0))
+                .with("firstUse", firstUse())
+                .text(refused.sentence());
+        return ToolOutcome.ok(result.render());
+    }
+
+    /** Ce poste ne sait pas enregistrer. Il le <b>dit</b> ; il ne fait pas semblant. */
+    private ToolOutcome captureUnavailable(TeamsToolResult result) {
+        result.json().put("running", false);
+        result.window(null)
+                .gaps(List.of(TeamsGap.of(TeamsGapKind.NOTHING_OBSERVED, "enregistrement local",
+                        "l'enregistrement local n'est pas monté sur ce poste")))
+                .health(TeamsHealth.full(0))
+                .with("firstUse", firstUse())
+                .text((enabled
+                        ? "L'enregistrement local n'est pas disponible sur ce poste."
+                        : disabledReason)
+                        + " Rien n'a été enregistré, et rien n'est remonté.");
+        return ToolOutcome.ok(result.render());
+    }
+
+    /**
+     * Qui enregistre, pour le filigrane. L'identité <b>proposée par l'agent</b> n'est retenue que si
+     * elle est donnée ; sinon on prend celle du poste. Elle n'est jamais vide — un filigrane anonyme
+     * n'est pas un filigrane.
+     */
+    private static String identity(String asked) {
+        if (asked != null && !asked.isBlank()) {
+            return asked.strip();
+        }
+        String user = System.getProperty("user.name", "");
+        String host = System.getenv("HOSTNAME");
+        if (host == null || host.isBlank()) {
+            host = System.getenv("COMPUTERNAME");
+        }
+        String machine = host == null || host.isBlank() ? "" : "@" + host.strip();
+        return user.isBlank() ? "poste inconnu" : user.strip() + machine;
+    }
+
+    private String adapterVersion() {
+        return enabled ? session.adapter().version() : "";
     }
 
     // ------------------------------------------------------------------ plomberie

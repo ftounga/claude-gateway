@@ -22,6 +22,8 @@ public class CaptureRefusedException extends RuntimeException {
     public static final String NOT_CONFIRMED = "capture_not_confirmed";
     /** Pas de filigrane possible : <b>donc pas de capture</b>. */
     public static final String NO_WATERMARK = "capture_watermark_impossible";
+    /** Aucun témoin ne peut être montré : <b>donc pas de capture</b> (SF-91-02). */
+    public static final String NO_WITNESS = "capture_witness_impossible";
     /** Aucun moyen de capturer l'écran ou le son sur ce système. */
     public static final String NO_DEVICE = "capture_device_unknown";
     /** Une capture tourne déjà. */

@@ -107,4 +107,63 @@ class AtelierChatServiceTeamsToolsTest {
                 .noneMatch(name -> name.startsWith(TeamsToolCatalog.PREFIX))
                 .containsExactly("read_file", "write_file", "edit_file", "bash", "explore", "set_plan");
     }
+
+    // ------------------------------------------------------------------ F-91 : le journal d'audit
+
+    @Test
+    @DisplayName("F-91 — la ligne d'audit d'un enregistrement dit L'USAGE et la confirmation")
+    void theAuditLineOfACaptureSaysThePurposeAndTheConfirmation() {
+        String target = auditTargetOf(TeamsToolCatalog.CAPTURE_START,
+                "{\"purpose\":\"meeting\",\"participants_informed\":true}");
+
+        // Le filigrane est dans l'image, la mention en tête du compte rendu — et CECI est le
+        // troisième endroit où la trace voyage.
+        assertThat(target)
+                .contains("enregistrement local")
+                .contains("usage=meeting")
+                .contains("participants_prevenus=declare");
+    }
+
+    @Test
+    @DisplayName("F-91 — une confirmation absente est tracée comme absente, jamais comme donnée")
+    void anAbsentConfirmationIsTracedAsAbsent() {
+        assertThat(auditTargetOf(TeamsToolCatalog.CAPTURE_START, "{\"purpose\":\"self\"}"))
+                .contains("usage=self")
+                .contains("participants_prevenus=non_declare");
+    }
+
+    @Test
+    @DisplayName("F-91 — la ligne d'audit ne porte AUCUN contenu, comme toutes les lignes Teams")
+    void theAuditLineCarriesNoContent() {
+        String target = auditTargetOf(TeamsToolCatalog.CAPTURE_START,
+                "{\"purpose\":\"meeting\",\"participants_informed\":true,"
+                        + "\"subject\":\"Comité de pilotage ACME — budget 2027\"}");
+
+        assertThat(target).doesNotContain("ACME").doesNotContain("budget");
+    }
+
+    @Test
+    @DisplayName("F-91 — l'arrêt trace la capture visée, sans réinventer une confirmation")
+    void stoppingTracesTheCapture() {
+        assertThat(auditTargetOf(TeamsToolCatalog.CAPTURE_STOP, "{\"capture_id\":\"a1b2c3\"}"))
+                .contains("enregistrement local")
+                .contains("capture=a1b2c3")
+                .doesNotContain("participants_prevenus");
+    }
+
+    @Test
+    @DisplayName("les outils de LECTURE gardent leur cible d'audit d'avant : rien n'a bougé")
+    void readingToolsKeepTheirAuditTarget() {
+        assertThat(auditTargetOf(TeamsToolCatalog.READ_CONVERSATION,
+                "{\"conversation_id\":\"19:abc\"}")).isEqualTo("conversation_id=19:abc");
+    }
+
+    private String auditTargetOf(String tool, String input) {
+        try {
+            return service.auditTarget(new fr.claudegateway.agent.AgentToolCall("call-1", tool,
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(input)));
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
 }

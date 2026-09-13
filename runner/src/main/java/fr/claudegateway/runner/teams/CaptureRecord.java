@@ -204,6 +204,13 @@ public final class CaptureRecord {
         return this;
     }
 
+    CaptureRecord addGaps(List<TeamsGap> more) {
+        if (more != null) {
+            gaps.addAll(more);
+        }
+        return this;
+    }
+
     CaptureRecord addGap(TeamsGap gap) {
         if (gap != null) {
             gaps.add(gap);
