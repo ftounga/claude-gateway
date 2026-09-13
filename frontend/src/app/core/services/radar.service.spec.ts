@@ -17,6 +17,14 @@ describe('RadarService', () => {
 
   afterEach(() => httpMock.verify());
 
+  it('vérifie ce que voit le runner, et recommence (F-100 / SF-100-06)', () => {
+    service.verify('h1').subscribe();
+    expect(httpMock.expectOne('/api/radar/hosts/h1/verification').request.method).toBe('POST');
+
+    service.resetVerification('h1').subscribe();
+    expect(httpMock.expectOne('/api/radar/hosts/h1/verification').request.method).toBe('DELETE');
+  });
+
   it('lit le résumé, lance et annule une synchro', () => {
     service.brief('h1').subscribe();
     expect(httpMock.expectOne('/api/radar/hosts/h1/brief').request.method).toBe('GET');

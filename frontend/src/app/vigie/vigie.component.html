@@ -160,6 +160,17 @@
               </div>
 
               <div class="poste__actions">
+                <!-- LA VÉRIFICATION GUIDÉE (F-100 / SF-100-06) : ce que le runner voit de la session Microsoft. -->
+                <button
+                  mat-stroked-button
+                  type="button"
+                  class="vigie__verify"
+                  (click)="openVerification(host)"
+                  matTooltip="Vérifier que le runner voit les conversations, les réunions et les transcriptions"
+                >
+                  <mat-icon>fact_check</mat-icon>
+                  <span class="vigie__verify-label">Vérifier ce que voit le runner</span>
+                </button>
                 <button
                   mat-stroked-button
                   type="button"

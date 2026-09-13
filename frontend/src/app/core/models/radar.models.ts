@@ -262,3 +262,28 @@ export interface RadarDraft {
   conversationUrl: string | null;
   preparedAt: string;
 }
+
+// ------------------------------------------------------------ La vérification guidée (F-100 / SF-100-01, écran SF-100-06)
+
+/** Une case de la vérification : vue ou non, son état court et la phrase de la gateway. */
+export interface RadarVerificationCheck {
+  ok: boolean;
+  /**
+   * `LINKED`, `BROWSER_NOT_DETECTED`, `TEAMS_NOT_OPEN`, `NOT_SIGNED_IN`, `TEAMS_CHANGED`, `TEAMS_DISABLED`,
+   * `SEEN`, `ACCESS_DENIED`, `DISABLED_OR_NOT_PRODUCED`, `NOT_SEEN`, ou vide.
+   */
+  state: string;
+  count: number;
+  sentence: string;
+  okSince: string | null;
+}
+
+/** `POST|GET|DELETE /api/radar/hosts/{hostId}/verification` : quatre cases et « tout est vu ». */
+export interface RadarVerification {
+  complete: boolean;
+  verifiedAt: string | null;
+  session: RadarVerificationCheck;
+  conversations: RadarVerificationCheck;
+  meetings: RadarVerificationCheck;
+  transcripts: RadarVerificationCheck;
+}

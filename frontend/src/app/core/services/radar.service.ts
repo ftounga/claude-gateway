@@ -17,6 +17,7 @@ import {
   RadarSubjectState,
   RadarSyncStarted,
   RadarThreadRule,
+  RadarVerification,
 } from '../models/radar.models';
 
 /**
@@ -147,6 +148,18 @@ export class RadarService {
   /** Prépare une relance ou une présentation : **un appel au fournisseur, décompté** ; rien n'est envoyé. */
   prepareDraft(hostId: string, commitmentId: string): Observable<RadarDraft> {
     return this.http.post<RadarDraft>(`${this.base(hostId)}/commitments/${commitmentId}/draft`, null);
+  }
+
+  // ---------------------------------------------------------------- La vérification guidée (F-100 / SF-100-06)
+
+  /** Demande au runner ce qu'il voit maintenant ; la gateway fusionne avec ce qu'il avait vu. */
+  verify(hostId: string): Observable<RadarVerification> {
+    return this.http.post<RadarVerification>(`${this.base(hostId)}/verification`, null);
+  }
+
+  /** Recommence la vérification : les cases sont décochées. */
+  resetVerification(hostId: string): Observable<RadarVerification> {
+    return this.http.delete<RadarVerification>(`${this.base(hostId)}/verification`);
   }
 
   /** Annuler un geste. */

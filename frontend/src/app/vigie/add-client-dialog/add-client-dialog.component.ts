@@ -13,7 +13,7 @@ import { importableHosts } from '../vigie-fleet';
 
 /** Ce que le dialogue rend : un client activé (à ouvrir), ou la demande d'en connecter un nouveau. */
 export type AddClientDialogResult =
-  | { kind: 'activated'; hostId: string }
+  | { kind: 'activated'; hostId: string; hostName?: string }
   | { kind: 'connect' };
 
 /**
@@ -61,7 +61,7 @@ export class AddClientDialogComponent implements OnInit {
     this.vigie.activate(host.hostId, 'VIGIE').subscribe({
       next: () => {
         this.activatingId.set(null);
-        this.dialogRef.close({ kind: 'activated', hostId: host.hostId });
+        this.dialogRef.close({ kind: 'activated', hostId: host.hostId, hostName: host.name });
       },
       error: (err: unknown) => {
         this.activatingId.set(null);

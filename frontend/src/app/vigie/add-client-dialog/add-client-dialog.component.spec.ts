@@ -51,7 +51,7 @@ describe('AddClientDialogComponent', () => {
     root.querySelector<HTMLButtonElement>('.add-client__activate')?.click();
 
     expect(vigie.activate).toHaveBeenCalledOnceWith('h1', 'VIGIE');
-    expect(dialogRef.close).toHaveBeenCalledWith({ kind: 'activated', hostId: 'h1' });
+    expect(dialogRef.close).toHaveBeenCalledWith({ kind: 'activated', hostId: 'h1', hostName: 'EDENRED' });
   });
 
   it("dit l'échec d'une activation, sans fermer", () => {
