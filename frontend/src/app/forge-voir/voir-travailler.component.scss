@@ -1,0 +1,103 @@
+/* Voir travailler (F-98 / SF-98-04) — DESIGN_SYSTEM.md §16.
+   Une barre blanche d'une ligne, puis l'écran de la densité choisie, qui prend tout le reste de la
+   hauteur (la mosaïque en a besoin). Aucune couleur nouvelle : §2 et le sélecteur de la Forge. */
+:host {
+  display: block;
+  height: 100%;
+}
+
+.voir {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+
+  &__bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cg-space-2) var(--cg-space-3);
+    padding: var(--cg-space-2) var(--cg-space-4);
+    background: var(--cg-surface);
+    border-bottom: 1px solid var(--cg-divider);
+  }
+
+  &__back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cg-space-1);
+    color: var(--cg-text-secondary);
+    font-size: 13px;
+    text-decoration: none;
+
+    mat-icon {
+      width: 16px;
+      height: 16px;
+      font-size: 16px;
+    }
+
+    &:hover {
+      color: var(--cg-text-primary);
+    }
+  }
+
+  &__title {
+    margin: 0;
+    font-family: var(--cg-font-heading);
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  &__density {
+    display: inline-flex;
+    overflow: hidden;
+    border: 1px solid var(--cg-divider);
+    border-radius: 8px;
+    background: var(--cg-surface);
+  }
+
+  &__option {
+    padding: var(--cg-space-1) var(--cg-space-3);
+    border: 0;
+    background: transparent;
+    color: var(--cg-text-secondary);
+    font-family: var(--cg-font-body);
+    font-size: 13px;
+    cursor: pointer;
+
+    & + & {
+      border-left: 1px solid var(--cg-divider);
+    }
+
+    &:hover {
+      color: var(--cg-text-primary);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--cg-accent);
+      outline-offset: -2px;
+    }
+
+    /* Le choix actif : l'orange de marque, le geste (§2). */
+    &--active {
+      background: var(--cg-orange);
+      color: #FFFFFF;
+      font-weight: 500;
+
+      &:hover {
+        color: #FFFFFF;
+      }
+    }
+  }
+
+  &__screen {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  /* La mosaïque ne défile pas : elle se partage la hauteur. */
+  &--flux &__screen {
+    overflow: hidden;
+  }
+}

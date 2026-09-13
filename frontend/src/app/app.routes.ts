@@ -1,5 +1,15 @@
-import { Routes, UrlMatchResult, UrlSegment } from '@angular/router';
+import { inject } from '@angular/core';
+import { RedirectFunction, Router, Routes, UrlMatchResult, UrlSegment } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
+
+/**
+ * Redirection d'une ancienne adresse de la Forge vers `/forge/voir` à la densité donnée (F-98 /
+ * SF-98-04), en gardant les autres paramètres de requête.
+ */
+export function forgeDensityRedirect(densite: 'apercus' | 'flux'): RedirectFunction {
+  return ({ queryParams }) =>
+    inject(Router).createUrlTree(['/forge', 'voir'], { queryParams: { ...queryParams, densite } });
+}
 
 /**
  * Segments réservés sous `/forge` : ce ne sont pas des postes. Un poste n'a pour référence qu'un
@@ -127,8 +137,9 @@ export const routes: Routes = [
         // sur un portable. Placée AVANT la redirection de `postes` et après `forge` : deux
         // segments, elle ne masque ni `forge` (un segment), ni `atelier/:id` (autre préfixe).
         path: 'forge/supervision',
-        loadComponent: () =>
-          import('./supervision/supervision.component').then((m) => m.SupervisionComponent),
+        // F-98 / SF-98-04 : la supervision vit désormais dans « Voir travailler », densité Aperçus.
+        // L'ancienne adresse redirige — les liens collés et les onglets restés ouverts ne cassent pas.
+        redirectTo: forgeDensityRedirect('apercus'),
       },
       {
         // F-83 / SF-83-02 — **la mosaïque** : quatre vrais terminaux, vivants, en même temps. La
@@ -138,8 +149,16 @@ export const routes: Routes = [
         // Deux segments, comme `forge/supervision` : elle ne masque ni `forge` (un segment), ni
         // `atelier/:id` (autre préfixe), ni `forge/supervision` (segment final différent).
         path: 'forge/mosaique',
+        // F-98 / SF-98-04 : la mosaïque vit désormais dans « Voir travailler », densité Flux entiers.
+        redirectTo: forgeDensityRedirect('flux'),
+      },
+      {
+        // F-98 / SF-98-04 — **Voir travailler, un seul écran** : les aperçus (F-76) et les flux entiers
+        // (F-83) derrière une porte et un sélecteur, `?densite=apercus|flux`. Deux segments, déclarée
+        // avant le matcher de la Forge (qui réserve `voir` de toute façon).
+        path: 'forge/voir',
         loadComponent: () =>
-          import('./mosaique/mosaique.component').then((m) => m.MosaiqueComponent),
+          import('./forge-voir/voir-travailler.component').then((m) => m.VoirTravaillerComponent),
       },
       {
         // F-68 / SF-68-01 — **l'accueil de la Forge**, et depuis F-98 / SF-98-01 **le poste ouvert** :

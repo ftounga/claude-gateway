@@ -41,32 +41,6 @@
   line-height: 24px;
 }
 
-.mosaique__title {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--cg-surface);
-}
-
-.mosaique__back,
-.mosaique__link {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--cg-space-1);
-  color: var(--cg-accent-2);
-  text-decoration: none;
-
-  &:hover {
-    text-decoration: underline;
-  }
-
-  mat-icon {
-    font-size: 16px;
-    width: 16px;
-    height: 16px;
-  }
-}
-
 .mosaique__spacer {
   flex: 1 1 auto;
 }

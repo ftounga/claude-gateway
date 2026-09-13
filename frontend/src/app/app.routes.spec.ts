@@ -1,4 +1,5 @@
-import { Route, UrlSegment } from '@angular/router';
+import { TestBed } from '@angular/core/testing';
+import { Route, Router, UrlSegment, provideRouter } from '@angular/router';
 
 import { forgeMatcher, routes } from './app.routes';
 import { authGuard } from './core/guards/auth.guard';
@@ -144,11 +145,12 @@ describe('app.routes', () => {
       return routes[guardedParentIndex()].children ?? [];
     }
 
-    it('déclare /forge/supervision sous la route authentifiée', () => {
+    it('garde /forge/supervision sous la route authentifiée, en redirection (F-98 / SF-98-04)', () => {
       const supervision = children().find((c) => c.path === 'forge/supervision');
 
-      expect(supervision).withContext('/forge/supervision absente').toBeDefined();
-      expect(supervision?.loadComponent).toBeDefined();
+      expect(supervision).withContext('/forge/supervision absente : les anciens liens tomberaient').toBeDefined();
+      expect(supervision?.redirectTo).toBeDefined();
+      expect(supervision?.loadComponent).toBeUndefined();
     });
 
     it('ne masque ni /forge, ni /postes, ni les routes de l’Atelier', () => {
@@ -171,22 +173,55 @@ describe('app.routes', () => {
       return routes[guardedParentIndex()].children ?? [];
     }
 
-    it('déclare /forge/mosaique sous la route authentifiée', () => {
+    it('garde /forge/mosaique sous la route authentifiée, en redirection (F-98 / SF-98-04)', () => {
       const mosaique = children().find((c) => c.path === 'forge/mosaique');
 
-      expect(mosaique).withContext('/forge/mosaique absente').toBeDefined();
-      expect(mosaique?.loadComponent).toBeDefined();
+      expect(mosaique).withContext('/forge/mosaique absente : les anciens liens tomberaient').toBeDefined();
+      expect(mosaique?.redirectTo).toBeDefined();
+      expect(mosaique?.loadComponent).toBeUndefined();
     });
 
-    it('coexiste avec la supervision : deux densités, deux écrans, aucun masqué', () => {
+    it('les deux densités vivent dans /forge/voir, déclarée avant le matcher de la Forge', () => {
       const paths = children().map((c) => c.path);
+      const voir = children().find((c) => c.path === 'forge/voir');
 
-      // La supervision de F-76 n'est pas remplacée : ses aperçus gardent leur sens là où l'on ne
-      // veut précisément PAS de flux.
+      expect(voir?.loadComponent).toBeDefined();
       expect(paths).toContain('forge/supervision');
       expect(paths).toContain('forge/mosaique');
       expect(paths).toContain('atelier/:id');
       expect(forgeIndex()).toBeGreaterThan(paths.indexOf('forge/mosaique'));
+      expect(forgeIndex()).toBeGreaterThan(paths.indexOf('forge/voir'));
+    });
+
+    describe('les anciennes adresses mènent à la bonne densité (routeur réel)', () => {
+      beforeEach(() => {
+        TestBed.configureTestingModule({ providers: [provideRouter(children())] });
+      });
+
+      it('/forge/supervision ⇒ /forge/voir?densite=apercus, en gardant la requête', async () => {
+        const router = TestBed.inject(Router);
+
+        await router.navigateByUrl('/forge/supervision?x=1');
+
+        expect(router.url).toBe('/forge/voir?x=1&densite=apercus');
+      });
+
+      it('/forge/mosaique ⇒ /forge/voir?densite=flux', async () => {
+        const router = TestBed.inject(Router);
+
+        await router.navigateByUrl('/forge/mosaique');
+
+        expect(router.url).toBe('/forge/voir?densite=flux');
+      });
+
+      it('/forge/voir n\'est pas pris pour un poste', async () => {
+        const router = TestBed.inject(Router);
+
+        await router.navigateByUrl('/forge/voir?densite=flux');
+
+        expect(router.url).toBe('/forge/voir?densite=flux');
+        expect(router.routerState.snapshot.root.firstChild?.routeConfig?.path).toBe('forge/voir');
+      });
     });
   });
 });

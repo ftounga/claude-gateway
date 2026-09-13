@@ -6,7 +6,6 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { RouterLink } from '@angular/router';
 
 import { LiveTerminalEntry, LiveTerminals, TerminalPreview } from '../core/models/atelier.models';
-import { ForgeBreadcrumbComponent, ForgeCrumb } from '../shared/forge-breadcrumb/forge-breadcrumb.component';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import { HostTone, hostTone } from '../shared/host-identity';
 import { LiveBadgeComponent } from '../shared/live-badge/live-badge.component';
@@ -57,7 +56,6 @@ export interface SupervisionTile {
   selector: 'app-supervision',
   imports: [
     RouterLink,
-    ForgeBreadcrumbComponent,
     HostBadgeComponent,
     LiveBadgeComponent,
     TerminalPreviewComponent,
@@ -88,9 +86,6 @@ export class SupervisionComponent implements OnInit, OnDestroy {
 
   /** Vrai quand le dernier rafraîchissement a échoué alors qu'on affiche déjà quelque chose. */
   readonly stale = signal(false);
-
-  /** Fil d'Ariane : « Forge › Supervision ». */
-  readonly crumbs: ForgeCrumb[] = [{ label: 'Supervision', link: ['/forge', 'supervision'] }];
 
   /**
    * Les tuiles, **ce qui attend une décision d'abord**. Ce tri n'est pas cosmétique : c'est l'un

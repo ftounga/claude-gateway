@@ -1,11 +1,8 @@
 <section class="supervision">
-  <!-- « Forge › Supervision » : le fil d'Ariane de F-68, réemployé tel quel. Il dit où l'on est, et
-       il ramène à l'accueil d'un clic. -->
-  <app-forge-breadcrumb class="supervision__crumbs" [crumbs]="crumbs"></app-forge-breadcrumb>
-
+  <!-- F-98 / SF-98-04 : cet écran vit dans « Voir travailler », dont la barre dit où l'on est, ramène
+       à la Forge et choisit la densité. Il ne porte plus ni fil d'Ariane, ni titre, ni lien croisé. -->
   <header class="supervision__header">
     <div>
-      <h1>Voir travailler ses terminaux</h1>
       <p class="supervision__subtitle">
         Une tuile par terminal ouvert : ses dernières lignes, et ce qu'il fait à l'instant.
         Un clic entre dans le terminal.
@@ -24,11 +21,6 @@
           }
         </span>
       }
-      <!-- L'AUTRE DENSITÉ (F-83 / SF-83-02) : ici les aperçus, là les quatre flux entiers. -->
-      <a mat-stroked-button routerLink="/forge/mosaique">
-        <mat-icon>dashboard</mat-icon>
-        Voir les flux entiers
-      </a>
       <button mat-stroked-button type="button" (click)="refresh()">
         <mat-icon>refresh</mat-icon>
         Rafraîchir
