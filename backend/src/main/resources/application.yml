@@ -379,6 +379,12 @@ app:
       max-attempts: ${APP_RADAR_ANALYSIS_MAX_ATTEMPTS:3}
       # Rétention du texte brut d'un lot non analysé. JAMAIS plus de 7 jours (cadrage §4.6).
       raw-retention: ${APP_RADAR_ANALYSIS_RAW_RETENTION:P7D}
+    reading:
+      # Modèle du TRI (première passe). Vide => le modèle RAPIDE du catalogue : la question est
+      # grossière (« engagement, décision, blocage, date, clôture ? »), le coût doit l'être aussi.
+      triage-model: ${APP_RADAR_READING_TRIAGE_MODEL:}
+      # Plafond de sortie d'un appel de tri. Borné à [100, 4000].
+      triage-max-tokens: ${APP_RADAR_READING_TRIAGE_MAX_TOKENS:600}
   byok:
     # Chiffrement des clés API utilisateur (F-03, OQ-06 : AWS KMS envelope encryption).
     # kms-key-id vide => BYOK dormant (l'ajout de clé renvoie 503), sauf si local-key est fourni.
