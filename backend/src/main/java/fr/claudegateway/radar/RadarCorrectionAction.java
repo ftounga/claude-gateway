@@ -19,6 +19,12 @@ public enum RadarCorrectionAction {
     /** Dire l'échéance (vide = l'effacer). */
     SET_DUE_DATE(Target.SUBJECT),
 
+    /** Fusionner ce sujet dans un autre (SF-99-03 ; route dédiée). */
+    MERGE(Target.SUBJECT),
+
+    /** Séparer d'un sujet ce qui n'en est pas (SF-99-03 ; route dédiée). */
+    SPLIT(Target.SUBJECT),
+
     // ------------------------------------------------------------------------------- engagement
 
     /** « Fait » : tenu. */

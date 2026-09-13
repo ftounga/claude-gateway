@@ -8,8 +8,10 @@ import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,8 +45,12 @@ public class RadarRegistry {
     /** Nombre maximal de phrases d'un résumé. */
     public static final int MAX_SUMMARY_SENTENCES = 20;
 
+    /** Longueur maximale d'une chaîne de fusions suivie pour rediriger une écriture. */
+    static final int MAX_MERGE_HOPS = 16;
+
     private final RadarSubjectRepository subjects;
     private final RadarSubjectFactRepository facts;
+    private final RadarSubjectAliasRepository aliases;
     private final RadarPersonRepository people;
     private final RadarSubjectRoleRepository roles;
     private final RadarCommitmentRepository commitments;
@@ -53,11 +59,12 @@ public class RadarRegistry {
     private final RadarSyncRepository syncs;
 
     public RadarRegistry(RadarSubjectRepository subjects, RadarSubjectFactRepository facts,
-            RadarPersonRepository people, RadarSubjectRoleRepository roles,
+            RadarSubjectAliasRepository aliases, RadarPersonRepository people, RadarSubjectRoleRepository roles,
             RadarCommitmentRepository commitments, RadarEvidenceRepository evidence,
             RadarEvidenceLinkRepository links, RadarSyncRepository syncs) {
         this.subjects = subjects;
         this.facts = facts;
+        this.aliases = aliases;
         this.people = people;
         this.roles = roles;
         this.commitments = commitments;
@@ -145,7 +152,7 @@ public class RadarRegistry {
 
     /** Range des preuves dans la chronologie d'un sujet, sans doublon de lien. */
     public RadarSubject attachEvidence(RadarScope scope, UUID subjectId, Collection<UUID> evidenceIds) {
-        RadarSubject subject = requireSubject(scope, subjectId);
+        RadarSubject subject = requireLiveSubject(scope, subjectId);
         addToChronology(scope, subject, requireEvidence(scope, evidenceIds));
         return subject;
     }
@@ -153,7 +160,7 @@ public class RadarRegistry {
     /** Change l'état d'un sujet ouvert, avec ses preuves. */
     public RadarSubject setState(RadarScope scope, UUID subjectId, RadarSubjectState state,
             Collection<UUID> evidenceIds) {
-        RadarSubject subject = requireSubject(scope, subjectId);
+        RadarSubject subject = requireLiveSubject(scope, subjectId);
         RadarSubjectState next = requireOpenWork(Objects.requireNonNull(state, "state"));
         List<RadarEvidence> proofs = requireEvidence(scope, evidenceIds);
         if (subject.isStateSovereign()) {
@@ -169,7 +176,7 @@ public class RadarRegistry {
     /** Fixe (ou efface, {@code null}) la prochaine étape, avec ses preuves. */
     public RadarSubject setNextStep(RadarScope scope, UUID subjectId, String nextStep,
             Collection<UUID> evidenceIds) {
-        RadarSubject subject = requireSubject(scope, subjectId);
+        RadarSubject subject = requireLiveSubject(scope, subjectId);
         String text = RadarText.optional(nextStep, RadarSubject.MAX_NEXT_STEP_LENGTH, "next_step");
         List<RadarEvidence> proofs = requireEvidence(scope, evidenceIds);
         if (subject.isNextStepSovereign()) {
@@ -184,7 +191,7 @@ public class RadarRegistry {
     /** Fixe (ou efface, {@code null}) l'échéance connue, avec ses preuves. */
     public RadarSubject setDueDate(RadarScope scope, UUID subjectId, LocalDate dueDate,
             Collection<UUID> evidenceIds) {
-        RadarSubject subject = requireSubject(scope, subjectId);
+        RadarSubject subject = requireLiveSubject(scope, subjectId);
         List<RadarEvidence> proofs = requireEvidence(scope, evidenceIds);
         if (subject.isDueDateSovereign()) {
             addToChronology(scope, subject, proofs);
@@ -201,7 +208,7 @@ public class RadarRegistry {
      */
     public List<RadarSubjectFact> replaceSummary(RadarScope scope, UUID subjectId,
             List<SummarySentence> sentences) {
-        RadarSubject subject = requireSubject(scope, subjectId);
+        RadarSubject subject = requireLiveSubject(scope, subjectId);
         List<SummarySentence> input = sentences == null ? List.of() : sentences;
         if (input.size() > MAX_SUMMARY_SENTENCES) {
             throw new InvalidRadarInputException(
@@ -252,7 +259,7 @@ public class RadarRegistry {
     /** Le rôle d'une personne sur un sujet ; le dernier rôle sourcé remplace le précédent. */
     public RadarSubjectRole assignRole(RadarScope scope, UUID subjectId, UUID personId, RadarRole role,
             Collection<UUID> evidenceIds) {
-        RadarSubject subject = requireSubject(scope, subjectId);
+        RadarSubject subject = requireLiveSubject(scope, subjectId);
         RadarPerson person = requirePerson(scope, personId);
         if (role == null) {
             throw new InvalidRadarInputException("Le rôle est requis.");
@@ -282,7 +289,7 @@ public class RadarRegistry {
         if (input.certainty() == null) {
             throw new InvalidRadarInputException("La certitude de l'engagement est requise.");
         }
-        RadarSubject subject = requireSubject(scope, input.subjectId());
+        RadarSubject subject = requireLiveSubject(scope, input.subjectId());
         String description = RadarText.required(input.description(),
                 RadarCommitment.MAX_DESCRIPTION_LENGTH, "description");
         String key = RadarText.optional(input.extractionKey(),
@@ -359,6 +366,85 @@ public class RadarRegistry {
         }
         return subjects.findByIdAndUserIdAndHostId(subjectId, scope.userId(), scope.hostId())
                 .orElseThrow(() -> new RadarNotFoundException("Sujet introuvable."));
+    }
+
+    /**
+     * Sujet du périmètre <b>vivant</b> : un sujet absorbé par une fusion renvoie à sa cible (SF-99-03).
+     * C'est ce qui empêche une synchro tardive d'écrire sur une trace.
+     */
+    public RadarSubject requireLiveSubject(RadarScope scope, UUID subjectId) {
+        RadarSubject subject = requireSubject(scope, subjectId);
+        for (int hop = 0; subject.getMergedIntoId() != null && hop < MAX_MERGE_HOPS; hop++) {
+            subject = requireSubject(scope, subject.getMergedIntoId());
+        }
+        if (subject.getMergedIntoId() != null) {
+            throw new RadarNotFoundException("Sujet introuvable.");
+        }
+        return subject;
+    }
+
+    // ------------------------------------------------------------------------------------ alias
+
+    /**
+     * Un alias proposé par l'analyse. <b>Ignoré</b> si ce nom est déjà connu du sujet — en particulier
+     * s'il a été <b>refusé</b> : une consigne de l'utilisateur est souveraine (SF-99-03).
+     *
+     * @return l'alias créé, ou vide s'il était déjà connu ou refusé
+     */
+    public Optional<RadarSubjectAlias> addAlias(RadarScope scope, UUID subjectId, String alias) {
+        RadarSubject subject = requireLiveSubject(scope, subjectId);
+        String clean = RadarText.required(alias, RadarSubjectAlias.MAX_ALIAS_LENGTH, "alias");
+        String key = RadarText.key(clean);
+        boolean known = aliases.findByUserIdAndHostIdAndSubjectIdOrderByCreatedAtAsc(
+                        scope.userId(), scope.hostId(), subject.getId()).stream()
+                .anyMatch(existing -> existing.getNormalized().equals(key));
+        if (known || key.equals(RadarText.key(subject.getName()))) {
+            return Optional.empty();
+        }
+        return Optional.of(aliases.save(RadarSubjectAlias.builder()
+                .userId(scope.userId()).hostId(scope.hostId()).subjectId(subject.getId())
+                .alias(clean).normalized(key).origin(RadarAliasOrigin.SYNC).build()));
+    }
+
+    /** Ce que l'invite de rattachement doit savoir d'un sujet (F-101). */
+    public record SubjectContext(UUID id, String name, RadarSubjectState state, List<String> aliases,
+            List<String> rejectedAliases, List<String> summary) {
+    }
+
+    /**
+     * La matière du rattachement (SF-99-03) : pour chaque sujet non fusionné du poste, son nom, ses
+     * alias, <b>les noms refusés</b> et son résumé.
+     *
+     * @param includeClosed les sujets clos, pour reconnaître un sujet qui se réveille (SF-99-04)
+     */
+    @Transactional(readOnly = true)
+    public List<SubjectContext> attachmentContext(RadarScope scope, boolean includeClosed) {
+        List<RadarSubject> live = subjects.findByUserIdAndHostId(scope.userId(), scope.hostId()).stream()
+                .filter(s -> s.getMergedIntoId() == null)
+                .filter(s -> includeClosed || s.getState() != RadarSubjectState.CLOSED)
+                .toList();
+        var aliasesBySubject = aliases.findByUserIdAndHostIdAndSubjectIdIn(scope.userId(), scope.hostId(),
+                        live.stream().map(RadarSubject::getId).toList()).stream()
+                .collect(Collectors.groupingBy(RadarSubjectAlias::getSubjectId));
+        return live.stream().map(s -> {
+            List<RadarSubjectAlias> own = aliasesBySubject.getOrDefault(s.getId(), List.of());
+            return new SubjectContext(s.getId(), s.getName(), s.getState(),
+                    own.stream().filter(a -> !a.isRejected()).map(RadarSubjectAlias::getAlias).toList(),
+                    own.stream().filter(RadarSubjectAlias::isRejected).map(RadarSubjectAlias::getAlias).toList(),
+                    facts.findByUserIdAndHostIdAndSubjectIdOrderByPositionAsc(scope.userId(), scope.hostId(), s.getId())
+                            .stream().map(RadarSubjectFact::getText).toList());
+        }).toList();
+    }
+
+    /** Recalcule la dernière activité d'un sujet depuis sa chronologie (après un déplacement de preuves). */
+    public void recomputeActivity(RadarScope scope, RadarSubject subject) {
+        List<UUID> ids = links.findByUserIdAndHostIdAndSubjectIdAndTargetKind(scope.userId(), scope.hostId(),
+                        subject.getId(), RadarLinkKind.CHRONOLOGY).stream()
+                .map(RadarEvidenceLink::getEvidenceId).distinct().toList();
+        subject.setLastActivityAt(ids.isEmpty() ? null
+                : evidence.findByUserIdAndHostIdAndIdIn(scope.userId(), scope.hostId(), ids).stream()
+                        .map(RadarEvidence::getOccurredAt).max(Comparator.naturalOrder()).orElse(null));
+        subjects.save(subject);
     }
 
     /** Engagement du périmètre, ou 404. */

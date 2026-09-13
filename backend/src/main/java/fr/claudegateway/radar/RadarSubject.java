@@ -88,6 +88,10 @@ public class RadarSubject {
     @Column(name = "due_date_sovereign", nullable = false)
     private boolean dueDateSovereign;
 
+    /** Sujet absorbé par une fusion : la cible (SF-99-03). Il reste comme trace. */
+    @Column(name = "merged_into_id")
+    private UUID mergedIntoId;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

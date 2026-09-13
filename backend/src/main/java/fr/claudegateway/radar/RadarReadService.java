@@ -82,6 +82,7 @@ public class RadarReadService {
                 .filter(c -> c.getStatus().isPending() && !c.isDisowned())
                 .collect(Collectors.groupingBy(RadarCommitment::getSubjectId, Collectors.counting()));
         return subjects.findByUserIdAndHostId(scope.userId(), scope.hostId()).stream()
+                .filter(s -> s.getMergedIntoId() == null)
                 .filter(s -> state == null || s.getState() == state)
                 .filter(s -> includeClosed || state == RadarSubjectState.CLOSED
                         || s.getState() != RadarSubjectState.CLOSED)
@@ -99,7 +100,7 @@ public class RadarReadService {
 
         List<AliasView> aliasViews = aliases.findByUserIdAndHostIdAndSubjectIdOrderByCreatedAtAsc(
                         scope.userId(), scope.hostId(), subject.getId()).stream()
-                .map(a -> new AliasView(a.getId(), a.getAlias()))
+                .map(a -> new AliasView(a.getId(), a.getAlias(), a.getOrigin(), a.isRejected()))
                 .toList();
 
         List<SentenceView> summary = facts.findByUserIdAndHostIdAndSubjectIdOrderByPositionAsc(
@@ -135,7 +136,7 @@ public class RadarReadService {
 
         return new SubjectDetail(subject.getId(), subject.getName(), subject.getState(),
                 subject.getNextStep(), subject.getDueDate(), subject.getLastActivityAt(),
-                subject.getCreatedAt(), subject.isNameSovereign(), subject.isStateSovereign(),
+                subject.getCreatedAt(), subject.getMergedIntoId(), subject.isNameSovereign(), subject.isStateSovereign(),
                 subject.isNextStepSovereign(), subject.isDueDateSovereign(), aliasViews,
                 evidenceOf(subjectLinks, RadarLinkKind.STATE, null),
                 evidenceOf(subjectLinks, RadarLinkKind.NEXT_STEP, null),
@@ -174,7 +175,8 @@ public class RadarReadService {
                 .map(p -> new PersonView(p.getId(), p.getSourceKey(), p.getDisplayName(), p.getJobTitle(),
                         p.getLastInteractionAt(),
                         rolesByPerson.getOrDefault(p.getId(), List.of()).stream()
-                                .filter(r -> subjectsById.containsKey(r.getSubjectId()))
+                                .filter(r -> subjectsById.containsKey(r.getSubjectId())
+                                        && subjectsById.get(r.getSubjectId()).getMergedIntoId() == null)
                                 .map(r -> {
                                     RadarSubject s = subjectsById.get(r.getSubjectId());
                                     return new PersonSubjectView(s.getId(), s.getName(), s.getState(), r.getRole());

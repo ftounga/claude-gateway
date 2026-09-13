@@ -7,6 +7,7 @@ import java.util.UUID;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import fr.claudegateway.radar.RadarAliasOrigin;
 import fr.claudegateway.radar.RadarCertainty;
 import fr.claudegateway.radar.RadarCommitmentDirection;
 import fr.claudegateway.radar.RadarCommitmentStatus;
@@ -35,14 +36,14 @@ public final class RadarViews {
     /** La page d'un sujet. */
     public record SubjectDetail(UUID id, String name, RadarSubjectState state, String nextStep,
             LocalDate dueDate, OffsetDateTime lastActivityAt, OffsetDateTime createdAt,
-            boolean nameSovereign, boolean stateSovereign, boolean nextStepSovereign,
+            UUID mergedIntoId, boolean nameSovereign, boolean stateSovereign, boolean nextStepSovereign,
             boolean dueDateSovereign, List<AliasView> aliases, List<UUID> stateEvidenceIds, List<UUID> nextStepEvidenceIds,
             List<UUID> dueDateEvidenceIds, List<SentenceView> summary, List<RoleView> people,
             List<CommitmentView> commitments, List<EvidenceView> chronology) {
     }
 
     /** Un autre nom du sujet. */
-    public record AliasView(UUID id, String alias) {
+    public record AliasView(UUID id, String alias, RadarAliasOrigin origin, boolean rejected) {
     }
 
     /** Une phrase du résumé et ses renvois. */

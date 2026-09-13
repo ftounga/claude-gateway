@@ -966,6 +966,12 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `radar_corrections` (`subject_id`, `target_kind`, `target_id`, `action`, `before_values` /
     `after_values` JSON des **seuls champs touchés**, `created_at`, `undone_at`) : toute correction est
     annulable, sauf recouverte par une correction plus récente et active des mêmes champs.
+  - **Fusion, séparation, alias** (F-99 / SF-99-03, migration `083`) : `radar_subject_aliases.origin`
+    (`SYNC`, `USER`, `MERGE`, `SPLIT`) et `rejected` — un alias refusé est une **consigne de
+    rattachement** (« ce nom n'est pas ce sujet ») qu'une synchro ne peut plus proposer ;
+    `radar_subjects.merged_into_id` — le sujet absorbé reste comme **trace** (hors listes, écritures de
+    synchro redirigées vers la cible). Fusion et séparation **déplacent des liens** (jamais des preuves)
+    et sont journalisées (`MERGE`, `SPLIT`) avec la liste exacte de ce qui a bougé, donc annulables.
 
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 

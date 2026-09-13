@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-99 / SF-99-03 — FUSIONNER, SÉPARER, LES ALIAS.
+
+      1) `radar_subject_aliases.origin` (SYNC, USER, MERGE, SPLIT) et `rejected` : un alias refusé est
+         une CONSIGNE DE RATTACHEMENT — « ce nom n'est pas ce sujet » —, apprise d'une séparation.
+         Lignes existantes : USER (seuls les renommages de SF-99-02 en ont créé), non refusées.
+      2) `radar_subjects.merged_into_id` : le sujet absorbé par une fusion reste comme TRACE. Il sort
+         des listes, redirige les écritures tardives de la synchro, et rend la fusion annulable.
+    -->
+
+    <changeSet id="083-radar-merge-split" author="claude-gateway">
+        <addColumn tableName="radar_subject_aliases">
+            <column name="origin" type="varchar(16)" defaultValue="USER"><constraints nullable="false"/></column>
+            <column name="rejected" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+        </addColumn>
+        <addColumn tableName="radar_subjects">
+            <column name="merged_into_id" type="uuid"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="radar_subjects" columnName="merged_into_id"/>
+            <dropColumn tableName="radar_subject_aliases" columnName="rejected"/>
+            <dropColumn tableName="radar_subject_aliases" columnName="origin"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
