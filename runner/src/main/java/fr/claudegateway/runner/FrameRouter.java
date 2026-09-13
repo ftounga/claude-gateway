@@ -17,10 +17,21 @@ public final class FrameRouter {
     private final ToolDispatcher dispatcher;
     private final Console console;
     private final ObjectMapper mapper = new ObjectMapper();
+    private final java.util.function.Consumer<JsonNode> onUpdate;
 
     public FrameRouter(ToolDispatcher dispatcher, Console console) {
+        this(dispatcher, console, frame -> { });
+    }
+
+    /**
+     * @param onUpdate reçoit la commande {@code update} (F-111 / SF-111-04) ; elle ne doit ni bloquer ni
+     *                 lever — la mise à jour se déroule sur son propre fil
+     */
+    public FrameRouter(ToolDispatcher dispatcher, Console console,
+            java.util.function.Consumer<JsonNode> onUpdate) {
         this.dispatcher = dispatcher;
         this.console = console;
+        this.onUpdate = onUpdate;
     }
 
     /** Analyse puis aiguille une trame reçue. Ne lève jamais. */
@@ -45,6 +56,8 @@ public final class FrameRouter {
             case "heartbeat_ack" -> console.info("Heartbeat confirmé (ack).");
             case "tool_call" -> dispatcher.onToolCall(frame);
             case "tool_cancel" -> dispatcher.onToolCancel(frame);
+            // F-111 / SF-111-04 : la gateway propose une mise à jour ; le runner vérifie et décide.
+            case "update" -> onUpdate.accept(frame);
             default -> {
                 // Type inconnu : ignoré, jamais une erreur ni une fermeture de canal.
             }

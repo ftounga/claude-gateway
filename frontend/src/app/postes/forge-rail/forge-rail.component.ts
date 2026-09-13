@@ -6,7 +6,7 @@ import { RunnerHostOverview } from '../../core/models/atelier.models';
 import { HostPresenceService } from '../../core/services/host-presence.service';
 import { HostBadgeComponent } from '../../shared/host-badge/host-badge.component';
 import { hostTone } from '../../shared/host-identity';
-import { updateNotice } from '../../shared/runner-update/runner-update';
+import { updateNotice, updatingPresence } from '../../shared/runner-update/runner-update';
 import { ForgeGroup, ForgeRow } from '../forge-fleet';
 
 /**
@@ -70,12 +70,20 @@ export class ForgeRailComponent {
    * affirmé (F-97), et écrit comme une phrase (F-98 / SF-98-05).
    */
   stateLabel(host: RunnerHostOverview): string {
+    // F-111 / SF-111-04 : pendant la bascule d'une mise à jour, le runner n'est pas « hors ligne ».
+    const updating = updatingPresence(host, this.online(host));
+    if (updating) {
+      return updating;
+    }
     const label = this.presence.label(host.id, host.connected, host.lastSeenAt);
     return label.charAt(0).toUpperCase() + label.slice(1);
   }
 
   /** « Mise à jour disponible / requise / manuelle » (F-111 / SF-111-01), ou `null`. */
   updateShort(host: RunnerHostOverview): string | null {
+    if (host.runnerUpdate?.progress?.active) {
+      return null; // l'état dit déjà « Mise à jour en cours » ou le poste est en ligne et bascule
+    }
     return updateNotice(host.runnerUpdate)?.short ?? null;
   }
 

@@ -625,6 +625,28 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("storage_execution_closed", ex.getMessage()));
     }
 
+    @ExceptionHandler(fr.claudegateway.runner.update.RunnerUpdateNotPossibleException.class)
+    public ResponseEntity<java.util.Map<String, String>> handleRunnerUpdateNotPossible(
+            fr.claudegateway.runner.update.RunnerUpdateNotPossibleException ex) {
+        // F-111 / SF-111-04 : rien à mettre à jour d'un clic — le motif dit pourquoi, l'écran le montre.
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(java.util.Map.of("error", "runner_update_not_possible",
+                "reason", ex.reason(), "message", ex.getMessage()));
+    }
+
+    @ExceptionHandler(fr.claudegateway.runner.update.RunnerUpdateInProgressException.class)
+    public ResponseEntity<ErrorResponse> handleRunnerUpdateInProgress(
+            fr.claudegateway.runner.update.RunnerUpdateInProgressException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("runner_update_in_progress", ex.getMessage()));
+    }
+
+    @ExceptionHandler(fr.claudegateway.runner.update.RunnerUpdateUndeliveredException.class)
+    public ResponseEntity<ErrorResponse> handleRunnerUpdateUndelivered(
+            fr.claudegateway.runner.update.RunnerUpdateUndeliveredException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("runner_unavailable", ex.getMessage()));
+    }
+
     @ExceptionHandler(fr.claudegateway.runner.host.RunnerHostNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleRunnerHostNotFound(
             fr.claudegateway.runner.host.RunnerHostNotFoundException ex) {

@@ -1,14 +1,58 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { MAT_DIALOG_DATA, MatDialog } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
+import { of, throwError } from 'rxjs';
 
-import { RunnerHostOverview, RunnerUpdateView } from '../../core/models/atelier.models';
+import { RunnerHostOverview, RunnerUpdateProgress, RunnerUpdateView } from '../../core/models/atelier.models';
+import { RunnerUpdateService } from '../../core/services/runner-update.service';
 import { RunnerManualUpdateDialogComponent } from './runner-manual-update-dialog.component';
 import { RunnerUpdateNoticeComponent } from './runner-update-notice.component';
-import { manualUpdateText, platformFromOs, runnerVersionLabel, updateNotice } from './runner-update';
+import {
+  manualUpdateText, platformFromOs, progressLine, runnerVersionLabel, updateNotice, updatingPresence,
+} from './runner-update';
 
-/** La mise à jour du runner dans la Forge et la Vigie (F-111 / SF-111-01). */
+/** La mise à jour du runner dans la Forge et la Vigie (F-111 / SF-111-01, SF-111-04). */
 describe('runner-update (F-111 / SF-111-01)', () => {
+  describe('l’état de la mise à jour (SF-111-04)', () => {
+    const base: RunnerUpdateProgress = {
+      id: 'u1', state: 'DOWNLOADING', fromVersion: '1.0.0-202609131412-aaa', toVersion: '1.1.0-202609200900-bbb',
+      detail: null, forced: false, requestedAt: '2026-09-13T10:00:00Z', updatedAt: '2026-09-13T10:00:05Z',
+      finishedAt: null, active: true,
+    };
+    const now = Date.parse('2026-09-13T10:01:00Z');
+
+    it('dit le téléchargement, l’attente avec Forcer, le redémarrage', () => {
+      expect(progressLine(base, now)?.text).toBe('Mise à jour vers 1.1.0 : téléchargement et vérification…');
+      const waiting = progressLine({ ...base, state: 'WAITING', detail: 'commande, capture' }, now);
+      expect(waiting?.text).toContain('(commande, capture en cours)');
+      expect(waiting?.waiting).toBeTrue();
+      expect(progressLine({ ...base, state: 'RESTARTING' }, now)?.text).toBe('Mise à jour en cours — redémarrage en 1.1.0');
+    });
+
+    it('dit le résultat pendant 24 h, puis se tait', () => {
+      const done = { ...base, active: false, finishedAt: '2026-09-13T10:00:30Z' };
+      expect(progressLine({ ...done, state: 'SUCCEEDED' }, now)?.text).toBe('Mise à jour vers 1.1.0 réussie');
+      expect(progressLine({ ...done, state: 'FAILED', detail: 'signature invalide' }, now)?.text)
+        .toBe('Mise à jour vers 1.1.0 échouée : signature invalide');
+      expect(progressLine({ ...done, state: 'FAILED' }, now + 25 * 3600 * 1000)).toBeNull();
+      expect(progressLine(null, now)).toBeNull();
+    });
+
+    it('dit « Mise à jour en cours » au lieu de « Hors ligne » pendant la bascule', () => {
+      const host: RunnerHostOverview = {
+        id: 'h1', name: 'CAGIP', connected: false, activeProjects: 0, createdAt: '', projects: [],
+        runnerUpdate: { status: 'AVAILABLE', required: false, installedVersion: '1.0.0', installedId: null,
+          servedVersion: '1.1.0', servedId: null, installedJava: 21, requiredJava: 21, teamsMissing: false,
+          notes: [], progress: { ...base, state: 'RESTARTING' } },
+      };
+      expect(updatingPresence(host, false)).toBe('Mise à jour en cours');
+      expect(updatingPresence(host, true)).toBeNull();
+      expect(updatingPresence({ ...host, runnerUpdate: null }, false)).toBeNull();
+    });
+  });
+
   const view = (extra: Partial<RunnerUpdateView> = {}): RunnerUpdateView => ({
     status: 'AVAILABLE', required: false, installedVersion: '1.0.0', installedId: '1.0.0-202609131412-aaa',
     servedVersion: '1.1.0', servedId: '1.1.0-202609200900-bbb', installedJava: 21, requiredJava: 21,
@@ -73,17 +117,76 @@ describe('runner-update (F-111 / SF-111-01)', () => {
       runnerVersion: update?.installedId ?? '0.0.1', runnerUpdate: update,
     });
 
-    function render(value: RunnerHostOverview): HTMLElement {
+    let updates: jasmine.SpyObj<RunnerUpdateService>;
+    let snackBar: jasmine.SpyObj<MatSnackBar>;
+
+    function render(value: RunnerHostOverview, online = false): HTMLElement {
       dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
+      updates = jasmine.createSpyObj<RunnerUpdateService>('RunnerUpdateService', ['request', 'journal']);
+      snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
       TestBed.configureTestingModule({
         imports: [RunnerUpdateNoticeComponent],
-        providers: [provideNoopAnimations(), { provide: MatDialog, useValue: dialog }],
+        providers: [
+          provideNoopAnimations(),
+          { provide: MatDialog, useValue: dialog },
+          { provide: RunnerUpdateService, useValue: updates },
+          { provide: MatSnackBar, useValue: snackBar },
+        ],
       });
       fixture = TestBed.createComponent(RunnerUpdateNoticeComponent);
       fixture.componentRef.setInput('host', value);
+      fixture.componentRef.setInput('online', online);
       fixture.detectChanges();
       return fixture.nativeElement as HTMLElement;
     }
+
+    const progress = (extra: Partial<RunnerUpdateProgress> = {}): RunnerUpdateProgress => ({
+      id: 'u1', state: 'REQUESTED', fromVersion: '1.0.0-202609131412-aaa', toVersion: '1.1.0-202609200900-bbb',
+      detail: null, forced: false, requestedAt: new Date(Date.now() - 5000).toISOString(),
+      updatedAt: new Date(Date.now() - 4000).toISOString(), finishedAt: null, active: true, ...extra,
+    });
+
+    it('propose « Mettre à jour » sur un poste en ligne, et lance la mise à jour (F-111 / SF-111-04)', () => {
+      const root = render(host(view({ oneClick: true })), true);
+      updates.request.and.returnValue(of(progress()));
+
+      const button = root.querySelector<HTMLButtonElement>('.runner-update__update');
+      expect(button?.textContent).toContain('Mettre à jour');
+      button!.click();
+      fixture.detectChanges();
+
+      expect(updates.request).toHaveBeenCalledWith('h1', false);
+      expect(root.querySelector('.runner-update__progress')?.textContent).toContain('téléchargement et vérification');
+      expect(root.querySelector('.runner-update__update')).toBeNull();
+    });
+
+    it('ne propose pas « Mettre à jour » hors ligne, ni sans version signée servie', () => {
+      expect(render(host(view({ oneClick: true })), false).querySelector('.runner-update__update')).toBeNull();
+      TestBed.resetTestingModule();
+      expect(render(host(view({ oneClick: false })), true).querySelector('.runner-update__update')).toBeNull();
+    });
+
+    it('en attente de la fin d’une commande, « Forcer » demande confirmation puis force', () => {
+      const root = render(host(view({ oneClick: true, progress: progress({ state: 'WAITING', detail: 'commande' }) })), true);
+      expect(root.querySelector('.runner-update__progress')?.textContent).toContain('(commande en cours)');
+      dialog.open.and.returnValue({ afterClosed: () => of(true) } as never);
+      updates.request.and.returnValue(of(progress({ state: 'WAITING', forced: true })));
+
+      root.querySelector<HTMLButtonElement>('.runner-update__force')!.click();
+
+      expect(dialog.open).toHaveBeenCalled();
+      expect(updates.request).toHaveBeenCalledWith('h1', true);
+    });
+
+    it('dit un refus de la gateway sans rien casser', () => {
+      const root = render(host(view({ oneClick: true })), true);
+      updates.request.and.returnValue(throwError(() => new HttpErrorResponse({ status: 409,
+        error: { error: 'runner_unavailable', message: 'Le runner de ce poste n’est pas joignable.' } })));
+
+      root.querySelector<HTMLButtonElement>('.runner-update__update')!.click();
+
+      expect(snackBar.open.calls.mostRecent().args[0]).toContain('pas joignable');
+    });
 
     it('écrit la version et la pastille « disponible », sans commande', () => {
       const root = render(host(view()));

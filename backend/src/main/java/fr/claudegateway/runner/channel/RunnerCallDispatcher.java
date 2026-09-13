@@ -53,7 +53,7 @@ import fr.claudegateway.runner.RunnerLiveness;
  * un {@code write_file} serait destructeur.</p>
  */
 @Component
-public class RunnerCallDispatcher {
+public class RunnerCallDispatcher implements org.springframework.context.ApplicationEventPublisherAware {
 
     /** Clé sous laquelle la session décorée est déposée dans les attributs de session WS. */
     public static final String OUTBOUND_SESSION_ATTRIBUTE = "runnerOutboundSession";
@@ -88,6 +88,17 @@ public class RunnerCallDispatcher {
     private final Map<UUID, RunnerOutbound> outbound = new ConcurrentHashMap<>();
     private final Map<String, InFlightCall> inFlight = new ConcurrentHashMap<>();
     private final Map<UUID, Set<String>> capabilities = new ConcurrentHashMap<>();
+    /**
+     * Publie les trames de mise à jour du runner (F-111 / SF-111-04) vers {@code RunnerUpdateService},
+     * sans que ce protocole dépende du service — celui-ci dépend déjà du dispatcher pour remettre la
+     * commande. Nul hors d'un contexte Spring (tests construits à la main) : rien n'est publié.
+     */
+    private volatile org.springframework.context.ApplicationEventPublisher events;
+
+    @Override
+    public void setApplicationEventPublisher(org.springframework.context.ApplicationEventPublisher publisher) {
+        this.events = publisher;
+    }
 
     public RunnerCallDispatcher(RunnerRegistry registry, ObjectMapper objectMapper,
             fr.claudegateway.runner.host.RunnerShellRecorder shellRecorder,
@@ -346,6 +357,27 @@ public class RunnerCallDispatcher {
         return true;
     }
 
+    /**
+     * Remet une trame de <b>commande</b> (F-111 / SF-111-04 : {@code update}) au runner de ce poste
+     * <b>si son canal vit sur ce pod</b> — WebSocket ou file de long-polling, indifféremment.
+     *
+     * @return vrai si la trame a été confiée au canal ; faux si aucun canal local ouvert ne la porte
+     *         (l'appelant la diffuse alors aux pods pairs)
+     */
+    public boolean sendControl(UUID hostId, String frame) {
+        RunnerOutbound session = hostId == null ? null : outbound.get(hostId);
+        if (session == null || !session.isOpen()) {
+            return false;
+        }
+        try {
+            session.send(frame);
+            return true;
+        } catch (IOException | RuntimeException ex) {
+            log.debug("Trame de commande non remise (poste={})", hostId);
+            return false;
+        }
+    }
+
     /** Jeton du runner <b>local</b> de ce poste, s'il y en a un (audit, révocation ciblée). */
     public java.util.Optional<UUID> localTokenId(UUID hostId) {
         return registry.findLocal(hostId).map(RunnerConnection::tokenId);
@@ -365,6 +397,8 @@ public class RunnerCallDispatcher {
             case "tool_result" -> onToolResult(identity, frame);
             case "tool_stream" -> onToolStream(identity, frame);
             case "protocol_error" -> onProtocolError(identity, frame);
+            // F-111 / SF-111-04 : où en est la mise à jour. L'identité est celle de la session.
+            case "update_status" -> publishUpdateFrame(identity, type, frame, null);
             default -> log.debug("Trame runner de type inconnu ignorée (poste={})",
                     identity.hostId());
         }
@@ -383,6 +417,9 @@ public class RunnerCallDispatcher {
         capabilities.put(identity.hostId(), declared.isEmpty() ? DEFAULT_CAPABILITIES : declared);
         recordDeclaredShell(identity, frame);
         recordDeclaredVersion(identity, frame);
+        // F-111 / SF-111-04 : un runner qui revient peut clore une mise à jour (réussie ou non).
+        publishUpdateFrame(identity, "ready", frame,
+                fr.claudegateway.runner.host.RunnerDeclaration.fromReadyFrame(frame));
         log.debug("Runner prêt (poste={}, capacités={})", identity.hostId(), declared);
     }
 
@@ -447,6 +484,21 @@ public class RunnerCallDispatcher {
         } catch (RuntimeException e) {
             log.warn("Interpréteur déclaré non enregistré (poste={}) : {}",
                     identity.hostId(), e.getMessage());
+        }
+    }
+
+    /** Best-effort : un suivi de mise à jour en échec ne coupe jamais une liaison saine. */
+    private void publishUpdateFrame(RunnerIdentity identity, String type, JsonNode frame,
+            fr.claudegateway.runner.host.RunnerDeclaration declaration) {
+        org.springframework.context.ApplicationEventPublisher publisher = this.events;
+        if (publisher == null) {
+            return;
+        }
+        try {
+            publisher.publishEvent(new RunnerUpdateFrameEvent(identity.hostId(), type, frame, declaration));
+        } catch (RuntimeException e) {
+            log.warn("Suivi de mise à jour du runner en échec (poste={}) : {}", identity.hostId(),
+                    e.getMessage());
         }
     }
 

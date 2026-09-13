@@ -25,7 +25,7 @@ import fr.claudegateway.runner.launcher.LauncherHome;
  * n'est écrit dans {@code versions/}, pas même dans un fichier temporaire que le lanceur pourrait
  * trouver.</p>
  */
-public final class UpdateInstaller {
+public final class UpdateInstaller implements RunnerUpdater.Installer {
 
     /** Plafond du jar téléchargé : le runner pèse quelques mégaoctets. */
     public static final int MAX_JAR_BYTES = 64 * 1024 * 1024;
@@ -53,6 +53,7 @@ public final class UpdateInstaller {
      *                       doit alors seulement correspondre au fichier
      * @return le jar installé
      */
+    @Override
     public Path install(String id, String expectedSha256) throws UpdateRejectedException {
         if (RunnerBuild.parseId(id).isEmpty()) {
             throw new UpdateRejectedException(UpdateRejectedException.VERSION_MISMATCH,

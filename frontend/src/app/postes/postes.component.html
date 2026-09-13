@@ -226,7 +226,7 @@
             <!-- F-81 / SF-81-03 puis F-111 / SF-111-01 : la version RÉELLE déclarée par le runner, et si une
                  mise à jour est disponible, requise ou manuelle une dernière fois. Rien n'est refusé. -->
             @if (host.runnerVersion) {
-              <app-runner-update-notice class="poste__fact" [host]="host"></app-runner-update-notice>
+              <app-runner-update-notice class="poste__fact" [host]="host" [online]="online(host)"></app-runner-update-notice>
             }
             @if (presenceSeen(host); as seen) {
               <span class="poste__fact">{{ seen }}</span>

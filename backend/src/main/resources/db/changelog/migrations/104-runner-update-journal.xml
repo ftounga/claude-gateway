@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-111 / SF-111-04 — Le journal des mises à jour du runner.
+
+      Une ligne par demande : QUI l'a déclenchée (le propriétaire ou un ADMIN), QUAND, DE quelle version
+      VERS laquelle, et où elle en est — puis son RÉSULTAT. La dernière ligne active d'un poste est aussi
+      son état courant : l'écran y lit « téléchargement », « en attente de la fin de la commande »,
+      « mise à jour en cours » (et non « hors ligne » pendant la bascule).
+
+      `user_id` est TOUJOURS le propriétaire du poste (isolation), jamais l'ADMIN qui a cliqué — celui-ci
+      est dans `requested_by`. La ligne disparaît avec le poste (cascade).
+    -->
+    <changeSet id="104-runner-update-journal" author="claude-gateway">
+        <createTable tableName="runner_update_journal">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="host_id" type="uuid">
+                <constraints nullable="false"
+                             foreignKeyName="fk_runner_update_journal_host"
+                             references="runner_hosts(id)"
+                             deleteCascade="true"/>
+            </column>
+            <column name="requested_by" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="from_version" type="varchar(64)"/>
+            <column name="to_version" type="varchar(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="forced" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="state" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="detail" type="varchar(500)"/>
+            <column name="requested_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="finished_at" type="timestamp with time zone"/>
+        </createTable>
+        <createIndex tableName="runner_update_journal" indexName="idx_runner_update_journal_host_requested">
+            <column name="host_id"/>
+            <column name="requested_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="runner_update_journal"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

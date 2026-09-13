@@ -174,6 +174,16 @@ public final class RunnerMain {
         }
         RunnerConnection connection =
                 new RunnerConnection(httpClient, config, console, fallbackPolicy, journal);
+        // F-111 / SF-111-04 : la commande de mise à jour — téléchargement par CE client HTTP (proxy,
+        // confiance d'entreprise), vérification par la clé embarquée, attente du calme, sortie 75.
+        fr.claudegateway.runner.launcher.LauncherHome launcherHome =
+                fr.claudegateway.runner.launcher.LauncherHome.resolve(env, home.toString());
+        fr.claudegateway.runner.update.RunnerUpdater updater = new fr.claudegateway.runner.update.RunnerUpdater(
+                new fr.claudegateway.runner.update.UpdateInstaller(httpClient, config.gatewayBaseUrl(),
+                        fr.claudegateway.runner.update.UpdateVerifier.embedded(), launcherHome),
+                launcherHome, fr.claudegateway.runner.launcher.LauncherWatch.underLauncher(env),
+                RunnerBuild.current(), RunnerActivity::busy, System::exit, console);
+        connection.withUpdater(updater);
         AtomicReference<PollingConnection> polling = new AtomicReference<>();
         AtomicBoolean shuttingDown = new AtomicBoolean(false);
         CountDownLatch stopped = new CountDownLatch(1);
@@ -308,6 +318,7 @@ public final class RunnerMain {
         }
         PollingConnection fallback = new PollingConnection(
                 new HttpPollingClient(httpClient, config, token), config, console, journal);
+        fallback.withUpdater(connection.updater());
         polling.set(fallback);
         if (shuttingDown.get()) {
             // Arret demande pendant le montage : ne pas ouvrir une boucle que personne n'arretera.

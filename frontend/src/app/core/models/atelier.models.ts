@@ -1272,6 +1272,30 @@ export interface RunnerUpdateView {
   notes: string[];
   /** Une version **signée** est servie : la mise à jour d'un clic est possible (F-111 / SF-111-03). */
   updatable?: boolean;
+  /** Le bouton « Mettre à jour » a un sens : disponible, signée, runner qui comprend la commande (SF-111-04). */
+  oneClick?: boolean;
+  /** La dernière mise à jour de ce poste (F-111 / SF-111-04). */
+  progress?: RunnerUpdateProgress | null;
+}
+
+/** État d'une mise à jour du runner (F-111 / SF-111-04). */
+export type RunnerUpdateState =
+  | 'REQUESTED' | 'DOWNLOADING' | 'WAITING' | 'RESTARTING' | 'SUCCEEDED' | 'FAILED' | 'ROLLED_BACK';
+
+/** Une mise à jour du runner d'un poste : où elle en est, et comment elle a fini (F-111 / SF-111-04). */
+export interface RunnerUpdateProgress {
+  id: string;
+  state: RunnerUpdateState;
+  fromVersion: string | null;
+  toVersion: string;
+  /** Motif d'échec, ou activités attendues (« commande, capture »). */
+  detail: string | null;
+  forced: boolean;
+  requestedAt: string;
+  updatedAt: string;
+  finishedAt: string | null;
+  /** En cours : état non terminal, nouvelles récentes. */
+  active: boolean;
 }
 
 /**

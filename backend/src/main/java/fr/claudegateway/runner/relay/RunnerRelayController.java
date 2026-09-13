@@ -110,6 +110,19 @@ public class RunnerRelayController {
     }
 
     /**
+     * Remet une trame de commande au runner d'un poste si son canal vit sur <b>ce</b> pod
+     * (F-111 / SF-111-04). Toujours 200 : {@code delivered=false} veut dire « pas chez moi ».
+     */
+    @PostMapping(value = "/control", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> control(
+            @RequestBody(required = false) RelayGestureRequests.ControlRequest request) {
+        if (request == null || !request.isValid()) {
+            return ResponseEntity.badRequest().build();
+        }
+        return ResponseEntity.ok(Map.of("delivered", dispatcher.sendControl(request.hostId(), request.frame())));
+    }
+
+    /**
      * Tranche une demande d'autorisation qui attendrait sur <b>ce</b> pod (contrat du relais §5).
      *
      * <p>C'est le geste que le multi-pod cassait le plus silencieusement : la porte

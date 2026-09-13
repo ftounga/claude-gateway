@@ -54,6 +54,7 @@ import { RadarExporter } from './radar-export/radar-export';
 import { RadarScheduleComponent } from './radar-schedule/radar-schedule.component';
 import { HostMailAddressComponent } from '../shared/host-mail-address/host-mail-address.component';
 import { RunnerUpdateNoticeComponent } from '../shared/runner-update/runner-update-notice.component';
+import { updatingPresence } from '../shared/runner-update/runner-update';
 import {
   RadarVerificationDialogComponent,
   RadarVerificationDialogData,
@@ -255,6 +256,11 @@ export class VigieComponent implements OnInit {
   }
 
   presenceState(host: RunnerHostOverview): string {
+    // F-111 / SF-111-04 : pendant la bascule d'une mise à jour, le runner n'est pas « hors ligne ».
+    const updating = updatingPresence(host, this.online(host));
+    if (updating) {
+      return updating;
+    }
     const [state] = this.presence.label(host.id, host.connected, host.lastSeenAt).split(' · ');
     return state.charAt(0).toUpperCase() + state.slice(1);
   }

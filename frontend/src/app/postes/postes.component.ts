@@ -41,6 +41,7 @@ import { MissionBadgeComponent } from '../shared/mission-badge/mission-badge.com
 import { SpacePitchComponent } from '../shared/space-pitch/space-pitch.component';
 import { HostMailAddressComponent } from '../shared/host-mail-address/host-mail-address.component';
 import { RunnerUpdateNoticeComponent } from '../shared/runner-update/runner-update-notice.component';
+import { updatingPresence } from '../shared/runner-update/runner-update';
 import { TerminalPreviewComponent } from '../shared/terminal-preview/terminal-preview.component';
 import {
   FORGE_ACCESS_CODE_FRAGMENT,
@@ -622,6 +623,11 @@ export class PostesComponent implements OnInit {
 
   /** L'état écrit dans la pastille de l'en-tête : « En ligne », « Hors ligne », « Jamais connecté ». */
   presenceState(host: RunnerHostOverview): string {
+    // F-111 / SF-111-04 : pendant la bascule d'une mise à jour, le runner n'est pas « hors ligne ».
+    const updating = updatingPresence(host, this.online(host));
+    if (updating) {
+      return updating;
+    }
     const [state] = this.hostStateLabel(host).split(' · ');
     return state.charAt(0).toUpperCase() + state.slice(1);
   }
