@@ -237,4 +237,66 @@ class RadarStructureServiceTest extends RadarIntegrationTestBase {
 
         assertThat(read.subject(aliceA, mfa.getId()).aliases()).isEmpty();
     }
+
+    @Test
+    @DisplayName("ALIAS (SF-99-06) : l'ajout est journalisé et s'annule depuis le journal")
+    void addedAliasIsJournaledAndUndone() {
+        var alias = structure.addUserAlias(aliceA, mfa.getId(), "Chantier Okta");
+
+        CorrectionView added = correctionService.journal(aliceA, mfa.getId()).get(0);
+        assertThat(added.action()).isEqualTo(RadarCorrectionAction.ADD_ALIAS);
+        assertThat(added.after().path("aliasId").asText()).isEqualTo(alias.id().toString());
+        assertThat(added.after().path("alias").asText()).isEqualTo("Chantier Okta");
+
+        correctionService.undo(aliceA, added.id());
+
+        assertThat(read.subject(aliceA, mfa.getId()).aliases()).isEmpty();
+        assertThat(correctionService.journal(aliceA, mfa.getId()).get(0).undoneAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("ALIAS (SF-99-06) : un retrait se recrée à l'identique, consigne comprise")
+    void removedHintIsRecreatedOnUndo() {
+        RadarEvidence okta = proof(aliceA, "Okta signé.");
+        registry.attachEvidence(aliceA, mfa.getId(), ids(okta));
+        structure.split(aliceA, mfa.getId(), "Contrat Okta", ids(okta), null);
+        var hint = read.subject(aliceA, mfa.getId()).aliases().get(0);
+        assertThat(hint.rejected()).isTrue();
+
+        structure.removeAlias(aliceA, mfa.getId(), hint.id());
+        CorrectionView removed = correctionService.journal(aliceA, mfa.getId()).get(0);
+        assertThat(removed.action()).isEqualTo(RadarCorrectionAction.REMOVE_ALIAS);
+        assertThat(removed.before().path("alias").asText()).isEqualTo("Contrat Okta");
+        assertThat(read.subject(aliceA, mfa.getId()).aliases()).isEmpty();
+
+        correctionService.undo(aliceA, removed.id());
+
+        assertThat(read.subject(aliceA, mfa.getId()).aliases()).singleElement().satisfies(a -> {
+            assertThat(a.alias()).isEqualTo("Contrat Okta");
+            assertThat(a.rejected()).isTrue();
+            assertThat(a.origin()).isEqualTo(RadarAliasOrigin.SPLIT);
+        });
+    }
+
+    @Test
+    @DisplayName("ALIAS (SF-99-06) : annulations impossibles dites (déjà retiré, nom de nouveau connu, autre poste)")
+    void aliasUndoConflicts() {
+        var alias = structure.addUserAlias(aliceA, mfa.getId(), "Chantier Okta");
+        UUID addedId = correctionService.journal(aliceA, mfa.getId()).get(0).id();
+        structure.removeAlias(aliceA, mfa.getId(), alias.id());
+        UUID removedId = correctionService.journal(aliceA, mfa.getId()).get(0).id();
+
+        assertThatThrownBy(() -> correctionService.undo(aliceA, addedId))
+                .isInstanceOf(RadarCorrectionConflictException.class);
+
+        structure.addUserAlias(aliceA, mfa.getId(), "chantier OKTA");
+        assertThatThrownBy(() -> correctionService.undo(aliceA, removedId))
+                .isInstanceOf(RadarCorrectionConflictException.class);
+
+        // Isolation : le poste B d'Alice ne voit pas la correction du poste A.
+        assertThatThrownBy(() -> correctionService.undo(aliceB, removedId))
+                .isInstanceOf(RadarNotFoundException.class);
+        assertThat(read.subject(aliceA, mfa.getId()).aliases()).extracting(v -> v.alias())
+                .containsExactly("chantier OKTA");
+    }
 }

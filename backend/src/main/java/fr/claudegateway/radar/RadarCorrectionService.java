@@ -207,6 +207,12 @@ public class RadarCorrectionService {
             correction.setUndoneAt(OffsetDateTime.now());
             return journalWriter.view(corrections.save(correction));
         }
+        if (correction.getAction() == RadarCorrectionAction.ADD_ALIAS
+                || correction.getAction() == RadarCorrectionAction.REMOVE_ALIAS) {
+            structure.undoAlias(scope, correction);
+            correction.setUndoneAt(OffsetDateTime.now());
+            return journalWriter.view(corrections.save(correction));
+        }
         if (correction.getAction() == RadarCorrectionAction.MERGE
                 || correction.getAction() == RadarCorrectionAction.SPLIT) {
             structure.undo(scope, correction);

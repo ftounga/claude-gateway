@@ -43,6 +43,10 @@ public class RadarStructureService {
     static final String ROLES = "roles";
     static final String ALIASES = "aliases";
     static final String CREATED_ALIASES = "createdAliases";
+    static final String ALIAS_ID = "aliasId";
+    static final String ALIAS = "alias";
+    static final String ALIAS_ORIGIN = "origin";
+    static final String ALIAS_REJECTED = "rejected";
 
     /** Liens qui justifient une valeur de la source : ils ne s'imposent pas à la cible. */
     private static final Set<RadarLinkKind> VALUE_KINDS =
@@ -273,7 +277,10 @@ public class RadarStructureService {
 
     // ---------------------------------------------------------------------------------- alias
 
-    /** Un alias dit par l'utilisateur. */
+    /**
+     * Un alias dit par l'utilisateur. Journalisé ({@code ADD_ALIAS}, F-99 / SF-99-06) : il s'annule depuis
+     * la chronologie, comme tout geste souverain.
+     */
     public AliasView addUserAlias(RadarScope scope, UUID subjectId, String alias) {
         RadarSubject subject = requireUnmerged(scope, subjectId);
         String clean = RadarText.required(alias, RadarSubjectAlias.MAX_ALIAS_LENGTH, "alias");
@@ -284,17 +291,66 @@ public class RadarStructureService {
         RadarSubjectAlias saved = aliases.save(RadarSubjectAlias.builder()
                 .userId(scope.userId()).hostId(scope.hostId()).subjectId(subject.getId())
                 .alias(clean).normalized(key).origin(RadarAliasOrigin.USER).build());
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put(ALIAS_ID, saved.getId().toString());
+        after.put(ALIAS, saved.getAlias());
+        journal.record(scope, subject.getId(), RadarCorrectionAction.Target.SUBJECT, subject.getId(),
+                RadarCorrectionAction.ADD_ALIAS, new LinkedHashMap<>(), after);
         return new AliasView(saved.getId(), saved.getAlias(), saved.getOrigin(), saved.isRejected());
     }
 
-    /** Retire un alias — ou une consigne — d'un sujet. */
+    /**
+     * Retire un alias — ou une consigne — d'un sujet. Journalisé ({@code REMOVE_ALIAS}, SF-99-06) avec ce
+     * qu'il faut pour le recréer à l'identique : nom, origine, refus.
+     */
     public void removeAlias(RadarScope scope, UUID subjectId, UUID aliasId) {
         RadarSubject subject = registry.requireSubject(scope, subjectId);
         RadarSubjectAlias alias = aliases.findById(aliasId)
                 .filter(a -> a.getUserId().equals(scope.userId()) && a.getHostId().equals(scope.hostId())
                         && a.getSubjectId().equals(subject.getId()))
                 .orElseThrow(() -> new RadarNotFoundException("Alias introuvable."));
+        Map<String, Object> before = new LinkedHashMap<>();
+        before.put(ALIAS_ID, alias.getId().toString());
+        before.put(ALIAS, alias.getAlias());
+        before.put(ALIAS_ORIGIN, alias.getOrigin() == null ? RadarAliasOrigin.USER.name() : alias.getOrigin().name());
+        before.put(ALIAS_REJECTED, alias.isRejected());
         aliases.delete(alias);
+        journal.record(scope, subject.getId(), RadarCorrectionAction.Target.SUBJECT, subject.getId(),
+                RadarCorrectionAction.REMOVE_ALIAS, before, new LinkedHashMap<>());
+    }
+
+    /**
+     * Annule un geste d'alias (appelé par {@link RadarCorrectionService#undo}) : un ajout se retire, un
+     * retrait se recrée — sauf si le sujet a bougé depuis, ce qui est dit plutôt que deviné.
+     */
+    void undoAlias(RadarScope scope, RadarCorrection correction) {
+        if (correction.getAction() == RadarCorrectionAction.ADD_ALIAS) {
+            Object id = journal.parse(correction.getAfterValues()).get(ALIAS_ID);
+            RadarSubjectAlias added = id == null ? null
+                    : aliases.findById(uuid(id)).filter(a -> inScope(scope, a)).orElse(null);
+            if (added == null) {
+                throw new RadarCorrectionConflictException("Cet alias a déjà été retiré.");
+            }
+            aliases.delete(added);
+            return;
+        }
+        Map<String, Object> before = journal.parse(correction.getBeforeValues());
+        RadarSubject subject = requireUnmerged(scope, correction.getTargetId());
+        String name = String.valueOf(before.get(ALIAS));
+        String key = RadarText.key(name);
+        if (aliasKeys(scope, subject).contains(key)) {
+            throw new RadarCorrectionConflictException("Ce nom est de nouveau connu de ce sujet : rien à recréer.");
+        }
+        RadarAliasOrigin origin;
+        try {
+            origin = RadarAliasOrigin.valueOf(String.valueOf(before.get(ALIAS_ORIGIN)));
+        } catch (IllegalArgumentException e) {
+            origin = RadarAliasOrigin.USER;
+        }
+        aliases.save(RadarSubjectAlias.builder()
+                .userId(scope.userId()).hostId(scope.hostId()).subjectId(subject.getId())
+                .alias(name).normalized(key).origin(origin)
+                .rejected(Boolean.TRUE.equals(before.get(ALIAS_REJECTED))).build());
     }
 
     // ------------------------------------------------------------------------------ annulation

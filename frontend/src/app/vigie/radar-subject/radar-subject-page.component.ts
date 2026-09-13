@@ -2,14 +2,18 @@ import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angula
 import { HttpErrorResponse } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { catchError, forkJoin, of } from 'rxjs';
+import { Observable, catchError, forkJoin, map, of } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { MatTooltipModule } from '@angular/material/tooltip';
 
 import {
+  RadarAliasView,
+  RadarCorrectionView,
   RadarEvidenceView,
   RadarManagerAnswer,
   RadarProjectCandidate,
@@ -26,6 +30,15 @@ import { RADAR_DRAFT_STATE } from '../../shared/radar-draft';
 import { SpacePitchComponent } from '../../shared/space-pitch/space-pitch.component';
 import { httpErrorMessage } from '../../shared/http-error.util';
 import { newsUndoErrorOf } from '../radar/radar-news';
+import { UNDO_SNACK_MS } from '../radar/radar-columns.component';
+import { RadarSubjectAliasesComponent } from './radar-subject-aliases.component';
+import { RadarSubjectJournalComponent } from './radar-subject-journal.component';
+import { aliasCorrection } from './radar-subject-journal';
+import {
+  SplitSubjectDialogComponent,
+  SplitSubjectDialogData,
+  SplitSubjectDialogResult,
+} from './split-subject-dialog.component';
 import {
   dayLabel,
   evidenceNumbers,
@@ -46,8 +59,9 @@ export type SubjectPageError = 'none' | 'not-found' | 'not-in-vigie' | 'not-enti
  * **La page d'un sujet du Radar** (F-103 / SF-103-01) — la réponse à « où en est le MFA ? ».
  *
  * <p>L'état, la prochaine étape et l'échéance ; un résumé rendu <b>phrase par phrase</b>, chacune avec
- * ses renvois ; la chronologie multi-sources, avec ses citations et ses liens profonds. La page
- * <b>lit</b> : les gestes sur le sujet vivent dans l'onglet Radar (F-102).</p>
+ * ses renvois ; la chronologie multi-sources, avec ses citations et ses liens profonds. Les gestes sur
+ * l'état vivent dans l'onglet Radar (F-102) ; la page porte ceux qui touchent à la <b>structure</b> du
+ * sujet — séparer, alias (F-99 / SF-99-06) — et le journal où chaque correction s'annule.</p>
  *
  * <p><b>Isolation.</b> Tout part du poste de l'adresse ; la gateway vérifie possession, activation
  * dans la Vigie, et filtre sur {@code user_id} et {@code host_id}. Un sujet d'autrui est
@@ -55,7 +69,8 @@ export type SubjectPageError = 'none' | 'not-found' | 'not-in-vigie' | 'not-enti
  */
 @Component({
   selector: 'app-radar-subject-page',
-  imports: [RouterLink, MatButtonModule, MatIconModule, MatMenuModule, MatProgressSpinnerModule, SpacePitchComponent],
+  imports: [RouterLink, MatButtonModule, MatIconModule, MatMenuModule, MatProgressSpinnerModule, MatTooltipModule,
+    SpacePitchComponent, RadarSubjectAliasesComponent, RadarSubjectJournalComponent],
   templateUrl: './radar-subject-page.component.html',
   styleUrl: './radar-subject-page.component.scss',
 })
@@ -67,6 +82,7 @@ export class RadarSubjectPageComponent implements OnInit {
   private readonly atelier = inject(AtelierService);
   private readonly router = inject(Router);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly dialog = inject(MatDialog);
 
   readonly hostRef = signal<string | null>(null);
   readonly subjectId = signal<string | null>(null);
@@ -87,6 +103,12 @@ export class RadarSubjectPageComponent implements OnInit {
   readonly openingConversation = signal(false);
   /** La nouvelle en cours d'annulation (F-104 / SF-104-02). */
   readonly undoingNews = signal<string | null>(null);
+  /** Le journal des corrections du sujet (SF-99-06) : `null` en lecture, `'error'` s'il n'a pas pu être lu. */
+  readonly corrections = signal<RadarCorrectionView[] | 'error' | null>(null);
+  /** Un geste de structure (séparer, alias) est en cours. */
+  readonly structureBusy = signal(false);
+  /** La correction en cours d'annulation. */
+  readonly undoingCorrection = signal<string | null>(null);
 
   /**
    * **Le projet dans la Forge** (F-106 / SF-106-06) : liens, propositions et projets liables. `null` en
@@ -337,6 +359,167 @@ export class RadarSubjectPageComponent implements OnInit {
     });
   }
 
+  // ------------------------------------------------------------ séparer, alias, journal (F-99 / SF-99-06)
+
+  /** Ouvre le choix de ce qui part dans un nouveau sujet. */
+  openSplit(): void {
+    const hostRef = this.hostRef();
+    const subject = this.detail();
+    if (!hostRef || !subject || subject.mergedIntoId || this.structureBusy()) {
+      return;
+    }
+    this.dialog
+      .open<SplitSubjectDialogComponent, SplitSubjectDialogData, SplitSubjectDialogResult>(SplitSubjectDialogComponent, {
+        data: { hostId: hostRef, subject },
+        width: SplitSubjectDialogComponent.DIALOG_WIDTH,
+        maxWidth: '95vw',
+        autoFocus: false,
+      })
+      .afterClosed()
+      .subscribe((result) => {
+        if (!result) {
+          return;
+        }
+        this.offerUndo(`« ${result.name} » est un nouveau sujet.`, hostRef, () => of(result.correction));
+        this.refreshAfterGesture();
+      });
+  }
+
+  /** Ajoute un autre nom au sujet. */
+  addAlias(alias: string): void {
+    const hostRef = this.hostRef();
+    const subjectId = this.subjectId();
+    if (!hostRef || !subjectId || this.structureBusy()) {
+      return;
+    }
+    this.structureBusy.set(true);
+    this.subjects.addAlias(hostRef, subjectId, alias).subscribe({
+      next: (added) => {
+        this.structureBusy.set(false);
+        this.offerUndo('Alias ajouté.', hostRef, () => this.findAliasCorrection(hostRef, subjectId, 'ADD_ALIAS', added.id));
+        this.refreshAfterGesture();
+      },
+      error: (err: unknown) => {
+        this.structureBusy.set(false);
+        this.fail(err, "L'alias n'a pas pu être ajouté. Rien n'a changé.");
+      },
+    });
+  }
+
+  /** Retire un alias ou une consigne. */
+  removeAlias(alias: RadarAliasView): void {
+    const hostRef = this.hostRef();
+    const subjectId = this.subjectId();
+    if (!hostRef || !subjectId || this.structureBusy()) {
+      return;
+    }
+    this.structureBusy.set(true);
+    this.subjects.removeAlias(hostRef, subjectId, alias.id).subscribe({
+      next: () => {
+        this.structureBusy.set(false);
+        this.offerUndo(alias.rejected ? 'Consigne retirée.' : 'Alias retiré.', hostRef,
+          () => this.findAliasCorrection(hostRef, subjectId, 'REMOVE_ALIAS', alias.id));
+        this.refreshAfterGesture();
+      },
+      error: (err: unknown) => {
+        this.structureBusy.set(false);
+        this.fail(err, "L'alias n'a pas pu être retiré. Rien n'a changé.");
+        this.refreshAfterGesture();
+      },
+    });
+  }
+
+  /** Annule une correction du journal ; la page relit — un sujet qui n'existe plus ramène au Radar. */
+  undoCorrection(correction: RadarCorrectionView): void {
+    const hostRef = this.hostRef();
+    if (!hostRef || this.undoingCorrection() !== null || correction.undoneAt !== null) {
+      return;
+    }
+    this.undoingCorrection.set(correction.id);
+    this.subjects.undo(hostRef, correction.id).subscribe({
+      next: () => {
+        this.undoingCorrection.set(null);
+        this.snackBar.open('Geste annulé.', 'Fermer', { duration: 4000, panelClass: 'snack-success' });
+        this.reloadAfterUndo(hostRef);
+      },
+      error: (err: unknown) => {
+        this.undoingCorrection.set(null);
+        this.fail(err, "Le geste n'a pas pu être annulé.");
+      },
+    });
+  }
+
+  /**
+   * La snackbar d'un geste, avec **Annuler** (§17). La correction à annuler est résolue au clic : pour un
+   * alias, elle est retrouvée dans le journal relu (les routes d'alias ne la rendent pas).
+   */
+  private offerUndo(message: string, hostRef: string, correction: () => Observable<RadarCorrectionView | null>): void {
+    this.snackBar.open(message, 'Annuler', { duration: UNDO_SNACK_MS })
+      .onAction()
+      .subscribe(() => correction().subscribe({
+        next: (found) => {
+          if (found && this.hostRef() === hostRef) {
+            this.undoCorrection(found);
+          } else if (!found) {
+            this.snackBar.open("Le geste n'a pas été retrouvé dans vos corrections.", 'Fermer',
+              { duration: 6000, panelClass: 'snack-error' });
+          }
+        },
+        error: (err: unknown) => this.fail(err, "Le geste n'a pas pu être annulé."),
+      }));
+  }
+
+  private findAliasCorrection(hostRef: string, subjectId: string, action: 'ADD_ALIAS' | 'REMOVE_ALIAS',
+    aliasId: string): Observable<RadarCorrectionView | null> {
+    return this.subjects.corrections(hostRef, subjectId).pipe(
+      map((journal) => aliasCorrection(journal ?? [], action, aliasId)));
+  }
+
+  /**
+   * Relit le sujet et son journal après un geste, **sans** effacer la page : une réponse préparée pour le
+   * manager (décomptée) reste affichée.
+   */
+  private refreshAfterGesture(): void {
+    const hostRef = this.hostRef();
+    const subjectId = this.subjectId();
+    if (!hostRef || !subjectId) {
+      return;
+    }
+    const seq = this.requestSeq;
+    this.loadCorrections(hostRef, subjectId, seq);
+    this.subjects.subject(hostRef, subjectId).subscribe({
+      next: (subject) => {
+        if (seq === this.requestSeq) {
+          this.detail.set(subject);
+        }
+      },
+      error: () => {
+        if (seq === this.requestSeq) {
+          this.load();
+        }
+      },
+    });
+  }
+
+  private loadCorrections(hostRef: string, subjectId: string, seq: number): void {
+    this.subjects.corrections(hostRef, subjectId).subscribe({
+      next: (journal) => {
+        if (seq === this.requestSeq) {
+          this.corrections.set(journal ?? []);
+        }
+      },
+      error: () => {
+        if (seq === this.requestSeq) {
+          this.corrections.set('error');
+        }
+      },
+    });
+  }
+
+  private fail(err: unknown, fallback: string): void {
+    this.snackBar.open(httpErrorMessage(err, fallback), 'Fermer', { duration: 6000, panelClass: 'snack-error' });
+  }
+
   refs(ids: readonly string[] | null | undefined): number[] {
     return refsOf(ids, this.numbers());
   }
@@ -383,6 +566,8 @@ export class RadarSubjectPageComponent implements OnInit {
     this.loading.set(true);
     this.error.set('none');
     this.unknowns.set(null);
+    this.corrections.set(null);
+    this.loadCorrections(hostRef, subjectId, seq);
     this.answer.set(null);
     this.answerError.set(null);
     this.preparingAnswer.set(false);

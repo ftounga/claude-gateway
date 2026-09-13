@@ -51,7 +51,31 @@
             @if (subject.stateSovereign) {
               <span class="badge badge--neutral radar-subject__sovereign">votre correction</span>
             }
+            <!-- SÉPARER (F-99 / SF-99-06) : « ce n'est pas le même sujet » ; annulable depuis la chronologie. -->
+            @if (!subject.mergedIntoId) {
+              <span class="radar-subject__title-actions"
+                [matTooltip]="subject.chronology.length < 2 ? 'Il faut au moins deux preuves pour séparer un sujet' : ''">
+                <button
+                  mat-stroked-button
+                  type="button"
+                  class="radar-subject__split"
+                  [disabled]="subject.chronology.length < 2 || structureBusy()"
+                  (click)="openSplit()"
+                >
+                  <mat-icon>call_split</mat-icon>
+                  Séparer…
+                </button>
+              </span>
+            }
           </div>
+          <!-- LES AUTRES NOMS (F-99 / SF-99-06) : alias et consignes, ajout et retrait annulables. -->
+          <app-radar-subject-aliases
+            [aliases]="subject.aliases"
+            [locked]="!!subject.mergedIntoId"
+            [busy]="structureBusy()"
+            (add)="addAlias($event)"
+            (remove)="removeAlias($event)"
+          ></app-radar-subject-aliases>
         </header>
 
         @if (subject.mergedIntoId) {
@@ -204,6 +228,14 @@
               }
             </ol>
           }
+          <!-- VOS CORRECTIONS (F-99 / SF-99-06) : chaque geste souverain sur ce sujet, annulable. -->
+          <app-radar-subject-journal
+            [hostRef]="hostRef()"
+            [corrections]="corrections()"
+            [commitments]="subject.commitments"
+            [undoingId]="undoingCorrection()"
+            (undo)="undoCorrection($event)"
+          ></app-radar-subject-journal>
         </section>
       </div>
 

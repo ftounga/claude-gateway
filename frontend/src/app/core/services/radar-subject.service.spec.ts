@@ -39,4 +39,33 @@ describe('RadarSubjectService', () => {
     expect(req.request.method).toBe('POST');
     req.flush({ text: 'OK', preparedAt: '2026-09-13T10:00:00Z', coverageIncomplete: false, unknownsCount: 0 });
   });
+
+  it('sépare, ajoute et retire un alias, lit et annule le journal (SF-99-06)', () => {
+    service.split('h1', 's1', { name: 'Okta', evidenceIds: ['p1'], commitmentIds: [] }).subscribe();
+    const split = httpMock.expectOne('/api/radar/hosts/h1/subjects/s1/split');
+    expect(split.request.method).toBe('POST');
+    expect(split.request.body).toEqual({ name: 'Okta', evidenceIds: ['p1'], commitmentIds: [] });
+    split.flush({});
+
+    service.addAlias('h1', 's1', 'Chantier Okta').subscribe();
+    const add = httpMock.expectOne('/api/radar/hosts/h1/subjects/s1/aliases');
+    expect(add.request.method).toBe('POST');
+    expect(add.request.body).toEqual({ alias: 'Chantier Okta' });
+    add.flush({});
+
+    service.removeAlias('h1', 's1', 'a1').subscribe();
+    const remove = httpMock.expectOne('/api/radar/hosts/h1/subjects/s1/aliases/a1');
+    expect(remove.request.method).toBe('DELETE');
+    remove.flush(null);
+
+    service.corrections('h1', 's1').subscribe();
+    const journal = httpMock.expectOne((r) => r.url === '/api/radar/hosts/h1/corrections');
+    expect(journal.request.params.get('subjectId')).toBe('s1');
+    journal.flush([]);
+
+    service.undo('h1', 'c1').subscribe();
+    const undo = httpMock.expectOne('/api/radar/hosts/h1/corrections/c1/undo');
+    expect(undo.request.method).toBe('POST');
+    undo.flush({});
+  });
 });

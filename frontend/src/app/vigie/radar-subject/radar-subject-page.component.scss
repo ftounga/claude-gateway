@@ -290,6 +290,10 @@
     margin-top: var(--cg-space-2);
   }
 
+  &__title-actions {
+    margin-left: auto;
+  }
+
   &__title {
     margin: 0;
     font-family: var(--cg-font-heading);

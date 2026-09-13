@@ -101,6 +101,60 @@ class RadarStructureApiIntegrationTest extends RadarIntegrationTestBase {
     }
 
     @Test
+    @DisplayName("SF-99-06 : ajout et retrait d'alias journalisés, annulés par la route du journal ; autre poste → 404")
+    void aliasGesturesAreUndoneFromTheJournal() throws Exception {
+        RadarSubject mfa = registry.createSubject(aliceA, "MFA", null, ids(proof(aliceA, "MFA")));
+
+        String body = mockMvc.perform(post(url(aliceA, "/subjects/" + mfa.getId() + "/aliases")).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"alias\":\"Chantier Okta\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String aliasId = JsonPath.read(body, "$.id");
+
+        String journal = mockMvc.perform(get(url(aliceA, "/corrections")).contextPath("/api")
+                        .param("subjectId", mfa.getId().toString())
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].action").value("ADD_ALIAS"))
+                .andExpect(jsonPath("$[0].after.alias").value("Chantier Okta"))
+                .andReturn().getResponse().getContentAsString();
+        String addedId = JsonPath.read(journal, "$[0].id");
+
+        // Le poste B d'Alice n'annule pas une correction du poste A.
+        mockMvc.perform(post(url(aliceB, "/corrections/" + addedId + "/undo")).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(delete(url(aliceA, "/subjects/" + mfa.getId() + "/aliases/" + aliasId)).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isNoContent());
+        journal = mockMvc.perform(get(url(aliceA, "/corrections")).contextPath("/api")
+                        .param("subjectId", mfa.getId().toString())
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$[0].action").value("REMOVE_ALIAS"))
+                .andExpect(jsonPath("$[0].before.alias").value("Chantier Okta"))
+                .andReturn().getResponse().getContentAsString();
+        String removedId = JsonPath.read(journal, "$[0].id");
+
+        // L'ajout ne s'annule plus : l'alias a été retiré depuis.
+        mockMvc.perform(post(url(aliceA, "/corrections/" + addedId + "/undo")).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("radar_correction_conflict"));
+
+        mockMvc.perform(post(url(aliceA, "/corrections/" + removedId + "/undo")).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.undoneAt").isNotEmpty());
+        mockMvc.perform(get(url(aliceA, "/subjects/" + mfa.getId())).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$.aliases", Matchers.hasSize(1)))
+                .andExpect(jsonPath("$.aliases[0].alias").value("Chantier Okta"))
+                .andExpect(jsonPath("$.aliases[0].origin").value("USER"));
+    }
+
+    @Test
     @DisplayName("ISOLATION : fusion vers le sujet d'un autre poste → 404")
     void mergeIntoAnotherHostIsA404() throws Exception {
         RadarSubject mine = registry.createSubject(aliceA, "MFA", null, ids(proof(aliceA, "MFA")));
