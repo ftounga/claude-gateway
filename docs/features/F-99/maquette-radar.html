@@ -242,7 +242,7 @@
   <div class="shot" role="img" aria-label="Maquette de l'onglet Radar d'un poste : brief du matin, ce que je dois faire, sujets en cours, ce que j'attends des autres">
     <div class="appbar">
       <span class="brand">claude<span>·</span>gateway</span>
-      <nav><span>Conversations</span><span class="on">Forge</span><span>Documents</span><span>Gouvernance</span></nav>
+      <nav><span>Conversations</span><span>Forge</span><span class="on">Vigie</span><span>Documents</span></nav>
     </div>
 
     <div class="ph">
@@ -254,10 +254,9 @@
     </div>
     <div class="tabs">
       <span class="on">Radar <span class="n hot">5 à traiter</span></span>
-      <span>Projets <span class="n">4</span></span>
-      <span>Carte <span class="n">12 faits</span></span>
-      <span>Gouvernance</span>
-      <span>Activité</span>
+      <span>Conversations</span>
+      <span>Réunions <span class="n">3</span></span>
+      <span>Personnes <span class="n">24</span></span>
     </div>
 
     <div class="body">
@@ -274,9 +273,8 @@
         </div>
         <div class="cover">
           <div style="display:flex;align-items:center;gap:8px"><span class="lbl" style="flex:1">Synchro d'hier, 22 h 00 — ce qui a été lu</span><span class="btn sm">Synchroniser maintenant</span></div>
-          <div class="row"><span class="ok-tick">✓</span><svg class="src"><use href="#i-chat"/></svg><span class="grow">Teams · 23 conversations, 214 messages</span></div>
+          <div class="row"><span class="ok-tick">✓</span><svg class="src"><use href="#i-chat"/></svg><span class="grow">Teams · 23 fils suivis, 214 messages</span></div>
           <div class="row"><span class="ok-tick">✓</span><svg class="src"><use href="#i-meet"/></svg><span class="grow">3 réunions transcrites</span></div>
-          <div class="row"><span class="ok-tick">✓</span><svg class="src"><use href="#i-mail"/></svg><span class="grow">Outlook · 41 courriels</span></div>
           <div class="row"><span class="ok-tick">✓</span><svg class="src"><use href="#i-mic"/></svg><span class="grow">1 enregistrement déposé hier</span></div>
           <div class="row"><span class="warn-tick">!</span><svg class="src"><use href="#i-meet"/></svg><span class="grow">« Copil infra » sans transcription</span><span class="ts">à déposer</span></div>
         </div>
@@ -343,7 +341,7 @@
           <div class="hd"><h4>J'attends des autres</h4><span class="n">4</span></div>
           <div class="item due">
             <span class="t">Julie — retour de l'éditeur SSO</span>
-            <div class="m"><svg class="src"><use href="#i-mail"/></svg>promis « début septembre » · <span class="chip red">relance due</span></div>
+            <div class="m"><svg class="src"><use href="#i-mail"/></svg>courriel collé par vous · <span class="chip red">relance due</span></div>
             <div class="acts"><span class="btn sm">Préparer la relance</span><span class="btn sm">Reporter</span></div>
           </div>
           <div class="item due">
@@ -409,7 +407,7 @@
             </div>
             <div class="ev">
               <span class="d">9 sept.</span><span class="g"><svg class="src" style="color:inherit"><use href="#i-mail"/></svg></span>
-              <div class="x"><b>Courriel de Sophie</b> — calendrier initial, pilote fin septembre.<span class="lk">Ouvrir dans Outlook</span></div>
+              <div class="x"><b>Courriel de Sophie</b>, collé par vous — calendrier initial, pilote fin septembre.</div>
             </div>
             <div class="ev">
               <span class="d">4 sept.</span><span class="g"><svg class="src" style="color:inherit"><use href="#i-chat"/></svg></span>
@@ -456,7 +454,7 @@
         <tr><td>Qui déclenche</td><td>Vous, en posant une question dans le terminal Teams.</td><td><strong>Lui, chaque soir</strong> — et vous, quand vous lancez la synchro ou lui donnez une nouvelle.</td></tr>
         <tr><td>Mémoire</td><td>Aucune. Chaque question relit Teams depuis zéro, et se paie à nouveau.</td><td><strong>Un registre qui s'accumule</strong> : sujets, personnes, engagements, relances. Chaque jour, seul le nouveau est lu.</td></tr>
         <tr><td>Unité</td><td>La conversation, la réunion.</td><td><strong>Le sujet</strong>, qui traverse un groupe Teams, deux réunions, un courriel et une discussion de couloir.</td></tr>
-        <tr><td>Sources</td><td>Teams : conversations, mentions, réunions, enregistrements.</td><td>Teams <strong>+ Outlook + vos enregistrements hors Teams + ce que vous lui racontez</strong>.</td></tr>
+        <tr><td>Sources</td><td>Teams : conversations, mentions, réunions, enregistrements.</td><td>Teams, <strong>limité aux fils que vous suivez</strong>, <strong>+ vos enregistrements hors Teams + ce que vous lui racontez ou collez</strong> (un courriel, par exemple).</td></tr>
         <tr><td>Ce qu'on n'a pas demandé</td><td>Invisible. Si vous ne pensez pas à la question, personne ne la pose.</td><td><strong>Le brief le signale</strong> : promesse oubliée, relance due, sujet silencieux, tâche sans porteur.</td></tr>
         <tr><td>« Où en est le MFA ? »</td><td>Reposer la question, attendre qu'il relise des semaines de messages.</td><td><strong>La page du sujet est déjà prête</strong>, avec ses preuves et à qui demander.</td></tr>
         <tr><td>Forme</td><td>Un terminal. Pas de boutons, par décision.</td><td><strong>Un écran pour l'état, le chat pour le nourrir.</strong> Les questions restent des conversations ; seuls les gestes sur un engagement (fait, pas moi, reporter) sont des boutons.</td></tr>
@@ -476,9 +474,9 @@
       <span class="where">Sur la machine du client</span>
       <h3>1. Les sources</h3>
       <ul>
-        <li><svg><use href="#i-chat"/></svg>Conversations, groupes, fils, canaux<span class="tag">F-88</span></li>
+        <li><svg><use href="#i-chat"/></svg>Les groupes, canaux et conversations que vous suivez<span class="tag">F-88</span></li>
         <li><svg><use href="#i-meet"/></svg>Réunions Teams transcrites<span class="tag">F-88</span></li>
-        <li><svg><use href="#i-mail"/></svg>Courriels Outlook<span class="tag">neuf</span></li>
+        <li><svg><use href="#i-mail"/></svg>Les courriels que vous collez<span class="tag">neuf</span></li>
         <li><svg><use href="#i-mic"/></svg>Vos enregistrements, Teams ou non<span class="tag">F-91</span></li>
         <li><svg><use href="#i-note"/></svg>Ce que vous racontez<span class="tag">neuf</span></li>
       </ul>
@@ -526,7 +524,7 @@
     <div class="rule"><h3>Vous avez le dernier mot</h3><p>« Pas moi », « c'est fait », « ce n'est pas le même sujet » : vos corrections sont <strong>souveraines</strong> et la collecte du lendemain ne les écrase jamais. Il en tire des alias pour ne pas refaire l'erreur.</p></div>
     <div class="rule"><h3>La certitude en toutes lettres</h3><p>« Certain » quand quelqu'un écrit « je m'en charge », « probable » quand une tâche est évoquée sans porteur. <strong>Jamais un score</strong>, et le probable demande votre confirmation.</p></div>
     <div class="rule"><h3>Il dit ce qu'il n'a pas lu</h3><p>Le brief affiche la couverture de la collecte : ce qui a été lu, ce qui a échoué, la réunion sans transcription. <strong>Une collecte partielle ne produit jamais un brief qui a l'air complet.</strong></p></div>
-    <div class="rule"><h3>Il ne parle jamais à votre place</h3><p>Il prépare la relance et la présentation ; <strong>c'est vous qui envoyez</strong>. Rien n'est écrit dans Teams ni dans Outlook, comme le volet Teams aujourd'hui.</p></div>
+    <div class="rule"><h3>Il ne parle jamais à votre place</h3><p>Il prépare la relance et la présentation ; <strong>c'est vous qui envoyez</strong>. Rien n'est écrit dans Teams, comme le volet Teams aujourd'hui.</p></div>
     <div class="rule"><h3>Des extraits, pas des archives</h3><p>On garde le fait, la citation courte et le lien, pas les conversations entières. Chaque client est cloisonné, et <strong>clôturer la mission purge son Radar</strong>.</p></div>
   </div>
 </section>
@@ -563,8 +561,8 @@
       <ul>
         <li><span class="f">cœur</span><span><strong>Reconnaître qu'un échange parle d'un sujet déjà suivi</strong>, quand personne ne le nomme pareil. C'est le vrai défi ; vos fusions et corrections l'entraînent.</span></li>
         <li><span class="f">collecte</span><span><strong>Tenir tous les jours</strong> : session Microsoft expirée, poste en veille à 7 h. D'où le rattrapage et la couverture affichée.</span></li>
-        <li><span class="f">Outlook</span><span><strong>Un second adaptateur</strong>, même technique que Teams : lire ce que le navigateur reçoit.</span></li>
-        <li><span class="f">écrans</span><span><strong>Le Radar, la page sujet, l'annuaire des personnes</strong>, dans l'onglet du poste de la Forge refondue.</span></li>
+        <li><span class="f">périmètre</span><span><strong>Les liens des fils à suivre</strong>, collés à l'activation du client et vérifiés avec vous : ce qui borne le volume et le coût.</span></li>
+        <li><span class="f">écrans</span><span><strong>Le Radar, la page sujet, l'annuaire des personnes</strong>, dans la Vigie, l'espace du pilotage à côté de la Forge.</span></li>
       </ul>
     </div>
   </div>
@@ -580,16 +578,14 @@
     <div class="lot"><span class="wave">Cœur</span><div><h3>La lecture des échanges</h3><p>Rattacher au sujet, repérer promesses, demandes, blocages et mises en relation, certitude en toutes lettres, coût borné.</p></div></div>
     <div class="lot"><span class="wave">Premier usage</span><div><h3>Le Radar et le brief du matin</h3><p>L'onglet de la maquette : brief, à faire par moi, sujets, j'attends des autres, gestes fait / pas moi / reporter.</p></div></div>
     <div class="lot"><span class="wave">Premier usage</span><div><h3>La page sujet et la réponse au manager</h3><p>État, résumé sourcé, chronologie multi-sources, personnes, « à qui demander », réponse préparée.</p></div></div>
-    <div class="lot"><span class="wave">Élargir</span><div><h3>Nourrir le Radar</h3><p>Vos nouvelles en texte, vos enregistrements hors Teams (téléphone, salle, autre outil) déposés et transcrits sur la machine, relances et présentations préparées.</p></div></div>
-    <div class="lot"><span class="wave">Élargir</span><div><h3>Outlook</h3><p>Le second adaptateur : courriels reçus et envoyés, rattachés aux mêmes sujets.</p></div></div>
+    <div class="lot"><span class="wave">Élargir</span><div><h3>Nourrir le Radar</h3><p>Vos nouvelles en texte, les courriels que vous collez, vos enregistrements hors Teams (téléphone, salle, autre outil) déposés et transcrits sur la machine, relances et présentations préparées.</p></div></div>
   </div>
 </section>
 
 <section class="stack">
   <p class="eyebrow">À trancher avec vous</p>
-  <h2 class="col">Trois points, avec ma recommandation</h2>
+  <h2 class="col">Deux points, avec ma recommandation</h2>
   <div class="asks">
-    <div class="askc"><h3>Outlook dans le périmètre ?</h3><p>Une bonne part des engagements vit dans les courriels ; sans eux, des sujets paraîtront silencieux à tort.</p><span class="rec">Recommandé : oui, en dernière vague.</span></div>
     <div class="askc"><h3>Ce que le client autorise</h3><p>Le Radar garde des extraits de communications internes du client dans l'application. Certains contrats l'interdisent.</p><span class="rec">Recommandé : vérifier chez ce client avant la mise en service ; purge à la clôture dans tous les cas.</span></div>
     <div class="askc"><h3>Le prix</h3><p>Une option « Radar » à part, qui suppose l'option Teams et apporte <strong>sa propre enveloppe de consommation</strong> : la synchro du soir ne doit jamais manger le quota de vos conversations. Montant à fixer après deux semaines de mesure réelle, en essai offert.</p><span class="rec">Recommandé : option à part. Montant : à confirmer par vous.</span></div>
   </div>

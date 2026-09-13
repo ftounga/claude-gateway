@@ -43,7 +43,7 @@ Avec la Vigie (F-106), le produit a deux espaces ; chacun se vend comme une lign
 
 | | **Passerelle** | **Espace Forge** | **Espace Vigie** |
 |---|---|---|---|
-| Contenu | conversations, fichiers, historique | runner, projets, terminaux, carte, gouvernance (l'actuel Atelier) | Teams, Radar, réunions, Outlook |
+| Contenu | conversations, fichiers, historique | runner, projets, terminaux, carte, gouvernance (l'actuel Atelier) | Teams, Radar, réunions |
 | Sur Solo / Pro | inclus | **option Forge** (l'actuelle option Atelier) | **option Vigie** |
 | Sur BYOK | inclus | **option Forge** — *correction* | **option Vigie** |
 | **Gold Forge** (l'actuel Gold) | inclus | **inclus** | option Vigie |

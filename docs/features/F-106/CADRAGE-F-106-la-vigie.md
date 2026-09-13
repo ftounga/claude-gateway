@@ -19,7 +19,7 @@ Le produit sert désormais **deux métiers** qui partagent des clients mais pas 
 |---|---|---|
 | Le métier | **faire** : livrer sur l'infrastructure du client | **piloter** : suivre ce que l'organisation du client attend |
 | La question | « qu'est-ce que je construis, et où en est la commande ? » | « qu'est-ce qu'on attend de moi, et où en est ce sujet ? » |
-| Ce qui y vit | projets, terminaux de projet, terminal du poste, carte du poste (infra), gouvernance, Voir travailler | **Radar** (résumé, sujets, engagements), **terminal Teams** (conversation client), réunions et enregistrements, annuaire, Outlook |
+| Ce qui y vit | projets, terminaux de projet, terminal du poste, carte du poste (infra), gouvernance, Voir travailler | **Radar** (résumé, sujets, engagements), **terminal Teams** (conversation client), réunions et enregistrements, annuaire |
 | Le savoir accumulé | la **carte** : l'infrastructure | le **registre** : l'organisation |
 | L'acheteur type | consultant infra, DevOps, sécurité | consultant en pilotage, chef de projet, PMO, manager |
 
