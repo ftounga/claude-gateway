@@ -1,0 +1,196 @@
+package fr.claudegateway.runner.launcher;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.Map;
+import java.util.Optional;
+
+import fr.claudegateway.runner.RunnerBuild;
+
+/**
+ * Le dossier du lanceur (F-111 / SF-111-02) : {@code ~/.claude-runner/}.
+ *
+ * <pre>
+ * ~/.claude-runner/
+ *   versions/&lt;id&gt;/runner.jar          le vrai runner de cette version
+ *   versions/&lt;id&gt;/runner.jar.sha256   son empreinte, relue avant chaque démarrage
+ *   current-version                     la version que le lanceur démarre
+ *   next-version                        écrite par le runner avant de sortir en 75
+ * </pre>
+ *
+ * <p>Un fichier n'est jamais écrit en place : il est écrit à côté puis <b>déplacé</b>, pour qu'un
+ * arrêt brutal ne laisse pas un jar à moitié copié que le lanceur démarrerait ensuite.</p>
+ */
+public final class LauncherHome {
+
+    /** Surcharge du dossier (tests, postes où le dossier personnel est en lecture seule). */
+    public static final String HOME_ENV = "CLAUDE_RUNNER_HOME";
+
+    static final String JAR = "runner.jar";
+    static final String SHA = "runner.jar.sha256";
+    static final String CURRENT = "current-version";
+    static final String NEXT = "next-version";
+
+    private final Path root;
+
+    public LauncherHome(Path root) {
+        this.root = root;
+    }
+
+    /** Le dossier de ce poste : {@code CLAUDE_RUNNER_HOME}, sinon {@code ~/.claude-runner}. */
+    public static LauncherHome resolve(Map<String, String> env, String userHome) {
+        String forced = env == null ? null : env.get(HOME_ENV);
+        if (forced != null && !forced.isBlank()) {
+            return new LauncherHome(Path.of(forced.trim()));
+        }
+        return new LauncherHome(Path.of(userHome == null ? "." : userHome, ".claude-runner"));
+    }
+
+    public Path root() {
+        return root;
+    }
+
+    /** Le jar d'une version, qu'il existe ou non. L'identifiant est validé : jamais un chemin. */
+    public Path jarOf(String id) {
+        return versionDir(id).resolve(JAR);
+    }
+
+    /**
+     * Vrai si la version est installée <b>et intacte</b> : le jar existe et son empreinte est celle
+     * écrite à l'installation. Un jar modifié sur le disque n'est pas démarré.
+     */
+    public boolean isInstalled(String id) {
+        if (RunnerBuild.parseId(id).isEmpty()) {
+            return false;
+        }
+        Path jar = jarOf(id);
+        Path sha = versionDir(id).resolve(SHA);
+        if (!Files.isRegularFile(jar) || !Files.isRegularFile(sha)) {
+            return false;
+        }
+        try {
+            String expected = Files.readString(sha, StandardCharsets.US_ASCII).trim();
+            return expected.equalsIgnoreCase(sha256(jar));
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /** Copie un jar dans {@code versions/<id>/} (écriture à côté, puis déplacement). */
+    public Path install(String id, Path sourceJar) throws IOException {
+        try (InputStream in = Files.newInputStream(sourceJar)) {
+            return install(id, in.readAllBytes());
+        }
+    }
+
+    /** Écrit des octets <b>déjà vérifiés</b> comme jar de la version {@code id}. */
+    public Path install(String id, byte[] jarBytes) throws IOException {
+        Path dir = versionDir(id);
+        Files.createDirectories(dir);
+        Path jar = dir.resolve(JAR);
+        Path tmp = dir.resolve(JAR + ".tmp");
+        Files.write(tmp, jarBytes);
+        move(tmp, jar);
+        writeAtomically(dir.resolve(SHA), sha256(jarBytes));
+        return jar;
+    }
+
+    public Optional<String> currentVersion() {
+        return readId(root.resolve(CURRENT));
+    }
+
+    public void setCurrentVersion(String id) throws IOException {
+        requireId(id);
+        Files.createDirectories(root);
+        writeAtomically(root.resolve(CURRENT), id);
+    }
+
+    public Optional<String> nextVersion() {
+        return readId(root.resolve(NEXT));
+    }
+
+    public void setNextVersion(String id) throws IOException {
+        requireId(id);
+        Files.createDirectories(root);
+        writeAtomically(root.resolve(NEXT), id);
+    }
+
+    public void clearNextVersion() {
+        try {
+            Files.deleteIfExists(root.resolve(NEXT));
+        } catch (IOException e) {
+            // Un next-version qui reste est relu et contrôlé : il ne décide de rien seul.
+        }
+    }
+
+    /** Empreinte SHA-256 hexadécimale d'un fichier. */
+    public static String sha256(Path file) throws IOException {
+        try (InputStream in = Files.newInputStream(file)) {
+            MessageDigest digest = digest();
+            byte[] buffer = new byte[65536];
+            int read;
+            while ((read = in.read(buffer)) > 0) {
+                digest.update(buffer, 0, read);
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        }
+    }
+
+    /** Empreinte SHA-256 hexadécimale d'octets. */
+    public static String sha256(byte[] bytes) {
+        return HexFormat.of().formatHex(digest().digest(bytes));
+    }
+
+    private Path versionDir(String id) {
+        requireId(id);
+        return root.resolve("versions").resolve(id);
+    }
+
+    private static void requireId(String id) {
+        if (RunnerBuild.parseId(id).isEmpty()) {
+            throw new IllegalArgumentException("Identifiant de version invalide : " + id);
+        }
+    }
+
+    private static Optional<String> readId(Path file) {
+        try {
+            if (!Files.isRegularFile(file)) {
+                return Optional.empty();
+            }
+            String id = Files.readString(file, StandardCharsets.US_ASCII).trim();
+            return RunnerBuild.parseId(id).isPresent() ? Optional.of(id) : Optional.empty();
+        } catch (IOException | RuntimeException e) {
+            return Optional.empty();
+        }
+    }
+
+    private static void writeAtomically(Path target, String content) throws IOException {
+        Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
+        Files.writeString(tmp, content, StandardCharsets.US_ASCII);
+        move(tmp, target);
+    }
+
+    private static void move(Path from, Path to) throws IOException {
+        try {
+            Files.move(from, to, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException e) {
+            Files.move(from, to, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private static MessageDigest digest() {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 indisponible", e);
+        }
+    }
+}

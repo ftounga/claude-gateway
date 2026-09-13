@@ -44,9 +44,11 @@ public final class RunnerLauncher {
             System.exit(2);
             return;
         }
-        // Réflexion : une référence directe à RunnerMain la ferait charger avant ce point, et la
+        // Réflexion : une référence directe à la suite la ferait charger avant ce point, et la
         // JVM échouerait sur UnsupportedClassVersionError — exactement ce que l'on cherche à éviter.
-        Class<?> main = Class.forName("fr.claudegateway.runner.RunnerMain");
+        // F-111 / SF-111-02 : la suite est le LANCEUR (Java 21), qui démarre le vrai runner en
+        // processus enfant — ou le runner directement pour --no-launcher, --check, --releve-teams.
+        Class<?> main = Class.forName("fr.claudegateway.runner.launcher.Launcher");
         Method entry = main.getMethod("main", String[].class);
         entry.invoke(null, (Object) args);
     }

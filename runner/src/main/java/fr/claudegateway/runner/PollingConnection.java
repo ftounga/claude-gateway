@@ -77,8 +77,10 @@ public final class PollingConnection {
         console.info("Repli long-polling actif : " + config.pollUrl());
         // L'URL de poll ne porte JAMAIS le jeton — il voyage en en-tête X-Runner-Token.
         journal.attempted(TransportJournal.Transport.POLLING, config.pollUrl());
-        // F-111 / SF-111-01 : la version réelle ; le lanceur arrive avec SF-111-02.
-        sender.send(dispatcher.readyFrame(RunnerBuild.current(), false));
+        // F-111 : la version réelle, et la présence du lanceur (SF-111-02) — sans lui, aucune mise à
+        // jour d'un clic.
+        sender.send(dispatcher.readyFrame(RunnerBuild.current(),
+                fr.claudegateway.runner.launcher.LauncherWatch.underLauncher(System.getenv())));
 
         try {
             loop(router);
