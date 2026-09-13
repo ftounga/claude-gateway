@@ -216,6 +216,147 @@ class AtelierChatControllerAttachTest {
                 .containsExactly("attached", "confirm_request", "confirm_state");
     }
 
+    // ------------------------------------------ SF-84-04 : le direct traverse les proxys
+
+    @Test
+    void laPriseEnMainEstLePremierEvenementDuTour() {
+        List<String> vusAvantLaBoucle = new ArrayList<>();
+        RecordingEmitter ecran = new RecordingEmitter();
+        when(chatService.chatStreaming(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any())).thenAnswer(invocation -> {
+                    vusAvantLaBoucle.addAll(ecran.names());
+                    return new AtelierChatService.AtelierChatResult("fait", List.of(),
+                            UUID.randomUUID());
+                });
+
+        controller(ecran, RelayTurnSource.disabled())
+                .stream(PROJET, new fr.claudegateway.atelier.dto.AtelierChatRequest("longue demande"));
+
+        assertThat(vusAvantLaBoucle)
+                .as("l'écran sait que la demande est prise en main AVANT le premier appel fournisseur")
+                .containsExactly("started");
+        assertThat(ecran.names()).startsWith("started").endsWith("done");
+        assertThat(ecran.payloads().get(0)).contains("\"turnId\"").contains("\"startedAt\"");
+    }
+
+    @Test
+    void uneFenetreSeClotApresLeRejeuPourQuUnProxyLaRelache() {
+        LiveTurn turn = liveTurns.open(ALICE, PROJET);
+        turn.publish("action", new Payload("npm test"));
+        RecordingEmitter ecran = new RecordingEmitter();
+        ManualTimer timer = new ManualTimer();
+
+        windowed(ecran, timer).attach(PROJET, 0L, 20_000L);
+        timer.fireAll();
+
+        assertThat(ecran.names()).containsExactly("attached", "action");
+        assertThat(ecran.completed).isTrue();
+        assertThat(turn.live()).as("clore une fenêtre ne touche pas au tour").isTrue();
+        assertThat(turn.subscriberCount()).isZero();
+    }
+
+    @Test
+    void uneFenetreSansRienARejouerAttendLeDirectPuisSeClot() {
+        LiveTurn turn = liveTurns.open(ALICE, PROJET);
+        turn.publish("action", new Payload("déjà vu"));
+        RecordingEmitter ecran = new RecordingEmitter();
+        ManualTimer timer = new ManualTimer();
+
+        windowed(ecran, timer).attach(PROJET, turn.cursor(), 20_000L);
+        assertThat(ecran.completed).as("rien de neuf : la fenêtre reste ouverte").isFalse();
+
+        turn.publish("action", new Payload("ls -la"));
+        timer.fireLinger();
+
+        assertThat(ecran.names()).containsExactly("attached", "action");
+        assertThat(ecran.payloads().get(1)).contains("ls -la");
+        assertThat(ecran.completed).isTrue();
+    }
+
+    @Test
+    void sansFenetreLeRebranchementResteOuvert() {
+        LiveTurn turn = liveTurns.open(ALICE, PROJET);
+        turn.publish("action", new Payload("npm test"));
+        RecordingEmitter ecran = new RecordingEmitter();
+        ManualTimer timer = new ManualTimer();
+
+        windowed(ecran, timer).attach(PROJET, 0L, null);
+        timer.fireAll();
+
+        assertThat(ecran.completed).as("comportement de SF-84-02, inchangé").isFalse();
+        assertThat(turn.subscriberCount()).isEqualTo(1);
+    }
+
+    @Test
+    void uneFenetreNeVoitJamaisLeTourDautrui() {
+        liveTurns.open(BOB, PROJET).publish("text", new Payload("secret de Bob"));
+        RecordingEmitter ecran = new RecordingEmitter();
+
+        windowed(ecran, new ManualTimer()).attach(PROJET, 0L, 5_000L);
+
+        assertThat(ecran.names()).containsExactly("idle");
+        assertThat(String.join("", ecran.payloads())).doesNotContain("secret de Bob");
+    }
+
+    /** Un minuteur qu'on déclenche à la main. */
+    private static final class ManualTimer implements fr.claudegateway.atelier.live.WindowedTurnSubscriber.Timer {
+        private final List<long[]> delays = new ArrayList<>();
+        private final List<Runnable> actions = new ArrayList<>();
+
+        @Override
+        public Runnable schedule(Runnable action, long delayMs) {
+            delays.add(new long[] {delayMs});
+            actions.add(action);
+            return () -> {
+                int index = actions.indexOf(action);
+                if (index >= 0) {
+                    actions.remove(index);
+                    delays.remove(index);
+                }
+            };
+        }
+
+        void fireLinger() {
+            fire(fr.claudegateway.atelier.live.WindowedTurnSubscriber.LINGER_MS);
+        }
+
+        void fireAll() {
+            fire(Long.MAX_VALUE);
+        }
+
+        private void fire(long atMs) {
+            boolean ran = true;
+            while (ran) {
+                ran = false;
+                for (int i = 0; i < actions.size(); i++) {
+                    if (delays.get(i)[0] <= atMs) {
+                        Runnable action = actions.remove(i);
+                        delays.remove(i);
+                        action.run();
+                        ran = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    private AtelierChatController windowed(SseEmitter emitter, ManualTimer timer) {
+        return new AtelierChatController(chatService, threadService, currentUser, access,
+                Runnable::run, Runnable::run, liveTurns, RelayTurnSource.disabled()) {
+            @Override
+            SseEmitter newEmitter() {
+                return emitter;
+            }
+
+            @Override
+            fr.claudegateway.atelier.live.WindowedTurnSubscriber.Timer windowTimer() {
+                return timer;
+            }
+        };
+    }
+
     // ------------------------------------------------------------------ montage
 
     private AtelierChatController controller(SseEmitter emitter, RemoteTurnSource remote) {

@@ -38,6 +38,8 @@ import fr.claudegateway.atelier.live.PendingApproval;
 import fr.claudegateway.atelier.live.RemoteTurnSource;
 import fr.claudegateway.atelier.live.SseTurnSubscriber;
 import fr.claudegateway.atelier.live.TurnAsides;
+import fr.claudegateway.atelier.live.TurnSubscriber;
+import fr.claudegateway.atelier.live.WindowedTurnSubscriber;
 import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.byok.ByokKeyRequiredException;
 import fr.claudegateway.quota.QuotaExceededException;
@@ -141,10 +143,16 @@ public class AtelierChatController {
      * <p><b>Isolation</b> : le tour est cherché par le couple {@code (userId, workspaceId)}. Le tour
      * d'un autre utilisateur est <b>introuvable</b>, pas « refusé » : on ne se rebranche jamais sur
      * le tour d'autrui.</p>
+     *
+     * <p><b>Par fenêtres</b> (F-84 / SF-84-04) : avec {@code waitMs}, la réponse se <b>clôt</b> peu
+     * après le premier événement de tour livré, ou à l'échéance. C'est ce qui fait passer le direct
+     * au travers d'un proxy d'entreprise qui retient un flux SSE jusqu'à sa fin : une réponse close
+     * est relâchée, et l'écran se rebranche avec son curseur. Sans {@code waitMs}, rien ne change.</p>
      */
     @GetMapping(path = "/attach", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter attach(@PathVariable UUID id,
-            @RequestParam(name = "cursor", required = false) Long cursor) {
+            @RequestParam(name = "cursor", required = false) Long cursor,
+            @RequestParam(name = "waitMs", required = false) Long waitMs) {
         UUID userId = currentUser.requireId();
         // Gating résolu ICI, comme pour le flux d'émission : le pool n'hérite pas du SecurityContext,
         // et un refus doit partir DANS le flux (jamais un 406 sur un endpoint SSE).
@@ -152,8 +160,13 @@ public class AtelierChatController {
         long from = cursor == null || cursor < 0 ? LiveTurn.FROM_START : cursor;
         SseEmitter emitter = newEmitter();
         fr.claudegateway.chat.SseStreamDispatch.submit(turnAttachExecutor, emitter,
-                () -> attachRelay(emitter, userId, id, from, hasAccess));
+                () -> attachRelay(emitter, userId, id, from, waitMs, hasAccess));
         return emitter;
+    }
+
+    /** Le rebranchement historique, sans fenêtre (SF-84-02). */
+    SseEmitter attach(UUID id, Long cursor) {
+        return attach(id, cursor, null);
     }
 
     /**
@@ -190,8 +203,9 @@ public class AtelierChatController {
      * <b>relayé</b>, elle tient le thread pendant la lecture du pair — d'où l'exécuteur dédié.</p>
      */
     private void attachRelay(SseEmitter emitter, UUID userId, UUID workspaceId, long cursor,
-            boolean hasAccess) {
-        SseTurnSubscriber subscriber = new SseTurnSubscriber(emitter);
+            Long waitMs, boolean hasAccess) {
+        SseTurnSubscriber sse = new SseTurnSubscriber(emitter);
+        TurnSubscriber subscriber = sse;
         if (!hasAccess) {
             subscriber.deliver(TurnAsides.error("forbidden"));
             subscriber.finish();
@@ -200,6 +214,9 @@ public class AtelierChatController {
         Optional<LiveTurn> local = liveTurns.find(userId, workspaceId);
         if (local.isPresent()) {
             LiveTurn turn = local.get();
+            if (waitMs != null) {
+                subscriber = WindowedTurnSubscriber.open(sse, turn, windowTimer(), waitMs);
+            }
             if (!subscriber.deliver(TurnAsides.attached(turn.turnId(), turn.cursor(),
                     turn.startedAtMs()))) {
                 return;
@@ -217,6 +234,11 @@ public class AtelierChatController {
             subscriber.deliver(TurnAsides.idle());
             subscriber.finish();
             return;
+        }
+        if (waitMs != null) {
+            // Même fenêtre pour un tour relayé depuis un pair : la réponse se clôt à l'échéance ou
+            // après le premier événement, et le relais s'arrête au prochain envoi refusé.
+            subscriber = WindowedTurnSubscriber.open(sse, null, windowTimer(), waitMs);
         }
         if (!subscriber.deliver(TurnAsides.attached(remote.get().turnId(), remote.get().cursor(),
                 remote.get().startedAtMs()))) {
@@ -323,6 +345,11 @@ public class AtelierChatController {
         return new SseEmitter(STREAM_TIMEOUT_MS);
     }
 
+    /** Le minuteur des fenêtres (SF-84-04). Isolé pour qu'un test l'avance à la main. */
+    WindowedTurnSubscriber.Timer windowTimer() {
+        return WindowedTurnSubscriber.sharedTimer();
+    }
+
     /**
      * Exécute la boucle tool-use en <b>publiant</b> chaque étape dans le tour vivant, et traduit
      * toute erreur en événement {@code error}.
@@ -336,10 +363,17 @@ public class AtelierChatController {
     private void relay(SseEmitter emitter, UUID userId, UUID workspaceId, String message, boolean hasAccess) {
         LiveTurn turn = liveTurns.open(userId, workspaceId);
         turn.attach(new SseTurnSubscriber(emitter), LiveTurn.FROM_START);
+        String outcome = "echec_fatal";
         try {
             if (!hasAccess) {
                 throw new AtelierAccessDeniedException();
             }
+            // La demande est prise en main (F-84 / SF-84-04) : premier événement du tour, AVANT tout
+            // appel fournisseur — le premier aller-retour peut durer des dizaines de secondes sur un
+            // long contexte. Il sert aussi de SONDE à l'écran : sur un réseau direct il arrive en
+            // quelques millisecondes ; s'il n'arrive pas, c'est qu'un proxy retient le flux, et
+            // l'écran passe au suivi par fenêtres.
+            turn.publish("started", new StreamStarted(turn.turnId().toString(), turn.startedAtMs()));
             AtelierProgressListener listener = new AtelierProgressListener() {
                 @Override
                 public void onAction(AtelierStepEvent step) {
@@ -414,27 +448,39 @@ public class AtelierChatController {
             turn.publish("done", new StreamDone(result.reply(), result.actions(), result.messageId(),
                     result.inputTokens(), result.outputTokens(), result.activeSeconds(),
                     result.budgetReached()));
+            outcome = "done";
         } catch (AtelierAccessDeniedException ex) {
-            turn.publish("error", new StreamError("forbidden"));
+            outcome = failTurn(turn, "forbidden");
         } catch (QuotaExceededException ex) {
-            turn.publish("error", new StreamError("quota_exceeded"));
+            outcome = failTurn(turn, "quota_exceeded");
         } catch (ByokKeyRequiredException ex) {
             // Offre BYOK sans clé (F-41 / SF-41-02) : refus nommé dans le flux, jamais `internal_error`.
-            turn.publish("error", new StreamError("byok_key_required"));
+            outcome = failTurn(turn, "byok_key_required");
         } catch (WorkspaceNotFoundException ex) {
-            turn.publish("error", new StreamError("workspace_not_found"));
+            outcome = failTurn(turn, "workspace_not_found");
         } catch (AIProviderUnavailableException ex) {
-            turn.publish("error", new StreamError("provider_unavailable"));
+            outcome = failTurn(turn, "provider_unavailable");
         } catch (AIProviderException ex) {
-            turn.publish("error", new StreamError("provider_error"));
+            outcome = failTurn(turn, "provider_error");
         } catch (RuntimeException ex) {
-            log.warn("Échec inattendu de la boucle d'atelier");
-            turn.publish("error", new StreamError("internal_error"));
+            log.warn("Échec inattendu de la boucle d'atelier ({})", ex.getClass().getSimpleName());
+            outcome = failTurn(turn, "internal_error");
         } finally {
             // Le tour est fini : les spectateurs encore branchés voient leur flux se clore, et le
             // tour quitte le registre. C'est le SEUL endroit qui clôt un flux de tour.
             liveTurns.close(turn);
+            // TOUTE fin de flux de tour laisse une ligne (F-84 / SF-84-04) — y compris une erreur
+            // de pré-vol ou une panne, où la boucle n'a pas écrit son « Tour d'atelier terminé ».
+            // Jamais le message ni la réponse : l'identifiant du tour et l'issue suffisent.
+            log.info("Flux de tour clos (workspace={}, tour={}, événements={}, issue={})",
+                    workspaceId, turn.turnId(), turn.cursor(), outcome);
         }
+    }
+
+    /** Publie l'erreur nommée du tour et rend l'issue à journaliser. */
+    private static String failTurn(LiveTurn turn, String code) {
+        turn.publish("error", new StreamError(code));
+        return code;
     }
 
     /** Le plan tel qu'il part sur le fil : la liste complète, qui remplace la précédente. */
@@ -450,6 +496,10 @@ public class AtelierChatController {
      * le bloc de transcription qui le rejouera au rechargement : l'écran remplace, il n'empile pas.
      */
     record StreamCard(String toolUseId, fr.claudegateway.teams.block.TeamsBlockCard card) {
+    }
+
+    /** Le tour a pris la demande en main (F-84 / SF-84-04) ; {@code startedAt} en ms, heure serveur. */
+    record StreamStarted(String turnId, long startedAt) {
     }
 
     /** Charges utiles JSON des événements SSE. */

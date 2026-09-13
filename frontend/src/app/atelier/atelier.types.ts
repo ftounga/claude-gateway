@@ -127,4 +127,11 @@ export interface AtelierExecStreamingItem {
    * parlent pas de plan du tout.
    */
   plan?: AtelierPlanStep[];
+
+  /**
+   * La gateway a **pris la demande en main** (F-84 / SF-84-04). Avant la première étape, la ligne
+   * vivante le dit : sur un long contexte, le premier aller-retour du modèle dure des dizaines de
+   * secondes, et « démarrage… » laissait croire que rien n'était parti. Optionnel : absent vaut non.
+   */
+  accepted?: boolean;
 }

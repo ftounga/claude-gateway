@@ -87,6 +87,7 @@ import {
   AtelierRole,
   AtelierStreamAction,
   AtelierStreamHandlers,
+  AtelierTurnFollower,
   GitPullRequestResult,
   GitPushResult,
   HostProjectSummary,
@@ -137,6 +138,16 @@ export { WORKSPACE_TEXT_EXTENSIONS, WORKSPACE_TEXT_ACCEPT } from './atelier.type
  * ouvrir un canal poussé pour cette seule information coûterait plus qu'il ne rapporte.</p>
  */
 export const RUNNER_STATUS_POLL_MS = 15_000;
+
+/**
+ * Délai de la **sonde de flux retenu** (F-84 / SF-84-04), en millisecondes.
+ *
+ * <p>La prise en main (`started`, ou l'aparté `attached` d'un rebranchement) part en quelques
+ * millisecondes sur un réseau direct. Ne rien en avoir reçu au bout de 4 s veut dire qu'un proxy
+ * retient le flux jusqu'à sa fin — constaté en production derrière Netskope, où un tour de huit
+ * minutes n'a rien affiché. L'écran suit alors le tour par fenêtres.</p>
+ */
+export const TURN_STREAM_PROBE_MS = 4_000;
 
 /**
  * Période de relevé de la **liaison Teams** (F-87 / SF-87-03), en millisecondes.
@@ -1286,8 +1297,14 @@ export class AtelierComponent implements OnInit, OnDestroy {
     // l'agent. Vidés à chaque envoi, comme tout ce qui appartient au tour.
     this.cardsOfTurn = [];
     this.startExecTimer();
+    // Un nouveau tour, une nouvelle numérotation (F-84 / SF-84-04) : tout ce qui arriverait encore
+    // d'un tour précédent — un flux relâché d'un bloc par un proxy — est écarté par sa génération.
+    const generation = this.openTurnGate();
 
-    void this.atelier.streamChat(id, content, {
+    const handlers: AtelierStreamHandlers = {
+      acceptSeq: (seq) => this.acceptTurnSeq(generation, seq),
+      // La demande est prise en main : l'écran le dit, et la sonde de flux retenu se tait.
+      onStarted: () => this.zone.run(() => this.markTurnHeard(true)),
       onAction: (action) =>
         this.zone.run(() => {
           this.streaming.update((current) =>
@@ -1352,6 +1369,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
         }),
       onDone: (done) =>
         this.zone.run(() => {
+          this.stopTurnWindows();
           this.submitting.set(false);
           this.interrupting.set(false);
           // La transcription est reprise dans le tour final : sans cela, tout ce qui a défilé
@@ -1399,6 +1417,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
         }),
       onError: (code) =>
         this.zone.run(() => {
+          this.stopTurnWindows();
           this.submitting.set(false);
           this.interrupting.set(false);
           this.stopExecTimer();
@@ -1412,7 +1431,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
           this.messages.update((current) => current.filter((m) => m.id !== userItem.id));
           this.notifyError(this.streamErrorMessage(code));
         }),
-    });
+    };
+    void this.atelier.streamChat(id, content, handlers);
+    // Si la prise en main n'arrive pas, un proxy retient le flux : on suit le tour par fenêtres, EN
+    // PLUS du flux d'origine — qui garde la fin du tour s'il est relâché le premier.
+    this.armStreamProbe(id, handlers);
   }
 
   /**
@@ -2304,14 +2327,97 @@ export class AtelierComponent implements OnInit, OnDestroy {
    */
   private reattachTurn(id: string): void {
     this.detachTurn();
-    this.turnCursor = 0;
-    this.turnAttach = this.atelier.attachTurn(id, 0, this.attachHandlers(id));
+    const handlers = this.attachHandlers(id, this.openTurnGate());
+    this.turnAttach = this.atelier.attachTurn(id, 0, handlers);
+    // Même sonde qu'à l'envoi (F-84 / SF-84-04) : l'aparté `attached` — ou `idle` — part tout de
+    // suite. S'il n'arrive pas, le rebranchement est retenu : on l'abandonne pour des fenêtres.
+    this.armStreamProbe(id, handlers);
   }
 
-  /** Abandonne le rebranchement. Idempotent, et sans effet sur le tour lui-même. */
+  /**
+   * Abandonne le rebranchement, la sonde et les fenêtres. Idempotent, et sans effet sur le tour
+   * lui-même.
+   */
   private detachTurn(): void {
+    this.stopTurnWindows();
     this.turnAttach?.abort();
     this.turnAttach = null;
+  }
+
+  // ------------------------------------------ F-84 / SF-84-04 : le direct traverse les proxys
+
+  /** Le suivi par fenêtres en cours, s'il y en a un. */
+  private turnWindows: AtelierTurnFollower | null = null;
+
+  /** La sonde de flux retenu en attente, s'il y en a une. */
+  private streamProbe: ReturnType<typeof setTimeout> | null = null;
+
+  /** Vrai dès que le flux du tour a prouvé qu'il passe (prise en main, `attached` ou `idle`). */
+  private turnHeard = false;
+
+  /** Génération du tour suivi : un événement d'un tour précédent n'est jamais appliqué. */
+  private turnGeneration = 0;
+
+  /** Ouvre la numérotation d'un nouveau tour suivi, et rend sa génération. */
+  private openTurnGate(): number {
+    this.turnGeneration += 1;
+    this.turnCursor = 0;
+    this.turnHeard = false;
+    return this.turnGeneration;
+  }
+
+  /**
+   * Un événement de tour ne s'applique qu'une fois, quelle que soit la source qui le livre — le
+   * flux d'origine, un rebranchement ou une fenêtre — et jamais s'il appartient à un tour précédent.
+   */
+  private acceptTurnSeq(generation: number, seq: number): boolean {
+    if (generation !== this.turnGeneration || seq <= this.turnCursor) {
+      return false;
+    }
+    this.turnCursor = seq;
+    return true;
+  }
+
+  /** Le flux passe : la sonde se tait. `started` dit en plus que la demande est prise en main. */
+  private markTurnHeard(started: boolean): void {
+    this.turnHeard = true;
+    this.clearStreamProbe();
+    if (started) {
+      this.execStreaming.update((current) => (current ? { ...current, accepted: true } : current));
+    }
+  }
+
+  /** Arme la sonde : sans nouvelles du flux sous {@link TURN_STREAM_PROBE_MS}, suivi par fenêtres. */
+  private armStreamProbe(id: string, handlers: AtelierStreamHandlers): void {
+    this.clearStreamProbe();
+    const generation = this.turnGeneration;
+    this.streamProbe = setTimeout(() => {
+      this.streamProbe = null;
+      if (this.turnHeard || generation !== this.turnGeneration || this.activeWorkspaceId() !== id) {
+        return;
+      }
+      // Un rebranchement retenu ne livrera rien avant la fin du tour : on l'abandonne, sans quoi il
+      // rejouerait tout d'un bloc — `attached` compris, qui remettrait l'écran à zéro. Le flux
+      // d'émission, lui, n'a pas d'aparté : il reste ouvert, et porte la fin du tour.
+      this.turnAttach?.abort();
+      this.turnAttach = null;
+      this.turnWindows?.stop();
+      this.turnWindows = this.atelier.followTurnInWindows(id, () => this.turnCursor, handlers);
+    }, TURN_STREAM_PROBE_MS);
+  }
+
+  private clearStreamProbe(): void {
+    if (this.streamProbe !== null) {
+      clearTimeout(this.streamProbe);
+      this.streamProbe = null;
+    }
+  }
+
+  /** Arrête la sonde et les fenêtres ; idempotent. */
+  private stopTurnWindows(): void {
+    this.clearStreamProbe();
+    this.turnWindows?.stop();
+    this.turnWindows = null;
   }
 
   /**
@@ -2321,16 +2427,22 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * n'a été posé ici, puisque ce tour a été demandé avant. La fin de tour **recharge donc le fil**
    * plutôt que d'y ajouter une réponse — c'est le serveur qui sait ce qui a été dit.
    */
-  private attachHandlers(id: string): AtelierStreamHandlers {
+  private attachHandlers(id: string, generation: number): AtelierStreamHandlers {
     return {
-      onSeq: (seq) => {
-        this.turnCursor = seq;
-      },
+      acceptSeq: (seq) => this.acceptTurnSeq(generation, seq),
       onAttached: (state) =>
         this.zone.run(() => {
+          // Un aparté n'a pas de numéro : seule la génération dit qu'il appartient au tour suivi.
+          if (generation !== this.turnGeneration) {
+            return;
+          }
+          this.markTurnHeard(false);
           this.submitting.set(true);
           this.streaming.set({ steps: [], text: '' });
-          this.execStreaming.set({ status: '', blocks: [], text: '', tokens: null, plan: [] });
+          // Un tour rejoint a, par définition, pris sa demande en main.
+          this.execStreaming.set({
+            status: '', blocks: [], text: '', tokens: null, plan: [], accepted: true,
+          });
           // Le rejeu de F-84 reconstruit TOUT le tour, blocs riches compris : garder ceux d'un
           // rebranchement précédent les afficherait deux fois.
           this.cardsOfTurn = [];
@@ -2345,7 +2457,15 @@ export class AtelierComponent implements OnInit, OnDestroy {
         }),
       // Rien ne tourne sur ce projet : l'écran reste tel quel. C'est l'état d'avant F-84, et il
       // n'y a rien à annoncer — un écran au repos n'est pas une anomalie.
-      onIdle: () => undefined,
+      onIdle: () => {
+        // `idle` prouve aussi que le flux passe : rien à suivre par fenêtres. Pas s'il vient d'un
+        // rebranchement ABANDONNÉ (un envoi l'a remplacé) : il ferait taire la sonde du nouveau tour.
+        if (generation === this.turnGeneration) {
+          this.turnHeard = true;
+          this.clearStreamProbe();
+        }
+      },
+      onStarted: () => this.zone.run(() => this.markTurnHeard(true)),
       onTruncated: () =>
         this.zone.run(() =>
           this.snackBar.open(
@@ -2412,6 +2532,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
         }),
       onDone: () =>
         this.zone.run(() => {
+          this.stopTurnWindows();
           this.submitting.set(false);
           this.interrupting.set(false);
           this.stopExecTimer();
@@ -2425,6 +2546,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
         }),
       onError: () =>
         this.zone.run(() => {
+          this.stopTurnWindows();
           this.submitting.set(false);
           this.interrupting.set(false);
           this.stopExecTimer();

@@ -531,6 +531,48 @@ class AtelierChatServiceTest {
         assertThat(result.reply()).isEqualTo("Lu.");
     }
 
+    // ------------------------------------------------- SF-84-04 : chaque outil se montre
+
+    @Test
+    void anExplorationShowsItsQuestionBeforeItRuns() {
+        stubHappyPath();
+        agentProvider.enqueueToolCall("explore", "question", "où est défini AppConfig ?");
+        agentProvider.enqueueFinal("Dans src/AppConfig.java.");
+        agentProvider.enqueueFinal("Voilà.");
+        RecordingListener listener = new RecordingListener();
+
+        service.chatStreaming(userId, workspaceId, "où est AppConfig ?", listener);
+
+        // Une délégation peut durer des minutes : sans étape, l'écran restait muet tout du long.
+        assertThat(listener.actions)
+                .containsExactly(new AtelierStepEvent("explore", "où est défini AppConfig ?"));
+    }
+
+    @Test
+    void aToolWithoutADedicatedLabelStillShowsWhenItStarts() {
+        stubHappyPath();
+        agentProvider.enqueueToolCall("teams_read_thread", "threadId", "19:abc");
+        agentProvider.enqueueFinal("Lu.");
+        RecordingListener listener = new RecordingListener();
+
+        service.chatStreaming(userId, workspaceId, "lis le fil", listener);
+
+        assertThat(listener.actions).extracting(AtelierStepEvent::type)
+                .containsExactly("teams_read_thread");
+    }
+
+    @Test
+    void thePlanToolHasItsOwnDisplayAndNoStep() {
+        stubHappyPath();
+        agentProvider.enqueueToolCallWithJson("set_plan", "steps", "[{\"title\":\"A\"}]");
+        agentProvider.enqueueFinal("Fait.");
+        RecordingListener listener = new RecordingListener();
+
+        service.chatStreaming(userId, workspaceId, "vas-y", listener);
+
+        assertThat(listener.actions).isEmpty();
+    }
+
     // ------------------------------------------------- SF-39-14 : déléguer la lecture
 
     @Test
