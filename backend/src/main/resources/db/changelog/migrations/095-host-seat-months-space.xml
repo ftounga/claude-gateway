@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-107 / SF-107-05 — LE MOIS-CLIENT SE COMPTE PAR ESPACE.
+
+      Le supplément par client est désormais PAR ESPACE (cadrage F-107 §4, révisé avec le PO) : un client
+      dans la Forge coûte des jetons, un client suivi par la Vigie coûte une synchro chaque nuit. Un même
+      poste peut donc engager un mois dans la Forge ET un mois dans la Vigie.
+
+      `space` : NOT NULL, défaut 'FORGE' — toute ligne existante a été écrite quand seule la Forge
+      facturait, et c'est exactement ce qu'elle disait. L'unicité « un mois-poste se paie une fois »
+      devient « une fois PAR ESPACE » : (host_id, space, period_start).
+
+      Types portables (varchar, contraintes nommées) : un seul changeSet pour PostgreSQL et H2.
+      Réversible : le rollback rétablit la contrainte d'origine puis retire la colonne (à n'exécuter
+      qu'avant toute ligne VIGIE, sans quoi la contrainte d'origine refuserait les doublons de poste).
+    -->
+    <changeSet id="095-host-seat-months-space" author="claude-gateway">
+        <addColumn tableName="host_seat_months">
+            <column name="space" type="varchar(16)" defaultValue="FORGE">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <dropUniqueConstraint tableName="host_seat_months" constraintName="uk_host_seat_months_host_period"/>
+        <addUniqueConstraint tableName="host_seat_months"
+                             columnNames="host_id, space, period_start"
+                             constraintName="uk_host_seat_months_host_space_period"/>
+        <rollback>
+            <dropUniqueConstraint tableName="host_seat_months" constraintName="uk_host_seat_months_host_space_period"/>
+            <addUniqueConstraint tableName="host_seat_months"
+                                 columnNames="host_id, period_start"
+                                 constraintName="uk_host_seat_months_host_period"/>
+            <dropColumn tableName="host_seat_months" columnName="space"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

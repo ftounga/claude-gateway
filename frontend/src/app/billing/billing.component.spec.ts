@@ -253,6 +253,8 @@ describe('BillingComponent', () => {
         ? throwError(() => new HttpErrorResponse({ status: 500 }))
         : of(seats),
     );
+    // F-107 / SF-107-05 : aucun client suivi par la Vigie par défaut — le volet reste masqué.
+    seatService.getSeats.withArgs('VIGIE').and.returnValue(of({ ...noSeats, space: 'VIGIE' as const }));
 
     usageService = jasmine.createSpyObj<UsageService>('UsageService', ['getUsage']);
     usageService.getUsage.and.returnValue(
@@ -489,6 +491,7 @@ describe('BillingComponent', () => {
 
     seatService = jasmine.createSpyObj<SeatService>('SeatService', ['getSeats']);
     seatService.getSeats.and.returnValue(of(oneSeat));
+    seatService.getSeats.withArgs('VIGIE').and.returnValue(of({ ...noSeats, space: 'VIGIE' as const }));
 
     TestBed.configureTestingModule({
       imports: [BillingComponent],
@@ -1324,6 +1327,38 @@ describe('BillingComponent', () => {
       expect(text).toContain("Aucun supplément n'est facturé pour l'instant");
       // Et surtout : aucun montant n'est affiché quand il n'y en a pas.
       expect(text).not.toContain('par mois et par poste supplémentaire');
+    });
+
+    it('F-107 / SF-107-05 : montre le montant du palier de chaque client en plus', () => {
+      setup(null, false, optionAvailable, {}, plans, noGrant, {
+        ...twoSeatsBilled,
+        seats: [twoSeatsBilled.seats[0], { ...twoSeatsBilled.seats[1], displayPrice: '39' }],
+      });
+
+      expect(fixture.nativeElement.textContent).toContain('39 € / mois');
+    });
+
+    it('F-107 / SF-107-05 : montre les clients suivis par la Vigie quand il y en a', () => {
+      setup();
+      expect(fixture.nativeElement.textContent).not.toContain('Clients suivis par la Vigie');
+
+      component.vigieSeats.set({
+        ...twoSeatsBilled,
+        billed: false,
+        grantedTokens: 0,
+        space: 'VIGIE',
+        tokensApply: false,
+        seats: [twoSeatsBilled.seats[0], { ...twoSeatsBilled.seats[1], grantedTokens: 0, displayPrice: '39' }],
+      });
+      fixture.detectChanges();
+
+      const section = (fixture.nativeElement as HTMLElement)
+        .querySelector('section[aria-label="Clients suivis par la Vigie"]') as HTMLElement;
+      expect(section).not.toBeNull();
+      expect(section.textContent).toContain('Poste Banque');
+      expect(section.textContent).toContain('39 € / mois');
+      expect(section.textContent).toContain("Aucun supplément n'est facturé pour l'instant");
+      expect(seatService.getSeats).toHaveBeenCalledWith('VIGIE');
     });
 
     it('invite à créer un poste quand il n’y en a aucun', () => {

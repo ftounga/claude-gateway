@@ -472,6 +472,10 @@
                   <!-- Le rôle du poste est ÉCRIT, et rien d'autre ne le porte : pas de code
                        couleur du tout ici (DESIGN_SYSTEM §10). -->
                   <span class="billing__seat-role">{{ seatRole(seat) }}</span>
+                  @if (seatPrice(seat); as price) {
+                    <!-- F-107 / SF-107-05 : le montant du palier de ce client, dit en toutes lettres. -->
+                    <span class="billing__seat-since">{{ price }} € / mois</span>
+                  }
                   <span class="billing__seat-since">
                     compté depuis le {{ seat.billableFrom | date: 'longDate' }}
                   </span>
@@ -516,6 +520,58 @@
         </div>
       </article>
     </section>
+  }
+
+  <!-- ===== Clients suivis par la Vigie (F-107 / SF-107-05) : le supplément de la Vigie =====
+       Montré seulement quand au moins un client y est compté : sans Vigie, rien à dire. -->
+  @if (vigieSeats(); as vigie) {
+    @if (vigie.countedSeats > 0) {
+      <section class="billing__section" aria-label="Clients suivis par la Vigie">
+        <div class="billing__section-head">
+          <h2>Clients suivis par la Vigie</h2>
+          <p>
+            La Vigie couvre {{ vigie.includedSeats }} client{{ vigie.includedSeats > 1 ? 's' : '' }} suivi{{ vigie.includedSeats > 1 ? 's' : '' }}.
+            {{ vigie.countedSeats }} client{{ vigie.countedSeats > 1 ? 's' : '' }}
+            compté{{ vigie.countedSeats > 1 ? 's' : '' }} ce mois-ci. Chaque client suivi a sa propre réserve
+            de synchro, qui ne touche jamais votre quota de conversations.
+          </p>
+        </div>
+
+        <article class="billing__card billing__card--option billing__card--seats">
+          <div class="billing__option-main">
+            <ul class="billing__seat-list">
+              @for (seat of vigie.seats; track seat.hostId) {
+                <li class="billing__seat">
+                  <span class="billing__seat-name">{{ seat.name ?? 'Client supprimé' }}</span>
+                  <span class="billing__seat-role">{{ seatRole(seat) }}</span>
+                  @if (seatPrice(seat); as price) {
+                    <span class="billing__seat-since">{{ price }} € / mois</span>
+                  }
+                  <span class="billing__seat-since">
+                    compté depuis le {{ seat.billableFrom | date: 'longDate' }}
+                  </span>
+                </li>
+              }
+            </ul>
+            @if (vigie.billed) {
+              <p class="billing__seat-note">
+                Un supplément mensuel s'applique par client suivi au-delà de celui que la Vigie couvre.
+              </p>
+            } @else {
+              <p class="billing__seat-note">
+                <strong>Aucun supplément n'est facturé pour l'instant</strong> sur les clients suivis.
+              </p>
+            }
+          </div>
+
+          <div class="billing__option-action">
+            <a mat-stroked-button class="billing__card-cta is-outline" routerLink="/vigie">
+              Ouvrir la Vigie
+            </a>
+          </div>
+        </article>
+      </section>
+    }
   }
 
   <!-- ===== Code d'accès (F-62 / SF-62-02) : « payer, ou entrer un code » =====

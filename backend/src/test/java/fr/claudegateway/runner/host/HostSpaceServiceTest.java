@@ -30,6 +30,7 @@ class HostSpaceServiceTest {
 
     @Mock private HostSpaceRepository repository;
     @Mock private RunnerHostService hostService;
+    @Mock private fr.claudegateway.billing.seat.SeatLedgerService seatLedger;
     @InjectMocks private HostSpaceService service;
 
     private static HostSpace row(ClientSpace space) {
@@ -69,8 +70,13 @@ class HostSpaceServiceTest {
     void removingASpaceKeepsTheOther() {
         when(repository.findByUserIdAndHostId(ALICE, HOST))
                 .thenReturn(List.of(row(ClientSpace.FORGE), row(ClientSpace.VIGIE)));
+        when(hostService.requireOwned(ALICE, HOST)).thenReturn(RunnerHost.builder().id(HOST).userId(ALICE)
+                .missionStatus(HostMissionStatus.ACTIVE).build());
         assertThat(service.remove(ALICE, HOST, ClientSpace.VIGIE)).containsExactly(ClientSpace.FORGE);
         verify(repository).deleteOne(ALICE, HOST, ClientSpace.VIGIE);
+        // F-107 / SF-107-05 : le mois engagé dans la Vigie reste dû.
+        verify(seatLedger).noteSpaceRemoval(org.mockito.ArgumentMatchers.eq(ALICE), org.mockito.ArgumentMatchers.eq(HOST),
+                org.mockito.ArgumentMatchers.eq(fr.claudegateway.billing.EntitlementSpace.VIGIE), any());
     }
 
     @Test

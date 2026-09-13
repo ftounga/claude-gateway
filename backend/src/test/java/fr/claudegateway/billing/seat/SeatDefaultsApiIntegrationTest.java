@@ -85,7 +85,8 @@ class SeatDefaultsApiIntegrationTest {
                 .andExpect(jsonPath("$.extraSeats").value(2))
                 .andExpect(jsonPath("$.grantedTokens").value(0))
                 .andExpect(jsonPath("$.billed").value(false))
-                .andExpect(jsonPath("$.displayPrice").value(""));
+                // F-107 / SF-107-05 : la grille décidée est affichée ; sans price, rien n'est facturé ni apporté.
+                .andExpect(jsonPath("$.displayPrice").value("39"));
     }
 
     private void seedHost(UUID userId, String name) {

@@ -21,6 +21,10 @@ public interface HostSeatMonthRepository extends JpaRepository<HostSeatMonth, UU
     /** Ligne d'un poste sur une période : sa présence est la règle « déjà compté ce mois-ci ». */
     Optional<HostSeatMonth> findByHostIdAndPeriodStart(UUID hostId, LocalDate periodStart);
 
+    /** Ligne d'un poste dans un espace sur une période (F-107 / SF-107-05 : un mois-client par espace). */
+    Optional<HostSeatMonth> findByHostIdAndSpaceAndPeriodStart(UUID hostId,
+            fr.claudegateway.billing.EntitlementSpace space, LocalDate periodStart);
+
     /** Purge à la suppression d'un poste : détruire un poste n'est pas le clôturer. */
     void deleteByHostId(UUID hostId);
 

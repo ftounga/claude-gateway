@@ -12,6 +12,8 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import fr.claudegateway.billing.EntitlementSpace;
+import fr.claudegateway.billing.seat.SeatLedgerService;
 import fr.claudegateway.runner.host.dto.RunnerHostOverviewResponse;
 
 /**
@@ -35,10 +37,13 @@ public class HostSpaceService {
 
     private final HostSpaceRepository repository;
     private final RunnerHostService hostService;
+    private final SeatLedgerService seatLedger;
 
-    public HostSpaceService(HostSpaceRepository repository, RunnerHostService hostService) {
+    public HostSpaceService(HostSpaceRepository repository, RunnerHostService hostService,
+            SeatLedgerService seatLedger) {
         this.repository = repository;
         this.hostService = hostService;
+        this.seatLedger = seatLedger;
     }
 
     /** Les espaces d'un poste possédé, dans l'ordre FORGE, VIGIE. */
@@ -122,6 +127,17 @@ public class HostSpaceService {
         }
         if (current.size() == 1) {
             throw new HostLastSpaceException();
+        }
+        // F-107 / SF-107-05 : le supplément est par espace — quitter un espace en cours de mois laisse le
+        // mois engagé dans cet espace, comme une clôture de mission. Un poste clôturé n'engage plus rien.
+        RunnerHost host = hostService.requireOwned(userId, hostId);
+        if (host.getMissionStatus() != HostMissionStatus.CLOSED) {
+            OffsetDateTime entered = space == ClientSpace.FORGE ? host.getCreatedAt()
+                    : repository.findByUserIdAndHostId(userId, hostId).stream()
+                            .filter(row -> row.getSpace() == space)
+                            .map(HostSpace::getActivatedAt)
+                            .findFirst().orElse(null);
+            seatLedger.noteSpaceRemoval(userId, hostId, EntitlementSpace.valueOf(space.name()), entered);
         }
         repository.deleteOne(userId, hostId, space);
         current.remove(space);

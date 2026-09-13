@@ -14,7 +14,10 @@ export class SeatService {
   private readonly http = inject(HttpClient);
 
   /** Postes comptés pour la période courante de l'utilisateur. */
-  getSeats(): Observable<SeatsView> {
-    return this.http.get<SeatsView>('/api/billing/seats');
+  getSeats(space?: 'FORGE' | 'VIGIE'): Observable<SeatsView> {
+    // F-107 / SF-107-05 : le supplément est par espace ; sans espace, le serveur compte la Forge.
+    return space
+      ? this.http.get<SeatsView>('/api/billing/seats', { params: { space } })
+      : this.http.get<SeatsView>('/api/billing/seats');
   }
 }

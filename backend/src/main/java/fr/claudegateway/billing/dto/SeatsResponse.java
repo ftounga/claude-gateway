@@ -35,7 +35,9 @@ public record SeatsResponse(
         String displayPrice,
         LocalDate periodStart,
         LocalDate periodEnd,
-        List<SeatResponse> seats) {
+        List<SeatResponse> seats,
+        String space,
+        boolean tokensApply) {
 
     /** Projette l'état métier en réponse d'API. */
     public static SeatsResponse from(SeatUsage usage) {
@@ -48,7 +50,9 @@ public record SeatsResponse(
                 usage.displayPrice(),
                 usage.periodStart(),
                 usage.periodEnd(),
-                usage.seats().stream().map(SeatResponse::from).toList());
+                usage.seats().stream().map(SeatResponse::from).toList(),
+                usage.space() == null ? null : usage.space().name(),
+                usage.tokensApply());
     }
 
     /**
@@ -69,7 +73,8 @@ public record SeatsResponse(
             boolean coveredByPlan,
             int extraSeatRank,
             long grantedTokens,
-            boolean closed) {
+            boolean closed,
+            String displayPrice) {
 
         /** Projette un poste compté en réponse d'API. */
         public static SeatResponse from(SeatUsage.Seat seat) {
@@ -80,7 +85,8 @@ public record SeatsResponse(
                     seat.coveredByPlan(),
                     seat.extraSeatRank(),
                     seat.grantedTokens(),
-                    seat.closed());
+                    seat.closed(),
+                    seat.displayPrice());
         }
     }
 }

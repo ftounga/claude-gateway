@@ -16,6 +16,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
+
+import fr.claudegateway.billing.EntitlementSpace;
 import org.mockito.ArgumentCaptor;
 
 /**
@@ -39,7 +41,7 @@ class SeatLedgerServiceTest {
 
     @Test
     void closingASeatRecordsTheMonthItHadAlreadyEngaged() {
-        when(repository.findByHostIdAndPeriodStart(hostId, PERIOD)).thenReturn(Optional.empty());
+        when(repository.findByHostIdAndSpaceAndPeriodStart(hostId, EntitlementSpace.FORGE, PERIOD)).thenReturn(Optional.empty());
 
         service.noteClosure(alice, hostId, atStartOfDay(LocalDate.of(2025, 11, 4)));
 
@@ -52,7 +54,7 @@ class SeatLedgerServiceTest {
 
     @Test
     void aSeatCreatedThisMonthIsOnlyEngagedFromItsCreation() {
-        when(repository.findByHostIdAndPeriodStart(hostId, PERIOD)).thenReturn(Optional.empty());
+        when(repository.findByHostIdAndSpaceAndPeriodStart(hostId, EntitlementSpace.FORGE, PERIOD)).thenReturn(Optional.empty());
 
         service.noteClosure(alice, hostId, atStartOfDay(LocalDate.of(2026, 3, 9)));
 
@@ -61,7 +63,7 @@ class SeatLedgerServiceTest {
 
     @Test
     void reopeningASeatNeverBilledThisMonthStartsFromToday() {
-        when(repository.findByHostIdAndPeriodStart(hostId, PERIOD)).thenReturn(Optional.empty());
+        when(repository.findByHostIdAndSpaceAndPeriodStart(hostId, EntitlementSpace.FORGE, PERIOD)).thenReturn(Optional.empty());
 
         service.noteReopening(alice, hostId);
 
@@ -70,7 +72,7 @@ class SeatLedgerServiceTest {
 
     @Test
     void reopeningASeatAlreadyCountedThisMonthWritesNothing() {
-        when(repository.findByHostIdAndPeriodStart(hostId, PERIOD))
+        when(repository.findByHostIdAndSpaceAndPeriodStart(hostId, EntitlementSpace.FORGE, PERIOD))
                 .thenReturn(Optional.of(HostSeatMonth.builder()
                         .hostId(hostId)
                         .userId(alice)
@@ -85,7 +87,7 @@ class SeatLedgerServiceTest {
 
     @Test
     void closingTwiceInTheSameMonthWritesOnce() {
-        when(repository.findByHostIdAndPeriodStart(hostId, PERIOD))
+        when(repository.findByHostIdAndSpaceAndPeriodStart(hostId, EntitlementSpace.FORGE, PERIOD))
                 .thenReturn(Optional.of(HostSeatMonth.builder()
                         .hostId(hostId)
                         .userId(alice)
@@ -96,6 +98,39 @@ class SeatLedgerServiceTest {
         service.noteClosure(alice, hostId, atStartOfDay(LocalDate.of(2026, 3, 2)));
 
         verify(repository, never()).save(any());
+    }
+
+    @Test
+    void closingAHostOfBothSpacesEngagesTheMonthInEach() {
+        SeatSource source = mock(SeatSource.class);
+        when(source.spacesOf(alice, hostId)).thenReturn(java.util.EnumSet.allOf(EntitlementSpace.class));
+        when(source.enteredSpaceAt(alice, hostId, EntitlementSpace.VIGIE))
+                .thenReturn(atStartOfDay(LocalDate.of(2026, 3, 10)));
+        when(repository.findByHostIdAndSpaceAndPeriodStart(any(), any(), any())).thenReturn(Optional.empty());
+
+        new SeatLedgerService(repository, CLOCK, source)
+                .noteClosure(alice, hostId, atStartOfDay(LocalDate.of(2025, 11, 4)));
+
+        ArgumentCaptor<HostSeatMonth> captor = ArgumentCaptor.forClass(HostSeatMonth.class);
+        verify(repository, org.mockito.Mockito.times(2)).save(captor.capture());
+        assertThat(captor.getAllValues()).extracting(HostSeatMonth::getSpace)
+                .containsExactlyInAnyOrder(EntitlementSpace.FORGE, EntitlementSpace.VIGIE);
+        assertThat(captor.getAllValues()).filteredOn(m -> m.getSpace() == EntitlementSpace.VIGIE)
+                .extracting(HostSeatMonth::getBillableFrom).containsExactly(LocalDate.of(2026, 3, 10));
+        assertThat(captor.getAllValues()).filteredOn(m -> m.getSpace() == EntitlementSpace.FORGE)
+                .extracting(HostSeatMonth::getBillableFrom).containsExactly(PERIOD);
+    }
+
+    @Test
+    void leavingASpaceEngagesTheMonthInThatSpaceOnce() {
+        when(repository.findByHostIdAndSpaceAndPeriodStart(hostId, EntitlementSpace.VIGIE, PERIOD))
+                .thenReturn(Optional.empty());
+
+        service.noteSpaceRemoval(alice, hostId, EntitlementSpace.VIGIE, atStartOfDay(LocalDate.of(2026, 3, 5)));
+
+        HostSeatMonth saved = captureSaved();
+        assertThat(saved.getSpace()).isEqualTo(EntitlementSpace.VIGIE);
+        assertThat(saved.getBillableFrom()).isEqualTo(LocalDate.of(2026, 3, 5));
     }
 
     @Test
