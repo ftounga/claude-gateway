@@ -60,7 +60,7 @@ Changer la taille des titres dans le terminal, ou le rendu Markdown lui-même.
 
 ## Statut
 
-`in-review`
+`done` (PR #561, 2026-09-13)
 
 ## Date de création
 
