@@ -70,6 +70,17 @@
         <mat-hint>Le Radar écrit ce que vous dites ; tout est annulable. Compte dans votre consommation.</mat-hint>
       }
     </mat-form-field>
+    <!-- F-104 / SF-104-04 : un enregistrement hors Teams, déposé sur la machine du client. -->
+    <button
+      mat-icon-button
+      type="button"
+      class="radar-news__deposit"
+      aria-label="Déposer un enregistrement"
+      title="Déposer un enregistrement"
+      (click)="deposit()"
+    >
+      <mat-icon>mic</mat-icon>
+    </button>
     <button mat-flat-button color="primary" type="submit" class="radar-news__send" [disabled]="!canSend()">
       @if (sending()) {
         <mat-spinner diameter="16"></mat-spinner>
