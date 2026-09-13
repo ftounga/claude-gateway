@@ -5,6 +5,6 @@ import org.springframework.context.annotation.Configuration;
 
 /** Active les réglages de l'analyse du Radar (F-101). */
 @Configuration
-@EnableConfigurationProperties(RadarAnalysisProperties.class)
+@EnableConfigurationProperties({RadarAnalysisProperties.class, RadarReadingProperties.class})
 public class RadarAnalysisConfig {
 }
