@@ -26,6 +26,7 @@ import fr.claudegateway.ocr.Document;
 import fr.claudegateway.ocr.DocumentRepository;
 import fr.claudegateway.quota.UsageCounterRepository;
 import fr.claudegateway.quota.UsageTurnRepository;
+import fr.claudegateway.radar.RadarPurgeService;
 import fr.claudegateway.rag.ChunkRepository;
 import fr.claudegateway.runner.RunnerPairingCodeRepository;
 import fr.claudegateway.runner.RunnerTokenRepository;
@@ -48,6 +49,7 @@ import fr.claudegateway.user.UserService;
 public class AccountService {
 
     private final UserService userService;
+    private final RadarPurgeService radarPurgeService;
     private final SubscriptionRepository subscriptionRepository;
     private final UsageCounterRepository usageCounterRepository;
     private final UsageTurnRepository usageTurnRepository;
@@ -92,7 +94,9 @@ public class AccountService {
             AtelierMessageRepository atelierMessageRepository,
             DocumentRepository documentRepository,
             ChunkRepository chunkRepository,
-            MessageLibraryDocumentRepository messageLibraryDocumentRepository) {
+            MessageLibraryDocumentRepository messageLibraryDocumentRepository,
+            RadarPurgeService radarPurgeService) {
+        this.radarPurgeService = radarPurgeService;
         this.userService = userService;
         this.subscriptionRepository = subscriptionRepository;
         this.usageCounterRepository = usageCounterRepository;
@@ -200,6 +204,9 @@ public class AccountService {
         // Mois-postes (F-65 / SF-65-01) AVANT les postes : ce sont des pièces de facturation, et
         // elles ne survivent pas au compte qu'elles décrivent.
         hostSeatMonthRepository.deleteByUserId(userId);
+        // Le Radar (F-99 / SF-99-05) avant les postes : des extraits de communications internes du client
+        // et des données de tiers, qui ne survivent ni au poste ni au compte.
+        radarPurgeService.purgeUser(userId);
         runnerHostRepository.deleteByUserId(userId);
         // Places de terminal vivant (F-70 / SF-70-01) : elles nomment les projets ouverts par le
         // compte. Sans purge, elles survivraient à sa suppression jusqu'à leur expiration.

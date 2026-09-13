@@ -13,6 +13,7 @@ import fr.claudegateway.radar.RadarCommitmentDirection;
 import fr.claudegateway.radar.RadarCommitmentStatus;
 import fr.claudegateway.radar.RadarCorrectionAction;
 import fr.claudegateway.radar.RadarEvidenceSource;
+import fr.claudegateway.radar.RadarPurgeReason;
 import fr.claudegateway.radar.RadarRole;
 import fr.claudegateway.radar.RadarSubjectState;
 import fr.claudegateway.radar.RadarSyncStatus;
@@ -93,6 +94,11 @@ public final class RadarViews {
     public record CorrectionView(UUID id, UUID subjectId, RadarCorrectionAction.Target targetKind,
             UUID targetId, RadarCorrectionAction action, JsonNode before, JsonNode after,
             OffsetDateTime createdAt, OffsetDateTime undoneAt) {
+    }
+
+    /** La trace d'une purge (SF-99-05). */
+    public record PurgeView(UUID id, RadarPurgeReason reason, OffsetDateTime purgedAt, int subjectsCount,
+            int evidenceCount) {
     }
 
     /** Une synchro. */

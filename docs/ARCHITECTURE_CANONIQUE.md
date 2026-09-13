@@ -979,6 +979,13 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     nuit, balayage par périmètre `(user_id, host_id)`) et **ne clôt jamais** ; une activité postérieure
     à la clôture **réveille** (`woke_at`) sans rouvrir. Gestes journalisés : `CLOSE`, `CONFIRM_CLOSE`,
     `REJECT_CLOSE`, `DISMISS_WAKE`.
+  - **Purge et export** (F-99 / SF-99-05, migration `085`) : `radar_purges` (`reason` : `MISSION_CLOSED`,
+    `VIGIE_REMOVED`, `USER_REQUEST`, `HOST_DELETED` ; `purged_at`, `subjects_count`, `evidence_count`) —
+    **trace sans contenu**. La purge supprime en masse toutes les lignes `radar_*` du périmètre ; elle
+    est déclenchée par l'utilisateur (confirmation explicite, export Markdown proposé avant), par la
+    **suppression du poste** (`RadarHostLifecycleListener`, même transaction) et par la **suppression du
+    compte** (`AccountService`). Export et purge ne demandent pas le droit d'option : récupérer et
+    effacer ses données ne dépend pas d'un abonnement.
 
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 

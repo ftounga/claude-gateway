@@ -1,8 +1,11 @@
 package fr.claudegateway.radar;
 
 import java.util.List;
+import java.time.LocalDate;
 import java.util.UUID;
 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -18,6 +21,7 @@ import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.radar.dto.RadarCorrectionRequests.AliasRequest;
 import fr.claudegateway.radar.dto.RadarCorrectionRequests.CommitmentCorrectionRequest;
 import fr.claudegateway.radar.dto.RadarCorrectionRequests.MergeRequest;
+import fr.claudegateway.radar.dto.RadarCorrectionRequests.PurgeRequest;
 import fr.claudegateway.radar.dto.RadarCorrectionRequests.SplitRequest;
 import fr.claudegateway.radar.dto.RadarCorrectionRequests.SubjectCorrectionRequest;
 import fr.claudegateway.radar.dto.RadarViews.AliasView;
@@ -26,6 +30,7 @@ import fr.claudegateway.radar.dto.RadarViews.CommitmentView;
 import fr.claudegateway.radar.dto.RadarViews.CorrectionView;
 import fr.claudegateway.radar.dto.RadarViews.EvidenceView;
 import fr.claudegateway.radar.dto.RadarViews.PersonView;
+import fr.claudegateway.radar.dto.RadarViews.PurgeView;
 import fr.claudegateway.radar.dto.RadarViews.SubjectDetail;
 import fr.claudegateway.radar.dto.RadarViews.SubjectSummary;
 import fr.claudegateway.radar.dto.RadarViews.SyncView;
@@ -48,17 +53,21 @@ public class RadarController {
     private final RadarCorrectionService correctionService;
     private final RadarStructureService structureService;
     private final RadarClosureService closureService;
+    private final RadarPurgeService purgeService;
+    private final RadarExportService exportService;
     private final RadarScopeResolver scopeResolver;
     private final TeamsAccessService teamsAccess;
     private final CurrentUser currentUser;
 
     public RadarController(RadarReadService readService, RadarCorrectionService correctionService,
             RadarStructureService structureService, RadarClosureService closureService,
-            RadarScopeResolver scopeResolver, TeamsAccessService teamsAccess, CurrentUser currentUser) {
+            RadarPurgeService purgeService, RadarExportService exportService, RadarScopeResolver scopeResolver, TeamsAccessService teamsAccess, CurrentUser currentUser) {
         this.readService = readService;
         this.correctionService = correctionService;
         this.structureService = structureService;
         this.closureService = closureService;
+        this.purgeService = purgeService;
+        this.exportService = exportService;
         this.scopeResolver = scopeResolver;
         this.teamsAccess = teamsAccess;
         this.currentUser = currentUser;
@@ -173,6 +182,34 @@ public class RadarController {
     @PostMapping("/subjects/{subjectId}/wake/dismiss")
     public CorrectionView dismissWake(@PathVariable UUID hostId, @PathVariable UUID subjectId) {
         return closureService.dismissWake(scope(hostId), subjectId);
+    }
+
+    // ---------------------------------------------------------------- purge et export (SF-99-05)
+    // Sans droit d'option : récupérer et effacer ses données ne dépend pas d'un abonnement en cours.
+
+    @GetMapping("/export")
+    public ResponseEntity<String> export(@PathVariable UUID hostId) {
+        RadarExportService.Export export = exportService.export(ownedScope(hostId), LocalDate.now());
+        return ResponseEntity.ok()
+                .contentType(new MediaType("text", "markdown", java.nio.charset.StandardCharsets.UTF_8))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + export.fileName() + "\"")
+                .body(export.markdown());
+    }
+
+    @PostMapping("/purge")
+    public PurgeView purge(@PathVariable UUID hostId, @RequestBody PurgeRequest request) {
+        return purgeService.requestPurge(ownedScope(hostId), request == null ? null : request.reason(),
+                request == null ? null : request.confirm());
+    }
+
+    @GetMapping("/purges")
+    public List<PurgeView> purges(@PathVariable UUID hostId) {
+        return purgeService.traces(ownedScope(hostId));
+    }
+
+    /** Possession seule, sans droit d'option (export, purge). */
+    private RadarScope ownedScope(UUID hostId) {
+        return scopeResolver.require(currentUser.requireId(), hostId);
     }
 
     /** Droit d'abord, possession ensuite : sans le droit, on ne dit rien des postes. */
