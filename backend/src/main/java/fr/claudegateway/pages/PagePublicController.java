@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <b>La seule route des pages ouverte sans authentification</b> (F-109 / SF-109-01, cadrage §3 et §9).
  *
  * <p>Elle sert une page à partir d'un <b>jeton</b> porté dans l'adresse — un ticket de lecture de l'écran
- * (SF-109-01) et, à partir de SF-109-05, un lien de partage — et <b>rien d'autre</b> : aucun verbe que
+ * (SF-109-01) ou un lien de partage (SF-109-05) — et <b>rien d'autre</b> : aucun verbe que
  * {@code GET}, aucune donnée que le contenu de la page désignée par le jeton. Toute réponse, erreur
  * comprise, porte la politique de {@link PageContentPolicy}.</p>
  *
@@ -27,10 +27,12 @@ public class PagePublicController {
 
     private final PageService pageService;
     private final PageViewTicketService tickets;
+    private final PageShareService shares;
 
-    public PagePublicController(PageService pageService, PageViewTicketService tickets) {
+    public PagePublicController(PageService pageService, PageViewTicketService tickets, PageShareService shares) {
         this.pageService = pageService;
         this.tickets = tickets;
+        this.shares = shares;
     }
 
     /** Sans barre finale : redirection relative, pour que les pièces jointes relatives se résolvent. */
@@ -41,13 +43,13 @@ public class PagePublicController {
         return new ResponseEntity<>(headers, HttpStatus.FOUND);
     }
 
-    /** Le HTML de la page désignée par le jeton. */
+    /** Le HTML de la page désignée par le jeton — une ouverture, pour un lien de partage. */
     @GetMapping("/{token}/")
     public ResponseEntity<byte[]> page(@PathVariable String token) {
-        return resolve(token)
-                .flatMap(ticket -> {
+        return resolve(token, true)
+                .flatMap(target -> {
                     try {
-                        return Optional.of(pageService.html(ticket.userId(), ticket.pageId(), ticket.version()));
+                        return Optional.of(pageService.html(target.userId(), target.pageId(), target.version()));
                     } catch (PageNotFoundException e) {
                         return Optional.empty();
                     }
@@ -56,16 +58,28 @@ public class PagePublicController {
                 .orElseGet(PageContentPolicy::notFound);
     }
 
-    /** Une pièce jointe de la page désignée par le jeton. */
+    /** Une pièce jointe de la page désignée par le jeton — jamais comptée comme une ouverture. */
     @GetMapping("/{token}/{name}")
     public ResponseEntity<byte[]> attachment(@PathVariable String token, @PathVariable String name) {
-        return resolve(token)
-                .flatMap(ticket -> pageService.attachment(ticket.userId(), ticket.pageId(), ticket.version(), name))
+        return resolve(token, false)
+                .flatMap(target -> pageService.attachment(target.userId(), target.pageId(), target.version(), name))
                 .map(content -> PageContentPolicy.ok(content.content(), content.contentType()))
                 .orElseGet(PageContentPolicy::notFound);
     }
 
-    private Optional<PageViewTicketService.Ticket> resolve(String token) {
-        return tickets.read(token);
+    /**
+     * Ce que désigne un jeton : un <b>ticket</b> signé de l'écran ({@code t1.…}, SF-109-01) ou un <b>lien de
+     * partage</b> (SF-109-05), qui sert toujours la version courante. Invalide, inconnu, révoqué ou expiré : vide,
+     * sans distinction.
+     */
+    private Optional<Target> resolve(String token, boolean opening) {
+        if (PageViewTicketService.looksLikeTicket(token)) {
+            return tickets.read(token).map(ticket -> new Target(ticket.userId(), ticket.pageId(), ticket.version()));
+        }
+        return shares.resolve(token, opening).map(share -> new Target(share.getUserId(), share.getPageId(), 0));
+    }
+
+    /** La page à servir : son propriétaire, son identifiant, sa version ({@code 0} = courante). */
+    private record Target(java.util.UUID userId, java.util.UUID pageId, int version) {
     }
 }

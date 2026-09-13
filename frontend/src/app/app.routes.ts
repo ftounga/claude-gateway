@@ -117,6 +117,13 @@ export const routes: Routes = [
     path: 'contact',
     loadComponent: () => import('./legal/contact.component').then((m) => m.ContactComponent),
   },
+  // ---- Page partagée, ouverte sans compte (F-109 / SF-109-05) ----
+  // Déclarée AVANT la route parente authentifiée, pour la raison des pages légales : après elle, un lien
+  // partagé passerait par l'authGuard et le destinataire, qui n'a pas de compte, ne verrait rien.
+  {
+    path: 'p/:token',
+    loadComponent: () => import('./pages/shared-page.component').then((m) => m.SharedPageComponent),
+  },
 
   // Onboarding : flux authentifié dédié, volontairement hors coquille.
   {

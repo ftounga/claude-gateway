@@ -1,5 +1,6 @@
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ActivatedRoute } from '@angular/router';
@@ -8,6 +9,7 @@ import { Subscription } from 'rxjs';
 import { PageSummary } from '../core/models/pages.models';
 import { PagesService } from '../core/services/pages.service';
 import { PageFrameComponent } from '../shared/pages/page-frame.component';
+import { PageShareDialogComponent, PageShareDialogData } from '../shared/pages/page-share-dialog.component';
 
 /**
  * **Une page en plein écran** (F-109 / SF-109-03) — `/pages/:id`, sous la coquille authentifiée. Ouverte dans
@@ -29,6 +31,11 @@ import { PageFrameComponent } from '../shared/pages/page-frame.component';
               Version {{ page.currentVersion }} · privée
             }
           </span>
+          <span class="page-viewer__spacer"></span>
+          <button mat-stroked-button type="button" class="page-viewer__share" (click)="share(page)">
+            <mat-icon>share</mat-icon>
+            Partager
+          </button>
         </header>
         <app-page-frame class="page-viewer__frame" [url]="page.viewUrl" [pageTitle]="page.title"></app-page-frame>
       } @else if (notFound()) {
@@ -62,6 +69,10 @@ import { PageFrameComponent } from '../shared/pages/page-frame.component';
       }
     }
 
+    .page-viewer__spacer {
+      flex: 1;
+    }
+
     .page-viewer__title {
       margin: 0;
       font-size: 20px;
@@ -90,6 +101,7 @@ import { PageFrameComponent } from '../shared/pages/page-frame.component';
 })
 export class PageViewerComponent {
   private readonly pages = inject(PagesService);
+  private readonly dialog = inject(MatDialog);
 
   readonly summary = signal<PageSummary | null>(null);
   readonly notFound = signal(false);
@@ -112,6 +124,13 @@ export class PageViewerComponent {
 
   /** La version affichée, quand ce n'est pas la courante. */
   readonly version = signal<number | null>(null);
+
+  /** Partager (F-109 / SF-109-05). */
+  share(page: PageSummary): void {
+    this.dialog.open<PageShareDialogComponent, PageShareDialogData>(PageShareDialogComponent, {
+      data: { pageId: page.id, title: page.title }, width: '640px', maxWidth: '95vw',
+    });
+  }
 
   private load(pageId: string, version: number | null): void {
     this.loading?.unsubscribe();

@@ -12,6 +12,7 @@ import { ExportService } from '../../core/services/export.service';
 import { PagesService } from '../../core/services/pages.service';
 import { HOST_PAGES_PAGE_SIZE, HostPagesComponent } from './host-pages.component';
 import { PageVersionsDialogComponent, sizeLabel } from './page-versions-dialog.component';
+import { PageShareDialogComponent } from './page-share-dialog.component';
 
 /** L'onglet Pages d'un poste ou d'un client (F-109 / SF-109-04). */
 describe('HostPagesComponent', () => {
@@ -137,6 +138,10 @@ describe('HostPagesComponent', () => {
 
     fixture.componentInstance.versions(page('p1', 'Maquette'));
     expect(dialog.open.calls.mostRecent().args[0]).toBe(PageVersionsDialogComponent);
+
+    // F-109 / SF-109-05 : Partager ouvre le dialogue de partage.
+    fixture.componentInstance.share(page('p1', 'Maquette'));
+    expect(dialog.open.calls.mostRecent().args[0]).toBe(PageShareDialogComponent);
   });
 
   it('la taille lisible des versions', () => {

@@ -44,12 +44,15 @@ public class PageService {
     private final PageStore store;
     private final PageLimits limits;
 
+    private final PageEventRepository events;
+
     public PageService(PageRepository pages, PageVersionRepository versions, PageStore store,
-            PageLimits limits) {
+            PageLimits limits, PageEventRepository events) {
         this.pages = pages;
         this.versions = versions;
         this.store = store;
         this.limits = limits;
+        this.events = events;
     }
 
     /**
@@ -112,6 +115,10 @@ public class PageService {
         PageVersion created = versions.save(PageVersion.builder().id(UUID.randomUUID())
                 .pageId(saved.getId()).userId(userId).version(version).sizeBytes(size)
                 .attachmentCount(files.size()).build());
+        // Le journal de la page (F-109 / SF-109-05) : sa création, puis chacune de ses versions.
+        events.save(PageEvent.builder().id(UUID.randomUUID()).pageId(saved.getId()).userId(userId)
+                .kind(version == 1 ? PageEvent.Kind.CREATED : PageEvent.Kind.VERSION).version(version)
+                .occurredAt(java.time.OffsetDateTime.now()).build());
 
         for (PageVersion old : List.copyOf(purged)) {
             versions.delete(old);

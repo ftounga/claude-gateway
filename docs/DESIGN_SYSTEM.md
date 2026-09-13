@@ -756,6 +756,10 @@ poste ouvert.
   vit dans le flux du terminal, le quitter le tuerait.
 - **En lecture seule, la vignette sans boutons** (§13) : on n'agit pas depuis une tuile.
 - **Une page illisible le dit** (« Aperçu indisponible ») : le bloc ne disparaît pas.
+- **Partager commence par l'avertissement** (F-109 / SF-109-05) : « Cette page contient peut-être des données de
+  votre client ; vérifiez qu'il autorise leur diffusion. » — sur fond `--cg-bg`, sans couleur d'alerte ; *Créer le
+  lien* reste inactif tant que « J'ai vérifié » n'est pas cochée. Le lien s'affiche **une fois**, avec *Copier*.
+  L'écran public `/p/:token` n'a qu'un bandeau blanc sobre (logo, « Page partagée ») au-dessus du bac à sable.
 - **Ce qui est dans la page n'est pas la charte de l'application** : la page suit la charte du client ou du
   projet (guide de conception de l'agent) ; ce qui l'entoure suit celle-ci.
 

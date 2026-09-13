@@ -2,11 +2,13 @@ import { Component, DestroyRef, HostListener, effect, inject, input, output, sig
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatDialog } from '@angular/material/dialog';
 import { Subscription } from 'rxjs';
 
 import { PageSummary } from '../../core/models/pages.models';
 import { PagesService } from '../../core/services/pages.service';
 import { PageFrameComponent } from '../../shared/pages/page-frame.component';
+import { PageShareDialogComponent, PageShareDialogData } from '../../shared/pages/page-share-dialog.component';
 import { pageViewerPath } from './page-block';
 
 /**
@@ -24,6 +26,12 @@ import { pageViewerPath } from './page-block';
           <span class="page-panel__version">v{{ page.currentVersion }}</span>
         }
         <span class="page-panel__spacer"></span>
+        @if (summary(); as page) {
+          <button mat-icon-button type="button" class="page-panel__share" matTooltip="Partager"
+            aria-label="Partager la page" (click)="share(page.id, page.title)">
+            <mat-icon>share</mat-icon>
+          </button>
+        }
         <button mat-icon-button type="button" class="page-panel__fullscreen" matTooltip="Plein écran"
           aria-label="Ouvrir la page en plein écran" (click)="fullscreen()">
           <mat-icon>open_in_new</mat-icon>
@@ -110,6 +118,7 @@ import { pageViewerPath } from './page-block';
 })
 export class PagePanelComponent {
   private readonly pages = inject(PagesService);
+  private readonly dialog = inject(MatDialog);
 
   readonly pageId = input.required<string>();
   readonly closed = output<void>();
@@ -130,6 +139,13 @@ export class PagePanelComponent {
   @HostListener('document:keydown.escape')
   onEscape(): void {
     this.closed.emit();
+  }
+
+  /** Partager (F-109 / SF-109-05). */
+  share(pageId: string, title: string): void {
+    this.dialog.open<PageShareDialogComponent, PageShareDialogData>(PageShareDialogComponent, {
+      data: { pageId, title }, width: '640px', maxWidth: '95vw',
+    });
   }
 
   fullscreen(): void {

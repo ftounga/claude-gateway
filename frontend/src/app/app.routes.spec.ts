@@ -58,6 +58,15 @@ describe('app.routes', () => {
     }
   });
 
+  it('F-109 / SF-109-05 — la page partagée est publique, sans garde, déclarée avant le parent authentifié', () => {
+    const index = routes.findIndex((r: Route) => r.path === 'p/:token');
+    expect(index).withContext('route /p/:token absente').toBeGreaterThan(-1);
+    expect(routes[index].canActivate).toBeUndefined();
+    expect(index).toBeLessThan(guardedParentIndex());
+    // Et la page EN PLEIN ÉCRAN du propriétaire reste, elle, sous le parent authentifié.
+    expect((routes[guardedParentIndex()].children ?? []).some((c) => c.path === 'pages/:id')).toBeTrue();
+  });
+
   it('conserve le joker en dernière position', () => {
     expect(routes[routes.length - 1].path).toBe('**');
   });

@@ -23,6 +23,34 @@ export interface PageSummary {
   viewUrl: string;
 }
 
+/** Un lien de partage créé (F-109 / SF-109-05) : `url` porte le jeton, montré cette seule fois. */
+export interface CreatedPageShare {
+  id: string;
+  /** `/p/{jeton}` : à préfixer de l'origine de l'application. */
+  url: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+/** Un lien de partage, sans son jeton. */
+export interface PageShareSummary {
+  id: string;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  openCount: number;
+  lastOpenedAt: string | null;
+  state: 'ACTIVE' | 'EXPIRED' | 'REVOKED' | string;
+}
+
+/** Une ligne du journal d'une page. */
+export interface PageJournalEntry {
+  kind: 'CREATED' | 'VERSION' | 'SHARED' | 'OPENED' | 'REVOKED' | string;
+  occurredAt: string;
+  shareId: string | null;
+  version: number | null;
+}
+
 /** Une version conservée d'une page (`GET /api/pages/{id}/versions`, F-109 / SF-109-04). */
 export interface PageVersionSummary {
   version: number;
