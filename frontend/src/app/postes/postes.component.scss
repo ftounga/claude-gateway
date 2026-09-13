@@ -134,6 +134,36 @@
     &__detail {
       padding: var(--cg-space-3);
     }
+
+    /* `/forge` : la liste plein écran. `/forge/<id>` : le détail plein écran, avec son retour. */
+    &:not(&--detail-open) &__detail {
+      display: none;
+    }
+
+    &--detail-open &__rail {
+      display: none;
+    }
+
+    &__back {
+      display: inline-flex;
+    }
+  }
+
+  /* Le retour vers la liste n'existe que sur téléphone : au-dessus, la colonne est à côté. */
+  &__back {
+    display: none;
+    align-items: center;
+    gap: var(--cg-space-1);
+    align-self: flex-start;
+    color: var(--cg-text-secondary);
+    font-size: 13px;
+    text-decoration: none;
+
+    mat-icon {
+      width: 16px;
+      height: 16px;
+      font-size: 16px;
+    }
   }
 }
 
@@ -405,6 +435,21 @@
    l'encre ordinaire — la différence ne repose donc jamais sur la seule couleur. */
 .poste__carte {
   margin: 0;
+}
+
+/* F-98 / SF-98-05 : ce qu'est la carte, et le geste pour l'enrichir. */
+.poste__carte-lede {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cg-space-2) var(--cg-space-3);
+
+  p {
+    margin: 0;
+    color: var(--cg-text-primary);
+    font-size: 14px;
+  }
 }
 
 .poste__carte-title {

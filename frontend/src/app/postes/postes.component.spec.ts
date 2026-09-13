@@ -241,7 +241,7 @@ describe('PostesComponent', () => {
     expect(cards.length).toBe(1);
     expect(text()).toContain('Poste CAGIP');
     // F-97 / SF-97-02 : l'état DATE au lieu d'affirmer.
-    expect(text()).toContain('en ligne · vu il y a');
+    expect(text()).toContain('En ligne · vu il y a');
   });
 
   // F-56 / SF-56-01 — les pastilles de statut viennent de la charte (DESIGN_SYSTEM.md §5). Elles
@@ -424,7 +424,7 @@ describe('PostesComponent', () => {
 
   it('un refus reçu ailleurs fait passer la pastille hors ligne, sans relire la vue', () => {
     setup();
-    expect(text()).toContain('en ligne · vu il y a');
+    expect(text()).toContain('En ligne · vu il y a');
     const calls = service.runnerHostsOverview.calls.count();
 
     // Le terminal vient de recevoir « poste hors ligne » pour ce poste.
@@ -435,7 +435,7 @@ describe('PostesComponent', () => {
       .querySelector('.poste:not(.poste--heberge) .poste__presence.badge--neutral') as HTMLElement;
     expect(badge).not.toBeNull();
     expect(badge.textContent).toContain('Hors ligne');
-    expect(text()).toContain('hors ligne · vu il y a');
+    expect(text()).toContain('Hors ligne · vu il y a');
     expect(service.runnerHostsOverview.calls.count()).toBe(calls);
   });
 
@@ -763,6 +763,22 @@ describe('PostesComponent', () => {
       build('poste-h1');
 
       expect(navigate).toHaveBeenCalledWith(['/forge', 'h1'], { replaceUrl: true });
+    });
+
+    it('téléphone : /forge est la liste, /forge/<id> le détail avec son retour (F-98 / SF-98-05)', () => {
+      setup([poste, bercy]);
+      const root = fixture.nativeElement as HTMLElement;
+      const split = root.querySelector('.forge-split') as HTMLElement;
+
+      expect(split.classList).not.toContain('forge-split--detail-open');
+
+      openHost('h2');
+      expect(split.classList).toContain('forge-split--detail-open');
+      const back = root.querySelector('.forge-split__back') as HTMLAnchorElement;
+      expect(back.getAttribute('href')).toBe('/forge');
+      expect(back.textContent).toContain('Postes');
+      // Au-dessus de 820 px (la fenêtre de test), le retour n'a pas lieu d'être : la colonne est à côté.
+      expect(getComputedStyle(back).display).toBe('none');
     });
 
     it('ignore un fragment qui ne désigne pas un poste', () => {
@@ -2042,19 +2058,69 @@ describe('PostesComponent', () => {
       expect(text()).toContain('encore vide');
     });
 
-    it("dit à quoi sert le terminal du poste — aujourd'hui, rien ne l'indique", () => {
+    it('dit ce qu\'est la carte, et « Écrire dans la carte » ouvre le terminal du poste (F-98 / SF-98-05)', () => {
       setup();
+      const router = TestBed.inject(Router);
+      const navigate = spyOn(router, 'navigate').and.resolveTo(true);
 
-      expect(text()).toContain('terminal du poste');
-      expect(text()).toContain('à la racine');
+      expect(text()).toContain('Ce que vous savez de l\'infrastructure de ce client. Chaque projet l\'enrichit.');
+      // La mécanique n'est plus racontée.
+      expect(text()).not.toContain('là où vit la carte');
+      ((fixture.nativeElement as HTMLElement).querySelector('.poste__carte-write') as HTMLButtonElement).click();
+
+      expect(service.openHostTerminal).toHaveBeenCalledWith('h1');
+      expect(navigate).toHaveBeenCalledWith(['/atelier', 'wt1']);
     });
 
-    it('un poste NON CONNECTÉ ne déclenche aucune lecture, et le dit avec son geste', () => {
+    it('un poste NON CONNECTÉ ne déclenche aucune lecture, et dit ce qu\'on voit — sans geste', () => {
       setup([{ ...poste, connected: false }]);
 
       expect(governance.getMap).not.toHaveBeenCalled();
-      expect(text()).toContain('lancez le runner');
+      expect(text()).toContain('Poste hors ligne : la carte sera lue à la prochaine connexion.');
+      expect(text()).not.toContain('lancez le runner');
+      expect(text()).not.toContain('Rafraîchir');
+      expect((fixture.nativeElement as HTMLElement).querySelector('.poste__carte-write')).toBeNull();
     });
+
+    it('relit la carte UNE fois quand le poste repasse en ligne, jamais sinon (F-98 / SF-98-05)', fakeAsync(() => {
+      setup();
+      expect(governance.getMap).toHaveBeenCalledTimes(1);
+
+      // En ligne → en ligne : rien (A1).
+      tick(POSTES_REFRESH_MS);
+      expect(governance.getMap).toHaveBeenCalledTimes(1);
+
+      // En ligne → hors ligne, puis hors ligne → hors ligne : rien.
+      service.runnerHostsOverview.and.returnValue(of([{ ...poste, connected: false }]));
+      tick(POSTES_REFRESH_MS);
+      tick(POSTES_REFRESH_MS);
+      expect(governance.getMap).toHaveBeenCalledTimes(1);
+
+      // Hors ligne → en ligne : une relecture, et l'intégrité avec elle.
+      const integrites = governance.getIntegrite.calls.count();
+      service.runnerHostsOverview.and.returnValue(of([{ ...poste, lastSeenAt: new Date().toISOString() }]));
+      tick(POSTES_REFRESH_MS);
+      expect(governance.getMap).toHaveBeenCalledTimes(2);
+      expect(governance.getIntegrite.calls.count()).toBe(integrites + 1);
+
+      // Et toujours pas au sondage suivant.
+      tick(POSTES_REFRESH_MS);
+      expect(governance.getMap).toHaveBeenCalledTimes(2);
+      fixture.destroy();
+    }));
+
+    it('un refus reçu dans un terminal, puis un battement revenu, relisent aussi la carte', fakeAsync(() => {
+      setup();
+      expect(governance.getMap).toHaveBeenCalledTimes(1);
+
+      TestBed.inject(HostPresenceService).markOffline('h1', Date.now() + 1_000);
+      service.runnerHostsOverview.and.returnValue(
+        of([{ ...poste, lastSeenAt: new Date(Date.now() + 5_000).toISOString() }]));
+      tick(POSTES_REFRESH_MS);
+
+      expect(governance.getMap).toHaveBeenCalledTimes(2);
+      fixture.destroy();
+    }));
 
     it("le poste « Hébergé » n'a pas de carte : ce n'est pas une machine", () => {
       setup([]);
