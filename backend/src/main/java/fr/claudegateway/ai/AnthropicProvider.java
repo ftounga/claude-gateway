@@ -79,7 +79,7 @@ public class AnthropicProvider implements AIProvider {
         body.put("max_tokens", resolveMaxTokens(request));
         body.put("messages", toApiMessages(request.messages()));
         if (request.system() != null && !request.system().isBlank()) {
-            body.put("system", request.system());
+            body.put("system", systemField(request));
         }
 
         try {
@@ -118,7 +118,7 @@ public class AnthropicProvider implements AIProvider {
         body.put("max_tokens", resolveMaxTokens(request));
         body.put("messages", toApiMessages(request.messages()));
         if (request.system() != null && !request.system().isBlank()) {
-            body.put("system", request.system());
+            body.put("system", systemField(request));
         }
         body.put("stream", true);
 
@@ -251,6 +251,21 @@ public class AnthropicProvider implements AIProvider {
      * plafond de chat configuré. Un appelant qui n'exprime pas de préférence retrouve exactement le
      * comportement d'avant.
      */
+    /**
+     * Le champ {@code system} : une chaîne, ou — si la requête demande le cache (F-101 / SF-101-03) —
+     * un bloc texte marqué {@code cache_control: ephemeral}, seule forme qui accepte ce marqueur.
+     */
+    static Object systemField(ChatCompletionRequest request) {
+        if (!request.cacheSystem()) {
+            return request.system();
+        }
+        Map<String, Object> block = new HashMap<>();
+        block.put("type", "text");
+        block.put("text", request.system());
+        block.put("cache_control", Map.of("type", "ephemeral"));
+        return List.of(block);
+    }
+
     private int resolveMaxTokens(ChatCompletionRequest request) {
         return request.maxTokens() != null ? request.maxTokens() : properties.maxTokens();
     }

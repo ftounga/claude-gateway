@@ -103,7 +103,7 @@ class RadarTriageTest {
         when(byokKeyService.resolveActiveApiKey(alice)).thenReturn(Optional.of("sk-alice"));
         when(aiProvider.complete(any())).thenReturn(answer("===TRI===\n{\"retenus\": []}"));
 
-        triage(new RadarReadingProperties("modele-configure", 800, null)).triage(alice, batch(exchange("c1", "a", false)));
+        triage(new RadarReadingProperties("modele-configure", 800, null, null, null)).triage(alice, batch(exchange("c1", "a", false)));
 
         ArgumentCaptor<ChatCompletionRequest> request = ArgumentCaptor.forClass(ChatCompletionRequest.class);
         verify(aiProvider).complete(request.capture());
@@ -114,7 +114,7 @@ class RadarTriageTest {
 
     @Test
     void unknownConfiguredModelFallsBackToFast() {
-        assertThat(triage(new RadarReadingProperties("faute-de-frappe", null, null)).model()).isEqualTo("modele-rapide");
+        assertThat(triage(new RadarReadingProperties("faute-de-frappe", null, null, null, null)).model()).isEqualTo("modele-rapide");
     }
 
     @Test
@@ -136,7 +136,7 @@ class RadarTriageTest {
         for (int i = 1; i <= 6; i++) {
             exchanges.add(exchange("c" + i, "m".repeat(1_400), false));
         }
-        RadarReadingProperties small = new RadarReadingProperties(null, null, 5_000);
+        RadarReadingProperties small = new RadarReadingProperties(null, null, 5_000, null, null);
         when(aiProvider.complete(any()))
                 .thenReturn(answer("===TRI===\n{\"retenus\": [\"E2\"]}"))
                 .thenReturn(answer("===TRI===\n{\"retenus\": [\"E4\", \"E6\"]}"));
@@ -176,7 +176,7 @@ class RadarTriageTest {
 
     @Test
     void propertiesFallBack() {
-        RadarReadingProperties p = new RadarReadingProperties("  ", 5, 1);
+        RadarReadingProperties p = new RadarReadingProperties("  ", 5, 1, " ", 3);
         assertThat(p.triageModel()).isNull();
         assertThat(p.triageMaxTokens()).isEqualTo(RadarReadingProperties.DEFAULT_TRIAGE_MAX_TOKENS);
         assertThat(p.triageChunkChars()).isEqualTo(RadarReadingProperties.DEFAULT_TRIAGE_CHUNK_CHARS);

@@ -15,6 +15,16 @@ import org.springframework.web.client.RestClient;
 class AnthropicProviderTest {
 
     @Test
+    void systemIsAPlainStringUnlessCacheIsRequested() {
+        ChatCompletionRequest plain = new ChatCompletionRequest("m", List.of(), List.of(), null, "Consigne", 10);
+        org.assertj.core.api.Assertions.assertThat(AnthropicProvider.systemField(plain)).isEqualTo("Consigne");
+
+        ChatCompletionRequest cached = new ChatCompletionRequest("m", List.of(), List.of(), null, "Consigne", 10, true);
+        org.assertj.core.api.Assertions.assertThat(AnthropicProvider.systemField(cached)).isEqualTo(List.of(
+                java.util.Map.of("type", "text", "text", "Consigne", "cache_control", java.util.Map.of("type", "ephemeral"))));
+    }
+
+    @Test
     void throwsUnavailableWhenApiKeyMissing() {
         AnthropicProperties properties = new AnthropicProperties(
                 "", null, null, null, null, null, null, Duration.ofSeconds(1), null, null);
