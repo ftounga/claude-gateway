@@ -3,6 +3,9 @@ package fr.claudegateway.radar;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.http.ResponseEntity;
+
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -12,8 +15,12 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.auth.CurrentUser;
+import fr.claudegateway.radar.dto.RadarCorrectionRequests.AliasRequest;
 import fr.claudegateway.radar.dto.RadarCorrectionRequests.CommitmentCorrectionRequest;
+import fr.claudegateway.radar.dto.RadarCorrectionRequests.MergeRequest;
+import fr.claudegateway.radar.dto.RadarCorrectionRequests.SplitRequest;
 import fr.claudegateway.radar.dto.RadarCorrectionRequests.SubjectCorrectionRequest;
+import fr.claudegateway.radar.dto.RadarViews.AliasView;
 import fr.claudegateway.radar.dto.RadarViews.CommitmentView;
 import fr.claudegateway.radar.dto.RadarViews.CorrectionView;
 import fr.claudegateway.radar.dto.RadarViews.EvidenceView;
@@ -38,14 +45,16 @@ public class RadarController {
 
     private final RadarReadService readService;
     private final RadarCorrectionService correctionService;
+    private final RadarStructureService structureService;
     private final RadarScopeResolver scopeResolver;
     private final TeamsAccessService teamsAccess;
     private final CurrentUser currentUser;
 
     public RadarController(RadarReadService readService, RadarCorrectionService correctionService,
-            RadarScopeResolver scopeResolver, TeamsAccessService teamsAccess, CurrentUser currentUser) {
+            RadarStructureService structureService, RadarScopeResolver scopeResolver, TeamsAccessService teamsAccess, CurrentUser currentUser) {
         this.readService = readService;
         this.correctionService = correctionService;
+        this.structureService = structureService;
         this.scopeResolver = scopeResolver;
         this.teamsAccess = teamsAccess;
         this.currentUser = currentUser;
@@ -109,6 +118,34 @@ public class RadarController {
     @PostMapping("/corrections/{correctionId}/undo")
     public CorrectionView undo(@PathVariable UUID hostId, @PathVariable UUID correctionId) {
         return correctionService.undo(scope(hostId), correctionId);
+    }
+
+    // ---------------------------------------------------------- fusion, séparation, alias (SF-99-03)
+
+    @PostMapping("/subjects/{subjectId}/merge")
+    public CorrectionView merge(@PathVariable UUID hostId, @PathVariable UUID subjectId,
+            @RequestBody MergeRequest request) {
+        return structureService.merge(scope(hostId), subjectId, request == null ? null : request.intoSubjectId());
+    }
+
+    @PostMapping("/subjects/{subjectId}/split")
+    public CorrectionView split(@PathVariable UUID hostId, @PathVariable UUID subjectId,
+            @RequestBody SplitRequest request) {
+        return structureService.split(scope(hostId), subjectId, request.name(), request.evidenceIds(),
+                request.commitmentIds());
+    }
+
+    @PostMapping("/subjects/{subjectId}/aliases")
+    public AliasView addAlias(@PathVariable UUID hostId, @PathVariable UUID subjectId,
+            @RequestBody AliasRequest request) {
+        return structureService.addUserAlias(scope(hostId), subjectId, request.alias());
+    }
+
+    @DeleteMapping("/subjects/{subjectId}/aliases/{aliasId}")
+    public ResponseEntity<Void> removeAlias(@PathVariable UUID hostId, @PathVariable UUID subjectId,
+            @PathVariable UUID aliasId) {
+        structureService.removeAlias(scope(hostId), subjectId, aliasId);
+        return ResponseEntity.noContent().build();
     }
 
     /** Droit d'abord, possession ensuite : sans le droit, on ne dit rien des postes. */

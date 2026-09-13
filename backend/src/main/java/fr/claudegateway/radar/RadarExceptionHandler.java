@@ -41,6 +41,12 @@ public class RadarExceptionHandler {
                 .body(new ErrorResponse("radar_correction_conflict", ex.getMessage()));
     }
 
+    @ExceptionHandler(RadarSubjectMergedException.class)
+    public ResponseEntity<ErrorResponse> merged(RadarSubjectMergedException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("radar_subject_merged", ex.getMessage()));
+    }
+
     @ExceptionHandler(RadarEvidenceRequiredException.class)
     public ResponseEntity<ErrorResponse> evidenceRequired(RadarEvidenceRequiredException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)

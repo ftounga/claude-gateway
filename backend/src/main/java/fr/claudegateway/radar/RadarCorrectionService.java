@@ -12,10 +12,6 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import fr.claudegateway.radar.dto.RadarCorrectionRequests.CommitmentCorrectionRequest;
 import fr.claudegateway.radar.dto.RadarCorrectionRequests.SubjectCorrectionRequest;
 import fr.claudegateway.radar.dto.RadarViews.CorrectionView;
@@ -37,25 +33,25 @@ public class RadarCorrectionService {
 
     static final String ALIAS_ID = "aliasId";
 
-    private static final TypeReference<LinkedHashMap<String, Object>> MAP = new TypeReference<>() {
-    };
-
     private final RadarRegistry registry;
     private final RadarSubjectRepository subjects;
     private final RadarCommitmentRepository commitments;
     private final RadarSubjectAliasRepository aliases;
     private final RadarCorrectionRepository corrections;
-    private final ObjectMapper objectMapper;
+    private final RadarCorrectionJournal journalWriter;
+    private final RadarStructureService structure;
 
     public RadarCorrectionService(RadarRegistry registry, RadarSubjectRepository subjects,
             RadarCommitmentRepository commitments, RadarSubjectAliasRepository aliases,
-            RadarCorrectionRepository corrections, ObjectMapper objectMapper) {
+            RadarCorrectionRepository corrections, RadarCorrectionJournal journalWriter,
+            RadarStructureService structure) {
         this.registry = registry;
         this.subjects = subjects;
         this.commitments = commitments;
         this.aliases = aliases;
         this.corrections = corrections;
-        this.objectMapper = objectMapper;
+        this.journalWriter = journalWriter;
+        this.structure = structure;
     }
 
     // ------------------------------------------------------------------------------------ sujet
@@ -65,6 +61,9 @@ public class RadarCorrectionService {
         RadarCorrectionAction action = requireAction(request == null ? null : request.action(),
                 RadarCorrectionAction.Target.SUBJECT);
         RadarSubject subject = registry.requireSubject(scope, subjectId);
+        if (subject.getMergedIntoId() != null) {
+            throw new RadarSubjectMergedException("Ce sujet a été fusionné : corrigez le sujet qui l'a absorbé.");
+        }
         Map<String, Object> before = new LinkedHashMap<>();
         Map<String, Object> after = new LinkedHashMap<>();
         switch (action) {
@@ -112,7 +111,7 @@ public class RadarCorrectionService {
             default -> throw new InvalidRadarInputException("Action inconnue pour un sujet.");
         }
         subjects.save(subject);
-        return view(journal(scope, subject.getId(), RadarCorrectionAction.Target.SUBJECT, subject.getId(),
+        return journalWriter.view(journalWriter.record(scope, subject.getId(), RadarCorrectionAction.Target.SUBJECT, subject.getId(),
                 action, before, after));
     }
 
@@ -161,7 +160,7 @@ public class RadarCorrectionService {
         commitment.setSovereign(true);
         after.put("sovereign", true);
         commitments.save(commitment);
-        return view(journal(scope, commitment.getSubjectId(), RadarCorrectionAction.Target.COMMITMENT,
+        return journalWriter.view(journalWriter.record(scope, commitment.getSubjectId(), RadarCorrectionAction.Target.COMMITMENT,
                 commitment.getId(), action, before, after));
     }
 
@@ -174,7 +173,7 @@ public class RadarCorrectionService {
                 ? corrections.findByUserIdAndHostIdOrderByCreatedAtDesc(scope.userId(), scope.hostId())
                 : corrections.findByUserIdAndHostIdAndSubjectIdOrderByCreatedAtDesc(
                         scope.userId(), scope.hostId(), subjectId);
-        return rows.stream().map(this::view).toList();
+        return rows.stream().map(journalWriter::view).toList();
     }
 
     /**
@@ -189,7 +188,13 @@ public class RadarCorrectionService {
         if (correction.getUndoneAt() != null) {
             throw new RadarCorrectionConflictException("Cette correction est déjà annulée.");
         }
-        Map<String, Object> before = parse(correction.getBeforeValues());
+        if (correction.getAction() == RadarCorrectionAction.MERGE
+                || correction.getAction() == RadarCorrectionAction.SPLIT) {
+            structure.undo(scope, correction);
+            correction.setUndoneAt(OffsetDateTime.now());
+            return journalWriter.view(corrections.save(correction));
+        }
+        Map<String, Object> before = journalWriter.parse(correction.getBeforeValues());
         List<RadarCorrection> others = corrections.findByUserIdAndHostIdAndTargetIdAndUndoneAtIsNull(
                         scope.userId(), scope.hostId(), correction.getTargetId()).stream()
                 .filter(other -> !other.getId().equals(correction.getId()))
@@ -197,7 +202,7 @@ public class RadarCorrectionService {
         Set<String> valueFields = valueFields(before.keySet());
         Set<String> flagsHeldElsewhere = new HashSet<>();
         for (RadarCorrection other : others) {
-            Set<String> otherFields = parse(other.getBeforeValues()).keySet();
+            Set<String> otherFields = journalWriter.parse(other.getBeforeValues()).keySet();
             boolean later = !other.getCreatedAt().isBefore(correction.getCreatedAt());
             if (later && valueFields.stream().anyMatch(otherFields::contains)) {
                 throw new RadarCorrectionConflictException(
@@ -211,7 +216,7 @@ public class RadarCorrectionService {
             RadarSubject subject = registry.requireSubject(scope, correction.getTargetId());
             restoreSubject(subject, before);
             subjects.save(subject);
-            Object aliasId = parse(correction.getAfterValues()).get(ALIAS_ID);
+            Object aliasId = journalWriter.parse(correction.getAfterValues()).get(ALIAS_ID);
             if (aliasId != null) {
                 aliases.findById(UUID.fromString(aliasId.toString()))
                         .filter(alias -> alias.getUserId().equals(scope.userId())
@@ -224,7 +229,7 @@ public class RadarCorrectionService {
             commitments.save(commitment);
         }
         correction.setUndoneAt(OffsetDateTime.now());
-        return view(corrections.save(correction));
+        return journalWriter.view(corrections.save(correction));
     }
 
     // ------------------------------------------------------------------------------------ aides
@@ -261,16 +266,7 @@ public class RadarCorrectionService {
         }
         return aliases.save(RadarSubjectAlias.builder()
                 .userId(scope.userId()).hostId(scope.hostId()).subjectId(subject.getId())
-                .alias(oldName).normalized(key).build()).getId();
-    }
-
-    private RadarCorrection journal(RadarScope scope, UUID subjectId, RadarCorrectionAction.Target kind,
-            UUID targetId, RadarCorrectionAction action, Map<String, Object> before, Map<String, Object> after) {
-        return corrections.save(RadarCorrection.builder()
-                .userId(scope.userId()).hostId(scope.hostId()).subjectId(subjectId)
-                .targetKind(kind).targetId(targetId).action(action)
-                .beforeValues(write(before)).afterValues(write(after))
-                .createdAt(OffsetDateTime.now()).build());
+                .alias(oldName).normalized(key).origin(RadarAliasOrigin.USER).build()).getId();
     }
 
     private static void restoreSubject(RadarSubject subject, Map<String, Object> values) {
@@ -323,34 +319,5 @@ public class RadarCorrectionService {
 
     private static LocalDate date(Object value) {
         return value == null ? null : LocalDate.parse(value.toString());
-    }
-
-    private String write(Map<String, Object> values) {
-        try {
-            return objectMapper.writeValueAsString(values);
-        } catch (Exception e) {
-            throw new IllegalStateException("Journal des corrections illisible", e);
-        }
-    }
-
-    private Map<String, Object> parse(String json) {
-        try {
-            return objectMapper.readValue(json, MAP);
-        } catch (Exception e) {
-            throw new IllegalStateException("Journal des corrections illisible", e);
-        }
-    }
-
-    private JsonNode tree(String json) {
-        try {
-            return objectMapper.readTree(json);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    CorrectionView view(RadarCorrection c) {
-        return new CorrectionView(c.getId(), c.getSubjectId(), c.getTargetKind(), c.getTargetId(), c.getAction(),
-                tree(c.getBeforeValues()), tree(c.getAfterValues()), c.getCreatedAt(), c.getUndoneAt());
     }
 }

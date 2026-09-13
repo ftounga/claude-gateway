@@ -8,6 +8,8 @@ import org.hibernate.annotations.UuidGenerator;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -53,6 +55,14 @@ public class RadarSubjectAlias {
     /** Clé de comparaison : minuscules, espaces réduits. */
     @Column(name = "normalized", nullable = false, length = MAX_ALIAS_LENGTH)
     private String normalized;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "origin", nullable = false, length = 16)
+    private RadarAliasOrigin origin;
+
+    /** Consigne de rattachement : ce nom n'est <b>pas</b> ce sujet (SF-99-03). */
+    @Column(name = "rejected", nullable = false)
+    private boolean rejected;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
