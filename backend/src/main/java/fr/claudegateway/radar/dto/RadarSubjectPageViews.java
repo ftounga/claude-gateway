@@ -1,5 +1,6 @@
 package fr.claudegateway.radar.dto;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -48,5 +49,15 @@ public final class RadarSubjectPageViews {
      * @param reason pourquoi elle, en mots : « pilote le sujet », « a écrit en dernier sur le sujet, le … »
      */
     public record AskView(UUID personId, String displayName, String jobTitle, RadarRole role, String reason) {
+    }
+
+    /**
+     * La réponse préparée pour le manager (SF-103-03). Rien n'est persisté.
+     *
+     * @param coverageIncomplete la dernière synchro n'a pas tout lu : l'écran le rappelle
+     * @param unknownsCount      le nombre de manques que la réponse a dû prendre en compte
+     */
+    public record ManagerAnswerView(String text, OffsetDateTime preparedAt, boolean coverageIncomplete,
+            int unknownsCount) {
     }
 }

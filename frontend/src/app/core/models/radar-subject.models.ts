@@ -139,6 +139,14 @@ export interface RadarAskView {
   reason: string;
 }
 
+/** La réponse préparée pour le manager (SF-103-03) — rien n'est persisté côté gateway. */
+export interface RadarManagerAnswer {
+  text: string;
+  preparedAt: string;
+  coverageIncomplete: boolean;
+  unknownsCount: number;
+}
+
 /** Un manque — `GET /api/radar/hosts/{hostId}/subjects/{subjectId}/unknowns`. */
 export interface RadarUnknownView {
   kind: RadarUnknownKind;

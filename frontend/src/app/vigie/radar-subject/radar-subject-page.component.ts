@@ -1,21 +1,26 @@
 import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { catchError, forkJoin, of } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSnackBar } from '@angular/material/snack-bar';
 
 import {
   RadarEvidenceView,
+  RadarManagerAnswer,
   RadarSubjectDetail,
   RadarUnknownView,
 } from '../../core/models/radar-subject.models';
 import { VigiePerson } from '../../core/models/vigie.models';
+import { AtelierService } from '../../core/services/atelier.service';
 import { RadarSubjectService } from '../../core/services/radar-subject.service';
 import { VigieService } from '../../core/services/vigie.service';
+import { RADAR_DRAFT_STATE } from '../../shared/radar-draft';
 import { SpacePitchComponent } from '../../shared/space-pitch/space-pitch.component';
+import { httpErrorMessage } from '../../shared/http-error.util';
 import {
   dayLabel,
   evidenceNumbers,
@@ -54,6 +59,9 @@ export class RadarSubjectPageComponent implements OnInit {
   private readonly subjects = inject(RadarSubjectService);
   private readonly vigie = inject(VigieService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly atelier = inject(AtelierService);
+  private readonly router = inject(Router);
+  private readonly snackBar = inject(MatSnackBar);
 
   readonly hostRef = signal<string | null>(null);
   readonly subjectId = signal<string | null>(null);
@@ -66,6 +74,12 @@ export class RadarSubjectPageComponent implements OnInit {
   readonly focusedEvidenceId = signal<string | null>(null);
   /** Ce que le Radar ne sait pas (SF-103-02) : `null` en lecture, `'error'` s'il n'a pas pu être lu. */
   readonly unknowns = signal<RadarUnknownView[] | 'error' | null>(null);
+
+  /** La réponse préparée pour le manager (SF-103-03), jamais préparée d'office. */
+  readonly answer = signal<RadarManagerAnswer | null>(null);
+  readonly preparingAnswer = signal(false);
+  readonly answerError = signal<string | null>(null);
+  readonly openingConversation = signal(false);
 
   /** Qui est dans ce sujet : qui décide, qui pilote, les experts, les informés. */
   readonly roles = computed(() => peopleByRole(this.detail()?.people));
@@ -122,6 +136,81 @@ export class RadarSubjectPageComponent implements OnInit {
     this.load();
   }
 
+  // ------------------------------------------------------------ la réponse au manager (SF-103-03)
+
+  /** Prépare la réponse : un appel au fournisseur, décompté — seulement sur ce geste. */
+  prepareAnswer(): void {
+    const hostRef = this.hostRef();
+    const subjectId = this.subjectId();
+    if (!hostRef || !subjectId || this.preparingAnswer()) {
+      return;
+    }
+    const seq = this.requestSeq;
+    this.preparingAnswer.set(true);
+    this.answerError.set(null);
+    this.subjects.managerAnswer(hostRef, subjectId).subscribe({
+      next: (answer) => {
+        if (seq !== this.requestSeq) {
+          return;
+        }
+        this.preparingAnswer.set(false);
+        this.answer.set(answer);
+      },
+      error: (err: unknown) => {
+        if (seq !== this.requestSeq) {
+          return;
+        }
+        this.preparingAnswer.set(false);
+        this.answerError.set(answerErrorOf(err));
+      },
+    });
+  }
+
+  /** Copie la réponse dans le presse-papiers. */
+  copyAnswer(): void {
+    const text = this.answer()?.text;
+    const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard;
+    if (!text) {
+      return;
+    }
+    if (!clipboard || typeof clipboard.writeText !== 'function') {
+      this.snackBar.open('Copie impossible sur ce navigateur.', 'Fermer', { duration: 4000, panelClass: 'snack-error' });
+      return;
+    }
+    clipboard.writeText(text).then(
+      () => this.snackBar.open('Réponse copiée.', 'Fermer', { duration: 4000, panelClass: 'snack-success' }),
+      () => this.snackBar.open('Copie impossible.', 'Fermer', { duration: 4000, panelClass: 'snack-error' }),
+    );
+  }
+
+  /**
+   * **Ajuster en discutant** : ouvre la conversation du client (son terminal Teams, créé s'il n'existe pas)
+   * et y dépose un brouillon **sans l'envoyer**. Le brouillon voyage dans l'état de navigation, jamais
+   * dans l'adresse : il ne se retrouve ni dans l'historique du navigateur, ni dans un journal d'accès.
+   */
+  adjustAnswer(): void {
+    const hostRef = this.hostRef();
+    const answer = this.answer();
+    const subject = this.detail();
+    if (!hostRef || !answer || !subject || this.openingConversation()) {
+      return;
+    }
+    this.openingConversation.set(true);
+    this.atelier.openTeamsTerminal(hostRef).subscribe({
+      next: (terminal) => {
+        this.openingConversation.set(false);
+        void this.router.navigate(['/atelier', terminal.id], {
+          state: { [RADAR_DRAFT_STATE]: adjustDraft(subject.name, answer.text) },
+        });
+      },
+      error: (err: unknown) => {
+        this.openingConversation.set(false);
+        this.snackBar.open(httpErrorMessage(err, "La conversation n'a pas pu être ouverte. Rien n'a été créé."),
+          'Fermer', { duration: 6000, panelClass: 'snack-error' });
+      },
+    });
+  }
+
   refs(ids: readonly string[] | null | undefined): number[] {
     return refsOf(ids, this.numbers());
   }
@@ -168,6 +257,9 @@ export class RadarSubjectPageComponent implements OnInit {
     this.loading.set(true);
     this.error.set('none');
     this.unknowns.set(null);
+    this.answer.set(null);
+    this.answerError.set(null);
+    this.preparingAnswer.set(false);
     this.loadHostName(hostRef);
     // Les manques ne retiennent pas la page : ils arrivent quand ils arrivent, ou disent qu'ils manquent.
     this.subjects.unknowns(hostRef, subjectId).subscribe({
@@ -219,6 +311,30 @@ export class RadarSubjectPageComponent implements OnInit {
       }
     });
   }
+}
+
+/** Le brouillon déposé dans la conversation : une demande d'aide, puis la réponse. */
+export function adjustDraft(subjectName: string, answer: string): string {
+  return `Aide-moi à ajuster la réponse que je vais donner à mon manager sur le sujet « ${subjectName} » :\n\n${answer}`;
+}
+
+/** Ce que l'encart dit d'une préparation en échec. */
+export function answerErrorOf(err: unknown): string {
+  if (err instanceof HttpErrorResponse) {
+    switch (err.status) {
+      case 402:
+        return 'Votre quota de consommation est atteint : la réponse ne peut pas être préparée.';
+      case 503:
+        return 'Le fournisseur est momentanément indisponible. Réessayez dans un instant.';
+      case 409:
+        return 'Ce sujet a été fusionné : préparez la réponse depuis le sujet cible.';
+      case 502:
+        return "La réponse n'a pas pu être préparée. Réessayez.";
+      default:
+        break;
+    }
+  }
+  return httpErrorMessage(err, "La réponse n'a pas pu être préparée. Réessayez.");
 }
 
 /** Traduit une erreur HTTP en ce que la page sait dire. */
