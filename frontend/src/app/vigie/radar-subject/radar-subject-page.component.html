@@ -197,7 +197,13 @@
       <!-- LA COLONNE DE DROITE (SF-103-02) : qui est dans ce sujet, ce que le Radar ne sait pas, à qui demander. -->
       <aside class="radar-subject__side">
         <section class="radar-subject__people" aria-labelledby="radar-subject-people">
-          <h2 id="radar-subject-people" class="radar-subject__h">Qui est dans ce sujet</h2>
+          <div class="radar-subject__h-row">
+            <h2 id="radar-subject-people" class="radar-subject__h">Qui est dans ce sujet</h2>
+            <!-- L'ANNUAIRE (SF-103-04) : toutes les personnes rencontrées chez ce client. -->
+            <a class="radar-subject__directory-link" [routerLink]="['/vigie', hostRef()]" [queryParams]="{ onglet: 'personnes' }">
+              L'annuaire
+            </a>
+          </div>
           @if (roles().length === 0) {
             <p class="radar-subject__empty radar-subject__people-empty">Personne n'est encore rattaché à ce sujet.</p>
           } @else {

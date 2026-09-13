@@ -1,0 +1,113 @@
+/* L'annuaire du Radar (F-103 / SF-103-04). DESIGN_SYSTEM §16 et §17 : surfaces blanches, filet de charte,
+   une personne écrite et jamais colorée, la pastille d'état du sujet de l'onglet Radar. Espacements 4 px. */
+
+:host {
+  display: block;
+}
+
+/* Les pastilles d'état de l'onglet Radar (§17), les mêmes tons que `radar-columns.component.scss`. */
+.radar-state {
+  white-space: nowrap;
+
+  &--success { background: #E8F5E9; color: var(--cg-success); }
+  &--warning { background: #FFF8E1; color: #F9A825; }
+  &--error   { background: #FFEBEE; color: var(--cg-error); }
+  &--neutral { background: #F5F5F5; color: var(--cg-text-secondary); }
+  &--blue    { background: #E7EFF9; color: #386599; }
+}
+
+.radar-directory {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-3);
+
+  &__filter {
+    max-width: 480px;
+  }
+
+  &__none {
+    margin: 0;
+    color: var(--cg-text-secondary);
+  }
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  &__person {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-2);
+    padding: var(--cg-space-2) var(--cg-space-3);
+    border: 1px solid var(--cg-divider);
+    border-radius: 8px;
+    background: var(--cg-surface);
+  }
+
+  &__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cg-space-1) var(--cg-space-3);
+  }
+
+  &__icon {
+    color: var(--cg-text-secondary);
+  }
+
+  &__who {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 200px;
+    min-width: 0;
+  }
+
+  &__name {
+    font-weight: 500;
+  }
+
+  &__meta {
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__subjects {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cg-space-2) var(--cg-space-3);
+    margin: 0;
+    padding: 0 0 0 var(--cg-space-6);
+    list-style: none;
+
+    @media (max-width: 600px) {
+      padding-left: 0;
+    }
+  }
+
+  &__subject {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cg-space-1) var(--cg-space-2);
+    font-size: 14px;
+  }
+
+  &__subject-link {
+    color: var(--cg-primary);
+    font-weight: 500;
+  }
+
+  &__role {
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__more {
+    align-self: flex-start;
+  }
+}

@@ -69,43 +69,8 @@
     font-weight: 500;
   }
 
+  /* L'annuaire (F-103 / SF-103-04) porte ses propres styles : `radar-directory.component.scss`. */
   &__people {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cg-space-1);
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  &__person {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--cg-space-1) var(--cg-space-3);
-    padding: var(--cg-space-2) var(--cg-space-3);
-    border: 1px solid var(--cg-divider);
-    border-radius: 8px;
-    background: var(--cg-surface);
-  }
-
-  &__person-icon {
-    color: var(--cg-text-secondary);
-  }
-
-  &__person-text {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    flex: 1 1 200px;
-  }
-
-  &__person-name {
-    font-weight: 500;
-  }
-
-  &__person-meta {
-    font-size: 12px;
-    color: var(--cg-text-secondary);
+    display: block;
   }
 }

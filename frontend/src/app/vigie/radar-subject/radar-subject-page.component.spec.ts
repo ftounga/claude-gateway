@@ -279,6 +279,8 @@ describe('RadarSubjectPageComponent', () => {
     expect(persons.map((p) => text(p.querySelector('.radar-subject__role')))).toEqual(['décide', 'pilote', 'expert']);
     expect(text(persons[1].querySelector('.radar-subject__person-job'))).toBe('Cheffe de projet IAM');
     expect(persons[0].querySelector('.radar-subject__ref')?.getAttribute('href')).toBe('#preuve-p2');
+    // SF-103-04 : l'annuaire du client est à un clic.
+    expect(root.querySelector('.radar-subject__directory-link')?.getAttribute('href')).toBe('/vigie/h1?onglet=personnes');
   });
 
   it('dit ce que le Radar ne sait pas, et à qui le demander', () => {

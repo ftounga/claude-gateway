@@ -46,6 +46,7 @@ import {
   RemoveClientDialogResult,
 } from './remove-client-dialog/remove-client-dialog.component';
 import { RadarBoardComponent } from './radar/radar-board.component';
+import { RadarDirectoryComponent } from './radar-directory/radar-directory.component';
 import {
   VIGIE_TABS,
   VIGIE_TAB_LABELS,
@@ -84,6 +85,7 @@ export type VigieError = 'none' | 'network' | 'forbidden' | 'not-entitled';
     LiveBadgeComponent,
     MissionBadgeComponent,
     RadarBoardComponent,
+    RadarDirectoryComponent,
     SpacePitchComponent,
     TeamsLinkBadgeComponent,
     MatButtonModule,
@@ -272,20 +274,6 @@ export class VigieComponent implements OnInit {
 
   peopleOf(host: RunnerHostOverview): VigiePerson[] | 'error' | null {
     return host.id === null ? null : this.people()[host.id] ?? null;
-  }
-
-  lastInteraction(person: VigiePerson): string | null {
-    if (!person.lastInteractionAt) {
-      return null;
-    }
-    const date = new Date(person.lastInteractionAt);
-    return Number.isNaN(date.getTime()) ? null
-      : date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
-  }
-
-  subjectsLabel(person: VigiePerson): string {
-    const count = person.subjects?.length ?? 0;
-    return count === 1 ? '1 sujet' : `${count} sujets`;
   }
 
   // ------------------------------------------------------------ Teams (F-106 / SF-106-03)

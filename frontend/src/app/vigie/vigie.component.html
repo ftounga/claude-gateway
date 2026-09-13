@@ -294,24 +294,8 @@
                         Personne encore : l'annuaire se remplit à chaque synchro du Radar.
                       </p>
                     } @else {
-                      <ul class="vigie__people">
-                        @for (person of people; track person.id) {
-                          <li class="vigie__person">
-                            <!-- Une personne n'est pas une machine : aucun ton d'identité du §9. -->
-                            <mat-icon class="vigie__person-icon" aria-hidden="true">person</mat-icon>
-                            <span class="vigie__person-text">
-                              <span class="vigie__person-name">{{ person.displayName }}</span>
-                              @if (person.jobTitle) {
-                                <span class="vigie__person-meta">{{ person.jobTitle }}</span>
-                              }
-                            </span>
-                            <span class="vigie__person-meta">{{ subjectsLabel(person) }}</span>
-                            @if (lastInteraction(person); as when) {
-                              <span class="vigie__person-meta">dernier échange le {{ when }}</span>
-                            }
-                          </li>
-                        }
-                      </ul>
+                      <!-- L'ANNUAIRE DU RADAR (F-103 / SF-103-04) : personnes, sujets, rôles, dernier échange. -->
+                      <app-radar-directory class="vigie__people" [hostId]="host.id!" [people]="people"></app-radar-directory>
                     }
                   } @else {
                     <div class="postes__loading"><mat-spinner diameter="28"></mat-spinner></div>
