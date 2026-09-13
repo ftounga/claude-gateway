@@ -483,6 +483,10 @@
                      interdit la CARTE, pas le contenu. -->
                 <pre class="terminal-output">{{ cardAsText(block.card) }}</pre>
               }
+              <!-- LE BLOC « COURRIEL ENVOYÉ » (F-110 / SF-110-02) : dans tout terminal, avec l'état de remise. -->
+              @if (block.email; as email) {
+                <app-terminal-email [receipt]="email"></app-terminal-email>
+              }
             </div>
           }
         }
@@ -614,6 +618,9 @@
              masqué : masquer ferait disparaître une information sans le dire. La règle
              interdit la CARTE, pas le contenu. -->
             <pre class="terminal-output">{{ cardAsText(block.card) }}</pre>
+          }
+          @if (block.email; as email) {
+            <app-terminal-email [receipt]="email"></app-terminal-email>
           }
         </div>
       }

@@ -37,4 +37,11 @@ public class LoggingEmailService implements EmailService {
         log.info("[EMAIL:DEV-STUB] Code de vérification de l'adresse de réception ({}) pour {} -> {}",
                 clientName, toEmail, code);
     }
+
+    @Override
+    public void sendClientMail(ClientMailMessage message) {
+        // Jamais le corps, même en dev : c'est une donnée du client. La taille suffit à voir que ça part.
+        log.info("[EMAIL:DEV-STUB] Courriel du client ({}) pour {} ({} caractères)", message.displayName(),
+                message.to(), message.text() == null ? 0 : message.text().length());
+    }
 }

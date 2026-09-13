@@ -64,6 +64,24 @@ public class SmtpEmailService implements EmailService {
                         + "adresse.\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez ce courriel.");
     }
 
+    @Override
+    public void sendClientMail(ClientMailMessage message) {
+        jakarta.mail.internet.MimeMessage mime = mailSender.createMimeMessage();
+        try {
+            org.springframework.mail.javamail.MimeMessageHelper helper =
+                    new org.springframework.mail.javamail.MimeMessageHelper(mime, true, "UTF-8");
+            helper.setFrom(from, message.displayName());
+            helper.setTo(message.to());
+            helper.setSubject(message.subject());
+            helper.setText(message.text(), message.html());
+        } catch (jakarta.mail.MessagingException | java.io.UnsupportedEncodingException ex) {
+            // Un message qu'on ne sait pas construire ne partira jamais : refus définitif, sans détail.
+            throw new org.springframework.mail.MailPreparationException("Courriel du client invalide", ex);
+        }
+        // Ni objet, ni corps, ni adresse dans le journal : la file porte déjà l'état, ligne par ligne.
+        mailSender.send(mime);
+    }
+
     private void send(String toEmail, String subject, String body) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(from);

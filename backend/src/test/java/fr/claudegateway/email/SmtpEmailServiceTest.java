@@ -72,6 +72,27 @@ class SmtpEmailServiceTest {
     }
 
     @Test
+    void sendsTheClientMailAsMultipartAlternativeWithTheDisplayName() throws Exception {
+        SmtpEmailService service = new SmtpEmailService(mailSender, FROM);
+        jakarta.mail.internet.MimeMessage mime =
+                new jakarta.mail.internet.MimeMessage(jakarta.mail.Session.getInstance(new java.util.Properties()));
+        org.mockito.Mockito.when(mailSender.createMimeMessage()).thenReturn(mime);
+
+        service.sendClientMail(new ClientMailMessage("franck@cagip.fr", "claude-gateway pour CAGIP",
+                "Compte rendu", "# CR", "<h1>CR</h1>"));
+
+        verify(mailSender).send(mime);
+        mime.saveChanges();
+        assertThat(mime.getFrom()[0].toString()).contains("claude-gateway pour CAGIP").contains(FROM);
+        assertThat(mime.getAllRecipients()).extracting(Object::toString).containsExactly("franck@cagip.fr");
+        assertThat(mime.getSubject()).isEqualTo("Compte rendu");
+        java.io.ByteArrayOutputStream raw = new java.io.ByteArrayOutputStream();
+        mime.writeTo(raw);
+        assertThat(raw.toString(java.nio.charset.StandardCharsets.UTF_8))
+                .contains("multipart/alternative", "text/plain", "text/html", "<h1>CR</h1>");
+    }
+
+    @Test
     void propagatesSmtpFailure() {
         SmtpEmailService service = new SmtpEmailService(mailSender, FROM);
         doThrow(new MailSendException("smtp down")).when(mailSender).send(any(SimpleMailMessage.class));

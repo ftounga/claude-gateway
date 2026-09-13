@@ -122,6 +122,17 @@ public interface AtelierProgressListener {
     }
 
     /**
+     * <b>Un courriel vient d'être mis en file</b> (F-110 / SF-110-02) : le bloc « Courriel envoyé », relayé au
+     * fil de l'eau. Par défaut neutre : le reçu est de toute façon écrit dans la transcription du tour.
+     *
+     * @param toolUseId identifiant de l'appel {@code email_me}
+     * @param receipt   le reçu, jamais le corps
+     */
+    default void onEmail(String toolUseId, fr.claudegateway.mail.ClientMailReceipt receipt) {
+        // Aucun relais : le reçu reste dans la transcription du tour.
+    }
+
+    /**
      * <b>Le poste de ce projet vient de refuser un appel : il est hors ligne</b> (F-97 / SF-97-02).
      *
      * <p>Sans cet événement, un {@code runner_unavailable} ne sortait de la boucle qu'en prose, dans

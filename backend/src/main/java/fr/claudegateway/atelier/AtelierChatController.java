@@ -452,6 +452,15 @@ public class AtelierChatController {
                 }
 
                 /**
+                 * Un COURRIEL mis en file (F-110 / SF-110-02) : le bloc « Courriel envoyé », relayé au fil de
+                 * l'eau dans tout terminal. Le reçu ne porte jamais le corps.
+                 */
+                @Override
+                public void onEmail(String toolUseId, fr.claudegateway.mail.ClientMailReceipt receipt) {
+                    turn.publish("email", new StreamEmail(toolUseId, receipt));
+                }
+
+                /**
                  * Une demande d'autorisation n'est plus seulement relayée : elle devient l'ÉTAT du
                  * tour (F-84 / SF-84-03). Un écran qui arrive après coup la trouve encore en
                  * attente, au lieu de l'avoir manquée avec le flux qui la portait.
@@ -625,6 +634,10 @@ public class AtelierChatController {
      * le bloc de transcription qui le rejouera au rechargement : l'écran remplace, il n'empile pas.
      */
     record StreamCard(String toolUseId, fr.claudegateway.teams.block.TeamsBlockCard card) {
+    }
+
+    /** Un courriel mis en file (F-110 / SF-110-02), même {@code toolUseId} que son bloc de transcription. */
+    record StreamEmail(String toolUseId, fr.claudegateway.mail.ClientMailReceipt email) {
     }
 
     /** Le tour a pris la demande en main (F-84 / SF-84-04) ; {@code startedAt} en ms, heure serveur. */

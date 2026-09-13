@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { HostMailAddress } from '../models/mail.models';
+import { ClientEmailView, HostMailAddress } from '../models/mail.models';
 
 /**
  * **Le courriel du client** (F-110). Aucun appel ne porte d'identifiant de compte ni de destinataire : la
@@ -34,6 +34,11 @@ export class MailService {
   /** Renvoie un nouveau code (une fois par minute). */
   resend(hostId: string): Observable<HostMailAddress> {
     return this.http.post<HostMailAddress>(`${this.base(hostId)}/code`, null);
+  }
+
+  /** L'état de remise d'un courriel du client (F-110 / SF-110-02), sans son corps. */
+  email(emailId: string): Observable<ClientEmailView> {
+    return this.http.get<ClientEmailView>(`/api/client-emails/${emailId}`);
   }
 
   /** Retire l'adresse : retour au repli sur l'adresse du compte. */

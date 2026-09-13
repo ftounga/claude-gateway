@@ -226,6 +226,11 @@ public class AtelierChatService implements RelayInterruptTarget {
     private final fr.claudegateway.radar.RadarToolCatalog radarToolCatalog;
     /** Exécution des outils Radar (F-104 / SF-104-01) ; {@code null} pour les formes historiques. */
     private final fr.claudegateway.radar.RadarToolExecutor radarToolExecutor;
+    /**
+     * L'outil {@code email_me} et sa garde (F-110 / SF-110-02). Injecté par mutateur pour ne toucher à aucune des
+     * formes de constructeur conservées : {@code null} (formes historiques, tests) = l'outil n'existe pas.
+     */
+    private fr.claudegateway.mail.ClientMailTool clientMailTool;
 
     /**
      * Tours pour lesquels une interruption a été demandée (F-38 / SF-38-07, même geste que F-32).
@@ -412,6 +417,12 @@ public class AtelierChatService implements RelayInterruptTarget {
                 : AgentContextPolicy.none();
     }
 
+    /** Branche l'outil {@code email_me} (F-110 / SF-110-02). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setClientMailTool(fr.claudegateway.mail.ClientMailTool clientMailTool) {
+        this.clientMailTool = clientMailTool;
+    }
+
     /**
      * Traite un message d'atelier : boucle tool-use jusqu'à la réponse finale, persiste l'échange,
      * comptabilise l'usage. Le workspace est vérifié possédé par l'utilisateur (404 sinon) et le quota
@@ -529,6 +540,8 @@ public class AtelierChatService implements RelayInterruptTarget {
          */
         java.util.Map<String, fr.claudegateway.teams.block.TeamsBlockCard> cardsOfTurn =
                 new java.util.HashMap<>();
+        /** Reçus des courriels mis en file pendant ce tour (F-110 / SF-110-02), local au tour. */
+        java.util.Map<String, fr.claudegateway.mail.ClientMailReceipt> emailsOfTurn = new java.util.HashMap<>();
         int inputTokens = 0;
         int outputTokens = 0;
         /**
@@ -717,6 +730,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else if (fr.claudegateway.radar.RadarToolCatalog.isRadarTool(call.name())) {
                     // F-104 / SF-104-01 : le registre du Radar vit dans la gateway, pas sur la machine.
                     outcome = executeRadarTool(userId, workspace, call, turnNote);
+                } else if (fr.claudegateway.mail.ClientMailTool.isEmailTool(call.name())) {
+                    // F-110 / SF-110-02 : le courriel part de la gateway, jamais de la machine, sans confirmation.
+                    outcome = executeEmailTool(userId, workspace, callId, call, listener, emailsOfTurn);
                 } else {
                     outcome = executeTool(userId, workspace, callId, call, listener, deadline,
                             planOfTurn, cardsOfTurn);
@@ -750,7 +766,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                         // Le BLOC RICHE (F-89 / SF-89-02), s'il y en a un : c'est ce qui fait
                         // qu'une carte de réunion survit au rechargement, comme le reste du fil.
                         // `null` partout ailleurs — donc dans tout terminal de projet.
-                        cardsOfTurn.get(callId)));
+                        cardsOfTurn.get(callId),
+                        // Le reçu d'un courriel (F-110 / SF-110-02) : le bloc « Courriel envoyé » survit au
+                        // rechargement, dans tous les terminaux.
+                        emailsOfTurn.get(callId)));
             }
             messages.add(AgentMessage.assistant(assistantBlocks));
             messages.add(AgentMessage.toolResults(toolResults));
@@ -1373,6 +1392,24 @@ public class AtelierChatService implements RelayInterruptTarget {
         return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
     }
 
+    /**
+     * Exécute {@code email_me} (F-110 / SF-110-02) : le destinataire est résolu par la gateway, jamais lu dans
+     * l'appel. Un courriel mis en file pose son reçu dans le tour et le relaie à l'écran.
+     */
+    private ToolOutcome executeEmailTool(UUID userId, Workspace workspace, String callId, AgentToolCall call,
+            AtelierProgressListener listener,
+            java.util.Map<String, fr.claudegateway.mail.ClientMailReceipt> emailsOfTurn) {
+        if (clientMailTool == null) {
+            return ToolOutcome.error("L'envoi de courriels n'est pas disponible : réponds sans lui.");
+        }
+        fr.claudegateway.mail.ClientMailTool.Outcome outcome = clientMailTool.send(userId, workspace, call.input());
+        if (outcome.receipt() != null) {
+            emailsOfTurn.put(callId, outcome.receipt());
+            listener.onEmail(callId, outcome.receipt());
+        }
+        return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
+    }
+
     /** Les deux outils qui modifient un fichier du projet, et eux seuls (F-50 / SF-50-01). */
     private static boolean isFileWrite(String tool) {
         return "write_file".equals(tool) || "edit_file".equals(tool);
@@ -1597,6 +1634,10 @@ public class AtelierChatService implements RelayInterruptTarget {
             // que D2 refuse.
             // F-91 : ce qui CRÉE est tracé autrement de ce qui relit — l'usage et la confirmation
             // déclarée, parce que c'est ce qu'on voudra pouvoir dire six mois plus tard.
+            // F-110 / SF-110-02 : un courriel se lit par son objet — jamais son corps ni un destinataire.
+            case fr.claudegateway.mail.ClientMailTool.NAME -> shorten("Courriel · "
+                    + (arg(input, "subject") == null ? "(sans objet)" : arg(input, "subject").strip()),
+                    AUDIT_TARGET_CHARS);
             default -> {
                 // F-104 / SF-104-03 : un appel Radar se lit en clair, sans identifiant ni contenu de message.
                 if (fr.claudegateway.radar.RadarToolCatalog.isRadarTool(call.name())) {
@@ -1908,6 +1949,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // Le Radar du client (F-104 / SF-104-01) : seulement dans le terminal Teams d'un poste suivi par la
         // Vigie, et avec le droit Vigie. La règle vit dans RadarToolCatalog, à un seul endroit.
         tools.addAll(radarToolCatalog.toolsFor(userId, workspace));
+        // Le courriel du client (F-110 / SF-110-02) : dans tout terminal d'un poste, avec la Forge ou la Vigie.
+        // La garde et le destinataire vivent dans ClientMailTool.
+        if (clientMailTool != null) {
+            clientMailTool.toolFor(userId, workspace).ifPresent(tools::add);
+        }
         return List.copyOf(tools);
     }
 

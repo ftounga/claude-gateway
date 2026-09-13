@@ -33,5 +33,8 @@ describe('MailService', () => {
 
     service.remove('h1').subscribe();
     http.expectOne({ method: 'DELETE', url: base });
+
+    service.email('e1').subscribe();
+    http.expectOne({ method: 'GET', url: '/api/client-emails/e1' });
   });
 });

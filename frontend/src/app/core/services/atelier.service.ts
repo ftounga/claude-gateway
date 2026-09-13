@@ -49,6 +49,7 @@ import {
   WriteFileRequest,
   AtelierPlanStep,
   AtelierTeamsCard,
+  AtelierTerminalEmail,
   TeamsAccess,
 } from '../models/atelier.models';
 
@@ -479,6 +480,8 @@ export class AtelierService {
       steps?: AtelierPlanStep[];
       /** Bloc riche posé dans le fil d'un terminal Teams (F-89 / SF-89-02). */
       card?: AtelierTeamsCard;
+      /** Reçu d'un courriel mis en file (F-110 / SF-110-02). */
+      email?: AtelierTerminalEmail;
       /** Rebranchement sur un tour en cours (F-84 / SF-84-02). */
       turnId?: string | null;
       cursor?: number;
@@ -559,6 +562,11 @@ export class AtelierService {
       // Un bloc sans carte est ignoré plutôt que rendu vide — mieux vaut rien qu'un cadre creux.
       if (payload.card) {
         handlers.onCard?.({ toolUseId: payload.toolUseId ?? '', card: payload.card });
+      }
+    } else if (event === 'email') {
+      // Un COURRIEL mis en file (F-110 / SF-110-02) : le bloc « Courriel envoyé ». Sans reçu, rien.
+      if (payload.email?.emailId) {
+        handlers.onEmail?.({ toolUseId: payload.toolUseId ?? '', email: payload.email });
       }
     } else if (event === 'done') {
       handlers.onDone({
