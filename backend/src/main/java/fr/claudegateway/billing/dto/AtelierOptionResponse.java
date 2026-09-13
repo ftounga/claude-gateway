@@ -18,6 +18,8 @@ import fr.claudegateway.billing.AtelierOptionService.AtelierOptionView;
  * @param byokCarrier    vrai si l'offre de l'utilisateur est BYOK (F-107 / SF-107-01) : le montant
  *                       est celui de l'option sur BYOK, et {@code available=false} y veut dire
  *                       « pas encore proposée sur BYOK »
+ * @param includedForAdministrator vrai si le droit vient du rôle administrateur (F-107 / SF-107-06) :
+ *                       rien n'est facturé, l'écran dit « incluse (administrateur) »
  */
 public record AtelierOptionResponse(
         String priceEur,
@@ -26,7 +28,8 @@ public record AtelierOptionResponse(
         String status,
         OffsetDateTime cancelAt,
         boolean available,
-        boolean byokCarrier) {
+        boolean byokCarrier,
+        boolean includedForAdministrator) {
 
     /** Projette la vue métier vers le contrat REST. */
     public static AtelierOptionResponse from(AtelierOptionView view) {
@@ -37,6 +40,7 @@ public record AtelierOptionResponse(
                 view.optionStatus() == null ? null : view.optionStatus().name(),
                 view.cancelAt(),
                 view.available(),
-                view.byokCarrier());
+                view.byokCarrier(),
+                view.includedForAdministrator());
     }
 }

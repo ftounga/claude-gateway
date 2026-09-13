@@ -41,6 +41,8 @@ class AtelierAccessServiceTest {
     @Mock private SubscriptionService subscriptionService;
     /** F-62 : aucun accès offert par défaut — on teste ici le droit issu du plan et de l'option. */
     @Mock private fr.claudegateway.access.AccessGrantService accessGrantService;
+    /** F-107 / SF-107-06 : personne n'est administrateur en base par défaut. */
+    @Mock private fr.claudegateway.billing.AdministratorEntitlement administratorEntitlement;
 
     private AtelierAccessService service;
 
@@ -49,7 +51,8 @@ class AtelierAccessServiceTest {
     @BeforeEach
     void setUp() {
         service = new AtelierAccessService(currentUser,
-                new AtelierEntitlementService(subscriptionService, accessGrantService));
+                new AtelierEntitlementService(subscriptionService, accessGrantService,
+                        administratorEntitlement));
     }
 
     private AuthenticatedUser principal(UserRole role) {

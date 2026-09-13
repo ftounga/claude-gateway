@@ -34,13 +34,18 @@ class TeamsEntitlementServiceTest {
     @Mock
     private AccessGrantService accessGrantService;
 
+    /** F-107 / SF-107-06 : personne n'est administrateur par défaut. */
+    @Mock
+    private AdministratorEntitlement administratorEntitlement;
+
     private TeamsEntitlementService service;
 
     private final UUID userId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
-        service = new TeamsEntitlementService(subscriptionService, accessGrantService);
+        service = new TeamsEntitlementService(subscriptionService, accessGrantService,
+                administratorEntitlement);
     }
 
     private Subscription subscription(PlanCode plan, SubscriptionStatus status,
@@ -195,6 +200,29 @@ class TeamsEntitlementServiceTest {
             assertThat(service.isGrantedByOption(pro)).isTrue();
 
             verifyNoInteractions(subscriptionService, accessGrantService);
+        }
+    }
+
+    @Nested
+    @DisplayName("F-107 / SF-107-06 — l'administrateur a tout, quel que soit son plan")
+    class AdministratorHasEverything {
+
+        @Test
+        @DisplayName("ADMIN sans option Teams : accès, sans lire l'abonnement ni l'accès offert")
+        void adminWithoutOptionIsEntitled() {
+            when(administratorEntitlement.isAdministrator(userId)).thenReturn(true);
+
+            assertThat(service.isEntitled(userId)).isTrue();
+            verifyNoInteractions(subscriptionService, accessGrantService);
+        }
+
+        @Test
+        @DisplayName("USER sans option : refus inchangé")
+        void userWithoutOptionStaysDenied() {
+            when(administratorEntitlement.isAdministrator(userId)).thenReturn(false);
+
+            assertThat(entitled(subscription(PlanCode.GOLD, SubscriptionStatus.ACTIVE, null), false))
+                    .isFalse();
         }
     }
 }

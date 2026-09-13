@@ -660,6 +660,21 @@ describe('BillingComponent', () => {
     expect(component.canSubscribeAtelierOption()).toBeFalse();
   });
 
+  it('says the Forge is included for an administrator, and offers no purchase (F-107 / SF-107-06)', () => {
+    setup();
+    withOption({ ...optionAvailable, entitled: true, includedForAdministrator: true });
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Incluse (administrateur)');
+    expect(text).toContain('rien ne vous est facturé');
+    expect(text).not.toContain("Ajouter l'option");
+    expect(text).not.toContain('Incluse dans votre offre');
+    expect(component.canSubscribeAtelierOption()).toBeFalse();
+    const cta = (fixture.nativeElement as HTMLElement)
+      .querySelector('.billing__option-action button') as HTMLButtonElement;
+    expect(cta.disabled).toBeTrue();
+  });
+
   it('starts the option checkout and redirects to the payment URL', () => {
     setup();
     billingService.startAtelierOptionCheckout.and.returnValue(

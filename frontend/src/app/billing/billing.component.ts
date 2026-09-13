@@ -629,6 +629,7 @@ export class BillingComponent implements OnInit {
     return (
       !!option &&
       !option.includedInPlan &&
+      !this.atelierOptionForAdministrator() &&
       !this.atelierOptionActive() &&
       option.available
     );
@@ -643,6 +644,16 @@ export class BillingComponent implements OnInit {
   /** Vrai si une résiliation est déjà programmée : plus rien à cliquer, une date à lire. */
   atelierOptionEnding(): boolean {
     return this.atelierOptionActive() && !!this.atelierOption()?.cancelAt;
+  }
+
+  /**
+   * Vrai si la Forge est ouverte **par le rôle administrateur** (F-107 / SF-107-06) et qu'aucune
+   * option payée n'est en cours : l'écran dit « incluse (administrateur) » et ne propose rien.
+   */
+  atelierOptionForAdministrator(): boolean {
+    const option = this.atelierOption();
+    return !!option && option.includedForAdministrator === true && !option.includedInPlan
+      && !this.atelierOptionActive();
   }
 
   /** Lance la souscription de l'option et redirige vers le paiement. */

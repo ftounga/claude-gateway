@@ -44,6 +44,8 @@ class AtelierOptionServiceTest {
     @Mock private BillingProvider billingProvider;
     /** F-62 : aucun accès offert par défaut — l'option reste la seule source de droit testée ici. */
     @Mock private fr.claudegateway.access.AccessGrantService accessGrantService;
+    /** F-107 / SF-107-06 : personne n'est administrateur par défaut. */
+    @Mock private AdministratorEntitlement administratorEntitlement;
 
     private AtelierOptionService service;
 
@@ -66,7 +68,8 @@ class AtelierOptionServiceTest {
 
     private void withProperties(BillingProperties props) {
         service = new AtelierOptionService(subscriptionService, subscriptionRepository,
-                new AtelierEntitlementService(subscriptionService, accessGrantService), billingProvider, props);
+                new AtelierEntitlementService(subscriptionService, accessGrantService, administratorEntitlement),
+                billingProvider, props);
     }
 
     @BeforeEach
@@ -247,6 +250,20 @@ class AtelierOptionServiceTest {
 
         assertThat(view.includedInPlan()).isTrue();
         assertThat(view.entitled()).isTrue();
+    }
+
+    @Test
+    @DisplayName("F-107 / SF-107-06 : ADMIN sans option — « incluse (administrateur) », rien à acheter")
+    void describeSaysIncludedForAdministrator() {
+        given(PlanCode.SOLO, SubscriptionStatus.ACTIVE, null);
+        when(administratorEntitlement.isAdministrator(userId)).thenReturn(true);
+
+        AtelierOptionView view = service.describe(userId);
+
+        assertThat(view.entitled()).isTrue();
+        assertThat(view.includedForAdministrator()).isTrue();
+        assertThat(view.includedInPlan()).as("le rôle n'est pas un plan").isFalse();
+        assertThat(view.optionStatus()).isNull();
     }
 
     @Test

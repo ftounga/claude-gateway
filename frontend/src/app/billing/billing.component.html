@@ -237,6 +237,9 @@
               <span class="billing__flag billing__flag--current">Se termine bientôt</span>
             } @else if (atelierOptionActive()) {
               <span class="billing__flag billing__flag--reco">Active</span>
+            } @else if (atelierOptionForAdministrator()) {
+              <!-- F-107 / SF-107-06 : l'administrateur a tout — dit tel quel, jamais « souscrite ». -->
+              <span class="billing__flag billing__flag--current">Incluse (administrateur)</span>
             }
           </div>
 
@@ -245,6 +248,11 @@
           @if (option.includedInPlan) {
             <p class="billing__card-tokens">
               Votre offre comprend déjà la Forge : l'option n'a pas lieu d'être.
+            </p>
+          } @else if (atelierOptionForAdministrator()) {
+            <p class="billing__card-tokens">
+              Votre compte administrateur a accès à la Forge sans l'option : rien ne vous est facturé.
+              <strong>Votre quota de tokens ne change pas.</strong>
             </p>
           } @else {
             <p class="billing__card-price">
@@ -294,6 +302,10 @@
               (click)="cancelAtelierOption()"
             >
               @if (atelierOptionInProgress()) { Traitement… } @else { Résilier l'option }
+            </button>
+          } @else if (atelierOptionForAdministrator()) {
+            <button mat-stroked-button type="button" class="billing__card-cta is-outline" [disabled]="true">
+              Incluse (administrateur)
             </button>
           } @else {
             <button

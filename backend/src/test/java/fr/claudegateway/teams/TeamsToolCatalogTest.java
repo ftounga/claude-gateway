@@ -314,4 +314,38 @@ class TeamsToolCatalogTest {
         assertThat(TeamsToolCatalog.describeWrite(TeamsToolCatalog.RENAME, "a.txt", ""))
                 .isEqualTo("Renommer « a.txt »");
     }
+
+    /**
+     * F-107 / SF-107-06 : <b>l'administrateur a tout</b>, y compris hors requête. La chaîne est la
+     * vraie ({@link TeamsAccessService} → {@code TeamsEntitlementService}) et <b>aucun principal</b>
+     * n'est présent — le cas d'une relance du runner ou de la synchro de nuit, où le bypass par
+     * principal ne voyait rien et où l'agent d'un administrateur perdait ses outils.
+     */
+    @Test
+    @DisplayName("SF-107-06 : ADMIN sans option et sans principal — les outils teams_* sont donnés")
+    void anAdministratorGetsTheToolsWithoutAPrincipal() {
+        fr.claudegateway.auth.CurrentUser currentUser =
+                org.mockito.Mockito.mock(fr.claudegateway.auth.CurrentUser.class);
+        when(currentUser.principal()).thenReturn(java.util.Optional.empty());
+        fr.claudegateway.billing.SubscriptionService subscriptions =
+                org.mockito.Mockito.mock(fr.claudegateway.billing.SubscriptionService.class);
+        fr.claudegateway.access.AccessGrantService grants =
+                org.mockito.Mockito.mock(fr.claudegateway.access.AccessGrantService.class);
+        fr.claudegateway.billing.AdministratorEntitlement administrators =
+                org.mockito.Mockito.mock(fr.claudegateway.billing.AdministratorEntitlement.class);
+        when(administrators.isAdministrator(userId)).thenReturn(true);
+        TeamsToolCatalog real = new TeamsToolCatalog(new TeamsAccessService(currentUser,
+                new fr.claudegateway.billing.TeamsEntitlementService(subscriptions, grants, administrators)));
+
+        assertThat(real.toolsFor(userId, teamsTerminal()))
+                .extracting(AgentTool::name)
+                .contains(TeamsToolCatalog.STATUS);
+
+        when(administrators.isAdministrator(userId)).thenReturn(false);
+        when(subscriptions.getOrCreateForUser(userId)).thenReturn(fr.claudegateway.billing.Subscription
+                .builder().userId(userId).planCode(fr.claudegateway.billing.PlanCode.GOLD)
+                .status(fr.claudegateway.billing.SubscriptionStatus.ACTIVE).build());
+        assertThat(real.toolsFor(userId, teamsTerminal()))
+                .as("USER sans option : refus inchangé").isEmpty();
+    }
 }
