@@ -163,6 +163,35 @@ class RunnerUpdateCommandApiIntegrationTest {
     }
 
     @Test
+    void theLauncherRollbackReportClosesTheUpdateEvenIfItLookedSuccessful() throws Exception {
+        // F-111 / SF-111-05 : la nouvelle version s'est connectée (réussie), puis a planté 3 fois ; le lanceur
+        // est revenu à l'ancienne, qui le dit dans sa trame ready.
+        mockMvc.perform(post("/api/runner-hosts/" + host.getId() + "/runner-update").contextPath("/api")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isAccepted());
+        RunnerIdentity session = new RunnerIdentity(UUID.randomUUID(), host.getUserId(), host.getId());
+        dispatcher.onFrame(session, "ready", objectMapper.readTree("{\"type\":\"ready\",\"runnerVersion\":\""
+                + SERVED + "\",\"contract\":2,\"launcher\":true}"));
+        assertThat(journalRepository.findAll().get(0).getState()).isEqualTo(RunnerUpdateJournalEntry.State.SUCCEEDED);
+
+        dispatcher.onFrame(session, "ready", objectMapper.readTree("{\"type\":\"ready\",\"runnerVersion\":\"" + OLD
+                + "\",\"contract\":2,\"launcher\":true,\"lastUpdate\":{\"from\":\"" + OLD + "\",\"to\":\"" + SERVED
+                + "\",\"result\":\"rolled_back\",\"reason\":\"3 plantages de la version (dernier code 1)\"}}"));
+
+        mockMvc.perform(get("/api/runner-hosts/" + host.getId() + "/runner-update/journal").contextPath("/api")
+                        .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].state").value("ROLLED_BACK"))
+                .andExpect(jsonPath("$[0].detail").value("3 plantages de la version (dernier code 1)"));
+
+        // Un rapport venu d'une AUTRE session ne touche pas ce poste.
+        RunnerIdentity intruder = new RunnerIdentity(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        dispatcher.onFrame(intruder, "ready", objectMapper.readTree("{\"type\":\"ready\",\"runnerVersion\":\"" + OLD
+                + "\",\"lastUpdate\":{\"to\":\"" + SERVED + "\",\"result\":\"rolled_back\",\"reason\":\"x\"}}"));
+        assertThat(journalRepository.findAll().get(0).getDetail()).isEqualTo("3 plantages de la version (dernier code 1)");
+    }
+
+    @Test
     void anAdminMayUpdateSomeoneElsesMachine() throws Exception {
         mockMvc.perform(post("/api/runner-hosts/" + host.getId() + "/runner-update").contextPath("/api")
                         .header("Authorization", "Bearer " + adminToken))

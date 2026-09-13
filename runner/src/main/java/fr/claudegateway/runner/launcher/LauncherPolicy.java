@@ -29,6 +29,9 @@ public final class LauncherPolicy {
     /** Nombre de relances permises dans la fenêtre. */
     public static final int MAX_RESTARTS = 3;
 
+    /** Plantages d'une version à l'essai qui déclenchent le retour à la précédente (SF-111-05). */
+    public static final int TRIAL_CRASHES = 3;
+
     /** Fenêtre de comptage des plantages. */
     public static final Duration CRASH_WINDOW = Duration.ofMinutes(5);
 

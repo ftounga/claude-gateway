@@ -123,11 +123,14 @@ export function progressLine(progress: RunnerUpdateProgress | null | undefined, 
   switch (progress.state) {
     case 'SUCCEEDED':
       return { text: `Mise à jour vers ${target} réussie`, tone: 'success', waiting: false, active: false };
-    case 'ROLLED_BACK':
+    case 'ROLLED_BACK': {
+      // Cadrage §3.8 : « mise à jour vers 1.6 échouée, retour à 1.4 » + motif.
+      const back = semantic(progress.fromVersion) ?? 'la version précédente';
       return {
-        text: `Mise à jour vers ${target} échouée, retour à la version précédente${progress.detail ? ` : ${progress.detail}` : ''}`,
+        text: `Mise à jour vers ${target} échouée, retour à ${back}${progress.detail ? ` : ${progress.detail}` : ''}`,
         tone: 'error', waiting: false, active: false,
       };
+    }
     case 'FAILED':
       return {
         text: `Mise à jour vers ${target} échouée${progress.detail ? ` : ${progress.detail}` : ''}`,

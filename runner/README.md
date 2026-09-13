@@ -50,6 +50,12 @@ avec les mêmes arguments, le même environnement et la même console. `Ctrl-C` 
 - Codes `0`, `2` à `6` : le lanceur s'arrête aussi.
 - Autre code (plantage) : relance de la même version, **3 fois au plus en 5 minutes**.
 
+Une version fraîchement mise à jour est **à l'essai** : elle doit établir sa liaison en **90 s** (le
+runner écrit alors `~/.claude-runner/connected`). Sinon, ou après **3 plantages**, le lanceur revient à la
+version précédente, écrit `~/.claude-runner/update-report.json`, et le runner revenu le remet à la gateway
+(« mise à jour vers 1.6 échouée, retour à 1.4 » + motif). Seules la version courante et **deux versions
+précédentes** restent dans `versions/`.
+
 `--no-launcher` démarre le runner directement (diagnostic). `--check` et `--releve-teams` tournent
 toujours sans lanceur. `CLAUDE_RUNNER_HOME` déplace le dossier `~/.claude-runner` du lanceur.
 

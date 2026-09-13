@@ -37,6 +37,9 @@ describe('runner-update (F-111 / SF-111-01)', () => {
       expect(progressLine({ ...done, state: 'FAILED', detail: 'signature invalide' }, now)?.text)
         .toBe('Mise à jour vers 1.1.0 échouée : signature invalide');
       expect(progressLine({ ...done, state: 'FAILED' }, now + 25 * 3600 * 1000)).toBeNull();
+      // SF-111-05 : « mise à jour vers 1.1.0 échouée, retour à 1.0.0 » + motif.
+      expect(progressLine({ ...done, state: 'ROLLED_BACK', detail: 'la version ne s’est pas reconnectée en 90 s' }, now)?.text)
+        .toBe('Mise à jour vers 1.1.0 échouée, retour à 1.0.0 : la version ne s’est pas reconnectée en 90 s');
       expect(progressLine(null, now)).toBeNull();
     });
 

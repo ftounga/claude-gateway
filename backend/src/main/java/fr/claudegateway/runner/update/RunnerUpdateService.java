@@ -143,8 +143,40 @@ public class RunnerUpdateService {
         if ("update_status".equals(event.type())) {
             onStatus(event.hostId(), event.frame());
         } else if ("ready".equals(event.type()) && event.declaration() != null) {
-            onReady(event.hostId(), event.declaration().version());
+            if (!onRollbackReport(event.hostId(), event.frame().path("lastUpdate"))) {
+                onReady(event.hostId(), event.declaration().version());
+            }
         }
+    }
+
+    /**
+     * Le rapport d'un <b>retour arrière</b> du lanceur (F-111 / SF-111-05) : la dernière mise à jour du poste
+     * visant cette version passe en {@code ROLLED_BACK} avec le motif — même si elle avait été crue réussie
+     * (la nouvelle version s'était connectée, puis a planté trois fois).
+     *
+     * @return vrai si le rapport a été appliqué
+     */
+    private boolean onRollbackReport(UUID hostId, JsonNode report) {
+        if (report == null || !report.isObject() || !"rolled_back".equals(report.path("result").asText())
+                || !report.path("to").isTextual()) {
+            return false;
+        }
+        String to = report.path("to").asText();
+        String from = report.path("from").asText("");
+        String reason = report.path("reason").asText("");
+        OffsetDateTime now = OffsetDateTime.now();
+        return journal.findFirstByHostIdOrderByRequestedAtDesc(hostId)
+                .filter(entry -> entry.getToVersion().equals(to))
+                .filter(entry -> !entry.getState().terminal() || entry.getState() == State.SUCCEEDED)
+                .map(entry -> {
+                    // Le motif seul : « de → vers » est déjà sur la ligne, l'écran écrit « retour à 1.4 ».
+                    entry.moveTo(State.ROLLED_BACK, reason.isBlank() ? "échec de la nouvelle version" : reason, now);
+                    journal.save(entry);
+                    log.info("Mise à jour du runner annulée par le lanceur (poste={}, vers={}, retour à {})", hostId,
+                            to, from);
+                    return true;
+                })
+                .orElse(false);
     }
 
     private void onStatus(UUID hostId, JsonNode frame) {

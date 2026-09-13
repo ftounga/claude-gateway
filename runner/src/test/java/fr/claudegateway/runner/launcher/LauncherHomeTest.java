@@ -70,6 +70,53 @@ class LauncherHomeTest {
     }
 
     @Test
+    void laRetentionGardeLaCouranteEtDeuxPrecedentes() throws Exception {
+        LauncherHome home = new LauncherHome(dir);
+        String[] ids = { "1.0.0-202601010000-a", "1.0.0-202602010000-b", "1.0.0-202603010000-c",
+                "1.0.0-202604010000-d", "1.1.0-202605010000-e" };
+        for (String id : ids) {
+            home.install(id, id.getBytes(StandardCharsets.UTF_8));
+        }
+
+        java.util.List<String> removed = home.prune("1.0.0-202604010000-d", 2);
+
+        assertEquals(java.util.Set.of("1.0.0-202601010000-a", "1.1.0-202605010000-e"), java.util.Set.copyOf(removed),
+                "la plus ancienne, et une plus récente que la courante (échec d'essai), sont supprimées");
+        assertTrue(home.isInstalled("1.0.0-202604010000-d"));
+        assertTrue(home.isInstalled("1.0.0-202603010000-c"));
+        assertTrue(home.isInstalled("1.0.0-202602010000-b"));
+        assertFalse(Files.exists(dir.resolve("versions").resolve("1.0.0-202601010000-a")));
+    }
+
+    @Test
+    void leTemoinDeSanteNommeLaVersionConnectee() throws Exception {
+        LauncherHome home = new LauncherHome(dir);
+        assertTrue(home.connectedVersion().isEmpty());
+
+        home.markConnected(V1, 1234);
+        assertEquals(V1, home.connectedVersion().orElseThrow());
+
+        home.clearHealth();
+        assertTrue(home.connectedVersion().isEmpty());
+    }
+
+    @Test
+    void leRapportDeRetourEstUnJsonLisible() throws Exception {
+        LauncherHome home = new LauncherHome(dir);
+        home.writeReport(new LauncherHome.UpdateReport(V1, "1.1.0-202605010000-e", "rolled_back",
+                "la version « 1.1.0 » ne s'est pas reconnectée\nen 90 s"));
+
+        com.fasterxml.jackson.databind.JsonNode report =
+                new com.fasterxml.jackson.databind.ObjectMapper().readTree(home.reportFile().toFile());
+        assertEquals(V1, report.path("from").asText());
+        assertEquals("rolled_back", report.path("result").asText());
+        assertTrue(report.path("reason").asText().contains("« 1.1.0 »"));
+
+        home.clearReport();
+        assertFalse(Files.exists(home.reportFile()));
+    }
+
+    @Test
     void leDossierSuitLaVariableOuLeDossierPersonnel() {
         assertEquals(Path.of("/tmp/ailleurs"),
                 LauncherHome.resolve(Map.of(LauncherHome.HOME_ENV, "/tmp/ailleurs"), "/home/u").root());
