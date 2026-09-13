@@ -231,6 +231,13 @@ public class AtelierChatService implements RelayInterruptTarget {
      * formes de constructeur conservées : {@code null} (formes historiques, tests) = l'outil n'existe pas.
      */
     private fr.claudegateway.mail.ClientMailTool clientMailTool;
+    /**
+     * L'outil {@code page_publish} <b>et sa garde</b> (F-109 / SF-109-02) : vide hors d'un terminal sur poste,
+     * ou sans le droit de l'espace du terminal.
+     */
+    private final fr.claudegateway.pages.PageToolCatalog pageToolCatalog;
+    /** Exécution de {@code page_publish} (F-109 / SF-109-02) ; {@code null} pour les formes historiques. */
+    private final fr.claudegateway.pages.PageToolExecutor pageToolExecutor;
 
     /**
      * Tours pour lesquels une interruption a été demandée (F-38 / SF-38-07, même geste que F-32).
@@ -368,7 +375,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                 fr.claudegateway.radar.RadarToolCatalog.none(), null);
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
+    /**
+     * Forme de F-104, conservée pour les appelants (et les tests) antérieurs aux pages : l'outil
+     * {@code page_publish} n'est jamais donné, donc la panoplie d'avant F-109, à l'identique.
+     */
     public AtelierChatService(WorkspaceService workspaceService, AtelierMessageRepository messageRepository,
             AiAgentProvider agentProvider, ByokKeyService byokKeyService, QuotaService quotaService,
             fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService,
@@ -385,6 +395,35 @@ public class AtelierChatService implements RelayInterruptTarget {
             fr.claudegateway.teams.block.TeamsMomentImageService momentImages,
             fr.claudegateway.radar.RadarToolCatalog radarToolCatalog,
             fr.claudegateway.radar.RadarToolExecutor radarToolExecutor) {
+        this(workspaceService, messageRepository, agentProvider, byokKeyService, quotaService,
+                gitWorkspaceService, runnerToolGateway, runnerCallDispatcher, confirmationGate,
+                runnerAuditService, relayBroadcaster, runnerHostService, atelierProperties,
+                checkpointRunner, projectRules, teamsToolCatalog, momentImages, radarToolCatalog,
+                radarToolExecutor, fr.claudegateway.pages.PageToolCatalog.none(), null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AtelierChatService(WorkspaceService workspaceService, AtelierMessageRepository messageRepository,
+            AiAgentProvider agentProvider, ByokKeyService byokKeyService, QuotaService quotaService,
+            fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService,
+            RunnerToolGateway runnerToolGateway,
+            fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher,
+            RunnerConfirmationGate confirmationGate,
+            RunnerAuditService runnerAuditService,
+            RunnerRelayBroadcaster relayBroadcaster,
+            fr.claudegateway.runner.host.RunnerHostService runnerHostService,
+            AtelierProperties atelierProperties,
+            AtelierCheckpointRunner checkpointRunner,
+            ProjectRulesSource projectRules,
+            fr.claudegateway.teams.TeamsToolCatalog teamsToolCatalog,
+            fr.claudegateway.teams.block.TeamsMomentImageService momentImages,
+            fr.claudegateway.radar.RadarToolCatalog radarToolCatalog,
+            fr.claudegateway.radar.RadarToolExecutor radarToolExecutor,
+            fr.claudegateway.pages.PageToolCatalog pageToolCatalog,
+            fr.claudegateway.pages.PageToolExecutor pageToolExecutor) {
+        this.pageToolCatalog = pageToolCatalog == null
+                ? fr.claudegateway.pages.PageToolCatalog.none() : pageToolCatalog;
+        this.pageToolExecutor = pageToolExecutor;
         this.radarToolCatalog = radarToolCatalog == null
                 ? fr.claudegateway.radar.RadarToolCatalog.none() : radarToolCatalog;
         this.radarToolExecutor = radarToolExecutor;
@@ -1136,6 +1175,41 @@ public class AtelierChatService implements RelayInterruptTarget {
     }
 
     /**
+     * <b>Publier une page</b> (F-109 / SF-109-02).
+     *
+     * <p><b>Second verrou</b> : l'outil n'est pas déclaré hors garde ({@code PageToolCatalog}), et s'il est
+     * nommé quand même, il est refusé ici sans rien lire ni ranger — la boucle relaie les outils non
+     * déclarés.</p>
+     *
+     * <p><b>L'accord d'un clic</b> (cadrage §3.5, décision D1) : la porte d'autorisation existante, que
+     * « tout autoriser pour ce message » couvre comme pour les commandes. Refus ou délai : rien n'est
+     * publié, et l'agent le sait.</p>
+     */
+    private ToolOutcome applyPagePublish(UUID userId, Workspace workspace, String callId, AgentToolCall call,
+            AtelierProgressListener listener) {
+        if (pageToolExecutor == null || !pageToolCatalog.isOpenFor(userId, workspace)) {
+            return ToolOutcome.error("La publication de pages n'est pas ouverte dans ce terminal. Réponds en clair.");
+        }
+        String title = fr.claudegateway.pages.PageToolExecutor.auditTarget(call.input());
+        if (!blanketAllowedTurns.contains(turnKey(userId, workspace.getId()))) {
+            RunnerConfirmationGate.Outcome decision = askPermission(userId, workspace.getId(), callId,
+                    call.name(), "Publier la page « " + (title == null ? "sans titre" : title)
+                            + " » — privée, visible par vous seul", listener);
+            if (!decision.decision().allows()) {
+                if (decision.decision() == RunnerConfirmationGate.Decision.TIMEOUT) {
+                    return ToolOutcome.error("Publication refusée : aucune autorisation n'a été donnée dans le délai imparti.");
+                }
+                return ToolOutcome.error(decision.reason() == null || decision.reason().isBlank()
+                        ? "Publication refusée par l'utilisateur."
+                        : "Publication refusée par l'utilisateur. Motif : " + decision.reason());
+            }
+        }
+        fr.claudegateway.pages.PageToolExecutor.Outcome outcome =
+                pageToolExecutor.execute(userId, workspace, callId, call.input());
+        return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
+    }
+
+    /**
      * Ce que le modèle reçoit en retour : <b>ce qui a été retenu</b>, pour qu'il puisse se corriger
      * sans qu'on ait à le deviner à l'écran. Le décompte « explicite / à confirmer » est là pour
      * cela — un bloc entièrement « à confirmer » est un bloc qu'il faut étayer.
@@ -1429,6 +1503,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (fr.claudegateway.teams.TeamsToolCatalog.isPresentation(call.name())) {
             return applyTeamsBlock(userId, workspace, callId, call, listener, cardsOfTurn);
         }
+        // Les pages (F-109 / SF-109-02) : rangées par la gateway, pas écrites par le runner — qui ne
+        // sert qu'à relire un fichier du poste, depuis l'exécuteur.
+        if (fr.claudegateway.pages.PageToolCatalog.isPageTool(call.name())) {
+            return applyPagePublish(userId, workspace, callId, call, listener);
+        }
         if (workspace.isRunnerTarget()) {
             return executeToolOnRunner(userId, workspace, callId, call, listener, deadline);
         }
@@ -1643,6 +1722,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                 if (fr.claudegateway.radar.RadarToolCatalog.isRadarTool(call.name())) {
                     yield shorten(fr.claudegateway.radar.RadarToolCatalog.stepTarget(call.name(), input),
                             AUDIT_TARGET_CHARS);
+                }
+                // F-109 / SF-109-02 : une page se lit par son titre, jamais par son contenu.
+                if (fr.claudegateway.pages.PageToolCatalog.isPageTool(call.name())) {
+                    yield shorten(fr.claudegateway.pages.PageToolExecutor.auditTarget(input), AUDIT_TARGET_CHARS);
                 }
                 if (fr.claudegateway.teams.TeamsToolCatalog.isCapture(call.name())) {
                     yield shorten(teamsCaptureAuditTarget(call), AUDIT_TARGET_CHARS);
@@ -1954,6 +2037,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (clientMailTool != null) {
             clientMailTool.toolFor(userId, workspace).ifPresent(tools::add);
         }
+        // Les pages (F-109 / SF-109-02) : sur un poste, avec le droit de l'espace du terminal. La règle vit
+        // dans PageToolCatalog, à un seul endroit.
+        tools.addAll(pageToolCatalog.toolsFor(userId, workspace));
         return List.copyOf(tools);
     }
 
@@ -2066,6 +2152,10 @@ public class AtelierChatService implements RelayInterruptTarget {
         // parole de l'utilisateur pour seule preuve d'une écriture.
         if (radarToolCatalog.isOpenFor(userId, workspace)) {
             system.append(fr.claudegateway.radar.RadarToolCatalog.TERMINAL_NOTICE).append("\n\n");
+        }
+        // F-109 / SF-109-02 : le guide de conception des pages, sous la même garde que l'outil.
+        if (pageToolCatalog.isOpenFor(userId, workspace)) {
+            system.append(fr.claudegateway.pages.PageToolCatalog.DESIGN_GUIDE).append("\n\n");
         }
 
         // Compteurs d'amorçage : ces lectures sont journalisées en UNE ligne (F-38 / SF-38-08).
