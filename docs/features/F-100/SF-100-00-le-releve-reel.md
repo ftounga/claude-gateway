@@ -14,7 +14,7 @@
 
 ## Statut
 
-`done` — livrée le 2026-09-13 (PR #510) ; **le relevé lui-même reste à faire par le PO** sur un poste client
+`done` — livrée le 2026-09-13 (PR #510) ; relevé fait le 2026-09-13 : `docs/features/F-100/releves/releve-teams-2026-09-13-poste-client-macos.md`
 
 ## Date de création
 
