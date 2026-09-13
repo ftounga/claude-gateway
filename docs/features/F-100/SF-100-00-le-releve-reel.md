@@ -14,7 +14,7 @@
 
 ## Statut
 
-`in-progress`
+`done` — livrée le 2026-09-13 (PR #510) ; **le relevé lui-même reste à faire par le PO** sur un poste client
 
 ## Date de création
 
