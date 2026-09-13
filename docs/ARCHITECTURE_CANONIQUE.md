@@ -995,6 +995,11 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `radar_analysis_leases` : le **bail** d'analyse d'un poste (`owner`, `leased_until`), unique
     `(user_id, host_id)` — un seul traitement par poste, tous pods confondus. Les deux tables sont
     effacées par la purge du Radar.
+  - **Relance due** (F-101 / SF-101-04, migration `090`) : sur `radar_commitments`, `last_evidence_at`
+    (preuve la plus récente, tenue par le registre) et `follow_up_due_on` — **recalculé par rappel
+    d'entité à chaque écriture** : « j'attends des autres » ouvert et non désavoué → premier jour ouvré
+    après l'échéance, sinon 3 jours ouvrés après la dernière preuve ; `NULL` sinon. Index
+    `(user_id, host_id, follow_up_due_on)`.
 
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 

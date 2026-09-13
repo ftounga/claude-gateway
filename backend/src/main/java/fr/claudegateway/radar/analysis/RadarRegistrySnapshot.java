@@ -9,7 +9,14 @@ import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import fr.claudegateway.radar.RadarCommitment;
+import fr.claudegateway.radar.RadarCommitmentDirection;
+import fr.claudegateway.radar.RadarCommitmentRepository;
+import fr.claudegateway.radar.RadarCommitmentStatus;
+import fr.claudegateway.radar.RadarPerson;
+import fr.claudegateway.radar.RadarPersonRepository;
 import fr.claudegateway.radar.RadarScope;
+import fr.claudegateway.radar.analysis.RadarExtractionContext.CommitmentSnapshot;
 import fr.claudegateway.radar.RadarSubject;
 import fr.claudegateway.radar.RadarSubjectAlias;
 import fr.claudegateway.radar.RadarSubjectAliasRepository;
@@ -30,12 +37,16 @@ public class RadarRegistrySnapshot {
     private final RadarSubjectRepository subjects;
     private final RadarSubjectAliasRepository aliases;
     private final RadarSubjectFactRepository facts;
+    private final RadarCommitmentRepository commitments;
+    private final RadarPersonRepository people;
 
     public RadarRegistrySnapshot(RadarSubjectRepository subjects, RadarSubjectAliasRepository aliases,
-            RadarSubjectFactRepository facts) {
+            RadarSubjectFactRepository facts, RadarCommitmentRepository commitments, RadarPersonRepository people) {
         this.subjects = subjects;
         this.aliases = aliases;
         this.facts = facts;
+        this.commitments = commitments;
+        this.people = people;
     }
 
     @Transactional(readOnly = true)
@@ -58,6 +69,15 @@ public class RadarRegistrySnapshot {
                         .collect(Collectors.groupingBy(RadarSubjectAlias::getSubjectId));
         java.util.Set<UUID> withSummary = open.stream().limit(RadarExtractionContext.MAX_SUMMARIES_SHOWN)
                 .map(RadarSubject::getId).collect(Collectors.toSet());
+        Map<UUID, String> names = people.findByUserIdAndHostIdOrderByDisplayNameAsc(scope.userId(), scope.hostId())
+                .stream().collect(Collectors.toMap(RadarPerson::getId, RadarPerson::getDisplayName));
+        Map<UUID, List<CommitmentSnapshot>> openBySubject = commitments.findByUserIdAndHostId(scope.userId(), scope.hostId())
+                .stream()
+                .filter(c -> c.getStatus() == RadarCommitmentStatus.OPEN && !c.isDisowned())
+                .sorted(Comparator.comparing(RadarCommitment::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
+                .collect(Collectors.groupingBy(RadarCommitment::getSubjectId, java.util.LinkedHashMap::new,
+                        Collectors.mapping(c -> new CommitmentSnapshot(c.getId(), c.getDirection(), parties(c, names),
+                                c.getDescription(), c.getDueDate()), Collectors.toList())));
         return kept.stream().map(s -> {
             List<RadarSubjectAlias> own = aliasesBySubject.getOrDefault(s.getId(), List.of());
             List<FactSnapshot> summary = withSummary.contains(s.getId())
@@ -67,7 +87,22 @@ public class RadarRegistrySnapshot {
             return new SubjectSnapshot(s.getId(), s.getName(), s.getState(), s.getLastActivityAt(),
                     own.stream().filter(a -> !a.isRejected()).map(RadarSubjectAlias::getAlias).toList(),
                     own.stream().filter(RadarSubjectAlias::isRejected).map(RadarSubjectAlias::getAlias).toList(),
-                    summary);
+                    summary, s.getState() == RadarSubjectState.CLOSED ? List.of()
+                            : openBySubject.getOrDefault(s.getId(), List.of()));
         }).toList();
+    }
+
+    /** « Marc Durand → MOI », « MOI → Léa Martin », « MOI présente Marc Durand à Léa Martin ». */
+    static String parties(RadarCommitment c, Map<UUID, String> names) {
+        String from = name(c.getFromPersonId(), names, "MOI");
+        String to = name(c.getToPersonId(), names, c.getDirection() == RadarCommitmentDirection.ME_TO_OTHER ? "?" : "MOI");
+        if (c.getDirection() == RadarCommitmentDirection.INTRODUCTION) {
+            return "MOI présente " + to + " à " + name(c.getOtherPersonId(), names, "?");
+        }
+        return from + " → " + to;
+    }
+
+    private static String name(UUID id, Map<UUID, String> names, String fallback) {
+        return id == null ? fallback : names.getOrDefault(id, "?");
     }
 }
