@@ -1,0 +1,239 @@
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { HttpErrorResponse } from '@angular/common/http';
+import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { ActivatedRoute, ParamMap, convertToParamMap, provideRouter } from '@angular/router';
+import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
+
+import { RadarEvidenceView, RadarSubjectDetail } from '../../core/models/radar-subject.models';
+import { VigiePerson } from '../../core/models/vigie.models';
+import { RadarSubjectService } from '../../core/services/radar-subject.service';
+import { VigieService } from '../../core/services/vigie.service';
+import { RadarSubjectPageComponent, errorOf } from './radar-subject-page.component';
+import { subjectDetail } from './radar-subject.fixtures';
+
+/** La page d'un sujet du Radar (F-103 / SF-103-01). */
+describe('RadarSubjectPageComponent', () => {
+  let fixture: ComponentFixture<RadarSubjectPageComponent>;
+  let component: RadarSubjectPageComponent;
+  let subjects: jasmine.SpyObj<RadarSubjectService>;
+  let vigie: jasmine.SpyObj<VigieService>;
+  let params$: BehaviorSubject<ParamMap>;
+
+  const evidence = (id: string, extra: Partial<RadarEvidenceView> = {}): RadarEvidenceView => ({
+    id, source: 'TEAMS_MESSAGE', sourceRef: `ref-${id}`, occurredAt: '2026-09-04T09:00:00Z',
+    quote: `citation ${id}`, deepLink: `https://teams.microsoft.com/l/message/${id}`, authorPersonId: null,
+    ...extra,
+  });
+
+  const mfa = (): RadarSubjectDetail => subjectDetail({
+    name: 'MFA prestataires',
+    state: 'ADVANCING',
+    nextStep: 'Rédiger la note DSI',
+    dueDate: '2026-10-15',
+    dueDateSovereign: true,
+    lastActivityAt: '2026-09-12T14:32:10Z',
+    stateEvidenceIds: ['p2'],
+    nextStepEvidenceIds: ['p2'],
+    dueDateEvidenceIds: ['p3'],
+    summary: [
+      { id: 'f1', position: 0, text: 'Le périmètre couvre 340 comptes.', evidenceIds: ['p1'] },
+      { id: 'f2', position: 1, text: 'Paul l\'a validé en réunion.', evidenceIds: ['p2'] },
+    ],
+    chronology: [
+      evidence('p3', { source: 'USER_NOTE', occurredAt: '2026-09-13T08:00:00Z', deepLink: null }),
+      evidence('p2', { source: 'TEAMS_MEETING', occurredAt: '2026-09-12T14:32:10Z', authorPersonId: 'paul' }),
+      evidence('p1', { deepLink: 'javascript:alert(1)' }),
+    ],
+  });
+
+  const paul: VigiePerson = { id: 'paul', displayName: 'Paul Martin', jobTitle: 'Manager sécurité',
+    lastInteractionAt: null, subjects: [] };
+
+  function build(options: {
+    subject?: Observable<RadarSubjectDetail>;
+    people?: Observable<VigiePerson[]>;
+    subjectId?: string;
+  } = {}): HTMLElement {
+    subjects = jasmine.createSpyObj<RadarSubjectService>('RadarSubjectService', ['subject']);
+    subjects.subject.and.returnValue(options.subject ?? of(mfa()));
+    vigie = jasmine.createSpyObj<VigieService>('VigieService', ['people', 'hostSpaces']);
+    vigie.people.and.returnValue(options.people ?? of([paul]));
+    vigie.hostSpaces.and.returnValue(of([{ hostId: 'h1', name: 'EDENRED', missionStatus: 'ACTIVE', spaces: ['VIGIE'] }]));
+    params$ = new BehaviorSubject(convertToParamMap({ hostRef: 'h1', subjectId: options.subjectId ?? 's1' }));
+
+    TestBed.configureTestingModule({
+      imports: [RadarSubjectPageComponent],
+      providers: [
+        provideRouter([]),
+        provideNoopAnimations(),
+        { provide: RadarSubjectService, useValue: subjects },
+        { provide: VigieService, useValue: vigie },
+        { provide: ActivatedRoute, useValue: { snapshot: {}, paramMap: params$, queryParamMap: of(convertToParamMap({})) } },
+      ],
+    });
+    fixture = TestBed.createComponent(RadarSubjectPageComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  const text = (el: Element | null) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
+
+  it("lit le sujet sous le poste de l'adresse, et rend l'en-tête et les trois cases", () => {
+    const root = build();
+
+    expect(subjects.subject).toHaveBeenCalledOnceWith('h1', 's1');
+    const crumbs = Array.from(root.querySelectorAll('.radar-subject__crumb a')) as HTMLAnchorElement[];
+    expect(crumbs.map((a) => text(a))).toEqual(['EDENRED', 'Radar']);
+    expect(crumbs.map((a) => a.getAttribute('href'))).toEqual(['/vigie/h1', '/vigie/h1?onglet=radar']);
+    expect(text(root.querySelector('.radar-subject__title'))).toBe('MFA prestataires');
+    const badge = root.querySelector('.radar-subject__state');
+    expect(text(badge)).toBe('avance');
+    expect(badge?.classList).toContain('badge--success');
+    expect(text(root.querySelector('.radar-subject__next-step'))).toBe('Rédiger la note DSI');
+    expect(text(root.querySelector('.radar-subject__due'))).toBe('15 octobre 2026');
+    expect(text(root.querySelector('.radar-subject__facts'))).toContain('votre note');
+  });
+
+  it('rend chaque phrase avec ses renvois, le même numéro que dans la chronologie', () => {
+    const root = build();
+
+    const sentences = root.querySelectorAll('.radar-subject__sentence');
+    expect(sentences.length).toBe(2);
+    const firstRef = sentences[0].querySelector('.radar-subject__ref');
+    expect(text(firstRef)).toBe('1');
+    expect(firstRef?.getAttribute('href')).toBe('#preuve-p1');
+    expect(sentences[1].querySelector('.radar-subject__ref')?.getAttribute('href')).toBe('#preuve-p2');
+
+    const events = root.querySelectorAll('.radar-subject__event');
+    expect(events.length).toBe(3);
+    // Plus récente d'abord, dans l'ordre de la gateway ; la note de l'échéance reçoit le numéro 3.
+    expect(events[0].id).toBe('preuve-p3');
+    expect(text(events[0].querySelector('.radar-subject__event-number'))).toBe('3');
+    expect(text(events[1].querySelector('.radar-subject__event-number'))).toBe('2');
+  });
+
+  it("nomme l'auteur connu, libelle le lien selon la source, et n'affiche jamais un lien non https", () => {
+    const root = build();
+    const events = root.querySelectorAll('.radar-subject__event');
+
+    expect(text(events[0])).toContain('Votre nouvelle');
+    expect(events[0].querySelector('.radar-subject__deep-link')).toBeNull();
+
+    expect(text(events[1].querySelector('.radar-subject__event-author'))).toBe('— Paul Martin');
+    const meetingLink = events[1].querySelector('a.radar-subject__deep-link') as HTMLAnchorElement;
+    expect(text(meetingLink)).toContain('Ouvrir le moment ·');
+    expect(meetingLink.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(meetingLink.getAttribute('target')).toBe('_blank');
+
+    expect(text(events[2].querySelector('.radar-subject__quote'))).toBe('citation p1');
+    expect(events[2].querySelector('.radar-subject__deep-link')).toBeNull();
+  });
+
+  it('un renvoi met la preuve en évidence sans quitter la page', () => {
+    const root = build();
+    const ref = root.querySelector('.radar-subject__sentence .radar-subject__ref') as HTMLAnchorElement;
+    const event = new MouseEvent('click', { cancelable: true });
+
+    ref.dispatchEvent(event);
+    fixture.detectChanges();
+
+    expect(event.defaultPrevented).toBeTrue();
+    expect(component.focusedEvidenceId()).toBe('p1');
+    expect(root.querySelector('#preuve-p1')?.classList).toContain('radar-subject__event--focused');
+  });
+
+  it("un annuaire illisible n'empêche pas la page : l'auteur n'est simplement pas nommé", () => {
+    const root = build({ people: throwError(() => new HttpErrorResponse({ status: 500 })) });
+
+    expect(root.querySelector('.radar-subject__title')).not.toBeNull();
+    expect(root.querySelector('.radar-subject__event-author')).toBeNull();
+  });
+
+  it("résumé vide et prochaine étape inconnue : la page le dit", () => {
+    const root = build({ subject: of(subjectDetail({ name: 'LDAP' })) });
+
+    expect(text(root.querySelector('.radar-subject__summary-empty'))).toContain("il s'écrit à la prochaine analyse");
+    expect(root.querySelectorAll('.radar-subject__unknown').length).toBe(2);
+  });
+
+  it('un sujet fusionné mène au sujet cible', () => {
+    const root = build({ subject: of(subjectDetail({ mergedIntoId: 's9' })) });
+
+    const link = root.querySelector('.radar-subject__merged a') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('/vigie/h1/sujets/s9');
+  });
+
+  it('« clos ? » : le bandeau cite le signal de clôture', () => {
+    const root = build({ subject: of(subjectDetail({
+      state: 'CLOSE_PROPOSED', closeSignalEvidenceIds: ['p7'], chronology: [evidence('p7')],
+    })) });
+
+    const banner = root.querySelector('.radar-subject__close-proposed');
+    expect(text(banner)).toContain('Le Radar pense que ce sujet est terminé');
+    expect(banner?.querySelector('.radar-subject__ref')?.getAttribute('href')).toBe('#preuve-p7');
+    expect(root.querySelector('.radar-subject__state')?.classList).toContain('badge--info');
+  });
+
+  it('en sommeil : le bandeau le dit sans rien clore', () => {
+    const root = build({ subject: of(subjectDetail({ state: 'DORMANT', lastActivityAt: '2026-08-20T10:00:00Z' })) });
+
+    expect(text(root.querySelector('.radar-subject__dormant'))).toContain('Rien n\'a bougé depuis le 20 août 2026');
+  });
+
+  it('introuvable (404) : rien d\'autre n\'est dit, et le Radar du client est à un clic', () => {
+    const root = build({ subject: throwError(() => new HttpErrorResponse({ status: 404 })) });
+
+    const notice = root.querySelector('.radar-subject__notice');
+    expect(notice?.getAttribute('data-error')).toBe('not-found');
+    expect(text(notice)).toContain("Ce sujet n'existe pas, ou plus");
+    expect(notice?.querySelector('a')?.getAttribute('href')).toBe('/vigie/h1?onglet=radar');
+    expect(root.querySelector('.radar-subject__title')).toBeNull();
+  });
+
+  it('client hors Vigie (409), sans droit (403) : les bons écrans', () => {
+    let root = build({ subject: throwError(() => new HttpErrorResponse({ status: 409 })) });
+    expect(text(root.querySelector('.radar-subject__notice'))).toContain("Ce client n'est pas dans la Vigie");
+
+    TestBed.resetTestingModule();
+    root = build({ subject: throwError(() => new HttpErrorResponse({ status: 403 })) });
+    expect(root.querySelector('app-space-pitch')).not.toBeNull();
+    expect(root.querySelector('.radar-subject__notice')).toBeNull();
+  });
+
+  it('gateway injoignable : Réessayer relit le sujet', () => {
+    let calls = 0;
+    const root = build({
+      subject: new Observable<RadarSubjectDetail>((subscriber) => {
+        calls += 1;
+        if (calls === 1) {
+          subscriber.error(new HttpErrorResponse({ status: 0 }));
+        } else {
+          subscriber.next(mfa());
+          subscriber.complete();
+        }
+      }),
+    });
+
+    expect(root.querySelector('.radar-subject__notice')?.getAttribute('data-error')).toBe('network');
+    (root.querySelector('.radar-subject__retry') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(root.querySelector('.radar-subject__title')).not.toBeNull();
+  });
+
+  it("changer de sujet dans l'adresse relit la page", () => {
+    build();
+    params$.next(convertToParamMap({ hostRef: 'h1', subjectId: 's2' }));
+
+    expect(subjects.subject).toHaveBeenCalledWith('h1', 's2');
+    // Le nom du client n'est lu qu'une fois par client.
+    expect(vigie.hostSpaces).toHaveBeenCalledTimes(1);
+  });
+
+  it('traduit les codes HTTP', () => {
+    expect(errorOf(new HttpErrorResponse({ status: 400 }))).toBe('not-found');
+    expect(errorOf(new HttpErrorResponse({ status: 503 }))).toBe('network');
+    expect(errorOf(new Error('x'))).toBe('network');
+  });
+});

@@ -116,16 +116,18 @@ describe('app.routes', () => {
       expect(forgeMatcher(segments('vigie'))).toBeNull();
     });
 
-    it("l'adresse d'un sujet mène à l'onglet Radar du client (F-106 / SF-106-04)", async () => {
-      TestBed.configureTestingModule({ providers: [provideRouter(routes)] });
-      const router = TestBed.inject(Router);
+    it("l'adresse d'un sujet charge la page sujet, sous la route authentifiée (F-103 / SF-103-01)", async () => {
       const guard = routes[guardedParentIndex()];
-      const subject = (guard.children ?? []).find((child) => child.path === 'vigie/:hostRef/sujets/:subjectId');
+      const children = guard.children ?? [];
+      const index = children.findIndex((child) => child.path === 'vigie/:hostRef/sujets/:subjectId');
+      const subject = children[index];
 
-      expect(subject?.redirectTo).toBeDefined();
-      const tree = TestBed.runInInjectionContext(() =>
-        (subject!.redirectTo as (data: unknown) => unknown)({ params: { hostRef: 'h1', subjectId: 's1' } }));
-      expect(router.serializeUrl(tree as never)).toBe('/vigie/h1?onglet=radar');
+      expect(subject).toBeDefined();
+      expect(subject.redirectTo).toBeUndefined();
+      // Déclarée avant la Vigie : l'ordre le rend vrai même si le matcher changeait un jour.
+      expect(index).toBeLessThan(children.findIndex((child) => child.matcher === vigieMatcher));
+      const loaded = await (subject.loadComponent as () => Promise<{ name: string }>)();
+      expect(loaded.name).toBe('RadarSubjectPageComponent');
     });
 
     it('est déclarée sous la route authentifiée', () => {
