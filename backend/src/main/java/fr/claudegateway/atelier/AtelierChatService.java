@@ -581,6 +581,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                 new java.util.HashMap<>();
         /** Reçus des courriels mis en file pendant ce tour (F-110 / SF-110-02), local au tour. */
         java.util.Map<String, fr.claudegateway.mail.ClientMailReceipt> emailsOfTurn = new java.util.HashMap<>();
+        /** Pages publiées pendant ce tour (F-109 / SF-109-03), par appel, local au tour. */
+        java.util.Map<String, fr.claudegateway.pages.PageBlock> pagesOfTurn = new java.util.HashMap<>();
         int inputTokens = 0;
         int outputTokens = 0;
         /**
@@ -772,6 +774,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                 } else if (fr.claudegateway.mail.ClientMailTool.isEmailTool(call.name())) {
                     // F-110 / SF-110-02 : le courriel part de la gateway, jamais de la machine, sans confirmation.
                     outcome = executeEmailTool(userId, workspace, callId, call, listener, emailsOfTurn);
+                } else if (fr.claudegateway.pages.PageToolCatalog.isPageTool(call.name())) {
+                    // F-109 : la page est rangée par la gateway ; son bloc est admis dans tout terminal.
+                    outcome = applyPagePublish(userId, workspace, callId, call, listener, pagesOfTurn);
                 } else {
                     outcome = executeTool(userId, workspace, callId, call, listener, deadline,
                             planOfTurn, cardsOfTurn);
@@ -808,7 +813,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                         cardsOfTurn.get(callId),
                         // Le reçu d'un courriel (F-110 / SF-110-02) : le bloc « Courriel envoyé » survit au
                         // rechargement, dans tous les terminaux.
-                        emailsOfTurn.get(callId)));
+                        emailsOfTurn.get(callId),
+                        // Le bloc « Page publiée » (F-109 / SF-109-03) : il survit au rechargement, partout.
+                        pagesOfTurn.get(callId)));
             }
             messages.add(AgentMessage.assistant(assistantBlocks));
             messages.add(AgentMessage.toolResults(toolResults));
@@ -1186,7 +1193,8 @@ public class AtelierChatService implements RelayInterruptTarget {
      * publié, et l'agent le sait.</p>
      */
     private ToolOutcome applyPagePublish(UUID userId, Workspace workspace, String callId, AgentToolCall call,
-            AtelierProgressListener listener) {
+            AtelierProgressListener listener,
+            java.util.Map<String, fr.claudegateway.pages.PageBlock> pagesOfTurn) {
         if (pageToolExecutor == null || !pageToolCatalog.isOpenFor(userId, workspace)) {
             return ToolOutcome.error("La publication de pages n'est pas ouverte dans ce terminal. Réponds en clair.");
         }
@@ -1206,7 +1214,16 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         fr.claudegateway.pages.PageToolExecutor.Outcome outcome =
                 pageToolExecutor.execute(userId, workspace, callId, call.input());
-        return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
+        if (outcome.error()) {
+            return ToolOutcome.error(outcome.content());
+        }
+        if (outcome.published() != null) {
+            // F-109 / SF-109-03 : le bloc « Page publiée », au fil de l'eau et dans la transcription.
+            fr.claudegateway.pages.PageBlock block = fr.claudegateway.pages.PageBlock.of(outcome.published());
+            pagesOfTurn.put(callId, block);
+            listener.onPage(callId, block);
+        }
+        return ToolOutcome.info(outcome.content());
     }
 
     /**
@@ -1506,7 +1523,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         // Les pages (F-109 / SF-109-02) : rangées par la gateway, pas écrites par le runner — qui ne
         // sert qu'à relire un fichier du poste, depuis l'exécuteur.
         if (fr.claudegateway.pages.PageToolCatalog.isPageTool(call.name())) {
-            return applyPagePublish(userId, workspace, callId, call, listener);
+            // Traité par la boucle (F-109 / SF-109-03), jamais ici : ce chemin ne porte pas le bloc du tour.
+            return ToolOutcome.error("La publication de pages n'est pas ouverte ici. Réponds en clair.");
         }
         if (workspace.isRunnerTarget()) {
             return executeToolOnRunner(userId, workspace, callId, call, listener, deadline);

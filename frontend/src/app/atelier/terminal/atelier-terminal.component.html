@@ -487,6 +487,11 @@
               @if (block.email; as email) {
                 <app-terminal-email [receipt]="email"></app-terminal-email>
               }
+              <!-- LE BLOC « PAGE PUBLIÉE » (F-109 / SF-109-03) : admis dans TOUT terminal — les sorties de commande
+                   restent textuelles, une page est un document rendu par l'agent (amendement F-89, charte §18). -->
+              @if (block.page; as page) {
+                <app-page-block [page]="page" [readOnly]="readOnly" (open)="openPage($event)"></app-page-block>
+              }
             </div>
           }
         }
@@ -621,6 +626,9 @@
           }
           @if (block.email; as email) {
             <app-terminal-email [receipt]="email"></app-terminal-email>
+          }
+          @if (block.page; as page) {
+            <app-page-block [page]="page" [readOnly]="readOnly" (open)="openPage($event)"></app-page-block>
           }
         </div>
       }
@@ -811,6 +819,10 @@
         {{ submitting && steerable ? 'Préciser' : 'Envoyer' }}
       </button>
     </form>
+  }
+  <!-- LA PAGE OUVERTE (F-109 / SF-109-03) : un panneau à droite du terminal, un état d'écran. -->
+  @if (openedPageId(); as pageId) {
+    <app-page-panel [pageId]="pageId" (closed)="closePage()"></app-page-panel>
   }
 </section>
 

@@ -71,6 +71,8 @@ import {
   shortTime,
 } from './teams-block';
 import { TerminalEmailComponent } from './terminal-email.component';
+import { PageBlockComponent } from './page-block.component';
+import { PagePanelComponent } from './page-panel.component';
 import {
   AtelierFileDiffView,
   DiffLine,
@@ -105,7 +107,7 @@ export const RUNNER_RESUME_COMMAND = 'java -jar claude-runner.jar';
   selector: 'app-atelier-terminal',
   imports: [
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
-    TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent,
+    TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent, PageBlockComponent, PagePanelComponent,
     MatButtonToggleModule, MatIconModule, MatProgressSpinnerModule, MatTooltipModule, RouterLink,
   ],
   templateUrl: './atelier-terminal.component.html',
@@ -335,6 +337,20 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    * non négociable de F-76, et elle vaut plus encore là où l'on regarde quatre choses à la fois.</p>
    */
   @Input() readOnly = false;
+
+  /**
+   * **La page ouverte dans le panneau à droite** (F-109 / SF-109-03) : un état d'écran, jamais une adresse.
+   * `null` : panneau fermé.
+   */
+  readonly openedPageId = signal<string | null>(null);
+
+  openPage(pageId: string): void {
+    this.openedPageId.set(pageId);
+  }
+
+  closePage(): void {
+    this.openedPageId.set(null);
+  }
 
   /**
    * **Ce terminal est le terminal Teams** (F-89 / SF-89-03). C'est de cette marque, et d'elle

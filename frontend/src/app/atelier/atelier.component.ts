@@ -113,6 +113,7 @@ import { killHostSuccessMessage } from '../shared/kill-host-dialog/kill-host-mes
 import { chatStepsToBlocks } from './terminal/chat-steps';
 import { cardBlock, withCards } from './terminal/teams-block';
 import { emailBlock } from './terminal/terminal-email';
+import { pageBlock } from './terminal/page-block';
 import { derivePreview } from './terminal/terminal-preview';
 import { RADAR_DRAFT_STATE, radarDraftFrom } from '../shared/radar-draft';
 
@@ -1481,6 +1482,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
           ];
           this.mirrorLocalSteps();
         }),
+      // UNE PAGE publiée (F-109 / SF-109-03) : rangée comme une carte, pour survivre au recalcul des blocs.
+      onPage: (event) =>
+        this.zone.run(() => {
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: pageBlock(event.toolUseId, event.page),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
       // UN COURRIEL mis en file (F-110 / SF-110-02) : rangé comme une carte, pour survivre au recalcul des blocs.
       onEmail: (event) =>
         this.zone.run(() => {
@@ -2838,6 +2851,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
             {
               afterSteps: this.streaming()?.steps.length ?? 0,
               block: cardBlock(event.toolUseId, event.card),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
+      // UNE PAGE publiée (F-109 / SF-109-03) : rangée comme une carte, pour survivre au recalcul des blocs.
+      onPage: (event) =>
+        this.zone.run(() => {
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: pageBlock(event.toolUseId, event.page),
             },
           ];
           this.mirrorLocalSteps();

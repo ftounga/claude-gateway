@@ -649,6 +649,12 @@ export interface AtelierStreamHandlers {
   onEmail?: (event: AtelierEmailEvent) => void;
 
   /**
+   * **Une page publiée** (F-109 / SF-109-03) : le bloc « Page publiée », admis dans tout terminal. Optionnel : un
+   * backend antérieur n'émet jamais cet événement.
+   */
+  onPage?: (event: AtelierPageEvent) => void;
+
+  /**
    * Numéro d'ordre du dernier événement reçu (F-84 / SF-84-02), lu dans le champ `id:` du
    * protocole SSE. C'est le **curseur** : en se rebranchant, l'écran le renvoie et ne reçoit que
    * ce qu'il a manqué — ni doublon, ni trou.
@@ -930,6 +936,11 @@ export interface AtelierTerminalBlock {
   card?: AtelierTeamsCard | null;
   /** **Le bloc « Courriel envoyé »** (F-110 / SF-110-02), dans tout terminal. Absent partout ailleurs. */
   email?: AtelierTerminalEmail | null;
+  /**
+   * **Le bloc « Page publiée »** (F-109 / SF-109-03), dans tout terminal : ce n'est pas une sortie de commande,
+   * c'est un document rendu par l'agent. Jamais le contenu — la page se relit par `GET /api/pages/{id}`.
+   */
+  page?: AtelierTerminalPage | null;
 }
 
 /**
@@ -1022,6 +1033,20 @@ export interface AtelierTerminalEmail {
   subject: string;
   attachmentCount: number;
   status: 'PENDING' | 'SENDING' | 'SENT' | 'FAILED' | string;
+}
+
+/** **Une page publiée** telle que la porte un bloc du terminal (F-109 / SF-109-03). */
+export interface AtelierTerminalPage {
+  pageId: string;
+  title: string;
+  description: string | null;
+  version: number;
+}
+
+/** Charge utile de l'événement SSE `page` (F-109 / SF-109-03). */
+export interface AtelierPageEvent {
+  toolUseId: string;
+  page: AtelierTerminalPage;
 }
 
 /** Charge utile de l'événement SSE `email` (F-110 / SF-110-02). */

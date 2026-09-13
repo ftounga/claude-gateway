@@ -37,6 +37,23 @@ describe('AtelierService', () => {
 
   afterEach(() => httpMock.verify());
 
+  // F-109 / SF-109-03 — le bloc « Page publiée » arrive par l'événement SSE `page`.
+  it("relaie l'événement page, et ignore un événement sans page", () => {
+    const dispatch = (service as unknown as {
+      dispatchSseEvent: (raw: string, handlers: object) => void;
+    }).dispatchSseEvent.bind(service);
+    const pages: unknown[] = [];
+    const handlers = {
+      onAction: () => undefined, onText: () => undefined, onDone: () => undefined, onError: () => undefined,
+      onPage: (event: unknown) => pages.push(event),
+    };
+
+    dispatch('event: page\ndata: {"toolUseId":"tu_1","page":{"pageId":"p-1","title":"Maquette","description":null,"version":2}}', handlers);
+    dispatch('event: page\ndata: {"toolUseId":"tu_2"}', handlers);
+
+    expect(pages).toEqual([{ toolUseId: 'tu_1', page: { pageId: 'p-1', title: 'Maquette', description: null, version: 2 } }]);
+  });
+
   it('POSTs a multipart archive to /api/workspaces', () => {
     const detail: WorkspaceDetail = {
       id: 'w1',
