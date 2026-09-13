@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-100 / SF-100-01 — LES RÉGLAGES RADAR D'UN POSTE : la vérification guidée.
+
+      - radar_host_settings : une ligne par poste (unique user_id + host_id). `verification` porte le
+        JSON des quatre cases (session, conversations, réunions, transcriptions) — des compteurs et
+        des états, jamais un titre, un nom ou une adresse. La planification (SF-100-02) ajoute ses
+        colonnes à cette même table.
+
+      Aucune clé étrangère, comme le reste du Radar (081) : la purge est explicite (SF-99-05).
+      Un seul changeset : `uuid`, `varchar` et `timestamp with time zone` valent pour PostgreSQL et H2.
+    -->
+
+    <changeSet id="086-radar-host-settings" author="claude-gateway">
+        <createTable tableName="radar_host_settings">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="verification" type="varchar(8000)"/>
+            <column name="verified_at" type="timestamp with time zone"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_host_settings" indexName="idx_radar_host_settings_scope" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="radar_host_settings"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

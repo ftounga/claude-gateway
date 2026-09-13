@@ -25,6 +25,19 @@ class NetworkObserverTest {
     private final NetworkObserver observer = new NetworkObserver(browser, adapter);
 
     @Test
+    @DisplayName("F-100 : une réponse refusée (403) est comptée par nature, et son corps n'est jamais demandé")
+    void denied_response_is_counted_without_body() {
+        observer.start();
+        browser.emitResponse("r403", "https://teams.microsoft.com/api/mt/emea/beta/meetings/M1/transcripts/T1",
+                "{\"error\":\"Forbidden\"}", 403);
+
+        assertTrue(observer.collect().isEmpty());
+        assertEquals(1, observer.denied(TeamsPayloadKind.MEETING_TRANSCRIPT));
+        assertEquals(0, observer.denied(TeamsPayloadKind.CONVERSATION_MESSAGES));
+        assertFalse(browser.sentCommands().contains(CdpCommands.GET_RESPONSE_BODY));
+    }
+
+    @Test
     @DisplayName("F-108 §4.8 : l'auto-attach ne retient QUE les cadres des domaines Microsoft")
     void auto_attach_is_filtered_on_domains() {
         observer.start();

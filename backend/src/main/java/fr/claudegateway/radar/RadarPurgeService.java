@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import fr.claudegateway.radar.analysis.RadarAnalysisBatchRepository;
 import fr.claudegateway.radar.analysis.RadarAnalysisLeaseRepository;
+import fr.claudegateway.radar.sync.RadarHostSettingsRepository;
 import fr.claudegateway.radar.dto.RadarViews.PurgeView;
 import fr.claudegateway.runner.host.HostMissionStatus;
 import fr.claudegateway.runner.host.RunnerHostService;
@@ -41,13 +42,15 @@ public class RadarPurgeService {
     private final RunnerHostService hostService;
     private final RadarAnalysisBatchRepository analysisBatches;
     private final RadarAnalysisLeaseRepository analysisLeases;
+    private final RadarHostSettingsRepository hostSettings;
 
     public RadarPurgeService(RadarSubjectRepository subjects, RadarSubjectAliasRepository aliases,
             RadarSubjectFactRepository facts, RadarPersonRepository people, RadarSubjectRoleRepository roles,
             RadarCommitmentRepository commitments, RadarEvidenceRepository evidence,
             RadarEvidenceLinkRepository links, RadarSyncRepository syncs, RadarCorrectionRepository corrections,
             RadarPurgeRepository purges, RunnerHostService hostService,
-            RadarAnalysisBatchRepository analysisBatches, RadarAnalysisLeaseRepository analysisLeases) {
+            RadarAnalysisBatchRepository analysisBatches, RadarAnalysisLeaseRepository analysisLeases,
+            RadarHostSettingsRepository hostSettings) {
         this.subjects = subjects;
         this.aliases = aliases;
         this.facts = facts;
@@ -62,6 +65,7 @@ public class RadarPurgeService {
         this.hostService = hostService;
         this.analysisBatches = analysisBatches;
         this.analysisLeases = analysisLeases;
+        this.hostSettings = hostSettings;
     }
 
     /**
@@ -93,6 +97,7 @@ public class RadarPurgeService {
         corrections.purgeScope(userId, hostId);
         analysisBatches.purgeScope(userId, hostId);
         analysisLeases.purgeScope(userId, hostId);
+        hostSettings.purgeScope(userId, hostId);
         links.purgeScope(userId, hostId);
         int evidenceCount = evidence.purgeScope(userId, hostId);
         commitments.purgeScope(userId, hostId);
@@ -112,6 +117,7 @@ public class RadarPurgeService {
         corrections.purgeUser(userId);
         analysisBatches.purgeUser(userId);
         analysisLeases.purgeUser(userId);
+        hostSettings.purgeUser(userId);
         links.purgeUser(userId);
         evidence.purgeUser(userId);
         commitments.purgeUser(userId);
