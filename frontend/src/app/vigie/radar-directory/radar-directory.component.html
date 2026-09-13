@@ -1,0 +1,58 @@
+<div class="radar-directory">
+  <mat-form-field appearance="outline" class="radar-directory__filter" subscriptSizing="dynamic">
+    <mat-label>Chercher une personne ou un sujet</mat-label>
+    <mat-icon matPrefix aria-hidden="true">search</mat-icon>
+    <input
+      matInput
+      type="search"
+      [attr.maxlength]="filterMax"
+      [value]="filter()"
+      (input)="onFilter($any($event.target).value)"
+    />
+  </mat-form-field>
+
+  @if (matching().length === 0) {
+    <p class="radar-directory__none">Personne ne correspond.</p>
+  } @else {
+    <ul class="radar-directory__list">
+      @for (person of visible(); track person.id) {
+        <li class="radar-directory__person">
+          <div class="radar-directory__head">
+            <!-- Une personne n'est pas une machine : aucun ton d'identité du §9 (§16, §17). -->
+            <mat-icon class="radar-directory__icon" aria-hidden="true">person</mat-icon>
+            <span class="radar-directory__who">
+              <span class="radar-directory__name">{{ person.displayName }}</span>
+              @if (person.jobTitle) {
+                <span class="radar-directory__meta radar-directory__job">{{ person.jobTitle }}</span>
+              }
+            </span>
+            <span class="radar-directory__meta radar-directory__count">{{ subjectsLabel(person) }}</span>
+            @if (interactionLabel(person); as when) {
+              <span class="radar-directory__meta radar-directory__when">{{ when }}</span>
+            }
+          </div>
+          @if (personSubjects(person).length > 0) {
+            <ul class="radar-directory__subjects">
+              @for (subject of personSubjects(person); track subject.subjectId) {
+                <li class="radar-directory__subject">
+                  <a class="radar-directory__subject-link" [routerLink]="['/vigie', hostId(), 'sujets', subject.subjectId]">
+                    {{ subject.subjectName }}
+                  </a>
+                  <span class="radar-directory__role">{{ roleLabel(subject.role) }}</span>
+                  <span class="badge radar-state radar-directory__state" [class]="stateBadge(subject.state).badgeClass">
+                    {{ stateBadge(subject.state).label }}
+                  </span>
+                </li>
+              }
+            </ul>
+          }
+        </li>
+      }
+    </ul>
+    @if (hiddenCount() > 0) {
+      <button mat-stroked-button type="button" class="radar-directory__more" (click)="showMore()">
+        Afficher {{ hiddenCount() > 1 ? 'les ' + hiddenCount() + ' autres' : "l'autre" }}
+      </button>
+    }
+  }
+</div>

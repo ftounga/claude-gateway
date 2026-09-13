@@ -136,6 +136,18 @@
     color: var(--cg-error);
   }
 
+  &__h-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--cg-space-2);
+  }
+
+  &__directory-link {
+    font-size: 12px;
+    color: var(--cg-primary);
+  }
+
   &__side-loading {
     display: flex;
     padding: var(--cg-space-2) 0;

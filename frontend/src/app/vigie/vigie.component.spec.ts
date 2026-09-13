@@ -250,10 +250,13 @@ describe('VigieComponent', () => {
       subjects: [{ subjectId: 's1', subjectName: 'MFA', state: 'ADVANCING', role: 'DECIDER' }] }] });
     fixture.detectChanges();
 
-    const person = root.querySelector('.vigie__person')?.textContent ?? '';
+    // F-103 / SF-103-04 : l'onglet délègue à l'annuaire, qui mène à la page du sujet.
+    expect(root.querySelector('app-radar-directory.vigie__people')).not.toBeNull();
+    const person = root.querySelector('.radar-directory__person')?.textContent ?? '';
     expect(person).toContain('Paul Martin');
     expect(person).toContain('DSI');
     expect(person).toContain('1 sujet');
+    expect(root.querySelector('.radar-directory__subject-link')?.getAttribute('href')).toBe('/vigie/h1/sujets/s1');
 
     component.people.set({ h1: 'error' });
     fixture.detectChanges();
