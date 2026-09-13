@@ -572,6 +572,16 @@ poste ouvert.
 | Pied | « Actif » (`badge--success`), dernier outil daté, « Ouvrir → » en `mat-button` compact |
 | Tuile fantôme | pointillés 1 px `--cg-divider`, rayon 8 px, texte secondaire, compte en encre principale, « Parcourir » en `mat-stroked-button` |
 
+### Voir travailler (`/forge/voir`)
+
+- **Une porte** dans le bandeau de la Forge, « Voir travailler » (`mat-stroked-button`, icône
+  `grid_view`) ; plus de bouton « Mosaïque ».
+- **Une barre d'une ligne** au-dessus de la densité : surface `#FFFFFF`, filet bas `--cg-divider`,
+  « ← Forge » en 13 px secondaire, titre Space Grotesk 600 18 px, sélecteur segmenté **Aperçus · Flux
+  entiers** (filet `--cg-divider`, rayon 8 px, **option active en `--cg-orange` sur texte blanc** — le
+  geste de marque, §2). La densité en dessous garde **son** chrome : la mosaïque reste un mur navy qui
+  prend toute la hauteur (§13).
+
 ### Règles d'emploi — non négociables
 
 - **L'ordre dit l'urgence.** *À regarder* (une autorisation attend) › *En ligne* › *Hors ligne* ›

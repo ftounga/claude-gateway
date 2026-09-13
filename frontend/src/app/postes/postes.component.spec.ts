@@ -677,6 +677,17 @@ describe('PostesComponent', () => {
         .querySelectorAll('.forge-rail__group')).map((node) => node.textContent?.trim() ?? '');
     }
 
+    it('n\'a qu\'une porte « Voir travailler », vers /forge/voir (F-98 / SF-98-04)', () => {
+      setup();
+      const fleet = (fixture.nativeElement as HTMLElement).querySelector('.forge-fleet') as HTMLElement;
+      const watch = fleet.querySelector('.forge-fleet__watch') as HTMLAnchorElement;
+
+      expect(watch.getAttribute('href')).toBe('/forge/voir');
+      expect(watch.textContent).toContain('Voir travailler');
+      expect(fleet.textContent).not.toContain('Mosaïque');
+      expect(fleet.querySelector('a[href="/forge/supervision"], a[href="/forge/mosaique"]')).toBeNull();
+    });
+
     it('se nomme « Forge » en tête du bandeau : cet écran est la racine de la Forge', () => {
       setup();
       const title = (fixture.nativeElement as HTMLElement).querySelector('.forge-fleet__title');

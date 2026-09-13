@@ -4,11 +4,8 @@
        à encadrer rate son objet. Reste ici le strict nécessaire : d'où l'on vient, ce que ça coûte,
        ce qui attend une décision. -->
   <header class="mosaique__head">
-    <a class="mosaique__back" routerLink="/forge" aria-label="Retour à la Forge">
-      <mat-icon aria-hidden="true">arrow_back</mat-icon>
-      Forge
-    </a>
-    <h1 class="mosaique__title">Mosaïque</h1>
+    <!-- F-98 / SF-98-04 : le retour à la Forge, le titre et le choix de densité vivent dans la barre de
+         « Voir travailler ». Il reste ici ce que la mosaïque seule sait dire. -->
 
     <!-- CE QUI ATTEND UNE DÉCISION, COMPTÉ EN TOUTES LETTRES. Premier des trois signaux, avec la
          mise en tête de la tuile et son anneau. Aucun ne suffit seul : le 2026-09-08, la demande
@@ -34,11 +31,6 @@
         }
       </span>
     }
-    <a
-      class="mosaique__link"
-      routerLink="/forge/supervision"
-      title="Les aperçus, en une page"
-    >Aperçus</a>
   </header>
 
   @if (loading()) {
