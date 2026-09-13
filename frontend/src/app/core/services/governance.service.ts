@@ -7,6 +7,7 @@ import {
   GovernanceFileComparison,
   GovernanceHost,
   GovernanceHostSummary,
+  GovernanceIntegrite,
   GovernanceMap,
   GovernanceMapFileContent,
   GovernancePackage,
@@ -104,6 +105,17 @@ export class GovernanceService {
       `/api/governance/hosts/${hostRef}/map/file`,
       { params: new HttpParams().set('path', path) },
     );
+  }
+
+  /**
+   * **L'intégrité de ce poste** (F-95 / SF-95-03) : ce qui empêche la gouvernance de fonctionner,
+   * et ce qui la fait vieillir mal.
+   *
+   * Comme la carte, elle **lit la machine** : jamais attachée à un sondage, déclenchée au
+   * chargement et sur un geste explicite, et seulement pour un poste connecté.
+   */
+  getIntegrite(hostRef: string): Observable<GovernanceIntegrite> {
+    return this.http.get<GovernanceIntegrite>(`/api/governance/hosts/${hostRef}/integrite`);
   }
 
   /** Active un paquet retenu sur ce poste, et dépose ses fichiers dans chacun de ses dossiers. */

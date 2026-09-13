@@ -10,7 +10,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { POSTES_REFRESH_MS, PostesComponent } from './postes.component';
 import { AtelierService } from '../core/services/atelier.service';
 import { GovernanceService } from '../core/services/governance.service';
-import { GovernanceMap } from '../core/models/governance.models';
+import { GovernanceIntegrite, GovernanceMap } from '../core/models/governance.models';
 import { RunnerHostOverview, WorkspaceDetail } from '../core/models/atelier.models';
 import { hostInitials, hostTone } from '../shared/host-identity';
 
@@ -169,10 +169,20 @@ describe('PostesComponent', () => {
     facts: 3,
   };
 
+  /** Un poste inspecté et sain : deux listes vides, et `inspected` à VRAI. */
+  const integriteSaine: GovernanceIntegrite = {
+    hostRef: 'h1',
+    hostId: 'h1',
+    inspected: true,
+    errors: [],
+    warnings: [],
+  };
+
   function build(fragment: string | null = null): void {
     governance = jasmine.createSpyObj<GovernanceService>('GovernanceService',
-      ['getMap', 'readMapFile']);
+      ['getMap', 'readMapFile', 'getIntegrite']);
     governance.getMap.and.returnValue(of(carte));
+    governance.getIntegrite.and.returnValue(of(integriteSaine));
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
     dialog.open.and.returnValue({ afterClosed: () => of(dialogAnswer) } as never);
     TestBed.configureTestingModule({
@@ -1768,8 +1778,9 @@ describe('PostesComponent', () => {
     /** Construit l'écran en imposant ce que la lecture de carte répond. */
     function buildWithMap(answer: Observable<GovernanceMap>): void {
       governance = jasmine.createSpyObj<GovernanceService>('GovernanceService',
-        ['getMap', 'readMapFile']);
+        ['getMap', 'readMapFile', 'getIntegrite']);
       governance.getMap.and.returnValue(answer);
+      governance.getIntegrite.and.returnValue(of(integriteSaine));
       dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
       dialog.open.and.returnValue({ afterClosed: () => of(dialogAnswer) } as never);
       TestBed.resetTestingModule();
@@ -1788,6 +1799,76 @@ describe('PostesComponent', () => {
       component = fixture.componentInstance;
       fixture.detectChanges();
     }
+  });
+
+  // ------------------------------------- l'intégrité du poste (F-95 / SF-95-03)
+
+  describe("l'intégrité du poste", () => {
+    it('se lit avec la carte, une fois par page, sur un poste connecté', () => {
+      setup();
+
+      expect(governance.getIntegrite).toHaveBeenCalledOnceWith('h1');
+    });
+
+    it("n'appelle rien pour un poste NON CONNECTÉ", () => {
+      setup([{ ...poste, connected: false }]);
+
+      expect(governance.getIntegrite).not.toHaveBeenCalled();
+    });
+
+    it("un poste sain ne dit rien : un « aucune erreur » permanent deviendrait invisible", () => {
+      setup();
+
+      expect(text()).not.toContain('Intégrité —');
+    });
+
+    it("un poste NON INSPECTÉ ne dit rien non plus — ce n'est pas « tout va bien »", () => {
+      setup();
+      governance.getIntegrite.and.returnValue(of({
+        ...integriteSaine,
+        inspected: false,
+        errors: [{ rule: 'carte/fichier-absent', target: 'reseau.md', message: 'jamais lu' }],
+      }));
+      component.refresh();
+      fixture.detectChanges();
+
+      expect(text()).not.toContain('jamais lu');
+    });
+
+    it('montre les deux niveaux SÉPARÉS, et reprend le message du serveur tel quel', () => {
+      setup();
+      governance.getIntegrite.and.returnValue(of({
+        ...integriteSaine,
+        errors: [{
+          rule: 'carte/fichier-absent',
+          target: 'reseau.md',
+          message: 'le fichier de carte « reseau.md » manque : reprends « Appliquer ».',
+        }],
+        warnings: [{
+          rule: 'dette/en-cours',
+          target: 'migration-dns',
+          message: 'le projet « migration-dns » garde 2 cases : promeus-les au fil de l\u2019eau.',
+        }],
+      }));
+      component.refresh();
+      fixture.detectChanges();
+
+      expect(text()).toContain('Intégrité — à corriger');
+      expect(text()).toContain('Intégrité — à surveiller');
+      expect(text()).toContain('reprends « Appliquer »');
+      expect(text()).toContain('promeus-les au fil de l');
+    });
+
+    it('un échec de lecture reste SILENCIEUX : un rouge ici enverrait au mauvais endroit', () => {
+      setup();
+      governance.getIntegrite.and.returnValue(
+        throwError(() => new HttpErrorResponse({ status: 500 })));
+      component.refresh();
+      fixture.detectChanges();
+
+      expect(text()).not.toContain('Intégrité —');
+      expect(text()).toContain('Carte du poste');
+    });
   });
 
 });

@@ -29,10 +29,16 @@ qui comptait. C'est pour cela que les deux autres existent.
 | `commit-sans-trace-llm` | Avant chaque commande | Un `git commit` dont le message porte une trace d'assistant : co-signature, mention « Generated with… », lien de session, émoji robot |
 | `juge-fin-de-tour` | En fin de tour | Une réponse sans marqueur de fin de tour, ou qui déclare du durable non encore promu |
 | `promotion-dette-bloquante` | En fin de tour | Une clôture alors qu'une case reste non cochée dans la carte du projet |
+| `integrite-du-poste` | En fin de tour, **si le tour a écrit** | Une carte absente, un projet sans `STATE.md`, une clôture avec une case ouverte, un projet qui est un dépôt git, une note perso non versionnée chez un client. Il **signale** aussi, sans bloquer : une carte sans section, un index surchargé, une référence morte |
 | `juge-independant` | En fin de tour, **si le tour a écrit** | Rien : il **signale**. Un second regard compare la carte du poste aux notes du projet et liste ce qui est cité là et absent d'ici — une **liste à vérifier**, pas un verdict |
 
 Tous les refus sont **bornés** : après quelques passages, la main revient au modèle. Aucun contrôle
 ne peut prendre un message en otage.
+
+`integrite-du-poste` porte **deux niveaux distincts, et ils ne se mélangent pas** : les **erreurs**
+refusent la fin du tour, les **avertissements** informent et ne bloquent jamais. Chaque message porte
+son **action corrective**, parce qu'il est lu par un modèle qui doit corriger. Les avertissements se
+lisent aussi sur l'écran du poste, à côté de la carte.
 
 Les deux derniers ne font pas le même travail, et c'est voulu. `juge-fin-de-tour` lit **ce que tu
 déclares** : il est gratuit, et il attrape le cas où tu sais toi-même que tu n'as pas promu.

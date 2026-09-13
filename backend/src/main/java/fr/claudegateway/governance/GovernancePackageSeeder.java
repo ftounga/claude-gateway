@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import fr.claudegateway.governance.control.CommitSansTraceLlmControl;
 import fr.claudegateway.governance.control.JugeFinDeTourControl;
+import fr.claudegateway.governance.control.IntegritePosteControl;
 import fr.claudegateway.governance.control.JugeIndependantControl;
 import fr.claudegateway.governance.control.PromotionDetteBloquanteControl;
 
@@ -79,10 +80,14 @@ public class GovernancePackageSeeder {
      * <p><b>Le juge indépendant vient en dernier</b> (F-94 / SF-94-03), et ce n'est pas cosmétique :
      * c'est le seul qui coûte un appel. Rangé après les contrôles gratuits, il n'est consulté que si
      * la forme est déjà bonne — l'ordre <b>est</b> le garde-fou de dépense.</p>
+     *
+     * <p><b>L'intégrité du poste vient juste avant lui</b> (F-95 / SF-95-03) : elle coûte des
+     * allers-retours vers la machine, mais pas un appel au fournisseur. Le même raisonnement la
+     * range donc après les contrôles gratuits et <b>avant</b> celui qui se paie.</p>
      */
     private static final List<String> CONTROL_IDS = List.of(
             CommitSansTraceLlmControl.ID, JugeFinDeTourControl.ID, PromotionDetteBloquanteControl.ID,
-            JugeIndependantControl.ID);
+            IntegritePosteControl.ID, JugeIndependantControl.ID);
 
     /** Un fichier apporté : sa ressource, son chemin dans le projet, son genre. */
     private record SeededFile(String resource, String path, GovernanceFileKind kind) {
