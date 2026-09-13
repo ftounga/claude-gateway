@@ -1,0 +1,16 @@
+{
+  "_metadata": {},
+  "messages": [
+    {
+      "id": "1757498700000",
+      "conversationid": "19:meeting_fabrique@thread.v2",
+      "from": "https://teams.microsoft.com/api/chatsvc/emea/v1/users/8:orgid:00000000-0000-0000-0000-000000000001",
+      "imdisplayname": "Paul Durand",
+      "originalarrivaltime": "2026-09-10T10:05:00.000Z",
+      "messagetype": "RichText/Media_CallRecording",
+      "type": "Message",
+      "content": "<URIObject type=\"Video.2/CallRecording\" url0=\"https://fabrique.invalid/ams\"><Title>Enregistrement de la réunion</Title><RecordingStatus status=\"Success\"></RecordingStatus><OriginalName v=\"Comite de migration-20260910_090012-Enregistrement de la reunion.mp4\"></OriginalName><RecordingContent timestamp=\"2026-09-10T09:00:12.000Z\" duration=\"3720000\"><item type=\"onedriveForBusinessVideo\" uri=\"https://contoso-my.sharepoint.com/personal/paul_fabrique_invalid/Documents/Recordings/Comite%20de%20migration-20260910_090012-Enregistrement%20de%20la%20reunion.mp4?web=1&amp;tempauth=SECRET-NE-DOIT-JAMAIS-SORTIR\"></item></RecordingContent></URIObject>",
+      "properties": {}
+    }
+  ]
+}

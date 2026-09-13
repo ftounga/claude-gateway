@@ -139,9 +139,23 @@ final class FakeCdpConnection implements CdpConnection {
         return this;
     }
 
+    /** Ce que Chrome écrira pour une adresse de téléchargement qui contient ce fragment (encodé). */
+    FakeCdpConnection downloadingFor(String urlFragment, byte[] content) {
+        downloadsByUrl.put(urlFragment, content);
+        return this;
+    }
+
+    private final Map<String, byte[]> downloadsByUrl = new java.util.LinkedHashMap<>();
+
     private JsonNode navigate(String url) {
         navigations.add(url);
         if (url.contains("/_layouts/15/download.aspx")) {
+            byte[] downloadContent = this.downloadContent;
+            for (Map.Entry<String, byte[]> entry : downloadsByUrl.entrySet()) {
+                if (url.contains(entry.getKey())) {
+                    downloadContent = entry.getValue();
+                }
+            }
             if (downloadPath != null && downloadContent != null) {
                 try {
                     Path dir = Path.of(downloadPath);

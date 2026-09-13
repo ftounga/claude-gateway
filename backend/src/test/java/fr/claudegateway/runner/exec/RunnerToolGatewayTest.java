@@ -215,6 +215,8 @@ class RunnerToolGatewayTest {
                 .isEqualTo(RunnerToolGateway.TEAMS_FILES_TIMEOUT_MS);
         assertThat(RunnerToolGateway.teamsTimeoutFor("teams_read_file"))
                 .isEqualTo(RunnerToolGateway.TEAMS_FILES_TIMEOUT_MS);
+        assertThat(RunnerToolGateway.teamsTimeoutFor("teams_meeting_recording"))
+                .isEqualTo(RunnerToolGateway.TEAMS_FILES_TIMEOUT_MS);
         assertThat(RunnerToolGateway.teamsTimeoutFor("teams_status"))
                 .isEqualTo(RunnerToolGateway.TEAMS_TOOL_TIMEOUT_MS);
     }

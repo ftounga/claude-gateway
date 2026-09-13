@@ -187,8 +187,12 @@ class TeamsReadingCatalogTest {
     @Test
     @DisplayName("L'enregistrement dit à l'agent de NE PAS laisser croire qu'un fichier existe")
     void the_recording_tool_warns_the_agent() {
+        // F-108 / SF-108-05 : il télécharge — par Chrome — et la règle d'origine reste écrite.
         assertThat(describe("teams_meeting_recording"))
-                .contains("ne le TÉLÉCHARGE").contains("ne laisse jamais croire");
+                .contains("c'est Chrome qui le télécharge").contains("aucune adresse signée")
+                .contains("ne laisse jamais croire").contains("« downloaded » est faux");
+        assertThat(String.valueOf(schema("teams_meeting_recording").get("properties")))
+                .contains("recording_url").contains("download");
     }
 
     @Test

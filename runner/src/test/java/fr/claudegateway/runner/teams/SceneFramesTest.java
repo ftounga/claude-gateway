@@ -120,7 +120,7 @@ class SceneFramesTest {
                                 home.resolve("frames")));
 
         assertEquals("not_found", refusal.code());
-        assertTrue(refusal.detail().contains("je ne le télécharge pas depuis Teams"));
+        assertTrue(refusal.detail().contains("teams_meeting_recording"), refusal.detail());
         assertTrue(processes.calls.isEmpty(), "on ne rapatrie pas ffmpeg pour rien");
     }
 

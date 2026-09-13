@@ -141,6 +141,28 @@ class TranscriptionWorkerTest {
 
     // ------------------------------------------------------------------ montages
 
+    @Test
+    @DisplayName("F-108 / SF-108-05 : un FICHIER (enregistrement téléchargé) se transcrit sans être une capture")
+    void aDownloadedRecordingIsTranscribedWithoutBecomingACapture() throws IOException {
+        Path video = Files.createDirectories(folder.downloadsDir().resolve("rec-x"))
+                .resolve("reunion.mp4");
+        Files.writeString(video, "vidéo de papier");
+        Path into = folder.workDir("transcription-rec-x");
+        Files.writeString(into.resolve("transcript.csv"), "start,end,text\n0,1500,\"On commence.\"\n",
+                StandardCharsets.UTF_8);
+
+        TranscriptionJob job = worker().startOrResumeFile("rec-x", video, into, STARTED,
+                "Transcription locale de l'enregistrement Teams", said::add);
+
+        assertEquals(TranscriptionJob.Phase.TERMINE, job.phase(), job.failure());
+        assertEquals(1, job.cues().size());
+        assertEquals(STARTED, job.cues().get(0).at());
+        assertTrue(job.file().startsWith(into.toString()), job.file());
+        assertTrue(store.all().isEmpty(), "ce n'est pas une capture : le magasin n'est pas touché");
+        assertFalse(Files.list(video.getParent()).anyMatch(path -> !path.equals(video)),
+                "rien n'est écrit dans le dossier du téléchargement");
+    }
+
     private TranscriptionWorker worker() {
         LocalToolchain toolchain = toolchain();
         return new TranscriptionWorker(store, new AudioTrack(toolchain, processes),

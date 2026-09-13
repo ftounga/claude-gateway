@@ -209,7 +209,9 @@ public class RunnerToolGateway {
             return TEAMS_CAPTURE_START_TIMEOUT_MS;
         }
         if (fr.claudegateway.teams.TeamsToolCatalog.LIST_FILES.equals(tool)
-                || fr.claudegateway.teams.TeamsToolCatalog.READ_FILE.equals(tool)) {
+                || fr.claudegateway.teams.TeamsToolCatalog.READ_FILE.equals(tool)
+                // F-108 / SF-108-05 : localiser, lire le .vtt voisin, constater le démarrage.
+                || fr.claudegateway.teams.TeamsToolCatalog.MEETING_RECORDING.equals(tool)) {
             return TEAMS_FILES_TIMEOUT_MS;
         }
         return "teams_read_conversation".equals(tool) || "teams_search".equals(tool)

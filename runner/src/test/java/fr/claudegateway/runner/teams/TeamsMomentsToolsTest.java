@@ -80,8 +80,10 @@ class TeamsMomentsToolsTest {
 
         assertEquals(0, result.path("moments").size());
         assertEquals("MISSING_FIELD", result.path("gaps").get(0).path("kind").asText());
-        assertTrue(result.path("text").asText().contains("Je ne le télécharge pas depuis Teams"),
-                "on rappelle POURQUOI on ne va pas le chercher tout seul");
+        // F-108 / SF-108-05 : on dit comment l'obtenir — le rapatriement par Chrome, jamais une
+        // adresse signée entre nos mains.
+        assertTrue(result.path("text").asText().contains("meeting_id"), result.path("text").asText());
+        assertTrue(result.path("text").asText().contains("Chrome"), result.path("text").asText());
     }
 
     @Test

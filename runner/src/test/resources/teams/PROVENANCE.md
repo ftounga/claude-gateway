@@ -69,3 +69,7 @@ lire **avant** l'utilisateur — et jamais en rendant la moitié d'un compte ren
 | `sharepoint-error-403.json`, `sharepoint-error-404.json` | erreurs `odata.error` |
 | `onedrive-my-properties.json` | `GetMyProperties?$select=PersonalUrl` sur un domaine `.invalid` |
 | `conversation-messages-files.json` | un message de canal portant une pièce jointe SharePoint (propriété `files`) |
+| `conversation-messages-recording.json` | le message d'enregistrement du fil de réunion (`RichText/Media_CallRecording`, élément `onedriveForBusinessVideo`), adresse `.mp4` **suivie d'une requête empoisonnée** qui ne doit jamais ressortir (F-108 / SF-108-05) |
+| `sharepoint-recording-file.json` | métadonnées du `.mp4` (`GetFileByServerRelativePath`) |
+| `sharepoint-recordings-files.json` | le dossier `Recordings` : le `.mp4` et son `.vtt` de même nom |
+| `recording-transcript.vtt` | transcription WebVTT (forme publique W3C, locuteur `<v Nom>`), deux répliques inventées |

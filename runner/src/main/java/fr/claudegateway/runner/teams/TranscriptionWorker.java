@@ -93,6 +93,31 @@ public final class TranscriptionWorker {
         return job;
     }
 
+    /**
+     * Transcrit un <b>fichier</b> qui n'est pas une capture locale — l'enregistrement Teams téléchargé
+     * par Chrome (F-108 / SF-108-05), quand Teams n'en a servi aucune transcription.
+     *
+     * <p>Même moteur, même règle : asynchrone, sur la machine, rien n'en sort que le texte. Deux
+     * différences : le magasin des captures n'est <b>pas</b> touché (ce n'est pas une capture), et les
+     * fichiers produits vont dans {@code into}, un dossier de travail <b>distinct</b> de celui du
+     * téléchargement.</p>
+     *
+     * @param id        identifiant du travail ({@code rec-<réunion>})
+     * @param startedAt origine du temps des répliques
+     * @param header    en-tête du fichier de transcription (provenance)
+     */
+    public TranscriptionJob startOrResumeFile(String id, Path video, Path into, Instant startedAt,
+            String header, Consumer<String> progress) {
+        TranscriptionJob existing = find(id).orElse(null);
+        if (existing != null) {
+            return existing;
+        }
+        TranscriptionJob job = new TranscriptionJob(id);
+        live.put(job.id(), job);
+        pool.submit(() -> transcribe(job, video, into, startedAt, header, progress));
+        return job;
+    }
+
     /** Le travail de cette capture, s'il existe. */
     public Optional<TranscriptionJob> find(String captureId) {
         return Optional.ofNullable(live.get(captureId == null ? "" : captureId.strip()));
@@ -101,25 +126,37 @@ public final class TranscriptionWorker {
     // ------------------------------------------------------------------ le travail
 
     private void run(TranscriptionJob job, CaptureRecord record, Consumer<String> progress) {
-        try {
-            step(job, TranscriptionJob.Phase.AUDIO, progress);
-            Path into = Path.of(record.video()).getParent();
-            Path track = audio.extract(Path.of(record.video()), into);
-
-            step(job, TranscriptionJob.Phase.MODELE, progress);
-            step(job, TranscriptionJob.Phase.TRANSCRIPTION, progress);
-            Instant startedAt = record.startedAt() == null ? Instant.now() : record.startedAt();
-            LocalTranscription.Result result =
-                    transcription.transcribe(track, into, startedAt, record.mention());
-
-            job.cues(result.cues()).addGaps(result.gaps())
-                    .file(into.resolve(LocalTranscription.READABLE).toString())
-                    .phase(TranscriptionJob.Phase.TERMINE);
+        Instant startedAt = record.startedAt() == null ? Instant.now() : record.startedAt();
+        if (transcribe(job, Path.of(record.video()), Path.of(record.video()).getParent(), startedAt,
+                record.mention(), progress)) {
             // La capture garde le chemin de sa transcription : c'est par elle qu'on rejoint le
             // chemin existant (moments, carte, compte rendu).
             record.transcript(job.file());
             store.save(record);
+        }
+    }
+
+    /** Le travail lui-même : audio, modèle, transcription. Vrai s'il a abouti. */
+    private boolean transcribe(TranscriptionJob job, Path video, Path into, Instant startedAt,
+            String mention, Consumer<String> progress) {
+        try {
+            step(job, TranscriptionJob.Phase.AUDIO, progress);
+            java.nio.file.Files.createDirectories(into);
+            Path track = audio.extract(video, into);
+
+            step(job, TranscriptionJob.Phase.MODELE, progress);
+            step(job, TranscriptionJob.Phase.TRANSCRIPTION, progress);
+            LocalTranscription.Result result =
+                    transcription.transcribe(track, into, startedAt, mention);
+
+            job.cues(result.cues()).addGaps(result.gaps())
+                    .file(into.resolve(LocalTranscription.READABLE).toString())
+                    .phase(TranscriptionJob.Phase.TERMINE);
             say(progress, job.describe());
+            return true;
+        } catch (java.io.IOException e) {
+            fail(job, "Le dossier de travail de la transcription n'a pas pu être créé.",
+                    String.valueOf(into), progress);
         } catch (ToolchainUnavailableException e) {
             fail(job, e.getMessage(), e.remedy(), progress);
         } catch (AudioTrack.AudioUnavailableException e) {
@@ -130,6 +167,7 @@ public final class TranscriptionWorker {
             fail(job, "La transcription de cet enregistrement s'est interrompue.",
                     e.getMessage() == null ? "" : e.getMessage(), progress);
         }
+        return false;
     }
 
     private void step(TranscriptionJob job, TranscriptionJob.Phase phase, Consumer<String> progress) {

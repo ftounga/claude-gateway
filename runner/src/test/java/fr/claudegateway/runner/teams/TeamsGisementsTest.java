@@ -244,8 +244,8 @@ class TeamsGisementsTest {
     }
 
     @Test
-    @DisplayName("teams_meeting_recording DIT qu'il ne télécharge pas, et pourquoi — l'agent ne doit"
-            + " pas pouvoir croire qu'un fichier existe")
+    @DisplayName("teams_meeting_recording sans téléchargement monté : l'agent ne peut pas croire qu'un"
+            + " fichier existe (F-108 / SF-108-05 : le téléchargement par Chrome est ailleurs)")
     void the_recording_tool_says_what_it_does_not_do() throws Exception {
         PaperTeams teams = new PaperTeams()
                 .already("m1", TeamsSamples.MEETINGS_URL, "meetings.json");
@@ -257,9 +257,7 @@ class TeamsGisementsTest {
         assertTrue(json.path("available").asBoolean());
         assertTrue(json.path("text").asText().contains("Je ne l'ai PAS téléchargé"),
                 json.path("text").asText());
-        assertTrue(json.path("whyNotDownloaded").asText().contains("adresse signée"),
-                json.path("whyNotDownloaded").asText());
-        assertTrue(json.has("destination"));
+        assertTrue(json.path("text").asText().contains("pas monté"), json.path("text").asText());
     }
 
     @Test
