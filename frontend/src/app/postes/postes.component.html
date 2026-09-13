@@ -421,6 +421,45 @@
     @switch (activeTab()) {
       @case ('projets') {
         <div class="poste__panel" role="tabpanel">
+          <!-- LA BARRE DE LA GRILLE (F-98 / SF-98-03) : un tri, et le geste d'ajout. -->
+          <div class="poste__toolbar">
+            <div class="poste__sort" role="group" aria-label="Trier les projets">
+              @for (sort of projectSorts; track sort.key) {
+                <button
+                  type="button"
+                  class="poste__sort-option"
+                  [class.poste__sort-option--active]="projectSort() === sort.key"
+                  [attr.aria-pressed]="projectSort() === sort.key"
+                  [attr.data-sort]="sort.key"
+                  (click)="projectSort.set(sort.key)"
+                >
+                  {{ sort.label }}
+                </button>
+              }
+            </div>
+            @if (gridFiltered()) {
+              <span class="poste__grid-filtered">
+                {{ gridProjects().length }} {{ gridProjects().length > 1 ? 'projets correspondent' : 'projet correspond' }}
+                au filtre
+              </span>
+            }
+            <span class="poste__toolbar-spacer"></span>
+            @if (!isHosted(host)) {
+              <!-- « Ajouter un projet », autant de fois qu'on veut, SANS JAMAIS RÉAPPAIRER (F-48). -->
+              <button
+                mat-stroked-button
+                type="button"
+                class="poste__add-project"
+                (click)="addProject(host)"
+                [attr.aria-label]="'Ajouter un projet à ' + host.name"
+                matTooltip="Choisir un dossier de la racine — aucun nom à saisir"
+              >
+                <mat-icon>add</mat-icon>
+                Ajouter un projet
+              </button>
+            }
+          </div>
+
           @if (host.projects.length === 0) {
             <p class="poste__no-project">
               @if (isHosted(host)) {
@@ -433,107 +472,45 @@
                 <strong>vide</strong>, le <strong>terminal du poste</strong> permet d'y cloner un dépôt.
               }
             </p>
-          } @else {
-            <ul class="poste__projects">
-              @for (project of host.projects; track project.id) {
-                <li
-                  class="projet"
-                  [class.projet--active]="project.active"
-                  [style.borderLeftColor]="tone(host)?.solid"
-                >
-                  <div class="projet__main">
-                    <span class="projet__name">{{ project.name }}</span>
-                    @if (project.active) {
-                      <span class="badge badge--success">
-                        <mat-icon>bolt</mat-icon>
-                        Actif
-                      </span>
-                    }
-                    @if (project.liveTerminal) {
-                      <app-live-badge scope="host"></app-live-badge>
-                    }
-                    @if (!isHosted(host)) {
-                      <span class="projet__path poste__mono">{{ projectPathLabel(project) }}</span>
-                    }
-                  </div>
-                  <!-- PREMIÈRE DENSITÉ (F-76 / SF-76-02) : on voit qu'un agent attend quelque chose SANS
-                       RIEN OUVRIR. -->
-                  <app-terminal-preview
-                    class="projet__preview"
-                    [preview]="project.terminalPreview"
-                    density="card"
-                  ></app-terminal-preview>
-                  <div class="projet__side">
-                    @if (projectActivityLabel(project); as activity) {
-                      <span class="projet__activity">{{ activity }}</span>
-                    }
-                    <button
-                      mat-stroked-button
-                      type="button"
-                      (click)="openTerminal(project)"
-                      [attr.aria-label]="'Ouvrir le terminal de ' + project.name"
-                    >
-                      <mat-icon>terminal</mat-icon>
-                      Terminal
-                    </button>
-                  </div>
-                </li>
-              }
-            </ul>
           }
 
-          @if (!isHosted(host)) {
-            <!-- LA DÉCOUVERTE SANS LA CRÉATION (F-72 / SF-72-03) : on voit ce que la machine contient
-                 SANS que rien ne soit créé. En retrait et en gris (§5) : des dossiers, pas des projets. -->
-            @if (unopenedFolders(host); as unopened) {
-              @if (unopened.length > 0) {
-                <section class="poste__unopened">
-                  <p class="poste__unopened-title">
-                    Dossiers de la racine que vous n'avez pas encore ouverts
-                  </p>
-                  <ul class="poste__unopened-list">
-                    @for (folder of unopened; track folder.path) {
-                      <li>
-                        <button
-                          type="button"
-                          class="poste__unopened-item"
-                          [disabled]="openingFolder() !== null"
-                          (click)="openFolderAsProject(host, folder)"
-                          [attr.aria-label]="'Ouvrir un projet sur ' + folder.name"
-                          matTooltip="Ouvrir un projet sur ce dossier"
-                        >
-                          @if (openingFolder() === folder.path) {
-                            <mat-spinner diameter="14"></mat-spinner>
-                          } @else {
-                            <mat-icon>create_new_folder</mat-icon>
-                          }
-                          <span class="poste__mono">{{ folder.name }}</span>
-                        </button>
-                      </li>
-                    }
-                  </ul>
-                  @if (moreFolders(host); as more) {
-                    <!-- Une liste tronquée se DIT (SF-38-21). -->
-                    <p class="poste__unopened-more">{{ more }}</p>
-                  }
-                </section>
-              }
+          <!-- LA GRILLE (D2) : les tuiles se rangent sur plusieurs colonnes — vingt projets tiennent
+               sur un écran de portable. Un seul contenu central par tuile. -->
+          <div class="poste__grid">
+            @for (project of gridProjects(); track project.id) {
+              <app-forge-project-tile
+                [project]="project"
+                [hosted]="isHosted(host)"
+                (open)="openTerminal($event)"
+              ></app-forge-project-tile>
             }
 
-            <div class="poste__card-actions">
-              <!-- « Ajouter un projet », autant de fois qu'on veut, SANS JAMAIS RÉAPPAIRER (F-48). -->
-              <button
-                mat-stroked-button
-                type="button"
-                (click)="addProject(host)"
-                [attr.aria-label]="'Ajouter un projet à ' + host.name"
-                matTooltip="Choisir un dossier de la racine — aucun nom à saisir"
-              >
-                <mat-icon>add</mat-icon>
-                Ajouter un projet
-              </button>
-            </div>
-          }
+            @if (!isHosted(host) && online(host)) {
+              @if (unopenedCount(host); as unopened) {
+                <!-- LA TUILE FANTÔME (F-98 / SF-98-03) : ce que la machine contient et que vous n'avez
+                     pas encore ouvert, SANS rien créer (F-72). Un compte, pas une liste — la page ne
+                     grandit plus avec les trente dossiers d'un ~/dev. Pointillés, gris §5. -->
+                <div class="poste__ghost">
+                  <strong>
+                    {{ unopened }}{{ unopenedTruncated(host) ? '+' : '' }}
+                    {{ unopened > 1 || unopenedTruncated(host) ? 'dossiers non ouverts' : 'dossier non ouvert' }}
+                  </strong>
+                  @if (host.rootName) {
+                    <span>dans <span class="poste__mono">{{ host.rootName }}</span></span>
+                  }
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    class="poste__ghost-browse"
+                    (click)="addProject(host)"
+                    [attr.aria-label]="'Parcourir les dossiers de ' + host.name"
+                  >
+                    Parcourir
+                  </button>
+                </div>
+              }
+            }
+          </div>
         </div>
       }
 
@@ -704,9 +681,9 @@
             <ul class="poste__activity-list">
               @for (project of selectedActivity(); track project.id) {
                 <li>
-                  <span class="projet__name">{{ project.name }}</span>
+                  <span class="poste__activity-name">{{ project.name }}</span>
                   @if (projectActivityLabel(project); as activity) {
-                    <span class="projet__activity poste__mono">{{ activity }}</span>
+                    <span class="poste__activity-detail poste__mono">{{ activity }}</span>
                   }
                 </li>
               }

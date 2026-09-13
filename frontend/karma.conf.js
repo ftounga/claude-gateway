@@ -15,7 +15,8 @@ module.exports = function (config) {
     customLaunchers: {
       ChromeHeadlessNoSandbox: {
         base: 'ChromeHeadless',
-        flags: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
+        // Fenêtre d'un écran de portable (F-98) : les tests de mise en page mesurent à 1440 × 900.
+        flags: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--window-size=1440,900'],
       },
     },
     restartOnFileChange: false,

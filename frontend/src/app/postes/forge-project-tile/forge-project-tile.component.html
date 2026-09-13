@@ -1,0 +1,48 @@
+<article
+  class="projet"
+  [class.projet--awaiting]="center() === 'awaiting'"
+  [class.projet--active]="project().active"
+>
+  <header class="projet__head">
+    <span class="projet__name" [attr.title]="project().name">{{ project().name }}</span>
+    @if (project().liveTerminal) {
+      <!-- §11 : la même pastille que partout, le mot écrit. -->
+      <app-live-badge class="projet__live" scope="host"></app-live-badge>
+    }
+  </header>
+  @if (!hosted()) {
+    <span class="projet__path">{{ path() }}</span>
+  }
+
+  <!-- UN SEUL CONTENU CENTRAL. L'attente et les dernières lignes passent par le composant unique de
+       l'aperçu (§12) : il ÉCRIT « Attend votre autorisation » et la commande — jamais la couleur seule. -->
+  <div class="projet__center">
+    @if (center() === 'idle') {
+      <p class="projet__quiet">{{ idleLabel() }}</p>
+    } @else {
+      <app-terminal-preview [preview]="project().terminalPreview" density="card"></app-terminal-preview>
+    }
+  </div>
+
+  <footer class="projet__foot">
+    @if (project().active) {
+      <span class="badge badge--success projet__active">
+        <mat-icon aria-hidden="true">bolt</mat-icon>
+        Actif
+      </span>
+    }
+    @if (activity(); as last) {
+      <span class="projet__activity">{{ last }}</span>
+    }
+    <span class="projet__spacer"></span>
+    <button
+      mat-button
+      type="button"
+      class="projet__open"
+      (click)="open.emit(project())"
+      [attr.aria-label]="'Ouvrir le terminal de ' + project().name"
+    >
+      Ouvrir <mat-icon iconPositionEnd aria-hidden="true">arrow_forward</mat-icon>
+    </button>
+  </footer>
+</article>

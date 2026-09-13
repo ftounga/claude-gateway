@@ -70,14 +70,22 @@ import {
   MapFileDialogData,
 } from './map-file-dialog/map-file-dialog.component';
 import { ForgeRailComponent } from './forge-rail/forge-rail.component';
+import { ForgeProjectTileComponent } from './forge-project-tile/forge-project-tile.component';
 import {
   ForgeRow,
   HOSTED_REF,
   awaitingCount,
   defaultHostRef,
+  filterMatch,
   groupHosts,
   hostRef,
 } from './forge-fleet';
+import {
+  FORGE_PROJECT_SORTS,
+  ForgeProjectSort,
+  filterProjects,
+  sortProjects,
+} from './forge-projects';
 import {
   FORGE_TAB_LABELS,
   ForgeTab,
@@ -121,12 +129,6 @@ export const MAX_SHOWN_GAINS = 3;
  * ferait un tableau de bord que personne ne lit.
  */
 export const MAX_SHOWN_CONSTATS = 3;
-
-/**
- * Liste vide **partagée** : une carte sans dossier connu rend toujours la <b>même</b> référence.
- * Un `[]` neuf à chaque appel changerait de référence à chaque cycle de détection.
- */
-const EMPTY_FOLDERS: HostFolder[] = [];
 
 /**
  * La carte « Hébergé » **vide** (F-72 / SF-72-04). Elle est toujours à l'écran depuis qu'elle porte
@@ -178,6 +180,7 @@ const EMPTY_HOSTED: RunnerHostOverview = {
     NgTemplateOutlet,
     RouterLink,
     ForgeRailComponent,
+    ForgeProjectTileComponent,
     HostBadgeComponent,
     LiveBadgeComponent,
     MissionBadgeComponent,
@@ -344,9 +347,6 @@ export class PostesComponent implements OnInit {
   /** Postes dont l'intégrité a déjà été lue dans cette page. */
   private readonly integritesRead = new Set<string>();
 
-  /** Chemin dont l'ouverture est en vol : la ligne se verrouille le temps de l'aller-retour. */
-  readonly openingFolder = signal<string | null>(null);
-
   /** Création en cours depuis la carte « Hébergé » — dépôt GitHub ou archive (F-72 / SF-72-04). */
   readonly creating = signal(false);
 
@@ -371,13 +371,6 @@ export class PostesComponent implements OnInit {
 
   /** Poste dont le **terminal Teams** est en cours d'ouverture (F-89 / SF-89-03). */
   readonly openingTeamsHostId = signal<string | null>(null);
-
-  /**
-   * Nombre de dossiers non ouverts montrés sur une carte. Huit tient dans une carte sans la faire
-   * dérouler ; en afficher trente la rendrait illisible — et la lisibilité est le **seul** critère
-   * ici : c'est le poste qui est facturé (F-65), pas les projets.
-   */
-  readonly maxUnopenedShown = 8;
 
   /**
    * Des postes existent, mais **toutes** leurs missions sont clôturées. La vue principale est vide
@@ -806,85 +799,49 @@ export class PostesComponent implements OnInit {
   }
 
   /**
-   * **Ouvre un projet sur un dossier non encore ouvert**, d'un clic depuis la carte.
+   * **Combien de dossiers de la racine ce poste n'a pas encore ouverts** — ce que dit la tuile
+   * fantôme (F-98 / SF-98-03), ou `null` tant que la racine n'a pas été lue.
    *
-   * <p>C'est le même geste que dans l'explorateur, sans l'explorateur : le dossier est déjà sous les
-   * yeux, il n'y a rien à parcourir.</p>
+   * <p>La tuile remplace la liste (F-72 / SF-72-03) : un <code>~/dev</code> de consultant contient
+   * vingt ou trente dossiers, et les lister faisait grandir la page. Le geste d'ouverture reste
+   * celui de l'explorateur « Ajouter un projet », à un clic. Ce qui est <b>exclu</b> (<code>
+   * .runnerignore</code>, bruit de construction, dossiers cachés) est écarté par le runner et la
+   * gateway avant d'arriver : l'écran n'ajoute aucun filtre.</p>
    */
-  openFolderAsProject(host: RunnerHostOverview, folder: HostFolder): void {
+  unopenedCount(host: RunnerHostOverview): number | null {
     const hostId = host.id;
-    if (hostId === null || this.openingFolder() !== null) {
-      return;
-    }
-    this.openingFolder.set(folder.path);
-    this.atelier.openHostProject(hostId, folder.path).subscribe({
-      next: (workspace) => {
-        this.openingFolder.set(null);
-        this.snackBar.open(
-          `Projet « ${workspace.name} » ouvert. Rien n'a été installé sur la machine.`,
-          'Fermer',
-          { duration: 4000, panelClass: 'snack-info' },
-        );
-        this.forgetFolders(hostId);
-        this.load(false);
-      },
-      error: (err: unknown) => {
-        this.openingFolder.set(null);
-        this.notifyFailure(err, this.openErrorMessage(err));
-        // L'écran était peut-être en retard — un projet créé dans un autre onglet. On relit plutôt
-        // que de le laisser mentir, sans quoi le même refus se rejouerait.
-        this.forgetFolders(hostId);
-        this.load(false);
-      },
-    });
+    const folders = hostId === null ? undefined : this.rootFolders()[hostId];
+    return folders ? folders.filter((folder) => !folder.used).length : null;
   }
 
-  /**
-   * Les dossiers de la racine **que ce poste n'a pas encore ouverts**, tronqués au seuil d'affichage.
-   *
-   * <p>Ce qui est <b>exclu</b> ne passe pas par ici : <code>.runnerignore</code>, le bruit de
-   * construction (SF-38-21) et les dossiers cachés sont écartés <b>par le runner et la gateway</b>,
-   * avant d'arriver. L'écran n'ajoute aucun filtre — ce qui est exclu ne quitte jamais la machine.</p>
-   */
-  unopenedFolders(host: RunnerHostOverview): HostFolder[] {
-    const hostId = host.id;
-    return hostId === null ? EMPTY_FOLDERS : this.unopenedByHost()[hostId]?.shown ?? EMPTY_FOLDERS;
+  /** Vrai si la machine a tronqué sa liste : le compte est un minimum, et la tuile le dit (SF-38-21). */
+  unopenedTruncated(host: RunnerHostOverview): boolean {
+    return host.id !== null && this.rootTruncated()[host.id] === true;
   }
 
+  // ------------------------------------------------ la grille des projets (F-98 / SF-98-03)
+
+  /** Les tris proposés, dans l'ordre du sélecteur. */
+  readonly projectSorts = FORGE_PROJECT_SORTS;
+
+  /** Le tri de la grille : « Actifs d'abord » par défaut. Non retenu — il ne survit pas à la page. */
+  readonly projectSort = signal<ForgeProjectSort>('actifs');
+
   /**
-   * Ce que chaque carte a à montrer, **calculé une fois** par lecture.
-   *
-   * <p>Un signal calculé, et non un filtre appelé depuis le gabarit : une méthode qui rend un
-   * nouveau tableau à chaque appel change de <b>référence</b> à chaque cycle de détection, ce
-   * qu'Angular signale en mode développement (NG0100). Ici la référence est stable tant que les
-   * dossiers ne changent pas.</p>
+   * Vrai quand le filtre de la colonne ne retient le poste ouvert **que par ses projets** : la grille
+   * ne montre alors que ceux qui correspondent — c'est eux qu'on cherchait.
    */
-  private readonly unopenedByHost = computed(() => {
-    const truncated = this.rootTruncated();
-    const byHost: Record<string, { shown: HostFolder[]; more: string | null }> = {};
-    for (const [hostId, folders] of Object.entries(this.rootFolders())) {
-      const free = folders.filter((folder) => !folder.used);
-      const shown = free.slice(0, this.maxUnopenedShown);
-      const hidden = free.length - shown.length;
-      const more = hidden > 0
-        ? `et ${hidden} autre${hidden > 1 ? 's' : ''} — ouvrez-les depuis « Ajouter un projet ».`
-        : truncated[hostId]
-          ? 'La machine en contient davantage : la liste a été tronquée.'
-          : null;
-      byHost[hostId] = { shown, more };
-    }
-    return byHost;
+  readonly gridFiltered = computed(() => {
+    const filter = this.filter();
+    return filter.trim().length > 0 && filterMatch(this.selectedHost(), filter) !== 'host';
   });
 
-  /**
-   * Ce qu'on ne montre pas, **dit** : le reste de la liste, ou la troncature de la machine. Une
-   * liste incomplète se dit (SF-38-21) — un dossier manquant en silence, ce sont dix minutes à
-   * chercher ce que le système savait ne pas avoir envoyé.
-   */
-  moreFolders(host: RunnerHostOverview): string | null {
-    const hostId = host.id;
-    return hostId === null ? null : this.unopenedByHost()[hostId]?.more ?? null;
-  }
+  /** Les tuiles du poste ouvert, filtrées si besoin, dans l'ordre du tri. */
+  readonly gridProjects = computed<HostProjectSummary[]>(() => {
+    const projects = this.selectedHost().projects;
+    const shown = this.gridFiltered() ? filterProjects(projects, this.filter()) : projects;
+    return sortProjects(shown, this.projectSort());
+  });
 
   /**
    * Relit la racine d'un poste **connecté**, une seule fois par page.
@@ -1129,19 +1086,6 @@ export class PostesComponent implements OnInit {
       delete next[hostId];
       return next;
     });
-  }
-
-  /** Le message d'échec d'une ouverture. Sur un **409**, celui du serveur est repris tel quel. */
-  private openErrorMessage(err: unknown): string {
-    if (err instanceof HttpErrorResponse) {
-      if (err.status === 409 && typeof err.error?.message === 'string') {
-        return err.error.message;
-      }
-      if (err.status === 404) {
-        return 'Poste introuvable.';
-      }
-    }
-    return "Le projet n'a pas pu être ouvert. Veuillez réessayer.";
   }
 
   // ------------------------ les sources sans machine (F-72 / SF-72-04) ------------------------
@@ -1495,11 +1439,6 @@ export class PostesComponent implements OnInit {
    */
   hostStateLabel(host: RunnerHostOverview): string {
     return this.presence.label(host.id, host.connected, host.lastSeenAt);
-  }
-
-  /** Chemin du projet sous la racine du poste — la racine elle-même quand il est vide. */
-  projectPathLabel(project: HostProjectSummary): string {
-    return project.projectPath?.trim() ? project.projectPath : 'la racine';
   }
 
   /** Ce qui tourne sur cette machine, ou `null` quand il n'y a rien à dire. */
