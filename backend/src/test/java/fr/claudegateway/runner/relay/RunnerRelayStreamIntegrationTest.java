@@ -146,7 +146,7 @@ class RunnerRelayStreamIntegrationTest {
         RunnerCallDispatcher slowDispatcher(RunnerRegistry registry, ObjectMapper objectMapper) {
             return new RunnerCallDispatcher(registry, objectMapper, (id, shell) -> { },
                     (id, version) -> { }, new fr.claudegateway.runner.ServedRunnerVersion("", ""),
-                    5_000L) {
+                    fr.claudegateway.runner.RunnerLivenessStubs.alwaysAlive(), 5_000L) {
                 @Override
                 public RunnerCallResult call(fr.claudegateway.runner.channel.RunnerTarget target,
                         String callId, String tool,

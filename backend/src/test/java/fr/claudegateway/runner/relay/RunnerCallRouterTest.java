@@ -26,6 +26,7 @@ import org.springframework.beans.factory.ObjectProvider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import fr.claudegateway.runner.RunnerLiveness;
 import fr.claudegateway.runner.channel.RemoteRunnerNode;
 import fr.claudegateway.runner.channel.RunnerCallDispatcher;
 import fr.claudegateway.runner.channel.RunnerCallResult;
@@ -53,6 +54,8 @@ class RunnerCallRouterTest {
     private RunnerRelayClient relayClient;
     @Mock
     private ObjectProvider<RunnerRelayClient> relayProvider;
+    @Mock
+    private RunnerLiveness liveness;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final UUID hostId = UUID.randomUUID();
@@ -69,10 +72,12 @@ class RunnerCallRouterTest {
         properties.setPort(8081);
         when(relayProvider.getIfAvailable()).thenReturn(relayClient);
         when(relayProvider.getObject()).thenReturn(relayClient);
+        // Par défaut le poste bat : les cas « battement périmé » (F-97) le disent explicitement.
+        when(liveness.isAliveForRouting(any())).thenReturn(true);
     }
 
     private RunnerCallRouter router() {
-        return new RunnerCallRouter(registry, dispatcher, properties, relayProvider);
+        return new RunnerCallRouter(registry, dispatcher, properties, relayProvider, liveness);
     }
 
     private RunnerCallResult ok() {
@@ -153,6 +158,53 @@ class RunnerCallRouterTest {
 
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE);
         verifyNoInteractions(relayClient);
+    }
+
+    // ------------------------------------------------- le battement fait foi (F-97 / SF-97-01)
+
+    @Test
+    void aSilentHostIsNeverRelayedEvenWithAKnownPeerAddress() {
+        // La présence annoncée par un pod pair ne prouve pas que le runner vit : sans battement frais,
+        // refus immédiat, aucun saut HTTP.
+        when(registry.findLocal(hostId)).thenReturn(Optional.empty());
+        when(registry.findRemote(hostId))
+                .thenReturn(Optional.of(new RemoteRunnerNode("node-2", PEER)));
+        when(registry.isConnected(hostId)).thenReturn(true);
+        when(liveness.isAliveForRouting(hostId)).thenReturn(false);
+
+        RunnerCallResult result = router().call(target, "toolu_7", "bash",
+                objectMapper.createObjectNode(), 30_000L);
+
+        assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.RUNNER_UNAVAILABLE);
+        verifyNoInteractions(relayClient);
+        verify(dispatcher, never()).call(any(), anyString(), anyString(), any(), anyLong(), any());
+    }
+
+    @Test
+    void aSilentHostConnectedElsewhereWithoutAddressIsUnavailable() {
+        when(registry.findLocal(hostId)).thenReturn(Optional.empty());
+        when(registry.findRemote(hostId)).thenReturn(Optional.empty());
+        when(registry.isConnected(hostId)).thenReturn(true);
+        when(liveness.isAliveForRouting(hostId)).thenReturn(false);
+
+        RunnerCallResult result = router().call(target, "toolu_8", "list_files",
+                objectMapper.createObjectNode(), 30_000L);
+
+        assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.RUNNER_UNAVAILABLE);
+    }
+
+    @Test
+    void anUnreadableHeartbeatKeepsTheRelay() {
+        // Le doute ne refuse pas : une base illisible garde le chemin d'avant.
+        when(registry.findLocal(hostId)).thenReturn(Optional.empty());
+        when(registry.findRemote(hostId))
+                .thenReturn(Optional.of(new RemoteRunnerNode("node-2", PEER)));
+        when(liveness.isAliveForRouting(hostId)).thenThrow(new IllegalStateException("base"));
+        when(relayClient.call(any(), any(), anyString(), anyString(), any(), anyLong(), any()))
+                .thenReturn(ok());
+
+        assertThat(router().call(target, "toolu_9", "read_file",
+                objectMapper.createObjectNode(), 30_000L).ok()).isTrue();
     }
 
     @Test

@@ -119,18 +119,35 @@ class RunnerStatusApiIntegrationTest {
     }
 
     @Test
-    void statusReflectsRegisteredConnection() throws Exception {
-        UUID tokenId = UUID.randomUUID();
+    void statusReflectsAFreshHeartbeat() throws Exception {
+        RunnerToken issued = tokenService.issue(admin.getId(), adminHost.getId(), "poste").token();
+        issued.setLastSeenAt(OffsetDateTime.now().minusSeconds(10));
+        runnerTokenRepository.save(issued);
+
+        mockMvc.perform(get(statusUrl(adminWorkspace.getId())).contextPath("/api")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.connected").value(true));
+    }
+
+    @Test
+    void aRegisteredSocketWithoutARecentHeartbeatIsOffline() throws Exception {
+        // F-97 / SF-97-01 — le constat du PO : socket à moitié ouverte (Wi-Fi coupé), toujours
+        // enregistrée, battement arrêté depuis 5 min. Avant : « connecté » jusqu'à 15 min.
+        RunnerToken issued = tokenService.issue(admin.getId(), adminHost.getId(), "poste").token();
+        issued.setLastSeenAt(OffsetDateTime.now().minusMinutes(5));
+        runnerTokenRepository.save(issued);
         runnerRegistry.register(new RunnerConnection(adminHost.getId(), admin.getId(),
-                tokenId, "node-test", OffsetDateTime.now()));
+                issued.getId(), "node-test", OffsetDateTime.now()));
         try {
             mockMvc.perform(get(statusUrl(adminWorkspace.getId())).contextPath("/api")
                             .header("Authorization", "Bearer " + adminToken))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.connected").value(true));
+                    .andExpect(jsonPath("$.connected").value(false))
+                    .andExpect(jsonPath("$.lastSeenAt").exists());
         } finally {
             // Nettoyage : le registre in-memory est un singleton partagé entre tests.
-            runnerRegistry.unregister(adminHost.getId(), tokenId);
+            runnerRegistry.unregister(adminHost.getId(), issued.getId());
         }
     }
 

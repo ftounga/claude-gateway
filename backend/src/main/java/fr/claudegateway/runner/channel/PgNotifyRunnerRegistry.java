@@ -28,6 +28,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import fr.claudegateway.runner.RunnerLiveness;
+
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 
@@ -76,6 +78,7 @@ public class PgNotifyRunnerRegistry implements RunnerRegistry {
     private final String selfAddress;
     private final long announceMs;
     private final long staleAfterMs;
+    private final RunnerLiveness liveness;
 
     /** Connexions dont la socket vit sur CE nœud. */
     private final Map<UUID, RunnerConnection> local = new ConcurrentHashMap<>();
@@ -90,7 +93,9 @@ public class PgNotifyRunnerRegistry implements RunnerRegistry {
             @Value("${app.runner.relay.self-address:}") String selfHost,
             @Value("${app.runner.relay.port:8081}") int relayPort,
             @Value("${app.runner.presence.announce-ms:15000}") long announceMs,
-            @Value("${app.runner.presence.stale-after-ms:45000}") long staleAfterMs) {
+            @Value("${app.runner.presence.stale-after-ms:45000}") long staleAfterMs,
+            RunnerLiveness liveness) {
+        this.liveness = liveness;
         this.dataSource = dataSource;
         this.objectMapper = objectMapper;
         this.selfAddress = selfHost == null || selfHost.isBlank()
@@ -192,17 +197,48 @@ public class PgNotifyRunnerRegistry implements RunnerRegistry {
     }
 
     /** Ré-annonce des connexions locales + purge des présences distantes périmées. */
-    private void announceAndExpire() {
+    void announceAndExpire() {
         try {
             remote.forEach((hostId, presence) -> {
                 if (isStale(presence)) {
                     remote.remove(hostId, presence);
                 }
             });
-            local.keySet().forEach(hostId -> notifyEvent(EVENT_CONNECT, hostId));
+            announceLiveLocalConnections();
         } catch (RuntimeException ex) {
             // Le planificateur ne doit jamais s'arrêter sur une erreur ponctuelle.
             log.warn("Ré-annonce de présence runner en échec : {}", ex.getMessage());
+        }
+    }
+
+    /**
+     * Ré-émet {@code CONNECT} pour chaque connexion locale <b>dont le poste bat encore</b> (F-97 /
+     * SF-97-01).
+     *
+     * <p>Avant F-97, toute connexion locale était ré-annoncée toutes les 15 s : une socket à moitié
+     * ouverte — poste en veille, Wi-Fi coupé — entretenait ainsi sa propre présence chez les pods
+     * pairs, qui continuaient de croire le poste joignable. Une connexion au battement périmé n'est
+     * plus annoncée ; sa présence distante expire d'elle-même ({@code stale-after-ms}), et le
+     * balayage du handler ferme la socket.</p>
+     *
+     * <p><b>Le doute annonce</b> : une fraîcheur illisible garde le comportement d'avant.</p>
+     */
+    private void announceLiveLocalConnections() {
+        local.values().forEach(connection -> {
+            if (alive(connection)) {
+                notifyEvent(EVENT_CONNECT, connection.hostId());
+            } else {
+                log.debug("Présence non ré-annoncée : battement périmé (poste={})",
+                        connection.hostId());
+            }
+        });
+    }
+
+    private boolean alive(RunnerConnection connection) {
+        try {
+            return liveness.isAlive(connection.userId(), connection.hostId());
+        } catch (RuntimeException ex) {
+            return true;
         }
     }
 
@@ -267,7 +303,7 @@ public class PgNotifyRunnerRegistry implements RunnerRegistry {
             if (EVENT_SYNC_REQUEST.equals(event)) {
                 // Un pod vient de démarrer : on lui rend nos connexions locales. On ne rediffuse
                 // JAMAIS le SYNC_REQUEST lui-même — sinon deux pods s'en renverraient sans fin.
-                local.keySet().forEach(hostId -> notifyEvent(EVENT_CONNECT, hostId));
+                announceLiveLocalConnections();
                 return;
             }
             UUID hostId = UUID.fromString(node.path("hostId").asText());

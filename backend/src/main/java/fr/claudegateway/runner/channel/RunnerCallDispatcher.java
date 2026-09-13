@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import fr.claudegateway.runner.RunnerIdentity;
+import fr.claudegateway.runner.RunnerLiveness;
 
 /**
  * Routeur d'appels d'outils vers le runner d'un poste (F-38 / SF-38-05, contrat de messages §7).
@@ -81,6 +82,7 @@ public class RunnerCallDispatcher {
     private final fr.claudegateway.runner.host.RunnerShellRecorder shellRecorder;
     private final fr.claudegateway.runner.host.RunnerVersionRecorder versionRecorder;
     private final fr.claudegateway.runner.ServedRunnerVersion servedVersion;
+    private final RunnerLiveness liveness;
     private final long graceMs;
 
     private final Map<UUID, RunnerOutbound> outbound = new ConcurrentHashMap<>();
@@ -91,12 +93,14 @@ public class RunnerCallDispatcher {
             fr.claudegateway.runner.host.RunnerShellRecorder shellRecorder,
             fr.claudegateway.runner.host.RunnerVersionRecorder versionRecorder,
             fr.claudegateway.runner.ServedRunnerVersion servedVersion,
+            RunnerLiveness liveness,
             @Value("${app.runner.call.grace-ms:5000}") long graceMs) {
         this.registry = registry;
         this.objectMapper = objectMapper;
         this.shellRecorder = shellRecorder;
         this.versionRecorder = versionRecorder;
         this.servedVersion = servedVersion;
+        this.liveness = liveness;
         this.graceMs = graceMs > 0 ? graceMs : DEFAULT_GRACE_MS;
     }
 
@@ -201,11 +205,21 @@ public class RunnerCallDispatcher {
     public RunnerCallResult call(RunnerTarget target, String callId, String tool, JsonNode input,
             long timeoutMs, java.util.function.Consumer<String> onChunk) {
         UUID hostId = target.hostId();
-        if (registry.findLocal(hostId).isEmpty()) {
-            // isConnected() peut être vrai cross-replica : la socket vit alors sur l'autre pod.
-            return RunnerCallResult.backendError(registry.isConnected(hostId)
-                    ? RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE
-                    : RunnerErrorCodes.RUNNER_UNAVAILABLE);
+        java.util.Optional<RunnerConnection> local = registry.findLocal(hostId);
+        if (local.isEmpty()) {
+            // isConnected() peut être vrai cross-replica : la socket vit alors sur l'autre pod —
+            // à condition que le poste batte encore (F-97 / SF-97-01).
+            return RunnerCallResult.backendError(
+                    registry.isConnected(hostId) && aliveForRouting(hostId)
+                            ? RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE
+                            : RunnerErrorCodes.RUNNER_UNAVAILABLE);
+        }
+        if (!alive(local.get())) {
+            // F-97 / SF-97-01 : une socket enregistrée ne prouve pas que le runner vit. Poste muet
+            // depuis plus de `stale-after` → refus immédiat, sans émettre ni attendre le délai
+            // d'appel. Le balayage du handler fermera la socket.
+            log.debug("Appel refusé : battement périmé (poste={}, outil={})", hostId, tool);
+            return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_UNAVAILABLE);
         }
         RunnerOutbound session = outbound.get(hostId);
         if (session == null || !session.isOpen()) {
@@ -515,6 +529,30 @@ public class RunnerCallDispatcher {
     }
 
     // ------------------------------------------------------------------ outils
+
+    /**
+     * Le poste de cette connexion locale bat-il encore (F-97 / SF-97-01) ? <b>Le doute ne refuse
+     * pas</b> : une lecture en échec laisse l'appel suivre son chemin d'avant, borné par son délai.
+     */
+    private boolean alive(RunnerConnection connection) {
+        try {
+            return liveness.isAlive(connection.userId(), connection.hostId());
+        } catch (RuntimeException ex) {
+            log.debug("Fraîcheur du battement illisible (poste={}) : appel maintenu",
+                    connection.hostId());
+            return true;
+        }
+    }
+
+    /** Même question quand la socket vit ailleurs : seul le poste est connu. Le doute ne refuse pas. */
+    private boolean aliveForRouting(UUID hostId) {
+        try {
+            return liveness.isAliveForRouting(hostId);
+        } catch (RuntimeException ex) {
+            log.debug("Fraîcheur du battement illisible (poste={}) : présence distante crue", hostId);
+            return true;
+        }
+    }
 
     private Set<String> capabilitiesOf(UUID hostId) {
         return capabilities.getOrDefault(hostId, DEFAULT_CAPABILITIES);

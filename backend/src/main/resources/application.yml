@@ -635,9 +635,11 @@ app:
       # d'affichage : elle ne résout aucun fichier, ce sont les chemins ci-dessus qui le font.
       version: ${APP_RUNNER_PROXY_RELAY_VERSION:v0.11.0}
     heartbeat:
-      # Fenêtre de fraîcheur du dernier heartbeat pour le statut « runner connecté » : au-delà, le
-      # runner est considéré déconnecté si le registre ne le voit pas. Adossé à `last_seen_at` (base
-      # partagée), ce critère garde le statut correct même quand la socket vit sur l'autre replica.
+      # Fenêtre de fraîcheur du dernier heartbeat : au-delà, le poste est hors ligne. F-97 / SF-97-01 :
+      # le battement FAIT FOI — statut, routage des appels, ré-annonce de présence et balayage des
+      # sockets muettes (`app.runner.websocket.sweep-ms`, défaut 15 s) lisent tous ce seul critère ;
+      # une socket enregistrée ne suffit plus. Adossé à `last_seen_at` (base partagée), il reste juste
+      # quel que soit le replica qui porte la socket.
       stale-after: ${APP_RUNNER_HEARTBEAT_STALE_AFTER:PT90S}
     presence:
       # F-38 / SF-38-12 : convergence de la présence entre pods (registre `pg-notify` uniquement).
