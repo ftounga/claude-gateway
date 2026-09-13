@@ -609,6 +609,11 @@ poste ouvert.
 - **En-tête du client** : la liaison Teams (`app-teams-link-badge`, §14) quand le client a un terminal
   Teams et une machine en ligne ; onglets Conversations et Réunions : la porte « Ouvrir la
   conversation » (F-106 / SF-106-03).
+- **Un espace non souscrit** (F-106 / SF-106-05) ouvre `app-space-pitch` : carte blanche centrée
+  (760 px max, filet `--cg-divider`, rayon 12 px), icône d'espace `--cg-orange`, titre Space Grotesk
+  700 24 px, trois points sur `--cg-bg`, et l'essai en pied — « J'ai un code d'essai »
+  (`mat-flat-button color="primary"`) et « Voir les formules » (`mat-stroked-button`). **Aucun
+  montant** ; jamais un message d'erreur.
 - **Une personne de l'annuaire n'a pas de ton d'identité** : les dix tons du §9 restent réservés aux
   machines ; elle porte l'icône `person` en texte secondaire.
 

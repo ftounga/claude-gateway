@@ -53,22 +53,8 @@
       <mat-spinner diameter="40"></mat-spinner>
     </div>
   } @else if (error() === 'not-entitled') {
-    <mat-card class="postes__notice vigie__not-entitled">
-      <mat-icon>radar</mat-icon>
-      <div>
-        <h2>La Vigie n'est pas ouverte sur ce compte</h2>
-        <p>
-          La Vigie suit ce que l'organisation de vos clients attend de vous : le Radar, les
-          conversations Teams, les réunions et l'annuaire. Elle s'ouvre avec l'option Teams.
-        </p>
-        <div class="postes__notice-actions">
-          <a mat-flat-button color="primary" [routerLink]="billingRoute">Voir les formules</a>
-          <a mat-stroked-button [routerLink]="billingRoute" [fragment]="accessCodeFragment">
-            Où saisir mon code
-          </a>
-        </div>
-      </div>
-    </mat-card>
+    <!-- UN ESPACE NON SOUSCRIT (F-106 / SF-106-05) : une présentation avec l'essai, jamais une erreur. -->
+    <app-space-pitch class="vigie__not-entitled" space="VIGIE"></app-space-pitch>
   } @else if (error() === 'forbidden') {
     <mat-card class="postes__notice vigie__forbidden">
       <mat-icon>lock</mat-icon>

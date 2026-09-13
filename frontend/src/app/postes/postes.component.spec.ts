@@ -523,7 +523,9 @@ describe('PostesComponent', () => {
     build();
 
     expect(component.error()).toBe('forbidden');
-    expect(text()).toContain('La vue des postes fait partie de la Forge');
+    // F-106 / SF-106-05 : la présentation de la Forge, avec l'essai — jamais une erreur.
+    expect(text()).toContain('La Forge : livrer sur la machine de vos clients');
+    expect(text()).toContain("J'ai un code d'essai");
 
     // Un refus d'accès ne se répare pas en relisant : le sondage s'arrête.
     tick(POSTES_REFRESH_MS * 3);
@@ -2055,9 +2057,9 @@ describe('PostesComponent', () => {
       build();
 
       expect(text()).toContain("code d'accès");
-      expect(text()).toContain('souscrire');
+      expect(text()).toContain('Voir les formules');
       const link = (fixture.nativeElement as HTMLElement)
-        .querySelector('.postes__notice-actions a') as HTMLAnchorElement;
+        .querySelector('.space-pitch__code') as HTMLAnchorElement;
       expect(link.getAttribute('href')).toBe('/billing#code-acces');
     });
   });
