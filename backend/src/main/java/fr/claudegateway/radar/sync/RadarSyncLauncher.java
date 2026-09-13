@@ -48,6 +48,8 @@ public class RadarSyncLauncher {
 
     public static final String COLLECT = "teams_radar_collect";
     public static final long COLLECT_TIMEOUT_MS = 20_000L;
+    /** Curseurs transmis au plus : les plus récents. */
+    static final int MAX_CURSORS = 2_000;
 
     private static final Logger log = LoggerFactory.getLogger(RadarSyncLauncher.class);
 
@@ -55,18 +57,23 @@ public class RadarSyncLauncher {
     private final RadarSyncRepository syncs;
     private final RadarRegistry registry;
     private final RadarRunnerCalls calls;
+    private final RadarSyncCursorRepository cursors;
+    private final RadarThreadRuleRepository rules;
     private final RadarSyncProperties properties;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactions;
     private final Clock clock;
 
     public RadarSyncLauncher(RadarHostSettingsRepository settings, RadarSyncRepository syncs, RadarRegistry registry,
-            RadarRunnerCalls calls, RadarSyncProperties properties, ObjectMapper objectMapper,
-            PlatformTransactionManager transactionManager, Clock clock) {
+            RadarRunnerCalls calls, RadarSyncCursorRepository cursors, RadarThreadRuleRepository rules,
+            RadarSyncProperties properties, ObjectMapper objectMapper, PlatformTransactionManager transactionManager,
+            Clock clock) {
         this.settings = settings;
         this.syncs = syncs;
         this.registry = registry;
         this.calls = calls;
+        this.cursors = cursors;
+        this.rules = rules;
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.transactions = new TransactionTemplate(transactionManager);
@@ -97,6 +104,27 @@ public class RadarSyncLauncher {
         input.put("trigger", trigger.name());
         input.put("first_sync", firstSync);
         input.put("window_from", windowFrom.toInstant().toString());
+        // SF-100-03 : où en est chaque fil, ce que l'utilisateur a écarté ou demandé de lire — du poste seul.
+        var cursorArray = input.putArray("cursors");
+        cursors.findByUserIdAndHostIdAndSourceOrderByCursorAtDesc(scope.userId(), scope.hostId(),
+                RadarSyncCursor.SOURCE_TEAMS, org.springframework.data.domain.PageRequest.of(0, MAX_CURSORS))
+                .forEach(cursor -> {
+                    ObjectNode node = cursorArray.addObject();
+                    node.put("ref", cursor.getConversationRef());
+                    if (cursor.getKind() != null) {
+                        node.put("kind", cursor.getKind());
+                    }
+                    node.put("at", cursor.getCursorAt().toInstant().toString());
+                });
+        var ignored = input.putArray("ignored");
+        var readChannels = input.putArray("read_channels");
+        rules.findByUserIdAndHostIdOrderByCreatedAtDesc(scope.userId(), scope.hostId()).forEach(rule -> {
+            if (rule.getRule() == RadarThreadRule.Rule.IGNORE) {
+                ignored.add(rule.getConversationRef());
+            } else {
+                readChannels.add(rule.getConversationRef());
+            }
+        });
 
         RunnerCallResult result = calls.call(scope, COLLECT, input, COLLECT_TIMEOUT_MS);
         if (!result.ok()) {

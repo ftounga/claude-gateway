@@ -54,9 +54,24 @@ public final class NetworkObserver {
     /** Chemins de fichiers retenus au plus : au-delà, les nouveaux sont ignorés. */
     public static final int MAX_FILE_PATHS = 200;
 
+    /** Sessions des cadres et workers Microsoft écoutés (F-100 / SF-100-03) : seules leurs réponses entrent. */
+    private final java.util.Set<String> frameSessions = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /**
+     * Où l'écoute d'une cible attachée est activée : <b>jamais</b> sur le fil de la socket, qui est le seul
+     * à pouvoir délivrer la réponse de la commande.
+     */
+    private java.util.concurrent.Executor executor;
+    private boolean framesObserved;
+
     public NetworkObserver(CdpConnection connection, TeamsAdapter adapter) {
+        this(connection, adapter, null);
+    }
+
+    /** @param executor où activer l'écoute d'une cible attachée ; {@code null} : un fil de fond dédié */
+    NetworkObserver(CdpConnection connection, TeamsAdapter adapter, java.util.concurrent.Executor executor) {
         this.connection = connection;
         this.adapter = adapter;
+        this.executor = executor;
     }
 
     /**
@@ -66,7 +81,7 @@ public final class NetworkObserver {
      */
     public void start() {
         connection.send(CdpCommands.NETWORK_ENABLE, mapper.createObjectNode());
-        connection.onEvent(RESPONSE_RECEIVED, this::onResponse);
+        connection.onSessionEvent(RESPONSE_RECEIVED, this::onResponse);
     }
 
     /**
@@ -79,13 +94,26 @@ public final class NetworkObserver {
      * ne sont jamais observés. Le filtre est ici, au moment où le cadre s'annonce, et il refait le
      * même jugement que les gestes : {@link MicrosoftDomains#isAllowed(String)}.</p>
      */
-    public void observeFrames() {
+    public synchronized void observeFrames() {
+        if (framesObserved) {
+            return; // une fois par liaison : la synchro du soir le demande à chaque passage
+        }
+        framesObserved = true;
+        if (executor == null) {
+            // Créé seulement quand l'observation des cadres est demandée : un volet qui ne s'en sert pas
+            // ne paie aucun fil de plus.
+            executor = java.util.concurrent.Executors.newSingleThreadExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "teams-cadres");
+                thread.setDaemon(true);
+                return thread;
+            });
+        }
+        connection.onSessionEvent(ATTACHED_TO_TARGET, (parent, params) -> onAttached(params));
         ObjectNode params = mapper.createObjectNode();
         params.put("autoAttach", true);
         params.put("waitForDebuggerOnStart", false);
         params.put("flatten", true);
         connection.send(CdpCommands.SET_AUTO_ATTACH, params);
-        connection.onEvent(ATTACHED_TO_TARGET, this::onAttached);
     }
 
     private void onAttached(JsonNode params) {
@@ -94,20 +122,46 @@ public final class NetworkObserver {
         }
         String url = ObservedResponse.withoutQuery(params.path("targetInfo").path("url").asText(""));
         // §4.8 : un cadre ou un worker hors liste n'est pas attaché. Le refus est le défaut.
-        if (!url.isEmpty() && MicrosoftDomains.isAllowed(url)) {
+        if (url.isEmpty() || !MicrosoftDomains.isAllowed(url)) {
+            return;
+        }
+        synchronized (this) {
             attachedFrames.add(url);
         }
+        String sessionId = params.path("sessionId").asText("");
+        if (sessionId.isEmpty()) {
+            return;
+        }
+        // F-100 / SF-100-03 : un cadre ou un worker ne parle pas sur la session de l'onglet. Son réseau
+        // est écouté SUR SA SESSION — les réponses du lecteur Stream intégré, du service worker —, et ses
+        // corps sont demandés sur la même session. Hors liste, rien de tout cela.
+        frameSessions.add(sessionId);
+        java.util.concurrent.Executor runOn;
+        synchronized (this) {
+            runOn = executor == null ? Runnable::run : executor;
+        }
+        runOn.execute(() -> {
+            try {
+                connection.send(sessionId, CdpCommands.NETWORK_ENABLE, mapper.createObjectNode());
+            } catch (RuntimeException e) {
+                frameSessions.remove(sessionId); // cible déjà partie
+            }
+        });
     }
 
     /** Les cadres et workers retenus pour l'observation (domaines Microsoft uniquement). */
-    public List<String> attachedFrames() {
+    public synchronized List<String> attachedFrames() {
         return List.copyOf(attachedFrames);
     }
 
-    private void onResponse(JsonNode params) {
+    private void onResponse(String sessionId, JsonNode params) {
         JsonNode response = params == null ? null : params.get("response");
         if (response == null) {
             return;
+        }
+        String session = sessionId == null ? "" : sessionId;
+        if (!session.isEmpty() && !frameSessions.contains(session)) {
+            return; // une cible que nous n'avons pas retenue : jamais lue
         }
         // On ne lit QUE l'adresse. Les en-têtes sont là, à portée de main, et on n'y touche pas :
         // ils portent les cookies de la session.
@@ -127,7 +181,10 @@ public final class NetworkObserver {
         }
         String requestId = params.path("requestId").asText("");
         if (!requestId.isEmpty()) {
-            pending.put(requestId, new Pending(url, kind));
+            synchronized (pending) {
+                // Les identifiants de requête sont propres à chaque cible : la clé porte la session.
+                pending.put(session + '|' + requestId, new Pending(url, kind, session, requestId));
+            }
         }
     }
 
@@ -139,13 +196,16 @@ public final class NetworkObserver {
      * page de l'utilisateur.</p>
      */
     public List<ObservedResponse> collect() {
-        List<ObservedResponse> observed = new ArrayList<>();
-        for (Map.Entry<String, Pending> entry : pending.entrySet()) {
-            Pending waiting = entry.getValue();
-            JsonNode body = fetchBody(entry.getKey(), waiting.url);
-            observed.add(new ObservedResponse(waiting.url, waiting.kind, body));
+        List<Pending> waiting;
+        synchronized (pending) {
+            waiting = new ArrayList<>(pending.values());
+            pending.clear();
         }
-        pending.clear();
+        List<ObservedResponse> observed = new ArrayList<>();
+        for (Pending response : waiting) {
+            JsonNode body = fetchBody(response.session(), response.requestId(), response.url());
+            observed.add(new ObservedResponse(response.url(), response.kind(), body));
+        }
         return observed;
     }
 
@@ -177,11 +237,12 @@ public final class NetworkObserver {
         return List.copyOf(gaps);
     }
 
-    private JsonNode fetchBody(String requestId, String url) {
+    private JsonNode fetchBody(String session, String requestId, String url) {
         ObjectNode params = mapper.createObjectNode();
         params.put("requestId", requestId);
         try {
-            JsonNode result = connection.send(CdpCommands.GET_RESPONSE_BODY, params);
+            JsonNode result = session.isEmpty() ? connection.send(CdpCommands.GET_RESPONSE_BODY, params)
+                    : connection.send(session, CdpCommands.GET_RESPONSE_BODY, params);
             String raw = result == null ? "" : result.path("body").asText("");
             if (raw.isEmpty()) {
                 return missing(url, "corps vide");
@@ -214,6 +275,6 @@ public final class NetworkObserver {
         return slash >= 0 && slash + 1 < url.length() ? url.substring(slash + 1) : url;
     }
 
-    private record Pending(String url, TeamsPayloadKind kind) {
+    private record Pending(String url, TeamsPayloadKind kind, String session, String requestId) {
     }
 }

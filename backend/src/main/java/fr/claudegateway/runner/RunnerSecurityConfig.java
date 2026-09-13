@@ -88,6 +88,8 @@ public class RunnerSecurityConfig {
                         // par une : le seul joker est l'identifiant de synchro, jamais le préfixe.
                         .requestMatchers(HttpMethod.POST, "/runner/radar/syncs/*/progress").permitAll()
                         .requestMatchers(HttpMethod.POST, "/runner/radar/syncs/*/finish").permitAll()
+                        // Les lots de la collecte (SF-100-03) : même garde, même déclaration.
+                        .requestMatchers(HttpMethod.POST, "/runner/radar/syncs/*/batches").permitAll()
                         .anyRequest().denyAll());
         return http.build();
     }

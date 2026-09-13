@@ -33,6 +33,13 @@ final class TeamsUrls {
         if (isIgnorable(url, path)) {
             return TeamsPayloadKind.IGNORED;
         }
+        if (isFileHost(url)) {
+            // F-100 / SF-100-03 — reconnaissance PAR MOTIF : Microsoft range transcriptions et
+            // enregistrements dans SharePoint / OneDrive, sous le nom du tenant (<tenant>.sharepoint.com,
+            // <tenant>-my.sharepoint.com). Le motif est le même pour tous les clients : rien à configurer,
+            // rien à demander. Seules les transcriptions sont lues ici — la vidéo n'est pas nécessaire.
+            return path.contains("/transcripts") ? TeamsPayloadKind.MEETING_TRANSCRIPT : TeamsPayloadKind.UNKNOWN;
+        }
         if (!isChatHost(url)) {
             return TeamsPayloadKind.UNKNOWN;
         }
@@ -79,6 +86,12 @@ final class TeamsUrls {
             }
         }
         return versions;
+    }
+
+    /** Un hôte SharePoint ou OneDrive d'entreprise, quel que soit le tenant (motif, jamais un nom). */
+    private static boolean isFileHost(String url) {
+        String host = MicrosoftDomains.hostOf(url);
+        return host.endsWith(".sharepoint.com") && host.length() > ".sharepoint.com".length();
     }
 
     private static boolean isChatHost(String url) {

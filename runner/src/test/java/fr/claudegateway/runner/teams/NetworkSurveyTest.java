@@ -186,7 +186,7 @@ class NetworkSurveyTest {
                 + "19:clientsecretthread@thread.v2/messages?pageSize=200&syncState=SECRET-ETAT", "Fetch",
                 "application/json", 200);
         tab.respond("S-FRAME", "https://contoso.sharepoint.com/sites/ProjetConfidentiel/_api/v2.1/drives/"
-                + "b!Zz9Yy8Xx7Ww6Vv5Uu4/items/01QWERTY12345/media/transcripts?access_token=SECRET-JETON",
+                + "b!Zz9Yy8Xx7Ww6Vv5Uu4/items/01QWERTY12345/media/recordings?access_token=SECRET-JETON",
                 "XHR", "application/json", 200);
 
         SurveyReport report = new SurveyReport(survey.snapshot(), Instant.EPOCH, Instant.EPOCH.plusSeconds(60),
@@ -198,7 +198,8 @@ class NetworkSurveyTest {
             }
         }
         assertEquals(1, report.gaps().size());
-        assertEquals("/sites/{id}/_api/v2.1/drives/{id}/items/{id}/media/transcripts", report.gaps().get(0).path());
+        // Une transcription SharePoint est reconnue par motif (SF-100-03) ; un enregistrement, lui, reste un écart.
+        assertEquals("/sites/{id}/_api/v2.1/drives/{id}/items/{id}/media/recordings", report.gaps().get(0).path());
         assertEquals(1, report.outsideTeamsTab().size());
         assertTrue(report.markdown().contains("## Écarts avec l'adaptateur"));
         assertTrue(report.markdown().contains("## Vu seulement hors de l'onglet Teams"));
@@ -310,7 +311,28 @@ class NetworkSurveyTest {
         connection.dispatch("{\"method\":\"Network.responseReceived\",\"params\":{\"requestId\":\"b\"}}");
         assertEquals(List.of("S9|a", "onglet|a", "|b", "onglet|b"), seen);
 
-        FakeCdpConnection legacy = new FakeCdpConnection();
+        // Une liaison qui ne sait pas parler à une session refuse (méthode par défaut de l'interface).
+        CdpConnection legacy = new CdpConnection() {
+            @Override
+            public com.fasterxml.jackson.databind.JsonNode send(String method,
+                    com.fasterxml.jackson.databind.node.ObjectNode params) {
+                CdpCommands.assertAllowed(method);
+                return null;
+            }
+
+            @Override
+            public void onEvent(String method, java.util.function.Consumer<com.fasterxml.jackson.databind.JsonNode> l) {
+            }
+
+            @Override
+            public boolean isOpen() {
+                return true;
+            }
+
+            @Override
+            public void close() {
+            }
+        };
         org.junit.jupiter.api.Assertions.assertThrows(BrowserLinkException.class,
                 () -> legacy.send("S1", CdpCommands.NETWORK_ENABLE, null));
         org.junit.jupiter.api.Assertions.assertThrows(BrowserLinkException.class,

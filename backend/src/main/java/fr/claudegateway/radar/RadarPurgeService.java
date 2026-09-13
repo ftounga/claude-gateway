@@ -10,6 +10,8 @@ import org.springframework.transaction.annotation.Transactional;
 import fr.claudegateway.radar.analysis.RadarAnalysisBatchRepository;
 import fr.claudegateway.radar.analysis.RadarAnalysisLeaseRepository;
 import fr.claudegateway.radar.sync.RadarHostSettingsRepository;
+import fr.claudegateway.radar.sync.RadarSyncCursorRepository;
+import fr.claudegateway.radar.sync.RadarThreadRuleRepository;
 import fr.claudegateway.radar.dto.RadarViews.PurgeView;
 import fr.claudegateway.runner.host.HostMissionStatus;
 import fr.claudegateway.runner.host.RunnerHostService;
@@ -43,6 +45,8 @@ public class RadarPurgeService {
     private final RadarAnalysisBatchRepository analysisBatches;
     private final RadarAnalysisLeaseRepository analysisLeases;
     private final RadarHostSettingsRepository hostSettings;
+    private final RadarSyncCursorRepository syncCursors;
+    private final RadarThreadRuleRepository threadRules;
 
     public RadarPurgeService(RadarSubjectRepository subjects, RadarSubjectAliasRepository aliases,
             RadarSubjectFactRepository facts, RadarPersonRepository people, RadarSubjectRoleRepository roles,
@@ -50,7 +54,8 @@ public class RadarPurgeService {
             RadarEvidenceLinkRepository links, RadarSyncRepository syncs, RadarCorrectionRepository corrections,
             RadarPurgeRepository purges, RunnerHostService hostService,
             RadarAnalysisBatchRepository analysisBatches, RadarAnalysisLeaseRepository analysisLeases,
-            RadarHostSettingsRepository hostSettings) {
+            RadarHostSettingsRepository hostSettings, RadarSyncCursorRepository syncCursors,
+            RadarThreadRuleRepository threadRules) {
         this.subjects = subjects;
         this.aliases = aliases;
         this.facts = facts;
@@ -66,6 +71,8 @@ public class RadarPurgeService {
         this.analysisBatches = analysisBatches;
         this.analysisLeases = analysisLeases;
         this.hostSettings = hostSettings;
+        this.syncCursors = syncCursors;
+        this.threadRules = threadRules;
     }
 
     /**
@@ -98,6 +105,8 @@ public class RadarPurgeService {
         analysisBatches.purgeScope(userId, hostId);
         analysisLeases.purgeScope(userId, hostId);
         hostSettings.purgeScope(userId, hostId);
+        syncCursors.purgeScope(userId, hostId);
+        threadRules.purgeScope(userId, hostId);
         links.purgeScope(userId, hostId);
         int evidenceCount = evidence.purgeScope(userId, hostId);
         commitments.purgeScope(userId, hostId);
@@ -118,6 +127,8 @@ public class RadarPurgeService {
         analysisBatches.purgeUser(userId);
         analysisLeases.purgeUser(userId);
         hostSettings.purgeUser(userId);
+        syncCursors.purgeUser(userId);
+        threadRules.purgeUser(userId);
         links.purgeUser(userId);
         evidence.purgeUser(userId);
         commitments.purgeUser(userId);

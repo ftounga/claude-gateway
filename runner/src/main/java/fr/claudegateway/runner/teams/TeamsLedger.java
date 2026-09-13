@@ -55,6 +55,13 @@ final class TeamsLedger {
     private final Map<String, TeamsMessage> searchHits = new LinkedHashMap<>();
     private final Map<String, TeamsTranscriptCue> cues = new LinkedHashMap<>();
     private final Map<String, String> cueMeetings = new LinkedHashMap<>();
+    /**
+     * Ordre d'observation des répliques (F-100 / SF-100-03). Une transcription servie par SharePoint ne
+     * porte pas l'identifiant de sa réunion dans son adresse : la synchro attribue à la réunion affichée
+     * les répliques observées <b>pendant</b> qu'elle l'était.
+     */
+    private final Map<String, Long> cueOrder = new LinkedHashMap<>();
+    private long cueCounter;
     /** Par fil : la dernière page de messages annonçait-elle qu'il restait quelque chose avant ? */
     private final Map<String, Boolean> moreBefore = new LinkedHashMap<>();
 
@@ -83,8 +90,12 @@ final class TeamsLedger {
         // coupe une page dans son ordre d'arrivée (le plus ancien d'abord), alors que le plafond
         // doit mordre du côté ancien de la fenêtre entière. On décode donc sans plafond utile, et
         // c'est le récolteur qui tranche — sinon le plafond couperait les messages RÉCENTS.
+        // F-100 / SF-100-03 : le début de la fenêtre n'est pas appliqué au décodage non plus. Un message plus
+        // ancien que la fenêtre est la PREUVE que la récolte a remonté jusqu'au début demandé ; le jeter ici
+        // empêchait {@link #oldestObservedIn} de le voir, et une lecture bornée remontait jusqu'au trou au lieu
+        // de s'arrêter. Les lectures, elles, restent bornées à la fenêtre ({@link #messagesOf}).
         TeamsReadWindow decoding = window == null ? null
-                : new TeamsReadWindow(window.requestedFrom(), window.requestedTo(), null, null,
+                : new TeamsReadWindow(null, window.requestedTo(), null, null,
                         MAX_MESSAGES, false, false);
         for (ObservedResponse response : observed) {
             if (!response.hasBody()) {
@@ -143,6 +154,9 @@ final class TeamsLedger {
                 String meetingId = meetingIdOf(url);
                 reading.items().forEach(cue -> {
                     String key = keyOf(meetingId, cue);
+                    if (!cues.containsKey(key)) {
+                        cueOrder.put(key, ++cueCounter);
+                    }
                     put(cues, key, cue, MAX_CUES);
                     cueMeetings.put(key, meetingId);
                 });
@@ -167,6 +181,7 @@ final class TeamsLedger {
             String oldest = store.keySet().iterator().next();
             store.remove(oldest);
             cueMeetings.remove(oldest);
+            cueOrder.remove(oldest);
         }
     }
 
@@ -326,6 +341,23 @@ final class TeamsLedger {
         for (Map.Entry<String, TeamsTranscriptCue> entry : cues.entrySet()) {
             String owner = cueMeetings.getOrDefault(entry.getKey(), "");
             if (wanted.isEmpty() || wanted.equals(owner)) {
+                found.add(entry.getValue());
+            }
+        }
+        found.sort(Comparator.comparing(TeamsTranscriptCue::at));
+        return found;
+    }
+
+    /** La marque d'observation des répliques : ce qui arrive ensuite est « depuis la marque ». */
+    long cueMark() {
+        return cueCounter;
+    }
+
+    /** Les répliques observées pour la première fois après la marque, dans l'ordre du temps. */
+    List<TeamsTranscriptCue> cuesSince(long mark) {
+        List<TeamsTranscriptCue> found = new ArrayList<>();
+        for (Map.Entry<String, TeamsTranscriptCue> entry : cues.entrySet()) {
+            if (cueOrder.getOrDefault(entry.getKey(), 0L) > mark) {
                 found.add(entry.getValue());
             }
         }

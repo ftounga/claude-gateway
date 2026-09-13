@@ -1025,6 +1025,12 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     rattrapage) et **`running_sync_id` — le verrou : une seule synchro par poste, pris par mise à jour
     conditionnelle**. Sur `radar_syncs`, `trigger_kind` (`SCHEDULED`, `MANUAL`, `CATCH_UP`),
     `scheduled_for`, `heartbeat_at` (abandon après 15 min sans battement) et `progress` (JSON borné).
+  - **Collecte incrémentale** (F-100 / SF-100-03, migration `088`) : `radar_sync_cursors` — **où la
+    collecte en est, par fil et par poste** (`source` `TEAMS` / `DEPOT`, `conversation_ref`, `kind`,
+    `cursor_at`), unique `(user_id, host_id, source, conversation_ref)` ; le curseur n'avance qu'une fois le
+    lot accepté par la file d'analyse, et ne recule jamais. `radar_thread_rules` — ce que l'utilisateur a
+    dit d'un fil (`IGNORE` : ignorer ce fil ; `READ_CHANNEL` : lire ce canal en entier), unique
+    `(user_id, host_id, conversation_ref, rule)`, correction souveraine. Les deux sont purgées avec le Radar.
 
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 
