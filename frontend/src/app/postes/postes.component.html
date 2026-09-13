@@ -223,10 +223,10 @@
                 {{ host.os }}@if (host.os && host.shell) { · }<span class="poste__mono">{{ host.shell }}</span>
               </span>
             }
-            <!-- F-81 / SF-81-03 : la version DÉCLARÉE par le runner. Elle répond à « est-il à jour ? »,
-                 elle ne juge rien et n'ouvre aucun geste. -->
+            <!-- F-81 / SF-81-03 puis F-111 / SF-111-01 : la version RÉELLE déclarée par le runner, et si une
+                 mise à jour est disponible, requise ou manuelle une dernière fois. Rien n'est refusé. -->
             @if (host.runnerVersion) {
-              <span class="poste__fact">Runner <span class="poste__mono">{{ host.runnerVersion }}</span></span>
+              <app-runner-update-notice class="poste__fact" [host]="host"></app-runner-update-notice>
             }
             @if (presenceSeen(host); as seen) {
               <span class="poste__fact">{{ seen }}</span>

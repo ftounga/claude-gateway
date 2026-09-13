@@ -1189,6 +1189,33 @@ export interface RunnerHostOverview {
   projects: HostProjectSummary[];
   /** Les espaces où ce client est activé (F-106 / SF-106-01) ; absent d'une gateway antérieure. */
   spaces?: ClientSpace[];
+  /**
+   * Où en est le runner de ce poste par rapport à celui que la gateway sert (F-111 / SF-111-01).
+   * `null` pour « Hébergé », absent d'une gateway antérieure.
+   */
+  runnerUpdate?: RunnerUpdateView | null;
+}
+
+/** Statut de mise à jour du runner d'un poste (F-111 / SF-111-01). */
+export type RunnerUpdateStatus = 'UNKNOWN' | 'UP_TO_DATE' | 'AVAILABLE' | 'MANUAL_LAST_TIME' | 'MANUAL_JAVA';
+
+/**
+ * Où en est le runner d'un poste (F-111 / SF-111-01) : à jour, mise à jour disponible d'un clic,
+ * manuelle une dernière fois (runner sans lanceur), manuelle faute de Java — et si elle est requise.
+ */
+export interface RunnerUpdateView {
+  status: RunnerUpdateStatus;
+  /** Une capacité dont le poste se sert manque au runner (ex. `teams`). */
+  required: boolean;
+  installedVersion: string | null;
+  installedId: string | null;
+  servedVersion: string | null;
+  servedId: string | null;
+  installedJava: number | null;
+  requiredJava: number;
+  teamsMissing: boolean;
+  /** Ce qu'apporte la version servie, en quelques lignes. */
+  notes: string[];
 }
 
 /**

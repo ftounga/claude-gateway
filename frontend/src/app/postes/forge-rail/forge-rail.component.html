@@ -72,6 +72,10 @@
                     ></span>
                     {{ stateLabel(row.host) }}
                   </span>
+                  <!-- F-111 / SF-111-01 : la mise à jour du runner, en toutes lettres, quand il y a lieu. -->
+                  @if (updateShort(row.host); as update) {
+                    <span class="forge-rail__update">{{ update }}</span>
+                  }
                 }
               </span>
               @if (row.awaiting > 0) {

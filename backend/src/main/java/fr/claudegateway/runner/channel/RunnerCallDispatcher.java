@@ -404,13 +404,16 @@ public class RunnerCallDispatcher {
      * liaison runner par ailleurs saine.</p>
      */
     private void recordDeclaredVersion(RunnerIdentity identity, JsonNode frame) {
-        JsonNode node = frame.path("runnerVersion");
-        if (!node.isTextual() || node.asText().isBlank()) {
+        // F-111 / SF-111-01 : la déclaration COMPLÈTE (contrat, Java, lanceur, capacités) voyage avec
+        // la version, pour que la vue d'ensemble puisse dire si la mise à jour se fait d'un clic.
+        fr.claudegateway.runner.host.RunnerDeclaration declaration =
+                fr.claudegateway.runner.host.RunnerDeclaration.fromReadyFrame(frame);
+        String declaree = declaration.version();
+        if (declaree == null) {
             return; // Runner qui ne déclare rien : rien n'est écrit, rien n'est signalé.
         }
-        String declaree = node.asText().trim();
         try {
-            versionRecorder.recordRunnerVersion(identity.hostId(), declaree);
+            versionRecorder.recordRunnerDeclaration(identity.hostId(), declaration);
         } catch (RuntimeException e) {
             log.warn("Version de runner non enregistrée (poste={}) : {}", identity.hostId(),
                     e.getMessage());

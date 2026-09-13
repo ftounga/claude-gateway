@@ -66,6 +66,8 @@ public final class RunnerMain {
         }
 
         console.info("Runner claude-gateway (F-38).");
+        // F-111 / SF-111-01 : la version réelle, dite dès la première ligne.
+        console.info("Version   : " + RunnerBuild.current().id());
         if (config.resumedFrom() != null) {
             console.info(ResumeMessages.resumedFrom(config.resumedFrom()));
         }

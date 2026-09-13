@@ -6,6 +6,7 @@ import { RunnerHostOverview } from '../../core/models/atelier.models';
 import { HostPresenceService } from '../../core/services/host-presence.service';
 import { HostBadgeComponent } from '../../shared/host-badge/host-badge.component';
 import { hostTone } from '../../shared/host-identity';
+import { updateNotice } from '../../shared/runner-update/runner-update';
 import { ForgeGroup, ForgeRow } from '../forge-fleet';
 
 /**
@@ -71,6 +72,11 @@ export class ForgeRailComponent {
   stateLabel(host: RunnerHostOverview): string {
     const label = this.presence.label(host.id, host.connected, host.lastSeenAt);
     return label.charAt(0).toUpperCase() + label.slice(1);
+  }
+
+  /** « Mise à jour disponible / requise / manuelle » (F-111 / SF-111-01), ou `null`. */
+  updateShort(host: RunnerHostOverview): string | null {
+    return updateNotice(host.runnerUpdate)?.short ?? null;
   }
 
   /** Couleur du filet de sélection : celle du poste (§9), aucune pour « Hébergé ». */

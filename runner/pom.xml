@@ -13,7 +13,7 @@
     -->
     <groupId>fr.claudegateway</groupId>
     <artifactId>claude-runner</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>1.0.0</version>
     <packaging>jar</packaging>
     <name>claude-runner</name>
     <description>Runner d'exécution sur machine connectée (F-38)</description>
@@ -23,6 +23,16 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <jackson.version>2.18.2</jackson.version>
         <junit.version>5.11.3</junit.version>
+        <!--
+            F-111 / SF-111-01 — La version RÉELLE du runner : numéro sémantique (ci-dessus), date de
+            construction et commit. Le commit est injecté par `backend/Dockerfile`
+            (`-Drunner.commit=…`) ; une construction locale vaut `local`.
+        -->
+        <runner.commit>local</runner.commit>
+        <!-- Niveau de contrat runner ↔ gateway (égal à RunnerBuild.CONTRACT, vérifié par un test). -->
+        <runner.contract>1</runner.contract>
+        <maven.build.timestamp.format>yyyyMMddHHmm</maven.build.timestamp.format>
+        <runner.build.stamp>${maven.build.timestamp}</runner.build.stamp>
     </properties>
 
     <dependencies>
@@ -57,6 +67,26 @@
 
     <build>
         <finalName>claude-runner</finalName>
+        <!--
+            F-111 / SF-111-01 — Seul `runner-build.properties` est filtré : la clé publique de
+            signature et le reste des ressources sont copiés à l'octet près.
+        -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>runner-build.properties</include>
+                </includes>
+            </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+                <excludes>
+                    <exclude>runner-build.properties</exclude>
+                </excludes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

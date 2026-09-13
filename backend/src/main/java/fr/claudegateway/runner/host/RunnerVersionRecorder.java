@@ -27,4 +27,18 @@ public interface RunnerVersionRecorder {
      *                 ou trop longue, elle est ignorée
      */
     void recordRunnerVersion(UUID hostId, String declared);
+
+    /**
+     * Retient la <b>déclaration complète</b> du runner (F-111 / SF-111-01) : version, contrat, Java,
+     * lanceur, capacités. Par défaut, seule la version est retenue — un enregistreur qui n'en sait pas
+     * plus (tests, montages anciens) garde exactement son comportement.
+     *
+     * @param hostId      poste porté par la session runner, jamais un champ du message
+     * @param declaration ce que la trame {@code ready} déclare, déjà filtré
+     */
+    default void recordRunnerDeclaration(UUID hostId, RunnerDeclaration declaration) {
+        if (declaration != null) {
+            recordRunnerVersion(hostId, declaration.version());
+        }
+    }
 }

@@ -87,15 +87,24 @@ public record RunnerHostOverviewResponse(
          * Les espaces où ce client est activé (F-106 / SF-106-01) : {@code FORGE}, {@code VIGIE}.
          * Posés par {@code HostSpaceService.inSpace} ; « Hébergé » ne vit que dans la Forge.
          */
-        List<String> spaces) {
+        List<String> spaces,
+        /*
+         * Où en est le runner de ce poste par rapport à celui que la gateway sert (F-111 / SF-111-01) :
+         * à jour, mise à jour disponible, requise, manuelle. Nul pour « Hébergé ».
+         */
+        RunnerUpdateView runnerUpdate) {
 
-    /** Le même poste, avec ses espaces (F-106 / SF-106-01). */
+    /**
+     * Le même poste, avec ses espaces (F-106 / SF-106-01). Un client actif dans la Vigie sert Teams :
+     * un runner qui ne l'annonce pas y devient une mise à jour <b>requise</b> (F-111 / SF-111-01).
+     */
     public RunnerHostOverviewResponse withSpaces(List<String> activeSpaces) {
+        List<String> copy = activeSpaces == null ? List.of() : List.copyOf(activeSpaces);
         return new RunnerHostOverviewResponse(id, name, rootName, os, shell, elevated, runnerVersion,
                 virtual, connected, missionStatus, lastSeenAt, createdAt, lastActivityAt,
                 activeProjects, liveTerminals, hostTerminalId, hostTerminalLive, hostTerminalPreview,
-                teamsTerminalId, teamsTerminalLive, projects,
-                activeSpaces == null ? List.of() : List.copyOf(activeSpaces));
+                teamsTerminalId, teamsTerminalLive, projects, copy,
+                runnerUpdate == null ? null : runnerUpdate.withTeamsUse(copy.contains("VIGIE")));
     }
 
     /** Nom du poste virtuel, écrit <b>par la gateway</b> : deux écrans qui le nommeraient chacun à
@@ -123,7 +132,7 @@ public record RunnerHostOverviewResponse(
                 false, null, null, null, null, 0, liveTerminals, null, false, null,
                 // Le poste virtuel « Hébergé » n'a PAS de terminal Teams : ce n'est pas une machine,
                 // aucun navigateur n'y est observable (F-71, repris par F-89 / SF-89-01).
-                null, false, projects, List.of("FORGE"));
+                null, false, projects, List.of("FORGE"), null);
     }
 
     /**

@@ -87,7 +87,8 @@
         <dependency>
             <groupId>fr.claudegateway</groupId>
             <artifactId>claude-runner</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
+            <!-- F-111 / SF-111-01 : le runner porte désormais sa version sémantique réelle. -->
+            <version>1.0.0</version>
             <classifier>thin</classifier>
             <scope>test</scope>
         </dependency>
