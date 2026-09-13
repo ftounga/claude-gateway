@@ -27,10 +27,19 @@ public final class RunnerVersions {
      * que l'absence d'alerte, parce qu'elle apprend à ne plus les lire.</p>
      */
     public static boolean isOlder(String declared, String reference) {
-        Optional<int[]> gauche = parse(declared);
-        Optional<int[]> droite = parse(reference);
+        return compare(declared, reference).map(order -> order < 0).orElse(false);
+    }
+
+    /**
+     * Ordre de deux versions (F-111 / SF-111-01) : le numéro d'abord ; à numéro égal, la <b>date de
+     * construction</b> quand les deux identifiants en portent une ({@code 1.0.0-202609131412-f30b4c0}).
+     * Vide si l'une des deux est illisible. Le commit ne départage rien.
+     */
+    public static Optional<Integer> compare(String left, String right) {
+        Optional<int[]> gauche = parse(left);
+        Optional<int[]> droite = parse(right);
         if (gauche.isEmpty() || droite.isEmpty()) {
-            return false;
+            return Optional.empty();
         }
         int[] a = gauche.get();
         int[] b = droite.get();
@@ -38,10 +47,45 @@ public final class RunnerVersions {
             int ai = i < a.length ? a[i] : 0;
             int bi = i < b.length ? b[i] : 0;
             if (ai != bi) {
-                return ai < bi;
+                return Optional.of(Integer.compare(ai, bi));
             }
         }
-        return false;
+        String stampLeft = stamp(left);
+        String stampRight = stamp(right);
+        if (stampLeft != null && stampRight != null) {
+            return Optional.of(Integer.signum(stampLeft.compareTo(stampRight)));
+        }
+        return Optional.of(0);
+    }
+
+    /**
+     * Le numéro sémantique seul d'un identifiant ({@code 1.0.0-202609131412-f30b4c0} → {@code 1.0.0}),
+     * ou la valeur telle quelle si elle n'a pas cette forme.
+     */
+    public static String semantic(String version) {
+        if (version == null) {
+            return null;
+        }
+        int dash = version.indexOf('-');
+        return dash < 0 ? version.trim() : version.substring(0, dash).trim();
+    }
+
+    /** La date de construction {@code AAAAMMJJHHmm} d'un identifiant F-111, ou {@code null}. */
+    public static String stamp(String version) {
+        if (version == null) {
+            return null;
+        }
+        String[] parts = version.trim().split("-", 3);
+        return parts.length >= 2 && parts[1].matches("\\d{12}") ? parts[1] : null;
+    }
+
+    /** Le commit d'un identifiant F-111, ou {@code null}. */
+    public static String commit(String version) {
+        if (version == null || stamp(version) == null) {
+            return null;
+        }
+        String[] parts = version.trim().split("-", 3);
+        return parts.length == 3 && parts[2].matches("[A-Za-z0-9]{1,40}") ? parts[2] : null;
     }
 
     /** Les segments numériques d'une version, ou vide si elle n'en est pas une. */

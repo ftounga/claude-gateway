@@ -35,7 +35,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class RunnerConnection {
 
     private static final String HEARTBEAT_MESSAGE = "{\"type\":\"heartbeat\"}";
-    private static final String FALLBACK_VERSION = "0.0.1";
 
     private final HttpClient httpClient;
     private final RunnerConfig config;
@@ -206,7 +205,8 @@ public final class RunnerConnection {
         journal.established(TransportJournal.Transport.WEBSOCKET);
         // La file d'émission est branchée sur la socket courante avant toute trame sortante.
         sender.attach(frame -> ws.sendText(frame, true));
-        sender.send(dispatcher.readyFrame(runnerVersion()));
+        // F-111 / SF-111-01 : la version réelle ; le lanceur arrive avec SF-111-02.
+        sender.send(dispatcher.readyFrame(RunnerBuild.current(), false));
         startHeartbeat();
     }
 
@@ -254,10 +254,6 @@ public final class RunnerConnection {
         }
     }
 
-    private static String runnerVersion() {
-        String version = RunnerConnection.class.getPackage().getImplementationVersion();
-        return version == null || version.isBlank() ? FALLBACK_VERSION : version;
-    }
 
     private static String safeUri(URI uri) {
         // On masque le jeton dans l'affichage.

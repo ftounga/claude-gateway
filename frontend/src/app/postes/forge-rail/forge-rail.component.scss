@@ -176,6 +176,16 @@
     white-space: nowrap;
   }
 
+  /* F-111 / SF-111-01 : la mise à jour du runner, écrite sous l'état — aucune couleur nouvelle. */
+  &__update {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--cg-text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   &__meta {
     display: flex;
     align-items: center;

@@ -52,7 +52,9 @@ class RunnerHostOverviewServiceTest {
 
     private RunnerHostOverviewService service(Duration observed, Duration activeWithin) {
         return new RunnerHostOverviewService(hostService, workspaceService, statusService,
-                auditRepository, liveTerminals, observed, activeWithin);
+                auditRepository, liveTerminals,
+                new RunnerUpdateAdvisor(new fr.claudegateway.runner.ServedRunnerVersion("", "1.0.0-202609131412-f30b4c0")),
+                observed, activeWithin);
     }
 
     // ------------------------------------------------------------------ décors
@@ -126,6 +128,9 @@ class RunnerHostOverviewServiceTest {
         assertThat(poste.runnerVersion())
                 .as("rendue telle que le runner l'a declaree (F-81 / SF-81-03)")
                 .isEqualTo("0.0.1");
+        // F-111 / SF-111-01 : un 0.0.1 sans lanceur face au 1.0.0 servi — une dernière fois à la main.
+        assertThat(poste.runnerUpdate().status()).isEqualTo("MANUAL_LAST_TIME");
+        assertThat(poste.runnerUpdate().servedVersion()).isEqualTo("1.0.0");
         assertThat(poste.elevated()).isFalse();
         // Le plus actif d'abord : c'est ce que l'œil cherche en premier sur une vue d'état.
         assertThat(poste.projects()).extracting(HostProjectSummary::name)
@@ -327,6 +332,7 @@ class RunnerHostOverviewServiceTest {
                 .as("le poste « Heberge » n'a pas de machine, donc pas de runner")
                 .isNull();
         assertThat(heberge.elevated()).isNull();
+        assertThat(heberge.runnerUpdate()).as("pas de runner, pas de mise à jour").isNull();
         assertThat(heberge.lastSeenAt()).isNull();
         assertThat(heberge.createdAt()).isNull();
         // Aucun runner n'exécute ces projets : le journal du runner n'a rien à en dire.

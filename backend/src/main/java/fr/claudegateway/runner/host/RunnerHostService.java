@@ -220,6 +220,26 @@ public class RunnerHostService implements RunnerShellRecorder, RunnerVersionReco
     }
 
     /**
+     * Retient la <b>déclaration complète</b> du runner (F-111 / SF-111-01). Chaque champ est réécrit
+     * à chaque connexion, y compris à {@code null} : un runner rétrogradé à la main vers une version
+     * qui ne déclare plus son lanceur ne doit pas garder le lanceur de la précédente.
+     */
+    @Transactional
+    @Override
+    public void recordRunnerDeclaration(UUID hostId, RunnerDeclaration declaration) {
+        if (hostId == null || declaration == null) {
+            return;
+        }
+        recordRunnerVersion(hostId, declaration.version());
+        repository.findById(hostId).ifPresent(host -> {
+            host.setRunnerContract(declaration.contract());
+            host.setRunnerJava(declaration.javaVersion());
+            host.setRunnerLauncher(declaration.launcher());
+            host.setRunnerCapabilities(declaration.joinedCapabilities());
+        });
+    }
+
+    /**
      * Genre d'interpréteur déclaré par le runner de ce poste, ou {@code null} — poste inconnu, non
      * rattaché, ou runner qui n'a rien déclaré. La consigne système retombe alors sur son texte
      * POSIX, correct sur toute machine Unix.

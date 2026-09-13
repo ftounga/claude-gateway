@@ -233,6 +233,37 @@ class RunnerHostServiceTest {
     }
 
     @Test
+    void recordsTheCompleteDeclarationAndIgnoresInvalidFields() throws Exception {
+        // F-111 / SF-111-01 : contrat, Java, lanceur, capacités — et ce qui n'a pas la forme est écarté.
+        RunnerHost host = new RunnerHost();
+        host.setRunnerLauncher(true);
+        when(repository.findById(hostId)).thenReturn(Optional.of(host));
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+
+        service().recordRunnerDeclaration(hostId, RunnerDeclaration.fromReadyFrame(mapper.readTree(
+                "{\"runnerVersion\":\"1.0.0-202609131412-f30b4c0\",\"contract\":1,"
+                        + "\"javaVersion\":21,\"launcher\":true,\"capabilities\":[\"files\",\"bash\"]}")));
+
+        assertThat(host.getRunnerVersion()).isEqualTo("1.0.0-202609131412-f30b4c0");
+        assertThat(host.getRunnerContract()).isEqualTo(1);
+        assertThat(host.getRunnerJava()).isEqualTo(21);
+        assertThat(host.getRunnerLauncher()).isTrue();
+        assertThat(host.getRunnerCapabilities()).isEqualTo("files,bash");
+
+        // Un runner antérieur ne déclare rien de tout cela : le lanceur de la connexion d'avant ne
+        // doit pas lui rester collé.
+        service().recordRunnerDeclaration(hostId, RunnerDeclaration.fromReadyFrame(mapper.readTree(
+                "{\"runnerVersion\":\"0.0.1\",\"contract\":\"deux\",\"javaVersion\":3,"
+                        + "\"launcher\":\"oui\"}")));
+
+        assertThat(host.getRunnerVersion()).isEqualTo("0.0.1");
+        assertThat(host.getRunnerContract()).isNull();
+        assertThat(host.getRunnerJava()).isNull();
+        assertThat(host.getRunnerLauncher()).isNull();
+        assertThat(host.getRunnerCapabilities()).isNull();
+    }
+
+    @Test
     void keepsAVersionItCannotParse() {
         // Un runner recompilé à la main peut déclarer n'importe quoi. On montre ce qui tourne
         // RÉELLEMENT sur la machine ; on ne le compare pas, et on ne le juge pas.

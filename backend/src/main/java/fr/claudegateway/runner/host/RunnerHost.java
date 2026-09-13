@@ -107,6 +107,31 @@ public class RunnerHost {
     @Column(name = "runner_version", length = MAX_RUNNER_VERSION_LENGTH)
     private String runnerVersion;
 
+    /** Longueur maximale de la liste de capacités jointe par des virgules (F-111 / SF-111-01). */
+    public static final int MAX_RUNNER_CAPABILITIES_LENGTH = 255;
+
+    /**
+     * Niveau de contrat que le runner déclare parler (F-111 / SF-111-01), ou {@code null} pour un
+     * runner antérieur à F-111. Il ne refuse rien : il dit ce qu'on peut lui demander.
+     */
+    @Column(name = "runner_contract")
+    private Integer runnerContract;
+
+    /** Version majeure de Java qui exécute le runner (F-111 / SF-111-01), ou {@code null}. */
+    @Column(name = "runner_java")
+    private Integer runnerJava;
+
+    /**
+     * Vrai si le runner tourne sous le <b>lanceur</b> (F-111 / SF-111-02) : seule condition pour qu'une
+     * mise à jour se fasse d'un clic. {@code null} (jamais déclaré) vaut « sans lanceur ».
+     */
+    @Column(name = "runner_launcher")
+    private Boolean runnerLauncher;
+
+    /** Capacités annoncées dans la dernière trame {@code ready}, jointes par des virgules. */
+    @Column(name = "runner_capabilities", length = MAX_RUNNER_CAPABILITIES_LENGTH)
+    private String runnerCapabilities;
+
     /**
      * <b>État de mission</b> déclaré par le propriétaire (F-60 / SF-60-01) : où en est le travail
      * chez ce client — {@code ACTIVE}, {@code PENDING}, {@code CLOSED}.
