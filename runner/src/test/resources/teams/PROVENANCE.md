@@ -45,3 +45,27 @@ lire **avant** l'utilisateur — et jamais en rendant la moitié d'un compte ren
 | `profile.json` | le profil de l'utilisateur relié — **inventé de bout en bout**, sur un domaine `.invalid` qui ne peut exister (F-88 / SF-88-01) |
 | `search-results.json` | deux résultats de l'index de Teams, où le nom est **écrit en clair** — le deuxième gisement (F-88 / SF-88-02) |
 | `conversation-messages-page2.json` | la page **précédente** du même fil, qui **chevauche** la première : elle prouve le recollement sans doublon (F-88 / SF-88-01) |
+
+## Réponses modèles SharePoint / OneDrive (F-108)
+
+> **Arbitrage du PO du 2026-09-13** : pas de tenant Microsoft 365 de test ; les capacités fichiers
+> passent par l'**API REST SharePoint documentée publiquement** (learn.microsoft.com, « Working with
+> folders and files with REST », `contextinfo`, `SP.UserProfiles.PeopleManager`), appelée depuis la
+> page. Ces fichiers sont **écrits à la main d'après cette documentation**, en
+> `Accept: application/json;odata=nometadata` (enveloppe `value`, `Length` en chaîne). Chaque
+> adaptateur qui les lit est marqué « forme éprouvée sur documentation, à confirmer sur poste réel ».
+> **Prouvé** : la lecture, la projection sur liste blanche, l'échec bruyant. **NON prouvé** : que
+> SharePoint Online sert exactement cette forme au navigateur du prospect.
+
+| Fichier | Ce qu'il porte |
+|---|---|
+| `sharepoint-folders.json` | `GetFolderByServerRelativePath(…)/Folders` : deux dossiers, avec des clés `odata.*` qui doivent disparaître |
+| `sharepoint-files.json` | `…/Files` : deux fichiers (dont un nom avec `#`), clés annexes (`ETag`, `CheckOutType`…) écartées |
+| `sharepoint-files-secrets.json` | la même liste **empoisonnée** : digest de formulaire, adresse pré-authentifiée `@content.downloadUrl` (`tempauth`), jeton, cookie — rien ne doit ressortir |
+| `sharepoint-files-verbose.json` | la forme `odata=verbose` (`d.results`) : **non conforme** au modèle attendu → échec bruyant |
+| `sharepoint-files-partial.json` | un fichier sans `Length` : la liste entière est refusée, jamais rendue à moitié |
+| `sharepoint-file.json` | `GetFileByServerRelativePath(…)` : un fichier |
+| `sharepoint-contextinfo.json` | `POST /_api/contextinfo` : le digest — la projection n'en laisse **rien** |
+| `sharepoint-error-403.json`, `sharepoint-error-404.json` | erreurs `odata.error` |
+| `onedrive-my-properties.json` | `GetMyProperties?$select=PersonalUrl` sur un domaine `.invalid` |
+| `conversation-messages-files.json` | un message de canal portant une pièce jointe SharePoint (propriété `files`) |

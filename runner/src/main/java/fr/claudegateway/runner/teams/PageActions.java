@@ -171,6 +171,44 @@ public final class PageActions {
                 "téléchargements dirigés vers le dossier de travail du volet");
     }
 
+    /**
+     * <b>Remet le comportement de téléchargement par défaut</b> (F-108 / SF-108-03) : dès que le
+     * fichier voulu a démarré, les téléchargements de l'utilisateur ne doivent plus atterrir dans le
+     * dossier du volet.
+     */
+    public void resetDownloads() {
+        ObjectNode params = mapper.createObjectNode();
+        params.put("behavior", "default");
+        connection.send(CdpCommands.SET_DOWNLOAD_BEHAVIOR, params);
+        record("download_reset", "", "", "téléchargements rendus au comportement par défaut");
+    }
+
+    /**
+     * <b>Exécute un script dans la page</b> (F-108 / SF-108-03) — l'appel aux API web de SharePoint
+     * depuis la page, avec la session du navigateur (arbitrage du PO). Gardé comme tout geste : le
+     * domaine courant est vérifié <b>avant</b> émission, une page d'identification est refusée.
+     *
+     * <p>La trace nomme l'<b>opération</b>, jamais le script ni ce qu'il rend (§4.6).</p>
+     *
+     * @param operation nom lisible de l'opération (« lister les dossiers »), pour la trace
+     * @return la valeur rendue par le script, ou {@code null}
+     */
+    public JsonNode runScript(String operation, String expression) {
+        assertCurrentPageAllowed("script");
+        JsonNode value = evaluate(expression);
+        record("script", currentDomain(), operation == null ? "" : operation, "lancé");
+        return value;
+    }
+
+    /**
+     * Relit une valeur dans la page — la relève d'une opération lancée par {@link #runScript}. Même
+     * garde de domaine ; pas de trace, pour ne pas noyer le journal sous les relèves.
+     */
+    public JsonNode readScript(String expression) {
+        assertCurrentPageAllowed("script");
+        return evaluate(expression);
+    }
+
     /** Remet l'onglet sur une adresse antérieure (§4.7), si elle est encore autorisée. */
     public boolean restore(String previousUrl) {
         if (previousUrl == null || previousUrl.isBlank() || !MicrosoftDomains.isAllowed(previousUrl)) {
@@ -212,7 +250,7 @@ public final class PageActions {
         }
     }
 
-    private String currentDomain() {
+    String currentDomain() {
         return MicrosoftDomains.hostOf(currentUrl());
     }
 

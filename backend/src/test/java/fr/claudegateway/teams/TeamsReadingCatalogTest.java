@@ -46,7 +46,9 @@ class TeamsReadingCatalogTest {
             // F-91 / SF-91-02 — les trois outils d'ENREGISTREMENT LOCAL. Ils sont dans cette liste
             // parce que le RUNNER les exécute, comme les autres ; ce qui les distingue n'est pas où
             // ils tournent, c'est qu'ils CRÉENT au lieu de relire (voir TeamsToolCatalog.CAPTURE).
-            "teams_capture_start", "teams_capture_stop", "teams_capture_status");
+            "teams_capture_start", "teams_capture_stop", "teams_capture_status",
+            // F-108 / SF-108-03 — les deux outils de LECTURE des fichiers Microsoft 365.
+            "teams_list_files", "teams_read_file");
 
     @Mock private TeamsAccessService teamsAccess;
 

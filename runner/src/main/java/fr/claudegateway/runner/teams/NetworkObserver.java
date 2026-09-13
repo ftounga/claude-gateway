@@ -42,6 +42,15 @@ public final class NetworkObserver {
     private final List<TeamsGap> gaps = new ArrayList<>();
     /** Cadres et workers réellement retenus pour l'observation — filtrés sur les domaines (§4.8). */
     private final List<String> attachedFrames = new ArrayList<>();
+    /**
+     * Chemins SharePoint / OneDrive vus passer (F-108 / SF-108-03) : hôte et chemin, <b>jamais</b> la
+     * chaîne de requête, jamais le corps. C'est le relevé du diagnostic, et la source des sites
+     * d'équipe que les outils fichiers savent retrouver.
+     */
+    private final java.util.Set<String> filePaths = new java.util.LinkedHashSet<>();
+
+    /** Chemins de fichiers retenus au plus : au-delà, les nouveaux sont ignorés. */
+    public static final int MAX_FILE_PATHS = 200;
 
     public NetworkObserver(CdpConnection connection, TeamsAdapter adapter) {
         this.connection = connection;
@@ -101,6 +110,7 @@ public final class NetworkObserver {
         // On ne lit QUE l'adresse. Les en-têtes sont là, à portée de main, et on n'y touche pas :
         // ils portent les cookies de la session.
         String url = ObservedResponse.withoutQuery(response.path("url").asText(""));
+        noteFilePath(url);
         TeamsPayloadKind kind = adapter.classify(url);
         if (kind == TeamsPayloadKind.IGNORED || kind == TeamsPayloadKind.UNKNOWN) {
             return;
@@ -127,6 +137,24 @@ public final class NetworkObserver {
         }
         pending.clear();
         return observed;
+    }
+
+    /** Relève un chemin SharePoint / OneDrive, sans requête (déjà retirée) ni corps. */
+    private synchronized void noteFilePath(String url) {
+        String host = MicrosoftDomains.hostOf(url);
+        if (!(host.endsWith(".sharepoint.com") || "onedrive.live.com".equals(host))
+                || !MicrosoftDomains.isAllowed(url) || filePaths.size() >= MAX_FILE_PATHS) {
+            return;
+        }
+        filePaths.add(url);
+    }
+
+    /**
+     * Les chemins SharePoint / OneDrive observés depuis le rattachement (F-108 / SF-108-03) — adresse
+     * <b>sans</b> requête ; aucun corps, aucun en-tête.
+     */
+    public synchronized List<String> observedFilePaths() {
+        return List.copyOf(filePaths);
     }
 
     /** Ce qui n'a pas pu être lu depuis le début de l'observation. */

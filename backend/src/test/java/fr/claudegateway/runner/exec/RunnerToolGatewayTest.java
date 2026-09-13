@@ -207,4 +207,15 @@ class RunnerToolGatewayTest {
     private static RunnerCallResult bashOk() {
         return new RunnerCallResult(true, "", false, 0, 1L, null, null, null, "", false);
     }
+
+    /** F-108 / SF-108-03 : navigation, appel de page et téléchargement ne tiennent pas en 20 s. */
+    @Test
+    void the_file_tools_get_the_long_teams_timeout() {
+        assertThat(RunnerToolGateway.teamsTimeoutFor("teams_list_files"))
+                .isEqualTo(RunnerToolGateway.TEAMS_FILES_TIMEOUT_MS);
+        assertThat(RunnerToolGateway.teamsTimeoutFor("teams_read_file"))
+                .isEqualTo(RunnerToolGateway.TEAMS_FILES_TIMEOUT_MS);
+        assertThat(RunnerToolGateway.teamsTimeoutFor("teams_status"))
+                .isEqualTo(RunnerToolGateway.TEAMS_TOOL_TIMEOUT_MS);
+    }
 }

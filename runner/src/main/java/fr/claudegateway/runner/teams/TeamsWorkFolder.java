@@ -29,6 +29,8 @@ public final class TeamsWorkFolder {
     private static final String TOOLS_DIR = "tools";
     /** Sous-dossier des enregistrements locaux (F-91 / SF-91-01). */
     private static final String CAPTURES_DIR = "captures";
+    /** Sous-dossier des téléchargements faits par Chrome pour le volet (F-108 / SF-108-03). */
+    private static final String DOWNLOADS_DIR = "downloads";
 
     private final Path root;
 
@@ -60,6 +62,20 @@ public final class TeamsWorkFolder {
      */
     public Path capturesDir() {
         return root.resolve(CAPTURES_DIR);
+    }
+
+    /**
+     * Le dossier où <b>Chrome</b> dépose ce qu'il télécharge pour le volet (F-108 / SF-108-03).
+     * <b>Fixe</b>, comme les autres : un paramètre d'appel ne choisit jamais où atterrissent des
+     * octets venus de Microsoft 365.
+     */
+    public Path downloadsDir() {
+        return root.resolve(DOWNLOADS_DIR);
+    }
+
+    /** Le dossier fixe d'un téléchargement, nommé par caractères sûrs. */
+    public Path downloadDir(String name) {
+        return downloadsDir().resolve(safe(name));
     }
 
     /**

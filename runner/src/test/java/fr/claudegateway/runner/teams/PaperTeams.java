@@ -59,6 +59,14 @@ final class PaperTeams {
         return new TeamsHarvester(link, ledger, new PageGestures(link, millis -> { }));
     }
 
+    /**
+     * Le montage avec les outils fichiers (F-108 / SF-108-03) : dossier du volet et dossiers
+     * synchronisés donnés par le test.
+     */
+    TeamsTools toolsWithFiles(java.nio.file.Path hostRoot, SyncedLibraries synced) {
+        return tools().withFiles(new TeamsWorkFolder(hostRoot), synced, message -> { });
+    }
+
     /** Le montage complet des outils, avec une liaison qui aboutit sur ce Teams de papier. */
     TeamsTools tools() {
         return new TeamsTools(new TeamsSession(9222, adapter, message -> { },

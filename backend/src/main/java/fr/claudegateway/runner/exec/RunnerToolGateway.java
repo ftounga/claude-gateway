@@ -62,6 +62,12 @@ public class RunnerToolGateway {
      * conteneur est rapide.</p>
      */
     public static final long TEAMS_CAPTURE_START_TIMEOUT_MS = 360_000L;
+    /**
+     * Délai des <b>outils fichiers Microsoft 365</b> (F-108 / SF-108-03) : amener l'onglet sur le
+     * site, appeler l'API depuis la page, laisser Chrome télécharger (une minute au plus pour un
+     * document), puis remettre la vue. Vingt secondes couperaient la plupart des lectures au milieu.
+     */
+    public static final long TEAMS_FILES_TIMEOUT_MS = 180_000L;
     /** Plancher : un délai ridicule ferait échouer la commande avant même son démarrage. */
     public static final long MIN_BASH_TIMEOUT_MS = 1_000L;
     /** Longueur maximale d'une ligne de commande acceptée (le runner applique la même borne). */
@@ -201,6 +207,10 @@ public class RunnerToolGateway {
     static long teamsTimeoutFor(String tool) {
         if (fr.claudegateway.teams.TeamsToolCatalog.CAPTURE_START.equals(tool)) {
             return TEAMS_CAPTURE_START_TIMEOUT_MS;
+        }
+        if (fr.claudegateway.teams.TeamsToolCatalog.LIST_FILES.equals(tool)
+                || fr.claudegateway.teams.TeamsToolCatalog.READ_FILE.equals(tool)) {
+            return TEAMS_FILES_TIMEOUT_MS;
         }
         return "teams_read_conversation".equals(tool) || "teams_search".equals(tool)
                 ? TEAMS_SCROLLING_TIMEOUT_MS : TEAMS_TOOL_TIMEOUT_MS;

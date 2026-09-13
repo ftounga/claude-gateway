@@ -1,0 +1,8 @@
+{
+  "FormDigestTimeoutSeconds": 1800,
+  "FormDigestValue": "0xSECRET-DIGEST-CONTEXTINFO,13 Sep 2026 10:00:00 -0000",
+  "LibraryVersion": "16.0.25101.12006",
+  "SiteFullUrl": "https://contoso.sharepoint.com/sites/ProjetIAM",
+  "SupportedSchemaVersions": ["14.0.0.0", "15.0.0.0"],
+  "WebFullUrl": "https://contoso.sharepoint.com/sites/ProjetIAM"
+}

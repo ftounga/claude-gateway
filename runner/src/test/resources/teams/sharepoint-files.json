@@ -1,0 +1,35 @@
+{
+  "value": [
+    {
+      "odata.type": "SP.File",
+      "odata.id": "https://contoso.sharepoint.com/sites/ProjetIAM/_api/Web/GetFileByServerRelativePath(decodedurl='/sites/ProjetIAM/Shared Documents/General/plan-migration.docx')",
+      "CheckInComment": "",
+      "CheckOutType": 2,
+      "ContentTag": "{00000000-0000-0000-0000-00000000A001},3,4",
+      "ETag": "\"{00000000-0000-0000-0000-00000000A001},3\"",
+      "Exists": true,
+      "Length": "48213",
+      "Level": 1,
+      "MajorVersion": 3,
+      "MinorVersion": 0,
+      "Name": "plan-migration.docx",
+      "ServerRelativeUrl": "/sites/ProjetIAM/Shared Documents/General/plan-migration.docx",
+      "TimeCreated": "2026-09-01T10:00:00Z",
+      "TimeLastModified": "2026-09-12T09:30:00Z",
+      "Title": "",
+      "UIVersion": 1536,
+      "UIVersionLabel": "3.0",
+      "UniqueId": "00000000-0000-0000-0000-00000000a001"
+    },
+    {
+      "odata.type": "SP.File",
+      "Exists": true,
+      "Length": "1024",
+      "Name": "notes #1.txt",
+      "ServerRelativeUrl": "/sites/ProjetIAM/Shared Documents/General/notes #1.txt",
+      "TimeLastModified": "2026-09-12T11:02:00Z",
+      "UIVersionLabel": "1.0",
+      "UniqueId": "00000000-0000-0000-0000-00000000a002"
+    }
+  ]
+}

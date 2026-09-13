@@ -46,6 +46,12 @@ public final class ToolStack {
                         .withMoments(moments(config, console))
                         .withCapture(capture(config, console))
                         .withTranscription(transcription(config, console))
+                        // F-108 / SF-108-03 — les fichiers Microsoft 365 : dossier fixe des
+                        // téléchargements, dossiers synchronisés de la machine préférés.
+                        .withFiles(new fr.claudegateway.runner.teams.TeamsWorkFolder(
+                                config.hostRoot()),
+                                fr.claudegateway.runner.teams.SyncedLibraries.detect(),
+                                console::info)
                 : fr.claudegateway.runner.teams.TeamsTools.disabled(
                         "Le volet Teams est désactivé sur cette machine (--no-teams).");
         ProjectScopes scopes =
