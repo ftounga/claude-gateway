@@ -11,6 +11,7 @@ import {
   RUNNER_HOST_PLATFORM,
   RunnerHostPlatform,
   RunnerPairingDialogComponent,
+  RunnerPairingDialogData,
 } from './runner-pairing-dialog.component';
 
 /**
@@ -30,7 +31,7 @@ describe('RunnerPairingDialogComponent — mode poste (F-72 SF-72-02)', () => {
   let component: RunnerPairingDialogComponent;
   let service: jasmine.SpyObj<AtelierService>;
 
-  function setupHostMode(): void {
+  function setupHostMode(data: RunnerPairingDialogData = {}): void {
     service = jasmine.createSpyObj<AtelierService>('AtelierService', [
       'createHostPairingCode',
       'listRunnerHosts',
@@ -72,7 +73,7 @@ describe('RunnerPairingDialogComponent — mode poste (F-72 SF-72-02)', () => {
         },
         // L'ABSENCE de projet EST le mode : un drapeau pourrait contredire les données, l'absence
         // non.
-        { provide: MAT_DIALOG_DATA, useValue: {} },
+        { provide: MAT_DIALOG_DATA, useValue: data },
         { provide: RUNNER_HOST_PLATFORM, useValue: 'windows' as RunnerHostPlatform },
       ],
     });
@@ -140,6 +141,16 @@ describe('RunnerPairingDialogComponent — mode poste (F-72 SF-72-02)', () => {
     expect(service.createRunnerHost).toHaveBeenCalledOnceWith('EDENRED');
     expect(component.hostId()).toBe('h9');
     // Un code d'appairage appartient à une machine : il ne pouvait pas être demandé avant.
+    expect(component.step()).toBe('code');
+  });
+
+  it('connecté depuis la Vigie, le poste naît dans la Vigie (F-106 / SF-106-02)', () => {
+    setupHostMode({ space: 'VIGIE' });
+    component.newHostName.set('EDENRED');
+
+    component.createHost();
+
+    expect(service.createRunnerHost).toHaveBeenCalledOnceWith('EDENRED', 'VIGIE');
     expect(component.step()).toBe('code');
   });
 

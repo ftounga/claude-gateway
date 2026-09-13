@@ -1,0 +1,42 @@
+@if (!data.inForge) {
+  <h2 mat-dialog-title>« {{ data.hostName }} » n'est que dans la Vigie</h2>
+  <mat-dialog-content>
+    <p>
+      Un client vit dans au moins un espace. Activez-le d'abord dans la Forge (menu « ··· »), ou
+      clôturez sa mission pour le ranger.
+    </p>
+  </mat-dialog-content>
+  <mat-dialog-actions align="end">
+    <button mat-flat-button color="primary" type="button" (click)="cancel()">Fermer</button>
+  </mat-dialog-actions>
+} @else {
+  <h2 mat-dialog-title>Retirer « {{ data.hostName }} » de la Vigie ?</h2>
+  <mat-dialog-content>
+    <p class="remove-client__safe">
+      <mat-icon aria-hidden="true">shield</mat-icon>
+      <span>
+        Le client reste dans la Forge, avec ses projets et ses terminaux.
+        <strong>Rien n'est supprimé.</strong> Vous pourrez le réactiver quand vous voudrez.
+      </span>
+    </p>
+    <mat-checkbox
+      class="remove-client__purge"
+      [checked]="purgeRadar()"
+      (change)="purgeRadar.set($event.checked)"
+    >
+      Effacer aussi son Radar : sujets, engagements et annuaire. Irréversible.
+    </mat-checkbox>
+  </mat-dialog-content>
+  <mat-dialog-actions align="end">
+    <button mat-stroked-button type="button" (click)="cancel()">Annuler</button>
+    <button
+      mat-flat-button
+      type="button"
+      [color]="purgeRadar() ? 'warn' : 'primary'"
+      class="remove-client__confirm"
+      (click)="confirm()"
+    >
+      {{ purgeRadar() ? 'Retirer et effacer le Radar' : 'Retirer de la Vigie' }}
+    </button>
+  </mat-dialog-actions>
+}

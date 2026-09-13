@@ -29,6 +29,7 @@ import {
   RunnerDownloadFormats,
   RunnerHost,
   RunnerPairingCode,
+  ClientSpace,
 } from '../../core/models/atelier.models';
 
 /**
@@ -50,6 +51,11 @@ export interface RunnerPairingDialogData {
   hostId?: string | null;
   /** Chemin du projet sous la racine du poste, ou `null`/absent. */
   projectPath?: string | null;
+  /**
+   * Espace où naît le poste créé en mode poste (F-106 / SF-106-02) : `VIGIE` quand on connecte un
+   * client depuis la Vigie — il n'apparaît alors pas dans la Forge. Absent = la Forge.
+   */
+  space?: ClientSpace;
 }
 
 /** Chemin d'exemple affiché tant que l'utilisateur n'a pas saisi la racine de son poste. */
@@ -524,7 +530,11 @@ export class RunnerPairingDialogComponent implements OnDestroy {
     }
     this.attaching.set(true);
     this.attachError.set(null);
-    this.atelier.createRunnerHost(this.newHostName().trim()).subscribe({
+    const name = this.newHostName().trim();
+    const created = this.data.space === undefined
+      ? this.atelier.createRunnerHost(name)
+      : this.atelier.createRunnerHost(name, this.data.space);
+    created.subscribe({
       next: (host) => {
         this.attaching.set(false);
         this.hosts.update((hosts) => [host, ...hosts]);

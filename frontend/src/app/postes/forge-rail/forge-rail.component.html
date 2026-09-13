@@ -1,18 +1,18 @@
-<aside class="forge-rail" aria-label="Postes">
+<aside class="forge-rail" [attr.aria-label]="ariaLabel()">
   <label class="forge-rail__search">
     <mat-icon aria-hidden="true">search</mat-icon>
     <input
       type="search"
       class="forge-rail__search-input"
-      placeholder="Filtrer les postes et projets"
-      aria-label="Filtrer les postes et projets"
+      [placeholder]="searchPlaceholder()"
+      [attr.aria-label]="searchPlaceholder()"
       [value]="filter()"
       (input)="onFilterInput($event)"
     />
   </label>
 
   @if (nothingMatches()) {
-    <p class="forge-rail__empty">Aucun poste ni projet ne correspond.</p>
+    <p class="forge-rail__empty">{{ emptyText() }}</p>
   }
 
   @for (group of groups(); track group.key) {
@@ -76,8 +76,8 @@
               </span>
               @if (row.awaiting > 0) {
                 <!-- §12 : la pastille « En attente », écrite. -->
-                <span class="forge-rail__flag badge badge--warning">{{ row.awaiting }} attend</span>
-              } @else {
+                <span class="forge-rail__flag badge badge--warning">{{ awaitingLabel()(row.awaiting) }}</span>
+              } @else if (showCount()) {
                 <span class="forge-rail__count" [attr.title]="countTitle(row)">{{ countLabel(row) }}</span>
               }
             </button>
@@ -89,6 +89,6 @@
 
   <button mat-stroked-button type="button" class="forge-rail__connect" (click)="connectHost.emit()">
     <mat-icon>add</mat-icon>
-    Connecter un poste
+    {{ connectLabel() }}
   </button>
 </aside>

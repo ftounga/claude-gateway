@@ -155,6 +155,25 @@ describe('ShellComponent', () => {
     expect(forge().classList).not.toContain('active');
   });
 
+  // ---- F-106 / SF-106-02 : la Vigie, à côté de la Forge ----
+
+  it('porte Forge et Vigie côte à côte, chacune allumée dans son espace', () => {
+    const link = (href: string) => (fixture.nativeElement as HTMLElement)
+      .querySelector(`.app-nav a[href="${href}"]`) as HTMLAnchorElement;
+
+    expect(link('/vigie')).not.toBeNull();
+    expect(link('/vigie').textContent).toContain('Vigie');
+    expect(link('/forge').nextElementSibling).toBe(link('/vigie'));
+
+    arriveAt('/vigie/h1');
+    expect(link('/vigie').classList).toContain('active');
+    expect(link('/forge').classList).not.toContain('active');
+
+    arriveAt('/forge/h1');
+    expect(link('/vigie').classList).not.toContain('active');
+    expect(link('/forge').classList).toContain('active');
+  });
+
   // ---- F-29 SF-29-01 : garde-fou anti-régression sur la marque de la coquille ----
   it('affiche la marque « Claude Portal » sans le terme « Proxy »', () => {
     const brand = (fixture.nativeElement as HTMLElement).querySelector('.brand');
