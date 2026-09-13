@@ -159,7 +159,7 @@ describe('ShellComponent', () => {
 
   it('porte Forge et Vigie côte à côte, chacune allumée dans son espace', () => {
     const link = (href: string) => (fixture.nativeElement as HTMLElement)
-      .querySelector(`.app-nav a[href="${href}"]`) as HTMLAnchorElement;
+      .querySelector(href === '/vigie' ? '.app-nav__vigie' : '.app-nav__forge') as HTMLAnchorElement;
 
     expect(link('/vigie')).not.toBeNull();
     expect(link('/vigie').textContent).toContain('Vigie');
@@ -172,6 +172,29 @@ describe('ShellComponent', () => {
     arriveAt('/forge/h1');
     expect(link('/vigie').classList).not.toContain('active');
     expect(link('/forge').classList).toContain('active');
+  });
+
+  // ---- F-106 / SF-106-04 : les passerelles gardent le client ouvert ----
+
+  it('change d’espace sans perdre le client ouvert', () => {
+    const href = (selector: string) => ((fixture.nativeElement as HTMLElement)
+      .querySelector(selector) as HTMLAnchorElement).getAttribute('href');
+
+    arriveAt('/forge/h1?onglet=carte');
+    expect(href('.app-nav__vigie')).toBe('/vigie/h1');
+    expect(href('.app-nav__forge')).toBe('/forge/h1');
+
+    arriveAt('/vigie/h2/sujets/s1');
+    expect(href('.app-nav__forge')).toBe('/forge/h2');
+    expect((fixture.nativeElement as HTMLElement).querySelector('.app-nav__vigie')?.classList)
+      .toContain('active');
+
+    arriveAt('/forge/voir');
+    expect(href('.app-nav__vigie')).toBe('/vigie');
+
+    arriveAt('/chat');
+    expect(href('.app-nav__forge')).toBe('/forge');
+    expect(href('.app-nav__vigie')).toBe('/vigie');
   });
 
   // ---- F-29 SF-29-01 : garde-fou anti-régression sur la marque de la coquille ----

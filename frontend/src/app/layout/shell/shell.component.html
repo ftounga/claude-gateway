@@ -12,12 +12,12 @@
          L'état actif est calculé plutôt que délégué à `routerLinkActive` : travailler dans un
          projet (`/atelier/:id`), c'est toujours être dans la Forge, et la section d'où l'on vient
          ne doit pas s'éteindre pendant qu'on y travaille. -->
-    <a mat-button routerLink="/forge" [class.active]="forgeActive()">
+    <a mat-button class="app-nav__forge" [routerLink]="spaceLinks().forge" [class.active]="forgeActive()">
       <mat-icon>terminal</mat-icon>
       Forge
     </a>
     <!-- F-106 / SF-106-02 — la Vigie, à côté de la Forge : deux espaces, deux métiers. -->
-    <a mat-button routerLink="/vigie" [class.active]="vigieActive()">
+    <a mat-button class="app-nav__vigie" [routerLink]="spaceLinks().vigie" [class.active]="vigieActive()">
       <mat-icon>radar</mat-icon>
       Vigie
     </a>

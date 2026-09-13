@@ -54,6 +54,10 @@ export function vigieMatcher(segments: UrlSegment[]): UrlMatchResult | null {
   return null;
 }
 
+/** `/vigie/:hostRef/sujets/:id` ⇒ `/vigie/:hostRef?onglet=radar` (F-106 / SF-106-04). */
+export const vigieSubjectRedirect: RedirectFunction = ({ params }) =>
+  inject(Router).createUrlTree(['/vigie', params['hostRef']], { queryParams: { onglet: 'radar' } });
+
 export const routes: Routes = [
   // ---- Pages publiques (hors coquille) ----
   {
@@ -185,6 +189,12 @@ export const routes: Routes = [
         // le rend vrai deux fois.
         matcher: forgeMatcher,
         loadComponent: () => import('./postes/postes.component').then((m) => m.PostesComponent),
+      },
+      {
+        // F-106 / SF-106-04 — **l'adresse d'un sujet** de la Vigie. Tant que la page sujet (F-103)
+        // n'existe pas, elle ouvre l'onglet Radar du bon client : un lien vers un sujet ne casse jamais.
+        path: 'vigie/:hostRef/sujets/:subjectId',
+        redirectTo: vigieSubjectRedirect,
       },
       {
         // F-106 / SF-106-02 — **la Vigie**, l'espace du pilotage : la même forme maître–détail que la

@@ -116,6 +116,18 @@ describe('app.routes', () => {
       expect(forgeMatcher(segments('vigie'))).toBeNull();
     });
 
+    it("l'adresse d'un sujet mène à l'onglet Radar du client (F-106 / SF-106-04)", async () => {
+      TestBed.configureTestingModule({ providers: [provideRouter(routes)] });
+      const router = TestBed.inject(Router);
+      const guard = routes[guardedParentIndex()];
+      const subject = (guard.children ?? []).find((child) => child.path === 'vigie/:hostRef/sujets/:subjectId');
+
+      expect(subject?.redirectTo).toBeDefined();
+      const tree = TestBed.runInInjectionContext(() =>
+        (subject!.redirectTo as (data: unknown) => unknown)({ params: { hostRef: 'h1', subjectId: 's1' } }));
+      expect(router.serializeUrl(tree as never)).toBe('/vigie/h1?onglet=radar');
+    });
+
     it('est déclarée sous la route authentifiée', () => {
       const children = routes[guardedParentIndex()].children ?? [];
       expect(children.some((child) => child.matcher === vigieMatcher)).toBeTrue();
