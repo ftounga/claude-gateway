@@ -1324,10 +1324,17 @@ public class AtelierChatService implements RelayInterruptTarget {
         }
         // Deux façons de ne plus être interrompu, l'une bornée au message, l'autre au projet
         // (F-38 / SF-38-20). Dans les deux cas, l'audit continue de tout tracer.
-        if (requiresConfirmation(tool, workspace)
-                && !blanketAllowedTurns.contains(turnKey(userId, workspace.getId()))) {
+        //
+        // F-108 / SF-108-02 : une ÉCRITURE dans Microsoft 365 est confirmée à CHAQUE fois (cadrage
+        // §4.4). Elle n'est donc jamais couverte par « tout autoriser pour ce message », ni soumise
+        // au réglage agent_ask_before_bash (qui ne concerne que bash) : c'est une garde du cadrage,
+        // pas une commodité réglable. Le libellé présenté nomme l'action et l'emplacement en clair.
+        boolean teamsWrite = fr.claudegateway.teams.TeamsToolCatalog.isWrite(tool);
+        boolean blanket = blanketAllowedTurns.contains(turnKey(userId, workspace.getId()));
+        if (teamsWrite || (requiresConfirmation(tool, workspace) && !blanket)) {
+            String detail = teamsWrite ? teamsWriteDetail(call) : target;
             RunnerConfirmationGate.Outcome decision =
-                    askPermission(userId, workspaceId, callId, tool, target, listener);
+                    askPermission(userId, workspaceId, callId, tool, detail, listener);
             if (!decision.decision().allows()) {
                 // Refus AVANT émission (contrat §6) : rien n'est parti sur la machine, et le modèle
                 // reçoit le motif pour proposer autre chose plutôt que de rester bloqué.
@@ -1372,6 +1379,29 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private static boolean requiresConfirmation(String tool, Workspace workspace) {
         return "bash".equals(tool) && workspace.isAgentAskBeforeBash();
+    }
+
+    /**
+     * <b>Le libellé clair d'une écriture Teams</b> (F-108 / SF-108-02, cadrage §4.4) : ce que
+     * l'utilisateur lit avant d'autoriser. L'item et l'emplacement sont extraits des paramètres
+     * d'appel ; le phrasé, lui, vit dans {@code TeamsToolCatalog.describeWrite} — une seule source.
+     */
+    private String teamsWriteDetail(AgentToolCall call) {
+        JsonNode input = call.input();
+        String item = firstArg(input, "name", "target", "file");
+        String location = firstArg(input, "location", "destination", "parent");
+        return fr.claudegateway.teams.TeamsToolCatalog.describeWrite(call.name(), item, location);
+    }
+
+    /** Le premier argument texte non vide parmi une liste de noms possibles, ou {@code ""}. */
+    private String firstArg(JsonNode input, String... names) {
+        for (String name : names) {
+            String value = arg(input, name);
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
     }
 
     /** Pose la demande d'autorisation à l'écran, attend la décision, puis relaie sa résolution. */
@@ -1472,9 +1502,14 @@ public class AtelierChatService implements RelayInterruptTarget {
         };
     }
 
-    /** La cible lisible d'un appel Teams : le fil, la question ou la réunion. Jamais un contenu. */
+    /**
+     * La cible lisible d'un appel Teams : le fil, la question, la réunion — ou, pour une écriture
+     * (F-108), le nom et l'emplacement de ce qui est écrit. Jamais un contenu de fichier ni de
+     * message.
+     */
     private String teamsAuditTarget(JsonNode input) {
-        for (String field : List.of("conversation_id", "meeting_id", "capture_id", "query")) {
+        for (String field : List.of("conversation_id", "meeting_id", "capture_id", "query",
+                "name", "target", "file", "location", "destination")) {
             String value = arg(input, field);
             if (value != null && !value.isBlank()) {
                 return field + '=' + value;

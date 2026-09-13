@@ -126,6 +126,61 @@ public class TeamsToolCatalog {
         return MEETING_CARD.equals(tool) || LIST.equals(tool) || MOMENTS.equals(tool);
     }
 
+    // ------------------------------------------------------------------ F-108 : les écritures
+
+    /** Créer un dossier dans Teams / SharePoint / OneDrive (F-108 / SF-108-04). */
+    public static final String CREATE_FOLDER = "teams_create_folder";
+    /** Déposer un fichier de la machine (F-108 / SF-108-04). */
+    public static final String UPLOAD_FILE = "teams_upload_file";
+    /** Renommer un fichier ou un dossier (F-108 / SF-108-04). */
+    public static final String RENAME = "teams_rename";
+    /** Déplacer un fichier ou un dossier (F-108 / SF-108-04). */
+    public static final String MOVE = "teams_move";
+    /** Supprimer un fichier ou un dossier (F-108 / SF-108-04). */
+    public static final String DELETE = "teams_delete";
+    /** Remplacer un document par une nouvelle version — télécharger → modifier → redéposer (F-108). */
+    public static final String REPLACE_VERSION = "teams_replace_version";
+
+    /**
+     * <b>Les outils qui ÉCRIVENT</b> dans Microsoft 365 (F-108 / SF-108-02, cadrage §4.4) — et la
+     * seule liste qui fasse foi. Chacun est soumis à l'autorisation du terminal, action et
+     * emplacement nommés en clair ; aucun n'est couvert par « Tout autoriser pour ce message » :
+     * <b>chaque écriture</b> est confirmée. La lecture et le téléchargement, eux, ne demandent rien.
+     *
+     * <p>Poster un message, répondre, réagir <b>ne sont pas ici</b> : ils restent hors périmètre.</p>
+     */
+    public static final List<String> WRITE = List.of(CREATE_FOLDER, UPLOAD_FILE, RENAME, MOVE,
+            DELETE, REPLACE_VERSION);
+
+    /** Vrai si ce nom d'outil <b>écrit</b> dans Microsoft 365, et exige donc une confirmation. */
+    public static boolean isWrite(String tool) {
+        return tool != null && WRITE.contains(tool);
+    }
+
+    /**
+     * <b>Le libellé clair d'une écriture</b> (F-108 / SF-108-02, cadrage §4.4) — ce que l'utilisateur
+     * lit avant d'autoriser. Il nomme l'<b>action</b> et l'<b>emplacement</b>, jamais un identifiant
+     * technique : « Créer le dossier « Livrables » dans Équipe Projet IAM › Général › Fichiers ».
+     *
+     * @param tool     l'outil d'écriture
+     * @param item     ce sur quoi porte l'écriture (nom de dossier, de fichier…), déjà lisible
+     * @param location l'emplacement en clair, ou vide s'il n'est pas connu
+     */
+    public static String describeWrite(String tool, String item, String location) {
+        String name = item == null || item.isBlank() ? "(sans nom)" : item.strip();
+        String where = location == null || location.isBlank() ? "" : " dans " + location.strip();
+        return switch (tool == null ? "" : tool) {
+            case CREATE_FOLDER -> "Créer le dossier « " + name + " »" + where;
+            case UPLOAD_FILE -> "Déposer le fichier « " + name + " »" + where;
+            case RENAME -> "Renommer « " + name + " »" + where;
+            case MOVE -> "Déplacer « " + name + " »"
+                    + (location == null || location.isBlank() ? "" : " vers " + location.strip());
+            case DELETE -> "Supprimer « " + name + " »" + where;
+            case REPLACE_VERSION -> "Remplacer la version de « " + name + " »" + where;
+            default -> "Écrire « " + name + " »" + where;
+        };
+    }
+
     /**
      * Préfixe commun à tous les outils du volet. Sert à une seule chose, mais elle compte : un test
      * peut vérifier qu'<b>aucun</b> outil commençant par {@code teams_} n'est donné là où le droit

@@ -314,11 +314,22 @@ class AtelierChatServiceRunnerGuardTest {
             // Sans objet ici.
         }
 
+        private boolean blanketOnFirst;
+
+        /** La première demande est répondue « tout autoriser », les suivantes « autoriser ». */
+        void answerBlanketThenAllow() {
+            this.decision = true;
+            this.blanketOnFirst = true;
+        }
+
         @Override
         public void onConfirmRequest(AtelierConfirmRequest request) {
+            boolean first = requests.isEmpty();
             requests.add(request);
             if (decision != null) {
-                service.confirmToolUse(userId, workspaceId, request.toolUseId(), decision, reason);
+                boolean allowAll = blanketOnFirst && first;
+                service.confirmToolUse(userId, workspaceId, request.toolUseId(), decision, reason,
+                        allowAll);
             }
         }
 
@@ -365,5 +376,82 @@ class AtelierChatServiceRunnerGuardTest {
         // Ce qui disparaît est le clic, jamais la trace.
         verify(auditService).recordCall(eq(userId), eq(runnerTarget), anyString(), eq("bash"),
                 anyString(), any());
+    }
+
+    // ------------------------------------------------- F-108 / SF-108-02 : confirmer les écritures
+
+    @Test
+    void aRefusedTeamsWriteNeverReachesMicrosoft365() {
+        stubWorkspace(WorkspaceExecutionTarget.RUNNER);
+        listener.answer(false, "pas maintenant");
+        agentProvider.enqueueToolCall("teams_create_folder", "name", "Livrables",
+                "location", "Équipe Projet IAM › Général › Fichiers");
+        agentProvider.enqueueFinal("Compris.");
+
+        service.chatStreaming(userId, workspaceId, "crée le dossier", listener);
+
+        // Rien n'est parti sur la machine : l'écriture refusée n'atteint jamais le navigateur.
+        verify(runnerToolGateway, never()).teamsRead(any(), anyString(), anyString(), any());
+        assertThat(lastToolResult().isError()).isTrue();
+        assertThat(listener.resolved).extracting(AtelierConfirmResolved::decision).containsExactly("deny");
+        verify(auditService).recordDenied(eq(userId), eq(runnerTarget), anyString(),
+                eq("teams_create_folder"), anyString(), eq(RunnerAuditOutcome.DENIED));
+    }
+
+    @Test
+    void aTeamsWriteAsksWithAClearActionAndLocation() {
+        stubWorkspace(WorkspaceExecutionTarget.RUNNER);
+        listener.answer(true, null);
+        when(runnerToolGateway.teamsRead(eq(runnerTarget), anyString(), eq("teams_create_folder"), any()))
+                .thenReturn(ok("{}"));
+        agentProvider.enqueueToolCall("teams_create_folder", "name", "Livrables",
+                "location", "Équipe Projet IAM › Général › Fichiers");
+        agentProvider.enqueueFinal("Créé.");
+
+        service.chatStreaming(userId, workspaceId, "crée le dossier", listener);
+
+        assertThat(listener.requests).extracting(AtelierConfirmRequest::tool)
+                .containsExactly("teams_create_folder");
+        assertThat(listener.requests.get(0).detail())
+                .isEqualTo("Créer le dossier « Livrables » dans Équipe Projet IAM › Général › Fichiers");
+        verify(runnerToolGateway).teamsRead(eq(runnerTarget), anyString(), eq("teams_create_folder"), any());
+    }
+
+    @Test
+    void aTeamsReadIsNotHeldBehindAPrompt() {
+        stubWorkspace(WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.teamsRead(eq(runnerTarget), anyString(), eq("teams_read_conversation"), any()))
+                .thenReturn(ok("{}"));
+        agentProvider.enqueueToolCall("teams_read_conversation", "conversation_id", "19:x@thread.v2");
+        agentProvider.enqueueFinal("Lu.");
+
+        service.chatStreaming(userId, workspaceId, "lis la conversation", listener);
+
+        assertThat(listener.requests).isEmpty();
+        verify(runnerToolGateway).teamsRead(eq(runnerTarget), anyString(), eq("teams_read_conversation"), any());
+    }
+
+    @Test
+    void everyTeamsWriteIsConfirmedEvenUnderBlanketApproval() {
+        stubWorkspace(WorkspaceExecutionTarget.RUNNER);
+        // La première commande (bash) est autorisée par « tout autoriser pour ce message » : le
+        // raccourci qui dispense les commandes SUIVANTES de redemander (SF-38-20).
+        listener.answerBlanketThenAllow();
+        when(runnerToolGateway.bash(eq(runnerTarget), anyString(), eq("echo un"), any(), anyLong(), any()))
+                .thenReturn(bashOk("un\n", 0));
+        when(runnerToolGateway.teamsRead(eq(runnerTarget), anyString(), eq("teams_delete"), any()))
+                .thenReturn(ok("{}"));
+        agentProvider.enqueueToolCall("bash", "command", "echo un");
+        agentProvider.enqueueToolCall("teams_delete", "name", "vieux.docx", "location", "Général");
+        agentProvider.enqueueFinal("Fait.");
+
+        service.chatStreaming(userId, workspaceId, "lance puis supprime", listener);
+
+        // Le blanket couvre bash, jamais une écriture Microsoft 365 : chaque écriture est confirmée.
+        // Deux demandes : la commande, puis l'écriture Teams — malgré le « tout autoriser ».
+        assertThat(listener.requests).extracting(AtelierConfirmRequest::tool)
+                .containsExactly("bash", "teams_delete");
+        assertThat(listener.requests.get(1).detail()).isEqualTo("Supprimer « vieux.docx » dans Général");
+        verify(runnerToolGateway).teamsRead(eq(runnerTarget), anyString(), eq("teams_delete"), any());
     }
 }
