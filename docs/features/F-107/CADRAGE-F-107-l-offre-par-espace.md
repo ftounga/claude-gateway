@@ -65,6 +65,20 @@ est une question commerciale laissée au PO : le proposer, et à quelle remise.
 Teams dans la Vigie a un espace à moitié vide (pas de Radar, pas de résumé) ; la ligne d'offre perd sa
 lisibilité. **Le PO peut la rétablir** si la mesure de l'essai montre un public « Teams sans Radar ».
 
+## 3 bis. Le compte administrateur a tout — décision du PO, 2026-09-13
+
+> *« Dorénavant donne-moi accès à toutes les fonctionnalités qu'on développe par défaut. Je suis
+> l'admin. »*
+
+**Un utilisateur de rôle `ADMIN` a tous les droits de fonctionnalité**, quel que soit son plan : Forge,
+Vigie (Teams, Radar, réunions), et **tout droit futur** créé par une feature. La règle vit **dans le
+service de droits lui-même** (`SpaceEntitlementService`, et d'ici là `AtelierEntitlementService` et
+`TeamsEntitlementService`), pas dans chaque écran : un droit ajouté demain l'hérite sans qu'on y pense.
+**Ce que le rôle n'ouvre pas** : le quota de jetons (inchangé, crédit manuel si besoin) et le
+supplément par client (rien n'est facturé à l'administrateur, rien n'est bloqué non plus).
+**Livrée en avance** par le correctif « l'administrateur a tout » de la vague du 2026-09-13 ; SF-107-02
+doit la **conserver** en absorbant les deux services.
+
 ## 4. La largeur : le supplément par poste s'applique partout
 
 - Le supplément par poste (F-65) **s'applique à tous les plans, BYOK compris**. En BYOK il n'apporte
