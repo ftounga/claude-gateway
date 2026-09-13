@@ -8,10 +8,16 @@ import { ForgeProjectTileComponent } from './forge-project-tile.component';
 describe('ForgeProjectTileComponent', () => {
   let fixture: ComponentFixture<ForgeProjectTileComponent>;
 
-  const base: HostProjectSummary = {
-    id: 'w1', name: 'security-assessment', projectPath: 'security-assessment', calls: 3, active: false,
-    lastActivityAt: new Date(Date.now() - 5 * 60_000).toISOString(), lastTool: 'bash',
-  };
+  // La date est posée au début de chaque test, pas au chargement du fichier : sur une suite longue,
+  // plusieurs minutes passent entre les deux et « il y a 5 min » devenait « il y a 6 min ».
+  let base: HostProjectSummary;
+
+  beforeEach(() => {
+    base = {
+      id: 'w1', name: 'security-assessment', projectPath: 'security-assessment', calls: 3, active: false,
+      lastActivityAt: new Date(Date.now() - 5 * 60_000).toISOString(), lastTool: 'bash',
+    };
+  });
 
   function render(project: HostProjectSummary, hosted = false): HTMLElement {
     TestBed.configureTestingModule({ imports: [ForgeProjectTileComponent] });

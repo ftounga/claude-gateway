@@ -175,9 +175,16 @@ class MomentsWorkerTest {
         MomentsWorker.Request request = request(false);
         MomentsJob job = runToEnd(worker, request);
 
-        // Un store neuf : c'est ce que verrait un runner relancé.
+        // Un store neuf : c'est ce que verrait un runner relancé. La phase TERMINE est posée en
+        // mémoire juste avant l'écriture sur disque : on attend que le fichier la porte, sans quoi
+        // la relecture perd la course sur une machine chargée.
         MomentsJobStore reread = new MomentsJobStore(new TeamsWorkFolder(home));
         MomentsJob relu = reread.find(job.id()).orElseThrow();
+        long deadline = System.currentTimeMillis() + 10_000L;
+        while (!relu.isOver() && System.currentTimeMillis() < deadline) {
+            TimeUnit.MILLISECONDS.sleep(20);
+            relu = reread.find(job.id()).orElseThrow();
+        }
 
         assertEquals(MomentsJob.Phase.TERMINE, relu.phase());
         assertEquals(job.moments().size(), relu.moments().size());
