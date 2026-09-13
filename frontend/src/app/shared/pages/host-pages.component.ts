@@ -15,6 +15,7 @@ import { ExportService } from '../../core/services/export.service';
 import { PagesService } from '../../core/services/pages.service';
 import { PageFrameComponent } from './page-frame.component';
 import { PageVersionsDialogComponent, PageVersionsDialogData } from './page-versions-dialog.component';
+import { PageShareDialogComponent, PageShareDialogData } from './page-share-dialog.component';
 
 /** Cartes par page de la grille. */
 export const HOST_PAGES_PAGE_SIZE = 12;
@@ -55,6 +56,9 @@ export const HOST_PAGES_PAGE_SIZE = 12;
               <mat-menu #menu="matMenu">
                 <button mat-menu-item type="button" class="host-pages__open" (click)="open(page)">
                   <mat-icon>open_in_new</mat-icon>Ouvrir
+                </button>
+                <button mat-menu-item type="button" class="host-pages__share" (click)="share(page)">
+                  <mat-icon>share</mat-icon>Partager
                 </button>
                 <button mat-menu-item type="button" class="host-pages__rename" (click)="rename(page)">
                   <mat-icon>edit</mat-icon>Renommer
@@ -212,6 +216,13 @@ export class HostPagesComponent {
       });
   }
 
+  /** Partager (F-109 / SF-109-05) : l'avertissement, le lien, ses ouvertures, le journal. */
+  share(page: PageSummary): void {
+    this.dialog.open<PageShareDialogComponent, PageShareDialogData>(PageShareDialogComponent, {
+      data: { pageId: page.id, title: page.title }, width: '640px', maxWidth: '95vw',
+    });
+  }
+
   versions(page: PageSummary): void {
     this.dialog.open<PageVersionsDialogComponent, PageVersionsDialogData>(PageVersionsDialogComponent, {
       data: { pageId: page.id, title: page.title }, width: '560px', maxWidth: '95vw',
@@ -230,7 +241,7 @@ export class HostPagesComponent {
       .open<ConfirmDialogComponent, ConfirmDialogData, boolean>(ConfirmDialogComponent, {
         data: {
           title: 'Supprimer la page ?',
-          message: `« ${page.title} » et ses versions seront supprimées définitivement.`,
+          message: `« ${page.title} » et ses versions seront supprimées définitivement, et ses liens de partage cesseront de fonctionner.`,
           confirmLabel: 'Supprimer',
         },
         width: '480px', maxWidth: '95vw',

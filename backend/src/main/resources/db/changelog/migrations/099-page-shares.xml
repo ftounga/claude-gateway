@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-109 / SF-109-05 — LE PARTAGE DES PAGES.
+
+      `page_shares` : un lien de partage. Seule l'EMPREINTE SHA-256 du jeton est conservée (`token_hash`,
+      unique) : le jeton n'est montré qu'une fois, à la création. `expires_at` (1 à 90 jours), `revoked_at`
+      (posé à la révocation, jamais effacé), `open_count` et `last_opened_at` — et rien du visiteur.
+
+      `page_events` : le journal d'une page — CREATED, VERSION, SHARED, OPENED, REVOKED —, avec le lien
+      concerné quand il y en a un.
+
+      Clés étrangères en cascade sur `pages` : supprimer une page supprime ses liens et son journal.
+    -->
+    <changeSet id="099-page-shares" author="claude-gateway">
+        <createTable tableName="page_shares">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="page_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="token_hash" type="varchar(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="expires_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="revoked_at" type="timestamp with time zone"/>
+            <column name="open_count" type="bigint" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_opened_at" type="timestamp with time zone"/>
+        </createTable>
+        <addForeignKeyConstraint baseTableName="page_shares" baseColumnNames="page_id"
+                referencedTableName="pages" referencedColumnNames="id"
+                constraintName="fk_page_shares_page" onDelete="CASCADE"/>
+        <addUniqueConstraint tableName="page_shares" columnNames="token_hash"
+                constraintName="uk_page_shares_token_hash"/>
+        <createIndex tableName="page_shares" indexName="idx_page_shares_owner">
+            <column name="user_id"/>
+            <column name="page_id"/>
+        </createIndex>
+
+        <createTable tableName="page_events">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="page_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="share_id" type="uuid"/>
+            <column name="kind" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="version" type="int"/>
+            <column name="occurred_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint baseTableName="page_events" baseColumnNames="page_id"
+                referencedTableName="pages" referencedColumnNames="id"
+                constraintName="fk_page_events_page" onDelete="CASCADE"/>
+        <createIndex tableName="page_events" indexName="idx_page_events_owner">
+            <column name="user_id"/>
+            <column name="page_id"/>
+            <column name="occurred_at"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="page_events"/>
+            <dropTable tableName="page_shares"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

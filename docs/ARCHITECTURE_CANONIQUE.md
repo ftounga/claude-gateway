@@ -1132,12 +1132,18 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   allow-scripts allow-popups` (jamais `allow-same-origin`), `connect-src 'none'`, `form-action 'none'`,
   CDN en liste close (`PageContentPolicy`). L'écran lit une page par **ticket signé** (HMAC, clé dérivée
   du secret JWT, 10 min, non-JWT) sur `GET /p/{jeton}/**` — **la seule route ouverte sans compte**.
+  - **Partage et journal** (F-109 / SF-109-05, migration `099`) : `page_shares` (`page_id` FK cascade,
+    `user_id`, **`token_hash`** SHA-256 unique — le jeton de 32 octets n'est jamais stocké —, `created_at`,
+    `expires_at` 1 à 90 jours, `revoked_at`, `open_count`, `last_opened_at` ; rien du visiteur), servi sur la
+    même route publique ; `page_events` (`page_id` FK cascade, `user_id`, `share_id`, `kind`
+    `CREATED`|`VERSION`|`SHARED`|`OPENED`|`REVOKED`, `version`, `occurred_at`). Index `(user_id, page_id)`.
+    API propriétaire : `POST|GET /pages/{id}/shares`, `DELETE /pages/{id}/shares/{shareId}`, `GET /pages/{id}/journal`.
 
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files/pages/page_versions via `user_id` ; tables `radar_*` via `user_id` **et** `host_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files/pages/page_versions/page_shares/page_events via `user_id` ; tables `radar_*` via `user_id` **et** `host_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
 
 ---
 

@@ -31,6 +31,7 @@ class PageServiceTest {
 
     @Autowired private PageRepository pageRepository;
     @Autowired private PageVersionRepository versionRepository;
+    @Autowired private PageEventRepository eventRepository;
     @Autowired private UserRepository userRepository;
 
     private InMemoryWorkspaceStorage storage;
@@ -47,7 +48,7 @@ class PageServiceTest {
         storage = new InMemoryWorkspaceStorage();
         // 1 000 octets par page, 2 500 par compte, 3 versions, 2 pièces jointes.
         service = new PageService(pageRepository, versionRepository, new PageStore(storage),
-                new PageLimits(1_000L, 2_500L, 3, 2, null));
+                new PageLimits(1_000L, 2_500L, 3, 2, null), eventRepository);
     }
 
     private UUID seedUser(String email) {

@@ -2,7 +2,14 @@ import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { PageSpace, PageSummary, PageVersionSummary } from '../models/pages.models';
+import {
+  CreatedPageShare,
+  PageJournalEntry,
+  PageShareSummary,
+  PageSpace,
+  PageSummary,
+  PageVersionSummary,
+} from '../models/pages.models';
 
 /**
  * **Les pages** (F-109). Aucun appel ne porte d'identifiant de compte : la gateway part du JWT et ne rend
@@ -46,6 +53,26 @@ export class PagesService {
   /** L'archive ZIP des pages d'un lieu. */
   exportPlace(hostId: string, space: PageSpace): Observable<HttpResponse<Blob>> {
     return this.http.get('/api/pages/export', { params: { hostId, space }, responseType: 'blob', observe: 'response' });
+  }
+
+  /** Crée un lien de partage (F-109 / SF-109-05) ; le jeton n'est rendu qu'ici. */
+  createShare(pageId: string, expiresInDays: number): Observable<CreatedPageShare> {
+    return this.http.post<CreatedPageShare>(`/api/pages/${pageId}/shares`, { expiresInDays });
+  }
+
+  /** Les liens de partage d'une page, sans leur jeton. */
+  shares(pageId: string): Observable<PageShareSummary[]> {
+    return this.http.get<PageShareSummary[]>(`/api/pages/${pageId}/shares`);
+  }
+
+  /** Révoque un lien : il cesse immédiatement. */
+  revokeShare(pageId: string, shareId: string): Observable<void> {
+    return this.http.delete<void>(`/api/pages/${pageId}/shares/${shareId}`);
+  }
+
+  /** Le journal d'une page, le plus récent d'abord. */
+  journal(pageId: string): Observable<PageJournalEntry[]> {
+    return this.http.get<PageJournalEntry[]>(`/api/pages/${pageId}/journal`);
   }
 
   /** Le fichier HTML d'une version (courante par défaut), en téléchargement. */
