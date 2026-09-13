@@ -142,4 +142,42 @@ describe('ForgeRailComponent', () => {
 
     expect(root.textContent).toContain('Aucun poste ni projet ne correspond.');
   });
+
+  // ---- F-106 / SF-106-02 : la même colonne, avec les mots de la Vigie ----
+
+  it('prend les mots de la Vigie sans rien changer à la forme', () => {
+    TestBed.configureTestingModule({ imports: [ForgeRailComponent] });
+    fixture = TestBed.createComponent(ForgeRailComponent);
+    const withFollowUps = (h: RunnerHostOverview) => (h.id === 'h1' ? 2 : 0);
+    fixture.componentRef.setInput('groups',
+      groupHosts([host('h1', 'EDENRED'), host('h2', 'FREE')], (h) => h.connected, '', withFollowUps));
+    fixture.componentRef.setInput('ariaLabel', 'Clients');
+    fixture.componentRef.setInput('searchPlaceholder', 'Filtrer les clients');
+    fixture.componentRef.setInput('connectLabel', 'Ajouter un client');
+    fixture.componentRef.setInput('showCount', false);
+    fixture.componentRef.setInput('awaitingLabel', (n: number) => `${n} relances`);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+
+    expect(root.querySelector('aside')?.getAttribute('aria-label')).toBe('Clients');
+    expect(root.querySelector<HTMLInputElement>('input')?.placeholder).toBe('Filtrer les clients');
+    expect(root.querySelector('.forge-rail__connect')?.textContent).toContain('Ajouter un client');
+    expect(Array.from(root.querySelectorAll('.forge-rail__group')).map((g) => g.textContent?.trim()))
+      .toEqual(['À regarder', 'En ligne']);
+    expect(root.querySelector('.forge-rail__flag')?.textContent?.trim()).toBe('2 relances');
+    // Aucun compte de projets dans la Vigie.
+    expect(root.querySelector('.forge-rail__count')).toBeNull();
+  });
+
+  it('dit le texte vide de l’espace quand rien ne correspond', () => {
+    TestBed.configureTestingModule({ imports: [ForgeRailComponent] });
+    fixture = TestBed.createComponent(ForgeRailComponent);
+    fixture.componentRef.setInput('groups', []);
+    fixture.componentRef.setInput('filter', 'zzz');
+    fixture.componentRef.setInput('emptyText', 'Aucun client ne correspond.');
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('.forge-rail__empty')?.textContent)
+      .toContain('Aucun client ne correspond.');
+  });
 });

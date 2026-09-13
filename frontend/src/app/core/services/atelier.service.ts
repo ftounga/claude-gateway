@@ -35,6 +35,7 @@ import {
   RunnerHost,
   RunnerHostOverview,
   RunnerHostRequest,
+  ClientSpace,
   RunnerKillResult,
   ProxyRelayFormats,
   RunnerDownloadFormats,
@@ -816,8 +817,12 @@ export class AtelierService {
    * <p>L'appel ne porte **aucun identifiant** : la gateway part du JWT, et l'écran ne peut donc pas
    * demander la machine d'un autre compte.</p>
    */
-  runnerHostsOverview(): Observable<RunnerHostOverview[]> {
-    return this.http.get<RunnerHostOverview[]>('/api/runner-hosts/overview');
+  runnerHostsOverview(space?: ClientSpace): Observable<RunnerHostOverview[]> {
+    // F-106 / SF-106-01 : sans espace, la Forge (défaut de la gateway) — la Forge n'envoie rien.
+    if (space === undefined || space === 'FORGE') {
+      return this.http.get<RunnerHostOverview[]>('/api/runner-hosts/overview');
+    }
+    return this.http.get<RunnerHostOverview[]>('/api/runner-hosts/overview', { params: { space } });
   }
 
   /**
@@ -837,8 +842,10 @@ export class AtelierService {
   }
 
   /** Crée un poste au nom libre (F-48 / SF-48-01). */
-  createRunnerHost(name: string): Observable<RunnerHost> {
-    return this.http.post<RunnerHost>('/api/runner-hosts', { name } satisfies RunnerHostRequest);
+  createRunnerHost(name: string, space?: ClientSpace): Observable<RunnerHost> {
+    // F-106 / SF-106-01 : « connecter un client depuis la Vigie » le fait naître dans la Vigie seule.
+    const body: RunnerHostRequest = space === undefined ? { name } : { name, space };
+    return this.http.post<RunnerHost>('/api/runner-hosts', body);
   }
 
   /**

@@ -1,0 +1,305 @@
+import { ComponentFixture, TestBed, discardPeriodicTasks, fakeAsync, tick } from '@angular/core/testing';
+import { HttpErrorResponse } from '@angular/common/http';
+import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { ActivatedRoute, ParamMap, Router, convertToParamMap, provideRouter } from '@angular/router';
+import { BehaviorSubject, of, throwError } from 'rxjs';
+import { MatDialog } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
+
+import { RunnerHostOverview } from '../core/models/atelier.models';
+import { VigieRadarCounts } from '../core/models/vigie.models';
+import { AtelierService } from '../core/services/atelier.service';
+import { VigieService } from '../core/services/vigie.service';
+import { RunnerPairingDialogComponent } from '../atelier/runner/runner-pairing-dialog.component';
+import { AddClientDialogComponent } from './add-client-dialog/add-client-dialog.component';
+import { RemoveClientDialogComponent } from './remove-client-dialog/remove-client-dialog.component';
+import { VIGIE_REFRESH_MS, VigieComponent } from './vigie.component';
+
+/** La Vigie, l'écran (F-106 / SF-106-02). */
+describe('VigieComponent', () => {
+  let fixture: ComponentFixture<VigieComponent>;
+  let component: VigieComponent;
+  let atelier: jasmine.SpyObj<AtelierService>;
+  let vigie: jasmine.SpyObj<VigieService>;
+  let dialog: jasmine.SpyObj<MatDialog>;
+  let snackBar: jasmine.SpyObj<MatSnackBar>;
+  let router: Router;
+  let params$: BehaviorSubject<ParamMap>;
+  let query$: BehaviorSubject<ParamMap>;
+  /** Ce que rend chaque dialogue, par composant. */
+  let dialogResults: Map<unknown, unknown>;
+
+  const client = (id: string, name: string, extra: Partial<RunnerHostOverview> = {}): RunnerHostOverview => ({
+    id, name, connected: true, activeProjects: 0, createdAt: '2026-09-10T08:00:00Z',
+    lastSeenAt: new Date().toISOString(), missionStatus: 'ACTIVE', spaces: ['FORGE', 'VIGIE'],
+    projects: [{ id: `${id}-w`, name: 'projet-secret', calls: 0, active: false }],
+    ...extra,
+  });
+
+  const noCounts: VigieRadarCounts = { followUpsDue: 0, blockedSubjects: 0, lastSync: null };
+
+  function build(options: {
+    hosts?: RunnerHostOverview[];
+    entitled?: boolean;
+    hostRef?: string | null;
+    tab?: string | null;
+    counts?: Record<string, VigieRadarCounts>;
+  } = {}): HTMLElement {
+    atelier = jasmine.createSpyObj<AtelierService>('AtelierService', ['teamsAccess', 'runnerHostsOverview']);
+    atelier.teamsAccess.and.returnValue(of({ entitled: options.entitled ?? true }));
+    atelier.runnerHostsOverview.and.returnValue(of(options.hosts ?? [client('h1', 'EDENRED')]));
+    vigie = jasmine.createSpyObj<VigieService>('VigieService',
+      ['radarCounts', 'people', 'activate', 'remove', 'purgeRadar', 'hostSpaces']);
+    vigie.radarCounts.and.callFake((hostId: string) => of(options.counts?.[hostId] ?? noCounts));
+    vigie.people.and.returnValue(of([]));
+    vigie.activate.and.returnValue(of({ hostId: 'h1', name: 'EDENRED', missionStatus: 'ACTIVE', spaces: ['FORGE', 'VIGIE'] }));
+    vigie.remove.and.returnValue(of({ hostId: 'h1', name: 'EDENRED', missionStatus: 'ACTIVE', spaces: ['FORGE'] }));
+    vigie.purgeRadar.and.returnValue(of({}));
+    dialogResults = new Map();
+    dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
+    dialog.open.and.callFake(((component: unknown) =>
+      ({ afterClosed: () => of(dialogResults.get(component)) })) as never);
+    snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
+    params$ = new BehaviorSubject(convertToParamMap(options.hostRef ? { hostRef: options.hostRef } : {}));
+    query$ = new BehaviorSubject(convertToParamMap(options.tab ? { onglet: options.tab } : {}));
+
+    TestBed.configureTestingModule({
+      imports: [VigieComponent],
+      providers: [
+        provideRouter([]),
+        provideNoopAnimations(),
+        { provide: AtelierService, useValue: atelier },
+        { provide: VigieService, useValue: vigie },
+        { provide: MatDialog, useValue: dialog },
+        { provide: MatSnackBar, useValue: snackBar },
+        { provide: ActivatedRoute, useValue: { snapshot: {}, paramMap: params$, queryParamMap: query$ } },
+      ],
+    });
+    router = TestBed.inject(Router);
+    spyOn(router, 'navigate').and.resolveTo(true);
+    fixture = TestBed.createComponent(VigieComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  /** Le texte du bandeau, espaces insécables ramenés à des espaces. */
+  const fleetText = (root: HTMLElement) =>
+    (root.querySelector('.forge-fleet')?.textContent ?? '').replace(/\u00a0/g, ' ');
+
+  it("sans droit : l'encart de la Vigie, et aucune lecture des clients", () => {
+    const root = build({ entitled: false });
+
+    expect(root.querySelector('.vigie__not-entitled')?.textContent).toContain("La Vigie n'est pas ouverte");
+    expect(atelier.runnerHostsOverview).not.toHaveBeenCalled();
+    expect(root.querySelector('app-forge-rail')).toBeNull();
+  });
+
+  it('lit la vue de la Vigie, et montre la colonne de la Forge avec les mots de la Vigie', () => {
+    const root = build({ hosts: [client('h1', 'EDENRED'), client('h2', 'FREE', { connected: false })] });
+
+    expect(atelier.runnerHostsOverview).toHaveBeenCalledWith('VIGIE');
+    const rail = root.querySelector('app-forge-rail') as HTMLElement;
+    expect(rail.querySelector('aside')?.getAttribute('aria-label')).toBe('Clients');
+    expect(rail.querySelector<HTMLInputElement>('input')?.placeholder).toBe('Filtrer les clients');
+    expect(rail.querySelector('.forge-rail__count')).toBeNull();
+    expect(root.querySelector('.forge-fleet__title')?.textContent).toContain('Vigie');
+    expect(fleetText(root)).toContain('1 client en ligne sur 2');
+    // Un seul client ouvert.
+    expect(root.querySelectorAll('.vigie__client').length).toBe(1);
+  });
+
+  it('le filtre ne retient pas un client par le nom de ses projets', () => {
+    build({ hosts: [client('h1', 'EDENRED')] });
+
+    component.filter.set('projet-secret');
+
+    expect(component.groups().length).toBe(0);
+  });
+
+  it('dit relances dues, sujets bloqués et dernière synchro ; les relances font « À regarder »', () => {
+    const root = build({
+      hosts: [client('h1', 'EDENRED'), client('h2', 'FREE')],
+      counts: {
+        h2: { followUpsDue: 2, blockedSubjects: 1,
+          lastSync: { id: 's', status: 'SUCCEEDED', startedAt: '2026-09-12T20:00:00Z', finishedAt: '2026-09-12T20:10:00Z' } },
+      },
+    });
+
+    const fleet = fleetText(root);
+    expect(fleet).toContain('2 relances dues');
+    expect(fleet).toContain('1 sujet bloqué');
+    expect(root.querySelector('.vigie__sync')?.textContent).toContain('synchro');
+    expect(component.groups()[0].key).toBe('attention');
+    expect(component.groups()[0].rows[0].ref).toBe('h2');
+    expect(root.querySelector('.forge-rail__flag')?.textContent?.trim()).toBe('2 relances');
+    // Sans client désigné, la Vigie ouvre ce qui attend.
+    expect(component.selectedRef()).toBe('h2');
+  });
+
+  it('ouvre le client désigné par l’URL, et le client par défaut sinon', () => {
+    build({ hosts: [client('h1', 'EDENRED'), client('h2', 'FREE')], hostRef: 'h2' });
+    expect(component.selectedHost()?.name).toBe('FREE');
+
+    params$.next(convertToParamMap({ hostRef: 'inconnu' }));
+    expect(component.selectedRef()).toBe('h1');
+  });
+
+  it('change de client en gardant l’onglet', () => {
+    build({ hosts: [client('h1', 'EDENRED'), client('h2', 'FREE')] });
+
+    component.selectHost(component.groups()[0].rows[1]);
+
+    expect(router.navigate).toHaveBeenCalledWith(['/vigie', 'h2'], { queryParamsHandling: 'preserve' });
+  });
+
+  it("montre quatre onglets, le Radar par défaut avec un état vide explicite", () => {
+    const root = build();
+
+    expect(Array.from(root.querySelectorAll('.poste__tab')).map((t) => t.textContent?.trim()))
+      .toEqual(['Radar', 'Conversations', 'Réunions', 'Personnes']);
+    expect(component.activeTab()).toBe('radar');
+    expect(root.querySelector('.vigie__radar-empty')?.textContent).toContain('Le Radar de ce client arrive ici');
+  });
+
+  it("?onglet=personnes lit l'annuaire une fois ; vide, il dit comment il se remplit", () => {
+    const root = build({ tab: 'personnes' });
+
+    expect(vigie.people).toHaveBeenCalledOnceWith('h1');
+    expect(root.querySelector('.vigie__people-empty')?.textContent).toContain("l'annuaire se remplit");
+    component.refresh();
+    expect(vigie.people).toHaveBeenCalledTimes(2);
+  });
+
+  it("écrit chaque personne de l'annuaire, et dit un annuaire illisible", () => {
+    const root = build({ tab: 'personnes' });
+    component.people.set({ h1: [{ id: 'p1', displayName: 'Paul Martin', jobTitle: 'DSI',
+      lastInteractionAt: '2026-09-12T10:00:00Z',
+      subjects: [{ subjectId: 's1', subjectName: 'MFA', state: 'ADVANCING', role: 'DECIDER' }] }] });
+    fixture.detectChanges();
+
+    const person = root.querySelector('.vigie__person')?.textContent ?? '';
+    expect(person).toContain('Paul Martin');
+    expect(person).toContain('DSI');
+    expect(person).toContain('1 sujet');
+
+    component.people.set({ h1: 'error' });
+    fixture.detectChanges();
+    expect(root.querySelector('.vigie__people-error')?.textContent).toContain("n'a pas pu être lu");
+  });
+
+  it("un clic d'onglet met l'URL à jour", () => {
+    build();
+
+    component.selectTab('reunions');
+
+    expect(router.navigate).toHaveBeenCalledWith([], jasmine.objectContaining({
+      queryParams: { onglet: 'reunions' }, queryParamsHandling: 'merge',
+    }));
+  });
+
+  it('aucun client : l’encart propose d’activer ou de connecter', () => {
+    const root = build({ hosts: [] });
+
+    expect(root.querySelector('.vigie__empty')?.textContent).toContain('Aucun client dans la Vigie');
+  });
+
+  it("sans accès Forge : l'encart d'accès, et le sondage n'est pas armé", fakeAsync(() => {
+    const root = build();
+    atelier.runnerHostsOverview.and.returnValue(throwError(() => new HttpErrorResponse({ status: 403 })));
+    component.refresh();
+    fixture.detectChanges();
+
+    expect(root.querySelector('.vigie__forbidden')).not.toBeNull();
+    atelier.runnerHostsOverview.calls.reset();
+    tick(VIGIE_REFRESH_MS * 2);
+    expect(atelier.runnerHostsOverview).not.toHaveBeenCalled();
+    discardPeriodicTasks();
+  }));
+
+  it('le sondage relit la vue, jamais les compteurs du Radar', fakeAsync(() => {
+    build();
+    expect(vigie.radarCounts).toHaveBeenCalledTimes(1);
+
+    tick(VIGIE_REFRESH_MS);
+
+    expect(atelier.runnerHostsOverview).toHaveBeenCalledTimes(2);
+    expect(vigie.radarCounts).toHaveBeenCalledTimes(1);
+    component.refresh();
+    expect(vigie.radarCounts).toHaveBeenCalledTimes(2);
+    discardPeriodicTasks();
+  }));
+
+  it('ajouter un client : activé, il est ouvert', () => {
+    build();
+    dialogResults.set(AddClientDialogComponent, { kind: 'activated', hostId: 'h7' });
+
+    component.addClient();
+
+    expect(router.navigate).toHaveBeenCalledWith(['/vigie', 'h7'], { queryParamsHandling: 'preserve' });
+    expect(atelier.runnerHostsOverview).toHaveBeenCalledTimes(2);
+  });
+
+  it("connecter un client ouvre l'appairage dans la Vigie", () => {
+    build();
+    dialogResults.set(AddClientDialogComponent, { kind: 'connect' });
+
+    component.addClient();
+
+    const pairing = dialog.open.calls.all().find((call) => call.args[0] === RunnerPairingDialogComponent);
+    expect(pairing?.args[1]?.data).toEqual({ space: 'VIGIE' });
+  });
+
+  it('retirer sans cocher : retrait seul, rien d’effacé', () => {
+    build();
+    dialogResults.set(RemoveClientDialogComponent, { confirmed: true, purgeRadar: false });
+
+    component.removeClient(component.selectedHost()!);
+
+    expect(vigie.remove).toHaveBeenCalledOnceWith('h1', 'VIGIE');
+    expect(vigie.purgeRadar).not.toHaveBeenCalled();
+    expect(snackBar.open.calls.mostRecent().args[0]).toContain("Rien n'a été supprimé");
+  });
+
+  it('retirer en cochant : retrait, puis effacement du Radar', () => {
+    build();
+    dialogResults.set(RemoveClientDialogComponent, { confirmed: true, purgeRadar: true });
+
+    component.removeClient(component.selectedHost()!);
+
+    expect(vigie.remove).toHaveBeenCalledOnceWith('h1', 'VIGIE');
+    expect(vigie.purgeRadar).toHaveBeenCalledOnceWith('h1');
+  });
+
+  it('le retrait tient même si l’effacement du Radar échoue, et le dit', () => {
+    build();
+    vigie.purgeRadar.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+    dialogResults.set(RemoveClientDialogComponent, { confirmed: true, purgeRadar: true });
+
+    component.removeClient(component.selectedHost()!);
+
+    expect(snackBar.open.calls.mostRecent().args[0]).toContain("son Radar n'a pas pu être effacé");
+  });
+
+  it('un retrait refusé (dernier espace) rend le message de la gateway', () => {
+    build({ hosts: [client('h1', 'CAGIP', { spaces: ['VIGIE'] })] });
+    vigie.remove.and.returnValue(throwError(() => new HttpErrorResponse({
+      status: 409, error: { error: 'host_last_space', message: 'Un client vit dans au moins un espace.' },
+    })));
+    dialogResults.set(RemoveClientDialogComponent, { confirmed: true, purgeRadar: false });
+
+    component.removeClient(component.selectedHost()!);
+
+    expect(snackBar.open.calls.mostRecent().args[0]).toContain('au moins un espace');
+    const data = dialog.open.calls.mostRecent().args[1]?.data as { inForge: boolean };
+    expect(data.inForge).toBeFalse();
+  });
+
+  it('activer dans la Forge un client qui n’y est pas', () => {
+    build({ hosts: [client('h1', 'CAGIP', { spaces: ['VIGIE'] })] });
+
+    component.activateInForge(component.selectedHost()!);
+
+    expect(vigie.activate).toHaveBeenCalledOnceWith('h1', 'FORGE');
+  });
+});

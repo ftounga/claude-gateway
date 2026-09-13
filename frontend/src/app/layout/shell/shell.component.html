@@ -16,6 +16,11 @@
       <mat-icon>terminal</mat-icon>
       Forge
     </a>
+    <!-- F-106 / SF-106-02 — la Vigie, à côté de la Forge : deux espaces, deux métiers. -->
+    <a mat-button routerLink="/vigie" [class.active]="vigieActive()">
+      <mat-icon>radar</mat-icon>
+      Vigie
+    </a>
     <a mat-button routerLink="/gouvernance" routerLinkActive="active">
       <mat-icon>gavel</mat-icon>
       Gouvernance

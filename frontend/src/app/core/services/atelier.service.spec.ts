@@ -780,6 +780,26 @@ describe('AtelierService', () => {
     req.flush({ id: 'h2', name: 'CAGIP', connected: false, createdAt: '2026-09-10T08:00:00Z' });
   });
 
+  it("lit la vue d'un espace : ?space=VIGIE, et rien pour la Forge (F-106 / SF-106-01)", () => {
+    service.runnerHostsOverview('VIGIE').subscribe();
+    const vigie = httpMock.expectOne((req) => req.url === '/api/runner-hosts/overview');
+    expect(vigie.request.params.get('space')).toBe('VIGIE');
+    vigie.flush([]);
+
+    service.runnerHostsOverview('FORGE').subscribe();
+    const forge = httpMock.expectOne('/api/runner-hosts/overview');
+    expect(forge.request.params.keys().length).toBe(0);
+    forge.flush([]);
+  });
+
+  it('crée un poste dans la Vigie : le corps porte space (F-106 / SF-106-01)', () => {
+    service.createRunnerHost('CAGIP', 'VIGIE').subscribe();
+
+    const req = httpMock.expectOne('/api/runner-hosts');
+    expect(req.request.body).toEqual({ name: 'CAGIP', space: 'VIGIE' });
+    req.flush({ id: 'h2', name: 'CAGIP', connected: false, createdAt: '2026-09-10T08:00:00Z' });
+  });
+
   it('rattache un projet à un poste via PUT /api/workspaces/{id}/host (F-48 / SF-48-03)', () => {
     service.attachWorkspaceToHost('w1', 'h1', 'mon-projet').subscribe();
 

@@ -34,6 +34,19 @@ export class ForgeRailComponent {
   readonly filter = input('');
   readonly closedOpen = input(false);
 
+  // ------------------------------------------------ les mots de l'espace (F-106 / SF-106-02)
+  // La Vigie emploie la même colonne : seuls ses mots changent. Les défauts sont ceux de la Forge.
+
+  /** Nom accessible de la colonne. */
+  readonly ariaLabel = input('Postes');
+  readonly searchPlaceholder = input('Filtrer les postes et projets');
+  readonly emptyText = input('Aucun poste ni projet ne correspond.');
+  readonly connectLabel = input('Connecter un poste');
+  /** Le compte de projets à droite de la ligne : la Vigie n'en a pas l'usage. */
+  readonly showCount = input(true);
+  /** Le libellé de la pastille « en attente » : « 2 attend » dans la Forge, « 2 relances » dans la Vigie. */
+  readonly awaitingLabel = input<(count: number) => string>((count) => `${count} attend`);
+
   readonly selectHost = output<ForgeRow>();
   readonly filterChange = output<string>();
   readonly toggleClosed = output<void>();

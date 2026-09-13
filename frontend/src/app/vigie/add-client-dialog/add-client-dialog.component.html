@@ -1,0 +1,58 @@
+<h2 mat-dialog-title>Ajouter un client à la Vigie</h2>
+
+<mat-dialog-content>
+  <p class="add-client__lede">
+    Un client de la Forge s'active ici <strong>sans rien réappairer</strong> : c'est la même machine,
+    et rien ne change dans la Forge.
+  </p>
+
+  @if (loading()) {
+    <div class="add-client__loading"><mat-spinner diameter="28"></mat-spinner></div>
+  } @else if (loadFailed()) {
+    <p class="add-client__empty">La liste de vos clients n'a pas pu être lue.</p>
+  } @else if (candidates().length === 0) {
+    <p class="add-client__empty">Tous vos clients sont déjà dans la Vigie.</p>
+  } @else {
+    <ul class="add-client__list">
+      @for (host of candidates(); track host.hostId) {
+        <li class="add-client__item">
+          <app-host-badge [name]="host.name" size="md" [showName]="false"></app-host-badge>
+          <span class="add-client__name">{{ host.name }}</span>
+          <app-mission-badge [status]="host.missionStatus"></app-mission-badge>
+          <button
+            mat-stroked-button
+            type="button"
+            class="add-client__activate"
+            [disabled]="activatingId() !== null"
+            (click)="activate(host)"
+            [attr.aria-label]="'Activer ' + host.name + ' dans la Vigie'"
+          >
+            @if (activatingId() === host.hostId) {
+              <mat-spinner diameter="16"></mat-spinner>
+            }
+            Activer
+          </button>
+        </li>
+      }
+    </ul>
+  }
+
+  @if (error(); as message) {
+    <p class="add-client__error" role="alert">{{ message }}</p>
+  }
+
+  <section class="add-client__connect">
+    <mat-icon aria-hidden="true">add_link</mat-icon>
+    <p>
+      Un client sans projet technique ? Connectez sa machine directement : il n'apparaîtra pas dans la
+      Forge tant que vous ne l'y activez pas.
+    </p>
+    <button mat-stroked-button type="button" class="add-client__connect-button" (click)="connect()">
+      Connecter un nouveau client
+    </button>
+  </section>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="cancel()">Fermer</button>
+</mat-dialog-actions>

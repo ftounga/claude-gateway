@@ -1,0 +1,305 @@
+<section class="postes vigie">
+  <!-- LE BANDEAU DE LA VIGIE (F-106 / SF-106-02) : la même forme que celui de la Forge, ses propres
+       faits — ce que l'organisation du client attend, et d'où date ce que le Radar sait. -->
+  <header class="forge-fleet">
+    <h1 class="forge-fleet__title">Vigie</h1>
+    @if (!loading() && error() === 'none') {
+      <span class="forge-fleet__kpi">
+        <span class="forge-fleet__dot forge-fleet__dot--online" aria-hidden="true"></span>
+        <b>{{ onlineCount() }}</b>&nbsp;{{ onlineCount() > 1 ? 'clients' : 'client' }} en ligne
+        sur {{ openHosts().length }}
+      </span>
+      @if (summary().followUpsDue > 0) {
+        <span class="forge-fleet__kpi forge-fleet__kpi--awaiting vigie__follow-ups" role="status">
+          <span class="forge-fleet__dot forge-fleet__dot--awaiting" aria-hidden="true"></span>
+          <b>{{ summary().followUpsDue }}</b>&nbsp;{{ summary().followUpsDue > 1 ? 'relances dues' : 'relance due' }}
+        </span>
+      }
+      @if (summary().blockedSubjects > 0) {
+        <span class="forge-fleet__kpi vigie__blocked">
+          <b>{{ summary().blockedSubjects }}</b>&nbsp;{{ summary().blockedSubjects > 1 ? 'sujets bloqués' : 'sujet bloqué' }}
+        </span>
+      }
+      <span class="forge-fleet__kpi vigie__sync">{{ syncLabel(summary().lastSync) }}</span>
+    }
+    <span class="forge-fleet__spacer"></span>
+    @if (error() === 'none') {
+      <button
+        mat-icon-button
+        type="button"
+        class="forge-fleet__refresh"
+        (click)="refresh()"
+        aria-label="Rafraîchir l'état des clients"
+        matTooltip="Relire l'état des clients et de leur Radar"
+      >
+        <mat-icon>refresh</mat-icon>
+      </button>
+      <button
+        mat-flat-button
+        color="primary"
+        type="button"
+        class="vigie__add"
+        (click)="addClient()"
+        matTooltip="Activer un client de la Forge, ou en connecter un nouveau"
+      >
+        <mat-icon>add</mat-icon>
+        Ajouter un client
+      </button>
+    }
+  </header>
+
+  @if (loading()) {
+    <div class="postes__loading">
+      <mat-spinner diameter="40"></mat-spinner>
+    </div>
+  } @else if (error() === 'not-entitled') {
+    <mat-card class="postes__notice vigie__not-entitled">
+      <mat-icon>radar</mat-icon>
+      <div>
+        <h2>La Vigie n'est pas ouverte sur ce compte</h2>
+        <p>
+          La Vigie suit ce que l'organisation de vos clients attend de vous : le Radar, les
+          conversations Teams, les réunions et l'annuaire. Elle s'ouvre avec l'option Teams.
+        </p>
+        <div class="postes__notice-actions">
+          <a mat-flat-button color="primary" [routerLink]="billingRoute">Voir les formules</a>
+          <a mat-stroked-button [routerLink]="billingRoute" [fragment]="accessCodeFragment">
+            Où saisir mon code
+          </a>
+        </div>
+      </div>
+    </mat-card>
+  } @else if (error() === 'forbidden') {
+    <mat-card class="postes__notice vigie__forbidden">
+      <mat-icon>lock</mat-icon>
+      <div>
+        <h2>Vos clients vivent sur des postes de la Forge</h2>
+        <p>
+          Voir ses clients demande un accès à la Forge. Deux façons de l'ouvrir : souscrire, ou
+          saisir le code d'accès que vous avez reçu par courriel.
+        </p>
+        <div class="postes__notice-actions">
+          <a mat-flat-button color="primary" [routerLink]="billingRoute" [fragment]="accessCodeFragment">
+            Où saisir mon code
+          </a>
+          <a mat-stroked-button [routerLink]="billingRoute">Voir les formules</a>
+        </div>
+      </div>
+    </mat-card>
+  } @else if (error() === 'network') {
+    <mat-card class="postes__notice">
+      <mat-icon>cloud_off</mat-icon>
+      <div>
+        <h2>L'état des clients n'a pas pu être lu</h2>
+        <p>La gateway n'a pas répondu. Rien n'est perdu.</p>
+        <button mat-flat-button color="primary" type="button" (click)="refresh()">Réessayer</button>
+      </div>
+    </mat-card>
+  } @else if (isEmpty()) {
+    <mat-card class="postes__notice vigie__empty">
+      <mat-icon>radar</mat-icon>
+      <div>
+        <h2>Aucun client dans la Vigie</h2>
+        <p>
+          Un client de la Forge s'active ici <strong>sans rien réappairer</strong> : c'est la même
+          machine, vue sous l'angle de ce que son organisation attend. Un client sans projet
+          technique se connecte directement depuis la Vigie.
+        </p>
+        <div class="postes__notice-actions">
+          <button mat-flat-button color="primary" type="button" (click)="addClient()">
+            Activer un client de la Forge
+          </button>
+          <button mat-stroked-button type="button" (click)="connectClient()">
+            Connecter un client
+          </button>
+        </div>
+      </div>
+    </mat-card>
+  } @else {
+    <div class="forge-split" [class.forge-split--detail-open]="detailOpen()">
+      <!-- LA MÊME COLONNE QUE LA FORGE (F-98), avec les mots de la Vigie. -->
+      <app-forge-rail
+        class="forge-split__rail"
+        ariaLabel="Clients"
+        searchPlaceholder="Filtrer les clients"
+        emptyText="Aucun client ne correspond."
+        connectLabel="Ajouter un client"
+        [showCount]="false"
+        [awaitingLabel]="followUpLabel"
+        [groups]="groups()"
+        [selectedRef]="selectedRef()"
+        [filter]="filter()"
+        [closedOpen]="closedOpen()"
+        (selectHost)="selectHost($event)"
+        (filterChange)="filter.set($event)"
+        (toggleClosed)="toggleClosed()"
+        (connectHost)="addClient()"
+      ></app-forge-rail>
+
+      <div class="forge-split__detail">
+        <a class="forge-split__back" routerLink="/vigie" aria-label="Retour à la liste des clients">
+          <mat-icon aria-hidden="true">arrow_back</mat-icon>
+          Clients
+        </a>
+        @if (selectedHost(); as host) {
+          <section class="poste vigie__client">
+            <header class="poste__head">
+              <app-host-badge [name]="host.name" size="lg" [showName]="false"></app-host-badge>
+              <div class="poste__title">
+                <h2>{{ host.name }}</h2>
+                <div class="poste__sub">
+                  <app-mission-badge [status]="host.missionStatus ?? 'ACTIVE'"></app-mission-badge>
+                  <span
+                    class="badge poste__presence"
+                    [class.badge--success]="online(host)"
+                    [class.badge--neutral]="!online(host)"
+                  >
+                    <mat-icon>{{ online(host) ? 'cloud_done' : 'cloud_off' }}</mat-icon>
+                    {{ presenceState(host) }}
+                  </span>
+                  @if (presenceSeen(host); as seen) {
+                    <span class="poste__fact">{{ seen }}</span>
+                  }
+                </div>
+              </div>
+
+              <div class="poste__actions">
+                <button
+                  mat-stroked-button
+                  type="button"
+                  class="poste__menu-trigger"
+                  [matMenuTriggerFor]="clientMenu"
+                  [disabled]="busyHostId() === host.id"
+                  [attr.aria-label]="'Actions sur ' + host.name"
+                  matTooltip="Actions sur ce client"
+                >
+                  @if (busyHostId() === host.id) {
+                    <mat-spinner diameter="18"></mat-spinner>
+                  } @else {
+                    <mat-icon class="poste__menu-icon">more_horiz</mat-icon>
+                  }
+                </button>
+                <mat-menu #clientMenu="matMenu">
+                  @if (!inForge(host)) {
+                    <button mat-menu-item type="button" class="vigie__activate-forge" (click)="activateInForge(host)">
+                      <mat-icon>terminal</mat-icon>
+                      <span>Activer dans la Forge</span>
+                    </button>
+                  }
+                  <button mat-menu-item type="button" class="vigie__remove" (click)="removeClient(host)">
+                    <mat-icon>visibility_off</mat-icon>
+                    <span>Retirer de la Vigie…</span>
+                  </button>
+                </mat-menu>
+              </div>
+            </header>
+
+            <nav class="poste__tabs" role="tablist" [attr.aria-label]="'Sections de ' + host.name">
+              @for (tab of tabs; track tab) {
+                <button
+                  type="button"
+                  role="tab"
+                  class="poste__tab"
+                  [class.poste__tab--active]="tab === activeTab()"
+                  [attr.aria-selected]="tab === activeTab()"
+                  [attr.data-tab]="tab"
+                  (click)="selectTab(tab)"
+                >
+                  {{ tabLabel(tab) }}
+                  @if (tab === 'radar' && followUpsOf(host) > 0) {
+                    <span class="badge badge--warning poste__tab-flag">{{ followUpLabel(followUpsOf(host)) }}</span>
+                  }
+                </button>
+              }
+            </nav>
+
+            <div class="poste__panel" role="tabpanel">
+              @switch (activeTab()) {
+                @case ('radar') {
+                  <!-- ÉTAT VIDE EXPLICITE (F-106) : l'écran du Radar arrive avec F-102. Jamais un
+                       écran blanc — on dit ce qui viendra, et ce qu'on sait déjà. -->
+                  <div class="vigie__placeholder vigie__radar-empty">
+                    <mat-icon aria-hidden="true">radar</mat-icon>
+                    <div>
+                      <h3>Le Radar de ce client arrive ici</h3>
+                      <p>
+                        Il suivra les sujets en cours, ce qu'on attend de vous et ce que vous attendez
+                        des autres, et les relances dues — mis à jour chaque soir, sans rien avoir à
+                        demander.
+                      </p>
+                      @if (countsOf(host); as counts) {
+                        <ul class="vigie__facts">
+                          <li><b>{{ counts.followUpsDue }}</b> {{ counts.followUpsDue > 1 ? 'relances dues' : 'relance due' }}</li>
+                          <li><b>{{ counts.blockedSubjects }}</b> {{ counts.blockedSubjects > 1 ? 'sujets bloqués' : 'sujet bloqué' }}</li>
+                          <li [class.vigie__fact--attention]="syncNeedsAttention(counts.lastSync)">
+                            {{ syncLabel(counts.lastSync) }}
+                          </li>
+                        </ul>
+                      }
+                    </div>
+                  </div>
+                }
+                @case ('conversations') {
+                  <div class="vigie__placeholder vigie__conversations">
+                    <mat-icon aria-hidden="true">forum</mat-icon>
+                    <div>
+                      <h3>Les conversations de ce client</h3>
+                      <p>
+                        Le terminal Teams, où l'on parle de ce que ce client a dit ou demandé,
+                        s'ouvre encore depuis la Forge. Il s'installe dans cet onglet.
+                      </p>
+                    </div>
+                  </div>
+                }
+                @case ('reunions') {
+                  <div class="vigie__placeholder vigie__reunions">
+                    <mat-icon aria-hidden="true">event</mat-icon>
+                    <div>
+                      <h3>Les réunions de ce client</h3>
+                      <p>
+                        Réunions, captures et enregistrements se demandent dans le terminal Teams.
+                        Ils s'installent dans cet onglet.
+                      </p>
+                    </div>
+                  </div>
+                }
+                @case ('personnes') {
+                  @if (peopleOf(host); as people) {
+                    @if (people === 'error') {
+                      <p class="poste__no-project vigie__people-error">L'annuaire n'a pas pu être lu.</p>
+                    } @else if (people.length === 0) {
+                      <p class="poste__no-project vigie__people-empty">
+                        Personne encore : l'annuaire se remplit à chaque synchro du Radar.
+                      </p>
+                    } @else {
+                      <ul class="vigie__people">
+                        @for (person of people; track person.id) {
+                          <li class="vigie__person">
+                            <!-- Une personne n'est pas une machine : aucun ton d'identité du §9. -->
+                            <mat-icon class="vigie__person-icon" aria-hidden="true">person</mat-icon>
+                            <span class="vigie__person-text">
+                              <span class="vigie__person-name">{{ person.displayName }}</span>
+                              @if (person.jobTitle) {
+                                <span class="vigie__person-meta">{{ person.jobTitle }}</span>
+                              }
+                            </span>
+                            <span class="vigie__person-meta">{{ subjectsLabel(person) }}</span>
+                            @if (lastInteraction(person); as when) {
+                              <span class="vigie__person-meta">dernier échange le {{ when }}</span>
+                            }
+                          </li>
+                        }
+                      </ul>
+                    }
+                  } @else {
+                    <div class="postes__loading"><mat-spinner diameter="28"></mat-spinner></div>
+                  }
+                }
+              }
+            </div>
+          </section>
+        }
+      </div>
+    </div>
+  }
+</section>
