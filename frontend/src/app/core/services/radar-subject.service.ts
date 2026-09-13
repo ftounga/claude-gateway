@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { RadarSubjectDetail } from '../models/radar-subject.models';
+import { RadarSubjectDetail, RadarUnknownView } from '../models/radar-subject.models';
 
 /**
  * **La page d'un sujet du Radar** (F-103), côté HTTP.
@@ -19,5 +19,11 @@ export class RadarSubjectService {
   subject(hostId: string, subjectId: string): Observable<RadarSubjectDetail> {
     return this.http.get<RadarSubjectDetail>(
       `/api/radar/hosts/${encodeURIComponent(hostId)}/subjects/${encodeURIComponent(subjectId)}`);
+  }
+
+  /** Ce que le Radar ne sait pas sur le sujet, et à qui le demander (SF-103-02). */
+  unknowns(hostId: string, subjectId: string): Observable<RadarUnknownView[]> {
+    return this.http.get<RadarUnknownView[]>(
+      `/api/radar/hosts/${encodeURIComponent(hostId)}/subjects/${encodeURIComponent(subjectId)}/unknowns`);
   }
 }

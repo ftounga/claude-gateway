@@ -119,3 +119,31 @@ export interface RadarSubjectDetail {
   commitments: RadarCommitmentView[];
   chronology: RadarEvidenceView[];
 }
+
+/** Ce que le Radar ne sait pas sur un sujet (SF-103-02). */
+export type RadarUnknownKind =
+  | 'COVERAGE'
+  | 'NEXT_STEP'
+  | 'DUE_DATE'
+  | 'DECIDER'
+  | 'SILENCE'
+  | 'OWNER'
+  | 'DEDUCED_DUE';
+
+/** La personne à qui poser la question, et pourquoi elle. */
+export interface RadarAskView {
+  personId: string;
+  displayName: string;
+  jobTitle: string | null;
+  role: RadarRole | null;
+  reason: string;
+}
+
+/** Un manque — `GET /api/radar/hosts/{hostId}/subjects/{subjectId}/unknowns`. */
+export interface RadarUnknownView {
+  kind: RadarUnknownKind;
+  question: string;
+  ask: RadarAskView | null;
+  evidenceIds: string[];
+  commitmentId: string | null;
+}
