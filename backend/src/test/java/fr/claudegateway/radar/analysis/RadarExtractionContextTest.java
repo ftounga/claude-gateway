@@ -33,7 +33,9 @@ class RadarExtractionContextTest {
         assertThat(registry).contains("S1 — Pilote MFA [avance]").contains("aussi appelé : le MFA")
                 .contains("N'EST PAS : chantier Okta").contains("S1.1 : Le pilote démarre en octobre.")
                 .contains("S2 — Migration LDAP [en attente]").contains("résumé : (vide)")
-                .contains("S3 — Audit 2025 [clos]");
+                .contains("S3 — Audit 2025 [clos]")
+                .contains("C1 [autre → moi] Marc Durand → MOI : Envoyer le devis (échéance 2026-09-12)");
+        assertThat(context.commitment("C1").id()).isEqualTo(RadarExtractionFixtures.DEVIS);
         String material = context.material();
         assertThat(material).contains("MOI — l'utilisateur").contains("P1 — Marc Durand (RSSI)")
                 .contains("[M1] [Thu 2026-09-10 08:30 UTC] Marc Durand (P1) : La double auth")
@@ -46,11 +48,15 @@ class RadarExtractionContextTest {
         for (int i = 0; i < 70; i++) {
             many.add(new SubjectSnapshot(UUID.randomUUID(), "Sujet " + i, RadarSubjectState.ADVANCING,
                     RadarExtractionFixtures.AT.minusHours(i), List.of(), List.of(),
-                    List.of(new FactSnapshot(UUID.randomUUID(), "Phrase " + i))));
+                    List.of(new FactSnapshot(UUID.randomUUID(), "Phrase " + i)),
+                    List.of(new RadarExtractionContext.CommitmentSnapshot(UUID.randomUUID(),
+                                    fr.claudegateway.radar.RadarCommitmentDirection.ME_TO_OTHER, "MOI → ?", "Tâche " + i + "a", null),
+                            new RadarExtractionContext.CommitmentSnapshot(UUID.randomUUID(),
+                                    fr.claudegateway.radar.RadarCommitmentDirection.ME_TO_OTHER, "MOI → ?", "Tâche " + i + "b", null))));
         }
         for (int i = 0; i < 40; i++) {
             many.add(new SubjectSnapshot(UUID.randomUUID(), "Clos " + i, RadarSubjectState.CLOSED,
-                    RadarExtractionFixtures.AT.minusDays(i), List.of(), List.of(), List.of()));
+                    RadarExtractionFixtures.AT.minusDays(i), List.of(), List.of(), List.of(), List.of()));
         }
         RadarExtractionContext context = RadarExtractionContext.build(many, RadarExtractionFixtures.exchanges());
 
@@ -62,6 +68,10 @@ class RadarExtractionContextTest {
         assertThat(context.subject("S41").phrases()).isEmpty();
         assertThat(context.subject("S61").closed()).isTrue();
         assertThat(context.registryBlock()).contains("S41 — Sujet 40 [avance]\n  résumé : non montré");
+        // Au plus 100 engagements ouverts montrés : 50 sujets × 2.
+        assertThat(context.commitment("C100")).isNotNull();
+        assertThat(context.commitment("C101")).isNull();
+        assertThat(context.subject("S51").commitments()).isEmpty();
     }
 
     @Test

@@ -63,12 +63,13 @@ public final class RadarViews {
     public record PersonRef(UUID id, String displayName) {
     }
 
-    /** Un engagement. Une personne vide, c'est « moi ». */
+    /** Un engagement. Une personne vide, c'est « moi ». {@code followUpDue} : relance échue (F-101). */
     public record CommitmentView(UUID id, UUID subjectId, String subjectName,
             RadarCommitmentDirection direction, String description, PersonRef fromPerson,
             PersonRef toPerson, PersonRef otherPerson, LocalDate dueDate, boolean dueDeduced,
             RadarCommitmentStatus status, RadarCertainty certainty, boolean sovereign,
-            boolean disowned, List<UUID> evidenceIds,
+            boolean disowned, List<UUID> evidenceIds, OffsetDateTime lastEvidenceAt,
+            LocalDate followUpDueOn, boolean followUpDue,
             OffsetDateTime createdAt, OffsetDateTime updatedAt) {
     }
 

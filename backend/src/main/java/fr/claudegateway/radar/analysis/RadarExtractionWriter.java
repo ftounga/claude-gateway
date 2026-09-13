@@ -1,6 +1,10 @@
 package fr.claudegateway.radar.analysis;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,7 +20,11 @@ import fr.claudegateway.radar.RadarEvidenceLinkRepository;
 import fr.claudegateway.radar.RadarLinkKind;
 import fr.claudegateway.radar.RadarPerson;
 import fr.claudegateway.radar.RadarRegistry;
+import fr.claudegateway.radar.RadarRegistry.CommitmentInput;
 import fr.claudegateway.radar.RadarRegistry.EvidenceInput;
+import fr.claudegateway.radar.RadarText;
+import fr.claudegateway.radar.analysis.RadarExtraction.CommitmentItem;
+import fr.claudegateway.radar.analysis.RadarExtraction.FollowItem;
 import fr.claudegateway.radar.RadarRegistry.SummarySentence;
 import fr.claudegateway.radar.RadarScope;
 import fr.claudegateway.radar.RadarSubject;
@@ -149,7 +157,37 @@ public class RadarExtractionWriter {
         for (RoleItem role : item.roles()) {
             registry.assignRole(scope, id, session.person(role.person()), role.role(), session.evidence(role.evidence()));
         }
+        for (CommitmentItem commitment : item.commitments()) {
+            registry.recordCommitment(scope, new CommitmentInput(id, commitment.direction(), commitment.description(),
+                    commitment.debtor() == null ? null : session.person(commitment.debtor()),
+                    commitment.beneficiary() == null ? null : session.person(commitment.beneficiary()),
+                    commitment.other() == null ? null : session.person(commitment.other()),
+                    commitment.dueDate(), commitment.dueDeduced(), commitment.certainty(),
+                    extractionKey(commitment), session.evidence(commitment.evidence())));
+        }
+        for (FollowItem follow : item.follows()) {
+            registry.markCommitment(scope, follow.commitment().id(), follow.status(), session.evidence(follow.evidence()));
+        }
+        if (item.closure() != null) {
+            // Une proposition, jamais une clôture : l'utilisateur confirme ou refuse (SF-99-04).
+            registry.proposeClosure(scope, id, session.evidence(item.closure()));
+        }
         return id;
+    }
+
+    /**
+     * La clé d'idempotence d'un engagement lu : la première preuve, le sens et la description normalisée.
+     * Un lot redéposé et relu ne duplique pas l'engagement.
+     */
+    static String extractionKey(CommitmentItem commitment) {
+        String material = commitment.evidence().get(0).message().sourceRef() + "|" + commitment.direction() + "|"
+                + RadarText.key(commitment.description());
+        try {
+            byte[] hash = MessageDigest.getInstance("SHA-256").digest(material.getBytes(StandardCharsets.UTF_8));
+            return "sync:" + HexFormat.of().formatHex(hash);
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 indisponible", ex);
+        }
     }
 
     /** Les phrases du nouveau résumé ; une reprise garde le texte et les preuves de la phrase existante. */

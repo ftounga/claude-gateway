@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-101 / SF-101-04 — LA RELANCE DUE.
+
+      Sur radar_commitments :
+      - last_evidence_at : l'instant de la preuve la plus récente de l'engagement, tenu par le registre ;
+      - follow_up_due_on : le jour où une relance est due, RECALCULÉ à chaque écriture de l'engagement
+        (« j'attends des autres » ouvert : premier jour ouvré après l'échéance, sinon 3 jours ouvrés
+        après la dernière preuve ; NULL dans tous les autres cas).
+      Colonnes nullables : les lignes existantes restent valides. Pas de rétro-remplissage (aucune
+      synchro n'alimente encore le Radar).
+    -->
+
+    <changeSet id="090-radar-commitment-follow-up-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="radar_commitments">
+            <column name="last_evidence_at" type="timestamptz"/>
+            <column name="follow_up_due_on" type="date"/>
+        </addColumn>
+        <createIndex tableName="radar_commitments" indexName="idx_radar_commitments_follow_up">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="follow_up_due_on"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="radar_commitments" indexName="idx_radar_commitments_follow_up"/>
+            <dropColumn tableName="radar_commitments" columnName="follow_up_due_on"/>
+            <dropColumn tableName="radar_commitments" columnName="last_evidence_at"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="090-radar-commitment-follow-up-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="radar_commitments">
+            <column name="last_evidence_at" type="timestamp with time zone"/>
+            <column name="follow_up_due_on" type="date"/>
+        </addColumn>
+        <createIndex tableName="radar_commitments" indexName="idx_radar_commitments_follow_up">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="follow_up_due_on"/>
+        </createIndex>
+        <rollback>
+            <dropIndex tableName="radar_commitments" indexName="idx_radar_commitments_follow_up"/>
+            <dropColumn tableName="radar_commitments" columnName="follow_up_due_on"/>
+            <dropColumn tableName="radar_commitments" columnName="last_evidence_at"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

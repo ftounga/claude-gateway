@@ -26,10 +26,21 @@ public final class RadarExtractionContext {
     public static final int MAX_SUMMARIES_SHOWN = 40;
     public static final int MAX_CLOSED_SUBJECTS = 30;
     public static final int MESSAGE_CHARS = 4_000;
+    public static final int MAX_OPEN_COMMITMENTS = 100;
 
     /** Ce que le registre sait d'un sujet, lu avant l'appel. */
     public record SubjectSnapshot(UUID id, String name, RadarSubjectState state, OffsetDateTime lastActivityAt,
-            List<String> aliases, List<String> rejectedAliases, List<FactSnapshot> summary) {
+            List<String> aliases, List<String> rejectedAliases, List<FactSnapshot> summary,
+            List<CommitmentSnapshot> openCommitments) {
+    }
+
+    /**
+     * Un engagement ouvert (SF-101-04).
+     *
+     * @param parties qui doit à qui, tel que la consigne le rend (« Marc Durand → MOI »)
+     */
+    public record CommitmentSnapshot(UUID id, fr.claudegateway.radar.RadarCommitmentDirection direction,
+            String parties, String description, java.time.LocalDate dueDate) {
     }
 
     /** Une phrase de résumé existante. */
@@ -38,7 +49,7 @@ public final class RadarExtractionContext {
 
     /** Un sujet montré. */
     public record SubjectEntry(String label, SubjectSnapshot subject, boolean closed, boolean summaryShown,
-            Map<String, FactSnapshot> phrases) {
+            Map<String, FactSnapshot> phrases, Map<String, CommitmentSnapshot> commitments) {
     }
 
     /** Une personne du lot. */
@@ -53,12 +64,16 @@ public final class RadarExtractionContext {
     private final Map<String, SubjectEntry> subjects;
     private final Map<String, PersonEntry> people;
     private final Map<String, MessageEntry> messages;
+    private final Map<String, CommitmentSnapshot> commitments;
 
     private RadarExtractionContext(Map<String, SubjectEntry> subjects, Map<String, PersonEntry> people,
             Map<String, MessageEntry> messages) {
         this.subjects = subjects;
         this.people = people;
         this.messages = messages;
+        Map<String, CommitmentSnapshot> all = new LinkedHashMap<>();
+        subjects.values().forEach(entry -> all.putAll(entry.commitments()));
+        this.commitments = Map.copyOf(all);
     }
 
     /**
@@ -77,6 +92,7 @@ public final class RadarExtractionContext {
 
         Map<String, SubjectEntry> subjects = new LinkedHashMap<>();
         int n = 0;
+        int c = 0;
         for (SubjectSnapshot s : open) {
             n++;
             String label = "S" + n;
@@ -88,11 +104,18 @@ public final class RadarExtractionContext {
                     phrases.put(label + "." + (++p), fact);
                 }
             }
-            subjects.put(label, new SubjectEntry(label, s, false, shown, phrases));
+            Map<String, CommitmentSnapshot> commitments = new LinkedHashMap<>();
+            for (CommitmentSnapshot commitment : s.openCommitments()) {
+                if (c >= MAX_OPEN_COMMITMENTS) {
+                    break;
+                }
+                commitments.put("C" + (++c), commitment);
+            }
+            subjects.put(label, new SubjectEntry(label, s, false, shown, phrases, commitments));
         }
         for (SubjectSnapshot s : closed) {
             n++;
-            subjects.put("S" + n, new SubjectEntry("S" + n, s, true, false, Map.of()));
+            subjects.put("S" + n, new SubjectEntry("S" + n, s, true, false, Map.of(), Map.of()));
         }
 
         Map<String, PersonEntry> people = new LinkedHashMap<>();
@@ -130,6 +153,11 @@ public final class RadarExtractionContext {
 
     public MessageEntry message(String label) {
         return messages.get(label);
+    }
+
+    /** Un engagement ouvert montré (SF-101-04). */
+    public CommitmentSnapshot commitment(String label) {
+        return commitments.get(label);
     }
 
     /** Les sujets montrés, dans l'ordre des libellés. */
@@ -193,6 +221,17 @@ public final class RadarExtractionContext {
             } else if (!entry.closed()) {
                 out.append("  résumé : non montré — ne propose pas de \"resume\" pour ce sujet\n");
             }
+            entry.commitments().entrySet().stream().sorted(Comparator.comparingInt(e -> number(e.getKey())))
+                    .forEach(e -> {
+                        CommitmentSnapshot k = e.getValue();
+                        out.append("  ").append(e.getKey()).append(" [").append(direction(k.direction())).append("] ")
+                                .append(RadarMaterial.oneLine(k.parties())).append(" : ")
+                                .append(RadarMaterial.oneLine(k.description()));
+                        if (k.dueDate() != null) {
+                            out.append(" (échéance ").append(k.dueDate()).append(')');
+                        }
+                        out.append('\n');
+                    });
         }
         return out.toString();
     }
@@ -231,6 +270,14 @@ public final class RadarExtractionContext {
             case DORMANT -> "en sommeil";
             case CLOSE_PROPOSED -> "clos ?";
             case CLOSED -> "clos";
+        };
+    }
+
+    static String direction(fr.claudegateway.radar.RadarCommitmentDirection direction) {
+        return switch (direction) {
+            case ME_TO_OTHER -> "moi → autre";
+            case OTHER_TO_ME -> "autre → moi";
+            case INTRODUCTION -> "mise en relation";
         };
     }
 

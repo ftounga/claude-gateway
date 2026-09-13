@@ -14,7 +14,13 @@ import java.util.Set;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import fr.claudegateway.radar.RadarCertainty;
+import fr.claudegateway.radar.RadarCommitment;
+import fr.claudegateway.radar.RadarCommitmentDirection;
+import fr.claudegateway.radar.RadarCommitmentStatus;
 import fr.claudegateway.radar.RadarEvidence;
+import fr.claudegateway.radar.analysis.RadarExtraction.CommitmentItem;
+import fr.claudegateway.radar.analysis.RadarExtraction.FollowItem;
 import fr.claudegateway.radar.RadarRole;
 import fr.claudegateway.radar.RadarSubject;
 import fr.claudegateway.radar.RadarSubjectAlias;
@@ -47,6 +53,7 @@ public final class RadarExtractionParser {
     public static final int MAX_EVIDENCE = 20;
     public static final int MAX_ALIASES = 5;
     public static final int MAX_ROLES = 20;
+    public static final int MAX_COMMITMENTS = 20;
 
     /** Une violation de forme : la sortie est illisible. */
     static final class Unreadable extends RuntimeException {
@@ -184,8 +191,149 @@ public final class RadarExtractionParser {
                 quotes.putIfAbsent(field.getKey(), quote);
             }
         }
+        List<CommitmentItem> commitments = commitments(item.get("engagements"), context);
+        List<FollowItem> follows = follows(item.get("engagements_suivis"), context);
+        List<MessageEntry> closure = null;
+        JsonNode closureNode = item.get("cloture");
+        if (closureNode != null && !closureNode.isNull()) {
+            requireObject(closureNode);
+            if (existing == null) {
+                throw new Unreadable("clôture d'un sujet nouveau");
+            }
+            closure = evidence(closureNode.get("preuves"), context);
+        }
         return new SubjectItem(existing, newName, evidence, List.copyOf(aliases), state, nextStep, due, summary,
-                List.copyOf(roles));
+                List.copyOf(roles), commitments, follows, closure);
+    }
+
+    // --------------------------------------------------------------------------- engagements
+
+    private static List<CommitmentItem> commitments(JsonNode node, RadarExtractionContext context) {
+        if (node == null || node.isNull()) {
+            return List.of();
+        }
+        if (!node.isArray() || node.size() > MAX_COMMITMENTS) {
+            throw new Unreadable("engagements");
+        }
+        List<CommitmentItem> items = new ArrayList<>();
+        for (JsonNode commitment : node) {
+            requireObject(commitment);
+            rejectScores(commitment);
+            RadarCommitmentDirection direction = direction(text(commitment, "sens", 32, true));
+            String description = text(commitment, "description", RadarCommitment.MAX_DESCRIPTION_LENGTH, true);
+            PersonEntry debtor = optionalPerson(commitment, "debiteur", context);
+            PersonEntry beneficiary = optionalPerson(commitment, "beneficiaire", context);
+            PersonEntry other = optionalPerson(commitment, "autre", context);
+            switch (direction) {
+                case ME_TO_OTHER -> {
+                    if (debtor != null || other != null) {
+                        throw new Unreadable("moi_vers_autre");
+                    }
+                }
+                case OTHER_TO_ME -> {
+                    if (debtor == null || other != null) {
+                        throw new Unreadable("autre_vers_moi");
+                    }
+                    beneficiary = null; // « à moi » : le bénéficiaire, c'est l'utilisateur
+                }
+                case INTRODUCTION -> {
+                    if (debtor != null || beneficiary == null || other == null || beneficiary.equals(other)) {
+                        throw new Unreadable("mise_en_relation");
+                    }
+                }
+                default -> throw new Unreadable("sens");
+            }
+            RadarCertainty certainty = certainty(text(commitment, "certitude", 16, true));
+            List<MessageEntry> evidence = evidence(commitment.get("preuves"), context);
+            LocalDate dueDate = null;
+            boolean deduced = false;
+            JsonNode dueNode = commitment.get("echeance");
+            if (dueNode != null && !dueNode.isNull()) {
+                requireObject(dueNode);
+                dueDate = date(dueNode.get("date"));
+                String nature = text(dueNode, "nature", 16, dueDate != null);
+                if (dueDate != null) {
+                    deduced = switch (nature) {
+                        case "explicite" -> false;
+                        case "deduite" -> true;
+                        default -> throw new Unreadable("nature");
+                    };
+                    requireWithinMessages(dueDate, evidence);
+                }
+            }
+            if (deduced) {
+                // Cadrage §4.3 : une échéance déduite est une question, pas une affirmation.
+                certainty = RadarCertainty.PROBABLE;
+            }
+            items.add(new CommitmentItem(direction, description, debtor, beneficiary, other, dueDate, deduced,
+                    certainty, evidence));
+        }
+        return List.copyOf(items);
+    }
+
+    private static List<FollowItem> follows(JsonNode node, RadarExtractionContext context) {
+        if (node == null || node.isNull()) {
+            return List.of();
+        }
+        if (!node.isArray() || node.size() > MAX_COMMITMENTS) {
+            throw new Unreadable("engagements_suivis");
+        }
+        List<FollowItem> items = new ArrayList<>();
+        for (JsonNode follow : node) {
+            requireObject(follow);
+            var commitment = context.commitment(text(follow, "engagement", 8, true));
+            if (commitment == null) {
+                throw new Unreadable("engagement inconnu");
+            }
+            RadarCommitmentStatus status = switch (text(follow, "statut", 16, true)) {
+                case "tenu" -> RadarCommitmentStatus.KEPT;
+                case "reporte" -> RadarCommitmentStatus.POSTPONED;
+                case "abandonne" -> RadarCommitmentStatus.ABANDONED;
+                default -> throw new Unreadable("statut");
+            };
+            items.add(new FollowItem(commitment, status, evidence(follow.get("preuves"), context)));
+        }
+        return List.copyOf(items);
+    }
+
+    private static PersonEntry optionalPerson(JsonNode object, String field, RadarExtractionContext context) {
+        String label = text(object, field, 8, false);
+        if (label == null) {
+            return null;
+        }
+        PersonEntry person = context.person(label);
+        if (person == null) {
+            throw new Unreadable("personne inconnue");
+        }
+        return person;
+    }
+
+    static RadarCommitmentDirection direction(String value) {
+        return switch (value) {
+            case "moi_vers_autre" -> RadarCommitmentDirection.ME_TO_OTHER;
+            case "autre_vers_moi" -> RadarCommitmentDirection.OTHER_TO_ME;
+            case "mise_en_relation" -> RadarCommitmentDirection.INTRODUCTION;
+            default -> throw new Unreadable("sens");
+        };
+    }
+
+    static RadarCertainty certainty(String value) {
+        return switch (value) {
+            case "certain" -> RadarCertainty.CERTAIN;
+            case "probable" -> RadarCertainty.PROBABLE;
+            default -> throw new Unreadable("certitude");
+        };
+    }
+
+    /** Une échéance tombe entre la veille du plus ancien message cité et deux ans après le plus récent. */
+    static void requireWithinMessages(LocalDate dueDate, List<MessageEntry> evidence) {
+        LocalDate first = evidence.stream().map(e -> e.message().occurredAt().withOffsetSameInstant(java.time.ZoneOffset.UTC)
+                .toLocalDate()).min(LocalDate::compareTo).orElseThrow();
+        LocalDate last = evidence.stream().map(e -> e.message().occurredAt().withOffsetSameInstant(java.time.ZoneOffset.UTC)
+                .toLocalDate()).max(LocalDate::compareTo).orElseThrow();
+        if (dueDate.isBefore(first.minusDays(1)) || dueDate.isAfter(last.plusYears(2))) {
+            throw new Unreadable("échéance hors fenêtre");
+        }
     }
 
     private static List<SummaryItem> summary(JsonNode node, SubjectEntry existing, RadarExtractionContext context) {

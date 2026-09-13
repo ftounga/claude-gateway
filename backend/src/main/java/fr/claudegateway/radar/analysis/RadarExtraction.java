@@ -37,11 +37,15 @@ public record RadarExtraction(List<SubjectItem> subjects, Map<String, String> qu
      * @param nextStep  prochaine étape, ou {@code null}
      * @param due       échéance, ou {@code null}
      * @param summary   résumé complet de remplacement, ou {@code null} s'il n'est pas touché
-     * @param roles     rôles des personnes
+     * @param roles       rôles des personnes
+     * @param commitments engagements lus (SF-101-04)
+     * @param follows     suivis d'engagements ouverts (SF-101-04)
+     * @param closure     preuves d'un signal de clôture, ou {@code null} (SF-101-04)
      */
     public record SubjectItem(SubjectEntry existing, String newName, List<MessageEntry> evidence,
             List<String> aliases, Valued<RadarSubjectState> state, Valued<String> nextStep,
-            Valued<LocalDate> due, List<SummaryItem> summary, List<RoleItem> roles) {
+            Valued<LocalDate> due, List<SummaryItem> summary, List<RoleItem> roles,
+            List<CommitmentItem> commitments, List<FollowItem> follows, List<MessageEntry> closure) {
 
         /** Vrai si l'extraction rattache à un sujet suivi. */
         public boolean attached() {
@@ -59,6 +63,24 @@ public record RadarExtraction(List<SubjectItem> subjects, Map<String, String> qu
 
     /** Le rôle d'une personne sur le sujet. */
     public record RoleItem(PersonEntry person, RadarRole role, List<MessageEntry> evidence) {
+    }
+
+    /**
+     * Un engagement lu (SF-101-04). Les personnes vides, c'est « moi » — voir le sens.
+     *
+     * @param debtor      qui doit ({@code autre_vers_moi})
+     * @param beneficiary à qui ({@code moi_vers_autre}, facultatif) ; la personne A d'une mise en relation
+     * @param other       la personne B d'une mise en relation
+     * @param dueDeduced  échéance déduite (« jeudi ») plutôt qu'écrite
+     */
+    public record CommitmentItem(fr.claudegateway.radar.RadarCommitmentDirection direction, String description,
+            PersonEntry debtor, PersonEntry beneficiary, PersonEntry other, LocalDate dueDate, boolean dueDeduced,
+            fr.claudegateway.radar.RadarCertainty certainty, List<MessageEntry> evidence) {
+    }
+
+    /** Le suivi d'un engagement ouvert montré (SF-101-04). */
+    public record FollowItem(RadarExtractionContext.CommitmentSnapshot commitment,
+            fr.claudegateway.radar.RadarCommitmentStatus status, List<MessageEntry> evidence) {
     }
 
     /** Sujets rattachés à un sujet suivi. */
