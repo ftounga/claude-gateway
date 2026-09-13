@@ -27,6 +27,8 @@ public final class TeamsWorkFolder {
     private static final String TEAMS_DIR = "teams";
     /** Sous-dossier de l'outillage téléchargé (D3) — <b>partagé avec F-91</b>. */
     private static final String TOOLS_DIR = "tools";
+    /** Sous-dossier des enregistrements locaux (F-91 / SF-91-01). */
+    private static final String CAPTURES_DIR = "captures";
 
     private final Path root;
 
@@ -48,6 +50,16 @@ public final class TeamsWorkFolder {
      */
     public Path toolsDir() {
         return root.resolve(TOOLS_DIR);
+    }
+
+    /**
+     * Le dossier des enregistrements locaux (F-91 / SF-91-01). <b>Fixe</b>, comme celui de
+     * l'outillage : la destination d'une capture ne vient <b>jamais</b> d'un appel d'outil. C'est le
+     * garde-fou qui empêche un paramètre venu du modèle de faire écrire des centaines de mégaoctets
+     * n'importe où sur la machine — y compris par-dessus quelque chose.
+     */
+    public Path capturesDir() {
+        return root.resolve(CAPTURES_DIR);
     }
 
     /**
