@@ -10,6 +10,15 @@ export interface GovernanceFileDetail {
   path: string;
   kind: GovernanceFileKind;
   content: string;
+  /**
+   * Vrai si le paquet revendique ce fichier comme un **artefact généré** (F-96 / SF-96-01) : il est
+   * **mis à jour** sur les postes où il est resté exactement celui qui y a été déposé.
+   *
+   * Un fichier que l'utilisateur a touché redevient du contenu utilisateur : il n'est plus jamais
+   * écrasé, quelle que soit cette déclaration. Absent, le drapeau vaut **vrai** — un paquet publie
+   * des artefacts.
+   */
+  generated?: boolean;
 }
 
 /** Un paquet tel que l'admin le lit : tout, y compris ce qui n'est pas publié. */

@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-96 / SF-96-01 — LA TROISIÈME ISSUE : METTRE À JOUR UN ARTEFACT GÉNÉRÉ.
+
+      Le dépôt n'avait que deux issues : CREATE (le fichier n'existe pas) et KEEP (il existe, laissé
+      tel quel, CONTENU DIFFÉRENT COMPRIS). Un nouveau fichier arrivait au geste « appliquer », le
+      contenu d'un fichier existant JAMAIS — un skill corrigé n'atteignait donc jamais un poste qui
+      avait déjà l'ancienne version, et le produit publiait un catalogue qu'il ne pouvait pas faire
+      évoluer.
+
+      DEUX AJOUTS, ET RIEN D'AUTRE.
+
+      1) `governance_package_files.generated` — LA DÉCLARATION. C'est le paquet qui dit ce qui est un
+         ARTEFACT GÉNÉRÉ (un skill, un gabarit : le produit les a écrits) et ce qui est du CONTENU
+         UTILISATEUR. Défaut `true`, y compris pour les lignes existantes : tout ce que le catalogue
+         porte aujourd'hui a bien été publié par le produit. Le drapeau n'ouvre aucune porte à lui
+         seul — un artefact MODIFIÉ LOCALEMENT redevient du contenu utilisateur et n'est plus jamais
+         écrasé.
+
+      2) `governance_deposited_files` — L'EMPREINTE DE CE QU'ON A DÉPOSÉ. C'est le point dur de la
+         feature : savoir si le fichier présent est celui qu'on y avait mis. Le modèle ne le portait
+         nulle part — `governance_host_activations` retient une VERSION DE PAQUET, pas un contenu.
+         Une ligne par DESTINATION : le même fichier n'a pas le même sort dans deux dossiers.
+
+      UNE EMPREINTE, PAS UNE COPIE. 64 caractères hexadécimaux (sha-256, fins de ligne normalisées),
+      dont on ne peut rien reconstituer : le contenu de l'utilisateur ne quitte jamais sa machine, et
+      la gateway ne devient pas un dépôt de fichiers clients.
+
+      LA RACINE A UNE CLÉ. Les fichiers de carte (F-92) ne vivent dans aucun dossier ; `workspace_id`
+      porte alors la clé réservée '00000000-0000-0000-0000-000000000000'. Une colonne nulle ne
+      dédoublonnerait rien sous PostgreSQL — même parti que le poste virtuel « Hébergé ».
+
+      ISOLATION : `user_id` est en TÊTE de l'index d'unicité, et aucune lecture n'existe sans lui.
+
+      RÉVERSIBLE sans condition : la table est neuve, la colonne a un défaut, aucune donnée existante
+      n'est modifiée. Rollback = table effacée, colonne retirée, et le dépôt retrouve ses deux issues.
+    -->
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="079-governance-deposited-files-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="governance_deposited_files">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="package_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="path" type="varchar(255)"><constraints nullable="false"/></column>
+            <column name="digest" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="package_version" type="int" defaultValueNumeric="1"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="governance_deposited_files"
+                     indexName="idx_governance_deposited_files_unique" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="workspace_id"/>
+            <column name="package_id"/>
+            <column name="path"/>
+        </createIndex>
+        <rollback><dropTable tableName="governance_deposited_files"/></rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="079-governance-deposited-files-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="governance_deposited_files">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="workspace_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="package_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="path" type="varchar(255)"><constraints nullable="false"/></column>
+            <column name="digest" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="package_version" type="int" defaultValueNumeric="1"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="governance_deposited_files"
+                     indexName="idx_governance_deposited_files_unique" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="workspace_id"/>
+            <column name="package_id"/>
+            <column name="path"/>
+        </createIndex>
+        <rollback><dropTable tableName="governance_deposited_files"/></rollback>
+    </changeSet>
+
+    <!-- ===================== LA DÉCLARATION (les deux SGBD) ===================== -->
+    <changeSet id="079-governance-package-files-generated" author="claude-gateway">
+        <addColumn tableName="governance_package_files">
+            <column name="generated" type="boolean" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="governance_package_files" columnName="generated"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

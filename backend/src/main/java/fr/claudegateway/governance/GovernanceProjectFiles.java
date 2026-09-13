@@ -131,6 +131,39 @@ public class GovernanceProjectFiles {
         }
     }
 
+    /**
+     * Le contenu <b>exact et entier</b> du fichier, ou rien (F-96 / SF-96-01).
+     *
+     * <p>C'est la lecture dont dépend la décision de <b>mettre à jour</b> : elle compare une
+     * empreinte, et une empreinte calculée sur un contenu <b>tronqué</b> ne ressemble à rien. Un
+     * fichier coupé par le producteur serait alors pris pour un fichier modifié — sans danger (on
+     * conserve) mais, pire, un contenu tronqué qu'on croirait intact autoriserait une écriture. On
+     * rend donc <b>vide</b> plutôt qu'incomplet, et l'appelant conclut « on ne sait pas ».</p>
+     *
+     * @return le contenu entier, ou {@link Optional#empty()} si le fichier n'existe pas, n'a pas pu
+     *         être lu, ou n'a pas pu être lu <b>en entier</b>
+     */
+    public Optional<String> readExact(UUID userId, Workspace workspace, String path) {
+        String rel = GovernancePath.normalizeOrNull(path);
+        if (rel == null) {
+            return Optional.empty();
+        }
+        try {
+            if (workspace.isRunnerTarget()) {
+                RunnerCallResult result = runnerToolGateway.readFile(RunnerTargets.of(workspace),
+                        UUID.randomUUID().toString(), rel);
+                if (!result.ok() || result.truncated()) {
+                    return Optional.empty();
+                }
+                return Optional.ofNullable(result.content());
+            }
+            return Optional.ofNullable(workspaceService.readFile(userId, workspace.getId(), rel));
+        } catch (RuntimeException ex) {
+            log.debug("Lecture de gouvernance impossible ({})", ex.getClass().getSimpleName());
+            return Optional.empty();
+        }
+    }
+
     /** Les chemins présents, ou une liste vide si le projet est illisible. Confort de lecture. */
     public List<String> listPathsOrEmpty(UUID userId, Workspace workspace) {
         return listPaths(userId, workspace).map(List::copyOf).orElseGet(List::of);

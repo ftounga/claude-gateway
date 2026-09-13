@@ -73,6 +73,23 @@ public class GovernancePackageFile {
     @Column(name = "content", nullable = false, columnDefinition = "text")
     private String content;
 
+    /**
+     * Vrai si ce fichier est un <b>artefact généré</b> : le produit l'a écrit, et le paquet peut le
+     * <b>mettre à jour</b> tant qu'il est resté exactement celui qui a été déposé (F-96 / SF-96-01).
+     *
+     * <p><b>C'est le paquet qui déclare</b>, pas le genre qui décide : un skill et un gabarit sont
+     * des artefacts — personne ne modifie un skill à la main dans un projet client, et un gabarit
+     * encore vierge est, bit pour bit, ce que le produit a déposé. Un paquet qui veut poser un
+     * fichier <b>une fois</b> puis ne plus jamais y toucher le déclare à {@code false}.</p>
+     *
+     * <p><b>Le drapeau n'ouvre aucune porte à lui seul.</b> Un artefact <b>modifié localement</b>
+     * redevient du contenu utilisateur : il n'est plus jamais écrasé, et l'annonce le dit
+     * ({@code KEEP_LOCAL}). Le défaut est donc {@code true} sans danger.</p>
+     */
+    @Builder.Default
+    @Column(name = "generated", nullable = false)
+    private boolean generated = true;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

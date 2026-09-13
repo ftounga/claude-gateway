@@ -5,9 +5,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -50,6 +52,9 @@ class GovernanceDepositServiceTest {
     @Mock
     private GovernanceHostScope hostScope;
 
+    @Mock
+    private GovernanceDepositedFileRepository deposited;
+
     private GovernanceDepositService service;
 
     private final UUID alice = UUID.randomUUID();
@@ -60,10 +65,13 @@ class GovernanceDepositServiceTest {
     private GovernancePackage pkg;
     private GovernanceActivation activation;
 
+    /** Les empreintes retenues, en mémoire — le pendant de {@code governance_deposited_files}. */
+    private final List<GovernanceDepositedFile> prints = new ArrayList<>();
+
     @BeforeEach
     void setUp() {
         service = new GovernanceDepositService(activations, packageService, projectFiles, hostFiles,
-                hostScope);
+                hostScope, deposited);
         workspace = Workspace.builder().id(workspaceId).userId(alice).name("web").hostId(hostId)
                 .build();
         when(hostScope.projectsOf(alice, host)).thenReturn(List.of(workspace));
@@ -87,11 +95,35 @@ class GovernanceDepositServiceTest {
                 .thenReturn(List.of(activation));
         when(activations.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(projectFiles.write(any(), any(), any(), any())).thenReturn(true);
+
+        // Les EMPREINTES (F-96 / SF-96-01) sont tenues en mémoire : c'est ce qui permet de rejouer
+        // un dépôt dans un test comme il se rejoue en vrai — la deuxième passe doit retrouver ce que
+        // la première a écrit, sinon on ne teste jamais la reconnaissance d'un artefact intact.
+        when(deposited.save(any())).thenAnswer(invocation -> {
+            GovernanceDepositedFile print = invocation.getArgument(0);
+            prints.removeIf(existing -> existing.getWorkspaceId().equals(print.getWorkspaceId())
+                    && existing.getPath().equals(print.getPath()));
+            prints.add(print);
+            return print;
+        });
+        when(deposited.findByUserIdAndHostIdAndPackageId(any(), any(), any()))
+                .thenAnswer(invocation -> List.copyOf(prints));
     }
 
     private static GovernancePackageFile file(String path, GovernanceFileKind kind, String content) {
         return GovernancePackageFile.builder().id(UUID.randomUUID()).path(path).kind(kind)
                 .content(content).build();
+    }
+
+    /** Un fichier que le paquet pose une fois et ne met JAMAIS à jour : du contenu utilisateur. */
+    private static GovernancePackageFile userContent(String path, String content) {
+        return GovernancePackageFile.builder().id(UUID.randomUUID()).path(path)
+                .kind(GovernanceFileKind.TEMPLATE).content(content).generated(false).build();
+    }
+
+    /** Ce que le dossier porte aujourd'hui sous ce chemin. */
+    private void onDisk(String path, String content) {
+        when(projectFiles.readExact(alice, workspace, path)).thenReturn(Optional.ofNullable(content));
     }
 
     private static GovernanceProjectDepositPlan only(GovernanceDepositPlan plan) {
@@ -105,6 +137,9 @@ class GovernanceDepositServiceTest {
     @DisplayName("l'annonce dit ce qui sera créé et ce qui sera laissé tel quel")
     void planTellsCreateAndKeep() {
         when(projectFiles.listPaths(alice, workspace)).thenReturn(Optional.of(Set.of("STATE.md")));
+        onDisk("STATE.md", "# État"); // déjà exactement ce que le paquet apporte
+
+
 
         GovernanceDepositPlan plan = service.plan(alice, host, pkg.getId());
 
@@ -121,6 +156,9 @@ class GovernanceDepositServiceTest {
         // L'annonce n'écrit RIEN : c'est toute sa raison d'être.
         verify(projectFiles, never()).write(any(), any(), any(), any());
         verify(activations, never()).save(any());
+        // …et ne retient AUCUNE empreinte : ouvrir un écran ne doit pas changer ce que le dépôt
+        // suivant décidera.
+        verify(deposited, never()).save(any());
     }
 
     @Test
@@ -157,6 +195,9 @@ class GovernanceDepositServiceTest {
     @DisplayName("le dépôt crée ce qui manque et NE TOUCHE PAS à ce qui existe")
     void depositCreatesMissingAndNeverOverwrites() {
         when(projectFiles.listPaths(alice, workspace)).thenReturn(Optional.of(Set.of("STATE.md")));
+        // Rempli par l'utilisateur, et aucune empreinte ne dit qu'il vient de nous : c'est du
+        // contenu utilisateur, il est CONSERVÉ — et l'annonce le dit (F-96).
+        onDisk("STATE.md", "# État\n\nSujet : migration DNS");
 
         GovernanceDepositPlan done = service.deposit(alice, host, pkg.getId());
 
@@ -164,7 +205,7 @@ class GovernanceDepositServiceTest {
         // Le fichier déjà présent n'est jamais réécrit, même si son contenu diffère du paquet.
         verify(projectFiles, never()).write(eq(alice), eq(workspace), eq("STATE.md"), any());
         assertThat(only(done).entries()).extracting("action")
-                .containsExactly(GovernanceDepositAction.KEEP, GovernanceDepositAction.CREATE);
+                .containsExactly(GovernanceDepositAction.KEEP_LOCAL, GovernanceDepositAction.CREATE);
         assertThat(activation.getStatus()).isEqualTo(GovernanceActivationStatus.APPLIED);
         assertThat(activation.getAppliedAt()).isNotNull();
         // Le dépôt réaligne la version appliquée sans rien réécrire.
@@ -202,16 +243,22 @@ class GovernanceDepositServiceTest {
     }
 
     @Test
-    @DisplayName("le dépôt rejoué n'écrit plus rien")
+    @DisplayName("le dépôt rejoué n'écrit plus rien — et ne relit même pas la machine")
     void secondDepositWritesNothing() {
         when(projectFiles.listPaths(alice, workspace))
+                .thenReturn(Optional.of(Set.of()))
                 .thenReturn(Optional.of(Set.of("STATE.md", ".claude/skills/explique.md")));
 
+        service.deposit(alice, host, pkg.getId());
         GovernanceDepositPlan done = service.deposit(alice, host, pkg.getId());
 
-        verify(projectFiles, never()).write(any(), any(), any(), any());
+        // Deux écritures au premier passage, AUCUNE au second.
+        verify(projectFiles, times(2)).write(any(), any(), any(), any());
         assertThat(only(done).entries()).allSatisfy(entry ->
                 assertThat(entry.action()).isEqualTo(GovernanceDepositAction.KEEP));
+        // Le cas courant doit rester GRATUIT : l'empreinte retenue suffit à conclure, sans
+        // aller-retour vers la machine.
+        verify(projectFiles, never()).readExact(any(), any(), any());
         assertThat(activation.getStatus()).isEqualTo(GovernanceActivationStatus.APPLIED);
     }
 
@@ -324,5 +371,168 @@ class GovernanceDepositServiceTest {
         service.depositOnNewProjectQuietly(alice, workspaceId);
 
         verify(projectFiles, never()).write(any(), any(), any(), any());
+    }
+
+    // ------------------------------- F-96 : la gouvernance se met a jour
+
+    /** Le paquet republie un contenu different au chemin donne. */
+    private void republish(String path, GovernanceFileKind kind, String content) {
+        when(packageService.filesOf(pkg.getId())).thenReturn(List.of(file(path, kind, content)));
+    }
+
+    @Test
+    @DisplayName("un artefact RESTÉ INTACT est mis à jour quand le paquet change")
+    void updatesAnUntouchedArtefact() {
+        when(projectFiles.listPaths(alice, workspace))
+                .thenReturn(Optional.of(Set.of()))
+                .thenReturn(Optional.of(Set.of(".claude/skills/explique.md")));
+        republish(".claude/skills/explique.md", GovernanceFileKind.SKILL, "# explique");
+
+        service.deposit(alice, host, pkg.getId()); // le poste reçoit la v1
+
+        // La machine porte toujours exactement ce qu'on lui avait déposé…
+        onDisk(".claude/skills/explique.md", "# explique");
+        republish(".claude/skills/explique.md", GovernanceFileKind.SKILL, "# explique, corrigé");
+
+        GovernanceDepositPlan done = service.deposit(alice, host, pkg.getId());
+
+        // …donc la correction ARRIVE. C'est tout l'objet de F-96.
+        verify(projectFiles).write(alice, workspace, ".claude/skills/explique.md",
+                "# explique, corrigé");
+        assertThat(only(done).entries()).extracting("action")
+                .containsExactly(GovernanceDepositAction.UPDATE);
+        assertThat(activation.getStatus()).isEqualTo(GovernanceActivationStatus.APPLIED);
+    }
+
+    @Test
+    @DisplayName("un artefact MODIFIÉ LOCALEMENT est conservé — et l'écran doit pouvoir le dire")
+    void keepsAnArtefactModifiedLocally() {
+        when(projectFiles.listPaths(alice, workspace))
+                .thenReturn(Optional.of(Set.of()))
+                .thenReturn(Optional.of(Set.of("STATE.md")));
+        republish("STATE.md", GovernanceFileKind.TEMPLATE, "# État");
+
+        service.deposit(alice, host, pkg.getId());
+
+        // Quelqu'un a écrit dedans : le gabarit est devenu le journal d'un sujet.
+        onDisk("STATE.md", "# État\n\n## Où j'en suis\n\nLe VPN tombe toutes les 20 min.");
+        republish("STATE.md", GovernanceFileKind.TEMPLATE, "# État\n\n## Statut\n\n`en cours`");
+
+        GovernanceDepositPlan done = service.deposit(alice, host, pkg.getId());
+
+        // JAMAIS écrasé : ce serait une perte de données déclenchée par un clic. Une seule
+        // écriture au total — celle du premier dépôt, quand le fichier n'existait pas encore.
+        verify(projectFiles, times(1)).write(any(), any(), any(), any());
+        assertThat(only(done).entries()).extracting("action")
+                .containsExactly(GovernanceDepositAction.KEEP_LOCAL);
+        // Et rien ne reste « en attente » : ce fichier ne sera jamais déposé, c'est décidé.
+        assertThat(activation.getStatus()).isEqualTo(GovernanceActivationStatus.APPLIED);
+    }
+
+    @Test
+    @DisplayName("un fichier d'ORIGINE INCONNUE est du contenu utilisateur : conservé, et dit")
+    void keepsAFileOfUnknownOrigin() {
+        when(projectFiles.listPaths(alice, workspace)).thenReturn(Optional.of(Set.of("STATE.md")));
+        republish("STATE.md", GovernanceFileKind.TEMPLATE, "# État");
+        onDisk("STATE.md", "# Mon état à moi");
+
+        GovernanceDepositPlan done = service.deposit(alice, host, pkg.getId());
+
+        verify(projectFiles, never()).write(any(), any(), any(), any());
+        assertThat(only(done).entries()).extracting("action")
+                .containsExactly(GovernanceDepositAction.KEEP_LOCAL);
+    }
+
+    @Test
+    @DisplayName("un fichier déclaré CONTENU UTILISATEUR n'est ni relu ni mis à jour")
+    void neverTouchesADeclaredUserContentFile() {
+        when(packageService.filesOf(pkg.getId()))
+                .thenReturn(List.of(userContent("acces.md", "# Accès")));
+        when(projectFiles.listPaths(alice, workspace)).thenReturn(Optional.of(Set.of("acces.md")));
+
+        GovernanceDepositPlan done = service.deposit(alice, host, pkg.getId());
+
+        assertThat(only(done).entries()).extracting("action")
+                .containsExactly(GovernanceDepositAction.KEEP);
+        verify(projectFiles, never()).write(any(), any(), any(), any());
+        // Pas même une lecture : le paquet a déclaré qu'il n'y reviendrait pas.
+        verify(projectFiles, never()).readExact(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("des FINS DE LIGNE réécrites ne sont pas une modification")
+    void lineEndingsAreNotAModification() {
+        when(projectFiles.listPaths(alice, workspace))
+                .thenReturn(Optional.of(Set.of()))
+                .thenReturn(Optional.of(Set.of("STATE.md")));
+        republish("STATE.md", GovernanceFileKind.TEMPLATE, "# État\n\n## Le sujet\n");
+
+        service.deposit(alice, host, pkg.getId());
+
+        // Le poste est sous Windows : le fichier revient en CRLF, sans que personne n'y ait touché.
+        onDisk("STATE.md", "# État\r\n\r\n## Le sujet\r\n");
+        republish("STATE.md", GovernanceFileKind.TEMPLATE, "# État\n\n## Statut\n");
+
+        GovernanceDepositPlan done = service.deposit(alice, host, pkg.getId());
+
+        assertThat(only(done).entries()).extracting("action")
+                .containsExactly(GovernanceDepositAction.UPDATE);
+        verify(projectFiles).write(alice, workspace, "STATE.md", "# État\n\n## Statut\n");
+    }
+
+    @Test
+    @DisplayName("un fichier présent mais ILLISIBLE n'est jamais écrasé : on ne sait pas")
+    void anUnreadableExistingFileIsNeverOverwritten() {
+        when(projectFiles.listPaths(alice, workspace)).thenReturn(Optional.of(Set.of("STATE.md")));
+        republish("STATE.md", GovernanceFileKind.TEMPLATE, "# État");
+        onDisk("STATE.md", null);
+
+        GovernanceDepositPlan done = service.deposit(alice, host, pkg.getId());
+
+        assertThat(only(done).entries()).extracting("action")
+                .containsExactly(GovernanceDepositAction.UNKNOWN);
+        verify(projectFiles, never()).write(any(), any(), any(), any());
+        // Le fichier EST là : ne rien savoir de sa fraîcheur ne retient pas l'activation.
+        assertThat(activation.getStatus()).isEqualTo(GovernanceActivationStatus.APPLIED);
+    }
+
+    @Test
+    @DisplayName("un dossier ajouté demain n'écrase RIEN : le geste appartient à l'utilisateur")
+    void aNewProjectNeverUpdates() {
+        when(projectFiles.listPaths(alice, workspace))
+                .thenReturn(Optional.of(Set.of()))
+                .thenReturn(Optional.of(Set.of(".claude/skills/explique.md")));
+        republish(".claude/skills/explique.md", GovernanceFileKind.SKILL, "# explique");
+
+        service.deposit(alice, host, pkg.getId());
+
+        onDisk(".claude/skills/explique.md", "# explique");
+        republish(".claude/skills/explique.md", GovernanceFileKind.SKILL, "# explique, corrigé");
+
+        service.depositOnNewProjectQuietly(alice, workspaceId);
+
+        // Rien n'a été réécrit : un dépôt automatique ne met jamais à jour, même un artefact intact.
+        verify(projectFiles, times(1)).write(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("l'annonce dit « sera mis à jour » — sans rien écrire ni rien retenir")
+    void planAnnouncesTheUpdate() {
+        when(projectFiles.listPaths(alice, workspace))
+                .thenReturn(Optional.of(Set.of()))
+                .thenReturn(Optional.of(Set.of("STATE.md")));
+        republish("STATE.md", GovernanceFileKind.TEMPLATE, "# État");
+
+        service.deposit(alice, host, pkg.getId());
+
+        onDisk("STATE.md", "# État");
+        republish("STATE.md", GovernanceFileKind.TEMPLATE, "# État v2");
+
+        GovernanceDepositPlan plan = service.plan(alice, host, pkg.getId());
+
+        assertThat(only(plan).entries()).extracting("action")
+                .containsExactly(GovernanceDepositAction.UPDATE);
+        // Une seule écriture au total : celle du premier dépôt. L'annonce n'écrit pas.
+        verify(projectFiles, times(1)).write(any(), any(), any(), any());
     }
 }

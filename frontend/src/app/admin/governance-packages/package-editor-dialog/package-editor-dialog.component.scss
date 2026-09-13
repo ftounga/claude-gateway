@@ -48,6 +48,12 @@
     border-radius: 8px;
   }
 
+  &__file-generated {
+    grid-column: 1 / -1;
+    font-size: 13px;
+    color: var(--cg-text-secondary);
+  }
+
   &__file-content {
     grid-column: 1 / -1;
   }
