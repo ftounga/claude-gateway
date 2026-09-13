@@ -110,9 +110,24 @@ public class BillingController {
      * facture pas lui-même.</p>
      */
     @GetMapping("/seats")
-    public SeatsResponse seats() {
+    public SeatsResponse seats(@org.springframework.web.bind.annotation.RequestParam(required = false) String space) {
         UUID userId = currentUser.requireId();
-        return SeatsResponse.from(seatQuotaService.describe(userId));
+        // F-107 / SF-107-05 : le supplément est par espace ; en BYOK, aucun jeton plateforme n'est apporté.
+        Subscription subscription = subscriptionService.getOrCreateForUser(userId);
+        boolean tokensApply = !entitlementService.isCustomerKeyBilled(subscription);
+        return SeatsResponse.from(seatQuotaService.describe(userId, parseSpace(space), tokensApply));
+    }
+
+    /** Espace demandé ; absent ⇒ Forge ; inconnu ⇒ 400 (même erreur que les espaces d'un poste). */
+    private static EntitlementSpace parseSpace(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return EntitlementSpace.FORGE;
+        }
+        try {
+            return EntitlementSpace.valueOf(raw.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new fr.claudegateway.runner.host.InvalidClientSpaceException(raw);
+        }
     }
 
     /** Abonnement de l'utilisateur courant (essai provisionné à la volée si absent). */

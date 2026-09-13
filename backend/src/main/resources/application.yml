@@ -580,7 +580,22 @@ app:
     #       tokens: <au PO>
     # Vide => apport PLAT (tokens-per-extra-seat). Les deux grilles — prix chez Stripe, jetons ici —
     # sont tenues alignées PAR LE PO : le dépôt ne peut pas le vérifier (même régime qu'OQ-07).
-    quota-tiers: []
+    #
+    # F-107 / SF-107-05 — LA GRILLE DÉCIDÉE PAR LE PO LE 2026-09-13 (cadrage F-107 §9, docs/TARIFS.md §8.2) :
+    # client en plus dans la FORGE — 2e et 3e : 39 € (2,0 M jetons) · 4e à 6e : 29 € (1,5 M) · 7e et
+    # suivants : 19 € (1,0 M) ; même nombre de jetons par euro à chaque palier ; 0 jeton en BYOK.
+    # Les jetons ne sont apportés QUE SI `price-id` est branché : sans price, rien n'est facturé et le
+    # quota est inchangé. Le price à paliers chez Stripe est à créer par le PO, aligné sur ce tableau.
+    quota-tiers:
+      - up-to-seats: 2        # suppléments 1 et 2 : les 2e et 3e clients
+        tokens: 2000000
+        display-price: "39"
+      - up-to-seats: 5        # suppléments 3 à 5 : les 4e à 6e clients
+        tokens: 1500000
+        display-price: "29"
+      - up-to-seats: 6        # supplément 6 et au-delà : le 7e client et les suivants
+        tokens: 1000000
+        display-price: "19"
     # PRORATISATION d'un poste devenu facturable en cours de mois. DAILY (défaut) = prorata temporis
     # à la journée, sur le quota comme sur l'argent : une part PLEINE de jetons pour un poste ouvert
     # le 28 serait une faille. S'aligne sur la proratisation par défaut de Stripe quand la quantité
@@ -591,7 +606,15 @@ app:
     price-id: ${STRIPE_PRICE_EXTRA_SEAT:}
     # Montant d'AFFICHAGE du supplément (cosmétique, comme les autres display-prices : le débit
     # appartient au price ID). Vide par défaut — un montant inventé serait pire que son absence.
-    display-price: ${APP_BILLING_EXTRA_SEAT_PRICE:}
+    display-price: ${APP_BILLING_EXTRA_SEAT_PRICE:39}
+    # F-107 / SF-107-05 — CLIENT EN PLUS SUIVI PAR LA VIGIE : 39 € fixe (pas de dégressivité : chaque synchro
+    # coûte vraiment). L'option ou le plan Vigie couvre UN client suivi. Aucun jeton de conversation : un
+    # client suivi a sa réserve de synchro (app.radar.reserve). Price VIDE : non facturé tant que le PO ne
+    # l'a pas créé.
+    vigie:
+      included-seats: ${APP_SEAT_VIGIE_INCLUDED_SEATS:1}
+      price-id: ${STRIPE_PRICE_EXTRA_SEAT_VIGIE:}
+      display-price: ${APP_BILLING_EXTRA_SEAT_VIGIE_PRICE:39}
   quota:
     # Quotas d'entitlement (F-10) : allocation mensuelle de tokens par état d'abonnement/plan.
     # Valeurs commerciales réversibles, ajustables par environnement sans changement de code.

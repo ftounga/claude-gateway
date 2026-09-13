@@ -129,6 +129,8 @@ export class BillingComponent implements OnInit {
    * « Postes » reste alors masqué : la facturation doit rester lisible sans lui.
    */
   readonly seats = signal<SeatsView | null>(null);
+  /** Clients comptés dans la Vigie (F-107 / SF-107-05), ou null si l'appel a échoué. */
+  readonly vigieSeats = signal<SeatsView | null>(null);
 
   ngOnInit(): void {
     const checkout = this.route.snapshot.queryParamMap.get('checkout');
@@ -157,6 +159,11 @@ export class BillingComponent implements OnInit {
       next: (seats) => this.seats.set(seats),
       error: () => this.seats.set(null),
     });
+    // F-107 / SF-107-05 : la Vigie a son propre supplément. Échec non bloquant, volet masqué.
+    this.seatService.getSeats('VIGIE').subscribe({
+      next: (seats) => this.vigieSeats.set(seats),
+      error: () => this.vigieSeats.set(null),
+    });
   }
 
   /**
@@ -171,6 +178,12 @@ export class BillingComponent implements OnInit {
     return seat.coveredByPlan
       ? 'Inclus dans l’abonnement'
       : `Supplément n° ${seat.extraSeatRank}`;
+  }
+
+  /** Montant du supplément d'un client en plus (F-107 / SF-107-05), ou null s'il n'y en a pas. */
+  seatPrice(seat: SeatView): string | null {
+    const price = seat.displayPrice?.trim();
+    return !seat.coveredByPlan && price ? price : null;
   }
 
   /**

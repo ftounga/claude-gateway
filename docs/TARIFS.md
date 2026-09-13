@@ -50,24 +50,34 @@ son absence. La liste complète de ces points est en **§7**, et suivie en **OQ-
 
 ## 1. Les plans
 
-Quatre plans sont vendables. Ils viennent de `PlanCatalog` / `PlanCode`
-(`backend/src/main/java/fr/claudegateway/billing/`).
+Six plans sont servis par la configuration ; **quatre sont vendables aujourd'hui**, les deux Gold par
+espace attendant leur price (F-107 / SF-107-03 : un plan sans price n'est ni listé ni souscriptible).
+Ils viennent de `PlanCatalog` / `PlanCode` (`backend/src/main/java/fr/claudegateway/billing/`).
 
 | Plan | Code | Mode fournisseur | **Mensuel affiché** | **Annuel affiché** | **Quota mensuel de tokens** |
 |---|---|---|---|---|---|
 | Solo | `SOLO` | Hosted | **24 €** | **240 €** | **1 000 000** |
 | Pro | `PRO` | Hosted | **99 €** | **990 €** | **5 000 000** |
-| Gold | `GOLD` | Hosted | **199 €** | **1 990 €** | **12 000 000** |
+| **Gold Forge** (l'actuel Gold) | `GOLD` | Hosted | **199 €** | **1 990 €** | **12 000 000** |
 | BYOK | `BYOK` | BYOK (clé du client) | **29 €** | *pas d'offre annuelle* | **0 — et c'est le contrat** |
+| **Gold Vigie** *(price à créer)* | `GOLD_VIGIE` | Hosted | **229 €** | **2 290 €** | **12 000 000** |
+| **Gold complet** *(price à créer)* | `GOLD_COMPLETE` | Hosted | **249 €** | *aucun annuel décidé* | **12 000 000** — un seul quota |
+
+**Un Gold se distingue par l'espace qu'il inclut, pas par sa profondeur** (F-107) : les trois Gold ont le
+même quota. Gold complet = Gold Forge + Vigie remisée de 25 % ; la remise ne porte jamais sur les jetons.
+Sources : `display-prices.{GOLD_VIGIE,GOLD_COMPLETE}` (`STRIPE_DISPLAY_PRICE_GOLD_VIGIE`,
+`STRIPE_DISPLAY_PRICE_GOLD_COMPLETE`), `yearly-display-prices.GOLD_VIGIE`, `app.quota.plans.*`, prices
+`STRIPE_PRICE_GOLD_VIGIE[_YEARLY]` et `STRIPE_PRICE_GOLD_COMPLETE` **vides**.
 
 **Ces quotas se décomptent au coût réel** (F-63, **§8.1**) : le chiffre de la colonne n'a pas
 bougé, la façon de le consommer si. Point de bascule à **4 entrées pour 1 sortie** — au-delà, le
 quota dure plus longtemps qu'avant ; en deçà, moins.
 
-**Un abonnement couvre un poste** (F-65, **§8.2**) : le quota du tableau est celui d'**un** poste.
-Chaque poste supplémentaire facturable ajoute un supplément mensuel **qui apporte sa propre part de
-jetons**. Mécanisme livré, **valeurs au PO** — par défaut aucun supplément n'est facturé et aucun
-jeton n'est apporté, si bien que la colonne ci-dessus reste exacte telle quelle.
+**Un abonnement couvre un client par espace** (F-65, par espace depuis F-107 / SF-107-05, **§8.2**) :
+le quota du tableau est celui d'**un** client. Chaque client supplémentaire facturable ajoute un
+supplément mensuel — dans la Forge, il **apporte sa part de jetons** ; dans la Vigie, sa réserve de
+synchro. **Grille décidée et affichée ; prices à créer par le PO** — tant qu'ils sont vides, aucun
+supplément n'est facturé et **aucun jeton n'est apporté**, si bien que la colonne ci-dessus reste exacte.
 
 **Sources, ligne à ligne** — toutes dans `backend/src/main/resources/application.yml` :
 
@@ -86,12 +96,13 @@ servies en production**.
 
 ### Ce que chaque plan donne, au-delà du quota
 
-| | Solo | Pro | Gold | BYOK |
-|---|---|---|---|---|
-| Passerelle, conversations, historique, fichiers | ✅ | ✅ | ✅ | ✅ |
-| **Atelier / Forge** (F-28) | par l'**option** (§3) — 40 € | par l'**option** (§3) — 40 € | **inclus** | par l'**option** (§3) — **70 €** *(depuis F-107 / SF-107-01)* |
-| Jetons fournis par la plateforme | ✅ | ✅ | ✅ | ❌ — clé Anthropic du client, facturée sur son compte |
-| **Postes couverts** (F-65, §8.2) | 1 | 1 | 1 | 1 |
+| | Solo | Pro | Gold Forge | Gold Vigie | Gold complet | BYOK |
+|---|---|---|---|---|---|---|
+| Passerelle, conversations, historique, fichiers | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **Espace Forge** (l'Atelier, F-28) | **option** (§3) — 40 € | **option** (§3) — 40 € | **inclus** | **option** (§3) — 40 € | **inclus** | **option** (§3) — **70 €** |
+| **Espace Vigie** (Teams, Radar, réunions — F-106) | **option** (§3) — 69 € | **option** (§3) — 69 € | **option** (§3) — 69 € | **inclus** | **inclus** | **option** (§3) — 69 € |
+| Jetons fournis par la plateforme | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ — clé Anthropic du client, facturée sur son compte |
+| **Clients couverts par espace** (§8.2) | 1 | 1 | 1 | 1 | 1 | 1 |
 
 **BYOK ne comprend plus la Forge** (F-107 / SF-107-01, livrée le 2026-09-13). F-41 l'y avait
 incluse ; le plan à 29 € ouvrait alors ce que Solo paie 64 €, et un Gold muni d'une clé Anthropic
@@ -190,6 +201,24 @@ BYOK — sans erreur, bouton désactivé ; un appel direct au paiement répond `
 sert **jamais** de repli pour BYOK. Créer le price chez Stripe et renseigner la variable suffit à
 l'ouvrir, sans redéploiement (création du price : **PO**).
 
+**Sur Gold Vigie**, l'option Forge se vend au montant Solo/Pro (40 €) ; Gold complet (249 €) revient moins
+cher que Gold Vigie + option (269 €).
+
+### 3 bis. L'option Vigie *(F-107 / SF-107-03)*
+
+| | Valeur | Source |
+|---|---|---|
+| Montant mensuel affiché | **69 €**, même prix sur Solo, Pro, BYOK et Gold Forge | `app.billing.stripe.vigie-option-display-price` (`APP_BILLING_VIGIE_OPTION_PRICE`) |
+| Abonnement Stripe | **distinct** de celui du plan (`kind=vigie_option`) — **price vide, à créer par le PO** | `app.billing.stripe.vigie-option-price-id` (`STRIPE_PRICE_VIGIE_OPTION`) |
+| Contenu | Teams, Radar, réunions ; **un client suivi** ; réserve de synchro **3 M jetons par client et par mois**, qui ne mange jamais le quota des conversations ; **première synchro d'un client hors réserve** | `app.radar.reserve.monthly-tokens` |
+| Incluse dans | Gold Vigie, Gold complet | — |
+
+Sur Gold Forge, l'écran signale que Gold complet (249 €) revient moins cher que l'offre et l'option
+(268 €). **L'essai** : un code d'accès `VIGIE` ouvre la Vigie **deux semaines**
+(`app.access-code.vigie-trial-days`) avec une **réserve d'essai de 3 M jetons pour le compte**
+(`app.radar.reserve.trial-tokens`) ; l'ADMIN lit le coût réel de chaque synchro d'essai
+(`GET /api/admin/vigie-trials`). La réserve définitive vaudra la consommation mesurée × 1,5 (décision PO).
+
 ---
 
 ## 4. L'essai gratuit
@@ -284,11 +313,12 @@ Aucun de ces points n'est tranché par F-64 : ce sont des décisions commerciale
 
 ---
 
-## 7 bis. Grille décidée le 2026-09-13, **pas encore servie** (F-106, F-107)
+## 7 bis. Grille décidée le 2026-09-13 — **servie depuis F-107** (livrée le 2026-09-13)
 
-> **Rien de cette section n'est facturé aujourd'hui, sauf la ligne marquée « servie »** (option Forge
-> sur BYOK, F-107 / SF-107-01, entrée en §1 et §3). Décidée par le PO, montant par montant ; elle
-> entre dans §1 à §3 le jour où F-107 est livrée. Détail et raisons : `docs/features/F-107/CADRAGE-F-107-l-offre-par-espace.md` §9.
+> **Cette grille est entrée dans les sections servies** : plans §1, options §3, supplément par client
+> §8.2, essai et réserve de synchro ci-dessous. La table est gardée comme **trace de la décision** du PO,
+> montant par montant. **Tous les prices sont à créer par le PO** : un montant affiché n'est débité qu'une
+> fois son price branché (§0). Détail et raisons : `docs/features/F-107/CADRAGE-F-107-l-offre-par-espace.md` §9.
 
 | Offre | Mensuel | Contenu |
 |---|---|---|
@@ -298,8 +328,8 @@ Aucun de ces points n'est tranché par F-64 : ce sont des décisions commerciale
 | Gold Forge | 199 € (l'actuel Gold, code `GOLD`) | 12 M jetons + Forge — **libellé servi depuis SF-107-03** |
 | **Gold Vigie** | **229 €** (2 290 €/an) | 12 M jetons + Vigie — **configuré depuis SF-107-03** (code `GOLD_VIGIE`, prices `STRIPE_PRICE_GOLD_VIGIE[_YEARLY]` à créer) |
 | **Gold complet** | **249 €** | 12 M jetons + Forge + Vigie (Vigie remisée de 25 %) — **configuré depuis SF-107-03** (code `GOLD_COMPLETE`, price `STRIPE_PRICE_GOLD_COMPLETE` à créer ; aucun annuel décidé) |
-| **Client en plus — Forge** | 39 € (2e-3e, 2 M) · 29 € (4e-6e, 1,5 M) · 19 € (7e+, 1 M) | 0 jeton en BYOK |
-| **Client en plus — Vigie** | **39 €** fixe | 3 M jetons de synchro |
+| **Client en plus — Forge** | 39 € (2e-3e, 2 M) · 29 € (4e-6e, 1,5 M) · 19 € (7e+, 1 M) | 0 jeton en BYOK — **servi depuis F-107 / SF-107-05** (§8.2) |
+| **Client en plus — Vigie** | **39 €** fixe | sa réserve de synchro (3 M / mois) — **servi depuis F-107 / SF-107-05** (§8.2) |
 | Essai Vigie | 2 semaines, code d'accès | réserve 3 M, première synchro offerte — **servi depuis F-107 / SF-107-04** (code d'accès `VIGIE`, `app.access-code.vigie-trial-days` = 14, réserve d'essai `app.radar.reserve.trial-tokens` = 3 M pour le compte ; coût réel par synchro lisible par l'ADMIN) |
 
 La réserve de synchro (3 M) est une **valeur de départ**, revalidée après l'essai (mesuré × 1,5). **Servie depuis F-107 / SF-107-04** : 3 M par client suivi et par mois pour un abonné Vigie (plan ou option), réserve d'essai pour un essai par code, **première synchro d'un client hors réserve**. La recharge d'une réserve épuisée n'existe pas encore (aucun pack de synchro).
@@ -362,12 +392,27 @@ quintuple.
 **Ce qui n'a pas été décidé** : la valeur de `Pq` elle-même. C'est le second levier de marge après
 le `markup`, et il appartient au PO — suivi en **OQ-16 (point 7)**.
 
-### 8.2 F-65 — le supplément par poste supplémentaire *(livrée le 2026-09-11)*
+### 8.2 F-65 — le supplément par client supplémentaire *(livrée le 2026-09-11, par espace et chiffrée depuis F-107 / SF-107-05, le 2026-09-13)*
 
-**Aucun montant n'a été décidé, et le tableau ci-dessous le dit ligne à ligne.** F-65 a livré le
-**mécanisme** et ses clés de configuration ; les valeurs appartiennent au PO et à Stripe. **Les
-défauts livrés sont inertes** : aucun jeton apporté, aucun supplément facturé, quota rigoureusement
-identique à celui d'avant la livraison.
+**La grille est décidée** (PO, 2026-09-13, cadrage F-107 §9 — OQ-16 point 8 livré) **et servie en
+configuration ; les prices sont à créer par le PO.** **Les jetons suivent la facturation** : tant que
+le price d'un supplément n'est pas branché, il n'est pas facturé et **n'apporte aucun jeton** — le quota
+reste rigoureusement celui du plan.
+
+**Le supplément est par espace.** Un client en plus dans la Forge coûte des jetons ; un client en plus
+suivi par la Vigie coûte une synchro chaque nuit, qu'il soit aussi dans la Forge ou non. L'appairage et
+la clôture de mission restent **uniques** : clôturer un client engage le mois dans chacun de ses espaces.
+
+| Espace | Client en plus | Jetons apportés | Clés |
+|---|---|---|---|
+| **Forge** | **39 €** (2ᵉ et 3ᵉ) · **29 €** (4ᵉ à 6ᵉ) · **19 €** (7ᵉ et suivants) | **2 M** · **1,5 M** · **1 M** ; **0 en BYOK** | `app.seat.quota-tiers` (jetons et `display-price` par palier), `app.seat.price-id` (`STRIPE_PRICE_EXTRA_SEAT`, price à paliers à créer), `app.seat.display-price` (`APP_BILLING_EXTRA_SEAT_PRICE`, 39) |
+| **Vigie** | **39 €** fixe (au-delà du client suivi que l'option ou le plan couvre) | aucun jeton de conversation ; sa **réserve de synchro** (3 M / mois, §3 bis) | `app.seat.vigie.included-seats` (1), `app.seat.vigie.price-id` (`STRIPE_PRICE_EXTRA_SEAT_VIGIE`), `app.seat.vigie.display-price` (`APP_BILLING_EXTRA_SEAT_VIGIE_PRICE`, 39) |
+
+*Même nombre de jetons par euro à chaque palier Forge (`STRATEGIE-TARIFAIRE.md` §6) ; pas de dégressivité
+Vigie : chaque synchro coûte vraiment. Exemple du PO : Gold complet, 4 clients Forge, 2 suivis par la
+Vigie = 249 + (39 + 39 + 29) + 39 = **395 € / mois**.*
+
+*Le tableau qui suit est celui du mécanisme F-65, toujours en vigueur pour chaque espace.*
 
 **La règle.** L'abonnement couvre **un poste** (`app.seat.included-seats`, défaut **1**) ; au-delà,
 chaque poste **facturable** apporte sa part de jetons. Est facturable tout poste dont l'**état de
@@ -377,13 +422,14 @@ cesse de payer une mission terminée.
 
 | Élément | Valeur | Clé de configuration |
 |---|---|---|
-| Postes couverts par l'abonnement | **1** | `app.seat.included-seats` (`APP_SEAT_INCLUDED_SEATS`) |
-| Supplément mensuel par poste supplémentaire | **À CONFIRMER PAR LE PO** — le montant n'existe que chez Stripe, sous un price ID à créer | `app.seat.price-id` (`STRIPE_PRICE_EXTRA_SEAT`), montant affiché : `app.seat.display-price` (`APP_BILLING_EXTRA_SEAT_PRICE`) |
-| Quota apporté par le supplément | **À CONFIRMER PAR LE PO** — défaut **0** (rien n'est apporté). *Calibrage recommandé par `STRATEGIE-TARIFAIRE.md` §6 : le **même nombre de tokens par euro** que le plan de base* | `app.seat.tokens-per-extra-seat` (`APP_SEAT_TOKENS_PER_EXTRA_SEAT`) |
-| Dégressivité au-delà de quelques postes | **À CONFIRMER PAR LE PO** — table de paliers **vide** par défaut (apport plat). Côté argent, c'est un price **à paliers** chez Stripe ; cette table en est le **miroir côté quota**, et **le PO tient les deux alignées** | `app.seat.quota-tiers` |
+| Clients couverts par l'abonnement | **1 par espace** | `app.seat.included-seats` (Forge), `app.seat.vigie.included-seats` (Vigie) |
+| Supplément mensuel par client supplémentaire | **grille ci-dessus** — le débit n'existe que chez Stripe, sous des prices **à créer par le PO** | `app.seat.price-id`, `app.seat.vigie.price-id` |
+| Quota apporté par le supplément | **Forge : 2 / 1,5 / 1 M par palier, seulement si le price est branché**, 0 en BYOK ; Vigie : aucun | `app.seat.quota-tiers` |
+| Dégressivité | **Forge : trois paliers** ; Vigie : aucune. Côté argent, un price **à paliers** chez Stripe ; `quota-tiers` en est le **miroir côté quota**, et **le PO tient les deux alignées** | `app.seat.quota-tiers` |
+| Client **retiré d'un espace** en cours de mois (F-106) | **Reste compté dans cet espace jusqu'à la fin du mois**, plus le mois suivant | — (`host_spaces`) |
 | Poste **clôturé** (F-60) | **Ne compte plus dès le mois suivant.** Le mois en cours, lui, reste engagé | — (`runner_hosts.mission_status`) |
 | Poste ouvert **en cours de mois** | **Prorata temporis à la journée**, sur le quota comme sur l'argent | `app.seat.proration` (`APP_SEAT_PRORATION`), défaut `DAILY` |
-| **Réouverture** dans le même mois | **Un mois-poste se paie une fois** : rouvrir ne refacture rien et n'apporte aucun jeton ; clôturer ne rembourse rien et ne reprend rien | — (unicité `(host_id, period_start)` de `host_seat_months`) |
+| **Réouverture** dans le même mois | **Un mois-poste se paie une fois** : rouvrir ne refacture rien et n'apporte aucun jeton ; clôturer ne rembourse rien et ne reprend rien | — (unicité `(host_id, space, period_start)` de `host_seat_months`, migration 095) |
 
 **Pourquoi la proratisation s'applique aussi au quota** : une part **pleine** de jetons pour un poste
 ouvert le 28 serait une faille — on ouvrirait un poste la veille de la fin du mois pour encaisser la
@@ -400,7 +446,8 @@ la même phrase — et elle est **écrite à l'écran**, sous la liste des poste
 seule borne d'usage.
 
 **Ce que F-65 n'a pas touché** : Stripe. Aucun price créé, aucune quantité poussée, aucun price ID
-lu. Les trois valeurs manquantes sont suivies en **OQ-16 point 8**.
+lu. Les trois valeurs qui manquaient (OQ-16 point 8) ont été **tranchées par le PO et livrées par F-107 /
+SF-107-05** ; F-107 ne crée pas davantage de price ni ne pousse de quantité : **Stripe reste au PO**.
 
 ---
 

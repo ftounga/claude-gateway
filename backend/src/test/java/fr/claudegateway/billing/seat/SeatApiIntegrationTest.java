@@ -59,13 +59,15 @@ class SeatApiIntegrationTest {
 
     /** Offre Gold : elle inclut la Forge, dont l'endpoint d'état de mission dépend (F-40). */
     private static final long GOLD_TOKENS = 12_000_000L;
-    private static final long SEAT_TOKENS = 300_000L;
+    /** F-107 / SF-107-05 : le premier palier de la grille (2e et 3e clients) apporte 2 M jetons. */
+    private static final long SEAT_TOKENS = 2_000_000L;
 
     @Autowired private MockMvc mockMvc;
     @Autowired private UserRepository userRepository;
     @Autowired private SubscriptionRepository subscriptionRepository;
     @Autowired private RunnerHostRepository hostRepository;
     @Autowired private HostSeatMonthRepository seatMonthRepository;
+    @Autowired private fr.claudegateway.runner.host.HostSpaceRepository hostSpaceRepository;
     @Autowired private JwtService jwtService;
 
     private String aliceToken;
@@ -76,6 +78,7 @@ class SeatApiIntegrationTest {
     @BeforeEach
     void setUp() {
         seatMonthRepository.deleteAll();
+        hostSpaceRepository.deleteAll();
         hostRepository.deleteAll();
         subscriptionRepository.deleteAll();
         userRepository.deleteAll();
@@ -102,7 +105,10 @@ class SeatApiIntegrationTest {
                 .andExpect(jsonPath("$.extraSeats").value(1))
                 .andExpect(jsonPath("$.grantedTokens").value(SEAT_TOKENS))
                 .andExpect(jsonPath("$.billed").value(true))
-                .andExpect(jsonPath("$.displayPrice").value("70"))
+                .andExpect(jsonPath("$.displayPrice").value("39"))
+                .andExpect(jsonPath("$.space").value("FORGE"))
+                .andExpect(jsonPath("$.tokensApply").value(true))
+                .andExpect(jsonPath("$.seats[1].displayPrice").value("39"))
                 .andExpect(jsonPath("$.seats[0].coveredByPlan").value(true))
                 .andExpect(jsonPath("$.seats[1].extraSeatRank").value(1));
     }
@@ -161,6 +167,62 @@ class SeatApiIntegrationTest {
                 .andExpect(jsonPath("$.grantedTokens").value(0));
     }
 
+    // ------------------------------------------------ F-107 / SF-107-05 : le supplément par espace
+
+    private void space(String method, UUID hostId, String space) throws Exception {
+        var request = "PUT".equals(method)
+                ? put("/api/runner-hosts/" + hostId + "/spaces/" + space)
+                : org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete(
+                        "/api/runner-hosts/" + hostId + "/spaces/" + space);
+        mockMvc.perform(request.contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void theVigieCountsItsOwnClientsAtItsFixedPriceAndLeavingItKeepsTheMonthEngaged() throws Exception {
+        UUID first = hostRepository.findAll().stream().filter(h -> h.getUserId().equals(aliceId))
+                .filter(h -> !h.getId().equals(aliceSecondHost.getId())).findFirst().orElseThrow().getId();
+        space("PUT", first, "VIGIE");
+        space("PUT", aliceSecondHost.getId(), "VIGIE");
+
+        mockMvc.perform(get("/api/billing/seats?space=vigie").contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.space").value("VIGIE"))
+                .andExpect(jsonPath("$.includedSeats").value(1))
+                .andExpect(jsonPath("$.countedSeats").value(2))
+                .andExpect(jsonPath("$.extraSeats").value(1))
+                .andExpect(jsonPath("$.grantedTokens").value(0))
+                .andExpect(jsonPath("$.tokensApply").value(false))
+                .andExpect(jsonPath("$.displayPrice").value("39"))
+                .andExpect(jsonPath("$.seats[1].displayPrice").value("39"));
+
+        // Le second client quitte la Vigie : il y reste compté jusqu'à la fin du mois, la Forge ne bouge pas.
+        space("DELETE", aliceSecondHost.getId(), "VIGIE");
+        mockMvc.perform(get("/api/billing/seats?space=VIGIE").contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$.countedSeats").value(2))
+                .andExpect(jsonPath("$.seats[1].closed").value(true));
+        mockMvc.perform(get("/api/billing/seats").contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(jsonPath("$.countedSeats").value(2))
+                .andExpect(jsonPath("$.grantedTokens").value(SEAT_TOKENS));
+
+        // La clôture de mission du premier client engage le mois dans ses deux espaces.
+        setMission(first, "CLOSED");
+        assertThat(seatMonthRepository.findByUserIdAndPeriodStart(aliceId, periodStart()))
+                .extracting(HostSeatMonth::getSpace)
+                .containsExactlyInAnyOrder(fr.claudegateway.billing.EntitlementSpace.VIGIE,
+                        fr.claudegateway.billing.EntitlementSpace.VIGIE, fr.claudegateway.billing.EntitlementSpace.FORGE);
+
+        // Bob ne voit aucun client de la Vigie d'Alice.
+        mockMvc.perform(get("/api/billing/seats?space=VIGIE").contextPath("/api").header("Authorization", "Bearer " + bobToken))
+                .andExpect(jsonPath("$.countedSeats").value(0));
+    }
+
+    @Test
+    void anUnknownSpaceIsRejected() throws Exception {
+        mockMvc.perform(get("/api/billing/seats?space=ATELIER").contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isBadRequest());
+    }
+
     @Test
     void seatsAreRefusedWithoutAToken() throws Exception {
         mockMvc.perform(get("/api/billing/seats").contextPath("/api")).andExpect(status().isUnauthorized());
@@ -188,6 +250,8 @@ class SeatApiIntegrationTest {
                 .userId(userId)
                 .planCode(PlanCode.GOLD)
                 .status(SubscriptionStatus.ACTIVE)
+                // F-107 / SF-107-05 : l'option Vigie sur Gold Forge, pour activer des clients dans la Vigie.
+                .teamsOptionStatus(SubscriptionStatus.ACTIVE)
                 .build());
     }
 

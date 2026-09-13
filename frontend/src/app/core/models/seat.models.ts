@@ -24,6 +24,11 @@ export interface SeatView {
    * mois : il reste compté jusqu'au bout du mois engagé, et ne le sera plus le mois suivant.
    */
   closed: boolean;
+  /**
+   * Montant d'affichage du supplément de ce client (palier de son rang, F-107 / SF-107-05), vide s'il est
+   * couvert par l'abonnement. Champ additif.
+   */
+  displayPrice?: string;
 }
 
 /** État des postes comptés pour la période courante. */
@@ -49,4 +54,8 @@ export interface SeatsView {
   periodEnd: string;
   /** Détail poste par poste, du plus ancien facturable au plus récent. */
   seats: SeatView[];
+  /** Espace compté (F-107 / SF-107-05) : le supplément est par espace. Champ additif. */
+  space?: 'FORGE' | 'VIGIE';
+  /** Les suppléments apportent des jetons à ce compte : faux dans la Vigie et en BYOK. Champ additif. */
+  tokensApply?: boolean;
 }

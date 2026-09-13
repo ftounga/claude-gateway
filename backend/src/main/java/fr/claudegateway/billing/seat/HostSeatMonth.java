@@ -9,6 +9,8 @@ import org.hibernate.annotations.UuidGenerator;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -17,6 +19,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
+import fr.claudegateway.billing.EntitlementSpace;
 
 /**
  * <b>Mois-poste</b> (F-65 / SF-65-01) : « ce poste a été facturable pendant cette période, à partir
@@ -63,6 +67,15 @@ public class HostSeatMonth {
     /** Poste concerné (= {@code runner_hosts.id}), sans clé étrangère (voir la migration 070). */
     @Column(name = "host_id", nullable = false, updatable = false)
     private UUID hostId;
+
+    /**
+     * Espace dont ce mois-client relève (F-107 / SF-107-05) : le supplément est par espace. Les lignes
+     * d'avant F-107 sont {@code FORGE} (migration 095).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "space", nullable = false, updatable = false, length = 16)
+    @Builder.Default
+    private EntitlementSpace space = EntitlementSpace.FORGE;
 
     /** Premier jour de la période (mois calendaire UTC), même définition de période que F-10. */
     @Column(name = "period_start", nullable = false, updatable = false)

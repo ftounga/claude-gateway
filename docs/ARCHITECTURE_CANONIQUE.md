@@ -285,8 +285,10 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
 - **host_seat_months** — le **mois-poste** (F-65 / SF-65-01, migration `070`). Une ligne = « ce
   poste a été facturable pendant cette période, à partir de `billable_from` ».
   - `host_seat_months` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `host_id (uuid, NOT NULL)`,
+    `space (varchar 16, NOT NULL, défaut FORGE — F-107 / SF-107-05, migration 095)`,
     `period_start (date, NOT NULL)`, `billable_from (date, NOT NULL)`, `created_at (timestamptz)`.
-    **Unicité `(host_id, period_start)`**, index `(user_id, period_start)`.
+    **Unicité `(host_id, space, period_start)`** (le supplément est par espace ; `(host_id, period_start)`
+    avant la migration 095), index `(user_id, period_start)`.
   - **Pourquoi elle existe** : l'état de mission de F-60 (`runner_hosts.mission_status`) dit quels
     postes sont facturables **maintenant** — tous sauf les clôturés. Il ne dit pas ce qui a été vrai
     **pendant le mois**, et c'est exactement ce dont la facturation au poste a besoin : un poste

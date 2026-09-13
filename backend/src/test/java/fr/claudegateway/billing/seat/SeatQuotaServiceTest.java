@@ -97,7 +97,7 @@ class SeatQuotaServiceTest {
         givenNoSeatMonths();
 
         SeatProperties noProration = new SeatProperties(
-                1, TOKENS, List.of(), SeatProration.NONE, null, null);
+                1, TOKENS, List.of(), SeatProration.NONE, "price_extra_seat", null);
 
         assertThat(service(noProration).describe(alice).grantedTokens()).isEqualTo(TOKENS);
     }
@@ -113,7 +113,7 @@ class SeatQuotaServiceTest {
 
         SeatProperties tiered = new SeatProperties(1, 0L,
                 List.of(new QuotaTier(2, 4_000L), new QuotaTier(9, 3_000L)),
-                SeatProration.DAILY, null, null);
+                SeatProration.DAILY, "price_extra_seat", null);
 
         assertThat(service(tiered).describe(alice).grantedTokens())
                 .isEqualTo(4_000L + 4_000L + 3_000L);
@@ -176,12 +176,85 @@ class SeatQuotaServiceTest {
         assertThat(usage.periodEnd()).isEqualTo(PERIOD.plusMonths(1));
     }
 
+    // ------------------------------------------------ F-107 / SF-107-05 : par espace
+
+    @Test
+    void withoutABranchedPriceTheGridIsShownButNoTokenIsGranted() {
+        givenBillableSeats(seat("Poste A", PERIOD.minusMonths(4)), seat("Poste B", PERIOD.minusMonths(4)));
+        givenNoSeatMonths();
+        SeatProperties grid = new SeatProperties(1, 0L, List.of(new QuotaTier(2, 2_000_000L, "39"),
+                new QuotaTier(5, 1_500_000L, "29"), new QuotaTier(6, 1_000_000L, "19")), SeatProration.NONE, "", "39");
+
+        SeatQuotaService service = service(grid);
+        SeatUsage usage = service.describe(alice);
+
+        assertThat(usage.billed()).isFalse();
+        assertThat(usage.grantedTokens()).isZero();
+        assertThat(usage.seats().get(1).displayPrice()).isEqualTo("39");
+        assertThat(service.grantedTokens(alice)).isZero();
+    }
+
+    @Test
+    void theForgeGridIsDegressiveInPriceAndTokens() {
+        List<BillableSeat> eight = new ArrayList<>();
+        for (int i = 0; i < 8; i++) {
+            eight.add(seat("Poste " + i, PERIOD.minusMonths(4).plusDays(i)));
+        }
+        when(seatSource.billableSeats(alice)).thenReturn(eight);
+        givenNoSeatMonths();
+        SeatProperties grid = new SeatProperties(1, 0L, List.of(new QuotaTier(2, 2_000_000L, "39"),
+                new QuotaTier(5, 1_500_000L, "29"), new QuotaTier(6, 1_000_000L, "19")), SeatProration.NONE,
+                "price_forge", "39");
+
+        SeatUsage usage = service(grid).describe(alice);
+
+        assertThat(usage.seats()).extracting(SeatUsage.Seat::displayPrice)
+                .containsExactly("", "39", "39", "29", "29", "29", "19", "19");
+        assertThat(usage.grantedTokens()).isEqualTo(2 * 2_000_000L + 3 * 1_500_000L + 2 * 1_000_000L);
+    }
+
+    @Test
+    void byokSeesTheAmountsButReceivesNoToken() {
+        givenBillableSeats(seat("Poste A", PERIOD.minusMonths(4)), seat("Poste B", PERIOD.minusMonths(4)));
+        givenNoSeatMonths();
+
+        SeatUsage usage = service(flat(TOKENS)).describe(alice, fr.claudegateway.billing.EntitlementSpace.FORGE, false);
+
+        assertThat(usage.tokensApply()).isFalse();
+        assertThat(usage.grantedTokens()).isZero();
+    }
+
+    @Test
+    void theVigieCountsItsOwnClientsAtItsFixedPriceWithoutTokens() {
+        UUID vigieHost = UUID.randomUUID();
+        when(seatSource.billableSeats(alice, fr.claudegateway.billing.EntitlementSpace.VIGIE)).thenReturn(List.of(
+                seat("Suivi 1", PERIOD.minusMonths(2)),
+                new BillableSeat(vigieHost, "Suivi 2", atStartOfDay(PERIOD.plusDays(3)))));
+        // Une ligne FORGE du même mois ne doit rien compter dans la Vigie.
+        HostSeatMonth forgeLine = seatMonth(UUID.randomUUID(), PERIOD);
+        givenSeatMonths(forgeLine);
+        SeatProperties properties = new SeatProperties(1, TOKENS, List.of(), SeatProration.DAILY, "price_forge", "39",
+                new SeatProperties.Vigie(1, "", "39"));
+
+        SeatUsage usage = service(properties).describe(alice, fr.claudegateway.billing.EntitlementSpace.VIGIE, true);
+
+        assertThat(usage.space()).isEqualTo(fr.claudegateway.billing.EntitlementSpace.VIGIE);
+        assertThat(usage.countedSeats()).isEqualTo(2);
+        assertThat(usage.extraSeats()).isEqualTo(1);
+        assertThat(usage.grantedTokens()).isZero();
+        assertThat(usage.tokensApply()).isFalse();
+        assertThat(usage.billed()).isFalse();
+        assertThat(usage.displayPrice()).isEqualTo("39");
+        assertThat(usage.seats().get(1).billableFrom()).isEqualTo(PERIOD.plusDays(3));
+        assertThat(usage.seats().get(1).displayPrice()).isEqualTo("39");
+    }
+
     private SeatQuotaService service(SeatProperties properties) {
         return new SeatQuotaService(seatSource, repository, properties, CLOCK);
     }
 
     private static SeatProperties flat(long tokens) {
-        return new SeatProperties(1, tokens, List.of(), SeatProration.DAILY, null, null);
+        return new SeatProperties(1, tokens, List.of(), SeatProration.DAILY, "price_extra_seat", null);
     }
 
     private void givenBillableSeats(BillableSeat... seats) {

@@ -14,19 +14,23 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import fr.claudegateway.billing.EntitlementSpace;
+
 /**
- * Compte les <b>mois-postes</b> d'un utilisateur et en déduit la part de quota que les postes
- * supplémentaires apportent (F-65 / SF-65-01).
+ * Compte les <b>mois-clients</b> d'un utilisateur et en déduit la part de quota que les clients
+ * supplémentaires apportent (F-65 / SF-65-01), <b>par espace</b> depuis F-107 / SF-107-05.
  *
- * <p><b>La règle, en une phrase</b> : l'abonnement couvre un poste ; au-delà, chaque poste
- * facturable apporte sa part de jetons, proratisée sur ce qui reste du mois quand il arrive en
- * cours de route. Aucun montant n'est écrit ici : tout vient de {@link SeatProperties}, dont les
- * défauts rendent le mécanisme <b>inerte</b>.</p>
+ * <p><b>La règle, en une phrase</b> : l'abonnement couvre un client par espace ; au-delà, chaque client
+ * facturable ajoute un supplément — dans la <b>Forge</b>, il apporte sa part de jetons, proratisée sur ce qui
+ * reste du mois ; dans la <b>Vigie</b>, aucun jeton de conversation (sa réserve de synchro est par client).
+ * Aucun montant n'est écrit ici : tout vient de {@link SeatProperties}.</p>
  *
- * <p><b>Ce que « compté » veut dire</b> : l'ensemble des postes facturables aujourd'hui, <b>plus</b>
- * ceux qui ont une ligne de mois-poste sur la période — c'est-à-dire ceux qui ont été facturables
- * plus tôt dans le mois et qui sont clôturés depuis. Un mois engagé est dû jusqu'au bout, dans les
- * deux sens : on ne le rembourse pas, et on ne le refacture pas non plus si le poste rouvre.</p>
+ * <p><b>Les jetons suivent la facturation</b> (F-107 / SF-107-05) : tant que le price du supplément Forge
+ * n'est pas branché, il n'apporte rien — la grille décidée est affichée, le quota est inchangé.</p>
+ *
+ * <p><b>Ce que « compté » veut dire</b> : les clients facturables aujourd'hui dans l'espace, <b>plus</b> ceux
+ * qui ont une ligne de mois-client sur la période dans cet espace — facturables plus tôt dans le mois, puis
+ * clôturés ou retirés. Un mois engagé est dû jusqu'au bout, dans les deux sens.</p>
  *
  * <p>Isolation : toutes les lectures partent du {@code userId} du contexte de sécurité.</p>
  */
@@ -50,11 +54,10 @@ public class SeatQuotaService {
     }
 
     /**
-     * Jetons apportés à la période courante par les postes supplémentaires de l'utilisateur.
+     * Jetons apportés au quota de la période courante par les clients supplémentaires de la <b>Forge</b>.
      *
-     * <p>Appelé sur le chemin chaud du pré-vol de quota : quand le mécanisme n'apporte aucun jeton —
-     * le défaut, tant que le PO n'a rien configuré — il rend {@code 0} <b>sans aucune lecture en
-     * base</b>. Le comportement d'avant F-65 est alors préservé jusque dans son coût.</p>
+     * <p>Chemin chaud du pré-vol de quota : quand le mécanisme n'apporte aucun jeton — aucune part configurée,
+     * ou supplément non facturé — il rend {@code 0} <b>sans aucune lecture en base</b>.</p>
      *
      * @param userId utilisateur authentifié (contexte de sécurité)
      * @return jetons apportés, jamais négatif
@@ -64,22 +67,38 @@ public class SeatQuotaService {
         if (isInert()) {
             return 0L;
         }
-        return describe(userId).grantedTokens();
+        return describe(userId, EntitlementSpace.FORGE, true).grantedTokens();
     }
 
     /**
-     * État complet des mois-postes de la période courante : postes comptés, poste couvert par
-     * l'abonnement, jetons apportés, et si le supplément est réellement facturé.
+     * État des mois-clients de la Forge (comportement d'avant F-107 / SF-107-05).
      *
      * @param userId utilisateur authentifié (contexte de sécurité)
      * @return l'état, jamais {@code null}
      */
     @Transactional(readOnly = true)
     public SeatUsage describe(UUID userId) {
-        LocalDate periodStart = currentPeriodStart();
-        List<Seat> counted = countedSeats(userId, periodStart);
+        return describe(userId, EntitlementSpace.FORGE, true);
+    }
 
-        int included = properties.includedSeats();
+    /**
+     * État complet des mois-clients de la période courante <b>dans un espace</b>.
+     *
+     * @param userId      utilisateur authentifié (contexte de sécurité)
+     * @param space       espace compté
+     * @param tokensApply faux si le compte ne reçoit aucun jeton plateforme (BYOK) : les montants restent
+     *                    affichés, aucune part n'est comptée
+     * @return l'état, jamais {@code null}
+     */
+    @Transactional(readOnly = true)
+    public SeatUsage describe(UUID userId, EntitlementSpace space, boolean tokensApply) {
+        LocalDate periodStart = currentPeriodStart();
+        List<Seat> counted = countedSeats(userId, space, periodStart);
+        boolean forge = space == EntitlementSpace.FORGE;
+        boolean billed = forge ? properties.isBilled() : properties.vigie().isBilled();
+        boolean grantsTokens = forge && tokensApply;
+
+        int included = forge ? properties.includedSeats() : properties.vigie().includedSeats();
         List<SeatUsage.Seat> detail = new ArrayList<>(counted.size());
         long granted = 0L;
         int rank = 0;
@@ -87,10 +106,14 @@ public class SeatQuotaService {
             Seat seat = counted.get(index);
             boolean coveredByPlan = index < included;
             long tokens = 0L;
+            String price = "";
             if (!coveredByPlan) {
                 rank++;
-                tokens = proratedTokens(rank, seat.billableFrom(), periodStart);
-                granted += tokens;
+                price = forge ? properties.displayPriceForExtraSeat(rank) : properties.vigie().displayPrice();
+                if (grantsTokens && billed) {
+                    tokens = proratedTokens(rank, seat.billableFrom(), periodStart);
+                    granted += tokens;
+                }
             }
             detail.add(new SeatUsage.Seat(
                     seat.hostId(),
@@ -99,7 +122,8 @@ public class SeatQuotaService {
                     coveredByPlan,
                     coveredByPlan ? 0 : rank,
                     tokens,
-                    seat.closed()));
+                    seat.closed(),
+                    price));
         }
 
         return new SeatUsage(
@@ -107,43 +131,40 @@ public class SeatQuotaService {
                 counted.size(),
                 Math.max(0, counted.size() - included),
                 granted,
-                properties.isBilled(),
-                properties.displayPrice(),
+                billed,
+                forge ? properties.firstExtraSeatDisplayPrice() : properties.vigie().displayPrice(),
                 periodStart,
                 periodStart.plusMonths(1),
-                List.copyOf(detail));
+                List.copyOf(detail),
+                space,
+                grantsTokens);
     }
 
     /**
-     * Postes comptés pour la période, <b>du plus ancien facturable au plus récent</b>.
-     *
-     * <p>L'ordre porte une décision : le ou les postes couverts par l'abonnement sont les
-     * <b>plus anciens</b>, les suppléments sont donc les plus récents. C'est ce que l'intuition
-     * attend (« le premier poste, c'est celui que j'avais »), et c'est aussi ce que proratise un
-     * fournisseur de paiement quand la quantité augmente : le poste marginal est le dernier
-     * arrivé.</p>
+     * Clients comptés dans l'espace pour la période, <b>du plus ancien facturable au plus récent</b> : le ou
+     * les clients couverts par l'abonnement sont les plus anciens, les suppléments les plus récents.
      */
-    private List<Seat> countedSeats(UUID userId, LocalDate periodStart) {
+    private List<Seat> countedSeats(UUID userId, EntitlementSpace space, LocalDate periodStart) {
         Map<UUID, HostSeatMonth> months = new LinkedHashMap<>();
-        repository.findByUserIdAndPeriodStart(userId, periodStart)
+        repository.findByUserIdAndPeriodStart(userId, periodStart).stream()
+                .filter(month -> spaceOf(month) == space)
                 .forEach(month -> months.put(month.getHostId(), month));
 
         Map<UUID, Seat> seats = new LinkedHashMap<>();
-        for (SeatSource.BillableSeat billable : seatSource.billableSeats(userId)) {
-            HostSeatMonth month = months.get(billable.hostId());
+        List<SeatSource.BillableSeat> billable = space == EntitlementSpace.FORGE
+                ? seatSource.billableSeats(userId)
+                : seatSource.billableSeats(userId, space);
+        for (SeatSource.BillableSeat seat : billable) {
+            HostSeatMonth month = months.get(seat.hostId());
             LocalDate from = month != null
                     ? month.getBillableFrom()
-                    : startOfBillability(billable.createdAt(), periodStart);
-            seats.put(billable.hostId(),
-                    new Seat(billable.hostId(), billable.name(), from, false, billable.createdAt()));
+                    : startOfBillability(seat.createdAt(), periodStart);
+            seats.put(seat.hostId(), new Seat(seat.hostId(), seat.name(), from, false, seat.createdAt()));
         }
-        // Les postes clôturés DEPUIS le début du mois : leur ligne existe, le mois est engagé.
+        // Les clients clôturés ou retirés DEPUIS le début du mois : leur ligne existe, le mois est engagé.
         months.forEach((hostId, month) -> seats.computeIfAbsent(hostId, id -> new Seat(
-                id, seatSource.seatName(userId, id), month.getBillableFrom(), true,
-                month.getCreatedAt())));
+                id, seatSource.seatName(userId, id), month.getBillableFrom(), true, month.getCreatedAt())));
 
-        // À date de facturabilité égale — le cas courant, tous les postes courant depuis le 1er —
-        // c'est l'ancienneté qui départage : « le premier poste, c'est celui que j'avais ».
         return seats.values().stream()
                 .sorted(Comparator.comparing(Seat::billableFrom)
                         .thenComparing(Seat::since, Comparator.nullsLast(Comparator.naturalOrder()))
@@ -151,11 +172,11 @@ public class SeatQuotaService {
                 .toList();
     }
 
-    /**
-     * Début de facturabilité d'un poste sans ligne sur la période : le premier jour du mois, ou sa
-     * création si elle est plus tardive. Un poste sans ligne n'a pas été interrompu — toute
-     * interruption en aurait écrit une.
-     */
+    /** Une ligne écrite avant F-107 / SF-107-05 relève de la Forge. */
+    private static EntitlementSpace spaceOf(HostSeatMonth month) {
+        return month.getSpace() == null ? EntitlementSpace.FORGE : month.getSpace();
+    }
+
     private LocalDate startOfBillability(OffsetDateTime createdAt, LocalDate periodStart) {
         if (createdAt == null) {
             return periodStart;
@@ -165,11 +186,8 @@ public class SeatQuotaService {
     }
 
     /**
-     * Jetons apportés par le supplément de rang {@code rank}, proratisés sur les jours du mois qui
-     * restaient quand il est devenu facturable.
-     *
-     * <p>Troncature vers le bas, jamais d'arrondi vers le haut : un quota qu'on arrondit en faveur
-     * du client est un quota qu'on lui a promis sans le vendre.</p>
+     * Jetons apportés par le supplément de rang {@code rank}, proratisés sur les jours du mois qui restaient
+     * quand il est devenu facturable. Troncature vers le bas, jamais d'arrondi vers le haut.
      */
     private long proratedTokens(int rank, LocalDate billableFrom, LocalDate periodStart) {
         long tokens = properties.tokensForExtraSeat(rank);
@@ -182,22 +200,19 @@ public class SeatQuotaService {
         return tokens * remainingDays / daysInMonth;
     }
 
-    /** Vrai si aucune part de jetons n'est configurée : le mécanisme n'apporte rien à personne. */
+    /**
+     * Vrai si le mécanisme n'apporte de jetons à personne : aucune part configurée, ou supplément Forge non
+     * facturé (F-107 / SF-107-05 : les jetons suivent la facturation).
+     */
     private boolean isInert() {
-        return properties.tokensPerExtraSeat() == 0 && properties.quotaTiers().isEmpty();
+        return (properties.tokensPerExtraSeat() == 0 && properties.quotaTiers().isEmpty())
+                || !properties.isBilled();
     }
 
-    /** Premier jour du mois calendaire courant (UTC) — même définition de période que F-10. */
     private LocalDate currentPeriodStart() {
         return LocalDate.now(clock.withZone(ZoneOffset.UTC)).withDayOfMonth(1);
     }
 
-    /**
-     * Poste compté, avant d'être classé (couvert par le plan / supplément de rang n).
-     *
-     * @param since ancienneté servant à départager deux postes facturables du même jour : la
-     *              création du poste, ou l'écriture de son mois-poste s'il est déjà clôturé
-     */
     private record Seat(
             UUID hostId, String name, LocalDate billableFrom, boolean closed, OffsetDateTime since) {
     }
