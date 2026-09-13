@@ -16,6 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import fr.claudegateway.radar.analysis.RadarAnalysisReport;
+import fr.claudegateway.radar.analysis.RadarSyncAnalysisView;
 import fr.claudegateway.radar.dto.RadarViews.AliasView;
 import fr.claudegateway.radar.dto.RadarViews.CommitmentView;
 import fr.claudegateway.radar.dto.RadarViews.EvidenceView;
@@ -52,12 +54,14 @@ public class RadarReadService {
     private final RadarEvidenceLinkRepository links;
     private final RadarSyncRepository syncs;
     private final ObjectMapper objectMapper;
+    private final RadarAnalysisReport analysisReport;
 
     public RadarReadService(RadarRegistry registry, RadarSubjectRepository subjects,
             RadarSubjectAliasRepository aliases, RadarSubjectFactRepository facts,
             RadarPersonRepository people, RadarSubjectRoleRepository roles,
             RadarCommitmentRepository commitments, RadarEvidenceRepository evidence,
-            RadarEvidenceLinkRepository links, RadarSyncRepository syncs, ObjectMapper objectMapper) {
+            RadarEvidenceLinkRepository links, RadarSyncRepository syncs, ObjectMapper objectMapper,
+            RadarAnalysisReport analysisReport) {
         this.registry = registry;
         this.subjects = subjects;
         this.aliases = aliases;
@@ -69,6 +73,7 @@ public class RadarReadService {
         this.links = links;
         this.syncs = syncs;
         this.objectMapper = objectMapper;
+        this.analysisReport = analysisReport;
     }
 
     /**
@@ -220,10 +225,13 @@ public class RadarReadService {
 
     /** Les dernières synchros, plus récentes d'abord. */
     public List<SyncView> syncs(RadarScope scope) {
-        return syncs.findByUserIdAndHostIdOrderByStartedAtDesc(scope.userId(), scope.hostId(),
-                        PageRequest.of(0, SYNC_PAGE)).stream()
+        List<RadarSync> page = syncs.findByUserIdAndHostIdOrderByStartedAtDesc(scope.userId(), scope.hostId(),
+                PageRequest.of(0, SYNC_PAGE));
+        Map<UUID, RadarSyncAnalysisView> analysis = analysisReport.bySync(scope,
+                page.stream().map(RadarSync::getId).toList());
+        return page.stream()
                 .map(s -> new SyncView(s.getId(), s.getStatus(), s.getStartedAt(), s.getFinishedAt(),
-                        parse(s.getCoverage()), s.getConsumedTokens()))
+                        parse(s.getCoverage()), s.getConsumedTokens(), analysis.get(s.getId())))
                 .toList();
     }
 

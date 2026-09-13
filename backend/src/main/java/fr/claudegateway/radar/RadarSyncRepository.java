@@ -17,6 +17,13 @@ public interface RadarSyncRepository extends JpaRepository<RadarSync, UUID> {
 
     List<RadarSync> findByUserIdAndHostIdOrderByStartedAtDesc(UUID userId, UUID hostId, Pageable page);
 
+    /** Ajoute la consommation d'une analyse à sa synchro (F-101 / SF-101-01), sans relire la ligne. */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update RadarSync x set x.consumedTokens = x.consumedTokens + :tokens"
+            + " where x.id = :id and x.userId = :userId and x.hostId = :hostId")
+    int addConsumedTokens(@Param("id") UUID id, @Param("userId") UUID userId, @Param("hostId") UUID hostId,
+            @Param("tokens") long tokens);
+
     /** Purge du Radar d'un poste (SF-99-05) : suppression en masse, filtrée sur le périmètre. */
     @Modifying
     @Query("delete from RadarSync x where x.userId = :userId and x.hostId = :hostId")

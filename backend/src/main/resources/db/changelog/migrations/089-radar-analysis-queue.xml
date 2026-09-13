@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-101 / SF-101-01 — LA FILE D'ANALYSE DU RADAR.
+
+      - radar_analysis_batches : les lots d'échanges remontés par la collecte (F-100), en attente
+        d'analyse. `payload` porte le TEXTE BRUT : il est mis à NULL dans la transaction même qui
+        écrit les faits (DONE), ou à l'expiration (7 jours au plus). Unique par (user_id, host_id,
+        batch_key) : une collecte rejouée ne duplique rien. Six compteurs de jetons (tri, extraction,
+        cache) servent la mesure du coût par synchro (SF-101-05).
+      - radar_analysis_leases : le BAIL d'analyse d'un poste, une ligne par poste — un seul traitement
+        par poste à la fois, tous pods confondus, pris par mise à jour conditionnelle.
+
+      Aucune clé étrangère, comme le reste du Radar (081) : la purge est explicite (SF-99-05).
+    -->
+
+    <changeSet id="089-radar-analysis-queue-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="radar_analysis_batches">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="sync_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="batch_key" type="varchar(128)"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="attempts" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="next_attempt_at" type="timestamptz"/>
+            <column name="claimed_at" type="timestamptz"/>
+            <column name="failure_code" type="varchar(32)"/>
+            <column name="payload" type="text"/>
+            <column name="exchanges_count" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="messages_count" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="retained_count" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="subjects_attached" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="subjects_created" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="triage_input_tokens" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="triage_output_tokens" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="extraction_input_tokens" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="extraction_output_tokens" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="cache_read_tokens" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="cache_write_tokens" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="received_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="analyzed_at" type="timestamptz"/>
+            <column name="raw_deleted_at" type="timestamptz"/>
+            <column name="expires_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_analysis_batches" indexName="idx_radar_analysis_batches_key" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="batch_key"/>
+        </createIndex>
+        <createIndex tableName="radar_analysis_batches" indexName="idx_radar_analysis_batches_status">
+            <column name="status"/>
+            <column name="next_attempt_at"/>
+        </createIndex>
+        <createIndex tableName="radar_analysis_batches" indexName="idx_radar_analysis_batches_sync">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="sync_id"/>
+        </createIndex>
+        <createTable tableName="radar_analysis_leases">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="owner" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="leased_until" type="timestamptz"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_analysis_leases" indexName="idx_radar_analysis_leases_scope" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="radar_analysis_leases"/>
+            <dropTable tableName="radar_analysis_batches"/>
+        </rollback>
+    </changeSet>
+
+    <!-- H2 mappe `text` sur CLOB, que la validation de schéma refuse : varchar(1000000), comme 082. -->
+    <changeSet id="089-radar-analysis-queue-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="radar_analysis_batches">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="sync_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="batch_key" type="varchar(128)"><constraints nullable="false"/></column>
+            <column name="status" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="attempts" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="next_attempt_at" type="timestamp with time zone"/>
+            <column name="claimed_at" type="timestamp with time zone"/>
+            <column name="failure_code" type="varchar(32)"/>
+            <column name="payload" type="varchar(1000000)"/>
+            <column name="exchanges_count" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="messages_count" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="retained_count" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="subjects_attached" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="subjects_created" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="triage_input_tokens" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="triage_output_tokens" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="extraction_input_tokens" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="extraction_output_tokens" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="cache_read_tokens" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="cache_write_tokens" type="bigint" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="received_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="analyzed_at" type="timestamp with time zone"/>
+            <column name="raw_deleted_at" type="timestamp with time zone"/>
+            <column name="expires_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_analysis_batches" indexName="idx_radar_analysis_batches_key" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="batch_key"/>
+        </createIndex>
+        <createIndex tableName="radar_analysis_batches" indexName="idx_radar_analysis_batches_status">
+            <column name="status"/>
+            <column name="next_attempt_at"/>
+        </createIndex>
+        <createIndex tableName="radar_analysis_batches" indexName="idx_radar_analysis_batches_sync">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="sync_id"/>
+        </createIndex>
+        <createTable tableName="radar_analysis_leases">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="owner" type="varchar(64)"><constraints nullable="false"/></column>
+            <column name="leased_until" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_analysis_leases" indexName="idx_radar_analysis_leases_scope" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="radar_analysis_leases"/>
+            <dropTable tableName="radar_analysis_batches"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

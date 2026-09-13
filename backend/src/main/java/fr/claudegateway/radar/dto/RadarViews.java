@@ -17,6 +17,7 @@ import fr.claudegateway.radar.RadarPurgeReason;
 import fr.claudegateway.radar.RadarRole;
 import fr.claudegateway.radar.RadarSubjectState;
 import fr.claudegateway.radar.RadarSyncStatus;
+import fr.claudegateway.radar.analysis.RadarSyncAnalysisView;
 
 /**
  * Les vues REST du Radar (F-99 / SF-99-01), lues par les écrans à venir (F-102, F-103).
@@ -101,8 +102,9 @@ public final class RadarViews {
             int evidenceCount) {
     }
 
-    /** Une synchro. */
+    /** Une synchro, et où en est son analyse (F-101). */
     public record SyncView(UUID id, RadarSyncStatus status, OffsetDateTime startedAt,
-            OffsetDateTime finishedAt, JsonNode coverage, long consumedTokens) {
+            OffsetDateTime finishedAt, JsonNode coverage, long consumedTokens,
+            RadarSyncAnalysisView analysis) {
     }
 }

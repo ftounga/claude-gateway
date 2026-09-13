@@ -986,6 +986,15 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     **suppression du poste** (`RadarHostLifecycleListener`, même transaction) et par la **suppression du
     compte** (`AccountService`). Export et purge ne demandent pas le droit d'option : récupérer et
     effacer ses données ne dépend pas d'un abonnement.
+  - **File d'analyse** (F-101 / SF-101-01, migration `089`) : `radar_analysis_batches` — les lots
+    d'échanges remontés par la synchro (contrat d'entrée : `docs/features/F-101/SF-101-01-la-file-d-analyse.md`),
+    unique `(user_id, host_id, batch_key)`, `sync_id`, `status` (`PENDING`, `PROCESSING`, `DONE`,
+    `DEFERRED`, `FAILED`, `EXPIRED`), tentatives, échéance, `payload` = **texte brut, mis à NULL dans la
+    transaction qui écrit les faits** ou à `expires_at` (7 jours au plus), compteurs (échanges,
+    messages, retenus, sujets rattachés / créés) et **six compteurs de jetons** (tri, extraction, cache).
+    `radar_analysis_leases` : le **bail** d'analyse d'un poste (`owner`, `leased_until`), unique
+    `(user_id, host_id)` — un seul traitement par poste, tous pods confondus. Les deux tables sont
+    effacées par la purge du Radar.
 
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 
