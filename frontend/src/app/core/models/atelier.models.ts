@@ -558,6 +558,37 @@ export interface AtelierStreamDone {
    * jamais sur le budget de temps, qui dit déjà sa cause dans `reply`.
    */
   budgetReached?: boolean;
+  /**
+   * Une précision arrivée pendant la réponse finale ouvre aussitôt un **tour de suite** dans le même
+   * flux (F-84 / SF-84-06) : ce `done` n'est pas la fin du flux. Absent ⇒ fin.
+   */
+  followUp?: boolean;
+}
+
+/** L'envoi est devenu une précision du tour qui tournait déjà (F-84 / SF-84-06). */
+export interface AtelierTurnSteered {
+  steerId: string;
+  turnId: string | null;
+  /** Instant d'ouverture du tour rejoint, en ms heure serveur ; 0 quand inconnu. */
+  startedAt: number;
+}
+
+/** Une précision déposée dans le tour, annoncée à toutes ses vues (F-84 / SF-84-06). */
+export interface AtelierSteerQueued {
+  steerId: string;
+  text: string;
+}
+
+/** Une précision lue par le modèle, à l'étape dite (F-84 / SF-84-06). */
+export interface AtelierSteerApplied {
+  steerId: string;
+  step: number;
+}
+
+/** Réponse de `POST /chat/steer` (F-84 / SF-84-06). */
+export interface AtelierSteerAccepted {
+  steerId: string;
+  turnId: string;
 }
 
 /** Callbacks du streaming de l'atelier (SF-28-05). */
@@ -651,6 +682,24 @@ export interface AtelierStreamHandlers {
    * apartés (numéro 0) ne passent jamais par ce filtre.
    */
   acceptSeq?: (seq: number) => boolean;
+
+  /**
+   * **L'envoi est devenu une précision** du tour qui tournait déjà (F-84 / SF-84-06) : aucun tour
+   * n'a été ouvert, ce qui suit est le rejeu complet du tour rejoint, puis son direct.
+   */
+  onSteered?: (steered: AtelierTurnSteered) => void;
+
+  /** Une précision vient d'être déposée dans le tour (F-84 / SF-84-06). */
+  onSteerQueued?: (queued: AtelierSteerQueued) => void;
+
+  /** Une précision a été lue par le modèle (F-84 / SF-84-06). */
+  onSteerApplied?: (applied: AtelierSteerApplied) => void;
+
+  /** Cette précision ouvre le tour de suite (F-84 / SF-84-06). */
+  onSteerFollowUp?: (followUp: { steerId: string }) => void;
+
+  /** Le tour s'est arrêté avec ces précisions non lues (F-84 / SF-84-06). */
+  onSteersDropped?: (dropped: { steerIds: string[] }) => void;
 }
 
 /** La prise en main d'une demande par la gateway (F-84 / SF-84-04). */

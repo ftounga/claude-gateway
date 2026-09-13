@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import fr.claudegateway.atelier.live.LiveTurn;
 import fr.claudegateway.atelier.live.LiveTurnRegistry;
+import fr.claudegateway.atelier.live.SteerReceipt;
 
 /**
  * Gestes d'<b>interruption</b> reçus d'un pod pair (F-38 / SF-38-13, contrat du relais §6).
@@ -86,9 +87,12 @@ public class AtelierRelayController {
     }
 
     /**
-     * Dépose une précision sur ce pod (F-39 / SF-39-19). <b>Toujours 200</b>, comme la confirmation :
-     * « ce n'est pas moi qui exécutais » est le cas de tous les pods sauf un, et ce n'est pas une
-     * erreur.
+     * Dépose une précision dans le tour vivant de ce pod (F-39 / SF-39-19, porté au tour vivant par
+     * F-84 / SF-84-06). <b>Toujours 200</b>, comme la confirmation : « ce n'est pas moi qui
+     * exécutais » ({@code status=ENDED}) n'est pas une erreur de transport.
+     *
+     * <p>Le reçu est rendu tel quel — statut, identifiant de la précision, tour — pour que l'écran
+     * du pod d'origine suive la précision comme si elle avait été déposée chez lui.</p>
      */
     @PostMapping(value = "/steer", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Object>> steer(
@@ -96,9 +100,20 @@ public class AtelierRelayController {
         if (request == null || !request.isValid()) {
             return ResponseEntity.badRequest().build();
         }
-        interruptTarget.steerLocally(request.userId(), request.workspaceId(), request.message());
-        log.debug("Précision relayée déposée (workspace={})", request.workspaceId());
-        return ResponseEntity.ok(Map.of("accepted", true));
+        Optional<LiveTurn> turn = liveTurns.find(request.userId(), request.workspaceId());
+        if (turn.isEmpty()) {
+            return ResponseEntity.ok(Map.of("status", SteerReceipt.Status.ENDED.name()));
+        }
+        SteerReceipt receipt = turn.get().offerSteer(request.message());
+        log.debug("Précision relayée (workspace={}, statut={})", request.workspaceId(),
+                receipt.status());
+        Map<String, Object> answer = new java.util.LinkedHashMap<>();
+        answer.put("status", receipt.status().name());
+        if (receipt.steerId() != null) {
+            answer.put("steerId", receipt.steerId());
+        }
+        answer.put("turnId", receipt.turnId().toString());
+        return ResponseEntity.ok(answer);
     }
 
 

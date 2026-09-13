@@ -17,6 +17,7 @@ import {
   AtelierResume,
   AtelierStreamAction,
   AtelierStreamHandlers,
+  AtelierSteerAccepted,
   AtelierTurnFollower,
   AtelierTurnState,
   CreateGitWorkspaceRequest,
@@ -340,7 +341,9 @@ export class AtelierService {
             idle = true;
           },
           onDone: (done) => {
-            ended = true;
+            // Le `done` d'un tour de suite n'est pas la fin du tour vivant (F-84 / SF-84-06) : les
+            // fenêtres continuent de le suivre.
+            ended = done.followUp !== true;
             handlers.onDone(done);
           },
           onError: (code) => {
@@ -484,6 +487,11 @@ export class AtelierService {
       /** Poste qui vient de refuser un appel, et l'instant serveur du refus (F-97 / SF-97-02). */
       hostId?: string;
       at?: number;
+      /** Précisions déposées pendant le tour (F-84 / SF-84-06). */
+      steerId?: string;
+      steerIds?: string[];
+      step?: number;
+      followUp?: boolean;
     };
     try {
       payload = JSON.parse(data);
@@ -563,6 +571,34 @@ export class AtelierService {
         outputTokens: payload.outputTokens,
         activeSeconds: payload.activeSeconds,
         budgetReached: payload.budgetReached === true,
+        // F-84 / SF-84-06 : un tour de suite part dans le même flux — ce `done` n'est pas la fin.
+        followUp: payload.followUp === true,
+      });
+    } else if (event === 'steered') {
+      // F-84 / SF-84-06 : l'envoi est devenu une précision du tour qui tournait déjà.
+      handlers.onSteered?.({
+        steerId: payload.steerId ?? '',
+        turnId: payload.turnId ?? null,
+        startedAt: typeof payload.startedAt === 'number' ? payload.startedAt : 0,
+      });
+    } else if (event === 'steer_queued') {
+      if (payload.steerId) {
+        handlers.onSteerQueued?.({ steerId: payload.steerId, text: payload.text ?? '' });
+      }
+    } else if (event === 'steer_applied') {
+      if (payload.steerId) {
+        handlers.onSteerApplied?.({
+          steerId: payload.steerId,
+          step: typeof payload.step === 'number' ? payload.step : 0,
+        });
+      }
+    } else if (event === 'steer_followup') {
+      if (payload.steerId) {
+        handlers.onSteerFollowUp?.({ steerId: payload.steerId });
+      }
+    } else if (event === 'steers_dropped') {
+      handlers.onSteersDropped?.({
+        steerIds: Array.isArray(payload.steerIds) ? payload.steerIds : [],
       });
     } else if (event === 'attached') {
       // L'écran s'est rebranché sur un tour en cours (F-84 / SF-84-02) : ce qui suit est le rejeu.
@@ -762,9 +798,12 @@ export class AtelierService {
    *
    * <p>Ce n'est pas une interruption : rien ne s'arrête. L'agent la lira au début de son itération
    * suivante et en tiendra compte pour la suite.</p>
+   *
+   * <p>F-84 / SF-84-06 : rend l'identifiant de la précision, celui que portent les événements du
+   * tour. `409 no_live_turn` : le tour vient de finir — l'écran l'envoie alors comme un message.</p>
    */
-  steerChat(id: string, message: string): Observable<void> {
-    return this.http.post<void>(`/api/workspaces/${id}/chat/steer`, { message });
+  steerChat(id: string, message: string): Observable<AtelierSteerAccepted> {
+    return this.http.post<AtelierSteerAccepted>(`/api/workspaces/${id}/chat/steer`, { message });
   }
 
   /**

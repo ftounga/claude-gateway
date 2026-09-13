@@ -31,13 +31,16 @@ import fr.claudegateway.atelier.dto.AtelierChatResponse;
 import fr.claudegateway.atelier.dto.AtelierChatResponse.AtelierAction;
 import fr.claudegateway.atelier.dto.AtelierMessageResponse;
 import fr.claudegateway.atelier.dto.AtelierResumeResponse;
+import fr.claudegateway.atelier.dto.AtelierSteerResponse;
 import fr.claudegateway.atelier.dto.AtelierTurnStateResponse;
 import fr.claudegateway.atelier.live.LiveTurn;
 import fr.claudegateway.atelier.live.LiveTurnRegistry;
 import fr.claudegateway.atelier.live.PendingApproval;
 import fr.claudegateway.atelier.live.RemoteTurnSource;
 import fr.claudegateway.atelier.live.SseTurnSubscriber;
+import fr.claudegateway.atelier.live.SteerReceipt;
 import fr.claudegateway.atelier.live.TurnAsides;
+import fr.claudegateway.atelier.live.TurnSteering;
 import fr.claudegateway.atelier.live.TurnSubscriber;
 import fr.claudegateway.atelier.live.WindowedTurnSubscriber;
 import fr.claudegateway.auth.CurrentUser;
@@ -252,17 +255,31 @@ public class AtelierChatController {
 
     /**
      * Dépose une <b>précision</b> pour le tour en cours (F-39 / SF-39-19) : elle sera lue au début
-     * de l'itération suivante, et l'agent en tiendra compte sans que rien s'arrête.
+     * de l'étape suivante, et l'agent en tiendra compte sans que rien s'arrête.
      *
      * <p>À ne pas confondre avec l'interruption, juste en dessous : celle-ci arrête le tour, celle-là
      * l'enrichit. C'est le geste le plus fréquent — préciser sans casser.</p>
+     *
+     * <p><b>F-84 / SF-84-06</b> : la précision entre dans le <b>tour vivant</b>, ici ou chez le pair
+     * qui l'exécute, et rend son identifiant. Plus aucun tour ⇒ {@code 409 no_live_turn} : l'écran
+     * l'envoie alors comme un message. File pleine ⇒ {@code 409 too_many_steers}.</p>
      */
     @PostMapping("/steer")
-    public ResponseEntity<Void> steer(@PathVariable UUID id,
+    public AtelierSteerResponse steer(@PathVariable UUID id,
             @Valid @RequestBody AtelierChatRequest request) {
         atelierAccess.requireTerminalAccess(id);
-        atelierChatService.steer(currentUser.requireId(), id, request.message());
-        return ResponseEntity.noContent().build();
+        UUID userId = currentUser.requireId();
+        // Isolation d'abord : un projet d'autrui rend 404, avant de chercher le moindre tour.
+        atelierChatService.requireSteerable(userId, id);
+        SteerReceipt receipt = new TurnSteering(liveTurns, remoteTurns)
+                .steer(userId, id, request.message().trim())
+                .orElseThrow(() -> new NoLiveTurnException(
+                        "Le tour vient de se terminer : envoyez ce message comme une nouvelle demande."));
+        if (!receipt.accepted()) {
+            throw new TooManySteersException(
+                    "Trop de précisions en attente pour ce message ; laissez-le avancer.");
+        }
+        return new AtelierSteerResponse(receipt.steerId(), receipt.turnId());
     }
 
     /**
@@ -361,7 +378,26 @@ public class AtelierChatController {
      * navigateur est parti.</p>
      */
     private void relay(SseEmitter emitter, UUID userId, UUID workspaceId, String message, boolean hasAccess) {
-        LiveTurn turn = liveTurns.open(userId, workspaceId);
+        LiveTurn turn;
+        if (hasAccess) {
+            // UN ENVOI PENDANT UN TOUR EST UNE PRÉCISION (F-84 / SF-84-06, décision du PO du
+            // 2026-09-13). Avant, il REMPLAÇAIT le tour vivant : l'ancienne boucle continuait à
+            // l'aveugle, et deux boucles ont tourné en parallèle sur le même projet — l'écran revenu
+            // n'avait pas vu le tour, son rebranchement étant retenu par un proxy (SF-84-04).
+            String text = message == null ? "" : message.trim();
+            if (liveTurns.find(userId, workspaceId).isEmpty()
+                    && steerRemoteTurn(emitter, userId, workspaceId, text)) {
+                return;
+            }
+            LiveTurnRegistry.Entry entry = liveTurns.openOrSteer(userId, workspaceId, text);
+            if (entry.receipt() != null) {
+                followSteeredTurn(emitter, entry);
+                return;
+            }
+            turn = entry.turn();
+        } else {
+            turn = liveTurns.open(userId, workspaceId);
+        }
         turn.attach(new SseTurnSubscriber(emitter), LiveTurn.FROM_START);
         String outcome = "echec_fatal";
         try {
@@ -443,11 +479,51 @@ public class AtelierChatController {
                     turn.publish("runner_offline",
                             new StreamRunnerOffline(hostId.toString(), System.currentTimeMillis()));
                 }
+
+                /**
+                 * Les précisions déposées depuis la dernière étape (F-84 / SF-84-06) : la boucle les
+                 * prend au début de l'étape suivante. Elles vivent dans le tour, pas dans le service.
+                 */
+                @Override
+                public List<AtelierProgressListener.AtelierSteer> takeSteers() {
+                    return turn.takeSteers().stream()
+                            .map(steer -> new AtelierProgressListener.AtelierSteer(steer.steerId(),
+                                    steer.text()))
+                            .toList();
+                }
+
+                @Override
+                public void onSteerApplied(AtelierProgressListener.AtelierSteer steer, int step) {
+                    turn.publish(LiveTurn.STEER_APPLIED, new StreamSteerApplied(steer.steerId(), step));
+                }
             };
-            AtelierChatResult result = atelierChatService.chatStreaming(userId, workspaceId, message, listener);
-            turn.publish("done", new StreamDone(result.reply(), result.actions(), result.messageId(),
-                    result.inputTokens(), result.outputTokens(), result.activeSeconds(),
-                    result.budgetReached()));
+            String demand = message;
+            for (;;) {
+                AtelierChatResult result =
+                        atelierChatService.chatStreaming(userId, workspaceId, demand, listener);
+                if (result.interrupted()) {
+                    // L'interruption est le geste qui arrête VRAIMENT (cadrage F-84 §5) : aucune
+                    // précision restée en file ne relance un tour derrière elle — mais aucune ne
+                    // disparaît en silence non plus.
+                    turn.publishSteersDropped(turn.sealAndDrain(), "interrupted");
+                    turn.publish("done", StreamDone.of(result, false));
+                    break;
+                }
+                // Prendre la première précision restante OU sceller, en un seul geste : aucune
+                // précision ne peut être acceptée entre les deux par un tour qui ne la lirait jamais.
+                java.util.Optional<LiveTurn.Steer> followUp = turn.pollFollowUpOrSeal();
+                turn.publish("done", StreamDone.of(result, followUp.isPresent()));
+                if (followUp.isEmpty()) {
+                    break;
+                }
+                // Arrivée pendant la réponse finale, elle n'a plus d'étape où être lue : elle ouvre
+                // le TOUR DE SUITE, dans le même tour vivant — les vues branchées le suivent sans
+                // se rebrancher, et l'écran le dit.
+                turn.publish(LiveTurn.STEER_FOLLOWUP, new StreamSteerFollowUp(followUp.get().steerId()));
+                log.info("Tour de suite ouvert par une précision (workspace={}, tour={})",
+                        workspaceId, turn.turnId());
+                demand = followUp.get().text();
+            }
             outcome = "done";
         } catch (AtelierAccessDeniedException ex) {
             outcome = failTurn(turn, "forbidden");
@@ -477,10 +553,63 @@ public class AtelierChatController {
         }
     }
 
-    /** Publie l'erreur nommée du tour et rend l'issue à journaliser. */
+    /**
+     * Publie l'erreur nommée du tour et rend l'issue à journaliser. Les précisions restées en file
+     * sont dites non prises en compte (F-84 / SF-84-06) — jamais perdues en silence.
+     */
     private static String failTurn(LiveTurn turn, String code) {
+        turn.publishSteersDropped(turn.sealAndDrain(), code);
         turn.publish("error", new StreamError(code));
         return code;
+    }
+
+    /**
+     * Le tour vivant de ce projet tourne chez un <b>pair</b> : l'envoi y devient une précision, et ce
+     * flux suit le tour relayé (F-84 / SF-84-06).
+     *
+     * @return {@code true} si un pair a pris (ou refusé, file pleine) la précision — aucun tour ne
+     *         doit alors être ouvert ici
+     */
+    private boolean steerRemoteTurn(SseEmitter emitter, UUID userId, UUID workspaceId, String text) {
+        Optional<SteerReceipt> receipt = remoteTurns.steerRemoteTurn(userId, workspaceId, text)
+                .filter(r -> r.status() != SteerReceipt.Status.ENDED);
+        if (receipt.isEmpty()) {
+            return false;
+        }
+        SseTurnSubscriber sse = new SseTurnSubscriber(emitter);
+        if (!receipt.get().accepted()) {
+            sse.deliver(TurnAsides.error("too_many_steers"));
+            sse.finish();
+            return true;
+        }
+        if (sse.deliver(TurnAsides.steered(receipt.get().steerId(), receipt.get().turnId(), 0L, 0L))) {
+            remoteTurns.streamRemoteTurn(userId, workspaceId, LiveTurn.FROM_START, sse);
+        }
+        sse.finish();
+        return true;
+    }
+
+    /**
+     * L'envoi est devenu une précision du tour vivant de ce pod (F-84 / SF-84-06) : ce flux dit
+     * {@code steered}, puis rejoue <b>tout</b> le tour — l'écran qui envoie sans savoir qu'un tour
+     * tourne n'en a rien vu — et suit son direct jusqu'à la fin. File pleine : refus nommé, et le tour
+     * n'est pas touché.
+     */
+    private void followSteeredTurn(SseEmitter emitter, LiveTurnRegistry.Entry entry) {
+        SseTurnSubscriber sse = new SseTurnSubscriber(emitter);
+        LiveTurn turn = entry.turn();
+        if (!entry.steered()) {
+            sse.deliver(TurnAsides.error("too_many_steers"));
+            sse.finish();
+            return;
+        }
+        if (!sse.deliver(TurnAsides.steered(entry.receipt().steerId(), turn.turnId(), turn.cursor(),
+                turn.startedAtMs()))) {
+            return;
+        }
+        if (!turn.attach(sse, LiveTurn.FROM_START)) {
+            sse.finish();
+        }
     }
 
     /** Le plan tel qu'il part sur le fil : la liste complète, qui remplace la précédente. */
@@ -515,9 +644,27 @@ public class AtelierChatController {
      * (F-39 / SF-39-15) : un écran qui les ignore se comporte exactement comme avant.
      * {@code budgetReached} dit que le tour s'est arrêté sur le <b>plafond de consommation</b> du
      * message — jamais sur le budget de temps, qui dit déjà sa cause dans {@code reply}.
+     *
+     * <p>{@code followUp} (F-84 / SF-84-06, additif) : une précision arrivée pendant la réponse
+     * finale ouvre aussitôt un tour de suite dans le même flux — ce {@code done} n'est pas la fin du
+     * flux, et {@code steer_followup} le suit.</p>
      */
     record StreamDone(String reply, List<AtelierAction> actions, UUID messageId, long inputTokens,
-            long outputTokens, long activeSeconds, boolean budgetReached) {
+            long outputTokens, long activeSeconds, boolean budgetReached, boolean followUp) {
+
+        static StreamDone of(AtelierChatResult result, boolean followUp) {
+            return new StreamDone(result.reply(), result.actions(), result.messageId(),
+                    result.inputTokens(), result.outputTokens(), result.activeSeconds(),
+                    result.budgetReached(), followUp);
+        }
+    }
+
+    /** Une précision a été lue par le modèle à l'étape {@code step} (F-84 / SF-84-06). */
+    record StreamSteerApplied(String steerId, int step) {
+    }
+
+    /** Cette précision ouvre le tour de suite (F-84 / SF-84-06). */
+    record StreamSteerFollowUp(String steerId) {
     }
 
     /** Consommation cumulée du tour, relayée au fil de l'eau (F-39 / SF-39-15). */

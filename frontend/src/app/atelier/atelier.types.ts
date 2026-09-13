@@ -59,6 +59,24 @@ export interface AtelierThreadItem {
    * antérieurs à F-37, qui restent lisibles tels quels.
    */
   diffs?: AtelierFileDiffView[];
+  /**
+   * Ce message est une **précision** envoyée pendant un tour (F-84 / SF-84-06), et où elle en est.
+   * Absent d'un message ordinaire — et de toute précision relue de l'historique, qui a été prise en
+   * compte puisqu'elle y figure.
+   */
+  steer?: AtelierSteerState;
+}
+
+/** Où en est une précision envoyée pendant un tour (F-84 / SF-84-06). */
+export interface AtelierSteerState {
+  /** Identifiant rendu par la gateway ; `null` tant qu'elle ne l'a pas encore rendu. */
+  steerId: string | null;
+  /**
+   * `pending` en attente de l'étape suivante · `applied` lue à l'étape `step` · `followup` ouvre
+   * un tour de suite · `dropped` non prise en compte, le tour s'étant arrêté.
+   */
+  status: 'pending' | 'applied' | 'followup' | 'dropped';
+  step?: number;
 }
 
 /** Coût d'un tour d'exécution affiché sous la transcription (F-30 SF-30-05). */

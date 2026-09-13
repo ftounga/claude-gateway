@@ -138,6 +138,34 @@ public interface AtelierProgressListener {
         // Aucun relais : mode synchrone.
     }
 
+    /**
+     * Une précision déposée pendant le tour (F-84 / SF-84-06).
+     *
+     * @param steerId identifiant porté par les événements qui la concernent
+     * @param text    le message de l'utilisateur
+     */
+    record AtelierSteer(String steerId, String text) {
+    }
+
+    /**
+     * Les précisions déposées depuis la dernière étape, <b>prises</b> par la boucle au début de
+     * l'étape suivante (F-84 / SF-84-06). Une précision rendue ici ne l'est qu'une fois.
+     *
+     * <p>Volontairement <b>par défaut vide</b> : le mode synchrone n'a pas de tour vivant, donc
+     * personne pour préciser.</p>
+     */
+    default java.util.List<AtelierSteer> takeSteers() {
+        return java.util.List.of();
+    }
+
+    /**
+     * Une précision vient d'être ajoutée à la conversation et persistée : elle part au modèle à
+     * l'étape {@code step} (à partir de 1).
+     */
+    default void onSteerApplied(AtelierSteer steer, int step) {
+        // Aucun relais : mode synchrone.
+    }
+
     /** Listener neutre : n'émet rien (mode synchrone historique). */
     AtelierProgressListener NOOP = new AtelierProgressListener() {
         @Override

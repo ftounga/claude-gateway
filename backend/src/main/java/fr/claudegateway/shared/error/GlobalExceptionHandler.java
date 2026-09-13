@@ -607,6 +607,14 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse("too_many_steers", ex.getMessage()));
     }
 
+    @ExceptionHandler(fr.claudegateway.atelier.NoLiveTurnException.class)
+    public ResponseEntity<ErrorResponse> handleNoLiveTurn(fr.claudegateway.atelier.NoLiveTurnException ex) {
+        // Precision arrivee apres la fin du tour (F-84 / SF-84-06) : l'ecran l'envoie comme message.
+        log.debug("Depot de precision refuse : aucun tour vivant sur ce projet");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("no_live_turn", ex.getMessage()));
+    }
+
     @ExceptionHandler(fr.claudegateway.atelier.StorageExecutionClosedException.class)
     public ResponseEntity<ErrorResponse> handleStorageExecutionClosed(
             fr.claudegateway.atelier.StorageExecutionClosedException ex) {

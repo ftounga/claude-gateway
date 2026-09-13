@@ -268,6 +268,13 @@
   word-break: break-word;
 }
 
+// F-84 / SF-84-06 : l'état d'une précision, dit par la typographie — aucune couleur nouvelle.
+.terminal-steer-state {
+  flex-shrink: 0;
+  color: var(--cg-divider);
+  font-style: italic;
+}
+
 .terminal-agent {
   margin: var(--cg-space-2) 0;
   color: var(--cg-divider);

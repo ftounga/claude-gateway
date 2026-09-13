@@ -43,6 +43,7 @@ class AtelierTurnRelayApiIntegrationTest {
     private static final String SECRET = "secret-de-relais-de-test-32-octets!!";
     private static final String OWNER = "/api/internal/atelier/turn-owner";
     private static final String STREAM = "/api/internal/atelier/turn-stream";
+    private static final String STEER = "/api/internal/atelier/steer";
 
     @LocalServerPort
     private int publicPort;
@@ -79,6 +80,41 @@ class AtelierTurnRelayApiIntegrationTest {
             assertThat(response.getBody()).contains("\"owner\":true");
             assertThat(response.getBody()).contains(turn.turnId().toString());
             assertThat(response.getBody()).contains("\"cursor\":1");
+        } finally {
+            liveTurns.close(turn);
+        }
+    }
+
+    @Test
+    void unePrecisionRelayeeEntreDansLeTourVivantDuPodProprietaire() {
+        UUID user = UUID.randomUUID();
+        UUID workspace = UUID.randomUUID();
+        LiveTurn turn = liveTurns.open(user, workspace);
+        try {
+            ResponseEntity<String> response = post(relayPort(), STEER, SECRET,
+                    steerPayload(user, workspace, "et ajoute un test"));
+
+            assertThat(response.getStatusCode().value()).isEqualTo(200);
+            assertThat(response.getBody()).contains("\"status\":\"ACCEPTED\"")
+                    .contains("\"steerId\":\"")
+                    .contains(turn.turnId().toString());
+            assertThat(turn.takeSteers()).extracting(LiveTurn.Steer::text)
+                    .containsExactly("et ajoute un test");
+        } finally {
+            liveTurns.close(turn);
+        }
+    }
+
+    @Test
+    void unePrecisionRelayeeNeTombeJamaisDansLeTourDAutrui() {
+        UUID workspace = UUID.randomUUID();
+        LiveTurn turn = liveTurns.open(UUID.randomUUID(), workspace);
+        try {
+            ResponseEntity<String> response = post(relayPort(), STEER, SECRET,
+                    steerPayload(UUID.randomUUID(), workspace, "je précise"));
+
+            assertThat(response.getBody()).contains("\"status\":\"ENDED\"");
+            assertThat(turn.takeSteers()).isEmpty();
         } finally {
             liveTurns.close(turn);
         }
@@ -193,6 +229,11 @@ class AtelierTurnRelayApiIntegrationTest {
 
     private int relayPort() {
         return relayConnector.relayPort();
+    }
+
+    private String steerPayload(UUID userId, UUID workspaceId, String message) {
+        return "{\"userId\":\"" + userId + "\",\"workspaceId\":\"" + workspaceId
+                + "\",\"message\":\"" + message + "\"}";
     }
 
     private String payload(UUID userId, UUID workspaceId, long cursor) {
