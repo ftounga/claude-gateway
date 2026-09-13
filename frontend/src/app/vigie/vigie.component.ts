@@ -51,6 +51,7 @@ import {
   CloseMissionDialogResult,
 } from './close-mission-dialog/close-mission-dialog.component';
 import { RadarExporter } from './radar-export/radar-export';
+import { RadarScheduleComponent } from './radar-schedule/radar-schedule.component';
 import {
   RadarVerificationDialogComponent,
   RadarVerificationDialogData,
@@ -96,6 +97,7 @@ export type VigieError = 'none' | 'network' | 'forbidden' | 'not-entitled';
     MissionBadgeComponent,
     RadarBoardComponent,
     RadarDirectoryComponent,
+    RadarScheduleComponent,
     SpacePitchComponent,
     TeamsLinkBadgeComponent,
     MatButtonModule,

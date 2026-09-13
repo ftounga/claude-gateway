@@ -74,6 +74,12 @@
     display: block;
   }
 
+  /* La synchro du soir (F-100 / SF-100-07) : une ligne sous la présence. */
+  &__schedule {
+    display: block;
+    margin-top: var(--cg-space-1);
+  }
+
   /* La vérification guidée (F-100 / SF-100-06) : sur téléphone, l'icône seule (l'infobulle et le libellé
      accessible restent). */
   &__verify {

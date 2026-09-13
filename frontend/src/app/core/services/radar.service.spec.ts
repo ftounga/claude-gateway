@@ -17,6 +17,17 @@ describe('RadarService', () => {
 
   afterEach(() => httpMock.verify());
 
+  it("lit et règle l'heure du soir (F-100 / SF-100-07)", () => {
+    service.schedule('h1').subscribe();
+    expect(httpMock.expectOne('/api/radar/hosts/h1/schedule').request.method).toBe('GET');
+
+    const body = { enabled: true, syncTime: '21:30', timeZone: 'Europe/Paris', clientAuthorizationConfirmed: true };
+    service.updateSchedule('h1', body).subscribe();
+    const put = httpMock.expectOne('/api/radar/hosts/h1/schedule');
+    expect(put.request.method).toBe('PUT');
+    expect(put.request.body).toEqual(body);
+  });
+
   it('vérifie ce que voit le runner, et recommence (F-100 / SF-100-06)', () => {
     service.verify('h1').subscribe();
     expect(httpMock.expectOne('/api/radar/hosts/h1/verification').request.method).toBe('POST');

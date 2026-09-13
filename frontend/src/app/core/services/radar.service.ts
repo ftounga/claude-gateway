@@ -16,6 +16,8 @@ import {
   RadarNewsUndo,
   RadarSubjectState,
   RadarSyncStarted,
+  RadarSchedule,
+  RadarScheduleRequest,
   RadarThreadRule,
   RadarVerification,
 } from '../models/radar.models';
@@ -148,6 +150,18 @@ export class RadarService {
   /** Prépare une relance ou une présentation : **un appel au fournisseur, décompté** ; rien n'est envoyé. */
   prepareDraft(hostId: string, commitmentId: string): Observable<RadarDraft> {
     return this.http.post<RadarDraft>(`${this.base(hostId)}/commitments/${commitmentId}/draft`, null);
+  }
+
+  // ---------------------------------------------------------------- La planification (F-100 / SF-100-07)
+
+  /** L'heure du soir du client : activée ou non, heure, fuseau, prochaine exécution. */
+  schedule(hostId: string): Observable<RadarSchedule> {
+    return this.http.get<RadarSchedule>(`${this.base(hostId)}/schedule`);
+  }
+
+  /** Règle l'heure du soir ; la première activation exige l'autorisation du client. Ne lance aucune synchro. */
+  updateSchedule(hostId: string, request: RadarScheduleRequest): Observable<RadarSchedule> {
+    return this.http.put<RadarSchedule>(`${this.base(hostId)}/schedule`, request);
   }
 
   // ---------------------------------------------------------------- La vérification guidée (F-100 / SF-100-06)

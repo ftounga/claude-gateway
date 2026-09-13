@@ -263,6 +263,41 @@ export interface RadarDraft {
   preparedAt: string;
 }
 
+// ------------------------------------------------------------ La planification (F-100 / SF-100-02, écran SF-100-07)
+
+/** La synchro qui tient le poste, telle que la planification la rend. */
+export interface RadarScheduleRunning {
+  syncId: string;
+  trigger: string | null;
+  startedAt: string | null;
+  heartbeatAt: string | null;
+  phase: string;
+  done: number;
+  total: number;
+}
+
+/** `GET|PUT /api/radar/hosts/{hostId}/schedule`. */
+export interface RadarSchedule {
+  enabled: boolean;
+  /** Quand l'utilisateur a confirmé que son client autorise la conservation d'extraits (§14), ou `null`. */
+  clientAuthorizedAt: string | null;
+  /** `HH:mm`. */
+  syncTime: string;
+  /** Identifiant IANA. */
+  timeZone: string;
+  nextSyncAt: string | null;
+  missedSlotAt: string | null;
+  running: RadarScheduleRunning | null;
+}
+
+/** Corps de `PUT …/schedule`. */
+export interface RadarScheduleRequest {
+  enabled: boolean;
+  syncTime: string;
+  timeZone: string;
+  clientAuthorizationConfirmed: boolean;
+}
+
 // ------------------------------------------------------------ La vérification guidée (F-100 / SF-100-01, écran SF-100-06)
 
 /** Une case de la vérification : vue ou non, son état court et la phrase de la gateway. */

@@ -157,6 +157,10 @@
                     <app-teams-link-badge class="vigie__teams-link" [link]="link"></app-teams-link-badge>
                   }
                 </div>
+                <!-- LA SYNCHRO DU SOIR (F-100 / SF-100-07) : activée ou non, l'heure, la prochaine ; Régler. -->
+                @if (host.id; as hostId) {
+                  <app-radar-schedule class="vigie__schedule" [hostId]="hostId" [hostName]="host.name"></app-radar-schedule>
+                }
               </div>
 
               <div class="poste__actions">
