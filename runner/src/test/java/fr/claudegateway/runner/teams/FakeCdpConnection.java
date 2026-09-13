@@ -21,7 +21,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 final class FakeCdpConnection implements CdpConnection {
 
     private final ObjectMapper mapper = new ObjectMapper();
-    private final Map<String, Consumer<JsonNode>> listeners = new HashMap<>();
+    private final Map<String, java.util.function.BiConsumer<String, JsonNode>> listeners = new HashMap<>();
     private final Map<String, String> bodies = new HashMap<>();
     private final List<String> sent = new ArrayList<>();
 
@@ -292,7 +292,8 @@ final class FakeCdpConnection implements CdpConnection {
         scrolls++;
         String[] delivery = onNextScroll.poll();
         if (delivery != null) {
-            emitResponse(delivery[0], delivery[1], delivery[2]);
+            emitResponse(delivery[0], delivery[1], delivery[2],
+                    delivery.length > 3 ? Integer.parseInt(delivery[3]) : 200);
         }
         boolean moved = scrollMoves && (delivery != null || !stopWhenNothingLeft);
         result.putObject("result").put("value", moved);
@@ -340,7 +341,35 @@ final class FakeCdpConnection implements CdpConnection {
 
     @Override
     public void onEvent(String method, Consumer<JsonNode> listener) {
+        listeners.put(method, (session, params) -> listener.accept(params));
+    }
+
+    @Override
+    public void onSessionEvent(String method, java.util.function.BiConsumer<String, JsonNode> listener) {
         listeners.put(method, listener);
+    }
+
+    /** Commandes adressées à une cible attachée : « session|méthode ». */
+    private final List<String> sessionSent = new ArrayList<>();
+
+    @Override
+    public JsonNode send(String sessionId, String method, ObjectNode params) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return send(method, params);
+        }
+        CdpCommands.assertAllowed(method);
+        sessionSent.add(sessionId + "|" + method);
+        if (CdpCommands.GET_RESPONSE_BODY.equals(method)) {
+            ObjectNode result = mapper.createObjectNode();
+            result.put("body", bodies.getOrDefault(sessionId + "|" + params.path("requestId").asText(""), ""));
+            result.put("base64Encoded", false);
+            return result;
+        }
+        return mapper.createObjectNode();
+    }
+
+    List<String> sessionCommands() {
+        return List.copyOf(sessionSent);
     }
 
     @Override
@@ -375,9 +404,9 @@ final class FakeCdpConnection implements CdpConnection {
         if (body != null) {
             bodies.put(requestId, body);
         }
-        Consumer<JsonNode> listener = listeners.get("Network.responseReceived");
+        java.util.function.BiConsumer<String, JsonNode> listener = listeners.get("Network.responseReceived");
         if (listener != null) {
-            listener.accept(params);
+            listener.accept("", params);
         }
     }
 
@@ -389,9 +418,37 @@ final class FakeCdpConnection implements CdpConnection {
     void emitAttached(String url) {
         ObjectNode params = mapper.createObjectNode();
         params.putObject("targetInfo").put("url", url);
-        Consumer<JsonNode> listener = listeners.get("Target.attachedToTarget");
+        java.util.function.BiConsumer<String, JsonNode> listener = listeners.get("Target.attachedToTarget");
         if (listener != null) {
-            listener.accept(params);
+            listener.accept("", params);
+        }
+    }
+
+    /** Un cadre ou un worker qui s'attache avec sa session (F-100 / SF-100-03). */
+    void emitAttached(String sessionId, String type, String url) {
+        ObjectNode params = mapper.createObjectNode();
+        params.put("sessionId", sessionId);
+        params.putObject("targetInfo").put("url", url).put("type", type);
+        java.util.function.BiConsumer<String, JsonNode> listener = listeners.get("Target.attachedToTarget");
+        if (listener != null) {
+            listener.accept("", params);
+        }
+    }
+
+    /** Une réponse reçue par une cible attachée, sur sa session. */
+    void emitSessionResponse(String sessionId, String requestId, String url, String body) {
+        ObjectNode params = mapper.createObjectNode();
+        params.put("requestId", requestId);
+        ObjectNode response = params.putObject("response");
+        response.put("url", url);
+        response.put("status", 200);
+        response.put("mimeType", "application/json");
+        if (body != null) {
+            bodies.put(sessionId + "|" + requestId, body);
+        }
+        java.util.function.BiConsumer<String, JsonNode> listener = listeners.get("Network.responseReceived");
+        if (listener != null) {
+            listener.accept(sessionId, params);
         }
     }
 
@@ -412,6 +469,11 @@ final class FakeCdpConnection implements CdpConnection {
     /** Ce que la page livrera au prochain défilement. */
     void deliverOnScroll(String requestId, String url, String body) {
         onNextScroll.add(new String[] { requestId, url, body });
+    }
+
+    /** Même livraison, avec son statut HTTP (un refus 403, F-100). */
+    void deliverOnScroll(String requestId, String url, String body, int status) {
+        onNextScroll.add(new String[] { requestId, url, body, String.valueOf(status) });
     }
 
     /** Le fil affiché, tel que la route le dit. */

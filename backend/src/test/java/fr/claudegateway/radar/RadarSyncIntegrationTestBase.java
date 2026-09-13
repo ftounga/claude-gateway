@@ -47,11 +47,15 @@ abstract class RadarSyncIntegrationTestBase extends RadarIntegrationTestBase {
     @Autowired protected RunnerAuditRepository runnerAudits;
     @Autowired protected RunnerTokenRepository runnerTokens;
     @Autowired protected RunnerTokenService runnerTokenService;
+    @Autowired protected fr.claudegateway.radar.sync.RadarSyncCursorRepository syncCursors;
+    @Autowired protected fr.claudegateway.radar.sync.RadarThreadRuleRepository threadRules;
 
     @Override
     protected void cleanRadarTables() {
         super.cleanRadarTables();
         hostSettings.deleteAll();
+        syncCursors.deleteAll();
+        threadRules.deleteAll();
         runnerAudits.deleteAll();
         runnerTokens.deleteAll();
     }

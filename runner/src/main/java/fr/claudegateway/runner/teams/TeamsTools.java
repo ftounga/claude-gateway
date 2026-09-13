@@ -136,6 +136,12 @@ public final class TeamsTools implements ToolExecutor {
     /** Le travail de la synchro du soir (F-100 / SF-100-02) ; {@code null} sans remontée possible. */
     private RadarSyncAgent radarAgent;
 
+    /** Ce qui sérialise les outils de lecture et les étapes de la synchro (F-100 / SF-100-03). */
+    private final Object teamsLock = new Object();
+
+    /** Où dire les gestes de la synchro (F-108 §4.6) ; rien tant que la synchro n'est pas branchée. */
+    private java.util.function.Consumer<String> radarSay = line -> { };
+
     public TeamsTools(TeamsSession session, BrowserLink.Sleeper sleeper) {
         this.session = session;
         this.probe = new TeamsProbe(session.adapter());
@@ -186,6 +192,7 @@ public final class TeamsTools implements ToolExecutor {
             thread.setDaemon(true);
             return thread;
         };
+        this.radarSay = say == null ? line -> { } : say;
         this.radarAgent = new RadarSyncAgent(uplink, this::radarCollector,
                 java.util.concurrent.Executors.newSingleThreadExecutor(daemon),
                 java.util.concurrent.Executors.newSingleThreadScheduledExecutor(daemon), say);
@@ -200,7 +207,14 @@ public final class TeamsTools implements ToolExecutor {
 
     /** La collecte du Radar sur ce runner. */
     RadarCollector radarCollector() {
-        return RadarCollector.unavailable();
+        if (!enabled) {
+            return RadarCollector.unavailable();
+        }
+        // F-100 / SF-100-03 : la collecte Teams, sur la liaison et le registre du volet.
+        return new TeamsRadarCollector(session, this::ledger, sleeper, java.time.Instant::now,
+                record -> radarSay.accept("Radar : geste " + record.action() + " sur " + record.domain() + " — "
+                        + record.result()),
+                teamsLock);
     }
 
     /**
@@ -267,6 +281,16 @@ public final class TeamsTools implements ToolExecutor {
 
     @Override
     public ToolOutcome execute(String tool, JsonNode input, ToolContext context) {
+        // F-100 / SF-100-03 : la synchro du soir lit avec la même liaison et le même registre, depuis son
+        // propre fil. Un outil de lecture et une étape de synchro ne se croisent jamais dans le registre
+        // (qui n'est pas sûr vis-à-vis des fils) : ils passent l'un après l'autre. Une étape de synchro
+        // dure au plus la lecture d'un fil — les terminaux et les commandes du poste ne sont pas concernés.
+        synchronized (teamsLock) {
+            return dispatch(tool, input, context);
+        }
+    }
+
+    private ToolOutcome dispatch(String tool, JsonNode input, ToolContext context) {
         return switch (tool == null ? "" : tool) {
             case STATUS -> status();
             case FIND_CONVERSATIONS -> findConversations(input);

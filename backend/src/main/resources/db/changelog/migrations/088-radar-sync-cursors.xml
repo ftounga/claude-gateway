@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-100 / SF-100-03 — LA COLLECTE INCRÉMENTALE : curseurs par fil, et règles apprises.
+
+      - radar_sync_cursors : où la collecte en est, PAR FIL ET PAR POSTE (source TEAMS, bientôt DEPOT) ;
+        unique (user_id, host_id, source, conversation_ref) ; `cursor_at` n'avance qu'une fois le lot
+        accepté par la file d'analyse, et ne recule jamais.
+      - radar_thread_rules : ce que l'utilisateur a dit depuis la couverture (SF-100-04) — IGNORE (ignorer
+        ce fil) et READ_CHANNEL (lire ce canal) ; correction souveraine, annulable ; unique
+        (user_id, host_id, conversation_ref, rule). Lue par la collecte dès cette sous-feature.
+
+      Aucune clé étrangère, comme le reste du Radar (081) : la purge est explicite (SF-99-05).
+    -->
+
+    <changeSet id="088-radar-sync-cursors" author="claude-gateway">
+        <createTable tableName="radar_sync_cursors">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="source" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="conversation_ref" type="varchar(512)"><constraints nullable="false"/></column>
+            <column name="kind" type="varchar(16)"/>
+            <column name="cursor_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="updated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_sync_cursors" indexName="idx_radar_sync_cursors_ref" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="source"/>
+            <column name="conversation_ref"/>
+        </createIndex>
+        <createIndex tableName="radar_sync_cursors" indexName="idx_radar_sync_cursors_recent">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="cursor_at"/>
+        </createIndex>
+        <createTable tableName="radar_thread_rules">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="conversation_ref" type="varchar(512)"><constraints nullable="false"/></column>
+            <column name="rule" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="label" type="varchar(200)"/>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_thread_rules" indexName="idx_radar_thread_rules_ref" unique="true">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="conversation_ref"/>
+            <column name="rule"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="radar_thread_rules"/>
+            <dropTable tableName="radar_sync_cursors"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

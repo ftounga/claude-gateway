@@ -19,6 +19,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import fr.claudegateway.radar.InvalidRadarInputException;
 import fr.claudegateway.radar.RadarNotFoundException;
+import fr.claudegateway.radar.RadarStateConflictException;
+import fr.claudegateway.teams.TeamsAccessService;
 import fr.claudegateway.radar.RadarSync;
 import fr.claudegateway.runner.RunnerIdentity;
 import fr.claudegateway.runner.RunnerTokenAuthenticator;
@@ -39,10 +41,53 @@ public class RunnerRadarSyncController {
 
     private final RunnerTokenAuthenticator authenticator;
     private final RadarSyncSessionService sessions;
+    private final RadarSyncBatchService batches;
+    private final TeamsAccessService teamsAccess;
 
-    public RunnerRadarSyncController(RunnerTokenAuthenticator authenticator, RadarSyncSessionService sessions) {
+    public RunnerRadarSyncController(RunnerTokenAuthenticator authenticator, RadarSyncSessionService sessions,
+            RadarSyncBatchService batches, TeamsAccessService teamsAccess) {
         this.authenticator = authenticator;
         this.sessions = sessions;
+        this.batches = batches;
+        this.teamsAccess = teamsAccess;
+    }
+
+    /**
+     * Un lot de la collecte Teams (SF-100-03) : déposé dans la file d'analyse, puis les curseurs avancent.
+     * <b>Produire</b> demande le droit (comme les captures de F-90) : sans lui, rien n'entre.
+     */
+    @PostMapping(value = "/batches", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> batch(@RequestHeader(value = TOKEN_HEADER, required = false) String token,
+            @PathVariable UUID syncId, @RequestBody(required = false) JsonNode body) {
+        Optional<RunnerIdentity> identity = authenticator.authenticate(token == null ? "" : token.strip());
+        if (identity.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Jeton runner refusé."));
+        }
+        if (!teamsAccess.hasAccess(identity.get().userId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Ce compte n'a pas le droit du Radar : les échanges ne peuvent pas remonter."));
+        }
+        try {
+            RadarSyncBatchService.BatchReceipt receipt = batches.submit(identity.get(), syncId, body,
+                    RadarSyncCursor.SOURCE_TEAMS);
+            Map<String, Object> answer = new java.util.LinkedHashMap<>();
+            answer.put("status", receipt.status().name());
+            if (receipt.batchId() != null) {
+                answer.put("batchId", receipt.batchId().toString());
+                answer.put("batchStatus", receipt.batchStatus());
+                answer.put("duplicate", receipt.duplicate());
+            }
+            answer.put("cursors", receipt.cursors());
+            return ResponseEntity.ok(answer);
+        } catch (RadarNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Synchro introuvable."));
+        } catch (RadarSyncSessionService.SyncClosedException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("status", e.status().name()));
+        } catch (RadarStateConflictException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("status", "CANCELLED"));
+        } catch (InvalidRadarInputException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage()));
+        }
     }
 
     @PostMapping(value = "/progress", produces = MediaType.APPLICATION_JSON_VALUE)

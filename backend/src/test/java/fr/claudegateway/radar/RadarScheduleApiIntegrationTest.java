@@ -133,8 +133,43 @@ class RadarScheduleApiIntegrationTest extends RadarSyncIntegrationTestBase {
         ArgumentCaptor<JsonNode> input = ArgumentCaptor.forClass(JsonNode.class);
         verify(router).call(any(RunnerTarget.class), anyString(), eq(RadarSyncLauncher.COLLECT), input.capture(), anyLong());
         assertThat(input.getValue().path("first_sync").asBoolean()).isFalse();
+        assertThat(input.getValue().path("cursors")).isEmpty();
+        assertThat(input.getValue().path("ignored")).isEmpty();
         assertThat(OffsetDateTime.parse(input.getValue().path("window_from").asText()).toInstant())
                 .isEqualTo(previousStart.minusMinutes(10).toInstant());
+    }
+
+    @Test
+    @DisplayName("SF-100-03 : l'entrée porte les curseurs, les fils ignorés et les canaux à lire — du poste seul")
+    void collectInputCarriesCursorsAndRules() throws Exception {
+        enable(aliceA, "22:00", "Europe/Paris", null);
+        when(liveness.isAlive(alice.getId(), aliceA.hostId())).thenReturn(true);
+        runnerAcceptsSyncs();
+        OffsetDateTime at = OffsetDateTime.parse("2026-09-12T07:05:10Z");
+        syncCursors.save(fr.claudegateway.radar.sync.RadarSyncCursor.builder().userId(alice.getId())
+                .hostId(aliceA.hostId()).source("TEAMS").conversationRef("19:a@thread.v2").kind("CHANNEL").cursorAt(at).build());
+        syncCursors.save(fr.claudegateway.radar.sync.RadarSyncCursor.builder().userId(alice.getId())
+                .hostId(aliceB.hostId()).source("TEAMS").conversationRef("19:poste-b@thread.v2").cursorAt(at).build());
+        threadRules.save(fr.claudegateway.radar.sync.RadarThreadRule.builder().userId(alice.getId()).hostId(aliceA.hostId())
+                .conversationRef("19:bruit@thread.v2").rule(fr.claudegateway.radar.sync.RadarThreadRule.Rule.IGNORE).build());
+        threadRules.save(fr.claudegateway.radar.sync.RadarThreadRule.builder().userId(alice.getId()).hostId(aliceA.hostId())
+                .conversationRef("19:canal@thread.v2").rule(fr.claudegateway.radar.sync.RadarThreadRule.Rule.READ_CHANNEL).build());
+        threadRules.save(fr.claudegateway.radar.sync.RadarThreadRule.builder().userId(bob.getId()).hostId(bobScope.hostId())
+                .conversationRef("19:bob@thread.v2").rule(fr.claudegateway.radar.sync.RadarThreadRule.Rule.IGNORE).build());
+
+        syncNow(aliceA, aliceToken).andExpect(status().isAccepted());
+
+        ArgumentCaptor<JsonNode> input = ArgumentCaptor.forClass(JsonNode.class);
+        verify(router).call(any(RunnerTarget.class), anyString(), eq(RadarSyncLauncher.COLLECT), input.capture(), anyLong());
+        JsonNode sent = input.getValue();
+        assertThat(sent.path("cursors")).hasSize(1);
+        assertThat(sent.path("cursors").get(0).path("ref").asText()).isEqualTo("19:a@thread.v2");
+        assertThat(sent.path("cursors").get(0).path("kind").asText()).isEqualTo("CHANNEL");
+        assertThat(sent.path("cursors").get(0).path("at").asText()).isEqualTo("2026-09-12T07:05:10Z");
+        assertThat(sent.path("ignored")).hasSize(1);
+        assertThat(sent.path("ignored").get(0).asText()).isEqualTo("19:bruit@thread.v2");
+        assertThat(sent.path("read_channels").get(0).asText()).isEqualTo("19:canal@thread.v2");
+        assertThat(sent.toString()).doesNotContain("poste-b").doesNotContain("19:bob");
     }
 
     @Test

@@ -19,6 +19,14 @@ final class TeamsRoutes {
     private static final Pattern THREAD =
             Pattern.compile("(19:[A-Za-z0-9_\\-+=./]+@[A-Za-z0-9_\\-.]+)");
 
+    /**
+     * Le calendrier de Teams (F-100 / SF-100-03), où la synchro du soir navigue pour que Teams serve les
+     * réunions. <b>Hypothèse</b> : la route du client web actuel, commune à tous les clients ; elle sera
+     * confirmée ou corrigée <b>ici</b> par le relevé réel (SF-100-00). Si elle ne sert rien, la couverture
+     * le dit ({@code meetings.calendarServed = false}).
+     */
+    static final String CALENDAR = "https://teams.microsoft.com/v2/#/calendarv2";
+
     private TeamsRoutes() {
     }
 
