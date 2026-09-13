@@ -59,6 +59,13 @@ final class TeamsUrls {
         if (path.contains("/transcripts")) {
             return TeamsPayloadKind.MEETING_TRANSCRIPT;
         }
+        // F-89 / SF-89-05 — relevé réel du 2026-09-13 : deux chemins de l'étape « réunion ».
+        if (path.contains("/collab/readcollabobject")) {
+            return TeamsPayloadKind.MEETING_COLLAB_OBJECT;
+        }
+        if (path.contains("/calendars/events") || path.contains("/me/events")) {
+            return TeamsPayloadKind.CALENDAR_EVENT;
+        }
         if (path.contains("/meetings/") || path.endsWith("/meetings")
                 || path.contains("/calling/meetings")) {
             return TeamsPayloadKind.MEETING_DETAILS;

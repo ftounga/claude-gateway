@@ -27,7 +27,34 @@ final class TeamsRoutes {
      */
     static final String CALENDAR = "https://teams.microsoft.com/v2/#/calendarv2";
 
+    /**
+     * La liste des conversations (F-89 / SF-89-05), où un outil de lecture navigue quand le registre est
+     * vide. <b>Hypothèse</b> du même ordre que {@link #CALENDAR} : la route du client web v2 ; si elle
+     * ne sert rien, le résultat le dit (zéro, manque diagnostiqué, geste nommé).
+     */
+    static final String CONVERSATIONS = "https://teams.microsoft.com/v2/#/conversations";
+
+    /** Hôtes du client web de Teams : une route y est reportée pour ne pas changer de site. */
+    private static final java.util.List<String> TEAMS_HOSTS =
+            java.util.List.of("teams.microsoft.com", "teams.cloud.microsoft", "teams.live.com");
+
     private TeamsRoutes() {
+    }
+
+    /**
+     * La route, <b>reportée sur l'hôte Teams de l'onglet</b> (F-89 / SF-89-05) : un onglet ouvert sur
+     * {@code teams.cloud.microsoft} ne doit pas être renvoyé sur {@code teams.microsoft.com}, ce qui
+     * rechargerait tout le client et perdrait la session de travail. Hôte de l'onglet non Teams → la
+     * route telle quelle (les gardes de F-108 jugent ensuite la destination).
+     */
+    static String onTabHost(String route, String tabUrl) {
+        String host = MicrosoftDomains.hostOf(tabUrl);
+        if (!TEAMS_HOSTS.contains(host) || route == null) {
+            return route;
+        }
+        int scheme = route.indexOf("://");
+        int pathStart = scheme < 0 ? -1 : route.indexOf('/', scheme + 3);
+        return pathStart < 0 ? route : "https://" + host + route.substring(pathStart);
     }
 
     /** L'identifiant de fil porté par une route, ou {@code ""}. */

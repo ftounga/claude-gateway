@@ -31,6 +31,21 @@ public enum TeamsPayloadKind {
     PROFILE,
 
     /**
+     * Le détail d'un événement de calendrier (F-89 / SF-89-05) — vu par le relevé réel à l'étape
+     * « récapitulatif » : {@code /api/mt/{région}/v2.0/me/calendars/events/iCalUId/{id}}, depuis
+     * l'onglet. Lu défensivement comme une réunion.
+     */
+    CALENDAR_EVENT,
+
+    /**
+     * L'objet de collaboration d'une réunion — son récapitulatif (F-89 / SF-89-05) :
+     * {@code /api/mcps/{région}/collab/readcollabobject/V2/…}. <b>Nommé, jamais lu</b> : aucune forme
+     * modèle n'en est connue, et deviner une forme rendrait un résultat à moitié faux. Il est compté
+     * sous son nom dans le diagnostic ; son corps n'est pas demandé.
+     */
+    MEETING_COLLAB_OBJECT,
+
+    /**
      * Reconnue, et volontairement ignorée : ressources statiques, télémétrie, présence, images.
      * Les distinguer d'{@link #UNKNOWN} est ce qui empêche la sonde de santé de crier au loup.
      */

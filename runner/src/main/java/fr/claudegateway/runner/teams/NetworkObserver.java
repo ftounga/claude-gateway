@@ -32,6 +32,11 @@ public final class NetworkObserver {
 
     private static final String RESPONSE_RECEIVED = "Network.responseReceived";
     private static final String ATTACHED_TO_TARGET = "Target.attachedToTarget";
+    private static final String WEBSOCKET_CREATED = "Network.webSocketCreated";
+    private static final String WEBSOCKET_FRAME = "Network.webSocketFrameReceived";
+
+    /** Chemins non classés distincts retenus au plus pour le diagnostic : au-delà, on compte. */
+    public static final int MAX_UNKNOWN_PATHS = 500;
 
     private final CdpConnection connection;
     private final TeamsAdapter adapter;
@@ -63,6 +68,23 @@ public final class NetworkObserver {
     private java.util.concurrent.Executor executor;
     private boolean framesObserved;
 
+    // ------------------------------------------------------------ diagnostic (F-89 / SF-89-05)
+
+    /** Origine de chaque cible retenue : ce qui permet de dire d'où une réponse a été vue. */
+    private final Map<String, NetworkSurvey.Origin> frameOrigins = new java.util.concurrent.ConcurrentHashMap<>();
+    /** Verrou des compteurs : écrits sur le fil de la socket, lus par l'outil. */
+    private final Object counters = new Object();
+    private final Map<NetworkSurvey.Origin, Integer> attachedByOrigin = new java.util.EnumMap<>(NetworkSurvey.Origin.class);
+    private final Map<NetworkSurvey.Origin, Integer> responsesByOrigin = new java.util.EnumMap<>(NetworkSurvey.Origin.class);
+    private final Map<TeamsPayloadKind, Integer> classifiedByKind = new java.util.EnumMap<>(TeamsPayloadKind.class);
+    private final Map<String, Integer> unknownPaths = new LinkedHashMap<>();
+    private final java.util.Set<String> socketKeys = new java.util.HashSet<>();
+    private int ignored;
+    private int unknownMicrosoft;
+    private int unknownElsewhere;
+    private int unknownPathsDropped;
+    private int socketFrames;
+
     public NetworkObserver(CdpConnection connection, TeamsAdapter adapter) {
         this(connection, adapter, null);
     }
@@ -82,6 +104,10 @@ public final class NetworkObserver {
     public void start() {
         connection.send(CdpCommands.NETWORK_ENABLE, mapper.createObjectNode());
         connection.onSessionEvent(RESPONSE_RECEIVED, this::onResponse);
+        // F-89 / SF-89-05 : les sockets et leurs trames sont COMPTÉES, jamais lues — pour savoir si
+        // Teams sert messages ou transcriptions par ce canal.
+        connection.onSessionEvent(WEBSOCKET_CREATED, this::onSocket);
+        connection.onSessionEvent(WEBSOCKET_FRAME, this::onSocketFrame);
     }
 
     /**
@@ -129,9 +155,14 @@ public final class NetworkObserver {
             attachedFrames.add(url);
         }
         String sessionId = params.path("sessionId").asText("");
+        NetworkSurvey.Origin origin = NetworkSurvey.originOf(params.path("targetInfo").path("type").asText(""));
+        synchronized (counters) {
+            attachedByOrigin.merge(origin, 1, Integer::sum);
+        }
         if (sessionId.isEmpty()) {
             return;
         }
+        frameOrigins.put(sessionId, origin);
         // F-100 / SF-100-03 : un cadre ou un worker ne parle pas sur la session de l'onglet. Son réseau
         // est écouté SUR SA SESSION — les réponses du lecteur Stream intégré, du service worker —, et ses
         // corps sont demandés sur la même session. Hors liste, rien de tout cela.
@@ -168,8 +199,12 @@ public final class NetworkObserver {
         String url = ObservedResponse.withoutQuery(response.path("url").asText(""));
         noteFilePath(url);
         TeamsPayloadKind kind = adapter.classify(url);
+        count(session, url, kind);
         if (kind == TeamsPayloadKind.IGNORED || kind == TeamsPayloadKind.UNKNOWN) {
             return;
+        }
+        if (kind == TeamsPayloadKind.MEETING_COLLAB_OBJECT) {
+            return; // nommé, jamais lu : aucune forme modèle n'en est connue (F-89 / SF-89-05)
         }
         int status = response.path("status").asInt(0);
         if (status == 401 || status == 403) {
@@ -207,6 +242,82 @@ public final class NetworkObserver {
             observed.add(new ObservedResponse(response.url(), response.kind(), body));
         }
         return observed;
+    }
+
+    /**
+     * Compte une réponse pour le diagnostic (F-89 / SF-89-05) : son origine, sa nature, et — si elle
+     * n'est pas classée mais vient de la famille Microsoft — son chemin gabarisé. Jamais un corps,
+     * jamais un en-tête ; la requête est déjà retirée, le tenant et les identifiants le sont ici.
+     */
+    private void count(String session, String url, TeamsPayloadKind kind) {
+        NetworkSurvey.Origin origin = session.isEmpty() ? NetworkSurvey.Origin.TEAMS_TAB
+                : frameOrigins.getOrDefault(session, NetworkSurvey.Origin.FRAME);
+        synchronized (counters) {
+            responsesByOrigin.merge(origin, 1, Integer::sum);
+            if (kind == TeamsPayloadKind.IGNORED) {
+                ignored++;
+            } else if (kind != TeamsPayloadKind.UNKNOWN) {
+                classifiedByKind.merge(kind, 1, Integer::sum);
+            } else if (!MicrosoftDomains.isMicrosoftFamily(url)) {
+                unknownElsewhere++;
+            } else {
+                unknownMicrosoft++;
+                String path = SurveyPaths.hostMotif(url) + SurveyPaths.template(url);
+                if (unknownPaths.containsKey(path) || unknownPaths.size() < MAX_UNKNOWN_PATHS) {
+                    unknownPaths.merge(path, 1, Integer::sum);
+                } else {
+                    unknownPathsDropped++;
+                }
+            }
+        }
+    }
+
+    private void onSocket(String sessionId, JsonNode params) {
+        String session = sessionId == null ? "" : sessionId;
+        if (params == null || (!session.isEmpty() && !frameSessions.contains(session))) {
+            return;
+        }
+        String url = ObservedResponse.withoutQuery(params.path("url").asText(""));
+        if (!MicrosoftDomains.isMicrosoftFamily(url)) {
+            return;
+        }
+        synchronized (counters) {
+            socketKeys.add(session + '|' + params.path("requestId").asText(""));
+        }
+    }
+
+    private void onSocketFrame(String sessionId, JsonNode params) {
+        String key = (sessionId == null ? "" : sessionId) + '|'
+                + (params == null ? "" : params.path("requestId").asText(""));
+        synchronized (counters) {
+            if (socketKeys.contains(key)) {
+                socketFrames++; // la trame est comptée ; son contenu n'est jamais lu
+            }
+        }
+    }
+
+    /** Ce que la liaison a vu depuis le rattachement, chiffré (F-89 / SF-89-05). */
+    public ObservationDiagnostic diagnostic() {
+        boolean frames;
+        synchronized (this) {
+            frames = framesObserved;
+        }
+        synchronized (counters) {
+            List<ObservationDiagnostic.PathCount> top = unknownPaths.entrySet().stream()
+                    .sorted((a, b) -> b.getValue() - a.getValue())
+                    .limit(ObservationDiagnostic.TOP_PATHS)
+                    .map(entry -> new ObservationDiagnostic.PathCount(entry.getKey(), entry.getValue()))
+                    .toList();
+            return new ObservationDiagnostic(frames, names(attachedByOrigin), names(responsesByOrigin),
+                    names(classifiedByKind), ignored, unknownMicrosoft, unknownElsewhere, top,
+                    unknownPathsDropped, socketKeys.size(), socketFrames);
+        }
+    }
+
+    private static <E extends Enum<E>> Map<String, Integer> names(Map<E, Integer> counts) {
+        Map<String, Integer> named = new LinkedHashMap<>();
+        counts.forEach((key, value) -> named.put(key.name(), value));
+        return named;
     }
 
     /** Relève un chemin SharePoint / OneDrive, sans requête (déjà retirée) ni corps. */

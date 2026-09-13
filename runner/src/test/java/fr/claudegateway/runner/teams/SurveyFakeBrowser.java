@@ -85,6 +85,22 @@ final class SurveyFakeBrowser implements CdpConnection {
         emit("", "Target.attachedToTarget", params);
     }
 
+    /** Une socket WebSocket ouverte (F-89 / SF-89-05), requête empoisonnée comprise. */
+    void socket(String sessionId, String requestId, String url) {
+        ObjectNode params = mapper.createObjectNode();
+        params.put("requestId", requestId);
+        params.put("url", url);
+        emit(sessionId, "Network.webSocketCreated", params);
+    }
+
+    /** Une trame reçue — son contenu ne doit JAMAIS être noté. */
+    void frame(String sessionId, String requestId, String payload) {
+        ObjectNode params = mapper.createObjectNode();
+        params.put("requestId", requestId);
+        params.putObject("response").put("opcode", 1).put("payloadData", payload);
+        emit(sessionId, "Network.webSocketFrameReceived", params);
+    }
+
     private void emit(String sessionId, String method, JsonNode params) {
         listeners.getOrDefault(method, List.of()).forEach(listener -> listener.accept(sessionId, params));
     }

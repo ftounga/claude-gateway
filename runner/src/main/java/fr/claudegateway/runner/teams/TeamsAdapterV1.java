@@ -53,6 +53,10 @@ final class TeamsAdapterV1 implements TeamsAdapter {
     private static final List<String> EXPECTED_MEETING_FIELDS =
             List.of("value", "id", "subject", "startTime");
 
+    /** Forme documentée d'un événement de calendrier Microsoft 365 (F-89 / SF-89-05). */
+    private static final List<String> EXPECTED_CALENDAR_EVENT_FIELDS =
+            List.of("id", "subject", "start", "end");
+
     private static final List<String> EXPECTED_TRANSCRIPT_FIELDS =
             List.of("entries", "text", "speakerDisplayName", "startDateTime");
 
@@ -381,17 +385,36 @@ final class TeamsAdapterV1 implements TeamsAdapter {
         List<TeamsMeeting> meetings = new ArrayList<>();
         List<TeamsGap> gaps = new ArrayList<>();
         for (JsonNode entry : array) {
+            // F-89 / SF-89-05 : un événement de calendrier (relevé réel, étape « récapitulatif ») porte
+            // la forme documentée des événements Microsoft 365 — start/end objets, attendees, onlineMeeting.
+            // Lue défensivement : un horodatage dont le fuseau n'est pas sûr n'est PAS deviné.
+            Instant start = TeamsJson.instant(entry, "startTime", "startDateTime");
+            if (start == null) {
+                start = eventInstant(entry.get("start"));
+            }
+            Instant end = TeamsJson.instant(entry, "endTime", "endDateTime");
+            if (end == null) {
+                end = eventInstant(entry.get("end"));
+            }
+            String joinUrl = TeamsJson.text(entry, "joinWebUrl", "webUrl");
+            if (joinUrl.isEmpty()) {
+                joinUrl = TeamsJson.text(entry.get("onlineMeeting"), "joinUrl");
+            }
+            String thread = TeamsJson.text(entry, "threadId", "conversationId");
+            if (thread.isEmpty() && !joinUrl.isEmpty()) {
+                thread = TeamsRoutes.conversationIdOf(decoded(joinUrl));
+            }
             TeamsMeeting meeting = new TeamsMeeting(
-                    TeamsJson.text(entry, "id", "meetingId", "iCalUid"),
+                    TeamsJson.text(entry, "id", "meetingId", "iCalUid", "iCalUId"),
                     TeamsJson.text(entry, "subject", "title"),
-                    TeamsJson.instant(entry, "startTime", "startDateTime"),
-                    TeamsJson.instant(entry, "endTime", "endDateTime"),
+                    start,
+                    end,
                     mriOf(TeamsJson.text(entry, "organizerId", "organizer")),
                     readParticipants(entry),
-                    TeamsJson.text(entry, "threadId", "conversationId"),
+                    thread,
                     TeamsJson.flag(entry, "isRecorded", "recorded"),
                     TeamsJson.flag(entry, "isTranscriptAvailable", "transcriptAvailable"),
-                    TeamsJson.text(entry, "joinWebUrl", "webUrl"));
+                    joinUrl);
             if (!meeting.isReadable()) {
                 add(gaps, TeamsGap.of(TeamsGapKind.MISSING_FIELD, "réunion",
                         meeting.id().isEmpty() ? "id" : "startTime"));
@@ -402,7 +425,53 @@ final class TeamsAdapterV1 implements TeamsAdapter {
         return new TeamsReading<>(meetings, gaps, window, healthOf(url, body));
     }
 
+    /**
+     * L'instant d'un {@code start}/{@code end} d'événement : {@code dateTime} avec décalage, ou sans
+     * décalage mais avec un fuseau nommé reconnu ({@code UTC}, identifiant IANA). Un fuseau Windows
+     * (« Romance Standard Time ») rend {@code null} : un horaire décalé d'une heure est pire qu'absent.
+     */
+    private static Instant eventInstant(JsonNode node) {
+        if (node == null || !node.isObject()) {
+            return null;
+        }
+        String raw = TeamsJson.text(node, "dateTime");
+        if (raw.isEmpty()) {
+            return null;
+        }
+        Instant withOffset = TeamsJson.instant(node, "dateTime");
+        if (withOffset != null) {
+            return withOffset;
+        }
+        String zone = TeamsJson.text(node, "timeZone");
+        try {
+            java.time.ZoneId id = zone.isEmpty() || "utc".equalsIgnoreCase(zone)
+                    ? java.time.ZoneOffset.UTC : java.time.ZoneId.of(zone);
+            return java.time.LocalDateTime.parse(raw).atZone(id).toInstant();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    private static String decoded(String url) {
+        try {
+            return java.net.URLDecoder.decode(url, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (RuntimeException e) {
+            return url;
+        }
+    }
+
     private List<TeamsParticipant> readParticipants(JsonNode entry) {
+        JsonNode attendees = entry.get("attendees");
+        if (attendees != null && attendees.isArray() && entry.get("participants") == null) {
+            List<TeamsParticipant> fromEvent = new ArrayList<>();
+            attendees.forEach(node -> {
+                JsonNode address = node.get("emailAddress");
+                String email = TeamsJson.text(address, "address");
+                fromEvent.add(new TeamsParticipant(email, TeamsJson.text(address, "name"), email,
+                        false));
+            });
+            return fromEvent;
+        }
         JsonNode array = entry.get("participants");
         if (array == null || !array.isArray()) {
             return List.of();
@@ -570,6 +639,7 @@ final class TeamsAdapterV1 implements TeamsAdapter {
             case CONVERSATION_LIST -> EXPECTED_CONVERSATION_FIELDS;
             case ACTIVITY_FEED -> EXPECTED_ACTIVITY_FIELDS;
             case MEETING_DETAILS -> EXPECTED_MEETING_FIELDS;
+            case CALENDAR_EVENT -> EXPECTED_CALENDAR_EVENT_FIELDS;
             case MEETING_TRANSCRIPT -> EXPECTED_TRANSCRIPT_FIELDS;
             default -> List.of();
         };

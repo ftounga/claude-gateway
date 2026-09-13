@@ -71,8 +71,11 @@ final class SurveyReport {
         md.append("- Navigateur : ").append(browser.isEmpty() ? "non déclaré" : browser).append('\n');
         md.append("- Adaptateur : ").append(adapterVersion).append('\n');
         md.append("- Chemins distincts : ").append(snapshot.entries().size()).append('\n');
-        md.append("- Réponses hors domaines Microsoft (non détaillées) : ").append(snapshot.outsideMicrosoft())
+        md.append("- Réponses hors famille d'hôtes Microsoft (non détaillées) : ").append(snapshot.outsideMicrosoft())
                 .append('\n');
+        md.append("- Sockets WebSocket (famille Microsoft) : ").append(snapshot.sockets().size())
+                .append(" chemin(s), ").append(snapshot.sockets().stream().mapToInt(NetworkSurvey.Socket::frames).sum())
+                .append(" trame(s) reçue(s)\n");
         md.append("- Ressources statiques écartées : ").append(snapshot.staticResources()).append('\n');
         md.append("- Cibles attachées hors domaines Microsoft (jamais écoutées) : ")
                 .append(snapshot.refusedTargets()).append('\n');
@@ -83,7 +86,7 @@ final class SurveyReport {
         md.append("\n> Ce rapport ne contient ni corps de réponse, ni chaîne de requête, ni en-tête, ni nom de "
                 + "tenant : les identifiants et les noms propres au client sont remplacés par `{id}`.\n\n");
 
-        if (snapshot.entries().isEmpty()) {
+        if (snapshot.entries().isEmpty() && snapshot.sockets().isEmpty()) {
             md.append("**Rien observé.** Teams était-il actif pendant le relevé ? Relancez et suivez les "
                     + "étapes : ouvrir un fil, une réunion passée, son récapitulatif, sa transcription.\n");
             return md.toString();
@@ -119,6 +122,24 @@ final class SurveyReport {
                     + "chemins classés `SHAREPOINT_*` ou `ONEDRIVE_*` sont ceux qu'ils appellent ; les "
                     + "autres montrent ce que SharePoint web emprunte à la place.\n\n");
             table(md, files);
+        }
+
+        md.append("## Sockets WebSocket\n\n");
+        if (snapshot.sockets().isEmpty()) {
+            md.append("Aucune socket ouverte vers la famille d'hôtes Microsoft pendant ce relevé.\n\n");
+        } else {
+            md.append("Trames **comptées, jamais lues** : ce tableau dit si messages et transcriptions arrivent "
+                    + "par socket, pas ce qu'elles contiennent.\n\n");
+            md.append("| Hôte | Chemin | Origines | Ouvertures | Trames reçues | Étape |\n");
+            md.append("|---|---|---|---|---|---|\n");
+            for (NetworkSurvey.Socket socket : snapshot.sockets()) {
+                md.append("| `").append(cell(socket.host())).append("` | `").append(cell(socket.path())).append("` | ")
+                        .append(String.join(", ", socket.origins)).append(" | ").append(socket.opened())
+                        .append(" | ").append(socket.frames()).append(" | ")
+                        .append(STEPS.get(Math.min(Math.max(socket.firstStep(), 0), STEPS.size() - 1)))
+                        .append(" |\n");
+            }
+            md.append('\n');
         }
 
         md.append("## Table des chemins, par hôte\n\n");
@@ -165,6 +186,17 @@ final class SurveyReport {
         root.put("staticResources", snapshot.staticResources());
         root.put("refusedTargets", snapshot.refusedTargets());
         root.put("dropped", snapshot.dropped());
+        ArrayNode socketsNode = root.putArray("sockets");
+        for (NetworkSurvey.Socket socket : snapshot.sockets()) {
+            ObjectNode node = socketsNode.addObject();
+            node.put("host", socket.host());
+            node.put("path", socket.path());
+            node.put("opened", socket.opened());
+            node.put("frames", socket.frames());
+            node.put("firstStep", socket.firstStep());
+            ArrayNode origins = node.putArray("origins");
+            socket.origins.forEach(origins::add);
+        }
         ArrayNode paths = root.putArray("paths");
         for (NetworkSurvey.Entry entry : snapshot.entries()) {
             ObjectNode node = paths.addObject();

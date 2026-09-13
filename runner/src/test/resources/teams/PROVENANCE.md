@@ -80,3 +80,4 @@ lire **avant** l'utilisateur — et jamais en rendant la moitié d'un compte ren
 | `sharepoint-moveto.json` | réponse de `MoveTo` (`odata.null`) — sert aussi de « succès non conforme » |
 | `sharepoint-recycle.json` | réponse de `recycle()` : l'identifiant de corbeille (`value`) |
 | `sharepoint-error-exists.json`, `sharepoint-error-locked.json` | « existe déjà » (400) et « verrouillé » (423) |
+| `calendar-event.json` | F-89 / SF-89-05 — détail d'événement de calendrier servi par `/api/mt/{région}/v2.0/me/calendars/events/iCalUId/{id}` (chemin **relevé réel** du 2026-09-13, onglet, étape « récapitulatif ») ; le **corps** est fabriqué sur la forme publique documentée des événements Microsoft 365 (`subject`, `start`/`end` `{dateTime, timeZone}`, `attendees[].emailAddress`, `onlineMeeting.joinUrl`) — à confirmer sur poste réel |

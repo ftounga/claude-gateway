@@ -392,17 +392,19 @@ public final class TeamsTools implements ToolExecutor {
         String firstUse = firstUse();
         TeamsProbeResult result;
         List<String> observedFilePaths = List.of();
+        ObservationDiagnostic seen = null;
         try {
-            BrowserLink link = link();
+            BrowserLink link = readingLink();
             result = probe.probe(link, sleeper);
             observedFilePaths = link.observer().observedFilePaths();
+            seen = link.observer().diagnostic();
         } catch (BrowserLinkException e) {
             result = TeamsProbe.notLinked(e);
         } catch (RuntimeException e) {
             result = new TeamsProbeResult(TeamsLinkState.BROWSER_NOT_DETECTED, TeamsHealth.full(0),
                     0, "", "La liaison au navigateur n'a pas abouti sur cette machine.");
         }
-        return ToolOutcome.ok(render(result, firstUse, observedFilePaths));
+        return ToolOutcome.ok(render(result, firstUse, observedFilePaths, seen));
     }
 
     String render(TeamsProbeResult result, String firstUse) {
@@ -415,6 +417,15 @@ public final class TeamsTools implements ToolExecutor {
      * permettra, sur un poste réel, de confronter les adaptateurs fichiers à ce que Microsoft sert.
      */
     String render(TeamsProbeResult result, String firstUse, List<String> observedFilePaths) {
+        return render(result, firstUse, observedFilePaths, null);
+    }
+
+    /**
+     * Le rendu de l'état, avec — F-89 / SF-89-05 — le <b>diagnostic chiffré de l'observation</b> : un
+     * « relié » qui ne voit rien doit le dire, et dire pourquoi.
+     */
+    String render(TeamsProbeResult result, String firstUse, List<String> observedFilePaths,
+            ObservationDiagnostic seen) {
         ObjectNode node = mapper.createObjectNode();
         node.put("state", result.state().name());
         node.put("label", result.state().label());
@@ -446,6 +457,12 @@ public final class TeamsTools implements ToolExecutor {
                 .map(path -> SurveyPaths.hostMotif(path) + SurveyPaths.template(path))
                 .distinct().limit(50).forEach(paths::add);
         diagnostic.put("filesAdapter", SharePointFiles.PROVENANCE);
+        if (seen != null) {
+            diagnostic.set("observation", seen.toJson(mapper));
+            if (result.observed() == 0 && !seen.sentence().isEmpty()) {
+                text.append(System.lineSeparator()).append(seen.sentence());
+            }
+        }
         node.put("text", text.toString());
         return node.toString();
     }
@@ -465,11 +482,14 @@ public final class TeamsTools implements ToolExecutor {
         if (refusal != null) {
             return refusal.outcome();
         }
-        BrowserLink link = link();
+        BrowserLink link = readingLink();
         TeamsLedger book = ledger();
         TeamsAsk ask = TeamsAsk.standard(null);
-        List<TeamsGap> harvested = new TeamsHarvester(link, book,
-                new PageGestures(link, sleeper)).harvestInPlace(ask.window());
+        TeamsHarvester harvester = new TeamsHarvester(link, book, new PageGestures(link, sleeper));
+        List<TeamsGap> harvested = harvester.harvestInPlace(ask.window());
+        // F-89 / SF-89-05 (c) : registre vide sur une liaison établie → faire charger la liste par Teams.
+        String viewport = loadIfEmpty(link, harvester, ask.window(), TeamsRoutes.CONVERSATIONS,
+                "la liste des conversations", () -> !book.conversations().isEmpty());
 
         String query = TeamsAsk.text(input, "query", "who", "topic");
         int limit = (int) Math.max(1, Math.min(200, TeamsAsk.number(input, 50, "limit")));
@@ -493,10 +513,15 @@ public final class TeamsTools implements ToolExecutor {
                     query.isEmpty() ? "liste des conversations" : query,
                     "aucune conversation servie par Teams depuis le rattachement ne correspond"));
         }
+        ObservationDiagnostic seen = link.observer().diagnostic();
+        gaps = diagnosed(gaps, seen);
+        StringBuilder text = new StringBuilder(sentence(matching.size(), "conversation", gaps, book, query));
+        explain(result, gaps, seen, text);
         result.window(ask.window().covering(null, null, false, false))
                 .gaps(gaps)
                 .health(book.health())
-                .text(sentence(matching.size(), "conversation", gaps, book, query));
+                .viewport(viewport)
+                .text(text.toString());
         return ToolOutcome.ok(result.render());
     }
 
@@ -512,7 +537,7 @@ public final class TeamsTools implements ToolExecutor {
         if (refusal != null) {
             return refusal.outcome();
         }
-        BrowserLink link = link();
+        BrowserLink link = readingLink();
         TeamsLedger book = ledger();
         TeamsAsk ask = TeamsAsk.of(input, null);
         String wanted = TeamsAsk.text(input, "conversation_id", "conversationId", "id");
@@ -533,14 +558,28 @@ public final class TeamsTools implements ToolExecutor {
         ArrayNode messages = result.array("messages");
         harvest.messages().forEach(message -> TeamsViews.message(messages, message, book.self()));
 
-        StringBuilder text = new StringBuilder(harvest.reading().summary("messages"));
+        ObservationDiagnostic seen = link.observer().diagnostic();
+        List<TeamsGap> readGaps = diagnosed(harvest.gaps(), seen);
+        StringBuilder text = new StringBuilder(new TeamsReading<>(harvest.messages(), readGaps,
+                harvest.window(), harvest.health()).summary("messages"));
         ask.notes().forEach(note -> text.append(' ').append(note));
+        if (harvest.messages().isEmpty()) {
+            // Relevé réel du 2026-09-13 : ouvrir un fil n'a produit AUCUN appel de messages — le nouveau
+            // Teams sert l'historique depuis son cache local. On ne prétend pas le contraire.
+            text.append(' ').append(CACHED_THREAD_NOTE);
+            result.json().set("observation", seen.toJson(mapper));
+            if (!seen.sentence().isEmpty()) {
+                text.append(' ').append(seen.sentence());
+            }
+        } else {
+            explain(result, readGaps, seen, text);
+        }
         if (book.self() == null) {
             text.append(" L'utilisateur relié n'a pas encore été identifié : « m'a-t-on "
                     + "mentionné ? » ne peut pas être tranché ici — le flux d'activité y répond.");
         }
         result.window(harvest.window())
-                .gaps(harvest.gaps())
+                .gaps(readGaps)
                 .health(harvest.health())
                 .viewport(harvest.viewport())
                 .notice(scope.announceOnce(harvest.conversationId(), "les messages de ce fil", label))
@@ -564,7 +603,7 @@ public final class TeamsTools implements ToolExecutor {
         if (refusal != null) {
             return refusal.outcome();
         }
-        BrowserLink link = link();
+        BrowserLink link = readingLink();
         TeamsLedger book = ledger();
         TeamsAsk ask = TeamsAsk.of(input, null);
         List<TeamsGap> harvested = new TeamsHarvester(link, book,
@@ -587,9 +626,12 @@ public final class TeamsTools implements ToolExecutor {
             gaps.add(TeamsGap.of(TeamsGapKind.NOTHING_OBSERVED, "flux d'activité",
                     "aucune mention servie par Teams depuis le rattachement"));
         }
+        ObservationDiagnostic seen = link.observer().diagnostic();
+        gaps = diagnosed(gaps, seen);
         StringBuilder text = new StringBuilder(count(events.size(), "mention trouvée", "mentions trouvées")
                 + " dans le flux d'activité, " + ask.window().describe() + '.');
         appendGaps(text, gaps);
+        explain(result, gaps, seen, text);
         if (book.self() == null) {
             // On rend ce que le flux porte, et on dit qu'on n'a pas pu vérifier qu'il s'agit bien de
             // l'utilisateur : affirmer « ce sont vos mentions » sans le savoir serait faux.
@@ -638,7 +680,7 @@ public final class TeamsTools implements ToolExecutor {
             return ToolOutcome.ok(result.render());
         }
 
-        BrowserLink link = link();
+        BrowserLink link = readingLink();
         PageGestures gestures = new PageGestures(link, sleeper);
         TeamsHarvester harvester = new TeamsHarvester(link, book, gestures);
         List<TeamsGap> harvested = new ArrayList<>(harvester.harvestInPlace(ask.window()));
@@ -670,9 +712,16 @@ public final class TeamsTools implements ToolExecutor {
             gaps.add(TeamsGap.of(TeamsGapKind.NOTHING_OBSERVED, query,
                     "aucun résultat de recherche n'a été servi par Teams"));
         }
+        ObservationDiagnostic seen = link.observer().diagnostic();
+        List<TeamsGap> searchGaps = diagnosed(gaps, seen);
+        gaps.clear();
+        gaps.addAll(searchGaps);
         StringBuilder text = new StringBuilder(count(rendered.size(), "résultat trouvé", "résultats trouvés")
                 + " pour « " + query + " », " + ask.window().describe() + '.');
         appendGaps(text, gaps);
+        if (rendered.isEmpty()) {
+            explain(result, gaps, seen, text);
+        }
         if (!asked.done()) {
             text.append(" Je n'ai pas pu poser la question dans Teams : tapez « ").append(query)
                     .append(" » dans la recherche de Teams, puis redemandez — je lirai ce qu'il"
@@ -696,11 +745,14 @@ public final class TeamsTools implements ToolExecutor {
         if (refusal != null) {
             return refusal.outcome();
         }
-        BrowserLink link = link();
+        BrowserLink link = readingLink();
         TeamsLedger book = ledger();
         TeamsAsk ask = TeamsAsk.of(input, null);
-        List<TeamsGap> harvested = new TeamsHarvester(link, book,
-                new PageGestures(link, sleeper)).harvestInPlace(ask.window());
+        TeamsHarvester harvester = new TeamsHarvester(link, book, new PageGestures(link, sleeper));
+        List<TeamsGap> harvested = harvester.harvestInPlace(ask.window());
+        // F-89 / SF-89-05 (c) : registre vide sur une liaison établie → faire charger le calendrier par Teams.
+        String viewport = loadIfEmpty(link, harvester, ask.window(), TeamsRoutes.CALENDAR, "le calendrier",
+                () -> !book.meetings().isEmpty());
 
         String query = TeamsAsk.text(input, "query", "subject", "who");
         int limit = (int) Math.max(1, Math.min(200, TeamsAsk.number(input, 50, "limit")));
@@ -725,10 +777,13 @@ public final class TeamsTools implements ToolExecutor {
                     query.isEmpty() ? "réunions" : query,
                     "aucune réunion servie par Teams depuis le rattachement ne correspond"));
         }
+        ObservationDiagnostic seen = link.observer().diagnostic();
+        gaps = diagnosed(gaps, seen);
         StringBuilder text = new StringBuilder(count(found.size(), "réunion trouvée", "réunions trouvées")
                 + (query.isEmpty() ? "" : " pour « " + query + " »") + '.');
         appendGaps(text, gaps);
-        result.window(ask.window()).gaps(gaps).health(book.health())
+        explain(result, gaps, seen, text);
+        result.window(ask.window()).gaps(gaps).health(book.health()).viewport(viewport)
                 .with("firstUse", firstUse()).text(text.toString());
         return ToolOutcome.ok(result.render());
     }
@@ -742,7 +797,7 @@ public final class TeamsTools implements ToolExecutor {
         if (refusal != null) {
             return refusal.outcome();
         }
-        BrowserLink link = link();
+        BrowserLink link = readingLink();
         TeamsLedger book = ledger();
         TeamsAsk ask = TeamsAsk.standard(null);
         List<TeamsGap> harvested = new TeamsHarvester(link, book,
@@ -771,9 +826,12 @@ public final class TeamsTools implements ToolExecutor {
                             ? "cette réunion n'annonce aucune transcription"
                             : "aucune transcription n'a été servie par Teams pour cette réunion"));
         }
+        ObservationDiagnostic seen = link.observer().diagnostic();
+        gaps = diagnosed(gaps, seen);
         StringBuilder text = new StringBuilder(count(cues.size(), "réplique lue", "répliques lues")
                 + (meeting == null ? "" : " pour « " + meeting.subject() + " »") + '.');
         appendGaps(text, gaps);
+        explain(result, gaps, seen, text);
         if (cues.isEmpty() && !meetingId.isEmpty()) {
             text.append(" Ouvrez la transcription dans Teams, puis redemandez : je lirai ce qu'il"
                     + " aura servi.");
@@ -1475,6 +1533,124 @@ public final class TeamsTools implements ToolExecutor {
 
     private BrowserLink link() {
         return session.link();
+    }
+
+    // ------------------------------------------------------------------ F-89 / SF-89-05
+
+    /** Relèves au plus après un chargement provoqué, et leur espacement. */
+    static final int LOAD_ATTEMPTS = 5;
+    static final long LOAD_SETTLE_MS = 1_000L;
+
+    /** Ce que le relevé réel a montré des fils, dit quand un fil n'a rien rendu. */
+    static final String CACHED_THREAD_NOTE = "Le nouveau Teams sert l'historique d'un fil depuis son cache "
+            + "local : ouvrir un fil ne produit pas toujours d'échange réseau, et l'observation réseau ne "
+            + "garantit donc pas la lecture d'un fil déjà affiché.";
+
+    /**
+     * La liaison des outils de <b>lecture</b> (F-89 / SF-89-05, a) : elle écoute aussi les cadres, workers
+     * et service workers des domaines Microsoft. Le relevé réel l'a montré — la liste des réunions n'est
+     * servie que par un worker ; l'onglet seul ne la voit pas. Une fois par liaison.
+     */
+    private BrowserLink readingLink() {
+        BrowserLink link = link();
+        link.observer().observeFrames();
+        return link;
+    }
+
+    /**
+     * Un zéro qui n'est pas « rien d'affiché » (F-89 / SF-89-05, b) : quand Teams a répondu par des
+     * chemins non reconnus, chaque manque {@code NOTHING_OBSERVED} le dit.
+     */
+    static List<TeamsGap> diagnosed(List<TeamsGap> gaps, ObservationDiagnostic seen) {
+        if (seen == null || !seen.unrecognizedTraffic()) {
+            return gaps;
+        }
+        List<TeamsGap> out = new ArrayList<>();
+        for (TeamsGap gap : gaps) {
+            out.add(gap.kind() != TeamsGapKind.NOTHING_OBSERVED ? gap
+                    : new TeamsGap(gap.kind(), gap.where(), "Teams a répondu par des chemins que l'adaptateur "
+                            + "ne reconnaît pas (" + seen.unknownMicrosoft() + " réponse"
+                            + (seen.unknownMicrosoft() > 1 ? "s" : "") + " non classée"
+                            + (seen.unknownMicrosoft() > 1 ? "s" : "") + " depuis le rattachement)",
+                            gap.count()));
+        }
+        return out;
+    }
+
+    private static boolean hasNothingObserved(List<TeamsGap> gaps) {
+        return gaps.stream().anyMatch(gap -> gap.kind() == TeamsGapKind.NOTHING_OBSERVED);
+    }
+
+    /** Le diagnostic et sa phrase, portés par tout résultat qui déclare n'avoir rien observé. */
+    private void explain(TeamsToolResult result, List<TeamsGap> gaps, ObservationDiagnostic seen,
+            StringBuilder text) {
+        if (seen == null || !hasNothingObserved(gaps)) {
+            return;
+        }
+        result.json().set("observation", seen.toJson(mapper));
+        if (!seen.sentence().isEmpty()) {
+            text.append(' ').append(seen.sentence());
+        }
+    }
+
+    /**
+     * <b>Provoquer le chargement</b> (F-89 / SF-89-05, c) : le registre est vide alors que la liaison est
+     * établie — l'onglet est navigué vers la liste voulue par les gestes gardés de F-108, ce que Teams
+     * sert alors est récolté, et la vue est remise. Rien n'est fait si le registre porte déjà quelque
+     * chose : naviguer pour un filtre sans correspondance déplacerait la fenêtre de l'utilisateur pour
+     * rien.
+     *
+     * @return ce qui a été fait dans la fenêtre de l'utilisateur, ou {@code ""} si rien
+     */
+    private String loadIfEmpty(BrowserLink link, TeamsHarvester harvester, TeamsReadWindow window,
+            String route, String what, java.util.function.BooleanSupplier served) {
+        if (served.getAsBoolean()) {
+            return "";
+        }
+        PageActions actions = new PageActions(link, sleeper, record -> gestureSay().accept("Teams : geste "
+                + record.action() + " sur " + record.domain() + " — " + record.result()));
+        String before;
+        String reached;
+        try {
+            before = actions.currentUrl();
+            if (MicrosoftDomains.isSignIn(before) || !MicrosoftDomains.isAllowed(before)) {
+                // L'onglet n'est pas sur Teams (identification, autre site) : on ne le déplace pas.
+                return "Rien n'était servi, et je n'ai pas ouvert " + what + " : votre onglet Teams n'est pas "
+                        + "sur Teams (page d'identification ou autre site). Rouvrez Teams, puis redemandez.";
+            }
+            reached = actions.navigate(TeamsRoutes.onTabHost(route, before));
+        } catch (BrowserLinkException e) {
+            return "Rien n'était servi, et je n'ai pas pu ouvrir " + what + " dans votre fenêtre Teams : "
+                    + e.getMessage();
+        }
+        if (MicrosoftDomains.isSignIn(reached)) {
+            return "Rien n'était servi : en ouvrant " + what + ", votre onglet a atterri sur une page "
+                    + "d'identification. Le runner ne se connecte jamais : rouvrez Teams et reconnectez-vous, "
+                    + "puis redemandez.";
+        }
+        for (int attempt = 0; attempt < LOAD_ATTEMPTS; attempt++) {
+            harvester.harvestInPlace(window);
+            if (served.getAsBoolean()) {
+                break;
+            }
+            if (sleeper != null) {
+                sleeper.sleep(LOAD_SETTLE_MS);
+            }
+        }
+        boolean restored;
+        try {
+            restored = actions.restore(before);
+        } catch (BrowserLinkException e) {
+            restored = false;
+        }
+        return "Rien n'était servi : j'ai ouvert " + what + " dans votre fenêtre Teams pour que Teams "
+                + (what.startsWith("la liste") ? "la" : "le") + " charge"
+                + (restored ? ", puis j'ai remis la vue." : " ; la vue n'a pas pu être remise.");
+    }
+
+    /** Où dire les gestes des outils de lecture (§4.6 de F-108) : la console des outils fichiers si montée. */
+    private java.util.function.Consumer<String> gestureSay() {
+        return filesSay != null ? filesSay : line -> { };
     }
 
     /** Les appels du Radar (F-100), sur la même liaison et le même registre que les outils de lecture. */

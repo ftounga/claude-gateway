@@ -186,7 +186,48 @@ final class FakeCdpConnection implements CdpConnection {
             return mapper.createObjectNode(); // un téléchargement ne déplace pas la page
         }
         route = redirect != null ? redirect : url;
+        for (java.util.Iterator<String[]> it = onNavigate.iterator(); it.hasNext();) {
+            String[] delivery = it.next();
+            if (url.contains(delivery[0])) {
+                it.remove();
+                if (delivery[1].isEmpty()) {
+                    emitResponse(delivery[2], delivery[3], delivery[4]);
+                } else {
+                    emitSessionResponse(delivery[1], delivery[2], delivery[3], delivery[4]);
+                }
+            }
+        }
         return mapper.createObjectNode();
+    }
+
+    /** Ce que la page servira quand on naviguera vers une adresse contenant ce fragment (F-89 / SF-89-05). */
+    private final List<String[]> onNavigate = new ArrayList<>();
+
+    /** Livraison à la navigation : {@code session} vide pour l'onglet, sinon celle d'un worker attaché. */
+    void deliverOnNavigate(String fragment, String session, String requestId, String url, String body) {
+        onNavigate.add(new String[] { fragment, session == null ? "" : session, requestId, url, body });
+    }
+
+    /** Une socket WebSocket ouverte par la page (ou une cible attachée). */
+    void emitSocket(String sessionId, String requestId, String url) {
+        ObjectNode params = mapper.createObjectNode();
+        params.put("requestId", requestId);
+        params.put("url", url);
+        java.util.function.BiConsumer<String, JsonNode> listener = listeners.get("Network.webSocketCreated");
+        if (listener != null) {
+            listener.accept(sessionId, params);
+        }
+    }
+
+    /** Une trame reçue sur une socket — son contenu ne doit JAMAIS être lu. */
+    void emitSocketFrame(String sessionId, String requestId, String payload) {
+        ObjectNode params = mapper.createObjectNode();
+        params.put("requestId", requestId);
+        params.putObject("response").put("opcode", 1).put("payloadData", payload);
+        java.util.function.BiConsumer<String, JsonNode> listener = listeners.get("Network.webSocketFrameReceived");
+        if (listener != null) {
+            listener.accept(sessionId, params);
+        }
     }
 
     /** Champs de dépôt créés par les scripts d'écriture (F-108 / SF-108-04). */
@@ -474,6 +515,11 @@ final class FakeCdpConnection implements CdpConnection {
     /** Même livraison, avec son statut HTTP (un refus 403, F-100). */
     void deliverOnScroll(String requestId, String url, String body, int status) {
         onNextScroll.add(new String[] { requestId, url, body, String.valueOf(status) });
+    }
+
+    /** L'onglet est sur cette adresse (F-89 / SF-89-05). */
+    void showingUrl(String url) {
+        route = url;
     }
 
     /** Le fil affiché, tel que la route le dit. */
