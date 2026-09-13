@@ -1,18 +1,27 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpErrorResponse } from '@angular/common/http';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { ActivatedRoute, ParamMap, convertToParamMap, provideRouter } from '@angular/router';
+import { ActivatedRoute, ParamMap, Router, convertToParamMap, provideRouter } from '@angular/router';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
 
+import { WorkspaceDetail } from '../../core/models/atelier.models';
 import {
   RadarEvidenceView,
+  RadarManagerAnswer,
   RadarSubjectDetail,
   RadarUnknownView,
 } from '../../core/models/radar-subject.models';
 import { VigiePerson } from '../../core/models/vigie.models';
+import { AtelierService } from '../../core/services/atelier.service';
 import { RadarSubjectService } from '../../core/services/radar-subject.service';
 import { VigieService } from '../../core/services/vigie.service';
-import { RadarSubjectPageComponent, errorOf } from './radar-subject-page.component';
+import {
+  RadarSubjectPageComponent,
+  adjustDraft,
+  answerErrorOf,
+  errorOf,
+} from './radar-subject-page.component';
 import { subjectDetail } from './radar-subject.fixtures';
 
 /** La page d'un sujet du Radar (F-103 / SF-103-01). */
@@ -22,6 +31,14 @@ describe('RadarSubjectPageComponent', () => {
   let subjects: jasmine.SpyObj<RadarSubjectService>;
   let vigie: jasmine.SpyObj<VigieService>;
   let params$: BehaviorSubject<ParamMap>;
+  let atelier: jasmine.SpyObj<AtelierService>;
+  let snackBar: jasmine.SpyObj<MatSnackBar>;
+  let router: Router;
+
+  const prepared: RadarManagerAnswer = {
+    text: 'Le périmètre MFA est validé ; le pilote part en octobre.', preparedAt: '2026-09-13T10:00:00Z',
+    coverageIncomplete: false, unknownsCount: 1,
+  };
 
   const evidence = (id: string, extra: Partial<RadarEvidenceView> = {}): RadarEvidenceView => ({
     id, source: 'TEAMS_MESSAGE', sourceRef: `ref-${id}`, occurredAt: '2026-09-04T09:00:00Z',
@@ -57,11 +74,17 @@ describe('RadarSubjectPageComponent', () => {
     subject?: Observable<RadarSubjectDetail>;
     people?: Observable<VigiePerson[]>;
     unknowns?: Observable<RadarUnknownView[]>;
+    answer?: Observable<RadarManagerAnswer>;
+    terminal?: Observable<WorkspaceDetail>;
     subjectId?: string;
   } = {}): HTMLElement {
-    subjects = jasmine.createSpyObj<RadarSubjectService>('RadarSubjectService', ['subject', 'unknowns']);
+    subjects = jasmine.createSpyObj<RadarSubjectService>('RadarSubjectService', ['subject', 'unknowns', 'managerAnswer']);
     subjects.subject.and.returnValue(options.subject ?? of(mfa()));
     subjects.unknowns.and.returnValue(options.unknowns ?? of([]));
+    subjects.managerAnswer.and.returnValue(options.answer ?? of(prepared));
+    atelier = jasmine.createSpyObj<AtelierService>('AtelierService', ['openTeamsTerminal']);
+    atelier.openTeamsTerminal.and.returnValue(options.terminal ?? of({ id: 'wtt1', name: 'Terminal Teams' } as WorkspaceDetail));
+    snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     vigie = jasmine.createSpyObj<VigieService>('VigieService', ['people', 'hostSpaces']);
     vigie.people.and.returnValue(options.people ?? of([paul]));
     vigie.hostSpaces.and.returnValue(of([{ hostId: 'h1', name: 'EDENRED', missionStatus: 'ACTIVE', spaces: ['VIGIE'] }]));
@@ -74,9 +97,13 @@ describe('RadarSubjectPageComponent', () => {
         provideNoopAnimations(),
         { provide: RadarSubjectService, useValue: subjects },
         { provide: VigieService, useValue: vigie },
+        { provide: AtelierService, useValue: atelier },
+        { provide: MatSnackBar, useValue: snackBar },
         { provide: ActivatedRoute, useValue: { snapshot: {}, paramMap: params$, queryParamMap: of(convertToParamMap({})) } },
       ],
     });
+    router = TestBed.inject(Router);
+    spyOn(router, 'navigate').and.resolveTo(true);
     fixture = TestBed.createComponent(RadarSubjectPageComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
@@ -282,6 +309,78 @@ describe('RadarSubjectPageComponent', () => {
     root = build();
     expect(root.querySelector('.radar-subject__unknowns-empty')).not.toBeNull();
     expect(text(root.querySelector('.radar-subject__people-empty'))).toContain('Personne');
+  });
+
+  // ---- SF-103-03 : la réponse au manager ----
+
+  it("rien n'est préparé à l'ouverture : la réponse attend un geste", () => {
+    const root = build();
+
+    expect(subjects.managerAnswer).not.toHaveBeenCalled();
+    expect(root.querySelector('.radar-subject__answer-text')).toBeNull();
+    expect(text(root.querySelector('.radar-subject__answer'))).toContain('elle compte dans votre consommation');
+  });
+
+  it('Préparer la réponse affiche le texte ; Copier le copie', async () => {
+    const root = build();
+    (root.querySelector('.radar-subject__prepare') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(subjects.managerAnswer).toHaveBeenCalledOnceWith('h1', 's1');
+    expect(text(root.querySelector('.radar-subject__answer-text'))).toBe(prepared.text);
+    expect(root.querySelector('.radar-subject__answer-warning')).toBeNull();
+
+    const writeText = jasmine.createSpy('writeText').and.resolveTo();
+    // Même procédé que les autres specs : d'autres suites ont déjà remplacé la propriété par une valeur.
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    (root.querySelector('.radar-subject__copy') as HTMLButtonElement).click();
+    await fixture.whenStable();
+
+    expect(writeText).toHaveBeenCalledOnceWith(prepared.text);
+    expect(snackBar.open).toHaveBeenCalledWith('Réponse copiée.', 'Fermer', jasmine.anything());
+  });
+
+  it('Ajuster en discutant ouvre la conversation du client avec le brouillon, sans rien envoyer', () => {
+    const root = build();
+    component.prepareAnswer();
+    fixture.detectChanges();
+
+    (root.querySelector('.radar-subject__adjust') as HTMLButtonElement).click();
+
+    expect(atelier.openTeamsTerminal).toHaveBeenCalledOnceWith('h1');
+    expect(router.navigate).toHaveBeenCalledOnceWith(['/atelier', 'wtt1'], {
+      state: { radarDraft: adjustDraft('MFA prestataires', prepared.text) },
+    });
+    expect(adjustDraft('MFA', 'OK.'))
+      .toBe('Aide-moi à ajuster la réponse que je vais donner à mon manager sur le sujet « MFA » :\n\nOK.');
+  });
+
+  it('conversation impossible à ouvrir : la page le dit, sans naviguer', () => {
+    build({ terminal: throwError(() => new HttpErrorResponse({ status: 500 })) });
+    component.prepareAnswer();
+    component.adjustAnswer();
+
+    expect(router.navigate).not.toHaveBeenCalled();
+    expect(snackBar.open).toHaveBeenCalled();
+  });
+
+  it('couverture incomplète : la réponse le rappelle', () => {
+    const root = build({ answer: of({ ...prepared, coverageIncomplete: true }) });
+    component.prepareAnswer();
+    fixture.detectChanges();
+
+    expect(text(root.querySelector('.radar-subject__answer-warning'))).toContain("n'a pas tout lu");
+  });
+
+  it('quota atteint (402) ou fournisseur indisponible (503) : la cause est dite', () => {
+    const root = build({ answer: throwError(() => new HttpErrorResponse({ status: 402 })) });
+    component.prepareAnswer();
+    fixture.detectChanges();
+
+    expect(text(root.querySelector('.radar-subject__answer-error'))).toContain('quota de consommation est atteint');
+    expect(root.querySelector('.radar-subject__prepare')).not.toBeNull();
+    expect(answerErrorOf(new HttpErrorResponse({ status: 503 }))).toContain('momentanément indisponible');
+    expect(answerErrorOf(new HttpErrorResponse({ status: 502 }))).toContain("n'a pas pu être préparée");
   });
 
   it('traduit les codes HTTP', () => {

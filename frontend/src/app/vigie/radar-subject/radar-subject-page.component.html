@@ -225,6 +225,64 @@
           }
         </section>
 
+        <!-- LA RÉPONSE AU MANAGER (SF-103-03) : jamais préparée d'office, chaque préparation consomme. -->
+        <section class="radar-subject__answer" aria-labelledby="radar-subject-answer">
+          <h2 id="radar-subject-answer" class="radar-subject__h">Réponse préparée pour votre manager</h2>
+          @if (answer(); as prepared) {
+            @if (prepared.coverageIncomplete) {
+              <p class="radar-subject__answer-warning">
+                La dernière synchro n'a pas tout lu : cette réponse peut être incomplète.
+              </p>
+            }
+            <p class="radar-subject__answer-text">{{ prepared.text }}</p>
+            <div class="radar-subject__answer-actions">
+              <button mat-stroked-button type="button" class="radar-subject__copy" (click)="copyAnswer()">
+                <mat-icon>content_copy</mat-icon>
+                Copier
+              </button>
+              <button
+                mat-stroked-button
+                type="button"
+                class="radar-subject__adjust"
+                [disabled]="openingConversation()"
+                (click)="adjustAnswer()"
+              >
+                @if (openingConversation()) {
+                  <mat-spinner diameter="16"></mat-spinner>
+                } @else {
+                  <mat-icon>forum</mat-icon>
+                }
+                Ajuster en discutant
+              </button>
+              <button mat-button type="button" class="radar-subject__prepare-again" [disabled]="preparingAnswer()" (click)="prepareAnswer()">
+                Préparer à nouveau
+              </button>
+            </div>
+          } @else {
+            <p class="radar-subject__empty">
+              Une réponse de quelques phrases, rédigée à partir du registre ; elle compte dans votre consommation.
+            </p>
+            <button
+              mat-flat-button
+              color="primary"
+              type="button"
+              class="radar-subject__prepare"
+              [disabled]="preparingAnswer() || !!detail()?.mergedIntoId"
+              (click)="prepareAnswer()"
+            >
+              @if (preparingAnswer()) {
+                <mat-spinner diameter="16"></mat-spinner>
+              } @else {
+                <mat-icon>edit_note</mat-icon>
+              }
+              Préparer la réponse
+            </button>
+          }
+          @if (answerError(); as message) {
+            <p class="radar-subject__answer-error" role="alert">{{ message }}</p>
+          }
+        </section>
+
         <section class="radar-subject__unknowns" aria-labelledby="radar-subject-unknowns">
           <h2 id="radar-subject-unknowns" class="radar-subject__h">Ce que le Radar ne sait pas</h2>
           @if (unknowns(); as list) {

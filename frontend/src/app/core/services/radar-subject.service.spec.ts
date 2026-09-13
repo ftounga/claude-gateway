@@ -32,4 +32,11 @@ describe('RadarSubjectService', () => {
     expect(req.request.method).toBe('GET');
     req.flush([]);
   });
+
+  it('prépare la réponse au manager par un POST', () => {
+    service.managerAnswer('h1', 's1').subscribe();
+    const req = httpMock.expectOne('/api/radar/hosts/h1/subjects/s1/manager-answer');
+    expect(req.request.method).toBe('POST');
+    req.flush({ text: 'OK', preparedAt: '2026-09-13T10:00:00Z', coverageIncomplete: false, unknownsCount: 0 });
+  });
 });

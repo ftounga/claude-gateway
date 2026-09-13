@@ -3607,6 +3607,21 @@ describe('AtelierComponent — projet demandé par l\'URL (F-30 SF-30-10)', () =
     expect(fixture.nativeElement.querySelector('app-atelier-terminal')).not.toBeNull();
   });
 
+  it('un brouillon venu du Radar se dépose dans la saisie sans être envoyé, puis quitte l\'état (F-103)', () => {
+    const before = history.state;
+    history.replaceState({ ...(before ?? {}), radarDraft: 'Aide-moi à ajuster cette réponse.' }, '');
+    try {
+      const fixture = setupWithUrl('w1', null);
+
+      expect(fixture.componentInstance.draft()).toBe('Aide-moi à ajuster cette réponse.');
+      expect(service.streamAgent).not.toHaveBeenCalled();
+      expect(service.chat).not.toHaveBeenCalled();
+      expect((history.state as Record<string, unknown>)['radarDraft']).toBeUndefined();
+    } finally {
+      history.replaceState(before, '');
+    }
+  });
+
   it('sans identifiant, le comportement est inchangé (non-régression)', () => {
     const fixture = setupWithUrl(null, null);
 

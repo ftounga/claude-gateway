@@ -2,7 +2,11 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { RadarSubjectDetail, RadarUnknownView } from '../models/radar-subject.models';
+import {
+  RadarManagerAnswer,
+  RadarSubjectDetail,
+  RadarUnknownView,
+} from '../models/radar-subject.models';
 
 /**
  * **La page d'un sujet du Radar** (F-103), côté HTTP.
@@ -25,5 +29,14 @@ export class RadarSubjectService {
   unknowns(hostId: string, subjectId: string): Observable<RadarUnknownView[]> {
     return this.http.get<RadarUnknownView[]>(
       `/api/radar/hosts/${encodeURIComponent(hostId)}/subjects/${encodeURIComponent(subjectId)}/unknowns`);
+  }
+
+  /**
+   * Prépare la réponse pour le manager (SF-103-03). **Un appel au fournisseur, décompté** : l'écran ne
+   * l'émet que sur un geste.
+   */
+  managerAnswer(hostId: string, subjectId: string): Observable<RadarManagerAnswer> {
+    return this.http.post<RadarManagerAnswer>(
+      `/api/radar/hosts/${encodeURIComponent(hostId)}/subjects/${encodeURIComponent(subjectId)}/manager-answer`, null);
   }
 }

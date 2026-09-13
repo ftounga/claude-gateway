@@ -71,6 +71,12 @@ public class RadarExceptionHandler {
                 .body(new ErrorResponse("radar_teams_disabled", ex.getMessage()));
     }
 
+    @ExceptionHandler(RadarAnswerUnreadableException.class)
+    public ResponseEntity<ErrorResponse> answerUnreadable(RadarAnswerUnreadableException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new ErrorResponse("radar_answer_unreadable", ex.getMessage()));
+    }
+
     @ExceptionHandler(RadarEvidenceRequiredException.class)
     public ResponseEntity<ErrorResponse> evidenceRequired(RadarEvidenceRequiredException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)

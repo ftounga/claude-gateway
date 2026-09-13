@@ -111,6 +111,7 @@ import { killHostSuccessMessage } from '../shared/kill-host-dialog/kill-host-mes
 import { chatStepsToBlocks } from './terminal/chat-steps';
 import { cardBlock, withCards } from './terminal/teams-block';
 import { derivePreview } from './terminal/terminal-preview';
+import { RADAR_DRAFT_STATE, radarDraftFrom } from '../shared/radar-draft';
 
 // Les types et constantes du fil vivent dans `atelier.types` (F-30 SF-30-07) : la vue terminal les
 // consomme aussi, et les garder ici créerait une dépendance circulaire. Réexportés pour compatibilité.
@@ -659,6 +660,7 @@ export class AtelierComponent implements OnInit, OnDestroy {
     // liens antérieurs est **accepté et ignoré** — il n'y a plus qu'un terminal (F-39 / SF-39-08),
     // mais un lien déjà partagé doit continuer d'ouvrir le bon projet.
     this.requestedWorkspaceId = this.route.snapshot.paramMap.get('id');
+    this.takeRadarDraft();
     // Panneau demandé par l'URL (F-39 / SF-39-18) : `?vue=fichiers`, éventuellement `&path=…`.
     // L'état vit dans un paramètre de REQUÊTE, pas dans la route — c'est ce qui permet au bouton
     // « précédent » de refermer le panneau sans détruire le terminal.
@@ -677,6 +679,26 @@ export class AtelierComponent implements OnInit, OnDestroy {
       }
     });
     this.loadWorkspaces();
+  }
+
+  /**
+   * **Un brouillon venu du Radar** (F-103 / SF-103-03) — *Ajuster en discutant* depuis la page d'un sujet :
+   * le texte arrive par l'état de navigation et se dépose dans la zone de saisie, **sans être envoyé**
+   * (l'envoi consomme, il reste le geste de l'utilisateur). Il est retiré de l'état aussitôt repris : un
+   * rechargement de la page ne le redépose pas.
+   */
+  private takeRadarDraft(): void {
+    if (typeof history === 'undefined') {
+      return;
+    }
+    const draft = radarDraftFrom(history.state);
+    if (draft === null) {
+      return;
+    }
+    this.draft.set(draft);
+    const rest: Record<string, unknown> = { ...(history.state as Record<string, unknown>) };
+    delete rest[RADAR_DRAFT_STATE];
+    history.replaceState(rest, '');
   }
 
   /** Projet réclamé par l'URL, honoré une fois la liste chargée (ou ignoré s'il n'existe pas). */

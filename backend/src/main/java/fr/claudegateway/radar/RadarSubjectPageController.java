@@ -5,10 +5,12 @@ import java.util.UUID;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.auth.CurrentUser;
+import fr.claudegateway.radar.dto.RadarSubjectPageViews.ManagerAnswerView;
 import fr.claudegateway.radar.dto.RadarSubjectPageViews.UnknownView;
 import fr.claudegateway.teams.TeamsAccessService;
 
@@ -24,13 +26,16 @@ import fr.claudegateway.teams.TeamsAccessService;
 public class RadarSubjectPageController {
 
     private final RadarUnknownsService unknownsService;
+    private final RadarManagerAnswerService managerAnswerService;
     private final RadarScopeResolver scopeResolver;
     private final TeamsAccessService teamsAccess;
     private final CurrentUser currentUser;
 
-    public RadarSubjectPageController(RadarUnknownsService unknownsService, RadarScopeResolver scopeResolver,
+    public RadarSubjectPageController(RadarUnknownsService unknownsService,
+            RadarManagerAnswerService managerAnswerService, RadarScopeResolver scopeResolver,
             TeamsAccessService teamsAccess, CurrentUser currentUser) {
         this.unknownsService = unknownsService;
+        this.managerAnswerService = managerAnswerService;
         this.scopeResolver = scopeResolver;
         this.teamsAccess = teamsAccess;
         this.currentUser = currentUser;
@@ -40,6 +45,15 @@ public class RadarSubjectPageController {
     @GetMapping("/unknowns")
     public List<UnknownView> unknowns(@PathVariable UUID hostId, @PathVariable UUID subjectId) {
         return unknownsService.unknowns(scope(hostId), subjectId);
+    }
+
+    /**
+     * La réponse préparée pour le manager (SF-103-03) : un appel au fournisseur, décompté ; rien n'est
+     * persisté. POST : chaque appel consomme.
+     */
+    @PostMapping("/manager-answer")
+    public ManagerAnswerView managerAnswer(@PathVariable UUID hostId, @PathVariable UUID subjectId) {
+        return managerAnswerService.prepare(scope(hostId), subjectId);
     }
 
     private RadarScope scope(UUID hostId) {
