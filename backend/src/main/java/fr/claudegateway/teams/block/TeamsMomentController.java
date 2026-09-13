@@ -51,7 +51,7 @@ public class TeamsMomentController {
     /** L'image d'un moment de ce terminal, ou {@code 404}. */
     @GetMapping("/{id}/teams/moments/{imageId}")
     public ResponseEntity<byte[]> moment(@PathVariable UUID id, @PathVariable String imageId) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireTerminalAccess(id);
         UUID userId = currentUser.requireId();
         Workspace workspace = workspaceService.requireOwned(userId, id);
         return images.find(userId, workspace.getId(), imageId)

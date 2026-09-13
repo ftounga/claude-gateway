@@ -723,9 +723,19 @@ export class AtelierComponent implements OnInit, OnDestroy {
     this.selectWorkspace(found);
   }
 
-  private loadWorkspaces(): void {
-    this.atelier.listWorkspaces().subscribe({
+  private loadWorkspaces(space?: 'VIGIE'): void {
+    const request = space === undefined
+      ? this.atelier.listWorkspaces()
+      : this.atelier.listWorkspaces(space);
+    request.subscribe({
       next: (list) => {
+        // F-107 / SF-107-07 : relue depuis la Vigie, la liste ne porte que des terminaux Teams. Un
+        // projet demandé n'y est pas — c'est la Forge qui manque, et c'est elle qu'on présente.
+        if (space === 'VIGIE' && !list.some((w) => w.id === this.requestedWorkspaceId)) {
+          this.requestedWorkspaceId = null;
+          this.accessDenied.set(true);
+          return;
+        }
         this.workspaces.set(list);
         // Étape 1 du guide (F-53) : elle se coche sur un fait — un projet EXISTE —, jamais sur le
         // clic qui a ouvert le dialogue de création.
@@ -739,6 +749,16 @@ export class AtelierComponent implements OnInit, OnDestroy {
       error: (err) => {
         // 403 `atelier_forbidden` (non-Gold) : upsell silencieux, sans snackbar d'erreur (SF-28-06).
         if (isForgeAccessDenied(err)) {
+          // F-107 / SF-107-07 : le runner est commun aux deux espaces. Un compte Vigie seul qui ouvre
+          // son terminal Teams n'a pas la liste des projets ; on relit la sienne, celle de la Vigie.
+          if (space === undefined && this.requestedWorkspaceId !== null) {
+            this.loadWorkspaces('VIGIE');
+            return;
+          }
+          this.accessDenied.set(true);
+          return;
+        }
+        if (space === 'VIGIE' && err instanceof HttpErrorResponse && err.status === 403) {
           this.accessDenied.set(true);
           return;
         }

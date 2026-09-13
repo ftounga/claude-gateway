@@ -318,6 +318,12 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     (déploiement progressif).
   - Filtre `GET /runner-hosts/overview?space=` ; les API de la Vigie (Radar) exigent le poste activé
     dans la Vigie (409 `host_not_in_space`), sauf export et purge.
+  - **Le runner est commun aux deux espaces** (F-107 / SF-107-07) : postes, appairage, statut,
+    coupe-circuit, `GET /teams/access` et terminal Teams s'ouvrent avec le droit Forge **ou** Vigie
+    (`AtelierAccessService.requireRunnerAccess` / `requireTerminalAccess`) ; l'espace visé
+    (`?space=`, création, activation) exige son propre droit ; projets, terminaux de projet, terminal
+    du poste, carte et gouvernance restent Forge. `GET /workspaces?space=VIGIE` rend les seuls
+    terminaux Teams.
   - **Aucune clé étrangère** : purge explicite à la suppression du poste (événement `DELETED`) et du
     compte.
 - **user_api_keys** — clé API personnelle BYOK chiffrée au repos (F-03, migration `030`, OQ-06 : AWS KMS

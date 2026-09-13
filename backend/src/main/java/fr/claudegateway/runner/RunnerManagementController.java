@@ -24,7 +24,7 @@ import fr.claudegateway.runner.dto.RunnerStatusResponse;
  * exactement ce que F-48 supprime. Restent ici les deux questions qui, elles, sont bien des
  * questions de projet : « ma machine répond-elle pour ce projet ? » et « qu'a-t-on fait ici ? ».</p>
  *
- * <p>Endpoints <b>JWT</b> (chaîne principale), gardés par l'accès Atelier (Gold/ADMIN). L'identité
+ * <p>Endpoints <b>JWT</b> (chaîne principale), gardés par l'accès au terminal (F-107 / SF-107-07 : Forge, ou Vigie pour le terminal Teams). L'identité
  * vient du {@link CurrentUser}, jamais d'un paramètre.</p>
  */
 @RestController
@@ -51,7 +51,7 @@ public class RunnerManagementController {
      */
     @GetMapping("/status")
     public RunnerStatusResponse status(@PathVariable UUID workspaceId) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireTerminalAccess(workspaceId);
         UUID userId = currentUser.requireId();
         return RunnerStatusResponse.from(statusService.status(userId, workspaceId));
     }
@@ -66,7 +66,7 @@ public class RunnerManagementController {
     @GetMapping("/audit")
     public List<RunnerAuditResponse> audit(@PathVariable UUID workspaceId,
             @RequestParam(required = false) Integer limit) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireTerminalAccess(workspaceId);
         UUID userId = currentUser.requireId();
         return auditService.list(userId, workspaceId, limit).stream()
                 .map(RunnerAuditResponse::from)

@@ -149,9 +149,15 @@ export class AtelierService {
     return this.http.post<GitPullRequestResult>(`/api/workspaces/${id}/git/pull-request`, request);
   }
 
-  /** Workspaces de l'utilisateur. */
-  listWorkspaces(): Observable<WorkspaceSummary[]> {
-    return this.http.get<WorkspaceSummary[]>('/api/workspaces');
+  /**
+   * Workspaces de l'utilisateur. Avec `'VIGIE'` (F-107 / SF-107-07) : ses seuls **terminaux Teams**, sous
+   * le droit Vigie — la liste d'un terminal ouvert depuis la Vigie par un compte qui n'a pas la Forge.
+   */
+  listWorkspaces(space?: 'VIGIE'): Observable<WorkspaceSummary[]> {
+    if (space === undefined) {
+      return this.http.get<WorkspaceSummary[]>('/api/workspaces');
+    }
+    return this.http.get<WorkspaceSummary[]>('/api/workspaces', { params: { space } });
   }
 
   /** Détail d'un workspace : métadonnées + arborescence des fichiers. */

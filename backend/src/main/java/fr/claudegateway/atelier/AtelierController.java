@@ -61,13 +61,16 @@ public class AtelierController {
     private final fr.claudegateway.runner.browse.RunnerWorkspaceBrowser runnerBrowser;
     /** Postes de l'utilisateur (F-48 / SF-48-01) : vérifie qu'un rattachement vise bien le sien. */
     private final fr.claudegateway.runner.host.RunnerHostService runnerHostService;
+    /** Droit Vigie (F-107 / SF-107-07) : la liste des terminaux Teams d'un compte sans la Forge. */
+    private final fr.claudegateway.teams.TeamsAccessService teamsAccess;
 
     public AtelierController(WorkspaceService workspaceService, CurrentUser currentUser,
             AtelierAccessService atelierAccess, WorkspaceLibraryImportService libraryImportService,
             AtelierSessionService sessionService, GitWorkspaceService gitWorkspaceService,
             AtelierEngineService engineService,
             fr.claudegateway.runner.browse.RunnerWorkspaceBrowser runnerBrowser,
-            fr.claudegateway.runner.host.RunnerHostService runnerHostService) {
+            fr.claudegateway.runner.host.RunnerHostService runnerHostService,
+            fr.claudegateway.teams.TeamsAccessService teamsAccess) {
         this.workspaceService = workspaceService;
         this.currentUser = currentUser;
         this.atelierAccess = atelierAccess;
@@ -77,6 +80,7 @@ public class AtelierController {
         this.engineService = engineService;
         this.runnerBrowser = runnerBrowser;
         this.runnerHostService = runnerHostService;
+        this.teamsAccess = teamsAccess;
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -121,16 +125,28 @@ public class AtelierController {
      * <p><b>Une lecture, pas N</b> : un seul {@code SELECT} sur les postes, puis un mappage en
      * mémoire — lire le poste projet par projet ferait un N+1 sur l'écran le plus souvent
      * ouvert.</p>
+     *
+     * <p><b>{@code ?space=VIGIE}</b> (F-107 / SF-107-07) : la liste d'un terminal ouvert depuis la Vigie —
+     * gardée par le droit Vigie, elle ne rend <b>que les terminaux Teams</b>. Sans paramètre (ou
+     * {@code FORGE}), la liste des projets, gardée par la Forge, est inchangée.</p>
      */
     @GetMapping
-    public List<WorkspaceSummaryResponse> list() {
-        atelierAccess.requireAccess();
+    public List<WorkspaceSummaryResponse> list(
+            @RequestParam(name = "space", required = false) String space) {
+        boolean vigie = fr.claudegateway.runner.host.ClientSpace.parse(space)
+                == fr.claudegateway.runner.host.ClientSpace.VIGIE;
+        if (vigie) {
+            teamsAccess.requireAccess();
+        } else {
+            atelierAccess.requireAccess();
+        }
         UUID userId = currentUser.requireId();
         Map<UUID, fr.claudegateway.runner.host.RunnerHost> hosts = runnerHostService.list(userId)
                 .stream()
                 .collect(Collectors.toMap(fr.claudegateway.runner.host.RunnerHost::getId,
                         host -> host));
         return workspaceService.list(userId).stream()
+                .filter(workspace -> !vigie || workspace.isTeamsTerminal())
                 .map(workspace -> {
                     fr.claudegateway.runner.host.RunnerHost host =
                             workspace.getHostId() == null ? null : hosts.get(workspace.getHostId());
@@ -147,7 +163,8 @@ public class AtelierController {
      */
     @GetMapping("/{id}")
     public WorkspaceDetailResponse detail(@PathVariable UUID id) {
-        atelierAccess.requireAccess();
+        // F-107 / SF-107-07 : le terminal Teams se lit avec le droit Vigie ; un projet exige la Forge.
+        atelierAccess.requireTerminalAccess(id);
         UUID userId = currentUser.requireId();
         Workspace workspace = workspaceService.requireOwned(userId, id);
         // Cible RUNNER (F-38 / SF-38-17) : les fichiers vivent sur la machine, et le stockage objet
@@ -197,7 +214,7 @@ public class AtelierController {
      */
     @GetMapping("/{id}/engine")
     public AtelierEngineResponse engine(@PathVariable UUID id) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireTerminalAccess(id);
         return AtelierEngineResponse.from(engineService.status(currentUser.requireId(), id));
     }
 
