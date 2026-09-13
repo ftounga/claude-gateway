@@ -44,6 +44,7 @@ public final class ToolStack {
                                 console::info),
                         fr.claudegateway.runner.teams.BrowserLink.realSleeper())
                         .withMoments(moments(config, console))
+                        .withCapture(capture(config, console))
                 : fr.claudegateway.runner.teams.TeamsTools.disabled(
                         "Le volet Teams est désactivé sur cette machine (--no-teams).");
         ProjectScopes scopes =
@@ -99,6 +100,34 @@ public final class ToolStack {
         return new fr.claudegateway.runner.teams.MomentsWorker(
                 new fr.claudegateway.runner.teams.MomentsJobStore(folder),
                 new fr.claudegateway.runner.teams.SceneFrames(toolchain, processes), uploader);
+    }
+
+    /**
+     * <b>L'enregistrement local</b> (F-91 / SF-91-02), monté ici comme le reste — une fois, partagé
+     * par les deux transports.
+     *
+     * <p>Rien ne se télécharge, aucune fenêtre ne s'ouvre et aucun module graphique n'est chargé à
+     * ce stade : {@code ffmpeg} n'est cherché qu'au premier enregistrement (D3), et le témoin n'est
+     * construit qu'au démarrage d'une capture. Un runner qui n'enregistre jamais — l'immense
+     * majorité — ne paie rien de tout cela.</p>
+     *
+     * <p>Le témoin est <b>branché ici, et pas ailleurs</b> : un moteur monté sans lui capturerait
+     * sans le garde-fou n° 3, et c'est exactement le genre d'oubli qu'un montage unique empêche.</p>
+     */
+    private static fr.claudegateway.runner.teams.LocalCapture capture(RunnerConfig config,
+            Console console) {
+        fr.claudegateway.runner.teams.TeamsWorkFolder folder =
+                new fr.claudegateway.runner.teams.TeamsWorkFolder(config.hostRoot());
+        fr.claudegateway.runner.teams.ProcessRunner processes =
+                fr.claudegateway.runner.teams.ProcessRunner.real();
+        return new fr.claudegateway.runner.teams.LocalCapture(folder,
+                new fr.claudegateway.runner.teams.LocalToolchain(folder, processes, console::info),
+                processes,
+                fr.claudegateway.runner.teams.ProcessSession.real(),
+                new fr.claudegateway.runner.teams.CaptureStore(folder),
+                fr.claudegateway.runner.teams.BrowserLink.realSleeper(),
+                console::info)
+                .withWitness(new fr.claudegateway.runner.teams.CaptureWitness());
     }
 
     public ToolDispatcher dispatcher() {

@@ -42,7 +42,11 @@ class TeamsReadingCatalogTest {
             // F-90 / SF-90-03 — les deux outils de captures. Ce sont bien des outils de LECTURE au
             // sens de ce catalogue : le RUNNER les exécute, contrairement aux outils de
             // présentation qui ne quittent jamais la gateway.
-            "teams_meeting_moments", "teams_moments_status");
+            "teams_meeting_moments", "teams_moments_status",
+            // F-91 / SF-91-02 — les trois outils d'ENREGISTREMENT LOCAL. Ils sont dans cette liste
+            // parce que le RUNNER les exécute, comme les autres ; ce qui les distingue n'est pas où
+            // ils tournent, c'est qu'ils CRÉENT au lieu de relire (voir TeamsToolCatalog.CAPTURE).
+            "teams_capture_start", "teams_capture_stop", "teams_capture_status");
 
     @Mock private TeamsAccessService teamsAccess;
 
@@ -66,7 +70,7 @@ class TeamsReadingCatalogTest {
     }
 
     @Test
-    @DisplayName("Les DIX outils de LECTURE sont donnés, dans l'ordre annoncé et EN PREMIER")
+    @DisplayName("Les TREIZE outils que le RUNNER exécute sont donnés, dans l'ordre et EN PREMIER")
     void the_whole_catalog_is_given() {
         // Depuis F-89 / SF-89-02, la panoplie d'un terminal Teams porte aussi les outils de
         // PRÉSENTATION — ceux qui posent un bloc dans le fil et ne quittent jamais la gateway. Le

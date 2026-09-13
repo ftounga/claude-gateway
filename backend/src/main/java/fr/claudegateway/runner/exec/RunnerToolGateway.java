@@ -52,6 +52,16 @@ public class RunnerToolGateway {
      * l'est pas.
      */
     public static final long TEAMS_SCROLLING_TIMEOUT_MS = 60_000L;
+    /**
+     * Délai du <b>démarrage d'un enregistrement local</b> (F-91 / SF-91-02).
+     *
+     * <p>Il est long pour une raison précise, et une seule : le premier démarrage peut avoir à
+     * <b>rapatrier {@code ffmpeg}</b> (D3 — « c'est une minute d'attente la première fois, pas une
+     * panne »). Couper à vingt secondes ferait échouer le premier enregistrement de chaque poste,
+     * c'est-à-dire celui qui compte. L'arrêt, lui, garde le délai ordinaire : fermer proprement un
+     * conteneur est rapide.</p>
+     */
+    public static final long TEAMS_CAPTURE_START_TIMEOUT_MS = 360_000L;
     /** Plancher : un délai ridicule ferait échouer la commande avant même son démarrage. */
     public static final long MIN_BASH_TIMEOUT_MS = 1_000L;
     /** Longueur maximale d'une ligne de commande acceptée (le runner applique la même borne). */
@@ -189,6 +199,9 @@ public class RunnerToolGateway {
      * ce qui serait une régression de SF-87-03.
      */
     static long teamsTimeoutFor(String tool) {
+        if (fr.claudegateway.teams.TeamsToolCatalog.CAPTURE_START.equals(tool)) {
+            return TEAMS_CAPTURE_START_TIMEOUT_MS;
+        }
         return "teams_read_conversation".equals(tool) || "teams_search".equals(tool)
                 ? TEAMS_SCROLLING_TIMEOUT_MS : TEAMS_TOOL_TIMEOUT_MS;
     }

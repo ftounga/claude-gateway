@@ -136,6 +136,61 @@ class TeamsToolCatalogTest {
                 .containsExactlyElementsOf(expected);
     }
 
+    // ------------------------------------------------------------------ F-91 : l'enregistrement
+
+    @Test
+    @DisplayName("les trois outils d'ENREGISTREMENT LOCAL sont donnés (F-91 / SF-91-02)")
+    void theCaptureToolsAreGivenToo() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(true);
+
+        assertThat(catalog.toolsFor(userId, teamsTerminal())).extracting(AgentTool::name)
+                .contains(TeamsToolCatalog.CAPTURE_START, TeamsToolCatalog.CAPTURE_STOP,
+                        TeamsToolCatalog.CAPTURE_STATUS);
+    }
+
+    @Test
+    @DisplayName("sans le droit : AUCUN outil d'enregistrement non plus — la garde est la même")
+    void noCaptureToolWithoutTheRight() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(false);
+
+        assertThat(catalog.toolsFor(userId, teamsTerminal()))
+                .extracting(AgentTool::name)
+                .doesNotContain(TeamsToolCatalog.CAPTURE_START);
+        assertThat(catalog.toolsFor(userId, teamsTerminal())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("la description de teams_capture_start DIT les deux gestes, et le non-garanti")
+    void theStartDescriptionCarriesTheDoctrine() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(true);
+
+        AgentTool start = catalog.toolsFor(userId, teamsTerminal()).stream()
+                .filter(tool -> TeamsToolCatalog.CAPTURE_START.equals(tool.name()))
+                .findFirst().orElseThrow();
+
+        // C'est le SEUL endroit où le modèle apprend la différence de nature de cet outil.
+        assertThat(start.description())
+                .contains("SEUL outil du volet qui CRÉE")
+                .contains("DEUX USAGES, DEUX GESTES")
+                .contains("NE COCHE JAMAIS cette confirmation")
+                .contains("de vive voix")
+                .contains("recordingNotice");
+        // Et l'usage est OBLIGATOIRE dans le schéma : il n'est jamais deviné.
+        assertThat(start.inputSchema().toString()).contains("purpose");
+        assertThat(String.valueOf(start.inputSchema().get("required"))).contains("purpose");
+    }
+
+    @Test
+    @DisplayName("isCapture ne reconnaît QUE les trois outils qui créent un enregistrement")
+    void onlyTheCaptureToolsAreCapture() {
+        assertThat(TeamsToolCatalog.isCapture(TeamsToolCatalog.CAPTURE_START)).isTrue();
+        assertThat(TeamsToolCatalog.isCapture(TeamsToolCatalog.CAPTURE_STOP)).isTrue();
+        assertThat(TeamsToolCatalog.isCapture(TeamsToolCatalog.CAPTURE_STATUS)).isTrue();
+        assertThat(TeamsToolCatalog.isCapture(TeamsToolCatalog.READ_CONVERSATION)).isFalse();
+        assertThat(TeamsToolCatalog.isCapture("bash")).isFalse();
+        assertThat(TeamsToolCatalog.isCapture(null)).isFalse();
+    }
+
     @Test
     @DisplayName("isPresentation ne reconnaît QUE les trois outils qui posent un bloc")
     void onlyThePresentationToolsArePresentation() {

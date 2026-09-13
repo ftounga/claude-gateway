@@ -337,8 +337,9 @@ class TeamsGisementsTest {
         PaperTeams teams = new PaperTeams();
         TeamsTools tools = teams.tools();
 
-        // F-90 / SF-90-03 a ajouté les deux outils de captures : le catalogue en porte dix.
-        assertEquals(10, TeamsTools.CATALOG.size());
+        // F-90 / SF-90-03 a ajouté les deux outils de captures ; F-91 / SF-91-02 les trois de
+        // l'enregistrement local : le catalogue en porte treize.
+        assertEquals(13, TeamsTools.CATALOG.size());
         TeamsTools.CATALOG.forEach(tool -> assertTrue(tools.execute(tool, ask()).ok(),
                 tool + " est annoncé au catalogue : il doit répondre"));
         assertFalse(tools.execute("teams_invente", ask()).ok());

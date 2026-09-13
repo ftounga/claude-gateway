@@ -71,6 +71,7 @@ public final class LocalCapture {
     private final Supplier<String> display;
 
     private volatile Witness witness = Witness.none();
+    private volatile CaptureCeiling ceiling = new CaptureCeiling();
     private volatile Live live;
     private volatile Boolean drawtextKnown;
 
@@ -108,6 +109,17 @@ public final class LocalCapture {
         return this;
     }
 
+    /** Remplace l'arrêt de sécurité (SF-91-02). Sert aux tests, qui n'attendent pas trois heures. */
+    LocalCapture withCeiling(CaptureCeiling value) {
+        this.ceiling = value == null ? new CaptureCeiling() : value;
+        return this;
+    }
+
+    /** Le plafond de durée, pour le dire au démarrage. */
+    public CaptureCeiling ceiling() {
+        return ceiling;
+    }
+
     // ------------------------------------------------------------------ démarrer
 
     /**
@@ -136,7 +148,17 @@ public final class LocalCapture {
                             + already.id() + " ».");
         }
 
-        // 3. L'outillage (D3) : PATH, copie rapatriée, puis seulement téléchargement.
+        // 3. LE TÉMOIN, avant tout le reste aussi : sans lui, le garde-fou n° 3 n'existe plus, et
+        //    un poste sans écran n'a de toute façon rien à capturer. Demandé ICI pour qu'un refus
+        //    ne laisse ni binaire rapatrié, ni dossier créé.
+        try {
+            witness.requireAvailable();
+        } catch (CaptureWitnessException e) {
+            throw new CaptureRefusedException(CaptureRefusedException.NO_WITNESS, e.getMessage(),
+                    e.remedy(), e);
+        }
+
+        // 4. L'outillage (D3) : PATH, copie rapatriée, puis seulement téléchargement.
         Path ffmpeg;
         try {
             ffmpeg = toolchain.require(LocalTool.ffmpeg());
@@ -145,7 +167,7 @@ public final class LocalCapture {
                     e.remedy(), e);
         }
 
-        // 4. LE FILIGRANE, ET LE REFUS QUI VA AVEC. Un enregistrement anonyme ne se fait pas.
+        // 5. LE FILIGRANE, ET LE REFUS QUI VA AVEC. Un enregistrement anonyme ne se fait pas.
         requireDrawtext(ffmpeg);
         Path font = fonts.find();
         if (font == null) {
@@ -156,7 +178,7 @@ public final class LocalCapture {
                     fonts.remedy());
         }
 
-        // 5. Les entrées du poste. Peut refuser (son inconnu sous Windows, système inconnu).
+        // 6. Les entrées du poste. Peut refuser (son inconnu sous Windows, système inconnu).
         CaptureDevices devices = CaptureDevices.resolve(os, request.audio(),
                 request.screenDevice(), request.audioDevice(), display.get());
 
@@ -190,7 +212,7 @@ public final class LocalCapture {
                     e);
         }
 
-        // 6. Une mort immédiate est la règle plutôt que l'exception : périphérique refusé, X
+        // 7. Une mort immédiate est la règle plutôt que l'exception : périphérique refusé, X
         //    inaccessible, autorisation d'enregistrement d'écran non accordée sous macOS. On la
         //    constate ICI, pendant que l'appel est encore là pour la dire — et on rend LES
         //    DERNIÈRES LIGNES d'ffmpeg, jamais un « échec » nu.
@@ -202,13 +224,26 @@ public final class LocalCapture {
                     tail(handle));
         }
 
-        // 7. LE TÉMOIN. Il ne prévient que l'utilisateur du poste, ET C'EST SON BUT : éviter la
-        //    capture oubliée qui tourne trois heures.
-        witness.show(record, () -> stopQuietly(id));
-
+        // 8. LE TÉMOIN. Il ne prévient que l'utilisateur du poste, ET C'EST SON BUT : éviter la
+        //    capture oubliée qui tourne trois heures. Ce qu'il n'a pas pu faire est NOMMÉ.
         live = new Live(record, handle);
+        try {
+            record.addGaps(witness.show(record, () -> stopQuietly(id)));
+        } catch (CaptureWitnessException e) {
+            // La fenêtre a refusé de se construire APRÈS le lancement : on n'enregistre pas sans
+            // témoin, donc on défait ce qu'on vient de faire plutôt que de continuer sans lui.
+            handle.destroy();
+            live = null;
+            throw new CaptureRefusedException(CaptureRefusedException.NO_WITNESS, e.getMessage(),
+                    e.remedy(), e);
+        }
+
+        // 9. L'arrêt de sécurité, armé maintenant et DIT maintenant : une limite qu'on apprend en
+        //    la heurtant est une panne.
+        ceiling.arm(() -> stopAtCeiling(id));
         store.save(record);
-        say.accept(consent.describe() + " " + record.describe(clock.get()));
+        say.accept(consent.describe() + " " + ceiling.sentence() + " "
+                + record.describe(clock.get()));
         return record;
     }
 
@@ -267,7 +302,8 @@ public final class LocalCapture {
 
     /**
      * L'arrêt demandé <b>par le témoin</b> (SF-91-02) : il ne peut pas lever, parce qu'il n'y a
-     * personne pour lire l'exception derrière un bouton.
+     * personne pour lire l'exception derrière un bouton. Un second clic sur un témoin resté ouvert
+     * ne doit pas non plus faire remonter quoi que ce soit.
      */
     void stopQuietly(String id) {
         try {
@@ -275,6 +311,25 @@ public final class LocalCapture {
         } catch (RuntimeException e) {
             say.accept("L'arrêt demandé depuis le témoin n'a pas abouti : " + e.getMessage());
         }
+    }
+
+    /**
+     * <b>L'arrêt de sécurité</b> (SF-91-02) : au bout du plafond, la capture s'arrête d'elle-même.
+     *
+     * <p>Elle ne s'arrête pas en silence : le manque est <b>nommé dans l'état</b>, pour que le
+     * compte rendu qui suivra dise que l'enregistrement a été coupé — et non qu'il couvre toute la
+     * réunion.</p>
+     */
+    void stopAtCeiling(String id) {
+        Live running = live;
+        if (running == null || !running.record().id().equals(id)) {
+            return;
+        }
+        running.record().addGap(new TeamsGap(TeamsGapKind.CAP_REACHED, "durée de la capture",
+                "l'enregistrement a atteint le plafond de " + CaptureRecord.clock(ceiling.max())
+                        + " et s'est arrêté de lui-même : ce qui s'est passé après n'y est pas", 1));
+        say.accept("Plafond de durée atteint : j'arrête cet enregistrement de moi-même.");
+        stopQuietly(id);
     }
 
     // ------------------------------------------------------------------ interne
@@ -294,6 +349,7 @@ public final class LocalCapture {
             handle.awaitExit(2_000L);
         }
         live = null;
+        ceiling.disarm();
         witness.hide();
 
         Path video = Path.of(record.video());
@@ -395,22 +451,42 @@ public final class LocalCapture {
     public interface Witness {
 
         /**
+         * Peut-on montrer un témoin sur ce poste ? Demandé <b>avant</b> qu'on lance quoi que ce
+         * soit : un refus ne doit rien laisser derrière lui.
+         *
+         * @throws CaptureWitnessException quand il n'y a pas d'environnement graphique
+         */
+        void requireAvailable();
+
+        /**
          * Montre le témoin pour cette capture.
          *
          * @param record la capture qui vient de démarrer
          * @param stop   ce qu'il faut appeler quand l'utilisateur clique « arrêter »
+         * @return <b>ce qui n'a pas pu être fait</b> — par exemple un système qui refuse le premier
+         *         plan : on montre quand même, et on le nomme
          */
-        void show(CaptureRecord record, Runnable stop);
+        List<TeamsGap> show(CaptureRecord record, Runnable stop);
 
         /** Efface le témoin. */
         void hide();
 
-        /** Aucun témoin : le comportement des tests, et d'un runner sans environnement graphique. */
+        /**
+         * <b>Aucun témoin.</b> Ce n'est pas un mode dégradé du produit : c'est ce qu'utilisent les
+         * tests, et ce dont un runner se sert avant qu'on lui branche le vrai. Un runner réel qui
+         * garderait celui-ci capturerait sans garde-fou n° 3 — d'où le montage explicite dans
+         * {@code ToolStack}.
+         */
         static Witness none() {
             return new Witness() {
                 @Override
-                public void show(CaptureRecord record, Runnable stop) {
-                    // Rien à montrer.
+                public void requireAvailable() {
+                    // Rien à vérifier.
+                }
+
+                @Override
+                public List<TeamsGap> show(CaptureRecord record, Runnable stop) {
+                    return List.of();
                 }
 
                 @Override

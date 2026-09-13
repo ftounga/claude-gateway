@@ -125,7 +125,8 @@ class TeamsMomentsToolsTest {
     void le_catalogue_du_runner_porte_les_deux_outils_nouveaux() {
         assertTrue(TeamsTools.CATALOG.contains(TeamsTools.MEETING_MOMENTS));
         assertTrue(TeamsTools.CATALOG.contains(TeamsTools.MOMENTS_STATUS));
-        assertEquals(10, TeamsTools.CATALOG.size());
+        // Treize depuis F-91 / SF-91-02, qui a ajouté les trois outils d'enregistrement local.
+        assertEquals(13, TeamsTools.CATALOG.size());
         assertEquals(TeamsTools.CATALOG.size(), TeamsTools.CATALOG.stream().distinct().count());
     }
 

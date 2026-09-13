@@ -159,52 +159,158 @@ class LocalCaptureTest {
         @Test
         @DisplayName("le témoin est montré au démarrage, effacé à l'arrêt")
         void witnessFollowsTheCapture() {
-            AtomicReference<Runnable> stop = new AtomicReference<>();
-            List<String> events = new ArrayList<>();
+            PaperWitness paper = new PaperWitness();
             LocalCapture capture = capture(withFfmpegKnowingDrawtext(), someFont())
-                    .withWitness(new LocalCapture.Witness() {
-                        @Override
-                        public void show(CaptureRecord record, Runnable onStop) {
-                            events.add("show:" + record.id());
-                            stop.set(onStop);
-                        }
-
-                        @Override
-                        public void hide() {
-                            events.add("hide");
-                        }
-                    });
+                    .withWitness(paper);
 
             CaptureRecord record = capture.start(selfScreen());
-            assertEquals(List.of("show:" + record.id()), events);
+            assertEquals(List.of("show:" + record.id()), paper.events);
 
             capture.stop(record.id());
-            assertEquals(List.of("show:" + record.id(), "hide"), events);
+            assertEquals(List.of("show:" + record.id(), "hide"), paper.events);
         }
 
         @Test
         @DisplayName("le bouton du témoin arrête vraiment la capture, et ne lève jamais")
         void witnessButtonStops() {
-            AtomicReference<Runnable> stop = new AtomicReference<>();
+            PaperWitness paper = new PaperWitness();
             LocalCapture capture = capture(withFfmpegKnowingDrawtext(), someFont())
-                    .withWitness(new LocalCapture.Witness() {
-                        @Override
-                        public void show(CaptureRecord record, Runnable onStop) {
-                            stop.set(onStop);
-                        }
-
-                        @Override
-                        public void hide() {
-                            // Rien.
-                        }
-                    });
+                    .withWitness(paper);
 
             CaptureRecord record = capture.start(selfScreen());
-            stop.get().run();
+            paper.stop.get().run();
 
             assertTrue(capture.find(record.id()).orElseThrow().isOver());
             // Un second clic sur un témoin resté ouvert ne doit pas faire remonter d'exception.
-            stop.get().run();
+            paper.stop.get().run();
+        }
+
+        @Test
+        @DisplayName("aucun témoin possible : REFUS de capturer, et AUCUN processus lancé")
+        void noWitnessNoCapture() {
+            PaperWitness paper = new PaperWitness().impossible();
+            LocalCapture capture = capture(withFfmpegKnowingDrawtext(), someFont())
+                    .withWitness(paper);
+
+            CaptureRefusedException refused = assertThrows(CaptureRefusedException.class,
+                    () -> capture.start(selfScreen()));
+
+            assertEquals(CaptureRefusedException.NO_WITNESS, refused.code());
+            assertTrue(sessions.calls.isEmpty(), "rien ne doit avoir été lancé");
+            // Et le refus arrive AVANT d'aller chercher ffmpeg : il ne laisse rien derrière lui.
+            assertTrue(processes.calls.isEmpty());
+        }
+
+        @Test
+        @DisplayName("premier plan refusé par le système : montré quand même, ET le manque est nommé")
+        void alwaysOnTopRefusedIsNamed() {
+            PaperWitness paper = new PaperWitness().unableToStayOnTop();
+            LocalCapture capture = capture(withFfmpegKnowingDrawtext(), someFont())
+                    .withWitness(paper);
+
+            CaptureRecord record = capture.start(selfScreen());
+
+            assertTrue(record.gaps().stream()
+                    .anyMatch(gap -> gap.detail().contains("au-dessus des autres fenêtres")),
+                    record.gaps().toString());
+            assertTrue(record.describe(now).contains("Ce qui n'a pas pu être fait"));
+        }
+    }
+
+    // ------------------------------------------------------------------ l'arrêt de sécurité
+
+    @Nested
+    @DisplayName("L'arrêt de sécurité — la capture oubliée traitée jusqu'au bout")
+    class Ceiling {
+
+        @Test
+        @DisplayName("au plafond, la capture s'arrête d'elle-même ET le dit")
+        void ceilingStopsAndSaysSo() {
+            AtomicReference<Runnable> alarm = new AtomicReference<>();
+            LocalCapture capture = capture(withFfmpegKnowingDrawtext(), someFont())
+                    .withCeiling(new CaptureCeiling(java.time.Duration.ofHours(3),
+                            (delay, task) -> {
+                                alarm.set(task);
+                                return () -> { };
+                            }));
+            CaptureRecord record = capture.start(selfScreen());
+
+            alarm.get().run();
+
+            CaptureRecord stopped = capture.find(record.id()).orElseThrow();
+            assertTrue(stopped.isOver());
+            assertTrue(stopped.gaps().stream()
+                    .anyMatch(gap -> gap.kind() == TeamsGapKind.CAP_REACHED),
+                    stopped.gaps().toString());
+            assertTrue(String.join(" ", said).contains("Plafond de durée atteint"));
+        }
+
+        @Test
+        @DisplayName("le plafond est DIT au démarrage, jamais découvert à l'arrêt")
+        void ceilingIsAnnouncedAtStart() {
+            LocalCapture capture = capture(withFfmpegKnowingDrawtext(), someFont());
+
+            capture.start(selfScreen());
+
+            assertTrue(String.join(" ", said).contains("s'arrêtera d'elle-même"),
+                    String.join(" ", said));
+        }
+
+        @Test
+        @DisplayName("une capture arrêtée à temps désarme le plafond")
+        void stoppingDisarms() {
+            List<String> cancelled = new ArrayList<>();
+            LocalCapture capture = capture(withFfmpegKnowingDrawtext(), someFont())
+                    .withCeiling(new CaptureCeiling(java.time.Duration.ofHours(3),
+                            (delay, task) -> () -> cancelled.add("annulé")));
+            CaptureRecord record = capture.start(selfScreen());
+
+            capture.stop(record.id());
+
+            assertEquals(List.of("annulé"), cancelled);
+        }
+    }
+
+    /** Un témoin de papier : le CI est sans écran, aucune fenêtre n'y est jamais construite. */
+    private static final class PaperWitness implements LocalCapture.Witness {
+
+        final List<String> events = new ArrayList<>();
+        final AtomicReference<Runnable> stop = new AtomicReference<>();
+        private boolean available = true;
+        private boolean onTop = true;
+
+        PaperWitness impossible() {
+            this.available = false;
+            return this;
+        }
+
+        PaperWitness unableToStayOnTop() {
+            this.onTop = false;
+            return this;
+        }
+
+        @Override
+        public void requireAvailable() {
+            if (!available) {
+                throw new CaptureWitnessException("pas d'environnement graphique sur ce poste",
+                        "lancez le runner depuis la session graphique");
+            }
+        }
+
+        @Override
+        public List<TeamsGap> show(CaptureRecord record, Runnable onStop) {
+            requireAvailable();
+            events.add("show:" + record.id());
+            stop.set(onStop);
+            return onTop ? List.of()
+                    : List.of(new TeamsGap(TeamsGapKind.NOTHING_OBSERVED, "témoin d'enregistrement",
+                            "ce système ne permet pas de garder le témoin au-dessus des autres "
+                                    + "fenêtres", 1));
+        }
+
+        @Override
+        public void hide() {
+            events.add("hide");
         }
     }
 
