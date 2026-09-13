@@ -597,6 +597,18 @@ poste ouvert.
 - **Téléphone (< 820 px)** : `/forge` montre la colonne plein écran, `/forge/<id>` le détail plein
   écran avec un lien « ← Postes » (13 px secondaire) ; la même URL sert les deux tailles.
 
+### La Vigie emploie la même forme (ajout F-106 / SF-106-02, 2026-09-13)
+
+- **Aucune forme ni couleur nouvelle.** Le bandeau, la colonne (`app-forge-rail`, avec les mots
+  « Clients », « Filtrer les clients », « Ajouter un client ») et l'en-tête à onglets viennent de
+  `postes/_forge-layout.scss`, **employé** par les deux écrans, jamais recopié.
+- Bandeau « Vigie » : clients en ligne, **relances dues** (point et chiffre ambre §12, seulement s'il y
+  en a), sujets bloqués, synchro en mots. La pastille d'attente de la colonne dit « *k* relance(s) ».
+- Onglets **Radar · Conversations · Réunions · Personnes** ; un onglet sans contenu encore porte un
+  **état vide explicite** (surface blanche, filet pointillé `--cg-divider`, icône `--cg-accent`).
+- **Une personne de l'annuaire n'a pas de ton d'identité** : les dix tons du §9 restent réservés aux
+  machines ; elle porte l'icône `person` en texte secondaire.
+
 ---
 
 ## Logo & marque (ajout 2026-07-03)

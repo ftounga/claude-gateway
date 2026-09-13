@@ -1,0 +1,476 @@
+import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { map } from 'rxjs';
+import { MatButtonModule } from '@angular/material/button';
+import { MatCardModule } from '@angular/material/card';
+import { MatDialog } from '@angular/material/dialog';
+import { MatIconModule } from '@angular/material/icon';
+import { MatMenuModule } from '@angular/material/menu';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSnackBar } from '@angular/material/snack-bar';
+import { MatTooltipModule } from '@angular/material/tooltip';
+
+import { RunnerHostOverview } from '../core/models/atelier.models';
+import { VigiePerson, VigieRadarCounts } from '../core/models/vigie.models';
+import { AtelierService } from '../core/services/atelier.service';
+import { HostPresenceService } from '../core/services/host-presence.service';
+import { VigieService } from '../core/services/vigie.service';
+import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
+import { MissionBadgeComponent } from '../shared/mission-badge/mission-badge.component';
+import {
+  FORGE_ACCESS_BILLING_ROUTE,
+  FORGE_ACCESS_CODE_FRAGMENT,
+} from '../shared/forge-access';
+import { httpErrorMessage } from '../shared/http-error.util';
+import { isMissionClosed } from '../shared/mission-status';
+import {
+  RunnerPairingDialogComponent,
+  RunnerPairingDialogData,
+} from '../atelier/runner/runner-pairing-dialog.component';
+import { ForgeRailComponent } from '../postes/forge-rail/forge-rail.component';
+import { ForgeRow, defaultHostRef, groupHosts, hostRef } from '../postes/forge-fleet';
+import {
+  AddClientDialogComponent,
+  AddClientDialogResult,
+} from './add-client-dialog/add-client-dialog.component';
+import {
+  RemoveClientDialogComponent,
+  RemoveClientDialogData,
+  RemoveClientDialogResult,
+} from './remove-client-dialog/remove-client-dialog.component';
+import {
+  VIGIE_TABS,
+  VIGIE_TAB_LABELS,
+  VigieTab,
+  effectiveVigieTab,
+  fleetSummary,
+  followUpLabel,
+  syncLabel,
+  syncNeedsAttention,
+} from './vigie-fleet';
+
+/** Période de rafraîchissement de la vue, comme la Forge. */
+export const VIGIE_REFRESH_MS = 15_000;
+
+/** Ce qui empêche la Vigie d'exister. */
+export type VigieError = 'none' | 'network' | 'forbidden' | 'not-entitled';
+
+/**
+ * **La Vigie** (F-106 / SF-106-02) — l'espace du pilotage, à côté de la Forge.
+ *
+ * <p>La même forme que la Forge refondue (F-98) : un bandeau de flotte, la colonne des clients, un
+ * seul client ouvert et ses onglets. La colonne est <b>le même composant</b> que celle de la Forge ;
+ * seuls ses mots changent. Ce qui attend l'utilisateur ici n'est pas une autorisation mais une
+ * <b>relance due</b> : c'est elle qui range un client dans « À regarder ».</p>
+ *
+ * <p><b>Un client, deux regards</b> : on n'importe pas un poste dans la Vigie, on l'y active
+ * (SF-106-01). Rien de ce que fait cet écran ne copie ni ne supprime un poste.</p>
+ */
+@Component({
+  selector: 'app-vigie',
+  imports: [
+    RouterLink,
+    ForgeRailComponent,
+    HostBadgeComponent,
+    MissionBadgeComponent,
+    MatButtonModule,
+    MatCardModule,
+    MatIconModule,
+    MatMenuModule,
+    MatProgressSpinnerModule,
+    MatTooltipModule,
+  ],
+  templateUrl: './vigie.component.html',
+  styleUrl: './vigie.component.scss',
+})
+export class VigieComponent implements OnInit {
+  private readonly atelier = inject(AtelierService);
+  private readonly vigie = inject(VigieService);
+  private readonly presence = inject(HostPresenceService);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  private readonly dialog = inject(MatDialog);
+  private readonly snackBar = inject(MatSnackBar);
+  private readonly destroyRef = inject(DestroyRef);
+
+  readonly billingRoute = FORGE_ACCESS_BILLING_ROUTE;
+  readonly accessCodeFragment = FORGE_ACCESS_CODE_FRAGMENT;
+  readonly tabs = VIGIE_TABS;
+  readonly followUpLabel = followUpLabel;
+
+  readonly hosts = signal<RunnerHostOverview[]>([]);
+  readonly loading = signal(true);
+  readonly error = signal<VigieError>('none');
+  readonly filter = signal('');
+  readonly closedOpen = signal(false);
+  /** Les compteurs du Radar par client, lus une fois par page. */
+  readonly radarCounts = signal<Record<string, VigieRadarCounts>>({});
+  /** L'annuaire par client, lu à l'ouverture de l'onglet Personnes. */
+  readonly people = signal<Record<string, VigiePerson[] | 'error'>>({});
+  readonly busyHostId = signal<string | null>(null);
+
+  private readonly countsRead = new Set<string>();
+  private readonly peopleRead = new Set<string>();
+  private timer: ReturnType<typeof setInterval> | null = null;
+
+  private readonly routeHostRef = toSignal(
+    this.route.paramMap.pipe(map((params) => params.get('hostRef'))),
+    { initialValue: null },
+  );
+
+  private readonly routeTab = toSignal(
+    this.route.queryParamMap.pipe(map((params) => params.get('onglet'))),
+    { initialValue: null },
+  );
+
+  readonly activeTab = computed<VigieTab>(() => effectiveVigieTab(this.routeTab()));
+
+  readonly openHosts = computed(() =>
+    this.hosts().filter((host) => !isMissionClosed(host.missionStatus)));
+
+  readonly onlineCount = computed(() =>
+    this.openHosts().filter((host) => this.online(host)).length);
+
+  readonly summary = computed(() => fleetSummary(this.radarCounts()));
+
+  readonly isEmpty = computed(() => !this.loading() && this.error() === 'none'
+    && this.hosts().length === 0);
+
+  readonly groups = computed(() =>
+    groupHosts(this.hosts(), (host) => this.online(host), this.filter(),
+      (host) => this.followUpsOf(host)));
+
+  readonly selectedRef = computed<string | null>(() => {
+    const hosts = this.hosts();
+    if (hosts.length === 0) {
+      return null;
+    }
+    const wanted = this.routeHostRef();
+    if (wanted && hosts.some((host) => hostRef(host) === wanted)) {
+      return wanted;
+    }
+    return defaultHostRef(hosts, (host) => this.online(host), (host) => this.followUpsOf(host));
+  });
+
+  readonly selectedHost = computed<RunnerHostOverview | null>(() =>
+    this.hosts().find((host) => hostRef(host) === this.selectedRef()) ?? null);
+
+  readonly detailOpen = computed(() => this.routeHostRef() !== null);
+
+  ngOnInit(): void {
+    const releaseClock = this.presence.watchClock();
+    this.destroyRef.onDestroy(() => {
+      releaseClock();
+      this.stopPolling();
+      document.removeEventListener('visibilitychange', this.onVisibilityChange);
+    });
+    // Le droit d'abord : sans lui, la Vigie n'a rien à lire (droit Teams, en attendant F-107).
+    this.atelier.teamsAccess().subscribe({
+      next: (access) => {
+        if (access.entitled === true) {
+          this.start();
+        } else {
+          this.deny();
+        }
+      },
+      error: () => this.deny(),
+    });
+  }
+
+  // ------------------------------------------------------------ colonne et client ouvert
+
+  selectHost(row: ForgeRow): void {
+    void this.router.navigate(['/vigie', row.ref], { queryParamsHandling: 'preserve' });
+  }
+
+  toggleClosed(): void {
+    this.closedOpen.update((open) => !open);
+  }
+
+  refresh(): void {
+    this.countsRead.clear();
+    this.peopleRead.clear();
+    this.load(this.hosts().length === 0);
+  }
+
+  tabLabel(tab: VigieTab): string {
+    return VIGIE_TAB_LABELS[tab];
+  }
+
+  selectTab(tab: VigieTab): void {
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { onglet: tab === 'radar' ? null : tab },
+      queryParamsHandling: 'merge',
+    });
+    if (tab === 'personnes') {
+      this.loadPeople(this.selectedHost());
+    }
+  }
+
+  online(host: RunnerHostOverview): boolean {
+    return this.presence.isOnline(host.id, host.connected);
+  }
+
+  presenceState(host: RunnerHostOverview): string {
+    const [state] = this.presence.label(host.id, host.connected, host.lastSeenAt).split(' · ');
+    return state.charAt(0).toUpperCase() + state.slice(1);
+  }
+
+  presenceSeen(host: RunnerHostOverview): string | null {
+    return this.presence.label(host.id, host.connected, host.lastSeenAt).split(' · ')[1] ?? null;
+  }
+
+  followUpsOf(host: RunnerHostOverview): number {
+    return host.id === null ? 0 : this.radarCounts()[host.id]?.followUpsDue ?? 0;
+  }
+
+  countsOf(host: RunnerHostOverview): VigieRadarCounts | null {
+    return host.id === null ? null : this.radarCounts()[host.id] ?? null;
+  }
+
+  syncLabel = syncLabel;
+  syncNeedsAttention = syncNeedsAttention;
+
+  inForge(host: RunnerHostOverview): boolean {
+    return (host.spaces ?? ['FORGE']).includes('FORGE');
+  }
+
+  peopleOf(host: RunnerHostOverview): VigiePerson[] | 'error' | null {
+    return host.id === null ? null : this.people()[host.id] ?? null;
+  }
+
+  lastInteraction(person: VigiePerson): string | null {
+    if (!person.lastInteractionAt) {
+      return null;
+    }
+    const date = new Date(person.lastInteractionAt);
+    return Number.isNaN(date.getTime()) ? null
+      : date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+  }
+
+  subjectsLabel(person: VigiePerson): string {
+    const count = person.subjects?.length ?? 0;
+    return count === 1 ? '1 sujet' : `${count} sujets`;
+  }
+
+  // ------------------------------------------------------------ ajouter, retirer
+
+  addClient(): void {
+    this.dialog
+      .open<AddClientDialogComponent, void, AddClientDialogResult>(AddClientDialogComponent, {
+        width: AddClientDialogComponent.DIALOG_WIDTH,
+        maxWidth: '95vw',
+        autoFocus: false,
+      })
+      .afterClosed()
+      .subscribe((result) => {
+        if (!result) {
+          return;
+        }
+        if (result.kind === 'connect') {
+          this.connectClient();
+          return;
+        }
+        this.load(false);
+        void this.router.navigate(['/vigie', result.hostId], { queryParamsHandling: 'preserve' });
+      });
+  }
+
+  connectClient(): void {
+    this.dialog
+      .open(RunnerPairingDialogComponent, {
+        data: { space: 'VIGIE' } satisfies RunnerPairingDialogData,
+        width: RunnerPairingDialogComponent.DIALOG_WIDTH,
+        maxWidth: '95vw',
+        autoFocus: false,
+      })
+      .afterClosed()
+      .subscribe(() => this.load(false));
+  }
+
+  activateInForge(host: RunnerHostOverview): void {
+    const hostId = host.id;
+    if (hostId === null || this.busyHostId() !== null) {
+      return;
+    }
+    this.busyHostId.set(hostId);
+    this.vigie.activate(hostId, 'FORGE').subscribe({
+      next: () => {
+        this.busyHostId.set(null);
+        this.snackBar.open(`« ${host.name} » est aussi dans la Forge.`, 'Fermer', { duration: 5000 });
+        this.load(false);
+      },
+      error: (err: unknown) => {
+        this.busyHostId.set(null);
+        this.fail(err, "Le client n'a pas pu être activé dans la Forge. Rien n'a changé.");
+      },
+    });
+  }
+
+  removeClient(host: RunnerHostOverview): void {
+    const hostId = host.id;
+    if (hostId === null || this.busyHostId() !== null) {
+      return;
+    }
+    const data: RemoveClientDialogData = { hostName: host.name, inForge: this.inForge(host) };
+    this.dialog
+      .open<RemoveClientDialogComponent, RemoveClientDialogData, RemoveClientDialogResult>(
+        RemoveClientDialogComponent, { data, width: '520px', maxWidth: '95vw', autoFocus: false })
+      .afterClosed()
+      .subscribe((result) => {
+        if (result?.confirmed === true) {
+          this.doRemove(hostId, host.name, result.purgeRadar === true);
+        }
+      });
+  }
+
+  private doRemove(hostId: string, name: string, purgeRadar: boolean): void {
+    this.busyHostId.set(hostId);
+    this.vigie.remove(hostId, 'VIGIE').subscribe({
+      next: () => {
+        const done = () => {
+          this.busyHostId.set(null);
+          this.load(false);
+          void this.router.navigate(['/vigie'], { queryParamsHandling: 'preserve' });
+        };
+        if (!purgeRadar) {
+          this.snackBar.open(`« ${name} » est retiré de la Vigie. Rien n'a été supprimé.`, 'Fermer',
+            { duration: 5000 });
+          done();
+          return;
+        }
+        this.vigie.purgeRadar(hostId).subscribe({
+          next: () => {
+            this.snackBar.open(`« ${name} » est retiré de la Vigie, et son Radar est effacé.`,
+              'Fermer', { duration: 5000 });
+            done();
+          },
+          error: () => {
+            this.snackBar.open("Le client est retiré, mais son Radar n'a pas pu être effacé.",
+              'Fermer', { duration: 8000, panelClass: 'snack-error' });
+            done();
+          },
+        });
+      },
+      error: (err: unknown) => {
+        this.busyHostId.set(null);
+        this.fail(err, "Le client n'a pas pu être retiré de la Vigie. Rien n'a changé.");
+      },
+    });
+  }
+
+  // ------------------------------------------------------------ interne
+
+  private deny(): void {
+    this.loading.set(false);
+    this.error.set('not-entitled');
+  }
+
+  private start(): void {
+    this.load(true);
+    this.startPolling();
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
+  }
+
+  private load(blocking: boolean): void {
+    if (blocking) {
+      this.loading.set(true);
+    }
+    this.atelier.runnerHostsOverview('VIGIE').subscribe({
+      next: (hosts) => {
+        for (const host of hosts) {
+          this.presence.record(host.id, host.connected, host.lastSeenAt);
+        }
+        // La Vigie ne montre pas les projets : le filtre ne doit pas retenir un client par eux.
+        const clients = hosts
+          .filter((host) => host.virtual !== true && host.id !== null)
+          .map((host) => ({ ...host, projects: [] }));
+        this.hosts.set(clients);
+        this.error.set('none');
+        this.loading.set(false);
+        this.loadCounts(clients);
+        this.revealClosedSelection();
+        if (this.activeTab() === 'personnes') {
+          this.loadPeople(this.selectedHost());
+        }
+      },
+      error: (err: unknown) => {
+        this.loading.set(false);
+        if (err instanceof HttpErrorResponse && err.status === 403) {
+          this.error.set('forbidden');
+          this.hosts.set([]);
+          this.stopPolling();
+          return;
+        }
+        if (blocking) {
+          this.error.set('network');
+        }
+      },
+    });
+  }
+
+  /** Les compteurs du Radar, une fois par client et par page — jamais au sondage. */
+  private loadCounts(hosts: RunnerHostOverview[]): void {
+    for (const host of hosts) {
+      const hostId = host.id;
+      if (hostId === null || this.countsRead.has(hostId)) {
+        continue;
+      }
+      this.countsRead.add(hostId);
+      this.vigie.radarCounts(hostId).subscribe({
+        next: (counts) => this.radarCounts.update((all) => ({ ...all, [hostId]: counts })),
+        error: () => this.countsRead.delete(hostId),
+      });
+    }
+  }
+
+  private loadPeople(host: RunnerHostOverview | null): void {
+    const hostId = host?.id ?? null;
+    if (hostId === null || this.peopleRead.has(hostId)) {
+      return;
+    }
+    this.peopleRead.add(hostId);
+    this.vigie.people(hostId).subscribe({
+      next: (people) => this.people.update((all) => ({ ...all, [hostId]: people ?? [] })),
+      error: () => this.people.update((all) => ({ ...all, [hostId]: 'error' })),
+    });
+  }
+
+  private revealClosedSelection(): void {
+    const host = this.selectedHost();
+    if (host && isMissionClosed(host.missionStatus)) {
+      this.closedOpen.set(true);
+    }
+  }
+
+  private fail(err: unknown, fallback: string): void {
+    this.snackBar.open(httpErrorMessage(err, fallback), 'Fermer',
+      { duration: 6000, panelClass: 'snack-error' });
+  }
+
+  private startPolling(): void {
+    this.stopPolling();
+    this.timer = setInterval(() => this.load(false), VIGIE_REFRESH_MS);
+  }
+
+  private stopPolling(): void {
+    if (this.timer !== null) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+  }
+
+  private readonly onVisibilityChange = (): void => {
+    if (document.visibilityState === 'hidden') {
+      this.stopPolling();
+      return;
+    }
+    if (this.error() === 'none') {
+      this.load(false);
+      this.startPolling();
+    }
+  };
+}

@@ -72,6 +72,12 @@ export class ShellComponent {
       || path === '/atelier' || path.startsWith('/atelier/');
   });
 
+  /** L'entrée « Vigie » est-elle la section où l'on se trouve (F-106 / SF-106-02) ? */
+  protected readonly vigieActive = computed(() => {
+    const path = (this.currentUrl() ?? '').split('?')[0].split('#')[0];
+    return path === '/vigie' || path.startsWith('/vigie/');
+  });
+
   /** Déconnexion : purge la session serveur puis redirige vers /login (best-effort en cas d'échec réseau). */
   logout(): void {
     this.auth.logout().subscribe({

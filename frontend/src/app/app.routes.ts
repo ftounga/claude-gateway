@@ -37,6 +37,23 @@ export function forgeMatcher(segments: UrlSegment[]): UrlMatchResult | null {
   return null;
 }
 
+/**
+ * **`/vigie` et `/vigie/:hostRef`** (F-106 / SF-106-02) — une seule configuration de route, comme la
+ * Forge : passer d'un client à l'autre ne recrée pas l'écran.
+ */
+export function vigieMatcher(segments: UrlSegment[]): UrlMatchResult | null {
+  if (segments.length === 0 || segments[0].path !== 'vigie') {
+    return null;
+  }
+  if (segments.length === 1) {
+    return { consumed: segments };
+  }
+  if (segments.length === 2) {
+    return { consumed: segments, posParams: { hostRef: segments[1] } };
+  }
+  return null;
+}
+
 export const routes: Routes = [
   // ---- Pages publiques (hors coquille) ----
   {
@@ -168,6 +185,12 @@ export const routes: Routes = [
         // le rend vrai deux fois.
         matcher: forgeMatcher,
         loadComponent: () => import('./postes/postes.component').then((m) => m.PostesComponent),
+      },
+      {
+        // F-106 / SF-106-02 — **la Vigie**, l'espace du pilotage : la même forme maître–détail que la
+        // Forge. Préfixe disjoint de `forge` et d'`atelier` : elle n'en masque aucune.
+        matcher: vigieMatcher,
+        loadComponent: () => import('./vigie/vigie.component').then((m) => m.VigieComponent),
       },
       {
         // L'ancienne adresse (F-49 / SF-49-02) continue de répondre : un onglet resté ouvert ou un

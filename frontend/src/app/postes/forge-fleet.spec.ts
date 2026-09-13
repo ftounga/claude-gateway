@@ -100,4 +100,17 @@ describe('forge-fleet', () => {
     expect(defaultHostRef([closed, hosted], online)).toBe(HOSTED_REF);
     expect(defaultHostRef([], online)).toBe(HOSTED_REF);
   });
+
+  it('range par ce qui attend dans l’espace : les relances dues de la Vigie (F-106)', () => {
+    const followUps = (h: RunnerHostOverview) => (h.id === 'h2' ? 3 : 0);
+    const hosts = [host('h1', 'FREE'), host('h2', 'CAGIP', { connected: false })];
+
+    const groups = groupHosts(hosts, online, '', followUps);
+
+    expect(groups.map((g) => g.key)).toEqual(['attention', 'online']);
+    expect(groups[0].rows[0].awaiting).toBe(3);
+    expect(defaultHostRef(hosts, online, followUps)).toBe('h2');
+    // Sans la fonction, la règle de la Forge est inchangée.
+    expect(defaultHostRef(hosts, online)).toBe('h1');
+  });
 });

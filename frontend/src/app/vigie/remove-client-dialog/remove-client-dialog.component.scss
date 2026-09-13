@@ -1,0 +1,20 @@
+// Retirer un client de la Vigie (F-106 / SF-106-02) — aucune couleur hors charte (§2, §5).
+
+.remove-client__safe {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-3);
+  border-radius: 8px;
+  background: var(--cg-bg);
+
+  mat-icon {
+    color: var(--cg-success);
+    flex: none;
+  }
+}
+
+.remove-client__purge {
+  display: block;
+  margin-top: var(--cg-space-3);
+}

@@ -298,7 +298,15 @@ export interface RunnerHost {
 /** Corps de création et de renommage d'un poste (F-48 / SF-48-01). */
 export interface RunnerHostRequest {
   name: string;
+  /** Espace où le poste naît (F-106 / SF-106-01) ; absent = la Forge. */
+  space?: ClientSpace;
 }
+
+/**
+ * Les deux **espaces** d'un client (F-106 / SF-106-01) : la Forge (faire) et la Vigie (piloter). Un
+ * poste reste une seule entité ; les espaces sont deux regards sur lui.
+ */
+export type ClientSpace = 'FORGE' | 'VIGIE';
 
 /**
  * Corps de `PUT /api/runner-hosts/{id}/mission` (F-60 / SF-60-01) : l'état de mission **déclaré**.
@@ -1104,6 +1112,8 @@ export interface RunnerHostOverview {
   /** Vrai si un onglet vit sur le terminal Teams **maintenant** (F-70 / F-89). */
   teamsTerminalLive?: boolean;
   projects: HostProjectSummary[];
+  /** Les espaces où ce client est activé (F-106 / SF-106-01) ; absent d'une gateway antérieure. */
+  spaces?: ClientSpace[];
 }
 
 /**

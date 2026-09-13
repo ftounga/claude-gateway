@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Route, Router, UrlSegment, provideRouter } from '@angular/router';
 
-import { forgeMatcher, routes } from './app.routes';
+import { forgeMatcher, routes, vigieMatcher } from './app.routes';
 import { authGuard } from './core/guards/auth.guard';
 
 /**
@@ -94,6 +94,31 @@ describe('app.routes', () => {
       expect(forgeMatcher(segments('forge', 'h1', 'x'))).toBeNull();
       expect(forgeMatcher(segments('atelier', 'w1'))).toBeNull();
       expect(forgeMatcher([])).toBeNull();
+    });
+  });
+
+  // ---- F-106 / SF-106-02 : la Vigie ----
+
+  describe('la Vigie (F-106)', () => {
+    const segments = (...paths: string[]) => paths.map((path) => new UrlSegment(path, {}));
+
+    it('/vigie et /vigie/<id> : une seule route, le client dans le paramètre', () => {
+      expect(vigieMatcher(segments('vigie'))?.consumed.length).toBe(1);
+      const match = vigieMatcher(segments('vigie', 'h1'));
+      expect(match?.posParams?.['hostRef'].path).toBe('h1');
+    });
+
+    it("ne capte ni la Forge, ni l'atelier, ni les chemins plus profonds", () => {
+      expect(vigieMatcher(segments('forge', 'h1'))).toBeNull();
+      expect(vigieMatcher(segments('atelier', 'w1'))).toBeNull();
+      expect(vigieMatcher(segments('vigie', 'h1', 'x'))).toBeNull();
+      expect(vigieMatcher([])).toBeNull();
+      expect(forgeMatcher(segments('vigie'))).toBeNull();
+    });
+
+    it('est déclarée sous la route authentifiée', () => {
+      const children = routes[guardedParentIndex()].children ?? [];
+      expect(children.some((child) => child.matcher === vigieMatcher)).toBeTrue();
     });
   });
 

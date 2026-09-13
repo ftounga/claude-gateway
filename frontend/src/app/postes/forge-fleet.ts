@@ -85,11 +85,14 @@ export function filterMatch(host: RunnerHostOverview, filter: string): 'host' | 
  * aucun : c'est l'écran qui décide de dire « rien ne correspond ».
  *
  * @param online état de ligne d'un poste — lu dans `HostPresenceService` (F-97), jamais recalculé ici.
+ * @param awaitingOf ce qui attend sur un poste : les autorisations dans la Forge, les relances dues
+ *        dans la Vigie (F-106 / SF-106-02).
  */
 export function groupHosts(
   hosts: RunnerHostOverview[],
   online: (host: RunnerHostOverview) => boolean,
   filter: string,
+  awaitingOf: (host: RunnerHostOverview) => number = awaitingCount,
 ): ForgeGroup[] {
   const buckets: Record<ForgeGroupKey, ForgeRow[]> = {
     attention: [], online: [], offline: [], hosted: [], closed: [],
@@ -102,7 +105,7 @@ export function groupHosts(
     const row: ForgeRow = {
       ref: hostRef(host),
       host,
-      awaiting: awaitingCount(host),
+      awaiting: awaitingOf(host),
       matchedProjects: match === 'host' ? null : match,
     };
     buckets[groupOf(host, row.awaiting, online)].push(row);
@@ -136,8 +139,9 @@ function groupOf(host: RunnerHostOverview, awaiting: number,
 export function defaultHostRef(
   hosts: RunnerHostOverview[],
   online: (host: RunnerHostOverview) => boolean,
+  awaitingOf: (host: RunnerHostOverview) => number = awaitingCount,
 ): string {
-  const groups = groupHosts(hosts, online, '');
+  const groups = groupHosts(hosts, online, '', awaitingOf);
   for (const key of ['attention', 'online', 'offline'] as ForgeGroupKey[]) {
     const first = groups.find((group) => group.key === key)?.rows[0];
     if (first) {
