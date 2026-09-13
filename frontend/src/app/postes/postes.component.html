@@ -465,6 +465,8 @@
               <app-forge-project-tile
                 [project]="project"
                 [hosted]="isHosted(host)"
+                [hostRef]="host.id"
+                [vigieSubjects]="vigieSubjectsOf(host, project)"
                 (open)="openTerminal($event)"
               ></app-forge-project-tile>
             }

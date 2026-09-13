@@ -4,6 +4,7 @@ import { Observable, catchError, map, of } from 'rxjs';
 
 import { ClientSpace } from '../models/atelier.models';
 import { RadarBrief } from '../models/radar.models';
+import { RadarProjectSubjects } from '../models/radar-subject.models';
 import {
   HostSpaces,
   VigiePerson,
@@ -61,6 +62,16 @@ export class VigieService {
    * compte zéro et « aucune synchro », jamais une erreur — le bandeau est un résumé, pas un
    * diagnostic.</p>
    */
+  /**
+   * **Les sujets de la Vigie liés à chaque projet** d'un client (F-106 / SF-106-06) — la passerelle que la
+   * Forge pose sur la tuile d'un projet. <b>Silencieux</b> : droit Vigie absent, client hors Vigie ou
+   * gateway antérieure rendent une liste vide, et la tuile ne dit rien.
+   */
+  projectSubjects(hostId: string): Observable<RadarProjectSubjects[]> {
+    return this.http.get<RadarProjectSubjects[]>(`/api/radar/hosts/${encodeURIComponent(hostId)}/project-subjects`)
+      .pipe(catchError(() => of([] as RadarProjectSubjects[])));
+  }
+
   radarCounts(hostId: string): Observable<VigieRadarCounts> {
     return this.http.get<RadarBrief>(`/api/radar/hosts/${hostId}/brief`).pipe(
       map((brief) => countsOfBrief(brief)),

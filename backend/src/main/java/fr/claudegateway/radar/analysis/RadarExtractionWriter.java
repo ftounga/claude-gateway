@@ -50,12 +50,15 @@ public class RadarExtractionWriter {
     private final RadarRegistry registry;
     private final RadarSubjectFactRepository facts;
     private final RadarEvidenceLinkRepository links;
+    /** F-106 / SF-106-06 : un échange qui nomme un projet du poste propose le lien. */
+    private final RadarProjectProposer projectProposer;
 
     public RadarExtractionWriter(RadarRegistry registry, RadarSubjectFactRepository facts,
-            RadarEvidenceLinkRepository links) {
+            RadarEvidenceLinkRepository links, RadarProjectProposer projectProposer) {
         this.registry = registry;
         this.facts = facts;
         this.links = links;
+        this.projectProposer = projectProposer;
     }
 
     /** Ce qu'une écriture a produit, pour les étapes suivantes (SF-101-04). */
@@ -113,9 +116,22 @@ public class RadarExtractionWriter {
         Session session = new Session(scope, extraction);
         List<UUID> subjectIds = new ArrayList<>();
         for (SubjectItem item : extraction.subjects()) {
-            subjectIds.add(writeSubject(session, item));
+            UUID subjectId = writeSubject(session, item);
+            subjectIds.add(subjectId);
+            // Une QUESTION posée à l'utilisateur, jamais un lien : la page du sujet la montre (SF-106-06).
+            projectProposer.propose(scope, subjectId, proposalTexts(item));
         }
         return new Written(session, subjectIds);
+    }
+
+    /** Ce qu'on lit pour proposer un projet : les messages qui prouvent le sujet et le titre de leurs échanges. */
+    private static List<String> proposalTexts(SubjectItem item) {
+        List<String> texts = new ArrayList<>();
+        for (MessageEntry entry : item.evidence()) {
+            texts.add(entry.exchange().title());
+            texts.add(entry.message().text());
+        }
+        return texts;
     }
 
     /** Une extraction écrite : la session et l'identifiant de chaque sujet, dans l'ordre de la sortie. */

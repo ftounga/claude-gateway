@@ -1015,6 +1015,17 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     une correction souveraine journalisée, marquée de sa preuve, rangée dans la chronologie. Actions
     ajoutées : `CREATE_SUBJECT` et `ADD_COMMITMENT`, annulables tant que l'objet n'a rien reçu d'autre.
     Garde : terminal Teams d'un poste activé dans la Vigie, droit Vigie.
+  - **Lien sujet ↔ projet** (F-106 / SF-106-06, migration `097`) : `radar_subject_projects`
+    (`user_id`, `host_id`, `subject_id`, `workspace_id`, `origin` `USER`|`PROPOSED`, `state`
+    `CONFIRMED`|`PROPOSED`|`REFUSED`, `created_at`) — **unicité `(subject_id, workspace_id)`**, index
+    `(user_id, host_id, workspace_id)` et `(user_id, host_id, subject_id)`. Le projet doit appartenir au
+    même poste (`WorkspaceService.listByHost`, terminaux exclus). Déclaré sur la page sujet (souverain) ou
+    **proposé** par l'analyse (`RadarProjectProposer`, appelé par `RadarExtractionWriter`) quand un
+    message qui prouve le sujet nomme un projet ou son dossier (mot entier, ≥ 3 caractères, jamais le nom
+    du poste) ; une proposition n'est qu'une question. **Délier = refuser** : la ligne reste `REFUSED` et
+    n'est jamais reproposée. API Vigie : `GET|PUT|DELETE /radar/hosts/{hostId}/subjects/{id}/projects[/{workspaceId}]`,
+    `GET /radar/hosts/{hostId}/project-subjects` (passerelle « N sujets dans la Vigie » de la Forge).
+    Purgé avec le Radar du poste et le compte.
   - **Purge et export** (F-99 / SF-99-05, migration `085`) : `radar_purges` (`reason` : `MISSION_CLOSED`,
     `VIGIE_REMOVED`, `USER_REQUEST`, `HOST_DELETED` ; `purged_at`, `subjects_count`, `evidence_count`) —
     **trace sans contenu**. La purge supprime en masse toutes les lignes `radar_*` du périmètre ; elle

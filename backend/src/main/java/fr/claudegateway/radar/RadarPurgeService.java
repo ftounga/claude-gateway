@@ -47,6 +47,8 @@ public class RadarPurgeService {
     private final RadarHostSettingsRepository hostSettings;
     private final RadarSyncCursorRepository syncCursors;
     private final RadarThreadRuleRepository threadRules;
+    /** Les liens sujet ↔ projet (F-106 / SF-106-06). */
+    private final RadarSubjectProjectRepository subjectProjects;
 
     public RadarPurgeService(RadarSubjectRepository subjects, RadarSubjectAliasRepository aliases,
             RadarSubjectFactRepository facts, RadarPersonRepository people, RadarSubjectRoleRepository roles,
@@ -55,7 +57,7 @@ public class RadarPurgeService {
             RadarPurgeRepository purges, RunnerHostService hostService,
             RadarAnalysisBatchRepository analysisBatches, RadarAnalysisLeaseRepository analysisLeases,
             RadarHostSettingsRepository hostSettings, RadarSyncCursorRepository syncCursors,
-            RadarThreadRuleRepository threadRules) {
+            RadarThreadRuleRepository threadRules, RadarSubjectProjectRepository subjectProjects) {
         this.subjects = subjects;
         this.aliases = aliases;
         this.facts = facts;
@@ -73,6 +75,7 @@ public class RadarPurgeService {
         this.hostSettings = hostSettings;
         this.syncCursors = syncCursors;
         this.threadRules = threadRules;
+        this.subjectProjects = subjectProjects;
     }
 
     /**
@@ -107,6 +110,7 @@ public class RadarPurgeService {
         hostSettings.purgeScope(userId, hostId);
         syncCursors.purgeScope(userId, hostId);
         threadRules.purgeScope(userId, hostId);
+        subjectProjects.purgeScope(userId, hostId);
         links.purgeScope(userId, hostId);
         int evidenceCount = evidence.purgeScope(userId, hostId);
         commitments.purgeScope(userId, hostId);
@@ -129,6 +133,7 @@ public class RadarPurgeService {
         hostSettings.purgeUser(userId);
         syncCursors.purgeUser(userId);
         threadRules.purgeUser(userId);
+        subjectProjects.purgeUser(userId);
         links.purgeUser(userId);
         evidence.purgeUser(userId);
         commitments.purgeUser(userId);

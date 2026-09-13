@@ -35,6 +35,31 @@
       <span class="projet__activity">{{ last }}</span>
     }
     <span class="projet__spacer"></span>
+    <!-- LA PASSERELLE VERS LA VIGIE (F-106 / SF-106-06) : seulement s'il y a des sujets liés. Un seul : sa
+         page ; plusieurs : leur liste. -->
+    @if (hostRef() && vigieSubjects().length === 1) {
+      <a
+        mat-button
+        class="projet__vigie"
+        [routerLink]="['/vigie', hostRef(), 'sujets', vigieSubjects()[0].id]"
+        [attr.title]="vigieSubjects()[0].name"
+      >
+        <mat-icon aria-hidden="true">radar</mat-icon>
+        {{ vigieLabel() }}
+      </a>
+    } @else if (hostRef() && vigieSubjects().length > 1) {
+      <button mat-button type="button" class="projet__vigie" [matMenuTriggerFor]="vigieMenu">
+        <mat-icon aria-hidden="true">radar</mat-icon>
+        {{ vigieLabel() }}
+      </button>
+      <mat-menu #vigieMenu="matMenu">
+        @for (subject of vigieSubjects(); track subject.id) {
+          <a mat-menu-item class="projet__vigie-subject" [routerLink]="['/vigie', hostRef(), 'sujets', subject.id]">
+            {{ subject.name }}
+          </a>
+        }
+      </mat-menu>
+    }
     <button
       mat-button
       type="button"

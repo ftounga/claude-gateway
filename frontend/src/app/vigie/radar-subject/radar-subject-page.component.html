@@ -244,6 +244,76 @@
           }
         </section>
 
+        <!-- LE PROJET DANS LA FORGE (F-106 / SF-106-06) : déclaré ici, ou proposé par l'analyse et posé comme
+             une question. Refuser ou délier est retenu : le Radar ne repropose pas. -->
+        <section class="radar-subject__projects" aria-labelledby="radar-subject-projects">
+          <h2 id="radar-subject-projects" class="radar-subject__h">Projet dans la Forge</h2>
+          @if (projects(); as state) {
+            @if (state === 'error') {
+              <p class="radar-subject__empty radar-subject__projects-error">Les projets liés n'ont pas pu être lus.</p>
+            } @else {
+              @for (proposal of proposedProjects(); track proposal.workspaceId) {
+                <div class="radar-subject__proposal" role="group" [attr.aria-label]="'Proposition : ' + proposal.name">
+                  <p class="radar-subject__proposal-question">
+                    <mat-icon aria-hidden="true">help_outline</mat-icon>
+                    <span>Ce sujet concerne-t-il le projet <b>{{ proposal.name }}</b> ({{ projectPathLabel(proposal.projectPath) }}) ?</span>
+                  </p>
+                  <div class="radar-subject__proposal-actions">
+                    <button mat-stroked-button type="button" class="radar-subject__proposal-yes"
+                      [disabled]="projectBusy() !== null" (click)="linkProject(proposal.workspaceId)">
+                      Oui, lier
+                    </button>
+                    <button mat-button type="button" class="radar-subject__proposal-no"
+                      [disabled]="projectBusy() !== null" (click)="unlinkProject(proposal.workspaceId)">
+                      Non
+                    </button>
+                  </div>
+                </div>
+              }
+              @if (linkedProjects().length > 0) {
+                <ul class="radar-subject__linked">
+                  @for (link of linkedProjects(); track link.workspaceId) {
+                    <li class="radar-subject__linked-project">
+                      <mat-icon class="radar-subject__person-icon" aria-hidden="true">folder</mat-icon>
+                      <span class="radar-subject__person-text">
+                        <span class="radar-subject__person-name">{{ link.name }}</span>
+                        <span class="radar-subject__person-job">{{ projectPathLabel(link.projectPath) }}</span>
+                      </span>
+                      @if (projectsInForge()) {
+                        <a mat-button class="radar-subject__forge-link" [routerLink]="['/forge', hostRef()]">
+                          Voir le projet dans la Forge
+                        </a>
+                      }
+                      <button mat-button type="button" class="radar-subject__unlink"
+                        [disabled]="projectBusy() !== null" (click)="unlinkProject(link.workspaceId)">
+                        Délier
+                      </button>
+                    </li>
+                  }
+                </ul>
+              }
+              @if (projectCandidates().length > 0) {
+                <button mat-stroked-button type="button" class="radar-subject__link-project"
+                  [matMenuTriggerFor]="projectMenu" [disabled]="projectBusy() !== null">
+                  <mat-icon>link</mat-icon>
+                  Lier à un projet de la Forge
+                </button>
+                <mat-menu #projectMenu="matMenu">
+                  @for (candidate of projectCandidates(); track candidate.workspaceId) {
+                    <button mat-menu-item type="button" class="radar-subject__candidate" (click)="linkProject(candidate.workspaceId)">
+                      {{ candidate.name }} — {{ projectPathLabel(candidate.projectPath) }}
+                    </button>
+                  }
+                </mat-menu>
+              } @else if (proposedProjects().length === 0 && linkedProjects().length === 0) {
+                <p class="radar-subject__empty radar-subject__projects-empty">Aucun projet de la Forge sur ce poste.</p>
+              }
+            }
+          } @else {
+            <div class="radar-subject__side-loading"><mat-spinner diameter="20"></mat-spinner></div>
+          }
+        </section>
+
         <!-- LA RÉPONSE AU MANAGER (SF-103-03) : jamais préparée d'office, chaque préparation consomme. -->
         <section class="radar-subject__answer" aria-labelledby="radar-subject-answer">
           <h2 id="radar-subject-answer" class="radar-subject__h">Réponse préparée pour votre manager</h2>
