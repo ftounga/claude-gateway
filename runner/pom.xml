@@ -45,6 +45,14 @@
             <version>${junit.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- F-89 / SF-89-06 : appliquer la table de sélecteurs de la lecture d'écran à des DOM modèles.
+             Portée test uniquement : rien de jsoup n'entre dans le runner livré. -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.10.2</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
