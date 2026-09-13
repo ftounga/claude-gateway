@@ -959,6 +959,13 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     Les liens, et non les preuves, portent le sujet : fusion et séparation déplacent des liens.
   - `radar_syncs` : `status`, `started_at`, `finished_at`, `coverage` (JSON, forme fixée par F-100),
     `consumed_tokens`.
+  - **Corrections souveraines** (F-99 / SF-99-02, migration `082`) : marques `name_sovereign`,
+    `state_sovereign`, `next_step_sovereign`, `due_date_sovereign` sur `radar_subjects` (par champ),
+    `sovereign` et `disowned` (« pas moi ») sur `radar_commitments` (pour l'engagement entier). Une
+    valeur souveraine n'est **jamais réécrite par une synchro** (`RadarRegistry`). Journal
+    `radar_corrections` (`subject_id`, `target_kind`, `target_id`, `action`, `before_values` /
+    `after_values` JSON des **seuls champs touchés**, `created_at`, `undone_at`) : toute correction est
+    annulable, sauf recouverte par une correction plus récente et active des mêmes champs.
 
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 

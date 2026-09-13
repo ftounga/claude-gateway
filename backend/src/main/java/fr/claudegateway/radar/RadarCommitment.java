@@ -90,6 +90,14 @@ public class RadarCommitment {
     @Column(name = "extraction_key", length = MAX_EXTRACTION_KEY_LENGTH, updatable = false)
     private String extractionKey;
 
+    /** Corrigé par l'utilisateur : une synchro n'en change plus le statut (SF-99-02). */
+    @Column(name = "sovereign", nullable = false)
+    private boolean sovereign;
+
+    /** « Pas moi » : sort des listes, n'est pas supprimé (SF-99-02). */
+    @Column(name = "disowned", nullable = false)
+    private boolean disowned;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

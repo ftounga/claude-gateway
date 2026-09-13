@@ -35,6 +35,12 @@ public class RadarExceptionHandler {
                 .body(new ErrorResponse("radar_invalid", ex.getMessage()));
     }
 
+    @ExceptionHandler(RadarCorrectionConflictException.class)
+    public ResponseEntity<ErrorResponse> correctionConflict(RadarCorrectionConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("radar_correction_conflict", ex.getMessage()));
+    }
+
     @ExceptionHandler(RadarEvidenceRequiredException.class)
     public ResponseEntity<ErrorResponse> evidenceRequired(RadarEvidenceRequiredException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)

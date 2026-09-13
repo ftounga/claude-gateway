@@ -42,6 +42,8 @@ abstract class RadarIntegrationTestBase {
     @Autowired protected RadarEvidenceRepository evidence;
     @Autowired protected RadarEvidenceLinkRepository links;
     @Autowired protected RadarSyncRepository syncs;
+    @Autowired protected RadarCorrectionRepository corrections;
+    @Autowired protected RadarCorrectionService correctionService;
 
     protected User alice;
     protected User bob;
@@ -72,6 +74,7 @@ abstract class RadarIntegrationTestBase {
 
     /** Vide les tables du Radar ; les sous-classes qui ajoutent des tables la surchargent. */
     protected void cleanRadarTables() {
+        corrections.deleteAll();
         links.deleteAll();
         evidence.deleteAll();
         commitments.deleteAll();

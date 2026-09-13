@@ -29,6 +29,10 @@ import org.springframework.transaction.annotation.Transactional;
  *       personne ou un sujet d'un autre poste sont introuvables, même pour le même utilisateur.</li>
  * </ul>
  *
+ * <p><b>Souveraineté</b> (SF-99-02). Une valeur corrigée par l'utilisateur n'est jamais réécrite
+ * ici : la preuve entre dans la chronologie, la valeur reste. Les corrections passent par
+ * {@code RadarCorrectionService}.</p>
+ *
  * <p><b>Idempotence.</b> Une preuve est unique par identifiant de source, un engagement par clé
  * d'extraction : une synchro reprise ne duplique rien.</p>
  */
@@ -152,6 +156,11 @@ public class RadarRegistry {
         RadarSubject subject = requireSubject(scope, subjectId);
         RadarSubjectState next = requireOpenWork(Objects.requireNonNull(state, "state"));
         List<RadarEvidence> proofs = requireEvidence(scope, evidenceIds);
+        if (subject.isStateSovereign()) {
+            // L'utilisateur a dit l'état : la preuve est de l'activité, pas une réécriture (SF-99-02).
+            addToChronology(scope, subject, proofs);
+            return subject;
+        }
         subject.setState(next);
         justify(scope, subject, RadarLinkKind.STATE, null, proofs);
         return subject;
@@ -163,6 +172,10 @@ public class RadarRegistry {
         RadarSubject subject = requireSubject(scope, subjectId);
         String text = RadarText.optional(nextStep, RadarSubject.MAX_NEXT_STEP_LENGTH, "next_step");
         List<RadarEvidence> proofs = requireEvidence(scope, evidenceIds);
+        if (subject.isNextStepSovereign()) {
+            addToChronology(scope, subject, proofs);
+            return subject;
+        }
         subject.setNextStep(text);
         justify(scope, subject, RadarLinkKind.NEXT_STEP, null, proofs);
         return subject;
@@ -173,6 +186,10 @@ public class RadarRegistry {
             Collection<UUID> evidenceIds) {
         RadarSubject subject = requireSubject(scope, subjectId);
         List<RadarEvidence> proofs = requireEvidence(scope, evidenceIds);
+        if (subject.isDueDateSovereign()) {
+            addToChronology(scope, subject, proofs);
+            return subject;
+        }
         subject.setDueDate(dueDate);
         justify(scope, subject, RadarLinkKind.DUE_DATE, null, proofs);
         return subject;
@@ -300,7 +317,10 @@ public class RadarRegistry {
             throw new InvalidRadarInputException("Le statut est requis.");
         }
         List<RadarEvidence> proofs = requireEvidence(scope, evidenceIds);
-        commitment.setStatus(status);
+        if (!commitment.isSovereign()) {
+            // Un engagement corrigé par l'utilisateur garde son statut ; la preuve s'y ajoute (SF-99-02).
+            commitment.setStatus(status);
+        }
         justify(scope, requireSubject(scope, commitment.getSubjectId()), RadarLinkKind.COMMITMENT,
                 commitment.getId(), proofs, false);
         return commitment;

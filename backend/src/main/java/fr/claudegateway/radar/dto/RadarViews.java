@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import fr.claudegateway.radar.RadarCertainty;
 import fr.claudegateway.radar.RadarCommitmentDirection;
 import fr.claudegateway.radar.RadarCommitmentStatus;
+import fr.claudegateway.radar.RadarCorrectionAction;
 import fr.claudegateway.radar.RadarEvidenceSource;
 import fr.claudegateway.radar.RadarRole;
 import fr.claudegateway.radar.RadarSubjectState;
@@ -34,7 +35,8 @@ public final class RadarViews {
     /** La page d'un sujet. */
     public record SubjectDetail(UUID id, String name, RadarSubjectState state, String nextStep,
             LocalDate dueDate, OffsetDateTime lastActivityAt, OffsetDateTime createdAt,
-            List<AliasView> aliases, List<UUID> stateEvidenceIds, List<UUID> nextStepEvidenceIds,
+            boolean nameSovereign, boolean stateSovereign, boolean nextStepSovereign,
+            boolean dueDateSovereign, List<AliasView> aliases, List<UUID> stateEvidenceIds, List<UUID> nextStepEvidenceIds,
             List<UUID> dueDateEvidenceIds, List<SentenceView> summary, List<RoleView> people,
             List<CommitmentView> commitments, List<EvidenceView> chronology) {
     }
@@ -60,7 +62,8 @@ public final class RadarViews {
     public record CommitmentView(UUID id, UUID subjectId, String subjectName,
             RadarCommitmentDirection direction, String description, PersonRef fromPerson,
             PersonRef toPerson, PersonRef otherPerson, LocalDate dueDate, boolean dueDeduced,
-            RadarCommitmentStatus status, RadarCertainty certainty, List<UUID> evidenceIds,
+            RadarCommitmentStatus status, RadarCertainty certainty, boolean sovereign,
+            boolean disowned, List<UUID> evidenceIds,
             OffsetDateTime createdAt, OffsetDateTime updatedAt) {
     }
 
@@ -77,6 +80,12 @@ public final class RadarViews {
     /** Un sujet d'une personne. */
     public record PersonSubjectView(UUID subjectId, String subjectName, RadarSubjectState state,
             RadarRole role) {
+    }
+
+    /** Une ligne du journal des corrections (SF-99-02). */
+    public record CorrectionView(UUID id, UUID subjectId, RadarCorrectionAction.Target targetKind,
+            UUID targetId, RadarCorrectionAction action, JsonNode before, JsonNode after,
+            OffsetDateTime createdAt, OffsetDateTime undoneAt) {
     }
 
     /** Une synchro. */

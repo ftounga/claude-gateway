@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-99 / SF-99-02 — LES CORRECTIONS SOUVERAINES.
+
+      L'utilisateur a le dernier mot (cadrage §4.2). Deux ajouts :
+
+      1) LES MARQUES. Sur un sujet, PAR CHAMP : la synchro continue de ranger des preuves et de tenir
+         à jour ce que l'utilisateur n'a pas corrigé. Sur un engagement, pour l'engagement ENTIER :
+         statut, échéance et porteur forment une seule réponse. `disowned` = « pas moi » : l'engagement
+         sort des listes, il n'est pas supprimé. Défaut `false`, lignes existantes comprises.
+
+      2) LE JOURNAL `radar_corrections` : cible, action, valeurs AVANT et APRÈS (JSON), instant,
+         annulation. C'est ce qui rend toute correction annulable depuis la chronologie.
+    -->
+
+    <changeSet id="082-radar-sovereign-marks" author="claude-gateway">
+        <addColumn tableName="radar_subjects">
+            <column name="name_sovereign" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="state_sovereign" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="next_step_sovereign" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="due_date_sovereign" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+        </addColumn>
+        <addColumn tableName="radar_commitments">
+            <column name="sovereign" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            <column name="disowned" type="boolean" defaultValueBoolean="false"><constraints nullable="false"/></column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="radar_commitments" columnName="disowned"/>
+            <dropColumn tableName="radar_commitments" columnName="sovereign"/>
+            <dropColumn tableName="radar_subjects" columnName="due_date_sovereign"/>
+            <dropColumn tableName="radar_subjects" columnName="next_step_sovereign"/>
+            <dropColumn tableName="radar_subjects" columnName="state_sovereign"/>
+            <dropColumn tableName="radar_subjects" columnName="name_sovereign"/>
+        </rollback>
+    </changeSet>
+
+    <!-- ============================ POSTGRESQL ============================ -->
+    <changeSet id="082-radar-corrections-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="radar_corrections">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="subject_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="target_kind" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="target_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="action" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="before_values" type="text"><constraints nullable="false"/></column>
+            <column name="after_values" type="text"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="undone_at" type="timestamptz"/>
+        </createTable>
+        <createIndex tableName="radar_corrections" indexName="idx_radar_corrections_scope_subject">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="subject_id"/>
+        </createIndex>
+        <createIndex tableName="radar_corrections" indexName="idx_radar_corrections_scope_target">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="target_id"/>
+        </createIndex>
+        <rollback><dropTable tableName="radar_corrections"/></rollback>
+    </changeSet>
+
+    <!-- ================================ H2 ================================ -->
+    <changeSet id="082-radar-corrections-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="radar_corrections">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="subject_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="target_kind" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="target_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="action" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="before_values" type="varchar(1000000)"><constraints nullable="false"/></column>
+            <column name="after_values" type="varchar(1000000)"><constraints nullable="false"/></column>
+            <column name="created_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="undone_at" type="timestamp with time zone"/>
+        </createTable>
+        <createIndex tableName="radar_corrections" indexName="idx_radar_corrections_scope_subject">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="subject_id"/>
+        </createIndex>
+        <createIndex tableName="radar_corrections" indexName="idx_radar_corrections_scope_target">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="target_id"/>
+        </createIndex>
+        <rollback><dropTable tableName="radar_corrections"/></rollback>
+    </changeSet>
+
+</databaseChangeLog>
