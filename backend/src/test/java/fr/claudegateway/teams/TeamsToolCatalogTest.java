@@ -201,4 +201,38 @@ class TeamsToolCatalogTest {
         assertThat(TeamsToolCatalog.isPresentation("bash")).isFalse();
         assertThat(TeamsToolCatalog.isPresentation(null)).isFalse();
     }
+
+    @Test
+    @DisplayName("F-108 : isWrite ne reconnaît QUE les six outils qui écrivent dans Microsoft 365")
+    void onlyTheWriteToolsAreWrite() {
+        assertThat(TeamsToolCatalog.WRITE).containsExactly(
+                TeamsToolCatalog.CREATE_FOLDER, TeamsToolCatalog.UPLOAD_FILE,
+                TeamsToolCatalog.RENAME, TeamsToolCatalog.MOVE, TeamsToolCatalog.DELETE,
+                TeamsToolCatalog.REPLACE_VERSION);
+        TeamsToolCatalog.WRITE.forEach(tool -> assertThat(TeamsToolCatalog.isWrite(tool)).isTrue());
+        // Ni lecture, ni capture, ni présentation, ni bash, ni null ne sont des écritures.
+        assertThat(TeamsToolCatalog.isWrite(TeamsToolCatalog.READ_CONVERSATION)).isFalse();
+        assertThat(TeamsToolCatalog.isWrite(TeamsToolCatalog.MEETING_RECORDING)).isFalse();
+        assertThat(TeamsToolCatalog.isWrite(TeamsToolCatalog.CAPTURE_START)).isFalse();
+        assertThat(TeamsToolCatalog.isWrite(TeamsToolCatalog.MEETING_CARD)).isFalse();
+        assertThat(TeamsToolCatalog.isWrite("bash")).isFalse();
+        assertThat(TeamsToolCatalog.isWrite(null)).isFalse();
+        // Poster un message reste hors périmètre : il n'existe pas comme écriture.
+        assertThat(TeamsToolCatalog.isWrite("teams_post_message")).isFalse();
+    }
+
+    @Test
+    @DisplayName("F-108 : describeWrite nomme l'action et l'emplacement en clair")
+    void describeWriteNamesActionAndLocation() {
+        assertThat(TeamsToolCatalog.describeWrite(TeamsToolCatalog.CREATE_FOLDER, "Livrables",
+                "Équipe Projet IAM › Général › Fichiers"))
+                .isEqualTo("Créer le dossier « Livrables » dans Équipe Projet IAM › Général › Fichiers");
+        assertThat(TeamsToolCatalog.describeWrite(TeamsToolCatalog.DELETE, "vieux.docx", "Général"))
+                .isEqualTo("Supprimer « vieux.docx » dans Général");
+        assertThat(TeamsToolCatalog.describeWrite(TeamsToolCatalog.MOVE, "note.md", "Archives"))
+                .isEqualTo("Déplacer « note.md » vers Archives");
+        // Emplacement inconnu : la phrase reste lisible, sans « dans » orphelin.
+        assertThat(TeamsToolCatalog.describeWrite(TeamsToolCatalog.RENAME, "a.txt", ""))
+                .isEqualTo("Renommer « a.txt »");
+    }
 }
