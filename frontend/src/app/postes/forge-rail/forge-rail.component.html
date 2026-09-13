@@ -1,0 +1,94 @@
+<aside class="forge-rail" aria-label="Postes">
+  <label class="forge-rail__search">
+    <mat-icon aria-hidden="true">search</mat-icon>
+    <input
+      type="search"
+      class="forge-rail__search-input"
+      placeholder="Filtrer les postes et projets"
+      aria-label="Filtrer les postes et projets"
+      [value]="filter()"
+      (input)="onFilterInput($event)"
+    />
+  </label>
+
+  @if (nothingMatches()) {
+    <p class="forge-rail__empty">Aucun poste ni projet ne correspond.</p>
+  }
+
+  @for (group of groups(); track group.key) {
+    @if (group.key === 'closed') {
+      <!-- Un repli, pas un groupe ouvert (F-60) : « se ranger SANS disparaître ». Fermé au départ,
+           il dit combien de missions sont closes et les montre d'un clic. -->
+      <button
+        type="button"
+        class="forge-rail__group forge-rail__group--toggle"
+        (click)="toggleClosed.emit()"
+        [attr.aria-expanded]="closedOpen()"
+      >
+        <span>{{ group.label }} ({{ group.rows.length }})</span>
+        <mat-icon aria-hidden="true">{{ closedOpen() ? 'expand_less' : 'expand_more' }}</mat-icon>
+      </button>
+    } @else {
+      <p class="forge-rail__group">{{ group.label }}</p>
+    }
+
+    @if (group.key !== 'closed' || closedOpen()) {
+      <ul class="forge-rail__list">
+        @for (row of group.rows; track row.ref) {
+          <li>
+            <button
+              type="button"
+              class="forge-rail__host"
+              [class.forge-rail__host--selected]="row.ref === selectedRef()"
+              [class.forge-rail__host--hosted]="isHosted(row.host)"
+              [style.--forge-tone]="toneOf(row)"
+              [attr.aria-current]="row.ref === selectedRef() ? 'true' : null"
+              [attr.data-ref]="row.ref"
+              (click)="selectHost.emit(row)"
+            >
+              @if (isHosted(row.host)) {
+                <!-- « Hébergé » n'est pas une machine (F-71) : aucun ton d'identité (§9), gris neutre. -->
+                <span class="forge-rail__hosted-mark" aria-hidden="true">
+                  <mat-icon>cloud</mat-icon>
+                </span>
+              } @else {
+                <app-host-badge
+                  class="forge-rail__badge"
+                  [name]="row.host.name"
+                  size="md"
+                  [showName]="false"
+                ></app-host-badge>
+              }
+              <span class="forge-rail__text">
+                <span class="forge-rail__name">{{ row.host.name }}</span>
+                @if (isHosted(row.host)) {
+                  <span class="forge-rail__meta">chez la gateway</span>
+                } @else {
+                  <span class="forge-rail__meta">
+                    <span
+                      class="forge-rail__dot"
+                      [class.forge-rail__dot--online]="online(row.host)"
+                      aria-hidden="true"
+                    ></span>
+                    {{ stateLabel(row.host) }}
+                  </span>
+                }
+              </span>
+              @if (row.awaiting > 0) {
+                <!-- §12 : la pastille « En attente », écrite. -->
+                <span class="forge-rail__flag badge badge--warning">{{ row.awaiting }} attend</span>
+              } @else {
+                <span class="forge-rail__count" [attr.title]="countTitle(row)">{{ countLabel(row) }}</span>
+              }
+            </button>
+          </li>
+        }
+      </ul>
+    }
+  }
+
+  <button mat-stroked-button type="button" class="forge-rail__connect" (click)="connectHost.emit()">
+    <mat-icon>add</mat-icon>
+    Connecter un poste
+  </button>
+</aside>

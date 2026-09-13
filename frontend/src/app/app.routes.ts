@@ -1,5 +1,31 @@
-import { Routes } from '@angular/router';
+import { Routes, UrlMatchResult, UrlSegment } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
+
+/**
+ * Segments réservés sous `/forge` : ce ne sont pas des postes. Un poste n'a pour référence qu'un
+ * identifiant (UUID) ou `heberge` ; ces écrans-là ont leur propre route.
+ */
+export const FORGE_RESERVED_SEGMENTS: readonly string[] = ['supervision', 'mosaique', 'voir'];
+
+/**
+ * **`/forge` et `/forge/:hostRef`** (F-98 / SF-98-01) — une seule configuration de route.
+ *
+ * <p>Deux routes distinctes feraient détruire et recréer l'écran à chaque changement de poste : le
+ * routeur ne réemploie un composant que pour la même configuration. Ici, `/forge` (poste par
+ * défaut) et `/forge/<id>` partagent la même, et l'écran suit le paramètre.</p>
+ */
+export function forgeMatcher(segments: UrlSegment[]): UrlMatchResult | null {
+  if (segments.length === 0 || segments[0].path !== 'forge') {
+    return null;
+  }
+  if (segments.length === 1) {
+    return { consumed: segments };
+  }
+  if (segments.length === 2 && !FORGE_RESERVED_SEGMENTS.includes(segments[1].path)) {
+    return { consumed: segments, posParams: { hostRef: segments[1] } };
+  }
+  return null;
+}
 
 export const routes: Routes = [
   // ---- Pages publiques (hors coquille) ----
@@ -96,14 +122,6 @@ export const routes: Routes = [
         loadComponent: () => import('./atelier/atelier.component').then((m) => m.AtelierComponent),
       },
       {
-        // F-68 / SF-68-01 — **l'accueil de la Forge** : la vue des missions (livrée par F-49 /
-        // SF-49-02) devient la porte d'entrée, et l'onglet « Postes » disparaît de la barre. Le
-        // composant est le même, à l'identique — F-68 réorganise la navigation, il ne refait pas
-        // l'écran. Chemin d'un seul segment, disjoint de `atelier/:id`.
-        path: 'forge',
-        loadComponent: () => import('./postes/postes.component').then((m) => m.PostesComponent),
-      },
-      {
         // F-76 / SF-76-03 — **voir travailler ses terminaux**. Un écran à PART, et non un panneau
         // de l'accueil : on l'ouvre quand on surveille, et la page d'accueil doit rester lisible
         // sur un portable. Placée AVANT la redirection de `postes` et après `forge` : deux
@@ -122,6 +140,15 @@ export const routes: Routes = [
         path: 'forge/mosaique',
         loadComponent: () =>
           import('./mosaique/mosaique.component').then((m) => m.MosaiqueComponent),
+      },
+      {
+        // F-68 / SF-68-01 — **l'accueil de la Forge**, et depuis F-98 / SF-98-01 **le poste ouvert** :
+        // `/forge` et `/forge/:hostRef` sont UNE seule route (un `matcher`), pour que passer d'un poste
+        // à l'autre ne détruise pas l'écran — pas de rechargement, pas de clignotement. Déclarée APRÈS
+        // `forge/supervision` et `forge/mosaique` : le matcher les écarte de toute façon, mais l'ordre
+        // le rend vrai deux fois.
+        matcher: forgeMatcher,
+        loadComponent: () => import('./postes/postes.component').then((m) => m.PostesComponent),
       },
       {
         // L'ancienne adresse (F-49 / SF-49-02) continue de répondre : un onglet resté ouvert ou un

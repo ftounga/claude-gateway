@@ -1,0 +1,217 @@
+/* La colonne des postes (F-98 / SF-98-01) — DESIGN_SYSTEM.md §16.
+   Aucune couleur hors charte : surfaces et filets §2, tons d'identité §9 (par app-host-badge et le
+   filet de sélection), pastille « En attente » §5 / §12. */
+:host {
+  display: block;
+  min-width: 0;
+}
+
+.forge-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-1);
+  padding: var(--cg-space-3) var(--cg-space-2);
+  background: var(--cg-surface);
+  border-right: 1px solid var(--cg-divider);
+  height: 100%;
+  box-sizing: border-box;
+
+  &__search {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+    margin: 0 var(--cg-space-1) var(--cg-space-2);
+    padding: var(--cg-space-2);
+    border: 1px solid var(--cg-divider);
+    border-radius: 8px;
+    background: var(--cg-bg);
+    color: var(--cg-text-secondary);
+
+    mat-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      flex: none;
+    }
+
+    &:focus-within {
+      border-color: var(--cg-accent);
+    }
+  }
+
+  &__search-input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    font-family: var(--cg-font-body);
+    font-size: 13px;
+    color: var(--cg-text-primary);
+  }
+
+  &__empty {
+    margin: var(--cg-space-2);
+    font-size: 13px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__group {
+    margin: 0;
+    padding: var(--cg-space-2) var(--cg-space-2) var(--cg-space-1);
+    font-family: var(--cg-font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--cg-text-secondary);
+
+    &--toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      border: 0;
+      background: transparent;
+      cursor: pointer;
+      text-align: left;
+
+      mat-icon {
+        font-size: 16px;
+        width: 16px;
+        height: 16px;
+      }
+
+      &:hover {
+        color: var(--cg-text-primary);
+      }
+    }
+  }
+
+  &__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-1);
+  }
+
+  &__host {
+    position: relative;
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--cg-space-2);
+    width: 100%;
+    padding: var(--cg-space-2);
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--cg-text-primary);
+    font-family: var(--cg-font-body);
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--cg-bg);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--cg-accent);
+      outline-offset: 2px;
+    }
+
+    /* Le filet de sélection prend la couleur DU POSTE (§9) — c'est un filet, jamais un fond. */
+    &--selected {
+      background: var(--cg-bg);
+
+      &::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: var(--cg-space-2);
+        bottom: var(--cg-space-2);
+        width: 4px;
+        border-radius: 2px;
+        background: var(--forge-tone, var(--cg-text-secondary));
+      }
+    }
+  }
+
+  /* La pastille du poste, à la taille de la ligne : 32 px (§16). */
+  &__badge ::ng-deep .host-badge__mark {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+  }
+
+  &__hosted-mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: #F5F5F5;
+    color: var(--cg-text-secondary);
+
+    mat-icon {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+    }
+  }
+
+  &__text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  &__name {
+    font-size: 14px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__meta {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-1);
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--cg-divider);
+
+    &--online {
+      background: var(--cg-success);
+    }
+  }
+
+  &__flag {
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  &__count {
+    font-family: var(--cg-font-mono);
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+    white-space: nowrap;
+  }
+
+  &__connect {
+    margin: var(--cg-space-2) var(--cg-space-1) 0;
+  }
+}

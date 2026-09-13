@@ -1,6 +1,6 @@
-import { Route } from '@angular/router';
+import { Route, UrlSegment } from '@angular/router';
 
-import { routes } from './app.routes';
+import { forgeMatcher, routes } from './app.routes';
 import { authGuard } from './core/guards/auth.guard';
 
 /**
@@ -61,6 +61,41 @@ describe('app.routes', () => {
     expect(routes[routes.length - 1].path).toBe('**');
   });
 
+  /** Position de la route `/forge` + `/forge/:hostRef` (F-98 / SF-98-01), portée par un matcher. */
+  function forgeIndex(): number {
+    return (routes[guardedParentIndex()].children ?? []).findIndex((c) => c.matcher === forgeMatcher);
+  }
+
+  // ---- F-98 / SF-98-01 : le poste ouvert dans l'URL ----
+
+  describe('le poste ouvert dans l’URL (F-98)', () => {
+    const segments = (...paths: string[]) => paths.map((path) => new UrlSegment(path, {}));
+
+    it('/forge : la Forge, sans poste désigné', () => {
+      const match = forgeMatcher(segments('forge'));
+
+      expect(match?.consumed.length).toBe(1);
+      expect(match?.posParams?.['hostRef']).toBeUndefined();
+    });
+
+    it('/forge/<id> : le poste désigné par son identifiant', () => {
+      const match = forgeMatcher(segments('forge', 'h1'));
+
+      expect(match?.consumed.length).toBe(2);
+      expect(match?.posParams?.['hostRef'].path).toBe('h1');
+    });
+
+    it('ne capte ni les écrans de la Forge, ni les chemins plus profonds, ni un autre préfixe', () => {
+      for (const path of ['supervision', 'mosaique', 'voir']) {
+        expect(forgeMatcher(segments('forge', path)))
+          .withContext(`/forge/${path} serait pris pour un poste`).toBeNull();
+      }
+      expect(forgeMatcher(segments('forge', 'h1', 'x'))).toBeNull();
+      expect(forgeMatcher(segments('atelier', 'w1'))).toBeNull();
+      expect(forgeMatcher([])).toBeNull();
+    });
+  });
+
   // ---- F-68 / SF-68-01 : l'accueil de la Forge, et aucun lien brisé ----
 
   describe("l'accueil de la Forge (F-68)", () => {
@@ -69,7 +104,7 @@ describe('app.routes', () => {
     }
 
     it('déclare /forge sous la route authentifiée, sur la vue des missions', () => {
-      const forge = children().find((c) => c.path === 'forge');
+      const forge = children().find((c) => c.matcher === forgeMatcher);
 
       expect(forge).withContext('/forge absente : la Forge n\'a plus de page d\'accueil').toBeDefined();
       expect(forge?.loadComponent).toBeDefined();
@@ -121,10 +156,11 @@ describe('app.routes', () => {
       // dont le premier segment diffère. Le test fige ce raisonnement.
       const paths = children().map((c) => c.path);
 
-      expect(paths).toContain('forge');
+      expect(forgeIndex()).toBeGreaterThan(-1);
       expect(paths).toContain('postes');
       expect(paths).toContain('atelier/:id');
-      expect(paths.indexOf('forge')).toBeLessThan(paths.indexOf('forge/supervision'));
+      // F-98 : le matcher de la Forge vient APRÈS les écrans à deux segments.
+      expect(forgeIndex()).toBeGreaterThan(paths.indexOf('forge/supervision'));
     });
   });
 
@@ -150,7 +186,7 @@ describe('app.routes', () => {
       expect(paths).toContain('forge/supervision');
       expect(paths).toContain('forge/mosaique');
       expect(paths).toContain('atelier/:id');
-      expect(paths.indexOf('forge')).toBeLessThan(paths.indexOf('forge/mosaique'));
+      expect(forgeIndex()).toBeGreaterThan(paths.indexOf('forge/mosaique'));
     });
   });
 });

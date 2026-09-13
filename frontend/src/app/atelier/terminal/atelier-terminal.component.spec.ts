@@ -112,7 +112,7 @@ describe('AtelierTerminalComponent', () => {
     expect(trail.length).toBe(3);
     expect(trail[0].getAttribute('href')).toBe('/forge');
     // « Chez qui » ramène à la carte de ce client sur l'accueil de la Forge.
-    expect(trail[1].getAttribute('href')).toBe('/forge#poste-h1');
+    expect(trail[1].getAttribute('href')).toBe('/forge/h1');
     expect(trail[2].getAttribute('href')).toBe('/atelier/w1');
     expect(trail[2].getAttribute('aria-current')).toBe('page');
     expect(trail[2].textContent?.trim()).toBe('mon-projet');
@@ -1451,7 +1451,7 @@ describe('AtelierTerminalComponent', () => {
       expect(text()).toContain('poste connecté');
       const link: HTMLAnchorElement =
         fixture.nativeElement.querySelector('.terminal-host-state-link');
-      expect(link.getAttribute('href')).toBe('/forge#poste-h1');
+      expect(link.getAttribute('href')).toBe('/forge/h1');
       // Un poste connecté n'a rien à reprendre : aucune commande ne s'affiche.
       expect(fixture.nativeElement.querySelector('.terminal-host-state-command')).toBeNull();
     });

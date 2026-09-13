@@ -1,5 +1,7 @@
 import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { map } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -29,7 +31,6 @@ import {
   HostProjectSummary,
   RunnerHostOverview,
 } from '../core/models/atelier.models';
-import { ForgeBreadcrumbComponent } from '../shared/forge-breadcrumb/forge-breadcrumb.component';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import { LiveBadgeComponent } from '../shared/live-badge/live-badge.component';
 import { ARCHIVE_ACCEPT } from '../shared/file-selectors';
@@ -68,6 +69,15 @@ import {
   MapFileDialogComponent,
   MapFileDialogData,
 } from './map-file-dialog/map-file-dialog.component';
+import { ForgeRailComponent } from './forge-rail/forge-rail.component';
+import {
+  ForgeRow,
+  HOSTED_REF,
+  awaitingCount,
+  defaultHostRef,
+  groupHosts,
+  hostRef,
+} from './forge-fleet';
 import {
   KillHostDialogComponent,
   KillHostDialogData,
@@ -158,7 +168,7 @@ const EMPTY_HOSTED: RunnerHostOverview = {
   imports: [
     NgTemplateOutlet,
     RouterLink,
-    ForgeBreadcrumbComponent,
+    ForgeRailComponent,
     HostBadgeComponent,
     LiveBadgeComponent,
     MissionBadgeComponent,
@@ -369,10 +379,62 @@ export class PostesComponent implements OnInit {
 
   private timer: ReturnType<typeof setInterval> | null = null;
 
-  /** L'ancrage demandé par le fil d'Ariane n'est honoré qu'une fois : après, l'écran est à vous. */
-  private anchorHonoured = false;
+  // ------------------------------------------ la colonne et le poste ouvert (F-98 / SF-98-01)
+
+  /**
+   * La référence du poste demandé par l'URL — `/forge/:hostRef` —, ou `null` sur `/forge`.
+   *
+   * <p>Une seule route sert les deux chemins (`forgeMatcher`) : le composant n'est pas recréé quand on
+   * change de poste, il suit ce paramètre.</p>
+   */
+  private readonly routeHostRef = toSignal(
+    this.route.paramMap.pipe(map((params) => params.get('hostRef'))),
+    { initialValue: null },
+  );
+
+  /** Le filtre de la colonne : noms de postes ET de projets. Non retenu — il ne survit pas à la page. */
+  readonly filter = signal('');
+
+  /** Tous les postes de la colonne : les machines, puis « Hébergé » (toujours présent, F-72 A2). */
+  private readonly fleetHosts = computed(() => [...this.realHosts(), this.hostedHost()]);
+
+  /** Les groupes de la colonne, rangés par ce qu'ils demandent (D4) et filtrés. */
+  readonly groups = computed(() =>
+    groupHosts(this.fleetHosts(), (host) => this.online(host), this.filter()));
+
+  /**
+   * La référence du poste **ouvert** : celle de l'URL si elle désigne un poste connu, sinon le poste
+   * par défaut — un lien vers un poste supprimé ne produit jamais d'erreur.
+   */
+  readonly selectedRef = computed(() => {
+    const wanted = this.routeHostRef();
+    const hosts = this.fleetHosts();
+    if (wanted && hosts.some((host) => hostRef(host) === wanted)) {
+      return wanted;
+    }
+    return defaultHostRef(hosts, (host) => this.online(host));
+  });
+
+  /** Le poste ouvert à droite — un seul, quel que soit le nombre de clients. */
+  readonly selectedHost = computed<RunnerHostOverview>(() =>
+    this.fleetHosts().find((host) => hostRef(host) === this.selectedRef()) ?? this.hostedHost());
+
+  /** Postes réels **non clôturés** : c'est la flotte dont le bandeau parle. */
+  readonly onlineHostCount = computed(() =>
+    this.openHosts().filter((host) => this.online(host)).length);
+
+  /**
+   * **Autorisations qui attendent**, tous postes et terminaux confondus (D4) : visibles sans clic,
+   * dans le bandeau, quel que soit le poste ouvert.
+   */
+  readonly awaitingTotal = computed(() =>
+    this.fleetHosts().reduce((total, host) => total + awaitingCount(host), 0));
+
+  /** Le poste dont le repli des clôturées a déjà été ouvert d'office — une fois, pas à chaque lecture. */
+  private closedRevealedFor: string | null = null;
 
   ngOnInit(): void {
+    this.redirectLegacyFragment();
     this.load(true);
     this.loadTeamsAccess();
     this.startPolling();
@@ -387,27 +449,43 @@ export class PostesComponent implements OnInit {
   }
 
   /**
-   * Amène dans le champ de vision la carte visée par le fragment `#poste-<id>` (F-68 / SF-68-01).
+   * **L'ancien ancrage `#poste-<id>` redirige vers `/forge/<id>`** (F-98 / SF-98-01).
    *
-   * <p>C'est la réponse au niveau « chez qui » du fil d'Ariane : cliquer sur le client ramène à
-   * <b>sa</b> carte, dans la vue qui les porte toutes — il n'existe pas d'écran par client, et en
-   * inventer un ouvrirait un périmètre que personne n'a demandé.</p>
+   * <p>Le fil d'Ariane de F-68 ramenait à la carte d'un client par ce fragment, dans une page qui les
+   * portait toutes. Il existe maintenant une adresse par poste ; les liens collés, les onglets restés
+   * ouverts et les notifications qui portent encore le fragment <b>ne cassent pas</b> — ils mènent au
+   * poste, et l'entrée d'historique est remplacée pour que « retour » ne ramène pas au fragment.</p>
    *
-   * <p>Silencieux quand la carte n'existe pas : poste supprimé, mission clôturée et repliée, ou
-   * simple fragment recopié de travers. Un fil d'Ariane ne doit jamais produire d'erreur.</p>
+   * <p>Un fragment qui ne désigne aucun poste connu mène à `/forge/<id>`, où la sélection par défaut
+   * s'applique : un fil d'Ariane ne produit jamais d'erreur.</p>
    */
-  revealAnchoredHost(): void {
-    if (this.anchorHonoured) {
-      return;
-    }
-    const fragment = this.route.snapshot.fragment;
+  private redirectLegacyFragment(): void {
+    const fragment = this.route.snapshot?.fragment;
     if (!fragment || !fragment.startsWith('poste-')) {
       return;
     }
-    this.anchorHonoured = true;
-    const card = document.getElementById(fragment);
-    if (card && typeof card.scrollIntoView === 'function') {
-      card.scrollIntoView({ block: 'center' });
+    const id = fragment.slice('poste-'.length).trim();
+    if (id.length === 0) {
+      return;
+    }
+    void this.router.navigate(['/forge', id], { replaceUrl: true });
+  }
+
+  /** Ouvre un poste de la colonne : son adresse, et les paramètres de requête en place (`?onglet=`). */
+  selectHost(row: ForgeRow): void {
+    void this.router.navigate(['/forge', row.ref], { queryParamsHandling: 'preserve' });
+  }
+
+  /**
+   * Ouvre d'office le repli des clôturées quand le poste ouvert en fait partie — sinon sa ligne
+   * serait introuvable dans la colonne. Une seule fois par poste : l'utilisateur peut le refermer.
+   */
+  private revealClosedSelection(): void {
+    const host = this.selectedHost();
+    const ref = hostRef(host);
+    if (ref !== HOSTED_REF && isMissionClosed(host.missionStatus) && this.closedRevealedFor !== ref) {
+      this.closedRevealedFor = ref;
+      this.closedOpen.set(true);
     }
   }
 
@@ -1335,6 +1413,12 @@ export class PostesComponent implements OnInit {
     return project.lastTool ? `${project.lastTool} · ${last}` : last;
   }
 
+  /** L'infobulle du bouton « Rafraîchir » : ce qu'il fait, et de quand date la vue. */
+  refreshTooltip(): string {
+    const updated = this.lastUpdatedLabel();
+    return updated ? `Relire l'état des postes — mis à jour à ${updated}` : "Relire l'état des postes";
+  }
+
   /** Heure de la dernière lecture réussie, en clair. */
   lastUpdatedLabel(): string | null {
     const at = this.lastUpdatedAt();
@@ -1377,8 +1461,7 @@ export class PostesComponent implements OnInit {
         this.error.set('none');
         this.loading.set(false);
         this.lastUpdatedAt.set(new Date());
-        // Les cartes viennent d'être rendues : l'ancrage du fil d'Ariane peut enfin les trouver.
-        setTimeout(() => this.revealAnchoredHost());
+        this.revealClosedSelection();
       },
       error: (err: unknown) => {
         this.loading.set(false);

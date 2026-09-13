@@ -1,52 +1,13 @@
+/* La Forge refondue (F-98) — DESIGN_SYSTEM.md §16. La page occupe la largeur : c'est la colonne et
+   la grille qui tiennent l'échelle, pas une colonne centrée qui s'allonge. */
 .postes {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: var(--cg-space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--cg-space-4);
+  min-height: 100%;
 
-  &__header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: var(--cg-space-3);
-
-    h1 {
-      margin: 0 0 var(--cg-space-2);
-    }
-  }
-
-  &__subtitle {
-    margin: 0;
-    color: var(--cg-text-secondary);
-  }
-
-  &__header-actions {
-    display: flex;
-    align-items: center;
-    gap: var(--cg-space-3);
-  }
-
-  &__updated {
-    color: var(--cg-text-secondary);
-    font-size: 12px;
-  }
-
-  /* Compteur de terminaux vivants (F-70 / SF-70-01). Aucune couleur d'état : c'est un fait chiffré,
-     pas un verdict — et trois registres de couleur cohabitent déjà sur cet écran. */
-  &__live {
-    color: var(--cg-text-secondary);
-    font-size: 12px;
-    font-weight: 500;
-  }
-
-  /* La phrase est ÉCRITE, pas rangée dans une infobulle : un garde-fou de dépense qu'il faut
-     survoler pour découvrir n'informe personne. */
   &__live-cost {
     font-weight: 400;
-    opacity: 0.85;
+    color: var(--cg-text-secondary);
   }
 
   &__loading {
@@ -60,6 +21,11 @@
     align-items: flex-start;
     gap: var(--cg-space-3);
     padding: var(--cg-space-4);
+    margin: var(--cg-space-4);
+
+    .forge-split__detail & {
+      margin: 0;
+    }
 
     > mat-icon {
       color: var(--cg-accent);
@@ -78,53 +44,96 @@
     }
   }
 
-  /* Les deux sorties d'un refus d'accès, côte à côte (F-85 / SF-85-04). Aucune couleur propre :
-     l'or de marque reste sur le geste principal, l'autre lien est un contour. */
+  /* Les deux sorties d'un refus d'accès, côte à côte (F-85 / SF-85-04). */
   &__notice-actions {
     display: flex;
     flex-wrap: wrap;
     gap: var(--cg-space-2);
   }
+}
 
-  &__list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cg-space-3);
+/* — Le bandeau de la flotte (F-98 / SF-98-01) : une ligne, surface blanche, filet bas (§2). */
+.forge-fleet {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cg-space-2) var(--cg-space-3);
+  padding: var(--cg-space-2) var(--cg-space-4);
+  background: var(--cg-surface);
+  border-bottom: 1px solid var(--cg-divider);
+
+  &__title {
+    margin: 0 var(--cg-space-2) 0 0;
+    font-family: var(--cg-font-heading);
+    font-size: 18px;
+    font-weight: 600;
   }
 
-  /* — Repli des missions clôturées (F-60 / SF-60-02).
-       Un repli, pas un onglet : « se ranger SANS disparaître ». Il dit combien de missions sont
-       closes et les rouvre d'un clic ; les cartes qu'il contient sont EXACTEMENT les mêmes. */
-  &__closed {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cg-space-3);
-  }
-
-  &__closed-toggle {
-    display: flex;
+  &__kpi {
+    display: inline-flex;
     align-items: center;
-    gap: var(--cg-space-2);
-    align-self: flex-start;
-    padding: var(--cg-space-2) var(--cg-space-3);
-    border: 1px solid var(--cg-divider);
-    border-radius: 999px;
-    background: var(--cg-surface);
+    gap: var(--cg-space-1);
+    font-size: 13px;
     color: var(--cg-text-secondary);
-    font-family: var(--cg-font-body);
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
 
-    &:hover {
+    b {
       color: var(--cg-text-primary);
-      border-color: var(--cg-text-secondary);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* §12 : l'ambre « En attente » écrit le nombre, jamais un aplat. */
+    &--awaiting b {
+      color: #F9A825;
     }
   }
 
-  /* Les cartes rangées gardent tout — seule leur mise en avant baisse d'un cran. */
-  &__list--closed .poste {
-    opacity: 0.9;
+  &__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+
+    &--online {
+      background: var(--cg-success);
+    }
+
+    &--awaiting {
+      background: #F9A825;
+    }
+  }
+
+  &__spacer {
+    flex: 1;
+  }
+}
+
+/* — Maître–détail (D1) : colonne de 288 px, détail qui prend le reste. */
+.forge-split {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 288px minmax(0, 1fr);
+  min-height: 0;
+
+  &__detail {
+    min-width: 0;
+    padding: var(--cg-space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-3);
+  }
+
+  @media (max-width: 819px) {
+    grid-template-columns: minmax(0, 1fr);
+
+    &__rail ::ng-deep .forge-rail {
+      border-right: 0;
+      border-bottom: 1px solid var(--cg-divider);
+    }
+
+    &__detail {
+      padding: var(--cg-space-3);
+    }
   }
 }
 
