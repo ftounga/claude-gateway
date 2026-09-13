@@ -1,0 +1,504 @@
+<title>La Forge, refondue</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+  /* ---------- page (suit le thème du lecteur) ---------- */
+  :root{
+    --pg-ground:#F5F6FA;
+    --pg-surface:#FFFFFF;
+    --pg-ink:#0F172A;
+    --pg-soft:#5B6780;
+    --pg-faint:#8A94A8;
+    --pg-rule:#E2E8F0;
+    --pg-accent:#E07B39;
+    --pg-accent-ink:#B85E22;
+    --pg-shadow:0 1px 2px rgba(15,23,42,.05), 0 18px 40px -22px rgba(15,23,42,.28);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --pg-ground:#0B1020;
+      --pg-surface:#141D33;
+      --pg-ink:#E6EAF3;
+      --pg-soft:#A2ADC3;
+      --pg-faint:#72809C;
+      --pg-rule:#263150;
+      --pg-accent:#EE9455;
+      --pg-accent-ink:#F2A873;
+      --pg-shadow:0 1px 2px rgba(0,0,0,.4), 0 22px 44px -22px rgba(0,0,0,.75);
+    }
+  }
+  :root[data-theme="dark"]{
+    --pg-ground:#0B1020;
+    --pg-surface:#141D33;
+    --pg-ink:#E6EAF3;
+    --pg-soft:#A2ADC3;
+    --pg-faint:#72809C;
+    --pg-rule:#263150;
+    --pg-accent:#EE9455;
+    --pg-accent-ink:#F2A873;
+    --pg-shadow:0 1px 2px rgba(0,0,0,.4), 0 22px 44px -22px rgba(0,0,0,.75);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:var(--pg-ground);color:var(--pg-ink);
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased;
+  }
+  .page{max-width:1240px;margin:0 auto;padding-inline:24px;padding-block:0 72px}
+  .col{max-width:66ch}
+  h1,h2,h3{font-family:"Space Grotesk","Inter",sans-serif;margin:0;text-wrap:balance;letter-spacing:-.01em}
+  h1{font-size:clamp(2rem,4.2vw,2.8rem);font-weight:700;line-height:1.1}
+  h2{font-size:clamp(1.4rem,2.6vw,1.75rem);font-weight:600;line-height:1.2}
+  h3{font-size:1.05rem;font-weight:600;line-height:1.3}
+  p{margin:0}
+  strong{font-weight:600}
+  .mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.88em}
+  .eyebrow{
+    font-family:"JetBrains Mono",monospace;font-size:.72rem;font-weight:500;
+    letter-spacing:.13em;text-transform:uppercase;color:var(--pg-accent-ink);
+  }
+  .lede{font-size:1.14rem;color:var(--pg-soft);line-height:1.55}
+  .stack{display:flex;flex-direction:column;gap:18px}
+  header.top{padding-block:56px 34px}
+  section{padding-block:52px;border-top:1px solid var(--pg-rule)}
+  a{color:var(--pg-accent-ink)}
+  :focus-visible{outline:2px solid var(--pg-accent);outline-offset:2px}
+
+  /* ---------- la maquette : un écran clair, peint explicitement ---------- */
+  .shot{
+    --a-navy:#0B1020; --a-ground:#F5F6FA; --a-surface:#FFFFFF; --a-ink:#0F172A;
+    --a-soft:#64748B; --a-faint:#94A3B8; --a-rule:#E2E8F0; --a-hover:#F1F5F9;
+    --a-orange:#E07B39; --a-orange-soft:#FDF0E6;
+    --a-ok:#16A34A; --a-ok-bg:#E8F5E9; --a-warn:#B7791F; --a-warn-dot:#F9A825; --a-warn-bg:#FFF8E1;
+    --a-off:#64748B; --a-off-bg:#F1F5F9;
+    border-radius:10px;overflow:hidden;background:var(--a-ground);color:var(--a-ink);
+    border:1px solid #D5DCE6;box-shadow:var(--pg-shadow);
+    font-size:14px;line-height:1.45;
+  }
+  .appbar{
+    background:var(--a-navy);color:#fff;display:flex;align-items:center;gap:22px;
+    padding:0 20px;height:52px;
+  }
+  .appbar .brand{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:15px;letter-spacing:.01em}
+  .appbar .brand span{color:var(--a-orange)}
+  .appbar nav{display:flex;gap:4px}
+  .appbar nav span{padding:7px 12px;border-radius:6px;color:#B6C0D4;font-size:13.5px}
+  .appbar nav span.on{background:rgba(255,255,255,.09);color:#fff}
+  .appbar .who{margin-left:auto;width:28px;height:28px;border-radius:50%;background:#26324F;
+    display:flex;align-items:center;justify-content:center;font-size:11px;color:#C7D0E2;font-weight:600}
+
+  .fleet{
+    display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+    padding:12px 20px;background:var(--a-surface);border-bottom:1px solid var(--a-rule);
+  }
+  .fleet .t{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:17px;margin-right:6px}
+  .kpi{display:flex;align-items:center;gap:7px;color:var(--a-soft);font-size:13px}
+  .kpi b{color:var(--a-ink);font-weight:600;font-variant-numeric:tabular-nums}
+  .kpi.warn b{color:var(--a-warn)}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none}
+  .dot.ok{background:var(--a-ok)} .dot.warn{background:var(--a-warn-dot)} .dot.off{background:#CBD5E1}
+  .fleet .spacer{flex:1}
+  .btn{
+    display:inline-flex;align-items:center;gap:7px;font:500 13px "Inter",sans-serif;
+    padding:7px 13px;border-radius:7px;border:1px solid var(--a-rule);background:var(--a-surface);color:var(--a-ink);
+    white-space:nowrap;
+  }
+  .btn.primary{background:var(--a-orange);border-color:var(--a-orange);color:#fff}
+  .btn .ico{width:14px;height:14px;display:inline-block}
+
+  .split{display:grid;grid-template-columns:290px minmax(0,1fr);min-height:560px}
+  @media (max-width:820px){ .split{grid-template-columns:1fr} }
+
+  /* rail des postes */
+  .rail{background:var(--a-surface);border-right:1px solid var(--a-rule);padding:12px 10px;display:flex;flex-direction:column;gap:4px}
+  @media (max-width:820px){ .rail{border-right:0;border-bottom:1px solid var(--a-rule)} }
+  .rail .search{
+    display:flex;align-items:center;gap:8px;margin:2px 4px 10px;padding:8px 10px;border-radius:7px;
+    background:var(--a-ground);color:var(--a-faint);font-size:13px;border:1px solid var(--a-rule);
+  }
+  .rail .group{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--a-faint);padding:10px 8px 4px}
+  .host{
+    display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:10px;
+    padding:9px 8px;border-radius:8px;position:relative;
+  }
+  .host.sel{background:var(--a-hover)}
+  .host.sel::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--tone)}
+  .ini{
+    width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+    font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:12.5px;color:#fff;background:var(--tone);
+  }
+  .host .nm{font-weight:600;font-size:14px;display:flex;align-items:center;gap:6px}
+  .host .meta{font-size:12px;color:var(--a-soft);display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .host .meta .dot{width:7px;height:7px}
+  .flag{
+    font-size:11px;font-weight:600;padding:2px 7px;border-radius:999px;white-space:nowrap;
+    background:var(--a-warn-bg);color:var(--a-warn);
+  }
+  .count{font-family:"JetBrains Mono",monospace;font-size:11.5px;color:var(--a-faint);font-variant-numeric:tabular-nums}
+  .rail .add{margin:10px 4px 0;justify-content:center}
+
+  /* détail d'un poste */
+  .detail{padding:20px 24px 24px;display:flex;flex-direction:column;gap:16px;min-width:0}
+  .dh{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
+  .dh .ini{width:46px;height:46px;border-radius:10px;font-size:16px}
+  .dh .ttl{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:21px;line-height:1.15}
+  .dh .sub{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin-top:5px;font-size:12.5px;color:var(--a-soft)}
+  .dh .sub .mono{font-size:12px;color:var(--a-ink)}
+  .dh .actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px}
+  .pill.ok{background:var(--a-ok-bg);color:var(--a-ok)}
+  .pill.off{background:var(--a-off-bg);color:var(--a-off)}
+  .pill.warn{background:var(--a-warn-bg);color:var(--a-warn)}
+
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--a-rule);overflow-x:auto}
+  .tabs span{
+    padding:9px 13px;font-weight:500;font-size:13.5px;color:var(--a-soft);white-space:nowrap;
+    border-bottom:2px solid transparent;margin-bottom:-1px;display:flex;align-items:center;gap:7px;
+  }
+  .tabs span.on{color:var(--a-ink);border-bottom-color:var(--a-orange)}
+  .tabs .n{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--a-faint);background:var(--a-hover);padding:1px 6px;border-radius:999px}
+
+  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .toolbar .seg{display:flex;border:1px solid var(--a-rule);border-radius:7px;overflow:hidden;background:var(--a-surface)}
+  .toolbar .seg span{padding:6px 11px;font-size:12.5px;color:var(--a-soft)}
+  .toolbar .seg span.on{background:var(--a-hover);color:var(--a-ink);font-weight:500}
+  .toolbar .grow{flex:1}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(232px,1fr));gap:12px}
+  .proj{
+    background:var(--a-surface);border:1px solid var(--a-rule);border-radius:9px;padding:13px 14px;
+    display:flex;flex-direction:column;gap:9px;min-width:0;
+  }
+  .proj.waiting{border-color:#F3D48A;box-shadow:0 0 0 3px var(--a-warn-bg)}
+  .proj .row{display:flex;align-items:center;gap:8px}
+  .proj .pn{font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .proj .pp{font-family:"JetBrains Mono",monospace;font-size:11.5px;color:var(--a-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .proj .live{margin-left:auto;display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--a-ok);white-space:nowrap}
+  .proj .live .dot{width:6px;height:6px}
+  .proj .prev{
+    background:#0F172A;color:#C6D0E1;border-radius:6px;padding:8px 9px;
+    font-family:"JetBrains Mono",monospace;font-size:11px;line-height:1.5;
+    white-space:pre;overflow:hidden;min-height:52px;
+  }
+  .proj .prev .p{color:#7B8AA6}
+  .proj .ask{
+    display:flex;align-items:center;gap:8px;background:var(--a-warn-bg);color:var(--a-warn);
+    font-size:12px;font-weight:600;padding:7px 9px;border-radius:6px;
+  }
+  .proj .foot{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--a-soft)}
+  .proj .foot .grow{flex:1}
+  .proj .debt{font-size:11px;font-weight:600;color:var(--a-warn);background:var(--a-warn-bg);padding:1px 7px;border-radius:999px}
+  .proj.idle .quiet{font-size:12px;color:var(--a-faint);min-height:52px;display:flex;align-items:center}
+  .ghost{
+    border:1px dashed #CBD5E1;border-radius:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:5px;color:var(--a-soft);font-size:12.5px;padding:14px;min-height:150px;text-align:center;
+  }
+  .ghost b{color:var(--a-ink);font-weight:600}
+
+  .shot-caption{margin-top:12px;font-size:.86rem;color:var(--pg-faint)}
+
+  /* ---------- explications ---------- */
+  .decisions{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:1px;background:var(--pg-rule);border:1px solid var(--pg-rule);border-radius:10px;overflow:hidden}
+  .decision{background:var(--pg-surface);padding:22px 22px 24px;display:flex;flex-direction:column;gap:8px}
+  .decision .was{font-size:.86rem;color:var(--pg-faint);font-style:italic}
+  .decision p{font-size:.95rem;color:var(--pg-soft);line-height:1.55}
+  .decision p strong{color:var(--pg-ink)}
+
+  /* statut */
+  .status-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+  .stcard{background:var(--pg-surface);border:1px solid var(--pg-rule);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:10px}
+  .stcard .lbl{font-family:"JetBrains Mono",monospace;font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--pg-faint)}
+  .stcard .val{display:flex;align-items:center;gap:9px;font-weight:600}
+  .stcard .val .d{width:9px;height:9px;border-radius:50%;flex:none}
+  .stcard p{font-size:.9rem;color:var(--pg-soft)}
+  .timeline{
+    overflow-x:auto;background:var(--pg-surface);border:1px solid var(--pg-rule);border-radius:10px;padding:22px;
+  }
+  .timeline svg{display:block;min-width:640px;width:100%;height:auto}
+
+  /* deux écrans */
+  .merge{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+  .mcard{background:var(--pg-surface);border:1px solid var(--pg-rule);border-radius:10px;padding:20px;display:flex;flex-direction:column;gap:10px}
+  .mcard .route{font-family:"JetBrains Mono",monospace;font-size:.8rem;color:var(--pg-faint)}
+  .mcard p{font-size:.92rem;color:var(--pg-soft)}
+  .mini{display:grid;gap:6px}
+  .mini.prev{grid-template-columns:repeat(4,1fr)}
+  .mini.full{grid-template-columns:repeat(2,1fr)}
+  .mini span{border-radius:4px;background:#0F172A;display:block}
+  .mini.prev span{height:34px}
+  .mini.full span{height:74px}
+  .mini span.w{background:#3A2F12;box-shadow:inset 0 0 0 1.5px #F9A825}
+  .toggle-demo{
+    display:inline-flex;border:1px solid var(--pg-rule);border-radius:8px;overflow:hidden;align-self:flex-start;
+    font-size:.86rem;background:var(--pg-surface)
+  }
+  .toggle-demo span{padding:7px 14px;color:var(--pg-soft)}
+  .toggle-demo span.on{background:var(--pg-accent);color:#fff;font-weight:500}
+  ul.plain{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:9px}
+  ul.plain li{display:flex;gap:10px;color:var(--pg-soft);font-size:.95rem}
+  ul.plain li::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--pg-accent);margin-top:.62em;flex:none}
+  ul.plain li strong{color:var(--pg-ink)}
+</style>
+
+<div class="page">
+
+<header class="top stack">
+  <p class="eyebrow">claude-gateway · proposition de refonte</p>
+  <h1>La Forge, refondue</h1>
+  <p class="lede col">Aujourd'hui chaque poste empile onze sections les unes sous les autres. Avec quatre clients c'est long ; avec quinze projets par poste, c'est illisible. Voici l'écran qui tient à cette échelle.</p>
+</header>
+
+<figure style="margin:0">
+  <div class="shot" role="img" aria-label="Maquette de la nouvelle Forge : liste des postes à gauche, poste EDENRED ouvert à droite avec ses projets en grille">
+    <div class="appbar">
+      <span class="brand">claude<span>·</span>gateway</span>
+      <nav><span>Conversations</span><span class="on">Forge</span><span>Documents</span><span>Gouvernance</span></nav>
+      <span class="who">FT</span>
+    </div>
+
+    <div class="fleet">
+      <span class="t">Forge</span>
+      <span class="kpi"><span class="dot ok"></span><b>2</b> postes en ligne sur 4</span>
+      <span class="kpi warn"><span class="dot warn"></span><b>1</b> autorisation attend</span>
+      <span class="kpi"><b>2</b> / 4 terminaux vivants</span>
+      <span class="spacer"></span>
+      <span class="btn"><svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.5" y="2.5" width="5.5" height="5" rx="1"/><rect x="9" y="2.5" width="5.5" height="5" rx="1"/><rect x="1.5" y="9.5" width="5.5" height="5" rx="1"/><rect x="9" y="9.5" width="5.5" height="5" rx="1"/></svg>Voir travailler</span>
+      <span class="btn primary">+ Connecter un poste</span>
+    </div>
+
+    <div class="split">
+      <aside class="rail">
+        <div class="search"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>Filtrer les postes et projets</div>
+
+        <div class="group">À regarder</div>
+        <div class="host sel" style="--tone:#A348B1">
+          <span class="ini">ED</span>
+          <div style="min-width:0">
+            <div class="nm">EDENRED</div>
+            <div class="meta"><span class="dot ok"></span>en ligne · vu il y a 12 s</div>
+          </div>
+          <span class="flag">1 attend</span>
+        </div>
+
+        <div class="group">En ligne</div>
+        <div class="host" style="--tone:#34777F">
+          <span class="ini">FR</span>
+          <div style="min-width:0">
+            <div class="nm">FREE</div>
+            <div class="meta"><span class="dot ok"></span>en ligne · vu il y a 21 s</div>
+          </div>
+          <span class="count">6</span>
+        </div>
+
+        <div class="group">Hors ligne</div>
+        <div class="host" style="--tone:#597731">
+          <span class="ini">CA</span>
+          <div style="min-width:0">
+            <div class="nm">CAGIP</div>
+            <div class="meta"><span class="dot off"></span>hors ligne · vu il y a 18 min</div>
+          </div>
+          <span class="count">1</span>
+        </div>
+        <div class="host" style="--tone:#7F6D34">
+          <span class="ini">RI</span>
+          <div style="min-width:0">
+            <div class="nm">Richemont</div>
+            <div class="meta"><span class="dot off"></span>jamais connecté</div>
+          </div>
+          <span class="count">0</span>
+        </div>
+
+        <span class="btn add">+ Connecter un poste</span>
+      </aside>
+
+      <main class="detail">
+        <div class="dh">
+          <span class="ini" style="--tone:#A348B1">ED</span>
+          <div style="min-width:0">
+            <div class="ttl">EDENRED</div>
+            <div class="sub">
+              <span class="pill ok"><span class="dot ok" style="width:6px;height:6px"></span>En ligne</span>
+              <span class="mono">~/dev</span>
+              <span>linux · bash</span>
+              <span>vu il y a 12 s</span>
+            </div>
+          </div>
+          <div class="actions">
+            <span class="btn">Terminal du poste</span>
+            <span class="btn">Teams</span>
+            <span class="btn" aria-label="Plus d'actions">···</span>
+          </div>
+        </div>
+
+        <div class="tabs">
+          <span class="on">Projets <span class="n">4</span></span>
+          <span>Carte <span class="n">12 faits</span></span>
+          <span>Gouvernance <span class="pill warn" style="padding:0 7px;font-size:11px">à appliquer</span></span>
+          <span>Activité</span>
+        </div>
+
+        <div class="toolbar">
+          <div class="seg"><span class="on">Actifs d'abord</span><span>A → Z</span><span>Récents</span></div>
+          <span class="grow"></span>
+          <span class="btn">+ Ajouter un projet</span>
+        </div>
+
+        <div class="grid">
+          <div class="proj waiting">
+            <div class="row"><span class="pn">security-assessment</span><span class="live"><span class="dot ok"></span>vivant</span></div>
+            <span class="pp">~/dev/security-assessment</span>
+            <div class="ask"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="8" r="6"/><path d="M8 4.8V8.4M8 10.8v.1"/></svg>Autoriser <span class="mono" style="font-weight:500">aws s3 ls</span> · 1:42</div>
+            <div class="foot"><span>tour en cours · 3 étapes</span><span class="grow"></span><span>Ouvrir →</span></div>
+          </div>
+
+          <div class="proj">
+            <div class="row"><span class="pn">audit-iam</span><span class="live"><span class="dot ok"></span>vivant</span></div>
+            <span class="pp">~/dev/audit-iam</span>
+            <div class="prev"><span class="p">$</span> terraform plan
+Plan: 4 to add, 0 to change
+<span class="p">agent</span> lit policies/…</div>
+            <div class="foot"><span>il y a 8 s</span><span class="grow"></span><span class="debt">1 à promouvoir</span></div>
+          </div>
+
+          <div class="proj idle">
+            <div class="row"><span class="pn">migration-kms</span></div>
+            <span class="pp">~/dev/migration-kms</span>
+            <div class="quiet">Au repos · dernier tour hier 18:04</div>
+            <div class="foot"><span>clos</span><span class="grow"></span><span>Ouvrir →</span></div>
+          </div>
+
+          <div class="proj idle">
+            <div class="row"><span class="pn">rapport-final</span></div>
+            <span class="pp">~/dev/rapport-final</span>
+            <div class="quiet">Au repos · dernier tour 10 sept.</div>
+            <div class="foot"><span>en cours</span><span class="grow"></span><span>Ouvrir →</span></div>
+          </div>
+
+          <div class="ghost">
+            <b>3 dossiers non ouverts</b>
+            <span>dans ~/dev</span>
+            <span class="btn" style="margin-top:6px">Parcourir</span>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+  <p class="shot-caption">Maquette. Noms de postes, couleurs d'identité et racines réels ; projets, commandes et chiffres d'exemple.</p>
+</figure>
+
+<section class="stack">
+  <p class="eyebrow">Ce qui change</p>
+  <h2 class="col">Cinq décisions, chacune tirée de ce que vous avez vu</h2>
+  <div class="decisions">
+    <div class="decision">
+      <span class="was">« Il paraît très vertical »</span>
+      <h3>Une liste de postes, un poste ouvert</h3>
+      <p>Les postes passent dans une <strong>colonne à gauche</strong>, une ligne chacun. On en ouvre un seul à la fois à droite. La page ne grandit plus avec le nombre de clients : <strong>quinze postes tiennent sur une colonne</strong>, et le détail n'affiche que celui qu'on regarde.</p>
+    </div>
+    <div class="decision">
+      <span class="was">« Avec le nombre de projets, ce sera pire »</span>
+      <h3>Les projets en grille</h3>
+      <p>Ils ne s'empilent plus : ils se rangent en <strong>tuiles sur plusieurs colonnes</strong>. Vingt projets tiennent sur un écran de portable. Au-delà, le filtre en haut de la colonne cherche dans les postes <strong>et</strong> leurs projets.</p>
+    </div>
+    <div class="decision">
+      <span class="was">Onze sections par poste</span>
+      <h3>Des onglets dans le poste</h3>
+      <p>La carte, la gouvernance et l'activité ne s'empilent plus sous les projets : ce sont des <strong>onglets</strong>. Chaque onglet porte ce qui compte sans l'ouvrir — « 12 faits », « à appliquer ». On voit qu'il y a quelque chose, on clique si ça nous regarde.</p>
+    </div>
+    <div class="decision">
+      <span class="was">Ce qui attend est noyé dans la page</span>
+      <h3>Ce qui attend passe devant</h3>
+      <p>Les postes sont rangés par <strong>ce qu'ils demandent</strong> : d'abord ceux où une autorisation attend, puis les postes en ligne, puis les autres. Et dans un poste, la tuile en attente porte la commande à autoriser <strong>et le temps qu'il reste</strong>.</p>
+    </div>
+    <div class="decision">
+      <span class="was">« Il le montre connecté alors qu'il est éteint »</span>
+      <h3>Le statut dit l'heure, pas un mot</h3>
+      <p>« Connecté » disparaît au profit de <strong>« vu il y a 12 s »</strong>. Un statut qui affirme ment dès que le runner meurt en silence ; un statut qui date se lit juste, même quand il est en retard. Voir plus bas pourquoi ça arrivait.</p>
+    </div>
+  </div>
+</section>
+
+<section class="stack">
+  <p class="eyebrow">Votre question sur les statuts</p>
+  <h2 class="col">Pourquoi un poste éteint restait « connecté »</h2>
+  <p class="col">La gateway considère un poste en ligne si <strong>l'une</strong> de deux conditions est vraie : une connexion est enregistrée, <strong>ou</strong> le runner a battu il y a moins de 90 secondes. Le « ou » est le défaut.</p>
+  <p class="col">Quand un runner meurt sans fermer proprement sa connexion — ordinateur mis en veille, réseau coupé, WSL suspendu —, le serveur ne reçoit rien. La connexion reste enregistrée. Le battement, lui, s'arrête bien au bout de 30 secondes ; mais le « ou » l'ignore, puisque l'autre condition est encore vraie.</p>
+
+  <div class="timeline">
+    <svg viewBox="0 0 900 190" role="img" aria-label="Chronologie : le runner meurt à 0 ; le battement est périmé à 90 secondes ; l'écran continue d'afficher connecté jusqu'à 15 minutes, quand l'ingress coupe la connexion ou qu'une commande échoue">
+      <g font-family="Inter, sans-serif" font-size="13">
+        <line x1="40" y1="110" x2="860" y2="110" stroke="var(--pg-rule)" stroke-width="2"/>
+        <circle cx="60" cy="110" r="6" fill="#DC2626"/>
+        <text x="60" y="140" text-anchor="middle" fill="var(--pg-ink)" font-weight="600">0 s</text>
+        <text x="60" y="160" text-anchor="middle" fill="var(--pg-soft)" font-size="12">le runner meurt</text>
+
+        <circle cx="200" cy="110" r="6" fill="#F9A825"/>
+        <text x="200" y="140" text-anchor="middle" fill="var(--pg-ink)" font-weight="600">90 s</text>
+        <text x="200" y="160" text-anchor="middle" fill="var(--pg-soft)" font-size="12">battement périmé</text>
+
+        <circle cx="820" cy="110" r="6" fill="#64748B"/>
+        <text x="820" y="140" text-anchor="middle" fill="var(--pg-ink)" font-weight="600">15 min</text>
+        <text x="820" y="160" text-anchor="middle" fill="var(--pg-soft)" font-size="12">l'ingress coupe enfin</text>
+
+        <rect x="60" y="44" width="760" height="30" rx="5" fill="#E8F5E9"/>
+        <text x="80" y="64" fill="#15803D" font-weight="600">L'écran affiche « connecté »</text>
+
+        <rect x="200" y="78" width="136" height="22" rx="4" fill="var(--pg-accent)"/>
+        <text x="268" y="93" text-anchor="middle" fill="#fff" font-size="12" font-weight="600">après correctif : ici</text>
+      </g>
+    </svg>
+  </div>
+
+  <p class="col">Ce qui explique exactement ce que vous voyiez : <strong>vous lancez une commande</strong>, la gateway essaie d'écrire sur la connexion morte, l'écriture échoue, la connexion est enfin retirée — et <strong>seulement là</strong> l'écran de la Forge passe le poste hors ligne. Sans commande, il pouvait rester « connecté » jusqu'à quinze minutes : le délai au bout duquel l'ingress referme une connexion inactive.</p>
+
+  <div class="status-row">
+    <div class="stcard">
+      <span class="lbl">Le correctif</span>
+      <div class="val">Le battement fait foi</div>
+      <p>Un poste est en ligne <strong>si et seulement si</strong> il a battu récemment. Une connexion enregistrée sert à acheminer les commandes ; elle ne prouve plus qu'il est vivant.</p>
+    </div>
+    <div class="stcard">
+      <span class="lbl">Et au passage</span>
+      <div class="val">La connexion morte est retirée</div>
+      <p>Une connexion dont le battement est périmé est fermée par le serveur. La commande suivante échoue <strong>tout de suite</strong> avec « poste hors ligne », au lieu d'attendre.</p>
+    </div>
+    <div class="stcard">
+      <span class="lbl">Délai affiché</span>
+      <div class="val"><span class="d" style="background:#F9A825"></span>≈ 1 min 45 au pire</div>
+      <p>90 secondes sans battement, plus un rafraîchissement de l'écran toutes les 15 secondes. Contre quinze minutes aujourd'hui.</p>
+    </div>
+  </div>
+</section>
+
+<section class="stack">
+  <p class="eyebrow">Votre troisième question</p>
+  <h2 class="col">« Voir travailler » et « Mosaïque » : deux écrans pour un seul besoin</h2>
+  <p class="col">Oui, ils sont différents — mais la différence est une question de <strong>densité</strong>, pas de fonction. Et deux boutons aux noms voisins côte à côte, c'est une question que l'utilisateur ne devrait pas avoir à se poser.</p>
+
+  <div class="merge">
+    <div class="mcard">
+      <span class="route">/forge/supervision · F-76</span>
+      <h3>Voir travailler</h3>
+      <div class="mini prev" aria-hidden="true"><span></span><span class="w"></span><span></span><span></span></div>
+      <p>Des <strong>aperçus</strong> : les dernières lignes et ce que fait chaque terminal. Léger, fait pour surveiller du coin de l'œil. La tuile qui attend une autorisation passe en tête.</p>
+    </div>
+    <div class="mcard">
+      <span class="route">/forge/mosaique · F-83</span>
+      <h3>Mosaïque</h3>
+      <div class="mini full" aria-hidden="true"><span></span><span class="w"></span><span></span><span></span></div>
+      <p>Les <strong>quatre flux entiers</strong>, vivants, en lecture seule. Fait pour suivre de près ce qui se passe, avec agrandissement d'une tuile d'un clic.</p>
+    </div>
+  </div>
+
+  <h3 class="col" style="margin-top:8px">Ma proposition : un seul bouton, deux densités</h3>
+  <div class="toggle-demo" aria-hidden="true"><span class="on">Aperçus</span><span>Flux entiers</span></div>
+  <ul class="plain col">
+    <li><strong>Un seul bouton « Voir travailler »</strong> dans la barre de la Forge — c'est ce que montre la maquette.</li>
+    <li><strong>Un sélecteur en haut de l'écran</strong> pour passer des aperçus aux flux entiers, sans changer de page.</li>
+    <li><strong>Le choix est retenu</strong> : celui qui préfère la mosaïque la retrouve la fois suivante.</li>
+  </ul>
+</section>
+
+</div>
