@@ -11,6 +11,8 @@ import { VigieRadarCounts } from '../core/models/vigie.models';
 import { RadarBrief } from '../core/models/radar.models';
 import { AtelierService } from '../core/services/atelier.service';
 import { RadarService } from '../core/services/radar.service';
+import { MailService } from '../core/services/mail.service';
+import { EMPTY } from 'rxjs';
 import { VigieService } from '../core/services/vigie.service';
 import { TeamsLink, TeamsLinkService } from '../atelier/teams/teams-link.service';
 import { RunnerPairingDialogComponent } from '../atelier/runner/runner-pairing-dialog.component';
@@ -117,6 +119,8 @@ describe('VigieComponent', () => {
         { provide: MatDialog, useValue: dialog },
         { provide: MatSnackBar, useValue: snackBar },
         { provide: RadarService, useValue: radar },
+        // F-110 / SF-110-01 : la ligne des courriels du client se tait ici (lecture sans réponse).
+        { provide: MailService, useValue: jasmine.createSpyObj<MailService>('MailService', { address: EMPTY }) },
         { provide: RadarExporter, useValue: exporter },
         { provide: ActivatedRoute, useValue: { snapshot: {}, paramMap: params$, queryParamMap: query$ } },
       ],

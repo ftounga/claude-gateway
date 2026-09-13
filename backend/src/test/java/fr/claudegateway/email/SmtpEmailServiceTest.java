@@ -57,6 +57,21 @@ class SmtpEmailServiceTest {
     }
 
     @Test
+    void sendsTheReceptionAddressCodeNamingTheClient() {
+        SmtpEmailService service = new SmtpEmailService(mailSender, FROM);
+
+        service.sendReceptionAddressCode("franck@cagip.fr", "CAGIP", "042917");
+
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(captor.capture());
+        SimpleMailMessage sent = captor.getValue();
+        assertThat(sent.getFrom()).isEqualTo(FROM);
+        assertThat(sent.getTo()).containsExactly("franck@cagip.fr");
+        assertThat(sent.getSubject()).contains("CAGIP").doesNotContain("042917");
+        assertThat(sent.getText()).contains("042917").contains("15 minutes");
+    }
+
+    @Test
     void propagatesSmtpFailure() {
         SmtpEmailService service = new SmtpEmailService(mailSender, FROM);
         doThrow(new MailSendException("smtp down")).when(mailSender).send(any(SimpleMailMessage.class));

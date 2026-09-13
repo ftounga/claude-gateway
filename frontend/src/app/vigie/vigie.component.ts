@@ -52,6 +52,7 @@ import {
 } from './close-mission-dialog/close-mission-dialog.component';
 import { RadarExporter } from './radar-export/radar-export';
 import { RadarScheduleComponent } from './radar-schedule/radar-schedule.component';
+import { HostMailAddressComponent } from '../shared/host-mail-address/host-mail-address.component';
 import {
   RadarVerificationDialogComponent,
   RadarVerificationDialogData,
@@ -98,6 +99,7 @@ export type VigieError = 'none' | 'network' | 'forbidden' | 'not-entitled';
     RadarBoardComponent,
     RadarDirectoryComponent,
     RadarScheduleComponent,
+    HostMailAddressComponent,
     SpacePitchComponent,
     TeamsLinkBadgeComponent,
     MatButtonModule,

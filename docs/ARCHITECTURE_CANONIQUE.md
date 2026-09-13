@@ -326,6 +326,20 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     terminaux Teams.
   - **Aucune clé étrangère** : purge explicite à la suppression du poste (événement `DELETED`) et du
     compte.
+- **host_mail_addresses** — l'**adresse de réception d'un client** (F-110 / SF-110-01, migration `100`).
+  Une ligne au plus par poste : là où l'utilisateur reçoit, pour ce client, les courriels qu'il s'envoie.
+  - `host_mail_addresses` : `id (uuid)`, `user_id (uuid, NOT NULL, FK users ON DELETE CASCADE)`,
+    `host_id (uuid, NOT NULL, FK runner_hosts ON DELETE CASCADE)`, `address (varchar 254, NOT NULL)`,
+    `verified_at (timestamptz)`, `code_hash (varchar 64)`, `code_expires_at`, `code_sent_at`,
+    `code_attempts (int, NOT NULL, 0)`, `created_at`, `updated_at`. **Unicité `(host_id)`**, index
+    `(user_id, host_id)`.
+  - **Vérifiée ou inutilisée** : un code à 6 chiffres (empreinte SHA-256 seule, 15 min, 5 essais, une minute
+    entre deux envois) prouve l'adresse ; changer d'adresse la repasse non vérifiée.
+    `HostMailAddressService.resolveRecipient` rend l'adresse vérifiée du poste, sinon l'adresse du compte
+    (`verifiedForClient=false`, à dire) — jamais une adresse en attente, jamais une adresse fournie par un
+    appelant. API `/runner-hosts/{hostId}/mail-address` (garde runner : Forge ou Vigie).
+  - **Clés étrangères en cascade** (choix assumé, contrairement à `host_spaces`) : l'adresse tombe avec le
+    poste et avec le compte sans purge à écrire ailleurs.
 - **user_api_keys** — clé API personnelle BYOK chiffrée au repos (F-03, migration `030`, OQ-06 : AWS KMS
   envelope encryption). **Une seule clé par utilisateur** (`user_id` unique). **Aucune clé en clair** : seuls
   le blob chiffré et les 4 derniers caractères sont persistés.

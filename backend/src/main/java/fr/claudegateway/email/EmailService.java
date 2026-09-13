@@ -24,4 +24,14 @@ public interface EmailService {
      * @param resetLink URL complète de réinitialisation (embarque un token à usage unique)
      */
     void sendPasswordReset(String toEmail, String resetLink);
+
+    /**
+     * Envoie à {@code toEmail} le code à 6 chiffres qui vérifie l'adresse de réception d'un client
+     * (F-110 / SF-110-01). Délais SMTP bornés (F-77) : un relais lent échoue en quelques secondes.
+     *
+     * @param toEmail    adresse à vérifier
+     * @param clientName nom du client (poste), cité dans l'objet
+     * @param code       code à usage unique, jamais journalisé en production
+     */
+    void sendReceptionAddressCode(String toEmail, String clientName, String code);
 }

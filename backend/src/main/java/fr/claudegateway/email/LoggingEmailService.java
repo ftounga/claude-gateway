@@ -30,4 +30,11 @@ public class LoggingEmailService implements EmailService {
     public void sendPasswordReset(String toEmail, String resetLink) {
         log.info("[EMAIL:DEV-STUB] Réinitialisation de mot de passe pour {} -> {}", toEmail, resetLink);
     }
+
+    @Override
+    public void sendReceptionAddressCode(String toEmail, String clientName, String code) {
+        // Même arbitrage que les liens ci-dessus : sans SMTP, le développeur doit pouvoir lire le code.
+        log.info("[EMAIL:DEV-STUB] Code de vérification de l'adresse de réception ({}) pour {} -> {}",
+                clientName, toEmail, code);
+    }
 }

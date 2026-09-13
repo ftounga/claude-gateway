@@ -53,6 +53,17 @@ public class SmtpEmailService implements EmailService {
                         + "votre mot de passe reste inchangé.");
     }
 
+    @Override
+    public void sendReceptionAddressCode(String toEmail, String clientName, String code) {
+        send(toEmail,
+                "Code de vérification — adresse de réception pour " + clientName,
+                "Bonjour,\n\nVous avez indiqué cette adresse pour recevoir les courriels que vous vous envoyez "
+                        + "depuis claude-gateway pour le client « " + clientName + " ».\n\n"
+                        + "Votre code de vérification : " + code
+                        + "\n\nIl est valable 15 minutes. Tant qu'il n'est pas saisi, rien n'est envoyé à cette "
+                        + "adresse.\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez ce courriel.");
+    }
+
     private void send(String toEmail, String subject, String body) {
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(from);
