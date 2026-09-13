@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, throwError } from 'rxjs';
 
 import { GovernanceComponent } from './governance.component';
@@ -131,6 +132,7 @@ describe('GovernanceComponent', () => {
 
     fixture = TestBed.createComponent(GovernanceComponent);
     component = fixture.componentInstance;
+    spyOn(TestBed.inject(MatSnackBar), 'open');
   });
 
   it('charge le catalogue, la sélection et les POSTES, et choisit le premier', () => {
@@ -260,6 +262,93 @@ describe('GovernanceComponent', () => {
     });
 
     expect(governance.deactivate).toHaveBeenCalledWith('h1', 'p1');
+  });
+
+
+  // ---------------------------------- F-96 : « une mise à jour attend »
+
+  /** Un poste où un paquet actif a été republié depuis. */
+  const outdatedHost: GovernanceHost = {
+    ...emptyHost,
+    active: [
+      {
+        pkg: { ...pkg, version: 3 },
+        appliedVersion: 2,
+        outdated: true,
+        status: 'APPLIED',
+        appliedAt: new Date().toISOString(),
+      },
+    ],
+    available: [],
+  };
+
+  it('DIT qu’une mise à jour attend, sur le poste ouvert', () => {
+    governance.getHost.and.returnValue(of(outdatedHost));
+
+    component.ngOnInit();
+    fixture.detectChanges();
+
+    expect(component.updatesWaiting()).toBe(1);
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Une version plus récente');
+    // Rien ne s'est mis à jour tout seul : l'écran le dit, et n'a rien écrit.
+    expect(text).toContain("Rien n'a été écrit sur cette machine");
+    expect(governance.apply).not.toHaveBeenCalled();
+  });
+
+  it('ne dit rien quand aucun paquet n’a bougé', () => {
+    component.ngOnInit();
+    fixture.detectChanges();
+
+    expect(component.updatesWaiting()).toBe(0);
+    expect((fixture.nativeElement as HTMLElement).textContent ?? '').not.toContain(
+      'Une version plus récente',
+    );
+  });
+
+  it('signale les AUTRES postes qui attendent, et tolère une gateway qui ne le dit pas', () => {
+    expect(component.updatesOn({ ...hosts[0], outdated: 2 })).toBe(2);
+    // Réponse d'une gateway antérieure : zéro, jamais d'erreur, aucune pastille inventée.
+    expect(component.updatesOn(hosts[0])).toBe(0);
+  });
+
+  it('rend compte des DEUX conservations après « appliquer »', () => {
+    governance.getHost.and.returnValue(of(outdatedHost));
+    governance.apply.and.returnValue(
+      of({
+        ...plan,
+        projects: [
+          {
+            workspaceId: 'w1',
+            name: 'web',
+            path: 'web',
+            readable: true,
+            entries: [
+              { path: 'a.md', kind: 'TEMPLATE', action: 'CREATE' },
+              { path: 'b.md', kind: 'TEMPLATE', action: 'CREATE' },
+              { path: 'c.md', kind: 'SKILL', action: 'UPDATE' },
+              { path: 'd.md', kind: 'TEMPLATE', action: 'KEEP' },
+              { path: 'e.md', kind: 'TEMPLATE', action: 'KEEP' },
+              { path: 'f.md', kind: 'TEMPLATE', action: 'KEEP_LOCAL' },
+            ],
+          },
+        ],
+      } as GovernanceDepositPlan),
+    );
+    component.ngOnInit();
+    fixture.detectChanges();
+
+    component.applyAgain(outdatedHost.active[0]);
+
+    const opened = TestBed.inject(MatSnackBar).open as jasmine.Spy;
+    const said = opened.calls.mostRecent().args[0] as string;
+    // « 2 créés, 1 mis à jour, 3 laissés tels quels — dont 1 modifié localement, conservé. »
+    expect(said).toContain('2 créé(s)');
+    expect(said).toContain('1 mis à jour');
+    expect(said).toContain('3 laissé(s)');
+    // L'exigence qui fait la valeur de la feature : les deux conservations ne se confondent pas.
+    expect(said).toContain('1 modifié(s) localement, conservé(s)');
+    expect(said).toContain('vos modifications');
   });
 
   it('un 403 affiche le bandeau Forge et arrête là', () => {

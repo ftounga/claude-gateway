@@ -110,7 +110,7 @@ describe('DepositPreviewDialogComponent', () => {
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
 
     expect(text).toContain('STATE.md');
-    expect(text).toContain('déjà présent');
+    expect(text).toContain('déjà à jour');
     expect(text).toContain('.claude/skills/explique.md');
     expect(text).toContain('créé dans 1 dossier(s)');
   });
@@ -255,5 +255,50 @@ describe('DepositPreviewDialogComponent', () => {
       expect(component.mapEntries()).toEqual([]);
       expect((fixture.nativeElement as HTMLElement).querySelector('.preview__map')).toBeNull();
     });
+  });
+
+  // ------------------------------------ F-96 : mis à jour, ou conservé — et dit
+
+  it('annonce les mises à jour et les fichiers conservés, séparément', async () => {
+    await build(
+      data({
+        plan: {
+          ...plan,
+          projects: [
+            {
+              workspaceId: 'w1',
+              name: 'web',
+              path: 'web',
+              readable: true,
+              entries: [
+                { path: 'STATE.md', kind: 'TEMPLATE', action: 'KEEP_LOCAL' },
+                { path: '.claude/skills/explique.md', kind: 'SKILL', action: 'UPDATE' },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(component.updates()).toBe(1);
+    expect(component.keptLocally()).toBe(1);
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('seront mis à jour');
+    expect(text).toContain('que vous avez modifiés sont conservés');
+    // Et sur la ligne du fichier : les deux conservations ne se confondent pas.
+    expect(text).toContain('modifié localement dans 1 — conservé');
+  });
+
+  it('dit les cinq issues, sans jamais confondre les deux conservations', async () => {
+    await build(data());
+
+    expect(component.actionLabel('CREATE')).toBe('sera créé');
+    expect(component.actionLabel('UPDATE')).toBe('sera mis à jour');
+    expect(component.actionLabel('KEEP')).toBe('déjà à jour — laissé tel quel');
+    expect(component.actionLabel('KEEP_LOCAL'))
+      .toBe('modifié localement — conservé, non mis à jour');
+    expect(component.actionLabel('UNKNOWN')).toBe('indéterminé');
+    // Une issue qu'une gateway plus récente rendrait n'est jamais présentée comme une écriture.
+    expect(component.actionLabel('AUTRE CHOSE' as never)).toBe('indéterminé');
   });
 });

@@ -88,6 +88,38 @@
     max-width: 72ch;
   }
 
+  /**
+   * « Une mise à jour attend » (F-96 / SF-96-03).
+   *
+   * Aucune couleur nouvelle : le filet d'accent de la charte, comme les autres avis de cet écran.
+   * Ce n'est PAS une erreur — rien n'est en panne, et le rouge dirait le contraire.
+   */
+  &__update {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cg-space-2);
+    padding: var(--cg-space-3);
+    border-left: 4px solid var(--cg-accent);
+    border-radius: 8px;
+    background: var(--cg-bg);
+
+    p {
+      margin: 0;
+      max-width: 72ch;
+    }
+
+    mat-icon {
+      color: var(--cg-accent);
+      flex: 0 0 auto;
+    }
+  }
+
+  /** La même attente, sur la liste des postes : un mot, pas une pastille de couleur. */
+  &__pending {
+    color: var(--cg-accent);
+    font-size: 13px;
+  }
+
   &__meta {
     color: var(--cg-text-secondary);
     font-size: 13px;

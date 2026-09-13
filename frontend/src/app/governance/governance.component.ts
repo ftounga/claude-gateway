@@ -16,6 +16,8 @@ import { forkJoin } from 'rxjs';
 import { GovernanceService } from '../core/services/governance.service';
 import {
   GovernanceActivation,
+  GovernanceDepositAction,
+  GovernanceDepositPlan,
   GovernanceHost,
   GovernanceHostSummary,
   GovernancePackage,
@@ -107,6 +109,22 @@ export class GovernanceComponent implements OnInit {
   readonly catalogEmpty = computed(
     () => !this.loading() && this.error() === 'none' && this.catalog().length === 0,
   );
+
+  /**
+   * Combien de paquets **actifs sur le poste ouvert** ont été republiés depuis (F-96 / SF-96-03).
+   *
+   * C'est ce qui déclenche le bandeau. Rien ne se met à jour tout seul — le produit n'écrit jamais
+   * sur la machine d'un client sans qu'on le lui ait demandé —, mais **l'écran doit dire qu'une
+   * mise à jour attend** : sinon le geste « appliquer » existe et n'est jamais fait.
+   */
+  readonly updatesWaiting = computed(
+    () => (this.host()?.active ?? []).filter((activation) => activation.outdated).length,
+  );
+
+  /** Le même compte pour **un autre** poste, tel que la liste le rend. Absent ⇒ zéro, jamais d'erreur. */
+  updatesOn(host: GovernanceHostSummary): number {
+    return host.outdated ?? 0;
+  }
 
   ngOnInit(): void {
     this.load();
@@ -262,7 +280,13 @@ export class GovernanceComponent implements OnInit {
     });
   }
 
-  /** Rejoue le dépôt d'un paquet resté en attente — la machine était éteinte, elle ne l'est plus. */
+  /**
+   * Rejoue le dépôt : la machine était éteinte, ou le paquet a été republié depuis.
+   *
+   * <p>Le compte rendu **distingue les deux conservations** (F-96 / SF-96-03) : « laissé tel quel »
+   * parce que c'était déjà bon, et « conservé » parce que le fichier avait été modifié. Sans la
+   * distinction, on ne sait jamais si sa correction est arrivée.</p>
+   */
   applyAgain(activation: GovernanceActivation): void {
     const hostRef = this.selectedHostRef();
     if (!hostRef) {
@@ -273,17 +297,45 @@ export class GovernanceComponent implements OnInit {
       next: (plan) => {
         this.busy.set(null);
         this.refreshHost();
-        const unreadable = plan.projects.filter((project) => !project.readable).length;
-        this.snackBar.open(
-          unreadable === 0
-            ? 'Les fichiers manquants ont été déposés dans les dossiers du poste.'
-            : `${unreadable} dossier(s) n'ont pas pu être lus : le dépôt reste en attente.`,
-          'Fermer',
-          { duration: 5000 },
-        );
+        this.snackBar.open(this.report(plan), 'Fermer', { duration: 8000 });
       },
       error: (err: HttpErrorResponse) => this.failed(err, "Le dépôt n'a pas pu être rejoué."),
     });
+  }
+
+  /**
+   * Ce qu'un dépôt vient de faire, en une phrase — « 2 créés, 1 mis à jour, 3 laissés tels quels —
+   * dont 1 modifié localement, conservé ».
+   *
+   * <p>La mention « dont … modifié localement » n'apparaît que s'il y en a, et elle est suivie de
+   * ce qui compte vraiment pour qui la lit : **ses modifications n'ont pas été touchées**.</p>
+   */
+  private report(plan: GovernanceDepositPlan): string {
+    const counts = countActions(plan);
+    const parts: string[] = [];
+    if (counts.CREATE > 0) {
+      parts.push(`${counts.CREATE} créé(s)`);
+    }
+    if (counts.UPDATE > 0) {
+      parts.push(`${counts.UPDATE} mis à jour`);
+    }
+    const kept = counts.KEEP + counts.KEEP_LOCAL;
+    if (kept > 0) {
+      parts.push(`${kept} laissé(s) tel(s) quel(s)`);
+    }
+    if (parts.length === 0) {
+      parts.push('rien à faire');
+    }
+    let message = parts.join(', ') + '.';
+    if (counts.KEEP_LOCAL > 0) {
+      message += ` Dont ${counts.KEEP_LOCAL} modifié(s) localement, conservé(s) :`
+        + ' vos modifications n’ont pas été touchées.';
+    }
+    const unreadable = plan.projects.filter((project) => !project.readable).length;
+    if (unreadable > 0) {
+      message += ` ${unreadable} dossier(s) n'ont pas pu être lus : le dépôt reste en attente.`;
+    }
+    return message;
   }
 
   /** Désactive, après confirmation — et en rappelant que les fichiers déjà déposés restent. */
@@ -359,4 +411,27 @@ export class GovernanceComponent implements OnInit {
     }
     this.snackBar.open(message, 'Fermer', { duration: 6000 });
   }
+}
+
+/** Le décompte des issues d'un plan de dépôt, racine du poste comprise (F-96 / SF-96-03). */
+export function countActions(
+  plan: GovernanceDepositPlan,
+): Record<GovernanceDepositAction, number> {
+  const counts: Record<GovernanceDepositAction, number> = {
+    CREATE: 0,
+    UPDATE: 0,
+    KEEP: 0,
+    KEEP_LOCAL: 0,
+    UNKNOWN: 0,
+  };
+  const entries = [
+    ...(plan.root?.entries ?? []),
+    ...plan.projects.flatMap((project) => project.entries),
+  ];
+  for (const entry of entries) {
+    // Une issue qu'on ne connaît pas est INDÉTERMINÉE, jamais « mise à jour » : une gateway plus
+    // récente ne doit pas faire dire à cet écran qu'une écriture a eu lieu.
+    counts[entry.action in counts ? entry.action : 'UNKNOWN']++;
+  }
+  return counts;
 }

@@ -63,6 +63,11 @@
             @for (host of hosts(); track host.ref) {
               <mat-option [value]="host.ref">
                 {{ host.name }} · {{ host.projects }} dossier(s)
+                <!-- F-96 : une mise à jour attend sur CE poste-là. Sans ce signal, on ne le verrait
+                     que sur le poste déjà ouvert, et personne n'irait voir les autres. -->
+                @if (updatesOn(host) > 0) {
+                  <span class="gouvernance__pending">· mise à jour</span>
+                }
               </mat-option>
             }
           </mat-select>
@@ -94,6 +99,22 @@
             </p>
           }
 
+          <!-- UNE MISE À JOUR ATTEND (F-96 / SF-96-03). Rien ne s'est mis à jour tout seul : le
+               produit n'écrit jamais sur cette machine sans qu'on le lui ait demandé. Mais si
+               l'écran ne le dit pas, le geste existe et n'est jamais fait. Ton d'information, pas
+               d'erreur : il n'y a aucune panne. -->
+          @if (updatesWaiting() > 0) {
+            <div class="gouvernance__update">
+              <mat-icon>sync</mat-icon>
+              <p>
+                Une version plus récente de <strong>{{ updatesWaiting() }} paquet(s)</strong>
+                existe. <strong>Rien n'a été écrit sur cette machine</strong> : cliquez
+                « Appliquer » pour la déposer. Les fichiers que vous avez modifiés seront
+                conservés.
+              </p>
+            </div>
+          }
+
           @if (state.active.length === 0) {
             <p class="gouvernance__empty">
               Aucun paquet actif sur ce poste. Retenez-en un ci-dessous, puis activez-le : l'écran
@@ -108,7 +129,7 @@
                     <span class="gouvernance__meta">
                       version {{ activation.appliedVersion }}
                       @if (activation.outdated) {
-                        · une version plus récente existe
+                        · <strong>mise à jour disponible : v{{ activation.pkg.version }}</strong>
                       }
                       @if (activation.status === 'PENDING') {
                         · fichiers en attente de dépôt

@@ -27,7 +27,12 @@ export interface DepositPreviewData {
 export interface FileOutcome {
   readonly file: GovernanceFile;
   readonly created: number;
+  /** Mis à jour : artefact généré resté intact, remplacé par la version du paquet (F-96). */
+  readonly updated: number;
+  /** Laissé tel quel : rien à y faire, il est déjà ce que le paquet apporte. */
   readonly kept: number;
+  /** **Conservé parce qu'il a été modifié localement** — ce n'est pas la même chose (F-96). */
+  readonly keptLocal: number;
   readonly unknown: number;
 }
 
@@ -95,7 +100,9 @@ export class DepositPreviewDialogComponent {
       .filter((file) => file.kind !== 'MAP')
       .map((file) => {
       let created = 0;
+      let updated = 0;
       let kept = 0;
+      let keptLocal = 0;
       let unknown = 0;
       for (const project of this.data.plan.projects) {
         const entry = project.entries.find((candidate) => candidate.path === file.path);
@@ -103,14 +110,22 @@ export class DepositPreviewDialogComponent {
           case 'CREATE':
             created++;
             break;
+          case 'UPDATE':
+            updated++;
+            break;
           case 'KEEP':
             kept++;
             break;
+          case 'KEEP_LOCAL':
+            keptLocal++;
+            break;
+          // Une issue inconnue de cet écran est INDÉTERMINÉE, jamais « mise à jour » : une gateway
+          // plus récente ne doit pas lui faire annoncer une écriture.
           default:
             unknown++;
         }
       }
-        return { file, created, kept, unknown };
+        return { file, created, updated, kept, keptLocal, unknown };
       }),
   );
 
@@ -147,8 +162,17 @@ export class DepositPreviewDialogComponent {
     if (outcome.created > 0) {
       parts.push(`créé dans ${outcome.created} dossier(s)`);
     }
+    if (outcome.updated > 0) {
+      parts.push(`mis à jour dans ${outcome.updated}`);
+    }
     if (outcome.kept > 0) {
-      parts.push(`déjà présent dans ${outcome.kept} — laissé tel quel`);
+      parts.push(`déjà à jour dans ${outcome.kept} — laissé tel quel`);
+    }
+    if (outcome.keptLocal > 0) {
+      // La distinction qui fait la valeur de F-96 : conservé PARCE QU'IL A ÉTÉ MODIFIÉ n'est pas
+      // conservé parce qu'il était déjà bon. Sans elle, on ne sait jamais si sa correction est
+      // arrivée.
+      parts.push(`modifié localement dans ${outcome.keptLocal} — conservé`);
     }
     if (outcome.unknown > 0) {
       parts.push(`indéterminé dans ${outcome.unknown}`);
@@ -157,6 +181,12 @@ export class DepositPreviewDialogComponent {
   }
 
   outcomeIcon(outcome: FileOutcome): string {
+    if (outcome.updated > 0) {
+      return 'sync';
+    }
+    if (outcome.keptLocal > 0 && outcome.created === 0) {
+      return 'edit_off';
+    }
     if (outcome.kept > 0 && outcome.created === 0) {
       return 'lock';
     }
@@ -171,12 +201,48 @@ export class DepositPreviewDialogComponent {
     switch (action) {
       case 'CREATE':
         return 'sera créé';
+      case 'UPDATE':
+        return 'sera mis à jour';
       case 'KEEP':
-        return 'déjà présent — laissé tel quel';
+        return 'déjà à jour — laissé tel quel';
+      case 'KEEP_LOCAL':
+        return 'modifié localement — conservé, non mis à jour';
       default:
         return 'indéterminé';
     }
   }
+
+  /** L'icône d'une entrée de carte : cinq issues, cinq images, aucune ambiguïté. */
+  mapIcon(action: GovernanceDepositAction): string {
+    switch (action) {
+      case 'UPDATE':
+        return 'sync';
+      case 'KEEP':
+        return 'lock';
+      case 'KEEP_LOCAL':
+        return 'edit_off';
+      case 'CREATE':
+        return 'note_add';
+      default:
+        return 'help_outline';
+    }
+  }
+
+  /** Vrai si ce paquet mettrait à jour au moins un fichier : l'annonce doit le dire d'entrée. */
+  readonly updates = computed(() =>
+    this.data.plan.projects
+      .flatMap((project) => project.entries)
+      .concat(this.data.plan.root?.entries ?? [])
+      .filter((entry) => entry.action === 'UPDATE').length,
+  );
+
+  /** Vrai si au moins un fichier est conservé **parce qu'il a été modifié** sur la machine. */
+  readonly keptLocally = computed(() =>
+    this.data.plan.projects
+      .flatMap((project) => project.entries)
+      .concat(this.data.plan.root?.entries ?? [])
+      .filter((entry) => entry.action === 'KEEP_LOCAL').length,
+  );
 
   /**
    * Ouvre un fichier en lecture seule.
