@@ -11,7 +11,8 @@ import org.springframework.stereotype.Component;
  *
  * <p>V1 expose les trois paliers Hosted (Solo/Pro/Daily) ; l'offre Gold (ADR-012) s'y ajoute pour
  * débloquer l'Atelier (F-28), et l'offre <b>BYOK</b> (F-41) pour le client qui apporte sa propre
- * clé Anthropic : plateforme et Atelier compris, <b>aucun jeton alloué</b>. Le catalogue ne dit
+ * clé Anthropic : la plateforme, <b>aucun jeton alloué</b> — la Forge s'y ajoute par l'option depuis
+ * F-107. Le catalogue ne dit
  * ni le prix ni le quota — ils vivent en configuration, ajustables par environnement.</p>
  */
 @Component

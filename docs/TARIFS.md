@@ -89,9 +89,15 @@ servies en production**.
 | | Solo | Pro | Gold | BYOK |
 |---|---|---|---|---|
 | Passerelle, conversations, historique, fichiers | ✅ | ✅ | ✅ | ✅ |
-| **Atelier** (F-28) | par l'**option** (§3) | par l'**option** (§3) | **inclus** | **inclus** |
+| **Atelier / Forge** (F-28) | par l'**option** (§3) — 40 € | par l'**option** (§3) — 40 € | **inclus** | par l'**option** (§3) — **70 €** *(depuis F-107 / SF-107-01)* |
 | Jetons fournis par la plateforme | ✅ | ✅ | ✅ | ❌ — clé Anthropic du client, facturée sur son compte |
 | **Postes couverts** (F-65, §8.2) | 1 | 1 | 1 | 1 |
+
+**BYOK ne comprend plus la Forge** (F-107 / SF-107-01, livrée le 2026-09-13). F-41 l'y avait
+incluse ; le plan à 29 € ouvrait alors ce que Solo paie 64 €, et un Gold muni d'une clé Anthropic
+économisait 170 € par mois en passant en BYOK. BYOK retire les **jetons**, jamais la plateforme : la
+Forge s'y achète par l'option, à son prix propre (§3) — **BYOK + Forge = 99 €**. Aucun client touché :
+aucun abonnement BYOK en production au 2026-09-13.
 
 Le nombre de postes couverts ne dépend **pas** du plan : `app.seat.included-seats` est une valeur
 unique (défaut **1**), pas une entrée par plan. Un plan plus cher achète du **quota**, pas des
@@ -158,18 +164,31 @@ sans appeler le fournisseur. La variante monétisée reste ouverte (**OQ-08**).
 
 ---
 
-## 3. L'option Atelier
+## 3. L'option Atelier (option Forge)
 
-| | Valeur | Source |
-|---|---|---|
-| Montant mensuel affiché | **40 €** | `app.billing.stripe.atelier-option-display-price` (`APP_BILLING_ATELIER_OPTION_PRICE`) |
-| Quota apporté | **aucun** | par construction — l'option ouvre un **droit d'accès**, pas une allocation. *À la différence du supplément par poste (§8.2), qui en apporte* |
-| Abonnement Stripe | **distinct** de celui du plan | `app.billing.stripe.atelier-option-price-id` (`STRIPE_PRICE_ATELIER_OPTION`) |
+**Son prix dépend du plan qui la porte** (F-107 / SF-107-01) : une clé de montant et une clé de price
+ID **par plan porteur**.
+
+| | Sur Solo / Pro | Sur BYOK | Source |
+|---|---|---|---|
+| Montant mensuel affiché | **40 €** | **70 €** | Solo/Pro : `app.billing.stripe.atelier-option-display-price` (`APP_BILLING_ATELIER_OPTION_PRICE`) · BYOK : `app.billing.stripe.atelier-option-byok-display-price` (`APP_BILLING_ATELIER_OPTION_BYOK_PRICE`) |
+| Abonnement Stripe | **distinct** de celui du plan | **distinct** de celui du plan, **price propre** | Solo/Pro : `app.billing.stripe.atelier-option-price-id` (`STRIPE_PRICE_ATELIER_OPTION`) · BYOK : `app.billing.stripe.atelier-option-byok-price-id` (`STRIPE_PRICE_ATELIER_OPTION_BYOK`) |
+| Quota apporté | **aucun** | **aucun** | par construction — l'option ouvre un **droit d'accès**, pas une allocation. *À la différence du supplément par poste (§8.2), qui en apporte* |
 
 Elle existe pour une raison précise : sans elle, accéder à l'Atelier depuis Solo imposait de passer
 à Gold — une falaise ×8 devant la seule capacité différenciante du produit. Elle se souscrit
-**en supplément** d'un plan Solo ou Pro. Gold et BYOK incluent déjà l'Atelier : l'option ne les
-concerne pas.
+**en supplément** d'un plan Solo, Pro ou BYOK. Gold inclut déjà l'Atelier : l'option ne le concerne
+pas.
+
+**Pourquoi 70 € sur BYOK** (décidé par le PO le 2026-09-13, cadrage F-107 §9) : BYOK n'a aucune
+marge sur les jetons pour porter la plateforme ; à 70 €, le contournement de Gold passe de 170 € à
+39 € d'économie pour un usage maximal.
+
+**Le price BYOK est livré vide.** Tant qu'il l'est, l'option est **dormante sur BYOK seulement** :
+l'écran d'abonnement affiche le montant et dit que l'option n'est pas encore proposée sur l'offre
+BYOK — sans erreur, bouton désactivé ; un appel direct au paiement répond `503`. Le price Solo/Pro ne
+sert **jamais** de repli pour BYOK. Créer le price chez Stripe et renseigner la variable suffit à
+l'ouvrir, sans redéploiement (création du price : **PO**).
 
 ---
 
@@ -250,7 +269,7 @@ Aucun de ces points n'est tranché par F-64 : ce sont des décisions commerciale
    de l'essai : **200 000 jetons suffisent-ils** (§4) ? Quatre à dix tours de Forge ; 500 000
    coûteraient ≈ 4,50 $ par essai. **À CONFIRMER PAR LE PO.**
 4. **Concordance montants affichés ↔ prix Stripe**, pour les quatre plans, les trois prix annuels,
-   l'option Atelier et les deux recharges. Le dépôt ne peut pas la vérifier ; le tableau de bord
+   l'option Atelier (sur Solo/Pro et sur BYOK) et les deux recharges. Le dépôt ne peut pas la vérifier ; le tableau de bord
    Stripe seul le peut.
 5. **BYOK n'a pas d'offre annuelle** (§1). Absence subie ou voulue ?
 6. **`markup` de décompte** = `1.0` (neutre) : le décompte n'applique **aucun multiplicateur**, la
@@ -267,13 +286,14 @@ Aucun de ces points n'est tranché par F-64 : ce sont des décisions commerciale
 
 ## 7 bis. Grille décidée le 2026-09-13, **pas encore servie** (F-106, F-107)
 
-> **Rien de cette section n'est facturé aujourd'hui.** Décidée par le PO, montant par montant ; elle
+> **Rien de cette section n'est facturé aujourd'hui, sauf la ligne marquée « servie »** (option Forge
+> sur BYOK, F-107 / SF-107-01, entrée en §1 et §3). Décidée par le PO, montant par montant ; elle
 > entre dans §1 à §3 le jour où F-107 est livrée. Détail et raisons : `docs/features/F-107/CADRAGE-F-107-l-offre-par-espace.md` §9.
 
 | Offre | Mensuel | Contenu |
 |---|---|---|
 | Option Forge sur Solo / Pro | 40 € (inchangé) | l'actuelle option Atelier |
-| **Option Forge sur BYOK** | **70 €** | corrige BYOK, qui comprend aujourd'hui l'Atelier pour 29 € |
+| **Option Forge sur BYOK** | **70 €** | **servie depuis F-107 / SF-107-01** (§1, §3) — montant configuré, price à créer par le PO |
 | **Option Vigie** (Solo, Pro, BYOK) | **69 €** | Teams + Radar, un client suivi, réserve de synchro 3 M jetons |
 | Gold Forge | 199 € (l'actuel Gold) | 12 M jetons + Forge |
 | **Gold Vigie** | **229 €** (2 290 €/an) | 12 M jetons + Vigie |

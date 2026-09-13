@@ -55,6 +55,15 @@ class AtelierOptionServiceTest {
                 optionPriceId, displayPrice, Map.of(), Map.of(), Map.of()));
     }
 
+    /** F-107 / SF-107-01 : configuration à deux plans porteurs tarifaires (Solo/Pro, BYOK). */
+    private static BillingProperties properties(String optionPriceId, String displayPrice,
+            String byokPriceId, String byokDisplayPrice) {
+        return new BillingProperties(5, new BillingProperties.Stripe(
+                "sk_test", "whsec_test", Map.of(), Map.of(), null, null, Map.of(),
+                optionPriceId, displayPrice, Map.of(), Map.of(), Map.of(),
+                byokPriceId, byokDisplayPrice));
+    }
+
     private void withProperties(BillingProperties props) {
         service = new AtelierOptionService(subscriptionService, subscriptionRepository,
                 new AtelierEntitlementService(subscriptionService, accessGrantService), billingProvider, props);
@@ -254,5 +263,80 @@ class AtelierOptionServiceTest {
         given(PlanCode.SOLO, SubscriptionStatus.ACTIVE, null);
 
         assertThat(service.describe(userId).priceEur()).isEqualTo("40");
+    }
+
+    // ------------------------------------------- F-107 / SF-107-01 : l'option portée par BYOK
+
+    @Test
+    @DisplayName("BYOK sans price BYOK : l'option coûte 70 €, n'est pas incluse, et n'est pas encore vendable")
+    void describeByokShowsItsOwnPriceAndIsUnavailableWithoutItsPrice() {
+        // Le price Solo/Pro est configuré, celui de BYOK non : l'un ne doit pas servir pour l'autre.
+        given(PlanCode.BYOK, SubscriptionStatus.ACTIVE, null);
+
+        AtelierOptionView view = service.describe(userId);
+
+        assertThat(view.priceEur()).isEqualTo("70");
+        assertThat(view.byokCarrier()).isTrue();
+        assertThat(view.includedInPlan()).isFalse();
+        assertThat(view.entitled()).isFalse();
+        assertThat(view.available()).isFalse();
+    }
+
+    @Test
+    void describeByokIsAvailableOnceItsPriceIsConfigured() {
+        withProperties(properties("price_atelier_option", "40", "price_option_byok", "75"));
+        given(PlanCode.BYOK, SubscriptionStatus.ACTIVE, null);
+
+        AtelierOptionView view = service.describe(userId);
+
+        assertThat(view.priceEur()).isEqualTo("75");
+        assertThat(view.available()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Solo : montant et disponibilité inchangés, même quand un price BYOK existe")
+    void describeSoloIsUnaffectedByByokKeys() {
+        withProperties(properties("price_atelier_option", "40", "price_option_byok", "70"));
+        given(PlanCode.SOLO, SubscriptionStatus.ACTIVE, null);
+
+        AtelierOptionView view = service.describe(userId);
+
+        assertThat(view.priceEur()).isEqualTo("40");
+        assertThat(view.byokCarrier()).isFalse();
+        assertThat(view.available()).isTrue();
+    }
+
+    @Test
+    void byokActiveGetsACheckoutWithTheByokPrice() {
+        withProperties(properties("price_atelier_option", "40", "price_option_byok", "70"));
+        given(PlanCode.BYOK, SubscriptionStatus.ACTIVE, null);
+        when(billingProvider.createAtelierOptionCheckoutSession(any()))
+                .thenReturn(new CheckoutSession("https://pay/x", "cs_1"));
+
+        service.startCheckout(userId, "a@b.co");
+
+        ArgumentCaptor<AtelierOptionCheckoutCommand> captor =
+                ArgumentCaptor.forClass(AtelierOptionCheckoutCommand.class);
+        verify(billingProvider).createAtelierOptionCheckoutSession(captor.capture());
+        assertThat(captor.getValue().priceId()).isEqualTo("price_option_byok");
+    }
+
+    @Test
+    void byokCheckoutWithoutByokPriceIsDormantAndNeverFallsBackToTheSoloPrice() {
+        given(PlanCode.BYOK, SubscriptionStatus.ACTIVE, null);
+
+        assertThatThrownBy(() -> service.startCheckout(userId, "a@b.co"))
+                .isInstanceOf(BillingProviderUnavailableException.class);
+        verify(billingProvider, never()).createAtelierOptionCheckoutSession(any());
+    }
+
+    @Test
+    void canceledByokCannotCarryTheOption() {
+        withProperties(properties("price_atelier_option", "40", "price_option_byok", "70"));
+        given(PlanCode.BYOK, SubscriptionStatus.CANCELED, null);
+
+        assertThatThrownBy(() -> service.startCheckout(userId, "a@b.co"))
+                .isInstanceOf(NoActiveSubscriptionException.class)
+                .hasMessageContaining("BYOK");
     }
 }

@@ -183,43 +183,68 @@ class AtelierEntitlementServiceTest {
     }
 
     @Nested
-    @DisplayName("Offre BYOK (F-41) — l'Atelier est compris dans la plateforme qu'elle facture")
+    @DisplayName("Offre BYOK (F-107 / SF-107-01) — la Forge ne s'y comprend plus, elle s'y achète")
     class ByokPlan {
 
         @Test
-        void byokActiveIncludesAtelier() {
-            // Le client paie la plateforme et apporte ses propres jetons : lui revendre le droit
-            // d'Atelier reviendrait à facturer deux fois la même chose.
+        void byokActiveWithoutOptionIsDenied() {
+            // La faille de F-107 : BYOK à 29 € ouvrait ce que Solo paie 64 €. Le plan seul ne suffit plus.
             Subscription byok = subscription(PlanCode.BYOK, SubscriptionStatus.ACTIVE, null);
 
-            assertThat(service.isEntitled(byok)).isTrue();
-            assertThat(service.isIncludedInPlan(byok)).isTrue();
+            assertThat(service.isEntitled(byok)).isFalse();
+            assertThat(service.isIncludedInPlan(byok)).isFalse();
             assertThat(service.isGrantedByOption(byok)).isFalse();
         }
 
         @Test
-        void byokPastDueKeepsAccess() {
-            // Même politique de sursis que les autres plans : une seule politique dans le produit.
+        void byokPastDueWithoutOptionIsDenied() {
             assertThat(service.isEntitled(subscription(PlanCode.BYOK, SubscriptionStatus.PAST_DUE, null)))
+                    .isFalse();
+        }
+
+        @Test
+        void byokWithActiveOptionIsAllowed() {
+            Subscription byok = subscription(PlanCode.BYOK, SubscriptionStatus.ACTIVE,
+                    SubscriptionStatus.ACTIVE);
+
+            assertThat(service.isEntitled(byok)).isTrue();
+            assertThat(service.isGrantedByOption(byok)).isTrue();
+            assertThat(service.isIncludedInPlan(byok))
+                    .as("l'écran doit proposer l'option, pas la dire incluse").isFalse();
+        }
+
+        @Test
+        void byokPastDueWithPastDueOptionKeepsAccessAsGrace() {
+            // Même politique de sursis que Solo/Pro : une seule politique dans le produit.
+            assertThat(service.isEntitled(
+                    subscription(PlanCode.BYOK, SubscriptionStatus.PAST_DUE, SubscriptionStatus.PAST_DUE)))
                     .isTrue();
         }
 
         @Test
-        void byokCanceledLosesAccess() {
-            Subscription canceled = subscription(PlanCode.BYOK, SubscriptionStatus.CANCELED, null);
+        void optionAloneDoesNotHoldWhenByokIsCanceled() {
+            Subscription canceled = subscription(PlanCode.BYOK, SubscriptionStatus.CANCELED,
+                    SubscriptionStatus.ACTIVE);
 
             assertThat(service.isEntitled(canceled)).isFalse();
             assertThat(service.isIncludedInPlan(canceled)).isFalse();
         }
 
         @Test
-        void byokIsNotAnOptionCarrierPlan() {
-            // L'option n'a pas de sens sur BYOK : le droit y est déjà inclus. Une option active ne
-            // doit pas devenir la source du droit — sans quoi l'écran proposerait un achat sans objet.
-            Subscription byok = subscription(PlanCode.BYOK, SubscriptionStatus.ACTIVE,
-                    SubscriptionStatus.ACTIVE);
+        void canceledOptionOnByokIsDenied() {
+            assertThat(service.isEntitled(
+                    subscription(PlanCode.BYOK, SubscriptionStatus.ACTIVE, SubscriptionStatus.CANCELED)))
+                    .isFalse();
+        }
 
-            assertThat(service.isGrantedByOption(byok)).isFalse();
+        @Test
+        void carrierPlansAreSoloProAndByokOnly() {
+            assertThat(service.isOptionCarrier(PlanCode.SOLO)).isTrue();
+            assertThat(service.isOptionCarrier(PlanCode.PRO)).isTrue();
+            assertThat(service.isOptionCarrier(PlanCode.BYOK)).isTrue();
+            assertThat(service.isOptionCarrier(PlanCode.GOLD)).isFalse();
+            assertThat(service.isOptionCarrier(PlanCode.DAILY)).isFalse();
+            assertThat(service.isOptionCarrier(null)).isFalse();
         }
     }
 

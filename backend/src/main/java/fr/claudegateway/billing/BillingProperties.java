@@ -4,6 +4,7 @@ import java.util.Map;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.NestedConfigurationProperty;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 /**
  * Configuration du module billing (F-09). Toutes les valeurs sont externalisées ; les secrets Stripe
@@ -32,7 +33,7 @@ public record BillingProperties(
         if (stripe == null) {
             stripe = new Stripe(
                     null, null, Map.of(), Map.of(), null, null, Map.of(), null, null,
-                    Map.of(), Map.of(), Map.of());
+                    Map.of(), Map.of(), Map.of(), null, null);
         }
     }
 
@@ -55,6 +56,12 @@ public record BillingProperties(
      *                            Même patron que {@code displayPrices} : le débit réel appartient au
      *                            price ID, jamais à ce montant. Un pack sans entrée ici est vendable
      *                            <b>sans prix affiché</b> — l'écran le dit, il n'invente rien.
+     * @param atelierOptionByokPriceId     price ID de l'option Forge <b>portée par BYOK</b> (F-107 /
+     *                                     SF-107-01) — vide par défaut => option non souscriptible
+     *                                     sur BYOK. Le prix de l'option dépend du plan porteur : BYOK
+     *                                     n'a aucune marge sur les jetons pour porter la plateforme.
+     * @param atelierOptionByokDisplayPrice montant d'affichage EUR de l'option Forge sur BYOK
+     *                                     (cosmétique, défaut 70)
      */
     public record Stripe(
             String secretKey,
@@ -68,8 +75,34 @@ public record BillingProperties(
             String atelierOptionDisplayPrice,
             Map<String, String> yearlyPrices,
             Map<String, String> yearlyDisplayPrices,
-            Map<String, String> topupDisplayPrices) {
+            Map<String, String> topupDisplayPrices,
+            String atelierOptionByokPriceId,
+            String atelierOptionByokDisplayPrice) {
 
+        /**
+         * Constructeur d'avant F-107 : l'option n'avait qu'un plan porteur tarifaire. Conservé pour
+         * que la configuration de Solo/Pro reste construisible telle quelle ; les clés BYOK y sont
+         * absentes (price vide, montant par défaut).
+         */
+        public Stripe(
+                String secretKey,
+                String webhookSecret,
+                Map<String, String> prices,
+                Map<String, String> topupPrices,
+                String successUrl,
+                String cancelUrl,
+                Map<String, String> displayPrices,
+                String atelierOptionPriceId,
+                String atelierOptionDisplayPrice,
+                Map<String, String> yearlyPrices,
+                Map<String, String> yearlyDisplayPrices,
+                Map<String, String> topupDisplayPrices) {
+            this(secretKey, webhookSecret, prices, topupPrices, successUrl, cancelUrl, displayPrices,
+                    atelierOptionPriceId, atelierOptionDisplayPrice, yearlyPrices, yearlyDisplayPrices,
+                    topupDisplayPrices, null, null);
+        }
+
+        @ConstructorBinding
         public Stripe {
             if (prices == null) {
                 prices = Map.of();
@@ -99,6 +132,10 @@ public record BillingProperties(
                 // Le défaut de la feature (40 €/mois) vit aussi ici : une configuration incomplète
                 // ne doit pas afficher un prix vide à côté d'un bouton d'achat.
                 atelierOptionDisplayPrice = "40";
+            }
+            if (atelierOptionByokDisplayPrice == null || atelierOptionByokDisplayPrice.isBlank()) {
+                // Décidé par le PO le 2026-09-13 (F-107 §9) : BYOK + Forge = 29 + 70 = 99 €.
+                atelierOptionByokDisplayPrice = "70";
             }
         }
 
@@ -187,6 +224,29 @@ public record BillingProperties(
          */
         public boolean isAtelierOptionConfigured() {
             return isConfigured() && atelierOptionPriceId != null && !atelierOptionPriceId.isBlank();
+        }
+
+        /**
+         * Price ID de l'option Forge <b>pour ce plan porteur</b> (F-107 / SF-107-01) : celui de BYOK
+         * pour BYOK, celui de Solo/Pro pour tout autre plan.
+         */
+        public String atelierOptionPriceId(PlanCode carrier) {
+            return carrier == PlanCode.BYOK ? atelierOptionByokPriceId : atelierOptionPriceId;
+        }
+
+        /** Montant d'affichage EUR de l'option Forge pour ce plan porteur (F-107 / SF-107-01). */
+        public String atelierOptionDisplayPrice(PlanCode carrier) {
+            return carrier == PlanCode.BYOK ? atelierOptionByokDisplayPrice : atelierOptionDisplayPrice;
+        }
+
+        /**
+         * Vrai si l'option Forge est réellement souscriptible <b>sur ce plan porteur</b> : fournisseur
+         * configuré et price ID du plan porteur renseigné. Un price BYOK vide rend l'option dormante
+         * sur BYOK sans rien changer pour Solo/Pro.
+         */
+        public boolean isAtelierOptionConfigured(PlanCode carrier) {
+            String priceId = atelierOptionPriceId(carrier);
+            return isConfigured() && priceId != null && !priceId.isBlank();
         }
     }
 }

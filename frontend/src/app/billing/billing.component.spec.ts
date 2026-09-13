@@ -123,6 +123,7 @@ describe('BillingComponent', () => {
     status: null,
     cancelAt: null,
     available: true,
+    byokCarrier: false,
   };
 
   /** Aucun accès offert en cours (F-62) : la section de saisie doit être proposée. */
@@ -618,6 +619,33 @@ describe('BillingComponent', () => {
     expect(fixture.nativeElement.textContent).not.toContain('40 €');
   });
 
+  it('offers the Forge option to a BYOK subscriber at its own price, and says calmly when it is not sold yet', () => {
+    // F-107 / SF-107-01 : pas de price BYOK configuré — ni erreur, ni bouton d'achat actif.
+    setup();
+    withOption({ ...optionAvailable, priceEur: '70', available: false, byokCarrier: true });
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('70 €');
+    expect(text).toContain("S'ajoute à votre offre BYOK");
+    expect(text).toContain("L'option Forge n'est pas encore proposée sur l'offre BYOK.");
+    expect(text).not.toContain('Incluse dans votre offre');
+    expect(component.canSubscribeAtelierOption()).toBeFalse();
+    const cta = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.billing__option-action button'),
+    )[0] as HTMLButtonElement;
+    expect(cta.disabled).toBeTrue();
+  });
+
+  it('offers the Forge option to a BYOK subscriber once its price is configured', () => {
+    setup();
+    withOption({ ...optionAvailable, priceEur: '70', available: true, byokCarrier: true });
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain("Ajouter l'option");
+    expect(text).not.toContain("pas encore proposée sur l'offre BYOK");
+    expect(component.canSubscribeAtelierOption()).toBeTrue();
+  });
+
   it('says the option does not change the token quota', () => {
     setup();
     expect(fixture.nativeElement.textContent).toContain('quota de tokens ne change pas');
@@ -726,7 +754,7 @@ describe('BillingComponent', () => {
         }
       ).atelierOptionErrorMessage(new HttpErrorResponse({ status: 409, error: { error: code } }));
 
-    expect(message('no_active_subscription')).toContain('Solo ou Pro');
+    expect(message('no_active_subscription')).toContain('Solo, Pro ou BYOK');
     expect(message('atelier_option_included')).toContain('déjà incluse');
     expect(message('atelier_option_already_active')).toContain('déjà active');
     expect(message('atelier_option_not_active')).toContain('à résilier');
@@ -828,7 +856,9 @@ describe('BillingComponent', () => {
 
     expect(byokCard.textContent).toContain('Aucun jeton inclus');
     expect(byokCard.textContent).not.toContain('tokens inclus / mois');
-    expect(byokCard.textContent).toContain('Forge (Claude Code Lite) incluse');
+    // F-107 / SF-107-01 : la Forge ne s'y comprend plus, elle s'y ajoute par l'option.
+    expect(byokCard.textContent).toContain('Forge (Claude Code Lite) en option');
+    expect(byokCard.textContent).not.toContain('Forge (Claude Code Lite) incluse');
     // Non-régression : l'offre Hosted voisine garde exactement son libellé.
     expect(soloCard.textContent).toContain('tokens inclus / mois');
     expect(soloCard.textContent).not.toContain('Aucun jeton inclus');

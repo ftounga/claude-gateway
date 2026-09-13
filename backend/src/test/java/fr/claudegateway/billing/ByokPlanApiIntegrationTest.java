@@ -285,19 +285,55 @@ class ByokPlanApiIntegrationTest {
     }
 
     @Test
-    void byokSubscriberGetsTheAtelierWithoutBuyingTheOption() throws Exception {
+    void byokSubscriberWithoutTheOptionNoLongerGetsTheForge() throws Exception {
+        // F-107 / SF-107-01 : BYOK à 29 € ouvrait la Forge que Solo paie 64 €. Le plan seul ne suffit plus.
         giveSubscription(byokUser, PlanCode.BYOK, SubscriptionStatus.ACTIVE);
+
+        mockMvc.perform(get("/api/workspaces").contextPath("/api")
+                        .header("Authorization", "Bearer " + byokToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error", is("atelier_forbidden")));
+
+        // ... et l'écran de facturation propose l'option à son prix BYOK. Le price BYOK est vide par
+        // défaut : l'option n'y est pas encore vendable, et c'est dit sans erreur.
+        mockMvc.perform(get("/api/billing/atelier-option").contextPath("/api")
+                        .header("Authorization", "Bearer " + byokToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entitled", is(false)))
+                .andExpect(jsonPath("$.includedInPlan", is(false)))
+                .andExpect(jsonPath("$.priceEur", is("70")))
+                .andExpect(jsonPath("$.byokCarrier", is(true)))
+                .andExpect(jsonPath("$.available", is(false)));
+    }
+
+    @Test
+    void byokSubscriberWithTheOptionGetsTheForge() throws Exception {
+        subscriptionRepository.save(Subscription.builder()
+                .userId(byokUser.getId()).planCode(PlanCode.BYOK).status(SubscriptionStatus.ACTIVE)
+                .stripeCustomerId("cus_" + byokUser.getId()).stripeSubscriptionId("sub_" + byokUser.getId())
+                .atelierOptionStatus(SubscriptionStatus.ACTIVE)
+                .atelierOptionStripeSubscriptionId("sub_option_" + byokUser.getId())
+                .build());
 
         mockMvc.perform(get("/api/workspaces").contextPath("/api")
                         .header("Authorization", "Bearer " + byokToken))
                 .andExpect(status().isOk());
 
-        // ... et l'écran de facturation le dit : l'option n'a pas lieu d'être sur cette offre.
         mockMvc.perform(get("/api/billing/atelier-option").contextPath("/api")
                         .header("Authorization", "Bearer " + byokToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.entitled", is(true)))
-                .andExpect(jsonPath("$.includedInPlan", is(true)));
+                .andExpect(jsonPath("$.includedInPlan", is(false)))
+                .andExpect(jsonPath("$.status", is("ACTIVE")));
+    }
+
+    @Test
+    void byokOptionCheckoutWithoutByokPriceIsUnavailableAndNeverUsesTheSoloPrice() throws Exception {
+        giveSubscription(byokUser, PlanCode.BYOK, SubscriptionStatus.ACTIVE);
+
+        mockMvc.perform(post("/api/billing/atelier-option/checkout").contextPath("/api")
+                        .header("Authorization", "Bearer " + byokToken))
+                .andExpect(status().isServiceUnavailable());
     }
 
     @Test

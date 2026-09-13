@@ -190,7 +190,8 @@
                 <strong>Aucun jeton inclus</strong> — vos appels passent par votre clé Anthropic et
                 sont facturés sur votre compte.
               </p>
-              <p class="billing__card-feature">Forge (Claude Code Lite) incluse</p>
+              <!-- F-107 / SF-107-01 : BYOK ne comprend plus la Forge, elle s'y ajoute par l'option. -->
+              <p class="billing__card-feature">Forge (Claude Code Lite) en option</p>
             } @else {
               <p class="billing__card-tokens">
                 {{ plan.tokens | number }} tokens inclus{{ tokensSuffix(plan) }}
@@ -249,10 +250,23 @@
             <p class="billing__card-price">
               <span class="amount">{{ option.priceEur }} €</span><span class="per">/ mois</span>
             </p>
-            <p class="billing__card-tokens">
-              S'ajoute à votre offre Solo ou Pro. <strong>Votre quota de tokens ne change pas</strong> :
-              l'option ouvre l'accès, elle n'ajoute pas de tokens.
-            </p>
+            @if (option.byokCarrier) {
+              <!-- F-107 / SF-107-01 : montant propre à BYOK, renvoyé par le serveur. -->
+              <p class="billing__card-tokens">
+                S'ajoute à votre offre BYOK. Vos appels restent servis par votre clé Anthropic :
+                l'option ouvre l'accès à la Forge, elle n'ajoute pas de tokens.
+              </p>
+              @if (!option.available) {
+                <p class="billing__card-tokens">
+                  L'option Forge n'est pas encore proposée sur l'offre BYOK.
+                </p>
+              }
+            } @else {
+              <p class="billing__card-tokens">
+                S'ajoute à votre offre Solo ou Pro. <strong>Votre quota de tokens ne change pas</strong> :
+                l'option ouvre l'accès, elle n'ajoute pas de tokens.
+              </p>
+            }
             @if (atelierOptionEnding() && option.cancelAt) {
               <p class="billing__card-tokens">
                 Résiliation programmée : votre accès reste ouvert jusqu'au

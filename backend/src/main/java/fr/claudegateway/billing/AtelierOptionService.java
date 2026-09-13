@@ -34,9 +34,6 @@ public class AtelierOptionService {
     private static final Set<SubscriptionStatus> LIVE_STATUSES =
             EnumSet.of(SubscriptionStatus.ACTIVE, SubscriptionStatus.PAST_DUE);
 
-    /** Plans porteurs : l'option est un supplément, elle ne se vend pas seule (F-40, D2). */
-    private static final Set<PlanCode> CARRIER_PLANS = EnumSet.of(PlanCode.SOLO, PlanCode.PRO);
-
     private final SubscriptionService subscriptionService;
     private final SubscriptionRepository subscriptionRepository;
     private final AtelierEntitlementService entitlementService;
@@ -75,9 +72,10 @@ public class AtelierOptionService {
      * @param email  email de l'utilisateur (pré-remplissage Checkout)
      * @return la session de paiement (URL de redirection)
      * @throws AtelierOptionIncludedInPlanException l'offre inclut déjà l'Atelier (Gold)
-     * @throws NoActiveSubscriptionException        aucun plan porteur Solo/Pro actif
+     * @throws NoActiveSubscriptionException        aucun plan porteur Solo, Pro ou BYOK actif
      * @throws AtelierOptionAlreadyActiveException  l'option est déjà en cours
-     * @throws BillingProviderUnavailableException  fournisseur ou price ID d'option non configuré
+     * @throws BillingProviderUnavailableException  fournisseur ou price ID d'option du plan porteur
+     *                                              non configuré (F-107 : BYOK a le sien)
      */
     @Transactional
     public CheckoutSession startCheckout(UUID userId, String email) {
@@ -88,16 +86,17 @@ public class AtelierOptionService {
         }
         if (!isCarriedByLivePlan(subscription)) {
             throw new NoActiveSubscriptionException(
-                    "Souscrivez une offre Solo ou Pro avant d'ajouter l'option Forge.");
+                    "Souscrivez une offre Solo, Pro ou BYOK avant d'ajouter l'option Forge.");
         }
         if (isOptionLive(subscription)) {
             throw new AtelierOptionAlreadyActiveException();
         }
 
-        String priceId = properties.stripe().atelierOptionPriceId();
+        // F-107 / SF-107-01 : le prix de l'option dépend du plan porteur (BYOK a son propre price).
+        String priceId = properties.stripe().atelierOptionPriceId(subscription.getPlanCode());
         if (!StringUtils.hasText(priceId)) {
             throw new BillingProviderUnavailableException(
-                    "Aucun price configuré pour l'option Forge.");
+                    "Aucun price configuré pour l'option Forge sur cette offre.");
         }
 
         return billingProvider.createAtelierOptionCheckoutSession(new AtelierOptionCheckoutCommand(
@@ -130,17 +129,19 @@ public class AtelierOptionService {
     }
 
     private AtelierOptionView view(Subscription subscription) {
+        PlanCode plan = subscription.getPlanCode();
         return new AtelierOptionView(
-                properties.stripe().atelierOptionDisplayPrice(),
+                properties.stripe().atelierOptionDisplayPrice(plan),
                 entitlementService.isEntitled(subscription),
                 entitlementService.isIncludedInPlan(subscription),
                 subscription.getAtelierOptionStatus(),
                 subscription.getAtelierOptionCancelAt(),
-                properties.stripe().isAtelierOptionConfigured());
+                properties.stripe().isAtelierOptionConfigured(plan),
+                plan == PlanCode.BYOK);
     }
 
     private boolean isCarriedByLivePlan(Subscription subscription) {
-        return CARRIER_PLANS.contains(subscription.getPlanCode())
+        return entitlementService.isOptionCarrier(subscription.getPlanCode())
                 && subscription.getStatus() != null
                 && LIVE_STATUSES.contains(subscription.getStatus());
     }
@@ -158,7 +159,11 @@ public class AtelierOptionService {
      * @param includedInPlan le droit vient du plan lui-même (Gold) : l'option serait sans objet
      * @param optionStatus   statut de l'option, ou {@code null} si jamais souscrite
      * @param cancelAt       terme d'une résiliation programmée, ou {@code null}
-     * @param available      l'option est réellement souscriptible (fournisseur + price configurés)
+     * @param available      l'option est réellement souscriptible <b>sur le plan de l'utilisateur</b>
+     *                       (fournisseur + price de ce plan porteur configurés)
+     * @param byokCarrier    le plan de l'utilisateur est BYOK : montant et price propres à BYOK
+     *                       (F-107 / SF-107-01) — l'écran adapte son libellé sans déduire l'offre
+     *                       d'un code de plan
      */
     public record AtelierOptionView(
             String priceEur,
@@ -166,6 +171,7 @@ public class AtelierOptionService {
             boolean includedInPlan,
             SubscriptionStatus optionStatus,
             OffsetDateTime cancelAt,
-            boolean available) {
+            boolean available,
+            boolean byokCarrier) {
     }
 }

@@ -13,18 +13,23 @@ import fr.claudegateway.access.AccessGrantService;
  * <b>plan</b> ({@code PlanCode == GOLD}) écrit dans le paquet {@code atelier} ; il devient un test
  * de <b>droit</b>, et il vit dans le paquet {@code billing}, à côté de l'abonnement qu'il lit.
  *
- * <p>Le droit est ouvert dans exactement quatre cas :</p>
+ * <p>Le droit est ouvert dans exactement trois cas :</p>
  * <ol>
  *   <li>le <b>plan Gold</b> est actif ({@code ACTIVE}/{@code PAST_DUE}) — <i>strictement</i> le
  *       comportement d'avant F-40 : aucune régression de droit n'est acceptable ;</li>
- *   <li>le <b>plan BYOK</b> est actif (F-41) : le client paie la plateforme et apporte ses propres
- *       jetons ; l'Atelier fait partie de la plateforme qu'il paie, et lui vendre en plus le droit
- *       d'Atelier reviendrait à facturer deux fois la même chose ;</li>
- *   <li>l'<b>option Atelier</b> est active ({@code ACTIVE}/{@code PAST_DUE}) <b>et</b> le plan qui
- *       la porte est un {@link PlanCode#SOLO} ou {@link PlanCode#PRO} lui-même actif ;</li>
+ *   <li>l'<b>option Atelier</b> (l'option Forge) est active ({@code ACTIVE}/{@code PAST_DUE})
+ *       <b>et</b> le plan qui la porte est un {@link PlanCode#SOLO}, {@link PlanCode#PRO} ou,
+ *       depuis F-107, {@link PlanCode#BYOK}, lui-même actif ;</li>
  *   <li>un <b>accès offert</b> est en cours (F-62) : un code d'accès à durée limitée a été consommé
  *       et son terme n'est pas atteint.</li>
  * </ol>
+ *
+ * <p><b>F-107 / SF-107-01 — BYOK ne comprend plus la Forge.</b> F-41 l'avait rangé parmi les plans
+ * qui l'incluent (« la plateforme entière, le client apporte ses jetons ») : le plan à 29 € ouvrait
+ * alors ce que Solo paie 64 €, et un Gold muni d'une clé économisait 170 € par mois en passant en
+ * BYOK. Retirer les jetons était juste ; vendre la plateforme au prix d'une passerelle ne l'était
+ * pas. BYOK devient un <b>plan porteur</b> de l'option, à un prix qui lui est propre (voir
+ * {@link BillingProperties.Stripe#atelierOptionDisplayPrice(PlanCode)}).</p>
  *
  * <p>Toute autre situation est refusée (fail-closed, cohérent avec {@code EntitlementService}).
  * L'option ouvre un <b>droit</b>, jamais un jeton : aucun quota n'est lu ni modifié ici.</p>
@@ -45,16 +50,17 @@ public class AtelierEntitlementService {
     /**
      * Plans sur lesquels l'option Atelier peut se greffer. {@code DAILY} en est exclu : un pass
      * journée ne porte pas un abonnement mensuel. {@code GOLD} n'a pas besoin de l'option — il
-     * ouvre déjà le droit par lui-même.
+     * ouvre déjà le droit par lui-même. {@code BYOK} y entre avec F-107 / SF-107-01 : il ne
+     * comprend plus la Forge, il la paie.
      */
-    private static final Set<PlanCode> OPTION_CARRIER_PLANS = EnumSet.of(PlanCode.SOLO, PlanCode.PRO);
+    private static final Set<PlanCode> OPTION_CARRIER_PLANS =
+            EnumSet.of(PlanCode.SOLO, PlanCode.PRO, PlanCode.BYOK);
 
     /**
-     * Plans qui comprennent l'Atelier par eux-mêmes : {@code GOLD} (ADR-012) et, depuis F-41,
-     * {@code BYOK} — le client y paie la plateforme entière et apporte ses propres jetons.
+     * Plans qui comprennent l'Atelier par eux-mêmes : {@code GOLD} seul (ADR-012). {@code BYOK} en
+     * est sorti avec F-107 / SF-107-01.
      */
-    private static final Set<PlanCode> PLANS_INCLUDING_ATELIER =
-            EnumSet.of(PlanCode.GOLD, PlanCode.BYOK);
+    private static final Set<PlanCode> PLANS_INCLUDING_ATELIER = EnumSet.of(PlanCode.GOLD);
 
     private final SubscriptionService subscriptionService;
     private final AccessGrantService accessGrantService;
@@ -106,7 +112,7 @@ public class AtelierEntitlementService {
     }
 
     /**
-     * Vrai si le droit vient du <b>plan lui-même</b> (Gold, ou BYOK depuis F-41) — l'option serait
+     * Vrai si le droit vient du <b>plan lui-même</b> (Gold seul depuis F-107) — l'option serait
      * alors inutile. Sert à l'écran de facturation pour dire « incluse dans votre offre » plutôt que
      * de proposer un achat sans objet.
      *
@@ -119,9 +125,9 @@ public class AtelierEntitlementService {
     }
 
     /**
-     * Vrai si le droit vient de l'<b>option</b> : option en cours <i>et</i> plan porteur (Solo/Pro)
+     * Vrai si le droit vient de l'<b>option</b> : option en cours <i>et</i> plan porteur (Solo, Pro, BYOK)
      * lui-même en cours. Une option seule ne tient pas : elle est un supplément, pas un plan — sans
-     * plan actif l'utilisateur n'a aucun jeton pour faire tourner l'Atelier qu'il paie.
+     * plan actif l'utilisateur n'a ni jeton ni clé servie pour faire tourner l'Atelier qu'il paie.
      *
      * @param subscription abonnement de l'utilisateur
      * @return {@code true} si l'option ouvre le droit
@@ -130,6 +136,18 @@ public class AtelierEntitlementService {
         return isLive(subscription.getAtelierOptionStatus())
                 && OPTION_CARRIER_PLANS.contains(subscription.getPlanCode())
                 && isLive(subscription.getStatus());
+    }
+
+    /**
+     * Vrai si ce plan peut porter l'option (Solo, Pro, BYOK). Source unique de la liste, relue par
+     * {@link AtelierOptionService} pour accepter la souscription : deux listes finiraient par
+     * diverger.
+     *
+     * @param planCode plan de l'abonnement, éventuellement {@code null} (essai)
+     * @return {@code true} si le plan est un porteur de l'option
+     */
+    public boolean isOptionCarrier(PlanCode planCode) {
+        return planCode != null && OPTION_CARRIER_PLANS.contains(planCode);
     }
 
     private static boolean isLive(SubscriptionStatus status) {
