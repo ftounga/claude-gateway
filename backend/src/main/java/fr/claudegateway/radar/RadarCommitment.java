@@ -14,6 +14,8 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -98,9 +100,32 @@ public class RadarCommitment {
     @Column(name = "disowned", nullable = false)
     private boolean disowned;
 
+    /** Instant de la preuve la plus récente, tenu par le registre (F-101 / SF-101-04). */
+    @Column(name = "last_evidence_at")
+    private OffsetDateTime lastEvidenceAt;
+
+    /** Jour où une relance est due ; recalculé à chaque écriture, jamais saisi (F-101 / SF-101-04). */
+    @Column(name = "follow_up_due_on")
+    private LocalDate followUpDueOn;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
+
+    /** La relance due suit l'engagement, quelle que soit l'écriture qui l'a changé. */
+    @PrePersist
+    @PreUpdate
+    void refreshFollowUp() {
+        followUpDueOn = RadarFollowUp.dueOn(direction, status, disowned, dueDate, lastEvidenceAt);
+    }
+
+    /** Retient la preuve la plus récente. */
+    public void noteEvidence(OffsetDateTime occurredAt) {
+        if (occurredAt != null && (lastEvidenceAt == null || lastEvidenceAt.isBefore(occurredAt))) {
+            lastEvidenceAt = occurredAt;
+        }
+        refreshFollowUp();
+    }
 
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)

@@ -114,6 +114,78 @@ class RadarExtractionParserTest {
         assertThat(RadarExtractionParser.parse(block(json), context)).isEmpty();
     }
 
+    private static final String COMMITMENTS = """
+            {"sujets": [{"sujet": "S1", "preuves": ["M1"],
+              "engagements": [
+                {"sens": "autre_vers_moi", "description": "Signer la licence", "debiteur": "P1",
+                 "echeance": {"date": "2026-09-17", "nature": "deduite"}, "certitude": "certain", "preuves": ["M1"]},
+                {"sens": "moi_vers_autre", "description": "Relancer les achats", "beneficiaire": "P2",
+                 "certitude": "certain", "preuves": ["M2"]},
+                {"sens": "mise_en_relation", "description": "Présenter Marc à Léa", "beneficiaire": "P1", "autre": "P2",
+                 "echeance": {"date": "2026-09-11", "nature": "explicite"}, "certitude": "probable", "preuves": ["M3"]}
+              ],
+              "engagements_suivis": [{"engagement": "C1", "statut": "tenu", "preuves": ["M3"]}],
+              "cloture": {"preuves": ["M3"]}}]}
+            """;
+
+    @Test
+    void readsCommitmentsFollowsAndClosure() {
+        SubjectItem mfa = RadarExtractionParser.parse(block(COMMITMENTS), context).orElseThrow().subjects().get(0);
+
+        assertThat(mfa.commitments()).hasSize(3);
+        RadarExtraction.CommitmentItem owed = mfa.commitments().get(0);
+        assertThat(owed.direction()).isEqualTo(fr.claudegateway.radar.RadarCommitmentDirection.OTHER_TO_ME);
+        assertThat(owed.debtor().authorKey()).isEqualTo("marc@client.fr");
+        assertThat(owed.dueDate()).isEqualTo(LocalDate.of(2026, 9, 17));
+        assertThat(owed.dueDeduced()).isTrue();
+        assertThat(owed.certainty()).isEqualTo(fr.claudegateway.radar.RadarCertainty.PROBABLE); // déduite → probable
+        RadarExtraction.CommitmentItem mine = mfa.commitments().get(1);
+        assertThat(mine.beneficiary().authorKey()).isEqualTo("lea@client.fr");
+        assertThat(mine.certainty()).isEqualTo(fr.claudegateway.radar.RadarCertainty.CERTAIN);
+        RadarExtraction.CommitmentItem intro = mfa.commitments().get(2);
+        assertThat(intro.other().authorKey()).isEqualTo("lea@client.fr");
+        assertThat(intro.dueDeduced()).isFalse();
+        assertThat(mfa.follows()).singleElement().satisfies(f -> {
+            assertThat(f.commitment().id()).isEqualTo(RadarExtractionFixtures.DEVIS);
+            assertThat(f.status()).isEqualTo(fr.claudegateway.radar.RadarCommitmentStatus.KEPT);
+        });
+        assertThat(mfa.closure()).extracting(RadarExtractionContext.MessageEntry::label).containsExactly("M3");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "{\"sens\": \"vers_lui\", \"description\": \"x\", \"certitude\": \"certain\", \"preuves\": [\"M1\"]}",
+            "{\"sens\": \"autre_vers_moi\", \"description\": \"x\", \"certitude\": \"certain\", \"preuves\": [\"M1\"]}",
+            "{\"sens\": \"moi_vers_autre\", \"description\": \"x\", \"debiteur\": \"P1\", \"certitude\": \"certain\", \"preuves\": [\"M1\"]}",
+            "{\"sens\": \"mise_en_relation\", \"description\": \"x\", \"beneficiaire\": \"P1\", \"autre\": \"P1\", \"certitude\": \"certain\", \"preuves\": [\"M1\"]}",
+            "{\"sens\": \"mise_en_relation\", \"description\": \"x\", \"beneficiaire\": \"P1\", \"certitude\": \"certain\", \"preuves\": [\"M1\"]}",
+            "{\"sens\": \"moi_vers_autre\", \"description\": \"x\", \"preuves\": [\"M1\"]}",
+            "{\"sens\": \"moi_vers_autre\", \"description\": \"x\", \"certitude\": 0.9, \"preuves\": [\"M1\"]}",
+            "{\"sens\": \"moi_vers_autre\", \"description\": \"x\", \"certitude\": \"sur\", \"preuves\": [\"M1\"]}",
+            "{\"sens\": \"moi_vers_autre\", \"description\": \"x\", \"certitude\": \"certain\"}",
+            "{\"sens\": \"moi_vers_autre\", \"description\": \"x\", \"certitude\": \"certain\", \"preuves\": [\"M1\"], \"echeance\": {\"date\": \"2026-09-01\", \"nature\": \"explicite\"}}",
+            "{\"sens\": \"moi_vers_autre\", \"description\": \"x\", \"certitude\": \"certain\", \"preuves\": [\"M1\"], \"echeance\": {\"date\": \"2030-01-01\", \"nature\": \"explicite\"}}",
+            "{\"sens\": \"moi_vers_autre\", \"description\": \"x\", \"certitude\": \"certain\", \"preuves\": [\"M1\"], \"echeance\": {\"date\": \"2026-09-20\", \"nature\": \"devinee\"}}",
+            "{\"sens\": \"moi_vers_autre\", \"description\": \"x\", \"certitude\": \"certain\", \"preuves\": [\"M1\"], \"echeance\": {\"date\": \"2026-09-20\"}}",
+            "{\"sens\": \"moi_vers_autre\", \"description\": \"\", \"certitude\": \"certain\", \"preuves\": [\"M1\"]}"
+    })
+    void anyCommitmentViolationIsUnreadable(String commitment) {
+        String json = "{\"sujets\": [{\"sujet\": \"S1\", \"preuves\": [\"M1\"], \"engagements\": [" + commitment + "]}]}";
+        assertThat(RadarExtractionParser.parse(block(json), context)).isEmpty();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "{\"sujets\": [{\"sujet\": \"S1\", \"preuves\": [\"M1\"], \"engagements_suivis\": [{\"engagement\": \"C9\", \"statut\": \"tenu\", \"preuves\": [\"M1\"]}]}]}",
+            "{\"sujets\": [{\"sujet\": \"S1\", \"preuves\": [\"M1\"], \"engagements_suivis\": [{\"engagement\": \"C1\", \"statut\": \"fini\", \"preuves\": [\"M1\"]}]}]}",
+            "{\"sujets\": [{\"sujet\": \"S1\", \"preuves\": [\"M1\"], \"engagements_suivis\": [{\"engagement\": \"C1\", \"statut\": \"tenu\"}]}]}",
+            "{\"sujets\": [{\"sujet\": \"S1\", \"preuves\": [\"M1\"], \"cloture\": {\"preuves\": []}}]}",
+            "{\"sujets\": [{\"sujet\": \"nouveau\", \"nom\": \"Neuf\", \"preuves\": [\"M1\"], \"cloture\": {\"preuves\": [\"M1\"]}}]}"
+    })
+    void anyFollowOrClosureViolationIsUnreadable(String json) {
+        assertThat(RadarExtractionParser.parse(block(json), context)).isEmpty();
+    }
+
     @Test
     void missingMarkerOrBrokenJsonIsUnreadable() {
         assertThat(RadarExtractionParser.parse("{\"sujets\": []}", context)).isEmpty();

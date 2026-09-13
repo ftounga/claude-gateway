@@ -240,6 +240,69 @@ class RadarExtractionIntegrationTest extends RadarIntegrationTestBase {
         assertThat(woke.getWokeAt()).isNotNull();
     }
 
+    private static final String COMMITMENTS = """
+            ===RADAR===
+            {"sujets": [{"sujet": "S1", "preuves": ["M1", "M2"],
+              "engagements": [
+                {"sens": "autre_vers_moi", "description": "Signer la licence", "debiteur": "P1",
+                 "certitude": "certain", "preuves": ["M1"]},
+                {"sens": "moi_vers_autre", "description": "Relancer les achats", "beneficiaire": "P2",
+                 "echeance": {"date": "%s", "nature": "deduite"}, "certitude": "certain", "preuves": ["M2"]},
+                {"sens": "mise_en_relation", "description": "Présenter Marc à Léa", "beneficiaire": "P1", "autre": "P2",
+                 "certitude": "probable", "preuves": ["M2"]}
+              ]%s}]}
+            """;
+
+    @Test
+    @DisplayName("Engagements des trois sens, suivi tenu, proposition de clôture, relance due ; un lot relu ne duplique rien")
+    void commitmentsFollowsAndClosure() {
+        RadarSubject mfa = seedMfa(aliceA);
+        RadarPerson marc = registry.upsertPerson(aliceA, "marc@client.fr", "Marc Durand", null);
+        RadarEvidence asked = proof(aliceA, "Marc doit envoyer le devis.", AT.minusDays(2));
+        RadarCommitment devis = registry.recordCommitment(aliceA, new RadarRegistry.CommitmentInput(mfa.getId(),
+                RadarCommitmentDirection.OTHER_TO_ME, "Envoyer le devis", marc.getId(), null, null, null, false,
+                RadarCertainty.CERTAIN, null, ids(asked)));
+        String due = AT.toLocalDate().plusDays(7).toString();
+        submit(aliceA, "lot-1");
+        triageAnswer = "===TRI===\n{\"retenus\": [\"E1\"]}";
+        extractionAnswer = COMMITMENTS.formatted(due,
+                ", \"engagements_suivis\": [{\"engagement\": \"C1\", \"statut\": \"tenu\", \"preuves\": [\"M1\"]}],"
+                        + " \"cloture\": {\"preuves\": [\"M2\"]}");
+
+        queue.runOnce();
+
+        assertThat(requests.get(1).system()).contains("C1 [autre → moi] Marc Durand → MOI : Envoyer le devis");
+        List<RadarCommitment> all = commitments.findByUserIdAndHostId(aliceA.userId(), aliceA.hostId());
+        assertThat(all).hasSize(4);
+        assertThat(commitments.findById(devis.getId()).orElseThrow().getStatus()).isEqualTo(RadarCommitmentStatus.KEPT);
+        assertThat(commitments.findById(devis.getId()).orElseThrow().getFollowUpDueOn()).isNull();
+        RadarCommitment owed = all.stream().filter(c -> c.getDescription().equals("Signer la licence")).findFirst().orElseThrow();
+        assertThat(owed.getDirection()).isEqualTo(RadarCommitmentDirection.OTHER_TO_ME);
+        assertThat(people.findById(owed.getFromPersonId()).orElseThrow().getSourceKey()).isEqualTo("marc@client.fr");
+        assertThat(owed.getLastEvidenceAt().toInstant()).isEqualTo(AT.toInstant());
+        assertThat(owed.getFollowUpDueOn()).isEqualTo(RadarFollowUp.addBusinessDays(
+                AT.withOffsetSameInstant(java.time.ZoneOffset.UTC).toLocalDate(), 3));
+        RadarCommitment mine = all.stream().filter(c -> c.getDescription().equals("Relancer les achats")).findFirst().orElseThrow();
+        assertThat(mine.isDueDeduced()).isTrue();
+        assertThat(mine.getCertainty()).isEqualTo(RadarCertainty.PROBABLE);
+        assertThat(mine.getFollowUpDueOn()).isNull();
+        RadarCommitment intro = all.stream().filter(c -> c.getDirection() == RadarCommitmentDirection.INTRODUCTION)
+                .findFirst().orElseThrow();
+        assertThat(intro.getToPersonId()).isEqualTo(owed.getFromPersonId());
+        assertThat(people.findById(intro.getOtherPersonId()).orElseThrow().getDisplayName()).isEqualTo("Léa Martin");
+        assertThat(subjects.findById(mfa.getId()).orElseThrow().getState()).isEqualTo(RadarSubjectState.CLOSE_PROPOSED);
+
+        // Le même échange relu dans un autre lot : aucun engagement ni preuve en double.
+        long evidenceBefore = evidence.count();
+        RadarSync sync = registry.startSync(aliceA);
+        RadarExchangeBatch again = batch("lot-1");
+        intake.submit(aliceA, sync.getId(), new RadarExchangeBatch("lot-1-relu", again.exchanges()));
+        extractionAnswer = COMMITMENTS.formatted(due, "");
+        queue.runOnce();
+        assertThat(commitments.findByUserIdAndHostId(aliceA.userId(), aliceA.hostId())).hasSize(4);
+        assertThat(evidence.count()).isEqualTo(evidenceBefore);
+    }
+
     @Test
     @DisplayName("Sans droit : le lot est reporté, aucun appel au fournisseur")
     void noEntitlement() {

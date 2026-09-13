@@ -348,18 +348,21 @@ public class RadarRegistry {
             if (known.isPresent()) {
                 RadarSubject owner = requireSubject(scope, known.get().getSubjectId());
                 justify(scope, owner, RadarLinkKind.COMMITMENT, known.get().getId(), proofs, false);
+                noteEvidence(known.get(), proofs);
                 return known.get();
             }
         }
         validateParties(scope, input);
-        RadarCommitment commitment = commitments.save(RadarCommitment.builder()
+        RadarCommitment built = RadarCommitment.builder()
                 .userId(scope.userId()).hostId(scope.hostId()).subjectId(subject.getId())
                 .direction(input.direction()).description(description)
                 .fromPersonId(input.fromPersonId()).toPersonId(input.toPersonId())
                 .otherPersonId(input.otherPersonId())
                 .dueDate(input.dueDate()).dueDeduced(input.dueDate() != null && input.dueDeduced())
                 .status(RadarCommitmentStatus.OPEN).certainty(input.certainty())
-                .extractionKey(key).build());
+                .extractionKey(key).build();
+        noteEvidence(built, proofs);
+        RadarCommitment commitment = commitments.save(built);
         justify(scope, subject, RadarLinkKind.COMMITMENT, commitment.getId(), proofs, false);
         return commitment;
     }
@@ -376,6 +379,7 @@ public class RadarRegistry {
             // Un engagement corrigé par l'utilisateur garde son statut ; la preuve s'y ajoute (SF-99-02).
             commitment.setStatus(status);
         }
+        noteEvidence(commitment, proofs);
         justify(scope, requireSubject(scope, commitment.getSubjectId()), RadarLinkKind.COMMITMENT,
                 commitment.getId(), proofs, false);
         return commitment;
@@ -532,6 +536,12 @@ public class RadarRegistry {
         return people.findByIdAndUserIdAndHostId(personId, scope.userId(), scope.hostId())
                 .orElseThrow(() -> new InvalidRadarInputException(
                         "Personne introuvable sur ce poste : " + personId));
+    }
+
+    /** La preuve la plus récente d'un engagement, et sa relance due (F-101 / SF-101-04). */
+    private static void noteEvidence(RadarCommitment commitment, List<RadarEvidence> proofs) {
+        proofs.stream().map(RadarEvidence::getOccurredAt).max(Comparator.naturalOrder())
+                .ifPresentOrElse(commitment::noteEvidence, () -> commitment.noteEvidence(null));
     }
 
     private void validateParties(RadarScope scope, CommitmentInput input) {

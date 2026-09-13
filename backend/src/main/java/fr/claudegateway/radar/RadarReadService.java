@@ -182,6 +182,16 @@ public class RadarReadService {
      */
     public List<CommitmentView> commitments(RadarScope scope, RadarCommitmentDirection direction,
             RadarCommitmentStatus status, boolean includeDisowned) {
+        return commitments(scope, direction, status, includeDisowned, false);
+    }
+
+    /**
+     * Les engagements du poste, échéance la plus proche d'abord.
+     *
+     * @param followUpDueOnly seulement les relances échues (F-101 / SF-101-04)
+     */
+    public List<CommitmentView> commitments(RadarScope scope, RadarCommitmentDirection direction,
+            RadarCommitmentStatus status, boolean includeDisowned, boolean followUpDueOnly) {
         Map<UUID, RadarSubject> subjectsById = subjects.findByUserIdAndHostId(scope.userId(), scope.hostId())
                 .stream().collect(Collectors.toMap(RadarSubject::getId, Function.identity()));
         Map<UUID, RadarPerson> directory = directory(scope);
@@ -190,6 +200,7 @@ public class RadarReadService {
                 .filter(c -> direction == null || c.getDirection() == direction)
                 .filter(c -> status == null || c.getStatus() == status)
                 .filter(c -> includeDisowned || !c.isDisowned())
+                .filter(c -> !followUpDueOnly || followUpDue(c))
                 .filter(c -> subjectsById.containsKey(c.getSubjectId()))
                 .sorted(byDueDate())
                 .map(c -> commitmentView(c, subjectsById.get(c.getSubjectId()), directory, allLinks))
@@ -248,7 +259,14 @@ public class RadarReadService {
                 c.getDescription(), ref(directory, c.getFromPersonId()), ref(directory, c.getToPersonId()),
                 ref(directory, c.getOtherPersonId()), c.getDueDate(), c.isDueDeduced(), c.getStatus(),
                 c.getCertainty(), c.isSovereign(), c.isDisowned(), evidenceOf(scopeLinks, RadarLinkKind.COMMITMENT, c.getId()),
+                c.getLastEvidenceAt(), c.getFollowUpDueOn(), followUpDue(c),
                 c.getCreatedAt(), c.getUpdatedAt());
+    }
+
+    /** Relance échue à la date du jour (UTC) : la date de relance est atteinte (F-101 / SF-101-04). */
+    static boolean followUpDue(RadarCommitment c) {
+        return c.getFollowUpDueOn() != null
+                && !c.getFollowUpDueOn().isAfter(LocalDate.now(java.time.ZoneOffset.UTC));
     }
 
     private static PersonRef ref(Map<UUID, RadarPerson> directory, UUID personId) {

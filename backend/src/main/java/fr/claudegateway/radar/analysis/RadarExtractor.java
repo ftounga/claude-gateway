@@ -72,7 +72,25 @@ public class RadarExtractor {
             est « non montré » ;
             - "roles" (facultatif) : [{"personne": "P2", "role": "decide" | "pilote" | "expert" | "informe", "preuves": [...]}] ;
             - "citations" (facultatif) : {"M3": "la phrase exacte du message qui compte"}, recopiée mot \
-            pour mot, ≤ 280 caractères.
+            pour mot, ≤ 280 caractères ;
+            - "engagements" (facultatif) : qui doit quoi à qui, lu dans les messages —
+              [{"sens": "moi_vers_autre" | "autre_vers_moi" | "mise_en_relation",
+                "description": "ce qui est dû, court",
+                "debiteur": "P1" (seulement pour autre_vers_moi : qui me doit),
+                "beneficiaire": "P2" (moi_vers_autre : à qui je dois, facultatif ; mise_en_relation : la \
+            première personne à présenter),
+                "autre": "P3" (seulement pour mise_en_relation : la seconde personne),
+                "echeance": {"date": "AAAA-MM-JJ", "nature": "explicite" | "deduite"} (facultatif),
+                "certitude": "certain" | "probable",
+                "preuves": [...]}]
+              « certain » : un engagement dit clairement (« je m'en charge », « je te l'envoie jeudi »). \
+            « probable » : une tâche évoquée sans porteur clair, ou une échéance que tu as déduite. Une \
+            demande qu'on ME fait (« tu peux me mettre en relation avec… ? ») est un engagement de MOI ;
+            - "engagements_suivis" (facultatif) : ce que les messages disent d'un engagement déjà suivi \
+            (C1, C2, …) — [{"engagement": "C3", "statut": "tenu" | "reporte" | "abandonne", "preuves": [...]}] ;
+            - "cloture" (facultatif, sujet suivi seulement) : {"preuves": [...]} quand un message dit \
+            EXPLICITEMENT que le sujet est terminé (« on peut fermer », « c'est clos », ticket fermé, \
+            dernier engagement tenu et remercié). Le silence n'est jamais une clôture.
 
             Tu peux raisonner librement avant de conclure. Tu DOIS terminer par une ligne contenant \
             exactement :

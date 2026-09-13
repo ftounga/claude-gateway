@@ -90,8 +90,9 @@ public class RadarController {
     public List<CommitmentView> commitments(@PathVariable UUID hostId,
             @RequestParam(required = false) RadarCommitmentDirection direction,
             @RequestParam(required = false) RadarCommitmentStatus status,
-            @RequestParam(defaultValue = "false") boolean includeDisowned) {
-        return readService.commitments(scope(hostId), direction, status, includeDisowned);
+            @RequestParam(defaultValue = "false") boolean includeDisowned,
+            @RequestParam(defaultValue = "false") boolean followUpDue) {
+        return readService.commitments(scope(hostId), direction, status, includeDisowned, followUpDue);
     }
 
     @GetMapping("/people")
