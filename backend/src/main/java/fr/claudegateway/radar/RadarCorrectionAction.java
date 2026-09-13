@@ -25,6 +25,18 @@ public enum RadarCorrectionAction {
     /** Séparer d'un sujet ce qui n'en est pas (SF-99-03 ; route dédiée). */
     SPLIT(Target.SUBJECT),
 
+    /** L'utilisateur clôt : immédiat, souverain (SF-99-04 ; route dédiée). */
+    CLOSE(Target.SUBJECT),
+
+    /** L'utilisateur confirme une proposition de clôture (SF-99-04 ; route dédiée). */
+    CONFIRM_CLOSE(Target.SUBJECT),
+
+    /** L'utilisateur refuse une proposition de clôture (SF-99-04 ; route dédiée). */
+    REJECT_CLOSE(Target.SUBJECT),
+
+    /** L'utilisateur laisse clos un sujet qui s'est réveillé (SF-99-04 ; route dédiée). */
+    DISMISS_WAKE(Target.SUBJECT),
+
     // ------------------------------------------------------------------------------- engagement
 
     /** « Fait » : tenu. */

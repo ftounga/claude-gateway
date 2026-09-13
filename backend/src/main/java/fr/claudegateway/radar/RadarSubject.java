@@ -88,6 +88,35 @@ public class RadarSubject {
     @Column(name = "due_date_sovereign", nullable = false)
     private boolean dueDateSovereign;
 
+    /** État d'avant une proposition de clôture ou un sommeil (SF-99-04). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "previous_state", length = 20)
+    private RadarSubjectState previousState;
+
+    /** Un signal explicite a proposé la clôture (SF-99-04). */
+    @Column(name = "close_proposed_at")
+    private OffsetDateTime closeProposedAt;
+
+    /** Dernier refus d'une proposition de clôture (SF-99-04). */
+    @Column(name = "close_rejected_at")
+    private OffsetDateTime closeRejectedAt;
+
+    /** Clos par l'utilisateur, jamais par le silence (SF-99-04). */
+    @Column(name = "closed_at")
+    private OffsetDateTime closedAt;
+
+    /** En sommeil depuis (SF-99-04). */
+    @Column(name = "dormant_since")
+    private OffsetDateTime dormantSince;
+
+    /** Un sujet clos a repris vie : annoncé, pas rouvert (SF-99-04). */
+    @Column(name = "woke_at")
+    private OffsetDateTime wokeAt;
+
+    /** L'utilisateur a laissé clos malgré le réveil (SF-99-04). */
+    @Column(name = "wake_dismissed_at")
+    private OffsetDateTime wakeDismissedAt;
+
     /** Sujet absorbé par une fusion : la cible (SF-99-03). Il reste comme trace. */
     @Column(name = "merged_into_id")
     private UUID mergedIntoId;

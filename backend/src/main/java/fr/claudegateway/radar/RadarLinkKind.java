@@ -29,5 +29,8 @@ public enum RadarLinkKind {
     COMMITMENT,
 
     /** Elle justifie un rôle ({@code target_id} = le rôle). */
-    ROLE
+    ROLE,
+
+    /** Elle est le signal explicite qui propose la clôture (SF-99-04). */
+    CLOSE_SIGNAL
 }
