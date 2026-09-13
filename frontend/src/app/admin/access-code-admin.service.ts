@@ -6,6 +6,8 @@ import {
   AccessCodeAdminView,
   IssueAccessCodeRequest,
   IssuedAccessCode,
+  CodeSpace,
+  VigieTrialMeasure,
 } from './access-code-admin.models';
 
 /**
@@ -27,10 +29,18 @@ export class AccessCodeAdminService {
    * Émet un code. La réponse porte le clair — **la seule fois** où il est lisible : il n'est pas
    * stocké et ne pourra pas être retrouvé.
    */
-  issue(label: string, assignedEmail?: string): Observable<IssuedAccessCode> {
+  issue(label: string, assignedEmail?: string, space?: CodeSpace): Observable<IssuedAccessCode> {
     const body: IssueAccessCodeRequest = assignedEmail
       ? { label, assignedEmail }
       : { label };
+    if (space) {
+      body.space = space;
+    }
     return this.http.post<IssuedAccessCode>('/api/admin/access-codes', body);
+  }
+
+  /** Relevé du coût réel des essais Vigie (F-107 / SF-107-04), réservé à l'ADMIN. */
+  trials(): Observable<VigieTrialMeasure[]> {
+    return this.http.get<VigieTrialMeasure[]>('/api/admin/vigie-trials');
   }
 }

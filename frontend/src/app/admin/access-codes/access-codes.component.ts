@@ -7,10 +7,14 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { DatePipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 
 import { AccessCodeAdminService } from '../access-code-admin.service';
-import { AccessCodeAdminView, AccessCodeState } from '../access-code-admin.models';
+import {
+  AccessCodeAdminView,
+  AccessCodeState,
+  VigieTrialMeasure,
+} from '../access-code-admin.models';
 import {
   AccessCodeDialogComponent,
   AccessCodeDraft,
@@ -35,6 +39,7 @@ import {
   selector: 'app-access-codes',
   imports: [
     DatePipe,
+    DecimalPipe,
     MatButtonModule,
     MatCardModule,
     MatIconModule,
@@ -58,9 +63,41 @@ export class AccessCodesComponent implements OnInit {
    * stocké côté serveur, ni relisible.
    */
   readonly freshCode = signal<string | null>(null);
+  /**
+   * Relevé des essais Vigie (F-107 / SF-107-04) : ce que chaque synchro d'essai a coûté. Échec non
+   * bloquant — la section se masque, la liste des codes reste utilisable.
+   */
+  readonly trials = signal<VigieTrialMeasure[] | null>(null);
 
   ngOnInit(): void {
     this.load();
+    this.loadTrials();
+  }
+
+  loadTrials(): void {
+    this.service.trials().subscribe({
+      next: (trials) => this.trials.set(trials),
+      error: () => this.trials.set(null),
+    });
+  }
+
+  /** Ce qu'un code ouvre, en mots (F-107 / SF-107-04). */
+  spaceLabel(code: AccessCodeAdminView): string {
+    switch (code.space) {
+      case 'VIGIE':
+        return 'Essai Vigie';
+      case 'FORGE':
+        return 'Forge';
+      default:
+        return 'Forge et Vigie';
+    }
+  }
+
+  /** Durée lisible : en jours au-delà de 48 h (l'essai Vigie), en heures sinon. */
+  durationLabel(code: AccessCodeAdminView): string {
+    return code.durationHours > 48 && code.durationHours % 24 === 0
+      ? `${code.durationHours / 24} j`
+      : `${code.durationHours} h`;
   }
 
   load(): void {
@@ -132,7 +169,10 @@ export class AccessCodesComponent implements OnInit {
 
   private issue(draft: AccessCodeDraft): void {
     this.busy.set(true);
-    this.service.issue(draft.label, draft.assignedEmail).subscribe({
+    const issued = draft.space
+      ? this.service.issue(draft.label, draft.assignedEmail, draft.space)
+      : this.service.issue(draft.label, draft.assignedEmail);
+    issued.subscribe({
       next: (issued) => {
         this.busy.set(false);
         this.freshCode.set(issued.code);

@@ -149,5 +149,51 @@ class AccessGrantServiceTest {
         // Aucune requête n'est même tentée : il n'existe pas de lecture de droit sans user_id.
         org.mockito.Mockito.verify(repository, org.mockito.Mockito.never())
                 .findFirstByRedeemedByUserIdOrderByGrantedUntilDesc(any());
+        assertThat(service.isGrantedWithGrace(null, fr.claudegateway.billing.EntitlementSpace.VIGIE)).isFalse();
+    }
+
+    // ------------------------------------------------ F-107 / SF-107-04 : un droit par espace
+
+    private AccessCode codeFor(fr.claudegateway.billing.EntitlementSpace space) {
+        AccessCode code = redeemedCode();
+        code.setGrantedSpace(space);
+        return code;
+    }
+
+    @Test
+    @DisplayName("Un essai Vigie n'ouvre que la Vigie ; un code Forge que la Forge ; un code d'avant F-107 les deux")
+    void aGrantOpensItsOwnSpaceOnly() {
+        AccessGrantService service = serviceAt(TERM.minusHours(1));
+
+        when(repository.findByRedeemedByUserIdAndGrantedUntilAfterOrderByGrantedUntilDesc(org.mockito.ArgumentMatchers.eq(userId), any()))
+                .thenReturn(java.util.List.of(codeFor(fr.claudegateway.billing.EntitlementSpace.VIGIE)));
+        assertThat(service.isGrantedWithGrace(userId, fr.claudegateway.billing.EntitlementSpace.VIGIE)).isTrue();
+        assertThat(service.isGrantedWithGrace(userId, fr.claudegateway.billing.EntitlementSpace.FORGE)).isFalse();
+        assertThat(service.grantWithGrace(userId, fr.claudegateway.billing.EntitlementSpace.VIGIE))
+                .get().extracting(AccessGrant::redeemedAt).isEqualTo(TERM.minusHours(24));
+
+        when(repository.findByRedeemedByUserIdAndGrantedUntilAfterOrderByGrantedUntilDesc(org.mockito.ArgumentMatchers.eq(userId), any()))
+                .thenReturn(java.util.List.of(codeFor(fr.claudegateway.billing.EntitlementSpace.FORGE)));
+        assertThat(service.isGrantedWithGrace(userId, fr.claudegateway.billing.EntitlementSpace.FORGE)).isTrue();
+        assertThat(service.isGrantedWithGrace(userId, fr.claudegateway.billing.EntitlementSpace.VIGIE)).isFalse();
+
+        when(repository.findByRedeemedByUserIdAndGrantedUntilAfterOrderByGrantedUntilDesc(org.mockito.ArgumentMatchers.eq(userId), any()))
+                .thenReturn(java.util.List.of(codeFor(null)));
+        assertThat(service.isGrantedWithGrace(userId, fr.claudegateway.billing.EntitlementSpace.FORGE)).isTrue();
+        assertThat(service.isGrantedWithGrace(userId, fr.claudegateway.billing.EntitlementSpace.VIGIE)).isTrue();
+    }
+
+    @Test
+    @DisplayName("L'horizon de lecture recule de la grâce (droit par espace) ; le terme exact n'en a pas")
+    void theSpaceReadingUsesTheGraceHorizon() {
+        AccessGrantService service = serviceAt(TERM.plusMinutes(10));
+        org.mockito.ArgumentCaptor<OffsetDateTime> horizon = org.mockito.ArgumentCaptor.forClass(OffsetDateTime.class);
+        when(repository.findByRedeemedByUserIdAndGrantedUntilAfterOrderByGrantedUntilDesc(org.mockito.ArgumentMatchers.eq(userId), horizon.capture()))
+                .thenReturn(java.util.List.of());
+
+        service.isGrantedWithGrace(userId, fr.claudegateway.billing.EntitlementSpace.VIGIE);
+        service.activeGrant(userId, fr.claudegateway.billing.EntitlementSpace.VIGIE);
+
+        assertThat(horizon.getAllValues()).containsExactly(TERM.minusMinutes(5), TERM.plusMinutes(10));
     }
 }

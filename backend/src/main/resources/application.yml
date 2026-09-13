@@ -95,6 +95,10 @@ app:
     # d'événements) ; fermer la porte à la seconde du terme couperait un tour engagé en plein
     # milieu. La grâce laisse finir ce qui était commencé — elle n'ajoute aucun jeton.
     grace-minutes: ${APP_ACCESS_CODE_GRACE_MINUTES:15}
+    # F-107 / SF-107-04 — L'ESSAI VIGIE : un code émis pour l'espace VIGIE ouvre la Vigie (Teams, Radar,
+    # réunions) pendant ce nombre de jours, avec la réserve d'essai `app.radar.reserve.trial-tokens`.
+    # Un code FORGE garde `duration-hours`. Figée dans la ligne à l'émission, comme la durée.
+    vigie-trial-days: ${APP_ACCESS_CODE_VIGIE_TRIAL_DAYS:14}
   upload:
     # Liste blanche des types MIME acceptés (types supportés par Claude) et plafond de taille (F-04).
     # Décision réversible : ajustable sans changement de code.
@@ -396,6 +400,10 @@ app:
       monthly-tokens: ${APP_RADAR_RESERVE_MONTHLY_TOKENS:3000000}
       # Plafond d'une synchro, en jetons ; 0 = aucun.
       per-sync-tokens: ${APP_RADAR_RESERVE_PER_SYNC_TOKENS:0}
+      # F-107 / SF-107-04 — LA RÉSERVE D'ESSAI : pendant un essai Vigie par code d'accès, la synchro de
+      # TOUT LE COMPTE puise dans cette enveloppe unique (pas de renouvellement mensuel). La première
+      # synchro d'un client est hors réserve, essai ou non. Valeur de départ décidée par le PO (3 M).
+      trial-tokens: ${APP_RADAR_RESERVE_TRIAL_TOKENS:3000000}
     reading:
       # Modèle du TRI (première passe). Vide => le modèle RAPIDE du catalogue : la question est
       # grossière (« engagement, décision, blocage, date, clôture ? »), le coût doit l'être aussi.

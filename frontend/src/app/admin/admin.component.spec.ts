@@ -56,8 +56,10 @@ describe('AdminComponent', () => {
     const accessCodeSpy = jasmine.createSpyObj<AccessCodeAdminService>('AccessCodeAdminService', [
       'list',
       'issue',
+      'trials',
     ]);
     accessCodeSpy.list.and.returnValue(of([]));
+    accessCodeSpy.trials.and.returnValue(of([]));
 
     // Et pour la section Consommation (F-61 / SF-61-05), qui a elle aussi son propre spec.
     const usageSpy = jasmine.createSpyObj<AdminUsageService>('AdminUsageService', ['getUsage']);

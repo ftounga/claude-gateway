@@ -17,6 +17,7 @@ import org.springframework.util.StringUtils;
 
 import fr.claudegateway.admin.AdminService;
 import fr.claudegateway.auth.CurrentUser;
+import fr.claudegateway.billing.EntitlementSpace;
 import fr.claudegateway.billing.PlanCode;
 import fr.claudegateway.billing.Subscription;
 import fr.claudegateway.billing.SubscriptionService;
@@ -98,7 +99,26 @@ public class AccessCodeService {
      */
     @Transactional
     public IssuedAccessCode issue(String label, String assignedEmail) {
+        return issue(label, assignedEmail, EntitlementSpace.FORGE);
+    }
+
+    /**
+     * Émet un code pour un <b>espace</b> (F-107 / SF-107-04) : {@code FORGE} ouvre la Forge pendant
+     * {@code duration-hours} (24 h), {@code VIGIE} ouvre la Vigie pendant {@code vigie-trial-days} (l'essai
+     * de deux semaines, avec sa réserve de synchro d'essai). Durée et espace sont figés dans la ligne.
+     *
+     * @param label         libellé (obligatoire, déjà validé)
+     * @param assignedEmail e-mail du destinataire pour un code nominatif, ou {@code null}/vide
+     * @param space         espace ouvert ; {@code null} vaut {@code FORGE}
+     * @return le code émis, code en clair compris — à montrer une fois
+     */
+    @Transactional
+    public IssuedAccessCode issue(String label, String assignedEmail, EntitlementSpace space) {
         adminService.assertAdmin();
+        EntitlementSpace grantedSpace = space == null ? EntitlementSpace.FORGE : space;
+        int durationHours = grantedSpace == EntitlementSpace.VIGIE
+                ? properties.vigieTrialDays() * 24
+                : properties.durationHours();
         UUID adminId = currentUser.requireId();
 
         String clearCode = AccessCodeSecret.generate();
@@ -109,16 +129,17 @@ public class AccessCodeService {
                 .label(label.trim())
                 .assignedEmail(normalizeEmail(assignedEmail))
                 .grantedPlanCode(GRANTED_PLAN)
-                // Durée et validité sont FIGÉES ici : changer la configuration demain ne doit pas
+                .grantedSpace(grantedSpace)
+                // Durée, espace et validité sont FIGÉS ici : changer la configuration demain ne doit pas
                 // altérer un code déjà remis à quelqu'un.
-                .durationHours(properties.durationHours())
+                .durationHours(durationHours)
                 .validUntil(now.plusDays(properties.validityDays()))
                 .createdByUserId(adminId)
                 .build());
 
         // On trace l'identifiant de la ligne, jamais le code : un log est lu par plus de monde qu'une base.
-        log.info("Code d'accès émis (id={}, durée={} h, nominatif={})",
-                code.getId(), code.getDurationHours(), code.getAssignedEmail() != null);
+        log.info("Code d'accès émis (id={}, espace={}, durée={} h, nominatif={})",
+                code.getId(), grantedSpace, code.getDurationHours(), code.getAssignedEmail() != null);
 
         return new IssuedAccessCode(clearCode, describe(code, now, null));
     }
@@ -178,7 +199,12 @@ public class AccessCodeService {
         }
         // Pas de cumul (hors périmètre F-62) : deux codes enchaînés produiraient une durée que
         // personne n'a décidée, et une trace où l'on ne saurait plus lequel gouverne.
-        if (accessGrantService.activeGrant(userId).isPresent()) {
+        // F-107 / SF-107-04 : le non-cumul vaut PAR ESPACE — un essai Vigie peut coexister avec un code
+        // Forge. Un code sans espace (émis avant F-107) ouvre tout : il ne se cumule avec rien.
+        boolean alreadyGranted = code.getGrantedSpace() == null
+                ? accessGrantService.activeGrant(userId).isPresent()
+                : accessGrantService.activeGrant(userId, code.getGrantedSpace()).isPresent();
+        if (alreadyGranted) {
             throw new AccessCodeAlreadyGrantedException();
         }
 
@@ -200,7 +226,8 @@ public class AccessCodeService {
                 code.getId(), userId, grantedUntil);
 
         return new AccessGrant(
-                code.getGrantedPlanCode(), grantedUntil, subscription.getPlanCode(), code.getLabel());
+                code.getGrantedPlanCode(), grantedUntil, subscription.getPlanCode(), code.getLabel(),
+                code.getGrantedSpace(), now);
     }
 
     /**
@@ -240,6 +267,7 @@ public class AccessCodeService {
                 code.getLabel(),
                 code.getAssignedEmail(),
                 code.getGrantedPlanCode(),
+                code.getGrantedSpace(),
                 code.getDurationHours(),
                 code.getValidUntil(),
                 stateOf(code, now),
@@ -295,6 +323,7 @@ public class AccessCodeService {
             String label,
             String assignedEmail,
             PlanCode grantedPlanCode,
+            EntitlementSpace grantedSpace,
             int durationHours,
             OffsetDateTime validUntil,
             AccessCodeState state,

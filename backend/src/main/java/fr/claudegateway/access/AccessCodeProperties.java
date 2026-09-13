@@ -20,12 +20,21 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record AccessCodeProperties(
         Integer durationHours,
         Integer validityDays,
-        Integer graceMinutes) {
+        Integer graceMinutes,
+        Integer vigieTrialDays) {
 
     private static final int DEFAULT_DURATION_HOURS = 24;
     private static final int DEFAULT_VALIDITY_DAYS = 30;
     private static final int DEFAULT_GRACE_MINUTES = 15;
+    /** L'essai Vigie : deux semaines (F-107 §9, décidé par le PO le 2026-09-13). */
+    private static final int DEFAULT_VIGIE_TRIAL_DAYS = 14;
 
+    /** Configuration d'avant F-107 : essai Vigie à sa durée par défaut. */
+    public AccessCodeProperties(Integer durationHours, Integer validityDays, Integer graceMinutes) {
+        this(durationHours, validityDays, graceMinutes, null);
+    }
+
+    @org.springframework.boot.context.properties.bind.ConstructorBinding
     public AccessCodeProperties {
         if (durationHours == null || durationHours <= 0) {
             durationHours = DEFAULT_DURATION_HOURS;
@@ -36,6 +45,9 @@ public record AccessCodeProperties(
         // Une grâce nulle est légitime (fermeture nette) ; une grâce négative ne l'est pas.
         if (graceMinutes == null || graceMinutes < 0) {
             graceMinutes = DEFAULT_GRACE_MINUTES;
+        }
+        if (vigieTrialDays == null || vigieTrialDays <= 0) {
+            vigieTrialDays = DEFAULT_VIGIE_TRIAL_DAYS;
         }
     }
 }

@@ -19,6 +19,8 @@ export interface AccessCodeAdminView {
   assignedEmail: string | null;
   /** Plan dont le droit est offert (`GOLD`). */
   grantedPlanCode: string;
+  /** Espace ouvert (F-107 / SF-107-04) ; null = tous les espaces (code émis avant F-107). */
+  space?: CodeSpace | null;
   /** Durée du droit, figée à l'émission. */
   durationHours: number;
   /** Au-delà, un code non consommé ne vaut plus rien. */
@@ -39,6 +41,39 @@ export interface AccessCodeAdminView {
 export interface IssueAccessCodeRequest {
   label: string;
   assignedEmail?: string;
+  /** Espace ouvert par le code ; absent, le serveur retient la Forge. */
+  space?: CodeSpace;
+}
+
+/** Espace qu'un code ouvre (F-107 / SF-107-04). */
+export type CodeSpace = 'FORGE' | 'VIGIE';
+
+/** Une synchro d'essai Vigie, telle que le relevé du PO la montre. */
+export interface VigieTrialSync {
+  syncId: string;
+  hostId: string;
+  startedAt: string;
+  status: string;
+  /** Première synchro du client : hors réserve. */
+  firstSync: boolean;
+  consumedTokens: number;
+  /** Coût estimé aux tarifs configurés (USD). */
+  costUsd: number;
+  stoppedOnReserve: boolean;
+}
+
+/** Un essai Vigie consommé et le coût réel de ses synchros (F-107 / SF-107-04). */
+export interface VigieTrialMeasure {
+  codeId: string;
+  label: string;
+  email: string | null;
+  startedAt: string;
+  endsAt: string | null;
+  active: boolean;
+  syncCount: number;
+  consumedTokens: number;
+  costUsd: number;
+  syncs: VigieTrialSync[];
 }
 
 /** Réponse d'émission : le **seul** endroit où le code en clair apparaît. */

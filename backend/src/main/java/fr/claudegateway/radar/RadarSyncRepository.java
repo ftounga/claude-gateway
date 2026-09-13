@@ -30,9 +30,22 @@ public interface RadarSyncRepository extends JpaRepository<RadarSync, UUID> {
 
     /** Consommation des synchros du poste commencées depuis un instant (F-101 / SF-101-05 : la réserve). */
     @Query("select coalesce(sum(x.consumedTokens), 0) from RadarSync x"
-            + " where x.userId = :userId and x.hostId = :hostId and x.startedAt >= :from")
+            + " where x.userId = :userId and x.hostId = :hostId and x.startedAt >= :from"
+            + " and x.reserveExempt = false")
     long sumConsumedSince(@Param("userId") UUID userId, @Param("hostId") UUID hostId,
             @Param("from") java.time.OffsetDateTime from);
+
+    /**
+     * Consommation des synchros de <b>tout le compte</b> commencées depuis un instant, synchros hors réserve
+     * exclues (F-107 / SF-107-04 : la réserve d'essai de la Vigie est une enveloppe par compte).
+     */
+    @Query("select coalesce(sum(x.consumedTokens), 0) from RadarSync x"
+            + " where x.userId = :userId and x.startedAt >= :from and x.reserveExempt = false")
+    long sumAccountConsumedSince(@Param("userId") UUID userId, @Param("from") java.time.OffsetDateTime from);
+
+    /** Synchros d'un compte commencées dans une fenêtre (relevé des essais Vigie, F-107 / SF-107-04). */
+    List<RadarSync> findByUserIdAndStartedAtBetweenOrderByStartedAtAsc(UUID userId, java.time.OffsetDateTime from,
+            java.time.OffsetDateTime to);
 
     /** Purge du Radar d'un poste (SF-99-05) : suppression en masse, filtrée sur le périmètre. */
     @Modifying

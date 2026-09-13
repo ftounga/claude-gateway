@@ -680,6 +680,7 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   code émis par l'ADMIN ouvre à qui le saisit le **droit** d'accès à la Forge pendant 24 h.
   - `access_codes` : `id (uuid)`, `code_hash (varchar 64, unique)`, `label (varchar 120)`,
     `assigned_email (varchar 255, nullable)`, `granted_plan_code (varchar 32)`,
+    `granted_space (varchar 16, nullable — FORGE / VIGIE ; nul = tous les espaces, F-107 / SF-107-04, migration 094)`,
     `duration_hours (int)`, `valid_until`, `created_by_user_id (uuid)`,
     `redeemed_by_user_id (uuid, nullable)`, `redeemed_at`, `granted_until`,
     `previous_plan_code (varchar 32)`, `previous_status (varchar 16)`, `created_at`, `updated_at`.
@@ -975,7 +976,8 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     preuve** : le registre (`RadarRegistry`, seule porte d'écriture) refuse toute valeur sans lien.
     Les liens, et non les preuves, portent le sujet : fusion et séparation déplacent des liens.
   - `radar_syncs` : `status`, `started_at`, `finished_at`, `coverage` (JSON, forme fixée par F-100),
-    `consumed_tokens`.
+    `consumed_tokens`, `reserve_exempt` (booléen ; première synchro d'un client hors réserve — F-107 /
+    SF-107-04, migration 094).
   - **Corrections souveraines** (F-99 / SF-99-02, migration `082`) : marques `name_sovereign`,
     `state_sovereign`, `next_step_sovereign`, `due_date_sovereign` sur `radar_subjects` (par champ),
     `sovereign` et `disowned` (« pas moi ») sur `radar_commitments` (pour l'engagement entier). Une

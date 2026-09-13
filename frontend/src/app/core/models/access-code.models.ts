@@ -20,6 +20,11 @@ export interface AccessGrantView {
   previousPlanCode: string | null;
   /** Libellé donné par l'admin à l'émission, ou null. */
   label: string | null;
+  /**
+   * Espace ouvert (F-107 / SF-107-04) : `VIGIE` pour l'essai de la Vigie, `FORGE` pour un code Forge,
+   * null pour un code d'avant F-107 (qui ouvre les deux). Champ additif : absent ⇒ null.
+   */
+  space?: 'FORGE' | 'VIGIE' | null;
 }
 
 /** Requête de consommation d'un code. */

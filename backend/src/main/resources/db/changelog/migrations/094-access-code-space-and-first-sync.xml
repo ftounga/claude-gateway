@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-107 / SF-107-04 — L'ESSAI VIGIE ET LA PREMIÈRE SYNCHRO.
+
+      `access_codes.granted_space` : l'espace qu'un code ouvre (FORGE, VIGIE). NULLABLE, et le nul a un
+      sens : un code émis avant F-107 ouvrait TOUS les espaces (la Forge et, par F-89/F-106, la Vigie) ;
+      il continue de le faire. Aucun rétro-remplissage : un code déjà remis garde exactement ce qu'il
+      ouvrait.
+
+      `radar_syncs.reserve_exempt` : la première synchro d'un client (30 jours d'historique) est HORS
+      RÉSERVE (cadrage F-107 §9). Faux par défaut : aucune synchro existante ne devient gratuite.
+
+      Types portables (varchar, boolean) : un seul changeSet par colonne pour PostgreSQL et H2.
+      Réversibles : le rollback rend chaque colonne.
+    -->
+    <changeSet id="094-access-codes-granted-space" author="claude-gateway">
+        <addColumn tableName="access_codes">
+            <column name="granted_space" type="varchar(16)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="access_codes" columnName="granted_space"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="094-radar-syncs-reserve-exempt" author="claude-gateway">
+        <addColumn tableName="radar_syncs">
+            <column name="reserve_exempt" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="radar_syncs" columnName="reserve_exempt"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

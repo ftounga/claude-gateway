@@ -91,11 +91,13 @@ public class RadarSyncLauncher {
      */
     public RadarSync start(RadarScope scope, RadarSyncTrigger trigger, OffsetDateTime scheduledFor) {
         OffsetDateTime now = OffsetDateTime.now(clock);
-        RadarSync sync = transactions.execute(status -> claim(scope, trigger, scheduledFor, now));
-
         Optional<RadarSync> previous = syncs.findFirstByUserIdAndHostIdAndStatusInOrderByStartedAtDesc(
                 scope.userId(), scope.hostId(), EnumSet.of(RadarSyncStatus.SUCCEEDED, RadarSyncStatus.PARTIAL));
         boolean firstSync = previous.isEmpty();
+        // F-107 / SF-107-04 : la première synchro d'un client (trente jours) est hors réserve, une fois —
+        // tant que le poste n'a aucune synchro réussie ou partielle.
+        RadarSync sync = transactions.execute(status -> claim(scope, trigger, scheduledFor, now, firstSync));
+
         OffsetDateTime windowFrom = firstSync ? now.minus(properties.firstWindow())
                 : previous.get().getStartedAt().minus(RadarSyncProperties.WINDOW_OVERLAP);
 
@@ -161,7 +163,7 @@ public class RadarSyncLauncher {
     }
 
     private RadarSync claim(RadarScope scope, RadarSyncTrigger trigger, OffsetDateTime scheduledFor,
-            OffsetDateTime now) {
+            OffsetDateTime now, boolean reserveExempt) {
         RadarHostSettings row = settings.findByUserIdAndHostId(scope.userId(), scope.hostId())
                 .filter(RadarHostSettings::isEnabled)
                 .orElseThrow(() -> new RadarStateConflictException("Le Radar n'est pas activé sur ce poste."));
@@ -172,6 +174,7 @@ public class RadarSyncLauncher {
                 .userId(scope.userId()).hostId(scope.hostId())
                 .status(RadarSyncStatus.RUNNING).startedAt(now)
                 .triggerKind(trigger).scheduledFor(scheduledFor).heartbeatAt(now)
+                .reserveExempt(reserveExempt)
                 .build());
         if (settings.claim(scope.userId(), scope.hostId(), sync.getId()) == 0) {
             UUID running = settings.findByUserIdAndHostId(scope.userId(), scope.hostId())

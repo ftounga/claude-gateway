@@ -1190,6 +1190,16 @@ describe('BillingComponent', () => {
 
       expect(component.hasAccessGrant()).toBeTrue();
       expect(component.canEnterAccessCode()).toBeFalse();
+      expect(fixture.nativeElement.textContent).toContain('Accès Forge offert');
+    });
+
+    it("SF-107-04 : l'essai de la Vigie se dit tel quel et mène à la Vigie", () => {
+      setup(null, false, optionAvailable, {}, plans, { ...liveGrant, space: 'VIGIE' });
+
+      const text = fixture.nativeElement.textContent as string;
+      expect(text).toContain('Essai de la Vigie');
+      expect(text).toContain('Ouvrir la Vigie');
+      expect(text).not.toContain('Accès Forge offert');
     });
 
     it('active un code valide, affiche le droit et vide le champ', () => {

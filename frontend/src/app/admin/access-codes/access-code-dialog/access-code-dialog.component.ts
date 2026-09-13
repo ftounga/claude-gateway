@@ -1,6 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -9,6 +10,8 @@ import { MatInputModule } from '@angular/material/input';
 export interface AccessCodeDraft {
   label: string;
   assignedEmail?: string;
+  /** Espace ouvert (F-107 / SF-107-04) ; omis pour la Forge, le défaut du serveur. */
+  space?: 'VIGIE';
 }
 
 /**
@@ -29,6 +32,7 @@ export interface AccessCodeDraft {
     FormsModule,
     MatDialogModule,
     MatButtonModule,
+    MatButtonToggleModule,
     MatFormFieldModule,
     MatInputModule,
   ],
@@ -41,6 +45,8 @@ export class AccessCodeDialogComponent {
 
   readonly label = signal('');
   readonly assignedEmail = signal('');
+  /** Espace que le code ouvrira : la Forge (24 h) ou l'essai de la Vigie (deux semaines). */
+  readonly space = signal<'FORGE' | 'VIGIE'>('FORGE');
 
   /** Vrai tant que le libellé est vide : émettre un code anonyme le rendrait introuvable. */
   invalid(): boolean {
@@ -55,6 +61,7 @@ export class AccessCodeDialogComponent {
     this.dialogRef.close({
       label: this.label().trim(),
       ...(email ? { assignedEmail: email } : {}),
+      ...(this.space() === 'VIGIE' ? { space: 'VIGIE' as const } : {}),
     });
   }
 }

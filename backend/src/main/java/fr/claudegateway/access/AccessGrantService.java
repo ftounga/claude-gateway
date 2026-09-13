@@ -78,6 +78,60 @@ public class AccessGrantService {
     }
 
     /**
+     * Vrai si un accès offert <b>ouvrant cet espace</b> est en cours, grâce de tour comprise (F-107 /
+     * SF-107-04) : un code Forge n'ouvre pas la Vigie, un essai Vigie n'ouvre pas la Forge, un code d'avant
+     * F-107 (sans espace) ouvre les deux.
+     *
+     * @param userId utilisateur du contexte de sécurité ou du tour (isolation)
+     * @param space  espace demandé
+     * @return {@code true} tant qu'un tel code a {@code now < grantedUntil + grâce}
+     */
+    @Transactional(readOnly = true)
+    public boolean isGrantedWithGrace(UUID userId, fr.claudegateway.billing.EntitlementSpace space) {
+        return grantWithGrace(userId, space).isPresent();
+    }
+
+    /**
+     * L'accès offert ouvrant cet espace, grâce de tour comprise — celui dont le terme est le plus lointain.
+     * Sert à la réserve d'essai de la Vigie, qui compte depuis la consommation du code.
+     *
+     * @param userId utilisateur du contexte de sécurité ou du tour (isolation)
+     * @param space  espace demandé
+     * @return le droit, ou vide
+     */
+    @Transactional(readOnly = true)
+    public Optional<AccessGrant> grantWithGrace(UUID userId, fr.claudegateway.billing.EntitlementSpace space) {
+        return liveCodes(userId, properties.graceMinutes()).stream()
+                .map(AccessGrantService::toGrant)
+                .filter(grant -> grant.opens(space))
+                .findFirst();
+    }
+
+    /**
+     * L'accès offert ouvrant cet espace, au <b>terme exact</b> (sans grâce) : c'est la règle de non-cumul
+     * par espace à la consommation.
+     *
+     * @param userId utilisateur du contexte de sécurité (isolation)
+     * @param space  espace demandé
+     * @return le droit, ou vide
+     */
+    @Transactional(readOnly = true)
+    public Optional<AccessGrant> activeGrant(UUID userId, fr.claudegateway.billing.EntitlementSpace space) {
+        return liveCodes(userId, 0).stream()
+                .map(AccessGrantService::toGrant)
+                .filter(grant -> grant.opens(space))
+                .findFirst();
+    }
+
+    private java.util.List<AccessCode> liveCodes(UUID userId, int graceMinutes) {
+        if (userId == null) {
+            return java.util.List.of();
+        }
+        OffsetDateTime horizon = OffsetDateTime.now(clock).minusMinutes(graceMinutes);
+        return accessCodeRepository.findByRedeemedByUserIdAndGrantedUntilAfterOrderByGrantedUntilDesc(userId, horizon);
+    }
+
+    /**
      * Dernier code consommé par cet utilisateur, s'il est encore ouvert à l'horizon demandé.
      *
      * @param userId       utilisateur du contexte de sécurité
@@ -98,6 +152,8 @@ public class AccessGrantService {
                 code.getGrantedPlanCode(),
                 code.getGrantedUntil(),
                 code.getPreviousPlanCode(),
-                code.getLabel());
+                code.getLabel(),
+                code.getGrantedSpace(),
+                code.getRedeemedAt());
     }
 }
