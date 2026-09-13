@@ -129,6 +129,7 @@ describe('AtelierComponent', () => {
       'getEngine',
       'createHostPairingCode',
       'downloadRunnerJar',
+      'teamsAccess',
     ]);
     apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
@@ -512,6 +513,55 @@ describe('AtelierComponent', () => {
       const preview = report.calls.mostRecent().args[0];
       expect(preview.activity).toBe('AWAITING_APPROVAL');
       expect(preview.activityDetail).toBe('rm -rf build');
+    });
+  });
+
+  // ------------------------------------------- F-89 / SF-89-04 : un terminal Teams sans droit le dit
+
+  describe('terminal Teams sans droit (F-89 / SF-89-04)', () => {
+    function openTerminal(teamsTerminal: boolean): void {
+      // Le détail relu à l'ouverture doit porter la marque, sinon il l'écrase aussitôt.
+      service.getWorkspace.and.returnValue(of({ ...detail, teamsTerminal }));
+      component.activeWorkspaceId.set('w1');
+      component.activeDetail.set({ ...detail, teamsTerminal });
+      // Effet de composant : il se joue avec la détection de changements.
+      fixture.detectChanges();
+    }
+
+    it('un terminal Teams dont le droit est fermé lève le signal du bandeau', () => {
+      setup();
+      service.teamsAccess.and.returnValue(of({ entitled: false }));
+
+      openTerminal(true);
+
+      expect(service.teamsAccess).toHaveBeenCalled();
+      expect(component.teamsOptionInactive()).toBeTrue();
+    });
+
+    it('avec le droit, aucun bandeau', () => {
+      setup();
+      service.teamsAccess.and.returnValue(of({ entitled: true }));
+
+      openTerminal(true);
+
+      expect(component.teamsOptionInactive()).toBeFalse();
+    });
+
+    it('un terminal de projet ne demande même pas le droit Teams', () => {
+      setup();
+      openTerminal(false);
+
+      expect(service.teamsAccess).not.toHaveBeenCalled();
+      expect(component.teamsOptionInactive()).toBeFalse();
+    });
+
+    it('une erreur d\'appel n\'affirme aucun refus', () => {
+      setup();
+      service.teamsAccess.and.returnValue(throwError(() => new Error('réseau')));
+
+      openTerminal(true);
+
+      expect(component.teamsOptionInactive()).toBeFalse();
     });
   });
 

@@ -359,6 +359,38 @@ public class TeamsToolCatalog {
     }
 
     /**
+     * <b>Ce que l'agent d'un terminal Teams sans droit doit savoir</b> (F-89 / SF-89-04).
+     *
+     * <p>Constat de production du 2026-09-13 : sans droit, le catalogue est vide <b>en silence</b>, et
+     * l'agent — qui ignore où il est — répond comme un terminal de projet, en fouillant la machine.
+     * La règle de SF-89-01 tient (aucun outil {@code teams_*}, pas davantage un outil qui refuserait) ;
+     * ce qui manquait est la <b>parole</b> : la consigne système le dit, et dit quoi répondre.</p>
+     */
+    public static final String CLOSED_NOTICE = "--- Volet Teams non actif ---\n"
+            + "Ce terminal est un terminal Teams, mais le volet Teams n'est pas actif sur ce compte : "
+            + "aucun outil Teams ne t'est donné, tu ne peux lire ni messages, ni réunions, ni fichiers "
+            + "Teams. Ne cherche pas la réponse sur la machine à la place (pas de bash, find, grep ni "
+            + "lecture de fichiers pour retrouver un contenu Teams). Dis-le à l'utilisateur en une "
+            + "phrase, et indique-lui comment l'ouvrir : un essai par code d'accès (écran Facturation, "
+            + "« Vous avez un code d'accès ? ») ou l'option Teams (écran Facturation).";
+
+    /**
+     * Vrai si le workspace est un <b>terminal Teams</b> et que le droit du compte est <b>fermé</b>
+     * (F-89 / SF-89-04) : c'est le cas où la consigne système doit porter {@link #CLOSED_NOTICE}.
+     *
+     * <p>Un terminal de projet n'est jamais « fermé » — le droit n'y est même pas consulté —, et le
+     * catalogue {@link #none()} ne l'est jamais non plus : ses appelants ne connaissent pas le volet.</p>
+     *
+     * @param userId    propriétaire du terminal (celui du tour, jamais un paramètre client)
+     * @param workspace terminal du tour
+     * @return {@code true} si l'agent doit dire que le volet Teams n'est pas actif
+     */
+    public boolean isClosedFor(UUID userId, Workspace workspace) {
+        return teamsAccess != null && workspace != null && workspace.isTeamsTerminal()
+                && !teamsAccess.hasAccess(userId);
+    }
+
+    /**
      * Les outils Teams à donner à l'agent pour ce tour, ou <b>la liste vide</b>.
      *
      * @param userId    propriétaire du terminal (isolation : celui du tour, jamais un paramètre client)

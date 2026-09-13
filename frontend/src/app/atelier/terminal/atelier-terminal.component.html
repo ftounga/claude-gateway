@@ -151,6 +151,31 @@
     </header>
   }
 
+  <!-- UN TERMINAL TEAMS SANS DROIT LE DIT (F-89 / SF-89-04). Constat du 2026-09-13 : sans droit,
+       l'agent n'a aucun outil Teams et rien ne le disait — l'utilisateur croyait à un défaut. Le
+       bandeau dit l'état et nomme les deux sorties ; il NE BLOQUE RIEN : l'historique reste lisible.
+       Registre du refus dit (filet `--cg-accent`, §11) : aucune couleur nouvelle. -->
+  @if (teamsTerminal && teamsOptionInactive && !readOnly) {
+    <div class="terminal-teams-inactive" role="status">
+      <mat-icon class="terminal-teams-inactive-icon" aria-hidden="true">lock</mat-icon>
+      <div class="terminal-teams-inactive-text">
+        <p class="terminal-teams-inactive-title">Option Teams non active</p>
+        <p class="terminal-teams-inactive-hint">
+          Ce terminal ne peut pas lire Teams sur ce compte. L'historique reste lisible. Pour l'ouvrir :
+          un essai par code d'accès, ou l'option Teams.
+        </p>
+      </div>
+      <span class="terminal-teams-inactive-actions">
+        <button mat-stroked-button type="button" (click)="openAccessCode.emit()">
+          Saisir un code d'accès
+        </button>
+        <button mat-button type="button" (click)="openBilling.emit()">
+          Voir la facturation
+        </button>
+      </span>
+    </div>
+  }
+
   <!-- REFUS EXPLICITE DU CINQUIÈME TERMINAL (F-70 / SF-70-01).
        Le PO a tranché : un refus dit, jamais une mise en veille silencieuse — un agent qu'on croit
        actif et qui dort est pire qu'un refus. Le terminal reste LISIBLE (son historique est là),

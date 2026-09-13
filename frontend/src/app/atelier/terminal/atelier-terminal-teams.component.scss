@@ -258,3 +258,47 @@
   margin-top: 2px;
   font-style: italic;
 }
+
+/* UN TERMINAL TEAMS SANS DROIT LE DIT (F-89 / SF-89-04) — même registre que le refus du cinquième
+   terminal (F-70) : filet d'accent, encre de la barre. Aucune couleur nouvelle. */
+.terminal-teams-inactive {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-2) var(--cg-space-3);
+  border-bottom: 1px solid var(--cg-navy-2);
+  border-left: 3px solid var(--cg-accent);
+  color: var(--cg-divider);
+  font-size: 13px;
+}
+
+.terminal-teams-inactive-icon {
+  color: var(--cg-accent);
+  flex-shrink: 0;
+}
+
+.terminal-teams-inactive-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.terminal-teams-inactive-title,
+.terminal-teams-inactive-hint {
+  margin: 0;
+}
+
+.terminal-teams-inactive-title {
+  font-weight: 600;
+}
+
+.terminal-teams-inactive-hint {
+  margin-top: var(--cg-space-1);
+  font-size: 12px;
+}
+
+.terminal-teams-inactive-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cg-space-2);
+}

@@ -435,6 +435,15 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    */
   @Input() teamsLink: TeamsLink | null = null;
 
+  /**
+   * **Le volet Teams n'est pas actif sur ce compte** (F-89 / SF-89-04). Ne vaut que sur un terminal
+   * Teams : le bandeau le dit, avec les deux gestes qui l'ouvrent, sans rien retirer du fil.
+   */
+  @Input() teamsOptionInactive = false;
+
+  /** Conduit à la saisie d'un code d'accès (F-89 / SF-89-04) — l'essai du volet Teams. */
+  @Output() openAccessCode = new EventEmitter<void>();
+
   @Output() draftChange = new EventEmitter<string>();
   @Output() send = new EventEmitter<void>();
   @Output() quit = new EventEmitter<void>();

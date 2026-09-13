@@ -71,6 +71,34 @@ class TeamsToolCatalogTest {
     }
 
     @Test
+    @DisplayName("SF-89-04 : terminal Teams sans droit — fermé, la consigne devra le dire")
+    void aTeamsTerminalWithoutTheRightIsClosed() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(false);
+
+        assertThat(catalog.isClosedFor(userId, teamsTerminal())).isTrue();
+        assertThat(TeamsToolCatalog.CLOSED_NOTICE)
+                .contains("n'est pas actif")
+                .contains("Ne cherche pas la réponse sur la machine")
+                .contains("code d'accès");
+    }
+
+    @Test
+    @DisplayName("SF-89-04 : terminal Teams avec droit — pas fermé")
+    void aTeamsTerminalWithTheRightIsNotClosed() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(true);
+
+        assertThat(catalog.isClosedFor(userId, teamsTerminal())).isFalse();
+    }
+
+    @Test
+    @DisplayName("SF-89-04 : un terminal de projet n'est jamais fermé, et le droit n'est pas lu")
+    void aProjectTerminalIsNeverClosed() {
+        assertThat(catalog.isClosedFor(userId, projectTerminal())).isFalse();
+        org.mockito.Mockito.verifyNoInteractions(teamsAccess);
+        assertThat(TeamsToolCatalog.none().isClosedFor(userId, teamsTerminal())).isFalse();
+    }
+
+    @Test
     @DisplayName("sur un terminal de projet, AUCUN outil teams_* — même avec l'option")
     void noTeamsToolOnAProjectTerminal() {
         when(teamsAccess.hasAccess(userId)).thenReturn(true);

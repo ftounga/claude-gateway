@@ -1886,7 +1886,7 @@ public class AtelierChatService implements RelayInterruptTarget {
      * conventions du projet, <b>en silence</b> (les lectures optionnelles avalent l'erreur). C'est
      * exactement la panne qu'on ne verrait pas.</p>
      */
-    private String buildSystemPrompt(UUID userId, Workspace workspace) {
+    String buildSystemPrompt(UUID userId, Workspace workspace) {
         StringBuilder system = new StringBuilder();
         // L'énoncé du rôle suit l'outillage réellement déclaré (SF-39-05) : annoncer des outils qui
         // n'existent pas dans ce projet ne produirait que des appels perdus.
@@ -1908,6 +1908,13 @@ public class AtelierChatService implements RelayInterruptTarget {
                     .append("write_file, search_files) pour lire et modifier les fichiers du projet. ")
                     .append("Ne fais aucune supposition sur un fichier sans l'avoir lu. Après une modification, ")
                     .append("résume clairement ce que tu as changé.\n\n");
+        }
+
+        // F-89 / SF-89-04 : un terminal Teams sans droit le DIT. Sans ce paragraphe, l'agent — privé
+        // de ses outils teams_* en silence (SF-89-01) — fouillait la machine comme un terminal de
+        // projet. Placé juste après le rôle : c'est ce qui change le sens de tout le reste.
+        if (teamsToolCatalog.isClosedFor(userId, workspace)) {
+            system.append(fr.claudegateway.teams.TeamsToolCatalog.CLOSED_NOTICE).append("\n\n");
         }
 
         // Compteurs d'amorçage : ces lectures sont journalisées en UNE ligne (F-38 / SF-38-08).

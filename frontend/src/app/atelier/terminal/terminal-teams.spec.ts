@@ -329,6 +329,45 @@ describe('AtelierTerminalComponent — le compte rendu Teams (F-89 / SF-89-03)',
     expect(image.getAttribute('src')).toBe('/api/workspaces/ws-1/teams/moments/abc123');
   });
 
+  // ------------------------------------------------ F-89 / SF-89-04 : un terminal sans droit le dit
+
+  it('SF-89-04 — terminal Teams sans droit : le bandeau le dit, avec ses deux gestes, et le fil reste', () => {
+    component.teamsOptionInactive = true;
+    render(card);
+
+    const banner = host().querySelector('.terminal-teams-inactive') as HTMLElement;
+    expect(banner).not.toBeNull();
+    expect(banner.getAttribute('role')).toBe('status');
+    expect(banner.textContent).toContain('Option Teams non active');
+    expect(banner.textContent).toContain('Saisir un code d\'accès');
+    expect(banner.textContent).toContain('Voir la facturation');
+    // Rien n'est bloqué : le compte rendu déjà là reste lisible.
+    expect(host().querySelector('.teams-card')).not.toBeNull();
+  });
+
+  it('SF-89-04 — les gestes du bandeau mènent au code d\'accès et à la facturation', () => {
+    component.teamsOptionInactive = true;
+    render(card);
+    const code = spyOn(component.openAccessCode, 'emit');
+    const billing = spyOn(component.openBilling, 'emit');
+
+    const buttons = host().querySelectorAll('.terminal-teams-inactive button');
+    (buttons[0] as HTMLButtonElement).click();
+    (buttons[1] as HTMLButtonElement).click();
+
+    expect(code).toHaveBeenCalled();
+    expect(billing).toHaveBeenCalled();
+  });
+
+  it('SF-89-04 — pas de bandeau avec le droit, ni sur un terminal de projet', () => {
+    render(card);
+    expect(host().querySelector('.terminal-teams-inactive')).toBeNull();
+
+    component.teamsOptionInactive = true;
+    render(card, false);
+    expect(host().querySelector('.terminal-teams-inactive')).toBeNull();
+  });
+
   // ------------------------------------------------------------- un bloc vide
 
   it('un bloc sans ligne ni moment n\'est pas rendu : mieux vaut rien qu\'un cadre creux', () => {

@@ -154,6 +154,8 @@
     [liveTerminals]="liveTerminalList()"
     (retryLive)="retryLiveTerminal()"
     [teamsLink]="teamsLink()"
+    [teamsOptionInactive]="teamsOptionInactive()"
+    (openAccessCode)="goToAccessCode()"
   ></app-atelier-terminal>
 } @else {
 <div class="atelier-layout">

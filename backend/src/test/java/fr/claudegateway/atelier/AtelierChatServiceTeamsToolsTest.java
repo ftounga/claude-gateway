@@ -108,6 +108,35 @@ class AtelierChatServiceTeamsToolsTest {
                 .containsExactly("read_file", "write_file", "edit_file", "bash", "explore", "set_plan");
     }
 
+    // ------------------------------------------------- F-89 / SF-89-04 : un terminal sans droit le dit
+
+    @Test
+    @DisplayName("SF-89-04 — terminal Teams sans droit : la consigne dit que le volet n'est pas actif")
+    void withoutTheRightTheSystemPromptSaysSo() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(false);
+
+        assertThat(service.buildSystemPrompt(userId, terminal(true)))
+                .contains(TeamsToolCatalog.CLOSED_NOTICE);
+    }
+
+    @Test
+    @DisplayName("SF-89-04 — terminal Teams avec droit : consigne sans l'avertissement")
+    void withTheRightTheSystemPromptIsUnchanged() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(true);
+
+        assertThat(service.buildSystemPrompt(userId, terminal(true)))
+                .doesNotContain("Volet Teams non actif");
+    }
+
+    @Test
+    @DisplayName("SF-89-04 — terminal de projet : jamais d'avertissement Teams")
+    void aProjectTerminalNeverCarriesTheNotice() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(false);
+
+        assertThat(service.buildSystemPrompt(userId, terminal(false)))
+                .doesNotContain("Volet Teams non actif");
+    }
+
     // ------------------------------------------------------------------ F-91 : le journal d'audit
 
     @Test
