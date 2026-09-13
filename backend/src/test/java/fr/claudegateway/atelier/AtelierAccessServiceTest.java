@@ -154,13 +154,25 @@ class AtelierAccessServiceTest {
         verify(subscriptionService, never()).getOrCreateForUser(any());
     }
 
-    // ------------------------------------------------ F-41 / SF-41-01 : l'offre BYOK ouvre l'Atelier
+    // ------------------------------------ F-107 / SF-107-01 : BYOK n'ouvre plus la Forge sans l'option
 
     @Test
-    void byokPlanOpensAtelierForARegularUser() {
+    void byokPlanWithoutOptionNoLongerOpensAtelier() {
         when(currentUser.principal()).thenReturn(Optional.of(principal(UserRole.USER)));
         when(subscriptionService.getOrCreateForUser(userId))
                 .thenReturn(subscription(PlanCode.BYOK, SubscriptionStatus.ACTIVE));
+
+        assertThat(service.hasAccess()).isFalse();
+        assertThatThrownBy(() -> service.requireAccess())
+                .isInstanceOf(AtelierAccessDeniedException.class);
+    }
+
+    @Test
+    void byokPlanWithOptionOpensAtelier() {
+        when(currentUser.principal()).thenReturn(Optional.of(principal(UserRole.USER)));
+        Subscription byok = subscription(PlanCode.BYOK, SubscriptionStatus.ACTIVE);
+        byok.setAtelierOptionStatus(SubscriptionStatus.ACTIVE);
+        when(subscriptionService.getOrCreateForUser(userId)).thenReturn(byok);
 
         assertThat(service.hasAccess()).isTrue();
         assertThatCode(() -> service.requireAccess()).doesNotThrowAnyException();
@@ -169,8 +181,9 @@ class AtelierAccessServiceTest {
     @Test
     void canceledByokPlanClosesAtelierAgain() {
         when(currentUser.principal()).thenReturn(Optional.of(principal(UserRole.USER)));
-        when(subscriptionService.getOrCreateForUser(userId))
-                .thenReturn(subscription(PlanCode.BYOK, SubscriptionStatus.CANCELED));
+        Subscription byok = subscription(PlanCode.BYOK, SubscriptionStatus.CANCELED);
+        byok.setAtelierOptionStatus(SubscriptionStatus.ACTIVE);
+        when(subscriptionService.getOrCreateForUser(userId)).thenReturn(byok);
 
         assertThat(service.hasAccess()).isFalse();
         assertThatThrownBy(() -> service.requireAccess())

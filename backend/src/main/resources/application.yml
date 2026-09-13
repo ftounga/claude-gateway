@@ -467,6 +467,13 @@ app:
       # ajustable par environnement sans changement de code ; le vrai débit est porté par le price.
       atelier-option-price-id: ${STRIPE_PRICE_ATELIER_OPTION:}
       atelier-option-display-price: ${APP_BILLING_ATELIER_OPTION_PRICE:40}
+      # F-107 / SF-107-01 : BYOK ne comprend plus la Forge, elle s'y achète par l'option. Le prix de
+      # l'option dépend du plan porteur — 40 € sur Solo/Pro (clés ci-dessus), 70 € sur BYOK (décidé
+      # par le PO le 2026-09-13) — d'où un price ID et un montant PROPRES à BYOK. Price ID vide par
+      # défaut : l'option est alors dormante sur BYOK, et l'écran dit qu'elle n'y est pas encore
+      # proposée, sans erreur.
+      atelier-option-byok-price-id: ${STRIPE_PRICE_ATELIER_OPTION_BYOK:}
+      atelier-option-byok-display-price: ${APP_BILLING_ATELIER_OPTION_BYOK_PRICE:70}
       # URLs de retour Checkout (frontend). Surchargées par environnement.
       success-url: ${STRIPE_SUCCESS_URL:http://localhost:4200/billing?checkout=success}
       cancel-url: ${STRIPE_CANCEL_URL:http://localhost:4200/billing?checkout=cancel}

@@ -18,8 +18,8 @@ allocation mensuelle de jetons, plus une offre **BYOK** où vous apportez votre 
 période d'essai est accordée à l'ouverture du compte. Les montants et l'allocation de chaque offre
 sont affichés sur l'écran **Facturation** — c'est la seule source à jour.
 
-L'accès à la **Forge** peut être ouvert depuis une offre Solo ou Pro par une **option**
-mensuelle, sans changer d'offre ni d'allocation.
+L'accès à la **Forge** peut être ouvert depuis une offre Solo, Pro ou BYOK par une **option**
+mensuelle, sans changer d'offre ni d'allocation. L'offre Gold la comprend déjà.
 
 L'allocation est **mensuelle**, y compris pour un abonnement engagé à l'année.
 

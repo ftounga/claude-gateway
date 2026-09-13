@@ -88,6 +88,8 @@ class AtelierOptionBillingApiIntegrationTest {
                         .header("Authorization", bearer(aliceToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.priceEur", is("40")))
+                // F-107 / SF-107-01 : Solo garde le montant et le price de l'option d'avant.
+                .andExpect(jsonPath("$.byokCarrier", is(false)))
                 .andExpect(jsonPath("$.entitled", is(false)))
                 .andExpect(jsonPath("$.includedInPlan", is(false)))
                 .andExpect(jsonPath("$.status", nullValue()))

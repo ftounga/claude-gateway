@@ -152,7 +152,17 @@ class ByokKeyRequiredApiIntegrationTest {
         aiProvider.lastRequest = null;
 
         subscribe(nokey, PlanCode.BYOK);
+        // F-107 / SF-107-01 : BYOK ne comprend plus la Forge. Sans l'option, les chemins Forge
+        // ci-dessous seraient refusés par la garde d'accès AVANT le pré-vol — et le refus « clé
+        // requise » qu'on veut mesurer resterait inatteignable.
+        giveForgeOption(nokey);
         nokeyWorkspace = createWorkspace(nokey);
+    }
+
+    private void giveForgeOption(User user) {
+        Subscription subscription = subscriptionRepository.findByUserId(user.getId()).orElseThrow();
+        subscription.setAtelierOptionStatus(SubscriptionStatus.ACTIVE);
+        subscriptionRepository.save(subscription);
     }
 
     // ------------------------------------------------------------------ outillage

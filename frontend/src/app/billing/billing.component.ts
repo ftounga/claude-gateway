@@ -711,7 +711,7 @@ export class BillingComponent implements OnInit {
     const apiError = error.error as ApiError | undefined;
     switch (apiError?.error) {
       case 'no_active_subscription':
-        return "Souscrivez d'abord une offre Solo ou Pro pour ajouter l'option Forge.";
+        return "Souscrivez d'abord une offre Solo, Pro ou BYOK pour ajouter l'option Forge.";
       case 'atelier_option_included':
         return "La Forge est déjà incluse dans votre offre.";
       case 'atelier_option_already_active':

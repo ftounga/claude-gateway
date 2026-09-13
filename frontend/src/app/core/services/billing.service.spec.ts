@@ -142,6 +142,7 @@ describe('BillingService', () => {
       status: null,
       cancelAt: null,
       available: true,
+      byokCarrier: false,
     };
     let received: AtelierOptionView | undefined;
     service.getAtelierOption().subscribe((r) => (received = r));
@@ -171,6 +172,7 @@ describe('BillingService', () => {
       status: 'ACTIVE',
       cancelAt: '2026-10-03T00:00:00Z',
       available: true,
+      byokCarrier: false,
     };
     let received: AtelierOptionView | undefined;
     service.cancelAtelierOption().subscribe((r) => (received = r));

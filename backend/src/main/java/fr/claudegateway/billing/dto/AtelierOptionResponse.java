@@ -13,7 +13,11 @@ import fr.claudegateway.billing.AtelierOptionService.AtelierOptionView;
  * @param includedInPlan vrai si le droit vient de l'offre elle-même (Gold) : l'option est sans objet
  * @param status         statut de l'option ({@code ACTIVE}, {@code CANCELED}…), ou {@code null} si jamais souscrite
  * @param cancelAt       terme d'une résiliation programmée, ou {@code null}
- * @param available      vrai si l'option est réellement souscriptible (paiement configuré)
+ * @param available      vrai si l'option est réellement souscriptible sur l'offre de l'utilisateur
+ *                       (paiement et price de ce plan porteur configurés)
+ * @param byokCarrier    vrai si l'offre de l'utilisateur est BYOK (F-107 / SF-107-01) : le montant
+ *                       est celui de l'option sur BYOK, et {@code available=false} y veut dire
+ *                       « pas encore proposée sur BYOK »
  */
 public record AtelierOptionResponse(
         String priceEur,
@@ -21,7 +25,8 @@ public record AtelierOptionResponse(
         boolean includedInPlan,
         String status,
         OffsetDateTime cancelAt,
-        boolean available) {
+        boolean available,
+        boolean byokCarrier) {
 
     /** Projette la vue métier vers le contrat REST. */
     public static AtelierOptionResponse from(AtelierOptionView view) {
@@ -31,6 +36,7 @@ public record AtelierOptionResponse(
                 view.includedInPlan(),
                 view.optionStatus() == null ? null : view.optionStatus().name(),
                 view.cancelAt(),
-                view.available());
+                view.available(),
+                view.byokCarrier());
     }
 }

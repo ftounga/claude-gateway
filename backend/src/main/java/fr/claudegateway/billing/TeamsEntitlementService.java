@@ -25,7 +25,7 @@ import fr.claudegateway.access.AccessGrantService;
  *
  * <h2>Deux différences avec le droit d'Atelier, et elles sont voulues</h2>
  *
- * <p><b>Aucun plan n'inclut Teams.</b> Gold et BYOK comprennent l'Atelier ; aucun ne comprend le
+ * <p><b>Aucun plan n'inclut Teams.</b> Gold comprend l'Atelier (BYOK plus depuis F-107) ; aucun ne comprend le
  * volet Teams, qui est une option et rien d'autre (D5). Le dire autrement reviendrait à décider
  * d'un prix — et le montant de l'option est <b>à confirmer par le PO</b>.</p>
  *

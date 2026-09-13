@@ -122,7 +122,7 @@ export interface TopUpCheckoutRequest {
 
 /**
  * État de l'option Atelier (F-40) : le droit d'accès à l'Atelier, découplé du plan. Souscrite en
- * supplément d'une offre Solo/Pro, elle **ne change aucun quota**.
+ * supplément d'une offre Solo, Pro ou BYOK (F-107), elle **ne change aucun quota**.
  */
 export interface AtelierOptionView {
   /** Montant d'affichage EUR (ex. "40"), renvoyé par le backend — jamais une constante d'écran. */
@@ -135,6 +135,12 @@ export interface AtelierOptionView {
   status: SubscriptionStatus | null;
   /** Terme d'une résiliation programmée, ou null. */
   cancelAt: string | null;
-  /** L'option est réellement souscriptible (paiement configuré côté serveur). */
+  /** L'option est réellement souscriptible sur l'offre de l'utilisateur (paiement configuré côté serveur). */
   available: boolean;
+  /**
+   * L'offre de l'utilisateur est BYOK (F-107 / SF-107-01) : la Forge n'y est plus comprise, l'option
+   * s'y vend à un montant qui lui est propre. Avec `available=false`, l'écran dit que l'option n'est
+   * pas encore proposée sur BYOK — sans erreur. Lu tel quel : l'écran ne déduit pas l'offre d'un code.
+   */
+  byokCarrier: boolean;
 }
