@@ -3,7 +3,6 @@ package fr.claudegateway.runner;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -22,13 +21,13 @@ import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceNotFoundException;
 import fr.claudegateway.atelier.WorkspaceService;
 import fr.claudegateway.runner.RunnerStatusService.RunnerStatus;
-import fr.claudegateway.runner.channel.RunnerRegistry;
 import fr.claudegateway.runner.host.RunnerHost;
 import fr.claudegateway.runner.host.RunnerHostService;
 
 /**
- * Calcul de l'état runner (F-38 / SF-38-02) : présence du registre OU fraîcheur du dernier
- * heartbeat, sous double vérification d'appartenance (isolation {@code user_id}).
+ * Calcul de l'état runner (F-38 / SF-38-02) : fraîcheur du dernier heartbeat — seule preuve de vie
+ * depuis F-97 / SF-97-01, le registre n'est plus lu —, sous double vérification d'appartenance
+ * (isolation {@code user_id}).
  *
  * <p>Depuis F-48 / SF-48-01, l'état est celui d'un <b>poste</b>, et un projet en hérite de celui de
  * la machine à laquelle il est rattaché. Un projet rattaché à rien répond « déconnecté » — c'est
@@ -43,8 +42,6 @@ class RunnerStatusServiceTest {
     @Mock
     private RunnerTokenRepository tokenRepository;
     @Mock
-    private RunnerRegistry registry;
-    @Mock
     private WorkspaceService workspaceService;
     @Mock
     private RunnerHostService hostService;
@@ -54,8 +51,8 @@ class RunnerStatusServiceTest {
     private final UUID hostId = UUID.randomUUID();
 
     private RunnerStatusService service() {
-        return new RunnerStatusService(tokenRepository, registry, workspaceService, hostService,
-                Duration.ofSeconds(90));
+        return new RunnerStatusService(tokenRepository, workspaceService, hostService,
+                new RunnerLiveness(tokenRepository, Duration.ofSeconds(90)));
     }
 
     /** Projet rattaché à un poste dont le runner a déclaré (ou non) son interpréteur. */
@@ -74,7 +71,6 @@ class RunnerStatusServiceTest {
         // l'état du poste, et non plus avec le détail du projet. L'élévation est lue là où l'on
         // autorise une commande — le seul endroit où elle change une décision (SF-38-18).
         givenAttachedProject("posix");
-        when(registry.isConnected(hostId)).thenReturn(true);
         givenTokens();
 
         RunnerStatus status = service().status(userId, workspaceId);
@@ -98,16 +94,39 @@ class RunnerStatusServiceTest {
     }
 
     @Test
-    void connectedWhenRegistrySeesConnectionEvenWithoutHeartbeat() {
+    void aHeartbeatOlderThanTheWindowIsOfflineWhateverTheSocket() {
+        // F-97 / SF-97-01 : le battement fait foi. 91 s sans battement = hors ligne, même si une
+        // socket à moitié ouverte est encore enregistrée (le service ne lit plus le registre).
         givenAttachedProject(null);
-        when(registry.isConnected(hostId)).thenReturn(true);
-        givenTokens();
+        OffsetDateTime justStale = OffsetDateTime.now().minusSeconds(91);
+        givenTokens(tokenLastSeen(justStale));
+
+        RunnerStatus status = service().status(userId, workspaceId);
+
+        assertThat(status.connected()).isFalse();
+        assertThat(status.lastSeenAt()).isEqualTo(justStale);
+        assertThat(status.hostId()).isEqualTo(hostId);
+    }
+
+    @Test
+    void aHeartbeatJustInsideTheWindowIsOnline() {
+        givenAttachedProject(null);
+        givenTokens(tokenLastSeen(OffsetDateTime.now().minusSeconds(85)));
+
+        assertThat(service().status(userId, workspaceId).connected()).isTrue();
+    }
+
+    @Test
+    void theMostRecentHeartbeatAmongTokensDecides() {
+        givenAttachedProject(null);
+        OffsetDateTime fresh = OffsetDateTime.now().minusSeconds(5);
+        givenTokens(tokenLastSeen(OffsetDateTime.now().minusHours(2)), tokenLastSeen(fresh),
+                tokenLastSeen(null));
 
         RunnerStatus status = service().status(userId, workspaceId);
 
         assertThat(status.connected()).isTrue();
-        assertThat(status.lastSeenAt()).isNull();
-        assertThat(status.hostId()).isEqualTo(hostId);
+        assertThat(status.lastSeenAt()).isEqualTo(fresh);
     }
 
     @Test
@@ -115,7 +134,6 @@ class RunnerStatusServiceTest {
         givenAttachedProject(null);
         // Cas cross-replica : la socket vit sur l'autre pod, le registre local ne la voit pas, mais
         // le heartbeat a rafraichi last_seen_at dans la base partagee.
-        when(registry.isConnected(hostId)).thenReturn(false);
         OffsetDateTime fresh = OffsetDateTime.now().minusSeconds(10);
         givenTokens(tokenLastSeen(fresh));
 
@@ -128,7 +146,6 @@ class RunnerStatusServiceTest {
     @Test
     void disconnectedWhenRegistryEmptyAndHeartbeatStale() {
         givenAttachedProject(null);
-        when(registry.isConnected(hostId)).thenReturn(false);
         OffsetDateTime stale = OffsetDateTime.now().minusMinutes(5);
         givenTokens(tokenLastSeen(stale));
 
@@ -141,7 +158,6 @@ class RunnerStatusServiceTest {
     @Test
     void disconnectedWhenNeverSeen() {
         givenAttachedProject(null);
-        when(registry.isConnected(hostId)).thenReturn(false);
         givenTokens(tokenLastSeen(null));
 
         RunnerStatus status = service().status(userId, workspaceId);
@@ -182,7 +198,6 @@ class RunnerStatusServiceTest {
         // LE cas courant : la machine est éteinte, mais son jeton est sur son disque. Aucun code
         // d'appairage n'est nécessaire — seulement relancer le runner.
         givenAttachedProject(null);
-        when(registry.isConnected(hostId)).thenReturn(false);
         givenTokens(token(OffsetDateTime.now().plusDays(10), null));
 
         RunnerStatus status = service().status(userId, workspaceId);
@@ -196,7 +211,6 @@ class RunnerStatusServiceTest {
         // Après le coupe-circuit (SF-38-08) : la reprise échouerait, et proposer un geste voué à
         // l'échec est pire que ne rien proposer. L'écran redemande donc un code.
         givenAttachedProject(null);
-        when(registry.isConnected(hostId)).thenReturn(false);
         OffsetDateTime later = OffsetDateTime.now().plusDays(10);
         givenTokens(token(later, OffsetDateTime.now().minusMinutes(1)),
                 token(later, OffsetDateTime.now().minusHours(3)));
@@ -209,7 +223,6 @@ class RunnerStatusServiceTest {
     @Test
     void notPairedWhenTheOnlyTokenHasExpired() {
         givenAttachedProject(null);
-        when(registry.isConnected(hostId)).thenReturn(false);
         givenTokens(token(OffsetDateTime.now().minusMinutes(1), null));
 
         RunnerStatus status = service().status(userId, workspaceId);
@@ -221,7 +234,6 @@ class RunnerStatusServiceTest {
     void pairedWhenOneTokenSurvivesAmongRevokedOnes() {
         // Un seul jeton utilisable suffit : c'est celui que le runner présentera.
         givenAttachedProject(null);
-        when(registry.isConnected(hostId)).thenReturn(false);
         OffsetDateTime later = OffsetDateTime.now().plusDays(10);
         givenTokens(token(later, OffsetDateTime.now().minusMinutes(1)), token(later, null));
 
@@ -234,7 +246,6 @@ class RunnerStatusServiceTest {
     void pairedIsReadOnlyFromTheOwnersTokens() {
         // Isolation : la lecture passe par user_id ET host_id. Aucune autre lecture n'existe.
         givenAttachedProject(null);
-        when(registry.isConnected(hostId)).thenReturn(false);
         givenTokens(token(OffsetDateTime.now().plusDays(10), null));
 
         service().status(userId, workspaceId);
@@ -247,7 +258,6 @@ class RunnerStatusServiceTest {
     @Test
     void statusCarriesTheShellDeclaredByTheMachine() {
         givenAttachedProject("powershell");
-        when(registry.isConnected(hostId)).thenReturn(true);
         givenTokens();
 
         assertThat(service().status(userId, workspaceId).shell()).isEqualTo("powershell");
@@ -258,7 +268,6 @@ class RunnerStatusServiceTest {
         // Runner anterieur a SF-38-27, ou machine jamais connectee : l'ecran doit OMETTRE la ligne,
         // pas afficher un defaut.
         givenAttachedProject(null);
-        when(registry.isConnected(hostId)).thenReturn(false);
         givenTokens();
 
         assertThat(service().status(userId, workspaceId).shell()).isNull();
@@ -268,7 +277,6 @@ class RunnerStatusServiceTest {
     void statusDropsAShellOutsideTheWhitelist() {
         // La colonne est alimentee par une trame client : une valeur inconnue ne sort pas d'ici.
         givenAttachedProject("zsh-maison");
-        when(registry.isConnected(hostId)).thenReturn(false);
         givenTokens();
 
         assertThat(service().status(userId, workspaceId).shell()).isNull();
@@ -276,7 +284,6 @@ class RunnerStatusServiceTest {
 
     @Test
     void statusRequiresWorkspaceOwnership() {
-        lenient().when(registry.isConnected(any())).thenReturn(true);
         when(workspaceService.requireOwned(userId, workspaceId))
                 .thenThrow(new WorkspaceNotFoundException("introuvable"));
 

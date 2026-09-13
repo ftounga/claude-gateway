@@ -33,7 +33,8 @@ class RunnerPollingSessionsTest {
     void setUp() {
         registry = new InMemoryRunnerRegistry();
         dispatcher = new RunnerCallDispatcher(registry, new ObjectMapper(), (id, shell) -> { },
-                (id, version) -> { }, new fr.claudegateway.runner.ServedRunnerVersion("", ""), 100L);
+                (id, version) -> { }, new fr.claudegateway.runner.ServedRunnerVersion("", ""),
+                fr.claudegateway.runner.RunnerLivenessStubs.alwaysAlive(), 100L);
         sessions = new RunnerPollingSessions(registry, dispatcher, 60_000L);
     }
 

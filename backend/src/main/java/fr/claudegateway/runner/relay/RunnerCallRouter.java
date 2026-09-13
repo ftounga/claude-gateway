@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import fr.claudegateway.runner.RunnerLiveness;
 import fr.claudegateway.runner.channel.RemoteRunnerNode;
 import fr.claudegateway.runner.channel.RunnerCallDispatcher;
 import fr.claudegateway.runner.channel.RunnerCallResult;
@@ -40,6 +41,10 @@ import fr.claudegateway.runner.channel.RunnerTarget;
  *   <li>sinon → l'erreur qui existait déjà : {@code runner_not_on_this_node} si un runner est présent
  *       ailleurs, {@code runner_unavailable} sinon.</li>
  * </ol>
+ *
+ * <p><b>F-97 / SF-97-01</b> — avant tout relais ou refus « ailleurs », le poste doit <b>battre</b>
+ * ({@link RunnerLiveness}) : une présence distante ne prouve pas que le runner vit. Poste muet →
+ * {@code runner_unavailable} immédiat. Le cas local, lui, est jugé par le dispatcher.</p>
  */
 @Component
 public class RunnerCallRouter {
@@ -50,13 +55,16 @@ public class RunnerCallRouter {
     private final RunnerCallDispatcher dispatcher;
     private final RunnerRelayProperties properties;
     private final ObjectProvider<RunnerRelayClient> relayClient;
+    private final RunnerLiveness liveness;
 
     public RunnerCallRouter(RunnerRegistry registry, RunnerCallDispatcher dispatcher,
-            RunnerRelayProperties properties, ObjectProvider<RunnerRelayClient> relayClient) {
+            RunnerRelayProperties properties, ObjectProvider<RunnerRelayClient> relayClient,
+            RunnerLiveness liveness) {
         this.registry = registry;
         this.dispatcher = dispatcher;
         this.properties = properties;
         this.relayClient = relayClient;
+        this.liveness = liveness;
     }
 
     /** Appel sans relais de flux. */
@@ -81,15 +89,32 @@ public class RunnerCallRouter {
             return dispatcher.call(target, callId, tool, input, timeoutMs, onChunk);
         }
         RemoteRunnerNode remote = relayTarget(hostId);
+        if (remote == null && !registry.isConnected(hostId)) {
+            return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_UNAVAILABLE);
+        }
+        if (!aliveForRouting(hostId)) {
+            // F-97 / SF-97-01 — même règle que le dispatcher : une présence annoncée par un pod
+            // pair ne prouve pas que le runner vit. Poste muet → refus immédiat, aucun saut HTTP.
+            log.debug("Appel refusé : battement périmé (poste={}, outil={})", hostId, tool);
+            return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_UNAVAILABLE);
+        }
         if (remote != null) {
             log.debug("Appel relayé vers un pod pair (node={}, poste={}, outil={})",
                     remote.nodeId(), hostId, tool);
             return relayClient.getObject()
                     .call(remote, target, callId, tool, input, timeoutMs, onChunk);
         }
-        return RunnerCallResult.backendError(registry.isConnected(hostId)
-                ? RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE
-                : RunnerErrorCodes.RUNNER_UNAVAILABLE);
+        return RunnerCallResult.backendError(RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE);
+    }
+
+    /** Le poste bat-il encore ? <b>Le doute ne refuse pas</b> : une lecture en échec garde le chemin d'avant. */
+    private boolean aliveForRouting(UUID hostId) {
+        try {
+            return liveness.isAliveForRouting(hostId);
+        } catch (RuntimeException ex) {
+            log.debug("Fraîcheur du battement illisible (poste={}) : routage maintenu", hostId);
+            return true;
+        }
     }
 
     /**

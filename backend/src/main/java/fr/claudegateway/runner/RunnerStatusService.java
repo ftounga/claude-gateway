@@ -1,20 +1,17 @@
 package fr.claudegateway.runner;
 
-import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import fr.claudegateway.atelier.RunnerShell;
 import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceService;
-import fr.claudegateway.runner.channel.RunnerRegistry;
 import fr.claudegateway.runner.host.RunnerHost;
 import fr.claudegateway.runner.host.RunnerHostService;
 
@@ -24,31 +21,30 @@ import fr.claudegateway.runner.host.RunnerHostService;
  * auquel il est rattaché. L'appartenance est toujours vérifiée en amont (isolation {@code user_id}),
  * jamais déduite d'un paramètre client.
  *
- * <p>{@code connected} combine deux signaux : la présence dans le {@link RunnerRegistry} (immédiate,
- * locale ou cross-replica via PgNotify) <b>et</b> la fraîcheur de {@code last_seen_at} (base
- * partagée). Ce second critère rend le statut correct même si la socket vit sur l'autre pod ou si un
- * pod vient de démarrer sans avoir encore reçu les événements de présence existants.</p>
+ * <p><b>Le battement fait foi</b> (F-97 / SF-97-01) : {@code connected} ⇔ un {@code last_seen_at} plus
+ * récent que {@code stale-after} ({@link RunnerLiveness}). Le registre des connexions n'est plus lu
+ * ici : avant F-97, un <b>ou</b> avec sa présence faisait passer pour connecté, jusqu'à 15 minutes, un
+ * poste mort sans fermer sa socket (veille, Wi-Fi coupé). Une socket enregistrée sert à acheminer ;
+ * elle ne prouve pas que le runner est vivant. La base étant partagée, le statut reste juste quel que
+ * soit le pod qui porte la socket.</p>
  */
 @Service
 public class RunnerStatusService {
 
     private final RunnerTokenRepository tokenRepository;
-    private final RunnerRegistry registry;
     private final WorkspaceService workspaceService;
     private final RunnerHostService hostService;
-    private final Duration staleAfter;
+    private final RunnerLiveness liveness;
 
     public RunnerStatusService(
             RunnerTokenRepository tokenRepository,
-            RunnerRegistry registry,
             WorkspaceService workspaceService,
             RunnerHostService hostService,
-            @Value("${app.runner.heartbeat.stale-after:PT90S}") Duration staleAfter) {
+            RunnerLiveness liveness) {
         this.tokenRepository = tokenRepository;
-        this.registry = registry;
         this.workspaceService = workspaceService;
         this.hostService = hostService;
-        this.staleAfter = staleAfter;
+        this.liveness = liveness;
     }
 
     /**
@@ -89,10 +85,7 @@ public class RunnerStatusService {
                 .map(RunnerToken::getLastSeenAt)
                 .filter(java.util.Objects::nonNull)
                 .max(Comparator.naturalOrder());
-        boolean heartbeatFresh = lastSeen
-                .map(seen -> seen.isAfter(now.minus(staleAfter)))
-                .orElse(false);
-        boolean connected = registry.isConnected(host.getId()) || heartbeatFresh;
+        boolean connected = liveness.isFresh(lastSeen.orElse(null));
         boolean paired = tokens.stream().anyMatch(token -> token.isValidAt(now));
         return new RunnerStatus(connected, paired, lastSeen.orElse(null), declaredShell(host),
                 host.getId(), host.getName(), host.getRootName(),

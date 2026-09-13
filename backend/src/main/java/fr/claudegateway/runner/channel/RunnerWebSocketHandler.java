@@ -2,10 +2,16 @@ package fr.claudegateway.runner.channel;
 
 import java.io.IOException;
 import java.time.OffsetDateTime;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.PongMessage;
@@ -18,6 +24,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import fr.claudegateway.runner.RunnerHeartbeatService;
 import fr.claudegateway.runner.RunnerIdentity;
+import fr.claudegateway.runner.RunnerLiveness;
 
 /**
  * Gestionnaire du canal WebSocket runner (F-38 / SF-38-02, étendu en SF-38-05). À l'établissement il
@@ -36,18 +43,33 @@ public class RunnerWebSocketHandler extends AbstractWebSocketHandler {
 
     private static final Logger log = LoggerFactory.getLogger(RunnerWebSocketHandler.class);
 
+    /** Clé sous laquelle la présence enregistrée par CETTE session est retenue (garde anti-course). */
+    static final String CONNECTION_ATTRIBUTE = "runnerConnection";
+
+    /**
+     * Fermeture d'une socket muette : code {@code SESSION_NOT_RELIABLE} (4500), avec un motif qui dit
+     * la vraie raison — le motif par défaut de ce code parle d'un envoi trop lent, et le runner
+     * l'affiche tel quel dans sa console. ASCII, bien sous les 123 octets du protocole.
+     */
+    static final CloseStatus SILENT_SOCKET =
+            CloseStatus.SESSION_NOT_RELIABLE.withReason("no heartbeat received in time");
+
     private final RunnerRegistry registry;
     private final RunnerHeartbeatService heartbeatService;
     private final ObjectMapper objectMapper;
     private final RunnerCallDispatcher dispatcher;
+    private final RunnerLiveness liveness;
     private final String nodeId = UUID.randomUUID().toString();
+    /** Sockets ouvertes sur CE nœud, que le balayage examine (F-97 / SF-97-01). */
+    private final Set<WebSocketSession> sessions = ConcurrentHashMap.newKeySet();
 
     public RunnerWebSocketHandler(RunnerRegistry registry, RunnerHeartbeatService heartbeatService,
-            ObjectMapper objectMapper, RunnerCallDispatcher dispatcher) {
+            ObjectMapper objectMapper, RunnerCallDispatcher dispatcher, RunnerLiveness liveness) {
         this.registry = registry;
         this.heartbeatService = heartbeatService;
         this.objectMapper = objectMapper;
         this.dispatcher = dispatcher;
+        this.liveness = liveness;
     }
 
     @Override
@@ -56,10 +78,15 @@ public class RunnerWebSocketHandler extends AbstractWebSocketHandler {
         // La session décorée est posée AVANT l'enregistrement : dès que la présence est visible, une
         // socket utilisable l'est aussi.
         dispatcher.attach(session, identity);
-        registry.register(new RunnerConnection(
+        RunnerConnection connection = new RunnerConnection(
                 identity.hostId(), identity.userId(), identity.tokenId(), nodeId,
-                OffsetDateTime.now()));
+                OffsetDateTime.now());
+        // Retenue sur la session : c'est elle, et elle seule, que la fermeture pourra retirer.
+        session.getAttributes().put(CONNECTION_ATTRIBUTE, connection);
+        registry.register(connection);
         heartbeatService.touch(identity.tokenId());
+        // Suivie par le balayage APRÈS le premier battement : une socket neuve n'est jamais muette.
+        sessions.add(session);
         log.debug("Runner connecte: poste={} token={}", identity.hostId(), identity.tokenId());
     }
 
@@ -89,12 +116,80 @@ public class RunnerWebSocketHandler extends AbstractWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         RunnerIdentity identity = identityOf(session);
-        // Les appels en vol sont terminés AVANT le retrait du registre : aucun appel n'attend une
-        // socket morte, et aucun n'est rejoué (un write_file rejoué serait destructeur).
-        dispatcher.detach(session, identity);
-        registry.unregister(identity.hostId(), identity.tokenId());
+        release(session, identity);
         log.debug("Runner deconnecte: poste={} token={} ({})",
                 identity.hostId(), identity.tokenId(), status);
+    }
+
+    /**
+     * Ferme les sockets dont le poste <b>ne bat plus</b> (F-97 / SF-97-01).
+     *
+     * <p>Un runner qui meurt sans fermer sa connexion — ordinateur en veille, Wi-Fi coupé, VPN tombé —
+     * ne prévient personne : {@link #afterConnectionClosed} n'est jamais appelé, et la socket à moitié
+     * ouverte restait enregistrée jusqu'à ce que l'ingress la coupe (15 min). Le long-polling avait son
+     * balayage ; le WebSocket n'en avait pas. Même cadence, même règle que
+     * {@link RunnerPollingSessions#sweepIdleChannels} : muet depuis plus de {@code stale-after} →
+     * fermé ({@code SESSION_NOT_RELIABLE}), puis libéré par le <b>même chemin</b> qu'une fermeture
+     * ordinaire, garde anti-course comprise.</p>
+     *
+     * <p><b>Le doute ne coupe pas</b> : si la fraîcheur ne peut pas être lue (base indisponible), la
+     * socket est laissée ouverte.</p>
+     */
+    @Scheduled(fixedDelayString = "${app.runner.websocket.sweep-ms:15000}")
+    void sweepSilentSockets() {
+        Map<UUID, Boolean> aliveByHost = new HashMap<>();
+        for (WebSocketSession session : List.copyOf(sessions)) {
+            RunnerIdentity identity = (RunnerIdentity) session.getAttributes()
+                    .get(RunnerHandshakeInterceptor.IDENTITY_ATTRIBUTE);
+            if (identity == null) {
+                continue;
+            }
+            Boolean alive = aliveByHost.computeIfAbsent(identity.hostId(), host -> {
+                try {
+                    return liveness.isAlive(identity.userId(), host);
+                } catch (RuntimeException ex) {
+                    log.warn("Fraîcheur du battement illisible (poste={}) : socket conservée", host);
+                    return Boolean.TRUE;
+                }
+            });
+            if (Boolean.TRUE.equals(alive)) {
+                continue;
+            }
+            log.info("Socket runner muette fermée (poste={}) : aucun battement depuis plus de la "
+                    + "fenêtre de fraîcheur", identity.hostId());
+            try {
+                dispatcher.outboundFor(session).close(SILENT_SOCKET);
+            } catch (IOException | RuntimeException ex) {
+                log.debug("Fermeture d'une socket runner muette en échec (poste={})",
+                        identity.hostId());
+            } finally {
+                // La fermeture d'une socket à moitié ouverte ne rappelle pas toujours
+                // afterConnectionClosed : on libère nous-mêmes. Idempotent si elle l'a fait.
+                release(session, identity);
+            }
+        }
+    }
+
+    /**
+     * Libère une session fermée : appels en vol terminés, <b>puis</b> présence retirée — aucun appel
+     * n'attend une socket morte, et aucun n'est rejoué (un write_file rejoué serait destructeur).
+     *
+     * <p>Garde anti-course (F-97 / SF-97-01, même principe que le long-polling) : la présence n'est
+     * retirée que si celle enregistrée est encore <b>exactement</b> celle de cette session. La garde
+     * par jeton du registre ne suffit pas : un runner qui se reconnecte garde le même jeton, et la
+     * fermeture tardive de sa vieille socket effaçait sa nouvelle présence. Idempotent.</p>
+     */
+    private void release(WebSocketSession session, RunnerIdentity identity) {
+        sessions.remove(session);
+        dispatcher.detach(session, identity);
+        Object registered = session.getAttributes().get(CONNECTION_ATTRIBUTE);
+        if (registered instanceof RunnerConnection mine) {
+            if (registry.findLocal(identity.hostId()).filter(mine::equals).isPresent()) {
+                registry.unregister(identity.hostId(), identity.tokenId());
+            }
+            return;
+        }
+        registry.unregister(identity.hostId(), identity.tokenId());
     }
 
     private RunnerIdentity identityOf(WebSocketSession session) {

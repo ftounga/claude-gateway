@@ -34,6 +34,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import fr.claudegateway.runner.RunnerIdentity;
+import fr.claudegateway.runner.RunnerLiveness;
 
 /**
  * Tests du routage des appels d'outils vers un runner (F-38 / SF-38-05, contrat de messages §§1-8).
@@ -50,6 +51,8 @@ class RunnerCallDispatcherTest {
     private RunnerRegistry registry;
     @Mock
     private WebSocketSession session;
+    @Mock
+    private RunnerLiveness liveness;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final UUID hostId = UUID.randomUUID();
@@ -75,7 +78,10 @@ class RunnerCallDispatcherTest {
         // Grâce raccourcie : le contrat impose 5 000 ms en production, inutilisable dans un test.
         dispatcher = new RunnerCallDispatcher(registry, objectMapper, recordedShells::put,
                 recordedVersions::put, new fr.claudegateway.runner.ServedRunnerVersion("", "1.0.0"),
-                120L);
+                liveness, 120L);
+        // Par défaut le poste bat : les cas « battement périmé » (F-97) le disent explicitement.
+        when(liveness.isAlive(any(), any())).thenReturn(true);
+        when(liveness.isAliveForRouting(any())).thenReturn(true);
         executor = Executors.newSingleThreadExecutor();
         when(session.getAttributes()).thenReturn(attributes);
         when(session.isOpen()).thenReturn(true);
@@ -156,6 +162,53 @@ class RunnerCallDispatcherTest {
         assertThat(result.ok()).isFalse();
         assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE);
         verify(session, never()).sendMessage(any());
+    }
+
+    // ------------------------------------------------- le battement fait foi (F-97 / SF-97-01)
+
+    @Test
+    void refusesImmediatelyWhenTheLocalSocketIsSilent() throws Exception {
+        // Socket enregistrée, mais plus aucun battement depuis plus de 90 s : le poste est mort sans
+        // fermer sa connexion. Refus tout de suite, sans trame, sans attendre le délai d'appel.
+        withLocalRunner();
+        when(liveness.isAlive(userId, hostId)).thenReturn(false);
+
+        long started = System.nanoTime();
+        RunnerCallResult result = dispatcher.call(target, "toolu_1", "read_file",
+                objectMapper.readTree("{\"path\":\"a.ts\"}"), 30_000L);
+        long elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+
+        assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.RUNNER_UNAVAILABLE);
+        assertThat(elapsedMs).isLessThan(1_000L);
+        verify(session, never()).sendMessage(any());
+        verify(liveness).isAlive(userId, hostId);
+    }
+
+    @Test
+    void aSocketOnAnotherReplicaOfASilentHostIsUnavailableNotElsewhere() throws Exception {
+        // La présence distante ne prouve rien non plus : « ailleurs » n'est rendu que si le poste bat.
+        when(registry.findLocal(hostId)).thenReturn(Optional.empty());
+        when(registry.isConnected(hostId)).thenReturn(true);
+        when(liveness.isAliveForRouting(hostId)).thenReturn(false);
+
+        RunnerCallResult result = dispatcher.call(target, "toolu_1", "list_files",
+                objectMapper.createObjectNode(), 30_000L);
+
+        assertThat(result.errorCode()).isEqualTo(RunnerErrorCodes.RUNNER_UNAVAILABLE);
+        verify(session, never()).sendMessage(any());
+    }
+
+    @Test
+    void anUnreadableHeartbeatNeverRefusesTheCall() throws Exception {
+        // Le doute ne refuse pas : base momentanément illisible → le chemin d'avant, borné par son délai.
+        withLocalRunner();
+        when(liveness.isAlive(userId, hostId)).thenThrow(new IllegalStateException("base injoignable"));
+        respondWith("{\"type\":\"tool_result\",\"id\":\"toolu_1\",\"ok\":true,\"content\":\"a.ts\"}");
+
+        RunnerCallResult result = dispatcher.call(target, "toolu_1", "list_files",
+                objectMapper.createObjectNode(), 1_000L);
+
+        assertThat(result.ok()).isTrue();
     }
 
     @Test
@@ -393,7 +446,7 @@ class RunnerCallDispatcherTest {
                 },
                 (id, version) -> {
                     throw new IllegalStateException("base injoignable");
-                }, new fr.claudegateway.runner.ServedRunnerVersion("", "1.0.0"), 120L);
+                }, new fr.claudegateway.runner.ServedRunnerVersion("", "1.0.0"), liveness, 120L);
         com.fasterxml.jackson.databind.JsonNode ready = objectMapper.readTree(
                 "{\"type\":\"ready\",\"protocol\":1,\"capabilities\":[\"files\",\"bash\"],"
                         + "\"shell\":\"posix\",\"runnerVersion\":\"0.0.1\"}");
