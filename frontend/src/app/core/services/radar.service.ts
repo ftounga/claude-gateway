@@ -11,6 +11,7 @@ import {
   RadarDepositChunk,
   RadarDepositDone,
   RadarDepositOpened,
+  RadarDraft,
   RadarNews,
   RadarNewsUndo,
   RadarSubjectState,
@@ -139,6 +140,13 @@ export class RadarService {
   /** Abandonne le dépôt. */
   abortDeposit(hostId: string, uploadId: string): Observable<void> {
     return this.http.delete<void>(`${this.base(hostId)}/recordings/${uploadId}`);
+  }
+
+  // ---------------------------------------------------------------- Relances et présentations (F-104 / SF-104-05)
+
+  /** Prépare une relance ou une présentation : **un appel au fournisseur, décompté** ; rien n'est envoyé. */
+  prepareDraft(hostId: string, commitmentId: string): Observable<RadarDraft> {
+    return this.http.post<RadarDraft>(`${this.base(hostId)}/commitments/${commitmentId}/draft`, null);
   }
 
   /** Annuler un geste. */

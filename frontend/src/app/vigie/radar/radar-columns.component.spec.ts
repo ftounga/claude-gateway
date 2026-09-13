@@ -262,4 +262,26 @@ describe('RadarColumnsComponent', () => {
     root = build(new Error('réseau'));
     expect(clean(root.querySelector('.radar-columns__error')?.textContent)).toContain("Les colonnes n'ont pas pu être lues.");
   });
+
+  // ------------------------------------------------------------ F-104 / SF-104-05 : relances et présentations
+
+  it('Préparer la relance sur ce qu\'on attend, la présentation sur une mise en relation ; ni sur « à faire », ni sur une question', () => {
+    const b = board();
+    b.toDo.push(item({ id: 'c4', direction: 'INTRODUCTION', description: 'Présenter Sophie à Karim',
+      toPerson: { id: 'p2', displayName: 'Sophie' }, otherPerson: { id: 'p3', displayName: 'Karim' } }));
+    const root = build(b);
+
+    const todo = root.querySelectorAll('.radar-columns__todo .radar-columns__item');
+    expect(todo[0].querySelector('.radar-columns__draft')).toBeNull();
+    expect(todo[1].querySelector('.radar-columns__draft')).toBeNull();
+    expect(clean(todo[2].querySelector('.radar-columns__draft')?.textContent)).toBe('Préparer la présentation');
+    const waiting = root.querySelector('.radar-columns__waiting .radar-columns__draft') as HTMLButtonElement;
+    expect(clean(waiting.textContent)).toBe('Préparer la relance');
+
+    waiting.click();
+    expect(dialog.open).toHaveBeenCalledWith(jasmine.anything(), jasmine.objectContaining({
+      data: jasmine.objectContaining({ hostId: 'h1', commitmentId: 'c3', kind: 'FOLLOW_UP' }),
+    }));
+    expect(radar.correctCommitment).not.toHaveBeenCalled();
+  });
 });

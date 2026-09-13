@@ -138,6 +138,11 @@
                   (click)="commitment(item, 'NOT_MINE')">Pas moi</button>
         }
       }
+      <!-- F-104 / SF-104-05 : une relance ou une présentation préparée, jamais envoyée. -->
+      @if (draftKind(item); as kind) {
+        <button mat-stroked-button type="button" class="radar-columns__draft" [attr.data-kind]="kind"
+                (click)="prepareDraft(item)">{{ draftLabel(kind) }}</button>
+      }
       @if (item.deepLink) {
         <a mat-button class="radar-columns__open" [href]="item.deepLink" target="_blank" rel="noopener noreferrer">
           Ouvrir la source
