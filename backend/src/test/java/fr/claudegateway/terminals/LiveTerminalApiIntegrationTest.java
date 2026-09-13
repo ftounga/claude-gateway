@@ -317,6 +317,25 @@ class LiveTerminalApiIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    // ------------------------------------------------- la peau du terminal Teams (F-89 / SF-89-07)
+
+    @Test
+    void theRegisterSaysWhichTerminalIsTheTeamsTerminal() throws Exception {
+        Workspace teams = aliceOtherProject;
+        teams.setTeamsTerminal(true);
+        workspaceRepository.save(teams);
+        claim(aliceToken, aliceProject.getId(), "tab-1");
+        claim(aliceToken, teams.getId(), "tab-2");
+
+        mockMvc.perform(get("/api/terminals/live").contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.terminals[?(@.workspaceName == 'web')].teamsTerminal")
+                        .value(org.hamcrest.Matchers.hasItem(false)))
+                .andExpect(jsonPath("$.terminals[?(@.workspaceName == 'api')].teamsTerminal")
+                        .value(org.hamcrest.Matchers.hasItem(true)));
+    }
+
     // ------------------------------------------------------------------ vue d'ensemble
 
     @Test

@@ -92,6 +92,9 @@ import {
  */
 export const RUNNER_RESUME_COMMAND = 'java -jar claude-runner.jar';
 
+/** Ce que dit la barre d'un terminal Teams, à côté du client (F-89 / SF-89-07). */
+export const TEAMS_TERMINAL_BAR_LABEL = 'Conversations Teams';
+
 /**
  * Vue **terminal immersive** du mode Terminal de l'Atelier (F-30 SF-30-07).
  *
@@ -237,7 +240,10 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     const project = this.projectNameValue();
     if (project) {
       const id = this.projectIdValue();
-      trail.push({ label: project, link: id ? ['/atelier', id] : ['/atelier'] });
+      // F-89 / SF-89-07 : la barre du terminal Teams dit ce qu'on y fait — « Conversations Teams »,
+      // à côté du client. Seul le libellé change ; l'adresse reste celle du terminal.
+      const label = this.teamsTerminalValue() ? TEAMS_TERMINAL_BAR_LABEL : project;
+      trail.push({ label, link: id ? ['/atelier', id] : ['/atelier'] });
     }
     return trail;
   });
@@ -354,17 +360,18 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
 
   /**
    * **Ce terminal est le terminal Teams** (F-89 / SF-89-03). C'est de cette marque, et d'elle
-   * seule, que découlent la <b>peau</b> — le flux en prose plutôt qu'en monospace — et le droit
-   * d'afficher des <b>blocs riches</b>.
+   * seule, que découlent la <b>peau</b> — sa surface « Prune » et le flux en prose plutôt qu'en
+   * monospace — et le droit d'afficher des <b>blocs riches</b>.
    *
    * <p><b>La règle non négociable du volet, tenue ici pour la troisième fois</b> : <i>un terminal
    * de projet reste textuel pour toujours</i>. Sans cette marque, un bloc porteur de carte est rendu
    * <b>en texte</b> — jamais masqué : masquer ferait disparaître une information sans le dire, et
    * la règle interdit la carte, pas le contenu.</p>
    *
-   * <p>Aucune couleur nouvelle ne l'accompagne : la surface reste celle de tout terminal
-   * (`--cg-primary`). Ce qui bascule est la typographie et le contenu — un compte rendu est de la
-   * prose, pas une sortie de shell (charte §15).</p>
+   * <p><b>Le basculement est chromatique et typographique</b> (SF-89-07, charte §15) : la surface
+   * prend les jetons `--cg-terminal-teams-*`, pour qu'un terminal Teams se reconnaisse au premier
+   * regard à côté d'un terminal de poste ; le flux passe en prose. La même marque, posée sur une
+   * tuile de mosaïque, lui donne la même peau.</p>
    */
   @Input()
   set teamsTerminal(value: boolean | null | undefined) {

@@ -360,7 +360,8 @@ public class LiveTerminalService {
                             terminal.getActivity(),
                             terminal.getActivityDetail(),
                             splitLines(terminal.getPreviewLines()),
-                            terminal.getActivityAt());
+                            terminal.getActivityAt(),
+                            workspace != null && workspace.isTeamsTerminal());
                 })
                 .toList();
         return new LiveTerminalsResponse(limit, described.size(), described);

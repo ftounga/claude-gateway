@@ -1,19 +1,147 @@
-/* ------------------------------------------------------------------ F-89 / SF-89-03
+/* ------------------------------------------------------------------ F-89 / SF-89-03, SF-89-07
    LA PEAU DU TERMINAL TEAMS, ET LE COMPTE RENDU DANS LE FIL (charte §15).
 
-   AUCUNE COULEUR NOUVELLE, ET AUCUN CINQUIÈME REGISTRE. La charte en compte déjà quatre
-   (identité §9, mission §10, vie §11, décision attendue §12) ; un de plus rendrait les quatre
-   autres illisibles. Tout ce qui suit n'emploie que des jetons de §2.
+   LE BASCULEMENT EST CHROMATIQUE ET TYPOGRAPHIQUE (SF-89-07, amende SF-89-03). Le PO avait demandé
+   « un vrai basculement visuel » ; réduit à une police, le terminal Teams se confondait avec le
+   terminal de poste. Il porte donc SA SURFACE, « Prune », sous les jetons `--cg-terminal-teams-*`
+   (`styles.scss`) : fond #231A36, barre #1B1429, cartes #2E2345, filets #43335F, texte #D9CFEA,
+   titres #FFFFFF. Sombre, pour qu'on reconnaisse encore un terminal (§13) ; franchement distinct
+   du bleu marine, pour qu'on sache au premier regard qu'on parle à Teams.
 
-   LE BASCULEMENT EST TYPOGRAPHIQUE, PAS CHROMATIQUE. La surface reste `--cg-primary` : on doit
-   RECONNAÎTRE un terminal (§13), pas découvrir un écran. Ce qui bascule est la police — un compte
-   rendu est de la PROSE, pas une sortie de shell, et le monospace y dirait faux.
+   CE N'EST PAS UN CINQUIÈME REGISTRE. Les quatre registres (identité §9, mission §10, vie §11,
+   décision attendue §12) et la liaison (§14) gardent leurs palettes ; ce qui change est la SURFACE
+   sur laquelle ils se posent. Tout texte posé sur elle tient l'AA (≥ 4,5:1), et c'est un test qui
+   le vérifie par les couleurs calculées : `terminal-teams-peau.spec.ts`.
+
+   BORNÉ : tout ce qui suit est sous `.terminal-view--teams` (ou dans la carte, qui n'existe que là).
+   Aucun autre terminal ne change.
+
+   ET LA POLICE BASCULE AUSSI : un compte rendu est de la PROSE, pas une sortie de shell, et le
+   monospace y dirait faux.
 
    LA DENSITÉ D'UN COMPTE RENDU, PAS D'UN TABLEAU DE BORD : pas de cadres imbriqués, pas de
    pastilles, pas de colonnes. Une hiérarchie de trois niveaux (titre, section, ligne), des
    interlignes serrés, et « qu'est-ce qu'on attend de moi » en tête sans avoir à faire défiler. */
 
-.terminal-view--teams {
+/* Spécificité doublée : la peau l'emporte sur celle de la lecture seule (`--cg-navy-2`), quel
+   que soit l'ordre des feuilles — une tuile Teams de la mosaïque porte la même peau. */
+.terminal-view.terminal-view--teams {
+  background: var(--cg-terminal-teams-bg);
+  color: var(--cg-terminal-teams-text);
+
+  .terminal-bar {
+    background: var(--cg-terminal-teams-bar);
+    border-bottom-color: var(--cg-terminal-teams-rule);
+    color: var(--cg-terminal-teams-title);
+  }
+
+  .terminal-crumbs {
+    --forge-crumb-color: var(--cg-terminal-teams-text);
+    --forge-crumb-current-color: var(--cg-terminal-teams-title);
+  }
+
+  .terminal-bar-actions button,
+  .terminal-target button {
+    color: var(--cg-terminal-teams-text);
+  }
+
+  /* Les bandeaux sous la barre : mêmes gabarits, filets de la surface. */
+  .terminal-hint-runner,
+  .terminal-host-state,
+  .terminal-live-limit,
+  .terminal-target,
+  .terminal-push {
+    border-bottom-color: var(--cg-terminal-teams-rule);
+    color: var(--cg-terminal-teams-text);
+  }
+
+  .terminal-input {
+    border-top-color: var(--cg-terminal-teams-rule);
+  }
+
+  .terminal-field {
+    color: var(--cg-terminal-teams-title);
+
+    &::placeholder {
+      color: var(--cg-terminal-teams-muted);
+    }
+  }
+
+  .terminal-prompt-line,
+  .terminal-command,
+  .terminal-diff-head,
+  .terminal-ask,
+  .terminal-ask-scope {
+    color: var(--cg-terminal-teams-title);
+  }
+
+  .terminal-agent,
+  .terminal-output,
+  .terminal-diff-line,
+  .terminal-steer-state,
+  .terminal-live-action {
+    color: var(--cg-terminal-teams-text);
+  }
+
+  /* LE TEXTE SECONDAIRE. `--cg-text-secondary` tombe à 3,8:1 sur la surface : il ne tient pas l'AA. */
+  .terminal-hint,
+  .terminal-live,
+  .terminal-budget-hint,
+  .terminal-cost,
+  .terminal-diff-counts,
+  .terminal-diff-omitted,
+  .terminal-diff-unreadable,
+  .terminal-ask-readonly-hint {
+    color: var(--cg-terminal-teams-muted);
+  }
+
+  /* L'échec reste rouge, éclairci pour la surface sombre (`--cg-error` y tombe à 3,3:1). */
+  .terminal-diff-line.is-remove,
+  .terminal-push.failed {
+    color: var(--cg-terminal-teams-error);
+  }
+
+  .terminal-subtask,
+  .terminal-diff-new {
+    background: var(--cg-terminal-teams-bar);
+    border-color: var(--cg-terminal-teams-rule);
+  }
+
+  .terminal-diffs {
+    border-left-color: var(--cg-terminal-teams-rule);
+  }
+
+  .terminal-ask {
+    background: var(--cg-terminal-teams-bar);
+  }
+
+  .terminal-ask-command,
+  .terminal-ask-reason {
+    background: var(--cg-terminal-teams-bg);
+    border-color: var(--cg-terminal-teams-rule);
+  }
+
+  .terminal-ask-readonly-command {
+    background: var(--cg-terminal-teams-bar);
+    color: var(--cg-terminal-teams-title);
+  }
+
+  /* LES BOUTONS MATERIAL SANS ENCRE PROPRE prendraient la couleur primaire du thème (orange sombre,
+     2,6:1 sur la surface) ; le sélecteur de cible, l'encre des écrans clairs (1,0:1). Leurs jetons
+     sont redéfinis ICI seulement : les boutons qui portent déjà l'orange de la charte le gardent. */
+  --mdc-text-button-label-text-color: var(--cg-terminal-teams-text);
+  --mdc-outlined-button-label-text-color: var(--cg-terminal-teams-title);
+  --mdc-outlined-button-outline-color: var(--cg-terminal-teams-rule);
+  --mat-standard-button-toggle-text-color: var(--cg-terminal-teams-text);
+  --mat-standard-button-toggle-selected-state-text-color: var(--cg-terminal-teams-title);
+  --mat-standard-button-toggle-selected-state-background-color: var(--cg-terminal-teams-rule);
+  --mat-standard-button-toggle-divider-color: var(--cg-terminal-teams-rule);
+
+  /* Une étape faite s'efface — sans passer sous l'AA (0,55 × 0,85 y tombait à 3,5:1). */
+  .terminal-plan-step[data-status='done'] {
+    opacity: 0.75;
+  }
+
   /* Le flux en prose. Les heures et les identifiants restent en monospace là où ils sont écrits :
      ce sont des données, et elles se comparent à l'œil. */
   .terminal-scrollback {
@@ -31,10 +159,12 @@
 .teams-card {
   margin: var(--cg-space-3) 0;
   padding: var(--cg-space-3);
-  /* La surface blanche des cartes de §5 — le seul endroit du terminal où l'on LIT un document
-     plutôt qu'on ne regarde défiler une sortie. Aucun fond coloré : §8 tient. */
-  background: var(--cg-surface);
-  color: var(--cg-text-primary);
+  /* LA CARTE DE LA SURFACE PRUNE (SF-89-07) — un cran plus claire que le fond, cernée d'un filet :
+     le seul endroit du terminal où l'on LIT un document plutôt qu'on ne regarde défiler une sortie.
+     Elle n'existe que dans le terminal Teams (`cardOf`) : la peau lui appartient en propre. */
+  background: var(--cg-terminal-teams-card);
+  border: 1px solid var(--cg-terminal-teams-rule);
+  color: var(--cg-terminal-teams-text);
   border-radius: 4px;
 }
 
@@ -43,17 +173,17 @@
    LA TRACE VOYAGE AVEC L'ARTEFACT, et ceci en est le quatrième endroit — après le filigrane
    incrusté dans l'image, la ligne du journal d'audit et l'en-tête du fichier de transcription.
 
-   ELLE SE LIT PAR LA TYPOGRAPHIE, PAS PAR UNE COULEUR. Aucun jeton nouveau, aucun cinquième
-   registre : un fond d'alerte dirait « danger » là où la phrase dit « voici d'où cela vient ».
+   ELLE SE LIT PAR LA TYPOGRAPHIE, PAS PAR UNE COULEUR. Aucun cinquième registre (le texte
+   secondaire est celui de la surface Teams, SF-89-07) : un fond d'alerte dirait « danger » là où la phrase dit « voici d'où cela vient ».
    Ce qui la distingue est ce qui distingue déjà l'incertain dans ce bloc — un filet, un corps
    plus petit, et la couleur secondaire du texte. */
 .teams-card__recording {
   margin: 0 0 var(--cg-space-2);
   padding-left: var(--cg-space-2);
-  border-left: 2px solid var(--cg-divider);
+  border-left: 2px solid var(--cg-terminal-teams-rule);
   font-size: 12px;
   line-height: 1.5;
-  color: var(--cg-text-secondary);
+  color: var(--cg-terminal-teams-muted);
 }
 
 .teams-card__head {
@@ -62,6 +192,7 @@
 
 .teams-card__title {
   margin: 0;
+  color: var(--cg-terminal-teams-title);
   font-family: var(--cg-font-heading);
   font-size: 18px;
   font-weight: 600;
@@ -70,7 +201,7 @@
 .teams-card__subtitle {
   margin: var(--cg-space-1) 0 0;
   font-size: 12px;
-  color: var(--cg-text-secondary);
+  color: var(--cg-terminal-teams-muted);
 }
 
 .teams-card__section {
@@ -85,9 +216,11 @@
   margin: 0 0 var(--cg-space-1);
   font-size: 14px;
   font-weight: 600;
+  /* Explicite : la règle globale `h1…h4` (encre des écrans clairs) l'emporterait sinon. */
+  color: var(--cg-terminal-teams-title);
   /* Un filet, pas une pastille : ce qui ouvre la carte est ce qu'on attend du lecteur, et il n'a
      pas besoin d'une couleur pour le trouver — il est en tête. */
-  border-bottom: 1px solid var(--cg-divider);
+  border-bottom: 1px solid var(--cg-terminal-teams-rule);
   padding-bottom: var(--cg-space-1);
 }
 
@@ -101,7 +234,7 @@
   padding: var(--cg-space-1) 0;
 
   & + & {
-    border-top: 1px solid var(--cg-divider);
+    border-top: 1px solid var(--cg-terminal-teams-rule);
   }
 }
 
@@ -126,7 +259,7 @@
   gap: var(--cg-space-2);
   margin: 2px 0 0;
   font-size: 12px;
-  color: var(--cg-text-secondary);
+  color: var(--cg-terminal-teams-muted);
 }
 
 .teams-card__time {
@@ -164,7 +297,7 @@
   padding: var(--cg-space-2) 0;
 
   & + & {
-    border-top: 1px solid var(--cg-divider);
+    border-top: 1px solid var(--cg-terminal-teams-rule);
   }
 }
 
@@ -176,7 +309,7 @@
   display: block;
   width: 100%;
   padding: 0;
-  border: 1px solid var(--cg-divider);
+  border: 1px solid var(--cg-terminal-teams-rule);
   border-radius: 4px;
   background: none;
   cursor: zoom-in;
@@ -193,7 +326,7 @@
   margin: 0;
   font-size: 12px;
   font-style: italic;
-  color: var(--cg-text-secondary);
+  color: var(--cg-terminal-teams-muted);
 }
 
 /* AGRANDIE : la tuile prend toute la largeur et le texte passe dessous. Le geste de la mosaïque
@@ -244,9 +377,9 @@
 .teams-card__foot {
   margin-top: var(--cg-space-3);
   padding-top: var(--cg-space-2);
-  border-top: 1px solid var(--cg-divider);
+  border-top: 1px solid var(--cg-terminal-teams-rule);
   font-size: 12px;
-  color: var(--cg-text-secondary);
+  color: var(--cg-terminal-teams-muted);
 }
 
 .teams-card__window,
@@ -260,16 +393,16 @@
 }
 
 /* UN TERMINAL TEAMS SANS DROIT LE DIT (F-89 / SF-89-04) — même registre que le refus du cinquième
-   terminal (F-70) : filet d'accent, encre de la barre. Aucune couleur nouvelle. */
+   terminal (F-70) : filet d'accent, encre de la surface Teams (SF-89-07). */
 .terminal-teams-inactive {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--cg-space-2);
   padding: var(--cg-space-2) var(--cg-space-3);
-  border-bottom: 1px solid var(--cg-navy-2);
+  border-bottom: 1px solid var(--cg-terminal-teams-rule);
   border-left: 3px solid var(--cg-accent);
-  color: var(--cg-divider);
+  color: var(--cg-terminal-teams-text);
   font-size: 13px;
 }
 

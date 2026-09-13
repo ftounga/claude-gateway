@@ -71,6 +71,7 @@
         <article
           class="mosaique__tile"
           [class.mosaique__tile--awaiting]="tile.awaiting"
+          [class.mosaique__tile--teams]="tile.teamsTerminal"
           [class.mosaique__tile--zoomed]="zoomed() === tile.workspaceId"
           [class.mosaique__tile--hidden]="zoomed() !== null && zoomed() !== tile.workspaceId"
           [style.borderLeftColor]="tile.tone?.solid"
@@ -125,6 +126,7 @@
           <app-atelier-terminal
             class="mosaique__flux"
             [readOnly]="true"
+            [teamsTerminal]="tile.teamsTerminal"
             [projectName]="tile.projectName"
             [streaming]="tile.view.stream()"
             [pendingConfirmation]="tile.view.pending()"

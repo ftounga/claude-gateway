@@ -853,6 +853,9 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     **par propriétaire**, comme en SF-49-03).
   - Endpoints **`POST/DELETE /workspaces/{id}/terminal/live`** (prendre-ou-tenir / libérer) et
     **`GET /terminals/live`** (JWT). Refus : **409 `terminal_limit_reached`**.
+  - Chaque entrée de `GET /terminals/live` porte `teamsTerminal` (F-89 / SF-89-07, **additif**) :
+    lu sur les projets **du propriétaire** (`workspaces.teams_terminal`), `false` pour un projet non
+    résolu. La mosaïque en peint la tuile de la surface Teams.
   - `GET /runner-hosts/overview` gagne `liveTerminals` (par poste) et `liveTerminal` (par projet),
     champs **additifs** : la vue d'ensemble lit le registre **une fois** par appel.
 

@@ -41,6 +41,17 @@ html {
   --cg-text-secondary: #6B7A8D; // ardoise legalcase
   --cg-divider: #E0E4EA;        // filet legalcase
 
+  // Surface du TERMINAL TEAMS, « Prune » (F-89 / SF-89-07, DESIGN_SYSTEM.md §15) — ajout de palette
+  // demandé par le PO, BORNÉ au terminal Teams et à ses tuiles de mosaïque. Nulle part ailleurs.
+  --cg-terminal-teams-bg: #231A36;    // fond du flux
+  --cg-terminal-teams-bar: #1B1429;   // barre, en-tête de tuile, code
+  --cg-terminal-teams-card: #2E2345;  // carte de réunion
+  --cg-terminal-teams-rule: #43335F;  // filets
+  --cg-terminal-teams-text: #D9CFEA;  // texte du flux
+  --cg-terminal-teams-title: #FFFFFF; // titres, demande, commande
+  --cg-terminal-teams-muted: #B5A6CF; // texte secondaire (≥ 4,5:1 sur fond, barre et carte)
+  --cg-terminal-teams-error: #F28B82; // échec lisible sur fond sombre (--cg-error y tombe à 3,3:1)
+
   --cg-font-heading: 'Space Grotesk', 'Inter', sans-serif;
   --cg-font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --cg-font-mono: 'JetBrains Mono', ui-monospace, monospace;

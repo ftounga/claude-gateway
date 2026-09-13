@@ -29,6 +29,10 @@ public record LiveTerminalsResponse(int limit, int live, List<LiveTerminal> term
      * <p>{@code hostName} est résolu depuis les <b>postes de l'utilisateur</b>, jamais depuis le
      * {@code host_id} du projet : c'est la règle posée en SF-49-03 pour qu'un projet pointant vers
      * la machine d'un autre ne puisse pas en révéler le nom. Un poste non résolu rend {@code null}.</p>
+     *
+     * <p>{@code teamsTerminal} (F-89 / SF-89-07) dit si ce terminal est <b>le terminal Teams</b> du
+     * poste : la mosaïque en peint la tuile de la même peau que le terminal ouvert. Lu sur les
+     * projets <b>de l'utilisateur</b> ; un projet non résolu rend {@code false}.</p>
      */
     public record LiveTerminal(
             UUID workspaceId,
@@ -39,7 +43,8 @@ public record LiveTerminalsResponse(int limit, int live, List<LiveTerminal> term
             TerminalActivity activity,
             String activityDetail,
             List<String> previewLines,
-            OffsetDateTime activityAt) {
+            OffsetDateTime activityAt,
+            boolean teamsTerminal) {
 
         /** Liste jamais nulle : un écran qui itère ne doit pas avoir à s'en méfier. */
         public LiveTerminal {

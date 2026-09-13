@@ -42,6 +42,8 @@ Toute divergence doit être explicitement signalée et validée.
 
 > Thème Angular Material : palette `primary = orange` (boutons d'action de marque), `tertiary = azure`. Le navy structurel est piloté par les jetons CSS `--cg-*` (custom), pas par la palette Material.
 
+> **Surface du terminal Teams** (ajout F-89 / SF-89-07, 2026-09-13) : jetons `--cg-terminal-teams-*`, **bornés au terminal Teams et à ses tuiles de mosaïque** — voir §15.
+
 ---
 
 ## 3 — Typographie
@@ -374,7 +376,7 @@ avec le contenu réel de son flux. La règle est donc celle d'un terminal, pas c
 ### Règles d'emploi — non négociables
 
 - **Le fond d'un terminal en lecture seule est `--cg-navy-2`** (`#141D33`), et il est **vérifié par
-  test**. On doit *reconnaître* un terminal, pas découvrir un composant. Le jeton existe dans la
+  test**. *(Seule exception : la tuile du terminal Teams porte la surface Teams, §15 — SF-89-07.)* On doit *reconnaître* un terminal, pas découvrir un composant. Le jeton existe dans la
   table §2 : rien n'est ajouté à la palette.
 - **§8 n'est pas contourné.** L'interdiction du « fond coloré » vise les **cartes** ; un terminal
   n'en est pas une, et il peint son fond depuis F-30. Une tuile de mosaïque **est** un terminal.
@@ -440,42 +442,75 @@ palette**.
 
 ---
 
-## 15 — Le compte rendu dans le fil (ajout F-89 / SF-89-03, 2026-09-12)
+## 15 — Le compte rendu dans le fil (ajout F-89 / SF-89-03, 2026-09-12 ; amendé SF-89-07, 2026-09-13)
 
-> **Aucune couleur nouvelle, et aucun cinquième registre.** Cette section dit comment un **compte
-> rendu** se lit dans un terminal — et pourquoi le basculement vers Teams est **typographique**, pas
-> chromatique.
+> **Aucun cinquième registre.** Cette section dit comment un **compte rendu** se lit dans un
+> terminal — et pourquoi le basculement vers Teams est **chromatique et typographique**.
+>
+> **Amendement SF-89-07 (2026-09-13), demandé par le PO** : SF-89-03 avait écrit « le basculement est
+> typographique, pas chromatique ». C'était une **réduction du besoin**, pas un arbitrage : le PO
+> avait demandé « un vrai basculement visuel » et « sa propre peau », et le terminal Teams se
+> confondait avec le terminal de poste. Il porte désormais **sa propre surface, « Prune »**
+> (tranché le 2026-09-13 — maquette `docs/features/F-89/maquette-peau-terminal-teams.html`). **Ajout
+> de palette explicitement demandé par le PO, borné au terminal Teams et à ses tuiles.**
 
-Le terminal Teams est un terminal comme les autres : même mécanique, même surface, même barre. Ce
-qui change est **ce qu'il affiche** — des blocs riches (carte de réunion, moments, liste) — et **la
-façon de les lire**.
+Le terminal Teams est un terminal comme les autres : même mécanique, même barre, mêmes gestes. Ce
+qui change est **sa surface**, **ce qu'il affiche** — des blocs riches (carte de réunion, moments,
+liste) — et **la façon de les lire**.
 
-### Le basculement est typographique
+### Le basculement est chromatique et typographique
 
-| | Terminal de projet | Terminal Teams |
+| | Terminal de projet / de poste | Terminal Teams |
 |---|---|---|
-| Surface | `--cg-primary` | `--cg-primary` — **la même** |
+| Surface du flux | `--cg-primary` (tuile : `--cg-navy-2`) | `--cg-terminal-teams-bg` `#231A36` — **la sienne**, en tuile aussi |
+| Barre, en-tête de tuile, code | fond de la surface / `--cg-navy-2` | `--cg-terminal-teams-bar` `#1B1429` |
+| Filets | `--cg-navy-2` | `--cg-terminal-teams-rule` `#43335F` |
+| Texte du flux | `--cg-divider` | `--cg-terminal-teams-text` `#D9CFEA` |
+| Titres, demande, commande | `--cg-surface` | `--cg-terminal-teams-title` `#FFFFFF` |
+| Texte secondaire | `--cg-text-secondary` | `--cg-terminal-teams-muted` `#B5A6CF` |
+| Échec (diff retiré, publication échouée) | `--cg-error` | `--cg-terminal-teams-error` `#F28B82` |
+| Barre : libellé à côté du client | nom du projet | **« Conversations Teams »** |
 | Flux | `--cg-font-mono` | `--cg-font-body` |
 | Blocs | texte uniquement | texte **+** carte, moments, liste |
 
-**Pourquoi pas une couleur.** La charte porte déjà quatre registres — identité (§9), mission (§10),
-vie (§11), décision attendue (§12) — et §14 a posé la règle : *un cinquième rendrait les quatre
-autres illisibles*. La typographie dit la même chose, et le dit plus juste : **un compte rendu est de
-la prose, pas une sortie de shell**, et le monospace y affirmerait « ceci est exactement ce que la
-machine a répondu » — ce qui serait faux.
+**Pourquoi une surface, et pas un registre.** La charte porte quatre registres — identité (§9),
+mission (§10), vie (§11), décision attendue (§12) — et §14 a posé la règle : *un cinquième rendrait
+les quatre autres illisibles*. La surface Prune **n'en est pas un** : elle ne signale aucun état, elle
+dit **dans quel outil on est**, comme le fond navy dit « terminal ». Les registres s'y posent **avec
+leurs palettes inchangées** : la couleur d'identité du client, les pastilles de mission, le signe de
+vie, l'ambre de l'attente, l'indicateur de liaison.
 
-**Pourquoi la surface ne change pas.** On doit **reconnaître un terminal** (§13), pas découvrir un
-écran. Ce qui bascule est le contenu, jamais le cadre.
+**Pourquoi sombre.** On doit **reconnaître un terminal** (§13), pas découvrir un écran : « Papier »
+(clair) a été écarté pour cela, « Pétrole » parce qu'il restait trop proche du bleu du poste. Prune
+se distingue au premier regard **sans rappeler la marque Microsoft**.
+
+**Pourquoi la prose.** **Un compte rendu est de la prose, pas une sortie de shell**, et le monospace y
+affirmerait « ceci est exactement ce que la machine a répondu » — ce qui serait faux.
+
+### Règles d'emploi de la surface — non négociables
+
+- **Bornée.** Les jetons `--cg-terminal-teams-*` ne s'emploient **que** sous `.terminal-view--teams`,
+  dans la carte de réunion (qui n'existe que là) et sur une tuile Teams de la mosaïque
+  (`.mosaique__tile--teams`). **Aucun autre terminal ne change**, et des tests le vérifient.
+- **L'AA sur tout ce qui s'y lit.** Chaque texte posé sur la surface (fond, barre, carte) tient
+  **≥ 4,5:1** ; une pastille qui porte son propre fond (§5, §9) garde sa paire de couleurs et **son
+  fond se détache de la surface** (≥ 3:1). **Automatisé** : `terminal-teams-peau.spec.ts` balaie le
+  DOM d'un terminal Teams chargé et calcule chaque contraste sur les couleurs calculées.
+- **Les boutons Material sans encre propre** reçoivent leurs jetons de la surface
+  (`--mdc-text-button-label-text-color`, `--mdc-outlined-button-*`, `--mat-standard-button-toggle-*`) ;
+  ceux qui portent l'orange de la charte le gardent.
+- **Une tuile Teams est le terminal Teams** : le même composant reçoit `[teamsTerminal]`, et la
+  mosaïque le sait par `teamsTerminal` du registre (`GET /api/terminals/live`).
 
 ### Le bloc lui-même
 
 | Élément | Registre | Palette |
 |---|---|---|
-| Le bloc | **surface de carte** | §2 — `--cg-surface` (le blanc des cartes de §5) |
-| Titre du bloc | Space Grotesk 600, 18 px | encre `--cg-text-primary` |
-| Titre de section | Inter 600, 14 px, filet sous le titre | filet `--cg-divider` |
-| Ligne | Inter 400, 14 px | encre `--cg-text-primary` |
-| Source d'une ligne (auteur, heure, certitude, lien) | 12 px | `--cg-text-secondary`, lien `--cg-accent` |
+| Le bloc | **carte de la surface Teams** | `--cg-terminal-teams-card` `#2E2345`, filet `--cg-terminal-teams-rule` |
+| Titre du bloc | Space Grotesk 600, 18 px | encre `--cg-terminal-teams-title` |
+| Titre de section | Inter 600, 14 px, filet sous le titre | encre `--cg-terminal-teams-title`, filet `--cg-terminal-teams-rule` |
+| Ligne | Inter 400, 14 px | encre `--cg-terminal-teams-text` |
+| Source d'une ligne (auteur, heure, certitude, lien) | 12 px | `--cg-terminal-teams-muted`, lien `--cg-accent` |
 | Heures et identifiants | `--cg-font-mono` | — |
 
 ### Règles d'emploi — non négociables
