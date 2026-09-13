@@ -25,6 +25,10 @@ final class RadarMaterial {
         if (exchange.title() != null) {
             header.append(" · « ").append(oneLine(exchange.title())).append(" »");
         }
+        if (exchange.blocked()) {
+            // F-89 / SF-89-06 : l'analyse le sait — de courts extraits et des faits, jamais la transcription recopiée.
+            header.append(" · téléchargement bloqué par l'organisateur : n'en cite que de courts extraits");
+        }
         return header.append(" ===").toString();
     }
 

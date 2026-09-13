@@ -48,8 +48,32 @@ public record RadarExchangeBatch(String batchKey, List<Exchange> exchanges) {
      * @param deepLink        lien vers le fil, facultatif
      * @param messages        messages nouveaux, dans l'ordre chronologique
      */
+    /**
+     * Un échange du lot.
+     *
+     * @param downloadBlocked F-89 / SF-89-06 : une transcription dont le téléchargement est bloqué par
+     *                        l'organisateur (lue à l'écran). Elle alimente l'analyse — extraits courts et faits —
+     *                        mais n'est <b>jamais conservée en entier</b> : son texte brut est effacé dès que le
+     *                        lot est tranché, analysé ou abandonné. {@code null} vaut faux.
+     */
     public record Exchange(RadarEvidenceSource source, String conversationRef, String title,
-            String deepLink, List<Message> messages) {
+            String deepLink, List<Message> messages, Boolean downloadBlocked) {
+
+        /** Forme d'avant F-89 / SF-89-06 : aucun blocage déclaré. */
+        public Exchange(RadarEvidenceSource source, String conversationRef, String title, String deepLink,
+                List<Message> messages) {
+            this(source, conversationRef, title, deepLink, messages, null);
+        }
+
+        /** Vrai si cet échange porte une transcription au téléchargement bloqué. */
+        public boolean blocked() {
+            return Boolean.TRUE.equals(downloadBlocked);
+        }
+    }
+
+    /** Vrai si un échange du lot porte une transcription au téléchargement bloqué (F-89 / SF-89-06). */
+    public boolean downloadBlocked() {
+        return exchanges != null && exchanges.stream().anyMatch(exchange -> exchange != null && exchange.blocked());
     }
 
     /**
@@ -125,7 +149,7 @@ public record RadarExchangeBatch(String batchKey, List<Exchange> exchanges) {
             }
             clean.add(new Exchange(exchange.source(), conversation,
                     truncate(exchange.title(), MAX_TITLE_LENGTH), RadarText.deepLink(exchange.deepLink()),
-                    List.copyOf(cleanMessages)));
+                    List.copyOf(cleanMessages), exchange.blocked() ? Boolean.TRUE : null));
         }
         return new RadarExchangeBatch(key, List.copyOf(clean));
     }

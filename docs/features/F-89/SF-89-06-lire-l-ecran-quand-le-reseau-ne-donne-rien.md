@@ -85,6 +85,23 @@ remettent la vue — et chaque résultat dit sa **source** (réseau ou écran).
    fichier, ni bloc intégral dans le fil), et signale ce blocage à l'utilisateur ». Bouton présent et actif
    → `downloadBlocked: false`. Panneau non trouvé → champ absent. La **consigne de l'outil** côté gateway
    (`TeamsToolCatalog`) porte la même interdiction.
+6. **Le Radar aussi** (complément du coordinateur, après la livraison des écrans F-100 #558 / #559) —
+   la lecture d'écran est partagée (`TeamsScreenFallback`) :
+   - `teams_radar_verify` : la case **conversations** se coche sur la liste affichée quand le réseau n'a
+     rien servi ; la case **transcriptions** sur le panneau affiché. Chaque case porte `source`
+     (`reseau`/`ecran`/`aucune`) et sa phrase le dit (« à l'écran ») ; la case transcriptions porte
+     `downloadBlocked` et le dit. Toujours des compteurs et des états, jamais un nom ni une réplique.
+   - `teams_radar_collect` (synchro du soir) : liste des fils lue à l'écran si le réseau n'en sert aucune
+     (seuls les fils identifiables sont ouverts) ; chaque fil sans message réseau est **ouvert et lu à
+     l'écran** jusqu'au plancher (gestes F-108, vue remise) ; chaque réunion sans réplique réseau voit son
+     **panneau Transcription** ouvert et lu. Couverture : `discovery.source`,
+     `conversations.readOnScreen`, `meetings.transcribedOnScreen`, `meetings.downloadBlocked`.
+   - **Conformité à la synchro** : une transcription au téléchargement bloqué remonte dans un lot dont
+     l'échange porte `downloadBlocked: true`. La gateway (`RadarExchangeBatch.Exchange.downloadBlocked`)
+     la fait **analyser** (l'en-tête de l'échange demande de n'en citer que de courts extraits ; les
+     preuves sont déjà bornées à 280 caractères) et **n'en garde jamais le texte entier** : le brut est
+     effacé dès l'analyse (règle F-101 existante) et — nouveau — **dès l'abandon** du lot (FAILED), sans
+     attendre l'expiration.
 
 ### Cas d'erreur
 
@@ -107,6 +124,9 @@ remettent la vue — et chaque résultat dit sa **source** (réseau ou écran).
 - [x] CA4 — `teams_find_conversations` et `teams_mentions` : repli écran seulement si le réseau n'a rien rendu ; `source` juste dans les deux cas.
 - [x] CA5 — `teams_meeting_transcript` : ouvre le panneau, lit locuteur / décalage / texte en descendant, date les répliques depuis le début de réunion connu ; `downloadBlocked=true` (bouton absent ou désactivé) avec la règle de non-recopie dans `usage` et le texte ; `false` si le bouton est actif.
 - [x] CA6 — Gardes : le script ne contient ni `cookie`, ni `localStorage`, ni `sessionStorage`, ni `indexedDB`, ni `caches`, ni lecture de `.value` ; un champ de saisie (même porteur de texte) n'est jamais lu ; Java écarte toute clé hors liste et borne les valeurs.
+- [x] CA8 — `teams_radar_verify` coche conversations et transcriptions sur l'écran, avec `source` et, pour la transcription, `downloadBlocked` ; le réseau garde la priorité.
+- [x] CA9 — `teams_radar_collect` lit à l'écran un fil servi depuis le cache (jusqu'au plancher, lot remonté, compté) et une transcription (lot `downloadBlocked: true` si bloquée, rien sinon).
+- [x] CA10 — Gateway : le drapeau traverse le contrat du lot et la file ; l'analyse le voit ; un lot bloqué abandonné n'a plus de texte brut.
 - [x] CA7 — Consigne gateway : la description de `teams_meeting_transcript` interdit la recopie brute quand `downloadBlocked` est vrai et demande de signaler le blocage (test).
 
 ---
@@ -152,7 +172,10 @@ Aucune. **Aucune migration.**
 - Runner : `TeamsScreen` (nouveau, couche écran de l'adaptateur), `TeamsScreenReader` (nouveau, défilement
   et recollage), `TeamsTools` (repli et source), `TeamsGapKind.SCREEN_CHANGED` (nouveau),
   `TeamsRoutes.ACTIVITY` (hypothèse).
-- Backend : `TeamsToolCatalog` (consigne de `teams_meeting_transcript`).
+- Runner (Radar) : `TeamsScreenFallback` (nouveau, repli partagé), `RadarTools.verify`, `TeamsRadarCollector`.
+- Backend : `TeamsToolCatalog` (consigne de `teams_meeting_transcript`) ; `RadarExchangeBatch.Exchange`
+  (`downloadBlocked`, champ JSON facultatif, **aucune migration** : il voyage dans le `payload` existant),
+  `RadarMaterial` (en-tête), `RadarAnalysisQueue` (brut effacé à l'abandon d'un lot bloqué).
 - Tests runner : `jsoup` en **portée test** (déjà présent dans le dépôt Maven local) pour appliquer la même
   table de sélecteurs à des DOM modèles HTML.
 
@@ -178,6 +201,8 @@ Aucune. **Aucune migration.**
 
 - [ ] `TeamsScreenFallbackTest` — fil en cache sur trois écrans (recollage, ordre, `source: ecran`, vue remise) ; fenêtre `from` couverte ; écrans sans recouvrement → manque ; structure absente → `SCREEN_CHANGED` ; champ de saisie jamais lu ; liste des conversations et mentions à l'écran ; réseau présent → écran non lu ; transcription : ouverture du panneau, dates, `downloadBlocked` vrai (absent / désactivé) et faux.
 - [ ] `TeamsToolCatalogTest` (backend) — consigne de non-recopie.
+- [ ] `TeamsScreenRadarTest` — vérification (conversations et transcriptions à l'écran, source, blocage, réseau prioritaire) ; synchro (fil en cache lu à l'écran, transcription bloquée → lot drapeauté, libre → sans drapeau).
+- [ ] `RadarExchangeBatchTest` / `RadarAnalysisQueueIntegrationTest` (backend) — drapeau lu, conservé, vu par l'analyse ; brut effacé à l'abandon.
 - [ ] Suite runner complète verte.
 
 ### Isolation workspace

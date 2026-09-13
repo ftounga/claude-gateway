@@ -181,6 +181,36 @@ class RadarAnalysisQueueIntegrationTest extends RadarIntegrationTestBase {
     }
 
     @Test
+    @DisplayName("F-89 / SF-89-06 : transcription au téléchargement bloqué — le drapeau traverse la file, "
+            + "l'analyse le voit, et un abandon efface le brut tout de suite")
+    void blockedTranscriptIsNeverKeptWhole() {
+        RadarSync sync = registry.startSync(aliceA);
+        List<RadarExchangeBatch.Message> messages = List.of(new RadarExchangeBatch.Message("mtg/1", AT,
+                "paul@client.fr", "Paul Durand", null, false, "Je m'occupe de la partie MFA.", null));
+        RadarExchangeBatch blocked = new RadarExchangeBatch("lot-bloque", List.of(new RadarExchangeBatch.Exchange(
+                fr.claudegateway.radar.RadarEvidenceSource.TEAMS_MEETING, "MTG-1", "Comité", null, messages, true)));
+        IntakeReceipt receipt = intake.submit(aliceA, sync.getId(), blocked);
+        java.util.concurrent.atomic.AtomicBoolean seenBlocked = new java.util.concurrent.atomic.AtomicBoolean();
+        RadarAnalysisQueue failing = queue((scope, syncId, batchId, b) -> {
+            seenBlocked.set(b.downloadBlocked() && b.exchanges().get(0).blocked());
+            throw new IllegalStateException("fournisseur en panne");
+        });
+
+        failing.runOnce();
+        assertThat(seenBlocked).isTrue();
+        assertThat(reload(receipt.batchId()).getPayload()).isNotNull(); // en attente d'une nouvelle tentative
+        makeDue(receipt.batchId());
+        failing.runOnce();
+        makeDue(receipt.batchId());
+        failing.runOnce();
+
+        RadarAnalysisBatch failed = reload(receipt.batchId());
+        assertThat(failed.getStatus()).isEqualTo(RadarAnalysisBatchStatus.FAILED);
+        assertThat(failed.getPayload()).isNull();
+        assertThat(failed.getRawDeletedAt()).isNotNull();
+    }
+
+    @Test
     @DisplayName("Trois échecs : FAILED, brut conservé ; un report ne consomme pas de tentative")
     void retriesThenFails() {
         RadarSync sync = registry.startSync(aliceA);

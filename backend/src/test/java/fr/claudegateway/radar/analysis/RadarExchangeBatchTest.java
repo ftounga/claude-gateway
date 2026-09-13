@@ -28,6 +28,27 @@ class RadarExchangeBatchTest {
     }
 
     @Test
+    void downloadBlockedIsReadFromTheRunnerAndKeptThroughNormalizationAndThePayload() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper()
+                .findAndRegisterModules();
+        String json = "{\"batchKey\":\"meeting:1\",\"exchanges\":[{\"source\":\"TEAMS_MEETING\",\"conversationRef\":"
+                + "\"MTG-1\",\"title\":\"Comité\",\"downloadBlocked\":true,\"messages\":[{\"sourceRef\":\"MTG-1/1\","
+                + "\"occurredAt\":\"2026-09-10T09:01:05Z\",\"authorName\":\"Claire\",\"fromMe\":false,"
+                + "\"text\":\"Le plan est prêt.\"}]}]}";
+
+        RadarExchangeBatch clean = mapper.readValue(json, RadarExchangeBatch.class).normalized();
+        RadarExchangeBatch replayed = mapper.readValue(mapper.writeValueAsString(clean), RadarExchangeBatch.class);
+
+        assertThat(clean.downloadBlocked()).isTrue();
+        assertThat(replayed.downloadBlocked()).isTrue();
+        assertThat(RadarMaterial.exchangeHeader("E1", clean.exchanges().get(0))).contains("téléchargement bloqué");
+        RadarExchangeBatch free = batch("lot", List.of(msg("m1", "x"))).normalized();
+        assertThat(free.downloadBlocked()).isFalse();
+        assertThat(free.exchanges().get(0).downloadBlocked()).isNull();
+        assertThat(RadarMaterial.exchangeHeader("E1", free.exchanges().get(0))).doesNotContain("téléchargement");
+    }
+
+    @Test
     void normalizesAndTruncates() {
         String longText = "x".repeat(RadarExchangeBatch.MAX_MESSAGE_CHARS + 50);
         RadarExchangeBatch clean = batch("  lot-1 ", List.of(

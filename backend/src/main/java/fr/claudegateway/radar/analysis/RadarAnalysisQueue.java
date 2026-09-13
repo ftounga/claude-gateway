@@ -167,10 +167,10 @@ public class RadarAnalysisQueue {
             log.warn("Radar : analyse du lot {} en échec ({})", batchId, ex.getClass().getSimpleName());
             outcome = RadarAnalysisOutcome.retry(RadarAnalysisTokens.NONE, ANALYZER_ERROR);
         }
-        apply(scope, batchId, outcome);
+        apply(scope, batchId, outcome, batch.downloadBlocked());
     }
 
-    private void apply(RadarScope scope, UUID batchId, RadarAnalysisOutcome outcome) {
+    private void apply(RadarScope scope, UUID batchId, RadarAnalysisOutcome outcome, boolean downloadBlocked) {
         if (outcome.kind() == RadarAnalysisOutcome.Kind.DONE) {
             try {
                 transactions.executeWithoutResult(status -> {
@@ -191,7 +191,7 @@ public class RadarAnalysisQueue {
             } catch (RuntimeException ex) {
                 // Le registre a refusé une écriture : rien n'est écrit, le brut reste, on retentera.
                 log.warn("Radar : écritures du lot {} refusées ({})", batchId, ex.getClass().getSimpleName());
-                retry(scope, batchId, RadarAnalysisOutcome.retry(outcome.tokens(), WRITE_REJECTED));
+                retry(scope, batchId, RadarAnalysisOutcome.retry(outcome.tokens(), WRITE_REJECTED), downloadBlocked);
                 return;
             }
         }
@@ -206,16 +206,21 @@ public class RadarAnalysisQueue {
             }, outcome.tokens()));
             return;
         }
-        retry(scope, batchId, outcome);
+        retry(scope, batchId, outcome, downloadBlocked);
     }
 
-    private void retry(RadarScope scope, UUID batchId, RadarAnalysisOutcome outcome) {
+    private void retry(RadarScope scope, UUID batchId, RadarAnalysisOutcome outcome, boolean downloadBlocked) {
         transactions.executeWithoutResult(status -> update(scope, batchId, b -> {
             OffsetDateTime now = OffsetDateTime.now(clock);
             b.setFailureCode(code(outcome.code()));
             if (b.getAttempts() >= properties.maxAttempts()) {
                 b.setStatus(RadarAnalysisBatchStatus.FAILED);
                 b.setNextAttemptAt(null);
+                if (downloadBlocked) {
+                    // F-89 / SF-89-06 : une transcription au téléchargement bloqué n'attend pas l'expiration —
+                    // abandonnée, son texte brut est effacé tout de suite.
+                    b.deleteRaw(now);
+                }
             } else {
                 b.setStatus(RadarAnalysisBatchStatus.PENDING);
                 b.setNextAttemptAt(now.plus(properties.backoff(b.getAttempts())));

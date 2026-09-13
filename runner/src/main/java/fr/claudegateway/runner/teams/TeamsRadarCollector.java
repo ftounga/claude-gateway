@@ -112,6 +112,17 @@ final class TeamsRadarCollector implements RadarCollector {
 
             // ---------------------------------------------------------------- découverte
             List<TeamsConversation> listed = book.conversations();
+            if (listed.isEmpty()) {
+                // F-89 / SF-89-06 : le réseau n'a rien servi — la liste AFFICHÉE, ouverte par les gestes gardés
+                // de F-108 puis remise. Seuls les fils identifiables (ouvrables) sont retenus.
+                TeamsScreenFallback.ScreenList onScreen =
+                        new TeamsScreenFallback(link, sleeper, journal).list(TeamsScreen.CONVERSATIONS, TeamsRoutes.CONVERSATIONS);
+                if (onScreen.found()) {
+                    listed = TeamsScreenFallback.conversations(onScreen.items()).stream()
+                            .filter(conversation -> !conversation.id().startsWith("ecran:")).toList();
+                    coverage.discoverySource = listed.isEmpty() ? "aucune" : TeamsTools.SOURCE_SCREEN;
+                }
+            }
             coverage.discovery(!listed.isEmpty(), listed.stream().anyMatch(c -> c.lastActivityAt() != null
                     && !c.lastActivityAt().isAfter(floor)), listed.size());
             TeamsParticipant self = book.self();
@@ -153,7 +164,19 @@ final class TeamsRadarCollector implements RadarCollector {
             synchronized (lock) {
                 TeamsReadWindow window = new TeamsReadWindow(plan.floor(), now.plus(Duration.ofHours(1)), null, null,
                         TeamsReadWindow.DEFAULT_MAX_MESSAGES, false, false);
+                String shownBefore = gestures.shownConversationId();
                 TeamsHarvester.Harvest harvest = harvester.readConversation(plan.conversation().id(), window);
+                boolean onScreen = false;
+                if (harvest.messages().isEmpty()) {
+                    // F-89 / SF-89-06 : fil servi depuis le cache — lu à l'écran, vue remise.
+                    TeamsHarvester.Harvest shown = new TeamsScreenFallback(link, sleeper, journal)
+                            .thread(gestures, harvest, shownBefore, window);
+                    if (shown != null && !shown.messages().isEmpty()) {
+                        harvest = shown;
+                        onScreen = true;
+                        coverage.readOnScreen++;
+                    }
+                }
                 TeamsParticipant self = book.self();
                 lines = new ArrayList<>();
                 for (TeamsMessage message : harvest.messages()) {
@@ -179,6 +202,9 @@ final class TeamsRadarCollector implements RadarCollector {
                 status = !reached && lines.isEmpty() ? "FAILED" : complete ? "READ" : "PARTIAL";
                 detail = !reached ? "fil non atteint dans la fenêtre Teams"
                         : complete ? "" : "lecture incomplète : " + harvest.window().describe();
+                if (onScreen) {
+                    detail = detail.isEmpty() ? "lu à l'écran" : detail + " (lu à l'écran)";
+                }
             }
             List<RadarExchanges.Chunk> chunks = RadarExchanges.chunks(mapper, "TEAMS_MESSAGE", plan.conversation().id(),
                     plan.conversation().label(), plan.conversation().webUrl(), lines);
@@ -245,6 +271,8 @@ final class TeamsRadarCollector implements RadarCollector {
                 TeamsMeeting meeting = due.get(index);
                 List<RadarExchanges.Line> lines = new ArrayList<>();
                 String status;
+                boolean transcriptOnScreen = false;
+                Boolean downloadBlocked = null;
                 synchronized (lock) {
                     long mark = book.cueMark();
                     int deniedBefore = link.observer().denied(TeamsPayloadKind.MEETING_TRANSCRIPT);
@@ -255,6 +283,16 @@ final class TeamsRadarCollector implements RadarCollector {
                             harvester.harvestInPlace(wide);
                         }
                         cues.addAll(book.cuesSince(mark));
+                    }
+                    if (cues.isEmpty() && link.observer().denied(TeamsPayloadKind.MEETING_TRANSCRIPT) == deniedBefore) {
+                        // F-89 / SF-89-06 : aucune réplique par le réseau — le panneau Transcription, lu à l'écran.
+                        TeamsScreenFallback.ScreenTranscript shown =
+                                new TeamsScreenFallback(link, sleeper, journal).transcript(meeting);
+                        if (!shown.cues().isEmpty()) {
+                            cues.addAll(shown.cues());
+                            transcriptOnScreen = true;
+                            downloadBlocked = shown.downloadBlocked();
+                        }
                     }
                     // Une réunion déjà transcrite ne remonte que ses répliques nouvelles ; sinon, toutes.
                     Instant cueFloor = cursors.get(meeting.id());
@@ -273,6 +311,10 @@ final class TeamsRadarCollector implements RadarCollector {
                             : "NO_TRANSCRIPT";
                 }
                 String detail = switch (status) {
+                    case "TRANSCRIBED" -> !transcriptOnScreen ? ""
+                            : Boolean.TRUE.equals(downloadBlocked)
+                                    ? "transcription lue à l'écran ; téléchargement bloqué : analysée, jamais conservée en entier"
+                                    : "transcription lue à l'écran";
                     case "DENIED" -> "accès à la transcription refusé";
                     case "NO_TRANSCRIPT" -> meeting.transcriptAvailable() ? "transcription annoncée mais non servie"
                             : "aucune transcription annoncée (désactivée ou non produite)";
@@ -280,8 +322,20 @@ final class TeamsRadarCollector implements RadarCollector {
                 };
                 if (!lines.isEmpty()) {
                     lines.sort((a, b) -> a.occurredAt().compareTo(b.occurredAt()));
+                    if (transcriptOnScreen) {
+                        coverage.transcribedOnScreen++;
+                    }
+                    if (Boolean.TRUE.equals(downloadBlocked)) {
+                        coverage.downloadBlocked++;
+                    }
                     for (RadarExchanges.Chunk chunk : RadarExchanges.chunks(mapper, "TEAMS_MEETING", meeting.id(),
                             meeting.subject(), null, lines)) {
+                        if (Boolean.TRUE.equals(downloadBlocked)) {
+                            // Règle de conformité (cadrage F-87 §9 bis) : le lot le DIT, la gateway l'analyse et
+                            // n'en garde que des extraits courts — jamais la transcription entière.
+                            chunk.batch().path("exchanges").forEach(exchange ->
+                                    ((ObjectNode) exchange).put("downloadBlocked", true));
+                        }
                         SubmitResult result = submit(context, chunk, meeting.id(), "MEETING");
                         if (result == SubmitResult.STOPPED) {
                             return coverage.stopped();
@@ -460,6 +514,11 @@ final class TeamsRadarCollector implements RadarCollector {
         boolean calendarServed;
         String navigation = "NOT_TRIED";
         boolean partial;
+        /** F-89 / SF-89-06 : d'où vient la liste des fils, et ce qui a été lu à l'écran. */
+        String discoverySource = "reseau";
+        int readOnScreen;
+        int transcribedOnScreen;
+        int downloadBlocked;
 
         Coverage(RadarAssignment assignment, Instant to) {
             this.assignment = assignment;
@@ -553,6 +612,7 @@ final class TeamsRadarCollector implements RadarCollector {
             discovery.put("served", discoveryServed);
             discovery.put("complete", discoveryComplete);
             discovery.put("listed", listed);
+            discovery.put("source", discoverySource);
             ObjectNode conversations = root.putObject("conversations");
             conversations.put("active", active);
             conversations.put("read", read);
@@ -560,6 +620,7 @@ final class TeamsRadarCollector implements RadarCollector {
             conversations.put("failed", failedThreads);
             conversations.put("ignored", ignored);
             conversations.put("deferred", deferred);
+            conversations.put("readOnScreen", readOnScreen);
             root.putObject("channels").put("unreadActive", unreadChannels);
             ObjectNode meetings = root.putObject("meetings");
             meetings.put("navigation", navigation);
@@ -569,6 +630,8 @@ final class TeamsRadarCollector implements RadarCollector {
             meetings.put("noTranscript", noTranscript);
             meetings.put("denied", denied);
             meetings.put("failed", failedMeetings);
+            meetings.put("transcribedOnScreen", transcribedOnScreen);
+            meetings.put("downloadBlocked", downloadBlocked);
             root.put("messages", messages);
             root.put("batches", batches);
             root.set("threads", threads);
