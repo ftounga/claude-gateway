@@ -1,6 +1,6 @@
 # F-107 — L'offre par espace : la plateforme se paie, en BYOK aussi
 
-> Cadrage du 2026-09-13. **Cadrage seul : la livraison attend le go du PO.** **Les montants ont été
+> Cadrage du 2026-09-13. **Livrée le 2026-09-13 (SF-107-01 à 06, PR #489, #526, #533 à #536).** **Les montants ont été
 > décidés par le PO le 2026-09-13, un par un, sur propositions argumentées : voir §9.** Aucun price
 > Stripe n'est créé par un agent.
 > Source de vérité de la grille : `docs/TARIFS.md`, à mettre à jour à la livraison.
