@@ -1,4 +1,3 @@
-import { HostPagesComponent } from '../shared/pages/host-pages.component';
 import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -36,6 +35,7 @@ import {
 } from '../core/models/atelier.models';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import { LiveBadgeComponent } from '../shared/live-badge/live-badge.component';
+import { HostPagesComponent } from '../shared/pages/host-pages.component';
 import { ARCHIVE_ACCEPT } from '../shared/file-selectors';
 import { HostTone, hostTone } from '../shared/host-identity';
 import { MissionBadgeComponent } from '../shared/mission-badge/mission-badge.component';

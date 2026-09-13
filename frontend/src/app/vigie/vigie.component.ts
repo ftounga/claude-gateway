@@ -1,5 +1,3 @@
-import { HostPagesComponent } from '../shared/pages/host-pages.component';
-import { PagesService } from '../core/services/pages.service';
 import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -17,6 +15,8 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { RunnerHostOverview } from '../core/models/atelier.models';
 import { VigiePerson, VigieRadarCounts } from '../core/models/vigie.models';
 import { AtelierService } from '../core/services/atelier.service';
+import { HostPagesComponent } from '../shared/pages/host-pages.component';
+import { PagesService } from '../core/services/pages.service';
 import { HostPresenceService } from '../core/services/host-presence.service';
 import { VigieService, countsOfBrief } from '../core/services/vigie.service';
 import { RadarBrief } from '../core/models/radar.models';
