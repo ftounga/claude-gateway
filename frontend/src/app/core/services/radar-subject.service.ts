@@ -3,6 +3,9 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import {
+  RadarAliasView,
+  RadarCorrectionView,
+  RadarSplitRequest,
   RadarManagerAnswer,
   RadarNewsUndoResult,
   RadarSubjectProjects,
@@ -42,7 +45,39 @@ export class RadarSubjectService {
       `/api/radar/hosts/${encodeURIComponent(hostId)}/subjects/${encodeURIComponent(subjectId)}/manager-answer`, null);
   }
 
-  /** Annule une nouvelle (F-104 / SF-104-02) : toutes ses écritures, puis sa preuve. */
+  // ------------------------------------------------------------ séparer, alias, journal (F-99 / SF-99-06)
+
+  /** Sépare d'un sujet les preuves et engagements choisis, dans un nouveau sujet. */
+  split(hostId: string, subjectId: string, request: RadarSplitRequest): Observable<RadarCorrectionView> {
+    return this.http.post<RadarCorrectionView>(`${this.subjectUrl(hostId, subjectId)}/split`, request);
+  }
+
+  /** Un autre nom du sujet, dit par l'utilisateur ; journalisé, donc annulable. */
+  addAlias(hostId: string, subjectId: string, alias: string): Observable<RadarAliasView> {
+    return this.http.post<RadarAliasView>(`${this.subjectUrl(hostId, subjectId)}/aliases`, { alias });
+  }
+
+  /** Retire un alias ou une consigne ; journalisé, donc annulable. */
+  removeAlias(hostId: string, subjectId: string, aliasId: string): Observable<void> {
+    return this.http.delete<void>(`${this.subjectUrl(hostId, subjectId)}/aliases/${encodeURIComponent(aliasId)}`);
+  }
+
+  /** Les corrections du sujet, plus récentes d'abord. */
+  corrections(hostId: string, subjectId: string): Observable<RadarCorrectionView[]> {
+    return this.http.get<RadarCorrectionView[]>(`/api/radar/hosts/${encodeURIComponent(hostId)}/corrections`,
+      { params: { subjectId } });
+  }
+
+  /** Annule une correction. */
+  undo(hostId: string, correctionId: string): Observable<RadarCorrectionView> {
+    return this.http.post<RadarCorrectionView>(
+      `/api/radar/hosts/${encodeURIComponent(hostId)}/corrections/${encodeURIComponent(correctionId)}/undo`, null);
+  }
+
+  private subjectUrl(hostId: string, subjectId: string): string {
+    return `/api/radar/hosts/${encodeURIComponent(hostId)}/subjects/${encodeURIComponent(subjectId)}`;
+  }
+
   /** Les projets liés au sujet, les propositions et les projets liables (F-106 / SF-106-06). */
   projects(hostId: string, subjectId: string): Observable<RadarSubjectProjects> {
     return this.http.get<RadarSubjectProjects>(
@@ -64,6 +99,7 @@ export class RadarSubjectService {
       + `/projects/${encodeURIComponent(workspaceId)}`;
   }
 
+  /** Annule une nouvelle (F-104 / SF-104-02) : toutes ses écritures, puis sa preuve. */
   undoNews(hostId: string, evidenceId: string): Observable<RadarNewsUndoResult> {
     return this.http.post<RadarNewsUndoResult>(
       `/api/radar/hosts/${encodeURIComponent(hostId)}/news/${encodeURIComponent(evidenceId)}/undo`, null);

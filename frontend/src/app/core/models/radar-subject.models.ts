@@ -156,6 +156,29 @@ export interface RadarUnknownView {
   commitmentId: string | null;
 }
 
+/**
+ * Une ligne du journal des corrections d'un sujet (F-99) — `GET /api/radar/hosts/{hostId}/corrections?subjectId=`.
+ * Les valeurs avant / après ne portent que les champs touchés par le geste.
+ */
+export interface RadarCorrectionView {
+  id: string;
+  subjectId: string | null;
+  targetKind: 'SUBJECT' | 'COMMITMENT';
+  targetId: string;
+  action: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  createdAt: string;
+  undoneAt: string | null;
+}
+
+/** Séparer un sujet (F-99 / SF-99-06) : le nouveau nom, les preuves et engagements qui partent. */
+export interface RadarSplitRequest {
+  name: string;
+  evidenceIds: string[];
+  commitmentIds: string[];
+}
+
 /** Une nouvelle annulée depuis la chronologie (F-104 / SF-104-02). */
 export interface RadarNewsUndoResult {
   evidenceId: string;

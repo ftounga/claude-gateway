@@ -2,11 +2,13 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpErrorResponse } from '@angular/common/http';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ActivatedRoute, ParamMap, Router, convertToParamMap, provideRouter } from '@angular/router';
-import { MatSnackBar } from '@angular/material/snack-bar';
-import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
+import { MatSnackBar, MatSnackBarRef, TextOnlySnackBar } from '@angular/material/snack-bar';
+import { BehaviorSubject, Observable, Subject, of, throwError } from 'rxjs';
 
 import { WorkspaceDetail } from '../../core/models/atelier.models';
 import {
+  RadarCorrectionView,
   RadarEvidenceView,
   RadarManagerAnswer,
   RadarSubjectDetail,
@@ -34,6 +36,8 @@ describe('RadarSubjectPageComponent', () => {
   let params$: BehaviorSubject<ParamMap>;
   let atelier: jasmine.SpyObj<AtelierService>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
+  let snackAction$: Subject<void>;
+  let dialog: jasmine.SpyObj<MatDialog>;
   let router: Router;
 
   const prepared: RadarManagerAnswer = {
@@ -90,17 +94,23 @@ describe('RadarSubjectPageComponent', () => {
     terminal?: Observable<WorkspaceDetail>;
     subjectId?: string;
     projects?: Observable<RadarSubjectProjects>;
+    corrections?: Observable<RadarCorrectionView[]>;
   } = {}): HTMLElement {
     subjects = jasmine.createSpyObj<RadarSubjectService>('RadarSubjectService',
-      ['subject', 'unknowns', 'managerAnswer', 'undoNews', 'projects', 'linkProject', 'unlinkProject']);
+      ['subject', 'unknowns', 'managerAnswer', 'undoNews', 'projects', 'linkProject', 'unlinkProject',
+        'corrections', 'split', 'addAlias', 'removeAlias', 'undo']);
     subjects.projects.and.returnValue(options.projects ?? of(noProjects));
     subjects.undoNews.and.returnValue(of({ evidenceId: 'p3', undone: 1 }));
+    subjects.corrections.and.returnValue(options.corrections ?? of([]));
     subjects.subject.and.returnValue(options.subject ?? of(mfa()));
     subjects.unknowns.and.returnValue(options.unknowns ?? of([]));
     subjects.managerAnswer.and.returnValue(options.answer ?? of(prepared));
     atelier = jasmine.createSpyObj<AtelierService>('AtelierService', ['openTeamsTerminal']);
     atelier.openTeamsTerminal.and.returnValue(options.terminal ?? of({ id: 'wtt1', name: 'Terminal Teams' } as WorkspaceDetail));
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
+    snackAction$ = new Subject<void>();
+    snackBar.open.and.returnValue({ onAction: () => snackAction$.asObservable() } as unknown as MatSnackBarRef<TextOnlySnackBar>);
+    dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
     vigie = jasmine.createSpyObj<VigieService>('VigieService', ['people', 'hostSpaces']);
     vigie.people.and.returnValue(options.people ?? of([paul]));
     vigie.hostSpaces.and.returnValue(of([{ hostId: 'h1', name: 'EDENRED', missionStatus: 'ACTIVE', spaces: ['VIGIE'] }]));
@@ -115,6 +125,7 @@ describe('RadarSubjectPageComponent', () => {
         { provide: VigieService, useValue: vigie },
         { provide: AtelierService, useValue: atelier },
         { provide: MatSnackBar, useValue: snackBar },
+        { provide: MatDialog, useValue: dialog },
         { provide: ActivatedRoute, useValue: { snapshot: {}, paramMap: params$, queryParamMap: of(convertToParamMap({})) } },
       ],
     });
@@ -504,5 +515,110 @@ describe('RadarSubjectPageComponent', () => {
     expect(snackBar.open).toHaveBeenCalledWith(jasmine.any(String), 'Fermer', jasmine.any(Object));
     expect(root.querySelectorAll('.radar-subject__linked-project').length).toBe(1);
     expect(component.projectBusy()).toBeNull();
+  });
+
+  // ------------------------------------------------------------ séparer, alias, journal (F-99 / SF-99-06)
+
+  const correction = (extra: Partial<RadarCorrectionView>): RadarCorrectionView => ({
+    id: 'c1', subjectId: 's1', targetKind: 'SUBJECT', targetId: 's1', action: 'ADD_ALIAS', before: {},
+    after: { aliasId: 'a1', alias: 'Chantier Okta' }, createdAt: '2026-09-13T09:00:00Z', undoneAt: null, ...extra,
+  });
+
+  it('lit le journal du sujet et le rend dans la chronologie, avec Annuler', () => {
+    const root = build({ corrections: of([correction({}), correction({ id: 'c0', undoneAt: '2026-09-13T09:05:00Z' })]) });
+
+    expect(subjects.corrections).toHaveBeenCalledWith('h1', 's1');
+    const items = root.querySelectorAll('.subject-journal__item');
+    expect(items.length).toBe(2);
+    expect(text(items[0])).toContain('Alias ajouté : « Chantier Okta »');
+    expect(items[0].querySelector('.subject-journal__undo')).not.toBeNull();
+    expect(items[1].querySelector('.subject-journal__undo')).toBeNull();
+    expect(text(items[1])).toContain('annulé');
+  });
+
+  it("Annuler une correction du journal : appel sous le poste, page relue ; un conflit est dit", () => {
+    const root = build({ corrections: of([correction({})]) });
+    subjects.undo.and.returnValue(of(correction({ undoneAt: '2026-09-13T10:00:00Z' })));
+    subjects.subject.calls.reset();
+
+    (root.querySelector('.subject-journal__undo') as HTMLButtonElement).click();
+
+    expect(subjects.undo).toHaveBeenCalledOnceWith('h1', 'c1');
+    expect(snackBar.open).toHaveBeenCalledWith('Geste annulé.', 'Fermer', jasmine.any(Object));
+    expect(subjects.subject).toHaveBeenCalled();
+
+    subjects.undo.and.returnValue(throwError(() => new HttpErrorResponse({
+      status: 409, error: { error: 'radar_correction_conflict', message: 'Cet alias a déjà été retiré.' } })));
+    component.undoCorrection(correction({}));
+    expect(snackBar.open).toHaveBeenCalledWith('Cet alias a déjà été retiré.', 'Fermer', jasmine.any(Object));
+  });
+
+  it('journal illisible : la page reste, le manque est dit', () => {
+    const root = build({ corrections: throwError(() => new HttpErrorResponse({ status: 500 })) });
+
+    expect(root.querySelector('.subject-journal__error')).not.toBeNull();
+    expect(root.querySelector('.radar-subject__title')).not.toBeNull();
+  });
+
+  it('rend les alias et les consignes ; ajouter appelle la gateway, et Annuler retrouve la correction', () => {
+    const root = build({ subject: of(subjectDetail({ aliases: [
+      { id: 'a0', alias: 'Double auth', origin: 'MERGE', rejected: false },
+      { id: 'a9', alias: 'Contrat Okta', origin: 'SPLIT', rejected: true },
+    ] })) });
+    expect(text(root.querySelector('.subject-aliases__accepted'))).toContain('Double auth');
+    expect(text(root.querySelector('.subject-aliases__rejected'))).toContain('Contrat Okta');
+
+    subjects.addAlias.and.returnValue(of({ id: 'a1', alias: 'Chantier Okta', origin: 'USER', rejected: false }));
+    subjects.corrections.and.returnValue(of([correction({})]));
+    subjects.undo.and.returnValue(of(correction({ undoneAt: '2026-09-13T10:00:00Z' })));
+    component.addAlias('Chantier Okta');
+
+    expect(subjects.addAlias).toHaveBeenCalledOnceWith('h1', 's1', 'Chantier Okta');
+    expect(snackBar.open).toHaveBeenCalledWith('Alias ajouté.', 'Annuler', jasmine.any(Object));
+    snackAction$.next();
+    expect(subjects.undo).toHaveBeenCalledOnceWith('h1', 'c1');
+  });
+
+  it('retirer une consigne : appel, snackbar « Consigne retirée. » ; un refus est dit', () => {
+    build();
+    subjects.removeAlias.and.returnValue(of(undefined));
+    component.removeAlias({ id: 'a9', alias: 'Contrat Okta', origin: 'SPLIT', rejected: true });
+    expect(subjects.removeAlias).toHaveBeenCalledOnceWith('h1', 's1', 'a9');
+    expect(snackBar.open).toHaveBeenCalledWith('Consigne retirée.', 'Annuler', jasmine.any(Object));
+
+    subjects.addAlias.and.returnValue(throwError(() => new HttpErrorResponse({
+      status: 400, error: { error: 'radar_invalid', message: 'Ce nom est déjà connu de ce sujet.' } })));
+    component.addAlias('MFA');
+    expect(snackBar.open).toHaveBeenCalledWith('Ce nom est déjà connu de ce sujet.', 'Fermer', jasmine.any(Object));
+  });
+
+  it('un sujet fusionné ne propose ni Séparer, ni geste sur ses alias', () => {
+    const root = build({ subject: of(subjectDetail({ mergedIntoId: 's2',
+      aliases: [{ id: 'a0', alias: 'Double auth', origin: 'MERGE', rejected: false }] })) });
+
+    expect(root.querySelector('.radar-subject__split')).toBeNull();
+    expect(root.querySelector('.subject-aliases__remove')).toBeNull();
+    expect(root.querySelector('.subject-aliases__open')).toBeNull();
+  });
+
+  it('Séparer ouvre le dialogue ; une séparation faite propose Annuler et relit la page', () => {
+    const root = build();
+    const split = correction({ id: 'c7', action: 'SPLIT', after: { source: 's1', created: 's2' } });
+    dialog.open.and.returnValue({ afterClosed: () => of({ correction: split, name: 'Contrat Okta' }) } as MatDialogRef<unknown>);
+    subjects.undo.and.returnValue(of(split));
+    subjects.subject.calls.reset();
+
+    (root.querySelector('.radar-subject__split') as HTMLButtonElement).click();
+
+    expect(dialog.open).toHaveBeenCalled();
+    expect(snackBar.open).toHaveBeenCalledWith('« Contrat Okta » est un nouveau sujet.', 'Annuler', jasmine.any(Object));
+    expect(subjects.subject).toHaveBeenCalled();
+    snackAction$.next();
+    expect(subjects.undo).toHaveBeenCalledOnceWith('h1', 'c7');
+  });
+
+  it('Séparer est désactivé sous deux preuves', () => {
+    const root = build({ subject: of(subjectDetail({ chronology: [evidence('p1')] })) });
+    expect((root.querySelector('.radar-subject__split') as HTMLButtonElement).disabled).toBeTrue();
   });
 });

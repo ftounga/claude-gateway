@@ -40,6 +40,12 @@ public enum RadarCorrectionAction {
     /** Un sujet né d'une nouvelle de l'utilisateur (F-104) ; l'annuler le supprime s'il n'a rien reçu d'autre. */
     CREATE_SUBJECT(Target.SUBJECT),
 
+    /** Un alias dit par l'utilisateur (SF-99-06 ; route dédiée) : l'annuler le retire. */
+    ADD_ALIAS(Target.SUBJECT),
+
+    /** Un alias ou une consigne retirés par l'utilisateur (SF-99-06 ; route dédiée) : l'annuler les recrée. */
+    REMOVE_ALIAS(Target.SUBJECT),
+
     // ------------------------------------------------------------------------------- engagement
 
     /** « Fait » : tenu. */
