@@ -137,7 +137,8 @@ public class AtelierOptionService {
                 subscription.getAtelierOptionStatus(),
                 subscription.getAtelierOptionCancelAt(),
                 properties.stripe().isAtelierOptionConfigured(plan),
-                plan == PlanCode.BYOK);
+                plan == PlanCode.BYOK,
+                entitlementService.isGrantedByRole(subscription.getUserId()));
     }
 
     private boolean isCarriedByLivePlan(Subscription subscription) {
@@ -164,6 +165,8 @@ public class AtelierOptionService {
      * @param byokCarrier    le plan de l'utilisateur est BYOK : montant et price propres à BYOK
      *                       (F-107 / SF-107-01) — l'écran adapte son libellé sans déduire l'offre
      *                       d'un code de plan
+     * @param includedForAdministrator le droit vient du rôle administrateur (F-107 / SF-107-06) :
+     *                       l'écran dit « incluse (administrateur) » et ne propose aucun achat
      */
     public record AtelierOptionView(
             String priceEur,
@@ -172,6 +175,7 @@ public class AtelierOptionService {
             SubscriptionStatus optionStatus,
             OffsetDateTime cancelAt,
             boolean available,
-            boolean byokCarrier) {
+            boolean byokCarrier,
+            boolean includedForAdministrator) {
     }
 }

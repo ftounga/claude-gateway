@@ -143,4 +143,9 @@ export interface AtelierOptionView {
    * pas encore proposée sur BYOK — sans erreur. Lu tel quel : l'écran ne déduit pas l'offre d'un code.
    */
   byokCarrier: boolean;
+  /**
+   * La Forge est ouverte par le **rôle administrateur** (F-107 / SF-107-06) : rien n'est facturé,
+   * l'écran dit « incluse (administrateur) ». Champ additif : absent d'un backend antérieur ⇒ faux.
+   */
+  includedForAdministrator?: boolean;
 }

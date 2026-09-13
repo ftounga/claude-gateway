@@ -39,6 +39,11 @@ import fr.claudegateway.access.AccessGrantService;
  * F-62) : aucun quota n'est lu ni modifié ici, et la consommation d'un tour Teams tombe sur le quota
  * existant de l'utilisateur.</p>
  *
+ * <p><b>F-107 / SF-107-06 — l'administrateur a tout.</b> Avant ces deux cas, un utilisateur de rôle
+ * {@code ADMIN} a le droit, quel que soit son plan ({@link AdministratorEntitlement}). C'est ici, et
+ * pas dans {@code TeamsAccessService}, que la règle doit vivre : le catalogue d'outils hors requête,
+ * la synchro de nuit du Radar et le dépôt de captures du runner lisent ce service sans principal.</p>
+ *
  * <p>Toute autre situation est refusée (fail-closed).</p>
  */
 @Service
@@ -58,21 +63,27 @@ public class TeamsEntitlementService {
 
     private final SubscriptionService subscriptionService;
     private final AccessGrantService accessGrantService;
+    private final AdministratorEntitlement administratorEntitlement;
 
     public TeamsEntitlementService(SubscriptionService subscriptionService,
-            AccessGrantService accessGrantService) {
+            AccessGrantService accessGrantService, AdministratorEntitlement administratorEntitlement) {
         this.subscriptionService = subscriptionService;
         this.accessGrantService = accessGrantService;
+        this.administratorEntitlement = administratorEntitlement;
     }
 
     /**
      * Indique si l'utilisateur a le droit d'accès au volet Teams.
      *
      * @param userId utilisateur du contexte de sécurité (isolation : jamais un paramètre client)
-     * @return {@code true} si l'option Teams est en cours sur un plan porteur en cours, ou si un
-     *         accès offert (F-62) est en cours ; {@code false} sinon
+     * @return {@code true} si l'utilisateur est administrateur (SF-107-06), si l'option Teams est en
+     *         cours sur un plan porteur en cours, ou si un accès offert (F-62) est en cours ;
+     *         {@code false} sinon
      */
     public boolean isEntitled(UUID userId) {
+        if (administratorEntitlement.isAdministrator(userId)) {
+            return true; // L'administrateur a tout : aucun abonnement n'est consulté.
+        }
         return isGrantedByOption(subscriptionService.getOrCreateForUser(userId))
                 || accessGrantService.isGrantedWithGrace(userId);
     }

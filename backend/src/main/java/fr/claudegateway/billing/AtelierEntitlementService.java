@@ -31,6 +31,12 @@ import fr.claudegateway.access.AccessGrantService;
  * pas. BYOK devient un <b>plan porteur</b> de l'option, à un prix qui lui est propre (voir
  * {@link BillingProperties.Stripe#atelierOptionDisplayPrice(PlanCode)}).</p>
  *
+ * <p><b>F-107 / SF-107-06 — l'administrateur a tout.</b> Avant ces trois cas, un utilisateur de rôle
+ * {@code ADMIN} a le droit, quel que soit son plan ({@link AdministratorEntitlement}). La règle vit
+ * ici, et non dans les écrans ni dans le seul {@code AtelierAccessService} : tout lecteur du droit en
+ * hérite. {@link #isIncludedInPlan} et {@link #isGrantedByOption} restent des lectures d'abonnement
+ * pures — ils disent <i>d'où</i> vient le droit, pas s'il est ouvert.</p>
+ *
  * <p>Toute autre situation est refusée (fail-closed, cohérent avec {@code EntitlementService}).
  * L'option ouvre un <b>droit</b>, jamais un jeton : aucun quota n'est lu ni modifié ici.</p>
  *
@@ -64,21 +70,27 @@ public class AtelierEntitlementService {
 
     private final SubscriptionService subscriptionService;
     private final AccessGrantService accessGrantService;
+    private final AdministratorEntitlement administratorEntitlement;
 
     public AtelierEntitlementService(SubscriptionService subscriptionService,
-            AccessGrantService accessGrantService) {
+            AccessGrantService accessGrantService, AdministratorEntitlement administratorEntitlement) {
         this.subscriptionService = subscriptionService;
         this.accessGrantService = accessGrantService;
+        this.administratorEntitlement = administratorEntitlement;
     }
 
     /**
      * Indique si l'utilisateur a le droit d'accès à l'Atelier.
      *
      * @param userId utilisateur du contexte de sécurité (isolation : jamais un paramètre client)
-     * @return {@code true} si le plan Gold est actif, si l'option Atelier est active sur un plan
-     *         porteur actif, ou si un accès offert (F-62) est en cours ; {@code false} sinon
+     * @return {@code true} si l'utilisateur est administrateur (SF-107-06), si le plan Gold est actif,
+     *         si l'option Atelier est active sur un plan porteur actif, ou si un accès offert (F-62)
+     *         est en cours ; {@code false} sinon
      */
     public boolean isEntitled(UUID userId) {
+        if (isGrantedByRole(userId)) {
+            return true; // L'administrateur a tout : aucun abonnement n'est consulté.
+        }
         return isEntitled(subscriptionService.getOrCreateForUser(userId));
     }
 
@@ -90,9 +102,21 @@ public class AtelierEntitlementService {
      * @return {@code true} si le droit est ouvert
      */
     public boolean isEntitled(Subscription subscription) {
-        return isIncludedInPlan(subscription)
+        return isGrantedByRole(subscription.getUserId())
+                || isIncludedInPlan(subscription)
                 || isGrantedByOption(subscription)
                 || isGrantedByAccessCode(subscription.getUserId());
+    }
+
+    /**
+     * Vrai si le droit vient du <b>rôle administrateur</b> (F-107 / SF-107-06). Sert à l'écran de
+     * facturation pour dire « incluse (administrateur) » plutôt que de proposer un achat.
+     *
+     * @param userId propriétaire de l'abonnement (jamais un paramètre client)
+     * @return {@code true} si l'utilisateur est administrateur
+     */
+    public boolean isGrantedByRole(UUID userId) {
+        return administratorEntitlement.isAdministrator(userId);
     }
 
     /**

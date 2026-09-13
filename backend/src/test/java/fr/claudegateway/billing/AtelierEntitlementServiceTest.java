@@ -32,13 +32,18 @@ class AtelierEntitlementServiceTest {
     @Mock
     private AccessGrantService accessGrantService;
 
+    /** F-107 / SF-107-06 : personne n'est administrateur par défaut. */
+    @Mock
+    private AdministratorEntitlement administratorEntitlement;
+
     private AtelierEntitlementService service;
 
     private final UUID userId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
-        service = new AtelierEntitlementService(subscriptionService, accessGrantService);
+        service = new AtelierEntitlementService(subscriptionService, accessGrantService,
+                administratorEntitlement);
     }
 
     private Subscription subscription(PlanCode plan, SubscriptionStatus status, SubscriptionStatus option) {
@@ -295,6 +300,50 @@ class AtelierEntitlementServiceTest {
 
             assertThat(service.isEntitled(gold)).isTrue();
             verifyNoInteractions(accessGrantService);
+        }
+    }
+
+    @Nested
+    @DisplayName("F-107 / SF-107-06 — l'administrateur a tout, quel que soit son plan")
+    class AdministratorHasEverything {
+
+        @Test
+        @DisplayName("ADMIN sans plan porteur ni option : accès, sans lire l'abonnement")
+        void adminWithoutOptionIsEntitledByUserId() {
+            when(administratorEntitlement.isAdministrator(userId)).thenReturn(true);
+
+            assertThat(service.isEntitled(userId)).isTrue();
+            verifyNoInteractions(subscriptionService, accessGrantService);
+        }
+
+        @Test
+        @DisplayName("ADMIN sur un essai expiré : accès aussi par l'abonnement chargé")
+        void adminWithoutOptionIsEntitledBySubscription() {
+            when(administratorEntitlement.isAdministrator(userId)).thenReturn(true);
+            Subscription expired = subscription(null, SubscriptionStatus.TRIALING, null);
+
+            assertThat(service.isEntitled(expired)).isTrue();
+            assertThat(service.isGrantedByRole(userId)).isTrue();
+        }
+
+        @Test
+        @DisplayName("la source du droit reste honnête : ni « inclus au plan », ni « option »")
+        void theRoleDoesNotPretendToBeAPlanOrAnOption() {
+            Subscription solo = subscription(PlanCode.SOLO, SubscriptionStatus.ACTIVE, null);
+
+            assertThat(service.isIncludedInPlan(solo)).isFalse();
+            assertThat(service.isGrantedByOption(solo)).isFalse();
+            verifyNoInteractions(administratorEntitlement);
+        }
+
+        @Test
+        @DisplayName("USER sans option : refus inchangé")
+        void userWithoutOptionStaysDenied() {
+            when(administratorEntitlement.isAdministrator(userId)).thenReturn(false);
+            when(subscriptionService.getOrCreateForUser(userId))
+                    .thenReturn(subscription(PlanCode.SOLO, SubscriptionStatus.ACTIVE, null));
+
+            assertThat(service.isEntitled(userId)).isFalse();
         }
     }
 }

@@ -110,6 +110,56 @@ class AtelierOptionBillingApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("F-107 / SF-107-06 : ADMIN sans option — droit ouvert, « inclus (administrateur) »")
+    void anAdministratorWithoutOptionSeesItIncludedForAdministrator() throws Exception {
+        User admin = userRepository.save(User.builder().email("admin@example.com").emailVerified(true)
+                .provider(AuthProvider.LOCAL).role(UserRole.ADMIN).build());
+        subscribe(admin, PlanCode.SOLO, SubscriptionStatus.ACTIVE, null, null);
+
+        mockMvc.perform(get("/api/billing/atelier-option").contextPath("/api")
+                        .header("Authorization", bearer(jwtService.generateToken(admin))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entitled", is(true)))
+                .andExpect(jsonPath("$.includedForAdministrator", is(true)))
+                .andExpect(jsonPath("$.includedInPlan", is(false)))
+                .andExpect(jsonPath("$.status", nullValue()));
+
+        // USER sur la même offre : rien ne change.
+        subscribe(alice, PlanCode.SOLO, SubscriptionStatus.ACTIVE, null, null);
+        mockMvc.perform(get("/api/billing/atelier-option").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(jsonPath("$.entitled", is(false)))
+                .andExpect(jsonPath("$.includedForAdministrator", is(false)));
+    }
+
+    @Test
+    @DisplayName("F-107 / SF-107-06 : le rôle n'ouvre aucun jeton — quota ADMIN = quota USER, 0 si expiré")
+    void theAdministratorRoleDoesNotChangeTheTokenQuota() throws Exception {
+        User admin = userRepository.save(User.builder().email("admin@example.com").emailVerified(true)
+                .provider(AuthProvider.LOCAL).role(UserRole.ADMIN).build());
+        String adminToken = jwtService.generateToken(admin);
+        subscribe(admin, PlanCode.SOLO, SubscriptionStatus.ACTIVE, null, null);
+        subscribe(alice, PlanCode.SOLO, SubscriptionStatus.ACTIVE, null, null);
+
+        String userUsage = mockMvc.perform(get("/api/usage").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        long userQuota = JsonPath.parse(userUsage).read("$.quotaTokens", Long.class);
+
+        mockMvc.perform(get("/api/usage").contextPath("/api")
+                        .header("Authorization", bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quotaTokens", is((int) userQuota)));
+
+        subscribe(admin, PlanCode.SOLO, SubscriptionStatus.CANCELED, null, null);
+        mockMvc.perform(get("/api/usage").contextPath("/api")
+                        .header("Authorization", bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quotaTokens", is(0)));
+    }
+
+    @Test
     void anOptionarySoloSeesTheRightOpen() throws Exception {
         subscribe(alice, PlanCode.SOLO, SubscriptionStatus.ACTIVE, SubscriptionStatus.ACTIVE, "sub_opt_a");
 
