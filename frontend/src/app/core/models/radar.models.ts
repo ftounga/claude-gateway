@@ -248,3 +248,17 @@ export interface RadarDepositDone {
   recordedAt: string;
   sizeBytes: number;
 }
+
+// ------------------------------------------------------------ Relances et présentations (F-104 / SF-104-05)
+
+/** Relance ou présentation. */
+export type RadarDraftKind = 'FOLLOW_UP' | 'INTRODUCTION';
+
+/** Un brouillon préparé : jamais envoyé. */
+export interface RadarDraft {
+  kind: RadarDraftKind;
+  text: string;
+  /** La conversation Teams d'origine, ou `null`. */
+  conversationUrl: string | null;
+  preparedAt: string;
+}

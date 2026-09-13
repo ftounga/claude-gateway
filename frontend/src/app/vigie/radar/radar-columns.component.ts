@@ -19,6 +19,8 @@ import {
 } from '../../core/models/radar.models';
 import { RadarService } from '../../core/services/radar.service';
 import { httpErrorMessage } from '../../shared/http-error.util';
+import { RadarDraftDialogComponent, RadarDraftDialogData } from './radar-draft-dialog.component';
+import { draftButtonLabel, draftKindOf } from './radar-draft-view';
 import {
   CloseSubjectDialogComponent,
   CloseSubjectDialogData,
@@ -74,6 +76,9 @@ export class RadarColumnsComponent implements OnChanges {
   readonly subjects = computed(() => orderSubjects(this.board()?.subjects ?? [], this.order()));
 
   readonly postponeChoices = POSTPONE_CHOICES;
+  /** F-104 / SF-104-05 : la relance ou la présentation qu'un engagement propose. */
+  readonly draftKind = draftKindOf;
+  readonly draftLabel = draftButtonLabel;
   readonly chip = commitmentChip;
   readonly title = commitmentTitle;
   readonly people = commitmentPeople;
@@ -127,6 +132,18 @@ export class RadarColumnsComponent implements OnChanges {
     };
     this.act(item.commitment.id,
       this.radar.correctCommitment(this.hostId(), item.commitment.id, gesture), labels[gesture]);
+  }
+
+  /** *Préparer la relance* / *la présentation* (F-104 / SF-104-05) : un brouillon, jamais envoyé. */
+  prepareDraft(item: BoardCommitment): void {
+    const kind = draftKindOf(item);
+    if (!kind) {
+      return;
+    }
+    const data: RadarDraftDialogData = {
+      hostId: this.hostId(), commitmentId: item.commitment.id, kind, title: commitmentTitle(item),
+    };
+    this.dialog.open(RadarDraftDialogComponent, { data, autoFocus: 'first-tabbable', width: '600px', maxWidth: '95vw' });
   }
 
   postpone(item: BoardCommitment, choice: PostponeChoice): void {
