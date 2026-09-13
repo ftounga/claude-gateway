@@ -213,28 +213,10 @@
             <div class="poste__panel" role="tabpanel">
               @switch (activeTab()) {
                 @case ('radar') {
-                  <!-- ÉTAT VIDE EXPLICITE (F-106) : l'écran du Radar arrive avec F-102. Jamais un
-                       écran blanc — on dit ce qui viendra, et ce qu'on sait déjà. -->
-                  <div class="vigie__placeholder vigie__radar-empty">
-                    <mat-icon aria-hidden="true">radar</mat-icon>
-                    <div>
-                      <h3>Le Radar de ce client arrive ici</h3>
-                      <p>
-                        Il suivra les sujets en cours, ce qu'on attend de vous et ce que vous attendez
-                        des autres, et les relances dues — mis à jour chaque soir, sans rien avoir à
-                        demander.
-                      </p>
-                      @if (countsOf(host); as counts) {
-                        <ul class="vigie__facts">
-                          <li><b>{{ counts.followUpsDue }}</b> {{ counts.followUpsDue > 1 ? 'relances dues' : 'relance due' }}</li>
-                          <li><b>{{ counts.blockedSubjects }}</b> {{ counts.blockedSubjects > 1 ? 'sujets bloqués' : 'sujet bloqué' }}</li>
-                          <li [class.vigie__fact--attention]="syncNeedsAttention(counts.lastSync)">
-                            {{ syncLabel(counts.lastSync) }}
-                          </li>
-                        </ul>
-                      }
-                    </div>
-                  </div>
+                  <!-- LE RADAR DU CLIENT (F-102) : le résumé du matin et les trois colonnes. -->
+                  @if (host.id; as hostId) {
+                    <app-radar-board class="vigie__radar" [hostId]="hostId"></app-radar-board>
+                  }
                 }
                 @case ('conversations') {
                   <!-- LE TERMINAL TEAMS (F-89), déménagé de la Forge (F-106 / SF-106-03). Teams n'est pas
