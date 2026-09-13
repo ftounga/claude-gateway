@@ -4,7 +4,11 @@ import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 
+import { RadarExportOfferComponent } from '../radar-export/radar-export-offer.component';
+
 export interface RemoveClientDialogData {
+  /** Le client : l'export de son Radar est proposé avant de l'effacer (F-99 / SF-99-07). */
+  hostId?: string;
   hostName: string;
   /** Le client est-il aussi dans la Forge ? Sinon le retrait est refusé : c'est son dernier espace. */
   inForge: boolean;
@@ -22,7 +26,7 @@ export interface RemoveClientDialogResult {
  */
 @Component({
   selector: 'app-remove-client-dialog',
-  imports: [MatDialogModule, MatButtonModule, MatCheckboxModule, MatIconModule],
+  imports: [MatDialogModule, MatButtonModule, MatCheckboxModule, MatIconModule, RadarExportOfferComponent],
   templateUrl: './remove-client-dialog.component.html',
   styleUrl: './remove-client-dialog.component.scss',
 })

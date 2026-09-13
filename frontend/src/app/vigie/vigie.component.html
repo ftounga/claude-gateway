@@ -188,6 +188,17 @@
                       <span>Activer dans la Forge</span>
                     </button>
                   }
+                  <!-- L'EXPORT DU RADAR (F-99 / SF-99-07) : un fichier Markdown, rien n'est effacé. -->
+                  <button mat-menu-item type="button" class="vigie__export" (click)="exportRadar(host)">
+                    <mat-icon>download</mat-icon>
+                    <span>Exporter le Radar (Markdown)</span>
+                  </button>
+                  @if (!isMissionClosed(host.missionStatus)) {
+                    <button mat-menu-item type="button" class="vigie__close-mission" (click)="closeMission(host)">
+                      <mat-icon>inventory_2</mat-icon>
+                      <span>Clôturer la mission…</span>
+                    </button>
+                  }
                   <button mat-menu-item type="button" class="vigie__remove" (click)="removeClient(host)">
                     <mat-icon>visibility_off</mat-icon>
                     <span>Retirer de la Vigie…</span>

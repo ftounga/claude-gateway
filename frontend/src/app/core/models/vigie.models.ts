@@ -11,6 +11,9 @@ export interface HostSpaces {
   spaces: ClientSpace[];
 }
 
+/** Pourquoi l'écran purge le Radar d'un client (F-99 / SF-99-05) ; `HOST_DELETED` est réservée à la gateway. */
+export type RadarPurgeReason = 'VIGIE_REMOVED' | 'MISSION_CLOSED';
+
 /** Ce que le bandeau de la Vigie lit d'un sujet du Radar (F-99) : son état, rien de plus. */
 export interface VigieSubjectSummary {
   id: string;

@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, map, of } from 'rxjs';
 
@@ -7,6 +7,7 @@ import { RadarBrief } from '../models/radar.models';
 import { RadarProjectSubjects } from '../models/radar-subject.models';
 import {
   HostSpaces,
+  RadarPurgeReason,
   VigiePerson,
   VigieRadarCounts,
   VigieSyncSummary,
@@ -40,12 +41,21 @@ export class VigieService {
   }
 
   /**
-   * Purge le Radar d'un client qu'on retire de la Vigie (F-99 / SF-99-05, raison `VIGIE_REMOVED`).
-   * La confirmation est explicite : c'est l'écran qui l'a demandée.
+   * Purge le Radar d'un client (F-99 / SF-99-05) : retiré de la Vigie (`VIGIE_REMOVED`) ou mission
+   * clôturée (`MISSION_CLOSED`, SF-99-07). La confirmation est explicite : c'est l'écran qui l'a demandée,
+   * après avoir proposé l'export.
    */
-  purgeRadar(hostId: string): Observable<unknown> {
-    return this.http.post(`/api/radar/hosts/${hostId}/purge`,
-      { reason: 'VIGIE_REMOVED', confirm: true });
+  purgeRadar(hostId: string, reason: RadarPurgeReason = 'VIGIE_REMOVED'): Observable<unknown> {
+    return this.http.post(`/api/radar/hosts/${hostId}/purge`, { reason, confirm: true });
+  }
+
+  /**
+   * **L'export Markdown du Radar d'un client** (F-99 / SF-99-07) : la réponse entière, pour lire le nom
+   * de fichier de `Content-Disposition`. Sans droit d'option : récupérer ses données ne dépend pas d'un
+   * abonnement.
+   */
+  exportRadar(hostId: string): Observable<HttpResponse<Blob>> {
+    return this.http.get(`/api/radar/hosts/${hostId}/export`, { responseType: 'blob', observe: 'response' });
   }
 
   /** L'annuaire du client (F-99). */

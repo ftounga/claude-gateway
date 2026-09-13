@@ -38,6 +38,22 @@ describe('VigieService', () => {
     expect(req.request.body).toEqual({ reason: 'VIGIE_REMOVED', confirm: true });
   });
 
+  it('purge à la clôture de mission avec la raison MISSION_CLOSED (SF-99-07)', () => {
+    service.purgeRadar('h1', 'MISSION_CLOSED').subscribe();
+    expect(httpMock.expectOne('/api/radar/hosts/h1/purge').request.body)
+      .toEqual({ reason: 'MISSION_CLOSED', confirm: true });
+  });
+
+  it("télécharge l'export Markdown en blob, avec ses en-têtes (SF-99-07)", () => {
+    let fileName: string | null = null;
+    service.exportRadar('h1').subscribe((response) => (fileName = response.headers.get('Content-Disposition')));
+    const req = httpMock.expectOne('/api/radar/hosts/h1/export');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.responseType).toBe('blob');
+    req.flush(new Blob(['# Radar']), { headers: { 'Content-Disposition': 'attachment; filename="radar-edenred.md"' } });
+    expect(fileName).toContain('radar-edenred.md');
+  });
+
   it("lit l'annuaire du client", () => {
     service.people('h1').subscribe();
     expect(httpMock.expectOne('/api/radar/hosts/h1/people').request.method).toBe('GET');

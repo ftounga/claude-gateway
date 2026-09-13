@@ -6,6 +6,7 @@ import {
   DeleteHostDialogComponent,
   DeleteHostDialogData,
 } from './delete-host-dialog.component';
+import { RadarExporter } from '../../vigie/radar-export/radar-export';
 
 /**
  * Le dialogue de suppression d'un poste (F-69 / SF-69-02) — qui est aussi, et d'abord, un
@@ -26,6 +27,7 @@ describe('DeleteHostDialogComponent', () => {
       providers: [
         { provide: MAT_DIALOG_DATA, useValue: data },
         { provide: MatDialogRef, useValue: dialogRef },
+        { provide: RadarExporter, useValue: jasmine.createSpyObj<RadarExporter>('RadarExporter', ['download']) },
         provideNoopAnimations(),
       ],
     });
@@ -110,5 +112,21 @@ describe('DeleteHostDialogComponent', () => {
     // DESIGN_SYSTEM.md §5 : action destructive = mat-flat-button color="warn".
     expect(buttons()[1].classList).toContain('mat-mdc-unelevated-button');
     expect(buttons()[1].classList).toContain('mat-warn');
+  });
+
+  // ------------------------------------------------------------------ le Radar (F-99 / SF-99-07)
+
+  it("un poste de la Vigie : son Radar figure dans ce qui est effacé, et l'export est proposé", () => {
+    setup({ hostName: 'Poste CAGIP', remainingProjects: 0, radarHostId: 'h1' });
+
+    expect(text()).toContain('Son Radar dans la Vigie');
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-radar-export-offer')).not.toBeNull();
+  });
+
+  it('un poste hors Vigie : ni Radar, ni export', () => {
+    setup({ hostName: 'Poste CAGIP', remainingProjects: 0 });
+
+    expect(text()).not.toContain('Son Radar');
+    expect((fixture.nativeElement as HTMLElement).querySelector('app-radar-export-offer')).toBeNull();
   });
 });

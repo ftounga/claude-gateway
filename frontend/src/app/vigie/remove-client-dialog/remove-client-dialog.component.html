@@ -26,6 +26,15 @@
     >
       Effacer aussi son Radar : sujets, engagements et annuaire. Irréversible.
     </mat-checkbox>
+    @if (purgeRadar() && data.hostId) {
+      <!-- L'EXPORT AVANT LA PURGE (F-99 / SF-99-07) : proposé, jamais imposé. -->
+      <app-radar-export-offer
+        class="remove-client__export"
+        [hostId]="data.hostId"
+        [hostName]="data.hostName"
+        lead="Avant d'effacer, gardez-en une copie : le Radar exporté en Markdown."
+      ></app-radar-export-offer>
+    }
   </mat-dialog-content>
   <mat-dialog-actions align="end">
     <button mat-stroked-button type="button" (click)="cancel()">Annuler</button>
