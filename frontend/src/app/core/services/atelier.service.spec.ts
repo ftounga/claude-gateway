@@ -1116,4 +1116,130 @@ describe('AtelierService', () => {
     expect(state?.pending?.toolUseId).toBe('call-1');
     expect(state?.pending?.remainingMs).toBe(20000);
   });
+
+  // ---- F-84 / SF-84-04 : le direct traverse les proxys qui retiennent le flux ----
+
+  /** Une réponse SSE complète, relue une seule fois — ce qu'un proxy relâche quand elle se clôt. */
+  function sseResponse(events: string[]): Response {
+    const chunk = new TextEncoder().encode(events.map((e) => `${e}\n\n`).join(''));
+    let sent = false;
+    return {
+      ok: true,
+      body: {
+        getReader: () => ({
+          read: () =>
+            Promise.resolve(sent ? { value: undefined, done: true } : ((sent = true), { value: chunk, done: false })),
+        }),
+      },
+    } as unknown as Response;
+  }
+
+  it('route la prise en main vers onStarted (F-84 / SF-84-04)', async () => {
+    fakeSseFetch(['event:started\nid:1\ndata:{"turnId":"t1","startedAt":1234}']);
+    let started: { turnId: string | null; startedAt: number } | undefined;
+
+    await service.streamChat('w1', 'go', {
+      onStarted: (value) => (started = value),
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+    });
+
+    expect(started).toEqual({ turnId: 't1', startedAt: 1234 });
+  });
+
+  it('un événement refusé par le filtre des numéros vus n’est jamais routé (F-84 / SF-84-04)', async () => {
+    fakeSseFetch([
+      'event:action\nid:1\ndata:{"type":"bash","path":"déjà vu"}',
+      'event:action\nid:2\ndata:{"type":"bash","path":"neuf"}',
+    ]);
+    const seen: string[] = [];
+
+    await service.streamChat('w1', 'go', {
+      acceptSeq: (seq) => seq > 1,
+      onAction: (a) => seen.push(a.path ?? ''),
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+    });
+
+    expect(seen).toEqual(['neuf']);
+  });
+
+  it('suit un tour par fenêtres : chaque fenêtre repart du curseur, jusqu’à la fin (F-84 / SF-84-04)', async () => {
+    const fetchSpy = spyOn(window, 'fetch').and.returnValues(
+      Promise.resolve(sseResponse([
+        'event:attached\nid:0\ndata:{"turnId":"t1","cursor":0,"startedAt":1}',
+        'event:action\nid:1\ndata:{"type":"bash","path":"npm test"}',
+      ])),
+      Promise.resolve(sseResponse([
+        'event:attached\nid:0\ndata:{"turnId":"t1","cursor":1,"startedAt":1}',
+        'event:output\nid:2\ndata:{"output":"ok"}',
+        'event:done\nid:3\ndata:{"reply":"fini","actions":[],"messageId":"m1"}',
+      ])),
+    );
+    let cursor = 0;
+    const seen: string[] = [];
+
+    service.followTurnInWindows('w1', () => cursor, {
+      acceptSeq: (seq) => (seq > cursor ? ((cursor = seq), true) : false),
+      onAttached: () => seen.push('attached'),
+      onAction: (a) => seen.push(`action:${a.path}`),
+      onOutput: (o) => seen.push(`output:${o}`),
+      onText: () => undefined,
+      onDone: (d) => seen.push(`done:${d.reply}`),
+      onError: () => seen.push('error'),
+    }, { waitMs: 5000 });
+    await drain();
+    await drain();
+
+    expect(fetchSpy.calls.count()).withContext('la fin du tour arrête le suivi').toBe(2);
+    expect(fetchSpy.calls.argsFor(0)[0]).toBe('/api/workspaces/w1/chat/attach?cursor=0&waitMs=5000');
+    expect(fetchSpy.calls.argsFor(1)[0]).toBe('/api/workspaces/w1/chat/attach?cursor=1&waitMs=5000');
+    expect(seen)
+      .withContext('l’aparté de branchement n’est transmis qu’une fois : il remettrait l’écran à zéro')
+      .toEqual(['attached', 'action:npm test', 'output:ok', 'done:fini']);
+  });
+
+  it('renonce après des fenêtres idle répétées, et le dit (F-84 / SF-84-04)', async () => {
+    const fetchSpy = spyOn(window, 'fetch').and.callFake(() =>
+      Promise.resolve(sseResponse(['event:idle\ndata:{"live":false}'])));
+    let idle = 0;
+
+    service.followTurnInWindows('w1', () => 0, {
+      onIdle: () => (idle += 1),
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+    }, { waitMs: 5000, idleRetryMs: 0, maxIdle: 3 });
+    for (let i = 0; i < 4; i++) {
+      await drain();
+    }
+
+    expect(fetchSpy.calls.count()).toBe(3);
+    expect(idle).withContext('transmis une seule fois, au renoncement').toBe(1);
+  });
+
+  it('arrêter le suivi abandonne la fenêtre en cours et n’en ouvre plus (F-84 / SF-84-04)', async () => {
+    let signal: AbortSignal | undefined;
+    const fetchSpy = spyOn(window, 'fetch').and.callFake((_url, init) => {
+      signal = (init as RequestInit).signal ?? undefined;
+      return new Promise<Response>(() => undefined);
+    });
+
+    const follower = service.followTurnInWindows('w1', () => 0, {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+    });
+    await drain();
+    follower.stop();
+    await drain();
+
+    expect(signal?.aborted).toBeTrue();
+    expect(fetchSpy.calls.count()).toBe(1);
+  });
 });

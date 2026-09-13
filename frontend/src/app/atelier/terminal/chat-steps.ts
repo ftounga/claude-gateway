@@ -46,6 +46,9 @@ function stepCommand(step: AtelierStreamAction): string {
       return 'liste des fichiers';
     case 'search':
       return step.path ? `recherche « ${step.path} »` : 'recherche';
+    // Une délégation (F-84 / SF-84-04) : la question part à l'écran avant la réponse.
+    case 'explore':
+      return step.path ? `exploration « ${step.path} »` : 'exploration';
     default:
       return step.path ?? step.type;
   }

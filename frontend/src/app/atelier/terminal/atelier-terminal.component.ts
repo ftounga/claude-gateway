@@ -702,6 +702,10 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
    *
    * <p>Aucune action encore reçue ⇒ « démarrage… ». Ne rien afficher laisserait croire à un blocage,
    * ce qui est précisément le doute que cette ligne lève.</p>
+   *
+   * <p>La demande prise en main par la gateway (F-84 / SF-84-04) ⇒ « demande reçue — Claude
+   * réfléchit… » : le premier aller-retour du modèle peut durer des dizaines de secondes, et l'écran
+   * doit montrer qu'il a pris la demande en main avant de montrer ce qu'il en fait.</p>
    */
   liveActionLabel(live: AtelierExecStreamingItem): string {
     for (let i = live.blocks.length - 1; i >= 0; i -= 1) {
@@ -710,7 +714,10 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
         return blockLabel(block);
       }
     }
-    return live.blocks.length > 0 ? 'traitement…' : 'démarrage…';
+    if (live.blocks.length > 0) {
+      return 'traitement…';
+    }
+    return live.accepted ? 'demande reçue — Claude réfléchit…' : 'démarrage…';
   }
 
   /** Étapes déjà faites : les blocs portant une commande ou un outil. Rien à dire avant la 1re. */

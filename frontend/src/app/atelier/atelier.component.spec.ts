@@ -1,7 +1,7 @@
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ApplicationRef } from '@angular/core';
-import { ComponentFixture, TestBed, fakeAsync, flush, tick } from '@angular/core/testing';
+import { ComponentFixture, TestBed, discardPeriodicTasks, fakeAsync, flush, tick } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ActivatedRoute, ParamMap, Router, provideRouter } from '@angular/router';
 import {
@@ -109,6 +109,7 @@ describe('AtelierComponent', () => {
       'chat',
       'streamChat',
       'attachTurn',
+      'followTurnInWindows',
       'getTurnState',
       'streamAgent',
       'resetAgentSession',
@@ -175,6 +176,179 @@ describe('AtelierComponent', () => {
     component = fixture.componentInstance;
     fixture.detectChanges();
   }
+
+  /**
+   * **Le direct traverse les proxys qui retiennent le flux** (F-84 / SF-84-04).
+   *
+   * Constat du PO en production, le 2026-09-13 : derrière Netskope, un tour de 492 s et 29 appels
+   * d'outils, et le terminal resté sur « démarrage… » — le corps de `POST /chat/stream` n'a été
+   * relâché qu'à la dernière seconde. Ces tests jouent exactement cela : un flux d'origine qui ne
+   * livre RIEN.
+   */
+  describe('flux retenu par un proxy (F-84 / SF-84-04)', () => {
+    function heldStream(): void {
+      // Retenu : aucun octet, aucune fin — ce que l'écran a vécu pendant 492 s.
+      service.streamChat.and.returnValue(new Promise<void>(() => undefined));
+    }
+
+    function captureWindows(): { handlers: () => AtelierStreamHandlers; stop: jasmine.Spy } {
+      let given: AtelierStreamHandlers | undefined;
+      const stop = jasmine.createSpy('stop');
+      service.followTurnInWindows.and.callFake((_id, _cursor, handlers) => {
+        given = handlers;
+        return { stop };
+      });
+      return { handlers: () => given!, stop };
+    }
+
+    function terminalText(): string {
+      return (fixture.nativeElement as HTMLElement).textContent?.replace(/\s+/g, ' ') ?? '';
+    }
+
+    function sendLong(): void {
+      component.activeWorkspaceId.set('w1');
+      component.engine.set('LOCAL_MACHINE');
+      component.draft.set('Une longue demande');
+      component.send();
+      fixture.detectChanges();
+    }
+
+    it('montre chaque appel d’outil reçu par fenêtre alors que le flux d’origine ne livre rien', fakeAsync(() => {
+      setup();
+      heldStream();
+      const windows = captureWindows();
+      sendLong();
+      expect(terminalText()).toContain('démarrage…');
+
+      tick(4_000);
+
+      expect(service.followTurnInWindows)
+        .withContext('la prise en main n’est pas arrivée : le flux est retenu, on suit par fenêtres')
+        .toHaveBeenCalledWith('w1', jasmine.any(Function), jasmine.anything());
+      const handlers = windows.handlers();
+      if (handlers.acceptSeq?.(1) ?? true) {
+        handlers.onStarted?.({ turnId: 't1', startedAt: Date.now() });
+      }
+      if (handlers.acceptSeq?.(2) ?? true) {
+        handlers.onAction({ type: 'bash', path: 'npm test' });
+      }
+      fixture.detectChanges();
+
+      expect(terminalText()).toContain('npm test');
+      fixture.destroy();
+      discardPeriodicTasks();
+    }));
+
+    it('un événement déjà reçu par fenêtre est ignoré quand le flux d’origine est relâché', fakeAsync(() => {
+      setup();
+      heldStream();
+      const windows = captureWindows();
+      sendLong();
+      tick(4_000);
+      const handlers = windows.handlers();
+
+      expect(handlers.acceptSeq?.(1)).toBeTrue();
+      expect(handlers.acceptSeq?.(2)).toBeTrue();
+      // Le flux d'origine, relâché d'un bloc à la fin, rejoue ce que les fenêtres ont déjà livré.
+      expect(handlers.acceptSeq?.(1)).withContext('déjà vu').toBeFalse();
+      expect(handlers.acceptSeq?.(2)).withContext('déjà vu').toBeFalse();
+      expect(handlers.acceptSeq?.(3)).toBeTrue();
+      fixture.destroy();
+      discardPeriodicTasks();
+    }));
+
+    it('la fin du tour arrête les fenêtres', fakeAsync(() => {
+      setup();
+      heldStream();
+      const windows = captureWindows();
+      sendLong();
+      tick(4_000);
+
+      windows.handlers().onDone({ reply: 'Fait.', actions: [], messageId: 'm1' });
+
+      expect(windows.stop).toHaveBeenCalled();
+      expect(component.submitting()).toBeFalse();
+      fixture.destroy();
+      discardPeriodicTasks();
+    }));
+
+    it('sur un réseau direct, la prise en main arrive et aucune fenêtre n’est ouverte', fakeAsync(() => {
+      setup();
+      service.streamChat.and.callFake((_id, _message, handlers) => {
+        handlers.onStarted?.({ turnId: 't1', startedAt: Date.now() });
+        return new Promise<void>(() => undefined);
+      });
+      sendLong();
+
+      expect(terminalText())
+        .withContext('la demande est prise en main : l’écran le dit avant la première étape')
+        .toContain('demande reçue');
+      tick(10_000);
+
+      expect(service.followTurnInWindows).not.toHaveBeenCalled();
+      fixture.destroy();
+      discardPeriodicTasks();
+    }));
+
+    it('quitter l’écran arrête la sonde et les fenêtres', fakeAsync(() => {
+      setup();
+      heldStream();
+      const windows = captureWindows();
+      sendLong();
+      tick(4_000);
+
+      component.ngOnDestroy();
+
+      expect(windows.stop).toHaveBeenCalled();
+      fixture.destroy();
+      discardPeriodicTasks();
+    }));
+
+    it('un rebranchement abandonné par un envoi ne fait pas taire la sonde du nouveau tour', fakeAsync(() => {
+      setup();
+      let staleHandlers: AtelierStreamHandlers | undefined;
+      service.attachTurn.and.callFake((_id, _cursor, given) => {
+        staleHandlers = given;
+        return new AbortController();
+      });
+      component.selectWorkspace(summary);
+      heldStream();
+      captureWindows();
+      sendLong();
+      // L'abandon du rebranchement se termine APRÈS l'envoi : son `idle` arrive en retard.
+      staleHandlers?.onIdle?.();
+
+      tick(4_000);
+
+      expect(service.followTurnInWindows).toHaveBeenCalled();
+      fixture.destroy();
+      discardPeriodicTasks();
+    }));
+
+    it('un rebranchement retenu passe lui aussi aux fenêtres, sans rouvrir l’état à chaque fenêtre', fakeAsync(() => {
+      setup();
+      const abort = new AbortController();
+      const aborted = spyOn(abort, 'abort').and.callThrough();
+      service.attachTurn.and.returnValue(abort);
+      const windows = captureWindows();
+      component.selectWorkspace(summary);
+      fixture.detectChanges();
+
+      tick(4_000);
+
+      expect(aborted).withContext('le rebranchement retenu est abandonné').toHaveBeenCalled();
+      expect(service.followTurnInWindows).toHaveBeenCalledWith('w1', jasmine.any(Function), jasmine.anything());
+      const handlers = windows.handlers();
+      handlers.onAttached?.({ turnId: 't1', cursor: 3, startedAt: Date.now() });
+      handlers.onAction({ type: 'bash', path: 'ls -la' });
+      fixture.detectChanges();
+
+      expect(component.submitting()).toBeTrue();
+      expect(terminalText()).toContain('ls -la');
+      fixture.destroy();
+      discardPeriodicTasks();
+    }));
+  });
 
   // ------------------------------ « Nouveau projet » a disparu (F-72 / SF-72-04)
 

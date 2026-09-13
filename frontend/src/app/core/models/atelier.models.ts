@@ -629,6 +629,32 @@ export interface AtelierStreamHandlers {
    * événements antérieurs (F-84 / SF-84-01). Dire le trou vaut mieux que le maquiller.
    */
   onTruncated?: (droppedThrough: number) => void;
+
+  /**
+   * Le tour a **pris la demande en main** (F-84 / SF-84-04) : premier événement, avant tout appel
+   * au fournisseur. Il sert aussi de sonde — s'il n'arrive pas, un proxy retient le flux.
+   */
+  onStarted?: (started: AtelierTurnStarted) => void;
+
+  /**
+   * Filtre des événements de tour **déjà vus** (F-84 / SF-84-04), consulté avant tout routage avec
+   * le numéro `id:` de l'événement. `false` ⇒ l'événement est ignoré. Deux sources peuvent livrer le
+   * même tour — le flux d'origine et les fenêtres — et un événement ne s'applique qu'une fois. Les
+   * apartés (numéro 0) ne passent jamais par ce filtre.
+   */
+  acceptSeq?: (seq: number) => boolean;
+}
+
+/** La prise en main d'une demande par la gateway (F-84 / SF-84-04). */
+export interface AtelierTurnStarted {
+  turnId: string | null;
+  /** Instant d'ouverture du tour, en millisecondes depuis l'époque, heure serveur. */
+  startedAt: number;
+}
+
+/** Le suivi d'un tour par fenêtres (F-84 / SF-84-04) : de quoi l'arrêter, et rien d'autre. */
+export interface AtelierTurnFollower {
+  stop: () => void;
 }
 
 /** Ce que dit la gateway quand un écran se rebranche sur un tour en cours (F-84 / SF-84-02). */

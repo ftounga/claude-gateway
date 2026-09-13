@@ -17,6 +17,7 @@ import {
   AtelierResume,
   AtelierStreamAction,
   AtelierStreamHandlers,
+  AtelierTurnFollower,
   AtelierTurnState,
   CreateGitWorkspaceRequest,
   ExecutionTargetRequest,
@@ -70,6 +71,22 @@ export const PROXY_RELAY_LICENSE_PATH = '/api/runner/relay/license';
 /** Chemin de téléchargement du relais pour une plateforme — une route par plateforme (D1, F-44). */
 export function proxyRelayDownloadPath(platform: ProxyRelayPlatform): string {
   return `/api/runner/relay/${platform}`;
+}
+
+/** Échéance d'une fenêtre de suivi (F-84 / SF-84-04), sous les délais d'inactivité des proxys. */
+export const TURN_WINDOW_WAIT_MS = 20_000;
+
+/** Attente avant de réessayer une fenêtre qui n'a trouvé aucun tour (fini, ou pas encore ouvert). */
+export const TURN_WINDOW_IDLE_RETRY_MS = 2_000;
+
+/** Fenêtres `idle` consécutives au-delà desquelles on s'en remet au flux d'origine. */
+export const TURN_WINDOW_MAX_IDLE = 3;
+
+/** Réglages du suivi par fenêtres — les valeurs par défaut valent en production. */
+export interface TurnWindowOptions {
+  waitMs?: number;
+  idleRetryMs?: number;
+  maxIdle?: number;
 }
 
 /**
@@ -268,22 +285,107 @@ export class AtelierService {
     return abort;
   }
 
+  /**
+   * **Suivre un tour par fenêtres** (F-84 / SF-84-04).
+   *
+   * Derrière un proxy d'entreprise qui inspecte le TLS (constaté : Netskope, le 2026-09-13), le
+   * corps d'une réponse `text/event-stream` est **retenu jusqu'à sa fin** : un tour de huit minutes
+   * n'affichait rien avant la dernière seconde. Une réponse **close**, elle, est relâchée. On se
+   * rebranche donc en boucle sur `chat/attach?cursor=…&waitMs=…` : la gateway livre ce qui est neuf
+   * depuis le curseur puis clôt, et l'on repart du nouveau curseur. Même endpoint, mêmes événements,
+   * même numérotage — aucun nouveau transport.
+   *
+   * - `cursor` est lu à chaque fenêtre : c'est l'appelant qui sait ce qu'il a déjà vu, quelle que
+   *   soit la source qui le lui a livré ;
+   * - l'aparté `attached` n'est transmis qu'**une fois** — le rejouer à chaque fenêtre remettrait
+   *   l'écran à zéro ;
+   * - `done` ou `error` arrêtent le suivi ; `idle` (rien ne tourne, ou réseau coupé) est réessayé
+   *   quelques fois, puis transmis : le flux d'origine, lui, porte la fin du tour.
+   */
+  followTurnInWindows(
+    id: string,
+    cursor: () => number,
+    handlers: AtelierStreamHandlers,
+    options: TurnWindowOptions = {},
+  ): AtelierTurnFollower {
+    const waitMs = options.waitMs ?? TURN_WINDOW_WAIT_MS;
+    const idleRetryMs = options.idleRetryMs ?? TURN_WINDOW_IDLE_RETRY_MS;
+    const maxIdle = options.maxIdle ?? TURN_WINDOW_MAX_IDLE;
+    let stopped = false;
+    let current: AbortController | null = null;
+    let attachedForwarded = false;
+
+    const loop = async (): Promise<void> => {
+      let idleStreak = 0;
+      while (!stopped) {
+        let idle = false;
+        let ended = false;
+        current = new AbortController();
+        await this.readTurnStream(id, cursor(), {
+          ...handlers,
+          onAttached: (state) => {
+            if (!attachedForwarded) {
+              attachedForwarded = true;
+              handlers.onAttached?.(state);
+            }
+          },
+          onIdle: () => {
+            idle = true;
+          },
+          onDone: (done) => {
+            ended = true;
+            handlers.onDone(done);
+          },
+          onError: (code) => {
+            ended = true;
+            handlers.onError(code);
+          },
+        }, current, waitMs);
+        if (stopped || ended) {
+          return;
+        }
+        if (!idle) {
+          idleStreak = 0;
+          continue;
+        }
+        idleStreak += 1;
+        if (idleStreak >= maxIdle) {
+          handlers.onIdle?.();
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, idleRetryMs));
+      }
+    };
+    void loop();
+    return {
+      stop: () => {
+        stopped = true;
+        current?.abort();
+      },
+    };
+  }
+
   /** L'état du tour d'un projet : est-ce que ça tourne, et à quel curseur (F-84 / SF-84-02). */
   getTurnState(id: string): Observable<AtelierTurnState> {
     return this.http.get<AtelierTurnState>(`/api/workspaces/${id}/chat/turn`);
   }
 
-  /** Lit le flux de rebranchement ; un abandon (écran quitté) n'est jamais une erreur à signaler. */
+  /**
+   * Lit le flux de rebranchement ; un abandon (écran quitté) n'est jamais une erreur à signaler.
+   * Avec `waitMs`, la gateway clôt la réponse dès qu'elle a livré du neuf (SF-84-04).
+   */
   private async readTurnStream(
     id: string,
     cursor: number,
     handlers: AtelierStreamHandlers,
     abort: AbortController,
+    waitMs?: number,
   ): Promise<void> {
     try {
       const token = this.auth.token();
+      const windowParam = waitMs === undefined ? '' : `&waitMs=${encodeURIComponent(String(waitMs))}`;
       const response = await fetch(
-        `/api/workspaces/${id}/chat/attach?cursor=${encodeURIComponent(String(cursor))}`,
+        `/api/workspaces/${id}/chat/attach?cursor=${encodeURIComponent(String(cursor))}${windowParam}`,
         {
           method: 'GET',
           headers: {
@@ -341,6 +443,10 @@ export class AtelierService {
     }
     const seq = Number(id);
     if (Number.isFinite(seq) && seq > 0) {
+      // Déjà vu par une autre source (F-84 / SF-84-04) : un événement ne s'applique qu'une fois.
+      if (handlers.acceptSeq && !handlers.acceptSeq(seq)) {
+        return;
+      }
       handlers.onSeq?.(seq);
     }
     let payload: Partial<AtelierStreamAction> & { text?: string; error?: string } & {
@@ -377,7 +483,13 @@ export class AtelierService {
     } catch {
       return;
     }
-    if (event === 'action') {
+    if (event === 'started') {
+      // La demande est prise en main (F-84 / SF-84-04) : premier événement du tour.
+      handlers.onStarted?.({
+        turnId: payload.turnId ?? null,
+        startedAt: typeof payload.startedAt === 'number' ? payload.startedAt : 0,
+      });
+    } else if (event === 'action') {
       handlers.onAction({ type: payload.type ?? 'read', path: payload.path });
     } else if (event === 'output') {
       // Sortie d'une commande exécutée sur la machine connectée (F-38 / SF-38-07). Additif : un

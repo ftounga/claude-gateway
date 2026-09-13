@@ -1046,6 +1046,13 @@ describe('AtelierTerminalComponent', () => {
       expect(lineText()).toContain('démarrage…');
     });
 
+    it('dit que la demande est prise en main avant la première étape (F-84 / SF-84-04)', () => {
+      live({ accepted: true } as never);
+
+      expect(lineText()).toContain('demande reçue — Claude réfléchit…');
+      expect(lineText()).not.toContain('démarrage…');
+    });
+
     it('montre la commande en cours et compte les étapes', () => {
       live({
         blocks: [

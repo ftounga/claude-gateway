@@ -1172,7 +1172,17 @@ public class AtelierChatService implements RelayInterruptTarget {
             // pour qu'un one-liner de 3 000 caractères ne noie pas la liste des étapes (contrat §3).
             case "bash" -> new AtelierProgressListener.AtelierStepEvent("bash",
                     shorten(arg(input, "command"), STEP_COMMAND_CHARS));
-            default -> null;
+            // F-84 / SF-84-04 : une délégation peut durer des minutes — la question part à l'écran
+            // AVANT, sans quoi le terminal reste muet tout du long.
+            case "explore" -> new AtelierProgressListener.AtelierStepEvent("explore",
+                    shorten(arg(input, "question"), STEP_COMMAND_CHARS));
+            // Le plan a son propre affichage (SF-39-13) : une étape de plus le dirait deux fois.
+            case "set_plan" -> null;
+            // Tout autre outil (volet Teams, outils à venir) se montre quand il COMMENCE, avec sa
+            // cible d'audit — ce qu'on a demandé, jamais ce qui est revenu (F-88 / SF-88-03, D2).
+            default -> call.name() == null || call.name().isBlank()
+                    ? null
+                    : new AtelierProgressListener.AtelierStepEvent(call.name(), auditTarget(call));
         };
     }
 

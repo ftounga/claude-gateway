@@ -39,6 +39,13 @@ describe('chatStepsToBlocks (F-39 SF-39-08)', () => {
     expect(blocks[1].command).toBe('écriture b.txt');
   });
 
+  it('montre la question d’une exploration avant sa réponse (F-84 / SF-84-04)', () => {
+    const blocks = chatStepsToBlocks([{ type: 'explore', path: 'où est AppConfig ?' }]);
+
+    expect(blocks[0].command).toBe('exploration « où est AppConfig ? »');
+    expect(blocks[0].hasOutput).toBeFalse();
+  });
+
   it('reste présentable sur un type inconnu plutôt que de l\'étiqueter faussement', () => {
     // Le type est une chaîne libre (contrat de messages runner §3) : le backend peut en ajouter.
     const blocks = chatStepsToBlocks([{ type: 'quelque_chose', path: 'argument brut' }]);

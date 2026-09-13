@@ -5,6 +5,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -28,6 +30,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @Component
 public class LiveTurnRegistry {
 
+    private static final Logger log = LoggerFactory.getLogger(LiveTurnRegistry.class);
+
     private final Map<String, LiveTurn> turns = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
 
@@ -40,6 +44,15 @@ public class LiveTurnRegistry {
         LiveTurn turn = new LiveTurn(userId, workspaceId, objectMapper);
         LiveTurn previous = turns.put(key(userId, workspaceId), turn);
         if (previous != null) {
+            if (previous.live()) {
+                // Constaté le 2026-09-13 (F-84 / SF-84-04) : un écran qui n'a pas vu le tour en cours
+                // — flux retenu par un proxy — a laissé renvoyer la demande. Le tour précédent perd
+                // ses spectateurs et devient introuvable, mais sa boucle continue jusqu'à sa fin.
+                // Rien ne le disait ; désormais le journal le dit.
+                log.warn("Tour d'atelier remplacé par un nouvel envoi alors qu'il tournait encore "
+                        + "(workspace={}, tour={}, événements={}) : il n'est plus suivi",
+                        workspaceId, previous.turnId(), previous.cursor());
+            }
             previous.finish();
         }
         return turn;
