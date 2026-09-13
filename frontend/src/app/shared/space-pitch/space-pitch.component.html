@@ -1,0 +1,39 @@
+<section class="space-pitch" [attr.data-space]="space()" [attr.aria-label]="pitch().title">
+  <div class="space-pitch__head">
+    <mat-icon class="space-pitch__icon" aria-hidden="true">{{ pitch().icon }}</mat-icon>
+    <div>
+      <h2 class="space-pitch__title">{{ pitch().title }}</h2>
+      <p class="space-pitch__lede">{{ pitch().lede }}</p>
+    </div>
+  </div>
+
+  <ul class="space-pitch__points">
+    @for (point of pitch().points; track point.icon) {
+      <li class="space-pitch__point">
+        <mat-icon aria-hidden="true">{{ point.icon }}</mat-icon>
+        <span>{{ point.text }}</span>
+      </li>
+    }
+  </ul>
+
+  <p class="space-pitch__clients">
+    Un client, deux espaces : les clients déjà connectés dans {{ otherSpace() }} s'y activent
+    <strong>sans rien réappairer</strong>.
+  </p>
+
+  <div class="space-pitch__trial">
+    <p><strong>Essayer</strong> — {{ pitch().trial }}</p>
+    <div class="space-pitch__actions">
+      <a
+        mat-flat-button
+        color="primary"
+        class="space-pitch__code"
+        [routerLink]="billingRoute"
+        [fragment]="accessCodeFragment"
+      >
+        J'ai un code d'essai
+      </a>
+      <a mat-stroked-button class="space-pitch__plans" [routerLink]="billingRoute">Voir les formules</a>
+    </div>
+  </div>
+</section>

@@ -102,7 +102,10 @@ describe('VigieComponent', () => {
   it("sans droit : l'encart de la Vigie, et aucune lecture des clients", () => {
     const root = build({ entitled: false });
 
-    expect(root.querySelector('.vigie__not-entitled')?.textContent).toContain("La Vigie n'est pas ouverte");
+    const pitch = root.querySelector('.vigie__not-entitled app-space-pitch, app-space-pitch.vigie__not-entitled');
+    expect(pitch?.textContent).toContain('La Vigie');
+    expect(pitch?.textContent).toContain('Essai de deux semaines');
+    expect(root.querySelector('.forge-fleet__refresh')).toBeNull();
     expect(atelier.runnerHostsOverview).not.toHaveBeenCalled();
     expect(root.querySelector('app-forge-rail')).toBeNull();
   });
@@ -383,5 +386,22 @@ describe('VigieComponent', () => {
     expect(link?.textContent).toContain('Voir dans la Forge');
     expect(link?.getAttribute('href')).toBe('/forge/h1');
     expect(document.querySelector('.vigie__activate-forge')).toBeNull();
+  });
+
+  // ---- F-106 / SF-106-05 : la page d'un espace non souscrit ----
+
+  it('un droit illisible montre aussi la présentation de la Vigie, sans lire les clients', () => {
+    build({ entitled: false });
+    TestBed.resetTestingModule();
+    const root = build();
+    atelier.teamsAccess.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+    atelier.runnerHostsOverview.calls.reset();
+
+    component.ngOnInit();
+    fixture.detectChanges();
+
+    expect(component.error()).toBe('not-entitled');
+    expect(root.querySelector('app-space-pitch')?.textContent).toContain('La Vigie');
+    expect(atelier.runnerHostsOverview).not.toHaveBeenCalled();
   });
 });

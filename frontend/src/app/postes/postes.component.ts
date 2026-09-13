@@ -37,6 +37,7 @@ import { LiveBadgeComponent } from '../shared/live-badge/live-badge.component';
 import { ARCHIVE_ACCEPT } from '../shared/file-selectors';
 import { HostTone, hostTone } from '../shared/host-identity';
 import { MissionBadgeComponent } from '../shared/mission-badge/mission-badge.component';
+import { SpacePitchComponent } from '../shared/space-pitch/space-pitch.component';
 import { TerminalPreviewComponent } from '../shared/terminal-preview/terminal-preview.component';
 import {
   FORGE_ACCESS_CODE_FRAGMENT,
@@ -185,6 +186,7 @@ const EMPTY_HOSTED: RunnerHostOverview = {
     HostBadgeComponent,
     LiveBadgeComponent,
     MissionBadgeComponent,
+    SpacePitchComponent,
     TerminalPreviewComponent,
     MatButtonModule,
     MatCardModule,

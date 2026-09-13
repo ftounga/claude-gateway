@@ -22,6 +22,7 @@ import { LiveBadgeComponent } from '../shared/live-badge/live-badge.component';
 import { TeamsLinkBadgeComponent } from '../shared/teams-link-badge/teams-link-badge.component';
 import { TeamsLink, TeamsLinkService } from '../atelier/teams/teams-link.service';
 import { MissionBadgeComponent } from '../shared/mission-badge/mission-badge.component';
+import { SpacePitchComponent } from '../shared/space-pitch/space-pitch.component';
 import {
   FORGE_ACCESS_BILLING_ROUTE,
   FORGE_ACCESS_CODE_FRAGMENT,
@@ -79,6 +80,7 @@ export type VigieError = 'none' | 'network' | 'forbidden' | 'not-entitled';
     HostBadgeComponent,
     LiveBadgeComponent,
     MissionBadgeComponent,
+    SpacePitchComponent,
     TeamsLinkBadgeComponent,
     MatButtonModule,
     MatCardModule,
