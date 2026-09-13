@@ -69,7 +69,7 @@ noms, des chiffres, des captures du client.
   - **Amendement nécessaire à la règle de F-89** (« un terminal de projet reste textuel pour
     toujours ») : la règle protège les **sorties de commande**, qui restent textuelles. Une page
     publiée n'est pas une sortie de commande, c'est un **document rendu par l'agent** : son bloc est
-    admis dans tous les terminaux. **À valider par le PO.**
+    admis dans tous les terminaux. **Tranché le 2026-09-13** : le PO a délégué le choix (« Choisis ») ; retenu — les sorties de commande restent textuelles, le bloc de page est admis partout.
 - **Les pages d'un lieu** : un onglet **Pages** dans le projet (Forge) et dans le client (Vigie) —
   vignette, titre, date, version, *Renommer*, *Supprimer*, *Versions précédentes*, *Télécharger le
   fichier HTML*.

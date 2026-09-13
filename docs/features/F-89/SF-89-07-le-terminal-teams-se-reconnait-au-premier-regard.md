@@ -22,7 +22,7 @@ confondent. **C'est une réduction du besoin, pas un arbitrage du PO** ; ce corr
 - Le terminal Teams a **son propre fond**, franchement distinct de celui des autres terminaux, **sombre**
   pour rester un terminal. Proposition par défaut : **« Prune » `#231A36`** (barre `#1B1429`, cartes
   `#2E2345`, filets `#43335F`, texte `#D9CFEA`, titres `#FFFFFF`). Alternatives présentées au PO :
-  « Pétrole » `#0D2A30`, « Papier » `#F7F5F0` (clair). **Couleur finale à confirmer par le PO.**
+  « Pétrole » `#0D2A30`, « Papier » `#F7F5F0` (clair). **Tranché le 2026-09-13 : « Prune »** — le PO a délégué le choix (« Choisis »), retenu sur la recommandation : distinct au premier regard, reste un terminal, ne rappelle pas la marque Microsoft.
 - La barre dit **« Conversations Teams »** à côté du client, avec l'indicateur de liaison (§14).
 - La **couleur d'identité du client** (§9) ne change pas ; les états (§10, §11, §12) gardent leurs
   palettes, vérifiées lisibles sur le nouveau fond (contraste AA au minimum).
