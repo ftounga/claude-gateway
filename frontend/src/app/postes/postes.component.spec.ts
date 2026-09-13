@@ -1024,19 +1024,25 @@ describe('PostesComponent', () => {
   describe('les projets en grille (F-98 / SF-98-03)', () => {
     const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 
-    const flotte: RunnerHostOverview = {
-      ...poste,
-      projects: [
-        { ...poste.projects[1], id: 'a', name: 'zeta', lastActivityAt: minutesAgo(1), active: false },
-        { ...poste.projects[1], id: 'b', name: 'Alpha', lastActivityAt: minutesAgo(30), active: false },
-        {
-          ...poste.projects[1], id: 'c', name: 'migration', lastActivityAt: minutesAgo(60),
-          liveTerminal: true,
-          terminalPreview: { activity: 'AWAITING_APPROVAL', activityDetail: 'aws s3 ls', lines: [] },
-        },
-        { ...poste.projects[1], id: 'd', name: 'beta', lastActivityAt: null, active: false },
-      ],
-    };
+    // Les dates sont posées au début de chaque test, pas au chargement du fichier : sur une suite
+    // longue, plus d'une minute passe entre les deux et « il y a 30 min » devenait « il y a 31 min ».
+    let flotte: RunnerHostOverview;
+
+    beforeEach(() => {
+      flotte = {
+        ...poste,
+        projects: [
+          { ...poste.projects[1], id: 'a', name: 'zeta', lastActivityAt: minutesAgo(1), active: false },
+          { ...poste.projects[1], id: 'b', name: 'Alpha', lastActivityAt: minutesAgo(30), active: false },
+          {
+            ...poste.projects[1], id: 'c', name: 'migration', lastActivityAt: minutesAgo(60),
+            liveTerminal: true,
+            terminalPreview: { activity: 'AWAITING_APPROVAL', activityDetail: 'aws s3 ls', lines: [] },
+          },
+          { ...poste.projects[1], id: 'd', name: 'beta', lastActivityAt: null, active: false },
+        ],
+      };
+    });
 
     function names(): string[] {
       return Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.projet__name'))
