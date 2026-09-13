@@ -119,6 +119,9 @@ export const RUNNER_RESUME_COMMAND = 'java -jar claude-runner.jar';
     './atelier-terminal.component.scss',
     './atelier-terminal-readonly.component.scss',
     './atelier-terminal-teams.component.scss',
+    // QUATRE FEUILLES (F-30 / SF-30-14) : le Markdown rendu du commentaire de l'agent, sous
+    // `::ng-deep` borné — le seul moyen d'atteindre le HTML inséré par `[innerHTML]`.
+    './atelier-terminal-markdown.component.scss',
   ],
 })
 export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
