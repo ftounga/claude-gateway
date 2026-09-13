@@ -14,6 +14,11 @@ spring:
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.xml
 app:
+  # F-110 : travailleur de la file des courriels du client désactivé en tests ; ClientMailOutbox.runOnce() est
+  # appelé directement.
+  client-mail:
+    worker:
+      enabled: false
   # Worker de polling OCR désactivé en tests : la logique est testée en appelant
   # DocumentService.pollPendingJobs() directement (déterminisme total, pas de scheduler concurrent).
   ocr:

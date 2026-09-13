@@ -856,6 +856,30 @@ describe('AtelierService', () => {
     ]);
   });
 
+  it('relaie le reçu d\'un courriel mis en file, et ignore un événement sans reçu (F-110 / SF-110-02)', async () => {
+    fakeSseFetch([
+      'event:email\ndata:{"toolUseId":"toolu_9","email":{"emailId":"e1","recipient":"franck@cagip.fr",'
+        + '"recipientVerified":true,"clientName":"CAGIP","subject":"CR","attachmentCount":0,"status":"PENDING"}}',
+      'event:email\ndata:{"toolUseId":"toolu_10"}',
+      'event:done\ndata:{"reply":"Fini.","actions":[],"messageId":"m1"}',
+    ]);
+    const seen: unknown[] = [];
+
+    await service.streamChat('w1', 'envoie-moi le CR', {
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: () => undefined,
+      onError: () => undefined,
+      onEmail: (event) => seen.push(event),
+    });
+
+    expect(seen).toEqual([{
+      toolUseId: 'toolu_9',
+      email: { emailId: 'e1', recipient: 'franck@cagip.fr', recipientVerified: true, clientName: 'CAGIP',
+        subject: 'CR', attachmentCount: 0, status: 'PENDING' },
+    }]);
+  });
+
   it("relaie le délai de la porte quand la gateway l'annonce (F-47 / SF-47-02)", async () => {
     fakeSseFetch([
       'event:confirm_request\ndata:{"toolUseId":"toolu_1","tool":"bash","detail":"npm test",'

@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-110 / SF-110-02 — LES COURRIELS DU CLIENT : LA FILE ET LE JOURNAL.
+
+      Une ligne par courriel que l'utilisateur s'envoie (outil `email_me`, `kind` = AGENT ; le résumé du matin,
+      SF-110-04, `kind` = MORNING_SUMMARY). Le destinataire est RÉSOLU PAR LA GATEWAY (adresse vérifiée du
+      client, sinon adresse du compte : `recipient_verified` = false) — jamais fourni par le modèle.
+
+      `status` : PENDING → SENDING (bail `leased_until`, tous pods confondus) → SENT | FAILED. Les corps
+      (`body_text`, `body_html`) n'existent que le temps de l'envoi : ils sont EFFACÉS à l'état final, et la
+      ligne reste le journal (date, poste, objet, taille, état, motif).
+
+      Clés étrangères en cascade vers `users` et `runner_hosts`, comme `host_mail_addresses` (100).
+    -->
+    <changeSet id="101-client-emails" author="claude-gateway">
+        <createTable tableName="client_emails">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"
+                             foreignKeyName="fk_client_emails_user"
+                             references="users(id)" deleteCascade="true"/>
+            </column>
+            <column name="host_id" type="uuid">
+                <constraints nullable="false"
+                             foreignKeyName="fk_client_emails_host"
+                             references="runner_hosts(id)" deleteCascade="true"/>
+            </column>
+            <column name="workspace_id" type="uuid"/>
+            <column name="kind" type="varchar(24)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="client_name" type="varchar(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="recipient" type="varchar(254)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="recipient_verified" type="boolean">
+                <constraints nullable="false"/>
+            </column>
+            <column name="subject" type="varchar(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="size_bytes" type="int">
+                <constraints nullable="false"/>
+            </column>
+            <column name="attachment_count" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="varchar(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="attempts" type="int" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="next_attempt_at" type="timestamp with time zone"/>
+            <column name="leased_until" type="timestamp with time zone"/>
+            <column name="failure_reason" type="varchar(200)"/>
+            <column name="sent_at" type="timestamp with time zone"/>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="client_emails" indexName="idx_client_emails_user_kind_created">
+            <column name="user_id"/>
+            <column name="kind"/>
+            <column name="created_at"/>
+        </createIndex>
+        <createIndex tableName="client_emails" indexName="idx_client_emails_status_next">
+            <column name="status"/>
+            <column name="next_attempt_at"/>
+        </createIndex>
+        <createIndex tableName="client_emails" indexName="idx_client_emails_user_host">
+            <column name="user_id"/>
+            <column name="host_id"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="client_emails"/>
+        </rollback>
+    </changeSet>
+
+    <!-- Les corps : `text` en PostgreSQL ; H2 mappe `text` sur CLOB, que la validation de schéma refuse face au
+         `text` de l'entité — on reprend `varchar(1000000)`, comme `terminal_json` (041). -->
+    <changeSet id="101-client-emails-bodies-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="client_emails">
+            <column name="body_text" type="text"/>
+            <column name="body_html" type="text"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="101-client-emails-bodies-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="client_emails">
+            <column name="body_text" type="varchar(1000000)"/>
+            <column name="body_html" type="varchar(1000000)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

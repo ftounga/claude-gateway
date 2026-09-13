@@ -53,7 +53,18 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Block(String tool, String command, String toolUseId, String threadId,
             String output, boolean hasOutput, boolean error, boolean expanded,
-            fr.claudegateway.teams.block.TeamsBlockCard card) {
+            fr.claudegateway.teams.block.TeamsBlockCard card,
+            fr.claudegateway.mail.ClientMailReceipt email) {
+
+        /**
+         * Forme d'avant F-110 : aucun courriel. Le bloc « Courriel envoyé » (F-110 / SF-110-02) n'est porté que
+         * par l'appel {@code email_me} qui a mis un courriel en file.
+         */
+        public Block(String tool, String command, String toolUseId, String threadId, String output,
+                boolean hasOutput, boolean error, boolean expanded,
+                fr.claudegateway.teams.block.TeamsBlockCard card) {
+            this(tool, command, toolUseId, threadId, output, hasOutput, error, expanded, card, null);
+        }
 
         /**
          * Forme <b>textuelle</b> — celle de tous les blocs, partout sauf dans un terminal Teams.
@@ -65,7 +76,7 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
          */
         public Block(String tool, String command, String toolUseId, String threadId, String output,
                 boolean hasOutput, boolean error, boolean expanded) {
-            this(tool, command, toolUseId, threadId, output, hasOutput, error, expanded, null);
+            this(tool, command, toolUseId, threadId, output, hasOutput, error, expanded, null, null);
         }
     }
 
@@ -130,7 +141,9 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
                 // Le BLOC RICHE survit au bornage (F-89 / SF-89-02) : il n'est pas du texte, il ne
                 // pèse pas le poids d'une sortie de commande, et le perdre en tronquant ferait
                 // disparaître un compte rendu entier pour cause de sortie trop longue.
-                block.card());
+                block.card(),
+                // Le reçu d'un courriel (F-110 / SF-110-02) survit au bornage pour la même raison.
+                block.email());
     }
 
     /**

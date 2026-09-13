@@ -112,6 +112,7 @@ import {
 import { killHostSuccessMessage } from '../shared/kill-host-dialog/kill-host-messages';
 import { chatStepsToBlocks } from './terminal/chat-steps';
 import { cardBlock, withCards } from './terminal/teams-block';
+import { emailBlock } from './terminal/terminal-email';
 import { derivePreview } from './terminal/terminal-preview';
 import { RADAR_DRAFT_STATE, radarDraftFrom } from '../shared/radar-draft';
 
@@ -1480,6 +1481,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
           ];
           this.mirrorLocalSteps();
         }),
+      // UN COURRIEL mis en file (F-110 / SF-110-02) : rangé comme une carte, pour survivre au recalcul des blocs.
+      onEmail: (event) =>
+        this.zone.run(() => {
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: emailBlock(event.toolUseId, event.email),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
       onDone: (done) =>
         this.zone.run(() => {
           // Un tour de suite part dans le même flux (F-84 / SF-84-06) : la réponse de ce tour est
@@ -2825,6 +2838,18 @@ export class AtelierComponent implements OnInit, OnDestroy {
             {
               afterSteps: this.streaming()?.steps.length ?? 0,
               block: cardBlock(event.toolUseId, event.card),
+            },
+          ];
+          this.mirrorLocalSteps();
+        }),
+      // UN COURRIEL mis en file (F-110 / SF-110-02) : rangé comme une carte, pour survivre au recalcul des blocs.
+      onEmail: (event) =>
+        this.zone.run(() => {
+          this.cardsOfTurn = [
+            ...this.cardsOfTurn,
+            {
+              afterSteps: this.streaming()?.steps.length ?? 0,
+              block: emailBlock(event.toolUseId, event.email),
             },
           ];
           this.mirrorLocalSteps();

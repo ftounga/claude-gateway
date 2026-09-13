@@ -1,3 +1,18 @@
+/** **L'état de remise d'un courriel du client** (F-110 / SF-110-02), jamais le corps. */
+export interface ClientEmailView {
+  id: string;
+  recipient: string;
+  recipientVerified: boolean;
+  clientName: string;
+  subject: string;
+  attachmentCount: number;
+  sizeBytes: number;
+  status: 'PENDING' | 'SENDING' | 'SENT' | 'FAILED' | string;
+  failureReason: string | null;
+  createdAt: string;
+  sentAt: string | null;
+}
+
 /**
  * **L'adresse de réception d'un client** (F-110 / SF-110-01), telle que la gateway la rend. Elle ne porte
  * jamais le code de vérification.

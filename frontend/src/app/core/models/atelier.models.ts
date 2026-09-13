@@ -643,6 +643,12 @@ export interface AtelierStreamHandlers {
   onCard?: (event: AtelierCardEvent) => void;
 
   /**
+   * **Un courriel mis en file** (F-110 / SF-110-02) : le bloc « Courriel envoyé ». Optionnel : un backend
+   * antérieur n'émet jamais cet événement.
+   */
+  onEmail?: (event: AtelierEmailEvent) => void;
+
+  /**
    * Numéro d'ordre du dernier événement reçu (F-84 / SF-84-02), lu dans le champ `id:` du
    * protocole SSE. C'est le **curseur** : en se rebranchant, l'écran le renvoie et ne reçoit que
    * ce qu'il a manqué — ni doublon, ni trou.
@@ -922,6 +928,8 @@ export interface AtelierTerminalBlock {
    * lignes sans source afficherait un compte rendu amputé sans le dire.</p>
    */
   card?: AtelierTeamsCard | null;
+  /** **Le bloc « Courriel envoyé »** (F-110 / SF-110-02), dans tout terminal. Absent partout ailleurs. */
+  email?: AtelierTerminalEmail | null;
 }
 
 /**
@@ -999,6 +1007,27 @@ export interface AtelierTeamsCard {
 export interface AtelierCardEvent {
   toolUseId: string;
   card: AtelierTeamsCard;
+}
+
+/**
+ * **Le reçu d'un courriel mis en file** (F-110 / SF-110-02), tel que le porte un bloc du terminal. Jamais le
+ * corps ; le destinataire est celui que la gateway a résolu.
+ */
+export interface AtelierTerminalEmail {
+  emailId: string;
+  recipient: string;
+  /** Faux quand c'est le repli sur l'adresse du compte. */
+  recipientVerified: boolean;
+  clientName: string;
+  subject: string;
+  attachmentCount: number;
+  status: 'PENDING' | 'SENDING' | 'SENT' | 'FAILED' | string;
+}
+
+/** Charge utile de l'événement SSE `email` (F-110 / SF-110-02). */
+export interface AtelierEmailEvent {
+  toolUseId: string;
+  email: AtelierTerminalEmail;
 }
 
 /** Le droit Teams du compte (F-89 / SF-89-01), réponse de `GET /api/teams/access`. */

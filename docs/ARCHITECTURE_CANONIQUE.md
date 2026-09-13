@@ -340,6 +340,25 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     appelant. API `/runner-hosts/{hostId}/mail-address` (garde runner : Forge ou Vigie).
   - **Clés étrangères en cascade** (choix assumé, contrairement à `host_spaces`) : l'adresse tombe avec le
     poste et avec le compte sans purge à écrire ailleurs.
+- **client_emails** — les **courriels que l'utilisateur s'envoie** : file d'envoi **et** journal (F-110 /
+  SF-110-02, migration `101`).
+  - `client_emails` : `id`, `user_id (FK users ON DELETE CASCADE)`, `host_id (FK runner_hosts ON DELETE
+    CASCADE)`, `workspace_id` (terminal d'origine, nullable), `kind (AGENT | MORNING_SUMMARY)`, `client_name`,
+    `recipient`, `recipient_verified`, `subject (200)`, `size_bytes`, `attachment_count`, `body_text`,
+    `body_html` (`text` ; `varchar(1000000)` en H2), `status (PENDING | SENDING | SENT | FAILED)`, `attempts`,
+    `next_attempt_at`, `leased_until`, `failure_reason`, `sent_at`, `created_at`, `updated_at`. Index
+    `(user_id, kind, created_at)` (limite quotidienne), `(status, next_attempt_at)` (travailleur),
+    `(user_id, host_id)`.
+  - **Destinataire jamais fourni par le modèle** : l'outil `email_me` (`ClientMailTool`, donné dans
+    `AtelierChatService.buildTools` à tout terminal de poste avec Forge ou Vigie) n'a aucun champ destinataire ;
+    `resolveRecipient` (SF-110-01) le fixe à la mise en file. Refus des secrets manifestes, 50 courriels `AGENT`
+    par compte sur 24 h glissantes, Markdown rendu par commonmark (HTML brut échappé, liens assainis).
+  - **Envoi asynchrone** : `ClientMailWorker` → `ClientMailOutbox.runOnce()` prend chaque ligne sous bail (mise
+    à jour conditionnelle, 2 min), envoie par `EmailService.sendClientMail` (`multipart/alternative`, nom
+    affiché « claude-gateway pour <client> », délais SMTP bornés F-77). Refus définitif → `FAILED` ; échec
+    passager → reprise 1/5/15/60 min, `FAILED` au 5ᵉ. **Corps effacés à l'état final** : la ligne reste le
+    journal. `GET /client-emails/{id}` rend l'état (jamais le corps) ; le terminal le relit (bloc « Courriel
+    envoyé », champ `email` du bloc de transcription, événement SSE `email`).
 - **user_api_keys** — clé API personnelle BYOK chiffrée au repos (F-03, migration `030`, OQ-06 : AWS KMS
   envelope encryption). **Une seule clé par utilisateur** (`user_id` unique). **Aucune clé en clair** : seuls
   le blob chiffré et les 4 derniers caractères sont persistés.

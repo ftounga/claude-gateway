@@ -70,6 +70,7 @@ import {
   momentSpeaker,
   shortTime,
 } from './teams-block';
+import { TerminalEmailComponent } from './terminal-email.component';
 import {
   AtelierFileDiffView,
   DiffLine,
@@ -104,7 +105,7 @@ export const RUNNER_RESUME_COMMAND = 'java -jar claude-runner.jar';
   selector: 'app-atelier-terminal',
   imports: [
     FormsModule, ForgeBreadcrumbComponent, LiveBadgeComponent, MarkdownPipe, MatButtonModule,
-    TeamsLinkBadgeComponent, NgTemplateOutlet,
+    TeamsLinkBadgeComponent, NgTemplateOutlet, TerminalEmailComponent,
     MatButtonToggleModule, MatIconModule, MatProgressSpinnerModule, MatTooltipModule, RouterLink,
   ],
   templateUrl: './atelier-terminal.component.html',

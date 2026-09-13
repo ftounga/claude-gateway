@@ -34,4 +34,14 @@ public interface EmailService {
      * @param code       code à usage unique, jamais journalisé en production
      */
     void sendReceptionAddressCode(String toEmail, String clientName, String code);
+
+    /**
+     * Envoie un courriel que l'utilisateur s'envoie à lui-même (F-110 / SF-110-02), en
+     * {@code multipart/alternative} (texte + HTML), avec le nom affiché de l'expéditeur. Appelé par le
+     * travailleur de la file, jamais dans un tour : délais SMTP bornés (F-77).
+     *
+     * @param message courriel prêt à partir, destinataire déjà résolu par la gateway
+     * @throws org.springframework.mail.MailException si le relais refuse ou ne répond pas
+     */
+    void sendClientMail(ClientMailMessage message);
 }
