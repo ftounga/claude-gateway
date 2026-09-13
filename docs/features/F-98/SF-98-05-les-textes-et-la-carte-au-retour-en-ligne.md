@@ -11,7 +11,7 @@ détail » — téléphone)
 
 ## Statut
 
-`in-progress`
+`done`
 
 ## Date de création
 
