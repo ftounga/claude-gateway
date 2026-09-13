@@ -16,7 +16,7 @@
 
 ## Statut
 
-`in-progress`
+`done` — PR #516
 
 ## Date de création
 
