@@ -51,6 +51,10 @@ import {
   CloseMissionDialogResult,
 } from './close-mission-dialog/close-mission-dialog.component';
 import { RadarExporter } from './radar-export/radar-export';
+import {
+  RadarVerificationDialogComponent,
+  RadarVerificationDialogData,
+} from './radar-verification/radar-verification-dialog.component';
 import { RadarBoardComponent } from './radar/radar-board.component';
 import { RadarDirectoryComponent } from './radar-directory/radar-directory.component';
 import {
@@ -335,7 +339,22 @@ export class VigieComponent implements OnInit {
         }
         this.load(false);
         void this.router.navigate(['/vigie', result.hostId], { queryParamsHandling: 'preserve' });
+        // F-100 / SF-100-06 : à l'activation, la vérification guidée — ce que le runner voit de ce client.
+        this.openVerification({ id: result.hostId, name: result.hostName ?? 'ce client' });
       });
+  }
+
+  /** **La vérification guidée** d'un client (F-100 / SF-100-06), relançable depuis son en-tête. */
+  openVerification(host: Pick<RunnerHostOverview, 'id' | 'name'>): void {
+    if (host.id === null) {
+      return;
+    }
+    this.dialog.open<RadarVerificationDialogComponent, RadarVerificationDialogData>(RadarVerificationDialogComponent, {
+      data: { hostId: host.id, hostName: host.name },
+      width: RadarVerificationDialogComponent.DIALOG_WIDTH,
+      maxWidth: '95vw',
+      autoFocus: false,
+    });
   }
 
   connectClient(): void {

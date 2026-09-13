@@ -18,6 +18,7 @@ import { AddClientDialogComponent } from './add-client-dialog/add-client-dialog.
 import { RemoveClientDialogComponent } from './remove-client-dialog/remove-client-dialog.component';
 import { CloseMissionDialogComponent } from './close-mission-dialog/close-mission-dialog.component';
 import { RadarExporter } from './radar-export/radar-export';
+import { RadarVerificationDialogComponent } from './radar-verification/radar-verification-dialog.component';
 import { VIGIE_REFRESH_MS, VigieComponent } from './vigie.component';
 
 /** La Vigie, l'écran (F-106 / SF-106-02). */
@@ -319,6 +320,27 @@ describe('VigieComponent', () => {
 
     expect(router.navigate).toHaveBeenCalledWith(['/vigie', 'h7'], { queryParamsHandling: 'preserve' });
     expect(atelier.runnerHostsOverview).toHaveBeenCalledTimes(2);
+  });
+
+  // ---- F-100 / SF-100-06 : la vérification guidée ----
+
+  it("activer un client ouvre la vérification guidée sur ce client", () => {
+    build();
+    dialogResults.set(AddClientDialogComponent, { kind: 'activated', hostId: 'h7', hostName: 'CAGIP' });
+
+    component.addClient();
+
+    const call = dialog.open.calls.all().find((c) => c.args[0] === RadarVerificationDialogComponent);
+    expect(call?.args[1]?.data).toEqual({ hostId: 'h7', hostName: 'CAGIP' });
+  });
+
+  it("l'en-tête du client relance la vérification guidée", () => {
+    const root = build({ hostRef: 'h1' });
+
+    (root.querySelector('.vigie__verify') as HTMLButtonElement).click();
+
+    expect(dialog.open.calls.mostRecent().args[0]).toBe(RadarVerificationDialogComponent);
+    expect(dialog.open.calls.mostRecent().args[1]?.data).toEqual({ hostId: 'h1', hostName: 'EDENRED' });
   });
 
   it("connecter un client ouvre l'appairage dans la Vigie", () => {

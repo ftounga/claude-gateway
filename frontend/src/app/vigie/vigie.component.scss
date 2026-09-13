@@ -73,4 +73,20 @@
   &__people {
     display: block;
   }
+
+  /* La vérification guidée (F-100 / SF-100-06) : sur téléphone, l'icône seule (l'infobulle et le libellé
+     accessible restent). */
+  &__verify {
+    white-space: nowrap;
+  }
+
+  @media (max-width: 640px) {
+    &__verify-label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+    }
+  }
 }
