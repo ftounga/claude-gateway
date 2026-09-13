@@ -401,7 +401,9 @@ public class RadarRegistry {
         sync.setStatus(status);
         sync.setFinishedAt(OffsetDateTime.now());
         sync.setCoverage(coverageJson);
-        sync.setConsumedTokens(Math.max(0, consumedTokens));
+        // L'analyse (F-101) cumule sa consommation pendant et après la collecte : la fin de la collecte
+        // ne la baisse jamais.
+        sync.setConsumedTokens(Math.max(sync.getConsumedTokens(), Math.max(0, consumedTokens)));
         return sync;
     }
 

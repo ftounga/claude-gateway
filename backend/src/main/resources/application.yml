@@ -369,6 +369,16 @@ app:
       # que l'utilisateur ne voie sa réponse. Dépassé, on rend la main et la session se termine
       # normalement. Borné à [PT5S, PT120S].
       timeout: ${APP_GOVERNANCE_JUGE_TIMEOUT:PT25S}
+  radar:
+    # LA LECTURE DES ÉCHANGES (F-101) : la file d'analyse des lots remontés par la synchro du soir.
+    # Tâche de fond ; le texte brut ne survit ni à l'analyse, ni à 7 jours.
+    analysis:
+      # Coupe-circuit du travailleur. `false` : aucun lot n'est pris (ils expirent au bout de 7 jours).
+      enabled: ${APP_RADAR_ANALYSIS_ENABLED:true}
+      # Tentatives avant abandon (le brut reste jusqu'à l'expiration).
+      max-attempts: ${APP_RADAR_ANALYSIS_MAX_ATTEMPTS:3}
+      # Rétention du texte brut d'un lot non analysé. JAMAIS plus de 7 jours (cadrage §4.6).
+      raw-retention: ${APP_RADAR_ANALYSIS_RAW_RETENTION:P7D}
   byok:
     # Chiffrement des clés API utilisateur (F-03, OQ-06 : AWS KMS envelope encryption).
     # kms-key-id vide => BYOK dormant (l'ajout de clé renvoie 503), sauf si local-key est fourni.

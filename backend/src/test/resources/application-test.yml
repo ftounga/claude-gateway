@@ -19,6 +19,11 @@ app:
   ocr:
     polling:
       enabled: false
+  radar:
+    # F-101 : travailleur d'analyse du Radar désactivé en tests ; la file est testée en appelant
+    # RadarAnalysisQueue.runOnce()/runHost()/expireRaw() directement.
+    analysis:
+      enabled: false
   rag:
     # Worker d'ingestion RAG désactivé en tests : la logique est testée en appelant
     # IngestionService.ingestPending()/ingest() directement (déterminisme, pas de scheduler concurrent).

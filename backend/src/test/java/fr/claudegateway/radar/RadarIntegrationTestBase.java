@@ -45,6 +45,8 @@ abstract class RadarIntegrationTestBase {
     @Autowired protected RadarCorrectionRepository corrections;
     @Autowired protected RadarCorrectionService correctionService;
     @Autowired protected RadarPurgeRepository purges;
+    @Autowired protected fr.claudegateway.radar.analysis.RadarAnalysisBatchRepository analysisBatches;
+    @Autowired protected fr.claudegateway.radar.analysis.RadarAnalysisLeaseRepository analysisLeases;
 
     protected User alice;
     protected User bob;
@@ -76,6 +78,8 @@ abstract class RadarIntegrationTestBase {
     /** Vide les tables du Radar ; les sous-classes qui ajoutent des tables la surchargent. */
     protected void cleanRadarTables() {
         corrections.deleteAll();
+        analysisBatches.deleteAll();
+        analysisLeases.deleteAll();
         purges.deleteAll();
         links.deleteAll();
         evidence.deleteAll();
