@@ -4,7 +4,11 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { ActivatedRoute, ParamMap, convertToParamMap, provideRouter } from '@angular/router';
 import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
 
-import { RadarEvidenceView, RadarSubjectDetail } from '../../core/models/radar-subject.models';
+import {
+  RadarEvidenceView,
+  RadarSubjectDetail,
+  RadarUnknownView,
+} from '../../core/models/radar-subject.models';
 import { VigiePerson } from '../../core/models/vigie.models';
 import { RadarSubjectService } from '../../core/services/radar-subject.service';
 import { VigieService } from '../../core/services/vigie.service';
@@ -52,10 +56,12 @@ describe('RadarSubjectPageComponent', () => {
   function build(options: {
     subject?: Observable<RadarSubjectDetail>;
     people?: Observable<VigiePerson[]>;
+    unknowns?: Observable<RadarUnknownView[]>;
     subjectId?: string;
   } = {}): HTMLElement {
-    subjects = jasmine.createSpyObj<RadarSubjectService>('RadarSubjectService', ['subject']);
+    subjects = jasmine.createSpyObj<RadarSubjectService>('RadarSubjectService', ['subject', 'unknowns']);
     subjects.subject.and.returnValue(options.subject ?? of(mfa()));
+    subjects.unknowns.and.returnValue(options.unknowns ?? of([]));
     vigie = jasmine.createSpyObj<VigieService>('VigieService', ['people', 'hostSpaces']);
     vigie.people.and.returnValue(options.people ?? of([paul]));
     vigie.hostSpaces.and.returnValue(of([{ hostId: 'h1', name: 'EDENRED', missionStatus: 'ACTIVE', spaces: ['VIGIE'] }]));
@@ -89,7 +95,7 @@ describe('RadarSubjectPageComponent', () => {
     expect(text(root.querySelector('.radar-subject__title'))).toBe('MFA prestataires');
     const badge = root.querySelector('.radar-subject__state');
     expect(text(badge)).toBe('avance');
-    expect(badge?.classList).toContain('badge--success');
+    expect(badge?.classList).toContain('radar-state--success');
     expect(text(root.querySelector('.radar-subject__next-step'))).toBe('Rédiger la note DSI');
     expect(text(root.querySelector('.radar-subject__due'))).toBe('15 octobre 2026');
     expect(text(root.querySelector('.radar-subject__facts'))).toContain('votre note');
@@ -122,7 +128,7 @@ describe('RadarSubjectPageComponent', () => {
 
     expect(text(events[1].querySelector('.radar-subject__event-author'))).toBe('— Paul Martin');
     const meetingLink = events[1].querySelector('a.radar-subject__deep-link') as HTMLAnchorElement;
-    expect(text(meetingLink)).toContain('Ouvrir le moment ·');
+    expect(text(meetingLink)).toContain('Ouvrir la source ·');
     expect(meetingLink.getAttribute('rel')).toBe('noopener noreferrer');
     expect(meetingLink.getAttribute('target')).toBe('_blank');
 
@@ -172,7 +178,7 @@ describe('RadarSubjectPageComponent', () => {
     const banner = root.querySelector('.radar-subject__close-proposed');
     expect(text(banner)).toContain('Le Radar pense que ce sujet est terminé');
     expect(banner?.querySelector('.radar-subject__ref')?.getAttribute('href')).toBe('#preuve-p7');
-    expect(root.querySelector('.radar-subject__state')?.classList).toContain('badge--info');
+    expect(root.querySelector('.radar-subject__state')?.classList).toContain('radar-state--blue');
   });
 
   it('en sommeil : le bandeau le dit sans rien clore', () => {
@@ -229,6 +235,53 @@ describe('RadarSubjectPageComponent', () => {
     expect(subjects.subject).toHaveBeenCalledWith('h1', 's2');
     // Le nom du client n'est lu qu'une fois par client.
     expect(vigie.hostSpaces).toHaveBeenCalledTimes(1);
+  });
+
+  // ---- SF-103-02 : qui, et à qui demander ----
+
+  it('rend les personnes rangées par rôle, le rôle écrit', () => {
+    const role = (id: string, displayName: string, r: 'DECIDES' | 'DRIVES' | 'EXPERT' | 'INFORMED') =>
+      ({ id, personId: `p-${id}`, displayName, jobTitle: id === 'r2' ? 'Cheffe de projet IAM' : null, role: r, evidenceIds: ['p2'] });
+    const root = build({ subject: of(subjectDetail({
+      people: [role('r1', 'Karim', 'EXPERT'), role('r2', 'Sophie', 'DRIVES'), role('r3', 'Paul', 'DECIDES')],
+      chronology: [evidence('p2')],
+    })) });
+
+    const persons = Array.from(root.querySelectorAll('.radar-subject__person'));
+    expect(persons.map((p) => text(p.querySelector('.radar-subject__person-name')))).toEqual(['Paul', 'Sophie', 'Karim']);
+    expect(persons.map((p) => text(p.querySelector('.radar-subject__role')))).toEqual(['décide', 'pilote', 'expert']);
+    expect(text(persons[1].querySelector('.radar-subject__person-job'))).toBe('Cheffe de projet IAM');
+    expect(persons[0].querySelector('.radar-subject__ref')?.getAttribute('href')).toBe('#preuve-p2');
+  });
+
+  it('dit ce que le Radar ne sait pas, et à qui le demander', () => {
+    const root = build({ unknowns: of([
+      { kind: 'COVERAGE', question: "La dernière synchro n'a pas tout lu : ce qui précède peut être incomplet.",
+        ask: null, evidenceIds: [], commitmentId: null },
+      { kind: 'NEXT_STEP', question: "La prochaine étape n'est pas connue.",
+        ask: { personId: 'sophie', displayName: 'Sophie Laurent', jobTitle: 'Cheffe de projet IAM', role: 'DRIVES',
+          reason: 'pilote le sujet' }, evidenceIds: [], commitmentId: null },
+      { kind: 'DECIDER', question: 'On ne sait pas qui décide.', ask: null, evidenceIds: [], commitmentId: null },
+    ] as RadarUnknownView[]) });
+
+    expect(subjects.unknowns).toHaveBeenCalledOnceWith('h1', 's1');
+    const gaps = root.querySelectorAll('.radar-subject__gap');
+    expect(gaps.length).toBe(3);
+    expect(gaps[0].querySelector('.radar-subject__ask')).toBeNull();
+    expect(text(gaps[1].querySelector('.radar-subject__ask')))
+      .toBe('À qui demander : Sophie Laurent, Cheffe de projet IAM — pilote le sujet.');
+    expect(text(gaps[2].querySelector('.radar-subject__ask--nobody'))).toBe("Personne n'est identifié sur ce sujet.");
+  });
+
+  it("des manques illisibles n'empêchent pas la page ; aucun manque est dit aussi", () => {
+    let root = build({ unknowns: throwError(() => new HttpErrorResponse({ status: 500 })) });
+    expect(root.querySelector('.radar-subject__title')).not.toBeNull();
+    expect(text(root.querySelector('.radar-subject__unknowns-error'))).toContain("n'a pas pu être lu");
+
+    TestBed.resetTestingModule();
+    root = build();
+    expect(root.querySelector('.radar-subject__unknowns-empty')).not.toBeNull();
+    expect(text(root.querySelector('.radar-subject__people-empty'))).toContain('Personne');
   });
 
   it('traduit les codes HTTP', () => {

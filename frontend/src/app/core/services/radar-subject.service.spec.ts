@@ -25,4 +25,11 @@ describe('RadarSubjectService', () => {
     expect(req.request.method).toBe('GET');
     req.flush({});
   });
+
+  it('lit ce que le Radar ne sait pas sur le sujet', () => {
+    service.unknowns('h1', 's1').subscribe();
+    const req = httpMock.expectOne('/api/radar/hosts/h1/subjects/s1/unknowns');
+    expect(req.request.method).toBe('GET');
+    req.flush([]);
+  });
 });

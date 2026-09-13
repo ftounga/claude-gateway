@@ -1,34 +1,35 @@
 import {
   RadarEvidenceSource,
+  RadarRole,
+  RadarRoleView,
   RadarEvidenceView,
   RadarSubjectDetail,
   RadarSubjectState,
 } from '../../core/models/radar-subject.models';
+import { SUBJECT_STATE_CHIPS } from '../radar/radar-columns';
 
 /**
  * **La page sujet, en fonctions pures** (F-103 / SF-103-01) : les mots d'un état et d'une source, la
  * numérotation des renvois, les dates en mots, le lien profond. Sans Angular ni HTTP.
  */
 
-/** Un état en mots, et sa pastille §5 — la couleur ne porte jamais seule l'information. */
+/** Un état en mots, et sa pastille `.radar-state--*` (§17) — la couleur ne porte jamais seule l'information. */
 export interface StateBadge {
   label: string;
   badgeClass: string;
 }
 
-const STATE_BADGES: Record<RadarSubjectState, StateBadge> = {
-  NEW: { label: 'nouveau', badgeClass: 'badge--info' },
-  ADVANCING: { label: 'avance', badgeClass: 'badge--success' },
-  WAITING: { label: 'en attente', badgeClass: 'badge--warning' },
-  BLOCKED: { label: 'bloqué', badgeClass: 'badge--error' },
-  DORMANT: { label: 'en sommeil', badgeClass: 'badge--neutral' },
-  CLOSE_PROPOSED: { label: 'clos ?', badgeClass: 'badge--info' },
-  CLOSED: { label: 'clos', badgeClass: 'badge--neutral' },
-};
-
-/** La pastille d'un état ; un état inconnu (gateway plus récente) s'écrit tel quel, en neutre. */
-export function stateBadge(state: string | null | undefined): StateBadge {
-  return STATE_BADGES[state as RadarSubjectState] ?? { label: state ?? '—', badgeClass: 'badge--neutral' };
+/**
+ * La pastille d'un état, **la même que l'onglet Radar** (§17, `SUBJECT_STATE_CHIPS`) : un sujet clos qui
+ * se réveille dit « se réveille » ; un état inconnu (gateway plus récente) s'écrit tel quel, en neutre.
+ */
+export function stateBadge(state: string | null | undefined, awake = false): StateBadge {
+  if (awake) {
+    return { label: 'se réveille', badgeClass: 'radar-state--blue' };
+  }
+  const chip = SUBJECT_STATE_CHIPS[state as RadarSubjectState];
+  return chip ? { label: chip.label, badgeClass: `radar-state--${chip.tone}` }
+    : { label: state ?? '—', badgeClass: 'radar-state--neutral' };
 }
 
 /** Une source en mots et son icône Material. */
@@ -38,7 +39,7 @@ export interface SourceView {
 }
 
 const SOURCES: Record<RadarEvidenceSource, SourceView> = {
-  TEAMS_MESSAGE: { label: 'Message Teams', icon: 'chat' },
+  TEAMS_MESSAGE: { label: 'Message Teams', icon: 'forum' },
   TEAMS_MEETING: { label: 'Réunion Teams', icon: 'videocam' },
   LOCAL_RECORDING: { label: 'Enregistrement hors Teams', icon: 'mic' },
   USER_NOTE: { label: 'Votre nouvelle', icon: 'edit_note' },
@@ -129,20 +130,40 @@ export function safeLink(url: string | null | undefined): string | null {
   return /^https:\/\/[^\s]+$/i.test(trimmed) ? trimmed : null;
 }
 
-/** Le libellé du lien profond d'une preuve, selon sa source — la seconde pour une réunion. */
+/**
+ * Le libellé du lien profond d'une preuve : *Ouvrir la source* (§17), et pour une réunion **la seconde**
+ * où la phrase a été dite (cadrage §8).
+ */
 export function linkLabel(evidence: Pick<RadarEvidenceView, 'source' | 'occurredAt'>): string {
-  switch (evidence.source) {
-    case 'TEAMS_MEETING': {
-      const date = new Date(evidence.occurredAt);
-      return Number.isNaN(date.getTime()) ? 'Ouvrir le moment'
-        : `Ouvrir le moment · ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  if (evidence.source === 'TEAMS_MEETING') {
+    const date = new Date(evidence.occurredAt);
+    if (!Number.isNaN(date.getTime())) {
+      return `Ouvrir la source · ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
     }
-    case 'LOCAL_RECORDING':
-      return 'Ouvrir la transcription';
-    case 'PASTED_MAIL':
-    case 'USER_NOTE':
-      return 'Ouvrir';
-    default:
-      return 'Ouvrir dans Teams';
   }
+  return 'Ouvrir la source';
+}
+
+const ROLE_LABELS: Record<RadarRole, string> = {
+  DECIDES: 'décide',
+  DRIVES: 'pilote',
+  EXPERT: 'expert',
+  INFORMED: 'informé',
+};
+
+const ROLE_ORDER: readonly RadarRole[] = ['DECIDES', 'DRIVES', 'EXPERT', 'INFORMED'];
+
+/** Un rôle en mots ; toujours écrit, jamais une couleur seule. */
+export function roleLabel(role: string | null | undefined): string {
+  return ROLE_LABELS[role as RadarRole] ?? (role ?? '');
+}
+
+/** Les personnes d'un sujet : qui décide, qui pilote, les experts, les informés ; puis par nom. */
+export function peopleByRole(people: readonly RadarRoleView[] | null | undefined): RadarRoleView[] {
+  const rank = (role: string) => {
+    const index = ROLE_ORDER.indexOf(role as RadarRole);
+    return index < 0 ? ROLE_ORDER.length : index;
+  };
+  return [...(people ?? [])].sort((a, b) =>
+    rank(a.role) - rank(b.role) || a.displayName.localeCompare(b.displayName, 'fr', { sensitivity: 'base' }));
 }

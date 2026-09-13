@@ -45,7 +45,7 @@
           </nav>
           <div class="radar-subject__title-row">
             <h1 class="radar-subject__title">{{ subject.name }}</h1>
-            <span class="badge radar-subject__state" [class]="badge().badgeClass">
+            <span class="badge radar-state radar-subject__state" [class]="badge().badgeClass">
               {{ badge().label }}
             </span>
             @if (subject.stateSovereign) {
@@ -163,7 +163,6 @@
                   class="radar-subject__event"
                   [id]="'preuve-' + evidence.id"
                   [class.radar-subject__event--focused]="focusedEvidenceId() === evidence.id"
-                  [class.radar-subject__event--mine]="evidence.source === 'USER_NOTE' || evidence.source === 'PASTED_MAIL' || evidence.source === 'LOCAL_RECORDING'"
                   [attr.data-source]="evidence.source"
                 >
                   <span class="radar-subject__event-when">{{ whenLabel(evidence.occurredAt) }}</span>
@@ -194,6 +193,68 @@
           }
         </section>
       </div>
+
+      <!-- LA COLONNE DE DROITE (SF-103-02) : qui est dans ce sujet, ce que le Radar ne sait pas, à qui demander. -->
+      <aside class="radar-subject__side">
+        <section class="radar-subject__people" aria-labelledby="radar-subject-people">
+          <h2 id="radar-subject-people" class="radar-subject__h">Qui est dans ce sujet</h2>
+          @if (roles().length === 0) {
+            <p class="radar-subject__empty radar-subject__people-empty">Personne n'est encore rattaché à ce sujet.</p>
+          } @else {
+            <ul class="radar-subject__persons">
+              @for (person of roles(); track person.id) {
+                <li class="radar-subject__person">
+                  <!-- Une personne n'a pas de ton d'identité (§9 réservé aux machines). -->
+                  <mat-icon class="radar-subject__person-icon" aria-hidden="true">person</mat-icon>
+                  <span class="radar-subject__person-text">
+                    <span class="radar-subject__person-name">{{ person.displayName }}</span>
+                    @if (person.jobTitle) {
+                      <span class="radar-subject__person-job">{{ person.jobTitle }}</span>
+                    }
+                  </span>
+                  <!-- §17 : une personne est écrite, jamais colorée — le rôle en pastille neutre. -->
+                  <span class="badge badge--neutral radar-subject__role">
+                    {{ roleLabel(person.role) }}
+                  </span>
+                  <span class="radar-subject__refs">
+                    @for (ref of refs(person.evidenceIds); track ref) {<a class="radar-subject__ref" [attr.href]="'#preuve-' + evidenceIdOf(ref)" (click)="focusEvidence(ref, $event)">{{ ref }}</a>}
+                  </span>
+                </li>
+              }
+            </ul>
+          }
+        </section>
+
+        <section class="radar-subject__unknowns" aria-labelledby="radar-subject-unknowns">
+          <h2 id="radar-subject-unknowns" class="radar-subject__h">Ce que le Radar ne sait pas</h2>
+          @if (unknowns(); as list) {
+            @if (list === 'error') {
+              <p class="radar-subject__empty radar-subject__unknowns-error">Ce que le Radar ne sait pas n'a pas pu être lu.</p>
+            } @else if (list.length === 0) {
+              <p class="radar-subject__empty radar-subject__unknowns-empty">Rien ne manque au registre sur ce sujet.</p>
+            } @else {
+              <ul class="radar-subject__gaps">
+                @for (gap of list; track $index) {
+                  <li class="radar-subject__gap" [attr.data-kind]="gap.kind">
+                    <span class="radar-subject__gap-question">
+                      {{ gap.question }}@for (ref of refs(gap.evidenceIds); track ref) {<a class="radar-subject__ref" [attr.href]="'#preuve-' + evidenceIdOf(ref)" (click)="focusEvidence(ref, $event)">{{ ref }}</a>}
+                    </span>
+                    @if (gap.ask; as ask) {
+                      <span class="radar-subject__ask">
+                        À qui demander : <b>{{ ask.displayName }}</b>@if (ask.jobTitle) {<span class="radar-subject__ask-job">, {{ ask.jobTitle }}</span>} — {{ ask.reason }}.
+                      </span>
+                    } @else if (gap.kind !== 'COVERAGE') {
+                      <span class="radar-subject__ask radar-subject__ask--nobody">Personne n'est identifié sur ce sujet.</span>
+                    }
+                  </li>
+                }
+              </ul>
+            }
+          } @else {
+            <div class="radar-subject__side-loading"><mat-spinner diameter="20"></mat-spinner></div>
+          }
+        </section>
+      </aside>
     </div>
   }
   }

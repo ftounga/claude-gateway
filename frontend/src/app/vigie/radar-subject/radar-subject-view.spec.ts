@@ -2,7 +2,9 @@ import {
   dayLabel,
   evidenceNumbers,
   linkLabel,
+  peopleByRole,
   refsOf,
+  roleLabel,
   safeLink,
   sourceView,
   stateBadge,
@@ -12,19 +14,20 @@ import { subjectDetail } from './radar-subject.fixtures';
 
 /** La page sujet en fonctions pures (F-103 / SF-103-01). */
 describe('radar-subject-view', () => {
-  it('écrit chaque état en mots, avec une pastille §5', () => {
-    expect(stateBadge('NEW')).toEqual({ label: 'nouveau', badgeClass: 'badge--info' });
-    expect(stateBadge('ADVANCING')).toEqual({ label: 'avance', badgeClass: 'badge--success' });
-    expect(stateBadge('WAITING')).toEqual({ label: 'en attente', badgeClass: 'badge--warning' });
-    expect(stateBadge('BLOCKED')).toEqual({ label: 'bloqué', badgeClass: 'badge--error' });
-    expect(stateBadge('DORMANT')).toEqual({ label: 'en sommeil', badgeClass: 'badge--neutral' });
-    expect(stateBadge('CLOSE_PROPOSED')).toEqual({ label: 'clos ?', badgeClass: 'badge--info' });
-    expect(stateBadge('CLOSED')).toEqual({ label: 'clos', badgeClass: 'badge--neutral' });
-    expect(stateBadge('INCONNU')).toEqual({ label: 'INCONNU', badgeClass: 'badge--neutral' });
+  it("écrit chaque état en mots, avec la pastille de l'onglet Radar (§17)", () => {
+    expect(stateBadge('NEW')).toEqual({ label: 'nouveau', badgeClass: 'radar-state--blue' });
+    expect(stateBadge('ADVANCING')).toEqual({ label: 'avance', badgeClass: 'radar-state--success' });
+    expect(stateBadge('WAITING')).toEqual({ label: 'en attente', badgeClass: 'radar-state--warning' });
+    expect(stateBadge('BLOCKED')).toEqual({ label: 'bloqué', badgeClass: 'radar-state--error' });
+    expect(stateBadge('DORMANT')).toEqual({ label: 'en sommeil', badgeClass: 'radar-state--neutral' });
+    expect(stateBadge('CLOSE_PROPOSED')).toEqual({ label: 'clos ?', badgeClass: 'radar-state--blue' });
+    expect(stateBadge('CLOSED')).toEqual({ label: 'clos', badgeClass: 'radar-state--neutral' });
+    expect(stateBadge('CLOSED', true)).toEqual({ label: 'se réveille', badgeClass: 'radar-state--blue' });
+    expect(stateBadge('INCONNU')).toEqual({ label: 'INCONNU', badgeClass: 'radar-state--neutral' });
   });
 
-  it('nomme chaque source et lui donne une icône', () => {
-    expect(sourceView('TEAMS_MESSAGE')).toEqual({ label: 'Message Teams', icon: 'chat' });
+  it('nomme chaque source et lui donne une icône (§17)', () => {
+    expect(sourceView('TEAMS_MESSAGE')).toEqual({ label: 'Message Teams', icon: 'forum' });
     expect(sourceView('TEAMS_MEETING')).toEqual({ label: 'Réunion Teams', icon: 'videocam' });
     expect(sourceView('LOCAL_RECORDING')).toEqual({ label: 'Enregistrement hors Teams', icon: 'mic' });
     expect(sourceView('USER_NOTE')).toEqual({ label: 'Votre nouvelle', icon: 'edit_note' });
@@ -74,11 +77,24 @@ describe('radar-subject-view', () => {
     expect(safeLink(null)).toBeNull();
   });
 
+  it('écrit les rôles, et range les personnes : décide, pilote, expert, informé, puis par nom', () => {
+    const role = (displayName: string, r: string) =>
+      ({ id: displayName, personId: displayName, displayName, jobTitle: null, role: r, evidenceIds: [] }) as never;
+    expect(roleLabel('DECIDES')).toBe('décide');
+    expect(roleLabel('DRIVES')).toBe('pilote');
+    expect(roleLabel('EXPERT')).toBe('expert');
+    expect(roleLabel('INFORMED')).toBe('informé');
+    expect(peopleByRole([role('Zoé', 'INFORMED'), role('karim', 'EXPERT'), role('Anne', 'EXPERT'),
+      role('Paul', 'DECIDES'), role('Sophie', 'DRIVES')]).map((p) => p.displayName))
+      .toEqual(['Paul', 'Sophie', 'Anne', 'karim', 'Zoé']);
+    expect(peopleByRole(null)).toEqual([]);
+  });
+
   it('libelle le lien selon la source — la seconde pour une réunion', () => {
     const at = new Date(2026, 8, 12, 14, 32, 10).toISOString();
-    expect(linkLabel({ source: 'TEAMS_MEETING', occurredAt: at })).toBe('Ouvrir le moment · 14:32:10');
-    expect(linkLabel({ source: 'TEAMS_MESSAGE', occurredAt: at })).toBe('Ouvrir dans Teams');
-    expect(linkLabel({ source: 'LOCAL_RECORDING', occurredAt: at })).toBe('Ouvrir la transcription');
-    expect(linkLabel({ source: 'PASTED_MAIL', occurredAt: at })).toBe('Ouvrir');
+    expect(linkLabel({ source: 'TEAMS_MEETING', occurredAt: at })).toBe('Ouvrir la source · 14:32:10');
+    expect(linkLabel({ source: 'TEAMS_MEETING', occurredAt: 'x' })).toBe('Ouvrir la source');
+    expect(linkLabel({ source: 'TEAMS_MESSAGE', occurredAt: at })).toBe('Ouvrir la source');
+    expect(linkLabel({ source: 'LOCAL_RECORDING', occurredAt: at })).toBe('Ouvrir la source');
   });
 });

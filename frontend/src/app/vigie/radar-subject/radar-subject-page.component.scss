@@ -1,8 +1,20 @@
-/* La page d'un sujet du Radar (F-103). Aucune couleur hors charte : jetons §2, pastilles §5, ambre §12,
-   orange de marque pour les renvois (des gestes : on les suit). Espacements multiples de 4 px. */
+/* La page d'un sujet du Radar (F-103). DESIGN_SYSTEM §17 : aucune couleur nouvelle — jetons §2, pastilles §5,
+   ambre §12, bleu §9 index 0 pour « nouveau / clos ? / se réveille ». Une source n'a pas de couleur, une
+   personne non plus ; les liens et renvois sont à l'encre de structure. Espacements multiples de 4 px. */
 
 :host {
   display: block;
+}
+
+/* Les pastilles d'état de l'onglet Radar (§17), les mêmes tons que `radar-columns.component.scss`. */
+.radar-state {
+  white-space: nowrap;
+
+  &--success { background: #E8F5E9; color: var(--cg-success); }
+  &--warning { background: #FFF8E1; color: #F9A825; }
+  &--error   { background: #FFEBEE; color: var(--cg-error); }
+  &--neutral { background: #F5F5F5; color: var(--cg-text-secondary); }
+  &--blue    { background: #E7EFF9; color: #386599; }
 }
 
 .radar-subject {
@@ -51,11 +63,99 @@
   /* La feuille : une colonne principale, et la colonne des personnes (SF-103-02) quand elle existe. */
   &__sheet {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
     border: 1px solid var(--cg-divider);
     border-radius: 8px;
     background: var(--cg-surface);
     overflow: hidden;
+
+    @media (max-width: 900px) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  &__side {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-4);
+    padding: var(--cg-space-4);
+    border-left: 1px solid var(--cg-divider);
+    background: var(--cg-bg);
+    min-width: 0;
+
+    @media (max-width: 900px) {
+      border-left: 0;
+      border-top: 1px solid var(--cg-divider);
+    }
+  }
+
+  &__side-loading {
+    display: flex;
+    padding: var(--cg-space-2) 0;
+  }
+
+  &__persons,
+  &__gaps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  &__person {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cg-space-1) var(--cg-space-2);
+  }
+
+  &__person-icon {
+    color: var(--cg-text-secondary);
+  }
+
+  &__person-text {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 120px;
+    min-width: 0;
+  }
+
+  &__person-name {
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  &__person-job,
+  &__ask-job {
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__gap {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-1);
+    padding: var(--cg-space-2) var(--cg-space-3);
+    border: 1px solid var(--cg-divider);
+    border-radius: 8px;
+    background: var(--cg-surface);
+    font-size: 14px;
+  }
+
+  &__ask {
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+
+    b {
+      color: var(--cg-text-primary);
+      font-weight: 600;
+    }
+
+    &--nobody {
+      font-style: italic;
+    }
   }
 
   &__main {
@@ -79,7 +179,7 @@
 
       &:hover,
       &:focus-visible {
-        color: var(--cg-accent);
+        color: var(--cg-primary);
         text-decoration: underline;
       }
     }
@@ -117,7 +217,7 @@
 
     a:not(.radar-subject__ref) {
       margin-left: var(--cg-space-1);
-      color: var(--cg-accent);
+      color: var(--cg-primary);
     }
   }
 
@@ -222,7 +322,7 @@
     line-height: 16px;
     text-align: center;
     text-decoration: none;
-    color: var(--cg-accent);
+    color: var(--cg-primary);
     background: var(--cg-bg);
 
     &:hover,
@@ -256,7 +356,7 @@
     }
 
     &--focused {
-      box-shadow: inset 4px 0 0 var(--cg-accent);
+      box-shadow: inset 4px 0 0 var(--cg-primary);
     }
   }
 
@@ -285,10 +385,6 @@
     }
   }
 
-  &__event--mine &__event-icon {
-    color: var(--cg-accent);
-  }
-
   &__event-body {
     min-width: 0;
     font-size: 14px;
@@ -308,7 +404,7 @@
   &__event-number {
     font-family: var(--cg-font-mono);
     font-size: 12px;
-    color: var(--cg-accent);
+    color: var(--cg-primary);
   }
 
   &__event-author {
@@ -337,7 +433,7 @@
     gap: var(--cg-space-1);
     margin-top: var(--cg-space-1);
     font-size: 12px;
-    color: var(--cg-accent);
+    color: var(--cg-primary);
 
     mat-icon {
       width: 12px;

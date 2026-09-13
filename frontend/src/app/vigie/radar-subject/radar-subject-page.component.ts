@@ -7,7 +7,11 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
-import { RadarEvidenceView, RadarSubjectDetail } from '../../core/models/radar-subject.models';
+import {
+  RadarEvidenceView,
+  RadarSubjectDetail,
+  RadarUnknownView,
+} from '../../core/models/radar-subject.models';
 import { VigiePerson } from '../../core/models/vigie.models';
 import { RadarSubjectService } from '../../core/services/radar-subject.service';
 import { VigieService } from '../../core/services/vigie.service';
@@ -16,7 +20,9 @@ import {
   dayLabel,
   evidenceNumbers,
   linkLabel,
+  peopleByRole,
   refsOf,
+  roleLabel,
   safeLink,
   sourceView,
   stateBadge,
@@ -58,13 +64,21 @@ export class RadarSubjectPageComponent implements OnInit {
   readonly error = signal<SubjectPageError>('none');
   /** La preuve mise en évidence après un clic sur un renvoi. */
   readonly focusedEvidenceId = signal<string | null>(null);
+  /** Ce que le Radar ne sait pas (SF-103-02) : `null` en lecture, `'error'` s'il n'a pas pu être lu. */
+  readonly unknowns = signal<RadarUnknownView[] | 'error' | null>(null);
+
+  /** Qui est dans ce sujet : qui décide, qui pilote, les experts, les informés. */
+  readonly roles = computed(() => peopleByRole(this.detail()?.people));
 
   readonly numbers = computed(() => {
     const detail = this.detail();
     return detail ? evidenceNumbers(detail) : new Map<string, number>();
   });
 
-  readonly badge = computed(() => stateBadge(this.detail()?.state));
+  readonly badge = computed(() => {
+    const detail = this.detail();
+    return stateBadge(detail?.state, !!detail?.wokeAt && detail?.state === 'CLOSED');
+  });
 
   readonly summary = computed(() =>
     [...(this.detail()?.summary ?? [])].sort((a, b) => a.position - b.position));
@@ -82,6 +96,7 @@ export class RadarSubjectPageComponent implements OnInit {
   readonly dayLabel = dayLabel;
   readonly linkLabel = linkLabel;
   readonly safeLink = safeLink;
+  readonly roleLabel = roleLabel;
 
   /** Garde contre une réponse d'un sujet précédent arrivée après celle du sujet courant. */
   private requestSeq = 0;
@@ -152,7 +167,21 @@ export class RadarSubjectPageComponent implements OnInit {
     const seq = ++this.requestSeq;
     this.loading.set(true);
     this.error.set('none');
+    this.unknowns.set(null);
     this.loadHostName(hostRef);
+    // Les manques ne retiennent pas la page : ils arrivent quand ils arrivent, ou disent qu'ils manquent.
+    this.subjects.unknowns(hostRef, subjectId).subscribe({
+      next: (unknowns) => {
+        if (seq === this.requestSeq) {
+          this.unknowns.set(unknowns ?? []);
+        }
+      },
+      error: () => {
+        if (seq === this.requestSeq) {
+          this.unknowns.set('error');
+        }
+      },
+    });
     forkJoin({
       subject: this.subjects.subject(hostRef, subjectId),
       // L'annuaire ne sert qu'à nommer les auteurs : illisible, la page s'affiche sans eux.
