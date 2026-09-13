@@ -78,7 +78,8 @@ public record LocalTool(String name, List<String> executables, String purpose,
      */
     public static LocalTool ffmpeg() {
         return new LocalTool("ffmpeg", List.of("ffmpeg"),
-                "extraire d'un enregistrement de réunion les images des changements de plan",
+                "capturer l'écran et le son de ce poste, y incruster le filigrane, et extraire d'un "
+                        + "enregistrement les images des changements de plan",
                 Map.of(
                         OperatingSystem.WINDOWS,
                         "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
