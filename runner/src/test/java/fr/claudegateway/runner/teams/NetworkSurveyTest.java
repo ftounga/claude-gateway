@@ -281,6 +281,29 @@ class NetworkSurveyTest {
     }
 
     @Test
+    @DisplayName("F-89 / SF-89-08 — --releve-teams sans terminal : code 2, message explicite, navigateur jamais contacté")
+    void commandRefusesWithoutATerminal() throws Exception {
+        List<String> said = new ArrayList<>();
+        List<String> contacted = new ArrayList<>();
+        TeamsSurveyCommand piped = new TeamsSurveyCommand(url -> {
+            contacted.add(url);
+            return url.endsWith("/json/version") ? "{}" : LIST;
+        }, ws -> new SurveyFakeBrowser(), System::currentTimeMillis, said::add, said::add, () -> false);
+
+        int code = piped.execute(new String[] { "--releve-teams", "--sortie", output.toString() }, Map.of(), output,
+                new ByteArrayInputStream(new byte[0]));
+
+        assertEquals(2, code);
+        assertTrue(contacted.isEmpty(), "rien n'est relevé : le navigateur n'est pas contacté");
+        assertTrue(said.contains(TeamsSurveyCommand.NOT_A_TERMINAL), said.toString());
+        assertTrue(said.stream().anyMatch(line -> line.contains("INTERACTIVE") && line.contains("terminal")),
+                "l'usage le dit : " + said);
+        try (Stream<Path> files = Files.list(output)) {
+            assertEquals(0, files.count(), "aucun rapport vide n'est écrit");
+        }
+    }
+
+    @Test
     @DisplayName("Liaison perdue : le rapport partiel est écrit et dit « interrompu »")
     void lostLinkWritesPartialReport() throws Exception {
         SurveyFakeBrowser teams = new SurveyFakeBrowser();

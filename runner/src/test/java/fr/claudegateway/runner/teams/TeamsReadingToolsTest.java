@@ -212,8 +212,8 @@ class TeamsReadingToolsTest {
                 ask().put("query", "introuvable"));
 
         assertEquals(0, json.path("conversations").size());
-        assertEquals("NOTHING_OBSERVED", json.path("gaps").get(0).path("kind").asText());
-        assertTrue(json.path("text").asText().contains("rien d'observé depuis le rattachement"),
+        assertEquals("NOTHING_SERVED", json.path("gaps").get(0).path("kind").asText());
+        assertTrue(json.path("text").asText().contains("Teams n'a rien servi depuis le rattachement"),
                 json.path("text").asText());
     }
 }

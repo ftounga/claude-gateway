@@ -77,7 +77,8 @@ public final class NetworkObserver {
     private final Map<NetworkSurvey.Origin, Integer> attachedByOrigin = new java.util.EnumMap<>(NetworkSurvey.Origin.class);
     private final Map<NetworkSurvey.Origin, Integer> responsesByOrigin = new java.util.EnumMap<>(NetworkSurvey.Origin.class);
     private final Map<TeamsPayloadKind, Integer> classifiedByKind = new java.util.EnumMap<>(TeamsPayloadKind.class);
-    private final Map<String, Integer> unknownPaths = new LinkedHashMap<>();
+    /** Chemins non classés de la famille Microsoft : hôte motif + gabarit → origines, MIME, nombre (SF-89-08). */
+    private final Map<String, UnknownPath> unknownPaths = new LinkedHashMap<>();
     private final java.util.Set<String> socketKeys = new java.util.HashSet<>();
     private int ignored;
     private int unknownMicrosoft;
@@ -135,11 +136,15 @@ public final class NetworkObserver {
             });
         }
         connection.onSessionEvent(ATTACHED_TO_TARGET, (parent, params) -> onAttached(params));
+        connection.send(CdpCommands.SET_AUTO_ATTACH, autoAttach());
+    }
+
+    private ObjectNode autoAttach() {
         ObjectNode params = mapper.createObjectNode();
         params.put("autoAttach", true);
         params.put("waitForDebuggerOnStart", false);
         params.put("flatten", true);
-        connection.send(CdpCommands.SET_AUTO_ATTACH, params);
+        return params;
     }
 
     private void onAttached(JsonNode params) {
@@ -174,6 +179,11 @@ public final class NetworkObserver {
         runOn.execute(() -> {
             try {
                 connection.send(sessionId, CdpCommands.NETWORK_ENABLE, mapper.createObjectNode());
+                // F-89 / SF-89-08 : Chrome n'annonce les enfants d'une cible (worker né d'un worker, worker
+                // d'un cadre intégré) que si l'auto-attach est demandé SUR SA SESSION. Le relevé le faisait,
+                // pas les outils : ce que le relevé voyait, les outils pouvaient ne pas le voir. Une cible
+                // refusée plus haut ne reçoit rien — ses enfants ne sont donc jamais annoncés.
+                connection.send(sessionId, CdpCommands.SET_AUTO_ATTACH, autoAttach());
             } catch (RuntimeException e) {
                 frameSessions.remove(sessionId); // cible déjà partie
             }
@@ -199,7 +209,7 @@ public final class NetworkObserver {
         String url = ObservedResponse.withoutQuery(response.path("url").asText(""));
         noteFilePath(url);
         TeamsPayloadKind kind = adapter.classify(url);
-        count(session, url, kind);
+        count(session, url, kind, response.path("mimeType").asText(""));
         if (kind == TeamsPayloadKind.IGNORED || kind == TeamsPayloadKind.UNKNOWN) {
             return;
         }
@@ -249,7 +259,7 @@ public final class NetworkObserver {
      * n'est pas classée mais vient de la famille Microsoft — son chemin gabarisé. Jamais un corps,
      * jamais un en-tête ; la requête est déjà retirée, le tenant et les identifiants le sont ici.
      */
-    private void count(String session, String url, TeamsPayloadKind kind) {
+    private void count(String session, String url, TeamsPayloadKind kind, String mime) {
         NetworkSurvey.Origin origin = session.isEmpty() ? NetworkSurvey.Origin.TEAMS_TAB
                 : frameOrigins.getOrDefault(session, NetworkSurvey.Origin.FRAME);
         synchronized (counters) {
@@ -262,11 +272,22 @@ public final class NetworkObserver {
                 unknownElsewhere++;
             } else {
                 unknownMicrosoft++;
-                String path = SurveyPaths.hostMotif(url) + SurveyPaths.template(url);
-                if (unknownPaths.containsKey(path) || unknownPaths.size() < MAX_UNKNOWN_PATHS) {
-                    unknownPaths.merge(path, 1, Integer::sum);
-                } else {
+                String host = SurveyPaths.hostMotif(url);
+                String path = SurveyPaths.template(url);
+                UnknownPath entry = unknownPaths.get(host + path);
+                if (entry == null && unknownPaths.size() < MAX_UNKNOWN_PATHS) {
+                    entry = new UnknownPath(host, path);
+                    unknownPaths.put(host + path, entry);
+                }
+                if (entry == null) {
                     unknownPathsDropped++;
+                } else {
+                    entry.count++;
+                    entry.origins.add(origin.name());
+                    String base = baseMime(mime);
+                    if (!base.isEmpty() && entry.mimeTypes.size() < ObservationDiagnostic.MAX_MIME_TYPES) {
+                        entry.mimeTypes.add(base);
+                    }
                 }
             }
         }
@@ -303,13 +324,13 @@ public final class NetworkObserver {
             frames = framesObserved;
         }
         synchronized (counters) {
-            List<ObservationDiagnostic.PathCount> top = unknownPaths.entrySet().stream()
-                    .sorted((a, b) -> b.getValue() - a.getValue())
-                    .limit(ObservationDiagnostic.TOP_PATHS)
-                    .map(entry -> new ObservationDiagnostic.PathCount(entry.getKey(), entry.getValue()))
+            // Tri stable : à nombre égal, l'ordre de première vue est gardé.
+            List<ObservationDiagnostic.PathCount> inventory = unknownPaths.values().stream()
+                    .sorted((a, b) -> b.count - a.count)
+                    .map(UnknownPath::snapshot)
                     .toList();
             return new ObservationDiagnostic(frames, names(attachedByOrigin), names(responsesByOrigin),
-                    names(classifiedByKind), ignored, unknownMicrosoft, unknownElsewhere, top,
+                    names(classifiedByKind), ignored, unknownMicrosoft, unknownElsewhere, inventory,
                     unknownPathsDropped, socketKeys.size(), socketFrames);
         }
     }
@@ -387,5 +408,31 @@ public final class NetworkObserver {
     }
 
     private record Pending(String url, TeamsPayloadKind kind, String session, String requestId) {
+    }
+
+    private static String baseMime(String mime) {
+        int separator = mime == null ? -1 : mime.indexOf(';');
+        String base = mime == null ? "" : separator < 0 ? mime : mime.substring(0, separator);
+        return base.strip().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    /** Un chemin non classé, tel que l'inventaire a le droit de l'écrire : jamais une requête ni un tenant. */
+    private static final class UnknownPath {
+
+        final String host;
+        final String path;
+        final java.util.Set<String> origins = new java.util.LinkedHashSet<>();
+        final java.util.Set<String> mimeTypes = new java.util.LinkedHashSet<>();
+        int count;
+
+        UnknownPath(String host, String path) {
+            this.host = host;
+            this.path = path;
+        }
+
+        ObservationDiagnostic.PathCount snapshot() {
+            return new ObservationDiagnostic.PathCount(host, path, List.copyOf(origins), List.copyOf(mimeTypes),
+                    count);
+        }
     }
 }

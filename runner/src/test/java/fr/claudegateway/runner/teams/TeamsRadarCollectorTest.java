@@ -367,7 +367,10 @@ class TeamsRadarCollectorTest {
         List<ObservedResponse> observed = observer.collect();
         assertEquals(1, observed.size());
         assertTrue(observed.get(0).hasBody());
-        assertEquals(List.of("S-STREAM|Network.enable", "S-STREAM|Network.getResponseBody"), browser.sessionCommands());
+        // F-89 / SF-89-08 : l'auto-attach est redemandé sur la session du cadre retenu (ses propres workers),
+        // jamais sur celle du cadre étranger.
+        assertEquals(List.of("S-STREAM|Network.enable", "S-STREAM|Target.setAutoAttach",
+                "S-STREAM|Network.getResponseBody"), browser.sessionCommands());
         assertEquals(1, browser.sentCommands().stream().filter(CdpCommands.SET_AUTO_ATTACH::equals).count());
     }
 }

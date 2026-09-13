@@ -68,6 +68,16 @@ public class TeamsToolCatalog {
             + "résumer, mais ne recopie JAMAIS la transcription brute — ni dans un fichier, ni en bloc "
             + "intégral dans le fil — et signale ce blocage à l'utilisateur.";
     /**
+     * <b>Les deux « rien »</b> (F-89 / SF-89-08) : constat du poste client — sur un zéro, l'agent a fait
+     * rouvrir cinq fois des écrans déjà ouverts, alors que le contenu était arrivé sans être reconnu. Le
+     * remède n'est pas le même, et la règle voyage là où l'agent la lit.
+     */
+    public static final String NOTHING_RULE = "Sur un zéro, lis le manque : « NOTHING_SERVED » = Teams n'a rien "
+            + "servi, propose UNE fois à l'utilisateur d'ouvrir l'écran voulu dans Teams ; « NOTHING_CLASSIFIED » "
+            + "= le contenu est arrivé mais le runner ne l'a pas reconnu : NE demande PAS de rouvrir, cliquer ou "
+            + "rafraîchir (ça n'y changera rien), dis-le tel quel, et donne l'inventaire des chemins non "
+            + "reconnus de teams_status (diagnostic.observation.unknownPaths) si on te le demande.";
+    /**
      * L'enregistrement d'une réunion (F-88 / SF-88-02) — <b>rapatrié sur la machine par Chrome</b>
      * depuis F-108 / SF-108-05. Une lecture : aucune confirmation.
      */
@@ -417,7 +427,7 @@ public class TeamsToolCatalog {
                         + "ou Teams a changé de forme. Appelle-le AVANT toute lecture de Teams — et "
                         + "quand il dit que la liaison n'est pas établie, répète à l'utilisateur la "
                         + "phrase et le remède qu'il te rend, mot pour mot : ils contiennent la "
-                        + "commande exacte à lancer.",
+                        + "commande exacte à lancer. " + NOTHING_RULE,
                 Map.of("type", "object", "properties", Map.of())));
         tools.addAll(readingTools());
         tools.addAll(captureTools());
@@ -449,7 +459,7 @@ public class TeamsToolCatalog {
                 "Retrouve une conversation Teams par personne, par groupe ou par sujet, classée de "
                         + "la plus récemment active à la plus ancienne. Un tête-à-tête n'a pas de "
                         + "sujet : cherche alors par le NOM de la personne. C'est par là qu'on "
-                        + "commence quand on ne sait pas encore quel fil lire.",
+                        + "commence quand on ne sait pas encore quel fil lire. " + NOTHING_RULE,
                 Map.of("type", "object",
                         "properties", Map.of("query", text, "limit", number))));
 
@@ -463,7 +473,7 @@ public class TeamsToolCatalog {
                         + "phrase « text » telle quelle, et ne présente jamais une lecture "
                         + "incomplète comme complète. C'est le seul outil qui trouve les "
                         + "engagements qu'on a pris soi-même (« je te l'envoie demain ») : ils ne "
-                        + "contiennent ni mention ni nom, aucune recherche ne les trouve.",
+                        + "contiennent ni mention ni nom, aucune recherche ne les trouve. " + NOTHING_RULE,
                 Map.of("type", "object",
                         "properties", Map.of("conversation_id", text, "from", text, "to", text,
                                 "max_messages", number))));
@@ -472,7 +482,7 @@ public class TeamsToolCatalog {
                 "Là où l'on vous a MENTIONNÉ explicitement (@vous), lu dans le flux d'activité que "
                         + "Teams calcule déjà : c'est exact et peu coûteux, commence par là. "
                         + "Attention : cela ne couvre QUE les mentions explicites — ce qu'on vous "
-                        + "demande sans vous mentionner n'y est pas.",
+                        + "demande sans vous mentionner n'y est pas. " + NOTHING_RULE,
                 Map.of("type", "object",
                         "properties", Map.of("from", text, "to", text, "max_mentions", number))));
 
@@ -482,7 +492,7 @@ public class TeamsToolCatalog {
                         + "s'occupe du MFA » : essaie plusieurs variantes du nom (prénom, nom, "
                         + "initiales). Si le résultat dit que la question n'a PAS pu être posée, "
                         + "ce n'est pas « il n'y a rien » : répète à l'utilisateur ce qu'il peut "
-                        + "faire.",
+                        + "faire. " + NOTHING_RULE,
                 Map.of("type", "object",
                         "properties", Map.of("query", text, "from", text, "to", text,
                                 "max_results", number),
@@ -491,7 +501,7 @@ public class TeamsToolCatalog {
         tools.add(new AgentTool(FIND_MEETINGS,
                 "Retrouve une réunion par date, par sujet ou par participant. Le résultat dit si "
                         + "elle a été ENREGISTRÉE et si une TRANSCRIPTION est annoncée : ce sont "
-                        + "les deux champs qui décident si tu peux aller plus loin.",
+                        + "les deux champs qui décident si tu peux aller plus loin. " + NOTHING_RULE,
                 Map.of("type", "object",
                         "properties", Map.of("query", text, "from", text, "to", text,
                                 "limit", number))));
@@ -502,7 +512,7 @@ public class TeamsToolCatalog {
                         + "ne revient, dis-le : une réunion non enregistrée n'a pas de "
                         + "transcription, et il ne faut surtout pas en inventer le contenu. "
                         + "« source » dit d'où viennent les répliques (reseau ou ecran). "
-                        + DOWNLOAD_BLOCKED_RULE,
+                        + DOWNLOAD_BLOCKED_RULE + " " + NOTHING_RULE,
                 Map.of("type", "object",
                         "properties", Map.of("meeting_id", text),
                         "required", List.of("meeting_id"))));

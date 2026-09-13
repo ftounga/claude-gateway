@@ -136,6 +136,17 @@ class TeamsReadingCatalogTest {
     }
 
     @Test
+    @DisplayName("F-89 / SF-89-08 — les deux « rien » : SERVED fait ouvrir l'écran, CLASSIFIED ne fait JAMAIS rouvrir")
+    void the_two_nothings_are_told_where_the_agent_reads() {
+        for (String tool : List.of("teams_status", "teams_find_conversations", "teams_read_conversation",
+                "teams_mentions", "teams_search", "teams_find_meetings", "teams_meeting_transcript")) {
+            assertThat(describe(tool)).as(tool).contains(TeamsToolCatalog.NOTHING_RULE);
+        }
+        assertThat(TeamsToolCatalog.NOTHING_RULE).contains("NOTHING_SERVED").contains("NOTHING_CLASSIFIED")
+                .contains("NE demande PAS de rouvrir").contains("unknownPaths");
+    }
+
+    @Test
     @DisplayName("Les trois gisements sont nommés là où l'agent les lit")
     void the_three_seams_are_named_in_the_descriptions() {
         assertThat(describe("teams_mentions")).contains("mentions explicites")
