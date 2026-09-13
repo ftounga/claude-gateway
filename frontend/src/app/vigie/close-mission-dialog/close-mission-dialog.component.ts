@@ -5,6 +5,8 @@ import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/materia
 import { MatIconModule } from '@angular/material/icon';
 
 import { RadarExportOfferComponent } from '../radar-export/radar-export-offer.component';
+import { ExportService } from '../../core/services/export.service';
+import { PagesService } from '../../core/services/pages.service';
 
 export interface CloseMissionDialogData {
   hostId: string;
@@ -15,6 +17,8 @@ export interface CloseMissionDialogResult {
   confirmed: boolean;
   /** Effacer aussi son Radar après la clôture — irréversible, jamais présumé. */
   purgeRadar: boolean;
+  /** Effacer aussi ses pages après la clôture (F-109 / SF-109-04) — irréversible, jamais présumé. */
+  purgePages?: boolean;
 }
 
 /**
@@ -50,6 +54,28 @@ export interface CloseMissionDialogResult {
       >
         Effacer aussi son Radar : sujets, engagements et annuaire. Irréversible.
       </mat-checkbox>
+      <!-- SES PAGES (F-109 / SF-109-04) : proposées au téléchargement, effacées seulement si c'est coché. -->
+      <div class="close-mission__pages">
+        <p class="close-mission__pages-lead">Ses pages peuvent être gardées : téléchargez-les (ZIP).</p>
+        <button mat-stroked-button type="button" class="close-mission__pages-export" [disabled]="pagesState() === 'busy'"
+          (click)="exportPages()">
+          <mat-icon>download</mat-icon>
+          {{ pagesState() === 'error' ? 'Réessayer' : 'Télécharger ses pages' }}
+        </button>
+        @if (pagesState() === 'done') {
+          <span class="close-mission__pages-done" role="status">Pages téléchargées.</span>
+        }
+        @if (pagesState() === 'error') {
+          <span class="close-mission__pages-error" role="alert">Les pages n'ont pas pu être téléchargées.</span>
+        }
+      </div>
+      <mat-checkbox
+        class="close-mission__purge-pages"
+        [checked]="purgePages()"
+        (change)="purgePages.set($event.checked)"
+      >
+        Supprimer aussi ses pages et leurs versions. Irréversible.
+      </mat-checkbox>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button mat-stroked-button type="button" class="close-mission__cancel" (click)="cancel()">Annuler</button>
@@ -57,10 +83,10 @@ export interface CloseMissionDialogResult {
         mat-flat-button
         type="button"
         class="close-mission__confirm"
-        [color]="purgeRadar() ? 'warn' : 'primary'"
+        [color]="purgeRadar() || purgePages() ? 'warn' : 'primary'"
         (click)="confirm()"
       >
-        {{ purgeRadar() ? 'Clôturer et effacer le Radar' : 'Clôturer la mission' }}
+        {{ confirmLabel() }}
       </button>
     </mat-dialog-actions>
   `,
@@ -84,9 +110,31 @@ export interface CloseMissionDialogResult {
       display: block;
     }
 
-    .close-mission__purge {
+    .close-mission__purge,
+    .close-mission__purge-pages {
       display: block;
       margin-top: var(--cg-space-3);
+    }
+
+    .close-mission__pages {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--cg-space-2);
+      margin-top: var(--cg-space-3);
+      padding: var(--cg-space-2) var(--cg-space-3);
+      border: 1px solid var(--cg-divider);
+      border-radius: 8px;
+    }
+
+    .close-mission__pages-lead {
+      flex-basis: 100%;
+      margin: 0;
+      font-size: 14px;
+    }
+
+    .close-mission__pages-error {
+      color: var(--cg-error);
     }
   `,
 })
@@ -94,13 +142,40 @@ export class CloseMissionDialogComponent {
   readonly data = inject<CloseMissionDialogData>(MAT_DIALOG_DATA);
   private readonly dialogRef = inject(MatDialogRef<CloseMissionDialogComponent, CloseMissionDialogResult>);
 
+  private readonly pages = inject(PagesService);
+  private readonly files = inject(ExportService);
+
   readonly purgeRadar = signal(false);
+  readonly purgePages = signal(false);
+  readonly pagesState = signal<'idle' | 'busy' | 'done' | 'error'>('idle');
+
+  confirmLabel(): string {
+    if (this.purgeRadar() && this.purgePages()) {
+      return 'Clôturer et effacer Radar et pages';
+    }
+    if (this.purgeRadar()) {
+      return 'Clôturer et effacer le Radar';
+    }
+    return this.purgePages() ? 'Clôturer et effacer les pages' : 'Clôturer la mission';
+  }
+
+  /** Télécharge l'archive des pages du client ; rien n'est effacé. */
+  exportPages(): void {
+    this.pagesState.set('busy');
+    this.pages.exportPlace(this.data.hostId, 'VIGIE').subscribe({
+      next: (response) => {
+        this.files.triggerDownload(response, 'pages.zip');
+        this.pagesState.set('done');
+      },
+      error: () => this.pagesState.set('error'),
+    });
+  }
 
   cancel(): void {
-    this.dialogRef.close({ confirmed: false, purgeRadar: false });
+    this.dialogRef.close({ confirmed: false, purgeRadar: false, purgePages: false });
   }
 
   confirm(): void {
-    this.dialogRef.close({ confirmed: true, purgeRadar: this.purgeRadar() });
+    this.dialogRef.close({ confirmed: true, purgeRadar: this.purgeRadar(), purgePages: this.purgePages() });
   }
 }

@@ -125,6 +125,18 @@ public class AccountService {
     }
 
     /**
+     * Les pages (F-109 / SF-109-04). Injectées par mutateur pour ne toucher à aucune forme de constructeur :
+     * {@code null} (tests unitaires historiques) = aucun objet de page à effacer.
+     */
+    private fr.claudegateway.pages.PageService pageService;
+
+    /** Branche la purge des pages à la suppression du compte (F-109 / SF-109-04). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setPageService(fr.claudegateway.pages.PageService pageService) {
+        this.pageService = pageService;
+    }
+
+    /**
      * Agrège l'ensemble des données de l'utilisateur pour l'export RGPD. Lecture seule, filtrée
      * sur {@code userId} pour chaque source.
      */
@@ -238,6 +250,11 @@ public class AccountService {
         // fichiers en place en croyant les avoir supprimés.
         for (Workspace workspace : workspaceRepository.findByUserIdOrderByCreatedAtDesc(userId)) {
             workspaceService.delete(userId, workspace.getId());
+        }
+        // Les pages (F-109 / SF-109-04) : leurs objets d'abord — des documents qui portent souvent des données
+        // de client ; leurs lignes tombent en cascade avec le compte.
+        if (pageService != null) {
+            pageService.purgeUser(userId);
         }
 
         userService.deleteById(user.getId());

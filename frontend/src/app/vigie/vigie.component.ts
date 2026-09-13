@@ -15,6 +15,8 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { RunnerHostOverview } from '../core/models/atelier.models';
 import { VigiePerson, VigieRadarCounts } from '../core/models/vigie.models';
 import { AtelierService } from '../core/services/atelier.service';
+import { HostPagesComponent } from '../shared/pages/host-pages.component';
+import { PagesService } from '../core/services/pages.service';
 import { HostPresenceService } from '../core/services/host-presence.service';
 import { VigieService, countsOfBrief } from '../core/services/vigie.service';
 import { RadarBrief } from '../core/models/radar.models';
@@ -94,6 +96,7 @@ export type VigieError = 'none' | 'network' | 'forbidden' | 'not-entitled';
   selector: 'app-vigie',
   imports: [
     RouterLink,
+    HostPagesComponent,
     ForgeRailComponent,
     HostBadgeComponent,
     LiveBadgeComponent,
@@ -118,6 +121,7 @@ export type VigieError = 'none' | 'network' | 'forbidden' | 'not-entitled';
 export class VigieComponent implements OnInit {
   private readonly atelier = inject(AtelierService);
   private readonly vigie = inject(VigieService);
+  private readonly pagesService = inject(PagesService);
   private readonly presence = inject(HostPresenceService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -447,12 +451,12 @@ export class VigieComponent implements OnInit {
       .afterClosed()
       .subscribe((result) => {
         if (result?.confirmed === true) {
-          this.doCloseMission(hostId, host.name, result.purgeRadar === true);
+          this.doCloseMission(hostId, host.name, result.purgeRadar === true, result.purgePages === true);
         }
       });
   }
 
-  private doCloseMission(hostId: string, name: string, purgeRadar: boolean): void {
+  private doCloseMission(hostId: string, name: string, purgeRadar: boolean, purgePages = false): void {
     this.busyHostId.set(hostId);
     this.atelier.setHostMissionStatus(hostId, 'CLOSED').subscribe({
       next: (updated) => {
@@ -465,6 +469,13 @@ export class VigieComponent implements OnInit {
         if (!isMissionClosed(updated.missionStatus)) {
           done("La mission n'a pas été clôturée. Rien n'a été effacé.", true);
           return;
+        }
+        // Les pages du client (F-109 / SF-109-04) : effacées seulement si c'est demandé, et APRÈS la clôture confirmée.
+        if (purgePages) {
+          this.pagesService.removePlace(hostId, 'VIGIE').subscribe({
+            error: () => this.snackBar.open("Les pages de ce client n'ont pas pu être effacées.", 'Fermer',
+              { duration: 8000, panelClass: 'snack-error' }),
+          });
         }
         if (!purgeRadar) {
           done(`Mission clôturée. « ${name} » est rangé, rien n'est coupé.`);

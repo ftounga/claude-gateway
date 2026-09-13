@@ -689,6 +689,16 @@
           }
         </section>
       }
+
+      @case ('pages') {
+        <!-- LES PAGES DU POSTE (F-109 / SF-109-04) : publiées depuis ses projets et son terminal ; chaque carte
+             dit de quel projet elle vient. -->
+        <section class="poste__panel poste__pages" role="tabpanel">
+          @if (host.id; as hostId) {
+            <app-host-pages [hostId]="hostId" space="FORGE" [projectNames]="projectNamesOf(host)"></app-host-pages>
+          }
+        </section>
+      }
     }
   </section>
 </ng-template>

@@ -18,6 +18,8 @@ describe('vigie-fleet', () => {
     expect(effectiveVigieTab('personnes')).toBe('personnes');
     expect(effectiveVigieTab('REUNIONS')).toBe('reunions');
     expect(effectiveVigieTab('carte')).toBe('radar');
+    // F-109 / SF-109-04 : l'onglet des pages du client.
+    expect(effectiveVigieTab('pages')).toBe('pages');
     expect(effectiveVigieTab(null)).toBe('radar');
   });
 
