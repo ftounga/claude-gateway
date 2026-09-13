@@ -135,7 +135,7 @@ class TeamsBlindLinkTest {
     }
 
     @Test
-    @DisplayName("(b) zéro + trafic Microsoft non classé : « chemins que l'adaptateur ne reconnaît pas » et le relevé")
+    @DisplayName("(b) zéro + trafic Microsoft non classé : NOTHING_CLASSIFIED — « n'a pas été reconnu », cliquer n'y changera rien")
     void unrecognized_traffic_is_said_and_the_survey_is_proposed() throws Exception {
         PaperTeams teams = new PaperTeams();
         TeamsTools tools = teams.tools();
@@ -148,15 +148,17 @@ class TeamsBlindLinkTest {
         assertEquals(0, json.path("conversations").size());
         JsonNode gap = null;
         for (JsonNode candidate : json.path("gaps")) {
-            if ("NOTHING_OBSERVED".equals(candidate.path("kind").asText())) {
+            if ("NOTHING_CLASSIFIED".equals(candidate.path("kind").asText())) {
                 gap = candidate;
             }
         }
         assertTrue(gap != null, json.path("gaps").toString());
-        assertTrue(gap.path("detail").asText().contains("Teams a répondu par des chemins que l'adaptateur ne reconnaît pas"),
-                gap.toString());
-        assertTrue(json.path("text").asText().contains(ObservationDiagnostic.SURVEY_COMMAND), json.path("text").asText());
-        assertTrue(json.path("text").asText().contains("--releve-teams"));
+        assertTrue(gap.path("detail").asText().contains("aucune reconnue par l'adaptateur"), gap.toString());
+        String text = json.path("text").asText();
+        assertTrue(text.contains("Le contenu est arrivé mais n'a pas été reconnu"), text);
+        assertTrue(text.contains("n'y changera rien"), text);
+        assertTrue(text.contains("teams_status"), "renvoie à l'inventaire complet : " + text);
+        assertFalse(text.contains("--releve-teams"), "le relevé exige un opérateur au clavier (D4) : " + text);
         assertEquals(2, json.path("observation").path("unknownMicrosoft").asInt());
         assertFalse(json.path("text").asText().contains("rien d'observé depuis le rattachement : aucune"),
                 "le zéro n'est plus présenté comme « rien d'affiché »");

@@ -108,7 +108,8 @@ class TeamsGisementsTest {
         JsonNode json = call(teams.tools(), TeamsTools.MENTIONS, ask());
 
         assertEquals(0, json.path("mentions").size());
-        assertEquals("NOTHING_OBSERVED", json.path("gaps").get(0).path("kind").asText());
+        // F-89 / SF-89-08 : aucun trafic → la panne est dite « rien servi », avec son remède.
+        assertEquals("NOTHING_SERVED", json.path("gaps").get(0).path("kind").asText());
     }
 
     // ------------------------------------------------------------ gisement 2 : le nom en clair
@@ -237,7 +238,7 @@ class TeamsGisementsTest {
         assertEquals(0, json.path("cues").size());
         // Deux manques cohabitent ici, et c'est voulu : la réunion sans horodatage de l'échantillon
         // (MISSING_FIELD) et la transcription jamais servie. Les deux doivent se voir.
-        assertTrue(hasGap(json, "NOTHING_OBSERVED"), json.path("gaps").toString());
+        assertTrue(hasGap(json, "NOTHING_SERVED"), json.path("gaps").toString());
         assertTrue(json.path("text").asText().contains("Ouvrez la transcription dans Teams"),
                 json.path("text").asText());
         assertFalse(json.has("notice"), "rien n'a été lu : il n'y a pas de portée à déclarer");

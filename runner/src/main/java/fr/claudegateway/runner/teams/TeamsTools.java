@@ -2,9 +2,11 @@ package fr.claudegateway.runner.teams;
 
 import java.text.Normalizer;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -459,7 +461,8 @@ public final class TeamsTools implements ToolExecutor {
                 .distinct().limit(50).forEach(paths::add);
         diagnostic.put("filesAdapter", SharePointFiles.PROVENANCE);
         if (seen != null) {
-            diagnostic.set("observation", seen.toJson(mapper));
+            // F-89 / SF-89-08 : l'inventaire COMPLET des chemins non reconnus (200 au plus), pour les apprendre.
+            diagnostic.set("observation", seen.toJson(mapper, true));
             if (result.observed() == 0 && !seen.sentence().isEmpty()) {
                 text.append(System.lineSeparator()).append(seen.sentence());
             }
@@ -531,7 +534,10 @@ public final class TeamsTools implements ToolExecutor {
         }
         gaps.addAll(screenGaps);
         ObservationDiagnostic seen = link.observer().diagnostic();
-        gaps = diagnosed(gaps, seen);
+        if (!SOURCE_SCREEN.equals(source)) {
+            // Une liste lue à l'écran sans correspondance n'est pas une panne du réseau : le manque reste tel quel.
+            gaps = diagnosed(gaps, seen, CONVERSATION_KINDS);
+        }
         StringBuilder text = new StringBuilder(sentence(matching.size(), "conversation", gaps, book, query));
         sayScreen(text, source);
         explain(result, gaps, seen, text);
@@ -587,7 +593,7 @@ public final class TeamsTools implements ToolExecutor {
         harvest.messages().forEach(message -> TeamsViews.message(messages, message, book.self()));
 
         ObservationDiagnostic seen = link.observer().diagnostic();
-        List<TeamsGap> readGaps = diagnosed(harvest.gaps(), seen);
+        List<TeamsGap> readGaps = diagnosed(harvest.gaps(), seen, THREAD_KINDS);
         StringBuilder text = new StringBuilder(new TeamsReading<>(harvest.messages(), readGaps,
                 harvest.window(), harvest.health()).summary("messages"));
         ask.notes().forEach(note -> text.append(' ').append(note));
@@ -598,8 +604,9 @@ public final class TeamsTools implements ToolExecutor {
             // Teams sert l'historique depuis son cache local. On ne prétend pas le contraire.
             text.append(' ').append(CACHED_THREAD_NOTE);
             result.json().set("observation", seen.toJson(mapper));
-            if (!seen.sentence().isEmpty()) {
-                text.append(' ').append(seen.sentence());
+            String sentence = seen.sentence(seen.nothingKind(THREAD_KINDS));
+            if (!sentence.isEmpty()) {
+                text.append(' ').append(sentence);
             }
         } else {
             explain(result, readGaps, seen, text);
@@ -671,7 +678,9 @@ public final class TeamsTools implements ToolExecutor {
                     "aucune mention servie par Teams depuis le rattachement"));
         }
         ObservationDiagnostic seen = link.observer().diagnostic();
-        gaps = diagnosed(gaps, seen);
+        if (!SOURCE_SCREEN.equals(source)) {
+            gaps = diagnosed(gaps, seen, MENTION_KINDS);
+        }
         StringBuilder text = new StringBuilder(count(events.size(), "mention trouvée", "mentions trouvées")
                 + " dans le flux d'activité, " + ask.window().describe() + '.');
         gaps.addAll(screenGaps);
@@ -760,7 +769,7 @@ public final class TeamsTools implements ToolExecutor {
                     "aucun résultat de recherche n'a été servi par Teams"));
         }
         ObservationDiagnostic seen = link.observer().diagnostic();
-        List<TeamsGap> searchGaps = diagnosed(gaps, seen);
+        List<TeamsGap> searchGaps = diagnosed(gaps, seen, SEARCH_KINDS);
         gaps.clear();
         gaps.addAll(searchGaps);
         StringBuilder text = new StringBuilder(count(rendered.size(), "résultat trouvé", "résultats trouvés")
@@ -825,7 +834,7 @@ public final class TeamsTools implements ToolExecutor {
                     "aucune réunion servie par Teams depuis le rattachement ne correspond"));
         }
         ObservationDiagnostic seen = link.observer().diagnostic();
-        gaps = diagnosed(gaps, seen);
+        gaps = diagnosed(gaps, seen, MEETING_KINDS);
         StringBuilder text = new StringBuilder(count(found.size(), "réunion trouvée", "réunions trouvées")
                 + (query.isEmpty() ? "" : " pour « " + query + " »") + '.');
         appendGaps(text, gaps);
@@ -900,7 +909,7 @@ public final class TeamsTools implements ToolExecutor {
                             : "aucune transcription n'a été servie par Teams pour cette réunion"));
         }
         ObservationDiagnostic seen = link.observer().diagnostic();
-        gaps = diagnosed(gaps, seen);
+        gaps = diagnosed(gaps, seen, TRANSCRIPT_KINDS);
         StringBuilder text = new StringBuilder(count(cues.size(), "réplique lue", "répliques lues")
                 + (meeting == null ? "" : " pour « " + meeting.subject() + " »") + '.');
         appendGaps(text, gaps);
@@ -909,7 +918,8 @@ public final class TeamsTools implements ToolExecutor {
             text.append(' ').append(DOWNLOAD_BLOCKED_RULE);
         }
         explain(result, gaps, seen, text);
-        if (cues.isEmpty() && !meetingId.isEmpty()) {
+        if (cues.isEmpty() && !meetingId.isEmpty() && nothingIn(gaps) != TeamsGapKind.NOTHING_CLASSIFIED) {
+            // F-89 / SF-89-08 : du contenu est arrivé sans être reconnu — faire rouvrir l'écran n'y changerait rien.
             text.append(" Ouvrez la transcription dans Teams, puis redemandez : je lirai ce qu'il"
                     + " aura servi.");
         }
@@ -1635,39 +1645,70 @@ public final class TeamsTools implements ToolExecutor {
         return link;
     }
 
+    /** Natures qui peuvent porter une conversation (liste ou messages) — F-89 / SF-89-08. */
+    static final Set<TeamsPayloadKind> CONVERSATION_KINDS =
+            Set.of(TeamsPayloadKind.CONVERSATION_LIST, TeamsPayloadKind.CONVERSATION_MESSAGES);
+    /** Natures qui portent les messages d'un fil. */
+    static final Set<TeamsPayloadKind> THREAD_KINDS = Set.of(TeamsPayloadKind.CONVERSATION_MESSAGES);
+    /** Natures qui portent une mention. */
+    static final Set<TeamsPayloadKind> MENTION_KINDS = Set.of(TeamsPayloadKind.ACTIVITY_FEED);
+    /** Natures qui portent un résultat de recherche. */
+    static final Set<TeamsPayloadKind> SEARCH_KINDS = Set.of(TeamsPayloadKind.SEARCH_RESULTS);
+    /** Natures qui portent une réunion. */
+    static final Set<TeamsPayloadKind> MEETING_KINDS =
+            Set.of(TeamsPayloadKind.MEETING_DETAILS, TeamsPayloadKind.CALENDAR_EVENT);
+    /** Natures qui portent une transcription. */
+    static final Set<TeamsPayloadKind> TRANSCRIPT_KINDS = Set.of(TeamsPayloadKind.MEETING_TRANSCRIPT);
+
     /**
-     * Un zéro qui n'est pas « rien d'affiché » (F-89 / SF-89-05, b) : quand Teams a répondu par des
-     * chemins non reconnus, chaque manque {@code NOTHING_OBSERVED} le dit.
+     * Un zéro qui n'est pas « rien d'affiché » (F-89 / SF-89-05, b) — et <b>laquelle des deux pannes</b>
+     * (F-89 / SF-89-08) : chaque manque {@code NOTHING_OBSERVED} devient {@code NOTHING_SERVED} (Teams n'a
+     * rien servi : ouvrir l'écran) ou {@code NOTHING_CLASSIFIED} (du contenu est arrivé, non reconnu :
+     * cliquer n'y changera rien), selon ce que la liaison a vu <b>des natures utiles à l'outil</b>. Une
+     * réponse utile classée laisse le manque tel quel : servi, reconnu, rien ne correspond.
      */
-    static List<TeamsGap> diagnosed(List<TeamsGap> gaps, ObservationDiagnostic seen) {
-        if (seen == null || !seen.unrecognizedTraffic()) {
+    static List<TeamsGap> diagnosed(List<TeamsGap> gaps, ObservationDiagnostic seen,
+            Collection<TeamsPayloadKind> useful) {
+        if (seen == null) {
+            return gaps;
+        }
+        TeamsGapKind kind = seen.nothingKind(useful);
+        if (kind == TeamsGapKind.NOTHING_OBSERVED) {
             return gaps;
         }
         List<TeamsGap> out = new ArrayList<>();
         for (TeamsGap gap : gaps) {
             out.add(gap.kind() != TeamsGapKind.NOTHING_OBSERVED ? gap
-                    : new TeamsGap(gap.kind(), gap.where(), "Teams a répondu par des chemins que l'adaptateur "
-                            + "ne reconnaît pas (" + seen.unknownMicrosoft() + " réponse"
-                            + (seen.unknownMicrosoft() > 1 ? "s" : "") + " non classée"
-                            + (seen.unknownMicrosoft() > 1 ? "s" : "") + " depuis le rattachement)",
-                            gap.count()));
+                    : new TeamsGap(kind, gap.where(), seen.detail(kind), gap.count()));
         }
         return out;
     }
 
-    private static boolean hasNothingObserved(List<TeamsGap> gaps) {
-        return gaps.stream().anyMatch(gap -> gap.kind() == TeamsGapKind.NOTHING_OBSERVED);
+    /** Le premier manque « rien » d'une lecture, requalifié ou non ; {@code null} s'il n'y en a pas. */
+    private static TeamsGapKind nothingIn(List<TeamsGap> gaps) {
+        TeamsGapKind found = null;
+        for (TeamsGap gap : gaps) {
+            if (gap.kind() == TeamsGapKind.NOTHING_CLASSIFIED || gap.kind() == TeamsGapKind.NOTHING_SERVED) {
+                return gap.kind();
+            }
+            if (gap.kind() == TeamsGapKind.NOTHING_OBSERVED) {
+                found = gap.kind();
+            }
+        }
+        return found;
     }
 
     /** Le diagnostic et sa phrase, portés par tout résultat qui déclare n'avoir rien observé. */
     private void explain(TeamsToolResult result, List<TeamsGap> gaps, ObservationDiagnostic seen,
             StringBuilder text) {
-        if (seen == null || !hasNothingObserved(gaps)) {
+        TeamsGapKind nothing = nothingIn(gaps);
+        if (seen == null || nothing == null) {
             return;
         }
         result.json().set("observation", seen.toJson(mapper));
-        if (!seen.sentence().isEmpty()) {
-            text.append(' ').append(seen.sentence());
+        String sentence = seen.sentence(nothing);
+        if (!sentence.isEmpty()) {
+            text.append(' ').append(sentence);
         }
     }
 

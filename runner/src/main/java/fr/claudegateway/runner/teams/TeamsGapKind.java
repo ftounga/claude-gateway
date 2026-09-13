@@ -42,6 +42,20 @@ public enum TeamsGapKind {
     NOTHING_OBSERVED("rien d'observé depuis le rattachement"),
 
     /**
+     * Teams n'a <b>rien servi d'utile</b> depuis le rattachement (F-89 / SF-89-08) : aucune réponse, ou
+     * seulement des statiques et de la télémétrie. Le remède est un <b>geste humain</b> — ouvrir l'écran
+     * voulu dans Teams.
+     */
+    NOTHING_SERVED("Teams n'a rien servi depuis le rattachement"),
+
+    /**
+     * Teams a servi du contenu que l'adaptateur <b>ne reconnaît pas</b> (F-89 / SF-89-08). Le remède est un
+     * <b>correctif du runner</b> : cliquer ou rouvrir l'écran n'y changera rien, et le dire évite de faire
+     * refaire à l'utilisateur ce qu'il a déjà fait.
+     */
+    NOTHING_CLASSIFIED("contenu reçu mais non reconnu par le runner"),
+
+    /**
      * La vidéo n'a pas changé de plan au seuil demandé (F-90 / SF-90-01). Distinct de « il n'y avait
      * rien à montrer » : peut-être un plan fixe, peut-être un seuil trop haut — et on le dit plutôt
      * que de rendre une liste vide, qui se lirait « cette réunion n'a rien montré ».

@@ -43,38 +43,67 @@ final class TeamsUrls {
         if (!isChatHost(url)) {
             return TeamsPayloadKind.UNKNOWN;
         }
-        // L'ordre compte : « …/conversations/{id}/messages » est plus précis que « …/conversations ».
-        if (path.contains("/conversations/") && path.endsWith("/messages")) {
-            return TeamsPayloadKind.CONVERSATION_MESSAGES;
-        }
-        if (path.endsWith("/conversations") || path.contains("/users/me/conversations")) {
-            return TeamsPayloadKind.CONVERSATION_LIST;
-        }
-        if (path.contains("/activityfeed") || path.contains("/activity/feed")) {
-            return TeamsPayloadKind.ACTIVITY_FEED;
-        }
-        if (path.contains("/search/") || path.endsWith("/search")) {
-            return TeamsPayloadKind.SEARCH_RESULTS;
-        }
-        if (path.contains("/transcripts")) {
-            return TeamsPayloadKind.MEETING_TRANSCRIPT;
-        }
-        // F-89 / SF-89-05 — relevé réel du 2026-09-13 : deux chemins de l'étape « réunion ».
-        if (path.contains("/collab/readcollabobject")) {
-            return TeamsPayloadKind.MEETING_COLLAB_OBJECT;
-        }
-        if (path.contains("/calendars/events") || path.contains("/me/events")) {
-            return TeamsPayloadKind.CALENDAR_EVENT;
-        }
-        if (path.contains("/meetings/") || path.endsWith("/meetings")
-                || path.contains("/calling/meetings")) {
-            return TeamsPayloadKind.MEETING_DETAILS;
-        }
-        if (path.contains("/users/") && (path.contains("/profile") || path.endsWith("/properties"))) {
-            return TeamsPayloadKind.PROFILE;
+        for (Rule rule : CHAT_RULES) {
+            if (rule.matches(path)) {
+                return rule.kind();
+            }
         }
         return TeamsPayloadKind.UNKNOWN;
     }
+
+    /**
+     * Une règle de classement sur un hôte de conversation (F-89 / SF-89-08) : le chemin, en minuscules et
+     * sans requête, <b>contient</b> chacun des fragments et, si elle est donnée, <b>se termine</b> par la fin.
+     *
+     * @param kind     la nature rendue
+     * @param contains fragments tous requis (liste vide : aucun)
+     * @param endsWith fin de chemin requise, ou {@code ""} : aucune
+     */
+    record Rule(TeamsPayloadKind kind, List<String> contains, String endsWith) {
+
+        static Rule containing(TeamsPayloadKind kind, String... fragments) {
+            return new Rule(kind, List.of(fragments), "");
+        }
+
+        static Rule ending(TeamsPayloadKind kind, String end) {
+            return new Rule(kind, List.of(), end);
+        }
+
+        static Rule containingAndEnding(TeamsPayloadKind kind, String fragment, String end) {
+            return new Rule(kind, List.of(fragment), end);
+        }
+
+        boolean matches(String path) {
+            return contains.stream().allMatch(path::contains) && (endsWith.isEmpty() || path.endsWith(endsWith));
+        }
+    }
+
+    /**
+     * <b>Les règles des hôtes de conversation, dans l'ordre</b> — la première qui correspond gagne.
+     *
+     * <p>Ajouter un chemin relevé sur un poste réel, c'est <b>une ligne ici</b> et <b>une ligne</b> dans la
+     * table de {@code TeamsUrlsTest}. L'ordre compte : « …/conversations/{id}/messages » est plus précis que
+     * « …/conversations », et doit donc venir avant. Ne jamais ajouter une règle devinée : seulement un
+     * chemin vu dans un inventaire ({@code teams_status}) ou un relevé.</p>
+     */
+    static final List<Rule> CHAT_RULES = List.of(
+            Rule.containingAndEnding(TeamsPayloadKind.CONVERSATION_MESSAGES, "/conversations/", "/messages"),
+            Rule.ending(TeamsPayloadKind.CONVERSATION_LIST, "/conversations"),
+            Rule.containing(TeamsPayloadKind.CONVERSATION_LIST, "/users/me/conversations"),
+            Rule.containing(TeamsPayloadKind.ACTIVITY_FEED, "/activityfeed"),
+            Rule.containing(TeamsPayloadKind.ACTIVITY_FEED, "/activity/feed"),
+            Rule.containing(TeamsPayloadKind.SEARCH_RESULTS, "/search/"),
+            Rule.ending(TeamsPayloadKind.SEARCH_RESULTS, "/search"),
+            Rule.containing(TeamsPayloadKind.MEETING_TRANSCRIPT, "/transcripts"),
+            // F-89 / SF-89-05 — relevé réel du 2026-09-13 : deux chemins de l'étape « réunion ».
+            Rule.containing(TeamsPayloadKind.MEETING_COLLAB_OBJECT, "/collab/readcollabobject"),
+            Rule.containing(TeamsPayloadKind.CALENDAR_EVENT, "/calendars/events"),
+            Rule.containing(TeamsPayloadKind.CALENDAR_EVENT, "/me/events"),
+            Rule.containing(TeamsPayloadKind.MEETING_DETAILS, "/meetings/"),
+            Rule.ending(TeamsPayloadKind.MEETING_DETAILS, "/meetings"),
+            Rule.containing(TeamsPayloadKind.MEETING_DETAILS, "/calling/meetings"),
+            Rule.containing(TeamsPayloadKind.PROFILE, "/users/", "/profile"),
+            Rule.containingAndEnding(TeamsPayloadKind.PROFILE, "/users/", "/properties"));
 
     /**
      * Versions d'interface lisibles dans l'adresse (« v1 », « v2 », « beta »). Elles alimentent le
