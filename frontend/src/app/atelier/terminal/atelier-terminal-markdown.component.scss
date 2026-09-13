@@ -115,3 +115,37 @@
     max-width: 100%;
   }
 }
+
+/* F-89 / SF-89-07 — LE MÊME MARKDOWN SUR LA SURFACE « PRUNE » DU TERMINAL TEAMS (charte §15).
+   Titres et gras dans l'encre de titre de la surface, code et filets dans ses jetons : un pavé
+   navy posé sur la prune dirait « un autre terminal ». Le lien garde l'orange de la charte
+   (≥ 7:1 sur la surface). Aucun autre terminal n'est concerné. */
+.terminal-view--teams .terminal-agent ::ng-deep {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  strong {
+    color: var(--cg-terminal-teams-title);
+  }
+
+  code,
+  pre {
+    background: var(--cg-terminal-teams-bar);
+  }
+
+  pre code {
+    background: none;
+  }
+
+  blockquote {
+    border-left-color: var(--cg-terminal-teams-rule);
+  }
+
+  th,
+  td {
+    border-color: var(--cg-terminal-teams-rule);
+  }
+}

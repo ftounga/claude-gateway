@@ -1372,6 +1372,8 @@ export interface LiveTerminalEntry {
   activityDetail?: string | null;
   previewLines?: string[] | null;
   activityAt?: string | null;
+  /** F-89 / SF-89-07 : ce terminal est le terminal Teams — sa tuile en porte la peau. Absent d'un backend antérieur. */
+  teamsTerminal?: boolean | null;
 }
 
 /**

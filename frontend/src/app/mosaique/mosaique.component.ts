@@ -39,6 +39,8 @@ export interface MosaiqueTile {
   view: LiveTurnView;
   /** Vrai si le registre **ou** le flux dit que ce terminal attend une décision. */
   awaiting: boolean;
+  /** Le terminal Teams du poste (F-89 / SF-89-07) : la tuile porte la même peau que le terminal ouvert. */
+  teamsTerminal: boolean;
 }
 
 /**
@@ -271,6 +273,8 @@ export class MosaiqueComponent implements OnInit, OnDestroy {
       // millisecondes, le registre le redit au battement suivant. Là où l'on regarde quatre choses
       // à la fois, une attente ne doit pas dépendre d'un seul canal (leçon du 2026-09-08, F-47).
       awaiting: view.pending() !== null || terminal.activity === 'AWAITING_APPROVAL',
+      // Un backend antérieur ne le dit pas : la tuile garde alors la peau d'un terminal ordinaire.
+      teamsTerminal: terminal.teamsTerminal === true,
     };
   }
 

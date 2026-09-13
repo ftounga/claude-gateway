@@ -210,6 +210,32 @@
   }
 }
 
+/* UNE TUILE TEAMS PORTE LA PEAU DU TERMINAL TEAMS (F-89 / SF-89-07, charte §15) : la surface
+   « Prune », jusque dans son en-tête. Le filet gauche garde la couleur du client (§9) et l'anneau
+   d'attente reste ambre (§12) : seule la surface change. Le flux, lui, reçoit la même peau par le
+   terminal lui-même (`[teamsTerminal]`) — un seul rendu dans le produit. */
+.mosaique__tile--teams {
+  background: var(--cg-terminal-teams-bg);
+
+  .mosaique__tile-head {
+    background: var(--cg-terminal-teams-bar);
+    color: var(--cg-terminal-teams-muted);
+  }
+
+  .mosaique__project {
+    color: var(--cg-terminal-teams-title);
+  }
+
+  .mosaique__zoom-icon {
+    color: var(--cg-terminal-teams-muted);
+  }
+
+  .mosaique__truncated {
+    background: var(--cg-terminal-teams-rule);
+    color: var(--cg-terminal-teams-title);
+  }
+}
+
 /* LE FLUX PREND TOUT LE RESTE DE LA TUILE. C'est le point de l'écran. */
 .mosaique__flux {
   display: block;

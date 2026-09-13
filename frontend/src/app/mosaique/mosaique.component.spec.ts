@@ -257,6 +257,35 @@ describe('MosaiqueComponent (F-83 / SF-83-02)', () => {
     expect(getComputedStyle(view).backgroundColor).toBe('rgb(20, 29, 51)');
   });
 
+  it('UNE TUILE TEAMS PORTE LA PEAU DU TERMINAL TEAMS — fond #231A36, en-tête #1B1429 (F-89 / SF-89-07)', async () => {
+    await setup([
+      terminal({ workspaceId: 'w-1', workspaceName: 'web' }),
+      terminal({ workspaceId: 'w-2', workspaceName: 'Terminal Teams', teamsTerminal: true }),
+    ]);
+    const tiles = Array.from(dom().querySelectorAll<HTMLElement>('.mosaique__tile'));
+    const teams = tiles.find((tile) => tile.classList.contains('mosaique__tile--teams')) as HTMLElement;
+    const ordinary = tiles.find((tile) => !tile.classList.contains('mosaique__tile--teams')) as HTMLElement;
+
+    expect(teams).withContext('tuile Teams').toBeDefined();
+    expect(getComputedStyle(teams.querySelector('.terminal-view') as HTMLElement).backgroundColor)
+      .toBe('rgb(35, 26, 54)');
+    expect(getComputedStyle(teams.querySelector('.mosaique__tile-head') as HTMLElement).backgroundColor)
+      .toBe('rgb(27, 20, 41)');
+    // L'identité du client ne change pas : le filet garde sa couleur (§9).
+    expect(teams.style.borderLeftColor).not.toBe('');
+
+    // AUCUN AUTRE TERMINAL NE CHANGE.
+    expect(getComputedStyle(ordinary.querySelector('.terminal-view') as HTMLElement).backgroundColor)
+      .toBe('rgb(20, 29, 51)');
+    expect(ordinary.querySelector('.terminal-view--teams')).toBeNull();
+  });
+
+  it('un backend antérieur, muet sur `teamsTerminal`, laisse la tuile ordinaire', async () => {
+    await setup([terminal({ workspaceId: 'w-1' })]);
+
+    expect(dom().querySelector('.mosaique__tile--teams')).toBeNull();
+  });
+
   it('offre un seul geste par tuile : entrer dans le terminal', async () => {
     await setup([terminal({ workspaceId: 'w-1' })]);
     const enter = dom().querySelector('.mosaique__enter') as HTMLAnchorElement;

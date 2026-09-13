@@ -130,12 +130,25 @@ describe('AtelierTerminalComponent — Markdown lisible sur le fond du terminal 
     expectReadable();
   });
 
-  it('terminal Teams : lisible', () => {
+  it('terminal Teams : lisible, sur sa surface « Prune » (F-89 / SF-89-07)', () => {
     component.teamsTerminal = true;
     component.messages = thread;
     fixture.detectChanges();
 
-    expectReadable();
+    // La surface Teams a ses propres jetons : titres blancs, code sur la barre, filets de la surface.
+    const TEAMS_TITLE = 'rgb(255, 255, 255)'; // --cg-terminal-teams-title
+    const TEAMS_BAR = 'rgb(27, 20, 41)'; // --cg-terminal-teams-bar
+    const TEAMS_RULE = 'rgb(67, 51, 95)'; // --cg-terminal-teams-rule
+    const TEAMS_TEXT = 'rgb(217, 207, 234)'; // --cg-terminal-teams-text
+    for (const level of ['h1', 'h2', 'h3', 'h4']) {
+      expect(getComputedStyle(inside(level)).color).withContext(`${level} du terminal Teams`).toBe(TEAMS_TITLE);
+    }
+    expect(getComputedStyle(inside('a')).color).withContext('lien').toBe(ORANGE_2);
+    expect(getComputedStyle(inside('p code')).backgroundColor).withContext('code en ligne').toBe(TEAMS_BAR);
+    expect(getComputedStyle(inside('blockquote')).color).withContext('citation').toBe(TEAMS_TEXT);
+    expect(getComputedStyle(inside('blockquote')).borderLeftColor).withContext('filet de citation').toBe(TEAMS_RULE);
+    expect(getComputedStyle(inside('td')).borderLeftColor).withContext('cellule de tableau').toBe(TEAMS_RULE);
+    expect(getComputedStyle(inside('td')).color).withContext('texte de cellule').toBe(TEAMS_TEXT);
   });
 
   it('tuile de mosaïque (lecture seule) : lisible', () => {
