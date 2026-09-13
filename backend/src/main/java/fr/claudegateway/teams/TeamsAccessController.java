@@ -32,9 +32,9 @@ public class TeamsAccessController {
     /** Le compte peut-il ouvrir un terminal Teams ? */
     @GetMapping("/access")
     public TeamsAccessResponse access() {
-        // L'accès Forge reste exigé : le volet Teams est un terminal de la Forge avant d'être une
-        // option. Sans la Forge, la question ne se pose même pas.
-        atelierAccess.requireAccess();
+        // F-107 / SF-107-07 : le runner est commun aux deux espaces — un compte Vigie seul pose la
+        // question comme un compte Forge. Sans aucun des deux, elle ne se pose pas (403).
+        atelierAccess.requireRunnerAccess();
         return new TeamsAccessResponse(teamsAccess.hasAccess());
     }
 }

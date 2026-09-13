@@ -4494,3 +4494,104 @@ describe('AtelierComponent — rappel de journalisation (F-57 / SF-57-03)', () =
     expect(fixture.nativeElement.querySelector('.notice')).toBeNull();
   });
 });
+
+// ---- F-107 / SF-107-07 : la Vigie ouvre le runner — le terminal Teams d'un compte sans la Forge ----
+
+describe('AtelierComponent — terminal Teams sans la Forge (F-107 / SF-107-07)', () => {
+  let service: jasmine.SpyObj<AtelierService>;
+  let snackBar: jasmine.SpyObj<MatSnackBar>;
+
+  const forbidden = () => throwError(() => new HttpErrorResponse({
+    status: 403, error: { error: 'atelier_forbidden', message: 'Réservé.' },
+  }));
+
+  const teamsSummary: WorkspaceSummary = {
+    id: 't1', name: 'Terminal Teams', createdAt: '2026-09-13T00:00:00Z', source: 'LOCAL', gitRepo: null,
+    teamsTerminal: true, hostName: 'EDENRED',
+  };
+  const teamsDetail: WorkspaceDetail = {
+    id: 't1', name: 'Terminal Teams', fileCount: 0, files: [], createdAt: '2026-09-13T00:00:00Z',
+    source: 'LOCAL', gitRepoUrl: null, gitRepo: null, gitBranch: null, truncated: false,
+    teamsTerminal: true,
+  };
+
+  function setup(id: string | null, vigieList: WorkspaceSummary[]) {
+    service = jasmine.createSpyObj<AtelierService>('AtelierService', [
+      'listWorkspaces', 'getWorkspace', 'getEngine', 'getHistory', 'getResume', 'attachTurn',
+      'getTurnState', 'teamsAccess', 'getRunnerStatus', 'streamChat', 'streamAgent',
+    ]);
+    const apiKeyService = jasmine.createSpyObj<ApiKeyService>('ApiKeyService', ['getStatus']);
+    snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
+    service.listWorkspaces.and.callFake((space?: 'VIGIE') =>
+      space === 'VIGIE' ? of(vigieList) : forbidden());
+    service.getWorkspace.and.returnValue(of(teamsDetail));
+    service.getHistory.and.returnValue(of([]));
+    service.attachTurn.and.returnValue(new AbortController());
+    service.getTurnState.and.returnValue(
+      of({ live: false, turnId: null, cursor: 0, startedAt: null, pending: null }));
+    service.getEngine.and.returnValue(of({
+      engine: 'LOCAL_MACHINE' as const, runnerConnected: false, runnerLastSeenAt: null,
+      recommendRunner: false, recommendReason: null,
+    }));
+    service.getResume.and.returnValue(
+      of({ turns: 0, lastMessageAt: null, threadStartedAt: null, prompt: 'NONE' as const }));
+    service.teamsAccess.and.returnValue(of({ entitled: true }));
+    service.getRunnerStatus.and.returnValue(of({ connected: false, lastSeenAt: null }));
+    apiKeyService.getStatus.and.returnValue(of({
+      present: false, maskedKey: null, last4: null, provider: null, mode: 'HOSTED',
+      validatedAt: null, createdAt: null,
+    } as ApiKeyStatus));
+
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [AtelierComponent],
+      providers: [
+        provideNoopAnimations(),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        provideRouter([]),
+        { provide: AtelierService, useValue: service },
+        { provide: ApiKeyService, useValue: apiKeyService },
+        { provide: MatSnackBar, useValue: snackBar },
+        { provide: MatDialog, useValue: jasmine.createSpyObj<MatDialog>('MatDialog', ['open']) },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              paramMap: { get: (k: string) => (k === 'id' ? id : null) },
+              queryParamMap: { get: () => null },
+            },
+            queryParamMap: of({ get: () => null } as unknown as ParamMap),
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(AtelierComponent);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('relit la liste de la Vigie et ouvre le terminal Teams demandé', () => {
+    const fixture = setup('t1', [teamsSummary]);
+
+    expect(service.listWorkspaces).toHaveBeenCalledWith('VIGIE');
+    expect(fixture.componentInstance.accessDenied()).toBeFalse();
+    expect(fixture.componentInstance.activeWorkspaceId()).toBe('t1');
+    expect(snackBar.open).not.toHaveBeenCalled();
+  });
+
+  it('un projet demandé sans la Forge présente la Forge, sans message d\'erreur', () => {
+    const fixture = setup('w-projet', [teamsSummary]);
+
+    expect(fixture.componentInstance.accessDenied()).toBeTrue();
+    expect(fixture.componentInstance.activeWorkspaceId()).toBeNull();
+    expect(snackBar.open).not.toHaveBeenCalled();
+  });
+
+  it('sans identifiant demandé, la liste de la Vigie n\'est pas relue (présentation Forge inchangée)', () => {
+    const fixture = setup(null, [teamsSummary]);
+
+    expect(service.listWorkspaces).not.toHaveBeenCalledWith('VIGIE');
+    expect(fixture.componentInstance.accessDenied()).toBeTrue();
+  });
+});

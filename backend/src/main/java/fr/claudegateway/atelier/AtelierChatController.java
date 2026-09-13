@@ -95,7 +95,7 @@ public class AtelierChatController {
 
     @PostMapping
     public AtelierChatResponse chat(@PathVariable UUID id, @Valid @RequestBody AtelierChatRequest request) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireTerminalAccess(id);
         AtelierChatResult result = atelierChatService.chat(currentUser.requireId(), id, request.message());
         return new AtelierChatResponse(result.reply(), result.actions(), result.messageId(),
                 result.inputTokens(), result.outputTokens(), result.activeSeconds(),
@@ -115,7 +115,7 @@ public class AtelierChatController {
         // s'exécute sur un thread du pool SSE qui n'hérite pas du contexte de sécurité. On capture un
         // booléen (jamais d'exception synchrone => pas de 406 sur cet endpoint SSE) et l'erreur d'accès
         // est émise DANS le flux ({@code error: forbidden}), comme les autres erreurs de pré-vol.
-        boolean hasAccess = atelierAccess.hasAccess();
+        boolean hasAccess = atelierAccess.hasTerminalAccess(id);
         SseEmitter emitter = newEmitter();
         fr.claudegateway.chat.SseStreamDispatch.submit(chatStreamExecutor, emitter,
                 () -> relay(emitter, userId, id, request.message(), hasAccess));
@@ -156,7 +156,7 @@ public class AtelierChatController {
         UUID userId = currentUser.requireId();
         // Gating résolu ICI, comme pour le flux d'émission : le pool n'hérite pas du SecurityContext,
         // et un refus doit partir DANS le flux (jamais un 406 sur un endpoint SSE).
-        boolean hasAccess = atelierAccess.hasAccess();
+        boolean hasAccess = atelierAccess.hasTerminalAccess(id);
         long from = cursor == null || cursor < 0 ? LiveTurn.FROM_START : cursor;
         SseEmitter emitter = newEmitter();
         fr.claudegateway.chat.SseStreamDispatch.submit(turnAttachExecutor, emitter,
@@ -178,7 +178,7 @@ public class AtelierChatController {
      */
     @GetMapping("/turn")
     public AtelierTurnStateResponse turnState(@PathVariable UUID id) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireTerminalAccess(id);
         UUID userId = currentUser.requireId();
         Optional<LiveTurn> local = liveTurns.find(userId, id);
         if (local.isPresent()) {
@@ -260,7 +260,7 @@ public class AtelierChatController {
     @PostMapping("/steer")
     public ResponseEntity<Void> steer(@PathVariable UUID id,
             @Valid @RequestBody AtelierChatRequest request) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireTerminalAccess(id);
         atelierChatService.steer(currentUser.requireId(), id, request.message());
         return ResponseEntity.noContent().build();
     }
@@ -276,7 +276,7 @@ public class AtelierChatController {
      */
     @PostMapping("/interrupt")
     public ResponseEntity<Void> interrupt(@PathVariable UUID id) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireTerminalAccess(id);
         atelierChatService.interruptChat(currentUser.requireId(), id);
         return ResponseEntity.noContent().build();
     }
@@ -294,7 +294,7 @@ public class AtelierChatController {
     @PostMapping("/confirm")
     public ResponseEntity<Void> confirm(@PathVariable UUID id,
             @Valid @RequestBody AgentConfirmRequest request) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireTerminalAccess(id);
         atelierChatService.confirmToolUse(currentUser.requireId(), id, request.toolUseId(),
                 request.allows(), request.reason(), request.allowsAll());
         return ResponseEntity.noContent().build();
@@ -310,7 +310,7 @@ public class AtelierChatController {
      */
     @GetMapping("/resume")
     public AtelierResumeResponse resume(@PathVariable UUID id) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireTerminalAccess(id);
         return atelierThreadService.resumeState(currentUser.requireId(), id);
     }
 
@@ -324,13 +324,13 @@ public class AtelierChatController {
      */
     @PostMapping("/restart")
     public AtelierResumeResponse restart(@PathVariable UUID id) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireTerminalAccess(id);
         return atelierThreadService.restart(currentUser.requireId(), id);
     }
 
     @GetMapping
     public List<AtelierMessageResponse> history(@PathVariable UUID id) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireTerminalAccess(id);
         return atelierChatService.history(currentUser.requireId(), id).stream()
                 .map(AtelierMessageResponse::from)
                 .toList();

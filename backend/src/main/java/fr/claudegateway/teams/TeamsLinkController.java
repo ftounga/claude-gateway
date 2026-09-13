@@ -44,7 +44,7 @@ public class TeamsLinkController {
      */
     @GetMapping("/{id}/teams/link")
     public TeamsLinkResponse link(@PathVariable UUID id) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireTerminalAccess(id);
         return TeamsLinkResponse.from(teamsLinkService.status(currentUser.requireId(), id));
     }
 }

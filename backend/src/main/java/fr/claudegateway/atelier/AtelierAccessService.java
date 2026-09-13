@@ -1,5 +1,7 @@
 package fr.claudegateway.atelier;
 
+import java.util.UUID;
+
 import org.springframework.stereotype.Service;
 
 import fr.claudegateway.auth.AuthenticatedUser;
@@ -18,6 +20,16 @@ import fr.claudegateway.user.UserRole;
  * le bypass administrateur et pose l'exception. La question « cet utilisateur a-t-il payé pour
  * l'Atelier ? » est une question de facturation et vit dans le paquet {@code billing}.</p>
  *
+ * <p><b>Trois gardes</b> (F-107 / SF-107-07) — le runner est commun aux deux espaces (cadrage F-106 §3) :</p>
+ * <ul>
+ *   <li>{@link #requireAccess()} — la <b>Forge</b> : projets, terminaux de projet, terminal du poste,
+ *       carte, gouvernance ;</li>
+ *   <li>{@link #requireRunnerAccess()} — le <b>runner</b> : postes, appairage, statut, coupe-circuit,
+ *       ouvert par le droit Forge <b>ou</b> le droit Vigie ;</li>
+ *   <li>{@link #requireTerminalAccess(UUID)} — un <b>terminal désigné</b> : le terminal Teams suit la
+ *       garde runner, tout autre workspace la garde Forge.</li>
+ * </ul>
+ *
  * <p>Le gating ne touche pas à l'isolation {@code user_id} (toujours appliquée en aval par les
  * services d'atelier).</p>
  */
@@ -26,10 +38,14 @@ public class AtelierAccessService {
 
     private final CurrentUser currentUser;
     private final SpaceEntitlementService entitlementService;
+    /** Lecture du seul drapeau « terminal Teams » d'un workspace possédé (SF-107-07). */
+    private final WorkspaceRepository workspaceRepository;
 
-    public AtelierAccessService(CurrentUser currentUser, SpaceEntitlementService entitlementService) {
+    public AtelierAccessService(CurrentUser currentUser, SpaceEntitlementService entitlementService,
+            WorkspaceRepository workspaceRepository) {
         this.currentUser = currentUser;
         this.entitlementService = entitlementService;
+        this.workspaceRepository = workspaceRepository;
     }
 
     /**
@@ -54,6 +70,61 @@ public class AtelierAccessService {
      */
     public boolean hasAccess() {
         return currentUser.principal().map(this::isAllowed).orElse(false);
+    }
+
+    /**
+     * Exige le droit au <b>runner</b> (F-107 / SF-107-07) : Forge <b>ou</b> Vigie, administrateur compris.
+     *
+     * @throws AtelierAccessDeniedException si l'utilisateur n'a aucun des deux espaces
+     */
+    public void requireRunnerAccess() {
+        if (!hasRunnerAccess()) {
+            throw new AtelierAccessDeniedException();
+        }
+    }
+
+    /** Le droit au runner de l'utilisateur courant, sans lever d'exception. */
+    public boolean hasRunnerAccess() {
+        return currentUser.principal().map(this::isRunnerAllowed).orElse(false);
+    }
+
+    /**
+     * Exige le droit d'utiliser <b>ce</b> terminal (F-107 / SF-107-07) : le terminal Teams de
+     * l'utilisateur courant s'ouvre avec le droit au runner ; tout autre workspace — projet, terminal du
+     * poste, identifiant inconnu ou appartenant à autrui — exige la Forge. Un terminal Teams d'autrui
+     * n'est donc jamais distingué d'un projet : le refus est le même.
+     *
+     * @param workspaceId workspace désigné par l'adresse
+     * @throws AtelierAccessDeniedException si le droit manque
+     */
+    public void requireTerminalAccess(UUID workspaceId) {
+        if (!hasTerminalAccess(workspaceId)) {
+            throw new AtelierAccessDeniedException();
+        }
+    }
+
+    /**
+     * Le droit d'utiliser ce terminal, sans lever d'exception : c'est la forme des flux SSE, dont le
+     * refus voyage dans le flux.
+     */
+    public boolean hasTerminalAccess(UUID workspaceId) {
+        return currentUser.principal().map(principal -> {
+            if (isAllowed(principal)) {
+                return true; // La Forge ouvre tous les terminaux ; on ne lit pas le workspace.
+            }
+            return isOwnTeamsTerminal(principal, workspaceId) && isRunnerAllowed(principal);
+        }).orElse(false);
+    }
+
+    private boolean isOwnTeamsTerminal(AuthenticatedUser principal, UUID workspaceId) {
+        return workspaceId != null && workspaceRepository.findByIdAndUserId(workspaceId, principal.id())
+                .map(Workspace::isTeamsTerminal)
+                .orElse(false);
+    }
+
+    private boolean isRunnerAllowed(AuthenticatedUser principal) {
+        return isAllowed(principal)
+                || entitlementService.isEntitled(principal.id(), EntitlementSpace.VIGIE);
     }
 
     private boolean isAllowed(AuthenticatedUser principal) {

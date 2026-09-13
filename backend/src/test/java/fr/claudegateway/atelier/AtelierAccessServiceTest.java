@@ -43,6 +43,8 @@ class AtelierAccessServiceTest {
     @Mock private fr.claudegateway.access.AccessGrantService accessGrantService;
     /** F-107 / SF-107-06 : personne n'est administrateur en base par défaut. */
     @Mock private fr.claudegateway.billing.AdministratorEntitlement administratorEntitlement;
+    /** F-107 / SF-107-07 : le drapeau « terminal Teams » d'un workspace possédé. */
+    @Mock private WorkspaceRepository workspaceRepository;
 
     private AtelierAccessService service;
 
@@ -52,7 +54,7 @@ class AtelierAccessServiceTest {
     void setUp() {
         service = new AtelierAccessService(currentUser,
                 new SpaceEntitlementService(subscriptionService, accessGrantService,
-                        administratorEntitlement));
+                        administratorEntitlement), workspaceRepository);
     }
 
     private AuthenticatedUser principal(UserRole role) {
@@ -191,5 +193,100 @@ class AtelierAccessServiceTest {
         assertThat(service.hasAccess()).isFalse();
         assertThatThrownBy(() -> service.requireAccess())
                 .isInstanceOf(AtelierAccessDeniedException.class);
+    }
+
+    // ------------------------------------ F-107 / SF-107-07 : la Vigie ouvre le runner
+
+    private Subscription goldVigie() {
+        return subscription(PlanCode.GOLD_VIGIE, SubscriptionStatus.ACTIVE);
+    }
+
+    private Workspace workspace(boolean teamsTerminal) {
+        return Workspace.builder().id(UUID.randomUUID()).userId(userId).name("w")
+                .teamsTerminal(teamsTerminal).build();
+    }
+
+    @Test
+    void vigieOnlyOpensTheRunnerButNotTheForge() {
+        when(currentUser.principal()).thenReturn(Optional.of(principal(UserRole.USER)));
+        when(subscriptionService.getOrCreateForUser(userId)).thenReturn(goldVigie());
+
+        assertThat(service.hasAccess()).isFalse();
+        assertThat(service.hasRunnerAccess()).isTrue();
+        assertThatCode(service::requireRunnerAccess).doesNotThrowAnyException();
+    }
+
+    @Test
+    void forgeOnlyOpensTheRunner() {
+        when(currentUser.principal()).thenReturn(Optional.of(principal(UserRole.USER)));
+        when(subscriptionService.getOrCreateForUser(userId))
+                .thenReturn(subscription(PlanCode.GOLD, SubscriptionStatus.ACTIVE));
+
+        assertThat(service.hasRunnerAccess()).isTrue();
+    }
+
+    @Test
+    void noSpaceClosesTheRunner() {
+        when(currentUser.principal()).thenReturn(Optional.of(principal(UserRole.USER)));
+        when(subscriptionService.getOrCreateForUser(userId))
+                .thenReturn(subscription(PlanCode.SOLO, SubscriptionStatus.ACTIVE));
+
+        assertThat(service.hasRunnerAccess()).isFalse();
+        assertThatThrownBy(service::requireRunnerAccess).isInstanceOf(AtelierAccessDeniedException.class);
+        assertThatThrownBy(() -> service.requireTerminalAccess(UUID.randomUUID()))
+                .isInstanceOf(AtelierAccessDeniedException.class);
+    }
+
+    @Test
+    void adminHasRunnerAndEveryTerminalWithoutReadingTheWorkspace() {
+        when(currentUser.principal()).thenReturn(Optional.of(principal(UserRole.ADMIN)));
+
+        assertThat(service.hasRunnerAccess()).isTrue();
+        assertThat(service.hasTerminalAccess(UUID.randomUUID())).isTrue();
+        verify(workspaceRepository, never()).findByIdAndUserId(any(), any());
+        verify(subscriptionService, never()).getOrCreateForUser(any());
+    }
+
+    @Test
+    void vigieOnlyOpensItsTeamsTerminal() {
+        when(currentUser.principal()).thenReturn(Optional.of(principal(UserRole.USER)));
+        when(subscriptionService.getOrCreateForUser(userId)).thenReturn(goldVigie());
+        Workspace teams = workspace(true);
+        when(workspaceRepository.findByIdAndUserId(teams.getId(), userId)).thenReturn(Optional.of(teams));
+
+        assertThat(service.hasTerminalAccess(teams.getId())).isTrue();
+        assertThatCode(() -> service.requireTerminalAccess(teams.getId())).doesNotThrowAnyException();
+    }
+
+    @Test
+    void vigieOnlyIsRefusedOnAProjectTerminal() {
+        when(currentUser.principal()).thenReturn(Optional.of(principal(UserRole.USER)));
+        when(subscriptionService.getOrCreateForUser(userId)).thenReturn(goldVigie());
+        Workspace project = workspace(false);
+        when(workspaceRepository.findByIdAndUserId(project.getId(), userId)).thenReturn(Optional.of(project));
+
+        assertThat(service.hasTerminalAccess(project.getId())).isFalse();
+        assertThatThrownBy(() -> service.requireTerminalAccess(project.getId()))
+                .isInstanceOf(AtelierAccessDeniedException.class);
+    }
+
+    @Test
+    void vigieOnlyIsRefusedOnAnUnknownOrForeignWorkspace() {
+        when(currentUser.principal()).thenReturn(Optional.of(principal(UserRole.USER)));
+        when(subscriptionService.getOrCreateForUser(userId)).thenReturn(goldVigie());
+        UUID foreign = UUID.randomUUID();
+        when(workspaceRepository.findByIdAndUserId(foreign, userId)).thenReturn(Optional.empty());
+
+        assertThat(service.hasTerminalAccess(foreign)).isFalse();
+    }
+
+    @Test
+    void forgeOpensEveryTerminalWithoutReadingTheWorkspace() {
+        when(currentUser.principal()).thenReturn(Optional.of(principal(UserRole.USER)));
+        when(subscriptionService.getOrCreateForUser(userId))
+                .thenReturn(subscription(PlanCode.GOLD, SubscriptionStatus.ACTIVE));
+
+        assertThat(service.hasTerminalAccess(UUID.randomUUID())).isTrue();
+        verify(workspaceRepository, never()).findByIdAndUserId(any(), any());
     }
 }

@@ -44,7 +44,9 @@ import jakarta.validation.Valid;
  * Gestion des <b>postes</b> d'un utilisateur (F-48 / SF-48-01) : créer une machine, l'appairer
  * <b>une seule fois</b>, voir son état, révoquer ses jetons, la couper.
  *
- * <p>Ces endpoints sont <b>JWT</b> (chaîne principale) et gardés par l'accès Atelier. Ils vivent
+ * <p>Ces endpoints sont <b>JWT</b> (chaîne principale). Le runner est <b>commun aux deux espaces</b>
+ * (F-107 / SF-107-07) : postes, appairage, statut, coupe-circuit et terminal Teams sont gardés par le
+ * droit Forge <b>ou</b> Vigie ; dossiers, projets et terminal du poste restent à la Forge. Ils vivent
  * sous {@code /runner-hosts/**} — volontairement <b>hors</b> du préfixe {@code /runner/**}, qui est
  * la chaîne du protocole runner et refuse tout ce qui n'y est pas explicitement listé :
  * un jeton runner n'y donne aucun droit, et un JWT utilisateur n'ouvre aucun canal d'exécution.</p>
@@ -96,7 +98,7 @@ public class RunnerHostController {
      */
     @PostMapping
     public RunnerHostResponse create(@Valid @RequestBody RunnerHostRequest request) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireRunnerAccess();
         ClientSpace space = ClientSpace.parse(request.space());
         requireSpaceRight(space);
         UUID userId = currentUser.requireId();
@@ -111,7 +113,7 @@ public class RunnerHostController {
      */
     @GetMapping("/spaces")
     public List<HostSpacesResponse> spaces() {
-        atelierAccess.requireAccess();
+        atelierAccess.requireRunnerAccess();
         UUID userId = currentUser.requireId();
         var byHost = spaceService.spacesByHost(userId);
         return hostService.list(userId).stream()
@@ -126,7 +128,7 @@ public class RunnerHostController {
      */
     @PutMapping("/{hostId}/spaces/{space}")
     public HostSpacesResponse activateSpace(@PathVariable UUID hostId, @PathVariable String space) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireRunnerAccess();
         ClientSpace target = ClientSpace.parse(space);
         requireSpaceRight(target);
         UUID userId = currentUser.requireId();
@@ -141,24 +143,29 @@ public class RunnerHostController {
      */
     @DeleteMapping("/{hostId}/spaces/{space}")
     public HostSpacesResponse removeSpace(@PathVariable UUID hostId, @PathVariable String space) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireRunnerAccess();
         ClientSpace target = ClientSpace.parse(space);
         UUID userId = currentUser.requireId();
         var spaces = spaceService.remove(userId, hostId, target);
         return HostSpacesResponse.from(hostService.requireOwned(userId, hostId), spaces);
     }
 
-    /** La Vigie est gardée par le droit Teams en attendant le droit par espace (F-107). */
+    /**
+     * L'espace visé exige <b>son</b> droit (F-107 / SF-107-07) : la garde runner a laissé passer un compte
+     * Forge ou Vigie ; créer, activer ou regarder dans un espace demande cet espace-là.
+     */
     private void requireSpaceRight(ClientSpace space) {
         if (space == ClientSpace.VIGIE) {
             teamsAccess.requireAccess();
+        } else {
+            atelierAccess.requireAccess();
         }
     }
 
     /** Postes de l'utilisateur, avec leur état de connexion. */
     @GetMapping
     public List<RunnerHostResponse> list() {
-        atelierAccess.requireAccess();
+        atelierAccess.requireRunnerAccess();
         UUID userId = currentUser.requireId();
         return hostService.list(userId).stream()
                 .map(host -> RunnerHostResponse.from(host,
@@ -176,7 +183,7 @@ public class RunnerHostController {
     @GetMapping("/overview")
     public List<RunnerHostOverviewResponse> overview(
             @RequestParam(name = "space", required = false) String space) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireRunnerAccess();
         // F-106 / SF-106-01 : la vue d'un espace ne montre que les clients qui y sont activés.
         ClientSpace target = ClientSpace.parse(space);
         requireSpaceRight(target);
@@ -281,7 +288,7 @@ public class RunnerHostController {
      */
     @PostMapping("/{hostId}/teams-terminal")
     public WorkspaceDetailResponse openTeamsTerminal(@PathVariable UUID hostId) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireRunnerAccess();
         teamsAccess.requireAccess();
         UUID userId = currentUser.requireId();
         hostService.requireOwned(userId, hostId);
@@ -295,7 +302,7 @@ public class RunnerHostController {
     /** Détail d'un poste possédé. */
     @GetMapping("/{hostId}")
     public RunnerHostResponse get(@PathVariable UUID hostId) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireRunnerAccess();
         UUID userId = currentUser.requireId();
         RunnerHost host = hostService.requireOwned(userId, hostId);
         return RunnerHostResponse.from(host, statusService.statusOf(userId, host).connected());
@@ -305,7 +312,7 @@ public class RunnerHostController {
     @PutMapping("/{hostId}")
     public RunnerHostResponse rename(@PathVariable UUID hostId,
             @Valid @RequestBody RunnerHostRequest request) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireRunnerAccess();
         UUID userId = currentUser.requireId();
         RunnerHost host = hostService.rename(userId, hostId, request.name());
         return RunnerHostResponse.from(host, statusService.statusOf(userId, host).connected());
@@ -326,7 +333,7 @@ public class RunnerHostController {
     @PutMapping("/{hostId}/mission")
     public RunnerHostResponse setMissionStatus(@PathVariable UUID hostId,
             @Valid @RequestBody HostMissionRequest request) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireRunnerAccess();
         UUID userId = currentUser.requireId();
         RunnerHost host = hostService.setMissionStatus(userId, hostId, request.missionStatus());
         return RunnerHostResponse.from(host, statusService.statusOf(userId, host).connected());
@@ -349,7 +356,7 @@ public class RunnerHostController {
      */
     @DeleteMapping("/{hostId}")
     public ResponseEntity<Void> delete(@PathVariable UUID hostId) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireRunnerAccess();
         UUID userId = currentUser.requireId();
         RunnerHost host = hostService.requireOwned(userId, hostId);
         int remaining = workspaceService.listByHost(userId, hostId).size();
@@ -373,7 +380,7 @@ public class RunnerHostController {
     /** Génère le code d'appairage du poste — un seul suffit pour toute la machine. */
     @PostMapping("/{hostId}/pairing-code")
     public PairingCodeResponse createPairingCode(@PathVariable UUID hostId) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireRunnerAccess();
         UUID userId = currentUser.requireId();
         PairingCode code = pairingService.createPairingCode(userId, hostId);
         return new PairingCodeResponse(code.code(), code.expiresAt());
@@ -382,7 +389,7 @@ public class RunnerHostController {
     /** Jetons runner de ce poste (métadonnées seulement, jamais la valeur). */
     @GetMapping("/{hostId}/tokens")
     public List<RunnerTokenResponse> listTokens(@PathVariable UUID hostId) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireRunnerAccess();
         UUID userId = currentUser.requireId();
         return tokenService.list(userId, hostId).stream()
                 .map(RunnerTokenResponse::from)
@@ -392,7 +399,7 @@ public class RunnerHostController {
     /** État « runner connecté / déconnecté » du poste. */
     @GetMapping("/{hostId}/status")
     public RunnerStatusResponse status(@PathVariable UUID hostId) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireRunnerAccess();
         UUID userId = currentUser.requireId();
         return RunnerStatusResponse.from(statusService.hostStatus(userId, hostId));
     }
@@ -403,7 +410,7 @@ public class RunnerHostController {
      */
     @DeleteMapping("/{hostId}/tokens/{tokenId}")
     public ResponseEntity<Void> revokeToken(@PathVariable UUID hostId, @PathVariable UUID tokenId) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireRunnerAccess();
         UUID userId = currentUser.requireId();
         killSwitchService.revokeToken(userId, hostId, tokenId);
         return ResponseEntity.noContent().build();
@@ -416,7 +423,7 @@ public class RunnerHostController {
      */
     @PostMapping("/{hostId}/kill")
     public RunnerKillResponse kill(@PathVariable UUID hostId) {
-        atelierAccess.requireAccess();
+        atelierAccess.requireRunnerAccess();
         UUID userId = currentUser.requireId();
         hostService.requireOwned(userId, hostId);
         return RunnerKillResponse.from(killSwitchService.kill(userId, hostId));

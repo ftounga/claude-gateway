@@ -79,6 +79,17 @@ describe('AtelierService', () => {
     expect(received).toEqual(list);
   });
 
+  it('GETs the Teams terminals of the Vigie with space=VIGIE (F-107 / SF-107-07)', () => {
+    let received: WorkspaceSummary[] | undefined;
+    service.listWorkspaces('VIGIE').subscribe((r) => (received = r));
+
+    const req = httpMock.expectOne((r) => r.url === '/api/workspaces');
+    expect(req.request.params.get('space')).toBe('VIGIE');
+    req.flush([]);
+
+    expect(received).toEqual([]);
+  });
+
   it('GETs workspace detail with its file tree', () => {
     const detail: WorkspaceDetail = {
       id: 'w1',

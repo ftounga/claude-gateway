@@ -48,7 +48,7 @@ class AtelierChatControllerAttachTest {
         access = Mockito.mock(AtelierAccessService.class);
         liveTurns = new LiveTurnRegistry(new ObjectMapper());
         when(currentUser.requireId()).thenReturn(ALICE);
-        when(access.hasAccess()).thenReturn(true);
+        when(access.hasTerminalAccess(org.mockito.ArgumentMatchers.any())).thenReturn(true);
     }
 
     @Test
@@ -113,7 +113,7 @@ class AtelierChatControllerAttachTest {
 
     @Test
     void unEcranSansAccesRecoitSonRefusDansLeFlux() {
-        when(access.hasAccess()).thenReturn(false);
+        when(access.hasTerminalAccess(org.mockito.ArgumentMatchers.any())).thenReturn(false);
         liveTurns.open(ALICE, PROJET);
         RecordingEmitter ecran = new RecordingEmitter();
 

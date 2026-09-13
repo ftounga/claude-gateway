@@ -53,7 +53,7 @@ class AtelierChatControllerTurnSurvivalTest {
         access = Mockito.mock(AtelierAccessService.class);
         liveTurns = new LiveTurnRegistry(new com.fasterxml.jackson.databind.ObjectMapper());
         when(currentUser.requireId()).thenReturn(USER);
-        when(access.hasAccess()).thenReturn(true);
+        when(access.hasTerminalAccess(org.mockito.ArgumentMatchers.any())).thenReturn(true);
     }
 
     @Test
