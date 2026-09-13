@@ -77,4 +77,32 @@ class RadarToolCatalogTest {
 
         assertThat(RadarToolCatalog.none().toolsFor(userId, teamsTerminal())).isEmpty();
     }
+
+    @Test
+    @DisplayName("SF-104-03 — cibles lisibles des six outils : jamais d'identifiant, paramètres absents tolérés")
+    void stepTargets() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        String id = UUID.randomUUID().toString();
+        assertThat(RadarToolCatalog.stepTarget(RadarToolCatalog.FIND_SUBJECT, mapper.readTree("{\"query\":\"MFA\"}")))
+                .isEqualTo("Radar · recherche « MFA »");
+        assertThat(RadarToolCatalog.stepTarget(RadarToolCatalog.FIND_SUBJECT, null)).isEqualTo("Radar · sujets ouverts");
+        assertThat(RadarToolCatalog.stepTarget(RadarToolCatalog.UPDATE_SUBJECT,
+                mapper.readTree("{\"new_subject_name\":\"Accès Sophie\"}"))).isEqualTo("Radar · nouveau sujet « Accès Sophie »");
+        assertThat(RadarToolCatalog.stepTarget(RadarToolCatalog.UPDATE_SUBJECT,
+                mapper.readTree("{\"subject_id\":\"" + id + "\",\"state\":\"WAITING\",\"next_step\":\"x\"}")))
+                .isEqualTo("Radar · sujet : état, prochaine étape");
+        assertThat(RadarToolCatalog.stepTarget(RadarToolCatalog.CLOSE_SUBJECT,
+                mapper.readTree("{\"subject_id\":\"" + id + "\"}"))).isEqualTo("Radar · clôture d'un sujet");
+        assertThat(RadarToolCatalog.stepTarget(RadarToolCatalog.ADD_ENGAGEMENT,
+                mapper.readTree("{\"subject_id\":\"" + id + "\",\"description\":\"Présenter Sophie à Karim\"}")))
+                .isEqualTo("Radar · engagement « Présenter Sophie à Karim »");
+        assertThat(RadarToolCatalog.stepTarget(RadarToolCatalog.MARK_ENGAGEMENT,
+                mapper.readTree("{\"commitment_id\":\"" + id + "\",\"status\":\"done\"}"))).isEqualTo("Radar · engagement tenu");
+        assertThat(RadarToolCatalog.stepTarget(RadarToolCatalog.MERGE_SUBJECTS, mapper.readTree("{}")))
+                .isEqualTo("Radar · fusion de deux sujets");
+        for (String tool : RadarToolCatalog.CATALOG) {
+            assertThat(RadarToolCatalog.stepTarget(tool, mapper.readTree("{\"subject_id\":\"" + id + "\",\"commitment_id\":\""
+                    + id + "\"}"))).doesNotContain(id).startsWith("Radar");
+        }
+    }
 }

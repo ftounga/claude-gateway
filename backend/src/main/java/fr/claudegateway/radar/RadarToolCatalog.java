@@ -52,6 +52,27 @@ public class RadarToolCatalog {
     public static final List<String> WRITE = List.of(UPDATE_SUBJECT, CLOSE_SUBJECT, ADD_ENGAGEMENT,
             MARK_ENGAGEMENT, MERGE_SUBJECTS);
 
+    /**
+     * <b>Ce que l'agent du terminal Teams doit savoir du Radar</b> (F-104 / SF-104-03) — ajouté à la consigne
+     * système seulement quand la garde est ouverte.
+     *
+     * <p>Deux règles, et elles ne sont pas de confort. <b>Registre d'abord</b> : c'est la promesse du cadrage
+     * (« où en est le MFA ? » trouve sa réponse sans relire Teams). <b>La preuve est la parole de
+     * l'utilisateur</b> : dans ce terminal, l'agent lit aussi Teams ; écrire une lecture de Teams sous la
+     * preuve du message de l'utilisateur lui attribuerait des mots qu'il n'a pas dits.</p>
+     */
+    public static final String TERMINAL_NOTICE = "--- Radar du client ---\n"
+            + "Ce client est suivi par le Radar : un registre de ses sujets, de leurs engagements et des relances, "
+            + "tenu à jour chaque soir. Pour « où en est tel sujet ? », « qu'est-ce que j'attends de telle "
+            + "personne ? » ou « quelles relances sont dues ? », cherche D'ABORD dans le registre avec "
+            + FIND_SUBJECT + " : sa réponse est sourcée et ne relit pas Teams. Ne relis Teams que si le registre "
+            + "ne sait pas ou si l'utilisateur le demande, et dis alors d'où vient ta réponse.\n"
+            + "Les écritures radar_* ont pour preuve LE MESSAGE DE L'UTILISATEUR : n'écris que ce qu'il te dit "
+            + "lui-même (« le sujet LDAP est clos », « Julie m'a répondu »), JAMAIS ce que tu as lu dans Teams ni "
+            + "ce que tu déduis — une question n'est pas une nouvelle. Avant d'écrire, dis en une phrase ce que tu "
+            + "as compris (« Je note : … ») ; après, rappelle que c'est annulable depuis la chronologie du sujet. "
+            + "Rien n'est jamais écrit dans Teams.";
+
     private final TeamsAccessService teamsAccess;
     private final HostSpaceService spaces;
 
@@ -101,6 +122,60 @@ public class RadarToolCatalog {
     /** Les outils Radar à donner à l'agent pour ce tour, ou <b>la liste vide</b>. */
     public List<AgentTool> toolsFor(UUID userId, Workspace workspace) {
         return isOpenFor(userId, workspace) ? definitions() : List.of();
+    }
+
+    /**
+     * <b>La cible lisible d'un appel Radar</b> (F-104 / SF-104-03) : ce que le terminal affiche sur l'étape et
+     * ce que la transcription garde. Jamais un identifiant technique, jamais le contenu d'un message.
+     */
+    public static String stepTarget(String tool, com.fasterxml.jackson.databind.JsonNode input) {
+        String query = text(input, "query");
+        return switch (tool == null ? "" : tool) {
+            case FIND_SUBJECT -> query.isEmpty() ? "Radar · sujets ouverts" : "Radar · recherche « " + query + " »";
+            case UPDATE_SUBJECT -> {
+                String created = text(input, "new_subject_name");
+                if (!created.isEmpty() && text(input, "subject_id").isEmpty()) {
+                    yield "Radar · nouveau sujet « " + created + " »";
+                }
+                List<String> fields = new java.util.ArrayList<>();
+                if (!text(input, "name").isEmpty()) {
+                    fields.add("nom");
+                }
+                if (!text(input, "state").isEmpty()) {
+                    fields.add("état");
+                }
+                if (input != null && input.has("next_step")) {
+                    fields.add("prochaine étape");
+                }
+                if (input != null && input.has("due_date")) {
+                    fields.add("échéance");
+                }
+                yield fields.isEmpty() ? "Radar · mise à jour d'un sujet" : "Radar · sujet : " + String.join(", ", fields);
+            }
+            case CLOSE_SUBJECT -> "Radar · clôture d'un sujet";
+            case ADD_ENGAGEMENT -> {
+                String description = text(input, "description");
+                yield description.isEmpty() ? "Radar · engagement ajouté"
+                        : "Radar · engagement « " + (description.length() > 80 ? description.substring(0, 80) + "…" : description) + " »";
+            }
+            case MARK_ENGAGEMENT -> "Radar · engagement " + switch (text(input, "status").toUpperCase(java.util.Locale.ROOT)) {
+                case "DONE" -> "tenu";
+                case "ABANDON" -> "abandonné";
+                case "POSTPONE" -> "reporté";
+                case "REOPEN" -> "rouvert";
+                case "NOT_MINE" -> "pas le mien";
+                default -> "marqué";
+            };
+            case MERGE_SUBJECTS -> "Radar · fusion de deux sujets";
+            default -> "Radar";
+        };
+    }
+
+    private static String text(com.fasterxml.jackson.databind.JsonNode input, String field) {
+        if (input == null || !input.hasNonNull(field)) {
+            return "";
+        }
+        return input.path(field).asText("").strip();
     }
 
     /**
