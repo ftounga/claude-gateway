@@ -213,7 +213,8 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `created_at`, `updated_at`. Index `user_id`, `stripe_subscription_id`, `atelier_option_stripe_subscription_id` (unique).
   - **Droit d'Atelier (F-40)** : l'accès à l'Atelier n'est plus un test de **plan** (`plan_code = GOLD`)
     mais un test de **droit**, porté par le plan Gold actif **ou** par l'option Atelier active sur un
-    plan Solo/Pro actif. La règle vit dans `AtelierEntitlementService` (paquet `billing`). L'option
+    plan Solo/Pro actif. La règle vit dans `SpaceEntitlementService` (paquet `billing`, espace `FORGE`,
+    F-107 / SF-107-02 — anciennement `AtelierEntitlementService`). L'option
     est un abonnement fournisseur **distinct** de celui du plan, d'où la seconde colonne
     d'identifiant : les confondre ferait qu'une résiliation d'option annulerait le plan.
     L'option ouvre un droit et **jamais** un jeton : les quotas de `app.quota.plans` sont inchangés.
@@ -753,8 +754,8 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     le terminal du poste (`listByHost`, suppression avec la machine). C'est **ce drapeau** qui décide
     si l'agent reçoit les outils `teams_*` — avec le droit Teams — et si le fil sait afficher autre
     chose que du texte.
-  - **Droit du volet Teams (F-89 / SF-89-01, décision D5 du cadrage)** : `TeamsEntitlementService`
-    l'ouvre dans exactement deux cas — **option Teams** en cours sur un plan mensuel lui-même en
+  - **Droit du volet Teams (F-89 / SF-89-01, décision D5 du cadrage)** : `SpaceEntitlementService`,
+    espace `VIGIE` (F-107 / SF-107-02 — anciennement `TeamsEntitlementService`), l'ouvre dans exactement deux cas — **option Teams** en cours sur un plan mensuel lui-même en
     cours (`SOLO`, `PRO`, `GOLD`, `BYOK` ; `DAILY` exclu), ou **accès offert** (F-62) en cours.
     **Aucun plan n'inclut Teams** — c'est une option, et rien d'autre —, et **l'option ouvre l'accès
     sans ajouter un jeton** : aucun quota n'est lu ni modifié. Le **montant et le parcours d'achat

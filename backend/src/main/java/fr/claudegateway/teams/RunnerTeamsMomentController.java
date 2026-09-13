@@ -17,7 +17,8 @@ import org.springframework.web.bind.annotation.RestController;
 import fr.claudegateway.atelier.Workspace;
 import fr.claudegateway.atelier.WorkspaceNotFoundException;
 import fr.claudegateway.atelier.WorkspaceService;
-import fr.claudegateway.billing.TeamsEntitlementService;
+import fr.claudegateway.billing.EntitlementSpace;
+import fr.claudegateway.billing.SpaceEntitlementService;
 import fr.claudegateway.runner.RunnerIdentity;
 import fr.claudegateway.runner.RunnerTokenAuthenticator;
 import fr.claudegateway.teams.block.TeamsMomentImageService;
@@ -84,11 +85,11 @@ public class RunnerTeamsMomentController {
     private final RunnerTokenAuthenticator authenticator;
     private final WorkspaceService workspaceService;
     private final TeamsMomentImageService images;
-    private final TeamsEntitlementService entitlements;
+    private final SpaceEntitlementService entitlements;
 
     public RunnerTeamsMomentController(RunnerTokenAuthenticator authenticator,
             WorkspaceService workspaceService, TeamsMomentImageService images,
-            TeamsEntitlementService entitlements) {
+            SpaceEntitlementService entitlements) {
         this.authenticator = authenticator;
         this.workspaceService = workspaceService;
         this.images = images;
@@ -115,7 +116,7 @@ public class RunnerTeamsMomentController {
         }
         UUID userId = identity.get().userId();
 
-        if (!entitlements.isEntitled(userId)) {
+        if (!entitlements.isEntitled(userId, EntitlementSpace.VIGIE)) {
             // D5 : produire des captures demande l'option. Relire n'en demande pas (F-89).
             return refuse(HttpStatus.FORBIDDEN,
                     "Ce compte n'a pas l'option Teams : les captures ne peuvent pas remonter.");

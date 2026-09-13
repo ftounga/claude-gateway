@@ -86,7 +86,7 @@ public class Subscription {
     /**
      * Statut de l'<b>option Atelier</b> (F-40) souscrite en supplément d'un plan Solo/Pro ;
      * {@code null} tant qu'aucune option n'a été souscrite. Le droit d'accès à l'Atelier se lit
-     * dans {@code AtelierEntitlementService}, jamais ici : cette colonne ne porte qu'un état.
+     * dans {@code SpaceEntitlementService} (espace Forge), jamais ici : cette colonne ne porte qu'un état.
      */
     @Enumerated(EnumType.STRING)
     @Column(name = "atelier_option_status", length = 16)
@@ -111,7 +111,7 @@ public class Subscription {
     /**
      * Statut de l'<b>option Teams</b> (F-89 / SF-89-01, décision D5 du cadrage du volet Teams) ;
      * {@code null} tant qu'aucune option n'a été souscrite. Comme pour l'Atelier, cette colonne ne
-     * porte qu'un <b>état</b> : le droit se lit dans {@code TeamsEntitlementService}, jamais ici.
+     * porte qu'un <b>état</b> : le droit se lit dans {@code SpaceEntitlementService} (espace Vigie), jamais ici.
      *
      * <p><b>Aucune colonne de tarif, aucun identifiant Stripe</b> : le montant et le parcours
      * d'achat de l'option Teams sont <b>à confirmer par le PO</b>. Ils viendront avec la

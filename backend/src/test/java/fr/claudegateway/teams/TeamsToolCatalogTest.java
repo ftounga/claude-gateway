@@ -345,7 +345,7 @@ class TeamsToolCatalogTest {
 
     /**
      * F-107 / SF-107-06 : <b>l'administrateur a tout</b>, y compris hors requête. La chaîne est la
-     * vraie ({@link TeamsAccessService} → {@code TeamsEntitlementService}) et <b>aucun principal</b>
+     * vraie ({@link TeamsAccessService} → {@code SpaceEntitlementService}) et <b>aucun principal</b>
      * n'est présent — le cas d'une relance du runner ou de la synchro de nuit, où le bypass par
      * principal ne voyait rien et où l'agent d'un administrateur perdait ses outils.
      */
@@ -363,7 +363,7 @@ class TeamsToolCatalogTest {
                 org.mockito.Mockito.mock(fr.claudegateway.billing.AdministratorEntitlement.class);
         when(administrators.isAdministrator(userId)).thenReturn(true);
         TeamsToolCatalog real = new TeamsToolCatalog(new TeamsAccessService(currentUser,
-                new fr.claudegateway.billing.TeamsEntitlementService(subscriptions, grants, administrators)));
+                new fr.claudegateway.billing.SpaceEntitlementService(subscriptions, grants, administrators)));
 
         assertThat(real.toolsFor(userId, teamsTerminal()))
                 .extracting(AgentTool::name)
