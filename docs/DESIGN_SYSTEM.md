@@ -557,7 +557,7 @@ poste ouvert.
 |---|---|
 | Surface | le détail est posé **sur le fond de page** : ni carte, ni filet d'appartenance — l'identité entre par la pastille et le filet de la ligne ouverte |
 | En-tête | `app-host-badge` `lg` (48 px), nom en Space Grotesk 700 20 px ; dessous, en 12 px secondaire : état de mission (§10), pastille de présence écrite (`badge--success` « En ligne » / `badge--neutral` « Hors ligne », « Jamais connecté »), racine et interpréteur en JetBrains Mono encre principale, « vu il y a … » |
-| Actions | à droite, `mat-stroked-button` : Terminal du poste, Teams (si droit), menu « ··· » (gestes destructifs, jamais en accès direct) |
+| Actions | à droite, `mat-stroked-button` : Terminal du poste, « Ouvrir dans la Vigie » (si droit Teams et client activé dans la Vigie — F-106, le terminal Teams y a déménagé), menu « ··· » (« Activer dans la Vigie », gestes destructifs, jamais en accès direct) |
 | Onglets | texte 14 px 500 `--cg-text-secondary`, actif en encre principale avec **filet bas de 2 px `--cg-orange`** ; filet de la barre `--cg-divider` |
 | Résumé d'onglet | fait chiffré en JetBrains Mono 11 px sur `--cg-bg` (« 4 », « 12 faits », « hors ligne ») ; **état** en pastille §5 : « à appliquer » `badge--warning`, « à corriger » `badge--error` |
 
@@ -606,6 +606,9 @@ poste ouvert.
   en a), sujets bloqués, synchro en mots. La pastille d'attente de la colonne dit « *k* relance(s) ».
 - Onglets **Radar · Conversations · Réunions · Personnes** ; un onglet sans contenu encore porte un
   **état vide explicite** (surface blanche, filet pointillé `--cg-divider`, icône `--cg-accent`).
+- **En-tête du client** : la liaison Teams (`app-teams-link-badge`, §14) quand le client a un terminal
+  Teams et une machine en ligne ; onglets Conversations et Réunions : la porte « Ouvrir la
+  conversation » (F-106 / SF-106-03).
 - **Une personne de l'annuaire n'a pas de ton d'identité** : les dix tons du §9 restent réservés aux
   machines ; elle porte l'icône `person` en texte secondaire.
 

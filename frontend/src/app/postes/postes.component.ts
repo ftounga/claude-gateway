@@ -18,6 +18,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { AtelierService } from '../core/services/atelier.service';
 import { GovernanceService } from '../core/services/governance.service';
 import { HostPresenceService } from '../core/services/host-presence.service';
+import { VigieService } from '../core/services/vigie.service';
 import {
   GovernanceIntegrite,
   GovernanceIntegriteConstat,
@@ -209,6 +210,7 @@ export class PostesComponent implements OnInit {
    * lecture, et le lit — si bien qu'un refus reçu dans un terminal la fait suivre sans rien relire.
    */
   private readonly presence = inject(HostPresenceService);
+  private readonly vigie = inject(VigieService);
 
   /** Les trois états proposés au choix, dans l'ordre : du plus vivant au plus rangé. */
   readonly missionStatuses = MISSION_STATUSES;
@@ -369,8 +371,8 @@ export class PostesComponent implements OnInit {
    */
   readonly teamsEntitled = signal(false);
 
-  /** Poste dont le **terminal Teams** est en cours d'ouverture (F-89 / SF-89-03). */
-  readonly openingTeamsHostId = signal<string | null>(null);
+  /** Client en cours d'activation dans la Vigie (F-106 / SF-106-03). */
+  readonly activatingVigieHostId = signal<string | null>(null);
 
   /**
    * Des postes existent, mais **toutes** leurs missions sont clôturées. La vue principale est vide
@@ -741,31 +743,31 @@ export class PostesComponent implements OnInit {
     return !host.virtual && host.id !== null && this.teamsEntitled();
   }
 
+  /** Vrai si ce client est activé dans la Vigie (F-106) — où vit désormais le terminal Teams. */
+  inVigie(host: RunnerHostOverview): boolean {
+    return (host.spaces ?? []).includes('VIGIE');
+  }
+
   /**
-   * **Ouvre le terminal Teams du poste** — le point d'entrée du volet, et le seul.
-   *
-   * <p>Teams n'est pas un écran à boutons : c'est un terminal où l'on parle. Ce geste-ci n'ouvre
-   * donc pas une fonctionnalité, il ouvre une <b>conversation</b> — et tout le reste s'y demande.</p>
-   *
-   * <p>Même mécanique que le terminal du poste : appel idempotent, navigation <b>au succès
-   * seulement</b>. Partir vers un terminal qu'on n'a pas obtenu afficherait une page d'erreur à la
-   * place d'un message, et perdrait la carte au passage.</p>
+   * **Active ce client dans la Vigie** (F-106 / SF-106-03), puis y ouvre ses conversations. Aucun
+   * appairage : c'est la même machine. Le terminal Teams, qui s'ouvrait d'ici, vit là-bas.
    */
-  openTeamsTerminal(host: RunnerHostOverview): void {
+  activateInVigie(host: RunnerHostOverview): void {
     const hostId = host.id;
-    if (hostId === null || this.openingTeamsHostId() !== null) {
+    if (hostId === null || this.activatingVigieHostId() !== null) {
       return;
     }
-    this.openingTeamsHostId.set(hostId);
-    this.atelier.openTeamsTerminal(hostId).subscribe({
-      next: (terminal) => {
-        this.openingTeamsHostId.set(null);
-        this.router.navigate(['/atelier', terminal.id]);
+    this.activatingVigieHostId.set(hostId);
+    this.vigie.activate(hostId, 'VIGIE').subscribe({
+      next: () => {
+        this.activatingVigieHostId.set(null);
+        void this.router.navigate(['/vigie', hostId], { queryParams: { onglet: 'conversations' } });
       },
       error: (err: unknown) => {
-        this.openingTeamsHostId.set(null);
-        this.notifyFailure(err, "Le terminal Teams n'a pas pu être ouvert. Rien n'a été créé.");
-        this.load(false);
+        this.activatingVigieHostId.set(null);
+        this.snackBar.open(
+          httpErrorMessage(err, "Le client n'a pas pu être activé dans la Vigie. Rien n'a changé."),
+          'Fermer', { duration: 6000, panelClass: 'snack-error' });
       },
     });
   }

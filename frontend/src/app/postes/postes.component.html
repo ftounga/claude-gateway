@@ -291,28 +291,24 @@
             }
           </button>
 
-          <!-- LE TERMINAL TEAMS (F-89 / SF-89-03). PAS DE BOUTON SANS LE DROIT — ni grisé, ni menant à
-               un refus. Son ouverture est inchangée : il déménagera dans la Vigie (F-106). -->
-          @if (showTeamsTerminal(host)) {
-            <button
+          <!-- LE TERMINAL TEAMS A DÉMÉNAGÉ DANS LA VIGIE (F-106 / SF-106-03). La Forge garde la porte :
+               « Ouvrir dans la Vigie » quand le client y est activé ; sinon « Activer dans la Vigie »
+               dans le menu. Sans le droit Teams, rien — ni grisé, ni menant à un refus (F-89). -->
+          @if (showTeamsTerminal(host) && inVigie(host)) {
+            <a
               mat-stroked-button
-              type="button"
-              class="poste__teams-terminal"
-              [disabled]="openingTeamsHostId() !== null"
-              (click)="openTeamsTerminal(host)"
-              [attr.aria-label]="'Ouvrir le terminal Teams de ' + host.name"
-              matTooltip="Un terminal à part pour Teams — on y parle de réunions et de conversations, pas de code"
+              class="poste__teams-terminal poste__vigie-link"
+              [routerLink]="['/vigie', host.id]"
+              [queryParams]="{ onglet: 'conversations' }"
+              [attr.aria-label]="'Ouvrir ' + host.name + ' dans la Vigie'"
+              matTooltip="Les conversations Teams, les réunions et le Radar de ce client vivent dans la Vigie"
             >
-              @if (openingTeamsHostId() === host.id) {
-                <mat-spinner diameter="18"></mat-spinner>
-              } @else {
-                <mat-icon>forum</mat-icon>
-              }
-              Teams
+              <mat-icon>radar</mat-icon>
+              Ouvrir dans la Vigie
               @if (host.teamsTerminalLive) {
                 <app-live-badge scope="host"></app-live-badge>
               }
-            </button>
+            </a>
           }
 
           <!-- Les gestes destructifs, TOUS sous menu de dépassement et derrière un dialogue (F-69,
@@ -333,6 +329,13 @@
             }
           </button>
           <mat-menu #hostMenu="matMenu">
+            @if (showTeamsTerminal(host) && !inVigie(host)) {
+              <button mat-menu-item type="button" class="poste__activate-vigie" (click)="activateInVigie(host)">
+                <mat-icon>radar</mat-icon>
+                <span>Activer dans la Vigie</span>
+              </button>
+              <mat-divider></mat-divider>
+            }
             <button mat-menu-item type="button" (click)="killHost(host)">
               <mat-icon>power_settings_new</mat-icon>
               <span>Couper la liaison…</span>

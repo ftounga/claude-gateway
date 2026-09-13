@@ -6,10 +6,11 @@ import { BehaviorSubject, of, throwError } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
-import { RunnerHostOverview } from '../core/models/atelier.models';
+import { RunnerHostOverview, WorkspaceDetail } from '../core/models/atelier.models';
 import { VigieRadarCounts } from '../core/models/vigie.models';
 import { AtelierService } from '../core/services/atelier.service';
 import { VigieService } from '../core/services/vigie.service';
+import { TeamsLink, TeamsLinkService } from '../atelier/teams/teams-link.service';
 import { RunnerPairingDialogComponent } from '../atelier/runner/runner-pairing-dialog.component';
 import { AddClientDialogComponent } from './add-client-dialog/add-client-dialog.component';
 import { RemoveClientDialogComponent } from './remove-client-dialog/remove-client-dialog.component';
@@ -22,6 +23,7 @@ describe('VigieComponent', () => {
   let atelier: jasmine.SpyObj<AtelierService>;
   let vigie: jasmine.SpyObj<VigieService>;
   let dialog: jasmine.SpyObj<MatDialog>;
+  let teamsLinks: jasmine.SpyObj<TeamsLinkService>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
   let router: Router;
   let params$: BehaviorSubject<ParamMap>;
@@ -36,6 +38,11 @@ describe('VigieComponent', () => {
     ...extra,
   });
 
+  const linked: TeamsLink = {
+    state: 'LINKED', label: 'Teams relié', sentence: '', remedy: '', browser: 'Chrome', healthVerdict: '',
+    recognizedFields: 5, expectedFields: 5, missingFields: [], observedApiVersions: [], conclusive: true,
+  };
+
   const noCounts: VigieRadarCounts = { followUpsDue: 0, blockedSubjects: 0, lastSync: null };
 
   function build(options: {
@@ -45,7 +52,11 @@ describe('VigieComponent', () => {
     tab?: string | null;
     counts?: Record<string, VigieRadarCounts>;
   } = {}): HTMLElement {
-    atelier = jasmine.createSpyObj<AtelierService>('AtelierService', ['teamsAccess', 'runnerHostsOverview']);
+    atelier = jasmine.createSpyObj<AtelierService>('AtelierService',
+      ['teamsAccess', 'runnerHostsOverview', 'openTeamsTerminal']);
+    atelier.openTeamsTerminal.and.returnValue(of({ id: 'wtt1', name: 'Terminal Teams' } as WorkspaceDetail));
+    teamsLinks = jasmine.createSpyObj<TeamsLinkService>('TeamsLinkService', ['getLink']);
+    teamsLinks.getLink.and.returnValue(of(linked));
     atelier.teamsAccess.and.returnValue(of({ entitled: options.entitled ?? true }));
     atelier.runnerHostsOverview.and.returnValue(of(options.hosts ?? [client('h1', 'EDENRED')]));
     vigie = jasmine.createSpyObj<VigieService>('VigieService',
@@ -70,6 +81,7 @@ describe('VigieComponent', () => {
         provideNoopAnimations(),
         { provide: AtelierService, useValue: atelier },
         { provide: VigieService, useValue: vigie },
+        { provide: TeamsLinkService, useValue: teamsLinks },
         { provide: MatDialog, useValue: dialog },
         { provide: MatSnackBar, useValue: snackBar },
         { provide: ActivatedRoute, useValue: { snapshot: {}, paramMap: params$, queryParamMap: query$ } },
@@ -301,5 +313,61 @@ describe('VigieComponent', () => {
     component.activateInForge(component.selectedHost()!);
 
     expect(vigie.activate).toHaveBeenCalledOnceWith('h1', 'FORGE');
+  });
+
+  // ---- F-106 / SF-106-03 : le déménagement de Teams ----
+
+  it("l'onglet Conversations ouvre le terminal Teams du client, puis y navigue", () => {
+    const root = build({ tab: 'conversations' });
+
+    root.querySelector<HTMLButtonElement>('.vigie__open-conversation')?.click();
+
+    expect(atelier.openTeamsTerminal).toHaveBeenCalledOnceWith('h1');
+    expect(router.navigate).toHaveBeenCalledWith(['/atelier', 'wtt1']);
+    expect(component.openingConversationHostId()).toBeNull();
+  });
+
+  it("l'onglet Réunions ouvre la même conversation", () => {
+    const root = build({ tab: 'reunions' });
+
+    root.querySelector<HTMLButtonElement>('.vigie__open-meetings')?.click();
+
+    expect(atelier.openTeamsTerminal).toHaveBeenCalledOnceWith('h1');
+  });
+
+  it("une ouverture refusée le dit, et ne navigue pas", () => {
+    build({ tab: 'conversations' });
+    atelier.openTeamsTerminal.and.returnValue(throwError(() => new HttpErrorResponse({
+      status: 409, error: { error: 'host_not_in_space', message: "Ce client n'est pas activé dans la Vigie." },
+    })));
+
+    component.openConversation(component.selectedHost()!);
+
+    expect(router.navigate).not.toHaveBeenCalledWith(['/atelier', jasmine.anything()]);
+    expect(snackBar.open.calls.mostRecent().args[0]).toContain("n'est pas activé dans la Vigie");
+  });
+
+  it("l'en-tête porte la liaison Teams d'un client qui a un terminal Teams, relevée une fois", fakeAsync(() => {
+    const root = build({ hosts: [client('h1', 'EDENRED', { teamsTerminalId: 'wtt1' })] });
+
+    expect(teamsLinks.getLink).toHaveBeenCalledOnceWith('wtt1');
+    expect(root.querySelector('.vigie__teams-link')?.textContent).toContain('Teams relié');
+    tick(VIGIE_REFRESH_MS);
+    expect(teamsLinks.getLink).toHaveBeenCalledTimes(1);
+    discardPeriodicTasks();
+  }));
+
+  it("sans terminal Teams, ou en échec, aucune liaison n'est affichée", () => {
+    let root = build();
+    expect(teamsLinks.getLink).not.toHaveBeenCalled();
+    expect(root.querySelector('.vigie__teams-link')).toBeNull();
+
+    TestBed.resetTestingModule();
+    root = build({ hosts: [client('h1', 'EDENRED', { teamsTerminalId: 'wtt1' })] });
+    teamsLinks.getLink.and.returnValue(throwError(() => new HttpErrorResponse({ status: 500 })));
+    component.links.set({});
+    component.refresh();
+    fixture.detectChanges();
+    expect(root.querySelector('.vigie__teams-link')).toBeNull();
   });
 });
