@@ -108,6 +108,6 @@ public final class RadarViews {
     public record SyncView(UUID id, RadarSyncStatus status, OffsetDateTime startedAt,
             OffsetDateTime finishedAt, JsonNode coverage, long consumedTokens,
             RadarSyncAnalysisView analysis, RadarSyncTrigger trigger, OffsetDateTime scheduledFor,
-            OffsetDateTime heartbeatAt, JsonNode progress) {
+            OffsetDateTime heartbeatAt, JsonNode progress, fr.claudegateway.radar.sync.RadarCoverageSummary summary) {
     }
 }

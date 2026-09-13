@@ -132,6 +132,33 @@ class RadarSyncAgentTest {
     }
 
     @Test
+    @DisplayName("SF-100-04 — annuler la synchro en cours : la collecte s'arrête, aucune fin n'est envoyée ; une autre : non")
+    void cancelStopsTheRunningJob() throws Exception {
+        PaperUplink uplink = new PaperUplink();
+        Deque<Runnable> pending = new ArrayDeque<>();
+        List<Boolean> seen = new ArrayList<>();
+        RadarSyncAgent[] holder = new RadarSyncAgent[1];
+        RadarCollector collector = (assignment, context) -> {
+            seen.add(holder[0].cancel("7f000001-0000-4000-8000-00000000ffff")); // pas celle-là
+            seen.add(holder[0].cancel(SYNC));
+            seen.add(context.stopped());
+            seen.add(context.progress("conversations", 2, 5));
+            return new RadarCollector.Outcome("SUCCEEDED", MAPPER.createObjectNode());
+        };
+        holder[0] = new RadarSyncAgent(uplink, () -> collector, pending::add, null, null);
+        assertTrue(holder[0].accept(RadarAssignment.from(input(SYNC))).accepted());
+        pending.poll().run();
+
+        assertEquals(List.of(false, true, true, false), seen);
+        assertTrue(uplink.finishes.isEmpty(), "la gateway a déjà clos : aucune fin");
+        assertFalse(holder[0].cancel(SYNC), "plus rien en cours");
+
+        ToolOutcome outcome = new PaperTeams().tools().withRadarAgent(holder[0])
+                .execute(RadarTools.CANCEL, input(SYNC), ToolContext.none());
+        assertFalse(MAPPER.readTree(outcome.content()).path("cancelled").asBoolean());
+    }
+
+    @Test
     @DisplayName("Collecte qui lève : FAILED COLLECTOR_ERROR ; fin perdue deux fois : réessayée")
     void collectorErrorAndFinishRetry() {
         PaperUplink uplink = new PaperUplink();

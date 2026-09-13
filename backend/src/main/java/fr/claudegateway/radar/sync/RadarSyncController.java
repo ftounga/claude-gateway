@@ -42,10 +42,11 @@ public class RadarSyncController {
     private final TeamsAccessService teamsAccess;
     private final CurrentUser currentUser;
     private final RunnerLiveness liveness;
+    private final RadarSyncControlService control;
 
     public RadarSyncController(RadarVerificationService verificationService, RadarScheduleService scheduleService,
             RadarSyncLauncher launcher, RadarScopeResolver scopeResolver, TeamsAccessService teamsAccess,
-            CurrentUser currentUser, RunnerLiveness liveness) {
+            CurrentUser currentUser, RunnerLiveness liveness, RadarSyncControlService control) {
         this.verificationService = verificationService;
         this.scheduleService = scheduleService;
         this.launcher = launcher;
@@ -53,6 +54,7 @@ public class RadarSyncController {
         this.teamsAccess = teamsAccess;
         this.currentUser = currentUser;
         this.liveness = liveness;
+        this.control = control;
     }
 
     // ------------------------------------------------------------ planification (SF-100-02)
@@ -79,6 +81,33 @@ public class RadarSyncController {
         RadarSync sync = launcher.start(scope, RadarSyncTrigger.MANUAL, null);
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(new SyncStarted(sync.getId(), sync.getTriggerKind(), sync.getStartedAt()));
+    }
+
+    // ------------------------------------------------------------ couverture et pilotage (SF-100-04)
+
+    /** Annule une synchro en cours ; ce qui a été lu est conservé. */
+    @PostMapping("/syncs/{syncId}/cancel")
+    public SyncStarted cancel(@PathVariable UUID hostId, @PathVariable UUID syncId) {
+        RadarSync sync = control.cancel(scope(hostId), syncId);
+        return new SyncStarted(sync.getId(), sync.getTriggerKind(), sync.getStartedAt());
+    }
+
+    @GetMapping("/thread-rules")
+    public java.util.List<RadarSyncControlService.RuleView> threadRules(@PathVariable UUID hostId) {
+        return control.rules(scope(hostId));
+    }
+
+    /** <i>Ignorer ce fil</i> ou <i>lire ce canal</i> : une correction souveraine, annulable. */
+    @PostMapping("/thread-rules")
+    public RadarSyncControlService.RuleView addThreadRule(@PathVariable UUID hostId,
+            @RequestBody(required = false) RadarSyncControlService.RuleRequest request) {
+        return control.addRule(scope(hostId), request);
+    }
+
+    @DeleteMapping("/thread-rules/{ruleId}")
+    public ResponseEntity<Void> removeThreadRule(@PathVariable UUID hostId, @PathVariable UUID ruleId) {
+        control.removeRule(scope(hostId), ruleId);
+        return ResponseEntity.noContent().build();
     }
 
     /** La synchro lancée. */

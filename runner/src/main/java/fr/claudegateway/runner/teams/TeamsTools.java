@@ -318,6 +318,7 @@ public final class TeamsTools implements ToolExecutor {
             // Le Radar (F-100) : des appels de la gateway, hors du catalogue de l'agent.
             case RadarTools.VERIFY -> radar().verify();
             case RadarTools.COLLECT -> radar().collect(input);
+            case RadarTools.CANCEL -> radar().cancel(input);
             default -> ToolOutcome.error("unsupported_tool", "Outil Teams inconnu : " + tool);
         };
     }

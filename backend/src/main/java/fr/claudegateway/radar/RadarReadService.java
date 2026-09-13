@@ -55,13 +55,16 @@ public class RadarReadService {
     private final RadarSyncRepository syncs;
     private final ObjectMapper objectMapper;
     private final RadarAnalysisReport analysisReport;
+    private final fr.claudegateway.radar.sync.RadarHostSettingsRepository hostSettings;
+    private final fr.claudegateway.radar.sync.RadarThreadRuleRepository threadRules;
 
     public RadarReadService(RadarRegistry registry, RadarSubjectRepository subjects,
             RadarSubjectAliasRepository aliases, RadarSubjectFactRepository facts,
             RadarPersonRepository people, RadarSubjectRoleRepository roles,
             RadarCommitmentRepository commitments, RadarEvidenceRepository evidence,
             RadarEvidenceLinkRepository links, RadarSyncRepository syncs, ObjectMapper objectMapper,
-            RadarAnalysisReport analysisReport) {
+            RadarAnalysisReport analysisReport, fr.claudegateway.radar.sync.RadarHostSettingsRepository hostSettings,
+            fr.claudegateway.radar.sync.RadarThreadRuleRepository threadRules) {
         this.registry = registry;
         this.subjects = subjects;
         this.aliases = aliases;
@@ -74,6 +77,8 @@ public class RadarReadService {
         this.syncs = syncs;
         this.objectMapper = objectMapper;
         this.analysisReport = analysisReport;
+        this.hostSettings = hostSettings;
+        this.threadRules = threadRules;
     }
 
     /**
@@ -239,10 +244,23 @@ public class RadarReadService {
         List<RadarSync> page = syncs.findByUserIdAndHostIdOrderByStartedAtDesc(scope.userId(), scope.hostId(),
                 PageRequest.of(0, SYNC_PAGE));
         Map<UUID, RadarSyncAnalysisView> analysis = analysisReport.bySync(scope, page);
+        // F-100 / SF-100-04 : la phrase de tête de chaque synchro, dans le fuseau du poste, avec les règles déjà
+        // posées sur les fils qu'elle n'a pas entièrement lus.
+        java.time.ZoneId zone = hostSettings.findByUserIdAndHostId(scope.userId(), scope.hostId())
+                .flatMap(row -> fr.claudegateway.radar.sync.RadarSlots.parseZone(row.getTimeZone()))
+                .orElse(java.time.ZoneId.of("Europe/Paris"));
+        Map<String, String> rules = new java.util.HashMap<>();
+        threadRules.findByUserIdAndHostIdOrderByCreatedAtDesc(scope.userId(), scope.hostId())
+                .forEach(rule -> rules.putIfAbsent(rule.getConversationRef(), rule.getRule().name()));
         return page.stream()
-                .map(s -> new SyncView(s.getId(), s.getStatus(), s.getStartedAt(), s.getFinishedAt(),
-                        parse(s.getCoverage()), s.getConsumedTokens(), analysis.get(s.getId()),
-                        s.getTriggerKind(), s.getScheduledFor(), s.getHeartbeatAt(), parse(s.getProgress())))
+                .map(s -> {
+                    JsonNode coverage = parse(s.getCoverage());
+                    JsonNode progress = parse(s.getProgress());
+                    return new SyncView(s.getId(), s.getStatus(), s.getStartedAt(), s.getFinishedAt(),
+                            coverage, s.getConsumedTokens(), analysis.get(s.getId()),
+                            s.getTriggerKind(), s.getScheduledFor(), s.getHeartbeatAt(), progress,
+                            fr.claudegateway.radar.sync.RadarCoverageSummary.of(s, coverage, progress, rules, zone));
+                })
                 .toList();
     }
 

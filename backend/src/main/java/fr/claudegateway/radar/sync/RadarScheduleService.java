@@ -23,6 +23,9 @@ import fr.claudegateway.radar.RadarSyncTrigger;
 @Service
 public class RadarScheduleService {
 
+    private static final com.fasterxml.jackson.databind.ObjectMapper PROGRESS_READER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
     private final RadarHostSettingsRepository settings;
     private final RadarSyncRepository syncs;
     private final Clock clock;
@@ -40,7 +43,7 @@ public class RadarScheduleService {
 
     /** La synchro qui tient le poste. */
     public record RunningView(UUID syncId, RadarSyncTrigger trigger, OffsetDateTime startedAt,
-            OffsetDateTime heartbeatAt) {
+            OffsetDateTime heartbeatAt, String phase, int done, int total) {
     }
 
     /** Ce que l'écran rend. */
@@ -103,7 +106,23 @@ public class RadarScheduleService {
             RadarSync sync = syncs.findByIdAndUserIdAndHostId(row.getRunningSyncId(), scope.userId(), scope.hostId())
                     .filter(s -> s.getStatus() == RadarSyncStatus.RUNNING).orElse(null);
             if (sync != null) {
-                running = new RunningView(sync.getId(), sync.getTriggerKind(), sync.getStartedAt(), sync.getHeartbeatAt());
+                String phase = "";
+                int done = 0;
+                int total = 0;
+                try {
+                    // F-100 / SF-100-04 : la progression du dernier battement.
+                    com.fasterxml.jackson.databind.JsonNode progress = sync.getProgress() == null ? null
+                            : PROGRESS_READER.readTree(sync.getProgress());
+                    if (progress != null) {
+                        phase = progress.path("phase").asText("");
+                        done = progress.path("done").asInt(0);
+                        total = progress.path("total").asInt(0);
+                    }
+                } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                    // progression illisible : la synchro reste « en cours », sans chiffres
+                }
+                running = new RunningView(sync.getId(), sync.getTriggerKind(), sync.getStartedAt(), sync.getHeartbeatAt(),
+                        phase, done, total);
             }
         }
         return new ScheduleView(row.isEnabled(), row.getClientAuthorizedAt(), row.getSyncTime(), row.getTimeZone(),
