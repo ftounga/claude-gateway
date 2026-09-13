@@ -248,10 +248,32 @@ F-102 : Teams seul, synchro du soir, résumé du matin.
 
 ### F-100 — La synchro du soir
 
+> **Constat du 2026-09-13, sur question du PO** (« comment sait-il où récupérer l'enregistrement et la
+> transcription ? il trouve l'URL comment ? »), vérifié dans le runner :
+> - le runner **ne cherche aucune adresse** : il observe ce que Teams web charge dans le Chrome de
+>   l'utilisateur, et classe chaque réponse par son chemin (`TeamsUrls`). Une réunion n'est connue que
+>   si Teams l'a chargée depuis le rattachement ;
+> - **la transcription** n'est lue que si Teams l'a servie, c'est-à-dire si l'onglet Transcription a été
+>   ouvert : l'outil répond aujourd'hui « ouvrez la transcription dans Teams, puis redemandez »
+>   (`TeamsTools.meetingTranscript`). **Incompatible avec une synchro de nuit autonome** ;
+> - **l'enregistrement n'est jamais téléchargé**, par décision de sécurité : l'adresse signée perd sa
+>   chaîne de requête à l'entrée (SF-87-02) — l'outil ne rend que « annonce un enregistrement » et le
+>   lien ;
+> - les gestes permis sont `scroll`, `nudge` et `show` (ouvrir un **fil**), par `Runtime.evaluate`
+>   seulement — ni `Page.navigate`, ni `Input.dispatch*` (`PageGestures`). **Aucun geste n'ouvre une
+>   réunion ni son onglet Transcription** ;
+> - `TeamsUrls` ne reconnaît que les hôtes Teams. Or Microsoft range enregistrements et transcriptions
+>   dans **OneDrive / SharePoint** (Stream) : les réponses de ces hôtes sont vraisemblablement classées
+>   `UNKNOWN`. **À vérifier sur un vrai poste** : l'adaptateur n'a été éprouvé que sur des jeux de test
+>   (`runner/src/test/resources/teams/`), jamais sur un tenant client.
+>
+> D'où **SF-100-00** et le contenu élargi de SF-100-02 ci-dessous.
+
 | SF | Titre | Contenu |
 |---|---|---|
+| **SF-100-00** | **Le relevé réel** | **Préalable à tout le Radar.** Sur le poste du client qui motive la demande, avec l'accord du PO : l'utilisateur ouvre un fil, une réunion passée, son récapitulatif, sa transcription. Le runner relève **hôtes, chemins et formes** des réponses (jamais les corps ni les requêtes). Livrable : la table réelle des adresses (Teams, SharePoint / OneDrive, et Outlook pour F-105), les écarts avec `TeamsUrls`, et les gestes nécessaires. Aucune donnée client ne quitte la machine |
 | SF-100-01 | La planification | Heure par poste (22 h par défaut), *Synchroniser maintenant*, **une seule synchro à la fois par poste** tous pods confondus, rattrapage à la prochaine connexion du runner |
-| SF-100-02 | La collecte Teams incrémentale | Runner : curseur par conversation, points de reprise, fenêtre de 30 jours à la première synchro, remontée par lots idempotents |
+| SF-100-02 | La collecte Teams incrémentale | Runner : curseur par conversation, points de reprise, fenêtre de 30 jours à la première synchro, remontée par lots idempotents. **Pour les réunions** : deux gestes nouveaux sur le modèle de `show` — *afficher le calendrier sur une période* (Teams charge la liste des réunions) et *afficher une réunion et son onglet Transcription* (Teams charge la transcription, puis la vue de l'utilisateur est remise) ; **reconnaissance des hôtes relevés en SF-100-00** (SharePoint / OneDrive) dans l'adaptateur unique. Toujours par `Runtime.evaluate`, toujours sans `Page.navigate` : la liste blanche CDP ne bouge pas. **La vidéo n'est pas nécessaire au Radar** (il lit le texte) : l'enregistrement reste où il est |
 | SF-100-03 | La couverture et la progression | Rapport par source (lu, échoué, manquant), échecs bruyants avec le geste (session Microsoft expirée), progression et annulation |
 | SF-100-04 | Le dossier de dépôt | `<racine>/radar/depot/` relevé par la synchro, transcription sur la machine (F-91), seul le texte remonte |
 
@@ -294,9 +316,16 @@ F-102 : Teams seul, synchro du soir, résumé du matin.
 
 ### F-105 — Outlook
 
+> **Rien n'existe encore pour Outlook** : aucun code, aucune adresse reconnue. Même principe que Teams —
+> observer ce qu'**Outlook web**, ouvert dans le même Chrome, charge pour s'afficher. **Conséquences** :
+> un onglet Outlook web doit être ouvert à côté de Teams web (l'application Outlook installée ne
+> s'observe pas, pas plus que l'application Teams) ; la liste des courriels ne porte souvent qu'un
+> aperçu, le corps n'est chargé qu'**à l'ouverture** du message, d'où des gestes *afficher un dossier*
+> et *afficher un message* ; les adresses réelles sortent du relevé SF-100-00.
+
 | SF | Titre | Contenu |
 |---|---|---|
-| SF-105-01 | L'adaptateur Outlook | Lecture réseau d'Outlook web, adaptateur unique, sonde de santé |
+| SF-105-01 | L'adaptateur Outlook | Lecture réseau d'Outlook web à partir des adresses relevées en SF-100-00, adaptateur unique, sonde de santé ; rattachement à l'onglet Outlook du même navigateur ; gestes *afficher un dossier* et *afficher un message*, vue de l'utilisateur remise |
 | SF-105-02 | La collecte Outlook | Reçus et envoyés, dossiers choisis, curseurs, dans la synchro du soir |
 | SF-105-03 | Le rattachement des courriels | Preuve `outlook_mail`, liens, mêmes sujets que Teams |
 
