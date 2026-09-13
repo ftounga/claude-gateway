@@ -22,7 +22,13 @@ import { PageFrameComponent } from '../shared/pages/page-frame.component';
         <header class="page-viewer__bar">
           <mat-icon aria-hidden="true">web</mat-icon>
           <h1 class="page-viewer__title">{{ page.title }}</h1>
-          <span class="page-viewer__meta">Version {{ page.currentVersion }} · privée</span>
+          <span class="page-viewer__meta">
+            @if (version(); as shown) {
+              Version {{ shown }} (précédente ; courante : {{ page.currentVersion }}) · privée
+            } @else {
+              Version {{ page.currentVersion }} · privée
+            }
+          </span>
         </header>
         <app-page-frame class="page-viewer__frame" [url]="page.viewUrl" [pageTitle]="page.title"></app-page-frame>
       } @else if (notFound()) {
@@ -93,18 +99,26 @@ export class PageViewerComponent {
   constructor() {
     const route = inject(ActivatedRoute);
     const destroyRef = inject(DestroyRef);
-    const params = route.paramMap.subscribe((map) => this.load(map.get('id') ?? ''));
+    // `?version=N` (F-109 / SF-109-04) : une version précédente, ouverte depuis la liste des versions.
+    const params = route.paramMap.subscribe((map) => {
+      const version = Number(route.snapshot?.queryParamMap?.get('version') ?? '');
+      this.load(map.get('id') ?? '', Number.isInteger(version) && version > 0 ? version : null);
+    });
     destroyRef.onDestroy(() => {
       params.unsubscribe();
       this.loading?.unsubscribe();
     });
   }
 
-  private load(pageId: string): void {
+  /** La version affichée, quand ce n'est pas la courante. */
+  readonly version = signal<number | null>(null);
+
+  private load(pageId: string, version: number | null): void {
     this.loading?.unsubscribe();
     this.summary.set(null);
     this.notFound.set(false);
-    this.loading = this.pages.get(pageId).subscribe({
+    this.version.set(version);
+    this.loading = this.pages.get(pageId, version).subscribe({
       next: (summary) => this.summary.set(summary),
       error: () => this.notFound.set(true),
     });

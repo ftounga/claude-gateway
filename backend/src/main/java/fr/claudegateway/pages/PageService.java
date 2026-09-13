@@ -167,6 +167,116 @@ public class PageService {
                 .map(content -> new PageContent(page.get(), wanted, content, type.get()));
     }
 
+    /**
+     * La version voulue d'une page du compte : la courante par défaut, sinon celle demandée si elle est
+     * conservée (SF-109-04).
+     */
+    @Transactional(readOnly = true)
+    public int requireVersion(UUID userId, UUID pageId, Integer version) {
+        Page page = require(userId, pageId);
+        int wanted = resolveVersion(page, version);
+        versions.findByPageIdAndUserIdAndVersion(page.getId(), userId, wanted).orElseThrow(PageNotFoundException::new);
+        return wanted;
+    }
+
+    /** Les pages du compte à un lieu, la plus récemment modifiée d'abord (SF-109-04). */
+    @Transactional(readOnly = true)
+    public List<Page> list(UUID userId, UUID hostId, PageSpace space) {
+        return pages.findByUserIdAndHostIdAndSpaceOrderByUpdatedAtDesc(userId, hostId, space);
+    }
+
+    /** Renomme une page du compte (SF-109-04), aux règles de la publication. */
+    @Transactional
+    public Page rename(UUID userId, UUID pageId, String title) {
+        Page page = require(userId, pageId);
+        page.setTitle(cleanTitle(title));
+        return pages.saveAndFlush(page);
+    }
+
+    /**
+     * Supprime une page du compte : ses lignes (versions en cascade), puis ses objets (SF-109-04). Si le stockage
+     * n'efface pas tout, l'exception remonte et la transaction est annulée — la page reste listée, rien n'est
+     * perdu en silence (F-79).
+     */
+    @Transactional
+    public void delete(UUID userId, UUID pageId) {
+        Page page = require(userId, pageId);
+        pages.delete(page);
+        pages.flush();
+        store.deletePage(userId, page.getId());
+    }
+
+    /** Supprime toutes les pages du compte à un lieu ; rend leur nombre (SF-109-04, clôture de mission). */
+    @Transactional
+    public int deletePlace(UUID userId, UUID hostId, PageSpace space) {
+        List<Page> placed = list(userId, hostId, space);
+        for (Page page : placed) {
+            pages.delete(page);
+        }
+        pages.flush();
+        for (Page page : placed) {
+            store.deletePage(userId, page.getId());
+        }
+        return placed.size();
+    }
+
+    /**
+     * Écrit l'archive ZIP des versions courantes d'un lieu (SF-109-04) : {@code {titre}/index.html} et ses pièces
+     * jointes, <b>au fil de l'eau</b> — une page à la fois en mémoire, jamais l'archive entière.
+     */
+    @Transactional(readOnly = true)
+    public void exportPlace(UUID userId, UUID hostId, PageSpace space, java.io.OutputStream out)
+            throws java.io.IOException {
+        java.util.Set<String> folders = new java.util.HashSet<>();
+        try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(out)) {
+            for (Page page : list(userId, hostId, space)) {
+                int version = page.getCurrentVersion();
+                java.util.Optional<byte[]> html = store.html(userId, page.getId(), version);
+                if (html.isEmpty()) {
+                    continue;
+                }
+                String folder = uniqueFolder(slug(page.getTitle()), folders);
+                zip.putNextEntry(new java.util.zip.ZipEntry(folder + "/index.html"));
+                zip.write(html.get());
+                zip.closeEntry();
+                for (String name : store.attachmentNames(userId, page.getId(), version)) {
+                    java.util.Optional<byte[]> content = store.attachment(userId, page.getId(), version, name);
+                    if (content.isPresent()) {
+                        zip.putNextEntry(new java.util.zip.ZipEntry(folder + "/" + name));
+                        zip.write(content.get());
+                        zip.closeEntry();
+                    }
+                }
+            }
+        }
+    }
+
+    /** Efface les objets de toutes les pages d'un compte (SF-109-04) ; les lignes tombent avec le compte. */
+    public void purgeUser(UUID userId) {
+        store.deleteAccount(userId);
+    }
+
+    /** {@code titre-de-la-page} : lisible, sans caractère qu'un système de fichiers refuserait. */
+    static String slug(String title) {
+        String slug = java.text.Normalizer.normalize(title == null ? "" : title, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("(^-|-$)", "");
+        if (slug.length() > 60) {
+            slug = slug.substring(0, 60).replaceAll("-$", "");
+        }
+        return slug.isEmpty() ? "page" : slug;
+    }
+
+    private static String uniqueFolder(String base, java.util.Set<String> taken) {
+        String folder = base;
+        for (int i = 2; !taken.add(folder); i++) {
+            folder = base + "-" + i;
+        }
+        return folder;
+    }
+
     private static int resolveVersion(Page page, Integer version) {
         return version == null || version <= 0 ? page.getCurrentVersion() : version;
     }

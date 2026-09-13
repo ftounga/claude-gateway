@@ -1,3 +1,4 @@
+import { HostPagesComponent } from '../shared/pages/host-pages.component';
 import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -190,6 +191,7 @@ const EMPTY_HOSTED: RunnerHostOverview = {
   imports: [
     NgTemplateOutlet,
     RouterLink,
+    HostPagesComponent,
     ForgeRailComponent,
     ForgeProjectTileComponent,
     HostBadgeComponent,
@@ -568,6 +570,11 @@ export class PostesComponent implements OnInit {
 
   tabLabel(tab: ForgeTab): string {
     return FORGE_TAB_LABELS[tab];
+  }
+
+  /** Les noms des projets du poste par identifiant : une page dit de quel projet elle vient (F-109 / SF-109-04). */
+  projectNamesOf(host: RunnerHostOverview): Record<string, string> {
+    return Object.fromEntries(host.projects.map((project) => [project.id, project.name]));
   }
 
   /**

@@ -63,6 +63,21 @@ public class PageStore {
         storage.deletePrefix(PREFIX + userId + "/" + pageId + "/");
     }
 
+    /** Efface toutes les pages d'un compte (SF-109-04, suppression du compte). */
+    public void deleteAccount(UUID userId) {
+        storage.deletePrefix(PREFIX + userId + "/");
+    }
+
+    /** Les noms des pièces jointes d'une version, triés (SF-109-04, export). */
+    public java.util.List<String> attachmentNames(UUID userId, UUID pageId, int version) {
+        String prefix = versionPrefix(userId, pageId, version) + "files/";
+        return storage.listKeys(prefix).stream()
+                .map(key -> key.substring(prefix.length()))
+                .filter(PageAttachments::isValidName)
+                .sorted()
+                .toList();
+    }
+
     /** La barre finale compte : sans elle, {@code v1} engloberait {@code v10}. */
     static String versionPrefix(UUID userId, UUID pageId, int version) {
         return PREFIX + userId + "/" + pageId + "/v" + version + "/";

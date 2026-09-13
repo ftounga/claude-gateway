@@ -333,6 +333,12 @@
                     <div class="postes__loading"><mat-spinner diameter="28"></mat-spinner></div>
                   }
                 }
+                @case ('pages') {
+                  <!-- LES PAGES DU CLIENT (F-109 / SF-109-04) : publiées depuis sa conversation. -->
+                  @if (host.id; as hostId) {
+                    <app-host-pages class="vigie__pages" [hostId]="hostId" space="VIGIE"></app-host-pages>
+                  }
+                }
               }
             </div>
           </section>

@@ -22,3 +22,11 @@ export interface PageSummary {
    */
   viewUrl: string;
 }
+
+/** Une version conservée d'une page (`GET /api/pages/{id}/versions`, F-109 / SF-109-04). */
+export interface PageVersionSummary {
+  version: number;
+  sizeBytes: number;
+  attachmentCount: number;
+  createdAt: string;
+}

@@ -22,7 +22,7 @@ describe('forge-tabs', () => {
   });
 
   it('quatre onglets pour une machine, Projets seul pour « Hébergé »', () => {
-    expect(tabsFor(machine)).toEqual(['projets', 'carte', 'gouvernance', 'activite']);
+    expect(tabsFor(machine)).toEqual(['projets', 'carte', 'gouvernance', 'activite', 'pages']);
     expect(tabsFor(hosted)).toEqual(['projets']);
   });
 
@@ -32,6 +32,9 @@ describe('forge-tabs', () => {
     expect(effectiveTab(null, machine)).toBe('projets');
     expect(effectiveTab('radar', machine)).toBe('projets');
     expect(effectiveTab('carte', hosted)).toBe('projets');
+    // F-109 / SF-109-04 : les pages d'une machine ; « Hébergé » n'a pas l'outil, donc pas l'onglet.
+    expect(effectiveTab('pages', machine)).toBe('pages');
+    expect(effectiveTab('pages', hosted)).toBe('projets');
   });
 
   it('résume la carte : faits, hors ligne, ou rien', () => {

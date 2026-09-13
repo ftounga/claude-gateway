@@ -14,6 +14,8 @@ import { RadarService } from '../core/services/radar.service';
 import { MailService } from '../core/services/mail.service';
 import { EMPTY } from 'rxjs';
 import { VigieService } from '../core/services/vigie.service';
+import { PagesService } from '../core/services/pages.service';
+import { ExportService } from '../core/services/export.service';
 import { TeamsLink, TeamsLinkService } from '../atelier/teams/teams-link.service';
 import { RunnerPairingDialogComponent } from '../atelier/runner/runner-pairing-dialog.component';
 import { AddClientDialogComponent } from './add-client-dialog/add-client-dialog.component';
@@ -34,6 +36,7 @@ describe('VigieComponent', () => {
   let snackBar: jasmine.SpyObj<MatSnackBar>;
   let radar: jasmine.SpyObj<RadarService>;
   let exporter: jasmine.SpyObj<RadarExporter>;
+  let pages: jasmine.SpyObj<PagesService>;
   let router: Router;
   let params$: BehaviorSubject<ParamMap>;
   let query$: BehaviorSubject<ParamMap>;
@@ -93,6 +96,9 @@ describe('VigieComponent', () => {
     vigie.activate.and.returnValue(of({ hostId: 'h1', name: 'EDENRED', missionStatus: 'ACTIVE', spaces: ['FORGE', 'VIGIE'] }));
     vigie.remove.and.returnValue(of({ hostId: 'h1', name: 'EDENRED', missionStatus: 'ACTIVE', spaces: ['FORGE'] }));
     vigie.purgeRadar.and.returnValue(of({}));
+    pages = jasmine.createSpyObj<PagesService>('PagesService', ['list', 'removePlace']);
+    pages.list.and.returnValue(of([]));
+    pages.removePlace.and.returnValue(of(undefined));
     dialogResults = new Map();
     dialog = jasmine.createSpyObj<MatDialog>('MatDialog', ['open']);
     dialog.open.and.callFake(((component: unknown) =>
@@ -122,6 +128,8 @@ describe('VigieComponent', () => {
         // F-110 / SF-110-01 : la ligne des courriels du client se tait ici (lecture sans réponse).
         { provide: MailService, useValue: jasmine.createSpyObj<MailService>('MailService', { address: EMPTY }) },
         { provide: RadarExporter, useValue: exporter },
+        { provide: PagesService, useValue: pages },
+        { provide: ExportService, useValue: jasmine.createSpyObj<ExportService>('ExportService', ['triggerDownload']) },
         { provide: ActivatedRoute, useValue: { snapshot: {}, paramMap: params$, queryParamMap: query$ } },
       ],
     });
@@ -235,11 +243,11 @@ describe('VigieComponent', () => {
     expect(router.navigate).toHaveBeenCalledWith(['/vigie', 'h2'], { queryParamsHandling: 'preserve' });
   });
 
-  it("montre quatre onglets, le Radar par défaut avec l'onglet du Radar du client (F-102)", () => {
+  it("montre cinq onglets (Pages : F-109), le Radar par défaut avec l'onglet du Radar du client (F-102)", () => {
     const root = build();
 
     expect(Array.from(root.querySelectorAll('.poste__tab')).map((t) => t.textContent?.trim()))
-      .toEqual(['Radar', 'Conversations', 'Réunions', 'Personnes']);
+      .toEqual(['Radar', 'Conversations', 'Réunions', 'Personnes', 'Pages']);
     expect(component.activeTab()).toBe('radar');
     expect(root.querySelector('.vigie__radar-empty')).toBeNull();
     expect(root.querySelector('app-radar-board')).not.toBeNull();
@@ -572,6 +580,38 @@ describe('VigieComponent', () => {
     dialogResults.set(CloseMissionDialogComponent, { confirmed: false, purgeRadar: false });
     component.closeMission(component.selectedHost()!);
     expect(atelier.setHostMissionStatus).not.toHaveBeenCalled();
+  });
+
+  // ---- F-109 / SF-109-04 : les pages du client ----
+
+  it("l'onglet Pages range les pages du client", () => {
+    const root = build({ tab: 'pages', hostRef: 'h1' });
+
+    expect(root.querySelector('[data-tab="pages"]')?.textContent).toContain('Pages');
+    expect(root.querySelector('app-host-pages')).not.toBeNull();
+    expect(pages.list).toHaveBeenCalledWith('h1', 'VIGIE');
+  });
+
+  it('clôturer en cochant « ses pages » : leur purge part après la clôture confirmée, et seulement alors', () => {
+    build();
+    dialogResults.set(CloseMissionDialogComponent, { confirmed: true, purgeRadar: false, purgePages: true });
+    atelier.setHostMissionStatus.and.returnValue(of({ id: 'h1', missionStatus: 'ACTIVE' } as unknown as RunnerHost));
+    component.closeMission(component.selectedHost()!);
+    expect(pages.removePlace).not.toHaveBeenCalled();
+
+    atelier.setHostMissionStatus.and.returnValue(of({ id: 'h1', missionStatus: 'CLOSED' } as unknown as RunnerHost));
+    component.closeMission(component.selectedHost()!);
+    expect(pages.removePlace).toHaveBeenCalledOnceWith('h1', 'VIGIE');
+    expect(vigie.purgeRadar).not.toHaveBeenCalled();
+  });
+
+  it('clôturer sans cocher « ses pages » : aucune page effacée', () => {
+    build();
+    dialogResults.set(CloseMissionDialogComponent, { confirmed: true, purgeRadar: true, purgePages: false });
+
+    component.closeMission(component.selectedHost()!);
+
+    expect(pages.removePlace).not.toHaveBeenCalled();
   });
 
   it('une mission déjà close ne propose pas de la clôturer', () => {

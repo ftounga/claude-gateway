@@ -176,6 +176,112 @@ class PageServiceTest {
         assertThat(service.attachment(bob, pageId, null, "logo.svg")).isEmpty();
     }
 
+    // ------------------------------------------------------------ SF-109-04 : ranger les pages d'un lieu
+
+    @Test
+    @DisplayName("SF-109-04 — la liste d'un lieu : ce compte, ce poste, cet espace, le plus récent d'abord")
+    void listByPlace() {
+        UUID host = UUID.randomUUID();
+        UUID first = service.publish(new PagePlace(alice, PageSpace.VIGIE, host, null), null, "Un", null, "1", Map.of())
+                .page().getId();
+        UUID second = service.publish(new PagePlace(alice, PageSpace.VIGIE, host, null), null, "Deux", null, "2", Map.of())
+                .page().getId();
+        service.publish(new PagePlace(alice, PageSpace.FORGE, host, null), null, "Forge", null, "f", Map.of());
+        service.publish(new PagePlace(alice, PageSpace.VIGIE, UUID.randomUUID(), null), null, "Ailleurs", null, "a", Map.of());
+        service.publish(new PagePlace(bob, PageSpace.VIGIE, host, null), null, "Bob", null, "b", Map.of());
+        service.rename(alice, first, "Un renommé");
+
+        assertThat(service.list(alice, host, PageSpace.VIGIE)).extracting(Page::getId).containsExactly(first, second);
+        assertThat(service.list(bob, host, PageSpace.VIGIE)).extracting(Page::getTitle).containsExactly("Bob");
+    }
+
+    @Test
+    @DisplayName("SF-109-04 — renommer : titre nettoyé, invalide refusé, page d'autrui introuvable")
+    void rename() {
+        UUID pageId = service.publish(place(alice), null, "Avant", null, "x", Map.of()).page().getId();
+
+        assertThat(service.rename(alice, pageId, "  Après   tout ").getTitle()).isEqualTo("Après tout");
+        assertThatThrownBy(() -> service.rename(alice, pageId, " ")).isInstanceOf(PageRejectedException.class);
+        assertThatThrownBy(() -> service.rename(bob, pageId, "Volée")).isInstanceOf(PageNotFoundException.class);
+        assertThat(service.require(alice, pageId).getTitle()).isEqualTo("Après tout");
+    }
+
+    @Test
+    @DisplayName("SF-109-04 — supprimer efface les lignes ET les objets ; celle d'autrui reste")
+    void delete() {
+        UUID pageId = service.publish(place(alice), null, "P", null, "v1", Map.of("a.css", "b{}".getBytes())).page().getId();
+        service.publish(place(alice), pageId, "P", null, "v2", Map.of());
+
+        assertThatThrownBy(() -> service.delete(bob, pageId)).isInstanceOf(PageNotFoundException.class);
+        assertThat(storage.listKeys(PageStore.PREFIX + alice + "/" + pageId + "/")).isNotEmpty();
+
+        service.delete(alice, pageId);
+
+        assertThatThrownBy(() -> service.require(alice, pageId)).isInstanceOf(PageNotFoundException.class);
+        assertThat(versionRepository.sumSizeBytesByUserId(alice)).isZero();
+        assertThat(storage.listKeys(PageStore.PREFIX + alice + "/" + pageId + "/")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("SF-109-04 — purger un lieu n'efface que ce lieu et ce compte")
+    void deletePlace() {
+        UUID host = UUID.randomUUID();
+        service.publish(new PagePlace(alice, PageSpace.VIGIE, host, null), null, "A1", null, "1", Map.of());
+        service.publish(new PagePlace(alice, PageSpace.VIGIE, host, null), null, "A2", null, "2", Map.of());
+        UUID forge = service.publish(new PagePlace(alice, PageSpace.FORGE, host, null), null, "F", null, "f", Map.of())
+                .page().getId();
+        UUID bobs = service.publish(new PagePlace(bob, PageSpace.VIGIE, host, null), null, "B", null, "b", Map.of())
+                .page().getId();
+
+        assertThat(service.deletePlace(alice, host, PageSpace.VIGIE)).isEqualTo(2);
+
+        assertThat(service.list(alice, host, PageSpace.VIGIE)).isEmpty();
+        assertThat(service.require(alice, forge)).isNotNull();
+        assertThat(service.require(bob, bobs)).isNotNull();
+    }
+
+    @Test
+    @DisplayName("SF-109-04 — l'export ZIP porte la version courante et les pièces jointes du lieu, et rien d'autre")
+    void exportPlace() throws Exception {
+        UUID host = UUID.randomUUID();
+        UUID pageId = service.publish(new PagePlace(alice, PageSpace.FORGE, host, null), null, "Maquette été", null,
+                "<h1>v1</h1>", Map.of()).page().getId();
+        service.publish(new PagePlace(alice, PageSpace.FORGE, host, null), pageId, "Maquette été", null,
+                "<h1>v2</h1>", Map.of("style.css", "h1{}".getBytes()));
+        service.publish(new PagePlace(alice, PageSpace.FORGE, host, null), null, "Maquette été", null, "<p>homonyme</p>",
+                Map.of());
+        service.publish(new PagePlace(bob, PageSpace.FORGE, host, null), null, "Bob", null, "<p>bob</p>", Map.of());
+
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        service.exportPlace(alice, host, PageSpace.FORGE, out);
+
+        Map<String, String> entries = new java.util.TreeMap<>();
+        try (java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(
+                new java.io.ByteArrayInputStream(out.toByteArray()))) {
+            for (java.util.zip.ZipEntry entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
+                entries.put(entry.getName(), new String(zip.readAllBytes(), StandardCharsets.UTF_8));
+            }
+        }
+        // Deux pages homonymes : deux dossiers distincts, dans l'ordre de modification (la plus récente d'abord).
+        assertThat(entries.keySet()).hasSize(3).contains("maquette-ete/index.html", "maquette-ete-2/index.html");
+        String cssFolder = entries.keySet().stream().filter(name -> name.endsWith("/style.css")).findFirst()
+                .orElseThrow().replace("/style.css", "");
+        assertThat(entries.get(cssFolder + "/index.html")).isEqualTo("<h1>v2</h1>");
+        assertThat(entries.values()).contains("h1{}", "<p>homonyme</p>").doesNotContain("<p>bob</p>", "<h1>v1</h1>");
+    }
+
+    @Test
+    @DisplayName("SF-109-04 — purger un compte efface les objets de toutes ses pages")
+    void purgeUser() {
+        service.publish(place(alice), null, "A", null, "a", Map.of());
+        UUID bobs = service.publish(place(bob), null, "B", null, "b", Map.of()).page().getId();
+
+        service.purgeUser(alice);
+
+        assertThat(storage.listKeys(PageStore.PREFIX + alice + "/")).isEmpty();
+        assertThat(storage.listKeys(PageStore.PREFIX + bob + "/" + bobs + "/")).isNotEmpty();
+    }
+
     @Test
     @DisplayName("CA6 — la page d'Alice est introuvable pour Bob : lecture, versions, republication")
     void isolation() {

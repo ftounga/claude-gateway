@@ -8,15 +8,17 @@ import { isMissionClosed } from '../shared/mission-status';
  */
 
 /** Les onglets d'un client dans la Vigie, dans leur ordre (cadrage §4). */
-export type VigieTab = 'radar' | 'conversations' | 'reunions' | 'personnes';
+export type VigieTab = 'radar' | 'conversations' | 'reunions' | 'personnes' | 'pages';
 
-export const VIGIE_TABS: readonly VigieTab[] = ['radar', 'conversations', 'reunions', 'personnes'];
+export const VIGIE_TABS: readonly VigieTab[] = ['radar', 'conversations', 'reunions', 'personnes', 'pages'];
 
 export const VIGIE_TAB_LABELS: Record<VigieTab, string> = {
   radar: 'Radar',
   conversations: 'Conversations',
   reunions: 'Réunions',
   personnes: 'Personnes',
+  // F-109 / SF-109-04 : les pages publiées depuis le terminal Teams de ce client.
+  pages: 'Pages',
 };
 
 /** L'onglet ouvert : `?onglet=` s'il en nomme un, sinon le Radar. */

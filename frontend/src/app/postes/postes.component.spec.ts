@@ -18,6 +18,8 @@ import { CloseMissionDialogComponent } from '../vigie/close-mission-dialog/close
 import { GovernanceIntegrite, GovernanceMap } from '../core/models/governance.models';
 import { RunnerHostOverview, WorkspaceDetail } from '../core/models/atelier.models';
 import { hostInitials, hostTone } from '../shared/host-identity';
+import { PagesService } from '../core/services/pages.service';
+import { ExportService } from '../core/services/export.service';
 
 /**
  * L'écran des postes (F-49 / SF-49-02) : ce qu'il montre, ce qu'il ne fait pas, et ce qu'il ne
@@ -206,7 +208,12 @@ describe('PostesComponent', () => {
     return { snapshot: { fragment }, paramMap: params$, queryParamMap: query$ };
   }
 
+  /** Les pages du poste (F-109 / SF-109-04). */
+  let pagesSpy: jasmine.SpyObj<PagesService>;
+
   function build(fragment: string | null = null): void {
+    pagesSpy = jasmine.createSpyObj<PagesService>('PagesService', ['list']);
+    pagesSpy.list.and.returnValue(of([]));
     governance = jasmine.createSpyObj<GovernanceService>('GovernanceService',
       ['getMap', 'readMapFile', 'getIntegrite', 'getHosts']);
     governance.getMap.and.returnValue(of(carte));
@@ -221,6 +228,9 @@ describe('PostesComponent', () => {
         { provide: VigieService, useValue: vigieSpy },
         { provide: GovernanceService, useValue: governance },
         { provide: MailService, useValue: jasmine.createSpyObj<MailService>('MailService', { address: EMPTY }) },
+        // F-109 / SF-109-04 : l'onglet Pages lit les pages du poste.
+        { provide: PagesService, useValue: pagesSpy },
+        { provide: ExportService, useValue: jasmine.createSpyObj<ExportService>('ExportService', ['triggerDownload']) },
         { provide: MatDialog, useValue: dialog },
         provideRouter([]),
         provideNoopAnimations(),
@@ -935,10 +945,19 @@ describe('PostesComponent', () => {
     it('propose quatre onglets à une machine, et Projets seul à « Hébergé »', () => {
       setup();
       expect(tabs().map((node) => node.getAttribute('data-tab')))
-        .toEqual(['projets', 'carte', 'gouvernance', 'activite']);
+        .toEqual(['projets', 'carte', 'gouvernance', 'activite', 'pages']);
 
       openHost('heberge');
       expect(tabs().map((node) => node.getAttribute('data-tab'))).toEqual(['projets']);
+    });
+
+    it("l'onglet Pages range les pages du poste, en Forge", () => {
+      setup();
+      openTab('pages');
+
+      expect(tab('pages').textContent).toContain('Pages');
+      expect((fixture.nativeElement as HTMLElement).querySelector('.poste__pages app-host-pages')).not.toBeNull();
+      expect(pagesSpy.list).toHaveBeenCalledWith(poste.id!, 'FORGE');
     });
 
     it('chaque onglet porte son résumé sans être ouvert', () => {
