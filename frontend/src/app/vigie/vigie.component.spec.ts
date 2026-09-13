@@ -8,7 +8,9 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { RunnerHostOverview, WorkspaceDetail } from '../core/models/atelier.models';
 import { VigieRadarCounts } from '../core/models/vigie.models';
+import { RadarBrief } from '../core/models/radar.models';
 import { AtelierService } from '../core/services/atelier.service';
+import { RadarService } from '../core/services/radar.service';
 import { VigieService } from '../core/services/vigie.service';
 import { TeamsLink, TeamsLinkService } from '../atelier/teams/teams-link.service';
 import { RunnerPairingDialogComponent } from '../atelier/runner/runner-pairing-dialog.component';
@@ -25,6 +27,7 @@ describe('VigieComponent', () => {
   let dialog: jasmine.SpyObj<MatDialog>;
   let teamsLinks: jasmine.SpyObj<TeamsLinkService>;
   let snackBar: jasmine.SpyObj<MatSnackBar>;
+  let radar: jasmine.SpyObj<RadarService>;
   let router: Router;
   let params$: BehaviorSubject<ParamMap>;
   let query$: BehaviorSubject<ParamMap>;
@@ -44,6 +47,13 @@ describe('VigieComponent', () => {
   };
 
   const noCounts: VigieRadarCounts = { followUpsDue: 0, blockedSubjects: 0, lastSync: null };
+
+  const emptyBrief: RadarBrief = {
+    generatedAt: '2026-09-15T07:00:00Z', since: '2026-09-14T07:00:00Z', sentences: [],
+    counts: { toDoByMe: 0, followUpsDue: 0, introductions: 0, subjectsFollowed: 0, blockedSubjects: 0, toHandle: 0 },
+    running: null, lastSync: null, coverageComplete: false,
+    coverageWarning: 'Aucune synchro encore : le Radar se remplira à la première synchro du soir.', coverageLines: [],
+  };
 
   function build(options: {
     hosts?: RunnerHostOverview[];
@@ -71,6 +81,9 @@ describe('VigieComponent', () => {
     dialog.open.and.callFake(((component: unknown) =>
       ({ afterClosed: () => of(dialogResults.get(component)) })) as never);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
+    radar = jasmine.createSpyObj<RadarService>('RadarService',
+      ['brief', 'syncNow', 'cancelSync', 'threadRules', 'addThreadRule', 'removeThreadRule']);
+    radar.brief.and.returnValue(of(emptyBrief));
     params$ = new BehaviorSubject(convertToParamMap(options.hostRef ? { hostRef: options.hostRef } : {}));
     query$ = new BehaviorSubject(convertToParamMap(options.tab ? { onglet: options.tab } : {}));
 
@@ -84,6 +97,7 @@ describe('VigieComponent', () => {
         { provide: TeamsLinkService, useValue: teamsLinks },
         { provide: MatDialog, useValue: dialog },
         { provide: MatSnackBar, useValue: snackBar },
+        { provide: RadarService, useValue: radar },
         { provide: ActivatedRoute, useValue: { snapshot: {}, paramMap: params$, queryParamMap: query$ } },
       ],
     });
@@ -168,13 +182,15 @@ describe('VigieComponent', () => {
     expect(router.navigate).toHaveBeenCalledWith(['/vigie', 'h2'], { queryParamsHandling: 'preserve' });
   });
 
-  it("montre quatre onglets, le Radar par défaut avec un état vide explicite", () => {
+  it("montre quatre onglets, le Radar par défaut avec l'onglet du Radar du client (F-102)", () => {
     const root = build();
 
     expect(Array.from(root.querySelectorAll('.poste__tab')).map((t) => t.textContent?.trim()))
       .toEqual(['Radar', 'Conversations', 'Réunions', 'Personnes']);
     expect(component.activeTab()).toBe('radar');
-    expect(root.querySelector('.vigie__radar-empty')?.textContent).toContain('Le Radar de ce client arrive ici');
+    expect(root.querySelector('.vigie__radar-empty')).toBeNull();
+    expect(root.querySelector('app-radar-board')).not.toBeNull();
+    expect(radar.brief).toHaveBeenCalledWith('h1');
   });
 
   it("?onglet=personnes lit l'annuaire une fois ; vide, il dit comment il se remplit", () => {

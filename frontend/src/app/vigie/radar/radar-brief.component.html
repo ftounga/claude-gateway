@@ -1,0 +1,158 @@
+<!-- LE RÉSUMÉ DU MATIN (F-102 / SF-102-01, maquette docs/features/F-99/maquette-radar.html) : à gauche ce qui
+     a bougé et les compteurs, à droite ce que la synchro a lu. Téléphone : empilés, le résumé d'abord. -->
+@if (brief(); as b) {
+  <section class="radar-brief" aria-label="Résumé du matin">
+    <div class="radar-brief__main">
+      <h3 class="radar-brief__hello">{{ day }} — ce qui a bougé depuis hier</h3>
+
+      <!-- §4.4 : il dit ce qu'il n'a pas lu, EN TÊTE, jamais replié. -->
+      @if (b.coverageWarning) {
+        <p class="radar-brief__warning" role="status">
+          <span class="badge badge--warning">Couverture incomplète</span>
+          <span class="radar-brief__warning-text">{{ b.coverageWarning }}</span>
+        </p>
+      }
+
+      @if (b.sentences.length > 0) {
+        <ul class="radar-brief__say">
+          @for (sentence of b.sentences; track $index) {
+            <li class="radar-brief__sentence" [attr.data-kind]="sentence.kind">
+              @if (sentence.subjectId) {
+                <a [routerLink]="['/vigie', hostId(), 'sujets', sentence.subjectId]">{{ sentence.text }}</a>
+              } @else {
+                {{ sentence.text }}
+              }
+            </li>
+          }
+        </ul>
+      }
+
+      <ul class="radar-brief__tally" aria-label="Compteurs du Radar">
+        <li class="radar-brief__tile" [class.radar-brief__tile--hot]="b.counts.toDoByMe > 0">
+          <b>{{ b.counts.toDoByMe }}</b><span>à faire par moi</span>
+        </li>
+        <li class="radar-brief__tile" [class.radar-brief__tile--hot]="b.counts.followUpsDue > 0">
+          <b>{{ b.counts.followUpsDue }}</b><span>{{ plural(b.counts.followUpsDue, 'relance due', 'relances dues') }}</span>
+        </li>
+        <li class="radar-brief__tile">
+          <b>{{ b.counts.introductions }}</b><span>{{ plural(b.counts.introductions, 'mise en relation', 'mises en relation') }}</span>
+        </li>
+        <li class="radar-brief__tile">
+          <b>{{ b.counts.subjectsFollowed }}</b><span>{{ plural(b.counts.subjectsFollowed, 'sujet suivi', 'sujets suivis') }}</span>
+        </li>
+      </ul>
+    </div>
+
+    <div class="radar-brief__cover">
+      <div class="radar-brief__cover-head">
+        <span class="radar-brief__label">{{ heading() }}</span>
+        @if (!b.running) {
+          <button
+            mat-stroked-button
+            type="button"
+            class="radar-brief__sync"
+            [disabled]="busy()"
+            (click)="syncNow()"
+          >
+            @if (busy()) {
+              <mat-spinner diameter="16"></mat-spinner>
+            } @else {
+              <mat-icon>sync</mat-icon>
+            }
+            Synchroniser maintenant
+          </button>
+        }
+      </div>
+
+      @if (b.running; as running) {
+        <div class="radar-brief__progress" role="status">
+          <mat-spinner diameter="16" aria-hidden="true"></mat-spinner>
+          <span class="radar-brief__grow">{{ running.summary?.headline ?? 'Synchro en cours.' }}</span>
+          <button mat-button type="button" class="radar-brief__cancel" [disabled]="busy()" (click)="cancel()">
+            Annuler
+          </button>
+        </div>
+      }
+
+      @if (b.lastSync; as last) {
+        @for (line of b.coverageLines; track line.source) {
+          <div class="radar-brief__row" [attr.data-source]="line.source">
+            <span
+              class="radar-brief__tick"
+              [class.radar-brief__tick--ok]="line.ok"
+              [class.radar-brief__tick--gap]="!line.ok"
+              [attr.aria-label]="line.ok ? 'lu' : 'lu avec des manques'"
+            >{{ line.ok ? '✓' : '!' }}</span>
+            <mat-icon class="radar-brief__src" aria-hidden="true">{{ sourceIcon(line.source) }}</mat-icon>
+            <span class="radar-brief__grow">{{ line.text }}</span>
+          </div>
+        }
+        @if (b.coverageLines.length === 0 && last.summary?.headline) {
+          <p class="radar-brief__headline">{{ last.summary?.headline }}</p>
+        }
+        @if (last.summary?.remedy; as remedy) {
+          <p class="radar-brief__remedy"><mat-icon aria-hidden="true">build</mat-icon>{{ remedy }}</p>
+        }
+
+        <!-- Les manques : toujours visibles (§15, « un trou qu'il faut déplier est un trou qu'on ne voit pas »). -->
+        @if (items().length > 0) {
+          <ul class="radar-brief__gaps" aria-label="Ce qui n'a pas été lu">
+            @for (item of items(); track item.ref) {
+              <li class="radar-brief__gap">
+                <div class="radar-brief__row">
+                  <span class="radar-brief__tick radar-brief__tick--gap" aria-hidden="true">!</span>
+                  <mat-icon class="radar-brief__src" aria-hidden="true">{{ kindIcon(item.kind) }}</mat-icon>
+                  <span class="radar-brief__grow">« {{ item.label || 'sans titre' }} »</span>
+                  <span class="radar-brief__ts">{{ statusLabel(item.status) }}</span>
+                </div>
+                @if (item.detail) {
+                  <p class="radar-brief__detail">{{ item.detail }}</p>
+                }
+                @if (item.rule) {
+                  <p class="radar-brief__rule">
+                    Règle posée : {{ ruleLabel(item.rule) }}
+                    <button
+                      mat-button
+                      type="button"
+                      class="radar-brief__undo-rule"
+                      [disabled]="ruleBusy() !== null"
+                      (click)="removeRule(item)"
+                    >Annuler</button>
+                  </p>
+                } @else if (gestures(item).length > 0) {
+                  <div class="radar-brief__acts">
+                    @for (gesture of gestures(item); track gesture) {
+                      <button
+                        mat-stroked-button
+                        type="button"
+                        class="radar-brief__gesture"
+                        [attr.data-gesture]="gesture"
+                        [disabled]="ruleBusy() !== null"
+                        (click)="addRule(item, gesture)"
+                      >{{ gestureLabel(gesture) }}</button>
+                    }
+                  </div>
+                }
+              </li>
+            }
+          </ul>
+        }
+      } @else if (!b.running) {
+        <p class="radar-brief__headline">
+          La synchro du soir lira les conversations et réunions du client ; la première remonte 30 jours.
+        </p>
+      }
+    </div>
+  </section>
+} @else if (error()) {
+  <div class="radar-brief radar-brief--error" role="alert">
+    <mat-icon aria-hidden="true">cloud_off</mat-icon>
+    <div>
+      <h3 class="radar-brief__hello">Le résumé n'a pas pu être lu</h3>
+      <p>La gateway n'a pas répondu. Rien n'est perdu.</p>
+      <button mat-flat-button color="primary" type="button" (click)="load()">Réessayer</button>
+    </div>
+  </div>
+} @else {
+  <div class="radar-brief__loading"><mat-spinner diameter="28"></mat-spinner></div>
+}

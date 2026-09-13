@@ -44,6 +44,7 @@ import {
   RemoveClientDialogData,
   RemoveClientDialogResult,
 } from './remove-client-dialog/remove-client-dialog.component';
+import { RadarBoardComponent } from './radar/radar-board.component';
 import {
   VIGIE_TABS,
   VIGIE_TAB_LABELS,
@@ -80,6 +81,7 @@ export type VigieError = 'none' | 'network' | 'forbidden' | 'not-entitled';
     HostBadgeComponent,
     LiveBadgeComponent,
     MissionBadgeComponent,
+    RadarBoardComponent,
     SpacePitchComponent,
     TeamsLinkBadgeComponent,
     MatButtonModule,

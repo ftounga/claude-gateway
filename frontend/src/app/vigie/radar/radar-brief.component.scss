@@ -1,0 +1,264 @@
+/* Le résumé du matin (F-102 / SF-102-01) — DESIGN_SYSTEM.md §17, aucune couleur hors charte. */
+:host {
+  display: block;
+}
+
+.radar-brief {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--cg-space-3);
+  padding: var(--cg-space-3);
+  border: 1px solid var(--cg-divider);
+  border-radius: 8px;
+  background: var(--cg-surface);
+
+  @media (max-width: 859px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  &--error {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cg-space-3);
+
+    > mat-icon {
+      color: var(--cg-text-secondary);
+      flex: none;
+    }
+
+    p {
+      margin: var(--cg-space-1) 0 var(--cg-space-3);
+      color: var(--cg-text-secondary);
+      font-size: 14px;
+    }
+  }
+
+  &__loading {
+    display: flex;
+    justify-content: center;
+    padding: var(--cg-space-4);
+  }
+
+  &__hello {
+    margin: 0;
+    font-family: var(--cg-font-heading);
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  /* L'avertissement de couverture : un filet ambre §12, jamais un aplat. */
+  &__warning {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cg-space-2);
+    margin: var(--cg-space-2) 0 0;
+    padding: var(--cg-space-1) 0 var(--cg-space-1) var(--cg-space-3);
+    border-left: 4px solid #F9A825;
+    font-size: 14px;
+  }
+
+  &__warning-text {
+    color: var(--cg-text-primary);
+  }
+
+  &__say {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-1);
+    margin: var(--cg-space-2) 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--cg-text-primary);
+
+    a {
+      color: inherit;
+      text-decoration: none;
+
+      &:hover,
+      &:focus-visible {
+        text-decoration: underline;
+        text-decoration-color: var(--cg-orange);
+      }
+    }
+  }
+
+  &__tally {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cg-space-2);
+    margin: var(--cg-space-3) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  &__tile {
+    display: flex;
+    flex-direction: column;
+    min-width: 96px;
+    padding: var(--cg-space-2) var(--cg-space-3);
+    border: 1px solid var(--cg-divider);
+    border-radius: 8px;
+
+    b {
+      font-family: var(--cg-font-heading);
+      font-size: 20px;
+      line-height: 1.1;
+      font-variant-numeric: tabular-nums;
+      color: var(--cg-text-primary);
+    }
+
+    span {
+      font-size: 12px;
+      color: var(--cg-text-secondary);
+    }
+
+    /* Ce qui presse : un filet orange, le chiffre reste en encre principale (contraste). */
+    &--hot {
+      border-left: 4px solid var(--cg-orange);
+    }
+  }
+
+  &__cover {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-2);
+    min-width: 0;
+    padding-left: var(--cg-space-3);
+    border-left: 1px solid var(--cg-divider);
+
+    @media (max-width: 859px) {
+      padding: var(--cg-space-3) 0 0;
+      border-left: 0;
+      border-top: 1px solid var(--cg-divider);
+    }
+  }
+
+  &__cover-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cg-space-2);
+  }
+
+  &__label {
+    flex: 1 1 160px;
+    font-family: var(--cg-font-mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--cg-text-secondary);
+  }
+
+  &__sync mat-spinner,
+  &__progress mat-spinner {
+    display: inline-block;
+    margin-right: var(--cg-space-1);
+  }
+
+  &__progress {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+    font-size: 13px;
+  }
+
+  &__row {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+    font-size: 13px;
+    min-width: 0;
+  }
+
+  &__grow {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  &__tick {
+    width: 12px;
+    flex: none;
+    font-weight: 700;
+    text-align: center;
+
+    &--ok {
+      color: var(--cg-success);
+    }
+
+    &--gap {
+      color: #F9A825;
+    }
+  }
+
+  &__src {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+    flex: none;
+    color: var(--cg-text-secondary);
+  }
+
+  &__ts {
+    font-family: var(--cg-font-mono);
+    font-size: 11px;
+    color: var(--cg-text-secondary);
+    white-space: nowrap;
+  }
+
+  &__headline,
+  &__detail,
+  &__rule {
+    margin: 0;
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__detail,
+  &__rule,
+  &__acts {
+    padding-left: var(--cg-space-6);
+  }
+
+  &__remedy {
+    display: flex;
+    align-items: center;
+    gap: var(--cg-space-2);
+    margin: 0;
+    font-size: 13px;
+    font-weight: 500;
+
+    mat-icon {
+      width: 16px;
+      height: 16px;
+      font-size: 16px;
+      color: var(--cg-text-secondary);
+    }
+  }
+
+  &__gaps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-2);
+    margin: 0;
+    padding: var(--cg-space-2) 0 0;
+    border-top: 1px dashed var(--cg-divider);
+    list-style: none;
+  }
+
+  &__gap {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-1);
+  }
+
+  &__acts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cg-space-2);
+  }
+}
