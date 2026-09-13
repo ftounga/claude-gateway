@@ -933,11 +933,38 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     sous le `user_id` propriétaire du projet — l'écriture depuis le canal runner se fait sur le
     `workspace_id` de la **session authentifiée**, jamais sur un identifiant lu dans une trame.
 
+- **radar_*** — le **registre du Radar** (F-99 / SF-99-01, migration `081` ; cadrage
+  `docs/features/F-99/CADRAGE-le-radar.md` §3-4). Neuf tables, **toutes à `user_id` ET `host_id`
+  non nuls** : le Radar d'un poste ne voit jamais celui d'un autre poste, y compris du même
+  utilisateur. Aucune clé étrangère (purge explicite, SF-99-05).
+  - `radar_subjects` : `name (200)`, `state` (`NEW`, `ADVANCING`, `WAITING`, `BLOCKED`, `DORMANT`,
+    `CLOSE_PROPOSED`, `CLOSED`), `next_step (500)`, `due_date`, `last_activity_at`.
+  - `radar_subject_aliases` : `subject_id`, `alias`, `normalized` — unique `(user_id, host_id,
+    subject_id, normalized)`.
+  - `radar_subject_facts` : le **résumé phrase par phrase** (`subject_id`, `position`, `text (500)`).
+  - `radar_people` : l'annuaire du poste, unique `(user_id, host_id, source_key)`.
+  - `radar_subject_roles` : rôle d'une personne **sur un sujet** (`DECIDES`, `DRIVES`, `EXPERT`,
+    `INFORMED`), unique `(user_id, host_id, subject_id, person_id)`.
+  - `radar_commitments` : `direction` (`ME_TO_OTHER`, `OTHER_TO_ME`, `INTRODUCTION`), `description`,
+    `from/to/other_person_id` (vide = « moi »), `due_date`, `due_deduced`, `status` (`OPEN`, `KEPT`,
+    `POSTPONED`, `ABANDONED`), `certainty` (`CERTAIN`, `PROBABLE` — jamais un score),
+    `extraction_key` unique par périmètre (idempotence de l'analyse).
+  - `radar_evidence` : **la preuve** — `source` (`TEAMS_MESSAGE`, `TEAMS_MEETING`,
+    `LOCAL_RECORDING`, `USER_NOTE`, `PASTED_MAIL`), `source_ref`, `occurred_at`, `quote (280)`,
+    `deep_link` ; **unique `(user_id, host_id, source, source_ref)`** : une synchro reprise ne duplique
+    rien. Des extraits, pas des archives.
+  - `radar_evidence_links` : ce que chaque preuve justifie (`target_kind` : `CHRONOLOGY`, `STATE`,
+    `NEXT_STEP`, `DUE_DATE`, `SUMMARY`, `COMMITMENT`, `ROLE` ; `target_id`). **Pas de fait sans
+    preuve** : le registre (`RadarRegistry`, seule porte d'écriture) refuse toute valeur sans lien.
+    Les liens, et non les preuves, portent le sujet : fusion et séparation déplacent des liens.
+  - `radar_syncs` : `status`, `started_at`, `finished_at`, `coverage` (JSON, forme fixée par F-100),
+    `consumed_tokens`.
+
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files via `user_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files via `user_id` ; tables `radar_*` via `user_id` **et** `host_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
 
 ---
 
