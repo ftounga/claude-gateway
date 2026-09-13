@@ -12,7 +12,7 @@
 
 ## Statut
 
-`in-review`
+`done` — livrée le 2026-09-13 (PR #560)
 
 ## Date de création
 
