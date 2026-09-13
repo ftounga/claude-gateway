@@ -299,13 +299,27 @@ ne connaissait pas la veille. **Le Radar découvre, l'utilisateur écarte après
   reconnaît dans le code sans rien demander. Les chemins sont ceux d'un même service en ligne : **un
   seul relevé réel suffit pour tous les clients**. *Seule exception connue : les clouds souverains
   (`sharepoint.us`, `sharepoint.cn`), hors de la clientèle visée.*
+- **Le runner n'a pas à retrouver ces adresses** : c'est Teams qui les appelle en s'affichant, le runner
+  observe. **La vraie question est : les voit-il ?** Vérifié dans le code (`BrowserTargets`,
+  `NetworkObserver`) : il se rattache à **un seul onglet**, celui de Teams, et à rien d'autre. Trois
+  angles morts possibles, que seul le relevé réel tranchera :
+  1. **un autre onglet** — une transcription ou un enregistrement ouvert dans un onglet SharePoint /
+     Stream n'est pas observé ;
+  2. **un cadre intégré d'un autre site** — le lecteur Stream intégré à Teams vient de
+     `*.sharepoint.com` ; avec l'isolation des sites de Chrome, un tel cadre tourne dans son propre
+     processus et **son trafic n'apparaît pas** dans celui de l'onglet ;
+  3. **un service worker** — ses requêtes n'apparaissent pas non plus dans l'onglet.
+  **Si l'un d'eux se confirme**, le remède est de se rattacher aussi aux cadres et workers **de la
+  page Teams, et seulement aux hôtes Microsoft** (`Target.setAutoAttach` filtré). C'est **une commande
+  de plus dans la liste blanche CDP** : décision de sécurité **à soumettre au PO** avec le résultat du
+  relevé, jamais prise en douce.
 - **Ce qui change d'un client à l'autre, c'est la session et les droits**, pas les adresses : la
   politique du tenant peut désactiver la transcription, et l'accès à une transcription ou à un
   enregistrement dépend du rôle dans la réunion (organisateur, participant, invité).
 
 | SF | Titre | Contenu |
 |---|---|---|
-| **SF-100-00** | **Le relevé réel** | **Préalable au développement du Radar, fait une seule fois** (les adresses sont les mêmes pour tous les clients). Sur un vrai poste d'entreprise — celui du client qui motive la demande, avec l'accord du PO : l'utilisateur ouvre un fil, une réunion passée, son récapitulatif, sa transcription. Le runner relève **hôtes, chemins et formes** des réponses (jamais les corps ni les requêtes). Livrable : la table réelle des chemins (Teams, et SharePoint / OneDrive reconnus par motif `*.sharepoint.com`), les écarts avec `TeamsUrls`, et les gestes nécessaires. Aucune donnée client ne quitte la machine |
+| **SF-100-00** | **Le relevé réel** | **Préalable au développement du Radar, fait une seule fois** (les adresses sont les mêmes pour tous les clients). Sur un vrai poste d'entreprise — celui du client qui motive la demande, avec l'accord du PO : l'utilisateur ouvre un fil, une réunion passée, son récapitulatif, sa transcription. Le runner relève **hôtes, chemins et formes** des réponses (jamais les corps ni les requêtes). Livrable : la table réelle des chemins (Teams, et SharePoint / OneDrive reconnus par motif `*.sharepoint.com`), les écarts avec `TeamsUrls`, les gestes nécessaires, et **pour chaque réponse utile : vue depuis l'onglet Teams, ou seulement depuis un autre onglet, un cadre intégré ou un worker** (les trois angles morts). Aucune donnée client ne quitte la machine |
 | **SF-100-01** | **La vérification guidée** | À l'activation d'un client dans la Vigie (F-106), **sans rien déclarer de ce qu'il faut suivre** : **vérification guidée** — ouvrir un fil suivi, puis une réunion passée et sa transcription ; l'écran coche ce que le runner a vu (✓ session Microsoft active, ✓ conversations, ✓ réunions, ✓ transcriptions). **Aucune adresse n'est demandée ni détectée.** La vérification sert à ce qui change vraiment d'un client à l'autre : **la session et les droits** — un « ✗ transcriptions » dit que la politique du client les désactive ou que l'accès est refusé, et le Radar l'annonce au lieu de laisser croire que les réunions sont vides |
 | SF-100-02 | La planification | Heure par poste (22 h par défaut), *Synchroniser maintenant*, **une seule synchro à la fois par poste** tous pods confondus, rattrapage à la prochaine connexion du runner |
 | SF-100-03 | La collecte Teams incrémentale | Runner : **découverte des fils actifs** depuis la dernière synchro dans la liste de conversations de Teams (parcourue jusqu'au curseur), canaux d'équipe limités aux fils où l'utilisateur a écrit, répondu ou été mentionné, fils ignorés écartés ; curseur par fil, points de reprise, fenêtre de 30 jours à la première synchro, remontée par lots idempotents. **Pour les réunions** : deux gestes nouveaux sur le modèle de `show` — *afficher le calendrier sur une période* et *afficher une réunion et son onglet Transcription* (vue de l'utilisateur remise ensuite) ; **reconnaissance par motif de SharePoint / OneDrive** (`*.sharepoint.com`, `*-my.sharepoint.com`) dans l'adaptateur unique, sans configuration par client. Toujours par `Runtime.evaluate`, sans `Page.navigate` : la liste blanche CDP ne bouge pas. **La vidéo n'est pas nécessaire au Radar** : l'enregistrement reste où il est |
