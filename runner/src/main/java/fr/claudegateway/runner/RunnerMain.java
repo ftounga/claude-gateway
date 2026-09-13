@@ -189,6 +189,9 @@ public final class RunnerMain {
                     }
                 }, stopped, RunnerShutdown.GRACE, console),
                 "runner-shutdown"));
+        // F-111 / SF-111-02 : sous un lanceur, le runner le surveille. Un lanceur tué sans crochet
+        // (SIGKILL, fin de session brutale) ne doit pas laisser un runner orphelin connecté.
+        fr.claudegateway.runner.launcher.LauncherWatch.startIfUnderLauncher(env, console);
 
         console.info("Appuyez sur Ctrl-C pour arrêter le runner.");
         try {

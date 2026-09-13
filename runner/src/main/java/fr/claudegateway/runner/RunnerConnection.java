@@ -205,8 +205,10 @@ public final class RunnerConnection {
         journal.established(TransportJournal.Transport.WEBSOCKET);
         // La file d'émission est branchée sur la socket courante avant toute trame sortante.
         sender.attach(frame -> ws.sendText(frame, true));
-        // F-111 / SF-111-01 : la version réelle ; le lanceur arrive avec SF-111-02.
-        sender.send(dispatcher.readyFrame(RunnerBuild.current(), false));
+        // F-111 : la version réelle, et la présence du lanceur (SF-111-02) — sans lui, aucune mise à
+        // jour d'un clic.
+        sender.send(dispatcher.readyFrame(RunnerBuild.current(),
+                fr.claudegateway.runner.launcher.LauncherWatch.underLauncher(System.getenv())));
         startHeartbeat();
     }
 

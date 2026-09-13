@@ -39,6 +39,20 @@ inutile tant que le jeton est valide et non révoqué.
 
 `Ctrl-C` ferme la connexion et arrête le processus proprement.
 
+### Le lanceur (F-111 / SF-111-02)
+
+`claude-runner.jar` est d'abord un **lanceur** : il reste dans le terminal et démarre le vrai runner en
+processus enfant depuis `~/.claude-runner/versions/<version>/runner.jar` (copié au premier lancement),
+avec les mêmes arguments, le même environnement et la même console. `Ctrl-C` arrête les deux.
+
+- Code `75` du runner : une mise à jour est prête, le lanceur démarre la version écrite dans
+  `~/.claude-runner/next-version`.
+- Codes `0`, `2` à `6` : le lanceur s'arrête aussi.
+- Autre code (plantage) : relance de la même version, **3 fois au plus en 5 minutes**.
+
+`--no-launcher` démarre le runner directement (diagnostic). `--check` et `--releve-teams` tournent
+toujours sans lanceur. `CLAUDE_RUNNER_HOME` déplace le dossier `~/.claude-runner` du lanceur.
+
 ## Reprendre (F-46 / SF-46-01)
 
 Une fois l'appairage réussi, **plus aucun argument n'est nécessaire** :
@@ -237,6 +251,9 @@ java -Djavax.net.ssl.trustStore=/chemin/truststore.jks \
 | `2` | Configuration invalide (option requise absente, workspace inexistant) |
 | `3` | Appairage refusé ou injoignable |
 | `4` | Jeton refusé au handshake et aucun code d'appairage fourni |
+| `5` | Gateway injoignable au contrôle de vol |
+| `6` | Aucun transport n'a tenu |
+| `75` | Mise à jour prête : le lanceur démarre la nouvelle version (F-111) |
 
 ## Distribution
 
