@@ -18,8 +18,13 @@ import fr.claudegateway.governance.dto.GovernanceDepositPlan;
 import fr.claudegateway.governance.dto.GovernanceFileComparison;
 import fr.claudegateway.governance.dto.GovernanceHostSummary;
 import fr.claudegateway.governance.dto.GovernanceHostView;
+import fr.claudegateway.governance.dto.GovernanceIntegriteConstatView;
+import fr.claudegateway.governance.dto.GovernanceIntegriteView;
 import fr.claudegateway.governance.dto.GovernanceMapFileContent;
 import fr.claudegateway.governance.dto.GovernanceMapView;
+import fr.claudegateway.governance.integrite.IntegriteNiveau;
+import fr.claudegateway.governance.integrite.IntegriteInspection;
+import fr.claudegateway.governance.integrite.IntegriteRapport;
 
 /**
  * La gouvernance <b>d'un poste</b> (F-75 / SF-75-01) : ce qui s'y applique, et les gestes qui
@@ -46,6 +51,7 @@ public class GovernanceHostController {
     private final GovernanceDepositService depositService;
     private final GovernanceFileReadingService fileReadingService;
     private final GovernanceMapReadingService mapReadingService;
+    private final IntegriteInspection integriteInspection;
     private final GovernanceHostScope hostScope;
     private final AtelierAccessService atelierAccess;
     private final CurrentUser currentUser;
@@ -53,12 +59,14 @@ public class GovernanceHostController {
     public GovernanceHostController(GovernanceActivationService activationService,
             GovernanceDepositService depositService,
             GovernanceFileReadingService fileReadingService,
-            GovernanceMapReadingService mapReadingService, GovernanceHostScope hostScope,
-            AtelierAccessService atelierAccess, CurrentUser currentUser) {
+            GovernanceMapReadingService mapReadingService, IntegriteInspection integriteInspection,
+            GovernanceHostScope hostScope, AtelierAccessService atelierAccess,
+            CurrentUser currentUser) {
         this.activationService = activationService;
         this.depositService = depositService;
         this.fileReadingService = fileReadingService;
         this.mapReadingService = mapReadingService;
+        this.integriteInspection = integriteInspection;
         this.hostScope = hostScope;
         this.atelierAccess = atelierAccess;
         this.currentUser = currentUser;
@@ -149,6 +157,38 @@ public class GovernanceHostController {
         }
         UUID userId = currentUser.requireId();
         return mapReadingService.readFile(userId, hostScope.require(userId, hostRef), path);
+    }
+
+    /**
+     * <b>L'intégrité du poste</b> (F-95 / SF-95-03) : ce qui empêche la gouvernance de fonctionner,
+     * et ce qui la fait vieillir mal.
+     *
+     * <p><b>Pourquoi cette route existe.</b> Un verdict de F-50 ne connaît que deux issues — passer
+     * ou bloquer : un <b>avertissement</b> n'a donc, par construction, aucun canal vers le modèle. Le
+     * prompt d'origine écrivait son rapport dans une console ; ici, la console de la carte, c'est
+     * l'écran du poste. Sans cette route, la moitié informative de la feature serait écrite et
+     * jamais lue.</p>
+     *
+     * <p><b>Les deux niveaux arrivent séparés</b> : l'écran n'a rien à trier, et ne peut donc pas
+     * présenter un avertissement comme un refus.</p>
+     *
+     * <p><b>Lecture bornée</b>, et elle interroge la machine : l'écran ne l'appelle qu'une fois par
+     * page, et jamais pour un poste non connecté.</p>
+     */
+    @GetMapping("/{hostRef}/integrite")
+    public GovernanceIntegriteView integrite(@PathVariable String hostRef) {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        GovernanceHostRef host = hostScope.require(userId, hostRef);
+        IntegriteRapport rapport = integriteInspection.dePoste(userId, host);
+        return new GovernanceIntegriteView(host.ref(), host.publicId(), rapport.inspecte(),
+                vue(rapport, IntegriteNiveau.ERREUR), vue(rapport, IntegriteNiveau.AVERTISSEMENT));
+    }
+
+    /** Les constats d'un niveau, traduits pour l'écran. */
+    private static List<GovernanceIntegriteConstatView> vue(IntegriteRapport rapport,
+            IntegriteNiveau niveau) {
+        return rapport.par(niveau).stream().map(GovernanceIntegriteConstatView::of).toList();
     }
 
     /**

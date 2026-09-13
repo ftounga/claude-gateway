@@ -16,6 +16,8 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { AtelierService } from '../core/services/atelier.service';
 import { GovernanceService } from '../core/services/governance.service';
 import {
+  GovernanceIntegrite,
+  GovernanceIntegriteConstat,
   GovernanceMap,
   GovernanceMapFile,
   GovernanceMapGain,
@@ -92,6 +94,13 @@ export type PostesError = 'none' | 'network' | 'forbidden';
  * c'est une liste — et le PO a dit que ce n'était pas un tableau de bord.
  */
 export const MAX_SHOWN_GAINS = 3;
+
+/**
+ * Constats d'intégrité montrés **par niveau** (F-95 / SF-95-03). Trois, pour la même raison que les
+ * gains : chaque constat porte déjà son geste en une phrase complète, et une colonne de dix en
+ * ferait un tableau de bord que personne ne lit.
+ */
+export const MAX_SHOWN_CONSTATS = 3;
 
 /**
  * Liste vide **partagée** : une carte sans dossier connu rend toujours la <b>même</b> référence.
@@ -294,6 +303,22 @@ export class PostesComponent implements OnInit {
   /** Postes dont la carte a déjà été lue dans cette page — le sondage ne la relit jamais. */
   private readonly mapsRead = new Set<string>();
 
+  /**
+   * **L'intégrité de chaque poste** (F-95 / SF-95-03) — ce qui empêche la gouvernance de
+   * fonctionner, et ce qui la fait vieillir mal.
+   *
+   * <p>Elle vit ici, à côté de la carte, parce qu'un **avertissement n'a pas d'autre lecteur** : un
+   * verdict de fin de tour ne connaît que « passer » ou « bloquer », et un avertissement ne bloque
+   * jamais. Sans cet écran, la moitié informative de la feature serait écrite et jamais lue.</p>
+   *
+   * <p>Comme la carte : lue **une fois par page**, hors du sondage de 15 s, et jamais pour un poste
+   * non connecté.</p>
+   */
+  private readonly integrites = signal<Record<string, GovernanceIntegrite>>({});
+
+  /** Postes dont l'intégrité a déjà été lue dans cette page. */
+  private readonly integritesRead = new Set<string>();
+
   /** Chemin dont l'ouverture est en vol : la ligne se verrouille le temps de l'aller-retour. */
   readonly openingFolder = signal<string | null>(null);
 
@@ -384,6 +409,7 @@ export class PostesComponent implements OnInit {
     // carte ». Le sondage automatique, lui, ne les relit jamais.
     this.foldersRead.clear();
     this.mapsRead.clear();
+    this.integritesRead.clear();
     this.load(this.hosts().length === 0);
   }
 
@@ -746,6 +772,11 @@ export class PostesComponent implements OnInit {
     return `depuis le ${since}, cette carte est passée de ${growth.sinceFacts} à ${map.facts} fait(s)`;
   }
 
+  /** Les constats montrés par niveau : trois au plus, erreurs et avertissements jamais mêlés. */
+  integriteConstats(constats: GovernanceIntegriteConstat[]): GovernanceIntegriteConstat[] {
+    return constats.slice(0, MAX_SHOWN_CONSTATS);
+  }
+
   /** Les gains récents montrés : trois au plus — au-delà ce n'est plus un constat, c'est une liste. */
   mapRecentGains(growth: GovernanceMapGrowth): GovernanceMapGain[] {
     return growth.recent.slice(0, MAX_SHOWN_GAINS);
@@ -755,6 +786,26 @@ export class PostesComponent implements OnInit {
   mapGainLabel(gain: GovernanceMapGain): string {
     const when = this.elapsedLabel(gain.gainedAt);
     return when ? `${gain.path} +${gain.gained} · ${when}` : `${gain.path} +${gain.gained}`;
+  }
+
+  /**
+   * L'intégrité d'un poste, **ou `null` s'il n'y a rien à dire** (F-95 / SF-95-03).
+   *
+   * <p>Le bloc n'apparaît que lorsqu'il a quelque chose à dire — même règle que le gain (F-93) : un
+   * « aucune erreur » affiché en permanence deviendrait invisible en trois jours. Un poste **non
+   * inspecté** ne dit rien non plus : ce n'est pas « tout va bien », c'est « on n'a rien lu », et
+   * la section dit déjà comment y remédier.</p>
+   */
+  hostIntegrite(host: RunnerHostOverview): GovernanceIntegrite | null {
+    const hostId = host.id;
+    if (hostId === null) {
+      return null;
+    }
+    const integrite = this.integrites()[hostId] ?? null;
+    if (!integrite || !integrite.inspected) {
+      return null;
+    }
+    return integrite.errors.length > 0 || integrite.warnings.length > 0 ? integrite : null;
   }
 
   /**
@@ -821,6 +872,7 @@ export class PostesComponent implements OnInit {
         continue;
       }
       this.mapsRead.add(hostId);
+      this.loadIntegrite(hostId);
       this.governance.getMap(hostId).subscribe({
         next: (map) => this.maps.update((all) => ({ ...all, [hostId]: map })),
         // SILENCIEUX, comme la liste des dossiers : la carte du poste reste exacte, et un rouge ici
@@ -831,9 +883,42 @@ export class PostesComponent implements OnInit {
     }
   }
 
+  /**
+   * Lit l'intégrité d'un poste **connecté**, une seule fois par page (F-95 / SF-95-03).
+   *
+   * <p>Même régime que la carte, et pour la même raison : l'inspection lit la racine et les projets
+   * sur la machine d'un client. L'attacher au sondage de 15 s en ferait des centaines
+   * d'allers-retours par heure pour un état qui bouge quelques fois par jour.</p>
+   *
+   * <p>L'échec est <b>silencieux</b> : le bloc ne paraît pas. Un rouge ici enverrait chercher au
+   * mauvais endroit — c'est déjà le choix fait pour la carte et pour la liste des dossiers.</p>
+   */
+  private loadIntegrite(hostId: string): void {
+    if (this.integritesRead.has(hostId)) {
+      return;
+    }
+    this.integritesRead.add(hostId);
+    this.governance.getIntegrite(hostId).subscribe({
+      next: (integrite) =>
+        this.integrites.update((all) => ({ ...all, [hostId]: integrite })),
+      error: () => this.forgetIntegrite(hostId),
+    });
+  }
+
+  /** Oublie l'intégrité d'un poste : la prochaine lecture demandée la relira. */
+  private forgetIntegrite(hostId: string): void {
+    this.integritesRead.delete(hostId);
+    this.integrites.update((all) => {
+      const next = { ...all };
+      delete next[hostId];
+      return next;
+    });
+  }
+
   /** Oublie le relevé d'un poste : la prochaine lecture demandée le relira. */
   private forgetMap(hostId: string): void {
     this.mapsRead.delete(hostId);
+    this.forgetIntegrite(hostId);
     this.maps.update((all) => {
       const next = { ...all };
       delete next[hostId];

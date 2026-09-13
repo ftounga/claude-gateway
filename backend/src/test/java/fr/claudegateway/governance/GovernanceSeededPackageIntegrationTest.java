@@ -63,13 +63,15 @@ class GovernanceSeededPackageIntegrationTest {
         assertThat(pkg.version()).isEqualTo(1);
         assertThat(pkg.rules()).contains("Le travail est jetable, le savoir est durable");
 
-        // Les quatre contrôles cités sont fournis par le produit — c'est tout l'objet de ce test.
-        assertThat(pkg.controls()).hasSize(4);
+        // Les cinq contrôles cités sont fournis par le produit — c'est tout l'objet de ce test.
+        assertThat(pkg.controls()).hasSize(5);
         // Le juge indépendant vient EN DERNIER (F-94 / SF-94-03) : c'est le seul qui coûte un appel,
-        // et le premier blocage l'emporte. L'ordre est le garde-fou de dépense.
+        // et le premier blocage l'emporte. L'ordre est le garde-fou de dépense. L'intégrité du poste
+        // (F-95 / SF-95-03) se range juste avant lui : elle coûte des allers-retours vers la
+        // machine, jamais un appel au fournisseur.
         assertThat(pkg.controls()).extracting(control -> control.id())
                 .containsExactly("commit-sans-trace-llm", "juge-fin-de-tour",
-                        "promotion-dette-bloquante", "juge-independant");
+                        "promotion-dette-bloquante", "integrite-du-poste", "juge-independant");
         assertThat(pkg.controls()).allSatisfy(control ->
                 assertThat(registry.exists(control.id()))
                         .as("contrôle « %s » inconnu du registre", control.id()).isTrue());

@@ -589,6 +589,54 @@
           }
         }
 
+        <!-- L'INTÉGRITÉ DU POSTE (F-95 / SF-95-03). C'est ici que vivent les AVERTISSEMENTS, et
+             c'est ce qui justifie ce bloc : un verdict de fin de tour ne connaît que « passer » ou
+             « bloquer », donc un avertissement n'a AUCUN autre lecteur. Sans cet écran, la moitié
+             informative de la feature serait écrite et jamais lue.
+
+             DEUX NIVEAUX, JAMAIS MÊLÉS : les erreurs d'abord, sous leur intitulé ; les
+             avertissements ensuite, sous le leur. La gateway les rend déjà séparés — l'écran n'a
+             rien à trier, et ne peut donc pas présenter un avertissement comme un refus.
+
+             LE MESSAGE EST REPRIS TEL QUEL : il porte déjà son action corrective, et le réécrire
+             ici le ferait diverger au premier correctif.
+
+             IL N'APPARAÎT QUE S'IL A QUELQUE CHOSE À DIRE — même règle que le gain : un « aucune
+             erreur » permanent deviendrait invisible en trois jours.
+
+             AUCUN REGISTRE DE COULEUR DE PLUS : l'ICÔNE porte le sens, l'encre reste celle du
+             texte. C'est déjà la règle de cette carte. -->
+        @if (hostIntegrite(host); as integrite) {
+          @if (integrite.errors.length) {
+            <p class="poste__carte-gain">
+              <mat-icon>error_outline</mat-icon>
+              <span>Intégrité — à corriger</span>
+            </p>
+            <ul class="poste__carte-constats">
+              @for (constat of integriteConstats(integrite.errors); track constat.rule + constat.target) {
+                <li>
+                  <span class="poste__mono">{{ constat.target }}</span>
+                  {{ constat.message }}
+                </li>
+              }
+            </ul>
+          }
+          @if (integrite.warnings.length) {
+            <p class="poste__carte-gain">
+              <mat-icon>info_outline</mat-icon>
+              <span>Intégrité — à surveiller, sans urgence</span>
+            </p>
+            <ul class="poste__carte-constats">
+              @for (constat of integriteConstats(integrite.warnings); track constat.rule + constat.target) {
+                <li>
+                  <span class="poste__mono">{{ constat.target }}</span>
+                  {{ constat.message }}
+                </li>
+              }
+            </ul>
+          }
+        }
+
         <!-- CE QUE LE TERMINAL DU POSTE SERT (F-92 / SF-92-03) : aujourd'hui, rien ne l'indique.
              Il s'ouvre à la racine — là où vit la carte — et c'est de là qu'on l'écrit. -->
         <p class="poste__carte-hint">

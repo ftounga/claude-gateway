@@ -262,3 +262,36 @@ export interface GovernanceMapFileContent {
   truncated: boolean;
   message: string | null;
 }
+
+/**
+ * Un constat d'**intégrité du poste** (F-95 / SF-95-03).
+ *
+ * `message` est repris **tel quel** de la gateway : il porte déjà son action corrective, et le
+ * réécrire ici le ferait diverger au premier correctif.
+ */
+export interface GovernanceIntegriteConstat {
+  /** L'identifiant stable de la règle — c'est par lui qu'un constat se retrouve. */
+  rule: string;
+  /** Ce sur quoi il porte : un fichier de carte, un projet, un dépôt. */
+  target: string;
+  /** Le constat **et** le geste. */
+  message: string;
+}
+
+/**
+ * **L'intégrité d'un poste** (F-95 / SF-95-03) — les deux niveaux, déjà séparés par la gateway.
+ *
+ * L'écran n'a donc rien à trier, et ne peut pas présenter un avertissement comme un refus.
+ *
+ * `inspected` à faux n'est **pas** « tout va bien » : c'est un poste dont on n'a rien lu — machine
+ * muette, poste sans gouvernance, poste sans racine.
+ */
+export interface GovernanceIntegrite {
+  hostRef: string;
+  hostId: string | null;
+  inspected: boolean;
+  /** Ce qui empêche la gouvernance de fonctionner — bloquant côté modèle. */
+  errors: GovernanceIntegriteConstat[];
+  /** Ce qui la fait vieillir mal — informatif, jamais bloquant. */
+  warnings: GovernanceIntegriteConstat[];
+}
