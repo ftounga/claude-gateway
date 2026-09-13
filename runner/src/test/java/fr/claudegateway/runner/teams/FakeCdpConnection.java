@@ -323,11 +323,16 @@ final class FakeCdpConnection implements CdpConnection {
 
     /** Fait « arriver » une réponse, en-têtes compris — précisément ce qu'on ne doit pas lire. */
     void emitResponse(String requestId, String url, String body) {
+        emitResponse(requestId, url, body, 200);
+    }
+
+    /** Même réponse, avec son statut HTTP — un refus 403 dit quelque chose des droits (F-100). */
+    void emitResponse(String requestId, String url, String body, int status) {
         ObjectNode params = mapper.createObjectNode();
         params.put("requestId", requestId);
         ObjectNode response = params.putObject("response");
         response.put("url", url);
-        response.put("status", 200);
+        response.put("status", status);
         response.put("mimeType", "application/json");
         ObjectNode headers = response.putObject("headers");
         headers.put("Set-Cookie", "authtoken=SECRET-COOKIE-DE-SESSION; HttpOnly");

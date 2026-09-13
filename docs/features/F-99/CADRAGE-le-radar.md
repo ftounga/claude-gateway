@@ -325,6 +325,12 @@ ne connaissait pas la veille. **Le Radar découvre, l'utilisateur écarte après
 | SF-100-04 | La couverture et la progression | Rapport par source et par fil (lu, échoué, sans transcription, canaux actifs non lus), échecs bruyants avec le geste (session Microsoft expirée), progression et annulation ; *lire ce canal* et *ignorer ce fil* depuis la couverture |
 | SF-100-05 | Le dossier de dépôt | `<racine>/radar/depot/` relevé par la synchro, transcription sur la machine (F-91), seul le texte remonte |
 
+> **Écrans de F-100 — planifiés (livraison du 2026-09-13).** F-100 livre le runner et l'API ; ses écrans
+> vivent dans la Vigie, pas encore livrée : la **vérification guidée** (SF-100-01) est rendue par
+> l'**activation d'un client dans la Vigie** (F-106) ; **couverture, progression, annulation,
+> *Synchroniser maintenant*, *lire ce canal* et *ignorer ce fil*** (SF-100-02 / SF-100-04) sont rendus par
+> le **résumé du matin** (F-102 / SF-102-01), qui lit `GET /api/radar/hosts/{hostId}/syncs`.
+
 ### F-101 — La lecture des échanges
 
 | SF | Titre | Contenu |

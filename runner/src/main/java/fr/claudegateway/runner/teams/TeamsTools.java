@@ -239,6 +239,8 @@ public final class TeamsTools implements ToolExecutor {
             case CAPTURE_STATUS -> captureStatus(input);
             case LIST_FILES -> files == null ? filesUnavailable(LIST_FILES) : files.listFiles(input);
             case READ_FILE -> files == null ? filesUnavailable(READ_FILE) : files.readFile(input);
+            // Le Radar (F-100) : des appels de la gateway, hors du catalogue de l'agent.
+            case RadarTools.VERIFY -> radar().verify();
             default -> ToolOutcome.error("unsupported_tool", "Outil Teams inconnu : " + tool);
         };
     }
@@ -1333,6 +1335,12 @@ public final class TeamsTools implements ToolExecutor {
 
     private BrowserLink link() {
         return session.link();
+    }
+
+    /** Les appels du Radar (F-100), sur la même liaison et le même registre que les outils de lecture. */
+    private RadarTools radar() {
+        return enabled ? new RadarTools(session, this::ledger, sleeper, "")
+                : new RadarTools(null, null, null, disabledReason);
     }
 
     /** Le registre vit avec la liaison — et repart avec elle : rien n'est mis en cache (D2). */

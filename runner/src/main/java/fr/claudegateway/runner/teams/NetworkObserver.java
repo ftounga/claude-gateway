@@ -40,6 +40,8 @@ public final class NetworkObserver {
     /** Réponses vues, dans l'ordre d'arrivée : identifiant de requête → adresse sans requête. */
     private final Map<String, Pending> pending = new LinkedHashMap<>();
     private final List<TeamsGap> gaps = new ArrayList<>();
+    /** Réponses refusées (401/403) par nature, depuis le rattachement (F-100 / SF-100-01). */
+    private final Map<TeamsPayloadKind, Integer> denied = new java.util.concurrent.ConcurrentHashMap<>();
     /** Cadres et workers réellement retenus pour l'observation — filtrés sur les domaines (§4.8). */
     private final List<String> attachedFrames = new ArrayList<>();
     /**
@@ -115,6 +117,14 @@ public final class NetworkObserver {
         if (kind == TeamsPayloadKind.IGNORED || kind == TeamsPayloadKind.UNKNOWN) {
             return;
         }
+        int status = response.path("status").asInt(0);
+        if (status == 401 || status == 403) {
+            // F-100 / SF-100-01 : une réponse REFUSÉE dit quelque chose des droits (une transcription
+            // dont l'accès est refusé n'est pas une réunion vide). On la compte ; son corps — un
+            // message d'erreur — n'est pas demandé.
+            denied.merge(kind, 1, Integer::sum);
+            return;
+        }
         String requestId = params.path("requestId").asText("");
         if (!requestId.isEmpty()) {
             pending.put(requestId, new Pending(url, kind));
@@ -155,6 +165,11 @@ public final class NetworkObserver {
      */
     public synchronized List<String> observedFilePaths() {
         return List.copyOf(filePaths);
+    }
+
+    /** Réponses de cette nature refusées par le service (401/403) depuis le rattachement. */
+    public int denied(TeamsPayloadKind kind) {
+        return kind == null ? 0 : denied.getOrDefault(kind, 0);
     }
 
     /** Ce qui n'a pas pu être lu depuis le début de l'observation. */
