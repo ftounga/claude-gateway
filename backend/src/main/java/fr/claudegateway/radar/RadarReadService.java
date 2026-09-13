@@ -238,8 +238,7 @@ public class RadarReadService {
     public List<SyncView> syncs(RadarScope scope) {
         List<RadarSync> page = syncs.findByUserIdAndHostIdOrderByStartedAtDesc(scope.userId(), scope.hostId(),
                 PageRequest.of(0, SYNC_PAGE));
-        Map<UUID, RadarSyncAnalysisView> analysis = analysisReport.bySync(scope,
-                page.stream().map(RadarSync::getId).toList());
+        Map<UUID, RadarSyncAnalysisView> analysis = analysisReport.bySync(scope, page);
         return page.stream()
                 .map(s -> new SyncView(s.getId(), s.getStatus(), s.getStartedAt(), s.getFinishedAt(),
                         parse(s.getCoverage()), s.getConsumedTokens(), analysis.get(s.getId())))

@@ -1,8 +1,12 @@
 package fr.claudegateway.radar;
 
 import java.util.List;
+import java.time.Clock;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.UUID;
+
+import fr.claudegateway.radar.analysis.RadarReserve;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -58,10 +62,15 @@ public class RadarController {
     private final RadarScopeResolver scopeResolver;
     private final TeamsAccessService teamsAccess;
     private final CurrentUser currentUser;
+    private final RadarReserve reserve;
+    private final Clock clock;
 
     public RadarController(RadarReadService readService, RadarCorrectionService correctionService,
             RadarStructureService structureService, RadarClosureService closureService,
-            RadarPurgeService purgeService, RadarExportService exportService, RadarScopeResolver scopeResolver, TeamsAccessService teamsAccess, CurrentUser currentUser) {
+            RadarPurgeService purgeService, RadarExportService exportService, RadarScopeResolver scopeResolver, TeamsAccessService teamsAccess, CurrentUser currentUser,
+            RadarReserve reserve, Clock clock) {
+        this.reserve = reserve;
+        this.clock = clock;
         this.readService = readService;
         this.correctionService = correctionService;
         this.structureService = structureService;
@@ -108,6 +117,12 @@ public class RadarController {
     @GetMapping("/syncs")
     public List<SyncView> syncs(@PathVariable UUID hostId) {
         return readService.syncs(scope(hostId));
+    }
+
+    /** La réserve de synchro du poste (F-101 / SF-101-05). */
+    @GetMapping("/reserve")
+    public RadarReserve.ReserveView reserve(@PathVariable UUID hostId) {
+        return reserve.view(scope(hostId), OffsetDateTime.now(clock));
     }
 
     // ------------------------------------------------------------ corrections souveraines (SF-99-02)

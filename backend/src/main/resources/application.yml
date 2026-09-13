@@ -379,6 +379,14 @@ app:
       max-attempts: ${APP_RADAR_ANALYSIS_MAX_ATTEMPTS:3}
       # Rétention du texte brut d'un lot non analysé. JAMAIS plus de 7 jours (cadrage §4.6).
       raw-retention: ${APP_RADAR_ANALYSIS_RAW_RETENTION:P7D}
+    reserve:
+      # LA RÉSERVE DE SYNCHRO (F-101 / SF-101-05) : jetons d'analyse par poste et par mois civil (UTC).
+      # Propre au Radar : la synchro ne mange JAMAIS le quota des conversations. Épuisée, l'analyse
+      # s'arrête proprement (lots reportés, rien de perdu) et la synchro le dit. Valeur de la grille
+      # F-107 (3 M par client suivi), à revalider après l'essai ; portée par l'option Vigie en SF-107-04.
+      monthly-tokens: ${APP_RADAR_RESERVE_MONTHLY_TOKENS:3000000}
+      # Plafond d'une synchro, en jetons ; 0 = aucun.
+      per-sync-tokens: ${APP_RADAR_RESERVE_PER_SYNC_TOKENS:0}
     reading:
       # Modèle du TRI (première passe). Vide => le modèle RAPIDE du catalogue : la question est
       # grossière (« engagement, décision, blocage, date, clôture ? »), le coût doit l'être aussi.

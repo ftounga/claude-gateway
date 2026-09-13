@@ -87,6 +87,13 @@ public interface RadarAnalysisBatchRepository extends JpaRepository<RadarAnalysi
     List<RadarAnalysisSyncCount> countBySync(@Param("userId") UUID userId, @Param("hostId") UUID hostId,
             @Param("syncIds") Collection<UUID> syncIds);
 
+    /** Lots reportés pour un motif, comptés par synchro (SF-101-05 : l'arrêt sur réserve). */
+    @Query("select b.syncId, count(b) from RadarAnalysisBatch b where b.userId = :userId and b.hostId = :hostId"
+            + " and b.syncId in :syncIds and b.status = fr.claudegateway.radar.analysis.RadarAnalysisBatchStatus.DEFERRED"
+            + " and b.failureCode = :code group by b.syncId")
+    List<Object[]> countDeferredBySync(@Param("userId") UUID userId, @Param("hostId") UUID hostId,
+            @Param("syncIds") Collection<UUID> syncIds, @Param("code") String code);
+
     @Modifying
     @Query("delete from RadarAnalysisBatch b where b.userId = :userId and b.hostId = :hostId")
     int purgeScope(@Param("userId") UUID userId, @Param("hostId") UUID hostId);

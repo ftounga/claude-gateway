@@ -24,6 +24,12 @@ public interface RadarSyncRepository extends JpaRepository<RadarSync, UUID> {
     int addConsumedTokens(@Param("id") UUID id, @Param("userId") UUID userId, @Param("hostId") UUID hostId,
             @Param("tokens") long tokens);
 
+    /** Consommation des synchros du poste commencées depuis un instant (F-101 / SF-101-05 : la réserve). */
+    @Query("select coalesce(sum(x.consumedTokens), 0) from RadarSync x"
+            + " where x.userId = :userId and x.hostId = :hostId and x.startedAt >= :from")
+    long sumConsumedSince(@Param("userId") UUID userId, @Param("hostId") UUID hostId,
+            @Param("from") java.time.OffsetDateTime from);
+
     /** Purge du Radar d'un poste (SF-99-05) : suppression en masse, filtrée sur le périmètre. */
     @Modifying
     @Query("delete from RadarSync x where x.userId = :userId and x.hostId = :hostId")
