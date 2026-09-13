@@ -11,7 +11,7 @@ de détail » ; maquette validée `maquette-forge-refondue.html`)
 
 ## Statut
 
-`in-progress`
+`done`
 
 ## Date de création
 
