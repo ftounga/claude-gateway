@@ -104,7 +104,8 @@ public class RadarSyncController {
 
     private RadarScope scope(UUID hostId) {
         teamsAccess.requireAccess();
-        return scopeResolver.require(currentUser.requireId(), hostId);
+        // F-106 / SF-106-01 : une API de la Vigie ne lit que les clients activés dans la Vigie.
+        return scopeResolver.requireInVigie(currentUser.requireId(), hostId);
     }
 
     /** La vérification telle que l'écran la rend : quatre cases et « tout est vu ». */

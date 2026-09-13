@@ -301,6 +301,20 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - Alimente `GET /billing/seats` et la part de quota apportée par les postes supplémentaires
     (`EntitlementService.resolveEffectiveMonthlyTokenQuota`). **Aucun montant n'est stocké ici** :
     les jetons se recalculent à partir de la configuration `app.seat` (défauts inertes).
+- **host_spaces** — les **espaces d'un client** (F-106 / SF-106-01, migration `091`). Une ligne =
+  « ce poste est activé dans cet espace depuis `activated_at` », `space ∈ {FORGE, VIGIE}`.
+  - `host_spaces` : `id (uuid)`, `user_id (uuid, NOT NULL)`, `host_id (uuid, NOT NULL)`,
+    `space (varchar 16, NOT NULL)`, `activated_at (timestamptz, NOT NULL)`. **Unicité
+    `(host_id, space)`**, index `(user_id, space)`.
+  - **Un poste, deux regards** : le poste reste une seule entité (machine, runner, appairage,
+    mission). Activer dans un espace n'appaire rien ; retirer d'un espace ne supprime rien ailleurs ;
+    le dernier espace ne se retire pas. La migration active **tous les postes existants dans la
+    Forge**, aucun dans la Vigie. Un poste **sans ligne** est lu comme activé dans la Forge
+    (déploiement progressif).
+  - Filtre `GET /runner-hosts/overview?space=` ; les API de la Vigie (Radar) exigent le poste activé
+    dans la Vigie (409 `host_not_in_space`), sauf export et purge.
+  - **Aucune clé étrangère** : purge explicite à la suppression du poste (événement `DELETED`) et du
+    compte.
 - **user_api_keys** — clé API personnelle BYOK chiffrée au repos (F-03, migration `030`, OQ-06 : AWS KMS
   envelope encryption). **Une seule clé par utilisateur** (`user_id` unique). **Aucune clé en clair** : seuls
   le blob chiffré et les 4 derniers caractères sont persistés.

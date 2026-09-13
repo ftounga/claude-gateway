@@ -50,6 +50,7 @@ public class AccountService {
 
     private final UserService userService;
     private final RadarPurgeService radarPurgeService;
+    private final fr.claudegateway.runner.host.HostSpaceService hostSpaceService;
     private final SubscriptionRepository subscriptionRepository;
     private final UsageCounterRepository usageCounterRepository;
     private final UsageTurnRepository usageTurnRepository;
@@ -95,8 +96,10 @@ public class AccountService {
             DocumentRepository documentRepository,
             ChunkRepository chunkRepository,
             MessageLibraryDocumentRepository messageLibraryDocumentRepository,
-            RadarPurgeService radarPurgeService) {
+            RadarPurgeService radarPurgeService,
+            fr.claudegateway.runner.host.HostSpaceService hostSpaceService) {
         this.radarPurgeService = radarPurgeService;
+        this.hostSpaceService = hostSpaceService;
         this.userService = userService;
         this.subscriptionRepository = subscriptionRepository;
         this.usageCounterRepository = usageCounterRepository;
@@ -207,6 +210,8 @@ public class AccountService {
         // Le Radar (F-99 / SF-99-05) avant les postes : des extraits de communications internes du client
         // et des données de tiers, qui ne survivent ni au poste ni au compte.
         radarPurgeService.purgeUser(userId);
+        // Les espaces des postes (F-106 / SF-106-01) : sans clé étrangère, ils partent explicitement.
+        hostSpaceService.purgeUser(userId);
         runnerHostRepository.deleteByUserId(userId);
         // Places de terminal vivant (F-70 / SF-70-01) : elles nomment les projets ouverts par le
         // compte. Sans purge, elles survivraient à sa suppression jusqu'à leur expiration.

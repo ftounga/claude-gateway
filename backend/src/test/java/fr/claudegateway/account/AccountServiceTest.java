@@ -91,6 +91,8 @@ class AccountServiceTest {
     private fr.claudegateway.chat.MessageLibraryDocumentRepository messageLibraryDocumentRepository;
     @Mock
     private fr.claudegateway.radar.RadarPurgeService radarPurgeService;
+    @Mock
+    private fr.claudegateway.runner.host.HostSpaceService hostSpaceService;
 
     private AccountService service() {
         return new AccountService(userService, subscriptionRepository, usageCounterRepository,
@@ -100,7 +102,8 @@ class AccountServiceTest {
                 liveTerminalRepository,
                 workspaceRepository, workspaceService,
                 atelierMessageRepository,
-                documentRepository, chunkRepository, messageLibraryDocumentRepository, radarPurgeService);
+                documentRepository, chunkRepository, messageLibraryDocumentRepository, radarPurgeService,
+                hostSpaceService);
     }
 
     private User user(UUID id) {

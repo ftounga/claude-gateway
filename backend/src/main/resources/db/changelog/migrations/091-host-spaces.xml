@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-106 / SF-106-01 — LES ESPACES D'UN CLIENT : la Forge et la Vigie.
+
+      On n'importe pas un poste dans la Vigie, on l'y ACTIVE : le poste reste une seule entité (une
+      machine, un runner, un appairage), et `host_spaces` dit dans quels espaces il est visible.
+      Une ligne par couple (poste, espace) ; `space` ∈ {FORGE, VIGIE}.
+
+      Reprise : TOUS les postes existants sont activés dans la Forge, AUCUN dans la Vigie. Aucun
+      jeton, appairage ni runner n'est touché.
+
+      Aucune clé étrangère, comme `host_seat_months` (070) : la purge est explicite, à la suppression
+      du poste et du compte. Le rollback rend le schéma d'avant (la table disparaît).
+    -->
+
+    <changeSet id="091-host-spaces-table" author="claude-gateway">
+        <createTable tableName="host_spaces">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="space" type="varchar(16)"><constraints nullable="false"/></column>
+            <column name="activated_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="host_spaces" indexName="idx_host_spaces_host_space" unique="true">
+            <column name="host_id"/>
+            <column name="space"/>
+        </createIndex>
+        <createIndex tableName="host_spaces" indexName="idx_host_spaces_user_space">
+            <column name="user_id"/>
+            <column name="space"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="host_spaces"/>
+        </rollback>
+    </changeSet>
+
+    <!-- Reprise : chaque poste existant est activé dans la Forge. Seule la fonction d'UUID diffère. -->
+    <changeSet id="091-host-spaces-forge-postgresql" author="claude-gateway" dbms="postgresql">
+        <sql>
+            INSERT INTO host_spaces (id, user_id, host_id, space, activated_at)
+            SELECT gen_random_uuid(), h.user_id, h.id, 'FORGE', h.created_at
+            FROM runner_hosts h
+        </sql>
+        <rollback>
+            <delete tableName="host_spaces"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="091-host-spaces-forge-h2" author="claude-gateway" dbms="h2">
+        <sql>
+            INSERT INTO host_spaces (id, user_id, host_id, space, activated_at)
+            SELECT RANDOM_UUID(), h.user_id, h.id, 'FORGE', h.created_at
+            FROM runner_hosts h
+        </sql>
+        <rollback>
+            <delete tableName="host_spaces"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

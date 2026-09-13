@@ -33,6 +33,7 @@ import fr.claudegateway.runner.dto.RunnerTokenResponse;
 import fr.claudegateway.runner.host.dto.HostFoldersResponse;
 import fr.claudegateway.runner.host.dto.HostMissionRequest;
 import fr.claudegateway.runner.host.dto.HostProjectRequest;
+import fr.claudegateway.runner.host.dto.HostSpacesResponse;
 import fr.claudegateway.runner.host.dto.RunnerHostOverviewResponse;
 import fr.claudegateway.runner.host.dto.RunnerHostRequest;
 import fr.claudegateway.runner.host.dto.RunnerHostResponse;
@@ -65,6 +66,8 @@ public class RunnerHostController {
     private final AtelierAccessService atelierAccess;
     /** Droit du volet Teams (F-89 / SF-89-01) : sans lui, le terminal Teams n'existe pas. */
     private final TeamsAccessService teamsAccess;
+    /** Les espaces d'un client (F-106 / SF-106-01). */
+    private final HostSpaceService spaceService;
     private final CurrentUser currentUser;
 
     public RunnerHostController(RunnerHostService hostService,
@@ -72,7 +75,7 @@ public class RunnerHostController {
             RunnerTokenService tokenService, RunnerStatusService statusService,
             RunnerKillSwitchService killSwitchService, WorkspaceService workspaceService,
             RunnerHostFolderBrowser folderBrowser, AtelierAccessService atelierAccess,
-            TeamsAccessService teamsAccess, CurrentUser currentUser) {
+            TeamsAccessService teamsAccess, HostSpaceService spaceService, CurrentUser currentUser) {
         this.hostService = hostService;
         this.overviewService = overviewService;
         this.pairingService = pairingService;
@@ -83,16 +86,73 @@ public class RunnerHostController {
         this.folderBrowser = folderBrowser;
         this.atelierAccess = atelierAccess;
         this.teamsAccess = teamsAccess;
+        this.spaceService = spaceService;
         this.currentUser = currentUser;
     }
 
-    /** Crée un poste au nom libre. */
+    /**
+     * Crée un poste au nom libre, <b>dans un espace</b> (F-106 / SF-106-01) : la Forge par défaut, la
+     * Vigie quand on connecte un client depuis la Vigie — il n'apparaît alors pas dans la Forge.
+     */
     @PostMapping
     public RunnerHostResponse create(@Valid @RequestBody RunnerHostRequest request) {
         atelierAccess.requireAccess();
+        ClientSpace space = ClientSpace.parse(request.space());
+        requireSpaceRight(space);
         UUID userId = currentUser.requireId();
-        RunnerHost host = hostService.create(userId, request.name());
+        RunnerHost host = spaceService.createHost(userId, request.name(), space);
         return RunnerHostResponse.from(host, false);
+    }
+
+    /**
+     * <b>Les espaces de chaque client</b> (F-106 / SF-106-01) : la liste d'où l'écran propose
+     * « activer dans la Vigie » ou « activer dans la Forge ». Déclarée avant {@code /{hostId}} par
+     * lisibilité, comme {@code /overview}.
+     */
+    @GetMapping("/spaces")
+    public List<HostSpacesResponse> spaces() {
+        atelierAccess.requireAccess();
+        UUID userId = currentUser.requireId();
+        var byHost = spaceService.spacesByHost(userId);
+        return hostService.list(userId).stream()
+                .map(host -> HostSpacesResponse.from(host,
+                        HostSpaceService.spacesIn(byHost, host.getId())))
+                .toList();
+    }
+
+    /**
+     * <b>Active un client dans un espace</b> (F-106 / SF-106-01). Aucun appairage : le poste est le
+     * même, il devient visible dans cet espace. Idempotent.
+     */
+    @PutMapping("/{hostId}/spaces/{space}")
+    public HostSpacesResponse activateSpace(@PathVariable UUID hostId, @PathVariable String space) {
+        atelierAccess.requireAccess();
+        ClientSpace target = ClientSpace.parse(space);
+        requireSpaceRight(target);
+        UUID userId = currentUser.requireId();
+        var spaces = spaceService.activate(userId, hostId, target);
+        return HostSpacesResponse.from(hostService.requireOwned(userId, hostId), spaces);
+    }
+
+    /**
+     * <b>Retire un client d'un espace</b> (F-106 / SF-106-01). Rien n'est supprimé ailleurs : projets,
+     * terminaux, Radar et jetons restent. Aucun droit d'option exigé — on ne demande pas de reprendre
+     * un abonnement pour ranger. Le dernier espace ne se retire pas (409).
+     */
+    @DeleteMapping("/{hostId}/spaces/{space}")
+    public HostSpacesResponse removeSpace(@PathVariable UUID hostId, @PathVariable String space) {
+        atelierAccess.requireAccess();
+        ClientSpace target = ClientSpace.parse(space);
+        UUID userId = currentUser.requireId();
+        var spaces = spaceService.remove(userId, hostId, target);
+        return HostSpacesResponse.from(hostService.requireOwned(userId, hostId), spaces);
+    }
+
+    /** La Vigie est gardée par le droit Teams en attendant le droit par espace (F-107). */
+    private void requireSpaceRight(ClientSpace space) {
+        if (space == ClientSpace.VIGIE) {
+            teamsAccess.requireAccess();
+        }
     }
 
     /** Postes de l'utilisateur, avec leur état de connexion. */
@@ -114,9 +174,14 @@ public class RunnerHostController {
      * chemin littéral sur la variable, et un test d'intégration le vérifie.</p>
      */
     @GetMapping("/overview")
-    public List<RunnerHostOverviewResponse> overview() {
+    public List<RunnerHostOverviewResponse> overview(
+            @RequestParam(name = "space", required = false) String space) {
         atelierAccess.requireAccess();
-        return overviewService.overview(currentUser.requireId());
+        // F-106 / SF-106-01 : la vue d'un espace ne montre que les clients qui y sont activés.
+        ClientSpace target = ClientSpace.parse(space);
+        requireSpaceRight(target);
+        UUID userId = currentUser.requireId();
+        return spaceService.inSpace(userId, overviewService.overview(userId), target);
     }
 
     /**

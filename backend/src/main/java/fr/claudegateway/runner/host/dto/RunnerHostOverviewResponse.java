@@ -82,7 +82,21 @@ public record RunnerHostOverviewResponse(
         TerminalPreview hostTerminalPreview,
         UUID teamsTerminalId,
         boolean teamsTerminalLive,
-        List<HostProjectSummary> projects) {
+        List<HostProjectSummary> projects,
+        /*
+         * Les espaces où ce client est activé (F-106 / SF-106-01) : {@code FORGE}, {@code VIGIE}.
+         * Posés par {@code HostSpaceService.inSpace} ; « Hébergé » ne vit que dans la Forge.
+         */
+        List<String> spaces) {
+
+    /** Le même poste, avec ses espaces (F-106 / SF-106-01). */
+    public RunnerHostOverviewResponse withSpaces(List<String> activeSpaces) {
+        return new RunnerHostOverviewResponse(id, name, rootName, os, shell, elevated, runnerVersion,
+                virtual, connected, missionStatus, lastSeenAt, createdAt, lastActivityAt,
+                activeProjects, liveTerminals, hostTerminalId, hostTerminalLive, hostTerminalPreview,
+                teamsTerminalId, teamsTerminalLive, projects,
+                activeSpaces == null ? List.of() : List.copyOf(activeSpaces));
+    }
 
     /** Nom du poste virtuel, écrit <b>par la gateway</b> : deux écrans qui le nommeraient chacun à
      * leur façon seraient deux vérités. */
@@ -109,7 +123,7 @@ public record RunnerHostOverviewResponse(
                 false, null, null, null, null, 0, liveTerminals, null, false, null,
                 // Le poste virtuel « Hébergé » n'a PAS de terminal Teams : ce n'est pas une machine,
                 // aucun navigateur n'y est observable (F-71, repris par F-89 / SF-89-01).
-                null, false, projects);
+                null, false, projects, List.of("FORGE"));
     }
 
     /**

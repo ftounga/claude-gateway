@@ -191,7 +191,9 @@ public class RunnerHostOverviewService {
                 hostTerminalLive ? previews.get(hostTerminalId) : null,
                 teamsTerminalId,
                 teamsTerminalLive,
-                projects);
+                projects,
+                // Les espaces sont posés par HostSpaceService (F-106) : cette vue ne les lit pas.
+                List.of("FORGE"));
     }
 
     /**
