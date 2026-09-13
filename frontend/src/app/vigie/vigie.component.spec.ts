@@ -370,4 +370,18 @@ describe('VigieComponent', () => {
     fixture.detectChanges();
     expect(root.querySelector('.vigie__teams-link')).toBeNull();
   });
+
+  // ---- F-106 / SF-106-04 : la passerelle vers la Forge ----
+
+  it('le menu d’un client activé dans la Forge porte « Voir dans la Forge »', () => {
+    const root = build();
+
+    (root.querySelector('.poste__menu-trigger') as HTMLElement).click();
+    fixture.detectChanges();
+
+    const link = document.querySelector('.vigie__see-forge') as HTMLAnchorElement | null;
+    expect(link?.textContent).toContain('Voir dans la Forge');
+    expect(link?.getAttribute('href')).toBe('/forge/h1');
+    expect(document.querySelector('.vigie__activate-forge')).toBeNull();
+  });
 });

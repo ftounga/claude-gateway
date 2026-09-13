@@ -185,7 +185,13 @@
                   }
                 </button>
                 <mat-menu #clientMenu="matMenu">
-                  @if (!inForge(host)) {
+                  @if (inForge(host)) {
+                    <!-- LA PASSERELLE (F-106 / SF-106-04) : le même client, dans l'autre espace. -->
+                    <a mat-menu-item class="vigie__see-forge" [routerLink]="['/forge', host.id]">
+                      <mat-icon>terminal</mat-icon>
+                      <span>Voir dans la Forge</span>
+                    </a>
+                  } @else {
                     <button mat-menu-item type="button" class="vigie__activate-forge" (click)="activateInForge(host)">
                       <mat-icon>terminal</mat-icon>
                       <span>Activer dans la Forge</span>

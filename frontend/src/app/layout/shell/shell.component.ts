@@ -11,6 +11,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { AuthService } from '../../core/services/auth.service';
 import { HelpChatWidgetComponent } from '../../help/help-chat-widget/help-chat-widget.component';
 import { QuotaAlertBannerComponent } from '../quota-alert-banner/quota-alert-banner.component';
+import { spaceLinks } from '../../shared/space-links';
 
 /**
  * Coquille applicative (F-19) : barre de navigation persistante enveloppant les pages authentifiées.
@@ -77,6 +78,12 @@ export class ShellComponent {
     const path = (this.currentUrl() ?? '').split('?')[0].split('#')[0];
     return path === '/vigie' || path.startsWith('/vigie/');
   });
+
+  /**
+   * **Les passerelles** (F-106 / SF-106-04) : les entrées Forge et Vigie portent le client ouvert,
+   * pour qu'on change d'espace sans le perdre.
+   */
+  protected readonly spaceLinks = computed(() => spaceLinks(this.currentUrl()));
 
   /** Déconnexion : purge la session serveur puis redirige vers /login (best-effort en cas d'échec réseau). */
   logout(): void {
