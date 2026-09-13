@@ -53,5 +53,7 @@ export interface VigiePerson {
 export interface VigieRadarCounts {
   followUpsDue: number;
   blockedSubjects: number;
+  /** Ce qui réclame un geste dans le Radar du client (F-102 / SF-102-03). */
+  toHandle?: number;
   lastSync: VigieSyncSummary | null;
 }

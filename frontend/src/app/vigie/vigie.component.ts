@@ -16,7 +16,8 @@ import { RunnerHostOverview } from '../core/models/atelier.models';
 import { VigiePerson, VigieRadarCounts } from '../core/models/vigie.models';
 import { AtelierService } from '../core/services/atelier.service';
 import { HostPresenceService } from '../core/services/host-presence.service';
-import { VigieService } from '../core/services/vigie.service';
+import { VigieService, countsOfBrief } from '../core/services/vigie.service';
+import { RadarBrief } from '../core/models/radar.models';
 import { HostBadgeComponent } from '../shared/host-badge/host-badge.component';
 import { LiveBadgeComponent } from '../shared/live-badge/live-badge.component';
 import { TeamsLinkBadgeComponent } from '../shared/teams-link-badge/teams-link-badge.component';
@@ -54,6 +55,7 @@ import {
   followUpLabel,
   syncLabel,
   syncNeedsAttention,
+  toHandleLabel,
 } from './vigie-fleet';
 
 /** Période de rafraîchissement de la vue, comme la Forge. */
@@ -109,6 +111,7 @@ export class VigieComponent implements OnInit {
   readonly accessCodeFragment = FORGE_ACCESS_CODE_FRAGMENT;
   readonly tabs = VIGIE_TABS;
   readonly followUpLabel = followUpLabel;
+  readonly toHandleLabel = toHandleLabel;
 
   readonly hosts = signal<RunnerHostOverview[]>([]);
   readonly loading = signal(true);
@@ -241,6 +244,19 @@ export class VigieComponent implements OnInit {
 
   followUpsOf(host: RunnerHostOverview): number {
     return host.id === null ? 0 : this.radarCounts()[host.id]?.followUpsDue ?? 0;
+  }
+
+  /** Ce qui réclame un geste dans le Radar du client (F-102 / SF-102-03). */
+  toHandleOf(host: RunnerHostOverview): number {
+    return host.id === null ? 0 : this.radarCounts()[host.id]?.toHandle ?? 0;
+  }
+
+  /**
+   * Le résumé d'un client vient d'être relu (geste, synchro, *Réessayer*) : ses compteurs remplacent ceux
+   * de la page — onglet, bandeau et colonne suivent sans relire la vue.
+   */
+  onBrief(hostId: string, brief: RadarBrief): void {
+    this.radarCounts.update((all) => ({ ...all, [hostId]: countsOfBrief(brief) }));
   }
 
   countsOf(host: RunnerHostOverview): VigieRadarCounts | null {

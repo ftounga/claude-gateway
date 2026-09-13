@@ -6,6 +6,7 @@ import {
   importableHosts,
   syncLabel,
   syncNeedsAttention,
+  toHandleLabel,
 } from './vigie-fleet';
 
 /** La Vigie en fonctions pures (F-106 / SF-106-02). */
@@ -31,6 +32,10 @@ describe('vigie-fleet', () => {
 
     expect(summary.followUpsDue).toBe(3);
     expect(summary.blockedSubjects).toBe(2);
+    expect(summary.toHandle).toBe(0);
+    expect(fleetSummary({ a: { followUpsDue: 0, blockedSubjects: 0, toHandle: 5, lastSync: null },
+      b: { followUpsDue: 0, blockedSubjects: 0, toHandle: 2, lastSync: null } }).toHandle).toBe(7);
+    expect(toHandleLabel(5)).toBe('5 à traiter');
     expect(summary.lastSync?.status).toBe('PARTIAL');
     expect(fleetSummary({}).lastSync).toBeNull();
   });

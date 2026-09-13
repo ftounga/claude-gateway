@@ -15,6 +15,11 @@
           <b>{{ summary().followUpsDue }}</b>&nbsp;{{ summary().followUpsDue > 1 ? 'relances dues' : 'relance due' }}
         </span>
       }
+      @if (summary().toHandle > 0) {
+        <span class="forge-fleet__kpi vigie__to-handle">
+          <b>{{ summary().toHandle }}</b>&nbsp;à traiter
+        </span>
+      }
       @if (summary().blockedSubjects > 0) {
         <span class="forge-fleet__kpi vigie__blocked">
           <b>{{ summary().blockedSubjects }}</b>&nbsp;{{ summary().blockedSubjects > 1 ? 'sujets bloqués' : 'sujet bloqué' }}
@@ -203,8 +208,8 @@
                   (click)="selectTab(tab)"
                 >
                   {{ tabLabel(tab) }}
-                  @if (tab === 'radar' && followUpsOf(host) > 0) {
-                    <span class="badge badge--warning poste__tab-flag">{{ followUpLabel(followUpsOf(host)) }}</span>
+                  @if (tab === 'radar' && toHandleOf(host) > 0) {
+                    <span class="badge badge--warning poste__tab-flag">{{ toHandleLabel(toHandleOf(host)) }}</span>
                   }
                 </button>
               }
@@ -215,7 +220,11 @@
                 @case ('radar') {
                   <!-- LE RADAR DU CLIENT (F-102) : le résumé du matin et les trois colonnes. -->
                   @if (host.id; as hostId) {
-                    <app-radar-board class="vigie__radar" [hostId]="hostId"></app-radar-board>
+                    <app-radar-board
+                      class="vigie__radar"
+                      [hostId]="hostId"
+                      (briefChange)="onBrief(hostId, $event)"
+                    ></app-radar-board>
                   }
                 }
                 @case ('conversations') {

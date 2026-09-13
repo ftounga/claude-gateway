@@ -43,26 +43,38 @@ describe('VigieService', () => {
     expect(httpMock.expectOne('/api/radar/hosts/h1/people').request.method).toBe('GET');
   });
 
-  it('compte relances dues, sujets bloqués et dernière synchro', () => {
+  const brief = (running: unknown, lastSync: unknown) => ({
+    generatedAt: '2026-09-13T06:00:00Z', since: '2026-09-12T06:00:00Z', sentences: [],
+    counts: { toDoByMe: 3, followUpsDue: 1, introductions: 0, subjectsFollowed: 4, blockedSubjects: 1, toHandle: 5 },
+    running, lastSync, coverageComplete: false, coverageWarning: null, coverageLines: [],
+  });
+
+  it('compte relances dues, sujets bloqués, à traiter et la synchro, d\'une seule lecture du résumé (F-102)', () => {
     let counts: VigieRadarCounts | undefined;
     service.radarCounts('h1').subscribe((c) => (counts = c));
 
-    const followUps = httpMock.expectOne((r) => r.url === '/api/radar/hosts/h1/commitments');
-    expect(followUps.request.params.get('followUpDue')).toBe('true');
-    followUps.flush([{ id: 'c1', followUpDue: true }, { id: 'c2', followUpDue: false }]);
-    const blocked = httpMock.expectOne((r) => r.url === '/api/radar/hosts/h1/subjects');
-    expect(blocked.request.params.get('state')).toBe('BLOCKED');
-    blocked.flush([{ id: 's1', name: 'MFA', state: 'BLOCKED' }]);
-    httpMock.expectOne('/api/radar/hosts/h1/syncs').flush([
-      { id: 'y1', status: 'SUCCEEDED', startedAt: '2026-09-11T20:00:00Z', finishedAt: null },
-      { id: 'y2', status: 'PARTIAL', startedAt: '2026-09-12T20:00:00Z', finishedAt: null },
-    ]);
+    httpMock.expectOne('/api/radar/hosts/h1/brief').flush(brief(null,
+      { id: 'y2', status: 'PARTIAL', startedAt: '2026-09-12T20:00:00Z', finishedAt: '2026-09-12T20:30:00Z',
+        trigger: 'SCHEDULED', scheduledFor: null, summary: null }));
 
     expect(counts).toEqual({
       followUpsDue: 1,
       blockedSubjects: 1,
-      lastSync: { id: 'y2', status: 'PARTIAL', startedAt: '2026-09-12T20:00:00Z', finishedAt: null },
+      toHandle: 5,
+      lastSync: { id: 'y2', status: 'PARTIAL', startedAt: '2026-09-12T20:00:00Z', finishedAt: '2026-09-12T20:30:00Z' },
     });
+  });
+
+  it('une synchro en cours passe avant la dernière terminée', () => {
+    let counts: VigieRadarCounts | undefined;
+    service.radarCounts('h1').subscribe((c) => (counts = c));
+
+    httpMock.expectOne('/api/radar/hosts/h1/brief').flush(brief(
+      { id: 'y3', status: 'RUNNING', startedAt: '2026-09-13T07:00:00Z', finishedAt: null },
+      { id: 'y2', status: 'SUCCEEDED', startedAt: '2026-09-12T20:00:00Z', finishedAt: '2026-09-12T20:30:00Z' }));
+
+    expect(counts?.lastSync?.id).toBe('y3');
+    expect(counts?.lastSync?.status).toBe('RUNNING');
   });
 
   it('un Radar illisible compte zéro, sans erreur', () => {
@@ -70,13 +82,10 @@ describe('VigieService', () => {
     let failed = false;
     service.radarCounts('h1').subscribe({ next: (c) => (counts = c), error: () => (failed = true) });
 
-    httpMock.expectOne((r) => r.url === '/api/radar/hosts/h1/commitments')
+    httpMock.expectOne('/api/radar/hosts/h1/brief')
       .flush({ error: 'host_not_in_space' }, { status: 409, statusText: 'Conflict' });
-    httpMock.expectOne((r) => r.url === '/api/radar/hosts/h1/subjects')
-      .flush(null, { status: 403, statusText: 'Forbidden' });
-    httpMock.expectOne('/api/radar/hosts/h1/syncs').error(new ProgressEvent('offline'));
 
     expect(failed).toBeFalse();
-    expect(counts).toEqual({ followUpsDue: 0, blockedSubjects: 0, lastSync: null });
+    expect(counts).toEqual({ followUpsDue: 0, blockedSubjects: 0, toHandle: 0, lastSync: null });
   });
 });

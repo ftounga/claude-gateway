@@ -1,14 +1,13 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { Observable, catchError, forkJoin, map, of } from 'rxjs';
+import { Observable, catchError, map, of } from 'rxjs';
 
 import { ClientSpace } from '../models/atelier.models';
+import { RadarBrief } from '../models/radar.models';
 import {
   HostSpaces,
-  VigieCommitmentSummary,
   VigiePerson,
   VigieRadarCounts,
-  VigieSubjectSummary,
   VigieSyncSummary,
 } from '../models/vigie.models';
 
@@ -54,33 +53,33 @@ export class VigieService {
   }
 
   /**
-   * **Les compteurs du Radar d'un client**, pour le bandeau et la colonne : relances dues, sujets
-   * bloqués, dernière synchro. Trois lectures, une fois par page.
+   * **Les compteurs du Radar d'un client**, pour le bandeau, la colonne et l'onglet : relances dues,
+   * sujets bloqués, ce qui est à traiter, la synchro à dire (en cours d'abord). **Une lecture** du
+   * résumé du matin (F-102 / SF-102-03), une fois par page.
    *
    * <p><b>Silencieux</b> : un Radar illisible (droit retiré, poste hors Vigie, gateway antérieure)
    * compte zéro et « aucune synchro », jamais une erreur — le bandeau est un résumé, pas un
    * diagnostic.</p>
    */
   radarCounts(hostId: string): Observable<VigieRadarCounts> {
-    const base = `/api/radar/hosts/${hostId}`;
-    return forkJoin({
-      followUps: this.http
-        .get<VigieCommitmentSummary[]>(`${base}/commitments`, { params: { followUpDue: 'true' } })
-        .pipe(catchError(() => of([] as VigieCommitmentSummary[]))),
-      blocked: this.http
-        .get<VigieSubjectSummary[]>(`${base}/subjects`, { params: { state: 'BLOCKED' } })
-        .pipe(catchError(() => of([] as VigieSubjectSummary[]))),
-      syncs: this.http
-        .get<VigieSyncSummary[]>(`${base}/syncs`)
-        .pipe(catchError(() => of([] as VigieSyncSummary[]))),
-    }).pipe(
-      map(({ followUps, blocked, syncs }) => ({
-        followUpsDue: (followUps ?? []).filter((commitment) => commitment.followUpDue).length,
-        blockedSubjects: (blocked ?? []).length,
-        lastSync: latestSync(syncs ?? []),
-      })),
+    return this.http.get<RadarBrief>(`/api/radar/hosts/${hostId}/brief`).pipe(
+      map((brief) => countsOfBrief(brief)),
+      catchError(() => of({ followUpsDue: 0, blockedSubjects: 0, toHandle: 0, lastSync: null })),
     );
   }
+}
+
+/** Les compteurs d'un client, tirés de son résumé du matin. */
+export function countsOfBrief(brief: RadarBrief | null | undefined): VigieRadarCounts {
+  const sync = brief?.running ?? brief?.lastSync ?? null;
+  return {
+    followUpsDue: brief?.counts?.followUpsDue ?? 0,
+    blockedSubjects: brief?.counts?.blockedSubjects ?? 0,
+    toHandle: brief?.counts?.toHandle ?? 0,
+    lastSync: sync === null
+      ? null
+      : { id: sync.id, status: sync.status, startedAt: sync.startedAt, finishedAt: sync.finishedAt },
+  };
 }
 
 /** La synchro la plus récente, par date de début. */

@@ -55,6 +55,15 @@ describe('VigieComponent', () => {
     coverageWarning: 'Aucune synchro encore : le Radar se remplira à la première synchro du soir.', coverageLines: [],
   };
 
+  const briefOf = (counts: VigieRadarCounts): RadarBrief => ({
+    ...emptyBrief,
+    counts: { ...emptyBrief.counts, followUpsDue: counts.followUpsDue, blockedSubjects: counts.blockedSubjects,
+      toHandle: counts.toHandle ?? 0 },
+    running: counts.lastSync?.status === 'RUNNING' ? { ...counts.lastSync, trigger: 'SCHEDULED', scheduledFor: null, summary: null } : null,
+    lastSync: counts.lastSync && counts.lastSync.status !== 'RUNNING'
+      ? { ...counts.lastSync, trigger: 'SCHEDULED', scheduledFor: null, summary: null } : null,
+  });
+
   function build(options: {
     hosts?: RunnerHostOverview[];
     entitled?: boolean;
@@ -83,7 +92,8 @@ describe('VigieComponent', () => {
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     radar = jasmine.createSpyObj<RadarService>('RadarService',
       ['brief', 'syncNow', 'cancelSync', 'threadRules', 'addThreadRule', 'removeThreadRule', 'board']);
-    radar.brief.and.returnValue(of(emptyBrief));
+    // Le résumé d'un client dit les mêmes compteurs que la lecture de la Vigie : c'est la même source.
+    radar.brief.and.callFake((hostId: string) => of(briefOf(options.counts?.[hostId] ?? noCounts)));
     radar.board.and.returnValue(of({ toDo: [], subjects: [], waiting: [] }));
     params$ = new BehaviorSubject(convertToParamMap(options.hostRef ? { hostRef: options.hostRef } : {}));
     query$ = new BehaviorSubject(convertToParamMap(options.tab ? { onglet: options.tab } : {}));
@@ -165,6 +175,35 @@ describe('VigieComponent', () => {
     expect(root.querySelector('.forge-rail__flag')?.textContent?.trim()).toBe('2 relances');
     // Sans client désigné, la Vigie ouvre ce qui attend.
     expect(component.selectedRef()).toBe('h2');
+  });
+
+  it('« à traiter » sur l\'onglet Radar et dans le bandeau ; un résumé relu les met à jour (F-102 / SF-102-03)', () => {
+    const root = build({
+      hosts: [client('h1', 'EDENRED'), client('h2', 'FREE')],
+      hostRef: 'h1',
+      counts: {
+        h1: { followUpsDue: 0, blockedSubjects: 0, toHandle: 5, lastSync: null },
+        h2: { followUpsDue: 0, blockedSubjects: 0, toHandle: 2, lastSync: null },
+      },
+    });
+
+    const radarTab = () => root.querySelector('.poste__tab[data-tab="radar"]') as HTMLElement;
+    expect(radarTab().querySelector('.poste__tab-flag')?.textContent?.trim()).toBe('5 à traiter');
+    expect(fleetText(root)).toContain('7 à traiter');
+
+    component.onBrief('h1', { ...emptyBrief,
+      counts: { ...emptyBrief.counts, toHandle: 1, followUpsDue: 1 },
+      lastSync: { id: 'y1', status: 'SUCCEEDED', startedAt: '2026-09-14T20:00:00Z', finishedAt: '2026-09-14T20:30:00Z',
+        trigger: 'SCHEDULED', scheduledFor: null, summary: null } });
+    fixture.detectChanges();
+    expect(radarTab().querySelector('.poste__tab-flag')?.textContent?.trim()).toBe('1 à traiter');
+    expect(fleetText(root)).toContain('3 à traiter');
+    expect(fleetText(root)).toContain('1 relance due');
+    expect(component.radarCounts()['h1'].lastSync?.id).toBe('y1');
+
+    component.onBrief('h1', emptyBrief);
+    fixture.detectChanges();
+    expect(radarTab().querySelector('.poste__tab-flag')).toBeNull();
   });
 
   it('ouvre le client désigné par l’URL, et le client par défaut sinon', () => {
