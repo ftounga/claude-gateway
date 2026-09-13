@@ -11,7 +11,12 @@ import java.util.UUID;
  * @param virtual  vrai pour le poste « Hébergé » — les projets sans machine
  * @param projects nombre de dossiers rangés sous ce poste, ceux qui recevront les fichiers
  * @param active   nombre de paquets actifs sur ce poste
+ * @param outdated nombre de ces paquets dont une <b>version plus récente</b> existe (F-96 /
+ *                 SF-96-02). Rien ne se met à jour tout seul : ce compte est ce qui permet à
+ *                 l'écran de <b>dire qu'une mise à jour attend</b> — sans lui, on ne le verrait que
+ *                 sur le poste déjà ouvert, et personne n'irait voir les autres. Calculé en base,
+ *                 <b>sans toucher la machine</b>.
  */
 public record GovernanceHostSummary(String ref, UUID id, String name, boolean virtual, int projects,
-        int active) {
+        int active, int outdated) {
 }

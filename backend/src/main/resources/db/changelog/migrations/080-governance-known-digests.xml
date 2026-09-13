@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-96 / SF-96-02 — RECONNAÎTRE CE QUE LE PRODUIT A DÉJÀ PUBLIÉ.
+
+      SF-96-01 reconnaît un artefact intact à l'EMPREINTE DE CE QU'ON LUI AVAIT DÉPOSÉ. Un poste
+      activé AVANT F-96 n'en a aucune : tous ses fichiers retomberaient en « modifié localement », et
+      la mise à jour ne toucherait que les postes nés après elle — laissant EXACTEMENT les postes
+      existants dans l'état que F-96 devait corriger.
+
+      Or la dette est réelle, pas théorique : F-95 a modifié le gabarit STATE.md (section « Statut »,
+      `en cours` / `clos`). Les postes déjà activés gardent l'ancien gabarit, sans cette section, et
+      leur contrôle de dette/clôture NE SE DÉCLENCHERA JAMAIS.
+
+      IL Y A UNE DEUXIÈME FAÇON DE SAVOIR QU'UN FICHIER EST LE NÔTRE : son contenu est EXACTEMENT
+      l'un de ceux que le produit a publiés à ce chemin. Un tel fichier n'a, par construction, été
+      touché par personne. `known_digests` retient donc les empreintes des contenus ANTÉRIEURS d'un
+      chemin, une par ligne, les plus récentes d'abord, bornées à 20.
+
+      UNE COLONNE PLUTÔT QU'UNE TABLE : le registre est une propriété du FICHIER D'UN PAQUET — il
+      naît et meurt avec lui, n'est jamais interrogé seul, et est déjà lu par la même requête. Une
+      table de plus n'apporterait qu'une jointure.
+
+      DES EMPREINTES, PAS DES CONTENUS : ce registre sert à RECONNAÎTRE, jamais à restaurer. On ne
+      peut rien reconstituer de 64 caractères hexadécimaux.
+
+      PAS DE user_id, et c'est délibéré : comme le paquet qu'il décrit, ce registre est un CONTENU
+      PRODUIT, écrit par l'admin (ou par le semeur) et lu par tous.
+
+      RÉVERSIBLE sans condition : colonne nullable, aucune donnée existante modifiée. Rollback = la
+      colonne disparaît, et la reconnaissance retombe sur la seule empreinte de dépôt (SF-96-01).
+    -->
+
+    <changeSet id="080-governance-package-files-known-digests" author="claude-gateway">
+        <addColumn tableName="governance_package_files">
+            <column name="known_digests" type="varchar(1300)"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="governance_package_files" columnName="known_digests"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -401,7 +401,8 @@ public class GovernanceDepositService {
      *   <li>Le dépôt n'est le geste de personne ({@link GovernanceDepositMode#CREATE_ONLY}) → on ne
      *       remplace rien.</li>
      *   <li>Sinon on lit. Contenu identique → rien à faire. Contenu <b>égal à l'empreinte de ce
-     *       qu'on avait déposé</b> → c'est notre artefact, intact : <b>mise à jour</b>. Contenu
+     *       qu'on avait déposé</b>, ou <b>à l'une des empreintes que le produit a publiées à ce
+     *       chemin</b> (SF-96-02) → c'est notre artefact, intact : <b>mise à jour</b>. Contenu
      *       différent, ou origine inconnue → <b>modifié localement, conservé</b>.</li>
      * </ol>
      *
@@ -440,6 +441,13 @@ public class GovernanceDepositService {
             return GovernanceDepositAction.KEEP;
         }
         if (print != null && currentDigest.equals(print.getDigest())) {
+            return GovernanceDepositAction.UPDATE;
+        }
+        if (file.knownDigestList().contains(currentDigest)) {
+            // RATTRAPAGE (F-96 / SF-96-02) : ce contenu est, mot pour mot, une version que le
+            // produit a publiée à ce chemin — il n'a donc été touché par personne, même si aucune
+            // empreinte de dépôt ne le dit. C'est ce qui fait entrer dans le périmètre les postes
+            // activés AVANT F-96, c'est-à-dire ceux qui portent la dette.
             return GovernanceDepositAction.UPDATE;
         }
         // Modifié localement, ou d'origine inconnue : ce fichier est du contenu utilisateur. On ne

@@ -538,7 +538,8 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `(published)`.
   - `governance_package_files` : `id (uuid)`, `package_id (uuid)`, `sort_order (int)`,
     `path (varchar 255)`, `kind (varchar 16 : SKILL | TEMPLATE | MAP)`, `content (text)`,
-    `generated (boolean, défaut true — F-96 / SF-96-01, migration 079)`, `created_at`.
+    `generated (boolean, défaut true — F-96 / SF-96-01, migration 079)`,
+    `known_digests (varchar 1300, nullable — F-96 / SF-96-02, migration 080)`, `created_at`.
     **`MAP` est arrivé sans migration** (F-92 / SF-92-01) : la colonne est un
     `varchar(16)` **sans contrainte de valeur**, et une valeur de plus n'est donc pas un changement
     de schéma.
@@ -547,6 +548,17 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     déposé** (voir `governance_deposited_files`). À `false`, le paquet pose le fichier une fois et
     n'y revient jamais. Le défaut est `true` sans danger : un fichier que l'utilisateur a touché
     **redevient du contenu utilisateur**, quelle que soit la déclaration.
+    **`known_digests` est le registre des empreintes déjà publiées à ce chemin** — une par ligne,
+    les plus récentes d'abord, bornées à 20. C'est la **deuxième** façon de reconnaître un artefact
+    que personne n'a touché : son contenu est *mot pour mot* l'un de ceux que le produit a publiés
+    ici. Sans lui, la mise à jour ne toucherait que les postes activés **après** F-96 — c'est-à-dire
+    **pas** ceux qui portent la dette (F-95 a modifié le gabarit `STATE.md`, et les postes déjà
+    activés gardent l'ancien). Le registre est **reporté** à travers le « efface puis réécrit » des
+    deux chemins d'écriture (semeur et rédaction d'admin), et le contenu remplacé y entre
+    automatiquement. Le produit livre en outre les empreintes de ce qu'il a publié **avant** F-96
+    dans la ressource `governance/savoir-durable/empreintes-anterieures.txt`. Ce sont des
+    **empreintes, pas des contenus** : le registre sert à reconnaître, jamais à restaurer, et un
+    contenu non reconnu est **conservé**.
     Index `(package_id, sort_order)`. La colonne s'appelle `sort_order` et non `position` :
     `POSITION` est une fonction SQL standard, donc réservée pour H2.
   - **Pas de `user_id`, et c'est délibéré** : un paquet est un **contenu produit**, comme un plan

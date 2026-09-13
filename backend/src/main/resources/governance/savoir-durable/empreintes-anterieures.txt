@@ -1,0 +1,39 @@
+# Empreintes des contenus que ce paquet a DÉJÀ PUBLIÉS (F-96 / SF-96-02).
+#
+# À quoi ça sert. Un poste activé avant F-96 ne porte aucune empreinte de dépôt : sans ce fichier,
+# ses artefacts retomberaient tous en « modifié localement », et la mise à jour ne toucherait que
+# les postes nés après elle — c'est-à-dire pas ceux qui portent la dette.
+#
+# La dette est réelle : F-95 a ajouté la section « Statut » au gabarit STATE.md. Les postes déjà
+# activés gardent l'ancien gabarit, et leur contrôle de dette/clôture ne se déclenche jamais. La
+# ligne `STATE.md` ci-dessous est ce qui répare ça — c'est l'empreinte du gabarit tel qu'il était
+# publié AVANT SF-95-01.
+#
+# Ce que ça n'est pas. Ce ne sont pas des contenus : on ne peut rien reconstituer de 64 caractères
+# hexadécimaux. Ce fichier sert à RECONNAÎTRE un artefact que personne n'a touché, jamais à
+# restaurer quoi que ce soit — et un fichier non reconnu est CONSERVÉ, pas écrasé.
+#
+# Format : <empreinte sha-256, fins de ligne normalisées> <chemin de dépôt>. Une par ligne. Les
+# lignes vides et celles qui commencent par « # » sont ignorées ; une ligne mal formée est ignorée
+# aussi, sans faire échouer le semeur.
+#
+# Les empreintes des versions suivantes n'ont pas à être ajoutées à la main : le semeur retient
+# automatiquement le contenu qu'il remplace.
+
+# La carte du poste — contenus publiés par F-92 / SF-92-01, remplacés par F-93 / SF-93-01.
+026e7eaf21356ad5eaec9d5c1663ac55b08f061f0f3a3b1b496462bd54a7b798 README.md
+549afe7c3cb2d5b849629efabd0b24eec823dd349652184914dff7b77b6d66bd acces.md
+311a24b385fc27da42e00f0981c260cee109252596f156a2e3220cb3b259ee14 reseau.md
+aac73961d845924e7e570c5ec2aaf048465b51abcd35dd2ddfd39b3f8de05a16 plateformes.md
+046a8e40092847f220e894947953b83a866859ef2996da145ee5f514795dc4e4 donnees.md
+1b09a4e75b1bf294c5c7685be3ef8ae35dcc267197f0f9c99fb99d0982b6b528 exploitation.md
+
+# Le gabarit de gouvernance — trois rédactions successives depuis F-52 / SF-52-03.
+4d1cf94ee8cc776a728d6f05e8ed805fabc696d028bdd5a524de41c069385fe6 GOUVERNANCE.md
+efdccca8f2cb837d6a8766d633e652d688306556a4ad56c0fe00046c800b4d29 GOUVERNANCE.md
+ba0790416ccfcd3047cc4e3378c5d26514c503a7d0895d512710bf28d1d1fe64 GOUVERNANCE.md
+
+# LE GABARIT DE SUJET — la dette de F-95. La première ligne est la version publiée par F-93, sans
+# la section « Statut » ; la seconde, celle de F-52.
+bf3c724344bf4de0d2382be71946fdfcd1da2fff2abff43751f96315ae10d9d3 STATE.md
+e9df57ab6f1d537ca1bca3d9f21e8fe9acf89259c1dbe15bfd70b0124ae8d748 STATE.md

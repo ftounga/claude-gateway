@@ -535,4 +535,42 @@ class GovernanceDepositServiceTest {
         // Une seule écriture au total : celle du premier dépôt. L'annonce n'écrit pas.
         verify(projectFiles, times(1)).write(any(), any(), any(), any());
     }
+
+    // --------------------- F-96 / SF-96-02 : rattraper les postes d'avant
+
+    @Test
+    @DisplayName("un poste D'AVANT F-96, sans empreinte, est reconnu par ce que le produit a publié")
+    void recognisesAPreviouslyPublishedContent() {
+        GovernancePackageFile corrected =
+                file("STATE.md", GovernanceFileKind.TEMPLATE, "# État\n\n## Statut\n");
+        // Le produit sait ce qu'il a publié à ce chemin AVANT : c'est ce qui fait entrer dans le
+        // périmètre les postes activés avant F-96 — ceux-là mêmes qui portent la dette.
+        corrected.setKnownDigestList(List.of(GovernanceDigest.of("# État\n")));
+        when(packageService.filesOf(pkg.getId())).thenReturn(List.of(corrected));
+        when(projectFiles.listPaths(alice, workspace)).thenReturn(Optional.of(Set.of("STATE.md")));
+        onDisk("STATE.md", "# État\n");
+
+        GovernanceDepositPlan done = service.deposit(alice, host, pkg.getId());
+
+        assertThat(only(done).entries()).extracting("action")
+                .containsExactly(GovernanceDepositAction.UPDATE);
+        verify(projectFiles).write(alice, workspace, "STATE.md", "# État\n\n## Statut\n");
+    }
+
+    @Test
+    @DisplayName("un contenu inconnu du registre reste du contenu utilisateur")
+    void aContentNotInTheRegisterIsKept() {
+        GovernancePackageFile corrected =
+                file("STATE.md", GovernanceFileKind.TEMPLATE, "# État\n\n## Statut\n");
+        corrected.setKnownDigestList(List.of(GovernanceDigest.of("# État\n")));
+        when(packageService.filesOf(pkg.getId())).thenReturn(List.of(corrected));
+        when(projectFiles.listPaths(alice, workspace)).thenReturn(Optional.of(Set.of("STATE.md")));
+        onDisk("STATE.md", "# État\n\nSujet : la migration DNS\n");
+
+        GovernanceDepositPlan done = service.deposit(alice, host, pkg.getId());
+
+        assertThat(only(done).entries()).extracting("action")
+                .containsExactly(GovernanceDepositAction.KEEP_LOCAL);
+        verify(projectFiles, never()).write(any(), any(), any(), any());
+    }
 }

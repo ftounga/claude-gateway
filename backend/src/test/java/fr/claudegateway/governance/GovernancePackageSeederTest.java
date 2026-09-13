@@ -331,4 +331,95 @@ class GovernancePackageSeederTest {
         assertThat(captor.getAllValues()).isNotEmpty()
                 .allSatisfy(file -> assertThat(file.isGenerated()).isTrue());
     }
+
+    // ------------------------- F-96 / SF-96-02 : les empreintes publiées
+
+    /** L'empreinte du gabarit STATE.md tel qu'il était publié AVANT F-95 — la dette à rattraper. */
+    private static final String STATE_AVANT_F95 =
+            "bf3c724344bf4de0d2382be71946fdfcd1da2fff2abff43751f96315ae10d9d3";
+
+    @Test
+    @DisplayName("le paquet embarque les empreintes de ce qu'il a DÉJÀ publié (dette F-95)")
+    void theSeededPackageCarriesItsPublishedDigests() {
+        when(packages.findBySlug(GovernancePackageSeeder.SLUG)).thenReturn(Optional.empty());
+
+        assertThat(seeder(fullRegistry, true).seed()).isTrue();
+
+        GovernancePackageFile state = captureFiles().stream()
+                .filter(file -> "STATE.md".equals(file.getPath())).findFirst().orElseThrow();
+        // Sans cette ligne, un poste activé avant F-96 garderait à jamais un gabarit sans la
+        // section « Statut » — et son contrôle de dette/clôture ne se déclencherait jamais.
+        assertThat(state.knownDigestList()).contains(STATE_AVANT_F95);
+    }
+
+    @Test
+    @DisplayName("republier RETIENT le contenu remplacé, et n'oublie pas ce qu'on savait déjà")
+    void republishingRemembersWhatItReplaces() {
+        GovernancePackage existing = GovernancePackage.builder().id(UUID.randomUUID())
+                .slug(GovernancePackageSeeder.SLUG).name("Le savoir durable").version(4)
+                .published(true).rules("vieilles règles").build();
+        when(packages.findBySlug(GovernancePackageSeeder.SLUG)).thenReturn(Optional.of(existing));
+        GovernancePackageFile stored = GovernancePackageFile.builder().packageId(existing.getId())
+                .position(8).path("STATE.md").kind(GovernanceFileKind.TEMPLATE)
+                .content("# Un gabarit d'avant\n").build();
+        stored.setKnownDigestList(List.of("a".repeat(64)));
+        when(files.findByPackageIdOrderByPositionAsc(existing.getId()))
+                .thenReturn(List.of(stored));
+
+        assertThat(seeder(fullRegistry, true).seed()).isTrue();
+
+        GovernancePackageFile state = captureFiles().stream()
+                .filter(file -> "STATE.md".equals(file.getPath())).findFirst().orElseThrow();
+        assertThat(state.knownDigestList())
+                // Le contenu qu'on vient de remplacer, EN TÊTE : c'est celui qu'un poste porte.
+                .startsWith(GovernanceDigest.of("# Un gabarit d'avant\n"))
+                // Ce qu'on savait déjà n'est pas perdu…
+                .contains("a".repeat(64))
+                // …et ce que le produit déclare non plus.
+                .contains(STATE_AVANT_F95);
+    }
+
+    @Test
+    @DisplayName("une ressource d'empreintes absente ne fait pas échouer le semeur")
+    void aMissingDigestResourceIsNotFatal() {
+        when(packages.findBySlug(GovernancePackageSeeder.SLUG)).thenReturn(Optional.empty());
+        GovernancePackageSeeder blind =
+                new GovernancePackageSeeder(packages, files, fullRegistry, true) {
+                    @Override
+                    String readResource(String name) {
+                        return "empreintes-anterieures.txt".equals(name) ? null
+                                : super.readResource(name);
+                    }
+                };
+
+        // Une empreinte manquante coûte un fichier non reconnu — donc CONSERVÉ. Un démarrage raté
+        // coûterait le produit.
+        assertThat(blind.seed()).isTrue();
+        assertThat(captureFiles()).isNotEmpty()
+                .allSatisfy(file -> assertThat(file.knownDigestList()).isEmpty());
+    }
+
+    @Test
+    @DisplayName("une ligne d'empreinte mal formée est ignorée, le reste est chargé")
+    void aMalformedDigestLineIsIgnored() {
+        when(packages.findBySlug(GovernancePackageSeeder.SLUG)).thenReturn(Optional.empty());
+        GovernancePackageSeeder noisy =
+                new GovernancePackageSeeder(packages, files, fullRegistry, true) {
+                    @Override
+                    String readResource(String name) {
+                        if (!"empreintes-anterieures.txt".equals(name)) {
+                            return super.readResource(name);
+                        }
+                        return "# un commentaire\n\npas-une-empreinte STATE.md\n"
+                                + "deadbeef\n"
+                                + STATE_AVANT_F95 + " STATE.md\n";
+                    }
+                };
+
+        assertThat(noisy.seed()).isTrue();
+
+        GovernancePackageFile state = captureFiles().stream()
+                .filter(file -> "STATE.md".equals(file.getPath())).findFirst().orElseThrow();
+        assertThat(state.knownDigestList()).containsExactly(STATE_AVANT_F95);
+    }
 }

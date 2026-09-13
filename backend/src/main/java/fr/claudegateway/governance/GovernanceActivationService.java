@@ -59,16 +59,44 @@ public class GovernanceActivationService {
     public List<GovernanceHostSummary> hosts(UUID userId) {
         List<GovernanceHostSummary> summaries = new ArrayList<>();
         for (GovernanceHostRef host : hostScope.governable(userId)) {
+            List<GovernanceActivation> active =
+                    activations.findByUserIdAndHostIdOrderByCreatedAtAsc(userId, host.hostId());
             summaries.add(new GovernanceHostSummary(
                     host.ref(),
                     host.publicId(),
                     hostScope.nameOf(userId, host),
                     host.hosted(),
                     hostScope.projectsOf(userId, host).size(),
-                    activations.findByUserIdAndHostIdOrderByCreatedAtAsc(userId, host.hostId())
-                            .size()));
+                    active.size(),
+                    outdated(active)));
         }
         return List.copyOf(summaries);
+    }
+
+    /**
+     * Combien de ces paquets ont été <b>republiés depuis</b> (F-96 / SF-96-02).
+     *
+     * <p>Rien ne se met à jour tout seul, et c'est la règle : le produit n'écrit jamais sur la
+     * machine d'un client sans qu'on le lui ait demandé. Mais <b>l'écran doit dire qu'une mise à
+     * jour attend</b> — sinon le geste existe et n'est jamais fait. Une lecture en base, et
+     * <b>aucun appel à la machine</b> : ce compte s'affiche sur une liste de postes.</p>
+     *
+     * <p>Un paquet dépublié entre-temps ne compte pas : on ne signale pas une mise à jour qu'on ne
+     * saurait pas appliquer.</p>
+     */
+    private int outdated(List<GovernanceActivation> active) {
+        int count = 0;
+        for (GovernanceActivation activation : active) {
+            try {
+                if (packageService.require(activation.getPackageId()).getVersion()
+                        > activation.getAppliedVersion()) {
+                    count++;
+                }
+            } catch (GovernancePackageNotFoundException ex) {
+                // Paquet effacé : il n'y a pas de mise à jour à annoncer.
+            }
+        }
+        return count;
     }
 
     /** Ce qui s'applique à ce poste, ce qui pourrait s'y appliquer, et les projets concernés. */

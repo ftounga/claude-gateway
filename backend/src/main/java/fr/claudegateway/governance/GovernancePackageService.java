@@ -319,9 +319,20 @@ public class GovernancePackageService {
         }
     }
 
-    /** Efface puis réécrit les fichiers du paquet : le contenu soumis fait foi. */
+    /**
+     * Efface puis réécrit les fichiers du paquet : le contenu soumis fait foi.
+     *
+     * <p><b>Le registre des empreintes publiées survit</b> (F-96 / SF-96-02) : ce qui est remplacé
+     * y entre, et ce qu'il portait déjà est reporté. Sans ce report, « efface puis réécrit » le
+     * perdrait à chaque publication — c'est-à-dire toujours —, et une correction n'atteindrait
+     * jamais un poste qui porte la version d'avant.</p>
+     */
     private List<GovernancePackageFile> replaceFiles(UUID packageId,
             List<GovernancePackageFileRequest> requested) {
+        Map<String, GovernancePackageFile> previous = files
+                .findByPackageIdOrderByPositionAsc(packageId).stream()
+                .collect(Collectors.toMap(GovernancePackageFile::getPath, file -> file,
+                        (first, second) -> first));
         files.deleteByPackageId(packageId);
         if (requested == null || requested.isEmpty()) {
             return List.of();
@@ -329,19 +340,34 @@ public class GovernancePackageService {
         List<GovernancePackageFile> stored = new ArrayList<>(requested.size());
         int position = 0;
         for (GovernancePackageFileRequest file : requested) {
-            stored.add(files.save(GovernancePackageFile.builder()
+            String path = GovernancePath.normalizeOrNull(file.path());
+            String content = file.content() == null ? "" : file.content();
+            GovernancePackageFile saved = files.save(GovernancePackageFile.builder()
                     .packageId(packageId)
                     .position(position++)
-                    .path(GovernancePath.normalizeOrNull(file.path()))
+                    .path(path)
                     .kind(parseKind(file.kind()))
-                    .content(file.content() == null ? "" : file.content())
+                    .content(content)
                     // Déclaration d'ARTEFACT GÉNÉRÉ (F-96 / SF-96-01) : absente, elle vaut VRAI —
                     // un paquet publie des artefacts, et un fichier que l'utilisateur a touché est
                     // de toute façon conservé. Le drapeau n'ouvre donc aucune porte à lui seul.
                     .generated(file.generated() == null || file.generated())
-                    .build()));
+                    .knownDigests(GovernanceKnownDigests.join(carried(previous.get(path), content)))
+                    .build());
+            stored.add(saved);
         }
         return stored;
+    }
+
+    /** Les empreintes connues du chemin après remplacement : la remplacée d'abord, puis les siennes. */
+    private static List<String> carried(GovernancePackageFile previous, String content) {
+        if (previous == null) {
+            return List.of();
+        }
+        List<String> replaced = GovernanceDigest.sameContent(previous.getContent(), content)
+                ? List.of()
+                : List.of(GovernanceDigest.of(previous.getContent()));
+        return GovernanceKnownDigests.merge(replaced, previous.knownDigestList());
     }
 
     private static GovernanceFileKind parseKind(String raw) {
