@@ -10,11 +10,12 @@ import {
 } from '../shared/kill-host-dialog/kill-host-dialog.component';
 import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { of, throwError } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 
 import { MAX_UPLOAD_BYTES } from '../shared/http-error.util';
 
 import { AtelierComponent, delayLabel, toThreadItem } from './atelier.component';
+import { AtelierThreadItem } from './atelier.types';
 import { AtelierService } from '../core/services/atelier.service';
 import { ApiKeyService } from '../core/services/api-key.service';
 import { LiveTerminalService } from '../core/services/live-terminal.service';
@@ -3482,7 +3483,7 @@ describe('AtelierComponent', () => {
     setup();
     component.activeWorkspaceId.set('w1');
     component.engine.set('LOCAL_MACHINE');
-    service.steerChat.and.returnValue(of(void 0));
+    service.steerChat.and.returnValue(of({ steerId: 's1', turnId: 't1' }));
     service.streamChat.and.returnValue(Promise.resolve());
     // Un tour est déjà en cours.
     component.submitting.set(true);
@@ -3495,7 +3496,162 @@ describe('AtelierComponent', () => {
     expect(service.streamChat).not.toHaveBeenCalled();
     // Et elle apparaît tout de suite dans le fil : l'utilisateur doit voir ce qu'il vient de dire.
     expect(component.messages().at(-1)?.content).toBe('en fait, saute les tests');
+    expect(component.messages().at(-1)?.steer).toEqual({ steerId: 's1', status: 'pending' });
     expect(component.draft()).toBe('');
+  });
+
+  describe('un message pendant un tour devient une précision (F-84 / SF-84-06)', () => {
+    let handlers: AtelierStreamHandlers;
+
+    /** Un tour lancé depuis l'écran, dont on garde la main sur le flux. */
+    function startTurn(content = 'corrige le bug'): void {
+      setup();
+      // Projet sur un poste : la boucle maison, seule à connaître la précision. Le rafraîchissement
+      // de fin de tour relit le moteur — il doit rester le même.
+      service.getEngine.and.returnValue(of({
+        engine: 'LOCAL_MACHINE' as const, runnerConnected: true, runnerLastSeenAt: null,
+        recommendRunner: false, recommendReason: null,
+      }));
+      component.activeWorkspaceId.set('w1');
+      component.engine.set('LOCAL_MACHINE');
+      service.streamChat.and.callFake((_id, _message, h) => {
+        handlers = h;
+        h.onStarted?.({ turnId: 't1', startedAt: Date.now() });
+        return new Promise<void>(() => undefined);
+      });
+      component.draft.set(content);
+      component.send();
+    }
+
+    function precision(content: string): AtelierThreadItem | undefined {
+      return component.messages().find((m) => m.steer && m.content === content);
+    }
+
+    it('shows the precision as pending, then taken into account at step N, without a duplicate', () => {
+      startTurn();
+      service.steerChat.and.returnValue(of({ steerId: 's1', turnId: 't1' }));
+      component.draft.set('saute les tests');
+
+      component.send();
+
+      expect(service.streamChat).toHaveBeenCalledTimes(1);
+      expect(precision('saute les tests')?.steer).toEqual({ steerId: 's1', status: 'pending' });
+
+      handlers.onSteerQueued?.({ steerId: 's1', text: 'saute les tests' });
+      expect(component.messages().filter((m) => m.content === 'saute les tests').length)
+        .withContext('l’annonce du tour ne double pas la précision déjà affichée')
+        .toBe(1);
+
+      handlers.onSteerApplied?.({ steerId: 's1', step: 3 });
+      expect(precision('saute les tests')?.steer).toEqual({ steerId: 's1', status: 'applied', step: 3 });
+    });
+
+    it('binds the announcement to the precision even when it arrives before the HTTP answer', () => {
+      startTurn();
+      const answer = new Subject<{ steerId: string; turnId: string }>();
+      service.steerChat.and.returnValue(answer.asObservable());
+      component.draft.set('ajoute un test');
+      component.send();
+
+      handlers.onSteerQueued?.({ steerId: 's7', text: 'ajoute un test' });
+      answer.next({ steerId: 's7', turnId: 't1' });
+
+      expect(component.messages().filter((m) => m.content === 'ajoute un test').length).toBe(1);
+      expect(precision('ajoute un test')?.steer?.steerId).toBe('s7');
+    });
+
+    it('keeps the terminal in a turn when the precision opens a follow-up turn, and says so', () => {
+      startTurn();
+      service.steerChat.and.returnValue(of({ steerId: 's1', turnId: 't1' }));
+      component.draft.set('et le changelog');
+      component.send();
+
+      handlers.onDone({ reply: 'Corrigé.', actions: [], messageId: 'm1', followUp: true });
+      handlers.onSteerFollowUp?.({ steerId: 's1' });
+
+      expect(component.submitting()).withContext('le tour de suite est en cours').toBeTrue();
+      expect(component.execStreaming()).not.toBeNull();
+      expect(component.messages().some((m) => m.role === 'ASSISTANT' && m.content === 'Corrigé.'))
+        .toBeTrue();
+      expect(precision('et le changelog')?.steer?.status).toBe('followup');
+
+      handlers.onDone({ reply: 'Changelog à jour.', actions: [], messageId: 'm2', followUp: false });
+      expect(component.submitting()).toBeFalse();
+    });
+
+    it('marks the precision as not taken into account when the turn stops', () => {
+      startTurn();
+      service.steerChat.and.returnValue(of({ steerId: 's1', turnId: 't1' }));
+      component.draft.set('et déploie');
+      component.send();
+
+      handlers.onSteersDropped?.({ steerIds: ['s1'] });
+
+      expect(precision('et déploie')?.steer?.status).toBe('dropped');
+    });
+
+    it('sends the precision as a new message once the turn ends when the gateway says no_live_turn', () => {
+      startTurn();
+      service.steerChat.and.returnValue(throwError(() => new HttpErrorResponse({
+        status: 409, error: { error: 'no_live_turn', message: 'fini' },
+      })));
+      component.draft.set('et le changelog');
+      component.send();
+      expect(service.streamChat).toHaveBeenCalledTimes(1);
+
+      handlers.onDone({ reply: 'Corrigé.', actions: [], messageId: 'm1' });
+
+      expect(service.streamChat).toHaveBeenCalledTimes(2);
+      expect(service.streamChat.calls.mostRecent().args[1]).toBe('et le changelog');
+      expect(component.messages().filter((m) => m.content === 'et le changelog').length).toBe(1);
+      expect(snackBar.open).not.toHaveBeenCalled();
+    });
+
+    it('turns a send into a precision when the gateway says a turn was already running', () => {
+      setup();
+      component.activeWorkspaceId.set('w1');
+      component.engine.set('LOCAL_MACHINE');
+      service.streamChat.and.callFake((_id, _message, h) => {
+        handlers = h;
+        return new Promise<void>(() => undefined);
+      });
+      component.draft.set('lance les tests');
+      component.send();
+
+      handlers.onSteered?.({ steerId: 's9', turnId: 't0', startedAt: Date.now() - 60_000 });
+      handlers.onStarted?.({ turnId: 't0', startedAt: Date.now() - 60_000 });
+      handlers.onSteerQueued?.({ steerId: 's9', text: 'lance les tests' });
+
+      const item = component.messages().find((m) => m.content === 'lance les tests');
+      expect(item?.steer).toEqual({ steerId: 's9', status: 'pending' });
+      expect(component.messages().filter((m) => m.content === 'lance les tests').length).toBe(1);
+      expect(component.submitting()).toBeTrue();
+
+      service.getHistory.calls.reset();
+      handlers.onError('provider_error');
+      expect(component.messages().some((m) => m.content === 'lance les tests'))
+        .withContext('une précision acceptée a été persistée : une erreur du tour ne la retire pas')
+        .toBeTrue();
+    });
+
+    it('reloads the thread at the end of a turn it joined by a send', () => {
+      setup();
+      component.activeWorkspaceId.set('w1');
+      component.engine.set('LOCAL_MACHINE');
+      service.streamChat.and.callFake((_id, _message, h) => {
+        handlers = h;
+        return new Promise<void>(() => undefined);
+      });
+      component.draft.set('lance les tests');
+      component.send();
+      handlers.onSteered?.({ steerId: 's9', turnId: 't0', startedAt: Date.now() });
+      service.getHistory.calls.reset();
+
+      handlers.onDone({ reply: 'Tests verts.', actions: [], messageId: 'm0' });
+
+      expect(service.getHistory).toHaveBeenCalledWith('w1');
+      expect(component.submitting()).toBeFalse();
+    });
   });
 
   it('opens a normal turn when nothing is running', () => {

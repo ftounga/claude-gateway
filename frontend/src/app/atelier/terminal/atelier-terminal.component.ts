@@ -49,6 +49,7 @@ import { HostPresenceService, presenceLabel } from '../../core/services/host-pre
 import {
   AtelierExecStreamingItem,
   AtelierPendingConfirmation,
+  AtelierSteerState,
   AtelierThreadItem,
   AtelierTurnCost,
 } from '../atelier.types';
@@ -356,8 +357,15 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
   /** Terminal Teams : son fil ramène à la Vigie (F-106 / SF-106-03). */
   private readonly teamsTerminalValue = signal(false);
 
-  /** Vrai pendant un envoi : l'invite est désactivée. */
+  /** Vrai pendant un envoi : un tour tourne. */
   @Input() submitting = false;
+
+  /**
+   * Un message envoyé pendant un tour devient une **précision** (F-84 / SF-84-06) : le champ reste
+   * actif et le bouton dit « Préciser ». Vrai pour la boucle maison (terminal de projet, de poste,
+   * Teams) ; faux pour le bac à sable hébergé, qui n'a pas de précision.
+   */
+  @Input() steerable = false;
 
   /** Saisie courante (le parent reste propriétaire de l'état). */
   @Input() draft = '';
@@ -785,8 +793,27 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     if (this.liveLimitReached) {
       return;
     }
-    if (!this.submitting && this.draft.trim().length > 0) {
+    if (this.draft.trim().length === 0) {
+      return;
+    }
+    // Pendant un tour, envoyer PRÉCISE (F-84 / SF-84-06) — le parent en décide. Sans précision
+    // possible (bac à sable hébergé), un envoi pendant un tour reste refusé.
+    if (!this.submitting || this.steerable) {
       this.send.emit();
+    }
+  }
+
+  /** Où en est une précision, en toutes lettres (F-84 / SF-84-06). */
+  steerStateLabel(steer: AtelierSteerState): string {
+    switch (steer.status) {
+      case 'applied':
+        return steer.step ? `prise en compte à l’étape ${steer.step}` : 'prise en compte';
+      case 'followup':
+        return 'ouvre un tour de suite';
+      case 'dropped':
+        return 'non prise en compte — tour arrêté';
+      default:
+        return 'en attente de l’étape suivante';
     }
   }
 

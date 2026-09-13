@@ -1233,6 +1233,78 @@ describe('AtelierService', () => {
       .toEqual(['attached', 'action:npm test', 'output:ok', 'done:fini']);
   });
 
+  // ---- F-84 / SF-84-06 : un message envoyé pendant un tour devient une précision ----
+
+  it('route les événements de précision et le done d’un tour de suite (F-84 / SF-84-06)', async () => {
+    fakeSseFetch([
+      'event:steered\nid:0\ndata:{"steerId":"s0","turnId":"t1","cursor":4,"startedAt":99}',
+      'event:steer_queued\nid:5\ndata:{"steerId":"s1","text":"saute les tests","queuedAt":1}',
+      'event:steer_applied\nid:6\ndata:{"steerId":"s1","step":3}',
+      'event:done\nid:7\ndata:{"reply":"un","actions":[],"messageId":"m1","followUp":true}',
+      'event:steer_followup\nid:8\ndata:{"steerId":"s2"}',
+      'event:steers_dropped\nid:9\ndata:{"steerIds":["s3"],"reason":"interrupted"}',
+    ]);
+    const seen: string[] = [];
+
+    await service.streamChat('w1', 'go', {
+      onSteered: (s) => seen.push(`steered:${s.steerId}:${s.turnId}:${s.startedAt}`),
+      onSteerQueued: (s) => seen.push(`queued:${s.steerId}:${s.text}`),
+      onSteerApplied: (s) => seen.push(`applied:${s.steerId}:${s.step}`),
+      onSteerFollowUp: (s) => seen.push(`followup:${s.steerId}`),
+      onSteersDropped: (s) => seen.push(`dropped:${s.steerIds.join(',')}`),
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: (d) => seen.push(`done:${d.reply}:${d.followUp}`),
+      onError: () => undefined,
+    });
+
+    expect(seen).toEqual([
+      'steered:s0:t1:99',
+      'queued:s1:saute les tests',
+      'applied:s1:3',
+      'done:un:true',
+      'followup:s2',
+      'dropped:s3',
+    ]);
+  });
+
+  it('une fenêtre ne s’arrête pas sur le done d’un tour de suite (F-84 / SF-84-06)', async () => {
+    const fetchSpy = spyOn(window, 'fetch').and.returnValues(
+      Promise.resolve(sseResponse([
+        'event:done\nid:1\ndata:{"reply":"un","actions":[],"messageId":"m1","followUp":true}',
+      ])),
+      Promise.resolve(sseResponse([
+        'event:done\nid:2\ndata:{"reply":"deux","actions":[],"messageId":"m2","followUp":false}',
+      ])),
+    );
+    let cursor = 0;
+    const seen: string[] = [];
+
+    service.followTurnInWindows('w1', () => cursor, {
+      acceptSeq: (seq) => (seq > cursor ? ((cursor = seq), true) : false),
+      onAction: () => undefined,
+      onText: () => undefined,
+      onDone: (d) => seen.push(`done:${d.reply}`),
+      onError: () => undefined,
+    }, { waitMs: 5000 });
+    await drain();
+    await drain();
+
+    expect(fetchSpy.calls.count()).toBe(2);
+    expect(seen).toEqual(['done:un', 'done:deux']);
+  });
+
+  it('préciser rend l’identifiant de la précision (F-84 / SF-84-06)', () => {
+    let answer: { steerId: string; turnId: string } | undefined;
+    service.steerChat('w1', 'saute les tests').subscribe((a) => (answer = a));
+
+    const req = httpMock.expectOne('/api/workspaces/w1/chat/steer');
+    expect(req.request.body).toEqual({ message: 'saute les tests' });
+    req.flush({ steerId: 's1', turnId: 't1' });
+
+    expect(answer).toEqual({ steerId: 's1', turnId: 't1' });
+  });
+
   it('renonce après des fenêtres idle répétées, et le dit (F-84 / SF-84-04)', async () => {
     const fetchSpy = spyOn(window, 'fetch').and.callFake(() =>
       Promise.resolve(sseResponse(['event:idle\ndata:{"live":false}'])));

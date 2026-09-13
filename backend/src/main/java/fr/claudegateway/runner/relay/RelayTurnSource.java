@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import fr.claudegateway.atelier.live.PendingApproval;
 import fr.claudegateway.atelier.live.RemoteTurnSource;
+import fr.claudegateway.atelier.live.SteerReceipt;
 import fr.claudegateway.atelier.live.TurnSubscriber;
 
 /**
@@ -45,6 +46,7 @@ public class RelayTurnSource implements RemoteTurnSource {
 
     static final String OWNER_PATH = "/api/internal/atelier/turn-owner";
     static final String STREAM_PATH = "/api/internal/atelier/turn-stream";
+    static final String STEER_PATH = "/api/internal/atelier/steer";
 
     private static final Logger log = LoggerFactory.getLogger(RelayTurnSource.class);
 
@@ -102,6 +104,40 @@ public class RelayTurnSource implements RemoteTurnSource {
             log.debug("Relais de tour injoignable : {}", ex.getClass().getSimpleName());
             return false;
         }
+    }
+
+    /**
+     * Dépose une précision chez le pair qui détient le tour (F-84 / SF-84-06) : sonde, puis envoi
+     * <b>ciblé</b> à son adresse — pas une diffusion, pour que le reçu soit celui du seul pod qui
+     * exécute. Pair injoignable ou tour fini entre-temps : vide, et l'appelant dégrade vers
+     * « aucun tour ailleurs ».
+     */
+    @Override
+    public Optional<SteerReceipt> steerRemoteTurn(UUID userId, UUID workspaceId, String message) {
+        Optional<Owner> owner = findOwner(userId, workspaceId);
+        if (owner.isEmpty()) {
+            return Optional.empty();
+        }
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("userId", userId.toString());
+        node.put("workspaceId", workspaceId.toString());
+        node.put("message", message);
+        Optional<JsonNode> answer = peerClient.post(owner.get().baseUrl(), STEER_PATH, node.toString());
+        if (answer.isEmpty()) {
+            return Optional.empty();
+        }
+        SteerReceipt.Status status;
+        try {
+            status = SteerReceipt.Status.valueOf(answer.get().path("status").asText(""));
+        } catch (IllegalArgumentException ex) {
+            return Optional.empty();
+        }
+        if (status == SteerReceipt.Status.ENDED) {
+            return Optional.empty();
+        }
+        String steerId = answer.get().path("steerId").asText(null);
+        return Optional.of(new SteerReceipt(status, steerId,
+                parseUuid(answer.get().path("turnId").asText(null))));
     }
 
     // ------------------------------------------------------------------ interne

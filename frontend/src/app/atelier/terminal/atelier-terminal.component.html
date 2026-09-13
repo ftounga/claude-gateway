@@ -442,6 +442,11 @@
         <div class="terminal-prompt-line">
           <span class="terminal-caret" aria-hidden="true">&gt;</span>
           <span class="terminal-request">{{ message.content }}</span>
+          <!-- UNE PRÉCISION DIT OÙ ELLE EN EST (F-84 / SF-84-06), en toutes lettres et par la
+               typographie : aucune couleur nouvelle. -->
+          @if (message.steer; as steer) {
+            <span class="terminal-steer-state" [attr.data-status]="steer.status">{{ steerStateLabel(steer) }}</span>
+          }
         </div>
       } @else {
         @if (message.terminal && message.terminal.length > 0) {
@@ -796,7 +801,7 @@
         type="submit"
         [disabled]="draft.trim().length === 0 || liveLimitReached"
       >
-        Envoyer
+        {{ submitting && steerable ? 'Préciser' : 'Envoyer' }}
       </button>
     </form>
   }

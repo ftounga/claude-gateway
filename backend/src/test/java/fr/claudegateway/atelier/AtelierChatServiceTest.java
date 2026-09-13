@@ -28,6 +28,7 @@ import fr.claudegateway.agent.AiAgentProvider;
 import fr.claudegateway.agent.StubAiAgentProvider;
 import fr.claudegateway.atelier.AtelierChatService.AtelierChatResult;
 import fr.claudegateway.atelier.AtelierProgressListener.AtelierStepEvent;
+import fr.claudegateway.atelier.AtelierProgressListener.AtelierSteer;
 import fr.claudegateway.byok.ByokKeyService;
 import fr.claudegateway.quota.QuotaExceededException;
 import fr.claudegateway.quota.QuotaService;
@@ -771,29 +772,73 @@ class AtelierChatServiceTest {
 
     // ------------------------------------------------- SF-39-19 : parler pendant qu'il travaille
 
+    /**
+     * Le tour vivant vu par la boucle (F-84 / SF-84-06) : une file de précisions que la boucle prend
+     * à chaque étape, et le relevé de l'étape à laquelle chacune a été prise en compte.
+     */
+    private static final class SteeringListener implements AtelierProgressListener {
+        final java.util.Deque<AtelierSteer> queue = new java.util.ArrayDeque<>();
+        final List<String> applied = new ArrayList<>();
+        int takes;
+
+        void deposit(String text) {
+            queue.addLast(new AtelierSteer("s-" + (queue.size() + applied.size() + 1), text));
+        }
+
+        @Override
+        public List<AtelierSteer> takeSteers() {
+            takes++;
+            List<AtelierSteer> taken = List.copyOf(queue);
+            queue.clear();
+            return taken;
+        }
+
+        @Override
+        public void onSteerApplied(AtelierSteer steer, int step) {
+            applied.add(steer.text() + "@" + step);
+        }
+
+        @Override
+        public void onAction(AtelierStepEvent step) {
+            // sans objet
+        }
+
+        @Override
+        public void onText(String text) {
+            // sans objet
+        }
+    }
+
     @Test
-    void aSteerDepositedDuringATurnIsReadAtTheNextIteration() {
+    void aSteerDepositedDuringStepOneIsSentAtStepTwoAfterTheToolResults() {
         stubHappyPath();
-        // Déposée PENDANT le tour, comme dans la vraie vie : le registre est vidé à l'ouverture
-        // d'un tour (D3), une précision déposée avant n'aurait aucun tour où atterrir.
-        agentProvider.onTurn(() -> service.steer(userId, workspaceId, "en fait, saute les tests"));
+        SteeringListener listener = new SteeringListener();
+        // Déposée PENDANT l'appel de l'étape 1, comme dans la vraie vie.
+        agentProvider.onTurn(() -> listener.deposit("en fait, saute les tests"));
         agentProvider.enqueueToolCall("read_file", "path", "a.txt");
         agentProvider.enqueueFinal("Compris.");
 
-        service.chat(userId, workspaceId, "construis le projet");
+        service.chatStreaming(userId, workspaceId, "construis le projet", listener);
 
-        assertThat(agentProvider.lastRequest.messages().toString()).contains("saute les tests");
+        assertThat(agentProvider.messageSnapshots).hasSize(2);
+        assertThat(agentProvider.messageSnapshots.get(0)).doesNotContain("saute les tests");
+        String step2 = agentProvider.messageSnapshots.get(1);
+        assertThat(step2).contains("saute les tests");
+        assertThat(step2.indexOf("ToolResult")).as("après le résultat de l'outil en cours")
+                .isLessThan(step2.indexOf("saute les tests"));
+        assertThat(listener.applied).containsExactly("en fait, saute les tests@2");
     }
 
     @Test
     void aSteerIsAddedOnlyOnce() {
         stubHappyPath();
-        agentProvider.onTurn(() -> service.steer(userId, workspaceId, "précision unique"));
+        SteeringListener listener = new SteeringListener();
+        agentProvider.onTurn(() -> listener.deposit("précision unique"));
         agentProvider.enqueueToolCall("read_file", "path", "a.txt");
         agentProvider.enqueueToolCall("read_file", "path", "b.txt");
         agentProvider.enqueueFinal("Fait.");
 
-        service.chat(userId, workspaceId, "vas-y");
+        service.chatStreaming(userId, workspaceId, "vas-y", listener);
 
         // Consommée : elle ne doit pas être réinjectée à chaque itération.
         long occurrences = agentProvider.lastRequest.messages().stream()
@@ -803,58 +848,55 @@ class AtelierChatServiceTest {
     }
 
     @Test
-    void severalSteersArriveInTheOrderTheyWereDeposited() {
+    void severalSteersArriveInTheOrderTheyWereDepositedAndArePersistedInThatOrder() {
         stubHappyPath();
+        SteeringListener listener = new SteeringListener();
         agentProvider.onTurn(() -> {
-            service.steer(userId, workspaceId, "première");
-            service.steer(userId, workspaceId, "seconde");
+            listener.deposit("première");
+            listener.deposit("seconde");
         });
         agentProvider.enqueueToolCall("read_file", "path", "a.txt");
         agentProvider.enqueueFinal("Vu.");
 
-        service.chat(userId, workspaceId, "vas-y");
+        service.chatStreaming(userId, workspaceId, "vas-y", listener);
 
         String sent = agentProvider.lastRequest.messages().toString();
         assertThat(sent.indexOf("première")).isLessThan(sent.indexOf("seconde"));
+        assertThat(listener.applied).containsExactly("première@2", "seconde@2");
+        // Persistées à leur place : la demande, les deux précisions, puis la réponse du tour.
+        ArgumentCaptor<AtelierMessage> saved = ArgumentCaptor.forClass(AtelierMessage.class);
+        verify(messageRepository, atLeastOnce()).save(saved.capture());
+        assertThat(saved.getAllValues()).extracting(m -> m.getRole() + ":" + m.getContent())
+                .containsExactly("USER:vas-y", "USER:première", "USER:seconde", "ASSISTANT:Vu.");
     }
 
     @Test
-    void theSixthSteerIsRefusedWithoutBreakingAnything() {
-        stubOwnedArchiveWorkspace();
-        for (int i = 0; i < AtelierChatService.MAX_PENDING_STEERS; i++) {
-            service.steer(userId, workspaceId, "précision " + i);
-        }
-
-        assertThatThrownBy(() -> service.steer(userId, workspaceId, "une de trop"))
-                .isInstanceOf(TooManySteersException.class)
-                .hasMessageContaining("laissez-le avancer");
-    }
-
-    @Test
-    void anEmptyOrOversizedSteerIsRefused() {
-        stubOwnedArchiveWorkspace();
-
-        assertThatThrownBy(() -> service.steer(userId, workspaceId, "   "))
-                .isInstanceOf(InvalidFilePathException.class);
-        assertThatThrownBy(() -> service.steer(userId, workspaceId,
-                "x".repeat(AtelierChatService.MAX_STEER_CHARS + 1)))
-                .isInstanceOf(InvalidFilePathException.class);
-    }
-
-    @Test
-    void unreadSteersDoNotSurviveTheTurn() {
+    void aSteerQueuedBeforeTheFirstStepIsReadAtStepOne() {
         stubHappyPath();
-        // Déposée au dernier appel du premier tour : elle n'aura plus d'itération pour être lue.
-        agentProvider.onTurn(() -> service.steer(userId, workspaceId, "précision du premier tour"));
+        SteeringListener listener = new SteeringListener();
+        // Le tour de suite (SF-84-06) : les précisions restantes attendent déjà en file.
+        listener.deposit("et le changelog");
+        agentProvider.enqueueFinal("Fait.");
+
+        service.chatStreaming(userId, workspaceId, "et ajoute un test", listener);
+
+        assertThat(agentProvider.messageSnapshots.get(0)).contains("et le changelog");
+        assertThat(listener.applied).containsExactly("et le changelog@1");
+    }
+
+    @Test
+    void aSteerDepositedDuringTheFinalAnswerStaysInTheLiveTurn() {
+        stubHappyPath();
+        SteeringListener listener = new SteeringListener();
+        // Déposée pendant l'appel qui rend la réponse finale : plus d'étape pour la lire. La boucle
+        // ne la consomme pas — c'est le tour vivant qui ouvrira le tour de suite.
+        agentProvider.onTurn(() -> listener.deposit("précision tardive"));
         agentProvider.enqueueFinal("Un.");
-        service.chat(userId, workspaceId, "premier");
 
-        agentProvider.enqueueFinal("Deux.");
-        service.chat(userId, workspaceId, "second");
+        service.chatStreaming(userId, workspaceId, "premier", listener);
 
-        // Rejouer une précision au tour suivant la ferait resurgir dans un contexte qui a changé.
-        assertThat(agentProvider.lastRequest.messages().toString())
-                .doesNotContain("précision du premier tour");
+        assertThat(listener.queue).extracting(AtelierSteer::text).containsExactly("précision tardive");
+        assertThat(listener.applied).isEmpty();
     }
 
     @Test

@@ -87,7 +87,9 @@ import {
   AtelierTerminalBlock,
   AtelierRole,
   AtelierStreamAction,
+  AtelierStreamDone,
   AtelierStreamHandlers,
+  AtelierSteerQueued,
   AtelierTurnFollower,
   GitPullRequestResult,
   GitPushResult,
@@ -118,6 +120,7 @@ import { RADAR_DRAFT_STATE, radarDraftFrom } from '../shared/radar-draft';
 import {
   AtelierExecStreamingItem,
   AtelierPendingConfirmation,
+  AtelierSteerState,
   AtelierStreamingItem,
   AtelierThreadItem,
   AtelierTurnCost,
@@ -1334,12 +1337,21 @@ export class AtelierComponent implements OnInit, OnDestroy {
     if (this.liveTerminals.limitReached()) {
       return;
     }
-    // Un tour travaille déjà : ce message est une PRÉCISION, pas un second tour (F-39 / SF-39-19).
-    // L'agent la lira au début de son itération suivante ; rien ne s'arrête.
+    // Un tour travaille déjà : ce message est une PRÉCISION, pas un second tour (F-39 / SF-39-19,
+    // F-84 / SF-84-06). L'agent la lira au début de son étape suivante ; rien ne s'arrête. Le bac à
+    // sable hébergé n'a pas de précision : pendant un de ses tours, l'envoi reste refusé.
     if (this.submitting()) {
-      this.steer(id, content);
+      if (this.localEngine()) {
+        this.steer(id, content);
+      }
       return;
     }
+    this.draft.set('');
+    this.startTurn(id, content);
+  }
+
+  /** Lance un tour avec cette demande — depuis la saisie, ou pour une précision arrivée trop tard. */
+  private startTurn(id: string, content: string): void {
     const userItem: AtelierThreadItem = {
       id: `local-user-${Date.now()}`,
       role: 'USER',
@@ -1347,7 +1359,6 @@ export class AtelierComponent implements OnInit, OnDestroy {
       actions: [],
     };
     this.messages.update((current) => [...current, userItem]);
-    this.draft.set('');
     this.submitting.set(true);
 
     // Le moteur décide du chemin d'envoi (F-39 / SF-39-08) — jamais l'utilisateur, qui a saisi la
@@ -1371,9 +1382,40 @@ export class AtelierComponent implements OnInit, OnDestroy {
     // Un nouveau tour, une nouvelle numérotation (F-84 / SF-84-04) : tout ce qui arriverait encore
     // d'un tour précédent — un flux relâché d'un bloc par un proxy — est écarté par sa génération.
     const generation = this.openTurnGate();
+    // L'envoi a REJOINT un tour qui tournait déjà (F-84 / SF-84-06) : le message est devenu une
+    // précision, persistée par la gateway — la fin du tour recharge le fil au lieu d'y ajouter.
+    let joined = false;
+    // Un tour de suite est parti : la demande de départ est persistée, une erreur ne la retire plus.
+    let followedUp = false;
+    const steerHandlers = this.steerHandlers();
 
     const handlers: AtelierStreamHandlers = {
       acceptSeq: (seq) => this.acceptTurnSeq(generation, seq),
+      ...steerHandlers,
+      onSteered: (steered) =>
+        this.zone.run(() => {
+          if (generation !== this.turnGeneration) {
+            return;
+          }
+          joined = true;
+          this.markAsPrecision(userItem.id, steered.steerId);
+          this.joinRunningTurn(steered.startedAt);
+        }),
+      onSteerQueued: (queued) =>
+        this.zone.run(() => {
+          if (this.bindPrecision(queued)) {
+            return;
+          }
+          // L'aparté `steered` peut ne jamais arriver — c'est le cas même d'un proxy qui retient le
+          // flux (SF-84-04) : le suivi par fenêtres rejoue alors le tour rejoint, et c'est l'annonce
+          // de NOTRE texte, avant tout autre précision, qui dit que l'envoi est devenu une précision.
+          if (!joined && queued.text === content) {
+            joined = true;
+            this.markAsPrecision(userItem.id, queued.steerId);
+            return;
+          }
+          this.addPrecision(queued);
+        }),
       // La demande est prise en main : l'écran le dit, et la sonde de flux retenu se tait.
       onStarted: () => this.zone.run(() => this.markTurnHeard(true)),
       onAction: (action) =>
@@ -1440,41 +1482,28 @@ export class AtelierComponent implements OnInit, OnDestroy {
         }),
       onDone: (done) =>
         this.zone.run(() => {
+          // Un tour de suite part dans le même flux (F-84 / SF-84-06) : la réponse de ce tour est
+          // posée dans le fil, et le terminal RESTE en tour — `steer_followup` dit pourquoi.
+          if (done.followUp) {
+            followedUp = true;
+            this.appendTurnReply(done);
+            this.reopenForFollowUp();
+            return;
+          }
           this.stopTurnWindows();
           this.submitting.set(false);
           this.interrupting.set(false);
-          // La transcription est reprise dans le tour final : sans cela, tout ce qui a défilé
-          // pendant le tour disparaîtrait de l'écran (acquis F-30 SF-30-02).
-          const transcript = this.execStreaming()?.blocks ?? [];
-          // La durée est relevée par le backend (F-39 / SF-39-15) ; le chronomètre d'écran sert de
-          // repli quand le champ manque — un backend antérieur ne l'émet pas.
-          const elapsed = done.activeSeconds ?? this.execElapsedSeconds();
-          this.stopExecTimer();
-          this.streaming.set(null);
-          this.execStreaming.set(null);
-          // Plus rien n'attend de décision : une invite restée à l'écran serait un piège.
-          this.clearPendingConfirmation();
-          // Consommation à zéro = relevé manqué : on n'affiche alors aucun chiffre, plutôt qu'un
-          // « 0 token » qui passerait pour une mesure (même règle qu'un relevé manqué côté agent,
-          // F-30 SF-30-05).
-          const tokens = (done.inputTokens ?? 0) + (done.outputTokens ?? 0);
-          this.messages.update((current) => [
-            ...current,
-            {
-              id: done.messageId,
-              role: 'ASSISTANT',
-              content: done.reply,
-              actions: done.actions ?? [],
-              terminal: transcript.length > 0 ? transcript : undefined,
-              // Ce qu'a coûté le tour (acquis §4 n°6, SF-30-05) : la boucle maison ne le relevait
-              // pas, si bien que l'acquis ne valait pas sur le moteur qui exécute réellement.
-              cost: tokens > 0 ? { elapsedSeconds: elapsed, tokens } : undefined,
-              // Plafond de consommation de CE message atteint (F-39 / SF-39-15) : le travail est
-              // conservé, et l'écran le dit — un arrêt au milieu sans explication serait le pire
-              // des deux mondes.
-              budgetReached: done.budgetReached === true,
-            },
-          ]);
+          if (joined) {
+            // Ce tour a été demandé avant cet envoi : le fil est rechargé plutôt que complété,
+            // comme pour un rebranchement — c'est le serveur qui sait ce qui a été dit.
+            this.endTurnDisplay();
+            this.loadHistory(id);
+            this.refreshTree(id);
+            this.flushDeferredPrecisions(id);
+            return;
+          }
+          this.appendTurnReply(done);
+          this.endTurnDisplay();
           // Étape 3 du guide (F-53) : le premier succès visé est un tour qui S'ACHÈVE sur le
           // poste. Un tour interrompu compte — il a bien été exécuté sur la machine ; une erreur de
           // flux, non : elle passe par `onError`, qui ne coche rien.
@@ -1485,22 +1514,25 @@ export class AtelierComponent implements OnInit, OnDestroy {
           if (openPath && (done.actions ?? []).some((a) => a.type === 'write' && a.path === openPath)) {
             this.openFile(openPath);
           }
+          this.flushDeferredPrecisions(id);
         }),
       onError: (code) =>
         this.zone.run(() => {
           this.stopTurnWindows();
           this.submitting.set(false);
           this.interrupting.set(false);
-          this.stopExecTimer();
-          this.streaming.set(null);
-          this.execStreaming.set(null);
-          this.clearPendingConfirmation();
+          this.endTurnDisplay();
           // Le tour lancé sur le poste n'a pas abouti (F-53 / SF-53-02) : le guide le dit et propose
           // d'aller vérifier la machine, plutôt que de laisser l'étape muette.
           this.guide.markTurnFailed();
-          // Retire le message utilisateur optimiste : rien n'a été persisté côté serveur.
-          this.messages.update((current) => current.filter((m) => m.id !== userItem.id));
+          // Retire le message utilisateur optimiste : rien n'a été persisté côté serveur. SAUF s'il
+          // est devenu une précision, ou s'il a déjà mené à un tour de suite (F-84 / SF-84-06) :
+          // la gateway l'a alors persisté, et le retirer mentirait sur le fil.
+          if (!joined && !followedUp) {
+            this.messages.update((current) => current.filter((m) => m.id !== userItem.id));
+          }
           this.notifyError(this.streamErrorMessage(code));
+          this.flushDeferredPrecisions(id);
         }),
     };
     void this.atelier.streamChat(id, content, handlers);
@@ -1533,9 +1565,203 @@ export class AtelierComponent implements OnInit, OnDestroy {
    */
   private cardsOfTurn: { afterSteps: number; block: AtelierTerminalBlock }[] = [];
 
+  /**
+   * Pose la réponse d'un tour dans le fil, avec sa transcription et son coût. Appelé à la fin d'un
+   * tour lancé ici, et au `done` qui précède un tour de suite (F-84 / SF-84-06).
+   */
+  private appendTurnReply(done: AtelierStreamDone): void {
+    // La transcription est reprise dans le tour final : sans cela, tout ce qui a défilé
+    // pendant le tour disparaîtrait de l'écran (acquis F-30 SF-30-02).
+    const transcript = this.execStreaming()?.blocks ?? [];
+    // La durée est relevée par le backend (F-39 / SF-39-15) ; le chronomètre d'écran sert de
+    // repli quand le champ manque — un backend antérieur ne l'émet pas.
+    const elapsed = done.activeSeconds ?? this.execElapsedSeconds();
+    // Consommation à zéro = relevé manqué : on n'affiche alors aucun chiffre, plutôt qu'un
+    // « 0 token » qui passerait pour une mesure (même règle qu'un relevé manqué côté agent,
+    // F-30 SF-30-05).
+    const tokens = (done.inputTokens ?? 0) + (done.outputTokens ?? 0);
+    this.messages.update((current) => [
+      ...current,
+      {
+        id: done.messageId,
+        role: 'ASSISTANT',
+        content: done.reply,
+        actions: done.actions ?? [],
+        terminal: transcript.length > 0 ? transcript : undefined,
+        // Ce qu'a coûté le tour (acquis §4 n°6, SF-30-05) : la boucle maison ne le relevait
+        // pas, si bien que l'acquis ne valait pas sur le moteur qui exécute réellement.
+        cost: tokens > 0 ? { elapsedSeconds: elapsed, tokens } : undefined,
+        // Plafond de consommation de CE message atteint (F-39 / SF-39-15) : le travail est
+        // conservé, et l'écran le dit — un arrêt au milieu sans explication serait le pire
+        // des deux mondes.
+        budgetReached: done.budgetReached === true,
+      },
+    ]);
+  }
+
+  /** Retire tout ce qui est vivant à l'écran : chronomètre, ligne vivante, invite d'autorisation. */
+  private endTurnDisplay(): void {
+    this.stopExecTimer();
+    this.streaming.set(null);
+    this.execStreaming.set(null);
+    // Plus rien n'attend de décision : une invite restée à l'écran serait un piège.
+    this.clearPendingConfirmation();
+  }
+
+  // ---------------------------- F-84 / SF-84-06 : un message pendant un tour devient une précision
+
+  /**
+   * Précisions refusées faute de tour vivant (`409 no_live_turn`) : le tour venait de rendre sa
+   * réponse. Elles partent comme **un** message dès que l'écran voit la fin du tour — jamais perdues.
+   */
+  private deferredPrecisions: { itemId: string; content: string }[] = [];
+
+  /** Numéro local des précisions : deux dépôts dans la même milliseconde restent distincts. */
+  private precisionSeq = 0;
+
+  /** Ce que font toutes les vues d'un tour des événements de précision. */
+  private steerHandlers(): Pick<AtelierStreamHandlers,
+    'onSteerQueued' | 'onSteerApplied' | 'onSteerFollowUp' | 'onSteersDropped'> {
+    return {
+      onSteerQueued: (queued) =>
+        this.zone.run(() => {
+          if (!this.bindPrecision(queued)) {
+            this.addPrecision(queued);
+          }
+        }),
+      onSteerApplied: (applied) =>
+        this.zone.run(() =>
+          this.updatePrecision(applied.steerId, (steer) => ({
+            ...steer, status: 'applied', step: applied.step,
+          })),
+        ),
+      onSteerFollowUp: (followUp) =>
+        this.zone.run(() =>
+          this.updatePrecision(followUp.steerId, (steer) => ({ ...steer, status: 'followup' })),
+        ),
+      onSteersDropped: (dropped) =>
+        this.zone.run(() => {
+          for (const steerId of dropped.steerIds) {
+            this.updatePrecision(steerId, (steer) => ({ ...steer, status: 'dropped' }));
+          }
+        }),
+    };
+  }
+
+  /**
+   * Rattache l'annonce d'une précision à celle déjà affichée : par identifiant, ou — l'annonce du
+   * tour pouvant précéder la réponse HTTP — à la première précision en attente du même texte encore
+   * sans identifiant. Rend `false` si aucune ne correspond.
+   */
+  private bindPrecision(queued: AtelierSteerQueued): boolean {
+    const items = this.messages();
+    if (items.some((m) => m.steer?.steerId === queued.steerId)) {
+      return true;
+    }
+    const waiting = items.find(
+      (m) => m.steer && m.steer.steerId === null && m.content === queued.text,
+    );
+    if (!waiting) {
+      return false;
+    }
+    this.setPrecisionId(waiting.id, queued.steerId);
+    return true;
+  }
+
+  /**
+   * Affiche une précision déposée ailleurs — un autre onglet, ou avant ce rebranchement. Pas si le
+   * même texte figure déjà parmi les demandes du tour en cours : relue de l'historique, elle a été
+   * persistée, donc prise en compte.
+   */
+  private addPrecision(queued: AtelierSteerQueued): void {
+    const items = this.messages();
+    for (let i = items.length - 1; i >= 0 && items[i].role === 'USER'; i--) {
+      if (items[i].content === queued.text) {
+        return;
+      }
+    }
+    this.messages.update((current) => [
+      ...current,
+      {
+        id: `steer-${queued.steerId}`,
+        role: 'USER',
+        content: queued.text,
+        actions: [],
+        steer: { steerId: queued.steerId, status: 'pending' },
+      },
+    ]);
+  }
+
+  /** Fait de ce message une précision en attente, portant cet identifiant. */
+  private markAsPrecision(itemId: string, steerId: string): void {
+    this.messages.update((current) =>
+      current.map((m) => (m.id === itemId ? { ...m, steer: { steerId, status: 'pending' } } : m)),
+    );
+  }
+
+  /** Pose l'identifiant rendu par la gateway, sans jamais écraser celui déjà connu. */
+  private setPrecisionId(itemId: string, steerId: string): void {
+    this.messages.update((current) =>
+      current.map((m) =>
+        m.id === itemId && m.steer && m.steer.steerId === null
+          ? { ...m, steer: { ...m.steer, steerId } }
+          : m,
+      ),
+    );
+  }
+
+  private updatePrecision(
+    steerId: string,
+    change: (steer: AtelierSteerState) => AtelierSteerState,
+  ): void {
+    this.messages.update((current) =>
+      current.map((m) => (m.steer?.steerId === steerId ? { ...m, steer: change(m.steer) } : m)),
+    );
+  }
+
+  /**
+   * L'envoi a rejoint un tour qui tournait déjà (F-84 / SF-84-06) : l'écran se met en tour, comme
+   * pour un rebranchement — le rejeu qui suit reconstruit ce qui a été fait.
+   */
+  private joinRunningTurn(startedAt: number): void {
+    this.markTurnHeard(false);
+    this.submitting.set(true);
+    this.streaming.set({ steps: [], text: '' });
+    this.execStreaming.set({ status: '', blocks: [], text: '', tokens: null, plan: [], accepted: true });
+    this.cardsOfTurn = [];
+    this.startExecTimer();
+    if (startedAt > 0) {
+      this.execElapsedSeconds.set(Math.max(0, Math.round((Date.now() - startedAt) / 1000)));
+    }
+  }
+
+  /** Le tour de suite part : ligne vivante neuve, chronomètre relancé, terminal toujours en tour. */
+  private reopenForFollowUp(): void {
+    this.clearPendingConfirmation();
+    this.submitting.set(true);
+    this.streaming.set({ steps: [], text: '' });
+    this.execStreaming.set({ status: '', blocks: [], text: '', tokens: null, plan: [], accepted: true });
+    this.cardsOfTurn = [];
+    this.startExecTimer();
+  }
+
+  /** Envoie comme un message les précisions arrivées après la fin du tour ; rien s'il en tourne un. */
+  private flushDeferredPrecisions(id: string): void {
+    if (this.deferredPrecisions.length === 0 || this.submitting()) {
+      return;
+    }
+    const deferred = this.deferredPrecisions;
+    this.deferredPrecisions = [];
+    const ids = new Set(deferred.map((d) => d.itemId));
+    this.messages.update((current) => current.filter((m) => !ids.has(m.id)));
+    this.startTurn(id, deferred.map((d) => d.content).join('\n\n'));
+  }
+
   /** Traduit un code d'erreur de flux en message utilisateur lisible (SF-28-05). */
   private streamErrorMessage(code: string): string {
     switch (code) {
+      case 'too_many_steers':
+        return 'Trop de précisions en attente pour ce message ; laissez-le avancer.';
       case 'quota_exceeded':
         return 'Quota de consommation atteint. Rachetez des tokens ou attendez la prochaine période.';
       case 'workspace_not_found':
@@ -2501,6 +2727,8 @@ export class AtelierComponent implements OnInit, OnDestroy {
   private attachHandlers(id: string, generation: number): AtelierStreamHandlers {
     return {
       acceptSeq: (seq) => this.acceptTurnSeq(generation, seq),
+      // Les précisions du tour rejoint, déposées ici ou ailleurs (F-84 / SF-84-06).
+      ...this.steerHandlers(),
       onAttached: (state) =>
         this.zone.run(() => {
           // Un aparté n'a pas de numéro : seule la génération dit qu'il appartient au tour suivi.
@@ -2601,29 +2829,31 @@ export class AtelierComponent implements OnInit, OnDestroy {
           ];
           this.mirrorLocalSteps();
         }),
-      onDone: () =>
+      onDone: (done) =>
         this.zone.run(() => {
+          // Un tour de suite part (F-84 / SF-84-06) : la réponse est posée, le terminal reste en tour.
+          if (done.followUp) {
+            this.appendTurnReply(done);
+            this.reopenForFollowUp();
+            return;
+          }
           this.stopTurnWindows();
           this.submitting.set(false);
           this.interrupting.set(false);
-          this.stopExecTimer();
-          this.streaming.set(null);
-          this.execStreaming.set(null);
-          this.clearPendingConfirmation();
+          this.endTurnDisplay();
           // Le fil est rechargé plutôt que complété : ce tour a été demandé avant l'ouverture de
           // cet écran, qui n'a donc aucun message optimiste à corriger.
           this.loadHistory(id);
           this.refreshTree(id);
+          this.flushDeferredPrecisions(id);
         }),
       onError: () =>
         this.zone.run(() => {
           this.stopTurnWindows();
           this.submitting.set(false);
           this.interrupting.set(false);
-          this.stopExecTimer();
-          this.streaming.set(null);
-          this.execStreaming.set(null);
-          this.clearPendingConfirmation();
+          this.endTurnDisplay();
+          this.flushDeferredPrecisions(id);
         }),
     };
   }
@@ -2707,20 +2937,39 @@ export class AtelierComponent implements OnInit, OnDestroy {
    */
   private steer(id: string, content: string): void {
     this.draft.set('');
+    this.precisionSeq += 1;
+    const itemId = `local-steer-${Date.now()}-${this.precisionSeq}`;
+    // F-84 / SF-84-06 : la précision dit où elle en est — en attente, jusqu'à ce que le tour la lise.
     this.messages.update((items: AtelierThreadItem[]) => [
       ...items,
       {
-        id: `local-steer-${Date.now()}`,
+        id: itemId,
         role: 'USER' as const,
         content,
         actions: [],
-      } as AtelierThreadItem,
+        steer: { steerId: null, status: 'pending' },
+      },
     ]);
     this.atelier.steerChat(id, content).subscribe({
-      error: (err: unknown) =>
+      next: (accepted) => this.setPrecisionId(itemId, accepted.steerId),
+      error: (err: unknown) => {
+        // Le tour venait de rendre sa réponse : la précision partira comme un message dès que
+        // l'écran en voit la fin — ou tout de suite, s'il l'a déjà vue.
+        if (err instanceof HttpErrorResponse && err.status === 409
+            && (err.error as { error?: string } | null)?.error === 'no_live_turn') {
+          this.deferredPrecisions.push({ itemId, content });
+          this.flushDeferredPrecisions(id);
+          return;
+        }
+        this.messages.update((items) =>
+          items.map((m) => (m.id === itemId && m.steer
+            ? { ...m, steer: { ...m.steer, status: 'dropped' as const } }
+            : m)),
+        );
         this.notifyError(
           httpErrorMessage(err, "La précision n'a pas pu être transmise. Réessayez."),
-        ),
+        );
+      },
     });
   }
 

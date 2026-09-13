@@ -18,6 +18,13 @@ public class StubAiAgentProvider implements AiAgentProvider {
     private final Deque<AgentTurn> script = new ArrayDeque<>();
     private int idSeq = 0;
     public volatile AgentTurnRequest lastRequest;
+    /**
+     * La conversation telle qu'elle est partie à <b>chaque</b> appel, figée au moment de l'appel
+     * (F-84 / SF-84-06) : {@link #lastRequest} porte la liste vivante de la boucle, qui continue de
+     * grandir après l'appel — elle ne peut pas dire à quelle étape un message est apparu.
+     */
+    public final List<String> messageSnapshots =
+            java.util.Collections.synchronizedList(new ArrayList<>());
     /** Tous les noms d'outils offerts, tous appels confondus — pour vérifier ce qu'a vu une sous-boucle. */
     public final java.util.Set<String> toolNamesSeen = java.util.concurrent.ConcurrentHashMap.newKeySet();
     /**
@@ -33,6 +40,7 @@ public class StubAiAgentProvider implements AiAgentProvider {
     public void reset() {
         script.clear();
         lastRequest = null;
+        messageSnapshots.clear();
         duringTurn = null;
         toolNamesSeen.clear();
         toolBelts.clear();
@@ -168,6 +176,7 @@ public class StubAiAgentProvider implements AiAgentProvider {
     @Override
     public AgentTurn nextTurn(AgentTurnRequest request) {
         this.lastRequest = request;
+        messageSnapshots.add(String.valueOf(request.messages()));
         Runnable action = duringTurn;
         if (action != null) {
             duringTurn = null;

@@ -121,6 +121,7 @@
     [streamingActive]="execStreaming() !== null"
     [elapsedLabel]="execElapsedLabel()"
     [submitting]="submitting()"
+    [steerable]="localEngine()"
     [draft]="draft()"
     (draftChange)="draft.set($event)"
     (send)="send()"

@@ -65,6 +65,21 @@ public final class LiveTurn {
      */
     public static final String CONFIRM_STATE = "confirm_state";
 
+    /** Une précision vient d'être déposée dans le tour (F-84 / SF-84-06). */
+    public static final String STEER_QUEUED = "steer_queued";
+
+    /** Une précision a été lue par le modèle, à l'étape dite (F-84 / SF-84-06). */
+    public static final String STEER_APPLIED = "steer_applied";
+
+    /** Une précision arrivée pendant la réponse finale ouvre le tour de suite (F-84 / SF-84-06). */
+    public static final String STEER_FOLLOWUP = "steer_followup";
+
+    /** Le tour s'est arrêté (interruption, erreur) avec des précisions non lues (F-84 / SF-84-06). */
+    public static final String STEERS_DROPPED = "steers_dropped";
+
+    /** Précisions en attente au plus : au-delà, c'est un nouveau tour qu'il faut, pas des rustines. */
+    public static final int MAX_PENDING_STEERS = 5;
+
     private static final Logger log = LoggerFactory.getLogger(LiveTurn.class);
 
     private final UUID turnId = UUID.randomUUID();
@@ -78,6 +93,8 @@ public final class LiveTurn {
     private final List<TurnSubscriber> subscribers = new ArrayList<>();
 
     private PendingApproval pendingApproval;
+    private final Deque<Steer> steers = new ArrayDeque<>();
+    private boolean sealed;
     private long lastSeq;
     private long droppedThrough;
     private int bufferedChars;
@@ -225,6 +242,125 @@ public final class LiveTurn {
                 return java.util.Optional.empty();
             }
             return java.util.Optional.of(pendingApproval);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    // ------------------------------------------------ F-84 / SF-84-06 : préciser pendant le tour
+
+    /**
+     * Une précision déposée dans le tour.
+     *
+     * @param steerId    identifiant porté par les événements qui la concernent
+     * @param text       le message, tel que l'utilisateur l'a envoyé (espaces de bord retirés)
+     * @param queuedAtMs instant du dépôt, en millisecondes depuis l'époque
+     */
+    public record Steer(String steerId, String text, long queuedAtMs) {
+    }
+
+    /** Charge utile de {@link #STEER_QUEUED}. */
+    record SteerQueued(String steerId, String text, long queuedAt) {
+    }
+
+    /** Charge utile de {@link #STEERS_DROPPED}. */
+    record SteersDropped(List<String> steerIds, String reason) {
+    }
+
+    /**
+     * Dépose une <b>précision</b> (F-84 / SF-84-06) : elle est mise en file <b>et annoncée</b> dans
+     * le tampon du tour, sous le même verrou — une vue qui se branche la voit toujours, et jamais
+     * avant qu'elle soit en file.
+     *
+     * <p>Un tour <b>fini ou scellé</b> la refuse ({@link SteerReceipt.Status#ENDED}) : il ne lira plus
+     * rien, et l'appelant ouvre alors un tour neuf. Au-delà de {@value #MAX_PENDING_STEERS}
+     * précisions en attente, {@link SteerReceipt.Status#FULL} — le tour, lui, n'est pas touché.</p>
+     *
+     * <p>Une attente d'autorisation n'est <b>pas</b> modifiée : une précision ne vaut ni accord ni
+     * refus.</p>
+     */
+    public SteerReceipt offerSteer(String text) {
+        lock.lock();
+        try {
+            if (finished || sealed) {
+                return new SteerReceipt(SteerReceipt.Status.ENDED, null, turnId);
+            }
+            if (steers.size() >= MAX_PENDING_STEERS) {
+                return new SteerReceipt(SteerReceipt.Status.FULL, null, turnId);
+            }
+            Steer steer = new Steer(UUID.randomUUID().toString(), text == null ? "" : text.trim(),
+                    System.currentTimeMillis());
+            steers.addLast(steer);
+            publish(STEER_QUEUED, new SteerQueued(steer.steerId(), steer.text(), steer.queuedAtMs()));
+            return new SteerReceipt(SteerReceipt.Status.ACCEPTED, steer.steerId(), turnId);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** Prend <b>toutes</b> les précisions en attente, dans l'ordre de dépôt — la boucle, à chaque étape. */
+    public List<Steer> takeSteers() {
+        lock.lock();
+        try {
+            List<Steer> taken = List.copyOf(steers);
+            steers.clear();
+            return taken;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * La boucle vient de rendre sa réponse : prend la <b>première</b> précision restante pour ouvrir
+     * le tour de suite, ou <b>scelle</b> le tour s'il n'y en a aucune — en un seul geste, sous le
+     * verrou. Il n'existe donc aucun instant où une précision serait acceptée par un tour qui ne la
+     * lira jamais.
+     *
+     * <p>Les précisions suivantes restent en file : le tour de suite les lira à son étape 1.</p>
+     */
+    public java.util.Optional<Steer> pollFollowUpOrSeal() {
+        lock.lock();
+        try {
+            if (steers.isEmpty()) {
+                sealed = true;
+                return java.util.Optional.empty();
+            }
+            return java.util.Optional.of(steers.removeFirst());
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Scelle le tour et rend les précisions qu'il ne lira jamais (interruption, erreur) — l'appelant
+     * les annonce, pour qu'aucune ne se perde en silence.
+     */
+    public List<Steer> sealAndDrain() {
+        lock.lock();
+        try {
+            sealed = true;
+            List<Steer> dropped = List.copyOf(steers);
+            steers.clear();
+            return dropped;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** Publie {@link #STEERS_DROPPED} pour ces précisions ; rien si la liste est vide. */
+    public void publishSteersDropped(List<Steer> dropped, String reason) {
+        if (dropped == null || dropped.isEmpty()) {
+            return;
+        }
+        publish(STEERS_DROPPED,
+                new SteersDropped(dropped.stream().map(Steer::steerId).toList(), reason));
+    }
+
+    /** Vrai une fois le tour scellé : il ne prend plus aucune précision. */
+    public boolean sealed() {
+        lock.lock();
+        try {
+            return sealed;
         } finally {
             lock.unlock();
         }

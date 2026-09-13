@@ -29,6 +29,17 @@ public final class TurnAsides {
     }
 
     /**
+     * « Ton envoi est devenu une précision du tour en cours » (F-84 / SF-84-06) : aucun tour n'a été
+     * ouvert. Ce qui suit est le rejeu du tour qui tournait déjà, puis son direct.
+     */
+    public static TurnEvent steered(String steerId, UUID turnId, long cursor, long startedAtMs) {
+        return new TurnEvent(NO_SEQ, "steered", "{\"steerId\":"
+                + (steerId == null ? "null" : "\"" + steerId + "\"")
+                + ",\"turnId\":" + (turnId == null ? "null" : "\"" + turnId + "\"")
+                + ",\"cursor\":" + cursor + ",\"startedAt\":" + startedAtMs + "}");
+    }
+
+    /**
      * « Rien ne tourne ici » — ni sur ce pod, ni chez un pair joignable.
      *
      * <p>C'est la <b>dégradation vers l'état d'origine</b> : avant F-84, un écran qui rouvrait un

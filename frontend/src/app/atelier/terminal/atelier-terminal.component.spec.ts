@@ -285,6 +285,62 @@ describe('AtelierTerminalComponent', () => {
     expect(sent).toBe(1);
   });
 
+  // ------------------------------------ F-84 / SF-84-06 : un message pendant un tour est une précision
+
+  it('pendant un tour de la boucle maison, le champ reste actif et le bouton dit « Préciser »', () => {
+    let sent = 0;
+    component.send.subscribe(() => (sent += 1));
+    component.steerable = true;
+    component.submitting = true;
+    component.draft = 'en fait, saute les tests';
+    fixture.detectChanges();
+
+    const button = fixture.nativeElement.querySelector(
+      '.terminal-input button[type="submit"]',
+    ) as HTMLButtonElement;
+    const field = fixture.nativeElement.querySelector('.terminal-field') as HTMLInputElement;
+    expect(button.textContent?.trim()).toBe('Préciser');
+    expect(button.disabled).toBe(false);
+    expect(field.disabled).toBe(false);
+
+    component.submit();
+    expect(sent).withContext('la précision part : ce n’est pas un second tour, c’est au parent d’en décider')
+      .toBe(1);
+  });
+
+  it('hors tour, le bouton dit « Envoyer »', () => {
+    component.steerable = true;
+    component.submitting = false;
+    fixture.detectChanges();
+
+    const button = fixture.nativeElement.querySelector(
+      '.terminal-input button[type="submit"]',
+    ) as HTMLButtonElement;
+    expect(button.textContent?.trim()).toBe('Envoyer');
+  });
+
+  it('dit où en est chaque précision : en attente, prise en compte, tour de suite, non prise en compte', () => {
+    const precision = (id: string, content: string, steer: AtelierThreadItem['steer']): AtelierThreadItem =>
+      ({ id, role: 'USER', content, actions: [], steer });
+    component.messages = [
+      precision('p1', 'une', { steerId: 's1', status: 'pending' }),
+      precision('p2', 'deux', { steerId: 's2', status: 'applied', step: 3 }),
+      precision('p3', 'trois', { steerId: 's3', status: 'followup' }),
+      precision('p4', 'quatre', { steerId: 's4', status: 'dropped' }),
+    ];
+    fixture.detectChanges();
+
+    const states = Array.from(
+      fixture.nativeElement.querySelectorAll('.terminal-steer-state') as NodeListOf<HTMLElement>,
+    ).map((el) => el.textContent?.trim());
+    expect(states).toEqual([
+      'en attente de l’étape suivante',
+      'prise en compte à l’étape 3',
+      'ouvre un tour de suite',
+      'non prise en compte — tour arrêté',
+    ]);
+  });
+
   it('replie une sortie longue et la déplie à la demande', () => {
     const block = {
       tool: 'bash',

@@ -35,6 +35,17 @@ public interface RemoteTurnSource {
     boolean streamRemoteTurn(UUID userId, UUID workspaceId, long cursor, TurnSubscriber subscriber);
 
     /**
+     * Dépose une <b>précision</b> dans le tour détenu par un pair (F-84 / SF-84-06).
+     *
+     * <p>Par défaut, aucun pair : rien n'est déposé, et l'appelant se comporte comme en mono-pod.</p>
+     *
+     * @return le reçu du pair détenteur, ou vide si personne ne détient le tour (ou pas de relais)
+     */
+    default Optional<SteerReceipt> steerRemoteTurn(UUID userId, UUID workspaceId, String message) {
+        return Optional.empty();
+    }
+
+    /**
      * L'état d'un tour vivant chez un pair.
      *
      * @param turnId      identifiant du tour, tel que le pod propriétaire l'a créé

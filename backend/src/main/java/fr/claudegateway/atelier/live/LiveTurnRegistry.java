@@ -25,7 +25,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * d'égalité qu'on pourrait oublier d'écrire.</p>
  *
  * <p><b>Un tour vivant par projet</b> : ouvrir un tour ferme le précédent. C'est la règle qui
- * existait déjà de fait — un projet n'exécute qu'un tour à la fois — rendue explicite.</p>
+ * existait déjà de fait — un projet n'exécute qu'un tour à la fois — rendue explicite. Depuis
+ * F-84 / SF-84-06, un <b>envoi</b> sur un tour vivant ne l'ouvre plus : il y devient une précision
+ * ({@link #openOrSteer}). Seul un tour déjà scellé est encore remplacé.</p>
  */
 @Component
 public class LiveTurnRegistry {
@@ -39,12 +41,50 @@ public class LiveTurnRegistry {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * Ce qu'est devenu un envoi (F-84 / SF-84-06) : une précision déposée dans le tour vivant
+     * ({@code receipt} acceptée), un refus de ce tour ({@code receipt} pleine), ou un tour neuf
+     * ({@code receipt} nulle).
+     */
+    public record Entry(LiveTurn turn, SteerReceipt receipt) {
+
+        /** Vrai si l'envoi est devenu une précision du tour vivant. */
+        public boolean steered() {
+            return receipt != null && receipt.accepted();
+        }
+    }
+
+    /**
+     * <b>Un envoi sur un projet dont le tour tourne devient une précision</b> (F-84 / SF-84-06,
+     * décision du PO du 2026-09-13).
+     *
+     * <p>Tour vivant et non scellé ⇒ la précision y est déposée, et <b>aucun</b> tour n'est ouvert —
+     * même quand la file est pleine : un refus vaut mieux que deux boucles sur le même projet.
+     * Sinon ⇒ un tour neuf. Le choix est <b>atomique</b> : deux envois simultanés ne peuvent pas
+     * ouvrir deux tours.</p>
+     *
+     * <p>Isolation : la recherche se fait par {@code (userId, workspaceId)} — l'envoi d'un autre
+     * utilisateur ne tombe jamais dans ce tour.</p>
+     */
+    public synchronized Entry openOrSteer(UUID userId, UUID workspaceId, String message) {
+        LiveTurn current = turns.get(key(userId, workspaceId));
+        if (current != null && current.live()) {
+            SteerReceipt receipt = current.offerSteer(message);
+            if (receipt.status() != SteerReceipt.Status.ENDED) {
+                return new Entry(current, receipt);
+            }
+        }
+        return new Entry(open(userId, workspaceId), null);
+    }
+
     /** Ouvre un tour pour ce projet, en fermant celui qui tournait encore. */
-    public LiveTurn open(UUID userId, UUID workspaceId) {
+    public synchronized LiveTurn open(UUID userId, UUID workspaceId) {
         LiveTurn turn = new LiveTurn(userId, workspaceId, objectMapper);
         LiveTurn previous = turns.put(key(userId, workspaceId), turn);
         if (previous != null) {
-            if (previous.live()) {
+            // Un tour SCELLÉ a déjà rendu sa réponse (SF-84-06) : il ne reste que sa clôture, le
+            // remplacer n'abandonne rien.
+            if (previous.live() && !previous.sealed()) {
                 // Constaté le 2026-09-13 (F-84 / SF-84-04) : un écran qui n'a pas vu le tour en cours
                 // — flux retenu par un proxy — a laissé renvoyer la demande. Le tour précédent perd
                 // ses spectateurs et devient introuvable, mais sa boucle continue jusqu'à sa fin.
