@@ -25,6 +25,27 @@ class NetworkObserverTest {
     private final NetworkObserver observer = new NetworkObserver(browser, adapter);
 
     @Test
+    @DisplayName("F-108 §4.8 : l'auto-attach ne retient QUE les cadres des domaines Microsoft")
+    void auto_attach_is_filtered_on_domains() {
+        observer.start();
+        observer.observeFrames();
+
+        browser.emitAttached("https://teams.microsoft.com/v2/worker.js");
+        browser.emitAttached("https://contoso.sharepoint.com/embedded");
+        browser.emitAttached("https://ads.example.com/iframe");
+        browser.emitAttached("https://login.microsoftonline.com/frame");
+
+        List<String> frames = observer.attachedFrames();
+        assertEquals(2, frames.size(), frames.toString());
+        assertTrue(frames.stream().anyMatch(url -> url.contains("teams.microsoft.com")));
+        assertTrue(frames.stream().anyMatch(url -> url.contains("sharepoint.com")));
+        assertFalse(frames.stream().anyMatch(url -> url.contains("example.com")),
+                "un cadre hors liste n'est jamais attaché");
+        assertFalse(frames.stream().anyMatch(url -> url.contains("login.")),
+                "une page d'identification n'est jamais attachée");
+    }
+
+    @Test
     @DisplayName("Une réponse de conversation est retenue, avec son corps")
     void keeps_a_conversation_response() {
         observer.start();

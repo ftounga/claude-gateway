@@ -21,10 +21,6 @@ public final class BrowserTargets {
     private static final List<String> TEAMS_HOSTS =
             List.of("teams.microsoft.com", "teams.live.com", "teams.cloud.microsoft");
 
-    /** Ce qui fait qu'un onglet est une page d'identification Microsoft. */
-    private static final List<String> SIGN_IN_HOSTS =
-            List.of("login.microsoftonline.com", "login.live.com", "login.microsoft.com");
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private BrowserTargets() {
@@ -83,8 +79,9 @@ public final class BrowserTargets {
      * d'onglet Teams » change le remède : ici il faut se connecter, là il faut ouvrir un onglet.
      */
     public static boolean looksLikeSignIn(List<Target> targets) {
+        // Une seule source de vérité pour les hôtes d'identification : MicrosoftDomains (F-108).
         return targets.stream().filter(Target::isPage)
-                .anyMatch(target -> matches(target.url(), SIGN_IN_HOSTS));
+                .anyMatch(target -> MicrosoftDomains.isSignIn(target.url()));
     }
 
     /** Le nom du navigateur, tel qu'il se déclare : « Chrome/140.0.0.0 ». Pour le diagnostic. */

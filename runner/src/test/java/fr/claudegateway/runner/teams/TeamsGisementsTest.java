@@ -346,11 +346,12 @@ class TeamsGisementsTest {
     }
 
     @Test
-    @DisplayName("Les gestes de SF-88-02 n'ouvrent AUCUNE commande de débogage nouvelle")
-    void the_debug_whitelist_is_still_untouched() {
-        assertEquals(java.util.List.of("Browser.getVersion", "Page.enable", "Network.enable",
-                "Network.getResponseBody", "Runtime.evaluate"), CdpCommands.allowed());
-        assertFalse(CdpCommands.isAllowed("Input.dispatchKeyEvent"),
-                "la question est posée DANS la page, jamais par injection d'événements CDP");
+    @DisplayName("La recherche de SF-88-02 est posée dans la page ; cookies et stockage refusés")
+    void search_stays_in_page_and_cookies_stay_refused() {
+        // SF-108-01 a ouvert les gestes d'action, gardés par domaine. Ce que ce test garde : la
+        // recherche n'ouvre aucun accès aux cookies ni au stockage — ce refus-là ne se rouvre pas.
+        assertFalse(CdpCommands.isAllowed("Network.getAllCookies"));
+        assertFalse(CdpCommands.isAllowed("Storage.getCookies"),
+                "la question est posée DANS la page, jamais en touchant au stockage de la session");
     }
 }
