@@ -12,6 +12,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -37,7 +38,7 @@ public final class WebSocketCdpConnection implements CdpConnection {
     private final ObjectMapper mapper = new ObjectMapper();
     private final AtomicInteger sequence = new AtomicInteger();
     private final Map<Integer, CompletableFuture<JsonNode>> inFlight = new ConcurrentHashMap<>();
-    private final Map<String, List<Consumer<JsonNode>>> listeners = new ConcurrentHashMap<>();
+    private final Map<String, List<BiConsumer<String, JsonNode>>> listeners = new ConcurrentHashMap<>();
     private final AtomicBoolean open = new AtomicBoolean(true);
     private final StringBuilder incoming = new StringBuilder();
     /**
@@ -47,7 +48,7 @@ public final class WebSocketCdpConnection implements CdpConnection {
      */
     private volatile WebSocket socket;
 
-    private WebSocketCdpConnection() {
+    WebSocketCdpConnection() {
     }
 
     /** Ouvre la socket de débogage d'un onglet. L'adresse vient de la découverte, jamais de nous. */
@@ -72,6 +73,12 @@ public final class WebSocketCdpConnection implements CdpConnection {
 
     @Override
     public JsonNode send(String method, ObjectNode params) {
+        return send("", method, params);
+    }
+
+    /** Même émission, adressée à la session d'une cible attachée quand {@code sessionId} est posé. */
+    @Override
+    public JsonNode send(String sessionId, String method, ObjectNode params) {
         CdpCommands.assertAllowed(method);
         if (!isOpen()) {
             throw new BrowserLinkException(BrowserLinkException.LINK_LOST,
@@ -83,6 +90,9 @@ public final class WebSocketCdpConnection implements CdpConnection {
         frame.put("id", id);
         frame.put("method", method);
         frame.set("params", params == null ? mapper.createObjectNode() : params);
+        if (sessionId != null && !sessionId.isBlank()) {
+            frame.put("sessionId", sessionId.strip());
+        }
 
         CompletableFuture<JsonNode> answer = new CompletableFuture<>();
         inFlight.put(id, answer);
@@ -102,6 +112,11 @@ public final class WebSocketCdpConnection implements CdpConnection {
 
     @Override
     public void onEvent(String method, Consumer<JsonNode> listener) {
+        onSessionEvent(method, (sessionId, params) -> listener.accept(params));
+    }
+
+    @Override
+    public void onSessionEvent(String method, BiConsumer<String, JsonNode> listener) {
         listeners.computeIfAbsent(method, key -> new CopyOnWriteArrayList<>()).add(listener);
     }
 
@@ -140,8 +155,11 @@ public final class WebSocketCdpConnection implements CdpConnection {
                 return;
             }
             String method = frame.path("method").asText("");
+            // Aplati (flatten) : l'événement d'une cible attachée porte sa session. On la transmet,
+            // pour que l'observation sache d'où vient une réponse — onglet, cadre ou worker.
+            String sessionId = frame.path("sessionId").asText("");
             listeners.getOrDefault(method, List.of())
-                    .forEach(listener -> listener.accept(frame.path("params")));
+                    .forEach(listener -> listener.accept(sessionId, frame.path("params")));
         } catch (Exception ignored) {
             // Une trame illisible ne ferme pas la liaison : le navigateur en émet beaucoup, et
             // toutes ne nous concernent pas.

@@ -239,7 +239,8 @@ public final class BrowserLink implements AutoCloseable {
         };
     }
 
-    private static String httpGet(String url) {
+    /** La découverte réelle sur la boucle locale, sans proxy (partagée avec le relevé SF-100-00). */
+    static String httpGet(String url) {
         try {
             HttpClient client = HttpClient.newBuilder()
                     .connectTimeout(Duration.ofMillis(DISCOVERY_TIMEOUT_MS))

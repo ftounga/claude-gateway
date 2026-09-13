@@ -36,6 +36,13 @@ public final class RunnerMain {
     }
 
     int execute(String[] args, java.util.Map<String, String> env, Path currentDir, Path home) {
+        // Relevé réel (F-100 / SF-100-00) : un mode diagnostic à part, lancé à la main par le PO sur un
+        // poste client. Il ne demande ni gateway ni racine, n'appaire pas, n'ouvre aucun transport —
+        // il est donc aiguillé AVANT toute résolution de configuration.
+        if (fr.claudegateway.runner.teams.TeamsSurveyCommand.requested(args)) {
+            return fr.claudegateway.runner.teams.TeamsSurveyCommand.run(args, env, currentDir, System.in,
+                    console::info, console::error);
+        }
         // Reprise (F-46 / SF-46-01) : la mémoire est cherchée AVANT la résolution, puisque c'est
         // elle qui peut fournir la racine — on ne peut donc pas partir du workspace pour la trouver.
         SessionMemory.Located memory = SessionMemory.locate(currentDir, home).orElse(null);
