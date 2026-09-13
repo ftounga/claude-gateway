@@ -34,7 +34,14 @@ import fr.claudegateway.email.EmailService;
  * suite, réessayer n'y changerait rien. <b>Passager</b> — relais injoignable, délai dépassé, authentification
  * refusée (un réglage qu'on corrige) : reprise à 1, 5, 15 puis 60 minutes ; au 5ᵉ échec, {@code FAILED}.</p>
  *
- * <p>À l'état final, <b>les corps sont effacés</b> : la ligne reste le journal, jamais une archive.</p>
+ * <p>À l'état final, <b>les corps et les pièces jointes sont effacés</b> : la ligne reste le journal, jamais une
+ * archive.</p>
+ *
+ * <h2>Les pièces jointes (SF-110-03)</h2>
+ *
+ * <p>Elles sont rangées dans le stockage objet ({@link ClientMailAttachmentStore}) <b>dans la transaction</b> qui
+ * écrit la ligne : une écriture qui échoue annule la ligne. Le travailleur les relit à l'envoi ; une pièce
+ * disparue rend le courriel {@code FAILED} sans reprise — l'envoyer sans elle tromperait l'utilisateur.</p>
  */
 @Service
 public class ClientMailOutbox {
@@ -53,25 +60,73 @@ public class ClientMailOutbox {
 
     private final ClientEmailRepository repository;
     private final EmailService emailService;
+    private final ClientMailAttachmentStore attachmentStore;
     private final TransactionTemplate transactions;
     private final Clock clock;
 
     public ClientMailOutbox(ClientEmailRepository repository, EmailService emailService,
+            ClientMailAttachmentStore attachmentStore,
             org.springframework.transaction.PlatformTransactionManager transactionManager, Clock clock) {
         this.repository = repository;
         this.emailService = emailService;
+        this.attachmentStore = attachmentStore;
         this.transactions = new TransactionTemplate(transactionManager);
         this.clock = clock;
     }
 
-    /** Ce qu'il faut pour mettre un courriel en file. Le destinataire vient de {@link ResolvedRecipient}. */
+    /**
+     * Ce qu'il faut pour mettre un courriel en file. Le destinataire vient de {@link ResolvedRecipient} ; les
+     * pièces jointes ont déjà été lues et contrôlées ({@link ClientMailAttachments}).
+     */
     public record Draft(UUID userId, UUID hostId, UUID workspaceId, ClientEmail.Kind kind,
-            ResolvedRecipient recipient, String subject, ClientMailRenderer.Rendered rendered) {
+            ResolvedRecipient recipient, String subject, ClientMailRenderer.Rendered rendered,
+            List<ClientMailMessage.Attachment> attachments) {
+
+        public Draft {
+            attachments = attachments == null ? List.of() : List.copyOf(attachments);
+        }
+
+        /** Un courriel sans pièce jointe. */
+        public Draft(UUID userId, UUID hostId, UUID workspaceId, ClientEmail.Kind kind, ResolvedRecipient recipient,
+                String subject, ClientMailRenderer.Rendered rendered) {
+            this(userId, hostId, workspaceId, kind, recipient, subject, rendered, List.of());
+        }
     }
 
-    /** Met un courriel en file ; il part au prochain passage du travailleur. */
+    /**
+     * Met un courriel en file ; il part au prochain passage du travailleur. Avec des pièces jointes, la ligne et
+     * les pièces sont écrites ensemble : si le stockage échoue, rien n'est en file et l'exception remonte.
+     */
     public ClientEmail enqueue(Draft draft) {
+        if (draft.attachments().isEmpty()) {
+            return insert(draft);
+        }
+        UUID[] written = new UUID[2];
+        try {
+            return transactions.execute(status -> {
+                ClientEmail saved = insert(draft);
+                written[0] = saved.getUserId();
+                written[1] = saved.getId();
+                attachmentStore.put(saved.getUserId(), saved.getId(), draft.attachments());
+                return saved;
+            });
+        } catch (RuntimeException ex) {
+            if (written[1] != null) {
+                try {
+                    attachmentStore.delete(written[0], written[1]);
+                } catch (RuntimeException ignored) {
+                    // Effacer ce qui a pu être écrit est un effort ; l'échec d'origine est ce qui compte.
+                }
+            }
+            log.warn("Courriel du client non mis en file : pièces jointes non enregistrées ({})",
+                    ex.getClass().getSimpleName());
+            throw ex;
+        }
+    }
+
+    private ClientEmail insert(Draft draft) {
         OffsetDateTime now = OffsetDateTime.now(clock);
+        long attachmentBytes = draft.attachments().stream().mapToLong(a -> a.content().length).sum();
         ClientEmail saved = repository.save(ClientEmail.builder()
                 .userId(draft.userId())
                 .hostId(draft.hostId())
@@ -81,16 +136,16 @@ public class ClientMailOutbox {
                 .recipient(draft.recipient().address())
                 .recipientVerified(draft.recipient().verifiedForClient())
                 .subject(draft.subject())
-                .sizeBytes(draft.rendered().sizeBytes())
-                .attachmentCount(0)
+                .sizeBytes((int) Math.min(Integer.MAX_VALUE, draft.rendered().sizeBytes() + attachmentBytes))
+                .attachmentCount(draft.attachments().size())
                 .bodyText(draft.rendered().text())
                 .bodyHtml(draft.rendered().html())
                 .status(ClientEmailStatus.PENDING)
                 .attempts(0)
                 .nextAttemptAt(now)
                 .build());
-        log.info("Courriel du client en file (id={}, poste={}, genre={}, taille={} o)", saved.getId(),
-                saved.getHostId(), saved.getKind(), saved.getSizeBytes());
+        log.info("Courriel du client en file (id={}, poste={}, genre={}, taille={} o, pièces={})", saved.getId(),
+                saved.getHostId(), saved.getKind(), saved.getSizeBytes(), saved.getAttachmentCount());
         return saved;
     }
 
@@ -120,10 +175,26 @@ public class ClientMailOutbox {
         if (email == null || email.getBodyText() == null) {
             return false;
         }
+        List<ClientMailMessage.Attachment> attachments = List.of();
+        if (email.getAttachmentCount() > 0) {
+            try {
+                attachments = attachmentStore.load(email.getUserId(), id);
+            } catch (RuntimeException ex) {
+                attachments = List.of();
+            }
+            if (attachments.size() != email.getAttachmentCount()) {
+                email.setStatus(ClientEmailStatus.FAILED);
+                email.setFailureReason("pièce jointe introuvable");
+                finish(email);
+                log.warn("Courriel du client refusé (id={}, tentative={}, pièce jointe introuvable)", id,
+                        email.getAttempts());
+                return true;
+            }
+        }
         try {
             emailService.sendClientMail(new ClientMailMessage(email.getRecipient(),
                     "claude-gateway pour " + email.getClientName(), email.getSubject(), email.getBodyText(),
-                    email.getBodyHtml()));
+                    email.getBodyHtml(), attachments));
             email.setStatus(ClientEmailStatus.SENT);
             email.setSentAt(OffsetDateTime.now(clock));
             email.setFailureReason(null);
@@ -151,13 +222,21 @@ public class ClientMailOutbox {
         return true;
     }
 
-    /** État final : le bail tombe, les corps sont effacés, la ligne reste le journal. */
+    /** État final : le bail tombe, les corps et les pièces sont effacés, la ligne reste le journal. */
     private void finish(ClientEmail email) {
         email.setLeasedUntil(null);
         email.setNextAttemptAt(null);
         email.setBodyText(null);
         email.setBodyHtml(null);
         repository.save(email);
+        if (email.getAttachmentCount() > 0) {
+            try {
+                attachmentStore.delete(email.getUserId(), email.getId());
+            } catch (RuntimeException ex) {
+                log.warn("Pièces jointes d'un courriel du client non effacées (id={}, {})", email.getId(),
+                        ex.getClass().getSimpleName());
+            }
+        }
     }
 
     record Failure(boolean permanent, String reason) {

@@ -74,6 +74,13 @@ public class SmtpEmailService implements EmailService {
             helper.setTo(message.to());
             helper.setSubject(message.subject());
             helper.setText(message.text(), message.html());
+            // Les pièces jointes (F-110 / SF-110-03) : noms encodés, un nom accentué reste lisible.
+            helper.setEncodeFilenames(true);
+            for (ClientMailMessage.Attachment attachment : message.attachments()) {
+                helper.addAttachment(attachment.name(),
+                        new org.springframework.core.io.ByteArrayResource(attachment.content()),
+                        attachment.contentType());
+            }
         } catch (jakarta.mail.MessagingException | java.io.UnsupportedEncodingException ex) {
             // Un message qu'on ne sait pas construire ne partira jamais : refus définitif, sans détail.
             throw new org.springframework.mail.MailPreparationException("Courriel du client invalide", ex);

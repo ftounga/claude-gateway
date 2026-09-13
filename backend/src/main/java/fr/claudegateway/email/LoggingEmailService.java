@@ -41,7 +41,8 @@ public class LoggingEmailService implements EmailService {
     @Override
     public void sendClientMail(ClientMailMessage message) {
         // Jamais le corps, même en dev : c'est une donnée du client. La taille suffit à voir que ça part.
-        log.info("[EMAIL:DEV-STUB] Courriel du client ({}) pour {} ({} caractères)", message.displayName(),
-                message.to(), message.text() == null ? 0 : message.text().length());
+        log.info("[EMAIL:DEV-STUB] Courriel du client ({}) pour {} ({} caractères, {} pièce(s) jointe(s))",
+                message.displayName(), message.to(), message.text() == null ? 0 : message.text().length(),
+                message.attachments().size());
     }
 }

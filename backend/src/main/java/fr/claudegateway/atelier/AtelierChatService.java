@@ -1493,7 +1493,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         if (clientMailTool == null) {
             return ToolOutcome.error("L'envoi de courriels n'est pas disponible : réponds sans lui.");
         }
-        fr.claudegateway.mail.ClientMailTool.Outcome outcome = clientMailTool.send(userId, workspace, call.input());
+        fr.claudegateway.mail.ClientMailTool.Outcome outcome = clientMailTool.send(userId, workspace, callId,
+                call.input());
         if (outcome.receipt() != null) {
             emailsOfTurn.put(callId, outcome.receipt());
             listener.onEmail(callId, outcome.receipt());

@@ -137,6 +137,18 @@ public class AccountService {
     }
 
     /**
+     * Les pièces jointes des courriels en attente (F-110 / SF-110-03), même doctrine que les pages : {@code null}
+     * (tests unitaires historiques) = rien à effacer.
+     */
+    private fr.claudegateway.mail.ClientMailAttachmentStore clientMailAttachmentStore;
+
+    /** Branche l'effacement des pièces jointes en attente à la suppression du compte (F-110 / SF-110-03). */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setClientMailAttachmentStore(fr.claudegateway.mail.ClientMailAttachmentStore store) {
+        this.clientMailAttachmentStore = store;
+    }
+
+    /**
      * Agrège l'ensemble des données de l'utilisateur pour l'export RGPD. Lecture seule, filtrée
      * sur {@code userId} pour chaque source.
      */
@@ -255,6 +267,11 @@ public class AccountService {
         // de client ; leurs lignes tombent en cascade avec le compte.
         if (pageService != null) {
             pageService.purgeUser(userId);
+        }
+        // Les pièces jointes des courriels encore en file (F-110 / SF-110-03) : des documents du client ; les
+        // lignes `client_emails` tombent en cascade avec le compte.
+        if (clientMailAttachmentStore != null) {
+            clientMailAttachmentStore.deleteAccount(userId);
         }
 
         userService.deleteById(user.getId());
