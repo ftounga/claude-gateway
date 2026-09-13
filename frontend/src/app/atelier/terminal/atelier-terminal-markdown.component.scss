@@ -1,0 +1,117 @@
+/* ------------------------------------------------------------------ F-30 / SF-30-14
+   LE MARKDOWN RENDU DANS LE COMMENTAIRE DE L'AGENT (règles de SF-30-12), ENFIN APPLIQUÉ.
+
+   `::ng-deep`, ET C'EST LA CONDITION POUR QUE TOUT CE QUI SUIT EXISTE. Le contenu est inséré par
+   `[innerHTML]` : ses éléments ne portent pas l'attribut d'encapsulation du composant, et les
+   règles descendantes émulées (`h2[_ngcontent-…]`) ne les atteignaient pas. La règle globale
+   `h1, h2, h3, h4` des écrans clairs (`styles.scss`) l'emportait : titres en encre navy sur fond
+   navy, liens bleu navigateur, taille de document.
+
+   BORNÉ : le sélecteur produit reste attaché au bloc de CE composant
+   (`.terminal-agent[_ngcontent-…] h2`). Aucun effet sur le chat, l'aide ni les autres usages du
+   pipe `markdown`. Vaut pour les quatre usages du terminal — projet, poste, Teams, tuile de mosaïque.
+
+   UNE FEUILLE À PART, pour la raison qui en a imposé trois (F-83 / F-89) : le budget de style par
+   composant (12 ko, `angular.json`) est une limite de BUILD.
+
+   Test : `terminal-markdown-lisible.spec.ts`, par les couleurs CALCULÉES. */
+
+.terminal-agent ::ng-deep {
+  /* Densité du terminal : la hiérarchie passe par la GRAISSE, jamais par la taille. Un `##` à
+     l'échelle d'un document repousserait la sortie des commandes hors de l'écran. */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    margin: var(--cg-space-3) 0 var(--cg-space-1);
+    font-family: var(--cg-font-body);
+    font-size: 1em;
+    font-weight: 700;
+    color: var(--cg-surface);
+  }
+
+  p {
+    margin: var(--cg-space-2) 0;
+  }
+
+  /* Premier et dernier éléments collés au bloc : le fil garde son rythme vertical. */
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+
+  strong {
+    color: var(--cg-surface);
+    font-weight: 700;
+  }
+
+  ul,
+  ol {
+    margin: var(--cg-space-2) 0;
+    padding-left: var(--cg-space-4);
+  }
+
+  li {
+    margin: var(--cg-space-1) 0;
+  }
+
+  code {
+    font-family: var(--cg-font-mono);
+    font-size: 12px;
+    background: var(--cg-navy-2);
+    border-radius: 4px;
+    padding: 0 var(--cg-space-1);
+  }
+
+  /* Bloc de code : même apparence que la sortie d'une commande, pour que l'œil ne change pas de
+     registre entre ce que l'agent montre et ce que la sandbox a répondu. */
+  pre {
+    margin: var(--cg-space-2) 0;
+    padding: var(--cg-space-2);
+    background: var(--cg-navy-2);
+    border-radius: 4px;
+    /* Le bloc défile DANS son conteneur : sans cela, une ligne longue ferait défiler tout le fil. */
+    overflow-x: auto;
+    white-space: pre;
+
+    code {
+      background: none;
+      padding: 0;
+    }
+  }
+
+  a {
+    color: var(--cg-orange-2);
+  }
+
+  /* Le texte d'une citation HÉRITE de la couleur du bloc (`--cg-divider`) : `--cg-text-secondary`,
+     écrite par SF-30-12 et jamais appliquée, tomberait à ~2,7:1 sur `--cg-primary`. Le filet
+     suffit à marquer la citation. */
+  blockquote {
+    margin: var(--cg-space-2) 0;
+    padding-left: var(--cg-space-2);
+    border-left: 2px solid var(--cg-navy-2);
+  }
+
+  /* Un tableau large défile lui aussi chez lui. */
+  table {
+    display: block;
+    overflow-x: auto;
+    border-collapse: collapse;
+  }
+
+  th,
+  td {
+    border: 1px solid var(--cg-navy-2);
+    padding: var(--cg-space-1) var(--cg-space-2);
+  }
+
+  img {
+    max-width: 100%;
+  }
+}
