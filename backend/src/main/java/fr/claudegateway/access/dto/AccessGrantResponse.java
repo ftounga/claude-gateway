@@ -24,11 +24,12 @@ public record AccessGrantResponse(
         String grantedPlanCode,
         OffsetDateTime grantedUntil,
         String previousPlanCode,
-        String label) {
+        String label,
+        String space) {
 
     /** Réponse « aucun accès offert » — jamais un 404 : l'absence de droit est un état normal. */
     public static final AccessGrantResponse NONE =
-            new AccessGrantResponse(false, null, null, null, null);
+            new AccessGrantResponse(false, null, null, null, null, null);
 
     /** Projette un droit (ou son absence) en réponse d'API. */
     public static AccessGrantResponse from(Optional<AccessGrant> grant) {
@@ -42,6 +43,7 @@ public record AccessGrantResponse(
                 grant.grantedPlanCode() == null ? null : grant.grantedPlanCode().name(),
                 grant.grantedUntil(),
                 grant.previousPlanCode() == null ? null : grant.previousPlanCode().name(),
-                grant.label());
+                grant.label(),
+                grant.space() == null ? null : grant.space().name());
     }
 }

@@ -45,6 +45,18 @@ class RunnerRadarSyncApiIntegrationTest extends RadarSyncIntegrationTestBase {
     }
 
     @Test
+    @DisplayName("F-107 / SF-107-04 : la première synchro d'un client est hors réserve, la suivante non")
+    void firstSyncIsReserveExemptOnce() throws Exception {
+        RadarSync first = running(aliceA);
+        assertThat(syncs.findById(first.getId()).orElseThrow().isReserveExempt()).isTrue();
+        runnerPost(first.getId(), "finish", runnerToken(aliceA), "{\"status\":\"SUCCEEDED\"}")
+                .andExpect(status().isOk());
+
+        RadarSync second = launcher.start(aliceA, RadarSyncTrigger.MANUAL, null);
+        assertThat(syncs.findById(second.getId()).orElseThrow().isReserveExempt()).isFalse();
+    }
+
+    @Test
     @DisplayName("Battement : heartbeatAt et progression enregistrés ; fin : statut, couverture, poste libéré")
     void heartbeatAndFinish() throws Exception {
         RadarSync sync = running(aliceA);

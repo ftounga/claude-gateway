@@ -21,5 +21,21 @@ public record IssueAccessCodeRequest(
 
         @Email(message = "L'e-mail du destinataire est invalide.")
         @Size(max = 255, message = "L'e-mail ne peut pas dépasser 255 caractères.")
-        String assignedEmail) {
+        String assignedEmail,
+
+        @jakarta.validation.constraints.Pattern(regexp = "(?i)FORGE|VIGIE",
+                message = "L'espace doit valoir FORGE ou VIGIE.")
+        String space) {
+
+    /** Requête d'avant F-107 : code Forge. */
+    public IssueAccessCodeRequest(String label, String assignedEmail) {
+        this(label, assignedEmail, null);
+    }
+
+    /** L'espace demandé ; absent ⇒ {@code FORGE} (F-107 / SF-107-04). */
+    public fr.claudegateway.billing.EntitlementSpace grantedSpace() {
+        return space == null || space.isBlank()
+                ? fr.claudegateway.billing.EntitlementSpace.FORGE
+                : fr.claudegateway.billing.EntitlementSpace.valueOf(space.trim().toUpperCase(java.util.Locale.ROOT));
+    }
 }

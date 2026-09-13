@@ -60,6 +60,13 @@ public class RadarSync {
     @Column(name = "consumed_tokens", nullable = false)
     private long consumedTokens;
 
+    /**
+     * <b>Hors réserve</b> (F-107 / SF-107-04) : la première synchro d'un client — trente jours d'historique
+     * — ne puise dans aucune réserve de synchro, une fois par client. Posé au lancement, jamais changé.
+     */
+    @Column(name = "reserve_exempt", nullable = false, updatable = false)
+    private boolean reserveExempt;
+
     /** Ce qui a lancé la synchro (F-100 / SF-100-02) ; {@code null} pour une synchro antérieure. */
     @Enumerated(EnumType.STRING)
     @Column(name = "trigger_kind", length = 16)

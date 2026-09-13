@@ -274,4 +274,56 @@ class AccessCodeApiIntegrationTest {
         mockMvc.perform(get("/api/access-code/grant").contextPath("/api"))
                 .andExpect(status().isUnauthorized());
     }
+
+    // ------------------------------------------------------------------- F-107 / SF-107-04 : l'essai Vigie
+
+    private String issueSpaceCode(String label, String space) throws Exception {
+        String json = mockMvc.perform(post("/api/admin/access-codes").contextPath("/api")
+                        .header("Authorization", bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"" + label + "\",\"space\":\"" + space + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.view.space", is(space.toUpperCase())))
+                .andReturn().getResponse().getContentAsString();
+        return JsonPath.read(json, "$.code");
+    }
+
+    @Test
+    @DisplayName("SF-107-04 : un code Vigie ouvre la Vigie deux semaines, pas la Forge ; un code Forge s'y ajoute")
+    void aVigieTrialOpensTheVigieOnly() throws Exception {
+        redeem(aliceToken, issueSpaceCode("essai Vigie", "vigie"), 200, null);
+
+        String grant = mockMvc.perform(get("/api/access-code/grant").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.active", is(true)))
+                .andExpect(jsonPath("$.space", is("VIGIE")))
+                .andReturn().getResponse().getContentAsString();
+        java.time.OffsetDateTime until = java.time.OffsetDateTime.parse(JsonPath.read(grant, "$.grantedUntil"));
+        org.assertj.core.api.Assertions.assertThat(until)
+                .isAfter(java.time.OffsetDateTime.now().plusDays(13))
+                .isBefore(java.time.OffsetDateTime.now().plusDays(15));
+
+        // Le code Vigie n'ouvre pas la Forge.
+        mockMvc.perform(get("/api/workspaces").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isForbidden());
+
+        // Un second essai Vigie est refusé ; un code Forge, lui, s'ajoute.
+        redeem(aliceToken, issueSpaceCode("second essai", "VIGIE"), 409, "access_code_already_granted");
+        redeem(aliceToken, issueSpaceCode("démo Forge", "FORGE"), 200, null);
+        mockMvc.perform(get("/api/workspaces").contextPath("/api")
+                        .header("Authorization", bearer(aliceToken)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("SF-107-04 : un espace inconnu à l'émission est refusé en 400")
+    void anUnknownSpaceIsRejected() throws Exception {
+        mockMvc.perform(post("/api/admin/access-codes").contextPath("/api")
+                        .header("Authorization", bearer(adminToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"label\":\"x\",\"space\":\"ATELIER\"}"))
+                .andExpect(status().isBadRequest());
+    }
 }

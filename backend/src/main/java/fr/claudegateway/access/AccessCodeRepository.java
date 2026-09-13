@@ -37,6 +37,17 @@ public interface AccessCodeRepository extends JpaRepository<AccessCode, UUID> {
      */
     Optional<AccessCode> findFirstByRedeemedByUserIdOrderByGrantedUntilDesc(UUID userId);
 
+    /**
+     * Codes consommés par ce compte dont le terme est postérieur à l'instant donné, du plus lointain au
+     * plus proche (F-107 / SF-107-04 : un droit par espace). Isolation : {@code redeemed_by_user_id}.
+     */
+    List<AccessCode> findByRedeemedByUserIdAndGrantedUntilAfterOrderByGrantedUntilDesc(UUID userId,
+            OffsetDateTime after);
+
+    /** Codes d'essai d'un espace déjà consommés, du plus récent au plus ancien (relevé ADMIN, SF-107-04). */
+    List<AccessCode> findByGrantedSpaceAndRedeemedAtIsNotNullOrderByRedeemedAtDesc(
+            fr.claudegateway.billing.EntitlementSpace grantedSpace);
+
     /** Tous les codes, du plus récent au plus ancien. Administration uniquement. */
     List<AccessCode> findAllByOrderByCreatedAtDesc();
 

@@ -128,6 +128,20 @@ class AccessCodeServiceTest {
             assertThat(captor.getValue().getDurationHours()).isEqualTo(24);
             assertThat(captor.getValue().getValidUntil()).isEqualTo(NOW.plusDays(30));
             assertThat(captor.getValue().getGrantedPlanCode()).isEqualTo(PlanCode.GOLD);
+            // F-107 / SF-107-04 : sans espace demandé, un code ouvre la Forge — et elle seule.
+            assertThat(captor.getValue().getGrantedSpace()).isEqualTo(fr.claudegateway.billing.EntitlementSpace.FORGE);
+        }
+
+        @Test
+        @DisplayName("SF-107-04 : un code Vigie est l'essai de deux semaines, espace et durée figés")
+        void aVigieCodeIsTheTwoWeekTrial() {
+            service.issue("essai Vigie", null, fr.claudegateway.billing.EntitlementSpace.VIGIE);
+
+            ArgumentCaptor<AccessCode> captor = ArgumentCaptor.forClass(AccessCode.class);
+            verify(repository).save(captor.capture());
+
+            assertThat(captor.getValue().getGrantedSpace()).isEqualTo(fr.claudegateway.billing.EntitlementSpace.VIGIE);
+            assertThat(captor.getValue().getDurationHours()).isEqualTo(14 * 24);
             assertThat(captor.getValue().getCreatedByUserId()).isEqualTo(adminId);
         }
 
@@ -279,6 +293,31 @@ class AccessCodeServiceTest {
             assertThatThrownBy(() -> service.redeem(userId, "u@example.com", clear))
                     .isInstanceOf(AccessCodeAlreadyGrantedException.class);
             verify(repository, never()).consume(any(), any(), any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("SF-107-04 : le non-cumul vaut par espace — un essai Vigie coexiste avec un code Forge")
+        void aVigieTrialCoexistsWithAForgeCodeButNotWithAnotherTrial() {
+            String clear = "FORGE-AB2C-3D4F";
+            AccessCode vigie = storedCode(clear);
+            vigie.setGrantedSpace(fr.claudegateway.billing.EntitlementSpace.VIGIE);
+            vigie.setDurationHours(336);
+            when(repository.findByCodeHash(AccessCodeSecret.hash(clear))).thenReturn(Optional.of(vigie));
+            when(accessGrantService.activeGrant(userId, fr.claudegateway.billing.EntitlementSpace.VIGIE))
+                    .thenReturn(Optional.empty());
+            when(repository.consume(any(), any(), any(), any(), any(), any())).thenReturn(1);
+
+            AccessGrant grant = service.redeem(userId, "u@example.com", clear);
+
+            assertThat(grant.space()).isEqualTo(fr.claudegateway.billing.EntitlementSpace.VIGIE);
+            assertThat(grant.grantedUntil()).isEqualTo(NOW.plusHours(336));
+            assertThat(grant.redeemedAt()).isEqualTo(NOW);
+            verify(accessGrantService, never()).activeGrant(userId);
+
+            when(accessGrantService.activeGrant(userId, fr.claudegateway.billing.EntitlementSpace.VIGIE))
+                    .thenReturn(Optional.of(grant));
+            assertThatThrownBy(() -> service.redeem(userId, "u@example.com", clear))
+                    .isInstanceOf(AccessCodeAlreadyGrantedException.class);
         }
     }
 }

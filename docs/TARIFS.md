@@ -300,9 +300,9 @@ Aucun de ces points n'est tranché par F-64 : ce sont des décisions commerciale
 | **Gold complet** | **249 €** | 12 M jetons + Forge + Vigie (Vigie remisée de 25 %) — **configuré depuis SF-107-03** (code `GOLD_COMPLETE`, price `STRIPE_PRICE_GOLD_COMPLETE` à créer ; aucun annuel décidé) |
 | **Client en plus — Forge** | 39 € (2e-3e, 2 M) · 29 € (4e-6e, 1,5 M) · 19 € (7e+, 1 M) | 0 jeton en BYOK |
 | **Client en plus — Vigie** | **39 €** fixe | 3 M jetons de synchro |
-| Essai Vigie | 2 semaines, code d'accès | réserve 3 M, première synchro offerte |
+| Essai Vigie | 2 semaines, code d'accès | réserve 3 M, première synchro offerte — **servi depuis F-107 / SF-107-04** (code d'accès `VIGIE`, `app.access-code.vigie-trial-days` = 14, réserve d'essai `app.radar.reserve.trial-tokens` = 3 M pour le compte ; coût réel par synchro lisible par l'ADMIN) |
 
-La réserve de synchro (3 M) est une **valeur de départ**, revalidée après l'essai (mesuré × 1,5).
+La réserve de synchro (3 M) est une **valeur de départ**, revalidée après l'essai (mesuré × 1,5). **Servie depuis F-107 / SF-107-04** : 3 M par client suivi et par mois pour un abonné Vigie (plan ou option), réserve d'essai pour un essai par code, **première synchro d'un client hors réserve**. La recharge d'une réserve épuisée n'existe pas encore (aucun pack de synchro).
 
 ---
 

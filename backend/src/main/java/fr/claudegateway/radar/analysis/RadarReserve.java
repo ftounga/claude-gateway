@@ -9,8 +9,9 @@ import fr.claudegateway.radar.RadarScope;
  * <b>La réserve de synchro</b> d'un poste (F-101 / SF-101-05) : ce que l'analyse peut encore dépenser.
  *
  * <p>Une limite <b>propre au Radar</b> : la synchro ne mange jamais le quota des conversations (cadrage
- * §11). L'implémentation par défaut est configurée ({@link ConfiguredRadarReserve}) ; l'option Vigie
- * (F-107 / SF-107-04) la remplacera sans toucher à l'arrêt propre de l'analyse.</p>
+ * §11). Depuis F-107 / SF-107-04, elle suit le <b>droit Vigie</b> ({@link VigieRadarReserve}) : 3 M par client
+ * et par mois pour un abonné ({@link ConfiguredRadarReserve}), une réserve d'essai pour un essai par code,
+ * rien sans droit ; la première synchro d'un client est hors réserve.</p>
  */
 public interface RadarReserve {
 
@@ -28,9 +29,20 @@ public interface RadarReserve {
         }
     }
 
-    /** La réserve d'un poste, telle que l'écran la montre. */
+    /**
+     * La réserve d'un poste, telle que l'écran la montre.
+     *
+     * @param trial vrai si c'est la <b>réserve d'essai</b> de la Vigie (F-107 / SF-107-04) : une enveloppe pour
+     *              tout le compte sur la durée de l'essai, sans renouvellement ({@code resetsAt} nul)
+     */
     record ReserveView(long monthlyTokens, long consumedThisMonth, long remainingThisMonth, long perSyncTokens,
-            OffsetDateTime resetsAt) {
+            OffsetDateTime resetsAt, boolean trial) {
+
+        /** Réserve mensuelle d'un abonné. */
+        public ReserveView(long monthlyTokens, long consumedThisMonth, long remainingThisMonth, long perSyncTokens,
+                OffsetDateTime resetsAt) {
+            this(monthlyTokens, consumedThisMonth, remainingThisMonth, perSyncTokens, resetsAt, false);
+        }
     }
 
     /** Ce qui reste pour cette synchro de ce poste. */

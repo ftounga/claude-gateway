@@ -1,9 +1,25 @@
 <h2 mat-dialog-title>Nouveau code d'accès</h2>
 
 <mat-dialog-content class="code-form">
+  <mat-button-toggle-group
+    class="code-form__space"
+    aria-label="Espace ouvert par le code"
+    [value]="space()"
+    (change)="space.set($event.value)"
+  >
+    <mat-button-toggle value="FORGE">Forge · 24 h</mat-button-toggle>
+    <mat-button-toggle value="VIGIE">Essai Vigie · 2 semaines</mat-button-toggle>
+  </mat-button-toggle-group>
+
   <p class="code-form__notice">
-    Le code ouvrira la <strong>Forge pendant 24 h</strong> au compte qui le saisira, puis se fermera
-    tout seul. Il ne change ni l'offre ni le quota de tokens de ce compte.
+    @if (space() === 'VIGIE') {
+      Le code ouvrira la <strong>Vigie pendant deux semaines</strong> — Teams, Radar, réunions — avec
+      une réserve de synchro d'essai. La première synchro d'un client est offerte. Il ne change ni
+      l'offre ni le quota de tokens de ce compte.
+    } @else {
+      Le code ouvrira la <strong>Forge pendant 24 h</strong> au compte qui le saisira, puis se fermera
+      tout seul. Il ne change ni l'offre ni le quota de tokens de ce compte.
+    }
   </p>
 
   <mat-form-field appearance="outline">

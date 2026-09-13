@@ -56,7 +56,7 @@
             <strong>{{ code.label }}</strong>
             <span class="codes-admin__meta">
               {{ recipient(code) }} · {{ stateLabel(code.state) }} ·
-              {{ code.grantedPlanCode }} pendant {{ code.durationHours }} h
+              {{ spaceLabel(code) }} pendant {{ durationLabel(code) }}
             </span>
           </div>
 
@@ -82,5 +82,53 @@
         </li>
       }
     </ul>
+  }
+
+  <!-- F-107 / SF-107-04 : le coût réel des essais Vigie, qui fixera la réserve définitive. -->
+  @if (trials(); as measures) {
+    <section class="codes-admin__trials" aria-label="Mesure des essais Vigie">
+      <h3>Mesure des essais Vigie</h3>
+      <p class="codes-admin__subtitle">
+        Ce que chaque synchro d'essai a réellement coûté, aux tarifs configurés. La réserve définitive
+        vaudra la consommation mesurée × 1,5.
+      </p>
+      @if (measures.length === 0) {
+        <p class="codes-admin__empty">Aucun essai Vigie consommé pour l'instant.</p>
+      } @else {
+        <ul class="codes-admin__list">
+          @for (trial of measures; track trial.codeId) {
+            <li class="codes-admin__item codes-admin__item--trial">
+              <div class="codes-admin__item-main">
+                <strong>{{ trial.label }}</strong>
+                <span class="codes-admin__meta">
+                  {{ trial.email ?? 'compte supprimé' }} ·
+                  @if (trial.active) { en cours } @else { terminé }
+                  · depuis le {{ trial.startedAt | date: 'short' }}
+                </span>
+              </div>
+              <div class="codes-admin__item-trace">
+                <span class="codes-admin__meta">
+                  {{ trial.syncCount }} synchro{{ trial.syncCount > 1 ? 's' : '' }} ·
+                  {{ trial.consumedTokens | number }} jetons ·
+                  {{ trial.costUsd | number: '1.2-2' }} $
+                </span>
+              </div>
+              @if (trial.syncs.length > 0) {
+                <ul class="codes-admin__syncs">
+                  @for (sync of trial.syncs; track sync.syncId) {
+                    <li class="codes-admin__meta">
+                      {{ sync.startedAt | date: 'short' }} · {{ sync.status }}
+                      @if (sync.firstSync) { · première synchro (hors réserve) }
+                      · {{ sync.consumedTokens | number }} jetons · {{ sync.costUsd | number: '1.2-4' }} $
+                      @if (sync.stoppedOnReserve) { · arrêtée sur réserve }
+                    </li>
+                  }
+                </ul>
+              }
+            </li>
+          }
+        </ul>
+      }
+    </section>
   }
 </mat-card>

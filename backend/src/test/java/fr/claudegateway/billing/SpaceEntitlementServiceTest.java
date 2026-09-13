@@ -73,6 +73,30 @@ class SpaceEntitlementServiceTest {
     }
 
     @Test
+    @DisplayName("SF-107-04 : l'accès offert est lu pour l'espace demandé")
+    void accessCodesAreReadPerSpace() {
+        when(accessGrantService.isGrantedWithGrace(userId, VIGIE)).thenReturn(true);
+        when(accessGrantService.isGrantedWithGrace(userId, FORGE)).thenReturn(false);
+        Subscription trial = forge(null, SubscriptionStatus.TRIALING, null);
+
+        assertThat(service.isEntitled(trial, VIGIE)).isTrue();
+        assertThat(service.isEntitled(trial, FORGE)).isFalse();
+    }
+
+    @Test
+    @DisplayName("SF-107-04 : le droit par abonnement ignore l'accès offert")
+    void entitledBySubscriptionIgnoresAccessCodes() {
+        when(subscriptionService.getOrCreateForUser(userId))
+                .thenReturn(vigie(PlanCode.SOLO, SubscriptionStatus.ACTIVE, null));
+        assertThat(service.isEntitledBySubscription(userId, VIGIE)).isFalse();
+        verifyNoInteractions(accessGrantService);
+
+        when(subscriptionService.getOrCreateForUser(userId))
+                .thenReturn(vigie(PlanCode.SOLO, SubscriptionStatus.ACTIVE, SubscriptionStatus.ACTIVE));
+        assertThat(service.isEntitledBySubscription(userId, VIGIE)).isTrue();
+    }
+
+    @Test
     @DisplayName("l'option d'un espace n'ouvre jamais l'autre")
     void optionsDoNotLeakAcrossSpaces() {
         Subscription forgeOption = forge(PlanCode.SOLO, SubscriptionStatus.ACTIVE, SubscriptionStatus.ACTIVE);
@@ -272,7 +296,7 @@ class SpaceEntitlementServiceTest {
 
         @Test
         void grantOpensAccessToAnAccountWithNoPlanAtAll() {
-            when(accessGrantService.isGrantedWithGrace(userId)).thenReturn(true);
+            when(accessGrantService.isGrantedWithGrace(userId, FORGE)).thenReturn(true);
             Subscription trial = forge(null, SubscriptionStatus.TRIALING, null);
 
             assertThat(service.isEntitled(trial, FORGE)).isTrue();
@@ -282,14 +306,14 @@ class SpaceEntitlementServiceTest {
 
         @Test
         void expiredGrantClosesAccessWithoutAnythingHavingRun() {
-            when(accessGrantService.isGrantedWithGrace(userId)).thenReturn(false);
+            when(accessGrantService.isGrantedWithGrace(userId, FORGE)).thenReturn(false);
 
             assertThat(service.isEntitled(forge(null, SubscriptionStatus.TRIALING, null), FORGE)).isFalse();
         }
 
         @Test
         void grantOnASoloPlanDoesNotChangeWhereTheRightComesFrom() {
-            when(accessGrantService.isGrantedWithGrace(userId)).thenReturn(true);
+            when(accessGrantService.isGrantedWithGrace(userId, FORGE)).thenReturn(true);
             Subscription solo = forge(PlanCode.SOLO, SubscriptionStatus.ACTIVE, null);
 
             assertThat(service.isEntitled(solo, FORGE)).isTrue();
@@ -353,7 +377,7 @@ class SpaceEntitlementServiceTest {
     /** Le droit Vigie lu par le chemin complet, accès offert compris. */
     private boolean vigieEntitled(Subscription subscription, boolean grant) {
         when(subscriptionService.getOrCreateForUser(userId)).thenReturn(subscription);
-        lenient().when(accessGrantService.isGrantedWithGrace(userId)).thenReturn(grant);
+        lenient().when(accessGrantService.isGrantedWithGrace(userId, VIGIE)).thenReturn(grant);
         return service.isEntitled(userId, VIGIE);
     }
 
@@ -485,7 +509,7 @@ class SpaceEntitlementServiceTest {
         @Test
         @DisplayName("Gold complet résilié : plus rien d'inclus")
         void canceledGoldCompleteOpensNothing() {
-            when(accessGrantService.isGrantedWithGrace(userId)).thenReturn(false);
+            when(accessGrantService.isGrantedWithGrace(org.mockito.ArgumentMatchers.eq(userId), org.mockito.ArgumentMatchers.any())).thenReturn(false);
             Subscription complete = both(PlanCode.GOLD_COMPLETE, SubscriptionStatus.CANCELED, null, null);
             assertThat(service.isEntitled(complete, FORGE)).isFalse();
             assertThat(service.isEntitled(complete, VIGIE)).isFalse();

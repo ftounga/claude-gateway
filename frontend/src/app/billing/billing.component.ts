@@ -866,6 +866,11 @@ export class BillingComponent implements OnInit {
     return this.accessGrant()?.active === true;
   }
 
+  /** Titre du bandeau d'accès offert, selon l'espace ouvert (F-107 / SF-107-04). */
+  accessGrantTitle(): string {
+    return this.accessGrant()?.space === 'VIGIE' ? 'Essai de la Vigie' : 'Accès Forge offert';
+  }
+
   /**
    * Vrai quand proposer la saisie a un sens : l'état a pu être lu, et aucun accès offert n'est en
    * cours. Un second champ pendant un droit ouvert serait un piège — le cumul est refusé côté

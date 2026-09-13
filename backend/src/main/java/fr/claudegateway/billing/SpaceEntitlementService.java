@@ -85,7 +85,7 @@ public class SpaceEntitlementService {
         if (isGrantedByRole(userId)) {
             return true; // L'administrateur a tout : aucun abonnement n'est consulté.
         }
-        return isEntitled(subscriptionService.getOrCreateForUser(userId), rule);
+        return isEntitled(subscriptionService.getOrCreateForUser(userId), rule, space);
     }
 
     /**
@@ -97,7 +97,7 @@ public class SpaceEntitlementService {
      */
     public boolean isEntitled(Subscription subscription, EntitlementSpace space) {
         SpaceRule rule = rule(space);
-        return isGrantedByRole(subscription.getUserId()) || isEntitled(subscription, rule);
+        return isGrantedByRole(subscription.getUserId()) || isEntitled(subscription, rule, space);
     }
 
     /**
@@ -112,14 +112,18 @@ public class SpaceEntitlementService {
     }
 
     /**
-     * Vrai si un <b>accès offert</b> (F-62) est en cours, <b>grâce de tour comprise</b> : le contrôle est
-     * rejoué à chaque requête d'un tour, et fermer la porte à la seconde du terme couperait un tour engagé.
+     * Vrai si un <b>accès offert</b> (F-62) <b>ouvrant cet espace</b> est en cours, <b>grâce de tour
+     * comprise</b> : le contrôle est rejoué à chaque requête d'un tour, et fermer la porte à la seconde du
+     * terme couperait un tour engagé. Depuis F-107 / SF-107-04, un code a un espace (essai Vigie de deux
+     * semaines, code Forge de 24 h) ; un code d'avant F-107 ouvre les deux.
      *
      * @param userId propriétaire de l'abonnement (jamais un paramètre client)
-     * @return {@code true} si un accès offert est en cours
+     * @param space  espace demandé
+     * @return {@code true} si un accès offert à cet espace est en cours
      */
-    public boolean isGrantedByAccessCode(UUID userId) {
-        return accessGrantService.isGrantedWithGrace(userId);
+    public boolean isGrantedByAccessCode(UUID userId, EntitlementSpace space) {
+        rule(space); // espace absent : erreur de programmation, jamais un droit
+        return accessGrantService.isGrantedWithGrace(userId, space);
     }
 
     /**
@@ -158,10 +162,28 @@ public class SpaceEntitlementService {
         return planCode != null && rule(space).optionCarriers().contains(planCode);
     }
 
-    private boolean isEntitled(Subscription subscription, SpaceRule rule) {
+    private boolean isEntitled(Subscription subscription, SpaceRule rule, EntitlementSpace space) {
         return isIncludedInPlan(subscription, rule)
                 || isGrantedByOption(subscription, rule)
-                || isGrantedByAccessCode(subscription.getUserId());
+                || isGrantedByAccessCode(subscription.getUserId(), space);
+    }
+
+    /**
+     * Vrai si le droit à l'espace vient d'un <b>abonnement</b> — plan qui l'inclut ou option en cours — ou
+     * du rôle administrateur, et non d'un seul accès offert. La réserve de synchro de la Vigie s'en sert
+     * (F-107 / SF-107-04) : un abonné a 3 M par client et par mois, un essai n'a que sa réserve d'essai.
+     *
+     * @param userId utilisateur du contexte de sécurité ou du tour
+     * @param space  espace demandé
+     * @return {@code true} si administrateur, plan incluant l'espace, ou option en cours sur un plan porteur
+     */
+    public boolean isEntitledBySubscription(UUID userId, EntitlementSpace space) {
+        SpaceRule rule = rule(space);
+        if (isGrantedByRole(userId)) {
+            return true;
+        }
+        Subscription subscription = subscriptionService.getOrCreateForUser(userId);
+        return isIncludedInPlan(subscription, rule) || isGrantedByOption(subscription, rule);
     }
 
     private static boolean isIncludedInPlan(Subscription subscription, SpaceRule rule) {

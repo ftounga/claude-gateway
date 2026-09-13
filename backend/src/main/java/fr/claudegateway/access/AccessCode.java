@@ -20,6 +20,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import fr.claudegateway.billing.EntitlementSpace;
 import fr.claudegateway.billing.PlanCode;
 import fr.claudegateway.billing.SubscriptionStatus;
 
@@ -79,6 +80,15 @@ public class AccessCode {
     @Enumerated(EnumType.STRING)
     @Column(name = "granted_plan_code", nullable = false, updatable = false, length = 32)
     private PlanCode grantedPlanCode;
+
+    /**
+     * Espace que le code ouvre (F-107 / SF-107-04) : {@code FORGE} (24 h) ou {@code VIGIE} (l'essai de
+     * deux semaines). <b>{@code null} = tous les espaces</b> : c'est ce qu'ouvrait un code émis avant F-107,
+     * et il continue de le faire. Figé à l'émission.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "granted_space", updatable = false, length = 16)
+    private EntitlementSpace grantedSpace;
 
     /** Durée du droit, en heures, figée à l'émission (24 par défaut). */
     @Column(name = "duration_hours", nullable = false, updatable = false)

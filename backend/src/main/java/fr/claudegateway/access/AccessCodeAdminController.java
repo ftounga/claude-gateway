@@ -44,6 +44,6 @@ public class AccessCodeAdminController {
     @PostMapping
     public IssuedAccessCodeResponse issue(@Valid @RequestBody IssueAccessCodeRequest request) {
         return IssuedAccessCodeResponse.from(
-                accessCodeService.issue(request.label(), request.assignedEmail()));
+                accessCodeService.issue(request.label(), request.assignedEmail(), request.grantedSpace()));
     }
 }

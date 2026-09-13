@@ -51,7 +51,9 @@ describe('AccessCodesComponent', () => {
     service = jasmine.createSpyObj<AccessCodeAdminService>('AccessCodeAdminService', [
       'list',
       'issue',
+      'trials',
     ]);
+    service.trials.and.returnValue(of([]));
     service.list.and.returnValue(
       codes === 'fails'
         ? throwError(() => new HttpErrorResponse({ status: 500 }))
@@ -94,6 +96,51 @@ describe('AccessCodesComponent', () => {
     expect(component.stateLabel('EXPIRED')).toBe('périmé');
     expect(component.recipient(issuedCode)).toBe('non nominatif');
     expect(component.recipient(liveCode)).toBe('client@example.com');
+  });
+
+  it("SF-107-04 : nomme l'espace et la durée de chaque code", () => {
+    setup([
+      { ...issuedCode, space: 'VIGIE', durationHours: 336 },
+      { ...liveCode, space: 'FORGE' },
+      { ...liveCode, id: 'c3', space: null },
+    ]);
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Essai Vigie pendant 14 j');
+    expect(text).toContain('Forge pendant 24 h');
+    expect(text).toContain('Forge et Vigie pendant 24 h');
+  });
+
+  it("SF-107-04 : émet un essai Vigie quand le dialogue le demande", () => {
+    setup();
+    service.issue.and.returnValue(of({ code: 'FORGE-AB2C-3D4E', view: issuedCode }));
+    stubDialog({ label: 'essai ACME', space: 'VIGIE' });
+
+    component.create();
+
+    expect(service.issue).toHaveBeenCalledWith('essai ACME', undefined, 'VIGIE');
+  });
+
+  it('SF-107-04 : montre le coût réel des essais Vigie, synchro par synchro', () => {
+    setup();
+    component.trials.set([
+      {
+        codeId: 't1', label: 'essai ACME', email: 'carol@example.com', startedAt: '2026-09-13T09:00:00Z',
+        endsAt: '2026-09-27T09:00:00Z', active: true, syncCount: 2, consumedTokens: 2700000, costUsd: 18.4,
+        syncs: [
+          { syncId: 's1', hostId: 'h1', startedAt: '2026-09-13T20:00:00Z', status: 'SUCCEEDED', firstSync: true,
+            consumedTokens: 2000000, costUsd: 14.2, stoppedOnReserve: false },
+          { syncId: 's2', hostId: 'h1', startedAt: '2026-09-14T20:00:00Z', status: 'SUCCEEDED', firstSync: false,
+            consumedTokens: 700000, costUsd: 4.2, stoppedOnReserve: false },
+        ],
+      },
+    ]);
+    fixture.detectChanges();
+
+    const section = (fixture.nativeElement as HTMLElement)
+      .querySelector('section[aria-label="Mesure des essais Vigie"]') as HTMLElement;
+    expect(section.textContent).toContain('essai ACME');
+    expect(section.textContent).toContain('2 synchros');
+    expect(section.textContent).toContain('première synchro (hors réserve)');
   });
 
   it('affiche le code en clair après création, et recharge la liste', () => {

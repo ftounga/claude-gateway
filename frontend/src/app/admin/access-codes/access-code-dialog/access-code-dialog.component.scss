@@ -4,6 +4,11 @@
   gap: var(--cg-space-2);
   min-width: 460px;
 
+  &__space {
+    align-self: flex-start;
+    margin-bottom: var(--cg-space-2);
+  }
+
   &__notice {
     margin: 0 0 var(--cg-space-2);
     padding: var(--cg-space-3);
