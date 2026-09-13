@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-110 / SF-110-04 — LE RÉSUMÉ DU MATIN PAR COURRIEL.
+
+      `morning_email` : l'option par client, désactivée par défaut — aucun poste existant ne se met à recevoir
+      des courriels. `morning_email_sync_id` : la dernière synchro du soir traitée (résumé mis en file, ou écarté
+      parce que trop ancien) ; c'est le marqueur conditionnel qui garantit un seul courriel par synchro, tous pods
+      confondus. Types portables : un seul changeSet pour PostgreSQL et H2.
+    -->
+    <changeSet id="103-radar-morning-email" author="claude-gateway">
+        <addColumn tableName="radar_host_settings">
+            <column name="morning_email" type="boolean" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="morning_email_sync_id" type="uuid"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="radar_host_settings" columnName="morning_email_sync_id"/>
+            <dropColumn tableName="radar_host_settings" columnName="morning_email"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -88,6 +88,17 @@ public class RadarHostSettings {
     @Column(name = "running_sync_id")
     private UUID runningSyncId;
 
+    // ------------------------------------------------------------ le résumé du matin par courriel (SF-110-04)
+
+    /** L'utilisateur reçoit le résumé du matin de ce client par courriel, après la synchro du soir. */
+    @Column(name = "morning_email", nullable = false)
+    @Builder.Default
+    private boolean morningEmail = false;
+
+    /** La dernière synchro du soir traitée pour le résumé (mis en file ou écarté) ; marqueur conditionnel. */
+    @Column(name = "morning_email_sync_id")
+    private UUID morningEmailSyncId;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

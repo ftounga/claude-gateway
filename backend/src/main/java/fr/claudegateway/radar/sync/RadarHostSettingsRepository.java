@@ -33,6 +33,19 @@ public interface RadarHostSettingsRepository extends JpaRepository<RadarHostSett
             + " where s.userId = :userId and s.hostId = :hostId and s.runningSyncId = :syncId")
     int release(@Param("userId") UUID userId, @Param("hostId") UUID hostId, @Param("syncId") UUID syncId);
 
+    /** Les postes qui reçoivent le résumé du matin par courriel, par page (F-110 / SF-110-04). */
+    List<RadarHostSettings> findByMorningEmailTrueOrderByIdAsc(Pageable page);
+
+    /**
+     * <b>Le marqueur du résumé du matin</b> (F-110 / SF-110-04) : note cette synchro comme traitée si elle ne
+     * l'est pas déjà. Rend 1 si ce passage l'a prise — un seul courriel par synchro, tous pods confondus.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("update RadarHostSettings s set s.morningEmailSyncId = :syncId"
+            + " where s.userId = :userId and s.hostId = :hostId and s.morningEmail = true"
+            + " and (s.morningEmailSyncId is null or s.morningEmailSyncId <> :syncId)")
+    int markMorningEmail(@Param("userId") UUID userId, @Param("hostId") UUID hostId, @Param("syncId") UUID syncId);
+
     /** Purge du Radar d'un poste (SF-99-05). */
     @Modifying
     @Query("delete from RadarHostSettings s where s.userId = :userId and s.hostId = :hostId")

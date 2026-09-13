@@ -136,7 +136,31 @@ describe('RadarScheduleComponent et RadarScheduleDialogComponent', () => {
       save(root).click();
 
       expect(radar.updateSchedule).toHaveBeenCalledOnceWith('h1',
-        { enabled: false, syncTime: '21:30', timeZone: 'America/New_York', clientAuthorizationConfirmed: false });
+        { enabled: false, syncTime: '21:30', timeZone: 'America/New_York', clientAuthorizationConfirmed: false,
+          morningEmail: false });
+    });
+
+    it('F-110 / SF-110-04 — la case du résumé du matin par courriel est lue et envoyée', () => {
+      const root = build({ ...on, morningEmail: true });
+      const box = root.querySelector('.schedule__morning-email');
+      expect(box?.textContent).toContain('Recevoir le résumé du matin par courriel');
+      expect(root.querySelector('.schedule__morning-email-note')?.textContent).toContain("l'adresse de réception du client");
+      expect(fixture.componentInstance.morningEmail()).toBeTrue();
+
+      fixture.componentInstance.morningEmail.set(false);
+      radar.updateSchedule.and.returnValue(of(on));
+      save(root).click();
+      expect(radar.updateSchedule.calls.mostRecent().args[1].morningEmail).toBeFalse();
+
+      TestBed.resetTestingModule();
+      const fresh = build(off);
+      expect(fixture.componentInstance.morningEmail()).toBeFalse();
+      fixture.componentInstance.authorized.set(true);
+      fixture.componentInstance.morningEmail.set(true);
+      fixture.detectChanges();
+      radar.updateSchedule.and.returnValue(of(on));
+      save(fresh).click();
+      expect(radar.updateSchedule.calls.mostRecent().args[1].morningEmail).toBeTrue();
     });
 
     it('un refus reste dans le dialogue', () => {

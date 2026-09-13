@@ -71,6 +71,17 @@ describe('radar-schedule', () => {
       .toEqual({ enabled: true, syncTime: '21:30', timeZone: 'Europe/Paris', clientAuthorizationConfirmed: true });
   });
 
+  it('F-110 / SF-110-04 — dit le résumé par courriel, et ne l’envoie que quand l’écran le connaît', () => {
+    expect(scheduleSentence(schedule({ morningEmail: true }), now).text)
+      .toBe('Synchro du soir à 22:00 · prochaine : ce soir 22:00 · résumé par courriel');
+    expect(scheduleSentence(schedule({ morningEmail: false }), now).text).not.toContain('courriel');
+    expect(scheduleSentence(schedule({ enabled: false, morningEmail: true }), now).text).toBe('Synchro du soir désactivée');
+
+    expect(scheduleRequest(schedule(), true, '22:00', false, 'Europe/Paris', true))
+      .toEqual({ enabled: true, syncTime: '22:00', timeZone: 'Europe/Paris', clientAuthorizationConfirmed: false,
+        morningEmail: true });
+  });
+
   it('traduit un enregistrement refusé', () => {
     expect(scheduleErrorOf(new HttpErrorResponse({ status: 400, error: { error: 'radar_invalid', message: 'Fuseau horaire inconnu : X.' } })))
       .toBe('Fuseau horaire inconnu : X.');

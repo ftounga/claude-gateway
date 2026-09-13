@@ -288,6 +288,8 @@ export interface RadarSchedule {
   nextSyncAt: string | null;
   missedSlotAt: string | null;
   running: RadarScheduleRunning | null;
+  /** Le résumé du matin par courriel (F-110 / SF-110-04) ; absent d'une gateway antérieure. */
+  morningEmail?: boolean;
 }
 
 /** Corps de `PUT …/schedule`. */
@@ -296,6 +298,8 @@ export interface RadarScheduleRequest {
   syncTime: string;
   timeZone: string;
   clientAuthorizationConfirmed: boolean;
+  /** Le résumé du matin par courriel (F-110 / SF-110-04) ; absent = inchangé. */
+  morningEmail?: boolean;
 }
 
 // ------------------------------------------------------------ La vérification guidée (F-100 / SF-100-01, écran SF-100-06)

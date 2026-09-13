@@ -59,6 +59,10 @@ export function scheduleSentence(schedule: RadarSchedule, now: Date = new Date()
   if (schedule.running) {
     parts.push('synchro en cours');
   }
+  if (schedule.morningEmail) {
+    // F-110 / SF-110-04 : le résumé du matin part par courriel après la synchro.
+    parts.push('résumé par courriel');
+  }
   const missed = slotLabel(schedule.missedSlotAt, now);
   if (missed) {
     parts.push(`synchro de ${missed} manquée, rattrapée à la prochaine connexion`);
@@ -95,12 +99,14 @@ export function zoneFor(schedule: RadarSchedule | null, browserZone: string): st
 
 /** Le corps de `PUT …/schedule`. */
 export function scheduleRequest(schedule: RadarSchedule | null, enabled: boolean, syncTime: string,
-  authorizationConfirmed: boolean, browserZone: string): RadarScheduleRequest {
+  authorizationConfirmed: boolean, browserZone: string, morningEmail?: boolean): RadarScheduleRequest {
   return {
     enabled,
     syncTime,
     timeZone: zoneFor(schedule, browserZone),
     clientAuthorizationConfirmed: authorizationConfirmed,
+    // F-110 / SF-110-04 : envoyé seulement quand l'écran le connaît (absent = inchangé côté gateway).
+    ...(morningEmail === undefined ? {} : { morningEmail }),
   };
 }
 
