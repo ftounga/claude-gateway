@@ -242,8 +242,10 @@ class TeamsFileToolsTest {
 
         JsonNode paths = json.path("diagnostic").path("observedFilePaths");
         assertEquals(1, paths.size(), json.toString());
-        assertEquals("https://contoso.sharepoint.com/sites/ProjetIAM/_api/web/lists",
-                paths.get(0).asText());
+        // Gabarisé comme le relevé réel : ni tenant, ni site, ni requête.
+        assertEquals("*.sharepoint.com/sites/{id}/_api/web/lists", paths.get(0).asText());
         assertFalse(json.toString().contains("SECRET"));
+        assertFalse(json.path("diagnostic").toString().contains("contoso"));
+        assertFalse(json.path("diagnostic").toString().contains("ProjetIAM"));
     }
 }

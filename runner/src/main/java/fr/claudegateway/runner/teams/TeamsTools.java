@@ -296,8 +296,10 @@ public final class TeamsTools implements ToolExecutor {
         }
         ObjectNode diagnostic = node.putObject("diagnostic");
         ArrayNode paths = diagnostic.putArray("observedFilePaths");
-        (observedFilePaths == null ? List.<String>of() : observedFilePaths).stream().limit(50)
-                .forEach(paths::add);
+        // Gabarisés comme le relevé réel (F-100 / SF-100-00) : ni nom de tenant, ni nom de site.
+        (observedFilePaths == null ? List.<String>of() : observedFilePaths).stream()
+                .map(path -> SurveyPaths.hostMotif(path) + SurveyPaths.template(path))
+                .distinct().limit(50).forEach(paths::add);
         diagnostic.put("filesAdapter", SharePointFiles.PROVENANCE);
         node.put("text", text.toString());
         return node.toString();

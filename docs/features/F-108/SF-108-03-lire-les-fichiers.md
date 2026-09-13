@@ -78,9 +78,13 @@ laissant **Chrome** télécharger, sans qu'aucun jeton, cookie, en-tête ni dige
    - Le fichier est ensuite lu par les outils du poste (`read_file`, `bash`).
 5. **Provenance** : chaque résultat porte `provenance` = « forme éprouvée sur documentation, à
    confirmer sur poste réel », et le code des adaptateurs le dit.
-6. **Diagnostic** : `NetworkObserver` relève les **chemins** SharePoint / OneDrive observés (hôte +
-   chemin, **sans** requête ni corps, bornés) ; `teams_status` les rend dans
-   `diagnostic.observedFilePaths` ; ils servent aussi à reconnaître les sites d'une équipe.
+6. **Diagnostic** : le **relevé réel** du runner (F-100 / SF-100-00, arrivé sur `main` pendant la
+   vague) classe les appels SharePoint que l'adaptateur fichiers emprunte (`SHAREPOINT_FOLDER`,
+   `SHAREPOINT_FILE`, `SHAREPOINT_CONTEXTINFO`, `SHAREPOINT_DOWNLOAD`, `ONEDRIVE_PERSONAL_URL`) et son
+   rapport gagne une section « Fichiers SharePoint et OneDrive » — gabarisée, sans requête, corps ni
+   tenant. En complément, `NetworkObserver` retient les chemins SharePoint / OneDrive observés (sans
+   requête ni corps, bornés) : ils servent à reconnaître les sites d'une équipe, et `teams_status` les
+   rend **gabarisés** dans `diagnostic.observedFilePaths`.
 
 ### Cas d'erreur
 

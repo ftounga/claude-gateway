@@ -49,6 +49,14 @@ final class SurveyReport {
                 .toList();
     }
 
+    /** Les chemins SharePoint et OneDrive observés (F-108 / SF-108-03), sans requête ni corps. */
+    List<NetworkSurvey.Entry> filePaths() {
+        return snapshot.entries().stream()
+                .filter(entry -> entry.host().endsWith("sharepoint.com")
+                        || "onedrive.live.com".equals(entry.host()))
+                .toList();
+    }
+
     /** Les chemins vus seulement hors de l'onglet Teams : les trois angles morts du cadrage. */
     List<NetworkSurvey.Entry> outsideTeamsTab() {
         return snapshot.entries().stream().filter(NetworkSurvey.Entry::onlyOutsideTeamsTab).toList();
@@ -99,6 +107,18 @@ final class SurveyReport {
             md.append("Ces chemins n'apparaissent que dans un autre onglet, un cadre intégré ou un worker : "
                     + "l'observation limitée à l'onglet ne les voit pas.\n\n");
             table(md, outside);
+        }
+
+        md.append("## Fichiers SharePoint et OneDrive (F-108)\n\n");
+        List<NetworkSurvey.Entry> files = filePaths();
+        if (files.isEmpty()) {
+            md.append("Aucun chemin SharePoint ou OneDrive observé pendant ce relevé.\n\n");
+        } else {
+            md.append("Les adaptateurs fichiers sont écrits sur la documentation publique de l'API REST "
+                    + "SharePoint (forme éprouvée sur documentation, à confirmer sur poste réel). Les "
+                    + "chemins classés `SHAREPOINT_*` ou `ONEDRIVE_*` sont ceux qu'ils appellent ; les "
+                    + "autres montrent ce que SharePoint web emprunte à la place.\n\n");
+            table(md, files);
         }
 
         md.append("## Table des chemins, par hôte\n\n");

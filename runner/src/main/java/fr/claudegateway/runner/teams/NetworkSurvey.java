@@ -195,7 +195,11 @@ public final class NetworkSurvey {
                 dropped++;
                 return;
             }
-            entry = new Entry(host, path, TeamsUrls.classify(url).name(), step);
+            // F-108 / SF-108-03 : un appel SharePoint que l'adaptateur fichiers emprunte est classé
+            // sous son nom — le relevé dit alors si le poste réel sert la forme documentée.
+            String files = SharePointFiles.endpointOf(url);
+            entry = new Entry(host, path, files.isEmpty() ? TeamsUrls.classify(url).name() : files,
+                    step);
             entries.put(key, entry);
         }
         entry.count++;

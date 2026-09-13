@@ -39,6 +39,40 @@ public final class SharePointFiles {
     private SharePointFiles() {
     }
 
+    /**
+     * Les chemins de l'API SharePoint que ces adaptateurs appellent, et le nom sous lequel le relevé
+     * réel (F-100 / SF-100-00) les classe. Un relevé fait sur un poste réel dit ainsi, chemin par
+     * chemin, si le trafic de SharePoint web emprunte bien la forme documentée sur laquelle
+     * l'adaptateur est écrit.
+     */
+    private static final List<String[]> ENDPOINTS = List.of(
+            new String[] {"/_api/contextinfo", "SHAREPOINT_CONTEXTINFO"},
+            new String[] {"/_api/web/getfolderbyserverrelativepath", "SHAREPOINT_FOLDER"},
+            new String[] {"/_api/web/getfolderbyserverrelativeurl", "SHAREPOINT_FOLDER"},
+            new String[] {"/_api/web/getfilebyserverrelativepath", "SHAREPOINT_FILE"},
+            new String[] {"/_api/web/getfilebyserverrelativeurl", "SHAREPOINT_FILE"},
+            new String[] {"/_api/web/folders", "SHAREPOINT_FOLDER"},
+            new String[] {"/_api/sp.userprofiles.peoplemanager/getmyproperties", "ONEDRIVE_PERSONAL_URL"},
+            new String[] {"/_layouts/15/download.aspx", "SHAREPOINT_DOWNLOAD"});
+
+    /**
+     * Le nom de l'appel SharePoint que cette adresse représente pour l'adaptateur fichiers, ou
+     * {@code ""} s'il ne l'appelle pas.
+     */
+    public static String endpointOf(String url) {
+        String host = MicrosoftDomains.hostOf(url);
+        if (!host.endsWith(".sharepoint.com")) {
+            return "";
+        }
+        String lower = ObservedResponse.withoutQuery(url).toLowerCase(java.util.Locale.ROOT);
+        for (String[] endpoint : ENDPOINTS) {
+            if (lower.contains(endpoint[0])) {
+                return endpoint[1];
+            }
+        }
+        return "";
+    }
+
     /** Un dossier ou un fichier, tel que la bibliothèque le décrit. */
     public record Entry(boolean folder, String name, String serverPath, long size, String modified,
             String id, String version, int itemCount) {
