@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-109 / SF-109-01 — LES PAGES.
+
+      `pages` : un document HTML rendu par l'agent, rattaché au lieu où il a été publié — l'espace
+      (FORGE, VIGIE), le poste ou client (`host_id`, nul pour un projet sans poste) et le projet ou
+      terminal d'origine (`workspace_id`). `current_version` est la version servie par défaut.
+
+      `page_versions` : une ligne par version conservée (dix au plus par page, les plus anciennes
+      purgées). `size_bytes` compte le HTML ET ses pièces jointes : c'est la somme de ces lignes, par
+      compte, qui porte le quota de 500 Mo. Le contenu vit dans le stockage objet, jamais en base.
+
+      Clés étrangères en cascade : supprimer un compte ou une page ne laisse aucune ligne orpheline.
+      Types portables : un seul changeSet pour PostgreSQL et H2.
+    -->
+    <changeSet id="098-pages" author="claude-gateway">
+        <createTable tableName="pages">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="space" type="varchar(8)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="host_id" type="uuid"/>
+            <column name="workspace_id" type="uuid"/>
+            <column name="title" type="varchar(120)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="description" type="varchar(300)"/>
+            <column name="current_version" type="int">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint baseTableName="pages" baseColumnNames="user_id"
+                referencedTableName="users" referencedColumnNames="id"
+                constraintName="fk_pages_user" onDelete="CASCADE"/>
+        <createIndex tableName="pages" indexName="idx_pages_place">
+            <column name="user_id"/>
+            <column name="host_id"/>
+            <column name="space"/>
+        </createIndex>
+        <createIndex tableName="pages" indexName="idx_pages_workspace">
+            <column name="user_id"/>
+            <column name="workspace_id"/>
+        </createIndex>
+
+        <createTable tableName="page_versions">
+            <column name="id" type="uuid">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="page_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="user_id" type="uuid">
+                <constraints nullable="false"/>
+            </column>
+            <column name="version" type="int">
+                <constraints nullable="false"/>
+            </column>
+            <column name="size_bytes" type="bigint">
+                <constraints nullable="false"/>
+            </column>
+            <column name="attachment_count" type="int">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="timestamp with time zone">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addForeignKeyConstraint baseTableName="page_versions" baseColumnNames="page_id"
+                referencedTableName="pages" referencedColumnNames="id"
+                constraintName="fk_page_versions_page" onDelete="CASCADE"/>
+        <addUniqueConstraint tableName="page_versions" columnNames="page_id, version"
+                constraintName="uk_page_versions_page_version"/>
+        <createIndex tableName="page_versions" indexName="idx_page_versions_user">
+            <column name="user_id"/>
+        </createIndex>
+        <rollback>
+            <dropTable tableName="page_versions"/>
+            <dropTable tableName="pages"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -73,6 +73,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/webhook/**").permitAll()
                         // Endpoints du flux OAuth2 login (actifs seulement si Google est configuré).
                         .requestMatchers("/oauth2/**", "/login/**").permitAll()
+                        // Les pages (F-109 / SF-109-01) : la SEULE route de lecture sans compte. Elle ne
+                        // sert que le contenu désigné par un jeton signé (ticket de l'écran) ou un lien
+                        // de partage, sous la politique d'origine opaque — et en GET seulement.
+                        .requestMatchers(HttpMethod.GET, "/p/**").permitAll()
                         .requestMatchers("/hello").permitAll()
                         .requestMatchers("/h2-console/**").permitAll()
                         .anyRequest().authenticated())

@@ -108,6 +108,15 @@ app:
     # l'accept de GET /api/file-formats. Aucune ligne de frontend à toucher.
     allowed-types: ${APP_UPLOAD_ALLOWED_TYPES:application/pdf,image/png,image/jpeg,image/gif,image/webp,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document}
     max-size: ${APP_UPLOAD_MAX_SIZE:32MB}
+  pages:
+    # Les pages (F-109, cadrage §3.3 et §7). Contenu dans le stockage objet de l'Atelier (préfixe `pages/`).
+    # 8 Mo par version pièces jointes comprises, 500 Mo par compte, 10 versions par page, 20 pièces jointes.
+    max-page-bytes: ${APP_PAGES_MAX_PAGE_BYTES:8388608}
+    max-account-bytes: ${APP_PAGES_MAX_ACCOUNT_BYTES:524288000}
+    max-versions: ${APP_PAGES_MAX_VERSIONS:10}
+    max-attachments: ${APP_PAGES_MAX_ATTACHMENTS:20}
+    # Durée du ticket de lecture d'une page dans l'écran (iframe) : court, il ne sert qu'à l'ouvrir.
+    ticket-ttl: ${APP_PAGES_TICKET_TTL:PT10M}
   atelier:
     # Atelier / Claude Code Lite (F-28). Stockage `in-memory` par défaut (dev/tests, sans S3) ;
     # `s3` en cluster (bucket applicatif). Garde-fous zip-bomb : total/nb-fichiers/taille-fichier.
