@@ -82,8 +82,9 @@ describe('VigieComponent', () => {
       ({ afterClosed: () => of(dialogResults.get(component)) })) as never);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     radar = jasmine.createSpyObj<RadarService>('RadarService',
-      ['brief', 'syncNow', 'cancelSync', 'threadRules', 'addThreadRule', 'removeThreadRule']);
+      ['brief', 'syncNow', 'cancelSync', 'threadRules', 'addThreadRule', 'removeThreadRule', 'board']);
     radar.brief.and.returnValue(of(emptyBrief));
+    radar.board.and.returnValue(of({ toDo: [], subjects: [], waiting: [] }));
     params$ = new BehaviorSubject(convertToParamMap(options.hostRef ? { hostRef: options.hostRef } : {}));
     query$ = new BehaviorSubject(convertToParamMap(options.tab ? { onglet: options.tab } : {}));
 
@@ -191,6 +192,7 @@ describe('VigieComponent', () => {
     expect(root.querySelector('.vigie__radar-empty')).toBeNull();
     expect(root.querySelector('app-radar-board')).not.toBeNull();
     expect(radar.brief).toHaveBeenCalledWith('h1');
+    expect(radar.board).toHaveBeenCalledWith('h1');
   });
 
   it("?onglet=personnes lit l'annuaire une fois ; vide, il dit comment il se remplit", () => {

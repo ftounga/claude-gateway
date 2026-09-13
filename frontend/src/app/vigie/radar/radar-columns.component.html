@@ -1,0 +1,148 @@
+<!-- LES TROIS COLONNES (F-102 / SF-102-02, maquette docs/features/F-99/maquette-radar.html) : ce que je dois,
+     les sujets, ce que j'attends. Sous 1020 px : sujets en premier sur toute la largeur ; sous 640 px : une colonne. -->
+@if (board(); as b) {
+  <div class="radar-columns">
+    <!-- À FAIRE PAR MOI -->
+    <section class="radar-columns__panel radar-columns__todo" aria-labelledby="radar-todo-title">
+      <header class="radar-columns__hd">
+        <h4 id="radar-todo-title">À faire par moi</h4>
+        <span class="radar-columns__n">{{ b.toDo.length }}</span>
+      </header>
+      @for (item of b.toDo; track item.commitment.id) {
+        <ng-container *ngTemplateOutlet="commitmentItem; context: { $implicit: item, waiting: false }"></ng-container>
+      } @empty {
+        <p class="radar-columns__empty">Rien à faire pour vous.</p>
+      }
+    </section>
+
+    <!-- SUJETS EN COURS -->
+    <section class="radar-columns__panel radar-columns__mid" aria-labelledby="radar-subjects-title">
+      <header class="radar-columns__hd">
+        <h4 id="radar-subjects-title">Sujets en cours</h4>
+        <span class="radar-columns__n">{{ b.subjects.length }}</span>
+        <span class="radar-columns__grow"></span>
+        <div class="radar-columns__order" role="group" aria-label="Ordre des sujets">
+          <button type="button" [class.radar-columns__order--on]="order() === 'recent'"
+                  [attr.aria-pressed]="order() === 'recent'" (click)="setOrder('recent')">Plus récents</button>
+          <button type="button" [class.radar-columns__order--on]="order() === 'attention'"
+                  [attr.aria-pressed]="order() === 'attention'" (click)="setOrder('attention')">À traiter d'abord</button>
+        </div>
+      </header>
+      @for (entry of subjects(); track entry.subject.id) {
+        <article class="radar-columns__subj" [attr.data-state]="entry.subject.state">
+          <a class="radar-columns__nm" [routerLink]="['/vigie', hostId(), 'sujets', entry.subject.id]">{{ entry.subject.name }}</a>
+          @if (subjectChip(entry); as chip) {
+            <span [class]="'badge radar-state radar-state--' + chip.tone">{{ chip.label }}</span>
+          }
+          @if (entry.subject.awake) {
+            <span class="radar-columns__ln">De nouveaux échanges parlent de ce sujet clos. <b>Rouvrir ?</b></span>
+          } @else if (entry.subject.state === 'CLOSE_PROPOSED') {
+            <span class="radar-columns__ln">{{ entry.line ? entry.line + ' ' : '' }}<b>Clôture proposée : clore ?</b></span>
+          } @else if (entry.line) {
+            <span class="radar-columns__ln">{{ entry.line }}</span>
+          }
+          <div class="radar-columns__ft">
+            <span>{{ sourcesLabel(entry) }}</span>
+            @if (since(entry.subject.lastActivityAt); as when) {
+              <span>· {{ when }}</span>
+            }
+            @if (entry.people.length > 0) {
+              <span class="radar-columns__people">· {{ entry.people.join(', ') }}</span>
+            }
+          </div>
+          <div class="radar-columns__acts">
+            @if (entry.subject.awake) {
+              <button mat-stroked-button type="button" class="radar-columns__reopen" [disabled]="busyId() !== null"
+                      (click)="reopen(entry)">Rouvrir</button>
+              <button mat-button type="button" class="radar-columns__keep-closed" [disabled]="busyId() !== null"
+                      (click)="dismissWake(entry)">Laisser clos</button>
+            } @else if (entry.subject.state === 'CLOSE_PROPOSED') {
+              <button mat-stroked-button type="button" class="radar-columns__confirm-close" [disabled]="busyId() !== null"
+                      (click)="confirmClosure(entry)">Clore</button>
+              <button mat-button type="button" class="radar-columns__reject-close" [disabled]="busyId() !== null"
+                      (click)="rejectClosure(entry)">Garder ouvert</button>
+            } @else if (isOpenWork(entry)) {
+              <button mat-button type="button" class="radar-columns__close" [disabled]="busyId() !== null"
+                      (click)="close(entry)">Clore</button>
+            }
+          </div>
+        </article>
+      } @empty {
+        <p class="radar-columns__empty">Aucun sujet suivi : ils apparaissent à la première synchro.</p>
+      }
+    </section>
+
+    <!-- J'ATTENDS DES AUTRES -->
+    <section class="radar-columns__panel radar-columns__waiting" aria-labelledby="radar-waiting-title">
+      <header class="radar-columns__hd">
+        <h4 id="radar-waiting-title">J'attends des autres</h4>
+        <span class="radar-columns__n">{{ b.waiting.length }}</span>
+      </header>
+      @for (item of b.waiting; track item.commitment.id) {
+        <ng-container *ngTemplateOutlet="commitmentItem; context: { $implicit: item, waiting: true }"></ng-container>
+      } @empty {
+        <p class="radar-columns__empty">Rien n'est attendu des autres.</p>
+      }
+    </section>
+  </div>
+} @else if (error()) {
+  <div class="radar-columns__error" role="alert">
+    <p>Les colonnes n'ont pas pu être lues.</p>
+    <button mat-stroked-button type="button" (click)="load()">Réessayer</button>
+  </div>
+} @else {
+  <div class="radar-columns__loading"><mat-spinner diameter="28"></mat-spinner></div>
+}
+
+<ng-template #commitmentItem let-item let-waiting="waiting">
+  <article class="radar-columns__item" [class.radar-columns__item--due]="item.due" [attr.data-id]="item.commitment.id">
+    <span class="radar-columns__t">
+      @if (waiting && people(item); as who) {
+        {{ who }} — {{ title(item) }}
+      } @else {
+        {{ title(item) }}
+      }
+    </span>
+    <div class="radar-columns__m">
+      <mat-icon class="radar-columns__src" [attr.aria-label]="sourceLabel(item.source)">{{ sourceIcon(item.source) }}</mat-icon>
+      <span>dans <a [routerLink]="['/vigie', hostId(), 'sujets', item.commitment.subjectId]">« {{ item.commitment.subjectName }} »</a></span>
+      @if (moment(item.sourceAt); as when) {
+        <span>· {{ when }}</span>
+      }
+      @if (!waiting && people(item); as who) {
+        <span>· {{ who }}</span>
+      }
+      @if (chip(item); as c) {
+        <span [class]="'badge radar-state radar-state--' + c.tone">{{ c.label }}</span>
+      }
+    </div>
+    <div class="radar-columns__acts">
+      @if (item.question) {
+        <button mat-stroked-button type="button" class="radar-columns__confirm" [disabled]="busyId() !== null"
+                (click)="commitment(item, 'CONFIRM')">{{ waiting ? "C'est bien attendu" : "C'est moi" }}</button>
+        <button mat-stroked-button type="button" class="radar-columns__not-mine" [disabled]="busyId() !== null"
+                (click)="commitment(item, 'NOT_MINE')">Pas moi</button>
+      } @else {
+        <button mat-stroked-button type="button" class="radar-columns__done" [disabled]="busyId() !== null"
+                (click)="commitment(item, 'DONE')">{{ waiting ? 'Reçu' : 'Fait' }}</button>
+        <button mat-stroked-button type="button" class="radar-columns__postpone" [disabled]="busyId() !== null"
+                [matMenuTriggerFor]="postponeMenu">Reporter</button>
+        <mat-menu #postponeMenu="matMenu">
+          @for (option of postponeChoices; track option.choice) {
+            <button mat-menu-item type="button" [attr.data-choice]="option.choice"
+                    (click)="postpone(item, option.choice)">{{ option.label }}</button>
+          }
+        </mat-menu>
+        @if (!waiting) {
+          <button mat-button type="button" class="radar-columns__not-mine" [disabled]="busyId() !== null"
+                  (click)="commitment(item, 'NOT_MINE')">Pas moi</button>
+        }
+      }
+      @if (item.deepLink) {
+        <a mat-button class="radar-columns__open" [href]="item.deepLink" target="_blank" rel="noopener noreferrer">
+          Ouvrir la source
+        </a>
+      }
+    </div>
+  </article>
+</ng-template>
