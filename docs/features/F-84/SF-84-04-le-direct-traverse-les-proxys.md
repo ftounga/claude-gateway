@@ -10,7 +10,7 @@
 
 ## Statut
 
-`in-progress`
+`done` — PR #525, mergée le 2026-09-13
 
 ## Date de création
 
@@ -120,15 +120,15 @@ issue (y compris les erreurs de pré-vol, où la boucle n'écrit rien).
 
 ## Critères d'acceptation
 
-- [ ] CA1 — `started` est le **premier** événement de tour publié par `POST /chat/stream`, avant tout appel à `chatStreaming`.
-- [ ] CA2 — `explore` et un outil `teams_*` publient une `action` avant leur exécution ; `set_plan` n'en publie pas ; les étapes existantes sont inchangées.
-- [ ] CA3 — `GET /chat/attach?waitMs=…` clôt la réponse après le premier événement de tour livré (rejeu ou direct), et au plus tard à l'échéance ; le spectateur est **détaché** du tour, qui continue.
-- [ ] CA4 — Sans `waitMs`, l'attache se comporte exactement comme avant (tests F-84 existants verts).
-- [ ] CA5 — **Reproduction du constat** : flux `POST /chat/stream` retenu (aucun octet), le terminal affiche l'étape `bash` reçue par fenêtre — test rouge avant correctif, vert après.
-- [ ] CA6 — Un événement reçu deux fois (fenêtre puis flux d'origine relâché) n'est appliqué qu'une fois.
-- [ ] CA7 — La ligne vivante dit « demande reçue — Claude réfléchit… » après `started` et avant la première étape ; « démarrage… » avant `started`.
-- [ ] CA8 — Isolation : une fenêtre ouverte par un autre utilisateur ne voit pas le tour (`idle`).
-- [ ] CA9 — Journal : toute clôture de flux de tour écrit `Flux de tour clos (…, issue=…)` (done, code d'erreur ou `echec_fatal`) ; remplacer un tour encore vivant écrit un avertissement ; aucune donnée de message.
+- [x] CA1 — `started` est le **premier** événement de tour publié par `POST /chat/stream`, avant tout appel à `chatStreaming`.
+- [x] CA2 — `explore` et un outil `teams_*` publient une `action` avant leur exécution ; `set_plan` n'en publie pas ; les étapes existantes sont inchangées.
+- [x] CA3 — `GET /chat/attach?waitMs=…` clôt la réponse après le premier événement de tour livré (rejeu ou direct), et au plus tard à l'échéance ; le spectateur est **détaché** du tour, qui continue.
+- [x] CA4 — Sans `waitMs`, l'attache se comporte exactement comme avant (tests F-84 existants verts).
+- [x] CA5 — **Reproduction du constat** : flux `POST /chat/stream` retenu (aucun octet), le terminal affiche l'étape `bash` reçue par fenêtre — test rouge avant correctif, vert après.
+- [x] CA6 — Un événement reçu deux fois (fenêtre puis flux d'origine relâché) n'est appliqué qu'une fois.
+- [x] CA7 — La ligne vivante dit « demande reçue — Claude réfléchit… » après `started` et avant la première étape ; « démarrage… » avant `started`.
+- [x] CA8 — Isolation : une fenêtre ouverte par un autre utilisateur ne voit pas le tour (`idle`).
+- [x] CA9 — Journal : toute clôture de flux de tour écrit `Flux de tour clos (…, issue=…)` (done, code d'erreur ou `echec_fatal`) ; remplacer un tour encore vivant écrit un avertissement ; aucune donnée de message.
 
 ---
 
