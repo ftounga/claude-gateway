@@ -188,7 +188,11 @@ Second adaptateur, **même doctrine que F-87** : lire ce que le navigateur reço
 
 ## 11. Le droit et le prix
 
-**Recommandation, demandée par le PO : une option « Radar » à part**, qui **suppose l'option Teams**.
+**Tranché par le PO le 2026-09-13 : une option « Radar » à part**, qui **suppose l'option Teams**, et
+**un essai de deux semaines** par code d'accès pour mesurer le coût réel avant de fixer le montant.
+Le code d'essai ouvre **Teams et Radar ensemble**, avec une enveloppe d'essai (F-62 à étendre en
+F-99). **Unité recommandée : le client suivi** (un poste synchronisé), le coût croissant avec le
+nombre de clients, pas avec le nombre de questions.
 
 - **Profil de coût différent** : Teams consomme **quand on pose une question** ; le Radar consomme
   **tous les soirs**, même quand personne ne s'en sert. L'inclure dans Teams ferait payer la synchro à
