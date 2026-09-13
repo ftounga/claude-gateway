@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-99 / SF-99-05 — LA PURGE ET L'EXPORT.
+
+      `radar_purges` : la TRACE d'une purge du Radar d'un poste — raison, instant, nombre de sujets et
+      de preuves supprimés. AUCUN CONTENU : c'est la preuve qu'on a effacé, pas une copie de ce qui
+      l'a été. Supprimée avec le compte.
+    -->
+
+    <changeSet id="085-radar-purges-postgresql" author="claude-gateway" dbms="postgresql">
+        <createTable tableName="radar_purges">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="reason" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="purged_at" type="timestamptz"><constraints nullable="false"/></column>
+            <column name="subjects_count" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="evidence_count" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_purges" indexName="idx_radar_purges_scope">
+            <column name="user_id"/>
+            <column name="host_id"/>
+        </createIndex>
+        <rollback><dropTable tableName="radar_purges"/></rollback>
+    </changeSet>
+
+    <changeSet id="085-radar-purges-h2" author="claude-gateway" dbms="h2">
+        <createTable tableName="radar_purges">
+            <column name="id" type="uuid"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="user_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="host_id" type="uuid"><constraints nullable="false"/></column>
+            <column name="reason" type="varchar(24)"><constraints nullable="false"/></column>
+            <column name="purged_at" type="timestamp with time zone"><constraints nullable="false"/></column>
+            <column name="subjects_count" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="evidence_count" type="int" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="radar_purges" indexName="idx_radar_purges_scope">
+            <column name="user_id"/>
+            <column name="host_id"/>
+        </createIndex>
+        <rollback><dropTable tableName="radar_purges"/></rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -89,6 +89,8 @@ class AccountServiceTest {
     private fr.claudegateway.rag.ChunkRepository chunkRepository;
     @Mock
     private fr.claudegateway.chat.MessageLibraryDocumentRepository messageLibraryDocumentRepository;
+    @Mock
+    private fr.claudegateway.radar.RadarPurgeService radarPurgeService;
 
     private AccountService service() {
         return new AccountService(userService, subscriptionRepository, usageCounterRepository,
@@ -98,7 +100,7 @@ class AccountServiceTest {
                 liveTerminalRepository,
                 workspaceRepository, workspaceService,
                 atelierMessageRepository,
-                documentRepository, chunkRepository, messageLibraryDocumentRepository);
+                documentRepository, chunkRepository, messageLibraryDocumentRepository, radarPurgeService);
     }
 
     private User user(UUID id) {
@@ -201,5 +203,7 @@ class AccountServiceTest {
         order.verify(atelierMessageRepository).deleteByUserId(userId);
         order.verify(userService).deleteById(userId);
         verify(userService).findByIdOrThrow(any());
+        // Le Radar (F-99 / SF-99-05) : extraits de communications et données de tiers, purgés avec le compte.
+        verify(radarPurgeService).purgeUser(userId);
     }
 }

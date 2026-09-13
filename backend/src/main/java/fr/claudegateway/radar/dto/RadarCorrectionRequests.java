@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.UUID;
 
 import fr.claudegateway.radar.RadarCorrectionAction;
+import fr.claudegateway.radar.RadarPurgeReason;
 import fr.claudegateway.radar.RadarSubjectState;
 import jakarta.validation.constraints.NotNull;
 
@@ -29,6 +30,10 @@ public final class RadarCorrectionRequests {
 
     /** Un alias dit par l'utilisateur (SF-99-03). */
     public record AliasRequest(String alias) {
+    }
+
+    /** Purge du Radar d'un poste : la raison et une confirmation explicite (SF-99-05). */
+    public record PurgeRequest(RadarPurgeReason reason, Boolean confirm) {
     }
 
     /** Correction d'un engagement : {@code dueDate} n'est lue que pour {@code POSTPONE}. */
