@@ -38,6 +38,15 @@ final class RelayGestureRequests {
         }
     }
 
+    /** Trame de commande pour le runner d'un poste (F-111 / SF-111-04). */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    record ControlRequest(UUID hostId, String frame) {
+
+        boolean isValid() {
+            return hostId != null && frame != null && !frame.isBlank() && frame.length() <= 8192;
+        }
+    }
+
     /** Décision de la porte de confirmation (contrat §5). */
     @JsonIgnoreProperties(ignoreUnknown = true)
     record ConfirmRequest(UUID userId, UUID workspaceId, String callId, Boolean allow,

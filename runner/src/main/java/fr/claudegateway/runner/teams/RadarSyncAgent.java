@@ -50,6 +50,9 @@ public final class RadarSyncAgent {
         this.executor = executor;
         this.ticker = ticker;
         this.say = say == null ? line -> { } : say;
+        // F-111 / SF-111-04 : une mise à jour du runner attend la fin d'une synchro du Radar.
+        fr.claudegateway.runner.RunnerActivity.probe(fr.claudegateway.runner.RunnerActivity.SYNC,
+                () -> runningSyncId() != null);
     }
 
     /** Ce que le runner répond à la gateway. */

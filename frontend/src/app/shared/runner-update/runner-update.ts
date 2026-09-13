@@ -1,4 +1,4 @@
-import { RunnerUpdateView } from '../../core/models/atelier.models';
+import { RunnerHostOverview, RunnerUpdateProgress, RunnerUpdateView } from '../../core/models/atelier.models';
 import { RunnerHostPlatform } from '../../atelier/runner/runner-pairing-dialog.component';
 
 /**
@@ -82,6 +82,69 @@ export function manualUpdateText(update: RunnerUpdateView): string {
     + 'la nouvelle version avec la commande ci-dessous à la place de l’ancienne, puis relancez-le avec '
     + 'la même commande qu’avant — le jeton du poste est conservé, aucun nouveau code n’est demandé. '
     + 'C’est la dernière fois : ensuite, le runner se met à jour d’un clic depuis cet écran.';
+}
+
+/** Une ligne d'état de la mise à jour en cours ou récente (F-111 / SF-111-04). */
+export interface ProgressLine {
+  text: string;
+  tone: 'info' | 'warning' | 'success' | 'error';
+  /** En attente de la fin des activités : « Forcer » a un sens. */
+  waiting: boolean;
+  /** En cours : aucun nouveau clic « Mettre à jour ». */
+  active: boolean;
+}
+
+/** Durée pendant laquelle le résultat d'une mise à jour reste affiché. */
+export const RESULT_VISIBLE_MS = 24 * 60 * 60 * 1000;
+
+/** Ce que l'en-tête dit de la dernière mise à jour, ou `null` quand il n'y a rien à dire. */
+export function progressLine(progress: RunnerUpdateProgress | null | undefined, now = Date.now()): ProgressLine | null {
+  if (!progress) {
+    return null;
+  }
+  const target = semantic(progress.toVersion) ?? progress.toVersion;
+  if (progress.active) {
+    switch (progress.state) {
+      case 'WAITING':
+        return {
+          text: `Mise à jour vers ${target} prête : en attente de la fin ${progress.detail ? `(${progress.detail} en cours)` : 'des activités en cours'}`,
+          tone: 'warning', waiting: true, active: true,
+        };
+      case 'RESTARTING':
+        return { text: `Mise à jour en cours — redémarrage en ${target}`, tone: 'info', waiting: false, active: true };
+      default:
+        return { text: `Mise à jour vers ${target} : téléchargement et vérification…`, tone: 'info', waiting: false, active: true };
+    }
+  }
+  const finished = progress.finishedAt ? Date.parse(progress.finishedAt) : NaN;
+  if (Number.isNaN(finished) || now - finished > RESULT_VISIBLE_MS) {
+    return null;
+  }
+  switch (progress.state) {
+    case 'SUCCEEDED':
+      return { text: `Mise à jour vers ${target} réussie`, tone: 'success', waiting: false, active: false };
+    case 'ROLLED_BACK':
+      return {
+        text: `Mise à jour vers ${target} échouée, retour à la version précédente${progress.detail ? ` : ${progress.detail}` : ''}`,
+        tone: 'error', waiting: false, active: false,
+      };
+    case 'FAILED':
+      return {
+        text: `Mise à jour vers ${target} échouée${progress.detail ? ` : ${progress.detail}` : ''}`,
+        tone: 'error', waiting: false, active: false,
+      };
+    default:
+      return null;
+  }
+}
+
+/**
+ * « Mise à jour en cours » au lieu de « Hors ligne » (F-111 / SF-111-04) : pendant la bascule, le runner
+ * se déconnecte quelques secondes — ce n'est pas une panne, et l'écran ne doit pas le faire croire.
+ */
+export function updatingPresence(host: RunnerHostOverview, online: boolean): string | null {
+  const progress = host.runnerUpdate?.progress;
+  return !online && progress?.active ? 'Mise à jour en cours' : null;
 }
 
 function semantic(version: string | null | undefined): string | null {

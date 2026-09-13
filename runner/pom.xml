@@ -30,7 +30,7 @@
         -->
         <runner.commit>local</runner.commit>
         <!-- Niveau de contrat runner ↔ gateway (égal à RunnerBuild.CONTRACT, vérifié par un test). -->
-        <runner.contract>1</runner.contract>
+        <runner.contract>2</runner.contract>
         <maven.build.timestamp.format>yyyyMMddHHmm</maven.build.timestamp.format>
         <runner.build.stamp>${maven.build.timestamp}</runner.build.stamp>
     </properties>

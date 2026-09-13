@@ -153,7 +153,7 @@
                   }
                   <!-- LE RUNNER DU CLIENT (F-111 / SF-111-01) : sa version réelle, et la mise à jour quand il y a lieu. -->
                   @if (host.runnerVersion) {
-                    <app-runner-update-notice class="poste__fact" [host]="host"></app-runner-update-notice>
+                    <app-runner-update-notice class="poste__fact" [host]="host" [online]="online(host)"></app-runner-update-notice>
                   }
                   <!-- LA LIAISON TEAMS (F-87, §14), déménagée de la Forge : une fenêtre sur un état, sans
                        action ; rien quand il n'y a rien à dire. -->

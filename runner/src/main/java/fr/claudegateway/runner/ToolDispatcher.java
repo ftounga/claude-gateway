@@ -82,6 +82,8 @@ public final class ToolDispatcher implements AutoCloseable {
             thread.setDaemon(true);
             return thread;
         });
+        // F-111 / SF-111-04 : une mise à jour attend qu'aucun appel d'outil ne soit en vol.
+        RunnerActivity.probe(RunnerActivity.COMMAND, () -> !inFlight.isEmpty());
     }
 
     /**

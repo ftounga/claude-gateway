@@ -158,6 +158,14 @@ public final class LocalToolchain {
 
     /** Étape 3, et seulement alors. */
     private Path download(LocalTool tool) {
+        // F-111 / SF-111-04 : une mise à jour du runner attend la fin d'un rapatriement d'outil.
+        try (fr.claudegateway.runner.RunnerActivity.Scope ignored =
+                fr.claudegateway.runner.RunnerActivity.begin(fr.claudegateway.runner.RunnerActivity.DOWNLOAD)) {
+            return downloadNow(tool);
+        }
+    }
+
+    private Path downloadNow(LocalTool tool) {
         String url = tool.downloadFor(os);
         if (url.isEmpty()) {
             throw new ToolchainUnavailableException(

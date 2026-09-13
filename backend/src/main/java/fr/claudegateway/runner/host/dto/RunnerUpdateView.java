@@ -2,6 +2,8 @@ package fr.claudegateway.runner.host.dto;
 
 import java.util.List;
 
+import fr.claudegateway.runner.update.RunnerUpdateProgress;
+
 /**
  * Où en est le runner d'un poste par rapport à celui que la gateway distribue (F-111 / SF-111-01).
  *
@@ -22,6 +24,9 @@ import java.util.List;
  * @param notes            ce qu'apporte la version servie (liste courte), vide si inconnue
  * @param updatable        vrai si la gateway sert une version <b>signée</b> de ce runner (F-111 /
  *                         SF-111-03) : sans elle, aucune mise à jour d'un clic n'est possible
+ * @param oneClick         vrai si le bouton « Mettre à jour » a un sens (F-111 / SF-111-04) : disponible,
+ *                         signée, et runner qui comprend la commande ({@code contract >= 2})
+ * @param progress         la dernière mise à jour de ce poste (F-111 / SF-111-04), ou {@code null}
  */
 public record RunnerUpdateView(
         String status,
@@ -34,7 +39,9 @@ public record RunnerUpdateView(
         int requiredJava,
         boolean teamsMissing,
         List<String> notes,
-        boolean updatable) {
+        boolean updatable,
+        boolean oneClick,
+        RunnerUpdateProgress progress) {
 
     /** Les statuts possibles. */
     public enum Status {
@@ -67,7 +74,19 @@ public record RunnerUpdateView(
     public RunnerUpdateView withTeamsUse(boolean usesTeams) {
         boolean nowRequired = required || (usesTeams && teamsMissing && older());
         return nowRequired == required ? this
-                : new RunnerUpdateView(status, true, installedVersion, installedId, servedVersion,
-                        servedId, installedJava, requiredJava, teamsMissing, notes, updatable);
+                : new RunnerUpdateView(status, true, installedVersion, installedId, servedVersion, servedId,
+                        installedJava, requiredJava, teamsMissing, notes, updatable, oneClick, progress);
+    }
+
+    /** La même vue avec ce que disent les artefacts servis (F-111 / SF-111-03, SF-111-04). */
+    public RunnerUpdateView withArtifacts(List<String> newNotes, boolean newUpdatable, boolean newOneClick) {
+        return new RunnerUpdateView(status, required, installedVersion, installedId, servedVersion, servedId,
+                installedJava, requiredJava, teamsMissing, newNotes, newUpdatable, newOneClick, progress);
+    }
+
+    /** La même vue avec la dernière mise à jour du poste (F-111 / SF-111-04). */
+    public RunnerUpdateView withProgress(RunnerUpdateProgress newProgress) {
+        return new RunnerUpdateView(status, required, installedVersion, installedId, servedVersion, servedId,
+                installedJava, requiredJava, teamsMissing, notes, updatable, oneClick, newProgress);
     }
 }

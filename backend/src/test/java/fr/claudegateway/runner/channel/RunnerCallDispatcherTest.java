@@ -403,6 +403,54 @@ class RunnerCallDispatcherTest {
                 .containsExactly(java.util.Map.entry(hostId, "0.0.1"));
     }
 
+    // -------------------------------------------- mise à jour du runner (F-111 / SF-111-04)
+
+    @Test
+    void aControlFrameIsHandedToTheLocalChannelWhateverItsTransport() throws Exception {
+        java.util.List<String> sent = new java.util.ArrayList<>();
+        java.util.concurrent.atomic.AtomicBoolean open = new java.util.concurrent.atomic.AtomicBoolean(true);
+        dispatcher.attachChannel(identity, new RunnerOutbound() {
+            @Override
+            public void send(String frame) {
+                sent.add(frame);
+            }
+
+            @Override
+            public boolean isOpen() {
+                return open.get();
+            }
+
+            @Override
+            public void close() {
+            }
+        });
+
+        assertThat(dispatcher.sendControl(hostId, "{\"type\":\"update\"}")).isTrue();
+        assertThat(sent).containsExactly("{\"type\":\"update\"}");
+        assertThat(dispatcher.sendControl(UUID.randomUUID(), "{}")).as("aucun canal local : à diffuser").isFalse();
+        open.set(false);
+        assertThat(dispatcher.sendControl(hostId, "{}")).as("canal fermé").isFalse();
+    }
+
+    @Test
+    void updateFramesArePublishedWithTheSessionIdentity() throws Exception {
+        java.util.List<Object> events = new java.util.ArrayList<>();
+        dispatcher.setApplicationEventPublisher(events::add);
+
+        dispatcher.onFrame(identity, "update_status", objectMapper.readTree(
+                "{\"type\":\"update_status\",\"state\":\"waiting\",\"hostId\":\"" + UUID.randomUUID() + "\"}"));
+        dispatcher.onFrame(identity, "ready", objectMapper.readTree(
+                "{\"type\":\"ready\",\"runnerVersion\":\"1.1.0-202609200900-bbb\",\"capabilities\":[\"files\"]}"));
+
+        assertThat(events).hasSize(2);
+        RunnerUpdateFrameEvent status = (RunnerUpdateFrameEvent) events.get(0);
+        assertThat(status.hostId()).isEqualTo(hostId);
+        assertThat(status.type()).isEqualTo("update_status");
+        RunnerUpdateFrameEvent ready = (RunnerUpdateFrameEvent) events.get(1);
+        assertThat(ready.type()).isEqualTo("ready");
+        assertThat(ready.declaration().version()).isEqualTo("1.1.0-202609200900-bbb");
+    }
+
     @Test
     void handsTheCompleteDeclarationToTheRecorder() throws Exception {
         // F-111 / SF-111-01 : contrat, Java, lanceur et capacités voyagent avec la version.

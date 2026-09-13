@@ -68,6 +68,23 @@ describe('ForgeRailComponent', () => {
     expect(rows(root)[1].querySelector('.forge-rail__update')).toBeNull();
   });
 
+  it('écrit « Mise à jour en cours » et non « Hors ligne » pendant la bascule (F-111 / SF-111-04)', () => {
+    const update = {
+      status: 'AVAILABLE' as const, required: false, installedVersion: '1.0.0', installedId: '1.0.0',
+      servedVersion: '1.1.0', servedId: '1.1.0', installedJava: 21, requiredJava: 21, teamsMissing: false,
+      notes: [], progress: {
+        id: 'u1', state: 'RESTARTING' as const, fromVersion: '1.0.0', toVersion: '1.1.0', detail: null,
+        forced: false, requestedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        finishedAt: null, active: true,
+      },
+    };
+    const root = render(groupHosts([host('h1', 'FREE', { connected: false, runnerUpdate: update })],
+      (h) => h.connected, ''));
+
+    expect(rows(root)[0].textContent).toContain('Mise à jour en cours');
+    expect(rows(root)[0].textContent).not.toContain('Hors ligne');
+  });
+
   it('écrit « Jamais connecté » pour un poste qui n’a jamais battu', () => {
     const root = render(groupHosts([host('h9', 'Richemont', { connected: false, lastSeenAt: null })],
       (h) => h.connected, ''));

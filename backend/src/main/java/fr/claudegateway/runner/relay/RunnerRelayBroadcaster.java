@@ -43,6 +43,7 @@ public class RunnerRelayBroadcaster {
     static final String CONFIRM_PATH = "/api/internal/runner/confirm";
     static final String INTERRUPT_PATH = "/api/internal/atelier/interrupt";
     static final String SESSION_INTERRUPT_PATH = "/api/internal/atelier/session-interrupt";
+    static final String CONTROL_PATH = "/api/internal/runner/control";
 
     private static final Logger log = LoggerFactory.getLogger(RunnerRelayBroadcaster.class);
     /** Exécuteur borné : une diffusion ne doit jamais pouvoir consommer le pool de requêtes. */
@@ -97,6 +98,20 @@ public class RunnerRelayBroadcaster {
         payload.put("workspaceId", workspaceId.toString());
         payload.put("reason", reason);
         broadcast(INTERRUPT_PATH, payload.toString());
+    }
+
+    /**
+     * Diffuse une <b>trame de commande</b> pour le runner d'un poste (F-111 / SF-111-04 : {@code update}) :
+     * le pod qui porte son canal la remet, les autres répondent « rien à faire ».
+     *
+     * @return vrai si un pair l'a remise
+     */
+    public boolean broadcastControl(UUID hostId, String frame) {
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("hostId", hostId.toString());
+        payload.put("frame", frame);
+        return broadcast(CONTROL_PATH, payload.toString()).stream()
+                .anyMatch(node -> node.path("delivered").asBoolean(false));
     }
 
     /** Diffuse la pose ou le retrait d'une marque d'interruption de session (F-32, contrat §6). */

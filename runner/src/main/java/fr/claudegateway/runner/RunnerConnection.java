@@ -44,6 +44,8 @@ public final class RunnerConnection {
     private final TransportFallbackPolicy fallbackPolicy;
     /** Ce qui a été tenté et pourquoi ça a échoué (F-82 / SF-82-03) — il ne décide de rien. */
     private final TransportJournal journal;
+    /** La mise à jour du runner (F-111 / SF-111-04) ; nulle hors de RunnerMain (tests). */
+    private volatile fr.claudegateway.runner.update.RunnerUpdater updater;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private volatile boolean fellBackToPolling;
     private volatile WebSocket webSocket;
@@ -106,7 +108,7 @@ public final class RunnerConnection {
         // Meme montage d'outils que le repli long-polling : les deux transports ne doivent
         // jamais dependre du transport (SF-38-09).
         dispatcher = ToolStack.create(config, console, sender).dispatcher();
-        router = new FrameRouter(dispatcher, console);
+        router = new FrameRouter(dispatcher, console, this::onUpdate);
         URI uri = config.webSocketUri(token);
         String target = safeUri(uri);
         console.info("Cible WebSocket : " + target);
@@ -207,6 +209,11 @@ public final class RunnerConnection {
         sender.attach(frame -> ws.sendText(frame, true));
         // F-111 : la version réelle, et la présence du lanceur (SF-111-02) — sans lui, aucune mise à
         // jour d'un clic.
+        // F-111 / SF-111-04 : les nouvelles de la mise à jour partent par le transport du moment.
+        fr.claudegateway.runner.update.RunnerUpdater currentUpdater = this.updater;
+        if (currentUpdater != null) {
+            currentUpdater.attach(sender);
+        }
         sender.send(dispatcher.readyFrame(RunnerBuild.current(),
                 fr.claudegateway.runner.launcher.LauncherWatch.underLauncher(System.getenv())));
         startHeartbeat();
@@ -243,6 +250,23 @@ public final class RunnerConnection {
         FrameSender currentSender = this.sender;
         if (currentSender != null) {
             currentSender.close();
+        }
+    }
+
+    /** La mise à jour branchée sur ce transport, pour la reporter sur le repli (F-111 / SF-111-04). */
+    public fr.claudegateway.runner.update.RunnerUpdater updater() {
+        return updater;
+    }
+
+    /** Branche la mise à jour du runner (F-111 / SF-111-04) sur ce transport. */
+    public void withUpdater(fr.claudegateway.runner.update.RunnerUpdater value) {
+        this.updater = value;
+    }
+
+    private void onUpdate(com.fasterxml.jackson.databind.JsonNode frame) {
+        fr.claudegateway.runner.update.RunnerUpdater current = this.updater;
+        if (current != null) {
+            current.onUpdate(frame);
         }
     }
 

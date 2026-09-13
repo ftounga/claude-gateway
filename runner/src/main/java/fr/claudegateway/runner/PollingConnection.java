@@ -32,6 +32,8 @@ public final class PollingConnection {
     private final AtomicBoolean running = new AtomicBoolean(false);
     /** Ce qui a été tenté et pourquoi ça a échoué (F-82 / SF-82-03) — il ne décide de rien. */
     private final TransportJournal journal;
+    /** La mise à jour du runner (F-111 / SF-111-04) ; nulle hors de RunnerMain (tests). */
+    private volatile fr.claudegateway.runner.update.RunnerUpdater updater;
 
     private FrameSender sender;
     private ToolDispatcher dispatcher;
@@ -61,7 +63,7 @@ public final class PollingConnection {
         running.set(true);
         sender = new FrameSender(console);
         dispatcher = ToolStack.create(config, console, sender).dispatcher();
-        FrameRouter router = new FrameRouter(dispatcher, console);
+        FrameRouter router = new FrameRouter(dispatcher, console, this::onUpdate);
 
         // Chaque trame sortante est un POST : la file mono-thread de FrameSender garantit qu'elles
         // partent dans l'ordre, exactement comme sur la socket.
@@ -79,6 +81,11 @@ public final class PollingConnection {
         journal.attempted(TransportJournal.Transport.POLLING, config.pollUrl());
         // F-111 : la version réelle, et la présence du lanceur (SF-111-02) — sans lui, aucune mise à
         // jour d'un clic.
+        // F-111 / SF-111-04 : les nouvelles de la mise à jour partent par le transport du moment.
+        fr.claudegateway.runner.update.RunnerUpdater currentUpdater = this.updater;
+        if (currentUpdater != null) {
+            currentUpdater.attach(sender);
+        }
         sender.send(dispatcher.readyFrame(RunnerBuild.current(),
                 fr.claudegateway.runner.launcher.LauncherWatch.underLauncher(System.getenv())));
 
@@ -128,6 +135,18 @@ public final class PollingConnection {
             for (String frame : frames) {
                 router.route(frame);
             }
+        }
+    }
+
+    /** Branche la mise à jour du runner (F-111 / SF-111-04) sur ce transport. */
+    public void withUpdater(fr.claudegateway.runner.update.RunnerUpdater value) {
+        this.updater = value;
+    }
+
+    private void onUpdate(com.fasterxml.jackson.databind.JsonNode frame) {
+        fr.claudegateway.runner.update.RunnerUpdater current = this.updater;
+        if (current != null) {
+            current.onUpdate(frame);
         }
     }
 

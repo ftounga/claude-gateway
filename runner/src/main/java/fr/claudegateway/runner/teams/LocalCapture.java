@@ -98,6 +98,9 @@ public final class LocalCapture {
         this.clock = clock == null ? Instant::now : clock;
         this.say = say == null ? message -> { } : say;
         this.display = display == null ? () -> "" : display;
+        // F-111 / SF-111-04 : une mise à jour du runner n'interrompt pas un enregistrement en cours.
+        fr.claudegateway.runner.RunnerActivity.probe(fr.claudegateway.runner.RunnerActivity.CAPTURE,
+                () -> live != null);
     }
 
     /**
