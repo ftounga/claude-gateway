@@ -54,7 +54,19 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
     public record Block(String tool, String command, String toolUseId, String threadId,
             String output, boolean hasOutput, boolean error, boolean expanded,
             fr.claudegateway.teams.block.TeamsBlockCard card,
-            fr.claudegateway.mail.ClientMailReceipt email) {
+            fr.claudegateway.mail.ClientMailReceipt email,
+            fr.claudegateway.pages.PageBlock page) {
+
+        /**
+         * Forme d'avant F-109 : aucune page. Le bloc « Page publiée » (F-109 / SF-109-03) n'est porté que par
+         * l'appel {@code page_publish} qui a rangé une page.
+         */
+        public Block(String tool, String command, String toolUseId, String threadId, String output,
+                boolean hasOutput, boolean error, boolean expanded,
+                fr.claudegateway.teams.block.TeamsBlockCard card,
+                fr.claudegateway.mail.ClientMailReceipt email) {
+            this(tool, command, toolUseId, threadId, output, hasOutput, error, expanded, card, email, null);
+        }
 
         /**
          * Forme d'avant F-110 : aucun courriel. Le bloc « Courriel envoyé » (F-110 / SF-110-02) n'est porté que
@@ -63,7 +75,7 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
         public Block(String tool, String command, String toolUseId, String threadId, String output,
                 boolean hasOutput, boolean error, boolean expanded,
                 fr.claudegateway.teams.block.TeamsBlockCard card) {
-            this(tool, command, toolUseId, threadId, output, hasOutput, error, expanded, card, null);
+            this(tool, command, toolUseId, threadId, output, hasOutput, error, expanded, card, null, null);
         }
 
         /**
@@ -76,7 +88,7 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
          */
         public Block(String tool, String command, String toolUseId, String threadId, String output,
                 boolean hasOutput, boolean error, boolean expanded) {
-            this(tool, command, toolUseId, threadId, output, hasOutput, error, expanded, null, null);
+            this(tool, command, toolUseId, threadId, output, hasOutput, error, expanded, null, null, null);
         }
     }
 
@@ -143,7 +155,9 @@ public record AtelierTurnReport(List<Object> blocks, int omittedBlocks, long inp
                 // disparaître un compte rendu entier pour cause de sortie trop longue.
                 block.card(),
                 // Le reçu d'un courriel (F-110 / SF-110-02) survit au bornage pour la même raison.
-                block.email());
+                block.email(),
+                // La page publiée (F-109 / SF-109-03) aussi : ce n'est pas du texte.
+                block.page());
     }
 
     /**

@@ -481,7 +481,8 @@ machine a répondu » — ce qui serait faux.
 ### Règles d'emploi — non négociables
 
 - **Un terminal de projet reste textuel pour toujours.** Une sortie de commande est exactement ce que
-  la machine a répondu, jamais une carte. Les blocs riches n'existent que dans le terminal Teams —
+  la machine a répondu, jamais une carte. *(Amendé par F-109, §18 : le bloc « Page publiée », document
+  rendu par l'agent et non sortie de commande, est admis dans tous les terminaux.)* Les blocs riches n'existent que dans le terminal Teams —
   et un bloc qui y arriverait malgré tout est rendu **en texte**, jamais masqué : masquer ferait
   disparaître une information sans le dire. Trois verrous le tiennent (deux côté gateway, un ici),
   chacun sous test.
@@ -688,6 +689,40 @@ poste ouvert.
 - **Téléphone** : sous 860 px, résumé puis couverture empilés ; sous 1020 px, deux colonnes, *Sujets en cours*
   en premier sur toute la largeur ; sous 640 px, une colonne, *À faire par moi* d'abord ; les gestes passent
   à la ligne, jamais de défilement horizontal.
+
+---
+
+## 18 — La page publiée (ajout F-109 / SF-109-03, 2026-09-13)
+
+> **Amendement à §15, tranché le 2026-09-13** (le PO a délégué le choix) : *les sorties de commande
+> restent textuelles pour toujours* ; une **page publiée** n'est pas une sortie de commande, c'est un
+> **document rendu par l'agent** — son bloc est **admis dans tous les terminaux** (projet, poste, Teams,
+> tuile). Les cartes, moments et listes de §15 restent, eux, propres au terminal Teams.
+
+**Aucune couleur nouvelle.**
+
+| Élément | Registre | Palette |
+|---|---|---|
+| Le bloc « Page publiée — titre » | surface de carte, comme §15 | `--cg-surface`, encre `--cg-text-primary` |
+| Titre du bloc | Space Grotesk 600, 18 px | — |
+| Version, « privée » | 12 px | `--cg-text-secondary` |
+| Vignette | la page réduite au quart (320 × 200), filet | `--cg-divider`, fond `--cg-bg` |
+| *Ouvrir* | `mat-flat-button color="primary"` | — |
+| *Plein écran* | `mat-stroked-button` | — |
+| Panneau à droite | surface, filet gauche, ombre du header | `--cg-surface`, `--cg-divider` |
+
+### Règles d'emploi — non négociables
+
+- **Une page ne s'affiche que dans le bac à sable** : `iframe sandbox="allow-scripts allow-popups"`, jamais
+  `allow-same-origin`, `allow-forms` ni `allow-top-navigation`. **Un seul composant** la produit
+  (`app-page-frame`) ; aucune autre `iframe` de page n'est admise.
+- **La vignette est inerte** : ni focus, ni clic, ni lecteur d'écran — le geste est sur les boutons.
+- **Ouvrir est un état d'écran** (panneau à droite, Échap ferme), **Plein écran un nouvel onglet** : le tour
+  vit dans le flux du terminal, le quitter le tuerait.
+- **En lecture seule, la vignette sans boutons** (§13) : on n'agit pas depuis une tuile.
+- **Une page illisible le dit** (« Aperçu indisponible ») : le bloc ne disparaît pas.
+- **Ce qui est dans la page n'est pas la charte de l'application** : la page suit la charte du client ou du
+  projet (guide de conception de l'agent) ; ce qui l'entoure suit celle-ci.
 
 ---
 

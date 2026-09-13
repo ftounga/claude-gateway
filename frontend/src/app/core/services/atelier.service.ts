@@ -50,6 +50,7 @@ import {
   AtelierPlanStep,
   AtelierTeamsCard,
   AtelierTerminalEmail,
+  AtelierTerminalPage,
   TeamsAccess,
 } from '../models/atelier.models';
 
@@ -482,6 +483,8 @@ export class AtelierService {
       card?: AtelierTeamsCard;
       /** Reçu d'un courriel mis en file (F-110 / SF-110-02). */
       email?: AtelierTerminalEmail;
+      /** Page publiée par l'agent (F-109 / SF-109-03). */
+      page?: AtelierTerminalPage;
       /** Rebranchement sur un tour en cours (F-84 / SF-84-02). */
       turnId?: string | null;
       cursor?: number;
@@ -562,6 +565,11 @@ export class AtelierService {
       // Un bloc sans carte est ignoré plutôt que rendu vide — mieux vaut rien qu'un cadre creux.
       if (payload.card) {
         handlers.onCard?.({ toolUseId: payload.toolUseId ?? '', card: payload.card });
+      }
+    } else if (event === 'page') {
+      // Une PAGE publiée (F-109 / SF-109-03) : le bloc « Page publiée ». Sans page, rien — pas de bloc creux.
+      if (payload.page?.pageId) {
+        handlers.onPage?.({ toolUseId: payload.toolUseId ?? '', page: payload.page });
       }
     } else if (event === 'email') {
       // Un COURRIEL mis en file (F-110 / SF-110-02) : le bloc « Courriel envoyé ». Sans reçu, rien.

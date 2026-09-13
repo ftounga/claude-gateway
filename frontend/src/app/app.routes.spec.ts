@@ -53,7 +53,7 @@ describe('app.routes', () => {
     expect(parent.canActivate).toContain(authGuard);
     const children = (parent.children ?? []).map((c) => c.path);
     for (const path of ['chat', 'atelier', 'documents', 'ask', 'templates', 'billing',
-                        'reports', 'settings', 'profile', 'admin']) {
+                        'reports', 'settings', 'profile', 'admin', 'pages/:id']) {
       expect(children).withContext(`${path} n'est plus sous la route protégée`).toContain(path);
     }
   });

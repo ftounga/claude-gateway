@@ -211,7 +211,72 @@ class AtelierChatServicePageToolTest {
         verify(executor, never()).execute(any(), any(), any(), any());
     }
 
+    // ------------------------------------------------------------ F-109 / SF-109-03 : le bloc de page
+
+    private fr.claudegateway.pages.PageService.PublishedPage published() {
+        fr.claudegateway.pages.Page page = fr.claudegateway.pages.Page.builder().id(UUID.randomUUID())
+                .userId(userId).title("Maquette").description("La Forge refondue.").currentVersion(2).build();
+        return new fr.claudegateway.pages.PageService.PublishedPage(page,
+                fr.claudegateway.pages.PageVersion.builder().version(2).build());
+    }
+
+    @Test
+    @DisplayName("SF-109-03 CA1 — publication réussie : événement page ET bloc de transcription")
+    void successfulPublishEmitsThePageBlock() throws Exception {
+        terminal(WorkspaceExecutionTarget.RUNNER, false);
+        fr.claudegateway.pages.PageService.PublishedPage published = published();
+        when(executor.execute(eq(userId), any(), anyString(), any()))
+                .thenReturn(new PageToolExecutor.Outcome("Page publiée.", false, published));
+        listener.decision = true;
+        publishCall();
+
+        service.chatStreaming(userId, workspaceId, "fais-moi une page", listener);
+
+        assertThat(listener.pages).hasSize(1);
+        assertThat(listener.pages.get(0).pageId()).isEqualTo(published.page().getId());
+        assertThat(listener.pages.get(0).title()).isEqualTo("Maquette");
+        assertThat(listener.pages.get(0).version()).isEqualTo(2);
+
+        org.mockito.ArgumentCaptor<AtelierMessage> saved = org.mockito.ArgumentCaptor.forClass(AtelierMessage.class);
+        verify(messageRepository, org.mockito.Mockito.atLeastOnce()).save(saved.capture());
+        String json = saved.getAllValues().stream().map(AtelierMessage::getTerminalJson)
+                .filter(java.util.Objects::nonNull).reduce("", String::concat);
+        assertThat(json).contains("\"page\":{\"pageId\":\"" + published.page().getId() + "\"")
+                .contains("\"title\":\"Maquette\"");
+    }
+
+    @Test
+    @DisplayName("SF-109-03 CA1 — publication refusée : aucun bloc de page")
+    void refusedPublishEmitsNothing() {
+        terminal(WorkspaceExecutionTarget.RUNNER, false);
+        listener.decision = false;
+        publishCall();
+
+        service.chatStreaming(userId, workspaceId, "fais-moi une page", listener);
+
+        assertThat(listener.pages).isEmpty();
+    }
+
+    @Test
+    @DisplayName("SF-109-03 CA2 — le bornage d'une transcription conserve la page")
+    void boundingKeepsThePage() throws Exception {
+        fr.claudegateway.pages.PageBlock page = new fr.claudegateway.pages.PageBlock(UUID.randomUUID(), "T", null, 1);
+        AtelierTurnReport.Block block = new AtelierTurnReport.Block(PageToolCatalog.PUBLISH, "T", "c", null,
+                "x".repeat(AtelierTurnReport.MAX_BLOCK_OUTPUT_CHARS + 10), true, false, false, null, null, page);
+
+        String json = new AtelierTurnReport(10, 10, 1, false, false, AtelierPlan.EMPTY, List.of(block)).toJson();
+
+        assertThat(json).contains("début tronqué").contains("\"pageId\":\"" + page.pageId() + "\"");
+    }
+
     private final class Listener implements AtelierProgressListener {
+
+        private final List<fr.claudegateway.pages.PageBlock> pages = new ArrayList<>();
+
+        @Override
+        public void onPage(String toolUseId, fr.claudegateway.pages.PageBlock page) {
+            pages.add(page);
+        }
 
         private final List<AtelierConfirmRequest> requests = new ArrayList<>();
         private final List<AtelierStepEvent> steps = new ArrayList<>();

@@ -133,6 +133,17 @@ public interface AtelierProgressListener {
     }
 
     /**
+     * <b>Une page vient d'être publiée</b> (F-109 / SF-109-03) : le bloc « Page publiée », admis dans tout
+     * terminal — ce n'est pas une sortie de commande, c'est un document rendu par l'agent.
+     *
+     * @param toolUseId identifiant de l'appel {@code page_publish}
+     * @param page      la page rangée : identifiant, titre, description, version — jamais le contenu
+     */
+    default void onPage(String toolUseId, fr.claudegateway.pages.PageBlock page) {
+        // Aucun relais : le bloc reste dans la transcription du tour.
+    }
+
+    /**
      * <b>Le poste de ce projet vient de refuser un appel : il est hors ligne</b> (F-97 / SF-97-02).
      *
      * <p>Sans cet événement, un {@code runner_unavailable} ne sortait de la boucle qu'en prose, dans

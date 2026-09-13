@@ -460,6 +460,12 @@ public class AtelierChatController {
                     turn.publish("email", new StreamEmail(toolUseId, receipt));
                 }
 
+                /** La page publiée (F-109 / SF-109-03) : le bloc « Page publiée », au fil de l'eau. */
+                @Override
+                public void onPage(String toolUseId, fr.claudegateway.pages.PageBlock page) {
+                    turn.publish("page", new StreamPage(toolUseId, page));
+                }
+
                 /**
                  * Une demande d'autorisation n'est plus seulement relayée : elle devient l'ÉTAT du
                  * tour (F-84 / SF-84-03). Un écran qui arrive après coup la trouve encore en
@@ -634,6 +640,10 @@ public class AtelierChatController {
      * le bloc de transcription qui le rejouera au rechargement : l'écran remplace, il n'empile pas.
      */
     record StreamCard(String toolUseId, fr.claudegateway.teams.block.TeamsBlockCard card) {
+    }
+
+    /** Une page publiée relayée au fil de l'eau (F-109 / SF-109-03), rejouée par la transcription au rechargement. */
+    record StreamPage(String toolUseId, fr.claudegateway.pages.PageBlock page) {
     }
 
     /** Un courriel mis en file (F-110 / SF-110-02), même {@code toolUseId} que son bloc de transcription. */

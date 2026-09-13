@@ -209,6 +209,13 @@ export const routes: Routes = [
         pathMatch: 'full',
       },
       {
+        // F-109 / SF-109-03 — **une page en plein écran**, ouverte dans un nouvel onglet depuis le terminal.
+        // Préfixe `pages` disjoint de toutes les routes existantes ; sous le parent authentifié.
+        path: 'pages/:id',
+        loadComponent: () =>
+          import('./pages/page-viewer.component').then((m) => m.PageViewerComponent),
+      },
+      {
         // F-51 / SF-51-05 — le catalogue de gouvernance. Un seul segment, disjoint de toutes les
         // routes existantes : il n'en masque aucune, et aucune ne le masque.
         path: 'gouvernance',
