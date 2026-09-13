@@ -95,6 +95,10 @@ public class JugeIndependantControl implements GovernanceControl {
         if (context == null || context.userId() == null || context.workspaceId() == null) {
             return AtelierCheckpointVerdict.proceed();
         }
+        if (context.machineOffline()) {
+            // F-93 / SF-93-04 : la machine ne répond pas — rien à comparer, et aucun aller-retour.
+            return AtelierCheckpointVerdict.proceed();
+        }
         List<String> ecrits = context.writtenPaths();
         if (ecrits.isEmpty()) {
             // Le tour n'a rien écrit : il n'a rien fait apparaître. Aucun appel.

@@ -96,6 +96,9 @@ public class AtelierCheckpointRunner {
      *         jamais {@code null}
      */
     public AtelierCheckpointVerdict run(AtelierCheckpointKind kind, AtelierCheckpointContext context) {
+        // F-93 / SF-93-04 : un report ne bloque pas ; il est retenu, et rendu seulement si aucun
+        // contrôle ne bloque — le premier blocage garde la priorité (D3).
+        AtelierCheckpointVerdict deferred = null;
         for (AtelierCheckpoint checkpoint : checkpoints) {
             if (kind != kindOf(checkpoint)) {
                 continue;
@@ -107,8 +110,11 @@ public class AtelierCheckpointRunner {
                         checkpoint.getClass().getSimpleName());
                 return verdict;
             }
+            if (deferred == null && verdict != null && verdict.hasNotice()) {
+                deferred = verdict;
+            }
         }
-        return AtelierCheckpointVerdict.proceed();
+        return deferred == null ? AtelierCheckpointVerdict.proceed() : deferred;
     }
 
     /**

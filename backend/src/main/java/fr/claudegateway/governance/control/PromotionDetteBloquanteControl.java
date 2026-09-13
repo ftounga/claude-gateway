@@ -56,9 +56,18 @@ public class PromotionDetteBloquanteControl implements GovernanceControl {
     public static final String ID = "promotion-dette-bloquante";
 
     private final GovernanceMapDestinations destinations;
+    private final PromotionReportee reportees;
 
+    /** Forme d'avant F-93 / SF-93-04 : un registre de reports propre à ce contrôle. */
     public PromotionDetteBloquanteControl(GovernanceMapDestinations destinations) {
+        this(destinations, new PromotionReportee());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public PromotionDetteBloquanteControl(GovernanceMapDestinations destinations,
+            PromotionReportee reportees) {
         this.destinations = destinations;
+        this.reportees = reportees;
     }
 
     @Override
@@ -80,6 +89,11 @@ public class PromotionDetteBloquanteControl implements GovernanceControl {
 
     @Override
     public AtelierCheckpointVerdict evaluate(AtelierCheckpointContext context) {
+        AtelierCheckpointVerdict claimed =
+                JugeFinDeTourControl.claimIfDue(context, destinations, reportees);
+        if (claimed != null) {
+            return claimed;
+        }
         String reply = context == null ? null : context.replyText();
         Optional<FinDeTourMarker> parsed = FinDeTourMarker.parse(reply);
         if (parsed.isEmpty()) {
@@ -89,6 +103,22 @@ public class PromotionDetteBloquanteControl implements GovernanceControl {
 
         List<String> carte = destinations.pathsForProject(context.userId(), context.workspaceId());
         String cited = GovernanceMapDestinations.cite(carte);
+
+        if (context.machineOffline()) {
+            // F-93 / SF-93-04 : les trois refus ci-dessous demandent tous d'écrire sur la machine (la
+            // carte, STATE.md). Poste hors ligne : on reporte ce qui serait réclamé, on ne bloque pas.
+            List<Promotion> unplaced = new java.util.ArrayList<>(marker.withoutDestination());
+            List<String> foreign = foreignDestinations(marker, carte);
+            marker.promus().stream().filter(promotion -> foreign.contains(promotion.destination()))
+                    .forEach(unplaced::add);
+            if (unplaced.isEmpty() && marker.dette() == 0) {
+                return AtelierCheckpointVerdict.proceed();
+            }
+            List<String> elements = new java.util.ArrayList<>(marker.promotions());
+            unplaced.forEach(promotion -> elements.add(promotion.element()));
+            reportees.reporter(context.userId(), context.workspaceId(), elements, marker.dette());
+            return AtelierCheckpointVerdict.deferred(PromotionReportee.NOTICE);
+        }
 
         List<Promotion> mute = marker.withoutDestination();
         if (!mute.isEmpty()) {

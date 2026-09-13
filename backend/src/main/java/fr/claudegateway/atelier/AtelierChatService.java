@@ -246,6 +246,16 @@ public class AtelierChatService implements RelayInterruptTarget {
             java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     /**
+     * Ce que chaque tour a constaté de la machine (F-93 / SF-93-04), clef {@code userId:workspaceId}.
+     *
+     * <p>Remis à zéro à l'ouverture de chaque message, comme les deux marques ci-dessus ; mis à jour
+     * par chaque appel runner, <b>le dernier faisant foi</b>. Lu en fin de tour : un contrôle qui
+     * exige d'écrire sur la machine ne réclame pas une écriture impossible.</p>
+     */
+    private final java.util.Map<String, fr.claudegateway.atelier.checkpoint.AtelierMachineReach> machineOfTurn =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
      * Fins de tour qu'un contrôle peut refuser dans un même message (F-50 / SF-50-02).
      *
      * <p>Assez pour une correction, sa vérification et un rattrapage ; trop peu pour qu'un contrôle
@@ -473,6 +483,8 @@ public class AtelierChatService implements RelayInterruptTarget {
         interruptedTurns.remove(turnKey(userId, workspaceId));
         // La marque « tout autoriser » ne survit jamais au message qui l'a reçue (SF-38-20).
         blanketAllowedTurns.remove(turnKey(userId, workspaceId));
+        // Ni la machine d'hier ni celle d'un tour abandonné ne jugent ce tour-ci (F-93 / SF-93-04).
+        machineOfTurn.remove(turnKey(userId, workspaceId));
         long startedAt = System.currentTimeMillis();
         long deadline = startedAt + TURN_BUDGET_MS;
         String userText = rawMessage.trim();
@@ -620,7 +632,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                     AtelierCheckpointVerdict verdict = checkpointRunner.run(
                             AtelierCheckpointKind.END_OF_TURN,
                             AtelierCheckpointContext.endOfTurn(userId, workspaceId, finalText,
-                                    List.copyOf(writtenPaths)));
+                                    List.copyOf(writtenPaths), machineOfTurn.getOrDefault(
+                                            turnKey(userId, workspaceId),
+                                            fr.claudegateway.atelier.checkpoint.AtelierMachineReach.UNKNOWN)));
+                    if (verdict.hasNotice()) {
+                        // F-93 / SF-93-04 : un report ne bloque pas. La mention est dite UNE fois, à
+                        // la clôture — ce tour s'arrête ici, il n'y a donc pas de seconde occasion.
+                        finalText = appendNotice(finalText, verdict.notice());
+                    }
                     if (verdict.blocked()) {
                         endOfTurnBlocks++;
                         String correction = AtelierCheckpointRunner.endOfTurnBlockedMessage(verdict);
@@ -750,6 +769,8 @@ public class AtelierChatService implements RelayInterruptTarget {
                         : turn.text();
             }
         }
+        // Le constat sur la machine ne survit pas au tour (F-93 / SF-93-04).
+        machineOfTurn.remove(turnKey(userId, workspaceId));
 
         if (hosted) {
             // Le projet et son poste voyagent avec le décompte (F-61 / SF-61-01) : c'est ce qui
@@ -870,6 +891,62 @@ public class AtelierChatService implements RelayInterruptTarget {
     /** Réponse à persister : celle du tour, ou un texte explicite si le tour n'a rien produit. */
     private static String nonEmptyReply(String finalText) {
         return finalText == null || finalText.isBlank() ? EMPTY_REPLY_FALLBACK : finalText;
+    }
+
+    /**
+     * Ajoute la mention d'un report à la réponse finale (F-93 / SF-93-04) — une seule fois : une
+     * réponse qui la porte déjà n'est pas rallongée.
+     */
+    static String appendNotice(String finalText, String notice) {
+        if (notice == null || notice.isBlank()) {
+            return finalText;
+        }
+        String sentence = fr.claudegateway.governance.control.PromotionReportee.NOTICE.equals(notice)
+                ? fr.claudegateway.governance.control.PromotionReportee.NOTICE_SENTENCE : notice;
+        String reply = finalText == null ? "" : finalText;
+        if (reply.contains(sentence)) {
+            return reply;
+        }
+        return reply.isBlank() ? sentence : reply.stripTrailing() + "\n\n" + sentence;
+    }
+
+    /**
+     * Retient ce que cet appel runner dit de la machine (F-93 / SF-93-04). Le dernier appel fait foi :
+     * un runner revenu en cours de tour repasse joignable.
+     *
+     * <ul>
+     *   <li>refus de transport ({@code runner_unavailable}, {@code runner_not_on_this_node}) → hors
+     *       ligne ;</li>
+     *   <li>réponse du runner — succès, ou erreur qu'il a émise lui-même → joignable ;</li>
+     *   <li>délai dépassé, argument refusé avant émission, outil non annoncé → rien n'est prouvé,
+     *       l'état ne bouge pas.</li>
+     * </ul>
+     */
+    private void noteMachine(UUID userId, UUID workspaceId, RunnerCallResult result) {
+        if (result == null) {
+            return;
+        }
+        String code = result.errorCode();
+        fr.claudegateway.atelier.checkpoint.AtelierMachineReach reach;
+        if (RunnerErrorCodes.RUNNER_UNAVAILABLE.equals(code)
+                || RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE.equals(code)) {
+            reach = fr.claudegateway.atelier.checkpoint.AtelierMachineReach.OFFLINE;
+        } else if (result.ok() || (code != null && !isBackendCode(code))) {
+            reach = fr.claudegateway.atelier.checkpoint.AtelierMachineReach.REACHED;
+        } else {
+            return;
+        }
+        machineOfTurn.put(turnKey(userId, workspaceId), reach);
+    }
+
+    /** Vrai pour un code que la gateway émet elle-même, sans réponse du runner (contrat §4). */
+    private static boolean isBackendCode(String code) {
+        return RunnerErrorCodes.RUNNER_UNAVAILABLE.equals(code)
+                || RunnerErrorCodes.RUNNER_NOT_ON_THIS_NODE.equals(code)
+                || RunnerErrorCodes.RUNNER_PROTOCOL_ERROR.equals(code)
+                || RunnerErrorCodes.RUNNER_TIMEOUT.equals(code)
+                || RunnerErrorCodes.INVALID_INPUT.equals(code)
+                || RunnerErrorCodes.UNSUPPORTED_TOOL.equals(code);
     }
 
     /**
@@ -1382,6 +1459,7 @@ public class AtelierChatService implements RelayInterruptTarget {
             return ToolOutcome.error("Outil inconnu : " + tool);
         }
         runnerAuditService.recordCall(userId, runnerTarget, callId, tool, target, result);
+        noteMachine(userId, workspaceId, result);
         if (RunnerErrorCodes.RUNNER_UNAVAILABLE.equals(result.errorCode())
                 && runnerTarget.hostId() != null) {
             // F-97 / SF-97-02 : le refus est aussi dit à l'écran, pas seulement au modèle.

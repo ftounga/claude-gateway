@@ -10,7 +10,7 @@ package fr.claudegateway.atelier.checkpoint;
  * puis reprends » se corrige. Un contrôle qui bloque sans dire quoi faire laisse le modèle tourner
  * en rond jusqu'au plafond d'étapes.</p>
  */
-public record AtelierCheckpointVerdict(boolean blocked, String correction) {
+public record AtelierCheckpointVerdict(boolean blocked, String correction, String notice) {
 
     /** Longueur d'une action corrective : au-delà, ce n'est plus une action, c'est un cahier des charges. */
     public static final int MAX_CORRECTION_CHARS = 2_000;
@@ -20,11 +20,33 @@ public record AtelierCheckpointVerdict(boolean blocked, String correction) {
     /** Compacte le verdict : {@code trim}, troncature, et une correction vide vaut {@code null}. */
     public AtelierCheckpointVerdict {
         correction = normalize(correction);
+        notice = normalize(notice);
+    }
+
+    /** Forme d'avant F-93 / SF-93-04 : un verdict sans mention. */
+    public AtelierCheckpointVerdict(boolean blocked, String correction) {
+        this(blocked, correction, null);
     }
 
     /** Rien à signaler : la boucle continue exactement comme si aucun contrôle n'existait. */
     public static AtelierCheckpointVerdict proceed() {
         return PROCEED;
+    }
+
+    /**
+     * <b>Reporté, pas exigé</b> (F-93 / SF-93-04) : le contrôle aurait réclamé une écriture sur la
+     * machine, mais la machine ne répond pas. La boucle continue, et la mention est dite
+     * <b>une fois</b> à la clôture — un report tu se lirait « tout est rangé ».
+     *
+     * @param notice la mention à ajouter à la réponse finale
+     */
+    public static AtelierCheckpointVerdict deferred(String notice) {
+        return new AtelierCheckpointVerdict(false, null, notice);
+    }
+
+    /** Vrai si le verdict ne bloque pas mais porte une mention à dire à la clôture. */
+    public boolean hasNotice() {
+        return !blocked && notice != null;
     }
 
     /**
