@@ -53,6 +53,18 @@ public class RadarExceptionHandler {
                 .body(new ErrorResponse("radar_state_conflict", ex.getMessage()));
     }
 
+    @ExceptionHandler(RadarRunnerUnavailableException.class)
+    public ResponseEntity<ErrorResponse> runnerUnavailable(RadarRunnerUnavailableException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("radar_runner_unavailable", ex.getMessage()));
+    }
+
+    @ExceptionHandler(RadarTeamsDisabledException.class)
+    public ResponseEntity<ErrorResponse> teamsDisabled(RadarTeamsDisabledException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("radar_teams_disabled", ex.getMessage()));
+    }
+
     @ExceptionHandler(RadarEvidenceRequiredException.class)
     public ResponseEntity<ErrorResponse> evidenceRequired(RadarEvidenceRequiredException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
