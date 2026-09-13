@@ -1,0 +1,598 @@
+<title>Le Radar du client</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+  :root{
+    --pg-ground:#F5F6FA; --pg-surface:#FFFFFF; --pg-ink:#0F172A; --pg-soft:#5B6780; --pg-faint:#8A94A8;
+    --pg-rule:#E2E8F0; --pg-accent:#E07B39; --pg-accent-ink:#B85E22; --pg-tint:#FDF0E6;
+    --pg-shadow:0 1px 2px rgba(15,23,42,.05), 0 18px 40px -22px rgba(15,23,42,.28);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --pg-ground:#0B1020; --pg-surface:#141D33; --pg-ink:#E6EAF3; --pg-soft:#A2ADC3; --pg-faint:#72809C;
+      --pg-rule:#263150; --pg-accent:#EE9455; --pg-accent-ink:#F2A873; --pg-tint:#2A2130;
+      --pg-shadow:0 1px 2px rgba(0,0,0,.4), 0 22px 44px -22px rgba(0,0,0,.75);
+    }
+  }
+  :root[data-theme="dark"]{
+    --pg-ground:#0B1020; --pg-surface:#141D33; --pg-ink:#E6EAF3; --pg-soft:#A2ADC3; --pg-faint:#72809C;
+    --pg-rule:#263150; --pg-accent:#EE9455; --pg-accent-ink:#F2A873; --pg-tint:#2A2130;
+    --pg-shadow:0 1px 2px rgba(0,0,0,.4), 0 22px 44px -22px rgba(0,0,0,.75);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--pg-ground);color:var(--pg-ink);font-family:"Inter",-apple-system,"Segoe UI",sans-serif;font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  .page{max-width:1240px;margin:0 auto;padding-inline:24px;padding-block:0 80px}
+  .col{max-width:68ch}
+  h1,h2,h3{font-family:"Space Grotesk","Inter",sans-serif;margin:0;text-wrap:balance;letter-spacing:-.01em}
+  h1{font-size:clamp(2rem,4.2vw,2.8rem);font-weight:700;line-height:1.1}
+  h2{font-size:clamp(1.4rem,2.6vw,1.75rem);font-weight:600;line-height:1.2}
+  h3{font-size:1.05rem;font-weight:600;line-height:1.3}
+  p{margin:0}
+  strong{font-weight:600}
+  .mono{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.88em}
+  .eyebrow{font-family:"JetBrains Mono",monospace;font-size:.72rem;font-weight:500;letter-spacing:.13em;text-transform:uppercase;color:var(--pg-accent-ink)}
+  .lede{font-size:1.14rem;color:var(--pg-soft);line-height:1.55}
+  .stack{display:flex;flex-direction:column;gap:18px}
+  header.top{padding-block:56px 34px}
+  section{padding-block:52px;border-top:1px solid var(--pg-rule)}
+  .soft{color:var(--pg-soft)}
+  .caption{margin-top:12px;font-size:.86rem;color:var(--pg-faint)}
+
+  /* ---------- maquettes : écran clair peint explicitement ---------- */
+  .shot{
+    --a-navy:#0B1020; --a-ground:#F5F6FA; --a-surface:#FFFFFF; --a-ink:#0F172A; --a-soft:#64748B; --a-faint:#94A3B8;
+    --a-rule:#E2E8F0; --a-hover:#F1F5F9; --a-orange:#E07B39; --a-orange-soft:#FDF0E6;
+    --a-ok:#16A34A; --a-ok-bg:#E8F5E9; --a-warn:#B7791F; --a-warn-dot:#F9A825; --a-warn-bg:#FFF8E1;
+    --a-red:#B42318; --a-red-bg:#FDECEA; --a-off:#64748B; --a-off-bg:#F1F5F9; --a-blue:#4370A3; --a-blue-bg:#EAF1F8;
+    border-radius:10px;overflow:hidden;background:var(--a-ground);color:var(--a-ink);border:1px solid #D5DCE6;box-shadow:var(--pg-shadow);
+    font-size:14px;line-height:1.45;
+  }
+  .appbar{background:var(--a-navy);color:#fff;display:flex;align-items:center;gap:22px;padding:0 20px;height:52px}
+  .appbar .brand{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:15px}
+  .appbar .brand span{color:var(--a-orange)}
+  .appbar nav{display:flex;gap:4px;overflow:hidden}
+  .appbar nav span{padding:7px 12px;border-radius:6px;color:#B6C0D4;font-size:13.5px;white-space:nowrap}
+  .appbar nav span.on{background:rgba(255,255,255,.09);color:#fff}
+  .ini{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:12.5px;color:#fff;background:var(--tone);flex:none}
+  .btn{display:inline-flex;align-items:center;gap:7px;font:500 13px "Inter",sans-serif;padding:7px 13px;border-radius:7px;border:1px solid var(--a-rule);background:var(--a-surface);color:var(--a-ink);white-space:nowrap}
+  .btn.primary{background:var(--a-orange);border-color:var(--a-orange);color:#fff}
+  .btn.sm{padding:4px 9px;font-size:12px}
+  .dot{width:8px;height:8px;border-radius:50%;flex:none;display:inline-block}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+  .chip.ok{background:var(--a-ok-bg);color:var(--a-ok)}
+  .chip.warn{background:var(--a-warn-bg);color:var(--a-warn)}
+  .chip.red{background:var(--a-red-bg);color:var(--a-red)}
+  .chip.off{background:var(--a-off-bg);color:var(--a-off)}
+  .chip.blue{background:var(--a-blue-bg);color:var(--a-blue)}
+  .src{width:14px;height:14px;flex:none;color:var(--a-faint)}
+  .who{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:9.5px;font-weight:700;color:#fff;flex:none}
+
+  /* en-tête du poste */
+  .ph{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:16px 22px 0;background:var(--a-surface)}
+  .ph .ttl{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:20px;line-height:1.1}
+  .ph .sub{font-size:12.5px;color:var(--a-soft);margin-top:3px}
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--a-rule);overflow-x:auto;padding:10px 22px 0;background:var(--a-surface)}
+  .tabs span{padding:9px 13px;font-weight:500;font-size:13.5px;color:var(--a-soft);white-space:nowrap;border-bottom:2px solid transparent;margin-bottom:-1px;display:flex;align-items:center;gap:7px}
+  .tabs span.on{color:var(--a-ink);border-bottom-color:var(--a-orange)}
+  .tabs .n{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--a-faint);background:var(--a-hover);padding:1px 6px;border-radius:999px}
+  .tabs .n.hot{background:var(--a-orange-soft);color:#B85E22}
+
+  /* brief */
+  .body{padding:18px 22px 22px;display:flex;flex-direction:column;gap:16px}
+  .brief{background:var(--a-surface);border:1px solid var(--a-rule);border-radius:10px;padding:16px 18px;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:18px}
+  @media (max-width:860px){ .brief{grid-template-columns:1fr} }
+  .brief .hello{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:17px}
+  .brief .say{color:#334155;font-size:13.5px;margin-top:6px;line-height:1.55}
+  .brief .say b{color:var(--a-ink)}
+  .tally{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  .tally div{border:1px solid var(--a-rule);border-radius:8px;padding:7px 11px;min-width:92px}
+  .tally b{display:block;font-family:"Space Grotesk",sans-serif;font-size:20px;line-height:1.1;font-variant-numeric:tabular-nums}
+  .tally span{font-size:11.5px;color:var(--a-soft)}
+  .tally .hot b{color:#B85E22}
+  .cover{border-left:1px solid var(--a-rule);padding-left:18px;display:flex;flex-direction:column;gap:7px}
+  @media (max-width:860px){ .cover{border-left:0;padding-left:0;border-top:1px solid var(--a-rule);padding-top:14px} }
+  .cover .lbl{font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--a-faint)}
+  .cover .row{display:flex;align-items:center;gap:8px;font-size:12.5px}
+  .cover .row .grow{flex:1;min-width:0;color:#334155}
+  .cover .row .ts{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--a-faint);white-space:nowrap}
+  .ok-tick{color:var(--a-ok);font-weight:700}
+  .warn-tick{color:var(--a-warn);font-weight:700}
+
+  .board{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr) minmax(0,1fr);gap:14px;align-items:start}
+  @media (max-width:1020px){ .board{grid-template-columns:1fr 1fr} .board .mid{grid-column:1 / -1;order:-1} }
+  @media (max-width:640px){ .board{grid-template-columns:1fr} }
+  .panel{background:var(--a-surface);border:1px solid var(--a-rule);border-radius:10px;overflow:hidden}
+  .panel .hd{display:flex;align-items:center;gap:8px;padding:11px 14px;border-bottom:1px solid var(--a-rule)}
+  .panel .hd h4{margin:0;font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:14px}
+  .panel .hd .n{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--a-faint)}
+  .panel .hd .grow{flex:1}
+  .item{padding:11px 14px;border-bottom:1px solid #EEF2F6;display:flex;flex-direction:column;gap:5px}
+  .item:last-child{border-bottom:0}
+  .item .t{font-size:13.5px;font-weight:500;line-height:1.4}
+  .item .m{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:11.5px;color:var(--a-soft)}
+  .item .acts{display:flex;gap:6px;margin-top:3px;flex-wrap:wrap}
+  .item.due{box-shadow:inset 3px 0 0 var(--a-orange)}
+
+  .subj{padding:12px 14px;border-bottom:1px solid #EEF2F6;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px}
+  .subj:last-child{border-bottom:0}
+  .subj.sel{background:#FAFBFD}
+  .subj .nm{font-weight:600;font-size:14px}
+  .subj .st{grid-row:span 2;align-self:start}
+  .subj .ln{font-size:12.5px;color:#475569;line-height:1.45}
+  .subj .ft{grid-column:1 / -1;display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--a-faint);flex-wrap:wrap}
+  .avs{display:flex}
+  .avs .who{border:2px solid #fff;margin-left:-6px}
+  .avs .who:first-child{margin-left:0}
+
+  .composer{background:var(--a-surface);border:1px solid var(--a-rule);border-radius:10px;padding:10px 12px;display:flex;align-items:center;gap:10px}
+  .composer .field{flex:1;min-width:0;color:var(--a-faint);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .composer .field b{color:var(--a-ink);font-weight:400}
+  .composer .ic{display:flex;gap:6px;color:var(--a-soft)}
+  .composer .ic span{width:30px;height:30px;border-radius:7px;border:1px solid var(--a-rule);display:flex;align-items:center;justify-content:center}
+
+  /* page sujet */
+  .subject{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:0;background:var(--a-surface)}
+  @media (max-width:900px){ .subject{grid-template-columns:1fr} }
+  .subject .main{padding:20px 22px;display:flex;flex-direction:column;gap:16px;border-right:1px solid var(--a-rule);min-width:0}
+  @media (max-width:900px){ .subject .main{border-right:0;border-bottom:1px solid var(--a-rule)} }
+  .subject .side{padding:20px 22px;display:flex;flex-direction:column;gap:18px;background:#FBFCFE;min-width:0}
+  .crumb{font-size:12px;color:var(--a-soft)}
+  .stitle{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:22px;line-height:1.15}
+  .state{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  @media (max-width:560px){ .state{grid-template-columns:1fr} }
+  .state div{border:1px solid var(--a-rule);border-radius:8px;padding:9px 11px}
+  .state .k{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--a-faint)}
+  .state .v{font-size:13px;font-weight:500;margin-top:3px;line-height:1.35}
+  .summary{font-size:13.5px;color:#334155;line-height:1.6}
+  .summary sup{font-family:"JetBrains Mono",monospace;font-size:9.5px;color:#B85E22;background:var(--a-orange-soft);padding:0 4px;border-radius:3px;margin-left:1px}
+  .tl{display:flex;flex-direction:column;gap:0;position:relative}
+  .tl .ev{display:grid;grid-template-columns:62px 22px minmax(0,1fr);gap:0 10px;padding-bottom:13px;position:relative}
+  .tl .ev::before{content:"";position:absolute;left:82px;top:22px;bottom:0;width:1px;background:var(--a-rule)}
+  .tl .ev:last-child::before{display:none}
+  .tl .d{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--a-faint);padding-top:3px;white-space:nowrap}
+  .tl .g{width:22px;height:22px;border-radius:6px;background:var(--a-hover);display:flex;align-items:center;justify-content:center;color:var(--a-soft)}
+  .tl .g.me{background:var(--a-orange-soft);color:#B85E22}
+  .tl .x{font-size:13px;line-height:1.45;color:#334155}
+  .tl .x b{color:var(--a-ink);font-weight:600}
+  .tl .x q{display:block;margin-top:4px;padding-left:9px;border-left:2px solid var(--a-rule);color:var(--a-soft);font-size:12.5px;quotes:"« " " »"}
+  .tl .x .lk{font-size:11.5px;color:var(--a-blue);margin-top:3px;display:inline-block}
+  .side h5{margin:0 0 8px;font-family:"JetBrains Mono",monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--a-faint);font-weight:500}
+  .person{display:flex;align-items:center;gap:9px;padding:6px 0}
+  .person .who{width:28px;height:28px;font-size:10.5px}
+  .person .pn{font-size:13px;font-weight:600;line-height:1.2}
+  .person .pr{font-size:11.5px;color:var(--a-soft);line-height:1.3}
+  .person .chip{margin-left:auto}
+  .ask{border:1px solid #F3D9C4;background:#FFFBF7;border-radius:9px;padding:12px 13px;display:flex;flex-direction:column;gap:8px}
+  .ask .q{font-size:12px;color:var(--a-soft)}
+  .ask .a{font-size:13px;line-height:1.55;color:#1E293B}
+  .ask .acts{display:flex;gap:6px;flex-wrap:wrap}
+
+  /* ---------- sections explicatives ---------- */
+  .compare{overflow-x:auto;border:1px solid var(--pg-rule);border-radius:10px;background:var(--pg-surface)}
+  .compare table{border-collapse:collapse;width:100%;min-width:720px;font-size:.93rem}
+  .compare th,.compare td{padding:13px 16px;text-align:left;vertical-align:top;border-bottom:1px solid var(--pg-rule)}
+  .compare tr:last-child td{border-bottom:0}
+  .compare thead th{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:1rem;background:var(--pg-ground)}
+  .compare thead th:last-child{color:var(--pg-accent-ink)}
+  .compare td:first-child{font-weight:600;width:19%;color:var(--pg-ink)}
+  .compare td:nth-child(2){color:var(--pg-soft);width:37%}
+  .compare td:last-child{color:var(--pg-ink)}
+
+  .flow{display:grid;grid-template-columns:minmax(0,1fr) 30px minmax(0,1fr) 30px minmax(0,1fr) 30px minmax(0,1fr);align-items:stretch;gap:0}
+  @media (max-width:980px){ .flow{grid-template-columns:1fr} .flow .arr{transform:rotate(90deg);height:30px} }
+  .flow .arr{display:flex;align-items:center;justify-content:center;color:var(--pg-faint);font-size:20px}
+  .stage{background:var(--pg-surface);border:1px solid var(--pg-rule);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:9px}
+  .stage .where{font-family:"JetBrains Mono",monospace;font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--pg-faint)}
+  .stage h3{font-size:1rem}
+  .stage ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;font-size:.87rem;color:var(--pg-soft)}
+  .stage li{display:flex;gap:8px;align-items:flex-start;line-height:1.4}
+  .stage li svg{width:15px;height:15px;flex:none;margin-top:2px;color:var(--pg-accent-ink)}
+  .stage li .tag{font-family:"JetBrains Mono",monospace;font-size:.68rem;color:var(--pg-faint);margin-left:auto;white-space:nowrap;padding-left:6px}
+  .stage.hi{border-color:var(--pg-accent);box-shadow:0 0 0 3px var(--pg-tint)}
+
+  .rules{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1px;background:var(--pg-rule);border:1px solid var(--pg-rule);border-radius:10px;overflow:hidden}
+  .rule{background:var(--pg-surface);padding:20px 22px;display:flex;flex-direction:column;gap:7px}
+  .rule p{font-size:.93rem;color:var(--pg-soft);line-height:1.55}
+  .rule p strong{color:var(--pg-ink)}
+
+  .reuse{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+  .box{background:var(--pg-surface);border:1px solid var(--pg-rule);border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:10px}
+  .box ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}
+  .box li{font-size:.92rem;color:var(--pg-soft);display:grid;grid-template-columns:62px minmax(0,1fr);gap:10px;line-height:1.45}
+  .box li .f{font-family:"JetBrains Mono",monospace;font-size:.76rem;color:var(--pg-accent-ink);padding-top:2px}
+  .box li strong{color:var(--pg-ink)}
+
+  .lots{display:flex;flex-direction:column;border:1px solid var(--pg-rule);border-radius:10px;overflow:hidden;background:var(--pg-surface)}
+  .lot{display:grid;grid-template-columns:130px minmax(0,1fr);gap:14px;padding:14px 18px;border-bottom:1px solid var(--pg-rule);align-items:baseline}
+  .lot:last-child{border-bottom:0}
+  @media (max-width:600px){ .lot{grid-template-columns:1fr;gap:4px} }
+  .lot .wave{font-family:"JetBrains Mono",monospace;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--pg-faint)}
+  .lot h3{font-size:.98rem}
+  .lot p{font-size:.9rem;color:var(--pg-soft);margin-top:3px}
+
+  .asks{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+  .askc{background:var(--pg-surface);border:1px solid var(--pg-rule);border-radius:10px;padding:16px 18px;display:flex;flex-direction:column;gap:6px}
+  .askc .rec{font-size:.8rem;font-weight:600;color:var(--pg-accent-ink)}
+  .askc p{font-size:.9rem;color:var(--pg-soft)}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-chat" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+    <symbol id="i-meet" viewBox="0 0 16 16"><rect x="1.5" y="4" width="9" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 7l4-2.2v6.4l-4-2.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 16 16"><rect x="5.5" y="1.8" width="5" height="8" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 8a5 5 0 0 0 10 0M8 13v1.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></symbol>
+    <symbol id="i-note" viewBox="0 0 16 16"><path d="M3 13l.6-2.6L10.8 3.2l2 2-7.2 7.2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+    <symbol id="i-mail" viewBox="0 0 16 16"><rect x="1.8" y="3.5" width="12.4" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2.2 4.3L8 8.6l5.8-4.3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 16 16"><path d="M4 1.8h5l3 3v9.4H4z M9 1.8v3h3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+    <symbol id="i-link" viewBox="0 0 16 16"><circle cx="4" cy="8" r="2.3" fill="none" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="8" r="2.3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6.3 8h3.4" stroke="currentColor" stroke-width="1.5"/></symbol>
+  </defs>
+</svg>
+
+<div class="page">
+
+<header class="top stack">
+  <p class="eyebrow">claude-gateway · proposition</p>
+  <h1>Le Radar du client</h1>
+  <p class="lede col">Chez certains clients, la difficulté n'est pas l'infrastructure, c'est l'organisation : des sujets qui traversent dix conversations, des gens à relancer, d'autres à présenter l'un à l'autre, et un manager qui demande « où en est le MFA ? ». La carte du poste retient ce que vous savez de l'infra. Le Radar retiendrait ce que vous savez de l'organisation — et le mettrait à jour chaque soir, pendant que vous ne travaillez plus.</p>
+</header>
+
+<!-- ============ MAQUETTE 1 : LE RADAR ============ -->
+<figure style="margin:0">
+  <div class="shot" role="img" aria-label="Maquette de l'onglet Radar d'un poste : brief du matin, ce que je dois faire, sujets en cours, ce que j'attends des autres">
+    <div class="appbar">
+      <span class="brand">claude<span>·</span>gateway</span>
+      <nav><span>Conversations</span><span class="on">Forge</span><span>Documents</span><span>Gouvernance</span></nav>
+    </div>
+
+    <div class="ph">
+      <span class="ini" style="--tone:#A348B1">ED</span>
+      <div style="min-width:0">
+        <div class="ttl">EDENRED</div>
+        <div class="sub">En ligne · vu il y a 9 s · Teams relié</div>
+      </div>
+    </div>
+    <div class="tabs">
+      <span class="on">Radar <span class="n hot">5 à traiter</span></span>
+      <span>Projets <span class="n">4</span></span>
+      <span>Carte <span class="n">12 faits</span></span>
+      <span>Gouvernance</span>
+      <span>Activité</span>
+    </div>
+
+    <div class="body">
+      <div class="brief">
+        <div>
+          <div class="hello">Mardi 15 septembre — ce qui a bougé depuis hier</div>
+          <p class="say">Paul a <b>validé le périmètre MFA</b> en réunion, mais personne n'a pris la rédaction de la note DSI. Sophie attend toujours <b>le contact réseau</b> que vous lui avez promis jeudi. Le sujet <b>Bascule SSO</b> n'a plus bougé depuis 9 jours.</p>
+          <div class="tally">
+            <div class="hot"><b>3</b><span>à faire par moi</span></div>
+            <div class="hot"><b>2</b><span>relances dues</span></div>
+            <div><b>1</b><span>mise en relation</span></div>
+            <div><b>11</b><span>sujets suivis</span></div>
+          </div>
+        </div>
+        <div class="cover">
+          <div style="display:flex;align-items:center;gap:8px"><span class="lbl" style="flex:1">Synchro d'hier, 22 h 00 — ce qui a été lu</span><span class="btn sm">Synchroniser maintenant</span></div>
+          <div class="row"><span class="ok-tick">✓</span><svg class="src"><use href="#i-chat"/></svg><span class="grow">Teams · 23 conversations, 214 messages</span></div>
+          <div class="row"><span class="ok-tick">✓</span><svg class="src"><use href="#i-meet"/></svg><span class="grow">3 réunions transcrites</span></div>
+          <div class="row"><span class="ok-tick">✓</span><svg class="src"><use href="#i-mail"/></svg><span class="grow">Outlook · 41 courriels</span></div>
+          <div class="row"><span class="ok-tick">✓</span><svg class="src"><use href="#i-mic"/></svg><span class="grow">1 enregistrement déposé hier</span></div>
+          <div class="row"><span class="warn-tick">!</span><svg class="src"><use href="#i-meet"/></svg><span class="grow">« Copil infra » sans transcription</span><span class="ts">à déposer</span></div>
+        </div>
+      </div>
+
+      <div class="board">
+        <!-- à faire par moi -->
+        <div class="panel">
+          <div class="hd"><h4>À faire par moi</h4><span class="n">3</span></div>
+          <div class="item due">
+            <span class="t">Présenter Sophie à l'équipe réseau (Karim)</span>
+            <div class="m"><svg class="src"><use href="#i-chat"/></svg>promis jeudi dans « Projet IAM » · <span class="chip red">en retard de 3 j</span></div>
+            <div class="acts"><span class="btn sm">Préparer le message</span><span class="btn sm">Fait</span></div>
+          </div>
+          <div class="item">
+            <span class="t">Envoyer la matrice des accès à Paul</span>
+            <div class="m"><svg class="src"><use href="#i-meet"/></svg>« Point MFA » hier 14:32 · <span class="chip warn">pour vendredi</span></div>
+            <div class="acts"><span class="btn sm">Voir le moment</span><span class="btn sm">Fait</span></div>
+          </div>
+          <div class="item">
+            <span class="t">Rédiger la note DSI sur le MFA ?</span>
+            <div class="m"><svg class="src"><use href="#i-meet"/></svg>personne ne l'a prise · <span class="chip off">probable</span></div>
+            <div class="acts"><span class="btn sm">C'est moi</span><span class="btn sm">Pas moi</span></div>
+          </div>
+        </div>
+
+        <!-- sujets -->
+        <div class="panel mid">
+          <div class="hd"><h4>Sujets en cours</h4><span class="n">12</span><span class="grow"></span><span class="btn sm">Plus récents</span></div>
+          <div class="subj sel">
+            <span class="nm">MFA prestataires</span>
+            <span class="st chip ok">avance</span>
+            <span class="ln">Périmètre validé par Paul hier. Reste : note DSI (non attribuée), pilote sur 20 comptes.</span>
+            <div class="ft"><div class="avs"><span class="who" style="background:#4370A3">PM</span><span class="who" style="background:#327B57">SL</span><span class="who" style="background:#B14F48">KB</span></div>6 sources · il y a 18 h</div>
+          </div>
+          <div class="subj">
+            <span class="nm">Bascule SSO</span>
+            <span class="st chip warn">silencieux 9 j</span>
+            <span class="ln">En attente du retour de l'éditeur, promis par Julie « début septembre ».</span>
+            <div class="ft"><div class="avs"><span class="who" style="background:#7051B8">JR</span></div>4 sources · il y a 9 j</div>
+          </div>
+          <div class="subj">
+            <span class="nm">Revue des comptes à privilèges</span>
+            <span class="st chip red">bloqué</span>
+            <span class="ln">Extraction refusée par l'équipe AD tant que le RSSI n'a pas signé.</span>
+            <div class="ft"><div class="avs"><span class="who" style="background:#94633D">TD</span><span class="who" style="background:#4370A3">PM</span></div>9 sources · il y a 2 j</div>
+          </div>
+          <div class="subj">
+            <span class="nm">Migration annuaire LDAP</span>
+            <span class="st chip blue">clos ?</span>
+            <span class="ln">Dernier engagement tenu. Thomas, hier : « on peut considérer le sujet fermé ». <b style="color:#0F172A;font-weight:600">Clore ?</b></span>
+            <div class="ft"><div class="avs"><span class="who" style="background:#94633D">TD</span></div>12 sources · il y a 1 j</div>
+          </div>
+          <div class="subj">
+            <span class="nm">Accès réseau pour Sophie</span>
+            <span class="st chip blue">nouveau</span>
+            <span class="ln">Apparu jeudi. Dépend d'une mise en relation que vous devez faire.</span>
+            <div class="ft"><div class="avs"><span class="who" style="background:#327B57">SL</span><span class="who" style="background:#B14F48">KB</span></div>2 sources · il y a 5 j</div>
+          </div>
+        </div>
+
+        <!-- j'attends -->
+        <div class="panel">
+          <div class="hd"><h4>J'attends des autres</h4><span class="n">4</span></div>
+          <div class="item due">
+            <span class="t">Julie — retour de l'éditeur SSO</span>
+            <div class="m"><svg class="src"><use href="#i-mail"/></svg>promis « début septembre » · <span class="chip red">relance due</span></div>
+            <div class="acts"><span class="btn sm">Préparer la relance</span><span class="btn sm">Reporter</span></div>
+          </div>
+          <div class="item due">
+            <span class="t">Thomas — signature RSSI de la revue</span>
+            <div class="m"><svg class="src"><use href="#i-chat"/></svg>demandé lundi · <span class="chip red">relance due</span></div>
+            <div class="acts"><span class="btn sm">Préparer la relance</span><span class="btn sm">Reporter</span></div>
+          </div>
+          <div class="item">
+            <span class="t">Karim — plages IP du site de Lyon</span>
+            <div class="m"><svg class="src"><use href="#i-meet"/></svg>« Point MFA » · <span class="chip off">pour jeudi</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="composer">
+        <svg class="src" style="width:16px;height:16px"><use href="#i-note"/></svg>
+        <span class="field"><b>Paul m'a dit à la machine à café que le pilote MFA glisse à octobre. Et le sujet LDAP peut être considéré comme clos.</b></span>
+        <div class="ic"><span title="Déposer un enregistrement"><svg class="src"><use href="#i-mic"/></svg></span><span title="Joindre un document"><svg class="src"><use href="#i-doc"/></svg></span></div>
+        <span class="btn primary">Donner la nouvelle</span>
+      </div>
+    </div>
+  </div>
+  <p class="caption">Maquette. EDENRED et sa couleur sont réels ; les sujets, les personnes et les chiffres sont des exemples.</p>
+</figure>
+
+<!-- ============ MAQUETTE 2 : UN SUJET ============ -->
+<section class="stack">
+  <p class="eyebrow">« Où en est le MFA ? »</p>
+  <h2 class="col">Un sujet ouvert : l'état, les preuves, et à qui demander</h2>
+  <p class="col soft">La question du manager trouve sa réponse en un clic. Chaque phrase du résumé renvoie au message ou au moment de réunion qui la fonde. Et quand le Radar ne sait pas, il dit à qui poser la question.</p>
+
+  <figure style="margin:0">
+    <div class="shot" role="img" aria-label="Maquette de la page d'un sujet : état, résumé sourcé, chronologie multi-sources, personnes, réponse préparée pour le manager">
+      <div class="subject">
+        <div class="main">
+          <div>
+            <div class="crumb">EDENRED › Radar › Sujets</div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px">
+              <span class="stitle">MFA prestataires</span><span class="chip ok">avance</span>
+            </div>
+          </div>
+
+          <div class="state">
+            <div><div class="k">Où on en est</div><div class="v">Périmètre validé, pilote à lancer</div></div>
+            <div><div class="k">Prochaine étape</div><div class="v">Note DSI — <span style="color:#B42318">non attribuée</span></div></div>
+            <div><div class="k">Échéance connue</div><div class="v">Pilote en octobre <span class="chip off" style="margin-left:2px">votre note</span></div></div>
+          </div>
+
+          <p class="summary">Le périmètre couvre les 340 comptes prestataires, hors comptes de service<sup>1</sup>. Paul l'a validé hier en réunion<sup>2</sup>. La rédaction de la note DSI a été évoquée sans que personne ne la prenne<sup>2</sup>. Le pilote, d'abord prévu fin septembre<sup>3</sup>, glisse à octobre d'après ce que Paul vous a dit<sup>4</sup>.</p>
+
+          <div class="tl">
+            <div class="ev">
+              <span class="d">aujourd'hui</span><span class="g me"><svg class="src" style="color:inherit"><use href="#i-note"/></svg></span>
+              <div class="x"><b>Votre nouvelle</b> — le pilote glisse à octobre.<q>Paul m'a dit à la machine à café que le pilote MFA glisse à octobre</q></div>
+            </div>
+            <div class="ev">
+              <span class="d">hier 14:32</span><span class="g"><svg class="src" style="color:inherit"><use href="#i-meet"/></svg></span>
+              <div class="x"><b>Point MFA</b> (réunion Teams) — Paul valide le périmètre ; la note DSI reste sans porteur.<q>OK pour moi sur les 340, il faudra une note pour la DSI.</q><span class="lk">Ouvrir le moment · 14:32:10</span></div>
+            </div>
+            <div class="ev">
+              <span class="d">12 sept.</span><span class="g"><svg class="src" style="color:inherit"><use href="#i-mic"/></svg></span>
+              <div class="x"><b>Atelier sécurité</b> (enregistré par vous, hors Teams) — Karim soulève le cas des comptes de service.<span class="lk">Ouvrir la transcription · 00:41:05</span></div>
+            </div>
+            <div class="ev">
+              <span class="d">9 sept.</span><span class="g"><svg class="src" style="color:inherit"><use href="#i-mail"/></svg></span>
+              <div class="x"><b>Courriel de Sophie</b> — calendrier initial, pilote fin septembre.<span class="lk">Ouvrir dans Outlook</span></div>
+            </div>
+            <div class="ev">
+              <span class="d">4 sept.</span><span class="g"><svg class="src" style="color:inherit"><use href="#i-chat"/></svg></span>
+              <div class="x"><b>Groupe « Projet IAM »</b> — ouverture du sujet par Paul.<span class="lk">Ouvrir dans Teams</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="side">
+          <div>
+            <h5>Qui est dans ce sujet</h5>
+            <div class="person"><span class="who" style="background:#4370A3">PM</span><div><div class="pn">Paul Martin</div><div class="pr">Manager sécurité · décide</div></div><span class="chip blue">décide</span></div>
+            <div class="person"><span class="who" style="background:#327B57">SL</span><div><div class="pn">Sophie Laurent</div><div class="pr">Cheffe de projet IAM</div></div><span class="chip off">pilote</span></div>
+            <div class="person"><span class="who" style="background:#B14F48">KB</span><div><div class="pn">Karim Benali</div><div class="pr">Équipe réseau</div></div><span class="chip off">expert</span></div>
+          </div>
+
+          <div class="ask">
+            <span class="q">Réponse préparée pour votre manager</span>
+            <p class="a">Le périmètre MFA (340 comptes prestataires) a été validé hier par Paul. Le pilote devrait partir en octobre. Point d'attention : la note DSI n'a pas encore de porteur — je propose de la prendre.</p>
+            <div class="acts"><span class="btn sm">Copier</span><span class="btn sm">Ajuster en discutant</span></div>
+          </div>
+
+          <div class="ask" style="border-color:var(--a-rule);background:#fff">
+            <span class="q">Ce que le Radar ne sait pas</span>
+            <p class="a">La date exacte du pilote. <b>Sophie</b> pilote le calendrier : c'est elle qu'il faut interroger.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="caption">Maquette. Personnes, extraits et dates sont des exemples.</p>
+  </figure>
+</section>
+
+<!-- ============ DIFFÉRENCE AVEC TEAMS ============ -->
+<section class="stack">
+  <p class="eyebrow">Votre première question</p>
+  <h2 class="col">En quoi c'est différent du volet Teams qu'on vient de livrer</h2>
+  <p class="col">Le volet Teams est un <strong>outil qu'on interroge</strong> : vous posez une question, l'agent va lire Teams, il répond — puis il oublie. Le Radar est une <strong>mémoire qui se tient à jour</strong>. Il utilise le volet Teams comme une de ses sources, mais il ne le remplace pas.</p>
+
+  <div class="compare">
+    <table>
+      <thead><tr><th></th><th>Volet Teams (F-87 → F-91)</th><th>Le Radar</th></tr></thead>
+      <tbody>
+        <tr><td>Qui déclenche</td><td>Vous, en posant une question dans le terminal Teams.</td><td><strong>Lui, chaque soir</strong> — et vous, quand vous lancez la synchro ou lui donnez une nouvelle.</td></tr>
+        <tr><td>Mémoire</td><td>Aucune. Chaque question relit Teams depuis zéro, et se paie à nouveau.</td><td><strong>Un registre qui s'accumule</strong> : sujets, personnes, engagements, relances. Chaque jour, seul le nouveau est lu.</td></tr>
+        <tr><td>Unité</td><td>La conversation, la réunion.</td><td><strong>Le sujet</strong>, qui traverse un groupe Teams, deux réunions, un courriel et une discussion de couloir.</td></tr>
+        <tr><td>Sources</td><td>Teams : conversations, mentions, réunions, enregistrements.</td><td>Teams <strong>+ Outlook + vos enregistrements hors Teams + ce que vous lui racontez</strong>.</td></tr>
+        <tr><td>Ce qu'on n'a pas demandé</td><td>Invisible. Si vous ne pensez pas à la question, personne ne la pose.</td><td><strong>Le brief le signale</strong> : promesse oubliée, relance due, sujet silencieux, tâche sans porteur.</td></tr>
+        <tr><td>« Où en est le MFA ? »</td><td>Reposer la question, attendre qu'il relise des semaines de messages.</td><td><strong>La page du sujet est déjà prête</strong>, avec ses preuves et à qui demander.</td></tr>
+        <tr><td>Forme</td><td>Un terminal. Pas de boutons, par décision.</td><td><strong>Un écran pour l'état, le chat pour le nourrir.</strong> Les questions restent des conversations ; seuls les gestes sur un engagement (fait, pas moi, reporter) sont des boutons.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="col soft">Pourquoi un terminal ne suffit pas, alors que je défendais le chat pour Teams : un terminal répond à ce qu'on lui demande. Votre difficulté, c'est justement ce que vous <strong>oubliez</strong> de demander. Il faut quelque chose qui regarde à votre place, tous les jours, et qui se souvienne.</p>
+</section>
+
+<!-- ============ COMMENT ÇA MARCHE ============ -->
+<section class="stack">
+  <p class="eyebrow">Comment ça marche</p>
+  <h2 class="col">Quatre étapes, dont une seule est nouvelle en profondeur</h2>
+
+  <div class="flow">
+    <div class="stage">
+      <span class="where">Sur la machine du client</span>
+      <h3>1. Les sources</h3>
+      <ul>
+        <li><svg><use href="#i-chat"/></svg>Conversations, groupes, fils, canaux<span class="tag">F-88</span></li>
+        <li><svg><use href="#i-meet"/></svg>Réunions Teams transcrites<span class="tag">F-88</span></li>
+        <li><svg><use href="#i-mail"/></svg>Courriels Outlook<span class="tag">neuf</span></li>
+        <li><svg><use href="#i-mic"/></svg>Vos enregistrements, Teams ou non<span class="tag">F-91</span></li>
+        <li><svg><use href="#i-note"/></svg>Ce que vous racontez<span class="tag">neuf</span></li>
+      </ul>
+    </div>
+    <div class="arr" aria-hidden="true">→</div>
+    <div class="stage">
+      <span class="where">Le runner, chaque soir ou à la demande</span>
+      <h3>2. La collecte</h3>
+      <ul>
+        <li><svg><use href="#i-link"/></svg>Seul le nouveau depuis la veille est lu</li>
+        <li><svg><use href="#i-link"/></svg>Portable fermé à 22 h : rattrapé à la connexion</li><li><svg><use href="#i-link"/></svg>Interrompue, elle reprend où elle en était</li>
+        <li><svg><use href="#i-link"/></svg>Audio transcrit sur la machine, rien d'autre ne sort</li>
+      </ul>
+    </div>
+    <div class="arr" aria-hidden="true">→</div>
+    <div class="stage hi">
+      <span class="where">La gateway, en tâche de fond</span>
+      <h3>3. La lecture</h3>
+      <ul>
+        <li><svg><use href="#i-link"/></svg>Rattacher chaque échange à un sujet</li>
+        <li><svg><use href="#i-link"/></svg>Repérer promesses, demandes, blocages, mises en relation</li>
+        <li><svg><use href="#i-link"/></svg>Chaque fait garde sa source et sa certitude</li>
+      </ul>
+    </div>
+    <div class="arr" aria-hidden="true">→</div>
+    <div class="stage">
+      <span class="where">Vous</span>
+      <h3>4. Le Radar</h3>
+      <ul>
+        <li><svg><use href="#i-link"/></svg>Le brief du matin</li>
+        <li><svg><use href="#i-link"/></svg>Sujets, engagements, relances</li>
+        <li><svg><use href="#i-link"/></svg>Vous corrigez : votre version l'emporte</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ROBUSTESSE ============ -->
+<section class="stack">
+  <p class="eyebrow">Complet et robuste</p>
+  <h2 class="col">Six règles qui empêchent le Radar de mentir</h2>
+  <p class="col soft">Un tableau de bord organisationnel qui se trompe est pire que pas de tableau de bord : vous relanceriez quelqu'un qui a déjà répondu. Tout est construit contre ce risque.</p>
+  <div class="rules">
+    <div class="rule"><h3>Pas de fait sans preuve</h3><p>Chaque engagement, chaque état, chaque phrase du résumé renvoie au message ou à la seconde de réunion qui le fonde. <strong>Un fait sans source n'est pas enregistré.</strong></p></div>
+    <div class="rule"><h3>Vous avez le dernier mot</h3><p>« Pas moi », « c'est fait », « ce n'est pas le même sujet » : vos corrections sont <strong>souveraines</strong> et la collecte du lendemain ne les écrase jamais. Il en tire des alias pour ne pas refaire l'erreur.</p></div>
+    <div class="rule"><h3>La certitude en toutes lettres</h3><p>« Certain » quand quelqu'un écrit « je m'en charge », « probable » quand une tâche est évoquée sans porteur. <strong>Jamais un score</strong>, et le probable demande votre confirmation.</p></div>
+    <div class="rule"><h3>Il dit ce qu'il n'a pas lu</h3><p>Le brief affiche la couverture de la collecte : ce qui a été lu, ce qui a échoué, la réunion sans transcription. <strong>Une collecte partielle ne produit jamais un brief qui a l'air complet.</strong></p></div>
+    <div class="rule"><h3>Il ne parle jamais à votre place</h3><p>Il prépare la relance et la présentation ; <strong>c'est vous qui envoyez</strong>. Rien n'est écrit dans Teams ni dans Outlook, comme le volet Teams aujourd'hui.</p></div>
+    <div class="rule"><h3>Des extraits, pas des archives</h3><p>On garde le fait, la citation courte et le lien, pas les conversations entières. Chaque client est cloisonné, et <strong>clôturer la mission purge son Radar</strong>.</p></div>
+  </div>
+</section>
+
+<section class="stack">
+  <p class="eyebrow">Quand un sujet se termine</p>
+  <h2 class="col">Il le repère, vous le dites, et rien ne se ferme en silence</h2>
+  <div class="rules">
+    <div class="rule"><h3>Il le propose</h3><p>« On peut fermer », un ticket clos, le dernier engagement tenu et remercié : le sujet passe en <strong>« clos ? »</strong> avec la phrase qui le justifie. Un clic pour confirmer.</p></div>
+    <div class="rule"><h3>Vous le dites</h3><p>« Le sujet LDAP peut être considéré comme clos » dans <strong>Donner la nouvelle</strong> : il est clos, sans confirmation. Votre parole est souveraine.</p></div>
+    <div class="rule"><h3>Le silence ne clôt rien</h3><p>Un sujet muet depuis trois semaines n'est pas terminé, il est <strong>en sommeil</strong>. Le Radar vous demande ce qu'il en est au lieu de décider.</p></div>
+    <div class="rule"><h3>Un sujet clos qui se réveille</h3><p>Un nouveau message sur un sujet clos ne le rouvre pas en douce : le résumé du matin dit <strong>« le sujet LDAP se réveille »</strong>, et c'est vous qui rouvrez.</p></div>
+  </div>
+</section>
+
+<!-- ============ RÉUTILISÉ / NEUF ============ -->
+<section class="stack">
+  <p class="eyebrow">Faisable ?</p>
+  <h2 class="col">Oui — la moitié du chemin est déjà sur le poste</h2>
+  <div class="reuse">
+    <div class="box">
+      <h3>Ce qui existe déjà</h3>
+      <ul>
+        <li><span class="f">F-87</span><span><strong>La liaison</strong> au navigateur du poste, lecture du réseau, sonde de santé</span></li>
+        <li><span class="f">F-88</span><span><strong>La lecture</strong> des conversations, mentions, recherches et réunions</span></li>
+        <li><span class="f">F-91</span><span><strong>La transcription sur la machine</strong>, réutilisée pour vos enregistrements hors Teams</span></li>
+        <li><span class="f">F-84</span><span><strong>Le travail long</strong> qui survit à la fermeture de l'écran</span></li>
+        <li><span class="f">F-40</span><span><strong>L'option payante</strong> et sa garde au niveau des outils</span></li>
+        <li><span class="f">F-60</span><span><strong>La clôture de mission</strong>, qui déclenchera la purge</span></li>
+      </ul>
+    </div>
+    <div class="box">
+      <h3>Ce qui est neuf, et où est la difficulté</h3>
+      <ul>
+        <li><span class="f">cœur</span><span><strong>Reconnaître qu'un échange parle d'un sujet déjà suivi</strong>, quand personne ne le nomme pareil. C'est le vrai défi ; vos fusions et corrections l'entraînent.</span></li>
+        <li><span class="f">collecte</span><span><strong>Tenir tous les jours</strong> : session Microsoft expirée, poste en veille à 7 h. D'où le rattrapage et la couverture affichée.</span></li>
+        <li><span class="f">Outlook</span><span><strong>Un second adaptateur</strong>, même technique que Teams : lire ce que le navigateur reçoit.</span></li>
+        <li><span class="f">écrans</span><span><strong>Le Radar, la page sujet, l'annuaire des personnes</strong>, dans l'onglet du poste de la Forge refondue.</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DÉCOUPAGE ============ -->
+<section class="stack">
+  <p class="eyebrow">Si vous dites oui</p>
+  <h2 class="col">Ce que je cadrerais, dans l'ordre où ça sert</h2>
+  <div class="lots">
+    <div class="lot"><span class="wave">Fondation</span><div><h3>Le registre de l'organisation</h3><p>Sujets, personnes et rôles, engagements dans les deux sens, preuves, corrections souveraines, fusion de sujets.</p></div></div>
+    <div class="lot"><span class="wave">Fondation</span><div><h3>La synchro du soir</h3><p>Heure choisie (22 h par défaut) et bouton « Synchroniser maintenant », reprise là où la veille s'est arrêtée, rattrapage d'un portable fermé, couverture honnête, tâche de fond.</p></div></div>
+    <div class="lot"><span class="wave">Cœur</span><div><h3>La lecture des échanges</h3><p>Rattacher au sujet, repérer promesses, demandes, blocages et mises en relation, certitude en toutes lettres, coût borné.</p></div></div>
+    <div class="lot"><span class="wave">Premier usage</span><div><h3>Le Radar et le brief du matin</h3><p>L'onglet de la maquette : brief, à faire par moi, sujets, j'attends des autres, gestes fait / pas moi / reporter.</p></div></div>
+    <div class="lot"><span class="wave">Premier usage</span><div><h3>La page sujet et la réponse au manager</h3><p>État, résumé sourcé, chronologie multi-sources, personnes, « à qui demander », réponse préparée.</p></div></div>
+    <div class="lot"><span class="wave">Élargir</span><div><h3>Nourrir le Radar</h3><p>Vos nouvelles en texte, vos enregistrements hors Teams (téléphone, salle, autre outil) déposés et transcrits sur la machine, relances et présentations préparées.</p></div></div>
+    <div class="lot"><span class="wave">Élargir</span><div><h3>Outlook</h3><p>Le second adaptateur : courriels reçus et envoyés, rattachés aux mêmes sujets.</p></div></div>
+  </div>
+</section>
+
+<section class="stack">
+  <p class="eyebrow">À trancher avec vous</p>
+  <h2 class="col">Trois points, avec ma recommandation</h2>
+  <div class="asks">
+    <div class="askc"><h3>Outlook dans le périmètre ?</h3><p>Une bonne part des engagements vit dans les courriels ; sans eux, des sujets paraîtront silencieux à tort.</p><span class="rec">Recommandé : oui, en dernière vague.</span></div>
+    <div class="askc"><h3>Ce que le client autorise</h3><p>Le Radar garde des extraits de communications internes du client dans l'application. Certains contrats l'interdisent.</p><span class="rec">Recommandé : vérifier chez ce client avant la mise en service ; purge à la clôture dans tous les cas.</span></div>
+    <div class="askc"><h3>Le prix</h3><p>Une option « Radar » à part, qui suppose l'option Teams et apporte <strong>sa propre enveloppe de consommation</strong> : la synchro du soir ne doit jamais manger le quota de vos conversations. Montant à fixer après deux semaines de mesure réelle, en essai offert.</p><span class="rec">Recommandé : option à part. Montant : à confirmer par vous.</span></div>
+  </div>
+</section>
+
+</div>
