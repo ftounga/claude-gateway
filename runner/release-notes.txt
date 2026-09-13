@@ -1,0 +1,5 @@
+# F-111 / SF-111-03 — Ce qu'apporte la version construite, en quelques lignes (10 au plus, 200 caractères).
+# Lu par runner/build-tools/SignRunnerUpdate.java, écrit dans le manifeste, affiché par la Forge à côté
+# de « Mise à jour disponible ». À réécrire à chaque version qui change quelque chose de visible.
+Mise à jour d'un clic depuis la Forge et la Vigie : téléchargement par le runner, signature vérifiée.
+Version réelle déclarée : numéro, date de construction et commit.

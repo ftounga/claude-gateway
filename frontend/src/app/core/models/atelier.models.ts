@@ -1243,8 +1243,10 @@ export interface RunnerUpdateView {
   installedJava: number | null;
   requiredJava: number;
   teamsMissing: boolean;
-  /** Ce qu'apporte la version servie, en quelques lignes. */
+  /** Ce qu'apporte la version servie, en quelques lignes (manifeste signé, F-111 / SF-111-03). */
   notes: string[];
+  /** Une version **signée** est servie : la mise à jour d'un clic est possible (F-111 / SF-111-03). */
+  updatable?: boolean;
 }
 
 /**

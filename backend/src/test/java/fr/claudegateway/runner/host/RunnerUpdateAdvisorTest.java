@@ -97,8 +97,32 @@ class RunnerUpdateAdvisorTest {
     }
 
     @Test
+    @DisplayName("F-111 / SF-111-03 : notes et possibilité d'installer viennent du manifeste de la version servie")
+    void notesEtVersionSigneeServie(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir) throws Exception {
+        fr.claudegateway.runner.update.RunnerUpdateArtifactsTest.deposit(dir, SERVED, true, null);
+        RunnerUpdateAdvisor advisor = new RunnerUpdateAdvisor(
+                new fr.claudegateway.runner.ServedRunnerVersion("", SERVED),
+                new fr.claudegateway.runner.update.RunnerUpdateArtifacts(dir.toString(), "",
+                        new com.fasterxml.jackson.databind.ObjectMapper()));
+
+        RunnerUpdateView view = advisor.advise(host("1.0.0-202609131412-aaa1111", 1, true, 21, "files"), false);
+
+        assertThat(view.notes()).containsExactly("Une note.");
+        assertThat(view.updatable()).isTrue();
+
+        RunnerUpdateView autre = new RunnerUpdateAdvisor(
+                new fr.claudegateway.runner.ServedRunnerVersion("", "1.2.0-202610010000-ddd"),
+                new fr.claudegateway.runner.update.RunnerUpdateArtifacts(dir.toString(), "",
+                        new com.fasterxml.jackson.databind.ObjectMapper()))
+                .advise(host("1.0.0-202609131412-aaa1111", 1, true, 21, "files"), false);
+        assertThat(autre.updatable()).as("un manifeste d'une autre version ne promet rien").isFalse();
+        assertThat(autre.notes()).isEmpty();
+    }
+
+    @Test
     @DisplayName("aucune note tant que le manifeste ne les apporte pas")
     void pasDeNotes() {
         assertThat(advise(host("0.0.1", null, null, null, null), false).notes()).isEqualTo(List.of());
+        assertThat(advise(host("0.0.1", null, null, null, null), false).updatable()).isFalse();
     }
 }
