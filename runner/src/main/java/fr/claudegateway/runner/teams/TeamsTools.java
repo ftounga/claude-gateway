@@ -65,13 +65,23 @@ public final class TeamsTools implements ToolExecutor {
     public static final String CAPTURE_STOP = "teams_capture_stop";
     /** Où en est l'enregistrement local, et ceux d'avant (F-91 / SF-91-02). */
     public static final String CAPTURE_STATUS = "teams_capture_status";
+    /**
+     * <b>Liste les fichiers</b> d'une bibliothèque Teams / SharePoint / OneDrive (F-108 / SF-108-03).
+     * Lecture : aucune confirmation.
+     */
+    public static final String LIST_FILES = "teams_list_files";
+    /**
+     * <b>Rapatrie un fichier</b> sur la machine — dossier synchronisé, sinon téléchargé par Chrome
+     * (F-108 / SF-108-03). Lecture : aucune confirmation.
+     */
+    public static final String READ_FILE = "teams_read_file";
     public static final String CAPABILITY = "teams";
 
     /** Le catalogue, dans l'ordre où il est donné à l'agent. */
     public static final List<String> CATALOG = List.of(STATUS, FIND_CONVERSATIONS,
             READ_CONVERSATION, MENTIONS, SEARCH, FIND_MEETINGS, MEETING_TRANSCRIPT,
             MEETING_RECORDING, MEETING_MOMENTS, MOMENTS_STATUS, CAPTURE_START, CAPTURE_STOP,
-            CAPTURE_STATUS);
+            CAPTURE_STATUS, LIST_FILES, READ_FILE);
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final TeamsSession session;
@@ -101,6 +111,12 @@ public final class TeamsTools implements ToolExecutor {
      * capture reste possible, mais elle n'aura pas de transcription, et c'est <b>dit</b>.
      */
     private TranscriptionWorker transcription;
+
+    /**
+     * Les outils fichiers (F-108 / SF-108-03). {@code null} quand ce runner ne les a pas montés —
+     * l'outil le <b>dit</b> alors.
+     */
+    private TeamsFileTools files;
 
     public TeamsTools(TeamsSession session, BrowserLink.Sleeper sleeper) {
         this.session = session;
@@ -139,6 +155,47 @@ public final class TeamsTools implements ToolExecutor {
         return this;
     }
 
+    /**
+     * Branche les outils fichiers (F-108 / SF-108-03) : le dossier fixe des téléchargements, les
+     * dossiers synchronisés de la machine, et où dire les gestes faits dans l'onglet.
+     */
+    public TeamsTools withFiles(TeamsWorkFolder folder, SyncedLibraries synced,
+            java.util.function.Consumer<String> say) {
+        if (!enabled || folder == null || synced == null) {
+            return this;
+        }
+        this.files = new TeamsFileTools(new TeamsFileTools.Host() {
+            @Override
+            public BrowserLink link() {
+                return TeamsTools.this.link();
+            }
+
+            @Override
+            public TeamsLedger ledger() {
+                return TeamsTools.this.ledger();
+            }
+
+            @Override
+            public List<TeamsGap> harvest() {
+                BrowserLink link = TeamsTools.this.link();
+                return new TeamsHarvester(link, TeamsTools.this.ledger(),
+                        new PageGestures(link, sleeper)).harvestInPlace(
+                                TeamsAsk.standard(null).window());
+            }
+
+            @Override
+            public String adapterVersion() {
+                return TeamsTools.this.adapterVersion();
+            }
+
+            @Override
+            public String firstUse() {
+                return TeamsTools.this.firstUse();
+            }
+        }, sleeper, folder, synced, say);
+        return this;
+    }
+
     public static TeamsTools disabled(String reason) {
         return new TeamsTools(reason);
     }
@@ -172,6 +229,8 @@ public final class TeamsTools implements ToolExecutor {
             case CAPTURE_START -> captureStart(input);
             case CAPTURE_STOP -> captureStop(input, context);
             case CAPTURE_STATUS -> captureStatus(input);
+            case LIST_FILES -> files == null ? filesUnavailable(LIST_FILES) : files.listFiles(input);
+            case READ_FILE -> files == null ? filesUnavailable(READ_FILE) : files.readFile(input);
             default -> ToolOutcome.error("unsupported_tool", "Outil Teams inconnu : " + tool);
         };
     }
@@ -181,24 +240,36 @@ public final class TeamsTools implements ToolExecutor {
     private ToolOutcome status() {
         if (!enabled) {
             return ToolOutcome.ok(render(new TeamsProbeResult(TeamsLinkState.BROWSER_NOT_DETECTED,
-                    TeamsHealth.full(0), 0, "", disabledReason), ""));
+                    TeamsHealth.full(0), 0, "", disabledReason), "", List.of()));
         }
         // D3 : l'annonce de premier usage voyage avec le PREMIER résultat, et une seule fois. Elle
         // est dite sur la console par la session ; ici, elle est écrite là où l'utilisateur regarde.
         String firstUse = firstUse();
         TeamsProbeResult result;
+        List<String> observedFilePaths = List.of();
         try {
-            result = probe.probe(link(), sleeper);
+            BrowserLink link = link();
+            result = probe.probe(link, sleeper);
+            observedFilePaths = link.observer().observedFilePaths();
         } catch (BrowserLinkException e) {
             result = TeamsProbe.notLinked(e);
         } catch (RuntimeException e) {
             result = new TeamsProbeResult(TeamsLinkState.BROWSER_NOT_DETECTED, TeamsHealth.full(0),
                     0, "", "La liaison au navigateur n'a pas abouti sur cette machine.");
         }
-        return ToolOutcome.ok(render(result, firstUse));
+        return ToolOutcome.ok(render(result, firstUse, observedFilePaths));
     }
 
     String render(TeamsProbeResult result, String firstUse) {
+        return render(result, firstUse, List.of());
+    }
+
+    /**
+     * Le rendu de l'état, avec le <b>diagnostic</b> des chemins SharePoint / OneDrive observés
+     * (F-108 / SF-108-03) : adresses sans requête, jamais un corps ni un en-tête. C'est ce qui
+     * permettra, sur un poste réel, de confronter les adaptateurs fichiers à ce que Microsoft sert.
+     */
+    String render(TeamsProbeResult result, String firstUse, List<String> observedFilePaths) {
         ObjectNode node = mapper.createObjectNode();
         node.put("state", result.state().name());
         node.put("label", result.state().label());
@@ -223,6 +294,11 @@ public final class TeamsTools implements ToolExecutor {
         if (firstUse != null && !firstUse.isBlank()) {
             text.append(System.lineSeparator()).append(firstUse);
         }
+        ObjectNode diagnostic = node.putObject("diagnostic");
+        ArrayNode paths = diagnostic.putArray("observedFilePaths");
+        (observedFilePaths == null ? List.<String>of() : observedFilePaths).stream().limit(50)
+                .forEach(paths::add);
+        diagnostic.put("filesAdapter", SharePointFiles.PROVENANCE);
         node.put("text", text.toString());
         return node.toString();
     }
@@ -1164,6 +1240,21 @@ public final class TeamsTools implements ToolExecutor {
 
     private String adapterVersion() {
         return enabled ? session.adapter().version() : "";
+    }
+
+    /** Ce poste n'a pas les outils fichiers. Il le <b>dit</b> ; il ne fait pas semblant. */
+    private ToolOutcome filesUnavailable(String tool) {
+        TeamsToolResult result = new TeamsToolResult(tool, adapterVersion(),
+                enabled ? TeamsLinkState.LINKED : TeamsLinkState.BROWSER_NOT_DETECTED);
+        result.array("items");
+        result.window(null)
+                .gaps(List.of(TeamsGap.of(TeamsGapKind.NOTHING_OBSERVED, "fichiers Microsoft 365",
+                        "les outils fichiers ne sont pas montés sur ce poste")))
+                .health(TeamsHealth.full(0))
+                .with("firstUse", firstUse())
+                .text((enabled ? "Les outils fichiers ne sont pas disponibles sur ce poste."
+                        : disabledReason) + " Rien n'a été lu.");
+        return ToolOutcome.ok(result.render());
     }
 
     // ------------------------------------------------------------------ plomberie

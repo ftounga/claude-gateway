@@ -74,6 +74,16 @@ public class TeamsToolCatalog {
     public static final String CAPTURE_STOP = "teams_capture_stop";
     /** Où en est l'enregistrement local, et ceux d'avant (F-91 / SF-91-02). */
     public static final String CAPTURE_STATUS = "teams_capture_status";
+    /**
+     * <b>Liste les fichiers</b> d'une bibliothèque Teams / SharePoint / OneDrive (F-108 / SF-108-03).
+     * Une <b>lecture</b> : aucune confirmation.
+     */
+    public static final String LIST_FILES = "teams_list_files";
+    /**
+     * <b>Rapatrie un fichier</b> sur la machine — dossier synchronisé, sinon téléchargé par Chrome
+     * (F-108 / SF-108-03). Une <b>lecture</b> : aucune confirmation.
+     */
+    public static final String READ_FILE = "teams_read_file";
 
     /**
      * <b>Les outils de LECTURE, dans l'ordre où ils sont donnés à l'agent</b> — et la seule liste
@@ -89,7 +99,7 @@ public class TeamsToolCatalog {
     public static final List<String> CATALOG = List.of(STATUS, FIND_CONVERSATIONS,
             READ_CONVERSATION, MENTIONS, SEARCH, FIND_MEETINGS, MEETING_TRANSCRIPT,
             MEETING_RECORDING, MEETING_MOMENTS, MOMENTS_STATUS, CAPTURE_START, CAPTURE_STOP,
-            CAPTURE_STATUS);
+            CAPTURE_STATUS, LIST_FILES, READ_FILE);
 
     /**
      * <b>Les outils qui CRÉENT</b> (F-91), par opposition à tous les autres, qui <b>relisent</b>.
@@ -227,6 +237,7 @@ public class TeamsToolCatalog {
                 Map.of("type", "object", "properties", Map.of())));
         tools.addAll(readingTools());
         tools.addAll(captureTools());
+        tools.addAll(fileReadingTools());
         tools.addAll(presentationTools());
         return List.copyOf(tools);
     }
@@ -455,6 +466,54 @@ public class TeamsToolCatalog {
                         + "DIS-LE. Le moteur local ne dit PAS qui parle : ne devine jamais un "
                         + "locuteur, le résultat te le rappelle.",
                 Map.of("type", "object", "properties", Map.of("capture_id", text))));
+        return tools;
+    }
+
+    /**
+     * <b>Les deux outils de lecture des fichiers</b> (F-108 / SF-108-03).
+     *
+     * <p>Ce sont des <b>lectures</b> : ni l'un ni l'autre ne demande de confirmation (cadrage §4.4).
+     * Leurs descriptions portent ce que le modèle doit répéter : le chemin pris (synchronisé ou
+     * navigateur), les gestes faits dans l'onglet, et la <b>provenance</b> — des adaptateurs écrits
+     * sur la documentation Microsoft, à confirmer sur poste réel.</p>
+     */
+    private List<AgentTool> fileReadingTools() {
+        Map<String, Object> text = Map.of("type", "string");
+        List<AgentTool> tools = new ArrayList<>();
+        tools.add(new AgentTool(LIST_FILES,
+                "Liste les dossiers et fichiers d'une bibliothèque Teams, SharePoint ou OneDrive "
+                        + "professionnel. Donne « location » (l'adresse web d'un dossier : lien de "
+                        + "la bibliothèque, lien d'une pièce jointe, vue AllItems), OU "
+                        + "« conversation_id » (le dossier des fichiers partagés dans ce fil), OU "
+                        + "« team » / « channel » (le site observé de l'équipe), OU "
+                        + "« onedrive »: true. Sans rien, il rend les emplacements CONNUS, sans "
+                        + "aucun geste. Si la bibliothèque est SYNCHRONISÉE sur la machine, elle est "
+                        + "lue sur le disque (route SYNCED_FOLDER) ; sinon l'onglet relié est amené "
+                        + "sur le site le temps de la lecture, puis REMIS (route BROWSER). C'est une "
+                        + "lecture : aucune confirmation. Répète ce que le résultat dit ne PAS avoir "
+                        + "pu lire : une réponse Microsoft non conforme rend ZÉRO élément et un "
+                        + "manque nommé, jamais une liste à moitié. Ces adaptateurs sont écrits sur "
+                        + "la documentation Microsoft et restent à confirmer sur poste réel.",
+                Map.of("type", "object",
+                        "properties", Map.of("location", text, "conversation_id", text,
+                                "team", text, "channel", text,
+                                "onedrive", Map.of("type", "boolean"),
+                                "path", Map.of("type", "string",
+                                        "description", "Sous-dossier du OneDrive, avec "
+                                                + "« onedrive »: true.")))));
+        tools.add(new AgentTool(READ_FILE,
+                "Rapatrie un fichier Teams / SharePoint / OneDrive SUR LA MACHINE et rend son chemin "
+                        + "local (« localPath ») : lis-le ensuite avec les outils du poste. Donne "
+                        + "« file », l'adresse web du fichier. Dossier synchronisé : le fichier y est "
+                        + "déjà. Sinon c'est CHROME qui le télécharge dans le dossier de travail du "
+                        + "volet — aucune adresse signée ne passe par nous. C'est une lecture : "
+                        + "aucune confirmation. Si « downloaded » est faux, dis pourquoi (téléchargement "
+                        + "bloqué, accès refusé) et n'invente jamais le contenu ; si « inProgress » "
+                        + "est vrai, redemande plus tard. Pour MODIFIER un document : lis-le ici, "
+                        + "modifie la copie locale, puis redépose-la comme nouvelle version.",
+                Map.of("type", "object",
+                        "properties", Map.of("file", text),
+                        "required", List.of("file"))));
         return tools;
     }
 

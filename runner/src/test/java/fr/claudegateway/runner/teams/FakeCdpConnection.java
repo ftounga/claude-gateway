@@ -1,5 +1,6 @@
 package fr.claudegateway.runner.teams;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -66,7 +67,147 @@ final class FakeCdpConnection implements CdpConnection {
         if (CdpCommands.EVALUATE.equals(method)) {
             return evaluate(params.path("expression").asText(""));
         }
+        if (CdpCommands.PAGE_NAVIGATE.equals(method)) {
+            return navigate(params.path("url").asText(""));
+        }
+        if (CdpCommands.SET_DOWNLOAD_BEHAVIOR.equals(method)) {
+            String behavior = params.path("behavior").asText("");
+            downloadBehaviors.add(behavior);
+            downloadPath = "default".equals(behavior) ? null : params.path("downloadPath").asText("");
+            return mapper.createObjectNode();
+        }
         return mapper.createObjectNode();
+    }
+
+    // ------------------------------------------------------------------ F-108 : SharePoint de papier
+
+    /** Réponses modèles par opération (nom de l'opération tel qu'il est écrit dans le script). */
+    private final Map<String, java.util.Deque<ObjectNode>> sharePoint = new HashMap<>();
+    /** Opérations démarrées, en attente de relève. */
+    private final Map<String, ObjectNode> startedOps = new HashMap<>();
+    /** Scripts de fichiers réellement exécutés dans la page, dans l'ordre. */
+    private final List<String> scripts = new ArrayList<>();
+    /** Adresses de navigation réellement émises. */
+    private final List<String> navigations = new ArrayList<>();
+    private final List<String> downloadBehaviors = new ArrayList<>();
+    /** Là où la navigation atterrit à la place de sa cible (redirection), ou {@code null}. */
+    private String redirect;
+    private String downloadPath;
+    private byte[] downloadContent;
+    private final List<Path> downloads = new ArrayList<>();
+
+    /**
+     * La page de papier répond à une opération par une réponse modèle : un statut, et le corps tel que
+     * Microsoft le servirait. Comme le vrai script, elle ne rend que la projection sur liste blanche.
+     */
+    FakeCdpConnection sharePoint(String operation, int status, JsonNode raw) {
+        ObjectNode out = mapper.createObjectNode();
+        boolean ok = status >= 200 && status < 300;
+        out.put("ok", ok);
+        out.put("status", status);
+        if (ok) {
+            JsonNode picked = SharePointProjection.pick(raw);
+            out.set("body", picked == null ? mapper.nullNode() : picked);
+        } else {
+            out.put("error", raw == null ? "" : raw.path("odata.error").path("message")
+                    .path("value").asText(""));
+        }
+        sharePoint.computeIfAbsent(operation, key -> new java.util.ArrayDeque<>()).add(out);
+        return this;
+    }
+
+    /** Une page qui renverrait tout, sans projection : ce qu'une page modifiée pourrait faire. */
+    FakeCdpConnection sharePointUnfiltered(String operation, JsonNode raw) {
+        ObjectNode out = mapper.createObjectNode();
+        out.put("ok", true);
+        out.put("status", 200);
+        out.set("body", raw);
+        out.put("digest", "0xSECRET-DIGEST-QUI-FUIT");
+        sharePoint.computeIfAbsent(operation, key -> new java.util.ArrayDeque<>()).add(out);
+        return this;
+    }
+
+    /** Toute navigation atterrit à cette adresse (une page d'identification, par exemple). */
+    FakeCdpConnection redirectingTo(String url) {
+        this.redirect = url;
+        return this;
+    }
+
+    /** Ce que Chrome écrira quand on naviguera vers une adresse de téléchargement. */
+    FakeCdpConnection downloading(byte[] content) {
+        this.downloadContent = content;
+        return this;
+    }
+
+    private JsonNode navigate(String url) {
+        navigations.add(url);
+        if (url.contains("/_layouts/15/download.aspx")) {
+            if (downloadPath != null && downloadContent != null) {
+                try {
+                    Path dir = Path.of(downloadPath);
+                    java.nio.file.Files.createDirectories(dir);
+                    Path file = dir.resolve(java.util.UUID.randomUUID().toString());
+                    java.nio.file.Files.write(file, downloadContent);
+                    downloads.add(file);
+                } catch (java.io.IOException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
+            return mapper.createObjectNode(); // un téléchargement ne déplace pas la page
+        }
+        route = redirect != null ? redirect : url;
+        return mapper.createObjectNode();
+    }
+
+    private JsonNode sharePointScript(String expression, ObjectNode result) {
+        java.util.regex.Matcher op = java.util.regex.Pattern.compile("/\\*cg-op:([a-z0-9-]*)\\*/")
+                .matcher(expression);
+        if (op.find()) {
+            scripts.add(expression);
+            java.util.regex.Matcher id = java.util.regex.Pattern
+                    .compile("const id = \"(cg[0-9a-f]+)\";").matcher(expression);
+            String opId = id.find() ? id.group(1) : "";
+            java.util.Deque<ObjectNode> answers = sharePoint.get(op.group(1));
+            ObjectNode answer = answers == null || answers.isEmpty() ? null
+                    : (answers.size() > 1 ? answers.poll() : answers.peek());
+            if (answer == null) {
+                answer = mapper.createObjectNode();
+                answer.put("ok", false);
+                answer.put("status", 0);
+                answer.put("error", "aucune réponse modèle pour « " + op.group(1) + " »");
+            }
+            startedOps.put(opId, answer);
+            result.putObject("result").put("value", opId);
+            return result;
+        }
+        java.util.regex.Matcher poll = java.util.regex.Pattern.compile("/\\*cg-poll:(cg[0-9a-f]+)\\*/")
+                .matcher(expression);
+        if (poll.find()) {
+            ObjectNode answer = startedOps.remove(poll.group(1));
+            if (answer == null) {
+                result.putObject("result").putObject("value").put("missing", true);
+            } else {
+                result.putObject("result").set("value", answer);
+            }
+            return result;
+        }
+        return null;
+    }
+
+    List<String> scripts() {
+        return List.copyOf(scripts);
+    }
+
+    List<String> navigations() {
+        return List.copyOf(navigations);
+    }
+
+    List<String> downloadBehaviors() {
+        return List.copyOf(downloadBehaviors);
+    }
+
+    List<Path> downloads() {
+        return List.copyOf(downloads);
     }
 
     /**
@@ -75,6 +216,10 @@ final class FakeCdpConnection implements CdpConnection {
      */
     private JsonNode evaluate(String expression) {
         ObjectNode result = mapper.createObjectNode();
+        JsonNode files = sharePointScript(expression, result);
+        if (files != null) {
+            return files;
+        }
         if (expression.contains("location.href")) {
             result.putObject("result").put("value", route);
             return result;

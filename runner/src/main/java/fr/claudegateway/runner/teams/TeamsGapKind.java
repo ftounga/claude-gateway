@@ -75,7 +75,35 @@ public enum TeamsGapKind {
      * <b>sans capture</b>, et le compte est dit : perdre une image sur soixante et le dire vaut
      * mieux que perdre le compte rendu — mais le taire serait le rendre faux.
      */
-    UPLOAD_REFUSED("image retenue non remontée");
+    UPLOAD_REFUSED("image retenue non remontée"),
+
+    /**
+     * Une réponse de SharePoint / OneDrive qui ne correspond pas à la forme documentée sur laquelle
+     * l'adaptateur a été écrit (F-108 / SF-108-03). Rien n'est rendu : une liste de fichiers à
+     * moitié lue se lirait « voilà tout le dossier ».
+     */
+    SHAPE_MISMATCH("réponse Microsoft 365 non conforme au modèle documenté"),
+
+    /** L'emplacement de fichiers demandé n'a pas pu être reconnu ou retrouvé (F-108 / SF-108-03). */
+    LOCATION_UNKNOWN("emplacement de fichiers non reconnu"),
+
+    /**
+     * L'onglet a atterri sur une page d'identification (F-108 / SF-108-03) : le runner ne se
+     * connecte jamais, il le dit.
+     */
+    SIGNED_OUT("session Microsoft à rouvrir"),
+
+    /** Microsoft 365 a refusé l'accès à cet emplacement (401 / 403) (F-108 / SF-108-03). */
+    ACCESS_DENIED("accès refusé par Microsoft 365"),
+
+    /** L'élément demandé n'existe pas, ou plus, à cet emplacement (F-108 / SF-108-03). */
+    NOT_FOUND("élément introuvable"),
+
+    /**
+     * Le téléchargement n'a pas abouti : bloqué par l'organisateur ou la politique du tenant, refusé,
+     * ou remplacé par une page d'erreur (F-108 / SF-108-03 et SF-108-05).
+     */
+    DOWNLOAD_BLOCKED("téléchargement bloqué ou refusé");
 
     private final String label;
 

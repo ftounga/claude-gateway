@@ -222,6 +222,29 @@ class TeamsToolCatalogTest {
     }
 
     @Test
+    @DisplayName("F-108 / SF-108-03 : les deux outils fichiers sont donnés, et ce sont des LECTURES")
+    void theFileReadingToolsAreGivenAndAreReads() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(true);
+
+        assertThat(catalog.toolsFor(userId, teamsTerminal())).extracting(AgentTool::name)
+                .contains(TeamsToolCatalog.LIST_FILES, TeamsToolCatalog.READ_FILE);
+        assertThat(TeamsToolCatalog.isWrite(TeamsToolCatalog.LIST_FILES)).isFalse();
+        assertThat(TeamsToolCatalog.isWrite(TeamsToolCatalog.READ_FILE)).isFalse();
+        AgentTool read = catalog.toolsFor(userId, teamsTerminal()).stream()
+                .filter(tool -> TeamsToolCatalog.READ_FILE.equals(tool.name()))
+                .findFirst().orElseThrow();
+        assertThat(read.description()).contains("CHROME").contains("aucune confirmation");
+    }
+
+    @Test
+    @DisplayName("F-108 / SF-108-03 : sans le droit, aucun outil fichiers non plus")
+    void noFileToolWithoutTheRight() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(false);
+
+        assertThat(catalog.toolsFor(userId, teamsTerminal())).isEmpty();
+    }
+
+    @Test
     @DisplayName("F-108 : describeWrite nomme l'action et l'emplacement en clair")
     void describeWriteNamesActionAndLocation() {
         assertThat(TeamsToolCatalog.describeWrite(TeamsToolCatalog.CREATE_FOLDER, "Livrables",

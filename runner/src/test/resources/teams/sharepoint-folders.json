@@ -1,0 +1,24 @@
+{
+  "value": [
+    {
+      "odata.type": "SP.Folder",
+      "odata.id": "https://contoso.sharepoint.com/sites/ProjetIAM/_api/Web/GetFolderByServerRelativePath(decodedurl='/sites/ProjetIAM/Shared Documents/General/Livrables')",
+      "odata.editLink": "Web/GetFolderByServerRelativePath(decodedurl='/sites/ProjetIAM/Shared Documents/General/Livrables')",
+      "Exists": true,
+      "ItemCount": 2,
+      "Name": "Livrables",
+      "ServerRelativeUrl": "/sites/ProjetIAM/Shared Documents/General/Livrables",
+      "TimeLastModified": "2026-09-10T08:12:00Z",
+      "UniqueId": "00000000-0000-0000-0000-00000000f001"
+    },
+    {
+      "odata.type": "SP.Folder",
+      "Exists": true,
+      "ItemCount": 0,
+      "Name": "Comptes rendus",
+      "ServerRelativeUrl": "/sites/ProjetIAM/Shared Documents/General/Comptes rendus",
+      "TimeLastModified": "2026-09-11T16:40:00Z",
+      "UniqueId": "00000000-0000-0000-0000-00000000f002"
+    }
+  ]
+}
