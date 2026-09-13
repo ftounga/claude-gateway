@@ -73,3 +73,10 @@ lire **avant** l'utilisateur — et jamais en rendant la moitié d'un compte ren
 | `sharepoint-recording-file.json` | métadonnées du `.mp4` (`GetFileByServerRelativePath`) |
 | `sharepoint-recordings-files.json` | le dossier `Recordings` : le `.mp4` et son `.vtt` de même nom |
 | `recording-transcript.vtt` | transcription WebVTT (forme publique W3C, locuteur `<v Nom>`), deux répliques inventées |
+| `sharepoint-folder-created.json` | réponse de `POST /_api/web/folders` (SP.Folder créé) (F-108 / SF-108-04) |
+| `sharepoint-folder-general.json` | un dossier existant, lu par `GetFolderByServerRelativePath` |
+| `sharepoint-file-uploaded.json` | réponse de `Files/AddUsingPath(…,Overwrite=false)` |
+| `sharepoint-file-replaced.json` | réponse de `Files/AddUsingPath(…,Overwrite=true)` : version 4.0 |
+| `sharepoint-moveto.json` | réponse de `MoveTo` (`odata.null`) — sert aussi de « succès non conforme » |
+| `sharepoint-recycle.json` | réponse de `recycle()` : l'identifiant de corbeille (`value`) |
+| `sharepoint-error-exists.json`, `sharepoint-error-locked.json` | « existe déjà » (400) et « verrouillé » (423) |

@@ -70,6 +70,22 @@ final class FakeCdpConnection implements CdpConnection {
         if (CdpCommands.PAGE_NAVIGATE.equals(method)) {
             return navigate(params.path("url").asText(""));
         }
+        if (CdpCommands.GET_DOCUMENT.equals(method)) {
+            ObjectNode result = mapper.createObjectNode();
+            result.putObject("root").put("nodeId", 1);
+            return result;
+        }
+        if (CdpCommands.QUERY_SELECTOR.equals(method)) {
+            ObjectNode result = mapper.createObjectNode();
+            String selector = params.path("selector").asText("");
+            result.put("nodeId", selector.startsWith("#") && injectedInputs.contains(selector.substring(1))
+                    ? 7 : 0);
+            return result;
+        }
+        if (CdpCommands.SET_FILE_INPUT_FILES.equals(method)) {
+            params.path("files").forEach(file -> droppedFiles.add(file.asText()));
+            return mapper.createObjectNode();
+        }
         if (CdpCommands.SET_DOWNLOAD_BEHAVIOR.equals(method)) {
             String behavior = params.path("behavior").asText("");
             downloadBehaviors.add(behavior);
@@ -173,7 +189,25 @@ final class FakeCdpConnection implements CdpConnection {
         return mapper.createObjectNode();
     }
 
+    /** Champs de dépôt créés par les scripts d'écriture (F-108 / SF-108-04). */
+    private final List<String> injectedInputs = new ArrayList<>();
+    /** Fichiers posés dans un champ de dépôt, tels que {@code DOM.setFileInputFiles} les a reçus. */
+    private final List<String> droppedFiles = new ArrayList<>();
+
+    List<String> droppedFiles() {
+        return List.copyOf(droppedFiles);
+    }
+
     private JsonNode sharePointScript(String expression, ObjectNode result) {
+        if (expression.contains("/*cg-input*/")) {
+            java.util.regex.Matcher id = java.util.regex.Pattern.compile("i\\.id = \"([^\"]+)\"")
+                    .matcher(expression);
+            if (id.find()) {
+                injectedInputs.add(id.group(1));
+            }
+            result.putObject("result").put("value", true);
+            return result;
+        }
         java.util.regex.Matcher op = java.util.regex.Pattern.compile("/\\*cg-op:([a-z0-9-]*)\\*/")
                 .matcher(expression);
         if (op.find()) {

@@ -103,7 +103,16 @@ public enum TeamsGapKind {
      * Le téléchargement n'a pas abouti : bloqué par l'organisateur ou la politique du tenant, refusé,
      * ou remplacé par une page d'erreur (F-108 / SF-108-03 et SF-108-05).
      */
-    DOWNLOAD_BLOCKED("téléchargement bloqué ou refusé");
+    DOWNLOAD_BLOCKED("téléchargement bloqué ou refusé"),
+
+    /** Un élément de ce nom existe déjà : rien n'est écrasé (F-108 / SF-108-04). */
+    ALREADY_EXISTS("un élément de ce nom existe déjà"),
+
+    /** Microsoft 365 a refusé l'écriture — verrou, extraction, règle du site (F-108 / SF-108-04). */
+    WRITE_FAILED("écriture refusée par Microsoft 365"),
+
+    /** Un nom que SharePoint refuserait : l'écriture n'est pas tentée (F-108 / SF-108-04). */
+    INVALID_NAME("nom refusé");
 
     private final String label;
 

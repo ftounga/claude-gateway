@@ -245,6 +245,62 @@ class TeamsToolCatalogTest {
     }
 
     @Test
+    @DisplayName("F-108 / SF-108-04 : les six écritures sont données, sous le droit, et restent des écritures")
+    void theWriteToolsAreGivenBehindTheRight() {
+        when(teamsAccess.hasAccess(userId)).thenReturn(true);
+
+        assertThat(catalog.toolsFor(userId, teamsTerminal())).extracting(AgentTool::name)
+                .containsAll(TeamsToolCatalog.WRITE);
+        assertThat(TeamsToolCatalog.CATALOG).containsAll(TeamsToolCatalog.WRITE);
+        catalog.toolsFor(userId, teamsTerminal()).stream()
+                .filter(tool -> TeamsToolCatalog.isWrite(tool.name()))
+                .forEach(tool -> assertThat(tool.description()).contains("AUTORISER"));
+        // Poster un message reste hors périmètre : aucun outil de ce genre n'est donné.
+        assertThat(catalog.toolsFor(userId, teamsTerminal())).extracting(AgentTool::name)
+                .noneMatch(name -> name.contains("post") || name.contains("message")
+                        || name.contains("reply") || name.contains("react"));
+        when(teamsAccess.hasAccess(userId)).thenReturn(false);
+        assertThat(catalog.toolsFor(userId, teamsTerminal())).isEmpty();
+    }
+
+    @Test
+    @DisplayName("F-108 / SF-108-04 : le libellé de chaque écriture — ancien/nouveau nom, fichier local, lieu lisible")
+    void describeWriteCallNamesEverythingTheUserMustSee() {
+        String general = "https://contoso.sharepoint.com/sites/ProjetIAM/Shared%20Documents/General";
+        String plan = general + "/plan.docx";
+        java.util.function.Function<java.util.Map<String, String>, java.util.function.Function<String, String>>
+                args = map -> map::get;
+
+        assertThat(TeamsToolCatalog.describeWriteCall(TeamsToolCatalog.CREATE_FOLDER,
+                args.apply(java.util.Map.of("location", general, "name", "Livrables"))))
+                .isEqualTo("Créer le dossier « Livrables » dans ProjetIAM › Shared Documents › General");
+        assertThat(TeamsToolCatalog.describeWriteCall(TeamsToolCatalog.UPLOAD_FILE,
+                args.apply(java.util.Map.of("file", "/home/u/secret/rapport.docx", "location", general,
+                        "name", "anodin.docx"))))
+                .isEqualTo("Déposer le fichier local « /home/u/secret/rapport.docx » sous le nom "
+                        + "« anodin.docx » dans ProjetIAM › Shared Documents › General");
+        assertThat(TeamsToolCatalog.describeWriteCall(TeamsToolCatalog.RENAME,
+                args.apply(java.util.Map.of("target", plan, "name", "plan-v2.docx"))))
+                .isEqualTo("Renommer « plan.docx » en « plan-v2.docx » dans ProjetIAM › Shared Documents › General");
+        assertThat(TeamsToolCatalog.describeWriteCall(TeamsToolCatalog.MOVE,
+                args.apply(java.util.Map.of("target", plan, "destination", general + "/Archives"))))
+                .isEqualTo("Déplacer « plan.docx » vers ProjetIAM › Shared Documents › General › Archives");
+        assertThat(TeamsToolCatalog.describeWriteCall(TeamsToolCatalog.DELETE,
+                args.apply(java.util.Map.of("target", plan))))
+                .isEqualTo("Supprimer « plan.docx » dans ProjetIAM › Shared Documents › General (corbeille du site)");
+        assertThat(TeamsToolCatalog.describeWriteCall(TeamsToolCatalog.REPLACE_VERSION,
+                args.apply(java.util.Map.of("target", plan, "file", "/home/u/plan.docx"))))
+                .isEqualTo("Remplacer la version de « plan.docx » dans ProjetIAM › Shared Documents › General "
+                        + "par le fichier local « /home/u/plan.docx »");
+        // Un emplacement déjà en clair est gardé ; OneDrive est nommé.
+        assertThat(TeamsToolCatalog.readableLocation("Équipe Projet IAM › Général › Fichiers"))
+                .isEqualTo("Équipe Projet IAM › Général › Fichiers");
+        assertThat(TeamsToolCatalog.readableLocation(
+                "https://contoso-my.sharepoint.com/personal/f_x/Documents/Livrables"))
+                .isEqualTo("OneDrive › Documents › Livrables");
+    }
+
+    @Test
     @DisplayName("F-108 : describeWrite nomme l'action et l'emplacement en clair")
     void describeWriteNamesActionAndLocation() {
         assertThat(TeamsToolCatalog.describeWrite(TeamsToolCatalog.CREATE_FOLDER, "Livrables",

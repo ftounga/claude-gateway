@@ -1,0 +1,9 @@
+{
+  "odata.error": {
+    "code": "-2147018894, Microsoft.SharePoint.SPFileLockException",
+    "message": {
+      "lang": "en-US",
+      "value": "The file \"Shared Documents/General/plan-migration.docx\" is locked for shared use by paul@fabrique.invalid."
+    }
+  }
+}

@@ -1393,9 +1393,9 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private String teamsWriteDetail(AgentToolCall call) {
         JsonNode input = call.input();
-        String item = firstArg(input, "name", "target", "file");
-        String location = firstArg(input, "location", "destination", "parent");
-        return fr.claudegateway.teams.TeamsToolCatalog.describeWrite(call.name(), item, location);
+        // F-108 / SF-108-04 : une phrase par écriture — ancien et nouveau nom, fichier local déposé.
+        return fr.claudegateway.teams.TeamsToolCatalog.describeWriteCall(call.name(),
+                name -> firstArg(input, name));
     }
 
     /** Le premier argument texte non vide parmi une liste de noms possibles, ou {@code ""}. */
@@ -1514,7 +1514,7 @@ public class AtelierChatService implements RelayInterruptTarget {
      */
     private String teamsAuditTarget(JsonNode input) {
         for (String field : List.of("conversation_id", "meeting_id", "capture_id", "query",
-                "name", "target", "file", "location", "destination")) {
+                "target", "name", "file", "location", "destination")) {
             String value = arg(input, field);
             if (value != null && !value.isBlank()) {
                 return field + '=' + value;

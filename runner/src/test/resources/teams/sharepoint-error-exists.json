@@ -1,0 +1,9 @@
+{
+  "odata.error": {
+    "code": "-2130575257, Microsoft.SharePoint.SPException",
+    "message": {
+      "lang": "en-US",
+      "value": "A file with the name Shared Documents/General/rapport.docx already exists. It was last modified by i:0#.f|membership|paul@fabrique.invalid on 13 Sep 2026 10:01:00 -0000."
+    }
+  }
+}

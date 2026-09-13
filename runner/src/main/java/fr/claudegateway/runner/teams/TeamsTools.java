@@ -75,13 +75,24 @@ public final class TeamsTools implements ToolExecutor {
      * (F-108 / SF-108-03). Lecture : aucune confirmation.
      */
     public static final String READ_FILE = "teams_read_file";
+    /**
+     * <b>Les six écritures</b> dans Microsoft 365 (F-108 / SF-108-04). Le runner ne les reçoit
+     * qu'après l'autorisation de l'utilisateur, donnée pour CHACUNE côté gateway (SF-108-02).
+     */
+    public static final String CREATE_FOLDER = "teams_create_folder";
+    public static final String UPLOAD_FILE = "teams_upload_file";
+    public static final String RENAME = "teams_rename";
+    public static final String MOVE = "teams_move";
+    public static final String DELETE = "teams_delete";
+    public static final String REPLACE_VERSION = "teams_replace_version";
     public static final String CAPABILITY = "teams";
 
     /** Le catalogue, dans l'ordre où il est donné à l'agent. */
     public static final List<String> CATALOG = List.of(STATUS, FIND_CONVERSATIONS,
             READ_CONVERSATION, MENTIONS, SEARCH, FIND_MEETINGS, MEETING_TRANSCRIPT,
             MEETING_RECORDING, MEETING_MOMENTS, MOMENTS_STATUS, CAPTURE_START, CAPTURE_STOP,
-            CAPTURE_STATUS, LIST_FILES, READ_FILE);
+            CAPTURE_STATUS, LIST_FILES, READ_FILE, CREATE_FOLDER, UPLOAD_FILE, RENAME, MOVE, DELETE,
+            REPLACE_VERSION);
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final TeamsSession session;
@@ -272,6 +283,14 @@ public final class TeamsTools implements ToolExecutor {
             case CAPTURE_STATUS -> captureStatus(input);
             case LIST_FILES -> files == null ? filesUnavailable(LIST_FILES) : files.listFiles(input);
             case READ_FILE -> files == null ? filesUnavailable(READ_FILE) : files.readFile(input);
+            case CREATE_FOLDER -> files == null ? filesUnavailable(CREATE_FOLDER)
+                    : writes().createFolder(input);
+            case UPLOAD_FILE -> files == null ? filesUnavailable(UPLOAD_FILE) : writes().upload(input);
+            case RENAME -> files == null ? filesUnavailable(RENAME) : writes().rename(input);
+            case MOVE -> files == null ? filesUnavailable(MOVE) : writes().move(input);
+            case DELETE -> files == null ? filesUnavailable(DELETE) : writes().delete(input);
+            case REPLACE_VERSION -> files == null ? filesUnavailable(REPLACE_VERSION)
+                    : writes().replaceVersion(input);
             // Le Radar (F-100) : des appels de la gateway, hors du catalogue de l'agent.
             case RadarTools.VERIFY -> radar().verify();
             case RadarTools.COLLECT -> radar().collect(input);
@@ -748,6 +767,11 @@ public final class TeamsTools implements ToolExecutor {
         result.window(ask.window()).gaps(gaps).health(book.health())
                 .with("firstUse", firstUse()).text(text.toString());
         return ToolOutcome.ok(result.render());
+    }
+
+    /** Les écritures (F-108 / SF-108-04), montées sur les mêmes réglages que les outils fichiers. */
+    private TeamsWriteTools writes() {
+        return new TeamsWriteTools(filesHost, sleeper, filesSay);
     }
 
     /** Les outils d'enregistrement, montés sur les mêmes réglages que les outils fichiers. */
