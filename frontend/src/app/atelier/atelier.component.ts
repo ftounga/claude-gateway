@@ -10,6 +10,7 @@ import {
   effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -538,6 +539,34 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * une pastille « navigateur non détecté » sur un projet qui n'a pas de machine serait du bruit.
    */
   readonly teamsLink = signal<TeamsLink | null>(null);
+
+  /**
+   * **Le terminal Teams ouvert n'a pas de droit Teams** (F-89 / SF-89-04). Le constat du
+   * 2026-09-13 : sans ce signal, rien à l'écran ne disait pourquoi l'agent ne lisait pas Teams.
+   *
+   * <p>Faux par défaut, et faux sur une erreur d'appel : on n'affirme pas un refus qu'on ne connaît
+   * pas. Une réponse arrivée après un changement de projet est ignorée.</p>
+   */
+  readonly teamsOptionInactive = signal(false);
+
+  private readonly teamsOptionSync = effect(() => {
+    const id = this.activeWorkspaceId();
+    const teams = this.activeIsTeamsTerminal();
+    untracked(() => {
+      this.teamsOptionInactive.set(false);
+      if (!id || !teams) {
+        return;
+      }
+      this.atelier.teamsAccess().subscribe({
+        next: (access) => {
+          if (this.activeWorkspaceId() === id) {
+            this.teamsOptionInactive.set(access.entitled !== true);
+          }
+        },
+        error: () => this.teamsOptionInactive.set(false),
+      });
+    });
+  });
 
   /** Sondage de la liaison Teams ; `null` quand aucun runner n'est connecté. */
   private teamsLinkTimer: ReturnType<typeof setInterval> | null = null;
