@@ -186,6 +186,19 @@
                         <mat-icon aria-hidden="true">open_in_new</mat-icon>
                       </a>
                     }
+                    <!-- F-104 / SF-104-02 : une nouvelle se défait entière, depuis la chronologie. -->
+                    @if (isNews(evidence)) {
+                      <button
+                        mat-button
+                        type="button"
+                        class="radar-subject__undo-news"
+                        [disabled]="undoingNews() !== null"
+                        (click)="undoNews(evidence)"
+                      >
+                        <mat-icon>undo</mat-icon>
+                        Annuler cette nouvelle
+                      </button>
+                    }
                   </div>
                 </li>
               }

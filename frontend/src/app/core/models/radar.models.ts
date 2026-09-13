@@ -189,3 +189,40 @@ export interface RadarThreadRule {
   label: string | null;
   createdAt: string;
 }
+
+// ------------------------------------------------------------------ Donner la nouvelle (F-104 / SF-104-02)
+
+/** Ce qu'une nouvelle a écrit — dit par la gateway, jamais par le modèle. */
+export interface RadarNewsChange {
+  kind: string;
+  subjectId: string | null;
+  subjectName: string | null;
+  correctionId: string | null;
+  sentence: string;
+}
+
+/** L'en-tête d'un courriel collé, tel que la gateway l'a lu. */
+export interface RadarPastedMail {
+  sender: string;
+  sentAt: string;
+  subject: string | null;
+  /** Faux si la date du courriel était illisible : la preuve est alors datée du collage. */
+  datedFromMail: boolean;
+}
+
+/** La réponse du Radar à une nouvelle. */
+export interface RadarNews {
+  understanding: string;
+  changes: RadarNewsChange[];
+  /** La preuve rangée : c'est elle qu'on annule. `null` si rien n'a été écrit. */
+  evidenceId: string | null;
+  source: 'USER_NOTE' | 'PASTED_MAIL';
+  mail: RadarPastedMail | null;
+  stoppedEarly: boolean;
+}
+
+/** Une nouvelle annulée. */
+export interface RadarNewsUndo {
+  evidenceId: string;
+  undone: number;
+}

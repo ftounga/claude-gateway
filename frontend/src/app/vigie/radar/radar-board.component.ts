@@ -3,6 +3,7 @@ import { Component, input, output, viewChild } from '@angular/core';
 import { RadarBrief } from '../../core/models/radar.models';
 import { RadarBriefComponent } from './radar-brief.component';
 import { RadarColumnsComponent } from './radar-columns.component';
+import { RadarNewsComponent } from './radar-news.component';
 
 /**
  * **L'onglet Radar** d'un client de la Vigie (F-102) : le résumé du matin (SF-102-01), puis les trois
@@ -13,11 +14,13 @@ import { RadarColumnsComponent } from './radar-columns.component';
  */
 @Component({
   selector: 'app-radar-board',
-  imports: [RadarBriefComponent, RadarColumnsComponent],
+  imports: [RadarBriefComponent, RadarColumnsComponent, RadarNewsComponent],
   template: `
     <div class="radar-board">
       <app-radar-brief [hostId]="hostId()" (briefChange)="onBrief($event)"></app-radar-brief>
       <app-radar-columns [hostId]="hostId()" (changed)="onColumnsChanged()"></app-radar-columns>
+      <!-- F-104 / SF-104-02 : Donner la nouvelle, en bas du Radar (maquette 1). -->
+      <app-radar-news [hostId]="hostId()" (changed)="onNews()"></app-radar-news>
     </div>
   `,
   styles: `
@@ -55,5 +58,11 @@ export class RadarBoardComponent {
 
   onColumnsChanged(): void {
     this.brief()?.load();
+  }
+
+  /** Une nouvelle écrite ou annulée : le résumé et les colonnes se relisent. */
+  onNews(): void {
+    this.brief()?.load();
+    this.columns()?.load();
   }
 }

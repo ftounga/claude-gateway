@@ -1,0 +1,111 @@
+/* Donner la nouvelle (F-104 / SF-104-02) — DESIGN_SYSTEM.md §17, aucune couleur hors charte. */
+:host {
+  display: block;
+}
+
+.radar-news {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-space-2);
+  padding: var(--cg-space-3);
+  border: 1px solid var(--cg-divider);
+  border-radius: 8px;
+  background: var(--cg-surface);
+
+  &__composer {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cg-space-2);
+
+    @media (max-width: 599px) {
+      flex-direction: column;
+      align-items: stretch;
+    }
+  }
+
+  &__field {
+    flex: 1 1 auto;
+  }
+
+  &__send {
+    flex: none;
+    margin-top: var(--cg-space-1);
+
+    mat-spinner {
+      display: inline-block;
+      margin-right: var(--cg-space-1);
+    }
+  }
+
+  &__hint--mail {
+    color: var(--cg-primary);
+  }
+
+  &__error {
+    margin: 0;
+    font-size: 14px;
+    color: var(--cg-error);
+  }
+
+  /* La réponse : un filet bleu §9 (index 0), jamais un aplat. */
+  &__answer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-1);
+    padding: var(--cg-space-2) 0 var(--cg-space-2) var(--cg-space-3);
+    border-left: 4px solid var(--cg-primary);
+  }
+
+  &__answer-head {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cg-space-2);
+
+    mat-icon {
+      flex: none;
+      color: var(--cg-text-secondary);
+    }
+  }
+
+  &__understood {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.5;
+    color: var(--cg-text-primary);
+  }
+
+  &__mail,
+  &__partial {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cg-space-1);
+    margin: 0;
+    font-size: 13px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__changes {
+    margin: 0;
+    padding-left: var(--cg-space-4);
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--cg-text-primary);
+
+    a {
+      color: inherit;
+    }
+  }
+
+  &__answer-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cg-space-2);
+
+    mat-spinner {
+      display: inline-block;
+      margin-right: var(--cg-space-1);
+    }
+  }
+}
