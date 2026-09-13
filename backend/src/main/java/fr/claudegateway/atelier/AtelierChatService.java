@@ -1571,6 +1571,11 @@ public class AtelierChatService implements RelayInterruptTarget {
             // F-91 : ce qui CRÉE est tracé autrement de ce qui relit — l'usage et la confirmation
             // déclarée, parce que c'est ce qu'on voudra pouvoir dire six mois plus tard.
             default -> {
+                // F-104 / SF-104-03 : un appel Radar se lit en clair, sans identifiant ni contenu de message.
+                if (fr.claudegateway.radar.RadarToolCatalog.isRadarTool(call.name())) {
+                    yield shorten(fr.claudegateway.radar.RadarToolCatalog.stepTarget(call.name(), input),
+                            AUDIT_TARGET_CHARS);
+                }
                 if (fr.claudegateway.teams.TeamsToolCatalog.isCapture(call.name())) {
                     yield shorten(teamsCaptureAuditTarget(call), AUDIT_TARGET_CHARS);
                 }
@@ -1983,6 +1988,11 @@ public class AtelierChatService implements RelayInterruptTarget {
         // projet. Placé juste après le rôle : c'est ce qui change le sens de tout le reste.
         if (teamsToolCatalog.isClosedFor(userId, workspace)) {
             system.append(fr.claudegateway.teams.TeamsToolCatalog.CLOSED_NOTICE).append("\n\n");
+        }
+        // F-104 / SF-104-03 : le Radar du client, sous la même garde que ses outils — registre d'abord, et la
+        // parole de l'utilisateur pour seule preuve d'une écriture.
+        if (radarToolCatalog.isOpenFor(userId, workspace)) {
+            system.append(fr.claudegateway.radar.RadarToolCatalog.TERMINAL_NOTICE).append("\n\n");
         }
 
         // Compteurs d'amorçage : ces lectures sont journalisées en UNE ligne (F-38 / SF-38-08).

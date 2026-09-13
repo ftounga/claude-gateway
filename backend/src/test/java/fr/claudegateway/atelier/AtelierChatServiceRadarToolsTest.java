@@ -179,4 +179,47 @@ class AtelierChatServiceRadarToolsTest {
 
         verify(executor, never()).execute(any(), any(), any(), any());
     }
+
+    // ------------------------------------------------------------ F-104 / SF-104-03 : le Radar au terminal
+
+    @Test
+    @DisplayName("SF-104-03 — garde ouverte : la consigne porte le bloc Radar ; fermée : non")
+    void systemPromptCarriesTheRadarNoticeUnderTheGuard() {
+        assertThat(service.buildSystemPrompt(userId, terminal(true, hostId)))
+                .contains(RadarToolCatalog.TERMINAL_NOTICE);
+        assertThat(service.buildSystemPrompt(userId, terminal(false, hostId))).doesNotContain("--- Radar du client ---");
+
+        when(spaces.isActive(userId, hostId, ClientSpace.VIGIE)).thenReturn(false);
+        assertThat(service.buildSystemPrompt(userId, terminal(true, hostId))).doesNotContain("--- Radar du client ---");
+
+        when(spaces.isActive(userId, hostId, ClientSpace.VIGIE)).thenReturn(true);
+        when(teamsAccess.hasAccess(userId)).thenReturn(false);
+        assertThat(service.buildSystemPrompt(userId, terminal(true, hostId))).doesNotContain("--- Radar du client ---");
+    }
+
+    @Test
+    @DisplayName("SF-104-03 — l'étape Radar est relayée avec sa cible lisible, sans identifiant")
+    void theRadarStepIsRelayedInPlainWords() {
+        terminal(true, hostId);
+        agentProvider.enqueueToolCallWithObject(RadarToolCatalog.FIND_SUBJECT, "{\"query\":\"MFA\"}");
+        agentProvider.enqueueFinal("Le MFA avance.");
+        List<AtelierProgressListener.AtelierStepEvent> steps = new java.util.ArrayList<>();
+
+        service.chatStreaming(userId, workspaceId, "où en est le MFA ?", new AtelierProgressListener() {
+            @Override
+            public void onAction(AtelierStepEvent step) {
+                steps.add(step);
+            }
+
+            @Override
+            public void onText(String text) {
+                // rien
+            }
+        });
+
+        assertThat(steps).extracting(AtelierProgressListener.AtelierStepEvent::path)
+                .containsExactly("Radar · recherche « MFA »");
+        assertThat(steps).extracting(AtelierProgressListener.AtelierStepEvent::type)
+                .containsExactly(RadarToolCatalog.FIND_SUBJECT);
+    }
 }

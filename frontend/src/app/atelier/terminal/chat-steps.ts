@@ -50,6 +50,10 @@ function stepCommand(step: AtelierStreamAction): string {
     case 'explore':
       return step.path ? `exploration « ${step.path} »` : 'exploration';
     default:
+      // F-104 / SF-104-03 : un outil Radar sans cible se dit « Radar », jamais par son nom technique.
+      if (step.type.startsWith('radar_')) {
+        return step.path ?? 'Radar';
+      }
       return step.path ?? step.type;
   }
 }

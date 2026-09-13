@@ -65,4 +65,15 @@ describe('chatStepsToBlocks (F-39 SF-39-08)', () => {
 
     expect(blocks[0].threadId).toBeNull();
   });
+
+  it('F-104 / SF-104-03 : un outil Radar porte sa cible lisible, ou « Radar » sans cible', () => {
+    const blocks = chatStepsToBlocks([
+      { type: 'radar_find_subject', path: 'Radar · recherche « MFA »' },
+      { type: 'radar_close_subject' },
+    ]);
+
+    expect(blocks[0].command).toBe('Radar · recherche « MFA »');
+    expect(blocks[1].command).toBe('Radar');
+    expect(blocks[1].tool).toBe('radar_close_subject');
+  });
 });
