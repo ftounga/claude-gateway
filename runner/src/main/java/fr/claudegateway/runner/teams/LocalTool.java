@@ -35,14 +35,36 @@ import fr.claudegateway.runner.OperatingSystem;
  */
 public record LocalTool(String name, List<String> executables, String purpose,
         Map<OperatingSystem, String> downloads, Map<OperatingSystem, Archive> archives,
-        Map<OperatingSystem, String> advice) {
+        Map<OperatingSystem, String> advice, Kind kind) {
 
     /** Les genres d'archive que le runner sait ouvrir. Liste close. */
     public enum Archive {
         /** {@code java.util.zip}, dans le JDK : Windows et macOS. */
         ZIP,
         /** Délégué au {@code tar} du système, présent partout où cette forme est distribuée. */
-        TAR_XZ
+        TAR_XZ,
+        /**
+         * <b>Pas une archive</b> : le fichier téléchargé <b>est</b> l'artefact (F-91 / SF-91-03).
+         * C'est le cas du modèle de transcription — quelques centaines de mégaoctets de poids, rien
+         * à décompresser.
+         */
+        PLAIN
+    }
+
+    /**
+     * <b>Ce qu'on fait de ce qu'on a rapatrié</b> (F-91 / SF-91-03).
+     *
+     * <p>Jusqu'ici, tout outil local était un <b>binaire</b> : on le cherchait dans le {@code PATH},
+     * on le rendait exécutable, et on lui demandait de <b>s'identifier</b> avant de s'en servir. Le
+     * modèle de transcription n'est rien de tout cela : c'est un <b>fichier de données</b>. Le
+     * chercher dans le {@code PATH} n'aurait pas de sens, et lui demander {@code -version} le ferait
+     * refuser à coup sûr.</p>
+     */
+    public enum Kind {
+        /** Un binaire : cherché dans le {@code PATH}, rendu exécutable, et vérifié. */
+        EXECUTABLE,
+        /** Un fichier de données : ni cherché dans le {@code PATH}, ni lancé, ni vérifié. */
+        DATA
     }
 
     public LocalTool {
@@ -50,6 +72,19 @@ public record LocalTool(String name, List<String> executables, String purpose,
         downloads = downloads == null ? Map.of() : Map.copyOf(downloads);
         archives = archives == null ? Map.of() : Map.copyOf(archives);
         advice = advice == null ? Map.of() : Map.copyOf(advice);
+        kind = kind == null ? Kind.EXECUTABLE : kind;
+    }
+
+    /** La forme historique : un binaire. */
+    public LocalTool(String name, List<String> executables, String purpose,
+            Map<OperatingSystem, String> downloads, Map<OperatingSystem, Archive> archives,
+            Map<OperatingSystem, String> advice) {
+        this(name, executables, purpose, downloads, archives, advice, Kind.EXECUTABLE);
+    }
+
+    /** Vrai pour un fichier de données : ni PATH, ni bit d'exécution, ni {@code -version}. */
+    public boolean isData() {
+        return kind == Kind.DATA;
     }
 
     /** Adresse de téléchargement pour ce système, ou {@code ""} s'il n'y en a pas. */
@@ -96,5 +131,82 @@ public record LocalTool(String name, List<String> executables, String purpose,
                         OperatingSystem.MACOS, "brew install ffmpeg",
                         OperatingSystem.LINUX,
                         "sudo apt install ffmpeg   (ou : sudo dnf install ffmpeg)"));
+    }
+
+    /**
+     * <b>Le moteur de transcription</b> (F-91 / SF-91-03) — celui qui tourne <b>sur la machine</b>.
+     *
+     * <h2>Pourquoi celui-ci, et pas un service</h2>
+     *
+     * <p>Envoyer l'audio d'une réunion à un service <b>annulerait le bénéfice de garder la vidéo en
+     * local</b> : ce qu'on protège en ne remontant pas les images, on le donnerait en remontant les
+     * voix. Le moteur tourne donc ici, hors ligne, et <b>seul le texte</b> remonte.</p>
+     *
+     * <h2>Le téléchargement n'existe que là où l'amont en publie un</h2>
+     *
+     * <p>Windows a une archive officielle ; ailleurs, le projet se distribue par les gestionnaires
+     * de paquets. Quand il n'y a pas d'adresse, {@link LocalToolchain} <b>refuse en donnant la
+     * commande d'installation</b> plutôt que d'inventer une URL — une adresse fausse ferait
+     * télécharger n'importe quoi sur la machine de quelqu'un.</p>
+     *
+     * <p><b>Provenance, écrite et non maquillée</b> : ces adresses et ces commandes viennent des
+     * pages officielles du projet. Elles n'ont <b>pas</b> été exercées ici — le CI n'a ni le binaire
+     * ni de quoi le faire tourner.</p>
+     */
+    public static LocalTool transcriber() {
+        return new LocalTool("whisper-cli",
+                // Le binaire a changé de nom en cours de route : « main » est l'ancien, « whisper-cli »
+                // le nouveau. Chercher les deux évite de refuser un poste où il est déjà installé.
+                List.of("whisper-cli", "whisper-cpp", "main"),
+                "transcrire, SUR CETTE MACHINE, l'audio d'un enregistrement local — rien n'en sort",
+                Map.of(OperatingSystem.WINDOWS,
+                        "https://github.com/ggml-org/whisper.cpp/releases/latest/download/"
+                                + "whisper-bin-x64.zip"),
+                Map.of(OperatingSystem.WINDOWS, Archive.ZIP),
+                Map.of(
+                        OperatingSystem.WINDOWS, "winget install whisper-cpp",
+                        OperatingSystem.MACOS, "brew install whisper-cpp",
+                        OperatingSystem.LINUX,
+                        "sudo apt install whisper.cpp   (ou compilez-le depuis "
+                                + "github.com/ggml-org/whisper.cpp)"));
+    }
+
+    /**
+     * <b>Le modèle de transcription</b> (F-91 / SF-91-03), téléchargé <b>une fois</b> (D3).
+     *
+     * <h2>Un fichier de données, pas un binaire</h2>
+     *
+     * <p>D'où {@link Kind#DATA} : il n'est pas cherché dans le {@code PATH}, il n'est pas rendu
+     * exécutable, et on ne lui demande pas de s'identifier. Le chemin de rapatriement, lui, est
+     * <b>exactement le même</b> que celui d'{@code ffmpeg} — mêmes annonces, mêmes refus, même
+     * absence de copie à moitié écrite.</p>
+     *
+     * <h2>Pourquoi « base » et pas « large »</h2>
+     *
+     * <p>Le poids se paie deux fois : au téléchargement (une minute, ou un quart d'heure) et à chaque
+     * transcription (le temps de calcul croît avec la taille). « base » tient dans 150 Mo et
+     * transcrit une heure de réunion en quelques minutes sur un portable ordinaire ; « large »
+     * demanderait 3 Go et un processeur graphique. Pour un compte rendu de réunion, la différence de
+     * qualité ne vaut pas la différence d'attente.</p>
+     *
+     * <p><b>Provenance</b> : dépôt officiel des modèles du projet. Adresse <b>en dur</b>, jamais reçue
+     * d'un appel d'outil — le premier des trois garde-fous de SF-90-01, inchangé.</p>
+     */
+    public static LocalTool transcriptionModel() {
+        String url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin";
+        return new LocalTool("modele-de-transcription", List.of("ggml-base.bin"),
+                "reconnaître la parole SUR CETTE MACHINE, sans rien envoyer nulle part",
+                Map.of(
+                        OperatingSystem.WINDOWS, url,
+                        OperatingSystem.MACOS, url,
+                        OperatingSystem.LINUX, url,
+                        OperatingSystem.OTHER, url),
+                Map.of(
+                        OperatingSystem.WINDOWS, Archive.PLAIN,
+                        OperatingSystem.MACOS, Archive.PLAIN,
+                        OperatingSystem.LINUX, Archive.PLAIN,
+                        OperatingSystem.OTHER, Archive.PLAIN),
+                Map.of(),
+                Kind.DATA);
     }
 }

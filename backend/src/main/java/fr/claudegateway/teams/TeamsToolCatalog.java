@@ -285,8 +285,14 @@ public class TeamsToolCatalog {
                         "properties", Map.of(
                                 "video", Map.of("type", "string",
                                         "description", "Chemin de l'enregistrement SUR LA MACHINE. "
-                                                + "Obligatoire : je ne le télécharge pas depuis "
-                                                + "Teams."),
+                                                + "Obligatoire, SAUF si tu donnes « capture_id »."),
+                                "capture_id", Map.of("type", "string",
+                                        "description", "Identifiant d'un ENREGISTREMENT LOCAL "
+                                                + "terminé (teams_capture_*). Préfère-le à "
+                                                + "« video » chaque fois que tu l'as : il apporte "
+                                                + "d'un coup la vidéo, la transcription produite "
+                                                + "sur la machine, ET l'instant de début exact — "
+                                                + "aucune image n'a besoin d'être datée à la main."),
                                 "meeting_id", text,
                                 "video_started_at", Map.of("type", "string",
                                         "description", "Instant ISO-8601 du début de "
@@ -296,8 +302,10 @@ public class TeamsToolCatalog {
                                 "restart", Map.of("type", "string",
                                         "description", "« true » pour relancer un travail déjà "
                                                 + "fait ou échoué. Sans cela, redemander le même "
-                                                + "enregistrement REPREND, il ne recommence pas.")),
-                        "required", List.of("video"))));
+                                                + "enregistrement REPREND, il ne recommence pas.")))));
+        // Aucun champ n'est déclaré « required » ici : c'est « video » OU « capture_id », et le
+        // runner refuse en NOMMANT ce qui manque quand ni l'un ni l'autre n'est donné
+        // (F-91 / SF-91-03). Un schema ne sait pas dire « l'un des deux ».
 
         tools.add(new AgentTool(MOMENTS_STATUS,
                 "Où en est un travail de captures, et — QUAND IL EST TERMINÉ — ses moments : "
@@ -370,20 +378,27 @@ public class TeamsToolCatalog {
                         "required", List.of("purpose"))));
 
         tools.add(new AgentTool(CAPTURE_STOP,
-                "ARRÊTE l'enregistrement local et rend le fichier, sa durée et sa taille. Sans "
-                        + "« capture_id », arrête celui qui tourne. Enchaîne ensuite sur "
-                        + MEETING_MOMENTS + " en lui donnant ce fichier : c'est ce qui produit les "
-                        + "moments. Et répète toujours ce que le résultat dit ne PAS avoir pu "
-                        + "faire — un enregistrement coupé au plafond de durée ne couvre pas toute "
-                        + "la réunion, et le taire rendrait le compte rendu faux.",
+                "ARRÊTE l'enregistrement local et DÉMARRE sa transcription SUR LA MACHINE — une "
+                        + "capture locale n'a pas de transcription Teams, il faut la produire. "
+                        + "C'est LONG : cet outil rend la main tout de suite, suis avec "
+                        + CAPTURE_STATUS + " et NE CONCLUS PAS avant qu'elle soit terminée. Rien ne "
+                        + "sort de la machine : ni la vidéo, ni l'audio, seulement le texte. Sans "
+                        + "« capture_id », arrête celui qui tourne. Une fois la transcription "
+                        + "finie, enchaîne sur " + MEETING_MOMENTS + " en lui donnant le "
+                        + "« capture_id » — il y prendra tout seul la vidéo, les répliques et "
+                        + "l'instant de début. Et répète toujours ce que le résultat dit ne PAS "
+                        + "avoir pu faire : un enregistrement coupé au plafond de durée ne couvre "
+                        + "pas toute la réunion, et le taire rendrait le compte rendu faux.",
                 Map.of("type", "object", "properties", Map.of("capture_id", text))));
 
         tools.add(new AgentTool(CAPTURE_STATUS,
-                "Dit si un enregistrement local tourne sur la machine, depuis combien de temps, et "
-                        + "liste les précédents. Sans « capture_id », rend celui qui tourne. "
-                        + "Appelle-le quand l'utilisateur demande « est-ce que ça enregistre "
-                        + "toujours ? » — et quand il ne demande rien mais qu'un enregistrement "
-                        + "traîne depuis longtemps, DIS-LE.",
+                "Dit si un enregistrement local tourne sur la machine, depuis combien de temps, où "
+                        + "en est sa TRANSCRIPTION, et — quand elle est terminée — ses répliques "
+                        + "(« cues »). Sans « capture_id », rend celui qui tourne. Appelle-le quand "
+                        + "l'utilisateur demande « est-ce que ça enregistre toujours ? » — et quand "
+                        + "il ne demande rien mais qu'un enregistrement traîne depuis longtemps, "
+                        + "DIS-LE. Le moteur local ne dit PAS qui parle : ne devine jamais un "
+                        + "locuteur, le résultat te le rappelle.",
                 Map.of("type", "object", "properties", Map.of("capture_id", text))));
         return tools;
     }
@@ -430,6 +445,17 @@ public class TeamsToolCatalog {
         Map<String, Object> windowSchema = Map.of("type", "string",
                 "description", "La fenêtre RÉELLEMENT lue, en toutes lettres : « du 5 au 12 "
                         + "septembre, 47 messages lus ». Jamais celle que tu avais demandée.");
+        // F-91 / SF-91-03 — la mention d'un enregistrement local, à poser EN TÊTE du bloc. La
+        // description est impérative parce que c'est le seul des quatre endroits où la trace voyage
+        // qui dépende du modèle : les trois autres (filigrane dans l'image, journal d'audit,
+        // en-tête du fichier de transcription) sont garantis par construction.
+        Map<String, Object> noticeSchema = Map.of("type", "string",
+                "description", "OBLIGATOIRE si ce compte rendu vient d'un ENREGISTREMENT LOCAL "
+                        + "(teams_capture_*) : recopie TEL QUEL le « recordingNotice » que l'outil "
+                        + "de capture t'a rendu. Il dit qui a enregistré, quand, et que les "
+                        + "participants n'en ont pas été avertis par Teams. Ne le reformule pas, ne "
+                        + "l'invente pas, et laisse-le vide pour un compte rendu bâti sur ce que "
+                        + "Teams avait déjà.");
 
         List<AgentTool> tools = new ArrayList<>();
         tools.add(new AgentTool(MEETING_CARD,
@@ -451,7 +477,8 @@ public class TeamsToolCatalog {
                                                         "title", text,
                                                         "lines", linesSchema),
                                                 "required", List.of("title", "lines"))),
-                                "gaps", gapsSchema),
+                                "gaps", gapsSchema,
+                                "recordingNotice", noticeSchema),
                         "required", List.of("title", "window", "sections", "gaps"))));
         tools.add(new AgentTool(LIST,
                 "Pose dans le fil une LISTE — des engagements, des mentions. Mêmes règles que la "
@@ -465,7 +492,8 @@ public class TeamsToolCatalog {
                                 "subtitle", text,
                                 "window", windowSchema,
                                 "lines", linesSchema,
-                                "gaps", gapsSchema),
+                                "gaps", gapsSchema,
+                                "recordingNotice", noticeSchema),
                         "required", List.of("title", "window", "lines", "gaps"))));
         tools.add(new AgentTool(MOMENTS,
                 "Pose dans le fil des MOMENTS : une image de ce qui était à l'écran, à côté de la "
@@ -496,7 +524,8 @@ public class TeamsToolCatalog {
                                                                         + "transcription à la "
                                                                         + "seconde.")),
                                                 "required", List.of("at", "quote"))),
-                                "gaps", gapsSchema),
+                                "gaps", gapsSchema,
+                                "recordingNotice", noticeSchema),
                         "required", List.of("title", "window", "moments", "gaps"))));
         return tools;
     }

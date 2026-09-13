@@ -174,6 +174,33 @@ describe('AtelierTerminalComponent — le compte rendu Teams (F-89 / SF-89-03)',
     expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
   });
 
+  // ------------------------------------------------------------- F-91 : la mention
+
+  it('LA MENTION D\'UN ENREGISTREMENT LOCAL SE LIT AU-DESSUS DU TITRE, jamais repliée', () => {
+    const notice = 'Ce compte rendu provient d\'un ENREGISTREMENT LOCAL — les participants n\'en '
+      + 'ont pas été avertis par Teams.';
+    render({ ...card, recordingNotice: notice });
+
+    const mention = host().querySelector('.teams-card__recording');
+    expect(mention).not.toBeNull();
+    expect(mention?.textContent).toContain('ENREGISTREMENT LOCAL');
+    // AU-DESSUS du titre : c'est une information sur la NATURE de ce qu'on va lire.
+    const article = host().querySelector('.teams-card');
+    expect(article?.firstElementChild).toBe(mention as Element);
+  });
+
+  it('la mention se lit par la TYPOGRAPHIE : aucun pictogramme d\'alerte', () => {
+    render({ ...card, recordingNotice: 'Enregistrement local.' });
+
+    expect(host().querySelectorAll('.teams-card__recording mat-icon').length).toBe(0);
+  });
+
+  it('sans mention, aucun cadre vide : la plupart des blocs ne viennent pas d\'une capture', () => {
+    render(card);
+
+    expect(host().querySelector('.teams-card__recording')).toBeNull();
+  });
+
   // ------------------------------------------------------------- l'incertitude
 
   it('une ligne « à confirmer » le dit EN TOUTES LETTRES et se lit en italique', () => {

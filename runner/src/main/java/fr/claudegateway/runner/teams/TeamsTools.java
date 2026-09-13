@@ -96,6 +96,12 @@ public final class TeamsTools implements ToolExecutor {
      */
     private LocalCapture capture;
 
+    /**
+     * La transcription locale (F-91 / SF-91-03). {@code null} quand ce runner n'en a pas — une
+     * capture reste possible, mais elle n'aura pas de transcription, et c'est <b>dit</b>.
+     */
+    private TranscriptionWorker transcription;
+
     public TeamsTools(TeamsSession session, BrowserLink.Sleeper sleeper) {
         this.session = session;
         this.probe = new TeamsProbe(session.adapter());
@@ -120,6 +126,16 @@ public final class TeamsTools implements ToolExecutor {
      */
     public TeamsTools withCapture(LocalCapture value) {
         this.capture = value;
+        return this;
+    }
+
+    /**
+     * Branche la transcription locale (F-91 / SF-91-03). {@code null} quand ce runner n'en a pas :
+     * l'outil le <b>dit</b> alors — une capture sans transcription reste une capture, et personne ne
+     * doit croire qu'un compte rendu va suivre.
+     */
+    public TeamsTools withTranscription(TranscriptionWorker value) {
+        this.transcription = value;
         return this;
     }
 
@@ -154,7 +170,7 @@ public final class TeamsTools implements ToolExecutor {
             case MEETING_MOMENTS -> meetingMoments(input, context);
             case MOMENTS_STATUS -> momentsStatus(input);
             case CAPTURE_START -> captureStart(input);
-            case CAPTURE_STOP -> captureStop(input);
+            case CAPTURE_STOP -> captureStop(input, context);
             case CAPTURE_STATUS -> captureStatus(input);
             default -> ToolOutcome.error("unsupported_tool", "Outil Teams inconnu : " + tool);
         };
@@ -640,9 +656,19 @@ public final class TeamsTools implements ToolExecutor {
      * était <b>visible</b>. L'annonce le nomme, une fois par réunion.</p>
      */
     private ToolOutcome meetingMoments(JsonNode input, ToolContext context) {
-        Refusal refusal = refusalIfUnavailable(MEETING_MOMENTS);
-        if (refusal != null) {
-            return refusal.outcome();
+        // F-91 / SF-91-03 — un enregistrement LOCAL n'a pas besoin de la liaison au navigateur :
+        // sa vidéo, sa transcription et son origine du temps viennent de cette machine, pas de
+        // Teams. Exiger le rattachement ici refuserait un compte rendu qui n'a rien à demander à
+        // Teams — une friction gratuite, et les frictions gratuites usent celle qui compte.
+        String askedCapture = TeamsAsk.text(input, "capture_id", "captureId");
+        if (askedCapture.isEmpty()) {
+            Refusal refusal = refusalIfUnavailable(MEETING_MOMENTS);
+            if (refusal != null) {
+                return refusal.outcome();
+            }
+        } else if (!enabled) {
+            return unavailable(MEETING_MOMENTS, TeamsLinkState.BROWSER_NOT_DETECTED, disabledReason,
+                    "Le volet Teams est désactivé sur cette machine.");
         }
         TeamsToolResult result = new TeamsToolResult(MEETING_MOMENTS, session.adapter().version(),
                 TeamsLinkState.LINKED);
@@ -650,7 +676,21 @@ public final class TeamsTools implements ToolExecutor {
             return momentsUnavailable(result,
                     "Le traitement des captures n'est pas monté sur ce poste.");
         }
-        String rawVideo = TeamsAsk.text(input, "video", "video_path", "path");
+        // F-91 / SF-91-03 — LE POINT OÙ L'ENREGISTREMENT LOCAL REJOINT LE CHEMIN EXISTANT.
+        // Une capture locale apporte trois choses que Teams n'apporte pas : sa vidéo, sa
+        // transcription (produite ici), et surtout SON ORIGINE DU TEMPS — le seul cas du volet où
+        // l'alignement ne repose sur aucune hypothèse, puisque c'est NOUS qui avons démarré.
+        CaptureRecord fromCapture = askedCapture.isEmpty() || capture == null
+                ? null : capture.find(askedCapture).orElse(null);
+        if (!askedCapture.isEmpty() && fromCapture == null) {
+            return momentsUnknownCapture(result, askedCapture);
+        }
+        if (fromCapture != null && !fromCapture.isOver()) {
+            return momentsCaptureStillRunning(result, fromCapture);
+        }
+
+        String rawVideo = fromCapture != null ? fromCapture.video()
+                : TeamsAsk.text(input, "video", "video_path", "path");
         if (rawVideo.isEmpty()) {
             return momentsMissingVideo(result);
         }
@@ -659,14 +699,23 @@ public final class TeamsTools implements ToolExecutor {
         String meetingId = TeamsAsk.text(input, "meeting_id", "meetingId");
         TeamsLedger book = ledger();
         TeamsMeeting meeting = meetingId.isEmpty() ? null : book.meeting(meetingId);
-        List<TeamsTranscriptCue> cues =
-                meetingId.isEmpty() ? List.of() : book.transcriptOf(meetingId);
-
-        MomentTimeline timeline = timelineOf(input, meeting);
+        List<TeamsTranscriptCue> cues;
+        MomentTimeline timeline;
+        String subject;
+        if (fromCapture != null) {
+            cues = transcription == null ? List.of() : transcription.cuesOf(fromCapture.id());
+            timeline = MomentTimeline.given(fromCapture.startedAt());
+            subject = fromCapture.subject().isEmpty()
+                    ? (meeting == null ? "" : meeting.subject()) : fromCapture.subject();
+        } else {
+            cues = meetingId.isEmpty() ? List.of() : book.transcriptOf(meetingId);
+            timeline = timelineOf(input, meeting);
+            subject = meeting == null ? "" : meeting.subject();
+        }
         MomentsWorker.Request request = new MomentsWorker.Request(video,
                 TeamsAsk.text(input, "workspace_id", "workspaceId"), cues, timeline,
                 TeamsAsk.number(input, 0, "scene_threshold", "sceneThreshold") / 1000d,
-                meeting == null ? "" : meeting.subject(),
+                subject,
                 "true".equalsIgnoreCase(TeamsAsk.text(input, "restart")));
 
         MomentsJob job = momentsWorker.startOrResume(request,
@@ -792,6 +841,38 @@ public final class TeamsTools implements ToolExecutor {
         return ToolOutcome.ok(result.render());
     }
 
+    /** Un identifiant de capture qu'on ne connaît pas : on refuse, on n'invente pas de fichier. */
+    private ToolOutcome momentsUnknownCapture(TeamsToolResult result, String captureId) {
+        result.array("moments");
+        result.window(null)
+                .gaps(List.of(TeamsGap.of(TeamsGapKind.NOTHING_OBSERVED, "capture " + captureId,
+                        "aucun enregistrement local ne porte cet identifiant sur cette machine")))
+                .health(TeamsHealth.full(0))
+                .with("firstUse", firstUse())
+                .text("Je ne connais aucun enregistrement local sous l'identifiant « " + captureId
+                        + " ». Demandez l'état des captures : celles de cette machine y sont, avec "
+                        + "leurs identifiants.");
+        return ToolOutcome.ok(result.render());
+    }
+
+    /**
+     * Une capture <b>encore en cours</b>. On n'extrait pas d'images d'un fichier en train d'être
+     * écrit : le résultat serait tronqué au moment exact où on a regardé, et il aurait l'air complet.
+     */
+    private ToolOutcome momentsCaptureStillRunning(TeamsToolResult result, CaptureRecord record) {
+        result.array("moments");
+        result.with("captureId", record.id());
+        result.window(null)
+                .gaps(List.of(TeamsGap.of(TeamsGapKind.NOTHING_OBSERVED, "capture " + record.id(),
+                        "cet enregistrement tourne encore : son fichier est en cours d'écriture")))
+                .health(TeamsHealth.full(0))
+                .with("firstUse", firstUse())
+                .text("Cet enregistrement tourne encore. Arrêtez-le d'abord — je n'extrais pas "
+                        + "d'images d'un fichier en cours d'écriture : le résultat serait tronqué "
+                        + "au moment où j'ai regardé, en ayant l'air complet.");
+        return ToolOutcome.ok(result.render());
+    }
+
     private ToolOutcome momentsMissingVideo(TeamsToolResult result) {
         result.array("moments");
         result.window(null)
@@ -857,8 +938,16 @@ public final class TeamsTools implements ToolExecutor {
         return ToolOutcome.ok(result.render());
     }
 
-    /** <b>Arrête</b> l'enregistrement local (F-91 / SF-91-02). Sans identifiant : celui qui tourne. */
-    private ToolOutcome captureStop(JsonNode input) {
+    /**
+     * <b>Arrête</b> l'enregistrement local (F-91 / SF-91-02), et <b>démarre sa transcription</b>
+     * (F-91 / SF-91-03). Sans identifiant : celui qui tourne.
+     *
+     * <p>La transcription démarre <b>sans qu'on la demande</b>, et c'est délibéré : une capture sans
+     * transcription ne sert à rien — ni compte rendu, ni moments —, et faire attendre un tour de plus
+     * ferait perdre des minutes à quelqu'un qui vient de raccrocher. Elle est <b>asynchrone</b> :
+     * cet outil rend la main tout de suite.</p>
+     */
+    private ToolOutcome captureStop(JsonNode input, ToolContext context) {
         TeamsToolResult result = new TeamsToolResult(CAPTURE_STOP, adapterVersion(),
                 TeamsLinkState.LINKED);
         if (!enabled || capture == null) {
@@ -870,9 +959,80 @@ public final class TeamsTools implements ToolExecutor {
         } catch (CaptureRefusedException refused) {
             return captureRefused(result, refused);
         }
+        StringBuilder text = new StringBuilder(record.describe(null));
+        if (record.state() == CaptureRecord.State.TERMINEE) {
+            text.append(System.lineSeparator()).append(startTranscription(record, context));
+        }
         renderCapture(result, record);
-        result.text(record.describe(null));
+        renderTranscription(result, record.id());
+        result.text(text.toString());
         return ToolOutcome.ok(result.render());
+    }
+
+    /**
+     * Démarre la transcription et rend la phrase qui l'annonce — ou celle qui dit <b>pourquoi il n'y
+     * en aura pas</b>. Un silence se lirait « le compte rendu arrive », et il n'arriverait jamais.
+     */
+    private String startTranscription(CaptureRecord record, ToolContext context) {
+        if (transcription == null) {
+            return "La transcription locale n'est pas montée sur ce poste : cet enregistrement "
+                    + "n'aura pas de transcription, et donc pas de compte rendu de ce qui s'est "
+                    + "dit. La vidéo, elle, est bien là.";
+        }
+        TranscriptionJob job = transcription.startOrResume(record,
+                message -> context.stream("stdout", message + System.lineSeparator()));
+        if (job.isOver()) {
+            return job.describe();
+        }
+        return "Je transcris maintenant cet enregistrement SUR CETTE MACHINE : ni la vidéo ni "
+                + "l'audio n'en sortiront, seulement le texte. C'est long — redemandez l'état de la "
+                + "capture pour savoir où j'en suis, et ne concluez pas avant.";
+    }
+
+    /**
+     * Ce que la transcription a produit, à côté de la capture : ses répliques, son étape, et
+     * <b>ce qu'elle n'a pas pu faire</b> — le locuteur inconnu y figure toujours.
+     */
+    private void renderTranscription(TeamsToolResult result, String captureId) {
+        if (transcription == null) {
+            result.with("transcription", "ABSENTE");
+            return;
+        }
+        TranscriptionJob job = transcription.find(captureId).orElse(null);
+        if (job == null) {
+            return;
+        }
+        result.with("transcription", job.phase().name());
+        result.with("transcriptionLabel", job.phase().label());
+        result.json().put("transcriptionDone", job.isOver());
+        result.with("transcriptFile", job.file());
+        result.with("transcriptionFailure", job.failure());
+        result.with("transcriptionRemedy", job.remedy());
+        ArrayNode cues = result.array("cues");
+        job.cues().forEach(cue -> TeamsViews.cue(cues, cue));
+        if (!job.gaps().isEmpty()) {
+            result.gaps(mergeGaps(result, job.gaps()));
+        }
+    }
+
+    /**
+     * Les manques de la capture <b>et</b> ceux de la transcription, dans le même endroit. Deux listes
+     * séparées feraient qu'on en lirait une seule.
+     */
+    private static List<TeamsGap> mergeGaps(TeamsToolResult result, List<TeamsGap> extra) {
+        List<TeamsGap> merged = new ArrayList<>();
+        for (JsonNode gap : result.json().path("gaps")) {
+            TeamsGapKind kind;
+            try {
+                kind = TeamsGapKind.valueOf(gap.path("kind").asText(""));
+            } catch (IllegalArgumentException | NullPointerException e) {
+                continue;
+            }
+            merged.add(new TeamsGap(kind, gap.path("where").asText(""),
+                    gap.path("detail").asText(""), gap.path("count").asInt(1)));
+        }
+        merged.addAll(extra);
+        return merged;
     }
 
     /**
@@ -914,6 +1074,7 @@ public final class TeamsTools implements ToolExecutor {
             return ToolOutcome.ok(result.render());
         }
         renderCapture(result, record);
+        renderTranscription(result, record.id());
         result.text(record.describe(null));
         return ToolOutcome.ok(result.render());
     }

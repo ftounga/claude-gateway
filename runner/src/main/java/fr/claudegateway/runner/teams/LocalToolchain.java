@@ -101,24 +101,29 @@ public final class LocalToolchain {
      */
     public Path require(LocalTool tool) {
         Path known = resolved.get(tool.name());
-        if (known != null && Files.isExecutable(known)) {
+        if (known != null && (tool.isData() ? Files.isRegularFile(known)
+                : Files.isExecutable(known))) {
             return known;
         }
-        Path found = onPath(tool);
+        // Un fichier de DONNÉES n'est jamais cherché dans le PATH : le PATH porte des programmes,
+        // et un modèle de transcription n'en est pas un (F-91 / SF-91-03).
+        Path found = tool.isData() ? null : onPath(tool);
         if (found == null) {
             found = alreadyDownloaded(tool);
         }
         if (found == null) {
             found = download(tool);
         }
-        verify(tool, found);
+        if (!tool.isData()) {
+            verify(tool, found);
+        }
         resolved.put(tool.name(), found);
         return found;
     }
 
     /** L'outil est-il déjà là, sans rien télécharger ? Sert à le dire avant de commencer. */
     public boolean availableWithoutDownload(LocalTool tool) {
-        return onPath(tool) != null || alreadyDownloaded(tool) != null;
+        return (!tool.isData() && onPath(tool) != null) || alreadyDownloaded(tool) != null;
     }
 
     // ------------------------------------------------------------------ recherche
@@ -141,7 +146,7 @@ public final class LocalToolchain {
             return null;
         }
         for (String executable : tool.executables()) {
-            Path candidate = home.resolve(executableName(executable));
+            Path candidate = home.resolve(fileName(tool, executable));
             if (Files.isRegularFile(candidate)) {
                 return candidate;
             }
@@ -202,18 +207,29 @@ public final class LocalToolchain {
         }
     }
 
-    /** Pose l'exécutable à sa place définitive, d'un seul geste. */
+    /** Pose l'artefact à sa place définitive, d'un seul geste. */
     private Path install(Path home, Path executable, LocalTool tool) throws IOException {
         Files.createDirectories(home);
-        Path target = home.resolve(executableName(tool.executables().isEmpty()
+        Path target = home.resolve(fileName(tool, tool.executables().isEmpty()
                 ? tool.name() : tool.executables().get(0)));
         Files.move(executable, target, StandardCopyOption.REPLACE_EXISTING);
-        makeExecutable(target);
+        if (!tool.isData()) {
+            makeExecutable(target);
+        }
         return target;
     }
 
     private void unpack(LocalTool tool, Path archive, Path into) throws IOException {
         LocalTool.Archive kind = tool.archiveFor(os);
+        if (kind == LocalTool.Archive.PLAIN) {
+            // Pas une archive : le fichier téléchargé EST l'artefact (F-91 / SF-91-03). On le pose
+            // tel quel dans le bac de décompression, où `locate` le retrouvera comme les autres.
+            Files.createDirectories(into);
+            Files.move(archive, into.resolve(tool.executables().isEmpty()
+                    ? tool.name() : tool.executables().get(0)),
+                    StandardCopyOption.REPLACE_EXISTING);
+            return;
+        }
         if (kind == LocalTool.Archive.ZIP) {
             unzip(archive, into);
             return;
@@ -258,7 +274,7 @@ public final class LocalToolchain {
     private Path locate(LocalTool tool, Path root) throws IOException {
         List<String> wanted = new ArrayList<>();
         for (String executable : tool.executables()) {
-            wanted.add(executableName(executable).toLowerCase(Locale.ROOT));
+            wanted.add(fileName(tool, executable).toLowerCase(Locale.ROOT));
         }
         try (var walk = Files.walk(root)) {
             return walk.filter(Files::isRegularFile)
@@ -300,6 +316,15 @@ public final class LocalToolchain {
 
     private String executableName(String base) {
         return os == OperatingSystem.WINDOWS ? base + ".exe" : base;
+    }
+
+    /**
+     * Le nom de fichier de l'artefact. Un fichier de <b>données</b> garde le sien tel quel : lui
+     * coller un {@code .exe} sous Windows en ferait un programme aux yeux du système, ce qu'il n'est
+     * pas (F-91 / SF-91-03).
+     */
+    private String fileName(LocalTool tool, String base) {
+        return tool.isData() ? base : executableName(base);
     }
 
     private static void makeExecutable(Path path) {

@@ -129,6 +129,25 @@ describe('teams-block (F-89 / SF-89-03)', () => {
     });
   });
 
+  describe('LA MENTION D\'UN ENREGISTREMENT LOCAL (F-91 / SF-91-03)', () => {
+    const notice =
+      'Ce compte rendu provient d\'un ENREGISTREMENT LOCAL de une réunion à plusieurs, réalisé par '
+      + 'francky — les participants n\'en ont pas été avertis par Teams.';
+
+    it('est la PREMIÈRE ligne du repli textuel : la trace voyage avec l\'artefact', () => {
+      const text = cardAsText(card({ recordingNotice: notice }));
+
+      // Copié ailleurs, ce compte rendu emporte avec lui l'information qu'il vient d'une capture.
+      expect(text.split('\n')[0]).toBe(notice);
+      expect(text).toContain('Comité de migration');
+    });
+
+    it('sans mention, rien n\'est ajouté : la plupart des blocs ne viennent pas d\'une capture', () => {
+      expect(cardAsText(card()).split('\n')[0]).toBe('Comité de migration');
+      expect(cardAsText(card({ recordingNotice: '' })).split('\n')[0]).toBe('Comité de migration');
+    });
+  });
+
   describe('le locuteur d\'un moment', () => {
     it('est suivi d\'un séparateur, ou absent', () => {
       expect(momentSpeaker({ at: '', quote: '', speaker: 'Claire', imageId: '', webUrl: '' }))

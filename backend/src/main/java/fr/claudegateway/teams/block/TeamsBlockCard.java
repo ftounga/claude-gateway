@@ -38,10 +38,37 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
  * @param sections sections de lignes — une seule pour une liste, plusieurs pour une carte
  * @param moments  moments (image + phrase prononcée), vide hors d'un bloc moment
  * @param gaps     <b>ce qui n'a pas pu être lu</b>, en toutes lettres ; vide = aucun manque signalé
+ * @param recordingNotice <b>la mention d'un enregistrement local</b> (F-91 / SF-91-03), ou vide
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record TeamsBlockCard(Kind kind, String title, String subtitle, String window,
-        List<Section> sections, List<Moment> moments, List<String> gaps) {
+        List<Section> sections, List<Moment> moments, List<String> gaps, String recordingNotice) {
+
+    /**
+     * La forme d'avant F-91. Gardée pour les appelants et les blocs relus qui n'ont pas de mention :
+     * un bloc ancien doit continuer de se lire.
+     */
+    public TeamsBlockCard(Kind kind, String title, String subtitle, String window,
+            List<Section> sections, List<Moment> moments, List<String> gaps) {
+        this(kind, title, subtitle, window, sections, moments, gaps, "");
+    }
+
+    public TeamsBlockCard {
+        recordingNotice = recordingNotice == null ? "" : recordingNotice.strip();
+    }
+
+    /**
+     * Vrai quand ce compte rendu vient d'un <b>enregistrement local</b> (F-91).
+     *
+     * <p>C'est le quatrième endroit où la trace voyage : le filigrane est dans l'image, la ligne est
+     * au journal d'audit, la mention est en tête du fichier de transcription — et celle-ci est en
+     * tête du compte rendu. Les trois premiers sont garantis par construction ; <b>celui-ci dépend
+     * de l'agent</b>, à qui les descriptions d'outils l'ordonnent et à qui le résultat de capture le
+     * rend prêt à coller. C'est écrit ici plutôt que maquillé.</p>
+     */
+    public boolean fromLocalRecording() {
+        return recordingNotice != null && !recordingNotice.isBlank();
+    }
 
     /** Les trois genres de bloc riche. Liste close : l'écran en connaît exactement trois. */
     public enum Kind {

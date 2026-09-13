@@ -38,6 +38,24 @@
   border-radius: 4px;
 }
 
+/* ------------------------------------------------------ F-91 / SF-91-03 : la mention
+
+   LA TRACE VOYAGE AVEC L'ARTEFACT, et ceci en est le quatrième endroit — après le filigrane
+   incrusté dans l'image, la ligne du journal d'audit et l'en-tête du fichier de transcription.
+
+   ELLE SE LIT PAR LA TYPOGRAPHIE, PAS PAR UNE COULEUR. Aucun jeton nouveau, aucun cinquième
+   registre : un fond d'alerte dirait « danger » là où la phrase dit « voici d'où cela vient ».
+   Ce qui la distingue est ce qui distingue déjà l'incertain dans ce bloc — un filet, un corps
+   plus petit, et la couleur secondaire du texte. */
+.teams-card__recording {
+  margin: 0 0 var(--cg-space-2);
+  padding-left: var(--cg-space-2);
+  border-left: 2px solid var(--cg-divider);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--cg-text-secondary);
+}
+
 .teams-card__head {
   margin-bottom: var(--cg-space-2);
 }

@@ -143,6 +143,46 @@ class TeamsReadingCatalogTest {
     }
 
     @Test
+    @DisplayName("F-91 — l'arrêt dit que la transcription est LOCALE, LONGUE, et que rien ne sort")
+    void the_stop_tool_says_the_transcription_is_local() {
+        assertThat(describe("teams_capture_stop"))
+                .contains("SUR LA MACHINE")
+                .contains("Rien ne sort de la machine")
+                .contains("NE CONCLUS PAS")
+                .contains("capture_id");
+    }
+
+    @Test
+    @DisplayName("F-91 — l'état interdit de deviner un locuteur que le moteur local ne donne pas")
+    void the_status_tool_forbids_guessing_the_speaker() {
+        assertThat(describe("teams_capture_status")).contains("ne dit PAS qui parle");
+    }
+
+    @Test
+    @DisplayName("F-91 — les moments PRÉFÈRENT capture_id : il apporte l'origine du temps exacte")
+    void the_moments_tool_prefers_the_capture() {
+        assertThat(String.valueOf(schema("teams_meeting_moments").get("properties")))
+                .contains("capture_id");
+        assertThat(describe("teams_meeting_moments")).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("F-91 — les blocs savent porter la mention, et la description l'ORDONNE")
+    void the_presentation_tools_carry_the_notice() {
+        for (String tool : List.of("teams_meeting_card", "teams_list", "teams_moments")) {
+            assertThat(String.valueOf(schema(tool).get("properties")))
+                    .as(tool)
+                    .contains("recordingNotice")
+                    .contains("recopie TEL QUEL");
+        }
+    }
+
+    private Map<String, Object> schema(String tool) {
+        return tools().stream().filter(candidate -> candidate.name().equals(tool)).findFirst()
+                .orElseThrow().inputSchema();
+    }
+
+    @Test
     @DisplayName("L'enregistrement dit à l'agent de NE PAS laisser croire qu'un fichier existe")
     void the_recording_tool_warns_the_agent() {
         assertThat(describe("teams_meeting_recording"))
