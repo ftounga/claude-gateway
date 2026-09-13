@@ -9,6 +9,7 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 
 import { AtelierTerminalComponent } from './atelier-terminal.component';
+import { HostPresenceService } from '../../core/services/host-presence.service';
 import { AtelierThreadItem } from '../atelier.types';
 import { AtelierTerminalBlock } from '../../core/models/atelier.models';
 import { AtelierFileDiffView } from './terminal-diff';
@@ -1131,15 +1132,32 @@ describe('AtelierTerminalComponent', () => {
       component.engine = 'LOCAL_MACHINE';
 
       component.runnerStatus = { connected: true, lastSeenAt: null };
-      expect(component.engineLabel()).toBe('ma machine — connectée');
+      expect(component.engineLabel()).toBe('ma machine — en ligne');
 
       component.runnerStatus = { connected: false, lastSeenAt: null };
-      expect(component.engineLabel()).toBe('ma machine — hors ligne');
+      expect(component.engineLabel()).toBe('ma machine — jamais connecté');
 
       // « État inconnu » se dit, il ne se devine pas.
       component.runnerStatus = null;
       expect(component.engineLabel()).toBe('ma machine — état inconnu');
       expect(component.engineIcon()).toBe('dns');
+    });
+
+    it('date l’état de la machine au lieu de l’affirmer (F-97 / SF-97-02)', () => {
+      component.engine = 'LOCAL_MACHINE';
+      const presence = TestBed.inject(HostPresenceService);
+      const at = presence.now();
+
+      component.runnerStatus = { connected: true, lastSeenAt: new Date(at - 12_000).toISOString() };
+      expect(component.engineLabel()).toBe('ma machine — en ligne · vu il y a 12 s');
+
+      // L'horloge avance : le libellé suit, sans aucun appel.
+      presence.now.set(at + 60_000);
+      expect(component.engineLabel()).toBe('ma machine — en ligne · vu il y a 1 min');
+
+      component.runnerStatus = { connected: false, lastSeenAt: new Date(at - 18 * 60_000).toISOString() };
+      presence.now.set(at);
+      expect(component.engineLabel()).toBe('ma machine — hors ligne · vu il y a 18 min');
     });
 
     it('ne propose pas « Réinitialiser » sur la machine de l\'utilisateur (D-L4-6)', () => {

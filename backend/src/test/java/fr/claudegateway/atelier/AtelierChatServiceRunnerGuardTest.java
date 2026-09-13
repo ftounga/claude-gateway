@@ -269,6 +269,42 @@ class AtelierChatServiceRunnerGuardTest {
         assertThat(lastToolResult().isError()).isTrue();
     }
 
+    // ------------------------------------- F-97 / SF-97-02 : le refus est dit à l'écran
+
+    @Test
+    void anUnavailableRunnerIsToldToTheScreenWithItsHost() {
+        stubWorkspace(WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("src/a.ts")))
+                .thenReturn(RunnerCallResult.backendError(
+                        fr.claudegateway.runner.channel.RunnerErrorCodes.RUNNER_UNAVAILABLE));
+        agentProvider.enqueueToolCall("read_file", "path", "src/a.ts");
+        agentProvider.enqueueFinal("Le poste est hors ligne.");
+
+        service.chatStreaming(userId, workspaceId, "lis", listener);
+
+        assertThat(listener.offlineHosts).containsExactly(hostId);
+        // Le modèle, lui, reçoit toujours l'erreur : l'événement s'ajoute, il ne remplace rien.
+        assertThat(lastToolResult().isError()).isTrue();
+    }
+
+    @Test
+    void anyOtherFailureSaysNothingAboutTheHost() {
+        stubWorkspace(WorkspaceExecutionTarget.RUNNER);
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("absent.txt")))
+                .thenReturn(new RunnerCallResult(false, "", false, null, 3L, null, "not_found",
+                        "Fichier introuvable : absent.txt", "", false));
+        when(runnerToolGateway.readFile(eq(runnerTarget), anyString(), eq("lent.txt")))
+                .thenReturn(RunnerCallResult.backendError(
+                        fr.claudegateway.runner.channel.RunnerErrorCodes.RUNNER_TIMEOUT));
+        agentProvider.enqueueToolCall("read_file", "path", "absent.txt");
+        agentProvider.enqueueToolCall("read_file", "path", "lent.txt");
+        agentProvider.enqueueFinal("Rien trouvé.");
+
+        service.chatStreaming(userId, workspaceId, "lis", listener);
+
+        assertThat(listener.offlineHosts).isEmpty();
+    }
+
     private AgentContentBlock.ToolResult lastToolResult() {
         AgentContentBlock.ToolResult found = null;
         for (AgentMessage message : agentProvider.lastRequest.messages()) {
@@ -291,7 +327,13 @@ class AtelierChatServiceRunnerGuardTest {
 
         private final List<AtelierConfirmRequest> requests = new ArrayList<>();
         private final List<AtelierConfirmResolved> resolved = new ArrayList<>();
+        private final List<UUID> offlineHosts = new ArrayList<>();
         private Boolean decision;
+
+        @Override
+        public void onRunnerOffline(UUID host) {
+            offlineHosts.add(host);
+        }
         private String reason;
 
         void answer(boolean allow, String motif) {

@@ -68,6 +68,7 @@ import {
 import { ApiKeyService } from '../core/services/api-key.service';
 import { AtelierService } from '../core/services/atelier.service';
 import { AtelierGuideService } from '../core/services/atelier-guide.service';
+import { HostPresenceService } from '../core/services/host-presence.service';
 import { LiveTerminalService } from '../core/services/live-terminal.service';
 import { ProviderMode } from '../core/models/api-key.models';
 import { GitPushDialogComponent, PickedGitPush } from './git/git-push-dialog.component';
@@ -203,6 +204,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * tient ; quatre au maximum, et le cinquième est refusé — explicitement, jamais en dormant.
    */
   private readonly liveTerminals = inject(LiveTerminalService);
+  /**
+   * État des postes partagé par tout l'écran (F-97 / SF-97-02) : le relevé du projet y est écrit, et
+   * un refus reçu n'importe où — ce terminal, un aperçu, une tuile — y prend effet sur-le-champ.
+   */
+  private readonly presence = inject(HostPresenceService);
 
   /** Ce terminal vit : c'est ce qui allume la pastille et le mot « connecté » dans la barre. */
   readonly terminalLive = this.liveTerminals.live;
@@ -491,6 +497,20 @@ export class AtelierComponent implements OnInit, OnDestroy {
    * « état inconnu » se dit, il ne se devine pas.
    */
   readonly runnerStatus = signal<RunnerStatus | null>(null);
+
+  /**
+   * <b>Le statut montré</b> (F-97 / SF-97-02) : le dernier relevé du projet, dont `connected` et
+   * `lastSeenAt` viennent de l'état partagé des postes. Sans lui, un « poste hors ligne » appris par
+   * une commande restait « connecté » dans l'en-tête jusqu'au sondage suivant.
+   */
+  readonly displayedRunnerStatus = computed<RunnerStatus | null>(() => {
+    const status = this.runnerStatus();
+    const known = this.presence.presence(status?.hostId);
+    if (!status || !known) {
+      return status;
+    }
+    return { ...status, connected: known.connected, lastSeenAt: known.lastSeenAt };
+  });
 
   /** Bascule de cible d'exécution en vol : le sélecteur reste inerte le temps de l'aller-retour. */
   readonly switchingTarget = signal(false);
@@ -1818,6 +1838,9 @@ export class AtelierComponent implements OnInit, OnDestroy {
     }
     this.atelier.getRunnerStatus(id).subscribe({
       next: (status) => {
+        // L'état partagé d'abord (F-97 / SF-97-02) : un refus plus récent que ce relevé y reste
+        // en vigueur, et la Forge suit ce que ce projet vient d'apprendre.
+        this.presence.record(status.hostId, status.connected, status.lastSeenAt);
         this.runnerStatus.set(status);
         // Étape 2 du guide (F-53) : le poste est connecté quand la gateway le voit connecté.
         if (status.connected) {
@@ -2007,33 +2030,11 @@ export class AtelierComponent implements OnInit, OnDestroy {
 
   /** Libellé de la pastille d'état runner. « Inconnu » tant qu'aucun relevé n'a abouti. */
   runnerStatusLabel(): string {
-    const status = this.runnerStatus();
+    const status = this.displayedRunnerStatus();
     if (!status) {
       return 'État du runner inconnu';
     }
     return status.connected ? 'Runner connecté' : 'Aucun runner connecté';
-  }
-
-  /**
-   * Détail de la pastille : la dernière activité observée, en relatif. Le statut n'est **pas** du
-   * temps réel — c'est cette date qui permet de juger sa fraîcheur.
-   */
-  runnerLastSeenLabel(): string | null {
-    const lastSeen = this.runnerStatus()?.lastSeenAt;
-    if (!lastSeen) {
-      return null;
-    }
-    const elapsed = Math.floor((Date.now() - new Date(lastSeen).getTime()) / 1000);
-    if (!Number.isFinite(elapsed) || elapsed < 0) {
-      return null;
-    }
-    if (elapsed < 60) {
-      return `dernier signe de vie il y a ${elapsed} s`;
-    }
-    if (elapsed < 3600) {
-      return `dernier signe de vie il y a ${Math.floor(elapsed / 60)} min`;
-    }
-    return `dernier signe de vie il y a ${Math.floor(elapsed / 3600)} h`;
   }
 
   /**

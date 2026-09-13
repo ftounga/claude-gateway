@@ -1358,6 +1358,11 @@ public class AtelierChatService implements RelayInterruptTarget {
             return ToolOutcome.error("Outil inconnu : " + tool);
         }
         runnerAuditService.recordCall(userId, runnerTarget, callId, tool, target, result);
+        if (RunnerErrorCodes.RUNNER_UNAVAILABLE.equals(result.errorCode())
+                && runnerTarget.hostId() != null) {
+            // F-97 / SF-97-02 : le refus est aussi dit à l'écran, pas seulement au modèle.
+            listener.onRunnerOffline(runnerTarget.hostId());
+        }
         return runnerOutcome(call, result);
     }
 
