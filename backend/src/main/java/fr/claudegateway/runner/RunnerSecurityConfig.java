@@ -82,6 +82,12 @@ public class RunnerSecurityConfig {
                         // joker : une autorisation `/runner/teams/**` couvrirait d'avance toute
                         // route future de ce préfixe, y compris celle qui ne devrait pas l'être.
                         .requestMatchers(HttpMethod.POST, "/runner/teams/moments").permitAll()
+                        // Synchro du soir du Radar (F-100 / SF-100-02) : battement et fin, même nature
+                        // que les captures — jeton X-Runner-Token vérifié PAR LE CONTRÔLEUR
+                        // (RunnerRadarSyncController), rien dans le SecurityContext (D9). Déclarées une
+                        // par une : le seul joker est l'identifiant de synchro, jamais le préfixe.
+                        .requestMatchers(HttpMethod.POST, "/runner/radar/syncs/*/progress").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/runner/radar/syncs/*/finish").permitAll()
                         .anyRequest().denyAll());
         return http.build();
     }

@@ -46,6 +46,8 @@ public final class ToolStack {
                         .withMoments(moments(config, console))
                         .withCapture(capture(config, console))
                         .withTranscription(transcription(config, console))
+                        // F-100 / SF-100-02 — la synchro du soir : remontée par le jeton du poste.
+                        .withRadarUplink(radarUplink(config), console::info)
                         // F-108 / SF-108-03 — les fichiers Microsoft 365 : dossier fixe des
                         // téléchargements, dossiers synchronisés de la machine préférés.
                         .withFiles(new fr.claudegateway.runner.teams.TeamsWorkFolder(
@@ -107,6 +109,18 @@ public final class ToolStack {
         return new fr.claudegateway.runner.teams.MomentsWorker(
                 new fr.claudegateway.runner.teams.MomentsJobStore(folder),
                 new fr.claudegateway.runner.teams.SceneFrames(toolchain, processes), uploader);
+    }
+
+    /**
+     * <b>La remontée de la synchro du soir</b> (F-100 / SF-100-02) : battement, fin et lots, par le jeton
+     * du poste. Sans jeton, elle le <b>dit</b> ({@code NO_UPLINK}) au lieu de faire semblant.
+     */
+    private static fr.claudegateway.runner.teams.RadarUplink radarUplink(RunnerConfig config) {
+        String token = new TokenStore(config.hostRoot(),
+                java.nio.file.Path.of(System.getProperty("user.home", "."))).load()
+                .map(StoredToken::token).orElse("");
+        return fr.claudegateway.runner.teams.RadarUplink.over(java.net.http.HttpClient.newHttpClient(),
+                config.gatewayBaseUrl(), token);
     }
 
     /**

@@ -20,6 +20,10 @@ app:
     polling:
       enabled: false
   radar:
+    # F-100 : planificateur de la synchro du soir désactivé en tests ; RadarSyncPlanner.runOnce() est
+    # appelé directement.
+    sync:
+      enabled: false
     # F-101 : travailleur d'analyse du Radar désactivé en tests ; la file est testée en appelant
     # RadarAnalysisQueue.runOnce()/runHost()/expireRaw() directement.
     analysis:

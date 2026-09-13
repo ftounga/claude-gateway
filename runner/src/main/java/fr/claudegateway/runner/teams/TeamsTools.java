@@ -122,6 +122,9 @@ public final class TeamsTools implements ToolExecutor {
     private SyncedLibraries filesSynced;
     private java.util.function.Consumer<String> filesSay;
 
+    /** Le travail de la synchro du soir (F-100 / SF-100-02) ; {@code null} sans remontée possible. */
+    private RadarSyncAgent radarAgent;
+
     public TeamsTools(TeamsSession session, BrowserLink.Sleeper sleeper) {
         this.session = session;
         this.probe = new TeamsProbe(session.adapter());
@@ -157,6 +160,36 @@ public final class TeamsTools implements ToolExecutor {
     public TeamsTools withTranscription(TranscriptionWorker value) {
         this.transcription = value;
         return this;
+    }
+
+    /**
+     * Branche la <b>synchro du soir</b> (F-100 / SF-100-02) : la remontée par le jeton du poste, et le
+     * travail en tâche de fond qui l'utilise. Sans jeton, la gateway se voit répondre {@code NO_UPLINK}.
+     */
+    public TeamsTools withRadarUplink(RadarUplink uplink, java.util.function.Consumer<String> say) {
+        if (!enabled || uplink == null) {
+            return this;
+        }
+        java.util.concurrent.ThreadFactory daemon = runnable -> {
+            Thread thread = new Thread(runnable, "radar-synchro");
+            thread.setDaemon(true);
+            return thread;
+        };
+        this.radarAgent = new RadarSyncAgent(uplink, this::radarCollector,
+                java.util.concurrent.Executors.newSingleThreadExecutor(daemon),
+                java.util.concurrent.Executors.newSingleThreadScheduledExecutor(daemon), say);
+        return this;
+    }
+
+    /** Le travail de synchro déjà monté (tests). */
+    TeamsTools withRadarAgent(RadarSyncAgent agent) {
+        this.radarAgent = agent;
+        return this;
+    }
+
+    /** La collecte du Radar sur ce runner. */
+    RadarCollector radarCollector() {
+        return RadarCollector.unavailable();
     }
 
     /**
@@ -241,6 +274,7 @@ public final class TeamsTools implements ToolExecutor {
             case READ_FILE -> files == null ? filesUnavailable(READ_FILE) : files.readFile(input);
             // Le Radar (F-100) : des appels de la gateway, hors du catalogue de l'agent.
             case RadarTools.VERIFY -> radar().verify();
+            case RadarTools.COLLECT -> radar().collect(input);
             default -> ToolOutcome.error("unsupported_tool", "Outil Teams inconnu : " + tool);
         };
     }
@@ -1339,8 +1373,8 @@ public final class TeamsTools implements ToolExecutor {
 
     /** Les appels du Radar (F-100), sur la même liaison et le même registre que les outils de lecture. */
     private RadarTools radar() {
-        return enabled ? new RadarTools(session, this::ledger, sleeper, "")
-                : new RadarTools(null, null, null, disabledReason);
+        return enabled ? new RadarTools(session, this::ledger, sleeper, "", radarAgent)
+                : new RadarTools(null, null, null, disabledReason, null);
     }
 
     /** Le registre vit avec la liaison — et repart avec elle : rien n'est mis en cache (D2). */

@@ -3,20 +3,29 @@ package fr.claudegateway.radar.sync;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import fr.claudegateway.auth.CurrentUser;
 import fr.claudegateway.radar.RadarScope;
+import fr.claudegateway.radar.RadarRunnerUnavailableException;
 import fr.claudegateway.radar.RadarScopeResolver;
+import fr.claudegateway.radar.RadarSync;
+import fr.claudegateway.radar.RadarSyncTrigger;
+import fr.claudegateway.runner.RunnerLiveness;
 import fr.claudegateway.teams.TeamsAccessService;
 
 /**
- * <b>La synchro du soir</b> d'un poste (F-100) : vérification guidée (SF-100-01).
+ * <b>La synchro du soir</b> d'un poste (F-100) : vérification guidée (SF-100-01), planification et
+ * « Synchroniser maintenant » (SF-100-02).
  *
  * <p><b>Droit</b> : celui du Radar, provisoirement le droit Teams (comme {@code RadarController}).
  * <b>Isolation</b> : le poste est vérifié comme possédé avant tout appel au runner ; un poste d'autrui
@@ -27,16 +36,53 @@ import fr.claudegateway.teams.TeamsAccessService;
 public class RadarSyncController {
 
     private final RadarVerificationService verificationService;
+    private final RadarScheduleService scheduleService;
+    private final RadarSyncLauncher launcher;
     private final RadarScopeResolver scopeResolver;
     private final TeamsAccessService teamsAccess;
     private final CurrentUser currentUser;
+    private final RunnerLiveness liveness;
 
-    public RadarSyncController(RadarVerificationService verificationService, RadarScopeResolver scopeResolver,
-            TeamsAccessService teamsAccess, CurrentUser currentUser) {
+    public RadarSyncController(RadarVerificationService verificationService, RadarScheduleService scheduleService,
+            RadarSyncLauncher launcher, RadarScopeResolver scopeResolver, TeamsAccessService teamsAccess,
+            CurrentUser currentUser, RunnerLiveness liveness) {
         this.verificationService = verificationService;
+        this.scheduleService = scheduleService;
+        this.launcher = launcher;
         this.scopeResolver = scopeResolver;
         this.teamsAccess = teamsAccess;
         this.currentUser = currentUser;
+        this.liveness = liveness;
+    }
+
+    // ------------------------------------------------------------ planification (SF-100-02)
+
+    @GetMapping("/schedule")
+    public RadarScheduleService.ScheduleView schedule(@PathVariable UUID hostId) {
+        return scheduleService.view(scope(hostId));
+    }
+
+    @PutMapping("/schedule")
+    public RadarScheduleService.ScheduleView updateSchedule(@PathVariable UUID hostId,
+            @RequestBody(required = false) RadarScheduleService.ScheduleRequest request) {
+        return scheduleService.update(scope(hostId), request);
+    }
+
+    /** « Synchroniser maintenant » : 202, la synchro tourne sur la machine. */
+    @PostMapping("/syncs")
+    public ResponseEntity<SyncStarted> syncNow(@PathVariable UUID hostId) {
+        RadarScope scope = scope(hostId);
+        if (!liveness.isAlive(scope.userId(), scope.hostId())) {
+            // Hors ligne : rien n'est créé. Une synchro qui ne peut pas partir n'a pas à laisser de trace.
+            throw new RadarRunnerUnavailableException("Poste hors ligne : lancez le runner, puis recommencez.");
+        }
+        RadarSync sync = launcher.start(scope, RadarSyncTrigger.MANUAL, null);
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(new SyncStarted(sync.getId(), sync.getTriggerKind(), sync.getStartedAt()));
+    }
+
+    /** La synchro lancée. */
+    public record SyncStarted(UUID syncId, RadarSyncTrigger trigger, OffsetDateTime startedAt) {
     }
 
     // ------------------------------------------------------------ vérification guidée (SF-100-01)

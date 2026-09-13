@@ -1,5 +1,6 @@
 package fr.claudegateway.radar.sync;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -53,6 +54,39 @@ public class RadarHostSettings {
 
     @Column(name = "verified_at")
     private OffsetDateTime verifiedAt;
+
+    // ------------------------------------------------------------ planification (SF-100-02)
+
+    /** Le Radar synchronise ce poste tous les soirs. */
+    @Column(name = "enabled", nullable = false)
+    @Builder.Default
+    private boolean enabled = false;
+
+    /** Instant où l'utilisateur a confirmé que son client autorise le Radar (§14). */
+    @Column(name = "client_authorized_at")
+    private OffsetDateTime clientAuthorizedAt;
+
+    /** Heure de la synchro, {@code HH:mm}, dans {@link #timeZone}. */
+    @Column(name = "sync_time", nullable = false, length = 5)
+    @Builder.Default
+    private String syncTime = "22:00";
+
+    /** Fuseau du poste (identifiant IANA). */
+    @Column(name = "time_zone", nullable = false, length = 64)
+    @Builder.Default
+    private String timeZone = "Europe/Paris";
+
+    /** Dernier créneau traité : date locale du poste. */
+    @Column(name = "last_slot_date")
+    private LocalDate lastSlotDate;
+
+    /** Créneau manqué (runner muet), en attente de rattrapage. */
+    @Column(name = "missed_slot_at")
+    private OffsetDateTime missedSlotAt;
+
+    /** Le verrou : la synchro en cours sur ce poste, ou {@code null}. */
+    @Column(name = "running_sync_id")
+    private UUID runningSyncId;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

@@ -17,6 +17,7 @@ import fr.claudegateway.radar.RadarPurgeReason;
 import fr.claudegateway.radar.RadarRole;
 import fr.claudegateway.radar.RadarSubjectState;
 import fr.claudegateway.radar.RadarSyncStatus;
+import fr.claudegateway.radar.RadarSyncTrigger;
 import fr.claudegateway.radar.analysis.RadarSyncAnalysisView;
 
 /**
@@ -106,6 +107,7 @@ public final class RadarViews {
     /** Une synchro, et où en est son analyse (F-101). */
     public record SyncView(UUID id, RadarSyncStatus status, OffsetDateTime startedAt,
             OffsetDateTime finishedAt, JsonNode coverage, long consumedTokens,
-            RadarSyncAnalysisView analysis) {
+            RadarSyncAnalysisView analysis, RadarSyncTrigger trigger, OffsetDateTime scheduledFor,
+            OffsetDateTime heartbeatAt, JsonNode progress) {
     }
 }

@@ -59,6 +59,12 @@ public class RadarExceptionHandler {
                 .body(new ErrorResponse("radar_runner_unavailable", ex.getMessage()));
     }
 
+    @ExceptionHandler(RadarSyncRunningException.class)
+    public ResponseEntity<ErrorResponse> syncRunning(RadarSyncRunningException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ErrorResponse("radar_sync_running", ex.getMessage()));
+    }
+
     @ExceptionHandler(RadarTeamsDisabledException.class)
     public ResponseEntity<ErrorResponse> teamsDisabled(RadarTeamsDisabledException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)

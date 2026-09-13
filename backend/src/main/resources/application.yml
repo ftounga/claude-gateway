@@ -370,6 +370,15 @@ app:
       # normalement. Borné à [PT5S, PT120S].
       timeout: ${APP_GOVERNANCE_JUGE_TIMEOUT:PT25S}
   radar:
+    # LA SYNCHRO DU SOIR (F-100) : le planificateur examine les postes activés toutes les 60 s, lance la
+    # synchro à l'heure du poste (22:00 Europe/Paris par défaut) ou la rattrape à la connexion suivante.
+    sync:
+      # Coupe-circuit du planificateur. `false` : aucune synchro planifiée ne part (le bouton reste actif).
+      enabled: ${APP_RADAR_SYNC_ENABLED:true}
+      # Une synchro sans battement du runner depuis ce délai est close FAILED et libère le poste.
+      stale-after: ${APP_RADAR_SYNC_STALE_AFTER:PT15M}
+      # Fenêtre de la PREMIÈRE synchro d'un poste (la seule vraiment longue).
+      first-window: ${APP_RADAR_SYNC_FIRST_WINDOW:P30D}
     # LA LECTURE DES ÉCHANGES (F-101) : la file d'analyse des lots remontés par la synchro du soir.
     # Tâche de fond ; le texte brut ne survit ni à l'analyse, ni à 7 jours.
     analysis:
