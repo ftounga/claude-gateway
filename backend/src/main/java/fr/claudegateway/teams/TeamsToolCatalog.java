@@ -61,6 +61,10 @@ public class TeamsToolCatalog {
     public static final String MEETING_TRANSCRIPT = "teams_meeting_transcript";
     /** L'enregistrement d'une réunion : où il est, et ce qu'on n'en fait pas (F-88 / SF-88-02). */
     public static final String MEETING_RECORDING = "teams_meeting_recording";
+    /** Démarre l'extraction et l'alignement des captures d'un enregistrement (F-90 / SF-90-03). */
+    public static final String MEETING_MOMENTS = "teams_meeting_moments";
+    /** Où en est ce travail de captures, et — quand il est fini — ses moments (F-90 / SF-90-03). */
+    public static final String MOMENTS_STATUS = "teams_moments_status";
 
     /**
      * <b>Les outils de LECTURE, dans l'ordre où ils sont donnés à l'agent</b> — et la seule liste
@@ -75,7 +79,7 @@ public class TeamsToolCatalog {
      */
     public static final List<String> CATALOG = List.of(STATUS, FIND_CONVERSATIONS,
             READ_CONVERSATION, MENTIONS, SEARCH, FIND_MEETINGS, MEETING_TRANSCRIPT,
-            MEETING_RECORDING);
+            MEETING_RECORDING, MEETING_MOMENTS, MOMENTS_STATUS);
 
     /** La <b>carte de réunion</b> (F-89 / SF-89-02) : des sections de lignes sourcées. */
     public static final String MEETING_CARD = "teams_meeting_card";
@@ -232,6 +236,55 @@ public class TeamsToolCatalog {
                 Map.of("type", "object",
                         "properties", Map.of("meeting_id", text),
                         "required", List.of("meeting_id"))));
+
+        // F-90 : les captures alignées. Traitement LOURD, donc asynchrone — la description le dit
+        // au modèle, parce que c'est lui qui doit enchaîner démarrage puis suivi, et NE PAS
+        // conclure avant la fin. Et elle dit l'indiscrétion : une capture montre ce qui était
+        // VISIBLE, pas seulement ce qui a été dit.
+        tools.add(new AgentTool(MEETING_MOMENTS,
+                "DÉMARRE l'extraction des captures d'un enregistrement de réunion déjà présent sur "
+                        + "la machine, et leur alignement sur la transcription : chaque phrase est "
+                        + "posée à côté de l'image qui était à l'écran PENDANT qu'elle se disait. "
+                        + "C'est un traitement LONG (plusieurs minutes) : cet outil rend la main "
+                        + "tout de suite avec un job_id, puis tu suis avec "
+                        + MOMENTS_STATUS + ". NE CONCLUS PAS avant que le travail soit terminé, et "
+                        + "dis à l'utilisateur où il en est. Donne « meeting_id » chaque fois que "
+                        + "tu le connais : c'est lui qui apporte la transcription ET l'instant de "
+                        + "début, sans lequel aucune image ne peut être datée. PRÉVIENS "
+                        + "l'utilisateur, une fois : une capture est plus indiscrète qu'une phrase "
+                        + "— la transcription dit ce qui a été DIT, les captures montrent ce qui "
+                        + "était VISIBLE, y compris un tableau de bord avec des noms de clients ou "
+                        + "une messagerie ouverte à côté. La vidéo, elle, ne quitte jamais la "
+                        + "machine.",
+                Map.of("type", "object",
+                        "properties", Map.of(
+                                "video", Map.of("type", "string",
+                                        "description", "Chemin de l'enregistrement SUR LA MACHINE. "
+                                                + "Obligatoire : je ne le télécharge pas depuis "
+                                                + "Teams."),
+                                "meeting_id", text,
+                                "video_started_at", Map.of("type", "string",
+                                        "description", "Instant ISO-8601 du début de "
+                                                + "l'enregistrement, si la réunion ne le donne "
+                                                + "pas."),
+                                "offset_seconds", number,
+                                "restart", Map.of("type", "string",
+                                        "description", "« true » pour relancer un travail déjà "
+                                                + "fait ou échoué. Sans cela, redemander le même "
+                                                + "enregistrement REPREND, il ne recommence pas.")),
+                        "required", List.of("video"))));
+
+        tools.add(new AgentTool(MOMENTS_STATUS,
+                "Où en est un travail de captures, et — QUAND IL EST TERMINÉ — ses moments : "
+                        + "heure, citation, locuteur et imageId. Pose chaque imageId TEL QUEL dans "
+                        + "le bloc « " + MOMENTS + " » : n'invente JAMAIS un identifiant d'image — "
+                        + "rends le moment sans image plutôt qu'avec une image qui n'existe pas. "
+                        + "Tant que le travail n'est pas terminé, "
+                        + "redis simplement où il en est. Et répète toujours ce que le résultat "
+                        + "dit ne PAS avoir pu faire : images non remontées, paroles sans image en "
+                        + "vigueur, images sans parole.",
+                Map.of("type", "object",
+                        "properties", Map.of("job_id", text, "video", text))));
         return tools;
     }
 

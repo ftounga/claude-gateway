@@ -75,6 +75,13 @@ public class RunnerSecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/runner/poll").permitAll()
                         .requestMatchers(HttpMethod.POST, "/runner/send").permitAll()
                         .requestMatchers(HttpMethod.POST, "/runner/disconnect").permitAll()
+                        // Remontée des captures de réunion (F-90 / SF-90-03) : même nature que les
+                        // trois entrées ci-dessus — le jeton runner voyage dans X-Runner-Token et
+                        // est vérifié PAR LE CONTRÔLEUR (RunnerTeamsMomentController), qui ne pose
+                        // rien dans le SecurityContext (D9). Déclarée UNE PAR UNE, jamais par
+                        // joker : une autorisation `/runner/teams/**` couvrirait d'avance toute
+                        // route future de ce préfixe, y compris celle qui ne devrait pas l'être.
+                        .requestMatchers(HttpMethod.POST, "/runner/teams/moments").permitAll()
                         .anyRequest().denyAll());
         return http.build();
     }

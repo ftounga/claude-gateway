@@ -16,6 +16,14 @@ import java.util.UUID;
  * l'isolation des appels en vol (annuler le tour d'un projet ne doit pas tuer celui d'un autre
  * projet du même poste) et pour que le journal dise <b>quel projet</b> a exécuté quoi.</p>
  *
+ * <p><b>Une exception, nommée</b> (F-90 / SF-90-03) : les deux outils de captures de réunion
+ * ({@code teams_meeting_moments}, {@code teams_moments_status}) le reçoivent, parce qu'ils font
+ * <b>remonter</b> des images et que la machine doit savoir dans quel terminal Teams les déposer.
+ * Cela ne déplace <b>aucune</b> garde : la route de dépôt revérifie que ce terminal appartient au
+ * compte du jeton présenté, si bien que l'isolation {@code user_id} tient sans dépendre de ce que le
+ * runner affirme. L'exception est restreinte à ces deux outils, dans
+ * {@code RunnerToolGateway.teamsRead}.</p>
+ *
  * @param hostId      poste qui exécute ; clef de tout le routage
  * @param workspaceId projet concerné ; jamais transmis au runner
  * @param projectPath chemin relatif du projet sous la racine du poste ; {@code ""} = la racine

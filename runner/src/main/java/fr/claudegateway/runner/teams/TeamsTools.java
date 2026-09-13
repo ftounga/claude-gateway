@@ -48,12 +48,19 @@ public final class TeamsTools implements ToolExecutor {
     public static final String MEETING_TRANSCRIPT = "teams_meeting_transcript";
     /** L'enregistrement d'une réunion : où il est, et ce qu'on n'en fait pas (F-88 / SF-88-02). */
     public static final String MEETING_RECORDING = "teams_meeting_recording";
+    /**
+     * <b>Démarre</b> l'extraction et l'alignement des captures d'un enregistrement
+     * (F-90 / SF-90-03). Traitement lourd, donc asynchrone : il rend la main tout de suite.
+     */
+    public static final String MEETING_MOMENTS = "teams_meeting_moments";
+    /** Où en est un travail de moments, et — quand il est fini — ses moments (F-90 / SF-90-03). */
+    public static final String MOMENTS_STATUS = "teams_moments_status";
     public static final String CAPABILITY = "teams";
 
     /** Le catalogue, dans l'ordre où il est donné à l'agent. */
     public static final List<String> CATALOG = List.of(STATUS, FIND_CONVERSATIONS,
             READ_CONVERSATION, MENTIONS, SEARCH, FIND_MEETINGS, MEETING_TRANSCRIPT,
-            MEETING_RECORDING);
+            MEETING_RECORDING, MEETING_MOMENTS, MOMENTS_STATUS);
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final TeamsSession session;
@@ -66,12 +73,27 @@ public final class TeamsTools implements ToolExecutor {
     private volatile boolean firstUseSaid;
     private TeamsLedger ledger;
 
+    /**
+     * Le travail long des captures (F-90 / SF-90-03). {@code null} quand ce runner n'en a pas —
+     * l'outil le <b>dit</b> alors, il ne fait pas semblant.
+     */
+    private MomentsWorker momentsWorker;
+
     public TeamsTools(TeamsSession session, BrowserLink.Sleeper sleeper) {
         this.session = session;
         this.probe = new TeamsProbe(session.adapter());
         this.sleeper = sleeper;
         this.enabled = true;
         this.disabledReason = "";
+    }
+
+    /**
+     * Branche le travail long des captures (F-90 / SF-90-03). Posé après construction parce que la
+     * remontée a besoin du jeton du poste, que le montage des outils ne connaît pas encore.
+     */
+    public TeamsTools withMoments(MomentsWorker worker) {
+        this.momentsWorker = worker;
+        return this;
     }
 
     public static TeamsTools disabled(String reason) {
@@ -102,6 +124,8 @@ public final class TeamsTools implements ToolExecutor {
             case FIND_MEETINGS -> findMeetings(input);
             case MEETING_TRANSCRIPT -> meetingTranscript(input);
             case MEETING_RECORDING -> meetingRecording(input);
+            case MEETING_MOMENTS -> meetingMoments(input, context);
+            case MOMENTS_STATUS -> momentsStatus(input);
             default -> ToolOutcome.error("unsupported_tool", "Outil Teams inconnu : " + tool);
         };
     }
@@ -566,6 +590,188 @@ public final class TeamsTools implements ToolExecutor {
         text.append(' ').append(result.json().path("whyNotDownloaded").asText(""));
         result.window(ask.window()).gaps(gaps).health(book.health())
                 .with("firstUse", firstUse()).text(text.toString());
+        return ToolOutcome.ok(result.render());
+    }
+
+
+    // ------------------------------------------------------------------ F-90 : les captures
+
+    /**
+     * <b>Démarre</b> l'extraction et l'alignement des captures d'un enregistrement
+     * (F-90 / SF-90-03).
+     *
+     * <p><b>Traitement lourd, donc asynchrone</b> — la règle de {@code CLAUDE.md}, sur le modèle
+     * d'{@code OcrPollingWorker}. Cet outil <b>rend la main tout de suite</b> avec un identifiant de
+     * travail ; le décodage tourne ailleurs et <b>dit où il en est</b> dans le fil, comme une
+     * commande longue.</p>
+     *
+     * <p><b>D1 s'applique, et plus lourdement qu'ailleurs</b> : une capture est plus indiscrète
+     * qu'une phrase. La transcription dit ce qui a été <b>dit</b> ; les captures montrent ce qui
+     * était <b>visible</b>. L'annonce le nomme, une fois par réunion.</p>
+     */
+    private ToolOutcome meetingMoments(JsonNode input, ToolContext context) {
+        Refusal refusal = refusalIfUnavailable(MEETING_MOMENTS);
+        if (refusal != null) {
+            return refusal.outcome();
+        }
+        TeamsToolResult result = new TeamsToolResult(MEETING_MOMENTS, session.adapter().version(),
+                TeamsLinkState.LINKED);
+        if (momentsWorker == null) {
+            return momentsUnavailable(result,
+                    "Le traitement des captures n'est pas monté sur ce poste.");
+        }
+        String rawVideo = TeamsAsk.text(input, "video", "video_path", "path");
+        if (rawVideo.isEmpty()) {
+            return momentsMissingVideo(result);
+        }
+        java.nio.file.Path video = java.nio.file.Path.of(rawVideo).toAbsolutePath().normalize();
+
+        String meetingId = TeamsAsk.text(input, "meeting_id", "meetingId");
+        TeamsLedger book = ledger();
+        TeamsMeeting meeting = meetingId.isEmpty() ? null : book.meeting(meetingId);
+        List<TeamsTranscriptCue> cues =
+                meetingId.isEmpty() ? List.of() : book.transcriptOf(meetingId);
+
+        MomentTimeline timeline = timelineOf(input, meeting);
+        MomentsWorker.Request request = new MomentsWorker.Request(video,
+                TeamsAsk.text(input, "workspace_id", "workspaceId"), cues, timeline,
+                TeamsAsk.number(input, 0, "scene_threshold", "sceneThreshold") / 1000d,
+                meeting == null ? "" : meeting.subject(),
+                "true".equalsIgnoreCase(TeamsAsk.text(input, "restart")));
+
+        MomentsJob job = momentsWorker.startOrResume(request,
+                message -> context.stream("stdout", message + System.lineSeparator()));
+        return ToolOutcome.ok(renderJob(result, job, book,
+                scope.announceOnce("moments:" + (meetingId.isEmpty() ? rawVideo : meetingId),
+                        "la transcription ET LES IMAGES de cet enregistrement — une capture est "
+                                + "plus indiscrète qu'une phrase : la transcription dit ce qui a "
+                                + "été DIT, les captures montrent ce qui était VISIBLE, y compris "
+                                + "un tableau de bord avec des noms de clients ou une messagerie "
+                                + "ouverte à côté. Seules les 20 à 60 images retenues remontent ; "
+                                + "la vidéo, l'audio et les fichiers bruts restent sur cette "
+                                + "machine, et ce qui remonte vit avec le compte rendu et sera "
+                                + "supprimé avec lui",
+                        meeting == null ? rawVideo : meeting.subject())));
+    }
+
+    /** Où en est un travail de captures, et — quand il est fini — <b>ses moments</b>. */
+    private ToolOutcome momentsStatus(JsonNode input) {
+        Refusal refusal = refusalIfUnavailable(MOMENTS_STATUS);
+        if (refusal != null) {
+            return refusal.outcome();
+        }
+        TeamsToolResult result = new TeamsToolResult(MOMENTS_STATUS, session.adapter().version(),
+                TeamsLinkState.LINKED);
+        if (momentsWorker == null) {
+            return momentsUnavailable(result,
+                    "Le traitement des captures n'est pas monté sur ce poste.");
+        }
+        String jobId = TeamsAsk.text(input, "job_id", "jobId");
+        if (jobId.isEmpty()) {
+            String rawVideo = TeamsAsk.text(input, "video", "video_path", "path");
+            if (rawVideo.isEmpty()) {
+                return momentsMissingVideo(result);
+            }
+            jobId = MomentsJobStore.idFor(
+                    java.nio.file.Path.of(rawVideo).toAbsolutePath().normalize());
+        }
+        MomentsJob job = momentsWorker.find(jobId).orElse(null);
+        if (job == null) {
+            // Zéro moment ET un manque nommé : une réponse vide se lirait « rien trouvé ».
+            result.with("jobId", jobId);
+            result.array("moments");
+            result.window(null)
+                    .gaps(List.of(TeamsGap.of(TeamsGapKind.NOTHING_OBSERVED, "travail " + jobId,
+                            "aucun travail de captures ne porte cet identifiant sur cette machine")))
+                    .health(ledger().health())
+                    .with("firstUse", firstUse())
+                    .text("Je ne connais aucun travail de captures sous cet identifiant. "
+                            + "Redemandez-le en me donnant le chemin de l'enregistrement : "
+                            + "l'identifiant en est tiré, je le retrouverai.");
+            return ToolOutcome.ok(result.render());
+        }
+        return ToolOutcome.ok(renderJob(result, job, ledger(), ""));
+    }
+
+    /**
+     * L'origine du temps de la vidéo (SF-90-02) : l'instant donné, sinon le début de réunion
+     * observé — et <b>rien</b> sinon. Ce « rien » fera échouer le travail en nommant les deux
+     * remèdes : on ne devine pas une origine, parce qu'un alignement faux est silencieusement faux.
+     */
+    private static MomentTimeline timelineOf(JsonNode input, TeamsMeeting meeting) {
+        String raw = TeamsAsk.text(input, "video_started_at", "videoStartedAt");
+        MomentTimeline timeline = MomentTimeline.unknown();
+        if (!raw.isEmpty()) {
+            try {
+                timeline = MomentTimeline.given(java.time.Instant.parse(raw));
+            } catch (RuntimeException e) {
+                timeline = MomentTimeline.unknown();
+            }
+        }
+        if (!timeline.isKnown()) {
+            timeline = MomentTimeline.fromMeeting(meeting);
+        }
+        long offset = TeamsAsk.number(input, 0, "offset_seconds", "offsetSeconds");
+        return offset == 0 ? timeline : timeline.shiftedBy(offset);
+    }
+
+    /** Le rendu d'un travail : son étape, ses compteurs, ses moments, et ce qui manque. */
+    private String renderJob(TeamsToolResult result, MomentsJob job, TeamsLedger book,
+            String notice) {
+        result.with("jobId", job.id());
+        result.with("phase", job.phase().name());
+        result.with("phaseLabel", job.phase().label());
+        result.with("subject", job.subject());
+        result.json().put("done", job.isOver());
+        result.json().put("framesExamined", job.extracted());
+        result.json().put("framesKept", job.kept());
+        result.json().put("imagesUploaded", job.uploaded());
+        result.json().put("imagesRefused", job.uploadRefused());
+        result.with("failure", job.failure());
+        result.with("remedy", job.remedy());
+        result.with("timeline", job.timeline());
+        ArrayNode items = result.array("moments");
+        for (MomentsJob.Moment moment : job.moments()) {
+            ObjectNode entry = items.addObject();
+            entry.put("at", moment.at());
+            entry.put("offsetSeconds", moment.offsetSeconds());
+            entry.put("quote", moment.quote());
+            entry.put("speaker", moment.speaker());
+            // Un IDENTIFIANT, jamais des octets : soixante images en base64 traverseraient le
+            // modèle pour rien, et coûteraient plus cher que tout le reste de la fonctionnalité.
+            entry.put("imageId", moment.imageId());
+            entry.put("otherCues", moment.otherCues());
+        }
+        result.window(null)
+                .gaps(job.gaps())
+                .health(book.health())
+                .notice(notice)
+                .with("firstUse", firstUse())
+                .text(job.describe());
+        return result.render();
+    }
+
+    private ToolOutcome momentsUnavailable(TeamsToolResult result, String sentence) {
+        result.array("moments");
+        result.window(null)
+                .gaps(List.of(TeamsGap.of(TeamsGapKind.NOTHING_OBSERVED, "captures",
+                        "le traitement des captures n'est pas disponible sur ce poste")))
+                .health(TeamsHealth.full(0))
+                .with("firstUse", firstUse())
+                .text(sentence + " Rien n'a été extrait, et rien n'est remonté.");
+        return ToolOutcome.ok(result.render());
+    }
+
+    private ToolOutcome momentsMissingVideo(TeamsToolResult result) {
+        result.array("moments");
+        result.window(null)
+                .gaps(List.of(TeamsGap.of(TeamsGapKind.MISSING_FIELD, "captures", "video")))
+                .health(TeamsHealth.full(0))
+                .with("firstUse", firstUse())
+                .text("Donnez-moi le chemin de l'enregistrement sur cette machine (« video »). "
+                        + "Je ne le télécharge pas depuis Teams : l'adresse signée qui le "
+                        + "permettrait est retirée à l'entrée de la liaison, et ce garde-fou ne se "
+                        + "rouvre pas pour une commodité.");
         return ToolOutcome.ok(result.render());
     }
 
