@@ -309,6 +309,26 @@ ne fixe un prix, et cette règle-là ne se délègue pas. Ordre de grandeur mesu
 décision — le coût fournisseur d'un usage intensif est d'**une dizaine de dollars par mois** ; c'est
 un plancher, pas un prix.
 
+## 9 bis. Lire l'écran quand le réseau ne donne rien — décision du PO, 2026-09-13
+
+**Constat du relevé réel** (`docs/features/F-100/releves/releve-teams-2026-09-13-poste-client-macos.md`) :
+le nouveau Teams sert l'historique d'un fil **depuis son cache local** (aucun appel de messages à
+l'ouverture d'un fil) et aucun échange reconnaissable n'accompagne l'ouverture d'une transcription.
+L'observation réseau seule ne peut donc pas garantir la lecture des conversations ni des transcriptions.
+
+**Décision du PO** (« Oui je valide ») : quand l'observation réseau n'a rien rendu d'utile pour une
+lecture demandée, le runner **lit le texte affiché** dans l'onglet Teams relié (fil ouvert, panneau de
+transcription), en faisant défiler pour couvrir la fenêtre demandée. Rouvre la règle « le réseau, pas
+le DOM » **en repli seulement** : le réseau reste la source quand il répond.
+
+**Gardes** : lecture du texte visible uniquement (auteur, heure, contenu), jamais de champ de saisie,
+de mot de passe, de cookie ni de stockage (localStorage, IndexedDB, CacheStorage restent refusés) ;
+la vue de l'utilisateur est remise ; le résultat dit que la lecture vient de l'écran.
+
+**Règle de conformité sur les transcriptions dont le téléchargement est bloqué** : l'agent peut s'en
+servir pour répondre et résumer, **ne recopie jamais la transcription brute** (ni en fichier, ni en
+bloc intégral dans le fil), et **signale** que le téléchargement est bloqué par l'organisateur.
+
 ## 10. Hors périmètre
 
 > *Amendement du 2026-09-13 (F-108, décision de sécurité du PO)* : **écrire des fichiers** dans Teams,
