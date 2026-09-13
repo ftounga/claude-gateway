@@ -21,6 +21,37 @@ COPY runner/src/ src/
 ARG RUNNER_COMMIT=inconnu
 RUN ./mvnw clean package -DskipTests -q -Drunner.commit=${RUNNER_COMMIT}
 
+# Signature du runner (F-111 / SF-111-03). Les runners installés ne démarrent une nouvelle version
+# que si sa signature Ed25519 est valide pour la clé publique qu'ils embarquent
+# (runner/src/main/resources/update-signing-public-key.pem). La clé PRIVÉE n'entre jamais dans le
+# dépôt ni dans une couche de l'image : elle est montée le temps de cette seule instruction, par un
+# secret de construction.
+#
+#   docker build --secret id=runner_signing_key,src=<fichier PEM de la clé privée> -f backend/Dockerfile .
+#
+# Sans clé, la construction ÉCHOUE par défaut : une image qui servirait un runner non signé ne
+# pourrait mettre aucun poste à jour, et on ne s'en apercevrait qu'au premier clic. Pour une
+# construction locale explicite : --build-arg REQUIRE_RUNNER_SIGNATURE=false (manifeste `signed:
+# false`, aucune signature, aucune version installable servie).
+COPY runner/build-tools/ build-tools/
+COPY runner/release-notes.txt ./
+ARG REQUIRE_RUNNER_SIGNATURE=true
+RUN --mount=type=secret,id=runner_signing_key \
+    if [ -s /run/secrets/runner_signing_key ]; then \
+        java build-tools/SignRunnerUpdate.java sign /run/secrets/runner_signing_key \
+            target/claude-runner.jar src/main/resources/update-signing-public-key.pem \
+            release-notes.txt target/update; \
+    elif [ "$REQUIRE_RUNNER_SIGNATURE" = "false" ]; then \
+        echo "AVERTISSEMENT : runner NON signé (REQUIRE_RUNNER_SIGNATURE=false) — aucune mise à jour d'un clic ne sera servie par cette image." >&2; \
+        java build-tools/SignRunnerUpdate.java unsigned target/claude-runner.jar release-notes.txt target/update; \
+    else \
+        echo "ERREUR : clé de signature du runner absente. Fournissez-la par" >&2; \
+        echo "  docker build --secret id=runner_signing_key,src=<fichier PEM> -f backend/Dockerfile ." >&2; \
+        echo "(clé : AWS Secrets Manager, claude-gateway/runner-update-signing-key), ou construisez" >&2; \
+        echo "explicitement sans signature : --build-arg REQUIRE_RUNNER_SIGNATURE=false." >&2; \
+        exit 1; \
+    fi
+
 # Paquet autonome Windows (F-44 / SF-44-01) : le runner AVEC sa propre JVM, pour les postes où
 # aucun Java 21 n'est installable — le cas rencontré chez un client le 2026-09-07 (poste
 # d'entreprise en Java 8, pas de droits administrateur).
@@ -74,6 +105,9 @@ USER appuser
 COPY --from=build /app/target/*.jar app.jar
 # Servi par GET /runner/download quand APP_RUNNER_JAR_PATH pointe ce chemin.
 COPY --from=runner-build /runner/target/claude-runner.jar claude-runner.jar
+# Mise à jour du runner (F-111 / SF-111-03) : jar, empreinte, signature et manifeste, servis par
+# GET /runner/update/** depuis <dossier du jar>/runner-update (app.runner.update-dir).
+COPY --from=runner-build /runner/target/update/ runner-update/
 # Paquet autonome Windows (F-44), servi à côté du jar — il ne le remplace pas.
 COPY --from=runner-build /runner/target/claude-runner-windows-x64.zip claude-runner-windows-x64.zip
 # Paquets autonomes macOS (F-44 / SF-44-03), servis à côté des deux autres.
