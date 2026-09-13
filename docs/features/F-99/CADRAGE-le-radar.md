@@ -138,6 +138,9 @@ juge indépendant de F-94. Aucune logique de « compréhension » n'est codée e
 
 ## 8. Les écrans
 
+> *Amendement F-106 (2026-09-13)* : le Radar vit dans la **Vigie**, l'espace du pilotage, et non dans
+> un onglet de la Forge. Tout ce qui suit s'applique à l'onglet Radar du client dans la Vigie.
+
 **Où** : un onglet **Radar** dans le poste de la Forge refondue (F-98), en premier quand l'option est
 active, avec son compte « 5 à traiter ». Le bandeau de flotte de F-98 gagne « 2 relances dues ».
 
@@ -187,6 +190,10 @@ Second adaptateur, **même doctrine que F-87** : lire ce que le navigateur reço
 éléments envoyés par défaut). **Rien n'est écrit.** Aucun droit Graph, aucun mode application.
 
 ## 11. Le droit et le prix
+
+> *Amendement F-107 (2026-09-13)* : l'option Radar est portée par l'**option Vigie** (Teams + Radar),
+> à côté d'un **Gold Vigie**. Les règles ci-dessous (enveloppe dédiée, essai de deux semaines) sont
+> conservées telles quelles.
 
 **Tranché par le PO le 2026-09-13 : une option « Radar » à part**, qui **suppose l'option Teams**, et
 **un essai de deux semaines** par code d'accès pour mesurer le coût réel avant de fixer le montant.

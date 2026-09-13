@@ -78,6 +78,8 @@ Trois défauts en découlent :
 - **Dossiers non ouverts** : une tuile fantôme en fin de grille (« 3 dossiers non ouverts · Parcourir »)
   au lieu d'une liste.
 - **Terminal du poste, Teams, menu** : dans l'en-tête du poste, à droite. Plus de bloc dédié.
+  *Amendement F-106 (2026-09-13)* : le terminal Teams déménage dans la **Vigie** ; l'en-tête de la
+  Forge garde « Ouvrir dans la Vigie » quand le client y est activé. Aucun onglet Radar dans la Forge.
 - **Téléphone (< 820 px)** : la colonne devient une liste plein écran ; toucher un poste ouvre son
   détail, avec un retour. Même URL.
 
