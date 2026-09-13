@@ -42,6 +42,7 @@ class ClientMailOutboxTest {
     @Mock private ClientEmailRepository repository;
     @Mock private EmailService emailService;
     @Mock private PlatformTransactionManager transactionManager;
+    @Mock private ClientMailAttachmentStore attachmentStore;
 
     private ClientMailOutbox outbox;
     private ClientEmail email;
@@ -49,7 +50,8 @@ class ClientMailOutboxTest {
     @BeforeEach
     void setUp() {
         lenient().when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
-        outbox = new ClientMailOutbox(repository, emailService, transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
+        outbox = new ClientMailOutbox(repository, emailService, attachmentStore, transactionManager,
+                Clock.fixed(NOW, ZoneOffset.UTC));
         email = ClientEmail.builder().id(UUID.randomUUID()).userId(UUID.randomUUID()).hostId(UUID.randomUUID())
                 .kind(ClientEmail.Kind.AGENT).clientName("CAGIP").recipient("franck@cagip.fr").recipientVerified(true)
                 .subject("Compte rendu").sizeBytes(120).bodyText("# CR").bodyHtml("<h1>CR</h1>")
@@ -146,6 +148,90 @@ class ClientMailOutboxTest {
         outbox.runOnce();
         assertThat(email.getStatus()).isEqualTo(ClientEmailStatus.FAILED);
         assertThat(email.getBodyText()).isNull();
+    }
+
+    // ---------------------------------------------------------------- pièces jointes (SF-110-03)
+
+    private static final ClientMailMessage.Attachment PDF =
+            new ClientMailMessage.Attachment("cr.pdf", "application/pdf", new byte[] {1, 2, 3, 4});
+
+    @Test
+    void enqueueWithAttachmentsStoresThemInTheSameTransactionAndCountsTheirSize() {
+        ClientMailRenderer.Rendered rendered = ClientMailRenderer.render("# CR", "CAGIP");
+        UUID userId = UUID.randomUUID();
+        when(repository.save(any(ClientEmail.class))).thenAnswer(inv -> {
+            ClientEmail row = inv.getArgument(0);
+            row.setId(UUID.randomUUID());
+            return row;
+        });
+
+        ClientEmail saved = outbox.enqueue(new ClientMailOutbox.Draft(userId, UUID.randomUUID(), null,
+                ClientEmail.Kind.AGENT, new ResolvedRecipient("franck@cagip.fr", true, "CAGIP"), "CR", rendered,
+                List.of(PDF)));
+
+        assertThat(saved.getAttachmentCount()).isEqualTo(1);
+        assertThat(saved.getSizeBytes()).isEqualTo(rendered.sizeBytes() + 4);
+        verify(attachmentStore).put(userId, saved.getId(), List.of(PDF));
+        verify(transactionManager).commit(any());
+    }
+
+    @Test
+    void aStorageFailureCancelsTheQueuedLineAndErasesWhatWasWritten() {
+        UUID userId = UUID.randomUUID();
+        when(repository.save(any(ClientEmail.class))).thenAnswer(inv -> {
+            ClientEmail row = inv.getArgument(0);
+            row.setId(UUID.randomUUID());
+            return row;
+        });
+        doThrow(new IllegalStateException("s3")).when(attachmentStore).put(any(), any(), any());
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> outbox.enqueue(new ClientMailOutbox.Draft(userId,
+                UUID.randomUUID(), null, ClientEmail.Kind.AGENT, new ResolvedRecipient("franck@cagip.fr", true, "CAGIP"),
+                "CR", ClientMailRenderer.render("# CR", "CAGIP"), List.of(PDF))))
+                .isInstanceOf(IllegalStateException.class);
+
+        verify(transactionManager).rollback(any());
+        verify(attachmentStore).delete(eq(userId), any());
+    }
+
+    @Test
+    void attachmentsAreSentThenErasedAtTheFinalState() {
+        email.setAttachmentCount(1);
+        when(attachmentStore.load(email.getUserId(), email.getId())).thenReturn(List.of(PDF));
+
+        outbox.runOnce();
+
+        ArgumentCaptor<ClientMailMessage> message = ArgumentCaptor.forClass(ClientMailMessage.class);
+        verify(emailService).sendClientMail(message.capture());
+        assertThat(message.getValue().attachments()).containsExactly(PDF);
+        assertThat(email.getStatus()).isEqualTo(ClientEmailStatus.SENT);
+        verify(attachmentStore).delete(email.getUserId(), email.getId());
+    }
+
+    @Test
+    void aMissingAttachmentFailsWithoutRetryAndWithoutSending() {
+        email.setAttachmentCount(2);
+        when(attachmentStore.load(email.getUserId(), email.getId())).thenReturn(List.of(PDF));
+
+        assertThat(outbox.runOnce()).isEqualTo(1);
+
+        verify(emailService, never()).sendClientMail(any());
+        assertThat(email.getStatus()).isEqualTo(ClientEmailStatus.FAILED);
+        assertThat(email.getFailureReason()).isEqualTo("pièce jointe introuvable");
+        assertThat(email.getBodyText()).isNull();
+        verify(attachmentStore).delete(email.getUserId(), email.getId());
+    }
+
+    @Test
+    void attachmentsStayWhileARetryIsPlanned() {
+        email.setAttachmentCount(1);
+        when(attachmentStore.load(email.getUserId(), email.getId())).thenReturn(List.of(PDF));
+        doThrow(new MailSendException("délai dépassé")).when(emailService).sendClientMail(any());
+
+        outbox.runOnce();
+
+        assertThat(email.getStatus()).isEqualTo(ClientEmailStatus.PENDING);
+        verify(attachmentStore, never()).delete(any(), any());
     }
 
     @Test

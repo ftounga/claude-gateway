@@ -159,7 +159,7 @@ class AtelierChatServiceEmailToolTest {
     @DisplayName("un appel email_me part dans la gateway : reçu relayé, écrit dans la transcription, rien sur la machine")
     void aCallIsQueuedRelayedAndPersisted() {
         Workspace workspace = terminal();
-        when(mailTool.send(eq(userId), eq(workspace), any()))
+        when(mailTool.send(eq(userId), eq(workspace), any(String.class), any()))
                 .thenReturn(new ClientMailTool.Outcome("Courriel mis en file pour franck@cagip.fr", false, receipt));
         agentProvider.enqueueToolCallWithObject(ClientMailTool.NAME,
                 "{\"subject\":\"Compte rendu\",\"body\":\"# CR\",\"to\":\"tiers@ailleurs.fr\"}");
@@ -180,7 +180,7 @@ class AtelierChatServiceEmailToolTest {
     @DisplayName("un refus de l'outil ne pose aucun reçu")
     void aRefusalPostsNoReceipt() {
         Workspace workspace = terminal();
-        when(mailTool.send(eq(userId), eq(workspace), any()))
+        when(mailTool.send(eq(userId), eq(workspace), any(String.class), any()))
                 .thenReturn(new ClientMailTool.Outcome("Courriel refusé : il contient manifestement un mot de passe.",
                         true, null));
         agentProvider.enqueueToolCallWithObject(ClientMailTool.NAME, "{\"subject\":\"x\",\"body\":\"password=abcdef1\"}");

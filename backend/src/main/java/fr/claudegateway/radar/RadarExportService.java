@@ -42,8 +42,12 @@ public class RadarExportService {
         this.hostService = hostService;
     }
 
-    /** Le document exporté et son nom de fichier. */
-    public record Export(String fileName, String markdown) {
+    /**
+     * Le document exporté et son nom de fichier.
+     *
+     * @param entries sujets et personnes exportés : zéro dit un Radar vide (F-110 / SF-110-03, rien à joindre)
+     */
+    public record Export(String fileName, String markdown, int entries) {
     }
 
     public Export export(RadarScope scope, LocalDate today) {
@@ -71,7 +75,7 @@ public class RadarExportService {
             }
             md.append('\n');
         }
-        return new Export(RadarMarkdown.fileName(hostName, today), md.toString());
+        return new Export(RadarMarkdown.fileName(hostName, today), md.toString(), subjects.size() + people.size());
     }
 
     private void appendSubject(StringBuilder md, SubjectDetail subject) {

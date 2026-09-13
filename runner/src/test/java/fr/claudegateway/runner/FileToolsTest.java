@@ -252,6 +252,75 @@ class FileToolsTest {
         assertEquals("invalid_input", tools.execute("search_files", null).errorCode());
     }
 
+    // ---------------------------------------------------- read_file_bytes (F-110 / SF-110-03)
+
+    @Test
+    void litUnFichierBinaireParTranchesEtRecomposeLesOctetsExacts() throws IOException {
+        byte[] original = new byte[FileTools.MAX_BYTES_CHUNK + 1000];
+        new java.util.Random(42).nextBytes(original);
+        Files.write(root.resolve("cr.pdf"), original);
+
+        ToolOutcome first = tools.execute("read_file_bytes", bytesInput("cr.pdf", 0, FileTools.MAX_BYTES_CHUNK));
+        assertTrue(first.ok(), first.errorCode());
+        assertEquals(original.length, first.bytes(), "bytes = taille totale du fichier");
+        assertTrue(first.truncated(), "il reste des octets");
+        byte[] head = java.util.Base64.getDecoder().decode(first.content());
+        assertEquals(FileTools.MAX_BYTES_CHUNK, head.length);
+        assertTrue(first.content().getBytes(StandardCharsets.UTF_8).length <= FileTools.MAX_CONTENT_BYTES,
+                "la tranche encodée tient dans la borne du contrat");
+
+        ToolOutcome second = tools.execute("read_file_bytes",
+                bytesInput("cr.pdf", head.length, FileTools.MAX_BYTES_CHUNK));
+        assertTrue(second.ok());
+        assertFalse(second.truncated());
+        byte[] tail = java.util.Base64.getDecoder().decode(second.content());
+
+        java.io.ByteArrayOutputStream joined = new java.io.ByteArrayOutputStream();
+        joined.write(head);
+        joined.write(tail);
+        org.junit.jupiter.api.Assertions.assertArrayEquals(original, joined.toByteArray());
+    }
+
+    @Test
+    void readFileBytesRefuseUnFichierAuDelaDeDixMo() throws IOException {
+        Files.write(root.resolve("gros.zip"), new byte[(int) FileTools.MAX_BYTES_FILE + 1]);
+
+        ToolOutcome outcome = tools.execute("read_file_bytes", bytesInput("gros.zip", 0, 1024));
+
+        assertEquals("too_large", outcome.errorCode());
+    }
+
+    @Test
+    void readFileBytesBorneOffsetEtLength() throws IOException {
+        Files.write(root.resolve("a.bin"), new byte[] {1, 2, 3});
+        Files.createDirectories(root.resolve("dossier"));
+
+        assertEquals("invalid_input", tools.execute("read_file_bytes", bytesInput("a.bin", 4, 10)).errorCode());
+        assertEquals("invalid_input", tools.execute("read_file_bytes", bytesInput("a.bin", -1, 10)).errorCode());
+        assertEquals("invalid_input", tools.execute("read_file_bytes", bytesInput("a.bin", 0, 0)).errorCode());
+        assertEquals("invalid_input", tools.execute("read_file_bytes",
+                bytesInput("a.bin", 0, FileTools.MAX_BYTES_CHUNK + 1)).errorCode());
+        assertEquals("is_directory", tools.execute("read_file_bytes", bytesInput("dossier", 0, 10)).errorCode());
+
+        ToolOutcome end = tools.execute("read_file_bytes", bytesInput("a.bin", 3, 10));
+        assertTrue(end.ok(), "lire à la fin exacte rend une tranche vide");
+        assertEquals("", end.content());
+        assertEquals(3, end.bytes());
+
+        ToolOutcome defaults = tools.execute("read_file_bytes", input("path", "a.bin"));
+        assertTrue(defaults.ok());
+        org.junit.jupiter.api.Assertions.assertArrayEquals(new byte[] {1, 2, 3},
+                java.util.Base64.getDecoder().decode(defaults.content()));
+    }
+
+    private static ObjectNode bytesInput(String path, long offset, long length) {
+        ObjectNode node = MAPPER.createObjectNode();
+        node.put("path", path);
+        node.put("offset", offset);
+        node.put("length", length);
+        return node;
+    }
+
     // ------------------------------------------------------------------- divers
 
     @Test

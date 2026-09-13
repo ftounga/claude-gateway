@@ -93,6 +93,38 @@ class SmtpEmailServiceTest {
     }
 
     @Test
+    void sendsAttachmentsAlongsideTextAndHtmlWithAnEncodedName() throws Exception {
+        SmtpEmailService service = new SmtpEmailService(mailSender, FROM);
+        jakarta.mail.internet.MimeMessage mime =
+                new jakarta.mail.internet.MimeMessage(jakarta.mail.Session.getInstance(new java.util.Properties()));
+        org.mockito.Mockito.when(mailSender.createMimeMessage()).thenReturn(mime);
+        byte[] pdf = {'%', 'P', 'D', 'F', 0, 1, 2};
+
+        service.sendClientMail(new ClientMailMessage("franck@cagip.fr", "claude-gateway pour CAGIP", "CR", "# CR",
+                "<h1>CR</h1>", java.util.List.of(new ClientMailMessage.Attachment("Compte rendu réunion.pdf",
+                        "application/pdf", pdf))));
+
+        verify(mailSender).send(mime);
+        mime.saveChanges();
+        java.io.ByteArrayOutputStream raw = new java.io.ByteArrayOutputStream();
+        mime.writeTo(raw);
+        assertThat(raw.toString(java.nio.charset.StandardCharsets.UTF_8))
+                .contains("multipart/mixed", "multipart/alternative", "application/pdf", "<h1>CR</h1>");
+        jakarta.mail.internet.MimeMultipart root = (jakarta.mail.internet.MimeMultipart)
+                new jakarta.mail.internet.MimeMessage(null, new java.io.ByteArrayInputStream(raw.toByteArray())).getContent();
+        jakarta.mail.BodyPart attachment = null;
+        for (int i = 0; i < root.getCount(); i++) {
+            if (jakarta.mail.Part.ATTACHMENT.equalsIgnoreCase(root.getBodyPart(i).getDisposition())) {
+                attachment = root.getBodyPart(i);
+            }
+        }
+        assertThat(attachment).isNotNull();
+        assertThat(jakarta.mail.internet.MimeUtility.decodeText(attachment.getFileName()))
+                .isEqualTo("Compte rendu réunion.pdf");
+        assertThat(attachment.getInputStream().readAllBytes()).isEqualTo(pdf);
+    }
+
+    @Test
     void propagatesSmtpFailure() {
         SmtpEmailService service = new SmtpEmailService(mailSender, FROM);
         doThrow(new MailSendException("smtp down")).when(mailSender).send(any(SimpleMailMessage.class));

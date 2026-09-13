@@ -359,6 +359,14 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     passager → reprise 1/5/15/60 min, `FAILED` au 5ᵉ. **Corps effacés à l'état final** : la ligne reste le
     journal. `GET /client-emails/{id}` rend l'état (jamais le corps) ; le terminal le relit (bloc « Courriel
     envoyé », champ `email` du bloc de transcription, événement SSE `email`).
+  - **Pièces jointes** (SF-110-03, sans migration) : `attachments` de `email_me` — fichier du poste lu par le
+    runner en binaire par tranches (outil runner `read_file_bytes`, 10 Mo au plus, tracé dans `runner_audit`),
+    page F-109 du même poste (HTML joint + lien privé `/pages/{id}` dans le corps, ou `link_only`), export
+    Markdown du Radar. **10 Mo au total** (pièces + corps), au-delà refus et consigne de proposer un lien ;
+    conteneurs de secrets refusés par leur nom, pièces texte passées à `ClientMailSecrets`. Les octets vivent
+    dans le stockage objet (`WorkspaceStorage`) sous `client-emails/{userId}/{emailId}/{nn}/{nom encodé}`,
+    écrits dans la transaction de la mise en file, relus par le travailleur (`multipart/mixed`), **effacés à
+    l'état final** (pièce manquante → `FAILED` sans reprise) et à la suppression du compte.
 - **user_api_keys** — clé API personnelle BYOK chiffrée au repos (F-03, migration `030`, OQ-06 : AWS KMS
   envelope encryption). **Une seule clé par utilisateur** (`user_id` unique). **Aucune clé en clair** : seuls
   le blob chiffré et les 4 derniers caractères sont persistés.

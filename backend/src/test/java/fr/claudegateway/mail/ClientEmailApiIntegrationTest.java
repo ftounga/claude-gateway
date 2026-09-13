@@ -53,6 +53,8 @@ class ClientEmailApiIntegrationTest {
     @Autowired private ClientMailTool tool;
     @Autowired private ClientMailOutbox outbox;
     @Autowired private JwtService jwtService;
+    @Autowired private fr.claudegateway.pages.PageService pageService;
+    @Autowired private fr.claudegateway.atelier.storage.WorkspaceStorage storage;
     @MockitoBean private EmailService emailService;
 
     private final ObjectMapper mapper = new ObjectMapper();
@@ -152,6 +154,53 @@ class ClientEmailApiIntegrationTest {
                 .andExpect(status().isNotFound());
         mockMvc.perform(get("/api/client-emails/" + id).contextPath("/api").header("Authorization", "Bearer " + noraToken))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void aPageOfThisClientTravelsAsAnAttachmentWithItsPrivateLinkThenIsErasedFromStorage() throws Exception {
+        UUID pageId = pageService.publish(new fr.claudegateway.pages.PagePlace(vera.getId(),
+                fr.claudegateway.pages.PageSpace.VIGIE, veraTerminal.getHostId(), veraTerminal.getId()), null,
+                "Sujet MFA", "Le point.", "<!doctype html><h1>MFA</h1>", java.util.Map.of()).page().getId();
+
+        ClientMailTool.Outcome outcome = tool.send(vera.getId(), veraTerminal, "call-pj", mapper.readTree(
+                "{\"subject\":\"Page MFA\",\"body\":\"Voici la page.\",\"attachments\":[{\"page_id\":\"" + pageId + "\"}]}"));
+        assertThat(outcome.error()).as(outcome.content()).isFalse();
+        UUID id = UUID.fromString(outcome.receipt().emailId());
+        assertThat(outcome.receipt().attachmentCount()).isEqualTo(1);
+        assertThat(storage.listKeys(ClientMailAttachmentStore.prefix(vera.getId(), id))).hasSize(1);
+
+        assertThat(outbox.runOnce()).isEqualTo(1);
+
+        ArgumentCaptor<ClientMailMessage> message = ArgumentCaptor.forClass(ClientMailMessage.class);
+        verify(emailService).sendClientMail(message.capture());
+        assertThat(message.getValue().attachments()).singleElement().satisfies(attachment -> {
+            assertThat(attachment.name()).isEqualTo("sujet-mfa.html");
+            assertThat(new String(attachment.content(), java.nio.charset.StandardCharsets.UTF_8)).contains("<h1>MFA</h1>");
+        });
+        assertThat(message.getValue().html()).contains("/pages/" + pageId);
+        assertThat(message.getValue().text()).contains("/pages/" + pageId);
+
+        ClientEmail row = emailRepository.findById(id).orElseThrow();
+        assertThat(row.getStatus()).isEqualTo(ClientEmailStatus.SENT);
+        assertThat(row.getAttachmentCount()).isEqualTo(1);
+        assertThat(storage.listKeys(ClientMailAttachmentStore.prefix(vera.getId(), id))).as("pièces effacées").isEmpty();
+    }
+
+    @Test
+    void anotherAccountsPageIsRefusedAndNothingIsQueued() throws Exception {
+        User bob = userRepository.findByEmail("bob-send@example.com").orElseThrow();
+        RunnerHost bobHost = hostRepository.save(RunnerHost.builder().userId(bob.getId()).name("BNP").rootName("dev")
+                .os("linux").shell("posix").elevated(false).build());
+        UUID bobPage = pageService.publish(new fr.claudegateway.pages.PagePlace(bob.getId(),
+                fr.claudegateway.pages.PageSpace.FORGE, bobHost.getId(), null), null, "Secret de Bob", null,
+                "<h1>Bob</h1>", java.util.Map.of()).page().getId();
+
+        ClientMailTool.Outcome outcome = tool.send(vera.getId(), veraTerminal, "call-x", mapper.readTree(
+                "{\"subject\":\"Vol\",\"body\":\"x\",\"attachments\":[{\"page_id\":\"" + bobPage + "\"}]}"));
+
+        assertThat(outcome.error()).isTrue();
+        assertThat(outcome.content()).contains("page inconnue pour ce client");
+        assertThat(emailRepository.count()).isZero();
     }
 
     @Test

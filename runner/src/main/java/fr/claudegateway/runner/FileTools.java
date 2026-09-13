@@ -24,7 +24,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Outils fichiers exécutés <b>sur la machine de l'utilisateur</b> (F-38 / SF-38-04) :
- * {@code list_files}, {@code read_file}, {@code write_file}, {@code search_files}.
+ * {@code list_files}, {@code read_file}, {@code write_file}, {@code search_files} — et, depuis F-110 / SF-110-03,
+ * {@code read_file_bytes}, la lecture <b>binaire</b> par tranches qui sert aux pièces jointes d'un courriel.
  *
  * <p><b>Aucun confinement depuis F-73 / SF-73-01.</b> Un chemin adressé est résolu par
  * {@link PathResolver} — relatif au dossier du projet, ou absolu, ou {@code ~/…} — et <b>aucun
@@ -63,6 +64,18 @@ public final class FileTools implements ToolExecutor {
 
     private static final int BINARY_SNIFF_BYTES = 8_192;
 
+    /**
+     * Plafond d'un fichier lu par {@code read_file_bytes} (F-110 / SF-110-03) : celui d'un courriel entier. Au-delà,
+     * le fichier ne partira jamais en pièce jointe — inutile d'en lire une tranche.
+     */
+    static final long MAX_BYTES_FILE = 10L * 1024 * 1024;
+
+    /**
+     * Tranche maximale de {@code read_file_bytes} : ses octets encodés en Base64 (× 4/3) tiennent dans la borne
+     * du champ {@code content} (512 Kio), donc dans la trame de 1 Mio.
+     */
+    static final int MAX_BYTES_CHUNK = 393_216;
+
     private final PathResolver paths;
 
     public FileTools(PathResolver paths) {
@@ -86,6 +99,7 @@ public final class FileTools implements ToolExecutor {
                 case "read_file" -> readFile(requiredText(input, "path"));
                 case "write_file" -> writeFile(requiredText(input, "path"), requiredContent(input));
                 case "search_files" -> searchFiles(requiredText(input, "query"));
+                case "read_file_bytes" -> readFileBytes(requiredText(input, "path"), input);
                 default -> ToolOutcome.error("unsupported_tool",
                         "Outil non supporté par ce runner : " + tool);
             };
@@ -117,6 +131,52 @@ public final class FileTools implements ToolExecutor {
         byte[] bytes = readBytes(path, resolved.display());
         Truncation body = truncate(new String(bytes, StandardCharsets.UTF_8), MAX_CONTENT_BYTES);
         return ToolOutcome.ok(body.text(), body.truncated(), bytes.length);
+    }
+
+    /**
+     * Une tranche <b>binaire</b> d'un fichier, encodée en Base64 (F-110 / SF-110-03).
+     *
+     * <p>{@code offset} (défaut 0) et {@code length} (défaut et maximum {@link #MAX_BYTES_CHUNK}) bornent la
+     * tranche. Le résultat porte la <b>taille totale</b> du fichier dans {@code bytes} — c'est elle qui permet à
+     * la gateway de refuser un courriel trop lourd dès la première tranche, et de voir un fichier qui change
+     * pendant la lecture — et {@code truncated} vaut vrai tant qu'il reste des octets après la tranche.</p>
+     */
+    ToolOutcome readFileBytes(String rawPath, JsonNode input) throws IOException {
+        long offset = optionalLong(input, "offset", 0L);
+        long length = optionalLong(input, "length", MAX_BYTES_CHUNK);
+        if (offset < 0) {
+            throw new ToolException("invalid_input", "offset doit être positif ou nul.");
+        }
+        if (length < 1 || length > MAX_BYTES_CHUNK) {
+            throw new ToolException("invalid_input",
+                    "length doit être compris entre 1 et " + MAX_BYTES_CHUNK + " octets.");
+        }
+        PathResolver.Resolved resolved = paths.resolve(rawPath);
+        Path path = resolved.path();
+        requireExistingFile(resolved);
+        long size = Files.size(path);
+        if (size > MAX_BYTES_FILE) {
+            throw new ToolException("too_large",
+                    "Fichier trop volumineux pour une pièce jointe (10 Mo au plus) : " + resolved.display());
+        }
+        if (offset > size) {
+            throw new ToolException("invalid_input", "offset au-delà de la fin du fichier : " + resolved.display());
+        }
+        int wanted = (int) Math.min(length, size - offset);
+        ByteBuffer buffer = ByteBuffer.allocate(wanted);
+        try (java.nio.channels.SeekableByteChannel channel = Files.newByteChannel(path, StandardOpenOption.READ)) {
+            channel.position(offset);
+            while (buffer.hasRemaining()) {
+                if (channel.read(buffer) < 0) {
+                    break;
+                }
+            }
+        } catch (IOException e) {
+            throw new ToolException("io_error", "Lecture impossible : " + resolved.display());
+        }
+        byte[] chunk = java.util.Arrays.copyOf(buffer.array(), buffer.position());
+        boolean remaining = offset + chunk.length < size;
+        return ToolOutcome.ok(java.util.Base64.getEncoder().encodeToString(chunk), remaining, size);
     }
 
     /** Écrit (ou remplace) un fichier, en créant les dossiers parents manquants (F-73). */
@@ -313,6 +373,17 @@ public final class FileTools implements ToolExecutor {
             throw new ToolException("invalid_input", "Paramètre requis manquant : " + field);
         }
         return value.asText();
+    }
+
+    private static long optionalLong(JsonNode input, String field, long fallback) {
+        JsonNode value = input == null ? null : input.get(field);
+        if (value == null || value.isNull()) {
+            return fallback;
+        }
+        if (!value.isIntegralNumber() || !value.canConvertToLong()) {
+            throw new ToolException("invalid_input", "Paramètre entier attendu : " + field);
+        }
+        return value.asLong();
     }
 
     private static String requiredContent(JsonNode input) {

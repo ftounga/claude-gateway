@@ -22,8 +22,8 @@ import fr.claudegateway.billing.SpaceEntitlementService;
  *
  * <h2>On s'écrit à soi, jamais à un tiers</h2>
  *
- * <p>Le schéma n'a <b>aucun champ destinataire</b>, et l'exécution ne lit que {@code subject} et {@code body} :
- * un {@code to} glissé par le modèle est ignoré. Le destinataire est résolu par la gateway depuis le <b>poste du
+ * <p>Le schéma n'a <b>aucun champ destinataire</b>, et l'exécution ne lit que {@code subject}, {@code body} et
+ * {@code attachments} (SF-110-03, {@link ClientMailAttachments}) : un {@code to} glissé par le modèle est ignoré. Le destinataire est résolu par la gateway depuis le <b>poste du
  * terminal</b> ({@link HostMailAddressService#resolveRecipient}) : l'adresse vérifiée du client, sinon l'adresse
  * du compte — et la description de l'outil le <b>dit</b>, pour que l'agent l'annonce avant d'envoyer.</p>
  *
@@ -35,7 +35,8 @@ import fr.claudegateway.billing.SpaceEntitlementService;
  * <h2>Ce que l'outil refuse</h2>
  *
  * <p>Un objet ou un corps invalide, un secret manifeste ({@link ClientMailSecrets}), et le 51ᵉ courriel du compte
- * sur 24 heures glissantes. Rien n'est mis en file quand il refuse.</p>
+ * sur 24 heures glissantes ; pour les pièces jointes, un fichier de secrets, un secret dans une pièce texte et un
+ * total au-delà de 10 Mo. Rien n'est mis en file quand il refuse.</p>
  */
 @Component
 public class ClientMailTool {
@@ -56,14 +57,16 @@ public class ClientMailTool {
     private final HostMailAddressService addresses;
     private final ClientMailOutbox outbox;
     private final ClientEmailRepository emails;
+    private final ClientMailAttachments attachments;
     private final Clock clock;
 
     public ClientMailTool(SpaceEntitlementService entitlements, HostMailAddressService addresses,
-            ClientMailOutbox outbox, ClientEmailRepository emails, Clock clock) {
+            ClientMailOutbox outbox, ClientEmailRepository emails, ClientMailAttachments attachments, Clock clock) {
         this.entitlements = entitlements;
         this.addresses = addresses;
         this.outbox = outbox;
         this.emails = emails;
+        this.attachments = attachments;
         this.clock = clock;
     }
 
@@ -118,14 +121,34 @@ public class ClientMailTool {
                         + "aucun moyen d'écrire à une autre adresse : ne propose jamais d'envoyer à quelqu'un d'autre. "
                         + "Corps en Markdown (titres, listes, tableaux), rendu en HTML sobre. Aucune confirmation "
                         + "n'est demandée ; l'envoi part en tâche de fond et son état s'affiche dans le terminal. "
-                        + "N'y mets JAMAIS de secret (mot de passe, jeton, clé) : l'outil refuse. " + TRANSCRIPT_RULE
-                        + " Limite : " + DAILY_LIMIT + " courriels par jour.",
+                        + "N'y mets JAMAIS de secret (mot de passe, jeton, clé) : l'outil refuse, pièces jointes "
+                        + "comprises. " + TRANSCRIPT_RULE
+                        + " Pièces jointes facultatives (attachments, " + ClientMailAttachments.MAX_ATTACHMENTS
+                        + " au plus) : un fichier du poste (path, lu sur la machine), une page publiée de ce client "
+                        + "(page_id : le fichier HTML et son lien privé ; link_only pour le lien seul), l'export "
+                        + "Markdown du Radar de ce client (radar_export). 10 Mo au plus au total : au-delà, propose "
+                        + "un lien plutôt qu'une pièce. Limite : " + DAILY_LIMIT + " courriels par jour.",
                 Map.of("type", "object",
                         "properties", Map.of(
                                 "subject", Map.of("type", "string",
                                         "description", "Objet, une ligne, " + MAX_SUBJECT_CHARS + " caractères au plus."),
                                 "body", Map.of("type", "string",
-                                        "description", "Corps en Markdown.")),
+                                        "description", "Corps en Markdown."),
+                                "attachments", Map.of("type", "array",
+                                        "maxItems", ClientMailAttachments.MAX_ATTACHMENTS,
+                                        "description", "Pièces jointes : chaque élément porte exactement une source.",
+                                        "items", Map.of("type", "object",
+                                                "properties", Map.of(
+                                                        "path", Map.of("type", "string", "description",
+                                                                "Fichier du poste : relatif au projet, absolu ou ~/…"),
+                                                        "page_id", Map.of("type", "string", "description",
+                                                                "Identifiant d'une page publiée de ce client."),
+                                                        "radar_export", Map.of("type", "boolean", "description",
+                                                                "Vrai pour joindre l'export Markdown du Radar de ce client."),
+                                                        "link_only", Map.of("type", "boolean", "description",
+                                                                "Pour une page : son lien privé seul, sans fichier."),
+                                                        "name", Map.of("type", "string", "description",
+                                                                "Nom du fichier joint (facultatif)."))))),
                         "required", List.of("subject", "body"),
                         "additionalProperties", false));
     }
@@ -146,6 +169,18 @@ public class ClientMailTool {
      * @param input     paramètres du modèle : seuls {@code subject} et {@code body} sont lus
      */
     public Outcome send(UUID userId, Workspace workspace, JsonNode input) {
+        return send(userId, workspace, UUID.randomUUID().toString(), input);
+    }
+
+    /**
+     * Exécute un appel {@code email_me}, pièces jointes comprises (SF-110-03).
+     *
+     * @param userId    propriétaire du terminal (celui du tour)
+     * @param workspace terminal du tour, déjà vérifié possédé
+     * @param callId    identifiant de corrélation de l'appel : les lectures du poste en dérivent
+     * @param input     paramètres du modèle : seuls {@code subject}, {@code body} et {@code attachments} sont lus
+     */
+    public Outcome send(UUID userId, Workspace workspace, String callId, JsonNode input) {
         if (!isOpenFor(userId, workspace)) {
             return Outcome.refused("L'envoi de courriels n'existe que dans le terminal d'un poste, avec la Forge ou "
                     + "la Vigie : réponds sans lui.");
@@ -184,15 +219,58 @@ public class ClientMailTool {
         if (recipient.address() == null) {
             return Outcome.refused("Aucune adresse n'est connue pour ce compte : aucun courriel n'a été envoyé.");
         }
-        ClientEmail queued = outbox.enqueue(new ClientMailOutbox.Draft(userId, workspace.getHostId(),
-                workspace.getId(), ClientEmail.Kind.AGENT, recipient, subject,
-                ClientMailRenderer.render(body, recipient.clientName())));
+        ClientMailRenderer.Rendered rendered = ClientMailRenderer.render(body, recipient.clientName());
+        ClientMailAttachments.Collected collected = attachments == null
+                ? new ClientMailAttachments.Collected(List.of(), List.of(), null)
+                : attachments.collect(userId, workspace, callId, input == null ? null : input.get("attachments"),
+                        rendered.sizeBytes());
+        if (collected.isRefused()) {
+            return Outcome.refused(collected.refusal());
+        }
+        if (!collected.links().isEmpty()) {
+            // Le lien privé d'une page part dans le corps, écrit par la gateway — jamais par le modèle.
+            rendered = ClientMailRenderer.render(body + ClientMailAttachments.linksSection(collected.links()),
+                    recipient.clientName());
+        }
+        if (rendered.sizeBytes() + collected.bytes() > ClientMailAttachments.MAX_TOTAL_BYTES) {
+            return Outcome.refused("Courriel trop lourd : 10 Mo au plus au total (pièces et corps). Aucun courriel "
+                    + "n'a été envoyé. Propose un lien à la place (link_only pour une page).");
+        }
+        ClientEmail queued;
+        try {
+            queued = outbox.enqueue(new ClientMailOutbox.Draft(userId, workspace.getHostId(),
+                    workspace.getId(), ClientEmail.Kind.AGENT, recipient, subject, rendered,
+                    collected.attachments()));
+        } catch (RuntimeException e) {
+            return Outcome.refused("Les pièces jointes n'ont pas pu être enregistrées : aucun courriel n'a été "
+                    + "envoyé. Dis-le à l'utilisateur.");
+        }
         String where = recipient.verifiedForClient()
                 ? recipient.address() + " (adresse vérifiée de « " + recipient.clientName() + " »)"
                 : recipient.address() + " — aucune adresse vérifiée pour « " + recipient.clientName()
                         + " », c'est l'adresse du compte : dis-le à l'utilisateur";
-        return new Outcome("Courriel mis en file pour " + where + ", objet « " + subject + " ». L'envoi part en tâche "
-                + "de fond ; son état de remise s'affiche dans le terminal.", false, ClientMailReceipt.of(queued));
+        return new Outcome("Courriel mis en file pour " + where + ", objet « " + subject + " »" + joined(collected)
+                + ". L'envoi part en tâche de fond ; son état de remise s'affiche dans le terminal.", false,
+                ClientMailReceipt.of(queued));
+    }
+
+    /** Ce que le modèle apprend des pièces et des liens : les noms, jamais les contenus. */
+    private static String joined(ClientMailAttachments.Collected collected) {
+        StringBuilder text = new StringBuilder();
+        int count = collected.attachments().size();
+        if (count > 0) {
+            text.append(", ").append(count).append(count == 1 ? " pièce jointe (" : " pièces jointes (")
+                    .append(String.join(", ", collected.attachments().stream()
+                            .map(fr.claudegateway.email.ClientMailMessage.Attachment::name).toList()))
+                    .append(')');
+        }
+        if (!collected.links().isEmpty()) {
+            text.append(", lien privé de ").append(collected.links().size() == 1 ? "la page « " : "les pages « ")
+                    .append(String.join(" », « ", collected.links().stream()
+                            .map(ClientMailAttachments.PageLink::title).toList()))
+                    .append(" » dans le corps");
+        }
+        return text.toString();
     }
 
     private static String text(JsonNode input, String field) {

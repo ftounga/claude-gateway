@@ -107,6 +107,23 @@ public class RunnerToolGateway {
         return router.call(target, callId, "read_file", input, FILE_TOOL_TIMEOUT_MS);
     }
 
+    /**
+     * Lit une <b>tranche binaire</b> d'un fichier de la machine (F-110 / SF-110-03) : {@code content} porte les
+     * octets en Base64, {@code bytes} la taille totale du fichier, {@code truncated} vaut vrai s'il en reste.
+     * Un runner antérieur répond {@code unsupported_tool}.
+     */
+    public RunnerCallResult readFileBytes(RunnerTarget target, String callId, String path, long offset, int length) {
+        String rel = normalizePath(path);
+        if (rel == null) {
+            return invalid("Chemin de fichier invalide.");
+        }
+        ObjectNode input = objectMapper.createObjectNode();
+        input.put("path", rel);
+        input.put("offset", Math.max(0L, offset));
+        input.put("length", length);
+        return router.call(target, callId, "read_file_bytes", input, FILE_TOOL_TIMEOUT_MS);
+    }
+
     /** Écrit un fichier du projet sur la machine. */
     public RunnerCallResult writeFile(RunnerTarget target, String callId, String path, String content) {
         String rel = normalizePath(path);
