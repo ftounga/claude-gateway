@@ -298,12 +298,11 @@
           </span>
         }
       </div>
-      @if (hostAnchor(); as anchor) {
+      @if (hostLink(); as link) {
         <a
           mat-stroked-button
           class="terminal-host-state-link"
-          [routerLink]="['/forge']"
-          [fragment]="anchor"
+          [routerLink]="link"
         >
           Voir le poste
         </a>

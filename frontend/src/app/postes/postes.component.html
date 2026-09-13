@@ -1,76 +1,71 @@
 <section class="postes">
-  <!-- Fil d'Ariane (F-68 / SF-68-01) : cet écran EST l'accueil de la Forge depuis que l'onglet
-       « Postes » a disparu. Le fil le nomme — « Forge », page courante — et sert de racine à tous
-       les niveaux plus profonds. Il ne change rien à ce que la vue affiche. -->
-  <app-forge-breadcrumb class="postes__crumbs"></app-forge-breadcrumb>
-
-  <header class="postes__header">
-    <div>
-      <h1>Postes</h1>
-      <p class="postes__subtitle">
-        Vos machines connectées, les projets qui vivent dessous, et ce qui tourne dessus.
-      </p>
-    </div>
-    <div class="postes__header-actions">
-      <!-- CE QUE ÇA ENGAGE (F-70 / SF-70-01), dit à l'écran et non seulement au refus : quatre flux
-           vivants sont quatre consommations simultanées. Le plafond est un garde-fou de dépense, et
-           un garde-fou qu'on ne voit qu'en le heurtant n'en est pas un. -->
-      <span class="postes__live">
-        Terminaux vivants : {{ liveTerminalCount() }} / {{ liveTerminalLimit }}
-        <span class="postes__live-cost">
-          — chaque terminal vivant consomme un tour en parallèle
-        </span>
+  <!-- LE BANDEAU DE LA FLOTTE (F-98 / SF-98-01). Une ligne : où en sont les postes, ce qui attend une
+       décision, ce que coûtent les terminaux vivants — lu SANS CLIC, quel que soit le poste ouvert.
+       Il remplace le titre « Postes » et le fil d'Ariane : cet écran est la racine de la Forge, et
+       son nom est écrit ici. -->
+  <header class="forge-fleet">
+    <h1 class="forge-fleet__title">Forge</h1>
+    @if (!loading() && error() === 'none') {
+      <span class="forge-fleet__kpi">
+        <span class="forge-fleet__dot forge-fleet__dot--online" aria-hidden="true"></span>
+        <b>{{ onlineHostCount() }}</b>&nbsp;{{ onlineHostCount() > 1 ? 'postes' : 'poste' }} en ligne
+        sur {{ openHosts().length }}
       </span>
-      @if (lastUpdatedLabel(); as updated) {
-        <span class="postes__updated">Mis à jour à {{ updated }}</span>
+      @if (awaitingTotal() > 0) {
+        <!-- §12 : ce qui attend une décision est COMPTÉ en tête, en toutes lettres. -->
+        <span class="forge-fleet__kpi forge-fleet__kpi--awaiting" role="status">
+          <span class="forge-fleet__dot forge-fleet__dot--awaiting" aria-hidden="true"></span>
+          <b>{{ awaitingTotal() }}</b>&nbsp;{{ awaitingTotal() > 1 ? 'autorisations attendent' : 'autorisation attend' }}
+        </span>
       }
-      <!-- LA PORTE DE LA VUE DE SUPERVISION (F-76 / SF-76-03). Elle est ici, et non dans la barre
-           de navigation : F-68 a supprimé l'onglet « Postes » pour désencombrer, on ne le rouvre
-           pas. On surveille depuis la Forge, et on y revient. -->
-      <a
-        mat-stroked-button
-        routerLink="/forge/supervision"
-        matTooltip="Voir les terminaux ouverts travailler, côte à côte"
-      >
-        <mat-icon>grid_view</mat-icon>
-        Voir travailler
-      </a>
-      <!-- LA PORTE DE LA MOSAÏQUE (F-83 / SF-83-02). Elle est à côté de la supervision, et non à
-           sa place : les aperçus disent « est-ce que ça avance » d'un coup d'œil, la mosaïque
-           montre les QUATRE FLUX ENTIERS. Deux densités, deux besoins ; le PO les a demandés tous
-           les deux. Ici encore, rien dans la barre de navigation — F-68 l'a désencombrée. -->
-      <a
-        mat-stroked-button
-        routerLink="/forge/mosaique"
-        matTooltip="Les quatre terminaux, leur flux entier, en même temps"
-      >
-        <mat-icon>dashboard</mat-icon>
-        Mosaïque
-      </a>
-      <button
-        mat-stroked-button
-        type="button"
-        (click)="refresh()"
-        matTooltip="Relire l'état des postes"
-      >
-        <mat-icon>refresh</mat-icon>
-        Rafraîchir
-      </button>
-      <!-- LE PREMIER DES DEUX GESTES (F-72 / SF-72-02). Il part de la MACHINE : on nomme le
-           client, on vérifie le réseau, on appaire, on lance le runner. Aucun projet n'est créé —
-           ils viendront de la carte, avec « Ajouter un projet ». C'est l'ordre que le parcours
-           d'avant inversait, et c'est de là que venaient les deux entités du même nom. -->
-      <button
-        mat-flat-button
-        color="primary"
-        type="button"
-        (click)="connectHost()"
-        matTooltip="Nommer un client, appairer sa machine, lancer le runner"
-      >
-        <mat-icon>add</mat-icon>
-        Connecter un poste
-      </button>
-    </div>
+      <!-- CE QUE ÇA ENGAGE (F-70 / SF-70-01), écrit et non rangé dans une infobulle : quatre flux
+           vivants sont quatre consommations simultanées. -->
+      <span class="forge-fleet__kpi postes__live">
+        <b>{{ liveTerminalCount() }}</b>&nbsp;/ {{ liveTerminalLimit }} terminaux vivants
+        <span class="postes__live-cost">· chaque terminal vivant consomme un tour en parallèle</span>
+      </span>
+    }
+    <span class="forge-fleet__spacer"></span>
+    <!-- LA PORTE DE LA VUE DE SUPERVISION (F-76 / SF-76-03) et celle de la MOSAÏQUE (F-83 / SF-83-02).
+         Elles fusionnent en un seul bouton en SF-98-04. -->
+    <a
+      mat-stroked-button
+      routerLink="/forge/supervision"
+      matTooltip="Voir les terminaux ouverts travailler, côte à côte"
+    >
+      <mat-icon>grid_view</mat-icon>
+      Voir travailler
+    </a>
+    <a
+      mat-stroked-button
+      routerLink="/forge/mosaique"
+      matTooltip="Les quatre terminaux, leur flux entier, en même temps"
+    >
+      <mat-icon>dashboard</mat-icon>
+      Mosaïque
+    </a>
+    <button
+      mat-icon-button
+      type="button"
+      class="forge-fleet__refresh"
+      (click)="refresh()"
+      aria-label="Rafraîchir l'état des postes"
+      [matTooltip]="refreshTooltip()"
+    >
+      <mat-icon>refresh</mat-icon>
+    </button>
+    <!-- LE PREMIER DES DEUX GESTES (F-72 / SF-72-02). Il part de la MACHINE : on nomme le client, on
+         vérifie le réseau, on appaire, on lance le runner. Aucun projet n'est créé. -->
+    <button
+      mat-flat-button
+      color="primary"
+      type="button"
+      (click)="connectHost()"
+      matTooltip="Nommer un client, appairer sa machine, lancer le runner"
+    >
+      <mat-icon>add</mat-icon>
+      Connecter un poste
+    </button>
   </header>
 
   @if (loading()) {
@@ -110,80 +105,60 @@
         <button mat-flat-button color="primary" type="button" (click)="refresh()">Réessayer</button>
       </div>
     </mat-card>
-  } @else if (isEmpty()) {
-    <mat-card class="postes__notice">
-      <mat-icon>devices</mat-icon>
-      <div>
-        <h2>Aucun poste connecté</h2>
-        <p>
-          Un poste est une machine appairée <strong>une seule fois</strong>. On commence par la
-          connecter — le nom du client, le réseau, l'appairage —, et <strong>ensuite</strong> on lui
-          ajoute des projets en cliquant les dossiers de sa racine, autant qu'on veut, sans jamais
-          réappairer.
-        </p>
-        <button mat-flat-button color="primary" type="button" (click)="connectHost()">
-          <mat-icon>add</mat-icon>
-          Connecter un poste
-        </button>
-      </div>
-    </mat-card>
   } @else {
-    <!-- Vue principale : les missions en cours et en attente (F-60 / SF-60-02). Les clôturées
-         descendent dans le repli ci-dessous — elles se rangent, elles ne disparaissent pas. -->
-    @if (allClosed()) {
-      <mat-card class="postes__notice">
-        <mat-icon>inventory_2</mat-icon>
-        <div>
-          <h2>Toutes vos missions sont clôturées</h2>
-          <p>
-            Rien n'est perdu : vos postes sont rangés juste en dessous, avec leurs projets et leur
-            historique. Rouvrez-en un pour le remettre en cours.
-          </p>
-        </div>
-      </mat-card>
-    } @else {
-      <div class="postes__list">
-        @for (host of openHosts(); track hostKey(host)) {
-          <ng-container [ngTemplateOutlet]="posteCard" [ngTemplateOutletContext]="{ $implicit: host }"></ng-container>
+    <!-- MAÎTRE–DÉTAIL (F-98, décision D1) : la colonne des postes à gauche, UN SEUL poste ouvert à
+         droite. La page ne grandit plus avec le nombre de clients. -->
+    <div class="forge-split">
+      <app-forge-rail
+        class="forge-split__rail"
+        [groups]="groups()"
+        [selectedRef]="selectedRef()"
+        [filter]="filter()"
+        [closedOpen]="closedOpen()"
+        (selectHost)="selectHost($event)"
+        (filterChange)="filter.set($event)"
+        (toggleClosed)="toggleClosed()"
+        (connectHost)="connectHost()"
+      ></app-forge-rail>
+
+      <div class="forge-split__detail">
+        @if (isEmpty()) {
+          <mat-card class="postes__notice">
+            <mat-icon>devices</mat-icon>
+            <div>
+              <h2>Aucun poste connecté</h2>
+              <p>
+                Un poste est une machine appairée <strong>une seule fois</strong>. On commence par la
+                connecter — le nom du client, le réseau, l'appairage —, et <strong>ensuite</strong> on
+                lui ajoute des projets en cliquant les dossiers de sa racine, autant qu'on veut, sans
+                jamais réappairer.
+              </p>
+              <button mat-flat-button color="primary" type="button" (click)="connectHost()">
+                <mat-icon>add</mat-icon>
+                Connecter un poste
+              </button>
+            </div>
+          </mat-card>
+        } @else if (allClosed() && isHosted(selectedHost())) {
+          <mat-card class="postes__notice">
+            <mat-icon>inventory_2</mat-icon>
+            <div>
+              <h2>Toutes vos missions sont clôturées</h2>
+              <p>
+                Rien n'est perdu : vos postes sont rangés dans la colonne, avec leurs projets et leur
+                historique. Rouvrez-en un pour le remettre en cours.
+              </p>
+            </div>
+          </mat-card>
         }
+
+        <!-- UN SEUL POSTE OUVERT. La carte est celle d'avant, à l'identique : SF-98-02 la range en
+             onglets, SF-98-03 met ses projets en grille. -->
+        <ng-container
+          [ngTemplateOutlet]="posteCard"
+          [ngTemplateOutletContext]="{ $implicit: selectedHost() }"
+        ></ng-container>
       </div>
-    }
-
-    @if (closedHosts().length > 0) {
-      <section class="postes__closed">
-        <!-- Un repli, pas un onglet : « se ranger SANS disparaître ». Refermé au départ, il dit
-             combien de missions sont closes et les rouvre d'un clic. -->
-        <button
-          type="button"
-          class="postes__closed-toggle"
-          (click)="toggleClosed()"
-          [attr.aria-expanded]="closedOpen()"
-        >
-          <mat-icon>{{ closedOpen() ? 'expand_less' : 'expand_more' }}</mat-icon>
-          Missions clôturées ({{ closedHosts().length }})
-        </button>
-        @if (closedOpen()) {
-          <div class="postes__list postes__list--closed">
-            @for (host of closedHosts(); track hostKey(host)) {
-              <ng-container [ngTemplateOutlet]="posteCard" [ngTemplateOutletContext]="{ $implicit: host }"></ng-container>
-            }
-          </div>
-        }
-      </section>
-    }
-  }
-
-  <!-- LES DEUX SOURCES SANS MACHINE (F-72 / SF-72-04) : un dépôt GitHub, une archive. Elles vivent
-       chez la gateway, donc sous le poste « Hébergé ». Cette carte est désormais TOUJOURS là, même
-       vide, parce qu'elle porte des GESTES : une carte de gestes qui disparaît quand elle n'a rien
-       met ses gestes hors de portée. Hors du @if/@else ci-dessus pour être là aussi quand aucune
-       machine n'est connectée — c'est justement le premier jour d'un utilisateur. -->
-  @if (!loading() && error() === 'none') {
-    <div class="postes__list postes__list--heberge">
-      <ng-container
-        [ngTemplateOutlet]="posteCard"
-        [ngTemplateOutletContext]="{ $implicit: hostedHost() }"
-      ></ng-container>
     </div>
   }
 </section>
@@ -192,12 +167,9 @@
      clôturée reste EXACTEMENT la même carte — mêmes projets, même terminal, même possibilité de la
      rouvrir. C'est ce qui distingue « ranger » de « masquer ». -->
 <ng-template #posteCard let-host>
-  <!-- `id` d'ancrage (F-68 / SF-68-01) : c'est la cible du niveau « chez qui » du fil d'Ariane.
-       Un ancrage de page, jamais un critère de lecture — il ne désigne rien côté gateway. -->
   <mat-card
     class="poste"
     [class.poste--heberge]="isHosted(host)"
-    [attr.id]="host.id ? 'poste-' + host.id : null"
     [style.borderLeftColor]="tone(host)?.solid"
   >
     <header class="poste__head">

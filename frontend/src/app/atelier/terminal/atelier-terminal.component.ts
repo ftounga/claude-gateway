@@ -216,8 +216,8 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     if (host) {
       trail.push({
         label: host,
-        link: ['/forge'],
-        fragment: this.hostIdValue() ? `poste-${this.hostIdValue()}` : null,
+        // F-98 / SF-98-01 : une adresse par poste. L'ancien fragment `#poste-<id>` redirige encore.
+        link: this.hostIdValue() ? ['/forge', this.hostIdValue()] : ['/forge'],
         hostName: host,
         missionStatus: this.hostMissionValue(),
       });
@@ -580,10 +580,13 @@ export class AtelierTerminalComponent implements AfterViewChecked, OnDestroy {
     return this.runnerStatus?.rootName ?? null;
   }
 
-  /** Ancre de la carte du poste sur l'accueil de la Forge, ou `null` : on ne fabrique pas un lien. */
-  hostAnchor(): string | null {
+  /**
+   * Adresse du poste dans la Forge — `/forge/<id>` depuis F-98 / SF-98-01 —, ou `null` : on ne
+   * fabrique pas un lien.
+   */
+  hostLink(): string[] | null {
     const id = this.hostIdValue();
-    return id ? `poste-${id}` : null;
+    return id ? ['/forge', id] : null;
   }
 
   /**

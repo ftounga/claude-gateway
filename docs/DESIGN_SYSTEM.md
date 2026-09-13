@@ -518,6 +518,50 @@ machine a répondu » — ce qui serait faux.
 
 ---
 
+## 16 — La Forge : colonne et détail (ajout F-98, 2026-09-13)
+
+> **Aucune couleur nouvelle.** La Forge refondue range ce qui existait ; tout vient de §2, §5, §9,
+> §10, §11 et §12. Maquette validée : `docs/features/F-98/maquette-forge-refondue.html`. Les
+> dimensions de la maquette sont **arrondies à la grille de 4 px** (§6) : 290 → 288, 34 → 32, 9 → 8.
+
+La Forge était une pile de cartes : chaque poste empilait onze blocs, et la page grandissait en
+*postes × (blocs + projets)*. Elle devient un **maître–détail** : une colonne des postes, un seul
+poste ouvert.
+
+### Le bandeau de la flotte
+
+- **Une ligne**, surface `#FFFFFF`, filet bas `--cg-divider`. Titre « Forge » en Space Grotesk 600.
+- Trois faits, en texte secondaire avec le **chiffre en encre principale** : postes en ligne (point
+  `--cg-success`), **autorisations qui attendent** (point et chiffre ambre §12 `#F9A825`, affiché
+  seulement s'il y en a), terminaux vivants « *n* / 4 » **et** la phrase de ce qu'ils engagent (§11).
+- À droite : les portes de la Forge (`mat-stroked-button`), « Rafraîchir » en `mat-icon-button`, et
+  « Connecter un poste » en action principale (`mat-flat-button color="primary"`).
+
+### La colonne des postes (`app-forge-rail`)
+
+| Élément | Règle |
+|---|---|
+| Colonne | **288 px**, surface `#FFFFFF`, filet droit `--cg-divider` ; pleine largeur sous 820 px |
+| Filtre | champ de recherche natif, fond `--cg-bg`, filet `--cg-divider`, rayon 8 px, filet `--cg-accent` au focus |
+| Titre de groupe | JetBrains Mono 11 px, capitales espacées, `--cg-text-secondary` |
+| Ligne de poste | grille *pastille 32 px · nom et statut · compte*, rayon 8 px, survol `--cg-bg` |
+| Pastille | `app-host-badge` (§9), jamais recomposée ; « Hébergé » : icône `cloud` sur le gris §5 `#F5F5F5` |
+| Statut | point 8 px (`--cg-success` en ligne, `--cg-divider` sinon) **et** le libellé daté écrit (F-97) |
+| Ligne ouverte | fond `--cg-bg` et **filet gauche de 4 px de la couleur du poste** (`solid` §9) — un filet, jamais un fond ; gris `--cg-text-secondary` pour « Hébergé » |
+| Attente | pastille §5 « En attente » (`badge--warning`) écrite « *k* attend » à la place du compte |
+| Compte | nombre de projets en JetBrains Mono 12 px ; « *k* projet(s) trouvé(s) » quand le filtre ne retient le poste que par ses projets |
+
+### Règles d'emploi — non négociables
+
+- **L'ordre dit l'urgence.** *À regarder* (une autorisation attend) › *En ligne* › *Hors ligne* ›
+  *Sans machine* › *Missions clôturées* (repli fermé au départ, §10 « se ranger sans disparaître »).
+  Un groupe vide n'est pas rendu.
+- **Un seul poste ouvert**, désigné par l'URL `/forge/:hostRef`. La couleur d'identité entre par la
+  pastille et le filet de la ligne ouverte ; elle ne qualifie jamais un état.
+- **Le statut date, il n'affirme pas** : « en ligne · vu il y a 12 s », jamais « Connecté » seul.
+
+---
+
 ## Logo & marque (ajout 2026-07-03)
 
 - **Logo de l'application** : `frontend/public/claude-portal-logo.png` (« Claude Portal » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« Claude Portal »** (renommé en F-29 SF-29-01 : le terme « Proxy » faisait classer le domaine en catégorie « anonymizer » par les filtres d'entreprise).

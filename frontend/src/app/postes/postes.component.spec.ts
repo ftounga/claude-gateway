@@ -1,8 +1,8 @@
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing';
 import { HttpErrorResponse } from '@angular/common/http';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { ActivatedRoute, Router, provideRouter } from '@angular/router';
-import { Observable, of, throwError } from 'rxjs';
+import { ActivatedRoute, ParamMap, Router, convertToParamMap, provideRouter } from '@angular/router';
+import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
 
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -27,6 +27,8 @@ describe('PostesComponent', () => {
   let dialog: jasmine.SpyObj<MatDialog>;
   /** Ce que le dialogue de suppression renvoie : `true` = l'utilisateur a confirmé. */
   let dialogAnswer: boolean;
+  /** Les paramètres de la route — `/forge/:hostRef` (F-98 / SF-98-01). */
+  let params$: BehaviorSubject<ParamMap>;
 
   const poste: RunnerHostOverview = {
     id: 'h1',
@@ -121,16 +123,6 @@ describe('PostesComponent', () => {
   }
 
   /**
-   * Prépare l'écran avec un fragment d'URL (F-68 / SF-68-01) : c'est ce que pose le niveau
-   * « chez qui » du fil d'Ariane quand on revient sur l'accueil de la Forge.
-   */
-  function setupWithFragment(fragment: string, hosts: RunnerHostOverview[] = [poste]): void {
-    service = spyService();
-    service.runnerHostsOverview.and.returnValue(of(hosts));
-    build(fragment);
-  }
-
-  /**
    * La carte du poste (F-92 / SF-92-03) : ce que la machine sait, à sa racine. Relevé nominal —
    * les tests qui visent un autre chemin le remplacent.
    */
@@ -179,7 +171,14 @@ describe('PostesComponent', () => {
     warnings: [],
   };
 
+  /** Ouvre un poste par l'URL, comme `/forge/<ref>` (F-98 / SF-98-01). */
+  function openHost(ref: string | null): void {
+    params$.next(convertToParamMap(ref ? { hostRef: ref } : {}));
+    fixture.detectChanges();
+  }
+
   function build(fragment: string | null = null): void {
+    params$ = new BehaviorSubject<ParamMap>(convertToParamMap({}));
     governance = jasmine.createSpyObj<GovernanceService>('GovernanceService',
       ['getMap', 'readMapFile', 'getIntegrite']);
     governance.getMap.and.returnValue(of(carte));
@@ -195,7 +194,7 @@ describe('PostesComponent', () => {
         provideRouter([]),
         provideNoopAnimations(),
         // Déclaré APRÈS `provideRouter` : c'est ce jeton-là que l'écran lit pour son ancrage.
-        { provide: ActivatedRoute, useValue: { snapshot: { fragment } } },
+        { provide: ActivatedRoute, useValue: { snapshot: { fragment }, paramMap: params$ } },
       ],
     });
     fixture = TestBed.createComponent(PostesComponent);
@@ -263,11 +262,14 @@ describe('PostesComponent', () => {
       { ...poste, id: 'h1', name: 'Poste bureau' },
       { ...poste, id: 'h2', name: 'Poste maison' },
     ]);
-    const cards = (fixture.nativeElement as HTMLElement)
-      .querySelectorAll<HTMLElement>('.poste:not(.poste--heberge)');
+    const card = () => (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLElement>('.poste:not(.poste--heberge)')!;
+    const first = card().style.borderLeftColor;
 
-    expect(cards.length).toBe(2);
-    expect(cards[0].style.borderLeftColor).not.toBe(cards[1].style.borderLeftColor);
+    openHost('h2');
+
+    expect(first).not.toBe('');
+    expect(card().style.borderLeftColor).not.toBe(first);
   });
 
   it('ÉCRIT le nom du poste à côté de sa couleur — elle ne porte jamais seule l\'information', () => {
@@ -538,24 +540,24 @@ describe('PostesComponent', () => {
     // couleur d'identité. Deux postes de même état mais de noms différents gardent deux filets
     // différents ; le filet ne dépend que du nom.
     setup([mission('h1', 'Poste CAGIP', 'PENDING'), mission('h2', 'Poste Bercy', 'PENDING')]);
-    const cards = (fixture.nativeElement as HTMLElement)
-      .querySelectorAll<HTMLElement>('.poste:not(.poste--heberge)');
+    const card = () => (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLElement>('.poste:not(.poste--heberge)')!;
 
-    expect(cards.length).toBe(2);
-    expect(cards[0].style.borderLeftColor).toBe(hexToRgb(hostTone('Poste CAGIP').solid));
-    expect(cards[1].style.borderLeftColor).toBe(hexToRgb(hostTone('Poste Bercy').solid));
-    expect(cards[0].style.borderLeftColor).not.toBe(cards[1].style.borderLeftColor);
+    expect(card().style.borderLeftColor).toBe(hexToRgb(hostTone('Poste CAGIP').solid));
+    openHost('h2');
+    expect(card().style.borderLeftColor).toBe(hexToRgb(hostTone('Poste Bercy').solid));
   });
 
   it("donne le même filet à un même nom, quels que soient les états de mission", () => {
     setup([mission('h1', 'Poste CAGIP', 'ACTIVE'), mission('h2', 'Poste CAGIP', 'CLOSED')]);
-    component.closedOpen.set(true);
-    fixture.detectChanges();
-    const cards = (fixture.nativeElement as HTMLElement)
-      .querySelectorAll<HTMLElement>('.poste:not(.poste--heberge)');
+    const card = () => (fixture.nativeElement as HTMLElement)
+      .querySelector<HTMLElement>('.poste:not(.poste--heberge)')!;
+    const active = card().style.borderLeftColor;
 
-    expect(cards.length).toBe(2);
-    expect(cards[0].style.borderLeftColor).toBe(cards[1].style.borderLeftColor);
+    openHost('h2');
+
+    expect(active).not.toBe('');
+    expect(card().style.borderLeftColor).toBe(active);
   });
 
   it("n'emprunte aucune couleur d'identité pour la pastille d'état", () => {
@@ -644,8 +646,7 @@ describe('PostesComponent', () => {
   it('garde les projets et le terminal d’un poste clôturé', () => {
     // « Se ranger sans disparaître » : la carte rangée est EXACTEMENT la même carte.
     setup([{ ...poste, missionStatus: 'CLOSED' }]);
-    component.toggleClosed();
-    fixture.detectChanges();
+    openHost('h1');
 
     const buttons = (fixture.nativeElement as HTMLElement)
       .querySelectorAll('.projet button[aria-label^="Ouvrir le terminal"]');
@@ -654,50 +655,149 @@ describe('PostesComponent', () => {
 
   // ------------------------------------- accueil de la Forge (F-68 / SF-68-01)
 
-  describe("accueil de la Forge (F-68)", () => {
-    it('porte le fil d\'Ariane, et s\'y nomme « Forge »', () => {
+  describe('la colonne et le poste ouvert (F-98 / SF-98-01)', () => {
+    const bercy: RunnerHostOverview = { ...poste, id: 'h2', name: 'Poste Bercy', projects: [] };
+
+    function railRows(): HTMLElement[] {
+      return Array.from((fixture.nativeElement as HTMLElement)
+        .querySelectorAll<HTMLElement>('.forge-rail__host'));
+    }
+
+    function groupLabels(): string[] {
+      return Array.from((fixture.nativeElement as HTMLElement)
+        .querySelectorAll('.forge-rail__group')).map((node) => node.textContent?.trim() ?? '');
+    }
+
+    it('se nomme « Forge » en tête du bandeau : cet écran est la racine de la Forge', () => {
       setup();
-      const crumbs = (fixture.nativeElement as HTMLElement).querySelector('app-forge-breadcrumb');
+      const title = (fixture.nativeElement as HTMLElement).querySelector('.forge-fleet__title');
 
-      expect(crumbs).not.toBeNull();
-      expect(crumbs?.textContent).toContain('Forge');
-      // Cet écran EST l'accueil de la Forge : c'est le dernier niveau.
-      expect(crumbs?.querySelector('[aria-current="page"]')?.textContent?.trim()).toBe('Forge');
+      expect(title?.textContent?.trim()).toBe('Forge');
     });
 
-    it('donne à chaque carte l\'ancrage que vise le niveau « chez qui »', () => {
-      setup();
+    it('liste chaque poste dans la colonne, et n\'ouvre QU\'UN poste à droite', () => {
+      setup([poste, bercy]);
 
-      expect((fixture.nativeElement as HTMLElement).querySelector('#poste-h1')).not.toBeNull();
+      expect(railRows().map((row) => row.getAttribute('data-ref'))).toEqual(['h1', 'h2', 'heberge']);
+      expect((fixture.nativeElement as HTMLElement)
+        .querySelectorAll('.poste:not(.poste--heberge)').length).toBe(1);
     });
 
-    it('amène dans le champ de vision la carte visée par le fragment', () => {
-      setupWithFragment('poste-h1');
-      const card = (fixture.nativeElement as HTMLElement).querySelector('#poste-h1') as HTMLElement;
-      const scroll = spyOn(card, 'scrollIntoView');
+    it('ouvre le poste désigné par l\'URL, et suit son changement sans rien relire', () => {
+      setup([poste, bercy]);
+      expect(component.selectedHost().id).toBe('h1');
 
-      component.revealAnchoredHost();
+      openHost('h2');
 
-      expect(scroll).toHaveBeenCalled();
+      expect(component.selectedHost().id).toBe('h2');
+      expect((fixture.nativeElement as HTMLElement).querySelector('.poste h2')?.textContent?.trim())
+        .toBe('Poste Bercy');
+      // Aucune relecture : changer de poste ne recharge rien.
+      expect(service.runnerHostsOverview).toHaveBeenCalledTimes(1);
     });
 
-    it('ne bronche pas sur un fragment qui ne désigne aucune carte', () => {
-      // Poste supprimé, mission clôturée et repliée, fragment recopié de travers : un fil d'Ariane
-      // ne doit jamais produire d'erreur.
-      setupWithFragment('poste-inconnu');
+    it('un poste inconnu dans l\'URL retombe sur le poste par défaut, sans erreur', () => {
+      setup([poste, bercy]);
 
-      expect(() => component.revealAnchoredHost()).not.toThrow();
+      openHost('supprime');
+
+      expect(component.selectedRef()).toBe('h1');
     });
 
-    it('n\'honore l\'ancrage qu\'une fois — ensuite l\'écran appartient à l\'utilisateur', () => {
-      setupWithFragment('poste-h1');
-      const card = (fixture.nativeElement as HTMLElement).querySelector('#poste-h1') as HTMLElement;
-      const scroll = spyOn(card, 'scrollIntoView');
+    it('/forge ouvre d\'abord le poste où une autorisation attend', () => {
+      const attend: RunnerHostOverview = {
+        ...bercy,
+        projects: [{
+          ...poste.projects[0], id: 'w5', liveTerminal: true,
+          terminalPreview: { activity: 'AWAITING_APPROVAL', activityDetail: 'aws s3 ls', lines: [] },
+        }],
+      };
+      setup([poste, attend]);
 
-      component.revealAnchoredHost();
-      component.revealAnchoredHost();
+      expect(component.selectedRef()).toBe('h2');
+      expect(groupLabels()[0]).toBe('À regarder');
+      expect(railRows()[0].textContent).toContain('1 attend');
+    });
 
-      expect(scroll).toHaveBeenCalledTimes(1);
+    it('/forge ouvre le premier poste en ligne avant un poste hors ligne', () => {
+      setup([{ ...poste, id: 'h0', name: 'Éteint', connected: false }, bercy]);
+
+      expect(component.selectedRef()).toBe('h2');
+      expect(groupLabels()).toEqual(['En ligne', 'Hors ligne', 'Sans machine']);
+    });
+
+    it('cliquer une ligne mène à /forge/<id>, en gardant les paramètres de requête', () => {
+      setup([poste, bercy]);
+      const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+
+      railRows()[1].click();
+
+      expect(navigate).toHaveBeenCalledWith(['/forge', 'h2'], { queryParamsHandling: 'preserve' });
+    });
+
+    it('l\'ancien ancrage #poste-<id> redirige vers /forge/<id>, sans laisser le fragment derrière', () => {
+      service = spyService();
+      service.runnerHostsOverview.and.returnValue(of([poste]));
+      const navigate = spyOn(Router.prototype, 'navigate').and.resolveTo(true);
+
+      build('poste-h1');
+
+      expect(navigate).toHaveBeenCalledWith(['/forge', 'h1'], { replaceUrl: true });
+    });
+
+    it('ignore un fragment qui ne désigne pas un poste', () => {
+      service = spyService();
+      service.runnerHostsOverview.and.returnValue(of([poste]));
+      const navigate = spyOn(Router.prototype, 'navigate').and.resolveTo(true);
+
+      build('autre-chose');
+
+      expect(navigate).not.toHaveBeenCalled();
+    });
+
+    it('le filtre trouve un poste par le nom d\'un de ses projets, et dit combien', () => {
+      setup([poste, bercy]);
+
+      component.filter.set('api');
+      fixture.detectChanges();
+
+      expect(railRows().map((row) => row.getAttribute('data-ref'))).toEqual(['h1']);
+      expect(railRows()[0].textContent).toContain('1 projet trouvé');
+    });
+
+    it('dit quand rien ne correspond, sans fermer le poste ouvert', () => {
+      setup([poste, bercy]);
+
+      component.filter.set('zzz');
+      fixture.detectChanges();
+
+      expect(text()).toContain('Aucun poste ni projet ne correspond.');
+      expect(component.selectedHost().id).toBe('h1');
+    });
+
+    it('le bandeau compte les postes en ligne et les autorisations qui attendent, sans clic', () => {
+      const attend: RunnerHostOverview = {
+        ...bercy,
+        connected: false,
+        hostTerminalPreview: { activity: 'AWAITING_APPROVAL', activityDetail: 'git clone', lines: [] },
+      };
+      setup([poste, attend]);
+      const fleet = (fixture.nativeElement as HTMLElement).querySelector('.forge-fleet') as HTMLElement;
+
+      expect(fleet.textContent).toContain('1 poste en ligne sur 2');
+      expect(fleet.textContent).toContain('1 autorisation attend');
+    });
+
+    it('ouvre d\'office le repli quand le poste ouvert est clôturé', () => {
+      setup([poste, { ...bercy, missionStatus: 'CLOSED' }]);
+      expect(component.closedOpen()).toBeFalse();
+
+      openHost('h2');
+      component.refresh();
+      fixture.detectChanges();
+
+      expect(component.closedOpen()).toBeTrue();
+      expect(railRows().some((row) => row.getAttribute('data-ref') === 'h2')).toBeTrue();
     });
   });
 
@@ -749,7 +849,7 @@ describe('PostesComponent', () => {
       setup([{ ...poste, liveTerminals: 2 }]);
       const dom = fixture.nativeElement as HTMLElement;
       const counter = dom.querySelector('.postes__live');
-      expect(counter?.textContent).toContain('Terminaux vivants : 2 / 4');
+      expect(counter?.textContent).toContain('2\u00a0/ 4 terminaux vivants');
       // La phrase est écrite à l'écran, pas rangée dans une infobulle.
       expect(counter?.textContent).toContain('consomme un tour en parallèle');
     });
@@ -827,7 +927,7 @@ describe('PostesComponent', () => {
       expect(dom.querySelector('.preview')).toBeNull();
       // Non-régression F-70 : la pastille de vie et le compteur restent là.
       expect(dom.querySelector('app-live-badge')).not.toBeNull();
-      expect(dom.querySelector('.postes__live')?.textContent).toContain('Terminaux vivants : 1 / 4');
+      expect(dom.querySelector('.postes__live')?.textContent).toContain('1\u00a0/ 4 terminaux vivants');
     });
 
     it('montre aussi ce que fait le terminal DU POSTE (F-74)', () => {
@@ -1061,15 +1161,20 @@ describe('PostesComponent', () => {
     ],
   };
 
-  it('range les projets sans machine sous « Hébergé », en dernier', () => {
+  it('range les projets sans machine sous « Hébergé », après les machines', () => {
     setup([poste, heberge]);
-    const cards = (fixture.nativeElement as HTMLElement).querySelectorAll('.poste');
+    const rows = Array.from((fixture.nativeElement as HTMLElement)
+      .querySelectorAll<HTMLElement>('.forge-rail__host'));
 
-    expect(cards.length).toBe(2);
-    // Toujours EN DERNIER, après les machines.
-    expect(cards[1].textContent).toContain('Hébergé');
-    expect(cards[1].textContent).toContain('mon-depot');
-    expect(cards[1].classList).toContain('poste--heberge');
+    // Après les machines, dans son propre groupe — et sans point de statut : il n'a pas de runner.
+    expect(rows.map((row) => row.getAttribute('data-ref'))).toEqual(['h1', 'heberge']);
+    expect(rows[1].textContent).toContain('Hébergé');
+    expect(rows[1].querySelector('.forge-rail__dot')).toBeNull();
+
+    openHost('heberge');
+    const card = (fixture.nativeElement as HTMLElement).querySelector('.poste') as HTMLElement;
+    expect(card.textContent).toContain('mon-depot');
+    expect(card.classList).toContain('poste--heberge');
   });
 
   it('ne lui donne ni identité de machine, ni état de connexion, ni mission, ni suppression', () => {
@@ -1109,11 +1214,13 @@ describe('PostesComponent', () => {
     expect(service.setHostMissionStatus).not.toHaveBeenCalled();
   });
 
-  it('n\'ancre pas la carte virtuelle : elle n\'a pas d\'identifiant', () => {
-    setup([heberge]);
-    const card = (fixture.nativeElement as HTMLElement).querySelector('.poste') as HTMLElement;
+  it('donne à la carte virtuelle l\'adresse /forge/heberge : elle n\'a pas d\'identifiant', () => {
+    setup([poste, heberge]);
 
-    expect(card.id).toBe('');
+    openHost('heberge');
+
+    expect(component.selectedRef()).toBe('heberge');
+    expect(component.selectedHost().virtual).toBeTrue();
   });
 
   // -------------------------------------------- « Connecter un poste » (F-72 / SF-72-02)
@@ -1294,6 +1401,7 @@ describe('PostesComponent', () => {
 
   it('rend la carte « Hébergé » même quand la gateway n\'en renvoie aucune', () => {
     setup();
+    openHost('heberge');
 
     // Elle porte des GESTES : une carte de gestes qui disparaît quand elle est vide met ses
     // gestes hors de portée.
@@ -1402,9 +1510,11 @@ describe('PostesComponent', () => {
     setup();
     const root = fixture.nativeElement as HTMLElement;
     const machine = root.querySelector('.poste:not(.poste--heberge)') as HTMLElement;
-    const heberge = root.querySelector('.poste--heberge') as HTMLElement;
 
     expect(machine.querySelector('.poste__host-terminal')).not.toBeNull();
+
+    openHost('heberge');
+    const heberge = root.querySelector('.poste--heberge') as HTMLElement;
     // « Hébergé » n'est pas une machine (F-71) : un terminal de poste n'y voudrait rien dire.
     expect(heberge.querySelector('.poste__host-terminal')).toBeNull();
   });
@@ -1830,7 +1940,7 @@ describe('PostesComponent', () => {
           { provide: MatDialog, useValue: dialog },
           provideRouter([]),
           provideNoopAnimations(),
-          { provide: ActivatedRoute, useValue: { snapshot: { fragment: null } } },
+          { provide: ActivatedRoute, useValue: { snapshot: { fragment: null }, paramMap: of(convertToParamMap({})) } },
         ],
       });
       fixture = TestBed.createComponent(PostesComponent);
