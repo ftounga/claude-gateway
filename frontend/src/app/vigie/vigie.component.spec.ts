@@ -97,10 +97,12 @@ describe('VigieComponent', () => {
       ({ afterClosed: () => of(dialogResults.get(component)) })) as never);
     snackBar = jasmine.createSpyObj<MatSnackBar>('MatSnackBar', ['open']);
     radar = jasmine.createSpyObj<RadarService>('RadarService',
-      ['brief', 'syncNow', 'cancelSync', 'threadRules', 'addThreadRule', 'removeThreadRule', 'board']);
+      ['brief', 'syncNow', 'cancelSync', 'threadRules', 'addThreadRule', 'removeThreadRule', 'board', 'schedule']);
     // Le résumé d'un client dit les mêmes compteurs que la lecture de la Vigie : c'est la même source.
     radar.brief.and.callFake((hostId: string) => of(briefOf(options.counts?.[hostId] ?? noCounts)));
     radar.board.and.returnValue(of({ toDo: [], subjects: [], waiting: [] }));
+    radar.schedule.and.returnValue(of({ enabled: true, clientAuthorizedAt: '2026-09-10T08:00:00Z', syncTime: '22:00',
+      timeZone: 'Europe/Paris', nextSyncAt: null, missedSlotAt: null, running: null }));
     params$ = new BehaviorSubject(convertToParamMap(options.hostRef ? { hostRef: options.hostRef } : {}));
     query$ = new BehaviorSubject(convertToParamMap(options.tab ? { onglet: options.tab } : {}));
 
@@ -332,6 +334,13 @@ describe('VigieComponent', () => {
 
     const call = dialog.open.calls.all().find((c) => c.args[0] === RadarVerificationDialogComponent);
     expect(call?.args[1]?.data).toEqual({ hostId: 'h7', hostName: 'CAGIP' });
+  });
+
+  it("l'en-tête du client dit la synchro du soir (F-100 / SF-100-07)", () => {
+    const root = build({ hostRef: 'h1' });
+
+    expect(radar.schedule).toHaveBeenCalledWith('h1');
+    expect(root.querySelector('.vigie__schedule')?.textContent).toContain('Synchro du soir à 22:00');
   });
 
   it("l'en-tête du client relance la vérification guidée", () => {
