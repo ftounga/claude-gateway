@@ -285,6 +285,9 @@ public class RunnerHostController {
         teamsAccess.requireAccess();
         UUID userId = currentUser.requireId();
         hostService.requireOwned(userId, hostId);
+        // F-106 / SF-106-03 : le terminal Teams a déménagé dans la Vigie — il ne s'ouvre que pour un
+        // client qui y est activé (409 sinon, rien n'est créé).
+        spaceService.requireActive(userId, hostId, ClientSpace.VIGIE);
         return WorkspaceDetailResponse.from(workspaceService.openTeamsTerminal(userId, hostId),
                 List.of());
     }

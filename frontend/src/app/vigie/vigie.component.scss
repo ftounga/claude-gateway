@@ -39,6 +39,14 @@
     }
   }
 
+  &__placeholder button {
+    margin-top: var(--cg-space-3);
+  }
+
+  &__placeholder h3 app-live-badge {
+    margin-left: var(--cg-space-2);
+  }
+
   &__facts {
     display: flex;
     flex-wrap: wrap;

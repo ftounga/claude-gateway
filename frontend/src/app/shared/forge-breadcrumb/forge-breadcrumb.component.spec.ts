@@ -41,6 +41,17 @@ describe('ForgeBreadcrumbComponent', () => {
     expect(trail[0].getAttribute('href')).toBe('/forge');
   });
 
+  it('commence par « Vigie » quand on vient de la Vigie, et porte les paramètres d’un niveau (F-106)', () => {
+    component.root = 'vigie';
+    component.crumbs = [{ label: 'CAGIP', link: ['/vigie', 'h1'], queryParams: { onglet: 'conversations' } }];
+    fixture.detectChanges();
+    const trail = crumbs();
+
+    expect(trail[0].textContent?.trim()).toBe('Vigie');
+    expect(trail[0].getAttribute('href')).toBe('/vigie');
+    expect(trail[1].getAttribute('href')).toBe('/vigie/h1?onglet=conversations');
+  });
+
   it('marque le dernier niveau comme page courante — et le laisse cliquable', () => {
     component.crumbs = [{ label: 'mon-projet', link: ['/atelier', 'w1'] }];
     fixture.detectChanges();

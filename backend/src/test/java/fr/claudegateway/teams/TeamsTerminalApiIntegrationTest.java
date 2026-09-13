@@ -54,6 +54,7 @@ class TeamsTerminalApiIntegrationTest {
     @Autowired private UserRepository userRepository;
     @Autowired private WorkspaceRepository workspaceRepository;
     @Autowired private RunnerHostRepository hostRepository;
+    @Autowired private fr.claudegateway.runner.host.HostSpaceRepository hostSpaces;
     @Autowired private RunnerAuditRepository auditRepository;
     @Autowired private HostSeatMonthRepository seatMonths;
     @Autowired private SubscriptionRepository subscriptionRepository;
@@ -72,6 +73,7 @@ class TeamsTerminalApiIntegrationTest {
         auditRepository.deleteAll();
         workspaceRepository.deleteAll();
         seatMonths.deleteAll();
+        hostSpaces.deleteAll();
         hostRepository.deleteAll();
         subscriptionRepository.deleteAll();
         userRepository.deleteAll();
@@ -96,9 +98,15 @@ class TeamsTerminalApiIntegrationTest {
                 .provider(AuthProvider.LOCAL).role(UserRole.USER).build());
     }
 
+    /** Un poste activé dans la Forge ET dans la Vigie, où vit le terminal Teams (F-106 / SF-106-03). */
     private RunnerHost seedHost(UUID userId, String name) {
-        return hostRepository.save(RunnerHost.builder().userId(userId).name(name).rootName("dev")
+        RunnerHost host = hostRepository.save(RunnerHost.builder().userId(userId).name(name).rootName("dev")
                 .os("linux").shell("posix").elevated(false).build());
+        for (fr.claudegateway.runner.host.ClientSpace space : fr.claudegateway.runner.host.ClientSpace.values()) {
+            hostSpaces.save(fr.claudegateway.runner.host.HostSpace.builder().userId(userId)
+                    .hostId(host.getId()).space(space).activatedAt(java.time.OffsetDateTime.now()).build());
+        }
+        return host;
     }
 
     private void subscribe(User user, PlanCode plan, SubscriptionStatus status,
@@ -139,6 +147,21 @@ class TeamsTerminalApiIntegrationTest {
                 // Ce n'est PAS le terminal du poste : deux marques, deux lignes.
                 .andExpect(jsonPath("$.hostTerminal").value(false))
                 .andExpect(jsonPath("$.executionTarget").value("RUNNER"));
+    }
+
+    @Test
+    @DisplayName("F-106 : un client hors de la Vigie n'a pas de terminal Teams — 409, rien n'est créé")
+    void aHostOutsideTheVigieGetsNoTeamsTerminal() throws Exception {
+        hostSpaces.findByUserIdAndHostId(aliceId, aliceHost.getId()).stream()
+                .filter(row -> row.getSpace() == fr.claudegateway.runner.host.ClientSpace.VIGIE)
+                .forEach(hostSpaces::delete);
+
+        mockMvc.perform(post(teamsTerminalUrl(aliceHost)).contextPath("/api")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("host_not_in_space"));
+
+        assertThat(workspaceRepository.findAll()).isEmpty();
     }
 
     @Test
