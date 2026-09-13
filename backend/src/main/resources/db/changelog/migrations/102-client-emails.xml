@@ -18,7 +18,7 @@
 
       Clés étrangères en cascade vers `users` et `runner_hosts`, comme `host_mail_addresses` (100).
     -->
-    <changeSet id="101-client-emails" author="claude-gateway">
+    <changeSet id="102-client-emails" author="claude-gateway">
         <createTable tableName="client_emails">
             <column name="id" type="uuid">
                 <constraints primaryKey="true" nullable="false"/>
@@ -92,14 +92,14 @@
 
     <!-- Les corps : `text` en PostgreSQL ; H2 mappe `text` sur CLOB, que la validation de schéma refuse face au
          `text` de l'entité — on reprend `varchar(1000000)`, comme `terminal_json` (041). -->
-    <changeSet id="101-client-emails-bodies-postgresql" author="claude-gateway" dbms="postgresql">
+    <changeSet id="102-client-emails-bodies-postgresql" author="claude-gateway" dbms="postgresql">
         <addColumn tableName="client_emails">
             <column name="body_text" type="text"/>
             <column name="body_html" type="text"/>
         </addColumn>
     </changeSet>
 
-    <changeSet id="101-client-emails-bodies-h2" author="claude-gateway" dbms="h2">
+    <changeSet id="102-client-emails-bodies-h2" author="claude-gateway" dbms="h2">
         <addColumn tableName="client_emails">
             <column name="body_text" type="varchar(1000000)"/>
             <column name="body_html" type="varchar(1000000)"/>

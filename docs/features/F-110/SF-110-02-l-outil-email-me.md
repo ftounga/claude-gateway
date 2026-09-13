@@ -159,7 +159,7 @@ client, sinon adresse du compte, dit), envoyé en tâche de fond avec reprise, e
 
 ### Migration Liquibase
 
-- [x] Oui — `101-client-emails.xml` (premier numéro libre au-dessus du dernier sur `main`, revérifié après rebase).
+- [x] Oui — `102-client-emails.xml` (premier numéro libre au-dessus du dernier sur `main` après rebase : 101 a été pris par F-111).
 
 ### Composants
 

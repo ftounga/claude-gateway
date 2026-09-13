@@ -341,7 +341,7 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
   - **Clés étrangères en cascade** (choix assumé, contrairement à `host_spaces`) : l'adresse tombe avec le
     poste et avec le compte sans purge à écrire ailleurs.
 - **client_emails** — les **courriels que l'utilisateur s'envoie** : file d'envoi **et** journal (F-110 /
-  SF-110-02, migration `101`).
+  SF-110-02, migration `102`).
   - `client_emails` : `id`, `user_id (FK users ON DELETE CASCADE)`, `host_id (FK runner_hosts ON DELETE
     CASCADE)`, `workspace_id` (terminal d'origine, nullable), `kind (AGENT | MORNING_SUMMARY)`, `client_name`,
     `recipient`, `recipient_verified`, `subject (200)`, `size_bytes`, `attachment_count`, `body_text`,
