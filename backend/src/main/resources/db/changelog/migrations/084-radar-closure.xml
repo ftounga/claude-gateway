@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+            http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.27.xsd">
+
+    <!--
+      F-99 / SF-99-04 — LA CLÔTURE D'UN SUJET (cadrage §6).
+
+      Sept colonnes sur radar_subjects, toutes facultatives :
+      - previous_state    : l'état d'avant une proposition de clôture ou un sommeil (pour y revenir)
+      - close_proposed_at : un signal explicite a été lu — « clos ? »
+      - close_rejected_at : l'utilisateur a refusé ; le même signal ne repropose pas
+      - closed_at         : clos par l'utilisateur (dit ou confirmé), jamais par le silence
+      - dormant_since     : en sommeil après 21 jours de silence
+      - woke_at           : un sujet clos a repris vie — annoncé, jamais rouvert en silence
+      - wake_dismissed_at : l'utilisateur a laissé clos ; seules des preuves rangées ensuite réveillent
+    -->
+
+    <changeSet id="084-radar-closure-postgresql" author="claude-gateway" dbms="postgresql">
+        <addColumn tableName="radar_subjects">
+            <column name="previous_state" type="varchar(20)"/>
+            <column name="close_proposed_at" type="timestamptz"/>
+            <column name="close_rejected_at" type="timestamptz"/>
+            <column name="closed_at" type="timestamptz"/>
+            <column name="dormant_since" type="timestamptz"/>
+            <column name="woke_at" type="timestamptz"/>
+            <column name="wake_dismissed_at" type="timestamptz"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="radar_subjects" columnName="wake_dismissed_at"/>
+            <dropColumn tableName="radar_subjects" columnName="woke_at"/>
+            <dropColumn tableName="radar_subjects" columnName="dormant_since"/>
+            <dropColumn tableName="radar_subjects" columnName="closed_at"/>
+            <dropColumn tableName="radar_subjects" columnName="close_rejected_at"/>
+            <dropColumn tableName="radar_subjects" columnName="close_proposed_at"/>
+            <dropColumn tableName="radar_subjects" columnName="previous_state"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="084-radar-closure-h2" author="claude-gateway" dbms="h2">
+        <addColumn tableName="radar_subjects">
+            <column name="previous_state" type="varchar(20)"/>
+            <column name="close_proposed_at" type="timestamp with time zone"/>
+            <column name="close_rejected_at" type="timestamp with time zone"/>
+            <column name="closed_at" type="timestamp with time zone"/>
+            <column name="dormant_since" type="timestamp with time zone"/>
+            <column name="woke_at" type="timestamp with time zone"/>
+            <column name="wake_dismissed_at" type="timestamp with time zone"/>
+        </addColumn>
+        <rollback>
+            <dropColumn tableName="radar_subjects" columnName="wake_dismissed_at"/>
+            <dropColumn tableName="radar_subjects" columnName="woke_at"/>
+            <dropColumn tableName="radar_subjects" columnName="dormant_since"/>
+            <dropColumn tableName="radar_subjects" columnName="closed_at"/>
+            <dropColumn tableName="radar_subjects" columnName="close_rejected_at"/>
+            <dropColumn tableName="radar_subjects" columnName="close_proposed_at"/>
+            <dropColumn tableName="radar_subjects" columnName="previous_state"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

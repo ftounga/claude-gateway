@@ -972,6 +972,13 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `radar_subjects.merged_into_id` — le sujet absorbé reste comme **trace** (hors listes, écritures de
     synchro redirigées vers la cible). Fusion et séparation **déplacent des liens** (jamais des preuves)
     et sont journalisées (`MERGE`, `SPLIT`) avec la liste exacte de ce qui a bougé, donc annulables.
+  - **Clôture d'un sujet** (F-99 / SF-99-04, migration `084`) : sur `radar_subjects`,
+    `previous_state`, `close_proposed_at`, `close_rejected_at`, `closed_at`, `dormant_since`,
+    `woke_at`, `wake_dismissed_at` ; lien `CLOSE_SIGNAL`. Un signal explicite **propose** (`CLOSE_PROPOSED`),
+    l'utilisateur **clôt** (souverain), le silence **met en sommeil** à 21 jours (`RadarDormancyWorker`,
+    nuit, balayage par périmètre `(user_id, host_id)`) et **ne clôt jamais** ; une activité postérieure
+    à la clôture **réveille** (`woke_at`) sans rouvrir. Gestes journalisés : `CLOSE`, `CONFIRM_CLOSE`,
+    `REJECT_CLOSE`, `DISMISS_WAKE`.
 
 Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 réel est porté par les migrations Liquibase (`db/changelog/migrations/`).
 

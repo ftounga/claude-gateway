@@ -30,13 +30,15 @@ public final class RadarViews {
 
     /** Un sujet dans une liste. */
     public record SubjectSummary(UUID id, String name, RadarSubjectState state, String nextStep,
-            LocalDate dueDate, OffsetDateTime lastActivityAt, int openCommitments) {
+            LocalDate dueDate, OffsetDateTime lastActivityAt, int openCommitments, boolean awake) {
     }
 
     /** La page d'un sujet. */
     public record SubjectDetail(UUID id, String name, RadarSubjectState state, String nextStep,
             LocalDate dueDate, OffsetDateTime lastActivityAt, OffsetDateTime createdAt,
-            UUID mergedIntoId, boolean nameSovereign, boolean stateSovereign, boolean nextStepSovereign,
+            UUID mergedIntoId, RadarSubjectState previousState, OffsetDateTime closeProposedAt,
+            List<UUID> closeSignalEvidenceIds, OffsetDateTime closedAt, OffsetDateTime dormantSince,
+            OffsetDateTime wokeAt, List<UUID> wakeEvidenceIds, boolean nameSovereign, boolean stateSovereign, boolean nextStepSovereign,
             boolean dueDateSovereign, List<AliasView> aliases, List<UUID> stateEvidenceIds, List<UUID> nextStepEvidenceIds,
             List<UUID> dueDateEvidenceIds, List<SentenceView> summary, List<RoleView> people,
             List<CommitmentView> commitments, List<EvidenceView> chronology) {
@@ -81,6 +83,10 @@ public final class RadarViews {
     /** Un sujet d'une personne. */
     public record PersonSubjectView(UUID subjectId, String subjectName, RadarSubjectState state,
             RadarRole role) {
+    }
+
+    /** Une clôture et les engagements encore ouverts du sujet (SF-99-04). */
+    public record ClosureView(CorrectionView correction, List<CommitmentView> openCommitments) {
     }
 
     /** Une ligne du journal des corrections (SF-99-02). */

@@ -163,13 +163,61 @@ public class RadarRegistry {
         RadarSubject subject = requireLiveSubject(scope, subjectId);
         RadarSubjectState next = requireOpenWork(Objects.requireNonNull(state, "state"));
         List<RadarEvidence> proofs = requireEvidence(scope, evidenceIds);
+        if (subject.getState() == RadarSubjectState.CLOSED) {
+            // Un sujet clos ne se rouvre jamais en silence : la preuve est de l'activité, qui peut
+            // le réveiller (SF-99-04).
+            addToChronology(scope, subject, proofs);
+            return subject;
+        }
         if (subject.isStateSovereign()) {
             // L'utilisateur a dit l'état : la preuve est de l'activité, pas une réécriture (SF-99-02).
             addToChronology(scope, subject, proofs);
             return subject;
         }
-        subject.setState(next);
+        if (subject.getState() == RadarSubjectState.CLOSE_PROPOSED) {
+            // La proposition attend l'utilisateur ; un refus reviendra à l'état le plus récent.
+            subject.setPreviousState(next);
+            justify(scope, subject, RadarLinkKind.STATE, null, proofs);
+            return subject;
+        }
         justify(scope, subject, RadarLinkKind.STATE, null, proofs);
+        subject.setState(next);
+        subject.setPreviousState(null);
+        subject.setDormantSince(null);
+        subjects.save(subject);
+        return subject;
+    }
+
+    /**
+     * Un signal explicite de clôture lu dans une source (SF-99-04) : le sujet passe en « clos ? ».
+     *
+     * <p>Une <b>proposition</b>, jamais une clôture. Ignorée si toutes ses preuves sont antérieures au
+     * dernier refus de l'utilisateur ; sur un sujet déjà clos, la preuve est seulement reliée au signal,
+     * sans réveiller le sujet.</p>
+     */
+    public RadarSubject proposeClosure(RadarScope scope, UUID subjectId, Collection<UUID> evidenceIds) {
+        RadarSubject subject = requireLiveSubject(scope, subjectId);
+        List<RadarEvidence> proofs = requireEvidence(scope, evidenceIds);
+        if (subject.getState() == RadarSubjectState.CLOSED) {
+            addLinks(scope, subject.getId(), RadarLinkKind.CLOSE_SIGNAL, null, proofs);
+            return subject;
+        }
+        OffsetDateTime rejected = subject.getCloseRejectedAt();
+        if (rejected != null && proofs.stream().noneMatch(p -> p.getOccurredAt().isAfter(rejected))) {
+            addToChronology(scope, subject, proofs);
+            return subject;
+        }
+        if (subject.getState() != RadarSubjectState.CLOSE_PROPOSED) {
+            RadarSubjectState before = subject.getState() == RadarSubjectState.DORMANT
+                    ? subject.getPreviousState() : subject.getState();
+            subject.setPreviousState(before);
+            subject.setState(RadarSubjectState.CLOSE_PROPOSED);
+            subject.setDormantSince(null);
+            subject.setCloseProposedAt(OffsetDateTime.now());
+            justify(scope, subject, RadarLinkKind.CLOSE_SIGNAL, null, proofs);
+        } else {
+            justify(scope, subject, RadarLinkKind.CLOSE_SIGNAL, null, proofs, false);
+        }
         return subject;
     }
 
@@ -444,6 +492,7 @@ public class RadarRegistry {
         subject.setLastActivityAt(ids.isEmpty() ? null
                 : evidence.findByUserIdAndHostIdAndIdIn(scope.userId(), scope.hostId(), ids).stream()
                         .map(RadarEvidence::getOccurredAt).max(Comparator.naturalOrder()).orElse(null));
+        refreshWake(scope, subject);
         subjects.save(subject);
     }
 
@@ -541,14 +590,66 @@ public class RadarRegistry {
     }
 
     void addToChronology(RadarScope scope, RadarSubject subject, List<RadarEvidence> proofs) {
+        OffsetDateTime known = subject.getLastActivityAt();
         addLinks(scope, subject.getId(), RadarLinkKind.CHRONOLOGY, null, proofs);
         proofs.stream().map(RadarEvidence::getOccurredAt).max(Comparator.naturalOrder())
                 .ifPresent(latest -> {
-                    if (subject.getLastActivityAt() == null || subject.getLastActivityAt().isBefore(latest)) {
+                    if (known == null || known.isBefore(latest)) {
                         subject.setLastActivityAt(latest);
+                        if (subject.getState() == RadarSubjectState.DORMANT && known != null) {
+                            // Le silence est rompu : retour à l'état d'avant le sommeil (SF-99-04).
+                            wakeFromDormancy(subject);
+                        }
                     }
                 });
+        refreshWake(scope, subject);
         subjects.save(subject);
+    }
+
+    /** Sort un sujet du sommeil vers l'état qu'il avait. */
+    static void wakeFromDormancy(RadarSubject subject) {
+        RadarSubjectState before = subject.getPreviousState();
+        subject.setState(before != null && before.isOpenWork() ? before : RadarSubjectState.ADVANCING);
+        subject.setPreviousState(null);
+        subject.setDormantSince(null);
+    }
+
+    /**
+     * Recalcule le <b>réveil</b> d'un sujet clos (SF-99-04) : une preuve de sa chronologie datée après
+     * la clôture, et rangée après le dernier écart de l'utilisateur. Sans effet sur un sujet non clos.
+     */
+    void refreshWake(RadarScope scope, RadarSubject subject) {
+        if (subject.getState() != RadarSubjectState.CLOSED || subject.getClosedAt() == null) {
+            return;
+        }
+        List<RadarEvidenceLink> chronology = links.findByUserIdAndHostIdAndSubjectIdAndTargetKind(
+                scope.userId(), scope.hostId(), subject.getId(), RadarLinkKind.CHRONOLOGY);
+        Set<UUID> after = wakeEvidenceIds(scope, subject, chronology);
+        if (after.isEmpty()) {
+            subject.setWokeAt(null);
+        } else if (subject.getWokeAt() == null) {
+            subject.setWokeAt(OffsetDateTime.now());
+        }
+    }
+
+    /** Les preuves qui réveillent un sujet clos. */
+    Set<UUID> wakeEvidenceIds(RadarScope scope, RadarSubject subject, List<RadarEvidenceLink> chronology) {
+        Set<UUID> result = new LinkedHashSet<>();
+        if (subject.getState() != RadarSubjectState.CLOSED || subject.getClosedAt() == null || chronology.isEmpty()) {
+            return result;
+        }
+        OffsetDateTime dismissed = subject.getWakeDismissedAt();
+        var fresh = chronology.stream()
+                .filter(l -> dismissed == null || l.getCreatedAt() == null || l.getCreatedAt().isAfter(dismissed))
+                .map(RadarEvidenceLink::getEvidenceId).collect(Collectors.toSet());
+        if (fresh.isEmpty()) {
+            return result;
+        }
+        evidence.findByUserIdAndHostIdAndIdIn(scope.userId(), scope.hostId(), fresh).stream()
+                .filter(e -> e.getOccurredAt().isAfter(subject.getClosedAt()))
+                .sorted(Comparator.comparing(RadarEvidence::getOccurredAt))
+                .forEach(e -> result.add(e.getId()));
+        return result;
     }
 
     private void addLinks(RadarScope scope, UUID subjectId, RadarLinkKind kind, UUID targetId,

@@ -21,6 +21,7 @@ import fr.claudegateway.radar.dto.RadarCorrectionRequests.MergeRequest;
 import fr.claudegateway.radar.dto.RadarCorrectionRequests.SplitRequest;
 import fr.claudegateway.radar.dto.RadarCorrectionRequests.SubjectCorrectionRequest;
 import fr.claudegateway.radar.dto.RadarViews.AliasView;
+import fr.claudegateway.radar.dto.RadarViews.ClosureView;
 import fr.claudegateway.radar.dto.RadarViews.CommitmentView;
 import fr.claudegateway.radar.dto.RadarViews.CorrectionView;
 import fr.claudegateway.radar.dto.RadarViews.EvidenceView;
@@ -46,15 +47,18 @@ public class RadarController {
     private final RadarReadService readService;
     private final RadarCorrectionService correctionService;
     private final RadarStructureService structureService;
+    private final RadarClosureService closureService;
     private final RadarScopeResolver scopeResolver;
     private final TeamsAccessService teamsAccess;
     private final CurrentUser currentUser;
 
     public RadarController(RadarReadService readService, RadarCorrectionService correctionService,
-            RadarStructureService structureService, RadarScopeResolver scopeResolver, TeamsAccessService teamsAccess, CurrentUser currentUser) {
+            RadarStructureService structureService, RadarClosureService closureService,
+            RadarScopeResolver scopeResolver, TeamsAccessService teamsAccess, CurrentUser currentUser) {
         this.readService = readService;
         this.correctionService = correctionService;
         this.structureService = structureService;
+        this.closureService = closureService;
         this.scopeResolver = scopeResolver;
         this.teamsAccess = teamsAccess;
         this.currentUser = currentUser;
@@ -63,8 +67,9 @@ public class RadarController {
     @GetMapping("/subjects")
     public List<SubjectSummary> subjects(@PathVariable UUID hostId,
             @RequestParam(required = false) RadarSubjectState state,
-            @RequestParam(defaultValue = "false") boolean includeClosed) {
-        return readService.subjects(scope(hostId), state, includeClosed);
+            @RequestParam(defaultValue = "false") boolean includeClosed,
+            @RequestParam(required = false) String q) {
+        return readService.subjects(scope(hostId), state, includeClosed, q);
     }
 
     @GetMapping("/subjects/{subjectId}")
@@ -146,6 +151,28 @@ public class RadarController {
             @PathVariable UUID aliasId) {
         structureService.removeAlias(scope(hostId), subjectId, aliasId);
         return ResponseEntity.noContent().build();
+    }
+
+    // ------------------------------------------------------------------ clôture d'un sujet (SF-99-04)
+
+    @PostMapping("/subjects/{subjectId}/close")
+    public ClosureView close(@PathVariable UUID hostId, @PathVariable UUID subjectId) {
+        return closureService.close(scope(hostId), subjectId);
+    }
+
+    @PostMapping("/subjects/{subjectId}/close-proposal/confirm")
+    public ClosureView confirmClosure(@PathVariable UUID hostId, @PathVariable UUID subjectId) {
+        return closureService.confirmProposal(scope(hostId), subjectId);
+    }
+
+    @PostMapping("/subjects/{subjectId}/close-proposal/reject")
+    public CorrectionView rejectClosure(@PathVariable UUID hostId, @PathVariable UUID subjectId) {
+        return closureService.rejectProposal(scope(hostId), subjectId);
+    }
+
+    @PostMapping("/subjects/{subjectId}/wake/dismiss")
+    public CorrectionView dismissWake(@PathVariable UUID hostId, @PathVariable UUID subjectId) {
+        return closureService.dismissWake(scope(hostId), subjectId);
     }
 
     /** Droit d'abord, possession ensuite : sans le droit, on ne dit rien des postes. */

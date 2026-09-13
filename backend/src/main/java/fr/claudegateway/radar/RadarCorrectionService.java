@@ -84,11 +84,13 @@ public class RadarCorrectionService {
                     throw new InvalidRadarInputException(
                             "L'état dit par l'utilisateur est NEW, ADVANCING, WAITING ou BLOCKED ; la clôture a son geste.");
                 }
-                before.put("state", subject.getState().name());
+                before.putAll(RadarClosureService.lifecycle(subject));
                 before.put("stateSovereign", subject.isStateSovereign());
+                // Dire l'état, c'est aussi rouvrir : clôture, proposition, sommeil et réveil s'effacent.
                 subject.setState(state);
                 subject.setStateSovereign(true);
-                after.put("state", state.name());
+                RadarClosureService.clearLifecycle(subject);
+                after.putAll(RadarClosureService.lifecycle(subject));
                 after.put("stateSovereign", true);
             }
             case SET_NEXT_STEP -> {
@@ -275,6 +277,14 @@ public class RadarCorrectionService {
                 case "name" -> subject.setName((String) value);
                 case "nameSovereign" -> subject.setNameSovereign(Boolean.TRUE.equals(value));
                 case "state" -> subject.setState(RadarSubjectState.valueOf((String) value));
+                case "previousState" -> subject.setPreviousState(
+                        value == null ? null : RadarSubjectState.valueOf((String) value));
+                case "closeProposedAt" -> subject.setCloseProposedAt(instant(value));
+                case "closeRejectedAt" -> subject.setCloseRejectedAt(instant(value));
+                case "closedAt" -> subject.setClosedAt(instant(value));
+                case "dormantSince" -> subject.setDormantSince(instant(value));
+                case "wokeAt" -> subject.setWokeAt(instant(value));
+                case "wakeDismissedAt" -> subject.setWakeDismissedAt(instant(value));
                 case "stateSovereign" -> subject.setStateSovereign(Boolean.TRUE.equals(value));
                 case "nextStep" -> subject.setNextStep((String) value);
                 case "nextStepSovereign" -> subject.setNextStepSovereign(Boolean.TRUE.equals(value));
@@ -315,6 +325,10 @@ public class RadarCorrectionService {
 
     private static String text(LocalDate date) {
         return date == null ? null : date.toString();
+    }
+
+    private static OffsetDateTime instant(Object value) {
+        return value == null ? null : OffsetDateTime.parse(value.toString());
     }
 
     private static LocalDate date(Object value) {

@@ -78,17 +78,38 @@ public class RadarReadService {
      * @param includeClosed les sujets clos sortent des listes par défaut (cadrage §6)
      */
     public List<SubjectSummary> subjects(RadarScope scope, RadarSubjectState state, boolean includeClosed) {
+        return subjects(scope, state, includeClosed, null);
+    }
+
+    /**
+     * Les sujets du poste, avec une recherche facultative sur le nom et les alias (SF-99-04). Une
+     * recherche porte aussi sur les sujets clos : ils restent <b>consultables et cherchables</b>. Un
+     * sujet clos qui s'est réveillé reste dans la liste par défaut.
+     */
+    public List<SubjectSummary> subjects(RadarScope scope, RadarSubjectState state, boolean includeClosed,
+            String query) {
+        String q = query == null ? "" : RadarText.key(query);
+        Map<UUID, List<String>> aliasKeys = q.isEmpty() ? Map.of()
+                : aliases.findByUserIdAndHostIdAndSubjectIdIn(scope.userId(), scope.hostId(),
+                                subjects.findByUserIdAndHostId(scope.userId(), scope.hostId()).stream()
+                                        .map(RadarSubject::getId).toList()).stream()
+                        .filter(a -> !a.isRejected())
+                        .collect(Collectors.groupingBy(RadarSubjectAlias::getSubjectId,
+                                Collectors.mapping(RadarSubjectAlias::getNormalized, Collectors.toList())));
         Map<UUID, Long> open = commitments.findByUserIdAndHostId(scope.userId(), scope.hostId()).stream()
                 .filter(c -> c.getStatus().isPending() && !c.isDisowned())
                 .collect(Collectors.groupingBy(RadarCommitment::getSubjectId, Collectors.counting()));
         return subjects.findByUserIdAndHostId(scope.userId(), scope.hostId()).stream()
                 .filter(s -> s.getMergedIntoId() == null)
                 .filter(s -> state == null || s.getState() == state)
-                .filter(s -> includeClosed || state == RadarSubjectState.CLOSED
-                        || s.getState() != RadarSubjectState.CLOSED)
+                .filter(s -> q.isEmpty() || RadarText.key(s.getName()).contains(q)
+                        || aliasKeys.getOrDefault(s.getId(), List.of()).stream().anyMatch(k -> k.contains(q)))
+                .filter(s -> includeClosed || !q.isEmpty() || state == RadarSubjectState.CLOSED
+                        || s.getState() != RadarSubjectState.CLOSED || s.getWokeAt() != null)
                 .sorted(byActivity())
                 .map(s -> new SubjectSummary(s.getId(), s.getName(), s.getState(), s.getNextStep(),
-                        s.getDueDate(), s.getLastActivityAt(), open.getOrDefault(s.getId(), 0L).intValue()))
+                        s.getDueDate(), s.getLastActivityAt(), open.getOrDefault(s.getId(), 0L).intValue(),
+                        s.getWokeAt() != null))
                 .toList();
     }
 
@@ -136,7 +157,12 @@ public class RadarReadService {
 
         return new SubjectDetail(subject.getId(), subject.getName(), subject.getState(),
                 subject.getNextStep(), subject.getDueDate(), subject.getLastActivityAt(),
-                subject.getCreatedAt(), subject.getMergedIntoId(), subject.isNameSovereign(), subject.isStateSovereign(),
+                subject.getCreatedAt(), subject.getMergedIntoId(), subject.getPreviousState(),
+                subject.getCloseProposedAt(), evidenceOf(subjectLinks, RadarLinkKind.CLOSE_SIGNAL, null),
+                subject.getClosedAt(), subject.getDormantSince(), subject.getWokeAt(),
+                List.copyOf(registry.wakeEvidenceIds(scope, subject, subjectLinks.stream()
+                        .filter(l -> l.getTargetKind() == RadarLinkKind.CHRONOLOGY).toList())),
+                subject.isNameSovereign(), subject.isStateSovereign(),
                 subject.isNextStepSovereign(), subject.isDueDateSovereign(), aliasViews,
                 evidenceOf(subjectLinks, RadarLinkKind.STATE, null),
                 evidenceOf(subjectLinks, RadarLinkKind.NEXT_STEP, null),
