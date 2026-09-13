@@ -82,6 +82,14 @@ export interface GovernanceHostSummary {
   virtual: boolean;
   projects: number;
   active: number;
+  /**
+   * Nombre de paquets actifs sur ce poste dont une **version plus récente** existe (F-96).
+   *
+   * Rien ne se met à jour tout seul : ce compte est ce qui permet de **dire qu'une mise à jour
+   * attend**, sur la liste des postes — sans lui, on ne le verrait que sur le poste déjà ouvert, et
+   * personne n'irait voir les autres. Absent d'une gateway antérieure : traité comme `0`.
+   */
+  outdated?: number;
 }
 
 /** Ce qui s'applique à un poste, ce qui pourrait s'y appliquer, et les dossiers concernés. */
@@ -95,8 +103,16 @@ export interface GovernanceHost {
   available: GovernancePackage[];
 }
 
-/** Ce qui arrivera — ou est arrivé — à un fichier. */
-export type GovernanceDepositAction = 'CREATE' | 'KEEP' | 'UNKNOWN';
+/**
+ * Ce qui arrivera — ou est arrivé — à un fichier.
+ *
+ * Depuis F-96, il y a **cinq** issues et non trois, et les deux ajoutées sont exactement les deux
+ * choses que le produit ne pouvait pas dire : `UPDATE` (artefact généré resté intact → **mis à
+ * jour**) et `KEEP_LOCAL` (**modifié localement → conservé**). Un fichier conservé parce qu'il a
+ * été modifié n'est pas la même chose qu'un fichier conservé parce qu'il était déjà bon : sans la
+ * distinction, on ne sait jamais si sa correction est arrivée.
+ */
+export type GovernanceDepositAction = 'CREATE' | 'UPDATE' | 'KEEP' | 'KEEP_LOCAL' | 'UNKNOWN';
 
 /** Une ligne de l'annonce : un fichier, et son sort dans un dossier donné. */
 export interface GovernanceDepositEntry {

@@ -13,10 +13,33 @@
     ></app-governance-file-viewer>
   } @else {
     <p class="preview__intro">
-      Ce paquet écrit dans les dossiers du poste <strong>{{ data.hostName }}</strong>. Rien n'est
-      jamais écrasé : un fichier déjà présent est laissé tel quel.
+      Ce paquet écrit dans les dossiers du poste <strong>{{ data.hostName }}</strong>.
+      <strong>Rien de ce que vous avez modifié n'est jamais écrasé</strong> : un fichier que vous
+      avez touché est conservé, et l'annonce le dit.
       <strong>Cliquez un fichier pour le lire</strong> avant d'accepter.
     </p>
+
+    <!-- F-96 : une mise à jour d'artefact est annoncée AVANT d'être écrite. La découvrir après
+         coup reviendrait à ne pas l'avoir annoncée. -->
+    @if (updates() > 0) {
+      <div class="preview__warning">
+        <mat-icon>sync</mat-icon>
+        <p>
+          <strong>{{ updates() }} fichier(s) seront mis à jour</strong> : ce sont des fichiers que
+          ce paquet a déposés et que personne n'a modifiés depuis. Leur ancienne version sera
+          remplacée.
+        </p>
+      </div>
+    }
+    @if (keptLocally() > 0) {
+      <div class="preview__warning">
+        <mat-icon>edit_off</mat-icon>
+        <p>
+          <strong>{{ keptLocally() }} fichier(s) que vous avez modifiés sont conservés</strong> :
+          ils ne seront pas mis à jour, et rien n'y sera écrit.
+        </p>
+      </div>
+    }
 
     @if (noProjects()) {
       <div class="preview__warning">
@@ -61,7 +84,7 @@
         <ul class="preview__files">
           @for (entry of mapEntries(); track entry.path) {
             <li class="preview__file preview__file--map">
-              <mat-icon>{{ entry.action === 'KEEP' ? 'lock' : 'note_add' }}</mat-icon>
+              <mat-icon>{{ mapIcon(entry.action) }}</mat-icon>
               <span class="preview__file-body">
                 <code>{{ entry.path }}</code>
                 <span class="preview__verdict">
