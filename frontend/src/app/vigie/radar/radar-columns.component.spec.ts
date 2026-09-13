@@ -236,6 +236,22 @@ describe('RadarColumnsComponent', () => {
     expect(changed).toBe(0);
   });
 
+  it('§17 : les pastilles emploient la charte — bleu §9 index 0 pour « clos ? », rouge §5, filet orange du dû', () => {
+    const root = build();
+    const style = (el: Element | null) => getComputedStyle(el as Element);
+
+    const proposed = root.querySelector('[data-state="CLOSE_PROPOSED"] .radar-state');
+    expect(style(proposed).color).toBe('rgb(56, 101, 153)');
+    expect(style(proposed).backgroundColor).toBe('rgb(231, 239, 249)');
+
+    const overdue = root.querySelector('.radar-columns__todo .radar-columns__item .radar-state');
+    expect(overdue?.textContent).toContain('en retard');
+    expect(style(overdue).backgroundColor).toBe('rgb(255, 235, 238)');
+
+    const due = root.querySelector('.radar-columns__item--due');
+    expect(style(due).boxShadow).toContain('4px 0px 0px 0px');
+  });
+
   it('colonnes vides : chacune dit ce qui manque ; illisibles : Réessayer', () => {
     let root = build({ toDo: [], subjects: [], waiting: [] });
     const empties = Array.from(root.querySelectorAll('.radar-columns__empty')).map((e) => e.textContent?.trim());

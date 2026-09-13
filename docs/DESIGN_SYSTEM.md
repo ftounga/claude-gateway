@@ -619,6 +619,78 @@ poste ouvert.
 
 ---
 
+## 17 — Le Radar (ajout F-102, 2026-09-13)
+
+> **Aucune couleur nouvelle.** L'onglet Radar d'un client de la Vigie range des états et des engagements
+> avec les palettes de §2, §5 et §12 — et **une seule exception bornée** : le bleu du §9 index 0 pour ce qui
+> est neuf ou à confirmer, décidée au cadrage validé (`docs/features/F-99/CADRAGE-le-radar.md` §8). Maquette :
+> `docs/features/F-99/maquette-radar.html` ; ses couleurs hors charte (`#B85E22`, `#B7791F`, `#B42318`,
+> `#EAF1F8`) sont **remplacées** par les jetons ci-dessous.
+
+| Question | Registre | Palette | Support |
+|---|---|---|---|
+| *Où en est ce sujet ?* | **État de sujet** | §5, et §9 index 0 pour « nouveau / clos ? / se réveille » | pastille `.radar-state--*` (`RadarColumnsComponent`) |
+| *Qu'est-ce qui presse ?* | **Dû** | §2 `--cg-orange` en **filet** | filet gauche 4 px de l'élément, filet de la tuile de compteur |
+| *Qu'a-t-il lu ?* | **Couverture** | §2 `--cg-success` (✓), §12 ambre `#F9A825` (!) | lignes par source, manques, avertissement en tête |
+| *D'où vient ce fait ?* | **Source d'une preuve** | **aucune** — icône en texte secondaire | icône Material + « dans « *sujet* » » + moment |
+
+### Les états de sujet
+
+| État | Libellé écrit | Palette |
+|---|---|---|
+| `ADVANCING` | « avance » | §5 succès `#E8F5E9` / `--cg-success` |
+| `WAITING` | « en attente » | §5 attente `#FFF8E1` / `#F9A825` (§12) |
+| ouvert, muet depuis 7 jours ou plus | « silencieux *n* j » | §5 attente |
+| `BLOCKED` | « bloqué » (jamais « silencieux ») | §5 erreur `#FFEBEE` / `--cg-error` |
+| `DORMANT` | « en sommeil » | §5 neutre `#F5F5F5` / `--cg-text-secondary` |
+| `CLOSED` | « clos » | §5 neutre |
+| `NEW` | « nouveau » | **§9 index 0** : encre `#386599` sur teinte `#E7EFF9` |
+| `CLOSE_PROPOSED` | « clos ? » | **§9 index 0** |
+| clos qui se réveille | « se réveille » | **§9 index 0** |
+
+### Les sources
+
+| Source | Icône Material |
+|---|---|
+| message Teams (`TEAMS_MESSAGE`), conversation | `forum` |
+| canal d'équipe | `tag` |
+| réunion Teams (`TEAMS_MEETING`) | `videocam` |
+| enregistrement déposé (`LOCAL_RECORDING`) | `mic` |
+| nouvelle de l'utilisateur (`USER_NOTE`) | `edit_note` |
+| courriel collé (`PASTED_MAIL`) | `mail` |
+
+### Règles d'emploi — non négociables
+
+- **Le bleu du §9 index 0 est une pastille d'état, jamais un filet ni une surface.** Il dit « neuf ou à
+  confirmer » et rien d'autre ; l'identité d'un poste garde sa pastille d'initiales (`app-host-badge`) et le
+  filet de sa ligne ouverte. Le couple encre sur teinte est celui dont `host-identity.spec.ts` prouve déjà
+  le contraste AA.
+- **Ce qui est dû entre par un filet orange de 4 px**, jamais par un fond ni par une encre orange sur du
+  texte (contraste) : l'élément d'une colonne, la tuile « à faire par moi » ou « relances dues » non nulle.
+  Le chiffre reste en encre principale.
+- **Il dit ce qu'il n'a pas lu, en tête** : une couverture partielle, échouée, rattrapée, ancienne ou absente
+  s'écrit **avant** les phrases du résumé, avec la pastille §5 « Couverture incomplète » et un filet ambre ;
+  les manques (fil, statut, détail, geste) sont **toujours visibles, jamais repliés** (même règle qu'au
+  §15).
+- **La certitude en toutes lettres** : un `probable` porte la pastille neutre « probable » et se lit comme une
+  **question** (« Rédiger la note DSI ? », *C'est moi* / *Pas moi*). **Jamais un score, jamais un
+  pourcentage.**
+- **Une preuve se rend en une ligne** : icône de source, « dans « *sujet* » » (lien vers le sujet), le moment
+  (« hier 14:32 », « 12 sept. »), et *Ouvrir la source* quand elle a un lien profond (nouvel onglet,
+  `rel="noopener noreferrer"`).
+- **Une personne est écrite, jamais colorée** : pas de pastille d'initiales pour un collègue du client
+  (écart assumé avec la maquette ; §16, ajout F-106).
+- **Les seuls boutons portent sur l'état** : *Fait* / *Reçu*, *Reporter*, *Pas moi*, *C'est moi*, *Clore*,
+  *Rouvrir*, *Laisser clos*, en `mat-stroked-button` / `mat-button` compacts ; chaque geste propose
+  **Annuler** dans sa snackbar. Aucun bouton n'écrit dans Teams.
+- **« *k* à traiter »** (ce qui réclame un geste) : pastille §12 `badge--warning` sur l'onglet Radar et fait
+  du bandeau de la Vigie ; la colonne des clients garde « *k* relance(s) ».
+- **Téléphone** : sous 860 px, résumé puis couverture empilés ; sous 1020 px, deux colonnes, *Sujets en cours*
+  en premier sur toute la largeur ; sous 640 px, une colonne, *À faire par moi* d'abord ; les gestes passent
+  à la ligne, jamais de défilement horizontal.
+
+---
+
 ## Logo & marque (ajout 2026-07-03)
 
 - **Logo de l'application** : `frontend/public/claude-portal-logo.png` (« Claude Portal » — bouclier hexagonal, tête + étincelle, bulle de chat, orbite). Utilisé comme **favicon** (`index.html`) et sur la **landing** (nav, hero, footer). Nom de marque affiché : **« Claude Portal »** (renommé en F-29 SF-29-01 : le terme « Proxy » faisait classer le domaine en catégorie « anonymizer » par les filtres d'entreprise).

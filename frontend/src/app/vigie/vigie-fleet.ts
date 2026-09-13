@@ -29,6 +29,8 @@ export function effectiveVigieTab(raw: string | null | undefined): VigieTab {
 export interface VigieFleetSummary {
   followUpsDue: number;
   blockedSubjects: number;
+  /** Ce qui réclame un geste, tous clients confondus (F-102 / SF-102-03). */
+  toHandle: number;
   /** La synchro la plus récente de la flotte, ou `null` s'il n'y en a jamais eu. */
   lastSync: VigieSyncSummary | null;
 }
@@ -37,16 +39,23 @@ export interface VigieFleetSummary {
 export function fleetSummary(counts: Record<string, VigieRadarCounts>): VigieFleetSummary {
   let followUpsDue = 0;
   let blockedSubjects = 0;
+  let toHandle = 0;
   let lastSync: VigieSyncSummary | null = null;
   for (const entry of Object.values(counts)) {
     followUpsDue += entry.followUpsDue;
     blockedSubjects += entry.blockedSubjects;
+    toHandle += entry.toHandle ?? 0;
     if (entry.lastSync && (!lastSync
       || (entry.lastSync.startedAt ?? '').localeCompare(lastSync.startedAt ?? '') > 0)) {
       lastSync = entry.lastSync;
     }
   }
-  return { followUpsDue, blockedSubjects, lastSync };
+  return { followUpsDue, blockedSubjects, toHandle, lastSync };
+}
+
+/** « 5 à traiter » : la pastille de l'onglet Radar et le fait du bandeau (F-102 / SF-102-03). */
+export function toHandleLabel(count: number): string {
+  return `${count} à traiter`;
 }
 
 /**
