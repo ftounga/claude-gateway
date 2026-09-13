@@ -1,0 +1,348 @@
+/* La page d'un sujet du Radar (F-103). Aucune couleur hors charte : jetons §2, pastilles §5, ambre §12,
+   orange de marque pour les renvois (des gestes : on les suit). Espacements multiples de 4 px. */
+
+:host {
+  display: block;
+}
+
+.radar-subject {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--cg-space-4);
+  box-sizing: border-box;
+
+  @media (max-width: 600px) {
+    padding: var(--cg-space-3);
+  }
+
+  &__loading {
+    display: flex;
+    justify-content: center;
+    padding: var(--cg-space-6) 0;
+  }
+
+  &__notice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cg-space-3);
+    padding: var(--cg-space-4);
+    border: 1px solid var(--cg-divider);
+    border-radius: 8px;
+    background: var(--cg-surface);
+
+    > mat-icon {
+      color: var(--cg-accent);
+      flex: none;
+    }
+
+    h1 {
+      margin: 0 0 var(--cg-space-2);
+      font-family: var(--cg-font-heading);
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    p {
+      margin: 0 0 var(--cg-space-3);
+      color: var(--cg-text-secondary);
+    }
+  }
+
+  /* La feuille : une colonne principale, et la colonne des personnes (SF-103-02) quand elle existe. */
+  &__sheet {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    border: 1px solid var(--cg-divider);
+    border-radius: 8px;
+    background: var(--cg-surface);
+    overflow: hidden;
+  }
+
+  &__main {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cg-space-3);
+    padding: var(--cg-space-4);
+    min-width: 0;
+  }
+
+  &__crumb {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cg-space-2);
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+
+    a {
+      color: var(--cg-text-secondary);
+      text-decoration: none;
+
+      &:hover,
+      &:focus-visible {
+        color: var(--cg-accent);
+        text-decoration: underline;
+      }
+    }
+  }
+
+  &__title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cg-space-2);
+    margin-top: var(--cg-space-2);
+  }
+
+  &__title {
+    margin: 0;
+    font-family: var(--cg-font-heading);
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  &__banner {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--cg-space-2);
+    padding: var(--cg-space-2) var(--cg-space-3);
+    border: 1px solid var(--cg-divider);
+    border-radius: 8px;
+    font-size: 14px;
+
+    > mat-icon {
+      flex: none;
+      color: var(--cg-text-secondary);
+    }
+
+    a:not(.radar-subject__ref) {
+      margin-left: var(--cg-space-1);
+      color: var(--cg-accent);
+    }
+  }
+
+  /* « Clos ? » et réveil réclament un geste : liseré ambre §12, jamais un aplat. */
+  &__close-proposed,
+  &__woke {
+    border-color: #F9A825;
+
+    > mat-icon {
+      color: #F9A825;
+    }
+  }
+
+  &__facts {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--cg-space-2);
+    margin: 0;
+
+    @media (max-width: 600px) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  &__fact {
+    padding: var(--cg-space-2) var(--cg-space-3);
+    border: 1px solid var(--cg-divider);
+    border-radius: 8px;
+
+    dt {
+      font-family: var(--cg-font-mono);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--cg-text-secondary);
+    }
+
+    dd {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: var(--cg-space-1) var(--cg-space-2);
+      margin: var(--cg-space-1) 0 0;
+    }
+  }
+
+  &__fact-value {
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  &__fact-meta {
+    flex-basis: 100%;
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+  }
+
+  &__unknown {
+    color: var(--cg-error);
+  }
+
+  &__h {
+    margin: 0 0 var(--cg-space-2);
+    font-family: var(--cg-font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--cg-text-secondary);
+  }
+
+  &__empty {
+    margin: 0;
+    color: var(--cg-text-secondary);
+    font-size: 14px;
+  }
+
+  &__summary {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  &__sup {
+    margin-left: var(--cg-space-1);
+  }
+
+  &__refs {
+    display: inline-flex;
+    gap: var(--cg-space-1);
+  }
+
+  /* Un renvoi : le numéro d'une preuve, en JetBrains Mono, qu'on suit jusqu'à la chronologie. */
+  &__ref {
+    display: inline-block;
+    min-width: 12px;
+    margin-left: var(--cg-space-1);
+    padding: 0 4px;
+    border-radius: 4px;
+    font-family: var(--cg-font-mono);
+    font-size: 12px;
+    line-height: 16px;
+    text-align: center;
+    text-decoration: none;
+    color: var(--cg-accent);
+    background: var(--cg-bg);
+
+    &:hover,
+    &:focus-visible {
+      text-decoration: underline;
+    }
+  }
+
+  &__timeline {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  &__event {
+    display: grid;
+    grid-template-columns: 96px 24px minmax(0, 1fr);
+    gap: 0 var(--cg-space-2);
+    padding: var(--cg-space-2) 0;
+    border-radius: 8px;
+    scroll-margin: var(--cg-space-6);
+
+    @media (max-width: 600px) {
+      grid-template-columns: 24px minmax(0, 1fr);
+
+      .radar-subject__event-when {
+        grid-column: 1 / -1;
+      }
+    }
+
+    &--focused {
+      box-shadow: inset 4px 0 0 var(--cg-accent);
+    }
+  }
+
+  &__event-when {
+    padding-top: 4px;
+    font-family: var(--cg-font-mono);
+    font-size: 12px;
+    color: var(--cg-text-secondary);
+    white-space: nowrap;
+  }
+
+  &__event-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    background: var(--cg-bg);
+    color: var(--cg-text-secondary);
+
+    mat-icon {
+      width: 16px;
+      height: 16px;
+      font-size: 16px;
+    }
+  }
+
+  &__event--mine &__event-icon {
+    color: var(--cg-accent);
+  }
+
+  &__event-body {
+    min-width: 0;
+    font-size: 14px;
+  }
+
+  &__event-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cg-space-1) var(--cg-space-2);
+
+    b {
+      font-weight: 600;
+    }
+  }
+
+  &__event-number {
+    font-family: var(--cg-font-mono);
+    font-size: 12px;
+    color: var(--cg-accent);
+  }
+
+  &__event-author {
+    color: var(--cg-text-secondary);
+  }
+
+  &__quote {
+    margin: var(--cg-space-1) 0 0;
+    padding-left: var(--cg-space-2);
+    border-left: 2px solid var(--cg-divider);
+    color: var(--cg-text-secondary);
+    overflow-wrap: anywhere;
+
+    &::before {
+      content: '« ';
+    }
+
+    &::after {
+      content: ' »';
+    }
+  }
+
+  &__deep-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cg-space-1);
+    margin-top: var(--cg-space-1);
+    font-size: 12px;
+    color: var(--cg-accent);
+
+    mat-icon {
+      width: 12px;
+      height: 12px;
+      font-size: 12px;
+    }
+  }
+}

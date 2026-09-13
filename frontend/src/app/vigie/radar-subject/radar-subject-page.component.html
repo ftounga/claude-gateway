@@ -1,0 +1,200 @@
+<section class="radar-subject">
+  @if (loading() && !detail()) {
+    <div class="radar-subject__loading"><mat-spinner diameter="40"></mat-spinner></div>
+  } @else if (error() === 'not-entitled') {
+    <!-- Un espace non souscrit : la présentation de la Vigie, jamais une erreur (F-106 / SF-106-05). -->
+    <app-space-pitch class="radar-subject__not-entitled" space="VIGIE"></app-space-pitch>
+  } @else if (error() !== 'none') {
+    <div class="radar-subject__notice" [attr.data-error]="error()">
+      <mat-icon aria-hidden="true">{{ error() === 'network' ? 'cloud_off' : 'travel_explore' }}</mat-icon>
+      <div>
+        @switch (error()) {
+          @case ('not-found') {
+            <h1>Ce sujet n'existe pas, ou plus</h1>
+            <p>Il a peut-être été effacé avec le Radar de ce client.</p>
+            <a mat-flat-button color="primary" [routerLink]="['/vigie', hostRef()]" [queryParams]="{ onglet: 'radar' }">
+              Revenir au Radar
+            </a>
+          }
+          @case ('not-in-vigie') {
+            <h1>Ce client n'est pas dans la Vigie</h1>
+            <p>Activez-le dans la Vigie pour retrouver son Radar : rien n'a été effacé.</p>
+            <a mat-flat-button color="primary" routerLink="/vigie">Ouvrir la Vigie</a>
+          }
+          @default {
+            <h1>Le sujet n'a pas pu être lu</h1>
+            <p>La gateway n'a pas répondu. Rien n'est perdu.</p>
+            <button mat-flat-button color="primary" type="button" class="radar-subject__retry" (click)="reload()">
+              Réessayer
+            </button>
+          }
+        }
+      </div>
+    </div>
+  } @else {
+  @if (detail(); as subject) {
+    <div class="radar-subject__sheet">
+      <div class="radar-subject__main">
+        <header class="radar-subject__head">
+          <nav class="radar-subject__crumb" aria-label="Fil d'Ariane">
+            <a [routerLink]="['/vigie', hostRef()]">{{ hostName() ?? 'Client' }}</a>
+            <span aria-hidden="true">›</span>
+            <a [routerLink]="['/vigie', hostRef()]" [queryParams]="{ onglet: 'radar' }">Radar</a>
+            <span aria-hidden="true">›</span>
+            <span>Sujets</span>
+          </nav>
+          <div class="radar-subject__title-row">
+            <h1 class="radar-subject__title">{{ subject.name }}</h1>
+            <span class="badge radar-subject__state" [class]="badge().badgeClass">
+              {{ badge().label }}
+            </span>
+            @if (subject.stateSovereign) {
+              <span class="badge badge--neutral radar-subject__sovereign">votre correction</span>
+            }
+          </div>
+        </header>
+
+        @if (subject.mergedIntoId) {
+          <div class="radar-subject__banner radar-subject__merged" role="status">
+            <mat-icon aria-hidden="true">call_merge</mat-icon>
+            <span>
+              Ce sujet a été fusionné dans un autre : ses preuves et ses engagements y ont suivi.
+              <a [routerLink]="['/vigie', hostRef(), 'sujets', subject.mergedIntoId]">Ouvrir le sujet fusionné</a>
+            </span>
+          </div>
+        }
+        @if (subject.state === 'CLOSE_PROPOSED') {
+          <div class="radar-subject__banner radar-subject__close-proposed" role="status">
+            <mat-icon aria-hidden="true">help_outline</mat-icon>
+            <span>
+              Le Radar pense que ce sujet est terminé, d'après ce qu'il a lu@for (ref of refs(subject.closeSignalEvidenceIds); track ref) {<a class="radar-subject__ref" [attr.href]="'#preuve-' + evidenceIdOf(ref)" (click)="focusEvidence(ref, $event)">{{ ref }}</a>}.
+              C'est à vous de le confirmer, depuis le Radar.
+            </span>
+          </div>
+        }
+        @if (subject.wokeAt && subject.state === 'CLOSED') {
+          <div class="radar-subject__banner radar-subject__woke" role="status">
+            <mat-icon aria-hidden="true">notifications_active</mat-icon>
+            <span>
+              Ce sujet clos se réveille : du nouveau est arrivé le {{ dayLabel(subject.wokeAt) }}@for (ref of refs(subject.wakeEvidenceIds); track ref) {<a class="radar-subject__ref" [attr.href]="'#preuve-' + evidenceIdOf(ref)" (click)="focusEvidence(ref, $event)">{{ ref }}</a>}.
+            </span>
+          </div>
+        }
+        @if (subject.state === 'DORMANT') {
+          <div class="radar-subject__banner radar-subject__dormant" role="status">
+            <mat-icon aria-hidden="true">bedtime</mat-icon>
+            <span>
+              Rien n'a bougé depuis le {{ dayLabel(subject.lastActivityAt) ?? dayLabel(subject.dormantSince) }}.
+              Le silence ne clôt rien : dites au Radar ce qu'il en est.
+            </span>
+          </div>
+        }
+
+        <dl class="radar-subject__facts">
+          <div class="radar-subject__fact">
+            <dt>Où on en est</dt>
+            <dd>
+              <span class="radar-subject__fact-value">{{ badge().label }}</span>
+              @if (subject.lastActivityAt) {
+                <span class="radar-subject__fact-meta">dernière activité : {{ whenLabel(subject.lastActivityAt) }}</span>
+              }
+              <span class="radar-subject__refs">
+                @for (ref of refs(subject.stateEvidenceIds); track ref) {<a class="radar-subject__ref" [attr.href]="'#preuve-' + evidenceIdOf(ref)" (click)="focusEvidence(ref, $event)">{{ ref }}</a>}
+              </span>
+            </dd>
+          </div>
+          <div class="radar-subject__fact">
+            <dt>Prochaine étape</dt>
+            <dd>
+              @if (subject.nextStep) {
+                <span class="radar-subject__fact-value radar-subject__next-step">{{ subject.nextStep }}</span>
+                @if (subject.nextStepSovereign) {
+                  <span class="badge badge--neutral radar-subject__sovereign">votre note</span>
+                }
+              } @else {
+                <span class="radar-subject__fact-value radar-subject__unknown">non connue</span>
+              }
+              <span class="radar-subject__refs">
+                @for (ref of refs(subject.nextStepEvidenceIds); track ref) {<a class="radar-subject__ref" [attr.href]="'#preuve-' + evidenceIdOf(ref)" (click)="focusEvidence(ref, $event)">{{ ref }}</a>}
+              </span>
+            </dd>
+          </div>
+          <div class="radar-subject__fact">
+            <dt>Échéance connue</dt>
+            <dd>
+              @if (dayLabel(subject.dueDate); as due) {
+                <span class="radar-subject__fact-value radar-subject__due">{{ due }}</span>
+                @if (subject.dueDateSovereign) {
+                  <span class="badge badge--neutral radar-subject__sovereign">votre note</span>
+                }
+              } @else {
+                <span class="radar-subject__fact-value radar-subject__unknown">aucune</span>
+              }
+              <span class="radar-subject__refs">
+                @for (ref of refs(subject.dueDateEvidenceIds); track ref) {<a class="radar-subject__ref" [attr.href]="'#preuve-' + evidenceIdOf(ref)" (click)="focusEvidence(ref, $event)">{{ ref }}</a>}
+              </span>
+            </dd>
+          </div>
+        </dl>
+
+        <section class="radar-subject__section" aria-labelledby="radar-subject-summary">
+          <h2 id="radar-subject-summary" class="radar-subject__h">Résumé</h2>
+          @if (summary().length === 0) {
+            <p class="radar-subject__empty radar-subject__summary-empty">
+              Pas encore de résumé : il s'écrit à la prochaine analyse.
+            </p>
+          } @else {
+            <p class="radar-subject__summary">
+              @for (sentence of summary(); track sentence.id) {
+                <span class="radar-subject__sentence">{{ sentence.text }}<sup class="radar-subject__sup">@for (ref of refs(sentence.evidenceIds); track ref; let last = $last) {<a class="radar-subject__ref" [attr.href]="'#preuve-' + evidenceIdOf(ref)" [attr.aria-label]="'Preuve ' + ref" (click)="focusEvidence(ref, $event)">{{ ref }}</a>}</sup></span>{{ ' ' }}
+              }
+            </p>
+          }
+        </section>
+
+        <section class="radar-subject__section" aria-labelledby="radar-subject-chronology">
+          <h2 id="radar-subject-chronology" class="radar-subject__h">Chronologie</h2>
+          @if (subject.chronology.length === 0) {
+            <p class="radar-subject__empty">Aucune preuve encore.</p>
+          } @else {
+            <ol class="radar-subject__timeline">
+              @for (evidence of subject.chronology; track evidence.id) {
+                <li
+                  class="radar-subject__event"
+                  [id]="'preuve-' + evidence.id"
+                  [class.radar-subject__event--focused]="focusedEvidenceId() === evidence.id"
+                  [class.radar-subject__event--mine]="evidence.source === 'USER_NOTE' || evidence.source === 'PASTED_MAIL' || evidence.source === 'LOCAL_RECORDING'"
+                  [attr.data-source]="evidence.source"
+                >
+                  <span class="radar-subject__event-when">{{ whenLabel(evidence.occurredAt) }}</span>
+                  <span class="radar-subject__event-icon" role="img" [attr.aria-label]="sourceView(evidence.source).label">
+                    <mat-icon aria-hidden="true">{{ sourceView(evidence.source).icon }}</mat-icon>
+                  </span>
+                  <div class="radar-subject__event-body">
+                    <div class="radar-subject__event-head">
+                      @if (numberOf(evidence); as n) {
+                        <span class="radar-subject__event-number">{{ n }}</span>
+                      }
+                      <b>{{ sourceView(evidence.source).label }}</b>
+                      @if (authorOf(evidence); as author) {
+                        <span class="radar-subject__event-author">— {{ author }}</span>
+                      }
+                    </div>
+                    <blockquote class="radar-subject__quote">{{ evidence.quote }}</blockquote>
+                    @if (safeLink(evidence.deepLink); as href) {
+                      <a class="radar-subject__deep-link" [href]="href" target="_blank" rel="noopener noreferrer">
+                        {{ linkLabel(evidence) }}
+                        <mat-icon aria-hidden="true">open_in_new</mat-icon>
+                      </a>
+                    }
+                  </div>
+                </li>
+              }
+            </ol>
+          }
+        </section>
+      </div>
+    </div>
+  }
+  }
+</section>
