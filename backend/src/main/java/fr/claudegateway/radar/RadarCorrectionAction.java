@@ -37,6 +37,9 @@ public enum RadarCorrectionAction {
     /** L'utilisateur laisse clos un sujet qui s'est réveillé (SF-99-04 ; route dédiée). */
     DISMISS_WAKE(Target.SUBJECT),
 
+    /** Un sujet né d'une nouvelle de l'utilisateur (F-104) ; l'annuler le supprime s'il n'a rien reçu d'autre. */
+    CREATE_SUBJECT(Target.SUBJECT),
+
     // ------------------------------------------------------------------------------- engagement
 
     /** « Fait » : tenu. */
@@ -55,7 +58,10 @@ public enum RadarCorrectionAction {
     CONFIRM(Target.COMMITMENT),
 
     /** Rouvrir un engagement. */
-    REOPEN(Target.COMMITMENT);
+    REOPEN(Target.COMMITMENT),
+
+    /** Un engagement dit par l'utilisateur (F-104) ; l'annuler le supprime s'il n'a pas été corrigé depuis. */
+    ADD_COMMITMENT(Target.COMMITMENT);
 
     /** Ce sur quoi porte une correction. */
     public enum Target {

@@ -72,4 +72,12 @@ public class RadarCorrection {
 
     @Column(name = "undone_at")
     private OffsetDateTime undoneAt;
+
+    /**
+     * La <b>preuve</b> qui a porté cette correction (F-104 / SF-104-01) : la nouvelle de l'utilisateur
+     * ({@code USER_NOTE}, {@code PASTED_MAIL}). {@code null} pour un geste de l'écran, qui est sa propre
+     * justification.
+     */
+    @Column(name = "evidence_id")
+    private UUID evidenceId;
 }

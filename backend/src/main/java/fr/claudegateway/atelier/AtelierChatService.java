@@ -219,6 +219,13 @@ public class AtelierChatService implements RelayInterruptTarget {
      * ne pose jamais un bloc qui renvoie à une image dont on ne sait rien.
      */
     private final fr.claudegateway.teams.block.TeamsMomentImageService momentImages;
+    /**
+     * Catalogue des outils Radar (F-104 / SF-104-01) <b>et sa garde</b> : vide hors du terminal Teams d'un
+     * client suivi par la Vigie, ou sans le droit Vigie.
+     */
+    private final fr.claudegateway.radar.RadarToolCatalog radarToolCatalog;
+    /** Exécution des outils Radar (F-104 / SF-104-01) ; {@code null} pour les formes historiques. */
+    private final fr.claudegateway.radar.RadarToolExecutor radarToolExecutor;
 
     /**
      * Tours pour lesquels une interruption a été demandée (F-38 / SF-38-07, même geste que F-32).
@@ -341,7 +348,10 @@ public class AtelierChatService implements RelayInterruptTarget {
                 null);
     }
 
-    @org.springframework.beans.factory.annotation.Autowired
+    /**
+     * Forme de F-89, conservée pour les appelants (et les tests) antérieurs au Radar : aucun outil
+     * {@code radar_*} n'est jamais donné, donc la panoplie d'avant F-104, à l'identique.
+     */
     public AtelierChatService(WorkspaceService workspaceService, AtelierMessageRepository messageRepository,
             AiAgentProvider agentProvider, ByokKeyService byokKeyService, QuotaService quotaService,
             fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService,
@@ -356,6 +366,33 @@ public class AtelierChatService implements RelayInterruptTarget {
             ProjectRulesSource projectRules,
             fr.claudegateway.teams.TeamsToolCatalog teamsToolCatalog,
             fr.claudegateway.teams.block.TeamsMomentImageService momentImages) {
+        this(workspaceService, messageRepository, agentProvider, byokKeyService, quotaService,
+                gitWorkspaceService, runnerToolGateway, runnerCallDispatcher, confirmationGate,
+                runnerAuditService, relayBroadcaster, runnerHostService, atelierProperties,
+                checkpointRunner, projectRules, teamsToolCatalog, momentImages,
+                fr.claudegateway.radar.RadarToolCatalog.none(), null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AtelierChatService(WorkspaceService workspaceService, AtelierMessageRepository messageRepository,
+            AiAgentProvider agentProvider, ByokKeyService byokKeyService, QuotaService quotaService,
+            fr.claudegateway.atelier.git.GitWorkspaceService gitWorkspaceService,
+            RunnerToolGateway runnerToolGateway,
+            fr.claudegateway.runner.channel.RunnerCallDispatcher runnerCallDispatcher,
+            RunnerConfirmationGate confirmationGate,
+            RunnerAuditService runnerAuditService,
+            RunnerRelayBroadcaster relayBroadcaster,
+            fr.claudegateway.runner.host.RunnerHostService runnerHostService,
+            AtelierProperties atelierProperties,
+            AtelierCheckpointRunner checkpointRunner,
+            ProjectRulesSource projectRules,
+            fr.claudegateway.teams.TeamsToolCatalog teamsToolCatalog,
+            fr.claudegateway.teams.block.TeamsMomentImageService momentImages,
+            fr.claudegateway.radar.RadarToolCatalog radarToolCatalog,
+            fr.claudegateway.radar.RadarToolExecutor radarToolExecutor) {
+        this.radarToolCatalog = radarToolCatalog == null
+                ? fr.claudegateway.radar.RadarToolCatalog.none() : radarToolCatalog;
+        this.radarToolExecutor = radarToolExecutor;
         this.teamsToolCatalog = teamsToolCatalog == null
                 ? fr.claudegateway.teams.TeamsToolCatalog.none() : teamsToolCatalog;
         this.momentImages = momentImages;
@@ -475,8 +512,14 @@ public class AtelierChatService implements RelayInterruptTarget {
                                         workspaceId, userId, workspace.getChatThreadStartedAt())));
         messages.add(AgentMessage.userText(userText));
 
-        messageRepository.save(AtelierMessage.builder()
+        AtelierMessage savedUserMessage = messageRepository.save(AtelierMessage.builder()
                 .workspaceId(workspaceId).userId(userId).role("USER").content(userText).build());
+        // F-104 / SF-104-01 : la parole de l'utilisateur est la preuve des écritures Radar de ce tour. Une
+        // seule preuve par message (idempotente par son identifiant), créée à la première écriture.
+        fr.claudegateway.radar.RadarNote turnNote = fr.claudegateway.radar.RadarNote.ofTerminalMessage(
+                savedUserMessage != null && savedUserMessage.getId() != null
+                        ? savedUserMessage.getId() : UUID.randomUUID(),
+                userText, java.time.OffsetDateTime.now());
 
         String system = buildSystemPrompt(userId, workspace);
         List<AgentTool> tools = buildTools(userId, workspace);
@@ -666,6 +709,9 @@ public class AtelierChatService implements RelayInterruptTarget {
                         listener.onProgress((long) inputTokens + outputTokens);
                         outcome = explored.outcome();
                     }
+                } else if (fr.claudegateway.radar.RadarToolCatalog.isRadarTool(call.name())) {
+                    // F-104 / SF-104-01 : le registre du Radar vit dans la gateway, pas sur la machine.
+                    outcome = executeRadarTool(userId, workspace, call, turnNote);
                 } else {
                     outcome = executeTool(userId, workspace, callId, call, listener, deadline,
                             planOfTurn, cardsOfTurn);
@@ -1282,6 +1328,25 @@ public class AtelierChatService implements RelayInterruptTarget {
         return ToolOutcome.error(AtelierCheckpointRunner.commandBlockedMessage(verdict));
     }
 
+    /**
+     * Exécute un outil Radar (F-104 / SF-104-01).
+     *
+     * <p><b>Le second verrou</b> : le premier est que ces outils ne sont pas déclarés hors de la garde
+     * ({@code RadarToolCatalog}). Celui-ci refuse l'appel même si le modèle nomme l'outil de lui-même — la
+     * garde est réévaluée, et rien n'est lu ni écrit. Le périmètre est le poste du terminal, jamais un
+     * identifiant venu du modèle.</p>
+     */
+    private ToolOutcome executeRadarTool(UUID userId, Workspace workspace, AgentToolCall call,
+            fr.claudegateway.radar.RadarNote note) {
+        if (radarToolExecutor == null || !radarToolCatalog.isOpenFor(userId, workspace)) {
+            return ToolOutcome.error("Les outils Radar n'existent que dans le terminal Teams d'un client suivi "
+                    + "par la Vigie : réponds sans eux.");
+        }
+        fr.claudegateway.radar.RadarToolExecutor.Outcome outcome = radarToolExecutor.execute(
+                new fr.claudegateway.radar.RadarScope(userId, workspace.getHostId()), call.name(), call.input(), note);
+        return outcome.error() ? ToolOutcome.error(outcome.content()) : ToolOutcome.info(outcome.content());
+    }
+
     /** Les deux outils qui modifient un fichier du projet, et eux seuls (F-50 / SF-50-01). */
     private static boolean isFileWrite(String tool) {
         return "write_file".equals(tool) || "edit_file".equals(tool);
@@ -1808,6 +1873,9 @@ public class AtelierChatService implements RelayInterruptTarget {
         // Le volet Teams, en dernier : ce qui précède est la panoplie de tout terminal, ce qui suit
         // n'existe que là où Teams a été payé ET où l'on est dans SON terminal (F-89 / SF-89-01).
         tools.addAll(teamsToolCatalog.toolsFor(userId, workspace));
+        // Le Radar du client (F-104 / SF-104-01) : seulement dans le terminal Teams d'un poste suivi par la
+        // Vigie, et avec le droit Vigie. La règle vit dans RadarToolCatalog, à un seul endroit.
+        tools.addAll(radarToolCatalog.toolsFor(userId, workspace));
         return List.copyOf(tools);
     }
 
