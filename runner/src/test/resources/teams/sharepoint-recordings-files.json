@@ -1,0 +1,20 @@
+{
+  "value": [
+    {
+      "Length": "4096",
+      "Name": "Comite de migration-20260910_090012-Enregistrement de la reunion.mp4",
+      "ServerRelativeUrl": "/personal/paul_fabrique_invalid/Documents/Recordings/Comite de migration-20260910_090012-Enregistrement de la reunion.mp4",
+      "TimeLastModified": "2026-09-10T10:04:00Z",
+      "UIVersionLabel": "1.0",
+      "UniqueId": "00000000-0000-0000-0000-0000000000r1"
+    },
+    {
+      "Length": "339",
+      "Name": "Comite de migration-20260910_090012-Enregistrement de la reunion.vtt",
+      "ServerRelativeUrl": "/personal/paul_fabrique_invalid/Documents/Recordings/Comite de migration-20260910_090012-Enregistrement de la reunion.vtt",
+      "TimeLastModified": "2026-09-10T10:06:00Z",
+      "UIVersionLabel": "1.0",
+      "UniqueId": "00000000-0000-0000-0000-0000000000r2"
+    }
+  ]
+}

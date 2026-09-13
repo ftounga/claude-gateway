@@ -117,6 +117,10 @@ public final class TeamsTools implements ToolExecutor {
      * l'outil le <b>dit</b> alors.
      */
     private TeamsFileTools files;
+    private TeamsFileTools.Host filesHost;
+    private TeamsWorkFolder filesFolder;
+    private SyncedLibraries filesSynced;
+    private java.util.function.Consumer<String> filesSay;
 
     public TeamsTools(TeamsSession session, BrowserLink.Sleeper sleeper) {
         this.session = session;
@@ -164,7 +168,7 @@ public final class TeamsTools implements ToolExecutor {
         if (!enabled || folder == null || synced == null) {
             return this;
         }
-        this.files = new TeamsFileTools(new TeamsFileTools.Host() {
+        this.filesHost = new TeamsFileTools.Host() {
             @Override
             public BrowserLink link() {
                 return TeamsTools.this.link();
@@ -192,7 +196,11 @@ public final class TeamsTools implements ToolExecutor {
             public String firstUse() {
                 return TeamsTools.this.firstUse();
             }
-        }, sleeper, folder, synced, say);
+        };
+        this.filesFolder = folder;
+        this.filesSynced = synced;
+        this.filesSay = say;
+        this.files = new TeamsFileTools(filesHost, sleeper, folder, synced, say);
         return this;
     }
 
@@ -648,17 +656,12 @@ public final class TeamsTools implements ToolExecutor {
     }
 
     /**
-     * L'enregistrement d'une réunion : <b>où il est, et ce que cet outil ne fait pas</b>.
+     * L'enregistrement d'une réunion : <b>rapatrié sur la machine</b> (F-108 / SF-108-05).
      *
-     * <p><b>Il ne télécharge pas les octets, et il le dit</b> (arbitrage A5). L'adresse signée qui
-     * permettrait de les chercher est <b>retirée par construction</b> en SF-87-02 — l'adresse perd sa
-     * chaîne de requête à l'entrée, « un jeton qui n'entre jamais ne peut pas sortir ». Rouvrir ce
-     * garde-fou pour télécharger une vidéo serait rouvrir une décision de sécurité au profit d'une
-     * commodité. L'acquisition des octets appartient à F-91, qui télécharge son outillage au premier
-     * usage (D3).</p>
-     *
-     * <p>Ce que l'outil ne fait pas est écrit dans le <b>résultat</b>, pas seulement dans une note :
-     * l'agent ne doit pas pouvoir croire qu'un fichier existe.</p>
+     * <p>F-88 ne le téléchargeait pas, et le disait. F-108 rouvre la décision <b>sans rouvrir la
+     * garde</b> : c'est Chrome qui télécharge, vers une adresse construite par nous et non signée ;
+     * l'adresse signée ne passe toujours jamais par notre code. Le travail est dans
+     * {@link TeamsRecordingTools}. Sans outils fichiers montés, l'outil le <b>dit</b>.</p>
      */
     private ToolOutcome meetingRecording(JsonNode input) {
         Refusal refusal = refusalIfUnavailable(MEETING_RECORDING);
@@ -670,23 +673,17 @@ public final class TeamsTools implements ToolExecutor {
         TeamsAsk ask = TeamsAsk.standard(null);
         List<TeamsGap> harvested = new TeamsHarvester(link, book,
                 new PageGestures(link, sleeper)).harvestInPlace(ask.window());
+        if (files != null) {
+            return recordings().recording(input, harvested);
+        }
 
         String meetingId = TeamsAsk.text(input, "meeting_id", "meetingId", "id");
         TeamsMeeting meeting = book.meeting(meetingId);
-
         TeamsToolResult result = new TeamsToolResult(MEETING_RECORDING,
                 session.adapter().version(), TeamsLinkState.LINKED);
         result.with("meetingId", meetingId);
         result.json().put("downloaded", false);
-        result.with("destination",
-                "sur cette machine, dans le dossier de travail du volet Teams — il est créé au"
-                        + " premier enregistrement, jamais avant");
-        result.with("whyNotDownloaded",
-                "Les octets ne sont pas rapatriés ici : l'adresse signée qui permettrait d'aller les"
-                        + " chercher est retirée à l'entrée de la liaison (SF-87-02), et ce"
-                        + " garde-fou ne se rouvre pas pour une commodité. L'enregistrement reste"
-                        + " sur la machine, et son acquisition est le travail de l'enregistrement"
-                        + " local.");
+        result.json().put("inProgress", false);
         List<TeamsGap> gaps = new ArrayList<>(harvested);
         if (meetingId.isEmpty()) {
             gaps.add(TeamsGap.of(TeamsGapKind.MISSING_FIELD, "enregistrement", "meeting_id"));
@@ -701,7 +698,8 @@ public final class TeamsTools implements ToolExecutor {
         } else {
             result.json().putNull("available");
         }
-
+        gaps.add(TeamsGap.of(TeamsGapKind.NOTHING_OBSERVED, "téléchargement",
+                "le téléchargement des enregistrements n'est pas monté sur ce poste"));
         StringBuilder text = new StringBuilder();
         if (meeting == null) {
             text.append("Je ne connais pas cette réunion.");
@@ -713,12 +711,16 @@ public final class TeamsTools implements ToolExecutor {
                     .append(" » n'annonce aucun enregistrement.");
         }
         appendGaps(text, gaps);
-        text.append(' ').append(result.json().path("whyNotDownloaded").asText(""));
         result.window(ask.window()).gaps(gaps).health(book.health())
                 .with("firstUse", firstUse()).text(text.toString());
         return ToolOutcome.ok(result.render());
     }
 
+    /** Les outils d'enregistrement, montés sur les mêmes réglages que les outils fichiers. */
+    private TeamsRecordingTools recordings() {
+        return new TeamsRecordingTools(filesHost, sleeper, filesFolder, filesSynced, transcription,
+                filesSay);
+    }
 
     // ------------------------------------------------------------------ F-90 : les captures
 
@@ -771,6 +773,17 @@ public final class TeamsTools implements ToolExecutor {
 
         String rawVideo = fromCapture != null ? fromCapture.video()
                 : TeamsAsk.text(input, "video", "video_path", "path");
+        // F-108 / SF-108-05 — l'enregistrement Teams téléchargé par Chrome rejoint la chaîne F-90 :
+        // avec « meeting_id » et sans « video », on prend le fichier rapatrié et ses répliques.
+        TeamsRecordingTools.Readiness fromRecording = null;
+        String askedMeeting = TeamsAsk.text(input, "meeting_id", "meetingId");
+        if (fromCapture == null && rawVideo.isEmpty() && !askedMeeting.isEmpty() && files != null) {
+            fromRecording = recordings().readiness(askedMeeting, ledger().meeting(askedMeeting));
+            if (!fromRecording.ready()) {
+                return momentsRecordingNotReady(result, askedMeeting, fromRecording.sentence());
+            }
+            rawVideo = fromRecording.video();
+        }
         if (rawVideo.isEmpty()) {
             return momentsMissingVideo(result);
         }
@@ -787,6 +800,13 @@ public final class TeamsTools implements ToolExecutor {
             timeline = MomentTimeline.given(fromCapture.startedAt());
             subject = fromCapture.subject().isEmpty()
                     ? (meeting == null ? "" : meeting.subject()) : fromCapture.subject();
+        } else if (fromRecording != null && !fromRecording.cues().isEmpty()
+                && fromRecording.origin() != null) {
+            // Des répliques tirées de l'enregistrement lui-même (.vtt, transcription locale) : elles
+            // sont datées depuis la même origine que la vidéo — l'alignement n'a rien à supposer.
+            cues = fromRecording.cues();
+            timeline = MomentTimeline.given(fromRecording.origin());
+            subject = meeting == null ? "" : meeting.subject();
         } else {
             cues = meetingId.isEmpty() ? List.of() : book.transcriptOf(meetingId);
             timeline = timelineOf(input, meeting);
@@ -953,16 +973,30 @@ public final class TeamsTools implements ToolExecutor {
         return ToolOutcome.ok(result.render());
     }
 
+    /** L'enregistrement de la réunion n'est pas prêt pour les captures : on le dit, on n'extrait rien. */
+    private ToolOutcome momentsRecordingNotReady(TeamsToolResult result, String meetingId,
+            String sentence) {
+        result.array("moments");
+        result.with("meetingId", meetingId);
+        result.window(null)
+                .gaps(List.of(TeamsGap.of(TeamsGapKind.NOTHING_OBSERVED, "enregistrement " + meetingId,
+                        sentence)))
+                .health(TeamsHealth.full(0))
+                .with("firstUse", firstUse())
+                .text(sentence + " Rien n'a été extrait.");
+        return ToolOutcome.ok(result.render());
+    }
+
     private ToolOutcome momentsMissingVideo(TeamsToolResult result) {
         result.array("moments");
         result.window(null)
                 .gaps(List.of(TeamsGap.of(TeamsGapKind.MISSING_FIELD, "captures", "video")))
                 .health(TeamsHealth.full(0))
                 .with("firstUse", firstUse())
-                .text("Donnez-moi le chemin de l'enregistrement sur cette machine (« video »). "
-                        + "Je ne le télécharge pas depuis Teams : l'adresse signée qui le "
-                        + "permettrait est retirée à l'entrée de la liaison, et ce garde-fou ne se "
-                        + "rouvre pas pour une commodité.");
+                .text("Donnez-moi le chemin de l'enregistrement sur cette machine (« video »), ou "
+                        + "« meeting_id » d'une réunion dont l'enregistrement a été rapatrié par "
+                        + MEETING_RECORDING + " — c'est Chrome qui le télécharge, l'adresse signée ne "
+                        + "passe jamais par nous.");
         return ToolOutcome.ok(result.render());
     }
 

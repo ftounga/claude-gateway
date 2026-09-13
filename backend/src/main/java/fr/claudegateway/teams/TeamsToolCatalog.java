@@ -59,7 +59,10 @@ public class TeamsToolCatalog {
     public static final String FIND_MEETINGS = "teams_find_meetings";
     /** La transcription d'une réunion enregistrée (F-88 / SF-88-02). */
     public static final String MEETING_TRANSCRIPT = "teams_meeting_transcript";
-    /** L'enregistrement d'une réunion : où il est, et ce qu'on n'en fait pas (F-88 / SF-88-02). */
+    /**
+     * L'enregistrement d'une réunion (F-88 / SF-88-02) — <b>rapatrié sur la machine par Chrome</b>
+     * depuis F-108 / SF-108-05. Une lecture : aucune confirmation.
+     */
     public static final String MEETING_RECORDING = "teams_meeting_recording";
     /** Démarre l'extraction et l'alignement des captures d'un enregistrement (F-90 / SF-90-03). */
     public static final String MEETING_MOMENTS = "teams_meeting_moments";
@@ -320,12 +323,30 @@ public class TeamsToolCatalog {
                         "properties", Map.of("meeting_id", text),
                         "required", List.of("meeting_id"))));
 
+        // F-108 / SF-108-05 : l'outil TÉLÉCHARGE désormais — par Chrome, jamais par une adresse
+        // signée entre nos mains. La description garde la règle d'origine : tant que « downloaded »
+        // est faux, aucun fichier n'existe, et l'agent ne doit pas le laisser croire.
         tools.add(new AgentTool(MEETING_RECORDING,
-                "Dit si une réunion a un enregistrement et où il se trouve. Il ne le TÉLÉCHARGE "
-                        + "PAS : ne laisse jamais croire à l'utilisateur qu'un fichier a été "
-                        + "récupéré — le résultat explique pourquoi, répète-le.",
+                "RAPATRIE l'enregistrement d'une réunion SUR LA MACHINE : c'est Chrome qui le "
+                        + "télécharge dans le dossier de travail du volet, aucune adresse signée ne "
+                        + "passe par nous, et la vidéo ne quitte jamais la machine. C'est LONG : "
+                        + "l'outil rend la main dès que le téléchargement a démarré (« inProgress ») "
+                        + "— redemande-le pour suivre. Tant que « downloaded » est faux, ne laisse "
+                        + "jamais croire qu'un fichier a été récupéré, et répète ce qui manque "
+                        + "(téléchargement bloqué par l'organisateur ou le tenant, adresse non "
+                        + "observée). Une fois téléchargé, il cherche la transcription (Teams, "
+                        + "fichier .vtt, sinon transcription locale sur la machine) puis enchaîne "
+                        + "avec " + MEETING_MOMENTS + " en lui donnant le seul « meeting_id ». Adaptateur "
+                        + "écrit sur la documentation Microsoft, à confirmer sur poste réel.",
                 Map.of("type", "object",
-                        "properties", Map.of("meeting_id", text),
+                        "properties", Map.of("meeting_id", text,
+                                "recording_url", Map.of("type", "string",
+                                        "description", "Adresse web du fichier .mp4, si tu la "
+                                                + "connais et que l'outil dit ne pas l'avoir "
+                                                + "observée."),
+                                "download", Map.of("type", "boolean",
+                                        "description", "false pour seulement localiser "
+                                                + "l'enregistrement (défaut : true).")),
                         "required", List.of("meeting_id"))));
 
         // F-90 : les captures alignées. Traitement LOURD, donc asynchrone — la description le dit
@@ -351,7 +372,10 @@ public class TeamsToolCatalog {
                         "properties", Map.of(
                                 "video", Map.of("type", "string",
                                         "description", "Chemin de l'enregistrement SUR LA MACHINE. "
-                                                + "Obligatoire, SAUF si tu donnes « capture_id »."),
+                                                + "Obligatoire, SAUF si tu donnes « capture_id », "
+                                                + "ou « meeting_id » d'une réunion dont "
+                                                + MEETING_RECORDING + " a rapatrié "
+                                                + "l'enregistrement."),
                                 "capture_id", Map.of("type", "string",
                                         "description", "Identifiant d'un ENREGISTREMENT LOCAL "
                                                 + "terminé (teams_capture_*). Préfère-le à "

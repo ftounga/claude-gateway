@@ -76,8 +76,9 @@ public final class SceneFrames {
             throw new SceneExtractionException("not_found",
                     "Je ne trouve pas de fichier vidéo à « "
                             + (video == null ? "(chemin vide)" : video) + " ».",
-                    "Vérifiez le chemin, ou donnez-le en absolu. L'enregistrement reste sur cette "
-                            + "machine : je ne le télécharge pas depuis Teams.");
+                    "Vérifiez le chemin, ou donnez-le en absolu. Un enregistrement Teams se rapatrie "
+                            + "d'abord par teams_meeting_recording (c'est Chrome qui le télécharge) ; "
+                            + "il reste ensuite sur cette machine.");
         }
         Path ffmpeg = toolchain.require(LocalTool.ffmpeg());
         double effective = threshold > 0d && threshold < 1d ? threshold : SCENE_THRESHOLD;
