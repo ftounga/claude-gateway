@@ -311,6 +311,11 @@ un plancher, pas un prix.
 
 ## 10. Hors périmètre
 
+> *Amendement du 2026-09-13 (F-108, décision de sécurité du PO)* : **écrire des fichiers** dans Teams,
+> SharePoint et OneDrive entre dans le périmètre, et le runner peut **naviguer, cliquer, taper, déposer
+> et télécharger** sur les seuls domaines Microsoft, chaque écriture confirmée. Poster un message,
+> répondre ou réagir restent exclus. Voir `docs/features/F-108/CADRAGE-F-108-agir-dans-microsoft-365.md`.
+
 - **Graph et le mode application** : ils demanderaient à une DSI des droits sur tout le tenant.
 - **Écrire dans Teams** — répondre, publier, réagir. On lit.
 - **Lire le DOM** comme source de vérité. Il sert au défilement, jamais à la donnée.
