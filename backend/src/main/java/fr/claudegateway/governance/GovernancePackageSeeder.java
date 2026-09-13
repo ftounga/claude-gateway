@@ -187,6 +187,12 @@ public class GovernancePackageSeeder {
                 return false;
             }
             desired.add(GovernancePackageFile.builder().position(position++).path(path)
+                    // TOUT ce que le produit livre est un ARTEFACT GÉNÉRÉ (F-96 / SF-96-01) : un
+                    // skill, un gabarit, un fichier de carte. Le produit les a écrits, il a donc le
+                    // droit de les corriger — mais SEULEMENT là où ils sont restés intacts. Un
+                    // gabarit rempli a été touché : il redevient du contenu utilisateur, et rien ne
+                    // l'écrase plus jamais.
+                    .generated(true)
                     .kind(file.kind()).content(content).build());
         }
         List<String> controlIds = knownControls();
@@ -246,6 +252,7 @@ public class GovernancePackageSeeder {
             GovernancePackageFile a = stored.get(i);
             GovernancePackageFile b = desired.get(i);
             if (!a.getPath().equals(b.getPath()) || a.getKind() != b.getKind()
+                    || a.isGenerated() != b.isGenerated()
                     || !Objects.equals(a.getContent(), b.getContent())) {
                 return false;
             }
@@ -259,7 +266,8 @@ public class GovernancePackageSeeder {
         for (GovernancePackageFile file : desired) {
             files.save(GovernancePackageFile.builder()
                     .packageId(packageId).position(file.getPosition()).path(file.getPath())
-                    .kind(file.getKind()).content(file.getContent()).build());
+                    .kind(file.getKind()).content(file.getContent())
+                    .generated(file.isGenerated()).build());
         }
     }
 

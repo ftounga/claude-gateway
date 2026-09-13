@@ -33,9 +33,12 @@ public class GovernanceHostLifecycleListener {
             LoggerFactory.getLogger(GovernanceHostLifecycleListener.class);
 
     private final GovernanceActivationService activationService;
+    private final GovernanceDepositService depositService;
 
-    public GovernanceHostLifecycleListener(GovernanceActivationService activationService) {
+    public GovernanceHostLifecycleListener(GovernanceActivationService activationService,
+            GovernanceDepositService depositService) {
         this.activationService = activationService;
+        this.depositService = depositService;
     }
 
     @EventListener
@@ -45,7 +48,12 @@ public class GovernanceHostLifecycleListener {
             switch (event.kind()) {
                 case CREATED -> activationService.embarkDefaults(event.userId(),
                         GovernanceHostRef.of(event.hostId()));
-                case DELETED -> activationService.forgetHost(event.userId(), event.hostId());
+                case DELETED -> {
+                    activationService.forgetHost(event.userId(), event.hostId());
+                    // Et les empreintes de ce qu'on y avait déposé (F-96 / SF-96-01) : sans machine,
+                    // elles ne répondent plus à aucune question et resteraient à jamais.
+                    depositService.forgetHost(event.userId(), event.hostId());
+                }
             }
         } catch (RuntimeException ex) {
             log.warn("Gouvernance du poste non traitée à son {} ({})", event.kind(),

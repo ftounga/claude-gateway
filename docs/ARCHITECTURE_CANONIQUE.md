@@ -538,9 +538,15 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     `(published)`.
   - `governance_package_files` : `id (uuid)`, `package_id (uuid)`, `sort_order (int)`,
     `path (varchar 255)`, `kind (varchar 16 : SKILL | TEMPLATE | MAP)`, `content (text)`,
-    `created_at`. **`MAP` est arrivé sans migration** (F-92 / SF-92-01) : la colonne est un
+    `generated (boolean, défaut true — F-96 / SF-96-01, migration 079)`, `created_at`.
+    **`MAP` est arrivé sans migration** (F-92 / SF-92-01) : la colonne est un
     `varchar(16)` **sans contrainte de valeur**, et une valeur de plus n'est donc pas un changement
     de schéma.
+    **`generated` est la déclaration d'ARTEFACT GÉNÉRÉ** : le produit a écrit ce fichier, il peut
+    donc le **mettre à jour** — et **seulement là où il est resté exactement celui qui a été
+    déposé** (voir `governance_deposited_files`). À `false`, le paquet pose le fichier une fois et
+    n'y revient jamais. Le défaut est `true` sans danger : un fichier que l'utilisateur a touché
+    **redevient du contenu utilisateur**, quelle que soit la déclaration.
     Index `(package_id, sort_order)`. La colonne s'appelle `sort_order` et non `position` :
     `POSITION` est une fonction SQL standard, donc réservée pour H2.
   - **Pas de `user_id`, et c'est délibéré** : un paquet est un **contenu produit**, comme un plan
@@ -583,6 +589,27 @@ cert-manager). RDS PostgreSQL partagé avec legalcase, base dédiée `claudegate
     un nettoyage ultérieur — garder l'original est ce qui rend la reprise réversible.
   - `applied_version` **fige** la version appliquée : un poste peut rester en v2 pendant que le
     paquet passe en v3. Rien ne met à jour un poste dans le dos de son propriétaire.
+  - `governance_deposited_files` — **l'empreinte de ce qu'on a déposé** (F-96 / SF-96-01, migration
+    `079`) : `id (uuid)`, `user_id (uuid)`, `host_id (uuid)`, `workspace_id (uuid)`,
+    `package_id (uuid)`, `path (varchar 255)`, `digest (varchar 64)`, `package_version (int)`,
+    `created_at`, `updated_at`. Unicité `(user_id, host_id, workspace_id, package_id, path)`.
+    **Pourquoi elle existe** : le dépôt n'avait que deux issues — `CREATE` et `KEEP` — et ne gardait
+    donc aucune trace ; un skill corrigé n'atteignait **jamais** un poste qui avait déjà l'ancienne
+    version. Pour mettre à jour **sans jamais écraser du contenu utilisateur**, il faut répondre à
+    une question que rien ne portait : *le fichier présent est-il celui que nous y avions mis ?*
+    `governance_host_activations` retient une **version de paquet**, pas un contenu.
+    **Une ligne par destination** — le même fichier n'a pas le même sort dans deux dossiers — et la
+    **racine du poste** (la carte, F-92) porte la clé réservée
+    `00000000-0000-0000-0000-000000000000` dans `workspace_id` : une colonne nulle ne dédoublonnerait
+    rien sous PostgreSQL.
+    **Une empreinte, pas une copie** : 64 caractères hexadécimaux (sha-256, **fins de ligne
+    normalisées** — un runner Windows peut réécrire `\n` en `\r\n` sans que personne n'ait touché au
+    fichier), dont on ne peut rien reconstituer. Le contenu de l'utilisateur ne quitte jamais sa
+    machine.
+    **L'absence d'empreinte n'autorise rien** : un fichier présent sans ligne ici est traité en
+    contenu utilisateur — **conservé** —, et l'annonce le dit (`KEEP_LOCAL`, distinct de `KEEP` :
+    *un fichier conservé parce qu'il a été modifié n'est pas la même chose qu'un fichier conservé
+    parce qu'il était déjà bon*). Les lignes partent avec le poste supprimé.
   - `governance_map_growth` — **ce que la carte a gagné** (F-93 / SF-93-02, migration `078`) :
     `id (uuid)`, `user_id (uuid)`, `host_id (uuid)`, `path (varchar 512)`, `facts (int)`,
     `observed_at`, `first_facts (int)`, `first_seen_at`, `last_gain (int, nullable)`,
@@ -898,7 +925,7 @@ Voir `docs/spec.md` §4 pour le DDL historique (scaffolding). Le schéma V1 rée
 
 Règle d'isolation des données :
 Tout accès aux données filtre obligatoirement sur **`user_id`**
-(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations/governance_host_activations/governance_map_growth via `user_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
+(documents/messages/subscriptions/uploaded_files/usage_counters/usage_turns/user_api_keys/user_git_credentials/prompt_templates/runner_hosts/host_seat_months/live_terminals/runner_tokens/runner_pairing_codes/runner_audit/governance_selections/governance_activations/governance_host_activations/governance_map_growth/governance_deposited_files via `user_id` ; `access_codes` via `redeemed_by_user_id`). Aucun endpoint ne renvoie des données d'un autre utilisateur. (Exceptions documentées : `processed_billing_events` est un registre technique d'idempotence sans donnée utilisateur, clé globale au fournisseur ; `governance_packages` / `governance_package_files` sont un **contenu produit** — comme un plan tarifaire —, écrits par l'admin seul et lus par tous une fois publiés.)
 
 ---
 

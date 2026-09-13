@@ -137,7 +137,7 @@ class GovernancePackageServiceTest {
     @DisplayName("un chemin de fichier qui sort du projet est refusé")
     void rejectsEscapingPath() {
         assertThatThrownBy(() -> service.create(withFiles(
-                new GovernancePackageFileRequest("../voisin/STATE.md", "TEMPLATE", "x"))))
+                new GovernancePackageFileRequest("../voisin/STATE.md", "TEMPLATE", "x", null))))
                 .isInstanceOf(InvalidGovernancePackageException.class)
                 .hasMessageContaining("Chemin de fichier invalide");
     }
@@ -146,8 +146,8 @@ class GovernancePackageServiceTest {
     @DisplayName("deux fichiers au même chemin sont refusés")
     void rejectsDuplicatePath() {
         assertThatThrownBy(() -> service.create(withFiles(
-                new GovernancePackageFileRequest("STATE.md", "TEMPLATE", "a"),
-                new GovernancePackageFileRequest("./STATE.md", "TEMPLATE", "b"))))
+                new GovernancePackageFileRequest("STATE.md", "TEMPLATE", "a", null),
+                new GovernancePackageFileRequest("./STATE.md", "TEMPLATE", "b", null))))
                 .isInstanceOf(InvalidGovernancePackageException.class)
                 .hasMessageContaining("double");
     }
@@ -156,7 +156,7 @@ class GovernancePackageServiceTest {
     @DisplayName("un genre de fichier inconnu est refusé")
     void rejectsUnknownKind() {
         assertThatThrownBy(() -> service.create(withFiles(
-                new GovernancePackageFileRequest("STATE.md", "HOOK", "a"))))
+                new GovernancePackageFileRequest("STATE.md", "HOOK", "a", null))))
                 .isInstanceOf(InvalidGovernancePackageException.class)
                 .hasMessageContaining("Genre de fichier inconnu");
     }
@@ -167,7 +167,7 @@ class GovernancePackageServiceTest {
         String huge = "x".repeat(GovernancePackageFile.MAX_CONTENT_LENGTH + 1);
 
         assertThatThrownBy(() -> service.create(withFiles(
-                new GovernancePackageFileRequest("STATE.md", "TEMPLATE", huge))))
+                new GovernancePackageFileRequest("STATE.md", "TEMPLATE", huge, null))))
                 .isInstanceOf(InvalidGovernancePackageException.class)
                 .hasMessageContaining("trop volumineux");
     }

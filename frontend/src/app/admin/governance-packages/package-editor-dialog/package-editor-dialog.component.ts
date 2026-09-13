@@ -6,6 +6,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 
 import { GovernanceControl, GovernanceFileKind } from '../../../core/models/governance.models';
 import {
@@ -47,6 +48,7 @@ export interface PackageEditorData {
     MatIconModule,
     MatInputModule,
     MatSelectModule,
+    MatSlideToggleModule,
   ],
   templateUrl: './package-editor-dialog.component.html',
   styleUrl: './package-editor-dialog.component.scss',
@@ -71,7 +73,12 @@ export class PackageEditorDialogComponent {
   );
 
   addFile(): void {
-    this.files.update((files) => [...files, { path: '', kind: 'TEMPLATE', content: '' }]);
+    // Un fichier neuf est un ARTEFACT GÉNÉRÉ par défaut (F-96) : c'est le cas courant — le produit
+    // l'écrit, il a donc le droit de le corriger là où personne n'y a touché.
+    this.files.update((files) => [
+      ...files,
+      { path: '', kind: 'TEMPLATE', content: '', generated: true },
+    ]);
   }
 
   removeFile(index: number): void {
@@ -90,6 +97,16 @@ export class PackageEditorDialogComponent {
     this.patchFile(index, { content });
   }
 
+  /**
+   * Déclare ce fichier **artefact généré** ou **contenu utilisateur** (F-96 / SF-96-01).
+   *
+   * Décoché, le paquet pose ce fichier une fois et n'y revient **jamais**. Coché, il le met à jour
+   * — et seulement là où il est resté exactement celui qui a été déposé.
+   */
+  setFileGenerated(index: number, generated: boolean): void {
+    this.patchFile(index, { generated });
+  }
+
   cancel(): void {
     this.dialogRef.close();
   }
@@ -106,6 +123,7 @@ export class PackageEditorDialogComponent {
         path: file.path.trim(),
         kind: file.kind,
         content: file.content,
+        generated: file.generated !== false,
       })),
     });
   }

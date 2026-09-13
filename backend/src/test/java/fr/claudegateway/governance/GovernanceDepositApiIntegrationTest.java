@@ -53,6 +53,7 @@ class GovernanceDepositApiIntegrationTest {
     @Autowired private GovernancePackageFileRepository packageFiles;
     @Autowired private GovernanceSelectionRepository selections;
     @Autowired private GovernanceActivationRepository activations;
+    @Autowired private GovernanceDepositedFileRepository deposits;
     @Autowired private JwtService jwtService;
 
     private String aliceToken;
@@ -64,6 +65,7 @@ class GovernanceDepositApiIntegrationTest {
     @BeforeEach
     void setUp() {
         activations.deleteAll();
+        deposits.deleteAll();
         selections.deleteAll();
         packageFiles.deleteAll();
         packages.deleteAll();
@@ -131,7 +133,11 @@ class GovernanceDepositApiIntegrationTest {
                 .andExpect(jsonPath("$.projects", Matchers.hasSize(1)))
                 .andExpect(jsonPath("$.projects[0].readable").value(true))
                 .andExpect(jsonPath("$.projects[0].entries[0].path").value("STATE.md"))
-                .andExpect(jsonPath("$.projects[0].entries[0].action").value("KEEP"))
+                // Le dossier portait DÉJÀ un STATE.md, écrit par l'utilisateur et différent de
+                // celui du paquet : il est conservé, et depuis F-96 l'annonce dit POURQUOI —
+                // « modifié localement », et non « déjà bon ». Sans la distinction, on ne saurait
+                // jamais si une correction est arrivée.
+                .andExpect(jsonPath("$.projects[0].entries[0].action").value("KEEP_LOCAL"))
                 .andExpect(jsonPath("$.projects[0].entries[1].path")
                         .value(".claude/skills/explique.md"))
                 .andExpect(jsonPath("$.projects[0].entries[1].action").value("CREATE"));
@@ -203,7 +209,9 @@ class GovernanceDepositApiIntegrationTest {
         mockMvc.perform(post(HOSTED + "/" + packageId + "/apply")
                         .contextPath("/api").header("Authorization", "Bearer " + aliceToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.projects[0].entries[0].action").value("KEEP"))
+                // Le STATE.md de l'utilisateur : conservé parce qu'il est à lui. Le skill : conservé
+                // parce qu'il est déjà exactement celui du paquet. Deux « conservés », deux raisons.
+                .andExpect(jsonPath("$.projects[0].entries[0].action").value("KEEP_LOCAL"))
                 .andExpect(jsonPath("$.projects[0].entries[1].action").value("KEEP"));
 
         assertThat(workspaceService.readFile(aliceId, project, "STATE.md"))
@@ -306,5 +314,100 @@ class GovernanceDepositApiIntegrationTest {
         // Le dépôt a suivi : les deux fichiers du paquet sont là, sans que rien n'ait été coché.
         assertThat(workspaceService.tree(aliceId, fresh))
                 .contains("STATE.md", ".claude/skills/explique.md");
+    }
+
+    // ------------------------------- F-96 : la gouvernance se met à jour
+
+    /** Le paquet republie un contenu différent au même chemin, comme le ferait une correction. */
+    private void republish(String path, String content) {
+        GovernancePackageFile file = packageFiles.findByPackageIdOrderByPositionAsc(packageId)
+                .stream().filter(candidate -> candidate.getPath().equals(path)).findFirst()
+                .orElseThrow();
+        file.setContent(content);
+        packageFiles.save(file);
+        GovernancePackage pkg = packages.findById(packageId).orElseThrow();
+        pkg.setVersion(pkg.getVersion() + 1);
+        packages.save(pkg);
+    }
+
+    @Test
+    @DisplayName("un skill corrigé ATTEINT un poste qui avait déjà l'ancienne version")
+    void aCorrectedSkillReachesAPosteThatAlreadyHadTheOldOne() throws Exception {
+        retain();
+        mockMvc.perform(post(HOSTED + "/" + packageId)
+                .contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk());
+        assertThat(workspaceService.readFile(aliceId, project, ".claude/skills/explique.md"))
+                .isEqualTo("# explique\n");
+
+        republish(".claude/skills/explique.md", "# explique, corrigé\n");
+
+        mockMvc.perform(post(HOSTED + "/" + packageId + "/apply")
+                        .contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.projects[0].entries[1].action").value("UPDATE"));
+
+        // C'est TOUT l'objet de F-96 : sans lui, le client restait sur la gouvernance du jour de
+        // son activation, pour toujours.
+        assertThat(workspaceService.readFile(aliceId, project, ".claude/skills/explique.md"))
+                .isEqualTo("# explique, corrigé\n");
+    }
+
+    @Test
+    @DisplayName("un fichier que l'utilisateur a modifié n'est JAMAIS mis à jour")
+    void aFileTheUserEditedIsNeverUpdated() throws Exception {
+        retain();
+        mockMvc.perform(post(HOSTED + "/" + packageId)
+                .contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk());
+
+        // L'utilisateur s'approprie le skill déposé : il redevient du contenu utilisateur.
+        workspaceService.writeFile(aliceId, project, ".claude/skills/explique.md",
+                "# explique, à ma façon\n");
+        republish(".claude/skills/explique.md", "# explique, corrigé\n");
+
+        mockMvc.perform(post(HOSTED + "/" + packageId + "/apply")
+                        .contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.projects[0].entries[1].action").value("KEEP_LOCAL"));
+
+        assertThat(workspaceService.readFile(aliceId, project, ".claude/skills/explique.md"))
+                .isEqualTo("# explique, à ma façon\n");
+    }
+
+    @Test
+    @DisplayName("l'annonce dit la mise à jour AVANT de l'écrire")
+    void thePreviewAnnouncesTheUpdateBeforeWriting() throws Exception {
+        retain();
+        mockMvc.perform(post(HOSTED + "/" + packageId)
+                .contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk());
+
+        republish(".claude/skills/explique.md", "# explique, corrigé\n");
+
+        mockMvc.perform(get(HOSTED + "/" + packageId + "/preview")
+                        .contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.projects[0].entries[1].action").value("UPDATE"));
+
+        // L'annonce n'écrit rien : le fichier porte toujours l'ancienne version.
+        assertThat(workspaceService.readFile(aliceId, project, ".claude/skills/explique.md"))
+                .isEqualTo("# explique\n");
+    }
+
+    @Test
+    @DisplayName("les empreintes d'un compte ne servent jamais à un autre")
+    void fingerprintsNeverCrossAccounts() throws Exception {
+        retain();
+        mockMvc.perform(post(HOSTED + "/" + packageId)
+                .contextPath("/api").header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk());
+
+        assertThat(deposits.findAll()).isNotEmpty();
+        assertThat(deposits.findAll()).allSatisfy(print ->
+                assertThat(print.getUserId()).isEqualTo(aliceId));
+        // Et Bob, qui n'a rien déposé, n'en a aucune.
+        assertThat(deposits.findByUserIdAndHostIdAndPackageId(UUID.randomUUID(),
+                GovernanceHostRef.HOSTED_ID, packageId)).isEmpty();
     }
 }

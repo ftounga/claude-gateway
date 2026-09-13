@@ -335,6 +335,10 @@ public class GovernancePackageService {
                     .path(GovernancePath.normalizeOrNull(file.path()))
                     .kind(parseKind(file.kind()))
                     .content(file.content() == null ? "" : file.content())
+                    // Déclaration d'ARTEFACT GÉNÉRÉ (F-96 / SF-96-01) : absente, elle vaut VRAI —
+                    // un paquet publie des artefacts, et un fichier que l'utilisateur a touché est
+                    // de toute façon conservé. Le drapeau n'ouvre donc aucune porte à lui seul.
+                    .generated(file.generated() == null || file.generated())
                     .build()));
         }
         return stored;
@@ -416,7 +420,7 @@ public class GovernancePackageService {
                 pkg.getSummary(), pkg.getRules(), controlViews(pkg),
                 pkgFiles.stream()
                         .map(file -> new GovernanceFileDetail(file.getPath(), file.getKind().name(),
-                                file.getContent()))
+                                file.getContent(), file.isGenerated()))
                         .toList(),
                 pkg.getVersion(), pkg.isPublished(), pkg.getPublishedAt(), pkg.getUpdatedAt());
     }

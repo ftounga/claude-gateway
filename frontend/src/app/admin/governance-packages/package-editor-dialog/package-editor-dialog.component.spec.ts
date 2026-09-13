@@ -80,8 +80,24 @@ describe('PackageEditorDialogComponent', () => {
 
     component.removeFile(0);
     expect(component.files()).toEqual([
-      { path: '.claude/skills/explique.md', kind: 'SKILL', content: '# explique' },
+      // Un fichier neuf est un ARTEFACT GÉNÉRÉ par défaut (F-96) : le produit l'écrit, il a donc
+      // le droit de le corriger là où personne n'y a touché.
+      { path: '.claude/skills/explique.md', kind: 'SKILL', content: '# explique', generated: true },
     ]);
+  });
+
+  it('déclare un fichier CONTENU UTILISATEUR quand on décoche « artefact généré »', async () => {
+    await build({ pkg: existing, controls: [] });
+
+    component.setFileGenerated(0, false);
+    component.save();
+
+    // Décoché, le paquet posera ce fichier une fois et n'y reviendra JAMAIS (F-96 / SF-96-01).
+    expect(dialogRef.close).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        files: [jasmine.objectContaining({ path: 'STATE.md', generated: false })],
+      }),
+    );
   });
 
   it('rend le contenu saisi, en normalisant les champs vides', async () => {

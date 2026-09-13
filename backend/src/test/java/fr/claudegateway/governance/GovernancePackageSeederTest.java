@@ -3,6 +3,7 @@ package fr.claudegateway.governance;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -307,5 +308,27 @@ class GovernancePackageSeederTest {
                 .findFirst().orElseThrow().getContent();
 
         assertThat(map).doesNotContain("- [ ]");
+    }
+
+    @Test
+    @DisplayName("tout ce que le produit livre est déclaré ARTEFACT GÉNÉRÉ (F-96)")
+    void everySeededFileIsDeclaredGenerated() {
+        when(packages.findBySlug(GovernancePackageSeeder.SLUG)).thenReturn(Optional.empty());
+        when(packages.save(any())).thenAnswer(invocation -> {
+            GovernancePackage saved = invocation.getArgument(0);
+            saved.setId(UUID.randomUUID());
+            return saved;
+        });
+        ArgumentCaptor<GovernancePackageFile> captor =
+                ArgumentCaptor.forClass(GovernancePackageFile.class);
+
+        assertThat(seeder(fullRegistry, true).seed()).isTrue();
+
+        verify(files, atLeastOnce()).save(captor.capture());
+        // Un skill, un gabarit, un fichier de carte : le produit les a écrits, il a donc le droit
+        // de les corriger — mais SEULEMENT là où ils sont restés intacts. Sans cette déclaration,
+        // aucune correction n'atteindrait jamais un poste déjà activé.
+        assertThat(captor.getAllValues()).isNotEmpty()
+                .allSatisfy(file -> assertThat(file.isGenerated()).isTrue());
     }
 }

@@ -102,6 +102,14 @@
           <mat-icon>delete_outline</mat-icon>
         </button>
 
+        <mat-slide-toggle
+          class="editor__file-generated"
+          [checked]="file.generated !== false"
+          (change)="setFileGenerated($index, $event.checked)"
+        >
+          Artefact généré — mis à jour si personne n'y a touché
+        </mat-slide-toggle>
+
         <mat-form-field appearance="outline" class="editor__file-content">
           <mat-label>Contenu</mat-label>
           <textarea

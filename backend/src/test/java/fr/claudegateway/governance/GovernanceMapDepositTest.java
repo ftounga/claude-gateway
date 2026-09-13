@@ -23,6 +23,7 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 import fr.claudegateway.atelier.Workspace;
+import fr.claudegateway.governance.GovernanceHostFiles.HostFileRead;
 import fr.claudegateway.governance.GovernanceHostFiles.Presence;
 import fr.claudegateway.governance.dto.GovernanceDepositAction;
 import fr.claudegateway.governance.dto.GovernanceDepositPlan;
@@ -58,6 +59,9 @@ class GovernanceMapDepositTest {
     @Mock
     private GovernanceHostScope hostScope;
 
+    @Mock
+    private GovernanceDepositedFileRepository deposited;
+
     private GovernanceDepositService service;
 
     private final UUID alice = UUID.randomUUID();
@@ -71,7 +75,7 @@ class GovernanceMapDepositTest {
     @BeforeEach
     void setUp() {
         service = new GovernanceDepositService(activations, packageService, projectFiles, hostFiles,
-                hostScope);
+                hostScope, deposited);
         workspace = Workspace.builder().id(workspaceId).userId(alice).name("migration-dns")
                 .hostId(hostId).projectPath("migration-dns").build();
         when(hostScope.projectsOf(alice, host)).thenReturn(List.of(workspace));
@@ -104,13 +108,23 @@ class GovernanceMapDepositTest {
                 .content(content).build();
     }
 
+    /** Le fichier est là, avec ce contenu. Depuis F-96, la même lecture sert présence ET fraîcheur. */
+    private static HostFileRead present(String content) {
+        return new HostFileRead(Presence.PRESENT, content, false);
+    }
+
+    /** Une lecture qui ne conclut pas : ni présent, ni absent. Le doute n'écrit jamais. */
+    private static HostFileRead read(Presence presence) {
+        return new HostFileRead(presence, null, false);
+    }
+
     // ------------------------------------------------------------- l'annonce
 
     @Test
     @DisplayName("l'annonce distingue la RACINE des projets, et n'écrit rien")
     void planSeparatesRootFromProjects() {
-        when(hostFiles.presence(alice, host, "README.md")).thenReturn(Presence.PRESENT);
-        when(hostFiles.presence(alice, host, "acces.md")).thenReturn(Presence.ABSENT);
+        when(hostFiles.read(alice, host, "README.md")).thenReturn(present("# La carte du poste"));
+        when(hostFiles.read(alice, host, "acces.md")).thenReturn(read(Presence.ABSENT));
 
         GovernanceDepositPlan plan = service.plan(alice, host, pkg.getId());
 
@@ -132,8 +146,8 @@ class GovernanceMapDepositTest {
     @Test
     @DisplayName("le dépôt crée la carte à la racine, et seulement ce qui manque")
     void depositCreatesTheMissingMapFiles() {
-        when(hostFiles.presence(alice, host, "README.md")).thenReturn(Presence.ABSENT);
-        when(hostFiles.presence(alice, host, "acces.md")).thenReturn(Presence.PRESENT);
+        when(hostFiles.read(alice, host, "README.md")).thenReturn(read(Presence.ABSENT));
+        when(hostFiles.read(alice, host, "acces.md")).thenReturn(present("# Accès"));
 
         GovernanceDepositPlan plan = service.deposit(alice, host, pkg.getId());
 
@@ -147,7 +161,9 @@ class GovernanceMapDepositTest {
     @Test
     @DisplayName("un fichier de carte DÉJÀ LÀ n'est jamais réécrit — c'est la promesse qui protège")
     void anExistingMapFileIsNeverOverwritten() {
-        when(hostFiles.presence(any(), any(), any())).thenReturn(Presence.PRESENT);
+        // Contenu DIFFÉRENT de ce que le paquet apporte, et aucune empreinte retenue : c'est la
+        // carte d'un client, nourrie par lui. Même depuis F-96, elle n'est pas écrasée.
+        when(hostFiles.read(any(), any(), any())).thenReturn(present("# Ce que la machine sait"));
 
         service.deposit(alice, host, pkg.getId());
 
@@ -157,8 +173,8 @@ class GovernanceMapDepositTest {
     @Test
     @DisplayName("une lecture INCONCLUSIVE n'écrit rien et laisse l'activation en attente")
     void anInconclusiveReadWritesNothing() {
-        when(hostFiles.presence(alice, host, "README.md")).thenReturn(Presence.UNKNOWN);
-        when(hostFiles.presence(alice, host, "acces.md")).thenReturn(Presence.UNKNOWN);
+        when(hostFiles.read(alice, host, "README.md")).thenReturn(read(Presence.UNKNOWN));
+        when(hostFiles.read(alice, host, "acces.md")).thenReturn(read(Presence.UNKNOWN));
 
         GovernanceDepositPlan plan = service.deposit(alice, host, pkg.getId());
 
@@ -175,7 +191,7 @@ class GovernanceMapDepositTest {
     @Test
     @DisplayName("une écriture refusée par la machine laisse l'activation en attente")
     void arefusedWriteKeepsTheActivationPending() {
-        when(hostFiles.presence(any(), any(), any())).thenReturn(Presence.ABSENT);
+        when(hostFiles.read(any(), any(), any())).thenReturn(read(Presence.ABSENT));
         when(hostFiles.write(any(), any(), any(), any())).thenReturn(false);
 
         GovernanceDepositPlan plan = service.deposit(alice, host, pkg.getId());
@@ -202,7 +218,7 @@ class GovernanceMapDepositTest {
         assertThat(plan.root().supported()).isFalse();
         assertThat(plan.root().message()).contains("Connectez une machine");
         verify(hostFiles, never()).write(any(), any(), any(), any());
-        verify(hostFiles, never()).presence(any(), any(), any());
+        verify(hostFiles, never()).read(any(), any(), any());
         // Et surtout : l'activation N'EST PAS retenue en attente d'une racine qui n'existera jamais.
         assertThat(activation.getStatus()).isEqualTo(GovernanceActivationStatus.APPLIED);
     }
