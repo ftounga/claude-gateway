@@ -385,6 +385,11 @@ app:
       triage-model: ${APP_RADAR_READING_TRIAGE_MODEL:}
       # Plafond de sortie d'un appel de tri. Borné à [100, 4000].
       triage-max-tokens: ${APP_RADAR_READING_TRIAGE_MAX_TOKENS:600}
+      # Modèle de l'EXTRACTION (seconde passe, rattachement aux sujets). Vide => le modèle PAR DÉFAUT
+      # du catalogue : reconnaître « le MFA » dans « la double auth des presta » demande du jugement.
+      extraction-model: ${APP_RADAR_READING_EXTRACTION_MODEL:}
+      # Plafond de sortie d'un appel d'extraction. Borné à [1000, 16000].
+      extraction-max-tokens: ${APP_RADAR_READING_EXTRACTION_MAX_TOKENS:8000}
   byok:
     # Chiffrement des clés API utilisateur (F-03, OQ-06 : AWS KMS envelope encryption).
     # kms-key-id vide => BYOK dormant (l'ajout de clé renvoie 503), sauf si local-key est fourni.

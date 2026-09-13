@@ -19,7 +19,8 @@ import java.util.List;
  *                    l'aide produit reste courte sans toucher au plafond du chat (F-02).
  */
 public record ChatCompletionRequest(String model, List<ChatMessage> messages,
-        List<ProviderAttachment> attachments, String apiKey, String system, Integer maxTokens) {
+        List<ProviderAttachment> attachments, String apiKey, String system, Integer maxTokens,
+        boolean cacheSystem) {
 
     public ChatCompletionRequest {
         if (attachments == null) {
@@ -31,10 +32,20 @@ public record ChatCompletionRequest(String model, List<ChatMessage> messages,
         }
     }
 
+    /**
+     * Complétion sans demande de cache. {@code cacheSystem} (F-101 / SF-101-03) : la consigne système
+     * est <b>stable d'un appel à l'autre</b> et gagne à être mise en cache par le fournisseur ; un
+     * fournisseur sans cache ignore ce drapeau. Provider-neutre : c'est une propriété de la requête.
+     */
+    public ChatCompletionRequest(String model, List<ChatMessage> messages,
+            List<ProviderAttachment> attachments, String apiKey, String system, Integer maxTokens) {
+        this(model, messages, attachments, apiKey, system, maxTokens, false);
+    }
+
     /** Complétion sans plafond de sortie propre (celui du fournisseur s'applique). */
     public ChatCompletionRequest(String model, List<ChatMessage> messages,
             List<ProviderAttachment> attachments, String apiKey, String system) {
-        this(model, messages, attachments, apiKey, system, null);
+        this(model, messages, attachments, apiKey, system, null, false);
     }
 
     /** Complétion sans consigne système. */
